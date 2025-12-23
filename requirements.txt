@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+openai
+fal-client
+aiohttp
+reportlab
+supabase
+python-dotenv
+pydantic

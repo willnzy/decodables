@@ -5,7 +5,7 @@ import aiohttp
 import uuid
 from datetime import datetime
 
-os.environ["FAL_KEY"] = "458c68bf-fa1a-46a4-b3e8-64b488f33c8b:6128a861bde9e796cd0f48517d6e87fd"
+os.environ["FAL_KEY"] = ""
 
 async def generate_and_download_single(session, prompt, index, save_dir):
     """

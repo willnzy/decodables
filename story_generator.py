@@ -3,7 +3,7 @@ import json
 from openai import OpenAI
 
 # 确保你已经设置了环境变量，或者直接在这里填入
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = ""
 
 # 初始化客户端
 client = OpenAI()
