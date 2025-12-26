@@ -2,6 +2,12 @@
 import stripe
 import os
 
+# -------- Debug Start: 看看变量到底读到没 --------
+print("DEBUG: Checking Price IDs...")
+print(f"Credits 100 ID: {os.environ.get('STRIPE_PRICE_CREDITS_100')}")
+print(f"Starter ID: {os.environ.get('STRIPE_PRICE_SUB_STARTER')}")
+# -----------------------------------------------
+
 # 从环境变量读取配置
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
