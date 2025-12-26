@@ -215,3 +215,27 @@ def search_users(query: str):
         .or_(f"id.eq.{query},email.ilike.%{query}%")\
         .execute()
     return res.data
+
+# [新增] Admin 聚合查询 (替换 app.py 中的直接调用)
+def get_full_user_audit(user_id: str):
+    """
+    [Admin] 获取用户全方位视图：档案、流水、日志、工单
+    """
+    # 1. 档案
+    profile = get_user_profile(user_id)
+    
+    # 2. 积分流水
+    txs = supabase.table("credit_transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).execute().data
+    
+    # 3. 行为日志
+    logs = supabase.table("activity_logs").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute().data
+    
+    # 4. 工单记录
+    tickets = supabase.table("support_tickets").select("*").eq("user_id", user_id).order("created_at", desc=True).execute().data
+    
+    return {
+        "profile": profile,
+        "transactions": txs,
+        "logs": logs,
+        "tickets": tickets
+    }

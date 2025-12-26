@@ -20,7 +20,9 @@ PAPER_CONFIG = {
 
 def draw_smart_image(c, img_source, x, y, max_w, max_h):
     """
-    智能绘制图片：支持 URL 和本地路径，自动保持比例居中
+    智能绘制图片：支持 URL 和本地路径，自动保持比例居中 (Contain 模式)
+    x, y: 绘制区域的左下角坐标
+    max_w, max_h: 绘制区域的最大宽高
     """
     try:
         # ImageReader 自动支持 URL 读取 (ReportLab内置功能)
@@ -32,14 +34,14 @@ def draw_smart_image(c, img_source, x, y, max_w, max_h):
         new_w = img_w * scale
         new_h = img_h * scale
         
-        # 居中计算
+        # 居中计算: 在给定的 bounding box (x, y, max_w, max_h) 内居中
         draw_x = x + (max_w - new_w) / 2
         draw_y = y + (max_h - new_h) / 2
         
         c.drawImage(img, draw_x, draw_y, width=new_w, height=new_h)
     except Exception as e:
         print(f"Image Draw Error ({img_source}): {e}")
-        # 可以选择绘制一个占位框表示失败
+        # 绘制红色占位框表示失败
         c.setStrokeColor(colors.red)
         c.rect(x, y, max_w, max_h)
 
@@ -144,7 +146,6 @@ def create_foldable_book(
         c.saveState()
         
         # 坐标变换：移动原点到格子中心 -> 旋转 -> 移回 (逻辑上)
-        # 实际上 ReportLab 的 rotate 是绕原点，所以先 translate 再 rotate
         if upside_down:
             c.translate(center_x, center_y)
             c.rotate(180)
@@ -158,45 +159,46 @@ def create_foldable_book(
         safe_w = col_w - (final_padding * 2)
         safe_h = row_h - (final_padding * 2)
         
-        # 内容布局：图片占 70%，文字占 30%
-        img_ratio = 0.70
-        txt_ratio = 0.30
-        
-        img_area_h = safe_h * img_ratio
-        # 图片区域中心Y坐标 (相对于 (0,0))
-        # 整体高度 safe_h，上面是图片，下面是文字
-        # 简单起见，我们将图片画在偏上的位置
-        img_draw_y = (safe_h / 2) - img_area_h # 顶部对齐线的下方
-        
-        # 更精确的居中计算
-        # 图片区域：从 y= -safe_h/2 + txt_area_h 到 y= safe_h/2
-        # 文字区域：从 y= -safe_h/2 到 y= -safe_h/2 + txt_area_h
-        
-        img_y_bottom = -safe_h/2 + (safe_h * txt_ratio)
-        img_h_actual = safe_h * img_ratio
-        
-        txt_y_bottom = -safe_h/2
-        txt_h_actual = safe_h * txt_ratio
-
-        # 3. 绘制图片
-        if img_path:
-            # draw_smart_image 需要的是左下角坐标
-            # 这里的坐标系原点是格子中心
-            # 我们传入绘制区域的左下角和宽高，让它自己居中
-            draw_smart_image(c, img_path, -safe_w/2, img_y_bottom, safe_w, img_h_actual)
+        # ==========================================
+        # [修改] 动态布局逻辑：全图模式 vs 图文模式
+        # ==========================================
+        if text_content and text_content.strip():
+            # [模式 A] 图文混排 (图片70%, 文字30%)
+            img_ratio = 0.70
+            txt_ratio = 0.30
             
-        # 4. 绘制文字
-        if text_content:
-            # draw_wrapped_text 需要中心点 x
-            # y 我们传入文字区域的中间
-            txt_center_y = txt_y_bottom + (txt_h_actual / 2)
+            img_area_h = safe_h * img_ratio
+            # 图片区域：在上方
+            # 计算图片区域底部的Y坐标：从整体底部(-safe_h/2) 往上加文字区域高度
+            img_y_bottom = -safe_h/2 + (safe_h * txt_ratio)
+            
+            txt_area_h = safe_h * txt_ratio
+            txt_y_bottom = -safe_h/2
+            txt_center_y = txt_y_bottom + (txt_area_h / 2)
+
+            # 绘制图片
+            if img_path:
+                # draw_smart_image 需要的是绘制区域左下角坐标
+                # X: -safe_w/2 (左边界)
+                # Y: img_y_bottom
+                draw_smart_image(c, img_path, -safe_w/2, img_y_bottom, safe_w, img_area_h)
+            
+            # 绘制文字
             draw_wrapped_text(c, text_content, 0, txt_center_y, safe_w)
+            
+        else:
+            # [模式 B] 无文字模式 (所见即所得/全页铺满)
+            # 此时前端已将Canvas合成一张图，我们让它尽可能大
+            if img_path:
+                # 绘制区域为整个 safe area
+                # 左下角坐标为 (-safe_w/2, -safe_h/2)
+                draw_smart_image(c, img_path, -safe_w/2, -safe_h/2, safe_w, safe_h)
 
         # 5. 绘制页码 (辅助)
         page_num_str = str(idx + 1)
         c.setFont("Helvetica", 8)
         c.setFillColor(colors.gray)
-        # 页码画在最底部
+        # 页码画在最底部边缘
         c.drawCentredString(0, -safe_h/2 + 2, page_num_str)
             
         c.restoreState()
