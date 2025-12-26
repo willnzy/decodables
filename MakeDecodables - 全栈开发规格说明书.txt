@@ -1,12 +1,12 @@
-# MagicZine AI - 全栈开发规格说明书 (v1.7 - 生产级安全稳定版)
+# MakeDecodables - 全栈开发规格说明书 (v1.9 - 终极完整版)
 
-本文档是项目的唯一真理来源 (SSOT)。涵盖数据库 Schema、存储策略、后端 API 规范及前端开发指令。
+本文档是项目的唯一真理来源 (SSOT)。整合了 PRD v4.8 的所有商业权益逻辑、v1.7 的安全稳定性规范及 v1.8 的数据库架构。
 
 ---
 
 ## Part 1: 数据库与存储设计 (Supabase)
 
-请在 Supabase SQL Editor 中执行以下建表语句，并配置 Storage。
+请在 Supabase SQL Editor 中执行以下建表语句。
 
 ### 1.1 核心表结构 (SQL)
 
@@ -34,7 +34,7 @@
       description text, 
       created_at timestamptz default now()
     );
-    -- type 枚举: 'signup_bonus', 'purchase', 'subscription_grant', 'subscription_renewal', 'generation', 'download_pdf', 'admin_adjustment'
+    -- type 枚举: 'signup_bonus', 'purchase', 'sub_grant', 'sub_renewal', 'generation', 'download_pdf', 'admin_adj'
 
     -- 3. 项目表 (User Projects)
     create table projects (
@@ -43,26 +43,38 @@
       title text default 'My Magic Story',
       canvas_data jsonb default '{}'::jsonb, -- Fabric.js JSON
       thumbnail_url text,
-      last_downloaded_hash text, -- 校验修改
+      last_downloaded_hash text, -- 用于 "严格扣费" 校验
       is_deleted boolean default false, -- 软删除
       created_at timestamptz default now(),
       updated_at timestamptz default now()
     );
 
-    -- 4. 素材资源表 (Asset Library)
-    -- [核心] 支持用户上传及 AI 生成图片的复用
+    -- 4. 用户素材表 (User Assets)
+    -- [核心] 支持用户上传及 AI 生成图片的复用，支持按项目筛选
     create table assets (
       id uuid default gen_random_uuid() primary key,
       user_id text references profiles(id) not null,
+      project_id uuid references projects(id), -- 可为空 (若为通用上传)
       url text not null, -- Storage URL
       type text not null, -- 'user_upload' | 'ai_generated'
       prompt text, -- AI 生成时的提示词 (可选)
       is_deleted boolean default false,
       created_at timestamptz default now()
     );
-    create index idx_assets_user_id on assets(user_id);
+    create index idx_assets_user_proj on assets(user_id, project_id);
 
-    -- 5. 行为日志表 (User Behavior Logs)
+    -- 5. 系统资源表 (System Resources)
+    -- [新增] 用于存储 Sticker 贴纸库
+    create table system_resources (
+      id uuid default gen_random_uuid() primary key,
+      type text not null, -- 'sticker', 'template'
+      category text, -- 'animals', 'badges'
+      url text not null,
+      is_pro_only boolean default false, -- 区分权益
+      created_at timestamptz default now()
+    );
+
+    -- 6. 行为日志表 (User Behavior Logs)
     -- [核心] 仅记录普通用户的 C 端行为，用于漏斗分析
     create table activity_logs (
       id uuid default gen_random_uuid() primary key,
@@ -73,7 +85,7 @@
     );
     -- action 枚举: 'login', 'click_checkout', 'payment_success', 'create_project', 'download_pdf', 'submit_support_ticket'
 
-    -- 6. 客服与运营记录表 (Support & Admin Ops)
+    -- 7. 客服与运营记录表 (Support & Admin Ops)
     -- [核心] 记录工单 + 所有 Admin 后台操作 (审计用)
     create table support_tickets (
       id uuid default gen_random_uuid() primary key,
@@ -91,6 +103,7 @@
 1.  **`user-uploads`**: Public=True。Policy: Authenticated Upload, Public Read。
 2.  **`generated-images`**: Public=True。Policy: Service Role Upload (Backend), Public Read。
 3.  **`generated-pdfs`**: Public=False。Policy: Only Owner Download (Signed URL)。
+4.  **`generated-zips`**: Public=False。Policy: Only Owner Download (Signed URL)。
 
 ### 1.3 权限 (RLS)
 * **Profiles/Projects/Assets**: 用户仅可读写 `id = auth.uid()` 的数据。
@@ -108,7 +121,7 @@
     * Prod: `allow_origins=["https://your-domain.com"]` (严禁使用 `*`)
 2.  **Rate Limiting (限流)**:
     * 引入 `SlowAPI` 或 Redis。
-    * 对 `/api/generate/*` 接口实施限制 (如: 10次/分钟)，防止脚本恶意刷光 API 额度。
+    * 对 `/api/generate/*` 及 `/api/tools/ocr` 接口实施限制 (如: 10次/分钟)，防止脚本恶意刷光 API 额度。
 
 ### 2.2 鉴权与守卫 (Middleware)
 1.  **强制 JWT 验证**: 
@@ -133,7 +146,7 @@
 
 **通用规范**:
 * 所有列表接口需支持分页参数: `?page=1&limit=20`。
-* 错误响应格式: `{ "detail": "ErrorCode: Message" }` (如 `CREDITS_INSUFFICIENT: Need 50 credits`)。
+* 错误响应格式: `{ "detail": "ErrorCode: Message" }`。
 
 ### 3.1 系统与用户
 
@@ -143,7 +156,8 @@
 | **POST** | /api/webhooks/clerk | **注册回调** | [Sec] 验签 -> 插入 profiles -> 赠送积分 -> 记流水。 |
 | **GET** | /api/user/me | **用户信息** | [Auth] 返回 UID, Avatar, Credits, Tier。 |
 | **GET** | /api/user/history | **积分历史** | [Auth] 分页查询 `credit_transactions`。 |
-| **GET** | /api/user/assets | **素材库** | [Auth] 分页查询 `assets` 表。 |
+| **GET** | /api/user/assets | **素材库** | [Auth] 参数 `?project_id=uuid` (查本次会话) 或 `?scope=all` (查历史, **Pro Only**)。 |
+| **GET** | /api/resources/stickers | **贴纸库** | [Auth] 获取 `system_resources`。根据 Tier 过滤 (Free用户返回空或Trial数据)。 |
 
 ### 3.2 核心业务 (Projects & Gen)
 
@@ -155,7 +169,9 @@
 | **PUT** | /api/projects/{id} | **自动保存** | [Auth] 更新 JSON。 |
 | **DELETE**| /api/projects/{id} | **删除项目** | [Auth] 软删除 (`is_deleted=true`)。 |
 | **POST** | /api/generate/images | **AI 生图** | [Auth] [RateLimit]<br>**1. 风控**: 检查 Prompt (NSFW/IP黑名单)。<br>**2. 事务**: 检查余额 -> 锁定 -> 扣费。<br>**3. 生成**: 调用 AI。<br>**4. 存储**: 存入 Storage & `assets`。<br>**5. 记录**: 记流水。 |
+| **POST** | /api/tools/ocr | **智能识图** | [Auth] [RateLimit] **Smart Scan**。调用 GPT-4o-V。**权益**: 仅 Pro 可用。 |
 | **POST** | /api/generate/pdf | **下载 PDF** | [Auth] 对比 Hash -> 智能扣费(事务) -> 记 `activity_logs`。 |
+| **POST** | /api/export/zip | **下载素材包** | [Auth] **权益**: Starter/Pro Only。<br>逻辑: 打包该 Project 下所有 `assets` 图片 -> 返回 ZIP URL。 |
 
 ### 3.3 支付系统 (Stripe)
 
@@ -163,7 +179,7 @@
 | :--- | :--- | :--- | :--- |
 | **POST** | /api/payment/checkout | **购买链接** | [Auth] 返回 Stripe URL。Metadata: `user_id`, `plan_type`。 |
 | **POST** | /api/payment/portal | **订阅管理** | [Auth] 创建 Stripe Customer Portal。 |
-| **POST** | /api/webhooks/stripe | **支付回调** | [Sec] 验签。<br>**1. `checkout...`**: 首次购买/订阅 -> 加分/改等级 -> 记流水。<br>**2. `invoice.payment_succeeded`**: 订阅续费 -> 发放月度积分 -> 记流水。 |
+| **POST** | /api/webhooks/stripe | **支付回调** | [Sec] 验签。<br>**1. `checkout...`**: 首次购买/订阅 -> 加分/改等级 -> 记流水。<br>**2. `invoice.payment_succeeded`**: 订阅续费 -> 发放月度积分 (Starter+500, Pro+1000) -> 记流水 (type: sub_renewal)。 |
 
 ### 3.4 客服与管理 (Admin)
 
@@ -182,24 +198,31 @@
 请使用 **Next.js 15 (App Router)**, **Shadcn UI**, **Tailwind CSS**, **Clerk** 实现。
 
 ### 4.1 全局与导航
-> "1. 配置 `ClerkProvider`。
->  2. **API Client**: 封装 Axios，自动注入 Clerk Token，统一拦截 401 (跳登录) 和 402 (弹充值窗) 错误。
+> "1. **Auth**: Clerk 集成。API 请求拦截器处理 Token。
+>  2. **Tier Guard**: 创建 Hook `useTierFeature(featureName)`，用于判断 Sticker/OCR/ZipDownload 按钮是否可用，不可用则弹 Upgrade Modal。
 >  3. **Navbar**: 显示用户头像 + '⚡ {credits}'。"
 
-### 4.2 用户仪表盘 (/dashboard)
+### 4.2 编辑器 (Core)
+> "1. **Media Library (Tabs)**:
+>     * **Uploads**: 上传到 `assets` (带 project_id)。
+>     * **Session**: 调用 `/api/user/assets?project_id={id}`。
+>     * **History (Pro)**: 调用 `/api/user/assets?scope=all`。非 Pro 用户点击显示锁并提示升级。
+>  2. **Tools**:
+>     * **Stickers**: 调用 `/api/resources/stickers`。
+>     * **Smart Scan**: 调用 `/api/tools/ocr`。上传手绘草图，回填 Prompt。
+>  3. **Export**:
+>     * **PDF**: 点击触发 'Strict Deduction' 检查。
+>     * **ZIP**: 仅对 Starter/Pro 用户高亮，点击调用 `/api/export/zip`。
+>  4. **Safety UI**: 若生图接口返回 400 (NSFW)，前端需弹出 Toast 警告用户 'Content Policy Violation'。
+>  5. **Payment Handler**: 若返回 402，自动弹出 'Out of Credits' 充值弹窗。"
+
+### 4.3 仪表盘 (/dashboard)
 > "1. **Header**: 显示等级。若为付费会员，显示 'Manage Subscription' 按钮 (调用 `/api/payment/portal`)。
 >  2. **Credit Actions**:
 >     * **'Buy'**: 调用 `/api/payment/checkout`。
 >     * **'History'**: 弹窗表格显示积分流，必须展示 **Balance After**。
->  3. **My Projects**: 网格展示，支持翻页 (Pagination)。包含 Edit/Delete 按钮。"
-
-### 4.3 编辑器 (/editor/[id])
-> "1. **Load Data**: 调用 `/api/projects/{id}`。
->  2. **Media Library (Tab)**: 
->     * **Uploads**: 上传至 Supabase Storage `user-uploads`。
->     * **History**: 分页加载 `/api/user/assets`，支持拖拽上画布。
->  3. **Safety UI**: 若生图接口返回 400 (NSFW)，前端需弹出 Toast 警告用户 'Content Policy Violation'。
->  4. **Download**: 触发智能扣费。若余额不足，自动弹窗引导充值。"
+>  3. **My Projects**: 网格展示，支持翻页 (Pagination)。包含 Edit/Delete 按钮。
+>  4. **Subscription Progress**: 若是 Starter/Pro，显示 'Monthly Credits: 500/1000' 进度条。"
 
 ### 4.4 客服支持组件 (全局悬浮)
 > "悬浮 'Help' 按钮。
@@ -220,8 +243,10 @@
 
 请确保 `.env` 包含以下配置：
 ```env
-# Database
+# Database & Storage
 DATABASE_URL=postgresql://...
+SUPABASE_URL=...
+SUPABASE_KEY=...
 
 # Auth (Clerk)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
@@ -235,10 +260,6 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_CREDITS_100=price_...
 STRIPE_PRICE_SUB_STARTER=price_...
 STRIPE_PRICE_SUB_PRO=price_...
-
-# Storage & DB (Supabase)
-SUPABASE_URL=https://...
-SUPABASE_KEY=...
 
 # AI Services
 FAL_KEY=...
