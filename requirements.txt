@@ -10,5 +10,5 @@ pydantic
 stripe
 slowapi
 python-multipart
+svix
 requests
-gunicorn
