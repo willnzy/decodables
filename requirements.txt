@@ -7,5 +7,8 @@ reportlab
 supabase
 python-dotenv
 pydantic
-Pillow
 stripe
+slowapi
+python-multipart
+requests
+gunicorn
