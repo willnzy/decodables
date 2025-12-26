@@ -1,0 +1,242 @@
+# MakeDecodables - Product Requirement Document (PRD) v4.8
+
+| 项目 | 内容 |
+| :--- | :--- |
+| **产品名称** | MakeDecodables |
+| **核心价值** | 30秒内将一个创意转化为可折叠的8页迷你绘本 (8-Page Foldable Zine) |
+| **目标用户** | 美国 K-12 老师、家长、绘本爱好者 |
+| **版本** | **v4.8 (Uploads, Media Rights & Strict Download Logic)** |
+| **最后更新** | 2025-12-25 |
+
+---
+
+## 1. 商业模式与定价策略 (Business Model)
+
+鉴于 B2C 教育市场的支付习惯，采用 **“积分制 + 订阅制”** 混合模式。核心逻辑为 **“免费制作 (Free to Create) -> 满意付费下载 (Pay to Download)”**。
+
+### 1.1 积分消耗规则 (Credit Rules)
+* **启动项目 (Project Start):** **0 Credits** (所有用户均可免费启动)。
+* **图片生成 (Initial Gen):** **0 Credits** (首次生成整书免费)。
+* **图片重绘 (Regeneration):** **5 Credits /次** (无免费额度，每次AI重绘均需扣分)。
+* **PDF 下载 (Download):** **50 Credits /本**。
+    * **扣费时机**: 点击下载按钮时**立即扣除**。
+    * **重下载规则**: 若项目**未进行任何修改**，再次下载不扣费；**一旦有任何编辑**（文字修改、图片重绘、素材替换），再次下载需**重新扣除 50 Credits**。
+* **智能功能 (OCR/Stickers):** 包含在特定权益中，不额外单次扣费，但受订阅等级限制。
+
+### 1.2 权益分层矩阵 (Feature Matrix)
+
+| 功能模块 | 功能点 | Pay As You Go<br>(注册非订阅用户) | Starter 订阅<br>($14.9 /月) | Teacher Pro 订阅<br>($29.9 /月) |
+| :--- | :--- | :--- | :--- | :--- |
+| **生成额度** | **Monthly Credits** | **赠送 100** (一次性)<br>*(够下载首本)* | **500 /月**<br>**(250 + 赠送 250)** | **1000 /月**<br>**(500 + 赠送 500)** |
+| **加油包** | Extra Top-up | **$2.99** /50分<br>*(单价 $0.06)* | **$2.69** /50分<br>*(单价 $0.054)* | **$2.29** /50分<br>*(单价 $0.046)* |
+| **生图策略** | **生成与重绘**<br>(Regeneration) | ✅ **免费启动项目**<br>⚡ **重绘: 5 Credits/次** | ✅ **免费启动项目**<br>⚡ **重绘: 5 Credits/次** | ✅ **免费启动项目**<br>⚡ **重绘: 5 Credits/次** |
+| **核心交付** | **8页折叠书 PDF**<br>(下载扣费) | 🔒 **50 Credits /本**<br>*(无水印)* | ✅ **50 Credits /本**<br>*(无水印)* | ✅ **50 Credits /本**<br>*(无水印)* |
+| **编辑器** | **贴纸 (Stickers)** | ⚠️ **仅限赠送积分期间可用**<br>*(体验诱饵，充值后锁定)* | ❌ **不可用**<br>*(引导升Pro)* | ✅ **无限可用**<br>*(完整库)* |
+| **AI 能力** | **Smart Scan (OCR)** | ⚠️ **仅限赠送积分期间可用**<br>*(体验诱饵，充值后锁定)* | ❌ **不可用**<br>*(引导升Pro)* | ✅ **无限可用**<br>*(Pro 核心)* |
+| **核心交付** | **原始图片包 ZIP** | ❌ **不可下载** | ✅ **无限下载** | ✅ **无限下载** |
+| **素材库** | **图片引用权限** | ⚠️ **仅限上传/本次生成**<br>*(无历史记录)* | ⚠️ **仅限上传/本次生成**<br>*(无历史记录)* | ✅ **全历史库调用**<br>*(可引用以前项目的图)* |
+| **版权** | 商业用途许可 | ❌ | ❌ | ✅ **商用授权** |
+
+---
+
+## 2. 核心交互流程 (Visual Experience Flow)
+
+交互模式重构为 **"Single Canvas, Dynamic Context" (单画布，动态上下文)** 模式。界面不再分步骤跳转，而是基于用户的“选择状态”改变底部工具栏的功能。
+
+### 2.1 界面状态示意图 (UI Wireframes)
+
+#### 🅰️ State A: Global Context & Initial State (Empty)
+*User just entered. Cards are empty. Center button is EDIT.*
+
+    [ TOP HINT: Describe your story OR click Edit to customize pages. ]
+    +--------------------------------------------------------------------------+
+    |  +--------+   +--------+   +--------+   +--------+                       |
+    |  |   P1   |   |    P2  |   |   P3   |   |   P4   |  <-- Page Card        |
+    |  |🔓      |   |🔓      |   |🔓      |   |🔓      |                       |
+    |  |--------|   |--------|   |--------|   |--------|                       |
+    |  |        |   |        |   |        |   |        |                       |
+    |  | [EDIT] |   | [EDIT] |   | [EDIT] |   | [EDIT] |  <-- Center Button   |
+    |  |        |   |        |   |        |   |        |      Click to enter   |
+    |  +--------+   +--------+   +--------+   +--------+      Full Editor      |
+    |                                                                          |
+    |  +--------+   +--------+   +--------+   +--------+                       |
+    |  |   P5   |   |   P6   |   |   P7   |   |   P8   |                       |
+    |  |🔓      |   |🔓      |   |🔓      |   |🔓      |                       |
+    |  |--------|   |--------|   |--------|   |--------|                       |
+    |  |        |   |        |   |        |   |        |                       |
+    |  | [EDIT] |   | [EDIT] |   | [EDIT] |   | [EDIT] |                       |
+    |  |        |   |        |   |        |   |        |                       |
+    |  +--------+   +--------+   +--------+   +--------+                       |
+    +--------------------------------------------------------------------------+
+    | [ INPUT: Global Story Topic (e.g., A cat in space)             ]         |
+    |                                            [ ⚡ Generate 8 Pages ]       |
+    | [ Style: Watercolor ▼]  [ Size: Letter ▼]  [ PDF Review & Download ]     |
+    +--------------------------------------------------------------------------+
+
+#### 🅱️ State B: Page Context (Selection Mode)
+*User clicked P2 (populated). Bottom bar changes to P2 context.*
+
+    [ TOP HINT: Editing Page 2. Tweak the prompt below or lock this page. ]
+    +-----------------------------------------------------------------------+
+    |  +----------+   +==========+   +----------+   +----------+            |
+    |  |    P1    |   ‖    P2    ‖   |    P3    |   |    P4    |            |
+    |  |🔓    EDIT|   ‖🔓    EDIT‖   |🔓    EDIT|   |🔓    EDIT|            |
+    |  |----------|   ‖----------‖   |----------|   |----------|            |
+    |  |   Page   |   ‖   Page   ‖   |   Page   |   |   Page   |            |
+    |  |  content |   ‖  content ‖   |  content |   |  content |            |
+    |  |          |   ‖ SELECTED ‖   |          |   |          |            |
+    |  +----------+   +==========+   +----------+   +----------+            |
+    |                     ^                                                 |
+    |                 (Selected)                                            |
+    |...                                                                    |
+    +-----------------------------------------------------------------------+
+    | [ INPUT: Page 2 Prompt (e.g., Cat wearing a helmet...)        ]       |
+    |                                            [ ↻ Generate Page 2  ]     |
+    | [ Style: Watercolor ▼]  [ Size: Letter ▼]  [ PDF Review & Download ]  |
+    +-----------------------------------------------------------------------+
+
+#### Ⓒ State C: Full-Screen Editor
+*User clicked "EDIT" on a card. P1 is active in sidebar.*
+
+    +--------------------------------------------------------------------------------+
+    |  [ <-  Back  ]                                                                 |
+    +--------------+------------------+----------------------------------------------+
+    | [[ P1 (ACTIVE) ]] |     COMPONENT    |              (Main Canvas)              | 
+    | [ P2 thumb ]      |      LIBRARY     |                                         |
+    | [ P3 thumb ]      |                  |         [ Fabric.js Interactive ]       |
+    | [ P4 thumb ]      |  - Stickers      |         +-----------------------+       |
+    | [ P5 thumb ]      |  - Text          |         |    [Selected Obj]     |       |
+    | [ P6 thumb ]      |  - Media Lib     |         |  o-----------------o  |       |
+    | [ P7 thumb ]      |    [Uploads]     |         |  |       TEXT      |  |       |
+    | [ P8 thumb ]      |    [History]*    |         |  o-----------------o  |       |
+    |                   |                  |         +-----------------------+       |
+    | (Quick Nav)       | (Pro have more ) |                                         |
+    +-------------------+------------------+-----------------------------------------+
+
+### 2.2 交互逻辑详解
+
+#### 1. 初始上传与动态生成 (Initial Upload & Gen)
+* **首次使用**: 页面卡片默认为空，中间显示 `[EDIT]` 按钮。
+* **上传方式**: 用户点击卡片中心的 `EDIT` 按钮，直接进入**全屏编辑器**。在编辑器中，用户可以使用组件库中的 `Upload` 功能上传本地图片填充该页。
+* **混合生成**: 用户手动编辑/上传了 P1, P2 后，返回主界面在底部输入 Topic 点击 "Generate 8 Pages"，系统将保留 P1, P2 (自动视为锁定状态)，并AI生成 P3-P8 的内容。
+
+#### 2. 全屏编辑与素材库 (Full-Screen Edit & Media Lib)
+* **入口**: 点击卡片上的 `EDIT` 按钮。
+* **素材来源 (Media Library)**:
+    * **Upload**: 支持现场上传本地图片。
+    * **Current Session**: 显示本次会话中所有生成过的图片（含废弃的重绘图）。
+    * **All History (Pro Only)**: Pro 用户可浏览并选择**过往所有项目**中生成的图片，实现跨项目素材复用。
+
+#### 3. 锁定机制 (Lock Logic)
+* **UI**: 卡片左上角的 `🔓` 图标。
+* **行为**: 点击变为 `🔒`。手动上传图片的页面会自动默认为锁定状态。
+* **逻辑**: 全局生成时跳过锁定页。
+
+#### 4. 导出与严格扣费 (Export & Strict Deduction)
+* **预览 (Preview)**: 点击 `PDF Review & Download` 弹出预览窗口。此时看到的图片**均带有大水印 (Watermarked)**。
+* **下载流程 (Download Flow)**:
+    1.  点击弹窗内的 `Confirm Download` 按钮。
+    2.  **系统先执行扣费** (50 Credits)。
+    3.  扣费成功后，去除水印，生成 PDF 和 ZIP 下载链接。
+* **再编辑逻辑 (Re-edit Policy)**:
+    * 用户下载后，若对项目进行了**任何编辑** (改字、换图、重绘)。
+    * 再次点击下载时，**视为新版本**。
+    * 系统提示 *"Changes detected. Deduct 50 Credits to download new version?"*，确认后**重新扣费**。
+
+---
+
+## 3. 技术架构 (Tech Stack)
+
+| 模块 | 选型 | 理由 |
+| :--- | :--- | :--- |
+| **前端框架** | **Next.js 15** + Tailwind CSS | App Router 架构。 |
+| **画布引擎** | **Fabric.js** | **[核心]** 渲染可视化编辑器，支持拖拽、缩放、图层管理。 |
+| **状态管理** | **Zustand / React Context** | **[核心]** 管理 `selection` (选中页), `locks` (锁定状态), `context` (Global/Page) 的复杂状态切换。 |
+| **后端 API** | **FastAPI (Python)** | 处理 AI 逻辑和复杂的 PDF 绘制。 |
+| **安全/风控** | **Keyword Filter (Python)** | 处理 Prompt 敏感词过滤。 |
+| **PDF 引擎** | **ReportLab** | 基于坐标 (`x, y, w, h`) 精确绘制。 |
+| **数据库** | **Supabase** | 存储 User, Credits, Projects (JSON State), Assets。 |
+| **AI 模型** | **GPT-4o-mini** (文本) / **Fal.ai** (绘图) | 成本低，速度快。 |
+
+### 3.1 数据存储架构 (Data Storage Strategy)
+
+为了支持**二次编辑**和**资源复用**，系统存储 **结构化元数据 (JSON State)**。
+
+* **表结构设计 (Supabase)**:
+    * **Table `projects`**:
+        * `canvas_data` (JSONB): 存储 8 个页面的完整结构、锁定状态、素材引用。
+        * `last_downloaded_hash`: 存储最后一次付费下载时的状态 Hash，用于判断是否发生修改。
+    * **Table `assets`**:
+        * 存储原始图片 URL，支持跨页面复用。
+
+---
+
+## 4. 本地化细节 (US Localization)
+
+1.  **字体 (Fonts)**: 需集成 Dyslexia-friendly (阅读障碍友好) 字体，如 **OpenDyslexic** 和 **Lexend**。
+2.  **措辞 (Wording)**:
+    * `Script` -> `Story text`
+    * `Zine` -> `Foldable Book` / `Mini-Book`
+3.  **纸张**: 默认 **US Letter**。
+4.  **内容安全**: Fal.ai Prompt 强制追加 `safe for work, children's book style`。
+5.  **版权风控 (IP/Copyright Check)**:
+    * **关键词黑名单**: 建立敏感 IP 词库 (如 "Disney", "Pokemon")。
+    * **拦截逻辑**: 包含敏感词时，前端提示并拒绝生成。
+
+---
+
+## 5. 开发任务清单 (Task List)
+
+### Phase 1: 交互与状态 (Priority)
+- [ ] **State Management**:
+    - [ ] 实现 `useZineStore`: 存储 `selectedPageIndex`, `lockedPages`, `mediaLibraryScope` (Session vs All)。
+    - [ ] 实现 **Initial Upload**: 允许在 State A 的空卡片中直接调用上传接口。
+- [ ] **UI Components**:
+    - [ ] **Full Editor**: 实现组件库的 Tab 切换 (Uploads / Session / History)。
+    - [ ] **Preview Modal**: 实现带水印的前端 Canvas 预览层。
+
+### Phase 2: 生成逻辑 & API
+- [ ] **Batch Generation**: 实现混合生成逻辑 (保留上传图，生成空白图)。
+- [ ] **Download Logic**: 实现后端 `check_hash_and_deduct` 逻辑，确保修改后重新扣费。
+
+### Phase 3: 核心编辑器与支付
+- [ ] **集成 Fabric.js**: 实现 `Edit` 按钮触发的画布编辑功能。
+- [ ] **Stripe 集成**: 配置充值包 ($2.99/50 Credits)。
+- [ ] **PDF 渲染**: JSON to ReportLab 转换。
+
+---
+
+## 6. API 接口数据结构 (API Contract)
+
+### 6.1 生成接口 (Generation API)
+
+**POST /api/generate-pages**
+
+支持批量和单页生成，由前端 State 决定传参。
+
+**json
+    {
+      "project_id": "uuid",
+      "mode": "batch" | "single", 
+      "target_indices": [0, 1, 3], // 仅生成未锁定的页面索引
+      "global_prompt": "A cat in space", 
+      "page_prompts": { ... },
+      "style_preset": "watercolor",
+      "paper_size": "US_LETTER"
+    }
+
+### 6.2 导出接口 (Export API)
+
+**POST /api/generate-pdf**
+
+**json
+    {
+      "project_id": "uuid",
+      "action": "check_deduct_download",
+      "current_state_hash": "abc123hash...", // 前端计算当前画布状态的 hash
+      "cost": 50,
+      "canvas_data": {
+         "version": "4.7",
+         "pages": [ ... ]
+      }
+    }
