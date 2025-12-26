@@ -1,37 +1,49 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 
-# 导入我们写好的三个核心模块
+# ==========================================
+# 0. 模块导入
+# ==========================================
+# 导入原有的 AI 核心模块
 from story_generator import generate_story_json
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book
+
+# [NEW] 导入数据库与支付服务模块 (请确保您已创建 db_service.py 和 payment_service.py)
+from db_service import add_credits, update_subscription_tier
+from payment_service import create_checkout_session, construct_event
 
 # 初始化 FastAPI 应用
 app = FastAPI(title="MagicZine AI API")
 
 # ==========================================
-# 1. 配置 CORS (跨域资源共享) - 必做！
+# 1. 配置 CORS (跨域资源共享)
 # ==========================================
-# 如果不配置这个，你的前端网页(localhost 或 Vercel)无法调用这个后端的接口
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源 (生产环境建议改为你的前端域名)
+    allow_origins=["*"],  # 生产环境建议改为您的前端域名 (如 https://your-app.vercel.app)
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有 HTTP 方法 (POST, GET, OPTIONS 等)
-    allow_headers=["*"],  # 允许所有请求头
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ==========================================
 # 2. 定义数据模型 (Request Models)
 # ==========================================
+
+# [NEW] 支付请求模型
+class CheckoutRequest(BaseModel):
+    user_id: str      # 用户 ID (Clerk ID)
+    plan_type: str    # 'credits_100', 'starter', 'pro'
+
+# 原有模型
 class StoryRequest(BaseModel):
     topic: str
-    # 可选参数，未来可以扩展风格选择
     style: Optional[str] = "Children's book illustration" 
 
 class ImageRequest(BaseModel):
@@ -50,40 +62,90 @@ def home():
     """健康检查接口"""
     return {"status": "ok", "message": "MagicZine AI API is running on Railway!"}
 
+# ------------------------------------------
+# [NEW] 💰 支付与积分相关接口
+# ------------------------------------------
+
+@app.post("/api/payment/checkout")
+def api_checkout(req: CheckoutRequest):
+    """
+    前端点击“购买”或“订阅”时调用
+    返回: Stripe 的支付页面 URL (checkout_url)
+    """
+    url = create_checkout_session(req.user_id, req.plan_type)
+    if not url:
+        raise HTTPException(status_code=400, detail="Failed to create checkout session")
+    return {"url": url}
+
+@app.post("/api/webhooks/stripe")
+async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    """
+    [系统回调] Stripe 支付成功后自动调用此接口
+    注意: 
+    1. 这是 Stripe 服务器调用的，不是前端调用的。
+    2. 它会验证签名，确保安全。
+    3. 支付成功后，它会自动给数据库加积分。
+    """
+    payload = await request.body()
+    
+    try:
+        # 验证签名并构造事件
+        event = construct_event(payload, stripe_signature)
+    except Exception as e:
+        # 签名验证失败，直接返回 400，Stripe 会记录失败
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 处理 "支付成功" 事件
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        
+        # 从 metadata 中提取我们在创建订单时塞进去的 user_id 和 plan_type
+        user_id = session.get("metadata", {}).get("user_id")
+        plan_type = session.get("metadata", {}).get("plan_type")
+        
+        if user_id and plan_type:
+            print(f"💰 Payment success for User: {user_id}, Plan: {plan_type}")
+            
+            # 情况 A: 购买积分 (一次性)
+            if plan_type == "credits_100":
+                # 假设这个包是 100 积分
+                add_credits(user_id, 100, "Purchase 100 Credits")
+            
+            # 情况 B: 订阅 Starter
+            elif plan_type == "starter":
+                update_subscription_tier(user_id, "starter", session.get("customer"))
+                add_credits(user_id, 500, "Starter Subscription (Month 1)")
+                
+            # 情况 C: 订阅 Pro
+            elif plan_type == "pro":
+                update_subscription_tier(user_id, "pro", session.get("customer"))
+                add_credits(user_id, 1000, "Pro Subscription (Month 1)")
+                
+    return {"status": "success"}
+
+# ------------------------------------------
+# 原有 AI 生成接口
+# ------------------------------------------
+
 @app.post("/api/generate-story")
 def api_generate_story(req: StoryRequest):
-    """
-    第一步:生成故事脚本
-    输入:主题 (Topic)
-    输出:JSON 格式的故事大纲 (包含 8 页文字和 Prompt)
-    """
+    """第一步: 生成故事脚本"""
     try:
-        # 调用 story_generator.py
         data = generate_story_json(req.topic, model="gpt-4o-mini")
-        
         if not data:
             raise HTTPException(status_code=500, detail="Story generation returned empty result")
-        
         return data
-        
     except Exception as e:
         print(f"Error generating story: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate-images")
 async def api_generate_images(req: ImageRequest):
-    """
-    第二步:生成图片并上传到 Supabase
-    输入:8 个 Prompts
-    输出:8 个云端图片 URL 和 Task ID
-    """
+    """第二步: 生成图片"""
     try:
         if len(req.prompts) != 8:
-             # 为了容错，如果不足8个，后端可以自动补全，或者报错。这里选择报错提示前端。
-             # 实际业务中也可以选择只是 warning
-             pass 
+             pass # 暂时忽略长度检查
 
-        # 调用 image_generator.py (异步并发)
         urls, task_id = await generate_8_images(req.prompts)
         
         if not urls:
@@ -94,48 +156,34 @@ async def api_generate_images(req: ImageRequest):
             "task_id": task_id,
             "image_urls": urls
         }
-        
     except Exception as e:
         print(f"Error generating images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate-pdf")
 def api_generate_pdf(req: PdfRequest):
-    """
-    第三步:生成 PDF (内存流处理)
-    输入:图片 URL 列表 + 文字列表
-    输出:PDF 文件流 (直接触发浏览器下载)
-    """
+    """第三步: 生成 PDF"""
     try:
-        # 创建一个内存缓冲区，代替本地文件
         pdf_buffer = BytesIO()
-        
-        # 调用 zine_generator.py
         create_foldable_book(
-            image_paths=req.image_urls,  # 这里传入的是 URL 列表
+            image_paths=req.image_urls,
             text_list=req.texts,
-            output_buffer=pdf_buffer,    # 传入内存 buffer
-            draw_outer_border=True       # 画出裁剪边框方便用户制作
+            output_buffer=pdf_buffer,
+            draw_outer_border=True
         )
-        
-        # 将指针重置到文件开头，准备读取
         pdf_buffer.seek(0)
-        
-        # 返回流媒体响应，告诉浏览器这是一个 PDF 文件
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
             headers={
                 "Content-Disposition": "attachment; filename=magic_zine.pdf",
-                "Access-Control-Expose-Headers": "Content-Disposition" # 允许前端读取文件名
+                "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
-        
     except Exception as e:
         print(f"Error generating PDF: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# 本地调试用 (Railway 部署时不会执行这里，而是通过 Procfile 启动)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
