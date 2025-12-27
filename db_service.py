@@ -120,12 +120,12 @@ def get_project_detail(project_id: str, user_id: str):
         .eq("id", project_id).eq("user_id", user_id).single().execute()
     return res.data
 
-def create_project(user_id: str):
-    """创建空项目"""
+def create_project(user_id: str, title: str = None, canvas_data: dict = None):
+    """创建项目（可选带初始数据）"""
     data = {
         "user_id": user_id,
-        "title": "My Magic Story",
-        "canvas_data": {},
+        "title": title or "My Magic Story",
+        "canvas_data": canvas_data or {},
         "last_downloaded_hash": ""
     }
     res = supabase.table("projects").insert(data).execute()

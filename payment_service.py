@@ -19,15 +19,17 @@ def create_checkout_session(user_id: str, plan_type: str):
     mode = "subscription" if plan_type in ["starter", "pro"] else "payment"
 
     try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{'price': price_id, 'quantity': 1}],
-            mode=mode,
-            success_url=f'{FRONTEND_URL}/dashboard?success=true',
-            cancel_url=f'{FRONTEND_URL}/dashboard?canceled=true',
-            metadata={"user_id": user_id, "plan_type": plan_type},
-            subscription_data={} if mode == "subscription" else None
-        )
+        # Build session params
+        session_params = {
+            "payment_method_types": ['card'],
+            "line_items": [{'price': price_id, 'quantity': 1}],
+            "mode": mode,
+            "success_url": f'{FRONTEND_URL}/dashboard?success=true',
+            "cancel_url": f'{FRONTEND_URL}/dashboard?canceled=true',
+            "metadata": {"user_id": user_id, "plan_type": plan_type},
+        }
+        
+        checkout_session = stripe.checkout.Session.create(**session_params)
         return checkout_session.url
     except Exception as e:
         print(f"Stripe Checkout Error: {e}")

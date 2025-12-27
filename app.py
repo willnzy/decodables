@@ -115,11 +115,10 @@ class ProjectUpdate(BaseModel):
     thumbnail_url: Optional[str] = None
 
 class CheckoutRequest(BaseModel):
-    user_id: str
-    plan_type: str
+    plan_type: str  # 'credits_100', 'starter', or 'pro'
 
 class SupportTicketRequest(BaseModel):
-    email: str
+    email: Optional[str] = None  # Optional - will use user's email if not provided
     message: str
 
 class AdminAdjustRequest(BaseModel):
@@ -190,8 +189,9 @@ def get_me(user: dict = Depends(get_current_user)):
     return user
 
 @app.get("/api/user/history")
-def get_history(page: int = 1, user: dict = Depends(get_current_user)):
-    return get_credit_history(user["id"], page)
+def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
+    items = get_credit_history(user["id"], page, limit)
+    return {"items": items, "total": len(items), "page": page}
 
 @app.get("/api/user/assets")
 def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: dict = Depends(get_current_user)):
@@ -207,12 +207,17 @@ def get_stickers(user: dict = Depends(get_current_user)):
 
 # --- Projects ---
 @app.get("/api/projects")
-def list_projects(page: int=1, user: dict = Depends(get_current_user)):
-    return get_user_projects(user["id"], page)
+def list_projects(page: int=1, limit: int=20, user: dict = Depends(get_current_user)):
+    items = get_user_projects(user["id"], page, limit)
+    return {"items": items, "total": len(items), "page": page}
+
+class ProjectCreate(BaseModel):
+    title: Optional[str] = "My Magic Story"
+    canvas_data: Optional[dict] = None
 
 @app.post("/api/projects")
-def new_project(user: dict = Depends(get_current_user)):
-    p = create_project(user["id"])
+def new_project(req: ProjectCreate = None, user: dict = Depends(get_current_user)):
+    p = create_project(user["id"], req.title if req else None, req.canvas_data if req else None)
     log_activity(user["id"], "create_project")
     return p
 
@@ -335,7 +340,9 @@ def portal(user: dict = Depends(get_current_user)):
 
 @app.post("/api/support/email")
 def ticket(req: SupportTicketRequest, user: dict = Depends(get_current_user)):
-    create_support_ticket(user["id"], req.email, req.message)
+    # Use provided email or fallback to user's profile email
+    email = req.email or user.get("email", "unknown@user.com")
+    create_support_ticket(user["id"], email, req.message)
     return {"status": "ok"}
 
 # --- Admin ---
