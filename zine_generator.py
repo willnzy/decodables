@@ -7,6 +7,8 @@ import os
 from io import BytesIO
 import zipfile
 import requests
+import base64
+import re
 
 # 纸张配置
 PAPER_CONFIG = {
@@ -18,15 +20,46 @@ PAPER_CONFIG = {
     }
 }
 
+def decode_base64_image(data_url):
+    """
+    解码 Base64 Data URL 为 BytesIO 对象
+    支持格式: data:image/png;base64,xxxxx
+    """
+    if not data_url or not data_url.startswith('data:'):
+        return None
+    
+    try:
+        # 提取 base64 数据部分
+        match = re.match(r'data:image/[^;]+;base64,(.+)', data_url)
+        if match:
+            base64_data = match.group(1)
+            image_data = base64.b64decode(base64_data)
+            return BytesIO(image_data)
+    except Exception as e:
+        print(f"Base64 decode error: {e}")
+    return None
+
 def draw_smart_image(c, img_source, x, y, max_w, max_h):
     """
-    智能绘制图片：支持 URL 和本地路径，自动保持比例居中 (Contain 模式)
+    智能绘制图片：支持 URL、本地路径、Base64 Data URL，自动保持比例居中 (Contain 模式)
     x, y: 绘制区域的左下角坐标
     max_w, max_h: 绘制区域的最大宽高
     """
+    if not img_source:
+        return
+        
     try:
-        # ImageReader 自动支持 URL 读取 (ReportLab内置功能)
-        img = ImageReader(img_source) 
+        # 检查是否为 Base64 Data URL
+        if isinstance(img_source, str) and img_source.startswith('data:'):
+            img_buffer = decode_base64_image(img_source)
+            if img_buffer:
+                img = ImageReader(img_buffer)
+            else:
+                return
+        else:
+            # ImageReader 自动支持 URL 读取 (ReportLab内置功能)
+            img = ImageReader(img_source) 
+        
         img_w, img_h = img.getSize()
         
         # 计算缩放比例 (Contain 模式)
@@ -40,7 +73,7 @@ def draw_smart_image(c, img_source, x, y, max_w, max_h):
         
         c.drawImage(img, draw_x, draw_y, width=new_w, height=new_h)
     except Exception as e:
-        print(f"Image Draw Error ({img_source}): {e}")
+        print(f"Image Draw Error ({img_source[:50] if img_source else 'None'}...): {e}")
         # 绘制红色占位框表示失败
         c.setStrokeColor(colors.red)
         c.rect(x, y, max_w, max_h)

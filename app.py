@@ -353,6 +353,64 @@ async def ocr_tool(request: Request, file: UploadFile = File(...), user: dict = 
         raise HTTPException(500, "OCR Failed")
 
 # --- Export ---
+
+# [新增] 从项目直接生成 PDF（用于 Dashboard）
+@app.get("/api/projects/{project_id}/pdf")
+def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
+    """从保存的项目数据生成 PDF，无需再次传入图片和文字"""
+    proj = get_project_detail(project_id, user["id"])
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    
+    canvas_data = proj.get("canvas_data", {})
+    
+    # 处理新旧格式
+    if isinstance(canvas_data, list):
+        # 旧格式: canvas_data 直接是 pages 数组
+        pages = canvas_data
+        paper_size = "US_LETTER"
+    else:
+        # 新格式: canvas_data 是 { pages, paperSize }
+        pages = canvas_data.get("pages", [])
+        paper_size_raw = canvas_data.get("paperSize", "Letter")
+        paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
+    
+    # 提取图片 URL 和文字
+    image_urls = []
+    texts = []
+    for page in pages:
+        if isinstance(page, dict):
+            image_urls.append(page.get("previewImage", "") or "")
+            texts.append(page.get("prompt", "") or "")
+        else:
+            image_urls.append("")
+            texts.append("")
+    
+    # 补齐 8 页
+    while len(image_urls) < 8:
+        image_urls.append("")
+        texts.append("")
+    
+    # 生成 PDF
+    buf = BytesIO()
+    create_foldable_book(image_urls, texts, buf, paper_type=paper_size)
+    buf.seek(0)
+    
+    # 生成文件名
+    title = proj.get("title", "project").replace(" ", "_")
+    
+    return StreamingResponse(
+        buf, 
+        media_type="application/pdf", 
+        headers={"Content-Disposition": f"attachment; filename={title}.pdf"}
+    )
+
+# [新增] 预览 PDF（与下载相同，但不扣费）
+@app.get("/api/projects/{project_id}/preview")
+def preview_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
+    """预览项目 PDF（与下载相同逻辑）"""
+    return get_project_pdf(project_id, user)
+
 @app.post("/api/generate/pdf")
 def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
     proj = get_project_detail(req.project_id, user["id"])
@@ -378,6 +436,97 @@ def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
     create_assets_zip(req.image_urls, buf)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=assets.zip"})
+
+# [新增] 从项目直接导出 ZIP（PDF + 图片）
+@app.get("/api/projects/{project_id}/zip")
+def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
+    """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）"""
+    # 检查权限
+    if user["tier"] == "free":
+        raise HTTPException(403, "Upgrade to Starter or Pro to export ZIP")
+    
+    proj = get_project_detail(project_id, user["id"])
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    
+    canvas_data = proj.get("canvas_data", {})
+    
+    # 处理新旧格式
+    if isinstance(canvas_data, list):
+        pages = canvas_data
+        paper_size = "US_LETTER"
+    else:
+        pages = canvas_data.get("pages", [])
+        paper_size_raw = canvas_data.get("paperSize", "Letter")
+        paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
+    
+    # 提取图片 URL 和文字
+    image_urls = []
+    texts = []
+    for page in pages:
+        if isinstance(page, dict):
+            image_urls.append(page.get("previewImage", "") or "")
+            texts.append(page.get("prompt", "") or "")
+        else:
+            image_urls.append("")
+            texts.append("")
+    
+    # 补齐 8 页
+    while len(image_urls) < 8:
+        image_urls.append("")
+        texts.append("")
+    
+    title = proj.get("title", "project").replace(" ", "_")
+    
+    # 创建 ZIP（包含 PDF 和图片）
+    import zipfile
+    zip_buffer = BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. 生成并添加 PDF
+        pdf_buffer = BytesIO()
+        create_foldable_book(image_urls, texts, pdf_buffer, paper_type=paper_size)
+        pdf_buffer.seek(0)
+        zf.writestr(f"{title}.pdf", pdf_buffer.read())
+        
+        # 2. 添加所有图片
+        import requests
+        import base64
+        import re
+        
+        for i, img_url in enumerate(image_urls):
+            if not img_url:
+                continue
+            
+            try:
+                if img_url.startswith('data:'):
+                    # Base64 图片
+                    match = re.match(r'data:image/([^;]+);base64,(.+)', img_url)
+                    if match:
+                        ext = match.group(1)
+                        if ext == 'jpeg':
+                            ext = 'jpg'
+                        img_data = base64.b64decode(match.group(2))
+                        zf.writestr(f"Page_{i+1}.{ext}", img_data)
+                else:
+                    # URL 图片
+                    resp = requests.get(img_url, timeout=10)
+                    if resp.status_code == 200:
+                        # 从 Content-Type 或 URL 推断扩展名
+                        content_type = resp.headers.get('content-type', 'image/png')
+                        ext = content_type.split('/')[-1].split(';')[0]
+                        if ext == 'jpeg':
+                            ext = 'jpg'
+                        zf.writestr(f"Page_{i+1}.{ext}", resp.content)
+            except Exception as e:
+                print(f"ZIP: Failed to add image {i+1}: {e}")
+    
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        zip_buffer, 
+        media_type="application/zip", 
+        headers={"Content-Disposition": f"attachment; filename={title}.zip"}
+    )
 
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
