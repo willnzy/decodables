@@ -32,7 +32,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # ⚠️ 生产环境请务必改为 ["https://your-domain.com"]
+    allow_origins=[
+        "http://localhost:3000",                      # 👈 关键！允许本地开发环境
+        "https://make-decodables.vercel.app",         # 您的 Vercel 生产环境域名
+        "https://decodables-production.up.railway.app" # 允许 Swagger UI 自身调用
+    ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
