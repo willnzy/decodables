@@ -135,8 +135,9 @@ class PdfGenRequest(BaseModel):
     texts: List[str]
 
 class ProjectUpdate(BaseModel):
-    canvas_data: dict
+    canvas_data: Optional[dict] = None
     thumbnail_url: Optional[str] = None
+    title: Optional[str] = None
 
 class CheckoutRequest(BaseModel):
     plan_type: str  # 'credits_100', 'starter', or 'pro'
@@ -279,7 +280,7 @@ def get_proj(id: str, user: dict = Depends(get_current_user)):
 
 @app.put("/api/projects/{id}")
 def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user)):
-    save_project(id, user["id"], req.canvas_data, req.thumbnail_url)
+    save_project(id, user["id"], req.canvas_data, req.thumbnail_url, req.title)
     return {"status": "saved"}
 
 @app.delete("/api/projects/{id}")

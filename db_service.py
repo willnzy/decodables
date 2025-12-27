@@ -131,14 +131,17 @@ def create_project(user_id: str, title: str = None, canvas_data: dict = None):
     res = supabase.table("projects").insert(data).execute()
     return res.data[0]
 
-def save_project(project_id: str, user_id: str, canvas_data: dict, thumbnail_url: str = None):
+def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbnail_url: str = None, title: str = None):
     """保存项目"""
     data = {
-        "canvas_data": canvas_data,
         "updated_at": datetime.now().isoformat()
     }
+    if canvas_data is not None:
+        data["canvas_data"] = canvas_data
     if thumbnail_url:
         data["thumbnail_url"] = thumbnail_url
+    if title:
+        data["title"] = title
     supabase.table("projects").update(data).eq("id", project_id).eq("user_id", user_id).execute()
 
 def soft_delete_project(project_id: str, user_id: str):
