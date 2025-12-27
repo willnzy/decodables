@@ -106,10 +106,10 @@ def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
 # ==========================================
 
 def get_user_projects(user_id: str, page: int = 1, limit: int = 20):
-    """获取项目列表"""
+    """获取项目列表（包含 canvas_data 用于缩略图预览）"""
     start = (page - 1) * limit
     end = start + limit - 1
-    res = supabase.table("projects").select("id, title, thumbnail_url, updated_at")\
+    res = supabase.table("projects").select("id, title, thumbnail_url, canvas_data, updated_at")\
         .eq("user_id", user_id).eq("is_deleted", False)\
         .range(start, end).order("updated_at", desc=True).execute()
     return res.data
