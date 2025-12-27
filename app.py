@@ -55,6 +55,7 @@ async def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Missing Token")
     
     token = authorization.split(" ")[1]
+    payload = None
     
     # -------------------------------------------------------
     # [Real Auth] 生产环境验证逻辑
@@ -82,6 +83,29 @@ async def get_current_user(authorization: str = Header(None)):
 
     # 查库确保用户存在
     profile = get_user_profile(user_id)
+    
+    # 如果用户不存在数据库，尝试自动创建（处理 webhook 延迟或失败的情况）
+    if not profile:
+        # 从 JWT payload 中提取用户信息
+        email = ""
+        username = ""
+        avatar_url = ""
+        
+        if payload:
+            # Clerk JWT 中可能包含的字段
+            email = payload.get("email", payload.get("primary_email", ""))
+            username = payload.get("username", payload.get("name", ""))
+            avatar_url = payload.get("image_url", payload.get("picture", ""))
+        
+        # 创建用户 profile
+        try:
+            create_user_profile(user_id, email, username, avatar_url)
+            profile = get_user_profile(user_id)
+            print(f"✅ Auto-created profile for user {user_id} (webhook may have been delayed)")
+        except Exception as e:
+            print(f"❌ Failed to auto-create user profile: {e}")
+            raise HTTPException(status_code=401, detail="User not found and could not be created")
+    
     if not profile:
         raise HTTPException(status_code=401, detail="User not found in database")
     
