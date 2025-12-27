@@ -405,11 +405,70 @@ def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
         headers={"Content-Disposition": f"attachment; filename={title}.pdf"}
     )
 
-# [新增] 预览 PDF（与下载相同，但不扣费）
+# [新增] 预览 PDF 为图片（防止用户绕过下载）
 @app.get("/api/projects/{project_id}/preview")
-def preview_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
-    """预览项目 PDF（与下载相同逻辑）"""
-    return get_project_pdf(project_id, user)
+def preview_project_as_image(project_id: str, user: dict = Depends(get_current_user)):
+    """生成 PDF 预览图片，防止用户直接下载 PDF"""
+    import fitz  # PyMuPDF
+    
+    proj = get_project_detail(project_id, user["id"])
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    
+    canvas_data = proj.get("canvas_data", {})
+    
+    # 处理新旧格式
+    if isinstance(canvas_data, list):
+        pages = canvas_data
+        paper_size = "US_LETTER"
+    else:
+        pages = canvas_data.get("pages", [])
+        paper_size_raw = canvas_data.get("paperSize", "Letter")
+        paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
+    
+    # 提取图片 URL 和文字
+    image_urls = []
+    texts = []
+    for page in pages:
+        if isinstance(page, dict):
+            image_urls.append(page.get("previewImage", "") or "")
+            texts.append(page.get("prompt", "") or "")
+        else:
+            image_urls.append("")
+            texts.append("")
+    
+    # 补齐 8 页
+    while len(image_urls) < 8:
+        image_urls.append("")
+        texts.append("")
+    
+    # 生成 PDF 到内存
+    pdf_buffer = BytesIO()
+    create_foldable_book(image_urls, texts, pdf_buffer, paper_type=paper_size)
+    pdf_buffer.seek(0)
+    
+    # 将 PDF 转换为图片
+    try:
+        pdf_doc = fitz.open(stream=pdf_buffer.read(), filetype="pdf")
+        page = pdf_doc[0]  # 只有一页
+        
+        # 设置缩放比例（2x 为高清预览）
+        zoom = 2.0
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat)
+        
+        # 转换为 PNG
+        img_buffer = BytesIO(pix.tobytes("png"))
+        pdf_doc.close()
+        
+        return StreamingResponse(
+            img_buffer, 
+            media_type="image/png",
+            headers={"Cache-Control": "no-store"}
+        )
+    except Exception as e:
+        print(f"PDF to image conversion error: {e}")
+        raise HTTPException(500, "Failed to generate preview")
 
 @app.post("/api/generate/pdf")
 def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
