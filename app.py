@@ -176,14 +176,32 @@ async def clerk_webhook(request: Request):
     except WebhookVerificationError:
         raise HTTPException(400, "Invalid signature")
 
-    if evt["type"] == "user.created":
-        data = evt["data"]
+    event_type = evt["type"]
+    data = evt["data"]
+    
+    if event_type == "user.created":
+        # 创建用户档案
         create_user_profile(
             data["id"], 
             data["email_addresses"][0]["email_address"], 
             data.get("username"), 
             data.get("image_url")
         )
+        # 记录注册行为
+        log_activity(data["id"], "user_signup", {
+            "email": data["email_addresses"][0]["email_address"],
+            "method": "clerk"
+        })
+    
+    elif event_type == "session.created":
+        # 记录登录行为
+        user_id = data.get("user_id")
+        if user_id:
+            log_activity(user_id, "user_login", {
+                "client_ip": evt.get("event_attributes", {}).get("http_request", {}).get("client_ip"),
+                "user_agent": evt.get("event_attributes", {}).get("http_request", {}).get("user_agent")
+            })
+    
     return {"status": "processed"}
 
 @app.post("/api/webhooks/stripe")
