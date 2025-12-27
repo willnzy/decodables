@@ -202,6 +202,14 @@ async def clerk_webhook(request: Request):
                 "user_agent": evt.get("event_attributes", {}).get("http_request", {}).get("user_agent")
             })
     
+    elif event_type in ["session.ended", "session.removed", "session.revoked"]:
+        # 记录登出行为
+        user_id = data.get("user_id")
+        if user_id:
+            log_activity(user_id, "user_logout", {
+                "reason": event_type
+            })
+    
     return {"status": "processed"}
 
 @app.post("/api/webhooks/stripe")
