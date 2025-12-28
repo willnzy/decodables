@@ -424,7 +424,7 @@ async def upload_asset(
 ):
     """上传用户素材图片"""
     import uuid
-    from supabase import create_client
+    from image_generator import supabase as storage_supabase, BUCKET_NAME
     
     # 验证文件类型
     allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
@@ -436,31 +436,32 @@ async def upload_asset(
     if len(contents) > 5 * 1024 * 1024:
         raise HTTPException(400, "File too large. Maximum size is 5MB")
     
-    # 生成唯一文件名 - 使用 generated-images bucket (已存在)
+    # 检查 storage client 是否可用
+    if not storage_supabase:
+        raise HTTPException(500, "Storage service not configured")
+    
+    # 生成唯一文件名
     ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
     filename = f"uploads/{user['id']}/{uuid.uuid4()}.{ext}"
     
-    # 上传到 Supabase Storage
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
-    storage_client = create_client(supabase_url, supabase_key)
-    
     try:
-        # 上传文件到 generated-images bucket
-        storage_client.storage.from_("generated-images").upload(
+        # 上传文件到 generated-images bucket (复用 image_generator 的客户端)
+        storage_supabase.storage.from_(BUCKET_NAME).upload(
             path=filename,
             file=contents,
             file_options={"content-type": file.content_type}
         )
         
         # 获取公开 URL
-        url = storage_client.storage.from_("generated-images").get_public_url(filename)
+        url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
         
         # 保存到 assets 表
         save_asset(user["id"], url, "uploaded", project_id)
         
         return {"url": url, "filename": filename}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(500, f"Failed to upload file: {str(e)}")
 
 @app.get("/api/user/purchases")
