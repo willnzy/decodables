@@ -252,22 +252,33 @@ async def clerk_webhook(request: Request):
     data = evt["data"]
     
     if event_type == "user.created":
-        # 检查 email 唯一性
+        user_id = data["id"]
         email = data["email_addresses"][0]["email_address"]
-        existing = search_users(email)
-        if existing:
+        username = data.get("username")
+        image_url = data.get("image_url")
+        
+        # 检查用户是否已存在（可能已通过 JIT 创建）
+        existing_profile = get_user_profile(user_id)
+        if existing_profile:
+            # 用户已存在（通过 JIT 创建），更新可能缺失的信息
+            update_user_profile(user_id, avatar_url=image_url, username=username)
+            # 如果 email 为空，单独更新 email
+            if not existing_profile.get("email") and email:
+                supabase.table("profiles").update({"email": email}).eq("id", user_id).execute()
+            print(f"✅ User {user_id} already exists (JIT created), updated profile info")
+            return {"status": "updated", "reason": "jit_created"}
+        
+        # 检查 email 唯一性（防止同一邮箱注册多个账号）
+        existing_by_email = search_users(email)
+        if existing_by_email:
             print(f"⚠️ User with email {email} already exists, skipping creation")
             return {"status": "skipped", "reason": "email_exists"}
         
         # 创建用户档案
-        create_user_profile(
-            data["id"], 
-            email, 
-            data.get("username"), 
-            data.get("image_url")
-        )
+        create_user_profile(user_id, email, username, image_url)
+        
         # 记录注册行为
-        log_activity(data["id"], "user_signup", {
+        log_activity(user_id, "user_signup", {
             "email": email,
             "method": "clerk"
         })

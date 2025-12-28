@@ -7,7 +7,7 @@ FastAPI dependency injection functions
 
 import jwt
 from fastapi import Header, Depends
-from db_service import get_user_profile
+from db_service import get_user_profile, create_user_profile
 from config import CLERK_PEM_PUBLIC_KEY
 from exceptions import (
     UnauthorizedException,
@@ -25,9 +25,11 @@ async def get_current_user(authorization: str = Header(None)):
     Production: Validates JWT signature using Clerk's public key.
     Development: May fall back to insecure mode if key not configured.
     
+    If user doesn't exist in database, creates profile immediately (JIT creation).
+    This ensures new users get their 50 signup bonus credits instantly.
+    
     Raises:
         UnauthorizedException: If token is invalid
-        UserNotFoundException: If user not in database
     
     Returns:
         dict: User profile from database
@@ -65,8 +67,25 @@ async def get_current_user(authorization: str = Header(None)):
     
     # Get user profile from database
     profile = get_user_profile(user_id)
+    
+    # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
+    # This ensures new users get their 50 signup bonus credits instantly,
+    # without waiting for the Clerk webhook to be processed
     if not profile:
-        raise UserNotFoundException(user_id)
+        # Extract user info from JWT payload
+        # Clerk JWT typically includes these fields in sessionClaims
+        email = payload.get("email") or payload.get("primary_email") or ""
+        username = payload.get("username") or payload.get("name") or payload.get("first_name") or ""
+        avatar_url = payload.get("image_url") or payload.get("picture") or ""
+        
+        # Create user profile with 50 signup bonus credits
+        create_user_profile(user_id, email, username, avatar_url)
+        
+        # Fetch the newly created profile
+        profile = get_user_profile(user_id)
+        
+        if not profile:
+            raise UserNotFoundException(user_id)
     
     return profile
 
