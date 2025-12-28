@@ -6,9 +6,16 @@ FastAPI dependency injection functions
 """
 
 import jwt
-from fastapi import HTTPException, Header, Depends
-from db_service import get_user_profile, is_member
+from fastapi import Header, Depends
+from db_service import get_user_profile
 from config import CLERK_PEM_PUBLIC_KEY
+from exceptions import (
+    UnauthorizedException,
+    AdminRequiredException,
+    MembershipRequiredException,
+    UserNotFoundException,
+)
+from services import get_access_control
 
 
 async def get_current_user(authorization: str = Header(None)):
@@ -19,13 +26,14 @@ async def get_current_user(authorization: str = Header(None)):
     Development: May fall back to insecure mode if key not configured.
     
     Raises:
-        HTTPException: 401 if token is invalid or user not found
+        UnauthorizedException: If token is invalid
+        UserNotFoundException: If user not in database
     
     Returns:
         dict: User profile from database
     """
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing Token")
+        raise UnauthorizedException("Missing authentication token")
     
     token = authorization.split(" ")[1]
     payload = None
@@ -41,24 +49,24 @@ async def get_current_user(authorization: str = Header(None)):
             )
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token expired")
+            raise UnauthorizedException("Token expired")
         except jwt.InvalidTokenError as e:
-            raise HTTPException(status_code=401, detail=f"Invalid Token: {str(e)}")
+            raise UnauthorizedException(f"Invalid token: {str(e)}")
     else:
         # Development mode: Decode without verification (UNSAFE)
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
             user_id = payload.get("sub")
         except Exception:
-            raise HTTPException(status_code=401, detail="Invalid Token format")
+            raise UnauthorizedException("Invalid token format")
     
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid Token: no user_id")
+        raise UnauthorizedException("Invalid token: no user_id")
     
     # Get user profile from database
     profile = get_user_profile(user_id)
     if not profile:
-        raise HTTPException(status_code=401, detail="User not found in database")
+        raise UserNotFoundException(user_id)
     
     return profile
 
@@ -68,13 +76,13 @@ async def require_admin(user: dict = Depends(get_current_user)):
     Admin permission guard.
     
     Raises:
-        HTTPException: 403 if user is not admin
+        AdminRequiredException: If user is not admin
     
     Returns:
         dict: User profile (confirmed admin)
     """
     if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise AdminRequiredException()
     return user
 
 
@@ -83,13 +91,30 @@ async def require_member(user: dict = Depends(get_current_user)):
     Member permission guard (Starter/Pro only).
     
     Raises:
-        HTTPException: 403 if user is not a member
+        MembershipRequiredException: If user is not a member
     
     Returns:
         dict: User profile (confirmed member)
     """
-    if not is_member(user):
-        raise HTTPException(status_code=403, detail="Membership required")
+    access_control = get_access_control()
+    if not access_control.is_member(user):
+        raise MembershipRequiredException()
+    return user
+
+
+async def require_pro(user: dict = Depends(get_current_user)):
+    """
+    Pro tier permission guard.
+    
+    Raises:
+        MembershipRequiredException: If user is not Pro
+    
+    Returns:
+        dict: User profile (confirmed Pro)
+    """
+    access_control = get_access_control()
+    if not access_control.is_member(user) or user.get("tier") != "pro":
+        raise MembershipRequiredException("Pro features")
     return user
 
 
@@ -107,6 +132,6 @@ async def optional_user(authorization: str = Header(None)):
     
     try:
         return await get_current_user(authorization)
-    except HTTPException:
+    except Exception:
         return None
 

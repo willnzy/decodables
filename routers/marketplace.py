@@ -6,65 +6,32 @@ Handles marketplace-related API endpoints
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, field_validator
+from fastapi import APIRouter, Depends
 from dependencies import get_current_user, require_member
 from db_service import (
     get_marketplace_listings, get_marketplace_item, 
     create_listing, submit_listing_for_review, unpublish_listing as db_unpublish,
-    execute_purchase, get_seller_stats as db_seller_stats,
-    get_leaderboard, publish_permission, validate_allowed_tiers, is_member
+    get_leaderboard, supabase
 )
-from config import MAX_LISTING_PRICE
+from schemas import (
+    ListingCreate, ListingUpdate, PurchaseRequest,
+    PurchaseResult, SellerStats, PaginatedResponse
+)
+from exceptions import (
+    ListingNotFoundException, ForbiddenException,
+    InvalidTiersException, CannotEditPendingException,
+    InsufficientCreditsException
+)
+from services import get_access_control, get_marketplace_service
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
 
-# Request Models
-class PublishRequest(BaseModel):
-    title: str
-    description: Optional[str] = ""
-    thumbnail_url: str
-    resource_url: str
-    resource_type: str  # 'template' | 'asset'
-    price_credits: int = 0
-    allowed_tiers: List[str] = None
-    
-    @field_validator('price_credits')
-    @classmethod
-    def validate_price(cls, v):
-        if v < 0 or v > MAX_LISTING_PRICE:
-            raise ValueError(f'price_credits must be between 0 and {MAX_LISTING_PRICE}')
-        return v
-    
-    @field_validator('resource_type')
-    @classmethod
-    def validate_type(cls, v):
-        if v not in ['template', 'asset']:
-            raise ValueError('resource_type must be template or asset')
-        return v
-
-
-class PurchaseRequest(BaseModel):
-    listing_id: str
-
+# Backwards compatible request models (for unpublish)
+from pydantic import BaseModel
 
 class UnpublishRequest(BaseModel):
     listing_id: str
-
-
-class UpdateListingRequest(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    price_credits: Optional[int] = None
-    allowed_tiers: Optional[List[str]] = None
-    
-    @field_validator('price_credits')
-    @classmethod
-    def validate_price(cls, v):
-        if v is not None and (v < 0 or v > MAX_LISTING_PRICE):
-            raise ValueError(f'price_credits must be between 0 and {MAX_LISTING_PRICE}')
-        return v
 
 
 # Routes
@@ -112,19 +79,19 @@ def get_item(listing_id: str, user: dict = Depends(get_current_user)):
     Seller/Admin: can see all states
     
     Raises:
-        HTTPException: 404 if not found or not accessible
+        ListingNotFoundException: If not found or not accessible
     
     Returns:
         Listing details
     """
     item = get_marketplace_item(listing_id, user["id"])
     if not item:
-        raise HTTPException(404, "Listing not found")
+        raise ListingNotFoundException(listing_id)
     return item
 
 
 @router.post("/publish")
-def publish_item(req: PublishRequest, user: dict = Depends(require_member)):
+def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
     """
     Publish to marketplace (submit for review).
     
@@ -135,14 +102,16 @@ def publish_item(req: PublishRequest, user: dict = Depends(require_member)):
     Returns:
         Created listing with moderation_status='pending'
     """
-    # Check publish permission
-    allowed, reason = publish_permission(user, req.resource_type, req.price_credits)
-    if not allowed:
-        raise HTTPException(403, reason)
+    access_control = get_access_control()
     
-    # Validate allowed_tiers
-    if not validate_allowed_tiers(req.allowed_tiers):
-        raise HTTPException(400, "Invalid allowed_tiers. Must be ['free'], ['starter','pro'], or ['pro']")
+    # Check publish permission
+    allowed, reason = access_control.publish_permission(user, req.resource_type, req.price_credits)
+    if not allowed:
+        raise ForbiddenException(reason)
+    
+    # Validate allowed_tiers (already validated by schema, but double-check)
+    if req.allowed_tiers and not access_control.validate_allowed_tiers(req.allowed_tiers):
+        raise InvalidTiersException()
     
     # Create listing
     listing = create_listing(
@@ -173,14 +142,14 @@ def unpublish_item(req: UnpublishRequest, user: dict = Depends(get_current_user)
     Only listing owner can unpublish.
     
     Raises:
-        HTTPException: 403 if not owner, 404 if not found
+        ListingNotFoundException: If not found or not authorized
     
     Returns:
         Status
     """
     result = db_unpublish(req.listing_id, user["id"])
     if not result:
-        raise HTTPException(404, "Listing not found or not authorized")
+        raise ListingNotFoundException(req.listing_id)
     return {"status": "unpublished"}
 
 
@@ -199,12 +168,23 @@ def purchase_item(req: PurchaseRequest, user: dict = Depends(get_current_user)):
     Returns:
         Purchase result
     """
-    result = execute_purchase(req.listing_id, user["id"])
+    marketplace_service = get_marketplace_service()
+    result = marketplace_service.execute_purchase(req.listing_id, user["id"])
+    
     if not result.get("success"):
-        raise HTTPException(
-            status_code=result.get("status", 400),
-            detail=result.get("error", "Purchase failed")
-        )
+        error = result.get("error", "Purchase failed")
+        status = result.get("status", 400)
+        
+        if status == 402:
+            raise InsufficientCreditsException()
+        elif status == 403:
+            raise ForbiddenException(error)
+        elif status == 404:
+            raise ListingNotFoundException(req.listing_id)
+        else:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=status, detail=error)
+    
     return result
 
 
@@ -229,7 +209,7 @@ def get_my_listings(page: int = 1, limit: int = 20, user: dict = Depends(get_cur
 @router.put("/listings/{listing_id}")
 def update_listing(
     listing_id: str, 
-    req: UpdateListingRequest, 
+    req: ListingUpdate, 
     user: dict = Depends(get_current_user)
 ):
     """
@@ -247,21 +227,21 @@ def update_listing(
     Returns:
         Updated listing
     """
-    from db_service import supabase
+    access_control = get_access_control()
     
     # Get listing and verify ownership
     listing = get_marketplace_item(listing_id, user["id"])
     if not listing:
-        raise HTTPException(404, "Listing not found")
+        raise ListingNotFoundException(listing_id)
     
     if listing.get("seller_id") != user["id"]:
-        raise HTTPException(403, "Not authorized to edit this listing")
+        raise ForbiddenException("Not authorized to edit this listing")
     
     status = listing.get("moderation_status", "draft")
     
     # Pending listings cannot be edited
     if status == "pending":
-        raise HTTPException(400, "Cannot edit listing while pending review")
+        raise CannotEditPendingException()
     
     # Build update dict
     updates = {}
@@ -276,16 +256,16 @@ def update_listing(
     if req.price_credits is not None:
         # Validate publish permission for new price
         if req.price_credits != listing.get("price_credits"):
-            allowed, reason = publish_permission(user, listing.get("resource_type"), req.price_credits)
+            allowed, reason = access_control.publish_permission(user, listing.get("resource_type"), req.price_credits)
             if not allowed:
-                raise HTTPException(403, reason)
+                raise ForbiddenException(reason)
             updates["price_credits"] = req.price_credits
             if status == "approved":
                 requires_resubmit = True
     
     if req.allowed_tiers is not None:
-        if not validate_allowed_tiers(req.allowed_tiers):
-            raise HTTPException(400, "Invalid allowed_tiers")
+        if not access_control.validate_allowed_tiers(req.allowed_tiers):
+            raise InvalidTiersException()
         updates["allowed_tiers"] = req.allowed_tiers
         if status == "approved":
             requires_resubmit = True
@@ -310,15 +290,16 @@ def update_listing(
     }
 
 
-@router.get("/seller/stats")
+@router.get("/seller/stats", response_model=SellerStats)
 def get_seller_stats(user: dict = Depends(get_current_user)):
     """
     Get seller statistics.
     
     Returns:
-        total_earned_credits, listings_count, total_sales
+        total_earned_credits, listings_count, total_sales, total_usage
     """
-    return db_seller_stats(user["id"])
+    marketplace_service = get_marketplace_service()
+    return marketplace_service.get_seller_stats(user["id"])
 
 
 @router.get("/leaderboard")
@@ -339,5 +320,6 @@ def get_leaderboard_data(
     Returns:
         Top listings by usage_count
     """
-    return get_leaderboard(period, type)
+    marketplace_service = get_marketplace_service()
+    return marketplace_service.get_leaderboard(period, type)
 
