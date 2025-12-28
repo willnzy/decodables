@@ -1,7 +1,7 @@
 import os
 import jwt # 需安装 pyjwt
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -419,7 +419,7 @@ def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: d
 @app.post("/api/user/assets")
 async def upload_asset(
     file: UploadFile = File(...),
-    project_id: Optional[str] = None,
+    project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user)
 ):
     """上传用户素材图片"""
