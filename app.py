@@ -464,6 +464,18 @@ async def upload_asset(
         traceback.print_exc()
         raise HTTPException(500, f"Failed to upload file: {str(e)}")
 
+@app.delete("/api/user/assets/{asset_id}")
+def delete_asset(asset_id: str, user: dict = Depends(get_current_user)):
+    """删除用户素材（软删除）"""
+    # 验证素材属于当前用户
+    asset = supabase.table("assets").select("*").eq("id", asset_id).eq("user_id", user["id"]).single().execute()
+    if not asset.data:
+        raise HTTPException(404, "Asset not found")
+    
+    # 软删除
+    supabase.table("assets").update({"is_deleted": True}).eq("id", asset_id).execute()
+    return {"success": True, "message": "Asset deleted"}
+
 @app.get("/api/user/purchases")
 def my_purchases(page: int = 1, limit: int = 50, user: dict = Depends(get_current_user)):
     """获取用户已购买的商品"""
