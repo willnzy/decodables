@@ -11,7 +11,15 @@ PRICE_MAP = {
     "pro": os.environ.get("STRIPE_PRICE_SUB_PRO")
 }
 
-def create_checkout_session(user_id: str, plan_type: str):
+def create_checkout_session(user_id: str, plan_type: str, discount_percent: int = 0):
+    """
+    创建 Stripe Checkout Session
+    
+    Args:
+        user_id: 用户 ID
+        plan_type: 'credits_100', 'starter', 'pro'
+        discount_percent: 折扣百分比 (0-100)
+    """
     price_id = PRICE_MAP.get(plan_type)
     if not price_id:
         raise Exception("Invalid plan type")
@@ -24,10 +32,24 @@ def create_checkout_session(user_id: str, plan_type: str):
             "payment_method_types": ['card'],
             "line_items": [{'price': price_id, 'quantity': 1}],
             "mode": mode,
-            "success_url": f'{FRONTEND_URL}/dashboard?success=true',
+            "success_url": f'{FRONTEND_URL}/dashboard?success=true&plan={plan_type}',
             "cancel_url": f'{FRONTEND_URL}/dashboard?canceled=true',
             "metadata": {"user_id": user_id, "plan_type": plan_type},
         }
+        
+        # 如果有折扣，创建优惠券
+        if discount_percent > 0 and discount_percent <= 100:
+            # 创建一次性优惠券
+            coupon = stripe.Coupon.create(
+                percent_off=discount_percent,
+                duration="once",
+                name=f"Special Discount {discount_percent}%"
+            )
+            session_params["discounts"] = [{"coupon": coupon.id}]
+        
+        # 允许促销码
+        if discount_percent == 0:
+            session_params["allow_promotion_codes"] = True
         
         checkout_session = stripe.checkout.Session.create(**session_params)
         return checkout_session.url
@@ -54,3 +76,41 @@ def construct_event(payload, sig_header):
         return stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
     except Exception as e:
         raise Exception(f"Webhook Error: {str(e)}")
+
+def get_subscription_status(customer_id: str):
+    """
+    获取客户的订阅状态
+    Returns: { status: str, tier: str, current_period_end: datetime }
+    """
+    try:
+        subscriptions = stripe.Subscription.list(
+            customer=customer_id,
+            status='active',
+            limit=1
+        )
+        
+        if subscriptions.data:
+            sub = subscriptions.data[0]
+            price_id = sub['items']['data'][0]['price']['id']
+            
+            # 根据 price_id 判断 tier
+            tier = 'free'
+            if price_id == PRICE_MAP.get('starter'):
+                tier = 'starter'
+            elif price_id == PRICE_MAP.get('pro'):
+                tier = 'pro'
+            
+            return {
+                "status": sub.status,
+                "tier": tier,
+                "current_period_end": sub.current_period_end
+            }
+        
+        return {
+            "status": "inactive",
+            "tier": "free",
+            "current_period_end": None
+        }
+    except Exception as e:
+        print(f"Get Subscription Error: {e}")
+        return None

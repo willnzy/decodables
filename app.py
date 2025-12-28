@@ -26,7 +26,7 @@ CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY") 
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="MagicZine AI API v2.3 (Production)")
+app = FastAPI(title="MagicZine AI API v3.0 (Production)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -117,6 +117,12 @@ async def require_admin(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
+async def require_member(user: dict = Depends(get_current_user)):
+    """会员权限守卫（Starter/Pro）"""
+    if not is_member(user):
+        raise HTTPException(status_code=403, detail="Membership required")
+    return user
+
 # ==========================================
 # 2. 数据模型 (Models)
 # ==========================================
@@ -149,11 +155,42 @@ class SupportTicketRequest(BaseModel):
 class AdminAdjustRequest(BaseModel):
     user_id: str
     amount: int
+    bucket: Optional[str] = "permanent"  # 'monthly' | 'permanent'
     reason: str
 
 class AdminTierRequest(BaseModel):
     user_id: str
     tier: str
+
+class AdminDiscountRequest(BaseModel):
+    user_id: str
+    discount_percent: int
+    valid_days: int
+    target_plan: Optional[str] = None
+
+class AdminBroadcastRequest(BaseModel):
+    title: str
+    content: str
+    target_group: Optional[str] = "all"  # 'all', 'free', 'starter', 'pro'
+
+class MarketplacePublishRequest(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    thumbnail_url: str
+    resource_url: str
+    resource_type: str  # 'template', 'sticker', 'image'
+    price_credits: int = 0
+    allowed_tiers: Optional[List[str]] = None
+
+class MarketplacePurchaseRequest(BaseModel):
+    listing_id: str
+
+class ListingUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price_credits: Optional[int] = None
+    is_public: Optional[bool] = None
+    allowed_tiers: Optional[List[str]] = None
 
 # ==========================================
 # 3. 接口实现 (Routes)
@@ -161,7 +198,7 @@ class AdminTierRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "2.3"}
+    return {"status": "ok", "version": "3.0"}
 
 # --- Webhooks ---
 @app.post("/api/webhooks/clerk")
@@ -181,16 +218,23 @@ async def clerk_webhook(request: Request):
     data = evt["data"]
     
     if event_type == "user.created":
+        # 检查 email 唯一性
+        email = data["email_addresses"][0]["email_address"]
+        existing = search_users(email)
+        if existing:
+            print(f"⚠️ User with email {email} already exists, skipping creation")
+            return {"status": "skipped", "reason": "email_exists"}
+        
         # 创建用户档案
         create_user_profile(
             data["id"], 
-            data["email_addresses"][0]["email_address"], 
+            email, 
             data.get("username"), 
             data.get("image_url")
         )
         # 记录注册行为
         log_activity(data["id"], "user_signup", {
-            "email": data["email_addresses"][0]["email_address"],
+            "email": email,
             "method": "clerk"
         })
     
@@ -237,23 +281,82 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
     except Exception as e:
         raise HTTPException(400, str(e))
     
-    if event['type'] == 'checkout.session.completed':
+    event_type = event['type']
+    
+    # 一次性购买完成
+    if event_type == 'checkout.session.completed':
         session = event['data']['object']
         uid = session['metadata'].get('user_id')
         plan = session['metadata'].get('plan_type')
+        
         if uid and plan:
             if plan == 'credits_100':
-                add_credits(uid, 100, "Purchase 100 Credits")
+                # 购买积分：计入 permanent
+                add_credits_permanent(uid, 100, "Purchase 100 Credits", "topup_purchase")
+                log_activity(uid, "credits_purchase", {"amount": 100})
             elif plan in ['starter', 'pro']:
-                update_subscription_tier(uid, plan, session.get('customer'))
+                # 新订阅：更新 tier + 赠送月度积分
+                update_subscription_tier(uid, plan, session.get('customer'), "active")
                 amt = 500 if plan == 'starter' else 1000
-                add_credits(uid, amt, f"{plan} Sub Grant", "sub_grant")
+                add_credits_monthly(uid, amt, f"{plan.capitalize()} Monthly Credits", "sub_grant")
+                log_activity(uid, "subscription_started", {"plan": plan})
+    
+    # 订阅续费成功（月度刷新）
+    elif event_type == 'invoice.payment_succeeded':
+        invoice = event['data']['object']
+        customer_id = invoice.get('customer')
+        
+        # 查找用户
+        if customer_id:
+            # 通过 stripe_customer_id 查找用户
+            user_res = supabase.table("profiles").select("id, tier")\
+                .eq("stripe_customer_id", customer_id).execute()
+            
+            if user_res.data:
+                user = user_res.data[0]
+                uid = user['id']
+                tier = user['tier']
+                
+                # 刷新月度积分（重置，不结转）
+                if tier in ['starter', 'pro']:
+                    refresh_monthly_credits(uid, tier)
+                    log_activity(uid, "monthly_credits_refreshed", {"tier": tier})
+    
+    # 订阅取消/过期
+    elif event_type in ['customer.subscription.deleted', 'customer.subscription.updated']:
+        subscription = event['data']['object']
+        customer_id = subscription.get('customer')
+        status = subscription.get('status')
+        
+        if customer_id:
+            user_res = supabase.table("profiles").select("id")\
+                .eq("stripe_customer_id", customer_id).execute()
+            
+            if user_res.data:
+                uid = user_res.data[0]['id']
+                
+                if status in ['canceled', 'unpaid', 'past_due']:
+                    # 降级到 free
+                    update_subscription_tier(uid, 'free', subscription_status='inactive')
+                    log_activity(uid, "subscription_ended", {"reason": status})
+                elif status == 'active':
+                    # 订阅恢复
+                    plan_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
+                    # 根据 price_id 判断 tier（需要配置映射）
+                    new_tier = 'starter' if 'starter' in plan_id.lower() else 'pro'
+                    update_subscription_tier(uid, new_tier, subscription_status='active')
+    
     return {"status": "ok"}
 
 # --- User ---
 @app.get("/api/user/me")
 def get_me(user: dict = Depends(get_current_user)):
-    return user
+    # 返回用户信息，包括两类积分
+    return {
+        **user,
+        "credits_total": user.get("credits_monthly", 0) + user.get("credits_permanent", 0),
+        "is_member": is_member(user)
+    }
 
 @app.get("/api/user/history")
 def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
@@ -262,15 +365,34 @@ def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current
 
 @app.get("/api/user/assets")
 def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: dict = Depends(get_current_user)):
-    if scope == "all" and user["tier"] == "free":
-        raise HTTPException(403, "Pro required for history")
+    # Pro 用户可以访问所有历史素材
+    if scope == "all" and user["tier"] != "pro":
+        raise HTTPException(403, "Pro required for cross-project history")
     target_proj = project_id if scope != "all" else None
     return get_assets(user["id"], target_proj)
 
+@app.get("/api/user/purchases")
+def my_purchases(page: int = 1, limit: int = 50, user: dict = Depends(get_current_user)):
+    """获取用户已购买的商品"""
+    items = get_user_purchases(user["id"], page, limit)
+    return {"items": items, "total": len(items)}
+
+@app.get("/api/user/notifications")
+def my_notifications(unread_only: bool = False, user: dict = Depends(get_current_user)):
+    """获取用户通知"""
+    items = get_user_notifications(user["id"], unread_only)
+    return {"items": items}
+
+@app.post("/api/user/notifications/{id}/read")
+def mark_read(id: str, user: dict = Depends(get_current_user)):
+    """标记通知为已读"""
+    mark_notification_read(id, user["id"])
+    return {"status": "ok"}
+
 @app.get("/api/resources/stickers")
 def get_stickers(user: dict = Depends(get_current_user)):
-    is_pro = user["tier"] in ["starter", "pro"]
-    return get_system_resources("sticker", is_pro)
+    """获取贴纸库（根据用户权限过滤）"""
+    return get_system_resources("sticker", user["tier"])
 
 # --- Projects ---
 @app.get("/api/projects")
@@ -325,23 +447,39 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     
     cost = len(req.prompts) * 5
     try:
-        deduct_credits_atomic(user["id"], cost, "generation", f"Gen {len(req.prompts)}")
-    except Exception:
-        raise HTTPException(402, "Insufficient credits")
+        result = credit_deduct(user["id"], cost, "generation", f"Gen {len(req.prompts)} images")
+    except Exception as e:
+        if "INSUFFICIENT" in str(e):
+            raise HTTPException(402, "Insufficient credits")
+        raise HTTPException(500, str(e))
         
     urls, task_id = await generate_8_images(req.prompts)
     for url, prompt in zip(urls, req.prompts):
         save_asset(user["id"], url, "ai_generated", req.project_id, prompt)
-    return {"image_urls": urls, "balance": user["credits"] - cost}
+    
+    return {
+        "image_urls": urls, 
+        "balance": result["total"],
+        "balance_monthly": result["balance_monthly"],
+        "balance_permanent": result["balance_permanent"]
+    }
 
 # [修复] 真实 OCR 接口
 @app.post("/api/tools/ocr")
 @limiter.limit("10/minute")
 async def ocr_tool(request: Request, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """智能识图"""
-    # [修复] 严格限制仅 Pro 用户可用 (根据 PRD Starter 也不可用)
+    """智能识图 - Pro 或 Trial 可用"""
+    # Pro 用户可无限使用，其他用户需要 Trial 逻辑（这里简化为仅 Pro）
     if user["tier"] != "pro":
         raise HTTPException(status_code=403, detail="Upgrade to Teacher Pro to use Smart Scan")
+    
+    # 扣费 5 Credits
+    try:
+        result = credit_deduct(user["id"], 5, "ocr", "Smart Scan")
+    except Exception as e:
+        if "INSUFFICIENT" in str(e):
+            raise HTTPException(402, "Insufficient credits")
+        raise
     
     try:
         # 读取文件内容并转 Base64
@@ -363,17 +501,17 @@ async def ocr_tool(request: Request, file: UploadFile = File(...), user: dict = 
             max_tokens=100
         )
         description = response.choices[0].message.content
-        return {"text": description}
+        return {"text": description, "balance": result["total"]}
     except Exception as e:
         print(f"OCR Error: {e}")
         raise HTTPException(500, "OCR Failed")
 
 # --- Export ---
 
-# [新增] 从项目直接生成 PDF（用于 Dashboard）
+# [新增] 从项目直接生成 PDF（用于 Dashboard）- 免费
 @app.get("/api/projects/{project_id}/pdf")
 def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
-    """从保存的项目数据生成 PDF，无需再次传入图片和文字"""
+    """从保存的项目数据生成 PDF，无需再次传入图片和文字 - 永久免费"""
     proj = get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
@@ -414,6 +552,9 @@ def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
     
     # 生成文件名
     title = proj.get("title", "project").replace(" ", "_")
+    
+    # 记录下载行为（不扣费）
+    log_activity(user["id"], "download_pdf", {"project_id": project_id})
     
     return StreamingResponse(
         buf, 
@@ -488,25 +629,23 @@ def preview_project_as_image(project_id: str, user: dict = Depends(get_current_u
 
 @app.post("/api/generate/pdf")
 def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
+    """生成 PDF - 永久免费（根据 PRD v3.0）"""
+    # 不再扣费，仅更新 hash 用于缓存/版本识别
     proj = get_project_detail(req.project_id, user["id"])
-    if req.current_hash != proj.get("last_downloaded_hash"):
-        try:
-            deduct_credits_atomic(user["id"], 50, "download_pdf", "PDF Export")
-            # [修复] 调用 db_service 中的 Hash 更新函数
-            update_project_hash(req.project_id, req.current_hash)
-        except:
-            raise HTTPException(402, "Insufficient credits")
+    if proj and req.current_hash != proj.get("last_downloaded_hash"):
+        update_project_hash(req.project_id, req.current_hash)
             
     buf = BytesIO()
     create_foldable_book(req.image_urls, req.texts, buf)
     buf.seek(0)
-    log_activity(user["id"], "download_pdf")
+    log_activity(user["id"], "download_pdf", {"project_id": req.project_id})
     return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=zine.pdf"})
 
 @app.post("/api/export/zip")
 def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
+    """导出 ZIP - 仅 Starter/Pro 可用，永久免费"""
     if user["tier"] == "free":
-        raise HTTPException(403, "Upgrade required")
+        raise HTTPException(403, "Upgrade to Starter or Pro to export ZIP")
     buf = BytesIO()
     create_assets_zip(req.image_urls, buf)
     buf.seek(0)
@@ -566,7 +705,6 @@ def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
         
         # 2. 添加所有图片
         import requests
-        import base64
         import re
         
         for i, img_url in enumerate(image_urls):
@@ -603,14 +741,94 @@ def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
         headers={"Content-Disposition": f"attachment; filename={title}.zip"}
     )
 
+# --- Marketplace ---
+@app.get("/api/marketplace/items")
+def marketplace_items(
+    featured: bool = False, 
+    resource_type: Optional[str] = None,
+    page: int = 1, 
+    limit: int = 20,
+    user: dict = Depends(get_current_user)
+):
+    """获取市场商品列表"""
+    items = get_marketplace_listings(featured, resource_type, page, limit)
+    
+    # 为每个商品添加用户可访问性和购买状态
+    for item in items:
+        allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
+        item["is_accessible"] = can_access_resource(user, allowed_tiers)
+        item["is_owned"] = check_user_purchase(user["id"], item["id"])
+    
+    return {"items": items, "total": len(items), "page": page}
+
+@app.post("/api/marketplace/publish")
+def marketplace_publish(req: MarketplacePublishRequest, user: dict = Depends(get_current_user)):
+    """上架商品"""
+    listing = create_listing(
+        seller_id=user["id"],
+        title=req.title,
+        description=req.description,
+        thumbnail_url=req.thumbnail_url,
+        resource_url=req.resource_url,
+        resource_type=req.resource_type,
+        price_credits=req.price_credits,
+        allowed_tiers=req.allowed_tiers
+    )
+    log_activity(user["id"], "marketplace_publish", {"listing_id": listing["id"]})
+    return listing
+
+@app.post("/api/marketplace/purchase")
+def marketplace_purchase(req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
+    """购买商品"""
+    result = execute_purchase(user["id"], req.listing_id)
+    
+    if not result["success"]:
+        if "Upgrade" in result["message"]:
+            raise HTTPException(403, result["message"])
+        elif "Insufficient" in result["message"]:
+            raise HTTPException(402, result["message"])
+        else:
+            raise HTTPException(400, result["message"])
+    
+    if not result.get("already_owned"):
+        log_activity(user["id"], "marketplace_purchase", {"listing_id": req.listing_id})
+    
+    return result
+
+@app.get("/api/marketplace/my-listings")
+def my_listings(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
+    """获取我的上架商品"""
+    items = get_seller_listings(user["id"], page, limit)
+    return {"items": items, "total": len(items)}
+
+@app.put("/api/marketplace/listings/{listing_id}")
+def update_my_listing(listing_id: str, req: ListingUpdateRequest, user: dict = Depends(get_current_user)):
+    """更新我的商品"""
+    updates = req.dict(exclude_none=True)
+    result = update_listing(listing_id, user["id"], updates)
+    if not result:
+        raise HTTPException(404, "Listing not found or not owned by you")
+    return result
+
+@app.get("/api/marketplace/seller/stats")
+def seller_stats(user: dict = Depends(get_current_user)):
+    """获取卖家统计数据"""
+    stats = get_seller_stats(user["id"])
+    return stats
+
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
 def pay(req: CheckoutRequest, user: dict = Depends(get_current_user)):
-    return {"url": create_checkout_session(user["id"], req.plan_type)}
+    # 检查是否有折扣
+    discount = get_user_discount(user["id"], req.plan_type)
+    discount_percent = discount.get("discount_percent", 0) if discount else 0
+    
+    url = create_checkout_session(user["id"], req.plan_type, discount_percent)
+    return {"url": url, "discount_applied": discount_percent}
 
 @app.post("/api/payment/portal")
 def portal(user: dict = Depends(get_current_user)):
-    if not user.get("stripe_customer_id"): raise HTTPException(400, "No sub")
+    if not user.get("stripe_customer_id"): raise HTTPException(400, "No subscription found")
     return {"url": create_portal_session(user["id"], user.get("stripe_customer_id"))}
 
 @app.post("/api/support/email")
@@ -627,18 +845,65 @@ def adm_users(query: str, admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/user/{uid}")
 def adm_audit(uid: str, admin: dict = Depends(require_admin)):
-    # [修复] 调用 db_service 的聚合函数，而不是直接操作 DB
     return get_full_user_audit(uid)
 
 @app.post("/api/admin/credits/adjust")
 def adm_adj(req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
-    if req.amount > 0:
-        add_credits(req.user_id, req.amount, req.reason, "admin_adj")
-    else:
-        deduct_credits_atomic(req.user_id, abs(req.amount), "admin_adj", req.reason)
+    """手动调整用户积分（可指定 bucket）"""
+    admin_adjust_credits(req.user_id, req.amount, req.bucket, req.reason)
+    log_activity(admin["id"], "admin_credits_adjust", {
+        "target_user": req.user_id,
+        "amount": req.amount,
+        "bucket": req.bucket,
+        "reason": req.reason
+    })
     return {"status": "ok"}
 
 @app.post("/api/admin/tier/update")
 def adm_tier(req: AdminTierRequest, admin: dict = Depends(require_admin)):
     update_subscription_tier(req.user_id, req.tier)
+    log_activity(admin["id"], "admin_tier_update", {
+        "target_user": req.user_id,
+        "new_tier": req.tier
+    })
     return {"status": "ok"}
+
+@app.post("/api/admin/discount")
+def adm_discount(req: AdminDiscountRequest, admin: dict = Depends(require_admin)):
+    """设置用户折扣"""
+    discount = create_user_discount(
+        req.user_id, 
+        req.discount_percent, 
+        req.valid_days, 
+        req.target_plan
+    )
+    log_activity(admin["id"], "admin_discount_create", {
+        "target_user": req.user_id,
+        "discount_percent": req.discount_percent
+    })
+    return discount
+
+@app.post("/api/admin/broadcast")
+def adm_broadcast(req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
+    """群发系统通知"""
+    notification = create_broadcast(req.title, req.content, req.target_group)
+    log_activity(admin["id"], "admin_broadcast", {
+        "target_group": req.target_group,
+        "title": req.title
+    })
+    return notification
+
+@app.post("/api/admin/projects/{project_id}/restore")
+def adm_restore_project(project_id: str, admin: dict = Depends(require_admin)):
+    """恢复被删除的项目"""
+    project = restore_project(project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    log_activity(admin["id"], "admin_project_restore", {"project_id": project_id})
+    return project
+
+@app.get("/api/admin/projects/feed")
+def adm_projects_feed(page: int = 1, limit: int = 50, admin: dict = Depends(require_admin)):
+    """获取全站项目流"""
+    items = get_all_projects_feed(page, limit)
+    return {"items": items, "total": len(items), "page": page}
