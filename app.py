@@ -194,6 +194,22 @@ async def clerk_webhook(request: Request):
             "method": "clerk"
         })
     
+    elif event_type == "user.updated":
+        # 用户更新资料（头像、用户名等）
+        user_id = data.get("id")
+        new_avatar = data.get("image_url")
+        new_username = data.get("username")
+        
+        # 同步更新到 Supabase
+        update_user_profile(user_id, avatar_url=new_avatar, username=new_username)
+        
+        # 记录更新行为
+        log_activity(user_id, "profile_updated", {
+            "avatar_changed": new_avatar is not None,
+            "username_changed": new_username is not None
+        })
+        print(f"✅ Updated profile for user {user_id}")
+    
     elif event_type == "session.created":
         # 记录登录行为
         user_id = data.get("user_id")

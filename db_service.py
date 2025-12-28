@@ -40,6 +40,22 @@ def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = 
         data["stripe_customer_id"] = stripe_customer_id
     supabase.table("profiles").update(data).eq("id", user_id).execute()
 
+def update_user_profile(user_id: str, avatar_url: str = None, username: str = None):
+    """
+    更新用户档案（头像、用户名）
+    用于处理 Clerk user.updated webhook 事件
+    """
+    data = {}
+    if avatar_url is not None:
+        data["avatar_url"] = avatar_url
+    if username is not None:
+        data["username"] = username
+    
+    if data:
+        supabase.table("profiles").update(data).eq("id", user_id).execute()
+        return True
+    return False
+
 # ==========================================
 # 2. 积分与交易 (Credits & Transactions)
 # ==========================================
