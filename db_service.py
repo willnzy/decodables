@@ -57,6 +57,91 @@ def can_access_resource(user: dict, allowed_tiers: list) -> bool:
     
     return user_tier in allowed_tiers
 
+def publish_permission(user: dict, resource_type: str, price_credits: int) -> dict:
+    """
+    检查用户发布权限（PRD 第7章）
+    
+    规则:
+    - Free：不能发布任何内容
+    - Starter：仅允许 resource_type='asset' 且 price_credits=0
+    - Pro：允许 resource_type='asset'|'template' 且 price_credits 在 0..500
+    
+    Returns: { allowed: bool, reason: str }
+    """
+    if not user:
+        return {"allowed": False, "reason": "User not found"}
+    
+    tier = user.get("tier", "free")
+    
+    # Free 用户不能发布
+    if tier == "free":
+        return {"allowed": False, "reason": "Free users cannot publish. Upgrade to Starter or Pro."}
+    
+    # 价格上限校验
+    if price_credits < 0 or price_credits > 500:
+        return {"allowed": False, "reason": "Price must be between 0 and 500 credits"}
+    
+    # Starter 用户限制
+    if tier == "starter":
+        if resource_type != "asset":
+            return {"allowed": False, "reason": "Starter users can only publish Assets. Upgrade to Pro to publish Templates."}
+        if price_credits > 0:
+            return {"allowed": False, "reason": "Starter users can only publish free assets. Upgrade to Pro to sell."}
+    
+    # Pro 用户可以发布 asset 或 template
+    if tier == "pro":
+        if resource_type not in ["asset", "template"]:
+            return {"allowed": False, "reason": "Invalid resource type. Must be 'asset' or 'template'."}
+    
+    return {"allowed": True, "reason": ""}
+
+def validate_allowed_tiers(allowed_tiers: list) -> dict:
+    """
+    校验 allowed_tiers 白名单（PRD 第7章）
+    
+    仅允许以下三种之一:
+    - ['free']
+    - ['starter', 'pro']
+    - ['pro']
+    
+    Returns: { valid: bool, reason: str }
+    """
+    valid_combinations = [
+        ['free'],
+        ['starter', 'pro'],
+        ['pro']
+    ]
+    
+    # 排序后比较
+    sorted_tiers = sorted(allowed_tiers) if allowed_tiers else []
+    
+    for valid_combo in valid_combinations:
+        if sorted_tiers == sorted(valid_combo):
+            return {"valid": True, "reason": ""}
+    
+    return {
+        "valid": False, 
+        "reason": "allowed_tiers must be one of: ['free'], ['starter', 'pro'], or ['pro']"
+    }
+
+def listing_is_public_visible(listing: dict) -> bool:
+    """
+    检查 listing 是否公开可见（PRD 第8章）
+    
+    必须同时满足:
+    - is_public = true
+    - is_deleted = false
+    - moderation_status = 'approved'
+    """
+    if not listing:
+        return False
+    
+    return (
+        listing.get("is_public", False) == True and
+        listing.get("is_deleted", False) == False and
+        listing.get("moderation_status", "draft") == "approved"
+    )
+
 def get_total_credits(user: dict) -> int:
     """获取用户总可用积分 (monthly + permanent)"""
     if not user:
@@ -465,25 +550,82 @@ def get_marketplace_listings(
     featured: bool = False, 
     resource_type: str = None, 
     page: int = 1, 
-    limit: int = 20
+    limit: int = 20,
+    sort: str = "latest",  # 'latest' | 'popular' | 'best_selling'
+    tier_filter: str = None,  # 'all' | 'free' | 'starter' | 'pro'
+    price_filter: str = None,  # 'all' | 'free' | 'paid'
+    mine: bool = False,
+    user_id: str = None
 ):
-    """获取市场商品列表"""
+    """
+    获取市场商品列表（PRD 第13章）
+    
+    公共列表默认返回: moderation_status='approved' AND is_public=true AND is_deleted=false
+    mine=true 时返回本人全状态（包括 draft/pending/rejected/approved）
+    """
     start = (page - 1) * limit
     end = start + limit - 1
     
-    query = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")\
-        .eq("is_public", True).eq("is_deleted", False)
+    query = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")
     
+    if mine and user_id:
+        # 卖家查看自己的 listing（全状态）
+        query = query.eq("seller_id", user_id).eq("is_deleted", False)
+    else:
+        # 公共列表：必须 approved + public + not deleted（PRD 强制规则）
+        query = query.eq("is_public", True)\
+            .eq("is_deleted", False)\
+            .eq("moderation_status", "approved")
+    
+    # 资源类型过滤
     if resource_type:
         query = query.eq("resource_type", resource_type)
     
-    if featured:
+    # Tier 过滤
+    if tier_filter and tier_filter != "all":
+        # 使用 contains 查询 allowed_tiers 数组
+        query = query.contains("allowed_tiers", [tier_filter])
+    
+    # 价格过滤
+    if price_filter == "free":
+        query = query.eq("price_credits", 0)
+    elif price_filter == "paid":
+        query = query.gt("price_credits", 0)
+    
+    # 排序
+    if featured or sort == "best_selling":
         query = query.order("sales_count", desc=True)
-    else:
+    elif sort == "popular":
+        query = query.order("usage_count", desc=True)
+    else:  # latest
         query = query.order("created_at", desc=True)
     
     res = query.range(start, end).execute()
     return res.data
+
+def get_marketplace_item(listing_id: str, user_id: str = None):
+    """
+    获取单个 listing 详情（PRD 第13章）
+    
+    公共访问: 仅允许 approved + public + not deleted
+    卖家本人: 可看自己的任意状态
+    """
+    res = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")\
+        .eq("id", listing_id).single().execute()
+    
+    if not res.data:
+        return None
+    
+    listing = res.data
+    
+    # 检查访问权限
+    is_seller = user_id and listing.get("seller_id") == user_id
+    is_visible = listing_is_public_visible(listing)
+    
+    if not is_seller and not is_visible:
+        return None
+    
+    return listing
 
 def get_seller_listings(seller_id: str, page: int = 1, limit: int = 20):
     """获取卖家自己的商品"""
@@ -503,9 +645,14 @@ def create_listing(
     resource_url: str,
     resource_type: str,
     price_credits: int,
-    allowed_tiers: list = None
+    allowed_tiers: list = None,
+    submit_for_review: bool = True
 ):
-    """上架商品"""
+    """
+    创建商品 listing（PRD 第7/8章）
+    
+    提交后 moderation_status='pending'，必须管理员审核通过后才能上架
+    """
     data = {
         "seller_id": seller_id,
         "title": title,
@@ -514,12 +661,59 @@ def create_listing(
         "resource_url": resource_url,
         "resource_type": resource_type,
         "price_credits": price_credits,
-        "allowed_tiers": allowed_tiers or ["free", "starter", "pro"],
-        "is_public": True,
-        "sales_count": 0
+        "allowed_tiers": allowed_tiers or ["free"],
+        "is_public": True,  # 用户希望公开，但仍不可见直到 approved
+        "is_deleted": False,
+        "sales_count": 0,
+        "usage_count": 0,
+        "moderation_status": "pending" if submit_for_review else "draft",
+        "moderation_note": None,
+        "moderated_by": None,
+        "moderated_at": None
     }
     res = supabase.table("marketplace_listings").insert(data).execute()
     return res.data[0]
+
+def submit_listing_for_review(listing_id: str, seller_id: str):
+    """
+    提交 listing 审核（PRD 第8章）
+    
+    draft -> pending
+    rejected -> pending（允许修改后再次提交）
+    """
+    # 获取 listing 并验证所有权
+    res = supabase.table("marketplace_listings").select("*")\
+        .eq("id", listing_id).eq("seller_id", seller_id).single().execute()
+    
+    if not res.data:
+        return None
+    
+    listing = res.data
+    current_status = listing.get("moderation_status", "draft")
+    
+    # 只有 draft 或 rejected 可以提交
+    if current_status not in ["draft", "rejected"]:
+        return {"error": f"Cannot submit listing with status '{current_status}'"}
+    
+    # 更新状态
+    update_res = supabase.table("marketplace_listings").update({
+        "moderation_status": "pending",
+        "is_public": True
+    }).eq("id", listing_id).execute()
+    
+    return update_res.data[0] if update_res.data else None
+
+def unpublish_listing(listing_id: str, seller_id: str):
+    """
+    下架 listing（PRD 第13章）
+    
+    设置 is_public=false，不改变历史 purchases 与 usage_count
+    """
+    res = supabase.table("marketplace_listings").update({
+        "is_public": False
+    }).eq("id", listing_id).eq("seller_id", seller_id).execute()
+    
+    return res.data[0] if res.data else None
 
 def update_listing(listing_id: str, seller_id: str, updates: dict):
     """更新商品（只能修改自己的）"""
@@ -538,9 +732,10 @@ def check_user_purchase(user_id: str, listing_id: str) -> bool:
 
 def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     """
-    执行购买逻辑
+    执行购买逻辑（PRD 第13章）
     
     规则:
+    0) 校验 listing: moderation_status='approved' AND is_public=true AND is_deleted=false
     1) 校验 listing.allowed_tiers 与用户权限
     2) 去重：若已购买则直接返回成功
     3) 事务扣费：买家扣 price（优先 monthly）
@@ -550,12 +745,16 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     
     Returns: { success: bool, message: str }
     """
-    # 1. 获取商品信息
+    # 0. 获取商品信息（必须 approved + public + not deleted）
     listing_res = supabase.table("marketplace_listings").select("*")\
-        .eq("id", listing_id).eq("is_public", True).eq("is_deleted", False).single().execute()
+        .eq("id", listing_id)\
+        .eq("is_public", True)\
+        .eq("is_deleted", False)\
+        .eq("moderation_status", "approved")\
+        .single().execute()
     
     if not listing_res.data:
-        return {"success": False, "message": "Listing not found"}
+        return {"success": False, "message": "Listing not found or not available for purchase"}
     
     listing = listing_res.data
     price = listing.get("price_credits", 0)
@@ -627,23 +826,106 @@ def get_user_purchases(user_id: str, page: int = 1, limit: int = 50):
     return res.data
 
 def get_seller_stats(seller_id: str) -> dict:
-    """获取卖家统计数据"""
+    """获取卖家统计数据（PRD 第13章）"""
     # 获取所有商品
-    listings = supabase.table("marketplace_listings").select("id, sales_count, price_credits")\
+    listings = supabase.table("marketplace_listings").select("id, sales_count, usage_count, price_credits, moderation_status")\
         .eq("seller_id", seller_id).eq("is_deleted", False).execute().data
     
     total_sales = sum(l.get("sales_count", 0) for l in listings)
+    total_usage = sum(l.get("usage_count", 0) for l in listings)
     
     # 计算总收入（90% 分成）
     total_earned = 0
     for listing in listings:
         total_earned += int(listing.get("price_credits", 0) * listing.get("sales_count", 0) * 0.9)
     
+    # 按审核状态统计
+    status_counts = {}
+    for listing in listings:
+        status = listing.get("moderation_status", "draft")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    
     return {
         "total_listings": len(listings),
         "total_sales": total_sales,
-        "total_earned_credits": total_earned
+        "total_usage": total_usage,
+        "total_earned_credits": total_earned,
+        "status_counts": status_counts
     }
+
+# ==========================================
+# 5.1 Listing Usage（使用次数统计）
+# ==========================================
+
+def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str) -> bool:
+    """
+    记录 listing 使用（PRD 第9章）
+    
+    去重规则: (listing_id, used_by_user_id, project_id) unique
+    同一用户对同一 listing 在同一项目内重复 Apply，不重复计数
+    
+    Returns: True if new usage recorded, False if already exists
+    """
+    # 检查是否已存在
+    existing = supabase.table("listing_usage").select("id")\
+        .eq("listing_id", listing_id)\
+        .eq("used_by_user_id", used_by_user_id)\
+        .eq("project_id", project_id).execute()
+    
+    if existing.data:
+        return False  # 已存在，不重复计数
+    
+    try:
+        # 插入使用记录
+        supabase.table("listing_usage").insert({
+            "listing_id": listing_id,
+            "used_by_user_id": used_by_user_id,
+            "project_id": project_id
+        }).execute()
+        
+        # 增加 usage_count
+        listing = supabase.table("marketplace_listings").select("usage_count")\
+            .eq("id", listing_id).single().execute()
+        
+        if listing.data:
+            current_count = listing.data.get("usage_count", 0)
+            supabase.table("marketplace_listings").update({
+                "usage_count": current_count + 1
+            }).eq("id", listing_id).execute()
+        
+        return True
+    except Exception as e:
+        print(f"Failed to record listing usage: {e}")
+        return False
+
+def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int = 10):
+    """
+    获取排行榜（PRD 第9章）
+    
+    period: 'monthly' | 'all_time'
+    board_type: 'all' | 'template' | 'asset'
+    
+    Returns: Top 10 listings with usage_count and rank
+    """
+    query = supabase.table("marketplace_listings").select("id, title, thumbnail_url, usage_count, resource_type, seller_id, profiles(username, avatar_url)")\
+        .eq("is_public", True)\
+        .eq("is_deleted", False)\
+        .eq("moderation_status", "approved")
+    
+    if board_type != "all":
+        query = query.eq("resource_type", board_type)
+    
+    query = query.order("usage_count", desc=True).limit(limit)
+    
+    res = query.execute()
+    
+    # 添加排名
+    leaderboard = []
+    for idx, item in enumerate(res.data or []):
+        item["rank"] = idx + 1
+        leaderboard.append(item)
+    
+    return leaderboard
 
 # ==========================================
 # 6. 通知系统 (Notifications)
@@ -794,3 +1076,100 @@ def admin_adjust_credits(user_id: str, amount: int, bucket: str, reason: str):
         )
     
     return True
+
+# ==========================================
+# 8.1 Admin 审核功能（Marketplace Moderation）
+# ==========================================
+
+def admin_get_moderation_list(
+    status: str = None,  # 'pending' | 'approved' | 'rejected' | 'all'
+    resource_type: str = None,  # 'template' | 'asset'
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    [Admin] 获取审核列表（PRD 第16章）
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    query = supabase.table("marketplace_listings").select("*, profiles(username, email, avatar_url)")\
+        .eq("is_deleted", False)
+    
+    if status and status != "all":
+        query = query.eq("moderation_status", status)
+    
+    if resource_type:
+        query = query.eq("resource_type", resource_type)
+    
+    query = query.order("created_at", desc=True).range(start, end)
+    
+    res = query.execute()
+    return res.data
+
+def admin_get_moderation_detail(listing_id: str):
+    """
+    [Admin] 获取审核详情（PRD 第16章）
+    """
+    res = supabase.table("marketplace_listings").select("*, profiles(username, email, avatar_url)")\
+        .eq("id", listing_id).single().execute()
+    
+    return res.data
+
+def admin_approve_listing(listing_id: str, admin_id: str):
+    """
+    [Admin] 批准 listing（PRD 第16章）
+    
+    pending -> approved
+    """
+    from datetime import datetime
+    
+    res = supabase.table("marketplace_listings").update({
+        "moderation_status": "approved",
+        "moderated_by": admin_id,
+        "moderated_at": datetime.now().isoformat()
+    }).eq("id", listing_id).execute()
+    
+    return res.data[0] if res.data else None
+
+def admin_reject_listing(listing_id: str, admin_id: str, reason: str):
+    """
+    [Admin] 拒绝 listing（PRD 第16章）
+    
+    pending -> rejected（必须附原因）
+    """
+    from datetime import datetime
+    
+    if not reason or not reason.strip():
+        raise Exception("Rejection reason is required")
+    
+    res = supabase.table("marketplace_listings").update({
+        "moderation_status": "rejected",
+        "moderation_note": reason,
+        "moderated_by": admin_id,
+        "moderated_at": datetime.now().isoformat()
+    }).eq("id", listing_id).execute()
+    
+    return res.data[0] if res.data else None
+
+def admin_delete_listing(listing_id: str):
+    """
+    [Admin] 软删除 listing（PRD 第16章）
+    """
+    res = supabase.table("marketplace_listings").update({
+        "is_deleted": True
+    }).eq("id", listing_id).execute()
+    
+    return res.data[0] if res.data else None
+
+def admin_unpublish_listing(listing_id: str):
+    """
+    [Admin] 强制下架 listing（PRD 第16章）
+    
+    设置 is_public=false
+    """
+    res = supabase.table("marketplace_listings").update({
+        "is_public": False
+    }).eq("id", listing_id).execute()
+    
+    return res.data[0] if res.data else None

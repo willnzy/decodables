@@ -13,7 +13,37 @@ from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
 # 导入服务模块
-from db_service import *
+from db_service import (
+    # 权限校验
+    is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
+    get_total_credits,
+    # 用户
+    get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
+    refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
+    # Credits
+    log_credit_transaction, credit_deduct, add_credits_permanent, add_credits_monthly,
+    deduct_credits_atomic, add_credits, get_credit_history,
+    # 项目
+    get_user_projects, get_project_detail, create_project, save_project,
+    soft_delete_project, restore_project, update_project_hash, get_all_projects_feed,
+    # 素材
+    save_asset, get_assets, get_system_resources,
+    # Marketplace
+    get_marketplace_listings, get_marketplace_item, get_seller_listings, create_listing,
+    submit_listing_for_review, unpublish_listing, update_listing, check_user_purchase,
+    execute_purchase, get_user_purchases, get_seller_stats, record_listing_usage, get_leaderboard,
+    # Admin 审核
+    admin_get_moderation_list, admin_get_moderation_detail, admin_approve_listing,
+    admin_reject_listing, admin_delete_listing, admin_unpublish_listing,
+    # 通知
+    get_user_notifications, mark_notification_read, create_broadcast,
+    # 折扣
+    get_user_discount, create_user_discount,
+    # 日志
+    log_activity, create_support_ticket,
+    # Supabase client
+    supabase
+)
 from payment_service import create_checkout_session, create_portal_session, construct_event
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
@@ -144,6 +174,7 @@ class ProjectUpdate(BaseModel):
     canvas_data: Optional[dict] = None
     thumbnail_url: Optional[str] = None
     title: Optional[str] = None
+    used_listing_ids: Optional[List[str]] = None  # 新增应用的 listing IDs
 
 class CheckoutRequest(BaseModel):
     plan_type: str  # 'credits_100', 'starter', or 'pro'
@@ -178,9 +209,9 @@ class MarketplacePublishRequest(BaseModel):
     description: Optional[str] = ""
     thumbnail_url: str
     resource_url: str
-    resource_type: str  # 'template', 'sticker', 'image'
+    resource_type: str  # 'template' | 'asset'
     price_credits: int = 0
-    allowed_tiers: Optional[List[str]] = None
+    allowed_tiers: List[str]  # 必填，仅允许 ['free'] / ['starter','pro'] / ['pro']
 
 class MarketplacePurchaseRequest(BaseModel):
     listing_id: str
@@ -191,6 +222,9 @@ class ListingUpdateRequest(BaseModel):
     price_credits: Optional[int] = None
     is_public: Optional[bool] = None
     allowed_tiers: Optional[List[str]] = None
+
+class AdminModerationRejectRequest(BaseModel):
+    reason: str
 
 # ==========================================
 # 3. 接口实现 (Routes)
@@ -418,8 +452,52 @@ def get_proj(id: str, user: dict = Depends(get_current_user)):
 
 @app.put("/api/projects/{id}")
 def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user)):
+    """
+    保存项目（PRD 第12章）
+    
+    - Save Project 不扣费
+    - 保存 canvas_data 与引用关系
+    - 必须校验：项目中新增引用的 listing 是否可用（can_access_resource）
+    - 使用次数统计：对新产生的 listing 应用写入 listing_usage
+    """
+    locked_elements = []
+    new_usage_recorded = []
+    
+    # 如果有新增的 listing 引用
+    if req.used_listing_ids:
+        for listing_id in req.used_listing_ids:
+            # 获取 listing 信息
+            listing = get_marketplace_item(listing_id, user["id"])
+            
+            if listing:
+                # 检查访问权限
+                allowed_tiers = listing.get("allowed_tiers", ["free"])
+                if not can_access_resource(user, allowed_tiers):
+                    locked_elements.append({
+                        "listing_id": listing_id,
+                        "title": listing.get("title", "Unknown"),
+                        "reason": "Upgrade required to access this resource"
+                    })
+                else:
+                    # 记录使用（去重）
+                    is_new = record_listing_usage(listing_id, user["id"], id)
+                    if is_new:
+                        new_usage_recorded.append(listing_id)
+    
+    # 保存项目
     save_project(id, user["id"], req.canvas_data, req.thumbnail_url, req.title)
-    return {"status": "saved"}
+    
+    # 更新项目的 contains_locked_elements 标记
+    if locked_elements:
+        supabase.table("projects").update({
+            "contains_locked_elements": True
+        }).eq("id", id).eq("user_id", user["id"]).execute()
+    
+    return {
+        "status": "saved",
+        "locked_elements": locked_elements,
+        "usage_recorded": new_usage_recorded
+    }
 
 @app.delete("/api/projects/{id}")
 def delete_proj(id: str, user: dict = Depends(get_current_user)):
@@ -746,12 +824,31 @@ def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
 def marketplace_items(
     featured: bool = False, 
     resource_type: Optional[str] = None,
+    sort: Optional[str] = "latest",  # 'latest' | 'popular' | 'best_selling'
+    tier: Optional[str] = None,  # 'all' | 'free' | 'starter' | 'pro'
+    price: Optional[str] = None,  # 'all' | 'free' | 'paid'
+    mine: bool = False,
     page: int = 1, 
     limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
-    """获取市场商品列表"""
-    items = get_marketplace_listings(featured, resource_type, page, limit)
+    """
+    获取市场商品列表（PRD 第13章）
+    
+    公共列表默认返回: moderation_status='approved' AND is_public=true AND is_deleted=false
+    mine=true 时返回本人全状态
+    """
+    items = get_marketplace_listings(
+        featured=featured,
+        resource_type=resource_type,
+        page=page,
+        limit=limit,
+        sort=sort,
+        tier_filter=tier,
+        price_filter=price,
+        mine=mine,
+        user_id=user["id"] if mine else None
+    )
     
     # 为每个商品添加用户可访问性和购买状态
     for item in items:
@@ -761,9 +858,59 @@ def marketplace_items(
     
     return {"items": items, "total": len(items), "page": page}
 
+@app.get("/api/marketplace/item/{listing_id}")
+def marketplace_item_detail(
+    listing_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    获取单个 listing 详情（PRD 第13章）
+    
+    公共访问: 仅允许 approved + public + not deleted
+    卖家本人: 可看自己的任意状态
+    Admin: 可看任意
+    """
+    item = get_marketplace_item(listing_id, user["id"])
+    
+    if not item:
+        # Admin 可以看任意状态
+        if user.get("role") == "admin":
+            item = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")\
+                .eq("id", listing_id).single().execute().data
+        
+        if not item:
+            raise HTTPException(404, "Listing not found")
+    
+    # 添加权限信息
+    allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
+    item["is_accessible"] = can_access_resource(user, allowed_tiers)
+    item["is_owned"] = check_user_purchase(user["id"], item["id"])
+    
+    return item
+
 @app.post("/api/marketplace/publish")
-def marketplace_publish(req: MarketplacePublishRequest, user: dict = Depends(get_current_user)):
-    """上架商品"""
+def marketplace_publish(req: MarketplacePublishRequest, user: dict = Depends(require_member)):
+    """
+    发布商品（提交审核）（PRD 第7/8章）
+    
+    权限:
+    - Free: 拒绝任何发布
+    - Starter: 仅允许 resource_type='asset' 且 price_credits=0
+    - Pro: 允许 resource_type='asset'|'template' 且 price_credits 在 0..500
+    
+    提交后 moderation_status='pending'，必须管理员审核通过后才能上架
+    """
+    # 1. 校验发布权限
+    perm = publish_permission(user, req.resource_type, req.price_credits)
+    if not perm["allowed"]:
+        raise HTTPException(403, perm["reason"])
+    
+    # 2. 校验 allowed_tiers 白名单
+    tiers_validation = validate_allowed_tiers(req.allowed_tiers)
+    if not tiers_validation["valid"]:
+        raise HTTPException(400, tiers_validation["reason"])
+    
+    # 3. 创建 listing（自动进入 pending 状态）
     listing = create_listing(
         seller_id=user["id"],
         title=req.title,
@@ -772,10 +919,37 @@ def marketplace_publish(req: MarketplacePublishRequest, user: dict = Depends(get
         resource_url=req.resource_url,
         resource_type=req.resource_type,
         price_credits=req.price_credits,
-        allowed_tiers=req.allowed_tiers
+        allowed_tiers=req.allowed_tiers,
+        submit_for_review=True
     )
-    log_activity(user["id"], "marketplace_publish", {"listing_id": listing["id"]})
-    return listing
+    
+    log_activity(user["id"], "marketplace_publish", {
+        "listing_id": listing["id"],
+        "resource_type": req.resource_type,
+        "price_credits": req.price_credits
+    })
+    
+    return {
+        "listing_id": listing["id"],
+        "moderation_status": listing.get("moderation_status", "pending"),
+        "message": "Submitted for review"
+    }
+
+@app.post("/api/marketplace/unpublish")
+def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
+    """
+    下架商品（PRD 第13章）
+    
+    设置 is_public=false，不改变历史 purchases 与 usage_count
+    """
+    result = unpublish_listing(req.listing_id, user["id"])
+    
+    if not result:
+        raise HTTPException(404, "Listing not found or not owned by you")
+    
+    log_activity(user["id"], "marketplace_unpublish", {"listing_id": req.listing_id})
+    
+    return {"status": "unpublished"}
 
 @app.post("/api/marketplace/purchase")
 def marketplace_purchase(req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
@@ -812,9 +986,24 @@ def update_my_listing(listing_id: str, req: ListingUpdateRequest, user: dict = D
 
 @app.get("/api/marketplace/seller/stats")
 def seller_stats(user: dict = Depends(get_current_user)):
-    """获取卖家统计数据"""
+    """获取卖家统计数据（PRD 第13章）"""
     stats = get_seller_stats(user["id"])
     return stats
+
+@app.get("/api/marketplace/leaderboard")
+def marketplace_leaderboard(
+    period: str = "monthly",  # 'monthly' | 'all_time'
+    type: str = "all",  # 'all' | 'template' | 'asset'
+    user: dict = Depends(get_current_user)
+):
+    """
+    获取排行榜（PRD 第9章）
+    
+    返回 Top 10 listings with usage_count and rank
+    仅统计 approved 且 is_public=true 且 is_deleted=false
+    """
+    leaderboard = get_leaderboard(period=period, board_type=type, limit=10)
+    return {"items": leaderboard, "period": period, "type": type}
 
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
@@ -907,3 +1096,105 @@ def adm_projects_feed(page: int = 1, limit: int = 50, admin: dict = Depends(requ
     """获取全站项目流"""
     items = get_all_projects_feed(page, limit)
     return {"items": items, "total": len(items), "page": page}
+
+# --- Admin Marketplace Moderation (PRD 第16章) ---
+@app.get("/api/admin/marketplace/moderation/list")
+def adm_moderation_list(
+    status: Optional[str] = None,  # 'pending' | 'approved' | 'rejected' | 'all'
+    type: Optional[str] = None,  # 'template' | 'asset'
+    page: int = 1,
+    limit: int = 20,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取审核列表（PRD 第16章）
+    
+    Tabs: Pending / Approved / Rejected / All
+    """
+    items = admin_get_moderation_list(
+        status=status,
+        resource_type=type,
+        page=page,
+        limit=limit
+    )
+    return {"items": items, "total": len(items), "page": page}
+
+@app.get("/api/admin/marketplace/moderation/{listing_id}")
+def adm_moderation_detail(listing_id: str, admin: dict = Depends(require_admin)):
+    """
+    获取审核详情（PRD 第16章）
+    
+    预览: thumbnail + resource_url
+    元信息: title/description/allowed_tiers/price_credits
+    """
+    item = admin_get_moderation_detail(listing_id)
+    if not item:
+        raise HTTPException(404, "Listing not found")
+    return item
+
+@app.post("/api/admin/marketplace/moderation/{listing_id}/approve")
+def adm_moderation_approve(listing_id: str, admin: dict = Depends(require_admin)):
+    """
+    批准 listing（PRD 第16章）
+    
+    pending -> approved
+    """
+    result = admin_approve_listing(listing_id, admin["id"])
+    if not result:
+        raise HTTPException(404, "Listing not found")
+    
+    log_activity(admin["id"], "admin_moderation_approve", {"listing_id": listing_id})
+    return {"status": "approved", "listing_id": listing_id}
+
+@app.post("/api/admin/marketplace/moderation/{listing_id}/reject")
+def adm_moderation_reject(
+    listing_id: str, 
+    req: AdminModerationRejectRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    拒绝 listing（PRD 第16章）
+    
+    pending -> rejected（必须附原因）
+    """
+    try:
+        result = admin_reject_listing(listing_id, admin["id"], req.reason)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    
+    if not result:
+        raise HTTPException(404, "Listing not found")
+    
+    log_activity(admin["id"], "admin_moderation_reject", {
+        "listing_id": listing_id,
+        "reason": req.reason
+    })
+    return {"status": "rejected", "listing_id": listing_id, "reason": req.reason}
+
+@app.post("/api/admin/marketplace/moderation/{listing_id}/delete")
+def adm_moderation_delete(listing_id: str, admin: dict = Depends(require_admin)):
+    """
+    软删除 listing（PRD 第16章）
+    
+    设置 is_deleted=true
+    """
+    result = admin_delete_listing(listing_id)
+    if not result:
+        raise HTTPException(404, "Listing not found")
+    
+    log_activity(admin["id"], "admin_moderation_delete", {"listing_id": listing_id})
+    return {"status": "deleted", "listing_id": listing_id}
+
+@app.post("/api/admin/marketplace/moderation/{listing_id}/unpublish")
+def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admin)):
+    """
+    强制下架 listing（PRD 第16章）
+    
+    设置 is_public=false
+    """
+    result = admin_unpublish_listing(listing_id)
+    if not result:
+        raise HTTPException(404, "Listing not found")
+    
+    log_activity(admin["id"], "admin_moderation_unpublish", {"listing_id": listing_id})
+    return {"status": "unpublished", "listing_id": listing_id}
