@@ -10,6 +10,7 @@ from db_service import supabase
 from .credit_service import CreditService
 from .marketplace_service import MarketplaceService
 from .access_control import AccessControl
+from .resource_service import ResourceService
 
 
 class ServiceFactory:
@@ -21,6 +22,7 @@ class ServiceFactory:
     _credit_service: CreditService = None
     _marketplace_service: MarketplaceService = None
     _access_control: AccessControl = None
+    _resource_service: ResourceService = None
     
     @classmethod
     def get_credit_service(cls) -> CreditService:
@@ -42,6 +44,13 @@ class ServiceFactory:
         if cls._access_control is None:
             cls._access_control = AccessControl()
         return cls._access_control
+    
+    @classmethod
+    def get_resource_service(cls) -> ResourceService:
+        """Get ResourceService singleton."""
+        if cls._resource_service is None:
+            cls._resource_service = ResourceService(supabase)
+        return cls._resource_service
 
 
 # Convenience functions
@@ -60,14 +69,21 @@ def get_access_control() -> AccessControl:
     return ServiceFactory.get_access_control()
 
 
+def get_resource_service() -> ResourceService:
+    """Get ResourceService instance."""
+    return ServiceFactory.get_resource_service()
+
+
 # Re-export service classes for type hints
 __all__ = [
     'ServiceFactory',
     'get_credit_service',
     'get_marketplace_service', 
     'get_access_control',
+    'get_resource_service',
     'CreditService',
     'MarketplaceService',
     'AccessControl',
+    'ResourceService',
 ]
 
