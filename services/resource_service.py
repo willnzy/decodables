@@ -149,9 +149,19 @@ class ResourceService:
         
         # Process items - add access info
         processed_items = []
+        user_tier = user.get("tier", "free") if user else "free"
+        
         for item in items:
             allowed_tiers = item.get("allowed_tiers", ["free"])
+            item_type = item.get("type", "")
+            
+            # Base access check based on allowed_tiers
             is_accessible = self.access_control.can_access_resource(user, allowed_tiers)
+            
+            # PRD v3.2: Project Template is only accessible to Pro users
+            # Even if allowed_tiers would grant access, Starter cannot use templates
+            if item_type == "template" and user_tier != "pro":
+                is_accessible = False
             
             # Skip locked items if not including them
             if not is_accessible and not include_locked:
@@ -194,7 +204,14 @@ class ResourceService:
         
         item = result.data
         allowed_tiers = item.get("allowed_tiers", ["free"])
+        item_type = item.get("type", "")
+        user_tier = user.get("tier", "free") if user else "free"
+        
         is_accessible = self.access_control.can_access_resource(user, allowed_tiers)
+        
+        # PRD v3.2: Project Template is only accessible to Pro users
+        if item_type == "template" and user_tier != "pro":
+            is_accessible = False
         
         return {
             **item,

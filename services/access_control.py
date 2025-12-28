@@ -214,6 +214,7 @@ class AccessControl:
         Validates:
         - Listing is approved, public, not deleted
         - User has access based on allowed_tiers
+        - PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
         
         Args:
             user: User profile dict
@@ -230,10 +231,16 @@ class AccessControl:
         if listing.get("is_deleted", False):
             return (False, "Listing has been deleted")
         
-        # Check tier access
+        # Check tier access for allowed_tiers
         allowed_tiers = listing.get("allowed_tiers", ["free"])
         if not AccessControl.can_access_resource(user, allowed_tiers):
             return (False, f"Requires {'/'.join(allowed_tiers)} membership")
+        
+        # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
+        resource_type = listing.get("resource_type", "asset")
+        user_tier = user.get("tier", "free")
+        if resource_type == "template" and user_tier != "pro":
+            return (False, "Only Pro members can purchase templates. Upgrade to Pro to access templates.")
         
         return (True, None)
 

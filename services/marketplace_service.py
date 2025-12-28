@@ -82,6 +82,12 @@ class MarketplaceService:
         if not self.access_control.can_access_resource(buyer, allowed_tiers):
             return {"success": False, "status": 403, "error": f"Requires {'/'.join(allowed_tiers)} membership"}
         
+        # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
+        resource_type = listing.get("resource_type", "asset")
+        buyer_tier = buyer.get("tier", "free")
+        if resource_type == "template" and buyer_tier != "pro":
+            return {"success": False, "status": 403, "error": "Only Pro members can purchase templates. Upgrade to Pro to access templates."}
+        
         # Check if already purchased
         existing = self.supabase.table("user_purchases").select(
             "id"
