@@ -416,6 +416,53 @@ def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: d
     target_proj = project_id if scope != "all" else None
     return get_assets(user["id"], target_proj)
 
+@app.post("/api/user/assets")
+async def upload_asset(
+    file: UploadFile = File(...),
+    project_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """上传用户素材图片"""
+    import uuid
+    from supabase import create_client
+    
+    # 验证文件类型
+    allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, f"Unsupported file type: {file.content_type}")
+    
+    # 验证文件大小 (5MB)
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Maximum size is 5MB")
+    
+    # 生成唯一文件名 - 使用 generated-images bucket (已存在)
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
+    filename = f"uploads/{user['id']}/{uuid.uuid4()}.{ext}"
+    
+    # 上传到 Supabase Storage
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
+    storage_client = create_client(supabase_url, supabase_key)
+    
+    try:
+        # 上传文件到 generated-images bucket
+        storage_client.storage.from_("generated-images").upload(
+            path=filename,
+            file=contents,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # 获取公开 URL
+        url = storage_client.storage.from_("generated-images").get_public_url(filename)
+        
+        # 保存到 assets 表
+        save_asset(user["id"], url, "uploaded", project_id)
+        
+        return {"url": url, "filename": filename}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to upload file: {str(e)}")
+
 @app.get("/api/user/purchases")
 def my_purchases(page: int = 1, limit: int = 50, user: dict = Depends(get_current_user)):
     """获取用户已购买的商品"""
