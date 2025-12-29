@@ -117,12 +117,16 @@ create table if not exists assets (
   user_id text references profiles(id) not null,
   project_id uuid references projects(id), -- 可为空
   url text not null,
-  type text not null, -- 'user_upload' | 'ai_generated'
+  type text not null, -- 'uploaded' | 'ai_generated' | 'scanned'
   prompt text,
+  metadata jsonb, -- 存储扫描结果、画布元素等结构化数据
   is_deleted boolean default false,
   created_at timestamptz default now()
 );
 create index if not exists idx_assets_user_proj on assets(user_id, project_id);
+
+-- 添加 metadata 字段（如果表已存在）
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
 
 -- 8. 站内信/通知表 (Notifications)
 create table if not exists notifications (

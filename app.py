@@ -620,47 +620,201 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "balance_permanent": result["balance_permanent"]
     }
 
-# [修复] 真实 OCR 接口
+# [升级] 高级 OCR 接口 - 支持识别表格、文字、图片区域
 @app.post("/api/tools/ocr")
 @limiter.limit("10/minute")
-async def ocr_tool(request: Request, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """智能识图 - Pro 或 Trial 可用"""
-    # Pro 用户可无限使用，其他用户需要 Trial 逻辑（这里简化为仅 Pro）
+async def ocr_tool(
+    request: Request, 
+    file: UploadFile = File(...), 
+    project_id: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user)
+):
+    """
+    高级智能识图 - Pro 可用
+    
+    识别图片中的：
+    - 文字内容（支持多语言）
+    - 表格结构
+    - 手绘图片区域
+    
+    返回结构化 JSON，可直接添加到画布
+    """
     if user["tier"] != "pro":
         raise HTTPException(status_code=403, detail="Upgrade to Teacher Pro to use Smart Scan")
     
     # 扣费 5 Credits
     try:
-        result = credit_deduct(user["id"], 5, "ocr", "Smart Scan")
+        credit_result = credit_deduct(user["id"], 5, "ocr", "Smart Scan")
     except Exception as e:
         if "INSUFFICIENT" in str(e):
             raise HTTPException(402, "Insufficient credits")
         raise
     
     try:
-        # 读取文件内容并转 Base64
+        # 读取文件内容
         contents = await file.read()
         base64_image = base64.b64encode(contents).decode('utf-8')
         
-        # 调用 OpenAI Vision
+        # 上传原始图片到 Supabase Storage
+        import uuid
+        from image_generator import supabase as storage_supabase, BUCKET_NAME
+        
+        ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
+        filename = f"scans/{user['id']}/{uuid.uuid4()}.{ext}"
+        
+        source_image_url = None
+        if storage_supabase:
+            try:
+                storage_supabase.storage.from_(BUCKET_NAME).upload(
+                    path=filename,
+                    file=contents,
+                    file_options={"content-type": file.content_type or "image/png"}
+                )
+                source_image_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
+            except Exception as upload_err:
+                print(f"Failed to upload scan source: {upload_err}")
+        
+        # 使用 GPT-4o 进行高级 OCR
+        ocr_prompt = """Analyze this image and extract all content in a structured JSON format.
+
+Identify and extract:
+1. **Text blocks**: Any text content with its approximate position
+2. **Tables**: If there are tables, extract them as structured data
+3. **Image regions**: Hand-drawn illustrations or images (describe them)
+
+Return a JSON object with this exact structure:
+{
+  "blocks": [
+    {
+      "type": "text",
+      "content": "The actual text content",
+      "style": "title" | "paragraph" | "bullet" | "handwritten",
+      "position": "top" | "middle" | "bottom"
+    },
+    {
+      "type": "table",
+      "rows": 3,
+      "cols": 2,
+      "cells": [["Header1", "Header2"], ["Cell1", "Cell2"], ["Cell3", "Cell4"]],
+      "position": "top" | "middle" | "bottom"
+    },
+    {
+      "type": "image",
+      "description": "Description of the hand-drawn or image content",
+      "position": "top" | "middle" | "bottom"
+    }
+  ],
+  "summary": "Brief summary of what this page contains"
+}
+
+Important:
+- Extract ALL text exactly as written
+- Preserve table structure accurately
+- Describe images/drawings in detail for AI regeneration
+- Return ONLY valid JSON, no markdown code blocks"""
+
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini", # 或 gpt-4o
+            model="gpt-4o",  # 使用 GPT-4o 获得最佳识别效果
             messages=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Describe this sketch for a children's book illustration prompt. Keep it short."},
+                        {"type": "text", "text": ocr_prompt},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                     ],
                 }
             ],
-            max_tokens=100
+            max_tokens=2000,
+            response_format={"type": "json_object"}
         )
-        description = response.choices[0].message.content
-        return {"text": description, "balance": result["total"]}
+        
+        # 解析 OCR 结果
+        import json
+        ocr_result = json.loads(response.choices[0].message.content)
+        
+        # 转换为画布元素
+        canvas_elements = []
+        y_offset = 50
+        
+        for block in ocr_result.get("blocks", []):
+            if block["type"] == "text":
+                canvas_elements.append({
+                    "type": "text",
+                    "content": block["content"],
+                    "x": 50,
+                    "y": y_offset,
+                    "width": 400,
+                    "fontSize": 24 if block.get("style") == "title" else 16,
+                    "fontWeight": "bold" if block.get("style") == "title" else "normal"
+                })
+                y_offset += 60 if block.get("style") == "title" else 40
+                
+            elif block["type"] == "table":
+                canvas_elements.append({
+                    "type": "table",
+                    "rows": block["rows"],
+                    "cols": block["cols"],
+                    "cells": block["cells"],
+                    "x": 50,
+                    "y": y_offset,
+                    "width": 400,
+                    "height": block["rows"] * 40
+                })
+                y_offset += block["rows"] * 40 + 20
+                
+            elif block["type"] == "image":
+                canvas_elements.append({
+                    "type": "image_placeholder",
+                    "description": block["description"],
+                    "x": 50,
+                    "y": y_offset,
+                    "width": 200,
+                    "height": 200
+                })
+                y_offset += 220
+        
+        # 保存到 assets 表
+        scan_data = {
+            "source_image_url": source_image_url,
+            "ocr_result": ocr_result,
+            "canvas_elements": canvas_elements
+        }
+        
+        # 存储为 scanned 类型的 asset
+        asset_id = None
+        try:
+            asset_result = supabase.table("assets").insert({
+                "user_id": user["id"],
+                "project_id": project_id,
+                "url": source_image_url or "",
+                "type": "scanned",
+                "metadata": scan_data
+            }).execute()
+            if asset_result.data:
+                asset_id = asset_result.data[0]["id"]
+        except Exception as save_err:
+            print(f"Failed to save scanned asset: {save_err}")
+        
+        return {
+            "success": True,
+            "asset_id": asset_id,
+            "source_image_url": source_image_url,
+            "ocr_result": ocr_result,
+            "canvas_elements": canvas_elements,
+            "summary": ocr_result.get("summary", ""),
+            "balance": credit_result["total"],
+            "balance_monthly": credit_result["balance_monthly"],
+            "balance_permanent": credit_result["balance_permanent"]
+        }
+        
+    except json.JSONDecodeError as je:
+        print(f"OCR JSON Parse Error: {je}")
+        raise HTTPException(500, "Failed to parse OCR result")
     except Exception as e:
         print(f"OCR Error: {e}")
-        raise HTTPException(500, "OCR Failed")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"OCR Failed: {str(e)}")
 
 # --- Export ---
 
