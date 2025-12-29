@@ -87,6 +87,7 @@ create table if not exists projects (
 );
 
 -- 5. 市场商品表 (Marketplace Listings)
+-- PRD 定义: 强制审核后上架 + 定价上限 + 使用次数统计
 create table if not exists marketplace_listings (
   id uuid default gen_random_uuid() primary key,
   seller_id text references profiles(id), -- NULL = 官方资源
@@ -94,14 +95,22 @@ create table if not exists marketplace_listings (
   description text,
   thumbnail_url text not null,
   resource_url text not null,
-  resource_type text not null, -- 'template', 'sticker', 'image'
-  price_credits int default 0, -- 0 = Free
+  resource_type text not null, -- 'template' | 'asset'（可细分 'image'|'sticker'）
+  price_credits int not null default 0, -- 0..500
+  allowed_tiers text[] not null default '{free, starter, pro}', -- 分级访问与购买
 
-  allowed_tiers text[] default '{free, starter, pro}', -- 分级访问与购买
+  usage_count bigint default 0, -- 使用次数（排行榜用）
+  sales_count int default 0, -- 销售次数
 
-  sales_count int default 0,
   is_public boolean default false,
   is_deleted boolean default false,
+
+  -- 审核相关字段（PRD 强制审核后上架）
+  moderation_status text not null default 'draft', -- 'draft'|'pending'|'approved'|'rejected'
+  moderation_note text, -- 拒绝原因或管理员备注
+  moderated_by text references profiles(id), -- 审核人
+  moderated_at timestamptz, -- 审核时间
+
   created_at timestamptz default now()
 );
 
@@ -180,6 +189,29 @@ create table if not exists support_tickets (
   created_at timestamptz default now()
 );
 
+-- 12. Listing 使用记录表 (Listing Usage - 去重计数)
+-- PRD 定义: 用于统计 usage_count，去重规则 (listing_id, user_id, project_id)
+create table if not exists listing_usage (
+  id uuid default gen_random_uuid() primary key,
+  listing_id uuid references marketplace_listings(id) not null,
+  used_by_user_id text references profiles(id) not null,
+  project_id uuid references projects(id) not null,
+  used_at timestamptz default now(),
+  unique(listing_id, used_by_user_id, project_id)
+);
+
+-- 13. 排行榜快照表 (Leaderboard Snapshots - 缓存榜单)
+-- PRD 定义: 可选，用于缓存周期性榜单数据
+create table if not exists leaderboard_snapshots (
+  id uuid default gen_random_uuid() primary key,
+  period_start date not null,
+  period_end date not null,
+  board_type text not null, -- 'all' | 'template' | 'asset'
+  top_list jsonb not null, -- [{listing_id, usage_count, rank}, ...]
+  created_at timestamptz default now(),
+  unique(period_start, period_end, board_type)
+);
+
 -- ==========================================
 -- Part 2: RLS 安全策略配置
 -- ==========================================
@@ -194,6 +226,8 @@ ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
 
 create or replace function is_admin() returns boolean language sql security definer as $$
 select exists (
@@ -281,6 +315,20 @@ drop policy if exists "Users CRUD own tickets or Admin manage all" on support_ti
 create policy "Users CRUD own tickets or Admin manage all" on support_tickets for all
 using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
 
+-- [Listing Usage]
+drop policy if exists "Users can insert own usage" on listing_usage;
+create policy "Users can insert own usage" on listing_usage for insert
+with check ((select auth.jwt() ->> 'sub') = used_by_user_id);
+
+drop policy if exists "Users view own usage or Admin view all" on listing_usage;
+create policy "Users view own usage or Admin view all" on listing_usage for select
+using ((select auth.jwt() ->> 'sub') = used_by_user_id or is_admin());
+
+-- [Leaderboard Snapshots]
+drop policy if exists "Public can view leaderboard" on leaderboard_snapshots;
+create policy "Public can view leaderboard" on leaderboard_snapshots for select
+using (true);
+
 -- ==========================================
 -- Part 3: 迁移脚本（如果从旧版本升级）
 -- ==========================================
@@ -309,12 +357,45 @@ using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
 -- UPDATE system_resources SET allowed_tiers = CASE WHEN is_pro_only THEN '{pro}' ELSE '{free, starter, pro}' END;
 
 -- ==========================================
--- Part 4: v3.1 迁移脚本（Advanced OCR 功能）
+-- Part 4: v3.1 迁移脚本（PRD 完整对齐 + Advanced OCR）
 -- ==========================================
--- 如果从 v3.0 升级到 v3.1，请运行以下命令：
+-- 如果从旧版本升级，请运行以下迁移命令：
 
--- 1. 添加 metadata 字段到 assets 表（存储 OCR 扫描结果）
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
+-- 1. marketplace_listings 表新增字段（审核系统 + 使用统计）
+ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS usage_count bigint default 0;
+ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_status text not null default 'draft';
+ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_note text;
+ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_by text references profiles(id);
+ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_at timestamptz;
 
--- 2. 如果需要，更新旧的 type 值（可选）
--- UPDATE assets SET type = 'uploaded' WHERE type = 'user_upload';
+-- 2. assets 表新增字段（OCR 扫描结果）
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
+
+-- 3. 创建 listing_usage 表（如果不存在）
+CREATE TABLE IF NOT EXISTS listing_usage (
+  id uuid default gen_random_uuid() primary key,
+  listing_id uuid references marketplace_listings(id) not null,
+  used_by_user_id text references profiles(id) not null,
+  project_id uuid references projects(id) not null,
+  used_at timestamptz default now(),
+  unique(listing_id, used_by_user_id, project_id)
+);
+ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
+
+-- 4. 创建 leaderboard_snapshots 表（如果不存在）
+CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
+  id uuid default gen_random_uuid() primary key,
+  period_start date not null,
+  period_end date not null,
+  board_type text not null,
+  top_list jsonb not null,
+  created_at timestamptz default now(),
+  unique(period_start, period_end, board_type)
+);
+ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
+
+-- 5. 将旧的 'user_upload' type 更新为 'uploaded'（如果有旧数据）
+UPDATE assets SET type = 'uploaded' WHERE type = 'user_upload';
+
+-- 6. 将没有审核状态的旧 listings 设置为 approved（已上线数据）
+UPDATE marketplace_listings SET moderation_status = 'approved' WHERE moderation_status IS NULL AND is_public = true;
