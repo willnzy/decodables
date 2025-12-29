@@ -620,10 +620,21 @@ def get_stickers(user: dict = Depends(get_current_user)):
 
 # --- Projects ---
 @app.get("/api/projects")
-def list_projects(page: int=1, limit: int=6, search: str = None, user: dict = Depends(get_current_user)):
-    """获取用户项目列表，支持分页和搜索"""
-    print(f"[API] list_projects: page={page}, limit={limit}, search={search}, user_id={user['id']}")
-    items = get_user_projects(user["id"], page, limit, search)
+def list_projects(
+    page: int = 1, 
+    limit: int = 6, 
+    search: str = None, 
+    include_canvas_data: bool = True,  # 新增：是否包含 canvas_data（用于分步加载）
+    user: dict = Depends(get_current_user)
+):
+    """获取用户项目列表，支持分页和搜索
+    
+    分步加载优化：
+    - include_canvas_data=false: 只返回基本信息（快速加载）
+    - include_canvas_data=true: 返回完整信息包括 canvas_data（用于渲染预览图）
+    """
+    print(f"[API] list_projects: page={page}, limit={limit}, search={search}, include_canvas_data={include_canvas_data}, user_id={user['id']}")
+    items = get_user_projects(user["id"], page, limit, search, include_canvas_data)
     # 使用 count_user_projects 获取准确的项目总数
     total_count = count_user_projects(user["id"], search)
     print(f"[API] list_projects: items={len(items) if items else 0}, total={total_count}")

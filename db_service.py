@@ -484,14 +484,28 @@ def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
 # 3. 项目管理 (Projects)
 # ==========================================
 
-def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str = None):
-    """获取项目列表（包含 canvas_data 用于缩略图预览）"""
+def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str = None, include_canvas_data: bool = True):
+    """获取项目列表
+    
+    Args:
+        user_id: 用户ID
+        page: 页码
+        limit: 每页数量
+        search: 搜索关键词
+        include_canvas_data: 是否包含 canvas_data（用于分步加载优化）
+    """
     start = (page - 1) * limit
     end = start + limit - 1
-    print(f"[GET_PROJECTS] Query params: user_id={user_id}, page={page}, limit={limit}, search={search}, start={start}, end={end}")
+    print(f"[GET_PROJECTS] Query params: user_id={user_id}, page={page}, limit={limit}, search={search}, include_canvas_data={include_canvas_data}")
     
-    # Include created_at for project limit check (PRD v3.2)
-    query = supabase.table("projects").select("id, title, thumbnail_url, canvas_data, created_at, updated_at")\
+    # 根据 include_canvas_data 决定查询字段
+    if include_canvas_data:
+        select_fields = "id, title, thumbnail_url, canvas_data, created_at, updated_at"
+    else:
+        # 不包含 canvas_data，只返回基本信息（加载更快）
+        select_fields = "id, title, thumbnail_url, created_at, updated_at"
+    
+    query = supabase.table("projects").select(select_fields)\
         .eq("user_id", user_id).eq("is_deleted", False)
     
     # Add search filter if provided
