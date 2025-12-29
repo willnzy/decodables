@@ -60,17 +60,66 @@ app = FastAPI(title="MagicZine AI API v3.0 (Production)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# CORS 配置 - 明确允许的来源
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",                      # 👈 关键！允许本地开发环境
-        "https://make-decodables.vercel.app",         # 您的 Vercel 生产环境域名
-        "https://decodables-production.up.railway.app" # 允许 Swagger UI 自身调用
-    ], 
+        "http://localhost:3000",                      # 本地开发环境
+        "http://127.0.0.1:3000",                      # 本地开发环境（备用）
+        "https://make-decodables.vercel.app",         # Vercel 生产环境
+        "https://decodables-production.up.railway.app" # Railway API 自身
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # 预检请求缓存时间（秒）
 )
+
+# 全局异常处理器 - 确保所有错误响应都包含 CORS 头
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    全局异常处理器，确保所有错误响应都包含 CORS 头
+    """
+    import traceback
+    print(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
+    print(traceback.format_exc())
+    
+    # 获取请求的 origin
+    origin = request.headers.get("origin")
+    cors_headers = {}
+    if origin and origin in [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://make-decodables.vercel.app",
+        "https://decodables-production.up.railway.app"
+    ]:
+        cors_headers = {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    
+    # 如果是 HTTPException，保持原有状态码
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=cors_headers
+        )
+    
+    # 其他异常返回 500
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error": str(exc) if os.environ.get("ENV") == "development" else "An error occurred"
+        },
+        headers=cors_headers
+    )
 
 # ==========================================
 # 1. 鉴权依赖 (Auth)
@@ -1131,25 +1180,37 @@ def marketplace_items(
     公共列表默认返回: moderation_status='approved' AND is_public=true AND is_deleted=false
     mine=true 时返回本人全状态
     """
-    items = get_marketplace_listings(
-        featured=featured,
-        resource_type=resource_type,
-        page=page,
-        limit=limit,
-        sort=sort,
-        tier_filter=tier,
-        price_filter=price,
-        mine=mine,
-        user_id=user["id"] if mine else None
-    )
-    
-    # 为每个商品添加用户可访问性和购买状态
-    for item in items:
-        allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
-        item["is_accessible"] = can_access_resource(user, allowed_tiers)
-        item["is_owned"] = check_user_purchase(user["id"], item["id"])
-    
-    return {"items": items, "total": len(items), "page": page}
+    try:
+        items = get_marketplace_listings(
+            featured=featured,
+            resource_type=resource_type,
+            page=page,
+            limit=limit,
+            sort=sort,
+            tier_filter=tier,
+            price_filter=price,
+            mine=mine,
+            user_id=user["id"] if mine else None
+        )
+        
+        # 为每个商品添加用户可访问性和购买状态
+        for item in items:
+            try:
+                allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
+                item["is_accessible"] = can_access_resource(user, allowed_tiers)
+                item["is_owned"] = check_user_purchase(user["id"], item["id"])
+            except Exception as e:
+                print(f"Error processing item {item.get('id', 'unknown')}: {e}")
+                # 设置默认值
+                item["is_accessible"] = False
+                item["is_owned"] = False
+        
+        return {"items": items, "total": len(items), "page": page}
+    except Exception as e:
+        import traceback
+        print(f"Error in marketplace_items: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to load marketplace items: {str(e)}")
 
 @app.get("/api/marketplace/item/{listing_id}")
 def marketplace_item_detail(
