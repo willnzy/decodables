@@ -26,6 +26,7 @@ from db_service import (
     # 项目
     get_user_projects, get_project_detail, create_project, save_project,
     soft_delete_project, restore_project, update_project_hash, get_all_projects_feed,
+    count_user_projects,  # 准确计算项目总数
     # 素材
     save_asset, get_assets, get_system_resources,
     # Marketplace
@@ -619,9 +620,14 @@ def get_stickers(user: dict = Depends(get_current_user)):
 
 # --- Projects ---
 @app.get("/api/projects")
-def list_projects(page: int=1, limit: int=20, user: dict = Depends(get_current_user)):
-    items = get_user_projects(user["id"], page, limit)
-    return {"items": items, "total": len(items), "page": page}
+def list_projects(page: int=1, limit: int=20, search: str = None, user: dict = Depends(get_current_user)):
+    """获取用户项目列表，支持分页和搜索"""
+    print(f"[API] list_projects: page={page}, limit={limit}, search={search}, user_id={user['id']}")
+    items = get_user_projects(user["id"], page, limit, search)
+    # 使用 count_user_projects 获取准确的项目总数
+    total_count = count_user_projects(user["id"], search)
+    print(f"[API] list_projects: items={len(items) if items else 0}, total={total_count}")
+    return {"items": items, "total": total_count, "page": page}
 
 class ProjectCreate(BaseModel):
     title: Optional[str] = "My Magic Story"
