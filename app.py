@@ -413,12 +413,15 @@ def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: d
     """
     获取用户素材
     
-    素材上传时只与用户关联，不与项目关联。
-    所有用户都可以看到自己的全部素材。
-    project_id 参数已弃用，保留仅为向后兼容。
+    - Starter用户：只能看到当前项目的素材
+    - Pro用户：可以看到所有项目的素材（Cross-Project History）
+    - 购买的素材：不受项目限制
     """
-    # 返回用户的所有素材（不再按项目过滤）
-    return get_assets(user["id"], None)
+    # Pro 用户可以访问所有历史素材
+    if scope == "all" and user["tier"] != "pro":
+        raise HTTPException(403, "Pro required for cross-project history")
+    target_proj = project_id if scope != "all" else None
+    return get_assets(user["id"], target_proj)
 
 @app.post("/api/user/assets")
 async def upload_asset(
