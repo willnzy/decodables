@@ -509,7 +509,10 @@ def count_user_projects(user_id: str, search: str = None):
     """获取用户项目总数（用于分页和限制检查）"""
     try:
         print(f"[COUNT] Starting count query for user_id: {user_id}, search: {search}")
-        query = supabase.table("projects").select("id", count="exact")\
+        
+        # 方法1: 直接查询所有符合条件的项目ID，然后计数
+        # 这是最可靠的方式，避免 Supabase count 参数的兼容性问题
+        query = supabase.table("projects").select("id")\
             .eq("user_id", user_id).eq("is_deleted", False)
         
         # Add search filter if provided
@@ -519,30 +522,9 @@ def count_user_projects(user_id: str, search: str = None):
             query = query.ilike("title", f"%{search_term}%")
         
         res = query.execute()
-        print(f"[COUNT] Query executed. Response type: {type(res)}")
-        print(f"[COUNT] Response attributes: {dir(res)}")
         
-        # Supabase returns count in different ways depending on client version
-        # Try multiple ways to get count
-        count_value = None
-        if hasattr(res, 'count') and res.count is not None:
-            count_value = res.count
-            print(f"[COUNT] Found count in res.count: {count_value}")
-        elif hasattr(res, 'data') and isinstance(res.data, list):
-            # If count query returns data, use length (fallback)
-            count_value = len(res.data)
-            print(f"[COUNT] Using len(res.data) as fallback: {count_value}")
-        else:
-            # Fallback: query without count to get actual count
-            print(f"[COUNT] Using fallback: querying all projects")
-            all_res = supabase.table("projects").select("id")\
-                .eq("user_id", user_id).eq("is_deleted", False)
-            if search and search.strip():
-                all_res = all_res.ilike("title", f"%{search.strip()}%")
-            all_data = all_res.execute()
-            count_value = len(all_data.data) if all_data.data else 0
-            print(f"[COUNT] Fallback count: {count_value}")
-        
+        # 直接使用返回的数据长度作为计数
+        count_value = len(res.data) if res.data else 0
         print(f"[COUNT] Final count: {count_value}")
         return count_value
     except Exception as e:
