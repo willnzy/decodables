@@ -674,45 +674,54 @@ async def ocr_tool(
             except Exception as upload_err:
                 print(f"Failed to upload scan source: {upload_err}")
         
-        # 使用 GPT-4o 进行高级 OCR
-        ocr_prompt = """You are an expert OCR system. Extract ALL text and visual elements from this image.
+        # 使用 GPT-4o 进行高级 OCR - 自适应提示词
+        ocr_prompt = """You are an expert OCR and content analysis system. 
 
-CRITICAL RULES:
-1. **Extract ALL readable text** - including text in logos, banners, signs, buttons, labels
-2. **Each text element should be a separate block** - don't merge different text areas
-3. **Tables** - extract as structured data with cells
-4. **Icons/Graphics** - describe non-text visual elements separately
+STEP 1: First, identify what type of content this image contains:
+- Document/Worksheet: forms, worksheets, printed documents
+- Handwritten: notes, handwriting, sketches with text
+- Logo/Brand: logos, banners, marketing materials
+- Photo with text: photos containing signs, labels, or captions
+- Table/Data: spreadsheets, data tables
+- Mixed: combination of the above
 
-Return a JSON object with this structure:
+STEP 2: Based on the content type, extract ALL information appropriately.
+
+OUTPUT FORMAT (JSON):
 {
+  "content_type": "document" | "handwritten" | "logo" | "photo" | "table" | "mixed",
   "blocks": [
     {
       "type": "text",
-      "content": "The exact text as it appears",
-      "style": "title" | "heading" | "paragraph" | "bullet" | "label" | "handwritten",
+      "content": "Exact text as it appears - MUST extract ALL readable text",
+      "style": "title" | "heading" | "paragraph" | "bullet" | "label" | "handwritten" | "logo_text",
       "position": "top" | "middle" | "bottom"
     },
     {
       "type": "table",
       "rows": 3,
-      "cols": 2,
-      "cells": [["Header1", "Header2"], ["Cell1", "Cell2"], ["Cell3", "Cell4"]],
+      "cols": 2, 
+      "cells": [["Cell content..."]],
       "position": "top" | "middle" | "bottom"
     },
     {
       "type": "image",
-      "description": "Description of icons, illustrations, or graphics (NOT text)",
+      "description": "Detailed description of non-text visuals (icons, illustrations, photos)",
       "position": "top" | "middle" | "bottom"
     }
   ],
-  "summary": "Brief summary of the content"
+  "summary": "What this image contains and its purpose"
 }
 
-IMPORTANT:
-- TEXT IN LOGOS MUST BE EXTRACTED as "text" blocks, not described as images
-- If you see "ABC Company", extract "ABC Company" as text, don't say "logo with text"
-- Extract text EXACTLY as written, preserving spelling and capitalization
-- Return ONLY valid JSON"""
+CRITICAL EXTRACTION RULES:
+1. **ALL TEXT MUST BE EXTRACTED** - every readable character, word, sentence
+2. **Logo text is still TEXT** - "Make Decodables" in a logo = text block with style "logo_text"
+3. **Separate blocks for separate text areas** - don't merge unrelated text
+4. **Tables must preserve structure** - extract cell by cell
+5. **Handwriting** - transcribe as accurately as possible, mark style as "handwritten"
+6. **Numbers, dates, codes** - extract exactly as shown
+
+Return ONLY valid JSON, no markdown formatting."""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o",  # 使用 GPT-4o 获得最佳识别效果
