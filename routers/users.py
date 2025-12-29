@@ -18,16 +18,17 @@ router = APIRouter(prefix="/api/user", tags=["users"])
 @router.get("/me")
 def get_me(user: dict = Depends(get_current_user)):
     """
-    Get current user info.
+    Get current user info (PRD v3.2).
     
     Returns:
-        User profile with credits breakdown and tier info
+        User profile with credits breakdown, tier info, and created_at for Free trial check
     """
     return {
         "id": user["id"],
         "email": user.get("email"),
         "username": user.get("username"),
         "avatar_url": user.get("avatar_url"),
+        "created_at": user.get("created_at"),  # For Free 7-day trial check
         "tier": user.get("tier", "free"),
         "subscription_status": user.get("subscription_status", "inactive"),
         "credits_monthly": user.get("credits_monthly", 0),

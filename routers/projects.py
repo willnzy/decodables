@@ -6,6 +6,7 @@ Handles project-related API endpoints
 """
 
 from typing import Optional, List
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from dependencies import get_current_user
@@ -35,23 +36,61 @@ class ProjectUpdate(BaseModel):
 @router.get("")
 def list_projects(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
     """
-    Get user's projects with pagination.
+    Get user's projects with pagination (PRD v3.2).
     
     Returns:
         Projects list with pagination info
+        Note: Projects exceeding tier limit may be read-only
     """
     items = get_user_projects(user["id"], page, limit)
-    return {"items": items, "total": len(items), "page": page}
+    
+    # Calculate total count (for project limit check)
+    # Get all projects to count total (simplified - for production, use a count query)
+    all_items = get_user_projects(user["id"], page=1, limit=1000)
+    total_count = len(all_items)
+    
+    return {
+        "items": items, 
+        "total": total_count,  # Return actual total for limit checking
+        "page": page
+    }
 
 
 @router.post("")
 def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     """
-    Create a new project.
+    Create a new project (PRD v3.2).
+    
+    - Checks project limit based on tier:
+      - Free: 1 project
+      - Starter: 20 projects
+      - Pro: 200 projects
     
     Returns:
         Created project
+    
+    Raises:
+        HTTPException: 403 if project limit reached
     """
+    # Get current project count
+    existing_projects = get_user_projects(user["id"], page=1, limit=1000)
+    current_count = len(existing_projects)
+    
+    # Get max projects for tier (PRD v3.2)
+    tier_limits = {
+        "free": 1,
+        "starter": 20,
+        "pro": 200
+    }
+    max_projects = tier_limits.get(user.get("tier", "free"), 1)
+    
+    if current_count >= max_projects:
+        raise HTTPException(
+            403,
+            f"You have reached the maximum number of projects ({max_projects}). "
+            f"Please upgrade to create more projects."
+        )
+    
     return db_create_project(user["id"], req.title, req.canvas_data)
 
 
@@ -77,13 +116,75 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
     """
     Save/update project (PRD v3.2).
     
+    - Free 用户 7天游玩期检查：如果注册超过7天，阻止编辑
+    - 项目数量限制检查：如果降级后超过限制，阻止编辑
     - Save Project does NOT charge credits
     - Validates access to referenced listings
     - Records listing usage for usage_count
     
     Returns:
         Updated project with locked_elements info
+    
+    Raises:
+        HTTPException: 403 if Free user trial expired or project limit exceeded
     """
+    # Check Free user 7-day trial period (PRD v3.2)
+    if user.get("tier") == "free":
+        created_at = user.get("created_at")
+        if created_at:
+            try:
+                # Parse created_at (handle both ISO format and string)
+                if isinstance(created_at, str):
+                    # Remove 'Z' and add timezone if needed
+                    created_at_str = created_at.replace('Z', '+00:00')
+                    registration_date = datetime.fromisoformat(created_at_str)
+                else:
+                    registration_date = created_at
+                
+                # Ensure timezone-aware
+                if registration_date.tzinfo is None:
+                    registration_date = registration_date.replace(tzinfo=timezone.utc)
+                
+                now = datetime.now(timezone.utc)
+                days_since_registration = (now - registration_date).total_seconds() / (24 * 3600)
+                
+                if days_since_registration > 7:
+                    raise HTTPException(
+                        403,
+                        "Your 7-day trial period has expired. Please upgrade to continue editing projects."
+                    )
+            except (ValueError, TypeError) as e:
+                # If date parsing fails, log but don't block (graceful degradation)
+                print(f"Warning: Failed to parse created_at for user {user['id']}: {e}")
+    
+    # Check project limit for downgraded users (PRD v3.2)
+    existing_projects = get_user_projects(user["id"], page=1, limit=1000)
+    current_count = len(existing_projects)
+    
+    tier_limits = {
+        "free": 1,
+        "starter": 20,
+        "pro": 200
+    }
+    max_projects = tier_limits.get(user.get("tier", "free"), 1)
+    
+    # If user has more projects than allowed, check if this project is within limit
+    if current_count > max_projects:
+        # Get project creation order (by created_at)
+        sorted_projects = sorted(
+            existing_projects,
+            key=lambda p: p.get("created_at", "") or ""
+        )
+        allowed_projects = sorted_projects[:max_projects]
+        allowed_project_ids = {p["id"] for p in allowed_projects}
+        
+        if project_id not in allowed_project_ids:
+            raise HTTPException(
+                403,
+                f"You have exceeded the project limit for your current plan ({max_projects}). "
+                f"This project is read-only. Please upgrade to edit it."
+            )
+    
     locked_elements = []
     new_usage_recorded = []
     

@@ -11,16 +11,33 @@ BUCKET_NAME = "generated-images" # 对应 PRD 的 Bucket
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
-async def generate_and_upload_single(session, prompt, index, task_id):
+async def generate_and_upload_single(session, prompt, index, task_id, model="flux-schnell"):
+    """
+    Generate a single image and upload to Supabase Storage.
+    
+    Args:
+        model: Model name (flux-schnell for standard, flux-dev for high-quality)
+    """
     try:
-        print(f"🎨 Generating {index}...")
+        print(f"🎨 Generating {index} with model {model}...")
+        
+        # Select model endpoint and parameters based on model type
+        if model == "flux-dev":
+            # High-quality model for Pro users
+            model_endpoint = "fal-ai/flux/dev"
+            num_inference_steps = 28  # Higher quality, more steps
+        else:
+            # Standard model for Free/Starter users (default: flux-schnell)
+            model_endpoint = "fal-ai/flux/schnell"
+            num_inference_steps = 4  # Faster generation
+        
         # 1. 调用 Fal
         handler = await fal_client.submit_async(
-            "fal-ai/flux/schnell",
+            model_endpoint,
             arguments={
                 "prompt": prompt + ", children's book style, safe for work, colorful",
                 "image_size": "landscape_4_3",
-                "num_inference_steps": 4,
+                "num_inference_steps": num_inference_steps,
                 "enable_safety_checker": True
             },
         )
@@ -44,11 +61,21 @@ async def generate_and_upload_single(session, prompt, index, task_id):
         print(f"❌ Error: {e}")
         return None
 
-async def generate_8_images(prompts: list):
+async def generate_8_images(prompts: list, model="flux-schnell"):
+    """
+    Generate 8 images using specified model.
+    
+    Args:
+        prompts: List of prompts for image generation
+        model: Model name (flux-schnell for standard, flux-dev for high-quality)
+    
+    Returns:
+        Tuple of (image_urls, task_id)
+    """
     task_id = uuid.uuid4().hex[:8]
     async with aiohttp.ClientSession() as session:
         tasks = []
         for i, prompt in enumerate(prompts):
-            tasks.append(generate_and_upload_single(session, prompt, i, task_id))
+            tasks.append(generate_and_upload_single(session, prompt, i, task_id, model=model))
         image_urls = await asyncio.gather(*tasks)
     return image_urls, task_id

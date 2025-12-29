@@ -429,7 +429,14 @@ async def upload_asset(
     project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user)
 ):
-    """上传用户素材图片"""
+    """上传用户素材图片 - 仅 Pro 可用 (PRD v3.2)"""
+    # Check personal upload permission (Pro only - PRD v3.2)
+    if user.get("tier") != "pro":
+        raise HTTPException(
+            403,
+            "Personal asset upload requires Pro plan. Please upgrade to upload your own assets."
+        )
+    
     import uuid
     from image_generator import supabase as storage_supabase, BUCKET_NAME
     
@@ -597,6 +604,13 @@ def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends(get_c
 @app.post("/api/generate/images")
 @limiter.limit("10/minute")
 async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depends(get_current_user)):
+    """
+    Generate images using AI (PRD v3.2).
+    
+    Model selection based on tier:
+    - Free/Starter: Standard model (flux-schnell)
+    - Pro: High-quality model (flux-dev)
+    """
     blacklist = ["nsfw", "nude", "sex"]
     if any(w in p.lower() for p in req.prompts for w in blacklist):
         raise HTTPException(400, "Safety Violation")
@@ -608,8 +622,17 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         if "INSUFFICIENT" in str(e):
             raise HTTPException(402, "Insufficient credits")
         raise HTTPException(500, str(e))
-        
-    urls, task_id = await generate_8_images(req.prompts)
+    
+    # Select model based on tier (PRD v3.2)
+    tier = user.get("tier", "free")
+    if tier == "pro":
+        # High-quality model for Pro users
+        model = "flux-dev"
+    else:
+        # Standard model for Free/Starter users
+        model = "flux-schnell"
+    
+    urls, task_id = await generate_8_images(req.prompts, model=model)
     for url, prompt in zip(urls, req.prompts):
         save_asset(user["id"], url, "ai_generated", req.project_id, prompt)
     
@@ -617,7 +640,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "image_urls": urls, 
         "balance": result["total"],
         "balance_monthly": result["balance_monthly"],
-        "balance_permanent": result["balance_permanent"]
+        "balance_permanent": result["balance_permanent"],
+        "model_used": model  # Return model info for debugging
     }
 
 # [升级] 高级 OCR 接口 - 支持识别表格、文字、图片区域
@@ -963,9 +987,9 @@ def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
 
 @app.post("/api/export/zip")
 def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
-    """导出 ZIP - 仅 Starter/Pro 可用，永久免费"""
-    if user["tier"] == "free":
-        raise HTTPException(403, "Upgrade to Starter or Pro to export ZIP")
+    """导出 ZIP - 仅 Pro 可用 (PRD v3.2)"""
+    if user.get("tier") != "pro":
+        raise HTTPException(403, "ZIP export requires Pro plan. Starter users can export PDF only.")
     buf = BytesIO()
     create_assets_zip(req.image_urls, buf)
     buf.seek(0)
@@ -974,10 +998,10 @@ def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
 # [新增] 从项目直接导出 ZIP（PDF + 图片）
 @app.get("/api/projects/{project_id}/zip")
 def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
-    """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）"""
-    # 检查权限
-    if user["tier"] == "free":
-        raise HTTPException(403, "Upgrade to Starter or Pro to export ZIP")
+    """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）- 仅 Pro 可用 (PRD v3.2)"""
+    # 检查权限 - Pro only (PRD v3.2)
+    if user.get("tier") != "pro":
+        raise HTTPException(403, "ZIP export requires Pro plan. Starter users can export PDF only.")
     
     proj = get_project_detail(project_id, user["id"])
     if not proj:

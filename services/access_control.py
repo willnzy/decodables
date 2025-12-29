@@ -193,9 +193,9 @@ class AccessControl:
     @staticmethod
     def can_export_zip(user: dict) -> bool:
         """
-        Check if user can export ZIP.
+        Check if user can export ZIP (PRD v3.2).
         
-        Rules: Starter/Pro only
+        Rules: Pro only (Starter can only export PDF)
         
         Args:
             user: User profile dict
@@ -204,7 +204,7 @@ class AccessControl:
             True if can export ZIP
         """
         tier = user.get("tier", "free")
-        return tier in MEMBER_TIERS
+        return tier == "pro"
     
     @staticmethod
     def can_purchase(user: dict, listing: dict) -> Tuple[bool, Optional[str]]:
