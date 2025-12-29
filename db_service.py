@@ -619,7 +619,9 @@ def get_marketplace_listings(
     start = (page - 1) * limit
     end = start + limit - 1
     
-    query = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")
+    # 明确指定使用 seller_id 关系（因为 moderated_by 关系也存在）
+    # 使用 profiles!marketplace_listings_seller_id_fkey 明确指定卖家关系
+    query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")
     
     if mine and user_id:
         # 卖家查看自己的 listing（全状态）
@@ -663,7 +665,8 @@ def get_marketplace_item(listing_id: str, user_id: str = None):
     公共访问: 仅允许 approved + public + not deleted
     卖家本人: 可看自己的任意状态
     """
-    res = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")\
+    # 明确指定使用 seller_id 关系
+    res = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")\
         .eq("id", listing_id).single().execute()
     
     if not res.data:
@@ -960,7 +963,8 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
     
     Returns: Top 10 listings with usage_count and rank
     """
-    query = supabase.table("marketplace_listings").select("id, title, thumbnail_url, usage_count, resource_type, seller_id, profiles(username, avatar_url)")\
+    # 明确指定使用 seller_id 关系
+    query = supabase.table("marketplace_listings").select("id, title, thumbnail_url, usage_count, resource_type, seller_id, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")\
         .eq("is_public", True)\
         .eq("is_deleted", False)\
         .eq("moderation_status", "approved")
@@ -1146,7 +1150,8 @@ def admin_get_moderation_list(
     start = (page - 1) * limit
     end = start + limit - 1
     
-    query = supabase.table("marketplace_listings").select("*, profiles(username, email, avatar_url)")\
+    # 明确指定使用 seller_id 关系（卖家信息）
+    query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url)")\
         .eq("is_deleted", False)
     
     if status and status != "all":
@@ -1164,7 +1169,8 @@ def admin_get_moderation_detail(listing_id: str):
     """
     [Admin] 获取审核详情（PRD 第16章）
     """
-    res = supabase.table("marketplace_listings").select("*, profiles(username, email, avatar_url)")\
+    # 明确指定使用 seller_id 关系（卖家信息）
+    res = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url)")\
         .eq("id", listing_id).single().execute()
     
     return res.data

@@ -61,20 +61,53 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS 配置 - 明确允许的来源
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",                      # 本地开发环境
+    "http://127.0.0.1:3000",                      # 本地开发环境（备用）
+    "https://make-decodables.vercel.app",         # Vercel 生产环境
+    "https://decodables-production.up.railway.app" # Railway API 自身
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",                      # 本地开发环境
-        "http://127.0.0.1:3000",                      # 本地开发环境（备用）
-        "https://make-decodables.vercel.app",         # Vercel 生产环境
-        "https://decodables-production.up.railway.app" # Railway API 自身
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,  # 预检请求缓存时间（秒）
 )
+
+# 添加中间件确保所有响应都包含 CORS 头（即使出错）
+@app.middleware("http")
+async def add_cors_header(request: Request, call_next):
+    """
+    确保所有响应都包含 CORS 头，即使发生错误
+    """
+    try:
+        response = await call_next(request)
+        origin = request.headers.get("origin")
+        if origin and origin in ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+    except Exception as e:
+        # 如果发生异常，也要返回带 CORS 头的错误响应
+        origin = request.headers.get("origin")
+        cors_headers = {}
+        if origin and origin in ALLOWED_ORIGINS:
+            cors_headers = {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
+        import traceback
+        print(f"Middleware exception: {e}")
+        print(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+            headers=cors_headers
+        )
 
 # 全局异常处理器 - 确保所有错误响应都包含 CORS 头
 from fastapi.responses import JSONResponse
@@ -1181,6 +1214,10 @@ def marketplace_items(
     mine=true 时返回本人全状态
     """
     try:
+        print(f"[marketplace_items] Request params: resource_type={resource_type}, sort={sort}, tier={tier}, price={price}, mine={mine}, page={page}, limit={limit}")
+        print(f"[marketplace_items] User: {user.get('id', 'unknown')}, tier: {user.get('tier', 'unknown')}")
+        
+        # 调用数据库查询
         items = get_marketplace_listings(
             featured=featured,
             resource_type=resource_type,
@@ -1193,24 +1230,36 @@ def marketplace_items(
             user_id=user["id"] if mine else None
         )
         
+        print(f"[marketplace_items] Retrieved {len(items)} items from database")
+        
         # 为每个商品添加用户可访问性和购买状态
         for item in items:
             try:
                 allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
+                if not isinstance(allowed_tiers, list):
+                    allowed_tiers = ["free", "starter", "pro"]
                 item["is_accessible"] = can_access_resource(user, allowed_tiers)
                 item["is_owned"] = check_user_purchase(user["id"], item["id"])
             except Exception as e:
-                print(f"Error processing item {item.get('id', 'unknown')}: {e}")
+                print(f"[marketplace_items] Error processing item {item.get('id', 'unknown')}: {e}")
+                import traceback
+                print(traceback.format_exc())
                 # 设置默认值
                 item["is_accessible"] = False
                 item["is_owned"] = False
         
-        return {"items": items, "total": len(items), "page": page}
+        result = {"items": items, "total": len(items), "page": page}
+        print(f"[marketplace_items] Returning {len(items)} items")
+        return result
+    except HTTPException:
+        # 重新抛出 HTTPException（保持状态码）
+        raise
     except Exception as e:
         import traceback
-        print(f"Error in marketplace_items: {e}")
+        error_msg = f"Failed to load marketplace items: {str(e)}"
+        print(f"[marketplace_items] ERROR: {error_msg}")
         print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Failed to load marketplace items: {str(e)}")
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.get("/api/marketplace/item/{listing_id}")
 def marketplace_item_detail(
