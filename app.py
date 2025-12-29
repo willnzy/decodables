@@ -620,7 +620,7 @@ def get_stickers(user: dict = Depends(get_current_user)):
 
 # --- Projects ---
 @app.get("/api/projects")
-def list_projects(page: int=1, limit: int=20, search: str = None, user: dict = Depends(get_current_user)):
+def list_projects(page: int=1, limit: int=6, search: str = None, user: dict = Depends(get_current_user)):
     """获取用户项目列表，支持分页和搜索"""
     print(f"[API] list_projects: page={page}, limit={limit}, search={search}, user_id={user['id']}")
     items = get_user_projects(user["id"], page, limit, search)
