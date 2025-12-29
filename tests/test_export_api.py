@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
 
 from app import dl_zip, get_project_zip, PdfGenRequest
+from db_service import get_project_detail
 
 
 class TestZIPExport:
@@ -65,12 +66,14 @@ class TestZIPExport:
         mock_create_zip.assert_called_once()
         mock_streaming.assert_called_once()
     
-    def test_project_zip_export_free_denied(self):
+    @patch('app.get_project_detail')
+    def test_project_zip_export_free_denied(self, mock_get_project):
         """Free user cannot export project ZIP"""
         user = {
             "id": "user_free_123",
             "tier": "free",
         }
+        mock_get_project.return_value = {"id": "project_1", "canvas_data": {}}
         
         with pytest.raises(HTTPException) as exc_info:
             get_project_zip("project_1", user)
@@ -78,12 +81,14 @@ class TestZIPExport:
         assert exc_info.value.status_code == 403
         assert "ZIP export requires Pro plan" in str(exc_info.value.detail)
     
-    def test_project_zip_export_starter_denied(self):
+    @patch('app.get_project_detail')
+    def test_project_zip_export_starter_denied(self, mock_get_project):
         """Starter user cannot export project ZIP"""
         user = {
             "id": "user_starter_123",
             "tier": "starter",
         }
+        mock_get_project.return_value = {"id": "project_1", "canvas_data": {}}
         
         with pytest.raises(HTTPException) as exc_info:
             get_project_zip("project_1", user)
