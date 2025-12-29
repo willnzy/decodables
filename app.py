@@ -643,6 +643,22 @@ def new_project(req: ProjectCreate = None, user: dict = Depends(get_current_user
 def get_proj(id: str, user: dict = Depends(get_current_user)):
     p = get_project_detail(id, user["id"])
     if not p: raise HTTPException(404)
+    
+    # Debug: Log returned canvas_data
+    canvas_data = p.get('canvas_data', {})
+    if canvas_data:
+        pages = canvas_data.get('pages', []) if isinstance(canvas_data, dict) else canvas_data
+        print(f"[GET_PROJECT] Returning project {id}")
+        print(f"[GET_PROJECT] canvas_data.pages count: {len(pages) if pages else 0}")
+        for i, page in enumerate(pages[:3]):  # Only log first 3 pages
+            if page:
+                has_canvas = bool(page.get('canvasJson'))
+                obj_count = len(page.get('canvasJson', {}).get('objects', [])) if page.get('canvasJson') else 0
+                has_preview = bool(page.get('previewImage'))
+                print(f"[GET_PROJECT] Page {i}: hasCanvasJson={has_canvas}, objectCount={obj_count}, hasPreview={has_preview}")
+    else:
+        print(f"[GET_PROJECT] No canvas_data for project {id}")
+    
     return p
 
 @app.put("/api/projects/{id}")
@@ -655,6 +671,20 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
     - 必须校验：项目中新增引用的 listing 是否可用（can_access_resource）
     - 使用次数统计：对新产生的 listing 应用写入 listing_usage
     """
+    # Debug: Log incoming canvas_data
+    if req.canvas_data:
+        pages = req.canvas_data.get('pages', [])
+        print(f"[SAVE_PROJECT] Saving project {id}")
+        print(f"[SAVE_PROJECT] canvas_data.pages count: {len(pages)}")
+        for i, page in enumerate(pages):
+            if page:
+                has_canvas = bool(page.get('canvasJson'))
+                obj_count = len(page.get('canvasJson', {}).get('objects', [])) if page.get('canvasJson') else 0
+                has_preview = bool(page.get('previewImage'))
+                print(f"[SAVE_PROJECT] Page {i}: hasCanvasJson={has_canvas}, objectCount={obj_count}, hasPreview={has_preview}")
+    else:
+        print(f"[SAVE_PROJECT] No canvas_data received for project {id}")
+    
     locked_elements = []
     new_usage_recorded = []
     
