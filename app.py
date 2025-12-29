@@ -410,11 +410,15 @@ def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current
 
 @app.get("/api/user/assets")
 def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: dict = Depends(get_current_user)):
-    # Pro 用户可以访问所有历史素材
-    if scope == "all" and user["tier"] != "pro":
-        raise HTTPException(403, "Pro required for cross-project history")
-    target_proj = project_id if scope != "all" else None
-    return get_assets(user["id"], target_proj)
+    """
+    获取用户素材
+    
+    素材上传时只与用户关联，不与项目关联。
+    所有用户都可以看到自己的全部素材。
+    project_id 参数已弃用，保留仅为向后兼容。
+    """
+    # 返回用户的所有素材（不再按项目过滤）
+    return get_assets(user["id"], None)
 
 @app.post("/api/user/assets")
 async def upload_asset(
