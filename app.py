@@ -675,20 +675,21 @@ async def ocr_tool(
                 print(f"Failed to upload scan source: {upload_err}")
         
         # 使用 GPT-4o 进行高级 OCR
-        ocr_prompt = """Analyze this image and extract all content in a structured JSON format.
+        ocr_prompt = """You are an expert OCR system. Extract ALL text and visual elements from this image.
 
-Identify and extract:
-1. **Text blocks**: Any text content with its approximate position
-2. **Tables**: If there are tables, extract them as structured data
-3. **Image regions**: Hand-drawn illustrations or images (describe them)
+CRITICAL RULES:
+1. **Extract ALL readable text** - including text in logos, banners, signs, buttons, labels
+2. **Each text element should be a separate block** - don't merge different text areas
+3. **Tables** - extract as structured data with cells
+4. **Icons/Graphics** - describe non-text visual elements separately
 
-Return a JSON object with this exact structure:
+Return a JSON object with this structure:
 {
   "blocks": [
     {
       "type": "text",
-      "content": "The actual text content",
-      "style": "title" | "paragraph" | "bullet" | "handwritten",
+      "content": "The exact text as it appears",
+      "style": "title" | "heading" | "paragraph" | "bullet" | "label" | "handwritten",
       "position": "top" | "middle" | "bottom"
     },
     {
@@ -700,18 +701,18 @@ Return a JSON object with this exact structure:
     },
     {
       "type": "image",
-      "description": "Description of the hand-drawn or image content",
+      "description": "Description of icons, illustrations, or graphics (NOT text)",
       "position": "top" | "middle" | "bottom"
     }
   ],
-  "summary": "Brief summary of what this page contains"
+  "summary": "Brief summary of the content"
 }
 
-Important:
-- Extract ALL text exactly as written
-- Preserve table structure accurately
-- Describe images/drawings in detail for AI regeneration
-- Return ONLY valid JSON, no markdown code blocks"""
+IMPORTANT:
+- TEXT IN LOGOS MUST BE EXTRACTED as "text" blocks, not described as images
+- If you see "ABC Company", extract "ABC Company" as text, don't say "logo with text"
+- Extract text EXACTLY as written, preserving spelling and capitalization
+- Return ONLY valid JSON"""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o",  # 使用 GPT-4o 获得最佳识别效果
