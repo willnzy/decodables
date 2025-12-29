@@ -550,8 +550,25 @@ def count_user_projects(user_id: str, search: str = None):
 
 def get_project_detail(project_id: str, user_id: str):
     """获取项目详情"""
+    print(f"[DB_GET] Fetching project {project_id} for user {user_id}")
     res = supabase.table("projects").select("*")\
         .eq("id", project_id).eq("user_id", user_id).single().execute()
+    
+    if res.data:
+        canvas_data = res.data.get("canvas_data", {})
+        if canvas_data:
+            pages = canvas_data.get("pages", []) if isinstance(canvas_data, dict) else canvas_data
+            print(f"[DB_GET] Project {project_id} has {len(pages)} pages")
+            for i, page in enumerate(pages):
+                if page:
+                    has_json = bool(page.get("canvasJson"))
+                    obj_count = len(page.get("canvasJson", {}).get("objects", [])) if page.get("canvasJson") else 0
+                    print(f"[DB_GET] Page {i}: hasCanvasJson={has_json}, objectCount={obj_count}")
+        else:
+            print(f"[DB_GET] Project {project_id} has no canvas_data")
+    else:
+        print(f"[DB_GET] Project {project_id} not found")
+    
     return res.data
 
 def create_project(user_id: str, title: str = None, canvas_data: dict = None):
@@ -567,16 +584,29 @@ def create_project(user_id: str, title: str = None, canvas_data: dict = None):
 
 def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbnail_url: str = None, title: str = None):
     """保存项目"""
+    print(f"[DB_SAVE] Starting save for project {project_id}")
     data = {
         "updated_at": datetime.now().isoformat()
     }
     if canvas_data is not None:
         data["canvas_data"] = canvas_data
+        # Debug: Log canvas_data structure
+        pages = canvas_data.get("pages", []) if isinstance(canvas_data, dict) else canvas_data
+        print(f"[DB_SAVE] canvas_data has {len(pages)} pages")
+        for i, page in enumerate(pages):
+            if page:
+                has_json = bool(page.get("canvasJson"))
+                obj_count = len(page.get("canvasJson", {}).get("objects", [])) if page.get("canvasJson") else 0
+                print(f"[DB_SAVE] Page {i}: hasCanvasJson={has_json}, objectCount={obj_count}")
+    else:
+        print(f"[DB_SAVE] No canvas_data provided")
     if thumbnail_url:
         data["thumbnail_url"] = thumbnail_url
     if title:
         data["title"] = title
-    supabase.table("projects").update(data).eq("id", project_id).eq("user_id", user_id).execute()
+    
+    result = supabase.table("projects").update(data).eq("id", project_id).eq("user_id", user_id).execute()
+    print(f"[DB_SAVE] Save completed for project {project_id}")
 
 def soft_delete_project(project_id: str, user_id: str):
     """软删除项目"""
