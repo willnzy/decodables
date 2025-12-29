@@ -16,3 +16,6 @@ svix
 pyjwt
 cryptography
 pymupdf
+pytest
+pytest-asyncio
+httpx
