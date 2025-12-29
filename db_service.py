@@ -1,6 +1,6 @@
 import os
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 # 从环境变量获取配置
@@ -224,7 +224,7 @@ def refresh_monthly_credits(user_id: str, tier: str):
     刷新月度积分（订阅周期开始时调用）
     - Starter: 500 credits/month
     - Pro: 1000 credits/month
-    - 不结转：直接重置为当月额度
+    - 不结转：直接重置为当月额度（permanent credits 不受影响）
     """
     monthly_amounts = {
         "starter": 500,
@@ -238,9 +238,10 @@ def refresh_monthly_credits(user_id: str, tier: str):
     if not profile:
         return False
     
+    # 重要：permanent credits 不受影响，保持不变
     permanent = profile.get("credits_permanent", 0)
     
-    # 重置月度积分（不结转）
+    # 重置月度积分（不结转）- 只重置 monthly，不影响 permanent
     supabase.table("profiles").update({
         "credits_monthly": new_monthly,
         "monthly_credits_cycle_anchor": datetime.now().isoformat()
@@ -252,12 +253,63 @@ def refresh_monthly_credits(user_id: str, tier: str):
         amount=new_monthly,
         bucket="monthly",
         balance_monthly_after=new_monthly,
-        balance_permanent_after=permanent,
+        balance_permanent_after=permanent,  # permanent credits 保持不变
         type="sub_grant",
-        description=f"Monthly {tier.capitalize()} Credits (Reset)"
+        description=f"Monthly {tier.capitalize()} Credits (Reset - Permanent credits preserved)"
     )
     
     return True
+
+def check_and_reset_monthly_credits_if_needed(user_id: str):
+    """
+    检查并重置月度积分（如果需要）
+    在用户登录或获取用户信息时调用，确保 monthly credits 按时重置
+    
+    规则：
+    - 如果 monthly_credits_cycle_anchor 不存在或超过 30 天，且用户是 Starter/Pro，则重置
+    - permanent credits 永远不会被重置
+    """
+    profile = get_user_profile(user_id)
+    if not profile:
+        return False
+    
+    tier = profile.get("tier", "free")
+    subscription_status = profile.get("subscription_status", "inactive")
+    
+    # 只有 Starter/Pro 且订阅有效才需要重置
+    if tier not in ["starter", "pro"]:
+        return False
+    
+    if subscription_status not in ["active", "trialing"]:
+        return False
+    
+    cycle_anchor = profile.get("monthly_credits_cycle_anchor")
+    
+    # 如果没有 cycle_anchor，说明是第一次，需要设置
+    if not cycle_anchor:
+        refresh_monthly_credits(user_id, tier)
+        return True
+    
+    # 检查是否超过 30 天（一个月）
+    try:
+        anchor_date = datetime.fromisoformat(cycle_anchor.replace('Z', '+00:00'))
+        if anchor_date.tzinfo is None:
+            anchor_date = anchor_date.replace(tzinfo=timezone.utc)
+        
+        now = datetime.now(timezone.utc)
+        days_since_reset = (now - anchor_date).total_seconds() / (24 * 3600)
+        
+        # 如果超过 30 天，重置 monthly credits
+        if days_since_reset >= 30:
+            refresh_monthly_credits(user_id, tier)
+            return True
+    except (ValueError, TypeError) as e:
+        # 如果日期解析失败，重置一次
+        print(f"Warning: Failed to parse monthly_credits_cycle_anchor for user {user_id}: {e}")
+        refresh_monthly_credits(user_id, tier)
+        return True
+    
+    return False
 
 # ==========================================
 # 2. 积分与交易 (Credits & Transactions)

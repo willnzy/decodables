@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends
 from dependencies import get_current_user
 from db_service import (
     get_user_profile, get_credit_history, get_assets,
-    get_user_purchases, get_user_notifications, mark_notification_read
+    get_user_purchases, get_user_notifications, mark_notification_read,
+    check_and_reset_monthly_credits_if_needed
 )
 
 router = APIRouter(prefix="/api/user", tags=["users"])
@@ -20,22 +21,39 @@ def get_me(user: dict = Depends(get_current_user)):
     """
     Get current user info (PRD v3.2).
     
+    Important: Checks and resets monthly credits if needed (monthly reset logic)
+    - Monthly credits reset every 30 days for Starter/Pro users
+    - Permanent credits are never reset
+    
     Returns:
         User profile with credits breakdown, tier info, and created_at for Free trial check
     """
+    user_id = user["id"]
+    
+    # 检查并重置 monthly credits（如果需要）
+    # 这确保即使 Stripe webhook 没有触发，monthly credits 也会按时重置
+    # permanent credits 永远不会被重置
+    check_and_reset_monthly_credits_if_needed(user_id)
+    
+    # 重新获取用户信息（可能已更新）
+    user_profile = get_user_profile(user_id)
+    if not user_profile:
+        # Fallback to user dict if profile not found
+        user_profile = user
+    
     return {
-        "id": user["id"],
-        "email": user.get("email"),
-        "username": user.get("username"),
-        "avatar_url": user.get("avatar_url"),
-        "created_at": user.get("created_at"),  # For Free 7-day trial check
-        "tier": user.get("tier", "free"),
-        "subscription_status": user.get("subscription_status", "inactive"),
-        "credits_monthly": user.get("credits_monthly", 0),
-        "credits_permanent": user.get("credits_permanent", 0),
-        "credits_total": user.get("credits_monthly", 0) + user.get("credits_permanent", 0),
-        "is_member": user.get("tier") in ["starter", "pro"] and user.get("subscription_status") == "active",
-        "role": user.get("role", "user"),
+        "id": user_profile.get("id", user["id"]),
+        "email": user_profile.get("email", user.get("email")),
+        "username": user_profile.get("username", user.get("username")),
+        "avatar_url": user_profile.get("avatar_url", user.get("avatar_url")),
+        "created_at": user_profile.get("created_at", user.get("created_at")),  # For Free 7-day trial check
+        "tier": user_profile.get("tier", user.get("tier", "free")),
+        "subscription_status": user_profile.get("subscription_status", user.get("subscription_status", "inactive")),
+        "credits_monthly": user_profile.get("credits_monthly", user.get("credits_monthly", 0)),
+        "credits_permanent": user_profile.get("credits_permanent", user.get("credits_permanent", 0)),
+        "credits_total": user_profile.get("credits_monthly", user.get("credits_monthly", 0)) + user_profile.get("credits_permanent", user.get("credits_permanent", 0)),
+        "is_member": user_profile.get("tier", user.get("tier", "free")) in ["starter", "pro"] and user_profile.get("subscription_status", user.get("subscription_status", "inactive")) == "active",
+        "role": user_profile.get("role", user.get("role", "user")),
     }
 
 

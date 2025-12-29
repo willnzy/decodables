@@ -396,11 +396,31 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
 # --- User ---
 @app.get("/api/user/me")
 def get_me(user: dict = Depends(get_current_user)):
-    # 返回用户信息，包括两类积分
+    """
+    Get current user info (PRD v3.2).
+    
+    Important: Checks and resets monthly credits if needed (monthly reset logic)
+    - Monthly credits reset every 30 days for Starter/Pro users
+    - Permanent credits are never reset
+    """
+    from db_service import check_and_reset_monthly_credits_if_needed, get_user_profile
+    
+    user_id = user["id"]
+    
+    # 检查并重置 monthly credits（如果需要）
+    # permanent credits 永远不会被重置
+    check_and_reset_monthly_credits_if_needed(user_id)
+    
+    # 重新获取用户信息（可能已更新）
+    user_profile = get_user_profile(user_id)
+    if not user_profile:
+        # Fallback to user dict if profile not found
+        user_profile = user
+    
     return {
-        **user,
-        "credits_total": user.get("credits_monthly", 0) + user.get("credits_permanent", 0),
-        "is_member": is_member(user)
+        **user_profile,
+        "credits_total": user_profile.get("credits_monthly", 0) + user_profile.get("credits_permanent", 0),
+        "is_member": is_member(user_profile)
     }
 
 @app.get("/api/user/history")
