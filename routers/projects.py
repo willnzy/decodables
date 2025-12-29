@@ -13,7 +13,7 @@ from dependencies import get_current_user
 from db_service import (
     get_user_projects, get_project_detail, create_project as db_create_project,
     save_project, soft_delete_project, get_marketplace_item,
-    can_access_resource, record_listing_usage, supabase
+    can_access_resource, record_listing_usage, count_user_projects, supabase
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -34,24 +34,27 @@ class ProjectUpdate(BaseModel):
 
 # Routes
 @router.get("")
-def list_projects(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
+def list_projects(page: int = 1, limit: int = 20, search: str = None, user: dict = Depends(get_current_user)):
     """
     Get user's projects with pagination (PRD v3.2).
+    
+    Args:
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+        search: Search query to filter projects by title (optional)
     
     Returns:
         Projects list with pagination info
         Note: Projects exceeding tier limit may be read-only
     """
-    items = get_user_projects(user["id"], page, limit)
+    items = get_user_projects(user["id"], page, limit, search)
     
-    # Calculate total count (for project limit check)
-    # Get all projects to count total (simplified - for production, use a count query)
-    all_items = get_user_projects(user["id"], page=1, limit=1000)
-    total_count = len(all_items)
+    # Calculate total count using COUNT query (accurate for all cases)
+    total_count = count_user_projects(user["id"], search)
     
     return {
         "items": items, 
-        "total": total_count,  # Return actual total for limit checking
+        "total": total_count,  # Return accurate total count
         "page": page
     }
 
@@ -72,9 +75,8 @@ def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     Raises:
         HTTPException: 403 if project limit reached
     """
-    # Get current project count
-    existing_projects = get_user_projects(user["id"], page=1, limit=1000)
-    current_count = len(existing_projects)
+    # Get current project count (use COUNT query for accuracy)
+    current_count = count_user_projects(user["id"])
     
     # Get max projects for tier (PRD v3.2)
     # Normalize tier to lowercase to handle case variations
@@ -162,9 +164,6 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
                 print(f"Warning: Failed to parse created_at for user {user['id']}: {e}")
     
     # Check project limit for downgraded users (PRD v3.2)
-    existing_projects = get_user_projects(user["id"], page=1, limit=1000)
-    current_count = len(existing_projects)
-    
     tier_limits = {
         "free": 1,
         "starter": 20,
@@ -174,8 +173,13 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
     user_tier = (user.get("tier") or "free").lower()
     max_projects = tier_limits.get(user_tier, 1)
     
+    # Use COUNT query for accurate count
+    current_count = count_user_projects(user["id"])
+    
     # If user has more projects than allowed, check if this project is within limit
     if current_count > max_projects:
+        # Get all projects for sorting (only if needed for limit check)
+        existing_projects = get_user_projects(user["id"], page=1, limit=1000)
         # Get project creation order (by created_at)
         # Projects without created_at are treated as oldest (use empty string which sorts first)
         # This ensures they are included in allowed projects (safer default)

@@ -484,15 +484,53 @@ def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
 # 3. 项目管理 (Projects)
 # ==========================================
 
-def get_user_projects(user_id: str, page: int = 1, limit: int = 20):
+def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str = None):
     """获取项目列表（包含 canvas_data 用于缩略图预览）"""
     start = (page - 1) * limit
     end = start + limit - 1
     # Include created_at for project limit check (PRD v3.2)
-    res = supabase.table("projects").select("id, title, thumbnail_url, canvas_data, created_at, updated_at")\
-        .eq("user_id", user_id).eq("is_deleted", False)\
-        .range(start, end).order("updated_at", desc=True).execute()
+    query = supabase.table("projects").select("id, title, thumbnail_url, canvas_data, created_at, updated_at")\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    # Add search filter if provided
+    if search and search.strip():
+        search_term = search.strip()
+        query = query.ilike("title", f"%{search_term}%")
+    
+    res = query.range(start, end).order("updated_at", desc=True).execute()
     return res.data
+
+def count_user_projects(user_id: str, search: str = None):
+    """获取用户项目总数（用于分页和限制检查）"""
+    try:
+        query = supabase.table("projects").select("id", count="exact")\
+            .eq("user_id", user_id).eq("is_deleted", False)
+        
+        # Add search filter if provided
+        if search and search.strip():
+            search_term = search.strip()
+            query = query.ilike("title", f"%{search_term}%")
+        
+        res = query.execute()
+        # Supabase returns count in different ways depending on client version
+        # Try multiple ways to get count
+        if hasattr(res, 'count') and res.count is not None:
+            return res.count
+        elif hasattr(res, 'data') and isinstance(res.data, list):
+            # If count query returns data, use length (fallback)
+            return len(res.data)
+        else:
+            # Fallback: query without count to get actual count
+            all_res = supabase.table("projects").select("id")\
+                .eq("user_id", user_id).eq("is_deleted", False)
+            if search and search.strip():
+                all_res = all_res.ilike("title", f"%{search.strip()}%")
+            all_data = all_res.execute()
+            return len(all_data.data) if all_data.data else 0
+    except Exception as e:
+        print(f"Error counting projects: {e}")
+        # Fallback: return 0 on error
+        return 0
 
 def get_project_detail(project_id: str, user_id: str):
     """获取项目详情"""
