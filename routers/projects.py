@@ -47,16 +47,22 @@ def list_projects(page: int = 1, limit: int = 20, search: str = None, user: dict
         Projects list with pagination info
         Note: Projects exceeding tier limit may be read-only
     """
+    print(f"[API] list_projects called: page={page}, limit={limit}, search={search}, user_id={user['id']}")
+    
     items = get_user_projects(user["id"], page, limit, search)
+    print(f"[API] get_user_projects returned {len(items) if items else 0} items")
     
     # Calculate total count using COUNT query (accurate for all cases)
     total_count = count_user_projects(user["id"], search)
+    print(f"[API] count_user_projects returned total: {total_count}")
     
-    return {
+    result = {
         "items": items, 
         "total": total_count,  # Return accurate total count
         "page": page
     }
+    print(f"[API] Returning result: {len(items) if items else 0} items, total: {total_count}, page: {page}")
+    return result
 
 
 @router.post("")

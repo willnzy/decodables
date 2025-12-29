@@ -488,6 +488,8 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     """获取项目列表（包含 canvas_data 用于缩略图预览）"""
     start = (page - 1) * limit
     end = start + limit - 1
+    print(f"[GET_PROJECTS] Query params: user_id={user_id}, page={page}, limit={limit}, search={search}, start={start}, end={end}")
+    
     # Include created_at for project limit check (PRD v3.2)
     query = supabase.table("projects").select("id, title, thumbnail_url, canvas_data, created_at, updated_at")\
         .eq("user_id", user_id).eq("is_deleted", False)
@@ -495,40 +497,58 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     # Add search filter if provided
     if search and search.strip():
         search_term = search.strip()
+        print(f"[GET_PROJECTS] Adding search filter: {search_term}")
         query = query.ilike("title", f"%{search_term}%")
     
     res = query.range(start, end).order("updated_at", desc=True).execute()
+    items_count = len(res.data) if res.data else 0
+    print(f"[GET_PROJECTS] Returned {items_count} items")
     return res.data
 
 def count_user_projects(user_id: str, search: str = None):
     """获取用户项目总数（用于分页和限制检查）"""
     try:
+        print(f"[COUNT] Starting count query for user_id: {user_id}, search: {search}")
         query = supabase.table("projects").select("id", count="exact")\
             .eq("user_id", user_id).eq("is_deleted", False)
         
         # Add search filter if provided
         if search and search.strip():
             search_term = search.strip()
+            print(f"[COUNT] Adding search filter: {search_term}")
             query = query.ilike("title", f"%{search_term}%")
         
         res = query.execute()
+        print(f"[COUNT] Query executed. Response type: {type(res)}")
+        print(f"[COUNT] Response attributes: {dir(res)}")
+        
         # Supabase returns count in different ways depending on client version
         # Try multiple ways to get count
+        count_value = None
         if hasattr(res, 'count') and res.count is not None:
-            return res.count
+            count_value = res.count
+            print(f"[COUNT] Found count in res.count: {count_value}")
         elif hasattr(res, 'data') and isinstance(res.data, list):
             # If count query returns data, use length (fallback)
-            return len(res.data)
+            count_value = len(res.data)
+            print(f"[COUNT] Using len(res.data) as fallback: {count_value}")
         else:
             # Fallback: query without count to get actual count
+            print(f"[COUNT] Using fallback: querying all projects")
             all_res = supabase.table("projects").select("id")\
                 .eq("user_id", user_id).eq("is_deleted", False)
             if search and search.strip():
                 all_res = all_res.ilike("title", f"%{search.strip()}%")
             all_data = all_res.execute()
-            return len(all_data.data) if all_data.data else 0
+            count_value = len(all_data.data) if all_data.data else 0
+            print(f"[COUNT] Fallback count: {count_value}")
+        
+        print(f"[COUNT] Final count: {count_value}")
+        return count_value
     except Exception as e:
-        print(f"Error counting projects: {e}")
+        print(f"[COUNT] Error counting projects: {e}")
+        import traceback
+        traceback.print_exc()
         # Fallback: return 0 on error
         return 0
 
