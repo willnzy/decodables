@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Make Decodables 数据库完整初始化脚本 (v3.0 - PRD Final)
+-- Make Decodables 数据库完整初始化脚本 (v3.1 - PRD Final + Advanced OCR)
 -- 包含：核心表结构 + 最终版 RLS 安全策略
 -- 
 -- 重要更新 (v3.0):
@@ -8,6 +8,10 @@
 -- - 通知系统：notifications
 -- - 折扣系统：user_discounts
 -- - system_resources 增加 allowed_tiers
+--
+-- 重要更新 (v3.1):
+-- - assets 表增加 metadata 字段：存储扫描结果、画布元素等结构化数据
+-- - assets.type 支持 'scanned' 类型（AI Smart Scan OCR）
 -- ==============================================================================
 
 -- ==========================================
@@ -112,21 +116,27 @@ create table if not exists user_purchases (
 );
 
 -- 7. 用户素材表 (User Assets)
+-- PRD 定义: 存储用户上传、AI生成、OCR扫描的图片资源
+-- type 字段说明:
+--   'uploaded'     - 用户手动上传的图片
+--   'ai_generated' - AI Generate 生成的图片
+--   'scanned'      - AI Smart Scan (OCR) 扫描的图片
+-- metadata 字段说明 (仅 scanned 类型使用):
+--   source_image_url: 原始扫描图片 URL
+--   ocr_result: { blocks: [...], summary: "..." } - 结构化识别结果
+--   canvas_elements: [...] - 预转换的画布元素
 create table if not exists assets (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
-  project_id uuid references projects(id), -- 可为空
+  project_id uuid references projects(id), -- 可为空，上传时关联项目
   url text not null,
   type text not null, -- 'uploaded' | 'ai_generated' | 'scanned'
-  prompt text,
-  metadata jsonb, -- 存储扫描结果、画布元素等结构化数据
+  prompt text, -- AI生成时的提示词
+  metadata jsonb, -- 扫描结果、画布元素等结构化数据 (v3.1 新增)
   is_deleted boolean default false,
   created_at timestamptz default now()
 );
 create index if not exists idx_assets_user_proj on assets(user_id, project_id);
-
--- 添加 metadata 字段（如果表已存在）
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
 
 -- 8. 站内信/通知表 (Notifications)
 create table if not exists notifications (
@@ -276,24 +286,35 @@ using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
 -- ==========================================
 -- 如果你需要从旧版本迁移，请运行以下命令：
 
--- 1. 添加新列到 profiles
+-- 1. 添加新列到 profiles (v3.0)
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_monthly int default 0;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_permanent int default 0;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_status text default 'inactive';
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_valid_until timestamptz;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS monthly_credits_cycle_anchor timestamptz;
 
--- 2. 迁移旧的 credits 到 credits_permanent
+-- 2. 迁移旧的 credits 到 credits_permanent (v3.0)
 -- UPDATE profiles SET credits_permanent = COALESCE(credits, 0) WHERE credits_permanent = 0;
 
--- 3. 添加新列到 credit_transactions
+-- 3. 添加新列到 credit_transactions (v3.0)
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS bucket text default 'permanent';
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_monthly_after int default 0;
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_permanent_after int default 0;
 
--- 4. 更新旧的 credit_transactions 记录
+-- 4. 更新旧的 credit_transactions 记录 (v3.0)
 -- UPDATE credit_transactions SET balance_permanent_after = balance_after WHERE balance_permanent_after = 0;
 
--- 5. 添加 allowed_tiers 到 system_resources
+-- 5. 添加 allowed_tiers 到 system_resources (v3.0)
 -- ALTER TABLE system_resources ADD COLUMN IF NOT EXISTS allowed_tiers text[] default '{free, starter, pro}';
 -- UPDATE system_resources SET allowed_tiers = CASE WHEN is_pro_only THEN '{pro}' ELSE '{free, starter, pro}' END;
+
+-- ==========================================
+-- Part 4: v3.1 迁移脚本（Advanced OCR 功能）
+-- ==========================================
+-- 如果从 v3.0 升级到 v3.1，请运行以下命令：
+
+-- 1. 添加 metadata 字段到 assets 表（存储 OCR 扫描结果）
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
+
+-- 2. 如果需要，更新旧的 type 值（可选）
+-- UPDATE assets SET type = 'uploaded' WHERE type = 'user_upload';
