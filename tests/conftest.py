@@ -4,8 +4,13 @@ Pytest configuration and fixtures for API tests
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock, patch, MagicMock
-from fastapi.testclient import TestClient
-from app import app
+
+# Lazy import to avoid dependency issues
+def get_test_client():
+    """Lazy import TestClient and app"""
+    from fastapi.testclient import TestClient
+    from app import app
+    return TestClient(app)
 
 # Mock user data for different tiers
 MOCK_FREE_USER = {
@@ -52,7 +57,7 @@ MOCK_PRO_USER = {
 @pytest.fixture
 def client():
     """Create a test client"""
-    return TestClient(app)
+    return get_test_client()
 
 
 @pytest.fixture
