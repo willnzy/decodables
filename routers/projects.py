@@ -77,12 +77,14 @@ def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
     current_count = len(existing_projects)
     
     # Get max projects for tier (PRD v3.2)
+    # Normalize tier to lowercase to handle case variations
     tier_limits = {
         "free": 1,
         "starter": 20,
         "pro": 200
     }
-    max_projects = tier_limits.get(user.get("tier", "free"), 1)
+    user_tier = (user.get("tier") or "free").lower()
+    max_projects = tier_limits.get(user_tier, 1)
     
     if current_count >= max_projects:
         raise HTTPException(
@@ -129,7 +131,9 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
         HTTPException: 403 if Free user trial expired or project limit exceeded
     """
     # Check Free user 7-day trial period (PRD v3.2)
-    if user.get("tier") == "free":
+    # Normalize tier to lowercase for consistent comparison
+    user_tier = (user.get("tier") or "").lower()
+    if user_tier == "free":
         created_at = user.get("created_at")
         if created_at:
             try:
@@ -166,11 +170,15 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
         "starter": 20,
         "pro": 200
     }
-    max_projects = tier_limits.get(user.get("tier", "free"), 1)
+    # Normalize tier to lowercase to handle case variations
+    user_tier = (user.get("tier") or "free").lower()
+    max_projects = tier_limits.get(user_tier, 1)
     
     # If user has more projects than allowed, check if this project is within limit
     if current_count > max_projects:
         # Get project creation order (by created_at)
+        # Projects without created_at are treated as oldest (use empty string which sorts first)
+        # This ensures they are included in allowed projects (safer default)
         sorted_projects = sorted(
             existing_projects,
             key=lambda p: p.get("created_at", "") or ""

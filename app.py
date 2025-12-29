@@ -431,7 +431,9 @@ async def upload_asset(
 ):
     """上传用户素材图片 - 仅 Pro 可用 (PRD v3.2)"""
     # Check personal upload permission (Pro only - PRD v3.2)
-    if user.get("tier") != "pro":
+    # Normalize tier to lowercase for consistent comparison
+    user_tier = (user.get("tier") or "").lower()
+    if user_tier != "pro":
         raise HTTPException(
             403,
             "Personal asset upload requires Pro plan. Please upgrade to upload your own assets."
@@ -624,7 +626,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         raise HTTPException(500, str(e))
     
     # Select model based on tier (PRD v3.2)
-    tier = user.get("tier", "free")
+    # Normalize tier to lowercase for consistent comparison
+    tier = (user.get("tier") or "free").lower()
     if tier == "pro":
         # High-quality model for Pro users
         model = "flux-dev"
@@ -988,7 +991,9 @@ def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
 @app.post("/api/export/zip")
 def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """导出 ZIP - 仅 Pro 可用 (PRD v3.2)"""
-    if user.get("tier") != "pro":
+    # Normalize tier to lowercase for consistent comparison
+    user_tier = (user.get("tier") or "").lower()
+    if user_tier != "pro":
         raise HTTPException(403, "ZIP export requires Pro plan. Starter users can export PDF only.")
     buf = BytesIO()
     create_assets_zip(req.image_urls, buf)
@@ -1000,7 +1005,9 @@ def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
 def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
     """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）- 仅 Pro 可用 (PRD v3.2)"""
     # 检查权限 - Pro only (PRD v3.2)
-    if user.get("tier") != "pro":
+    # Normalize tier to lowercase for consistent comparison
+    user_tier = (user.get("tier") or "").lower()
+    if user_tier != "pro":
         raise HTTPException(403, "ZIP export requires Pro plan. Starter users can export PDF only.")
     
     proj = get_project_detail(project_id, user["id"])
