@@ -266,6 +266,10 @@ class SupportTicketRequest(BaseModel):
     email: Optional[str] = None  # Optional - will use user's email if not provided
     message: str
 
+class ContactFormRequest(BaseModel):
+    email: str  # Required for guest users
+    message: str
+
 class AdminAdjustRequest(BaseModel):
     user_id: str
     amount: int
@@ -1475,6 +1479,16 @@ def ticket(req: SupportTicketRequest, user: dict = Depends(get_current_user)):
     # Use provided email or fallback to user's profile email
     email = req.email or user.get("email", "unknown@user.com")
     create_support_ticket(user["id"], email, req.message)
+    return {"status": "ok"}
+
+@app.post("/api/contact")
+def contact_form(req: ContactFormRequest):
+    """
+    Public contact form endpoint - no authentication required.
+    Used by Contact Us page for both logged in and guest users.
+    """
+    # Create support ticket with "guest" as user_id for unauthenticated users
+    create_support_ticket("guest", req.email, req.message)
     return {"status": "ok"}
 
 # --- Admin ---
