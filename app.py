@@ -2857,6 +2857,125 @@ def adm_get_user_distribution(admin: dict = Depends(require_admin)):
         return {"error": str(e)}
 
 
+@app.get("/api/admin/user/{uid}/env-stats")
+def adm_get_user_env_stats(uid: str, admin: dict = Depends(require_admin)):
+    """获取单个用户的环境信息统计（IP、国家、浏览器、OS、设备等）"""
+    try:
+        from collections import defaultdict
+        
+        # 获取用户最近的事件记录（最近30天）
+        start_date = (datetime.now() - timedelta(days=30)).isoformat()
+        
+        events = supabase.table("user_events")\
+            .select("properties, event_type, created_at")\
+            .eq("user_id", uid)\
+            .gte("created_at", start_date)\
+            .order("created_at", desc=True)\
+            .limit(500)\
+            .execute()
+        
+        if not events.data:
+            return {
+                "total_events": 0,
+                "countries": [],
+                "browsers": [],
+                "os_list": [],
+                "devices": [],
+                "languages": [],
+                "timezones": [],
+                "last_ip": None,
+                "last_seen": None,
+                "first_seen": None,
+                "page_views": [],
+            }
+        
+        # 聚合统计
+        country_counts = defaultdict(int)
+        browser_counts = defaultdict(int)
+        os_counts = defaultdict(int)
+        device_counts = defaultdict(int)
+        language_counts = defaultdict(int)
+        timezone_counts = defaultdict(int)
+        page_view_counts = defaultdict(int)
+        
+        last_ip = None
+        last_seen = None
+        first_seen = None
+        
+        for event in events.data:
+            props = event.get("properties", {})
+            created_at = event.get("created_at")
+            
+            # 时间统计
+            if created_at:
+                if not last_seen:
+                    last_seen = created_at
+                first_seen = created_at
+            
+            # IP（取最后一个）
+            ip = props.get("server_ip") or props.get("ip")
+            if ip and not last_ip:
+                last_ip = ip
+            
+            # 国家
+            country = props.get("server_country") or props.get("country_code")
+            if country and country not in ("unknown", ""):
+                country_counts[country] += 1
+            
+            # 浏览器
+            browser = props.get("client_browser") or props.get("browser")
+            if browser:
+                browser_name = browser.split()[0] if browser else "unknown"
+                browser_counts[browser_name] += 1
+            
+            # 操作系统
+            os_info = props.get("client_os") or props.get("os")
+            if os_info:
+                os_name = os_info.split()[0] if os_info else "unknown"
+                os_counts[os_name] += 1
+            
+            # 设备类型
+            device = props.get("client_device_type") or props.get("device_type")
+            if device:
+                device_counts[device] += 1
+            
+            # 语言
+            lang = props.get("client_language") or props.get("language")
+            if lang:
+                lang_code = lang.split("-")[0] if lang else "unknown"
+                language_counts[lang_code] += 1
+            
+            # 时区
+            tz = props.get("client_timezone") or props.get("timezone")
+            if tz:
+                timezone_counts[tz] += 1
+            
+            # 页面访问
+            page_url = props.get("page_url")
+            if page_url and event.get("event_type") == "page_view":
+                page_view_counts[page_url] += 1
+        
+        # 转换为列表格式并排序
+        def to_sorted_list(counts, limit=10):
+            return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
+        
+        return {
+            "total_events": len(events.data),
+            "countries": to_sorted_list(country_counts),
+            "browsers": to_sorted_list(browser_counts),
+            "os_list": to_sorted_list(os_counts),
+            "devices": to_sorted_list(device_counts),
+            "languages": to_sorted_list(language_counts),
+            "timezones": to_sorted_list(timezone_counts, 5),
+            "page_views": to_sorted_list(page_view_counts, 10),
+            "last_ip": last_ip,
+            "last_seen": last_seen,
+            "first_seen": first_seen,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ==========================================
 # Admin AI Analysis (AI 分析)
 # ==========================================
