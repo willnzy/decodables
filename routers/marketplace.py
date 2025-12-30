@@ -315,7 +315,7 @@ def get_leaderboard_data(
     
     Args:
         period: 'monthly' | 'all_time'
-        type: 'all' | 'template' | 'asset'
+        type: 'all' | 'project' | 'asset'
     
     Returns:
         Top listings by usage_count

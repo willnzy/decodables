@@ -112,7 +112,7 @@ create table if not exists marketplace_listings (
   description text,
   thumbnail_url text not null,
   resource_url text not null,
-  resource_type text not null, -- 'template' | 'asset'（可细分 'image'|'sticker'）
+  resource_type text not null, -- 'project' | 'asset'（可细分 'image'|'sticker'）
   price_credits int not null default 0, -- 0..500
   allowed_tiers text[] not null default '{free, starter, pro}', -- 分级访问与购买
 
@@ -179,7 +179,7 @@ create table if not exists notifications (
 -- 9. 系统资源表 (System Resources)
 create table if not exists system_resources (
   id uuid default gen_random_uuid() primary key,
-  type text not null, -- 'sticker', 'template'
+  type text not null, -- 'sticker', 'project'
   category text,
   url text not null,
   allowed_tiers text[] default '{free, starter, pro}',
@@ -224,7 +224,7 @@ create table if not exists leaderboard_snapshots (
   id uuid default gen_random_uuid() primary key,
   period_start date not null,
   period_end date not null,
-  board_type text not null, -- 'all' | 'template' | 'asset'
+  board_type text not null, -- 'all' | 'project' | 'asset'
   top_list jsonb not null, -- [{listing_id, usage_count, rank}, ...]
   created_at timestamptz default now(),
   unique(period_start, period_end, board_type)

@@ -12,7 +12,7 @@ from .access_control import AccessControl
 
 class ResourceType(str, Enum):
     """Resource type enumeration"""
-    TEMPLATE = "template"          # 项目模板
+    PROJECT = "project"          # 项目模板
     STICKER = "sticker"            # 贴纸
     IMAGE = "image"                # 图片素材
     BACKGROUND = "background"      # 背景图
@@ -160,7 +160,7 @@ class ResourceService:
             
             # PRD v3.2: Project Template is only accessible to Pro users
             # Even if allowed_tiers would grant access, Starter cannot use templates
-            if item_type == "template" and user_tier != "pro":
+            if item_type == "project" and user_tier != "pro":
                 is_accessible = False
             
             # Skip locked items if not including them
@@ -210,7 +210,7 @@ class ResourceService:
         is_accessible = self.access_control.can_access_resource(user, allowed_tiers)
         
         # PRD v3.2: Project Template is only accessible to Pro users
-        if item_type == "template" and user_tier != "pro":
+        if item_type == "project" and user_tier != "pro":
             is_accessible = False
         
         return {

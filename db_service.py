@@ -64,7 +64,7 @@ def publish_permission(user: dict, resource_type: str, price_credits: int) -> di
     规则:
     - Free：不能发布任何内容
     - Starter：仅允许 resource_type='asset' 且 price_credits=0
-    - Pro：允许 resource_type='asset'|'template' 且 price_credits 在 0..500
+    - Pro：允许 resource_type='asset'|'project' 且 price_credits 在 0..500
     
     Returns: { allowed: bool, reason: str }
     """
@@ -90,8 +90,8 @@ def publish_permission(user: dict, resource_type: str, price_credits: int) -> di
     
     # Pro 用户可以发布 asset 或 template
     if tier == "pro":
-        if resource_type not in ["asset", "template"]:
-            return {"allowed": False, "reason": "Invalid resource type. Must be 'asset' or 'template'."}
+        if resource_type not in ["asset", "project"]:
+            return {"allowed": False, "reason": "Invalid resource type. Must be 'asset' or 'project'."}
     
     return {"allowed": True, "reason": ""}
 
@@ -1237,7 +1237,7 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
     获取排行榜（PRD 第9章）
     
     period: 'monthly' | 'all_time'
-    board_type: 'all' | 'template' | 'asset'
+    board_type: 'all' | 'project' | 'asset'
     
     Returns: Top 10 listings with usage_count and rank
     """
@@ -1609,7 +1609,7 @@ def admin_adjust_credits(user_id: str, amount: int, bucket: str, reason: str):
 
 def admin_get_moderation_list(
     status: str = None,  # 'pending' | 'approved' | 'rejected' | 'all'
-    resource_type: str = None,  # 'template' | 'asset'
+    resource_type: str = None,  # 'project' | 'asset'
     page: int = 1,
     limit: int = 20
 ):

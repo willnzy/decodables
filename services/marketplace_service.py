@@ -85,7 +85,7 @@ class MarketplaceService:
         # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
         resource_type = listing.get("resource_type", "asset")
         buyer_tier = buyer.get("tier", "free")
-        if resource_type == "template" and buyer_tier != "pro":
+        if resource_type == "project" and buyer_tier != "pro":
             return {"success": False, "status": 403, "error": "Only Pro members can purchase templates. Upgrade to Pro to access templates."}
         
         # Check if already purchased
@@ -241,7 +241,7 @@ class MarketplaceService:
         
         Args:
             period: 'monthly' or 'all_time' (currently same)
-            resource_type: 'all', 'template', or 'asset'
+            resource_type: 'all', 'project', or 'asset'
             limit: Number of items to return
         
         Returns:

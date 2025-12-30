@@ -164,7 +164,7 @@ class MarketplaceRepository(BaseRepository):
             description: Description
             thumbnail_url: Thumbnail URL
             resource_url: Resource URL
-            resource_type: 'template' or 'asset'
+            resource_type: 'project' or 'asset'
             price_credits: Price in credits
             allowed_tiers: Access tiers
         

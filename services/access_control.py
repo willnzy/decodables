@@ -81,7 +81,7 @@ class AccessControl:
         
         Args:
             user: User profile dict
-            resource_type: 'template' or 'asset'
+            resource_type: 'project' or 'asset'
             price_credits: Price in credits
         
         Returns:
@@ -239,7 +239,7 @@ class AccessControl:
         # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
         resource_type = listing.get("resource_type", "asset")
         user_tier = user.get("tier", "free")
-        if resource_type == "template" and user_tier != "pro":
+        if resource_type == "project" and user_tier != "pro":
             return (False, "Only Pro members can purchase templates. Upgrade to Pro to access templates.")
         
         return (True, None)

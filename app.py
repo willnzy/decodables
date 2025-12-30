@@ -358,7 +358,7 @@ class MarketplacePublishRequest(BaseModel):
     description: Optional[str] = ""
     thumbnail_url: str
     resource_url: str
-    resource_type: str  # 'template' | 'asset'
+    resource_type: str  # 'project' | 'asset'
     price_credits: int = 0
     allowed_tiers: List[str]  # 必填，仅允许 ['free'] / ['starter','pro'] / ['pro']
 
@@ -1517,7 +1517,7 @@ def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: 
     权限:
     - Free: 拒绝任何发布
     - Starter: 仅允许 resource_type='asset' 且 price_credits=0
-    - Pro: 允许 resource_type='asset'|'template' 且 price_credits 在 0..500
+    - Pro: 允许 resource_type='asset'|'project' 且 price_credits 在 0..500
     
     提交后 moderation_status='pending'，必须管理员审核通过后才能上架
     """
@@ -1615,7 +1615,7 @@ def seller_stats(user: dict = Depends(get_current_user)):
 @app.get("/api/marketplace/leaderboard")
 def marketplace_leaderboard(
     period: str = "monthly",  # 'monthly' | 'all_time'
-    type: str = "all",  # 'all' | 'template' | 'asset'
+    type: str = "all",  # 'all' | 'project' | 'asset'
     user: dict = Depends(get_current_user)
 ):
     """
@@ -2423,7 +2423,7 @@ def adm_projects_feed(page: int = 1, limit: int = 50, admin: dict = Depends(requ
 @app.get("/api/admin/marketplace/moderation/list")
 def adm_moderation_list(
     status: Optional[str] = None,  # 'pending' | 'approved' | 'rejected' | 'all'
-    type: Optional[str] = None,  # 'template' | 'asset'
+    type: Optional[str] = None,  # 'project' | 'asset'
     page: int = 1,
     limit: int = 20,
     admin: dict = Depends(require_admin)

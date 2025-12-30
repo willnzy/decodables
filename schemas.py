@@ -130,8 +130,8 @@ class ListingCreate(BaseModel):
     @field_validator('resource_type')
     @classmethod
     def validate_type(cls, v):
-        if v not in ['template', 'asset']:
-            raise ValueError('resource_type must be template or asset')
+        if v not in ['project', 'asset']:
+            raise ValueError('resource_type must be project or asset')
         return v
     
     @field_validator('allowed_tiers')
