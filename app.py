@@ -36,6 +36,12 @@ from db_service import (
     # Admin 审核
     admin_get_moderation_list, admin_get_moderation_detail, admin_approve_listing,
     admin_reject_listing, admin_delete_listing, admin_unpublish_listing,
+    # Admin 新增功能
+    admin_log_operation, admin_get_operation_logs, admin_get_user_projects,
+    admin_get_dashboard_stats, admin_get_user_growth_stats, admin_get_revenue_stats,
+    admin_get_project_stats, admin_get_credit_usage_stats, admin_get_tier_distribution,
+    admin_get_conversion_funnel, admin_get_ai_insights, admin_get_ai_recommendations,
+    admin_get_behavior_analysis, log_user_event, admin_get_user_events, admin_get_event_stats,
     # 通知
     get_user_notifications, mark_notification_read, create_broadcast,
     # 折扣
@@ -227,6 +233,28 @@ async def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="User not found in database")
     
     return profile
+
+async def get_current_user_optional(authorization: str = Header(None)):
+    """
+    可选的用户验证，用于追踪匿名用户行为。
+    不会抛出异常，无 token 时返回 None。
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    try:
+        token = authorization.split(" ")[1]
+        
+        if CLERK_PEM_PUBLIC_KEY:
+            payload = jwt.decode(token, CLERK_PEM_PUBLIC_KEY, algorithms=["RS256"], options={"verify_aud": False})
+            user_id = payload.get("sub")
+            profile = get_user_profile(user_id)
+            return profile
+        else:
+            # 开发模式
+            return None
+    except Exception:
+        return None
 
 async def require_admin(user: dict = Depends(get_current_user)):
     """管理员权限守卫"""
@@ -1574,15 +1602,35 @@ def adm_adj(req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
         "bucket": req.bucket,
         "reason": req.reason
     })
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="credit_adjust",
+        target_user_id=req.user_id,
+        details=f"{'+' if req.amount > 0 else ''}{req.amount} {req.bucket} credits",
+        reason=req.reason
+    )
     return {"status": "ok"}
 
 @app.post("/api/admin/tier/update")
 def adm_tier(req: AdminTierRequest, admin: dict = Depends(require_admin)):
+    # 获取当前等级用于日志
+    old_profile = get_user_profile(req.user_id)
+    old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
+    
     update_subscription_tier(req.user_id, req.tier)
     log_activity(admin["id"], "admin_tier_update", {
         "target_user": req.user_id,
         "new_tier": req.tier
     })
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="tier_change",
+        target_user_id=req.user_id,
+        details=f"{old_tier} → {req.tier}",
+        reason=None
+    )
     return {"status": "ok"}
 
 @app.post("/api/admin/discount")
@@ -1756,6 +1804,15 @@ def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
         "reason": req.reason
     })
     
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="refund",
+        target_user_id=req.user_id,
+        details=f"${refund_amount/100:.2f} {currency} (PI: {req.payment_intent_id[:20]}...)",
+        reason=req.reason
+    )
+    
     return {
         "status": "refunded",
         "refund_id": refund.id,
@@ -1862,6 +1919,15 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
         "immediate": req.immediate,
         "reason": req.reason
     })
+    
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="subscription_cancel",
+        target_user_id=req.user_id,
+        details=f"{plan_name} ({'immediate' if req.immediate else 'at period end'})",
+        reason=req.reason
+    )
     
     return {
         "status": "canceled" if req.immediate else "cancel_scheduled",
@@ -2079,6 +2145,15 @@ def adm_downgrade_subscription(req: AdminDowngradeRequest, admin: dict = Depends
                 "reason": req.reason
             })
             
+            # 记录到审计日志
+            admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="subscription_downgrade",
+                target_user_id=req.user_id,
+                details=f"Pro → Starter ({'immediate' if req.immediate else 'at period end'})",
+                reason=req.reason
+            )
+            
             return {
                 "status": "downgraded" if req.immediate else "downgrade_scheduled",
                 "from_tier": "pro",
@@ -2163,6 +2238,15 @@ def adm_moderation_approve(listing_id: str, admin: dict = Depends(require_admin)
         raise HTTPException(404, "Listing not found")
     
     log_activity(admin["id"], "admin_moderation_approve", {"listing_id": listing_id})
+    
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="listing_approve",
+        target_user_id=result.get("seller_id"),
+        details=f"Approved listing: {result.get('title', listing_id)[:50]}",
+        reason=None
+    )
     return {"status": "approved", "listing_id": listing_id}
 
 @app.post("/api/admin/marketplace/moderation/{listing_id}/reject")
@@ -2188,6 +2272,15 @@ def adm_moderation_reject(
         "listing_id": listing_id,
         "reason": req.reason
     })
+    
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="listing_reject",
+        target_user_id=result.get("seller_id"),
+        details=f"Rejected listing: {result.get('title', listing_id)[:50]}",
+        reason=req.reason
+    )
     return {"status": "rejected", "listing_id": listing_id, "reason": req.reason}
 
 @app.post("/api/admin/marketplace/moderation/{listing_id}/delete")
@@ -2217,3 +2310,237 @@ def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admi
     
     log_activity(admin["id"], "admin_moderation_unpublish", {"listing_id": listing_id})
     return {"status": "unpublished", "listing_id": listing_id}
+
+
+# ==========================================
+# Admin Operation Logs (审计日志)
+# ==========================================
+
+@app.get("/api/admin/logs")
+def adm_get_operation_logs(
+    operation_type: Optional[str] = None,
+    admin_id: Optional[str] = None,
+    target_user_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    admin: dict = Depends(require_admin)
+):
+    """获取管理员操作日志"""
+    return admin_get_operation_logs(
+        operation_type=operation_type,
+        admin_id=admin_id,
+        target_user_id=target_user_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        limit=limit
+    )
+
+@app.get("/api/admin/logs/export")
+def adm_export_operation_logs(
+    operation_type: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """导出操作日志为CSV"""
+    import csv
+    from io import StringIO
+    
+    result = admin_get_operation_logs(
+        operation_type=operation_type,
+        start_date=start_date,
+        end_date=end_date,
+        page=1,
+        limit=10000  # 导出最多1万条
+    )
+    
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Time", "Operation", "Admin", "Target User", "Target Email", "Details", "Reason"])
+    
+    for log in result.get("logs", []):
+        writer.writerow([
+            log.get("created_at"),
+            log.get("operation_type"),
+            log.get("admin_email"),
+            log.get("target_user_code"),
+            log.get("target_user_email"),
+            log.get("details"),
+            log.get("reason")
+        ])
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=operation-logs.csv"}
+    )
+
+
+# ==========================================
+# Admin User Projects (用户项目管理)
+# ==========================================
+
+@app.get("/api/admin/user/{uid}/projects")
+def adm_get_user_projects(
+    uid: str,
+    page: int = 1,
+    limit: int = 20,
+    include_deleted: bool = True,
+    admin: dict = Depends(require_admin)
+):
+    """获取指定用户的所有项目"""
+    return admin_get_user_projects(uid, page, limit, include_deleted)
+
+
+# ==========================================
+# Admin Stats & Analytics (统计分析)
+# ==========================================
+
+@app.get("/api/admin/stats/dashboard")
+def adm_get_dashboard_stats(
+    period: str = "month",
+    admin: dict = Depends(require_admin)
+):
+    """获取仪表盘关键统计"""
+    return admin_get_dashboard_stats(period)
+
+@app.get("/api/admin/stats/user-growth")
+def adm_get_user_growth_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    group_by: str = "day",
+    admin: dict = Depends(require_admin)
+):
+    """获取用户增长统计"""
+    return admin_get_user_growth_stats(start_date, end_date, group_by)
+
+@app.get("/api/admin/stats/revenue")
+def adm_get_revenue_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    group_by: str = "day",
+    admin: dict = Depends(require_admin)
+):
+    """获取收入统计"""
+    return admin_get_revenue_stats(start_date, end_date, group_by)
+
+@app.get("/api/admin/stats/projects")
+def adm_get_project_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """获取项目统计"""
+    return admin_get_project_stats(start_date, end_date)
+
+@app.get("/api/admin/stats/credits")
+def adm_get_credit_usage_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """获取积分使用统计"""
+    return admin_get_credit_usage_stats(start_date, end_date)
+
+@app.get("/api/admin/stats/tier-distribution")
+def adm_get_tier_distribution(admin: dict = Depends(require_admin)):
+    """获取用户等级分布"""
+    return admin_get_tier_distribution()
+
+@app.get("/api/admin/stats/conversion-funnel")
+def adm_get_conversion_funnel(
+    period: str = "month",
+    admin: dict = Depends(require_admin)
+):
+    """获取转化漏斗数据"""
+    return admin_get_conversion_funnel(period)
+
+
+# ==========================================
+# Admin AI Analysis (AI 分析)
+# ==========================================
+
+@app.get("/api/admin/ai/insights")
+def adm_get_ai_insights(
+    type: str = "all",
+    admin: dict = Depends(require_admin)
+):
+    """获取 AI 洞察"""
+    return admin_get_ai_insights(type)
+
+@app.get("/api/admin/ai/recommendations")
+def adm_get_ai_recommendations(
+    area: str = "all",
+    admin: dict = Depends(require_admin)
+):
+    """获取 AI 优化建议"""
+    return admin_get_ai_recommendations(area)
+
+@app.get("/api/admin/ai/behavior-analysis")
+def adm_get_behavior_analysis(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """获取用户行为分析"""
+    return admin_get_behavior_analysis(start_date, end_date)
+
+
+# ==========================================
+# User Events Tracking (用户事件追踪)
+# ==========================================
+
+class UserEventsRequest(BaseModel):
+    events: List[dict]
+
+@app.post("/api/analytics/events")
+async def log_analytics_events(req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
+    """
+    记录用户行为事件
+    支持批量提交
+    """
+    user_id = user.get("id") if user else None
+    
+    for event in req.events:
+        log_user_event(
+            user_id=user_id,
+            event_type=event.get("event_type"),
+            properties=event.get("properties"),
+            session_id=event.get("session_id")
+        )
+    
+    return {"status": "ok", "count": len(req.events)}
+
+@app.get("/api/admin/events")
+def adm_get_user_events(
+    event_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    limit: int = 100,
+    admin: dict = Depends(require_admin)
+):
+    """获取用户事件列表"""
+    return admin_get_user_events(
+        event_type=event_type,
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        limit=limit
+    )
+
+@app.get("/api/admin/events/stats")
+def adm_get_event_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    group_by: str = "event_type",
+    admin: dict = Depends(require_admin)
+):
+    """获取事件统计"""
+    return admin_get_event_stats(start_date, end_date, group_by)
