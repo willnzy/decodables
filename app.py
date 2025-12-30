@@ -2696,6 +2696,125 @@ def adm_get_conversion_funnel(
     return admin_get_conversion_funnel(period)
 
 
+@app.get("/api/admin/stats/tier-activity")
+def adm_get_tier_activity(admin: dict = Depends(require_admin)):
+    """获取各等级用户活跃度统计"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "tier_activity")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/subscription-events")
+def adm_get_subscription_events(admin: dict = Depends(require_admin)):
+    """获取订阅事件统计（升级、降级、取消、退款）"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "subscription_events_30d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"totalUpgrades": 0, "totalDowngrades": 0, "totalCancellations": 0, "totalRefunds": 0, "trend": []}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/page-views")
+def adm_get_page_views(admin: dict = Depends(require_admin)):
+    """获取页面访问统计"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "page_views_7d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"pages": {}, "total_views": 0, "guest_views": 0}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/project-details")
+def adm_get_project_details(admin: dict = Depends(require_admin)):
+    """获取项目详细统计（删除、OCR、页面数）"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "project_details_30d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"deleted_projects": 0, "ocr_usage": 0, "total_pages_sample": 0, "avg_pages_per_project": 0}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/returning-users")
+def adm_get_returning_users(admin: dict = Depends(require_admin)):
+    """获取回流用户统计"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "returning_users")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/tier-trend")
+def adm_get_tier_trend(admin: dict = Depends(require_admin)):
+    """获取各等级用户数趋势"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "tier_trend_30d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"trend": []}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/tier-conversion")
+def adm_get_tier_conversion(admin: dict = Depends(require_admin)):
+    """获取用户转化数据"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "tier_conversion_30d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"conversions": []}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ==========================================
 # Admin AI Analysis (AI 分析)
 # ==========================================
@@ -2742,13 +2861,31 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
     """
     user_id = user.get("id") if user else None
     
+    # 需要同时记录到 activity_logs 的事件类型
+    ACTIVITY_LOG_EVENTS = {
+        "project_print": "print_project",
+        "project_export_pdf": "download_pdf",
+        "project_export_zip": "export_zip",
+        "project_preview": "preview_pdf",
+        "project_delete": "delete_project",
+        "project_create_complete": "create_project",
+    }
+    
     for event in req.events:
+        event_type = event.get("event_type")
+        properties = event.get("properties", {})
+        
+        # 记录到 user_events
         log_user_event(
             user_id=user_id,
-            event_type=event.get("event_type"),
-            properties=event.get("properties"),
+            event_type=event_type,
+            properties=properties,
             session_id=event.get("session_id")
         )
+        
+        # 对于关键操作，同时记录到 activity_logs
+        if user_id and event_type in ACTIVITY_LOG_EVENTS:
+            log_activity(user_id, ACTIVITY_LOG_EVENTS[event_type], properties)
     
     return {"status": "ok", "count": len(req.events)}
 
