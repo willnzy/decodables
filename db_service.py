@@ -162,16 +162,42 @@ def get_user_profile(user_id: str):
         return user
     return None
 
+def generate_user_code() -> str:
+    """
+    生成唯一用户标识码
+    格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(6位)
+    例如: 20251230143025123000001
+    
+    总长度: 14 + 3 + 6 = 23 位
+    """
+    # 获取当前时间（精确到毫秒）
+    now = datetime.now()
+    timestamp_part = now.strftime("%Y%m%d%H%M%S") + f"{now.microsecond // 1000:03d}"
+    
+    # 获取当前用户总数
+    count_result = supabase.table("profiles").select("id", count="exact").execute()
+    user_count = count_result.count if count_result.count else 0
+    
+    # 序号 = 当前用户数 + 1，补齐6位
+    sequence_part = f"{user_count + 1:06d}"
+    
+    return f"{timestamp_part}{sequence_part}"
+
+
 def create_user_profile(user_id: str, email: str, username: str, avatar_url: str):
     """
     创建新用户并赠送初始积分
     根据 PRD: Free 用户赠送 50 Credits (One-time, Permanent)
     """
+    # 生成唯一用户标识码
+    user_code = generate_user_code()
+    
     data = {
         "id": user_id,
         "email": email,
         "username": username,
         "avatar_url": avatar_url,
+        "user_code": user_code,    # 用户唯一标识码
         "credits_monthly": 0,      # 订阅每月赠送
         "credits_permanent": 50,   # 注册赠送 50 Credits (永久)
         "tier": "free",

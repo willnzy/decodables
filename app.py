@@ -324,12 +324,14 @@ class AdminModerationRejectRequest(BaseModel):
 
 class AdminRefundRequest(BaseModel):
     user_id: str
+    user_code: str  # 用户唯一标识码，需要与邮箱匹配验证
     payment_intent_id: str
     amount_cents: Optional[int] = None  # None = 全额退款
     reason: str
 
 class AdminCancelSubscriptionRequest(BaseModel):
     user_id: str
+    user_code: str  # 用户唯一标识码，需要与邮箱匹配验证
     subscription_id: str
     immediate: bool = False  # True = 立即取消，False = 周期结束取消
     reason: str
@@ -1596,6 +1598,8 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     获取用户的付款历史（用于退款操作）
     
     返回:
+    - user_code: 用户唯一标识码（用于验证）
+    - user_email: 用户邮箱
     - payments: 付款记录列表，包含可退款金额
     - subscriptions: 订阅记录列表，包含状态信息
     """
@@ -1603,9 +1607,12 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     if not user:
         raise HTTPException(404, "User not found")
     
+    user_code = user.get("user_code")
+    user_email = user.get("email")
+    
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
-        return {"payments": [], "subscriptions": []}
+        return {"user_code": user_code, "user_email": user_email, "payments": [], "subscriptions": []}
     
     # 获取付款历史
     payments = get_customer_payments(customer_id, limit=20)
@@ -1642,7 +1649,12 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
             "created": sub.created,
         })
     
-    return {"payments": payment_list, "subscriptions": sub_list}
+    return {
+        "user_code": user_code,
+        "user_email": user_email,
+        "payments": payment_list, 
+        "subscriptions": sub_list
+    }
 
 @app.post("/api/admin/refund")
 def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
@@ -1653,14 +1665,22 @@ def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     
     安全检查:
     1. 验证用户存在
-    2. 验证 PaymentIntent 存在
-    3. 验证 PaymentIntent 属于该用户
-    4. 验证退款金额不超过可退款金额
-    5. 验证 PaymentIntent 未被完全退款
+    2. 验证用户ID与邮箱匹配
+    3. 验证 PaymentIntent 存在
+    4. 验证 PaymentIntent 属于该用户
+    5. 验证退款金额不超过可退款金额
+    6. 验证 PaymentIntent 未被完全退款
     """
     user = get_user_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
+    
+    # 【安全检查】验证用户ID (user_code) 与用户匹配
+    stored_user_code = user.get("user_code")
+    if not stored_user_code:
+        raise HTTPException(400, "User has no user code assigned")
+    if stored_user_code != req.user_code:
+        raise HTTPException(403, "User code does not match. Please verify the user code.")
     
     # 获取用户的 Stripe Customer ID
     customer_id = user.get("stripe_customer_id")
@@ -1745,16 +1765,24 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
     
     安全检查:
     1. 验证用户存在
-    2. 验证用户有 Stripe Customer ID
-    3. 验证订阅属于该用户
-    4. 验证订阅当前状态是活跃的
-    5. 验证订阅未被预约取消
+    2. 验证用户ID与邮箱匹配
+    3. 验证用户有 Stripe Customer ID
+    4. 验证订阅属于该用户
+    5. 验证订阅当前状态是活跃的
+    6. 验证订阅未被预约取消
     """
     import stripe
     
     user = get_user_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
+    
+    # 【安全检查】验证用户ID (user_code) 与用户匹配
+    stored_user_code = user.get("user_code")
+    if not stored_user_code:
+        raise HTTPException(400, "User has no user code assigned")
+    if stored_user_code != req.user_code:
+        raise HTTPException(403, "User code does not match. Please verify the user code.")
     
     # 获取用户的 Stripe Customer ID
     customer_id = user.get("stripe_customer_id")

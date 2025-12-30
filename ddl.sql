@@ -24,6 +24,10 @@ create table if not exists profiles (
   email text,
   username text,
   avatar_url text,
+  
+  -- 用户唯一标识码（格式: YYYYMMDDHHMMSS+毫秒+6位序号）
+  -- 例如: 20251230143025123000001
+  user_code text unique,
 
   -- Credits 分桶（重要）
   credits_monthly int default 0,    -- 订阅每月赠送：每月刷新，不结转
