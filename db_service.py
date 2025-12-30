@@ -567,10 +567,10 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     
     # 根据 include_canvas_data 决定查询字段
     if include_canvas_data:
-        select_fields = "id, title, thumbnail_url, canvas_data, created_at, updated_at"
+        select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, created_at, updated_at"
     else:
         # 不包含 canvas_data，只返回基本信息（加载更快）
-        select_fields = "id, title, thumbnail_url, created_at, updated_at"
+        select_fields = "id, title, thumbnail_url, source_listing_id, created_at, updated_at"
     
     query = supabase.table("projects").select(select_fields)\
         .eq("user_id", user_id).eq("is_deleted", False)
@@ -603,11 +603,32 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
                     "is_public": listing["is_public"],
                     "allowed_tiers": listing["allowed_tiers"],
                     "price_credits": listing["price_credits"],
+                    "sales_count": listing["sales_count"],
                 }
         
         # 将 listing 信息附加到项目数据
         for item in items:
             item["marketplace_listing"] = listings_map.get(item["id"])
+        
+        # 获取购买来源的 listing 信息
+        source_listing_ids = [item["source_listing_id"] for item in items if item.get("source_listing_id")]
+        if source_listing_ids:
+            source_listings_res = supabase.table("marketplace_listings").select(
+                "id, price_credits, sales_count"
+            ).in_("id", source_listing_ids).execute()
+            
+            source_listings_map = {}
+            if source_listings_res.data:
+                for listing in source_listings_res.data:
+                    source_listings_map[listing["id"]] = {
+                        "price_credits": listing["price_credits"],
+                        "sales_count": listing["sales_count"],
+                    }
+            
+            # 将购买来源信息附加到项目数据
+            for item in items:
+                if item.get("source_listing_id"):
+                    item["purchase_info"] = source_listings_map.get(item["source_listing_id"])
     
     return items
 

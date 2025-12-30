@@ -95,6 +95,9 @@ create table if not exists projects (
 
   -- 可选：用于快速提示项目包含锁定资源
   contains_locked_elements boolean default false,
+  
+  -- 购买来源：如果项目是从购买的模版创建的，记录来源 listing ID
+  source_listing_id uuid references marketplace_listings(id),
 
   created_at timestamptz default now(),
   updated_at timestamptz default now()
