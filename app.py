@@ -1592,7 +1592,13 @@ def adm_discount(req: AdminDiscountRequest, admin: dict = Depends(require_admin)
 
 @app.get("/api/admin/user/{uid}/payments")
 def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
-    """获取用户的付款历史（用于退款操作）"""
+    """
+    获取用户的付款历史（用于退款操作）
+    
+    返回:
+    - payments: 付款记录列表，包含可退款金额
+    - subscriptions: 订阅记录列表，包含状态信息
+    """
     user = get_user_profile(uid)
     if not user:
         raise HTTPException(404, "User not found")
@@ -1605,14 +1611,22 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     payments = get_customer_payments(customer_id, limit=20)
     payment_list = []
     for pi in payments:
+        # 计算已退款金额和可退款金额
+        amount_refunded = pi.amount - (pi.amount_received if hasattr(pi, 'amount_received') else pi.amount)
+        refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
+        is_fully_refunded = refundable_amount <= 0
+        
         payment_list.append({
             "id": pi.id,
-            "amount": pi.amount,
+            "amount": pi.amount,  # 原始金额
+            "amount_refunded": amount_refunded,  # 已退款金额
+            "refundable_amount": refundable_amount,  # 可退款金额
             "currency": pi.currency,
             "status": pi.status,
             "created": pi.created,
             "description": pi.description,
-            "refunded": pi.amount_received != pi.amount if hasattr(pi, 'amount_received') else False,
+            "is_partially_refunded": amount_refunded > 0 and not is_fully_refunded,
+            "is_fully_refunded": is_fully_refunded,
         })
     
     # 获取订阅信息
@@ -1636,15 +1650,49 @@ def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     Admin 退款操作
     
     支持全额或部分退款
+    
+    安全检查:
+    1. 验证用户存在
+    2. 验证 PaymentIntent 存在
+    3. 验证 PaymentIntent 属于该用户
+    4. 验证退款金额不超过可退款金额
+    5. 验证 PaymentIntent 未被完全退款
     """
     user = get_user_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
     
+    # 获取用户的 Stripe Customer ID
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(400, "User has no Stripe customer ID")
+    
     # 获取 PaymentIntent 详情
     pi = get_payment_intent_details(req.payment_intent_id)
     if not pi:
         raise HTTPException(404, "Payment not found")
+    
+    # 【安全检查1】验证 PaymentIntent 属于该用户
+    if pi.customer != customer_id:
+        raise HTTPException(403, "Payment does not belong to this user")
+    
+    # 【安全检查2】验证 PaymentIntent 状态
+    if pi.status != 'succeeded':
+        raise HTTPException(400, f"Cannot refund payment with status: {pi.status}")
+    
+    # 【安全检查3】计算可退款金额
+    # amount_received 是实际收到的金额，已扣除之前的退款
+    refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
+    
+    if refundable_amount <= 0:
+        raise HTTPException(400, "Payment has already been fully refunded")
+    
+    # 【安全检查4】验证部分退款金额
+    if req.amount_cents is not None:
+        if req.amount_cents <= 0:
+            raise HTTPException(400, "Refund amount must be positive")
+        if req.amount_cents > refundable_amount:
+            raise HTTPException(400, f"Refund amount ({req.amount_cents}) exceeds refundable amount ({refundable_amount})")
     
     # 执行退款
     result = create_refund(
@@ -1675,6 +1723,8 @@ def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
         "payment_intent_id": req.payment_intent_id,
         "refund_id": refund.id,
         "amount_cents": refund_amount,
+        "original_amount": pi.amount,
+        "refundable_amount": refundable_amount,
         "reason": req.reason
     })
     
@@ -1692,10 +1742,42 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
     
     immediate=True: 立即取消
     immediate=False: 在当前计费周期结束时取消
+    
+    安全检查:
+    1. 验证用户存在
+    2. 验证用户有 Stripe Customer ID
+    3. 验证订阅属于该用户
+    4. 验证订阅当前状态是活跃的
+    5. 验证订阅未被预约取消
     """
+    import stripe
+    
     user = get_user_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
+    
+    # 获取用户的 Stripe Customer ID
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(400, "User has no Stripe customer ID")
+    
+    # 【安全检查1】获取并验证订阅详情
+    try:
+        subscription_detail = stripe.Subscription.retrieve(req.subscription_id)
+    except stripe.error.StripeError as e:
+        raise HTTPException(404, f"Subscription not found: {str(e)}")
+    
+    # 【安全检查2】验证订阅属于该用户
+    if subscription_detail.customer != customer_id:
+        raise HTTPException(403, "Subscription does not belong to this user")
+    
+    # 【安全检查3】验证订阅状态
+    if subscription_detail.status not in ['active', 'trialing', 'past_due']:
+        raise HTTPException(400, f"Cannot cancel subscription with status: {subscription_detail.status}")
+    
+    # 【安全检查4】验证订阅未被预约取消（如果选择周期结束取消）
+    if not req.immediate and subscription_detail.cancel_at_period_end:
+        raise HTTPException(400, "Subscription is already scheduled for cancellation")
     
     # 执行取消订阅
     result = cancel_subscription(req.subscription_id, immediate=req.immediate)
@@ -1704,6 +1786,15 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
         raise HTTPException(400, f"Cancel subscription failed: {result['error']}")
     
     subscription = result["subscription"]
+    
+    # 获取订阅 plan 名称用于记录
+    plan_name = "Unknown"
+    if subscription_detail.items.data:
+        price_id = subscription_detail.items.data[0].price.id
+        if 'starter' in price_id.lower():
+            plan_name = "Starter"
+        elif 'pro' in price_id.lower():
+            plan_name = "Pro"
     
     # 如果是立即取消，更新用户 tier 为 free
     if req.immediate:
@@ -1715,7 +1806,7 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
             0,
             "USD",
             "sub_canceled",
-            f"Subscription Canceled (Immediate) | Reason: {req.reason}"
+            f"{plan_name} Subscription Canceled (Immediate) | Reason: {req.reason}"
         )
     else:
         # 记录到用户的交易历史 - 周期结束取消
@@ -1724,13 +1815,14 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
             0,
             "USD",
             "sub_cancel_scheduled",
-            f"Subscription Cancel Scheduled | Reason: {req.reason}"
+            f"{plan_name} Subscription Cancel Scheduled | Ends: {subscription.current_period_end} | Reason: {req.reason}"
         )
     
     # 记录管理员操作日志
     log_activity(admin["id"], "admin_cancel_subscription", {
         "target_user": req.user_id,
         "subscription_id": req.subscription_id,
+        "plan": plan_name,
         "immediate": req.immediate,
         "reason": req.reason
     })
