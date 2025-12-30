@@ -2627,6 +2627,61 @@ def adm_get_export_stats(admin: dict = Depends(require_admin)):
         print(f"Failed to get export stats: {e}")
         return {"totalPdf": 0, "totalZip": 0, "totalPrint": 0, "totalPreview": 0, "trend": []}
 
+@app.get("/api/admin/stats/assets")
+def adm_get_asset_usage_stats(admin: dict = Depends(require_admin)):
+    """获取素材使用排名统计"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "asset_usage_ranking")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"top_assets": [], "by_type": {}, "total_usage": 0, "total_assets_used": 0}
+    except Exception as e:
+        print(f"Failed to get asset usage stats: {e}")
+        return {"top_assets": [], "by_type": {}, "total_usage": 0, "total_assets_used": 0}
+
+@app.get("/api/admin/user/{uid}/asset-usage")
+def adm_get_user_asset_usage(uid: str, admin: dict = Depends(require_admin)):
+    """获取特定用户的素材使用统计"""
+    try:
+        # 获取用户使用的素材
+        usage_res = supabase.table("listing_usage").select(
+            "listing_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type)"
+        ).eq("used_by_user_id", uid).execute()
+        
+        # 统计使用次数
+        usage_counts = {}
+        for record in usage_res.data or []:
+            listing_id = record.get("listing_id")
+            listing_info = record.get("marketplace_listings", {})
+            if listing_id:
+                if listing_id not in usage_counts:
+                    usage_counts[listing_id] = {
+                        "listing_id": listing_id,
+                        "title": listing_info.get("title", "Unknown"),
+                        "thumbnail_url": listing_info.get("thumbnail_url", ""),
+                        "resource_type": listing_info.get("resource_type", ""),
+                        "count": 0
+                    }
+                usage_counts[listing_id]["count"] += 1
+        
+        # 转换为排名列表
+        user_assets = list(usage_counts.values())
+        user_assets.sort(key=lambda x: -x["count"])
+        
+        return {
+            "assets": user_assets[:20],  # 前20个
+            "total_assets_used": len(user_assets),
+            "total_usage": sum(a["count"] for a in user_assets)
+        }
+    except Exception as e:
+        print(f"Failed to get user asset usage: {e}")
+        return {"assets": [], "total_assets_used": 0, "total_usage": 0}
+
 @app.get("/api/admin/stats/tier-distribution")
 def adm_get_tier_distribution(admin: dict = Depends(require_admin)):
     """获取用户等级分布"""

@@ -692,6 +692,85 @@ def aggregate_export_stats():
     log(f"✅ Export stats aggregation complete: PDF={total_pdf}, ZIP={total_zip}, Print={total_print}, Preview={total_preview}")
 
 
+def aggregate_asset_usage():
+    """
+    Aggregate marketplace asset usage statistics
+    素材使用排名统计聚合
+    """
+    log("🎨 Starting asset usage aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    
+    # 获取所有使用记录并关联 listing 信息
+    try:
+        # 获取 listing_usage 并关联 marketplace_listings
+        usage_data = supabase.table("listing_usage").select(
+            "listing_id, used_by_user_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type, seller_id)"
+        ).execute()
+        
+        # 统计每个素材的使用次数
+        usage_counts = defaultdict(lambda: {"count": 0, "unique_users": set(), "listing": None})
+        
+        for record in usage_data.data or []:
+            listing_id = record.get("listing_id")
+            user_id = record.get("used_by_user_id")
+            listing_info = record.get("marketplace_listings", {})
+            
+            if listing_id:
+                usage_counts[listing_id]["count"] += 1
+                usage_counts[listing_id]["unique_users"].add(user_id)
+                if not usage_counts[listing_id]["listing"]:
+                    usage_counts[listing_id]["listing"] = listing_info
+        
+        # 转换为排名列表
+        rankings = []
+        for listing_id, data in usage_counts.items():
+            listing = data["listing"] or {}
+            rankings.append({
+                "listing_id": listing_id,
+                "title": listing.get("title", "Unknown"),
+                "thumbnail_url": listing.get("thumbnail_url", ""),
+                "resource_type": listing.get("resource_type", ""),
+                "seller_id": listing.get("seller_id", ""),
+                "usage_count": data["count"],
+                "unique_users": len(data["unique_users"])
+            })
+        
+        # 按使用次数排序，取前50
+        rankings.sort(key=lambda x: -x["usage_count"])
+        top_assets = rankings[:50]
+        
+        # 按类型分组排名
+        by_type = {}
+        for item in rankings:
+            rtype = item.get("resource_type", "other")
+            if rtype not in by_type:
+                by_type[rtype] = []
+            if len(by_type[rtype]) < 20:  # 每类型取前20
+                by_type[rtype].append(item)
+        
+        stats_data = {
+            "date": now.strftime("%Y-%m-%d"),
+            "stat_type": "asset_usage_ranking",
+            "data": {
+                "top_assets": top_assets,
+                "by_type": by_type,
+                "total_usage": sum(item["usage_count"] for item in rankings),
+                "total_assets_used": len(rankings)
+            },
+            "updated_at": now.isoformat()
+        }
+        
+        supabase.table("aggregated_stats").upsert(
+            stats_data,
+            on_conflict="date,stat_type"
+        ).execute()
+        
+        log(f"✅ Asset usage aggregation complete: {len(top_assets)} top assets, {len(rankings)} total")
+    except Exception as e:
+        log(f"❌ Asset usage aggregation failed: {e}")
+
+
 def run_hourly_tasks():
     """Run tasks that should be executed hourly"""
     log("🕐 Running hourly aggregation tasks...")
@@ -716,6 +795,7 @@ def run_daily_tasks():
     aggregate_marketplace_stats()
     aggregate_retention_stats()
     aggregate_export_stats()
+    aggregate_asset_usage()
     
     log("✅ Daily tasks complete")
 
