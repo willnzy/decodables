@@ -89,6 +89,21 @@ app.add_middleware(
     max_age=3600,  # 预检请求缓存时间（秒）
 )
 
+# ===========================================
+# 定时任务调度器 (Background Scheduler)
+# ===========================================
+from scheduler import init_scheduler, shutdown_scheduler, run_aggregation_now
+
+@app.on_event("startup")
+async def startup_event():
+    """FastAPI 启动时初始化定时任务"""
+    init_scheduler()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """FastAPI 关闭时停止定时任务"""
+    shutdown_scheduler()
+
 # 添加中间件确保所有响应都包含 CORS 头（即使出错）
 @app.middleware("http")
 async def add_cors_header(request: Request, call_next):
@@ -2581,3 +2596,15 @@ def adm_get_aggregated_stats_range(
     """
     from db_service import get_aggregated_stats_range
     return get_aggregated_stats_range(stat_type, days)
+
+
+@app.post("/api/admin/aggregation/run")
+def adm_run_aggregation(
+    task_type: str = "all",
+    admin: dict = Depends(require_admin)
+):
+    """
+    手动触发数据聚合任务
+    task_type: all, hourly, daily
+    """
+    return run_aggregation_now(task_type)
