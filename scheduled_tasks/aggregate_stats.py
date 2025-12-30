@@ -1461,9 +1461,50 @@ def run_hourly_tasks():
     log("✅ Hourly tasks complete")
 
 
+def cleanup_expired_deleted_projects():
+    """
+    清理30天前删除的项目（永久删除）
+    Projects deleted more than 30 days ago are permanently removed
+    """
+    log("🗑️ Cleaning up expired deleted projects...")
+    
+    try:
+        # 计算30天前的时间
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        
+        # 查找需要永久删除的项目
+        expired_projects = supabase.table("projects").select("id, title, user_id, deleted_at")\
+            .eq("is_deleted", True)\
+            .lt("deleted_at", cutoff_date)\
+            .execute()
+        
+        if not expired_projects.data:
+            log("   No expired deleted projects to clean up")
+            return
+        
+        count = len(expired_projects.data)
+        log(f"   Found {count} projects to permanently delete")
+        
+        # 永久删除这些项目
+        for project in expired_projects.data:
+            try:
+                supabase.table("projects").delete().eq("id", project["id"]).execute()
+                log(f"   Deleted: {project['id']} ({project.get('title', 'Untitled')})")
+            except Exception as e:
+                log(f"   ❌ Failed to delete {project['id']}: {e}")
+        
+        log(f"   ✅ Cleaned up {count} expired deleted projects")
+        
+    except Exception as e:
+        log(f"   ❌ Error cleaning up deleted projects: {e}")
+
+
 def run_daily_tasks():
     """Run tasks that should be executed daily"""
     log("📅 Running daily aggregation tasks...")
+    
+    # 清理过期的已删除项目
+    cleanup_expired_deleted_projects()
     
     aggregate_daily_user_stats()
     aggregate_daily_revenue()

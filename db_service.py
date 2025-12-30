@@ -690,20 +690,26 @@ def restore_project(project_id: str):
 
 
 def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
-    """获取用户已删除的项目列表"""
+    """获取用户已删除的项目列表（30天内）"""
+    from datetime import datetime, timedelta, timezone
+    
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # 选择需要的字段：项目名称、预览图、删除时间、项目ID
-    # 注意：只选择数据库中确实存在的字段
-    res = supabase.table("projects").select(
-        "id, title, canvas_data, deleted_at, created_at, updated_at"
-    ).eq("user_id", user_id).eq("is_deleted", True)\
-        .order("updated_at", desc=True).range(start, end).execute()
+    # 只返回30天内删除的项目
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     
-    # 获取总数
+    # 选择需要的字段：项目名称、预览图、删除时间、项目ID
+    res = supabase.table("projects").select(
+        "id, title, thumbnail_url, deleted_at, created_at, updated_at"
+    ).eq("user_id", user_id).eq("is_deleted", True)\
+        .gte("deleted_at", cutoff_date)\
+        .order("deleted_at", desc=True).range(start, end).execute()
+    
+    # 获取总数（30天内）
     count_res = supabase.table("projects").select("id", count="exact")\
-        .eq("user_id", user_id).eq("is_deleted", True).execute()
+        .eq("user_id", user_id).eq("is_deleted", True)\
+        .gte("deleted_at", cutoff_date).execute()
     total = count_res.count if count_res.count else 0
     
     return {
