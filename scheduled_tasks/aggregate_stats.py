@@ -395,12 +395,230 @@ def aggregate_event_stats():
     log("✅ Event stats aggregation complete")
 
 
+def aggregate_generation_stats():
+    """
+    Aggregate AI generation statistics
+    AI 生成统计聚合
+    """
+    log("🎨 Starting generation stats aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=30)).isoformat()
+    
+    # Get generation events from user_events
+    events = supabase.table("user_events").select("event_type, properties")\
+        .in_("event_type", ["generation_start", "generation_complete", "generation_failed"])\
+        .gte("created_at", start_date).execute()
+    
+    stats = {
+        "total_generations": 0,
+        "successful": 0,
+        "failed": 0,
+        "success_rate": 0,
+    }
+    
+    for event in events.data or []:
+        event_type = event.get("event_type")
+        if event_type == "generation_start":
+            stats["total_generations"] += 1
+        elif event_type == "generation_complete":
+            stats["successful"] += 1
+        elif event_type == "generation_failed":
+            stats["failed"] += 1
+    
+    if stats["total_generations"] > 0:
+        stats["success_rate"] = round(stats["successful"] / stats["total_generations"] * 100, 1)
+    
+    # Also get from credit_transactions as backup
+    credits_used = supabase.table("credit_transactions").select("id", count="exact")\
+        .eq("type", "generation")\
+        .gte("created_at", start_date).execute()
+    stats["credits_transactions"] = credits_used.count or 0
+    
+    stats_data = {
+        "date": now.strftime("%Y-%m-%d"),
+        "stat_type": "generation_stats_30d",
+        "data": stats,
+        "updated_at": now.isoformat()
+    }
+    
+    supabase.table("aggregated_stats").upsert(
+        stats_data,
+        on_conflict="date,stat_type"
+    ).execute()
+    
+    log("✅ Generation stats aggregation complete")
+
+
+def aggregate_marketplace_stats():
+    """
+    Aggregate marketplace statistics
+    市场统计聚合
+    """
+    log("🏪 Starting marketplace stats aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=30)).isoformat()
+    
+    # Total listings
+    total_listings = supabase.table("marketplace_listings").select("id", count="exact")\
+        .eq("moderation_status", "approved").execute()
+    
+    # New listings this month
+    new_listings = supabase.table("marketplace_listings").select("id", count="exact")\
+        .eq("moderation_status", "approved")\
+        .gte("created_at", start_date).execute()
+    
+    # Get purchases from user_purchases
+    try:
+        purchases = supabase.table("user_purchases").select("id, credits_paid")\
+            .gte("created_at", start_date).execute()
+        total_purchases = len(purchases.data or [])
+        total_revenue = sum(p.get("credits_paid", 0) for p in purchases.data or [])
+    except Exception:
+        total_purchases = 0
+        total_revenue = 0
+    
+    # Get usage stats from listing_usage
+    try:
+        usage = supabase.table("listing_usage").select("id", count="exact")\
+            .gte("used_at", start_date).execute()
+        total_usage = usage.count or 0
+    except Exception:
+        total_usage = 0
+    
+    stats_data = {
+        "date": now.strftime("%Y-%m-%d"),
+        "stat_type": "marketplace_stats_30d",
+        "data": {
+            "total_listings": total_listings.count or 0,
+            "new_listings": new_listings.count or 0,
+            "total_purchases": total_purchases,
+            "total_revenue_credits": total_revenue,
+            "total_usage": total_usage,
+        },
+        "updated_at": now.isoformat()
+    }
+    
+    supabase.table("aggregated_stats").upsert(
+        stats_data,
+        on_conflict="date,stat_type"
+    ).execute()
+    
+    log("✅ Marketplace stats aggregation complete")
+
+
+def aggregate_retention_stats():
+    """
+    Aggregate user retention statistics
+    用户留存统计聚合
+    """
+    log("📈 Starting retention stats aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    retention_data = {}
+    
+    for period_name, days in [("D1", 1), ("D7", 7), ("D30", 30)]:
+        # Users who signed up X days ago
+        signup_date = today - timedelta(days=days)
+        next_day = signup_date + timedelta(days=1)
+        
+        cohort = supabase.table("profiles").select("id")\
+            .gte("created_at", signup_date.isoformat())\
+            .lt("created_at", next_day.isoformat()).execute()
+        
+        cohort_ids = [u.get("id") for u in cohort.data or []]
+        cohort_size = len(cohort_ids)
+        
+        if cohort_size == 0:
+            retention_data[period_name] = {"cohort_size": 0, "retained": 0, "rate": 0}
+            continue
+        
+        # Check how many were active today
+        active_today = supabase.table("activity_logs").select("user_id")\
+            .in_("user_id", cohort_ids[:100])  # Limit to avoid query issues
+            .gte("created_at", today.isoformat())\
+            .lt("created_at", now.isoformat()).execute()
+        
+        retained = len(set(a.get("user_id") for a in active_today.data or []))
+        
+        retention_data[period_name] = {
+            "cohort_size": cohort_size,
+            "retained": retained,
+            "rate": round(retained / min(cohort_size, 100) * 100, 1) if cohort_size > 0 else 0
+        }
+    
+    stats_data = {
+        "date": now.strftime("%Y-%m-%d"),
+        "stat_type": "retention_stats",
+        "data": retention_data,
+        "updated_at": now.isoformat()
+    }
+    
+    supabase.table("aggregated_stats").upsert(
+        stats_data,
+        on_conflict="date,stat_type"
+    ).execute()
+    
+    log("✅ Retention stats aggregation complete")
+
+
+def aggregate_feature_usage():
+    """
+    Aggregate feature usage statistics
+    功能使用统计聚合
+    """
+    log("⚙️ Starting feature usage aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=7)).isoformat()
+    
+    # Get button clicks and feature events
+    events = supabase.table("user_events").select("event_type, properties")\
+        .in_("event_type", ["button_click", "feature_discovery", "modal_open"])\
+        .gte("created_at", start_date).execute()
+    
+    feature_counts = defaultdict(int)
+    button_counts = defaultdict(int)
+    
+    for event in events.data or []:
+        event_type = event.get("event_type")
+        props = event.get("properties", {})
+        
+        if event_type == "button_click":
+            button_name = props.get("button_name", "unknown")
+            button_counts[button_name] += 1
+        elif event_type == "feature_discovery":
+            feature_name = props.get("feature_name", "unknown")
+            feature_counts[feature_name] += 1
+    
+    stats_data = {
+        "date": now.strftime("%Y-%m-%d"),
+        "stat_type": "feature_usage_7d",
+        "data": {
+            "buttons": dict(sorted(button_counts.items(), key=lambda x: -x[1])[:20]),
+            "features": dict(sorted(feature_counts.items(), key=lambda x: -x[1])[:20]),
+        },
+        "updated_at": now.isoformat()
+    }
+    
+    supabase.table("aggregated_stats").upsert(
+        stats_data,
+        on_conflict="date,stat_type"
+    ).execute()
+    
+    log("✅ Feature usage aggregation complete")
+
+
 def run_hourly_tasks():
     """Run tasks that should be executed hourly"""
     log("🕐 Running hourly aggregation tasks...")
     
     aggregate_tier_distribution()
     aggregate_event_stats()
+    aggregate_feature_usage()
     
     log("✅ Hourly tasks complete")
 
@@ -414,6 +632,9 @@ def run_daily_tasks():
     aggregate_daily_projects()
     aggregate_credit_usage()
     aggregate_conversion_funnel()
+    aggregate_generation_stats()
+    aggregate_marketplace_stats()
+    aggregate_retention_stats()
     
     log("✅ Daily tasks complete")
 
