@@ -30,7 +30,7 @@ class MarketplaceRepository(BaseRepository):
         Find public listings (approved + public + not deleted).
         
         Args:
-            resource_type: Filter by type (template/asset)
+            resource_type: Filter by type (project/asset)
             tier_filter: Filter by allowed_tiers
             price_filter: 'free' or 'paid'
             sort: 'latest', 'popular', 'best_selling'

@@ -97,7 +97,7 @@ def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
     
     Requires membership. Validates:
     - Starter: only free assets (price_credits=0, resource_type='asset')
-    - Pro: any price 0-500, assets or templates
+    - Pro: any price 0-500, assets or projects
     
     Returns:
         Created listing with moderation_status='pending'

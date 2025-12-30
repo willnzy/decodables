@@ -84,11 +84,11 @@ def publish_permission(user: dict, resource_type: str, price_credits: int) -> di
     # Starter 用户限制
     if tier == "starter":
         if resource_type != "asset":
-            return {"allowed": False, "reason": "Starter users can only publish Assets. Upgrade to Pro to publish Templates."}
+            return {"allowed": False, "reason": "Starter users can only publish Assets. Upgrade to Pro to publish Projects."}
         if price_credits > 0:
             return {"allowed": False, "reason": "Starter users can only publish free assets. Upgrade to Pro to sell."}
     
-    # Pro 用户可以发布 asset 或 template
+    # Pro 用户可以发布 asset 或 project
     if tier == "pro":
         if resource_type not in ["asset", "project"]:
             return {"allowed": False, "reason": "Invalid resource type. Must be 'asset' or 'project'."}
@@ -2287,7 +2287,7 @@ def admin_get_ai_recommendations(area: str = "all"):
             "summary": "Reduce steps from sign-up to first project creation to improve activation.",
             "impact": "+20% activation",
             "steps": [
-                "Add a 'Quick Start' template selection during onboarding",
+                "Add a 'Quick Start' project selection during onboarding",
                 "Pre-fill project settings with smart defaults",
                 "Show progress indicators to set expectations",
                 "Add tooltips for key features on first use"

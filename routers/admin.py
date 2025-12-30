@@ -179,7 +179,7 @@ def get_moderation_list(
     
     Args:
         status: Filter by moderation_status (pending/approved/rejected)
-        type: Filter by resource_type (template/asset)
+        type: Filter by resource_type (project/asset)
     
     Returns:
         Listings with seller info

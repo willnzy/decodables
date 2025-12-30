@@ -77,7 +77,7 @@ class AccessControl:
         - Must be active member (Starter/Pro with subscription_status='active')
         - Free: Cannot publish anything
         - Starter: Only free assets (resource_type='asset', price_credits=0)
-        - Pro: Any assets or templates (0-500 credits)
+        - Pro: Any assets or projects (0-500 credits)
         
         Args:
             user: User profile dict
@@ -104,7 +104,7 @@ class AccessControl:
         # Starter restrictions
         if tier == "starter":
             if resource_type != "asset":
-                return (False, "Starter members can only publish assets, not templates")
+                return (False, "Starter members can only publish assets, not projects")
             if price_credits != 0:
                 return (False, "Starter members can only publish free assets (price must be 0)")
         
@@ -214,7 +214,7 @@ class AccessControl:
         Validates:
         - Listing is approved, public, not deleted
         - User has access based on allowed_tiers
-        - PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
+        - PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Projects
         
         Args:
             user: User profile dict
@@ -236,11 +236,11 @@ class AccessControl:
         if not AccessControl.can_access_resource(user, allowed_tiers):
             return (False, f"Requires {'/'.join(allowed_tiers)} membership")
         
-        # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Templates
+        # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Projects
         resource_type = listing.get("resource_type", "asset")
         user_tier = user.get("tier", "free")
         if resource_type == "project" and user_tier != "pro":
-            return (False, "Only Pro members can purchase templates. Upgrade to Pro to access templates.")
+            return (False, "Only Pro members can purchase projects. Upgrade to Pro to access projects.")
         
         return (True, None)
 

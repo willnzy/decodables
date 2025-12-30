@@ -1,6 +1,6 @@
 """
 Resource Service
-Unified resource management for templates, stickers, images, and other assets
+Unified resource management for projects, stickers, images, and other assets
 
 @module services/resource_service
 """
@@ -26,7 +26,7 @@ class ResourceType(str, Enum):
 
 class ResourceCategory(str, Enum):
     """Resource category enumeration"""
-    # Template categories
+    # Project categories
     STORY = "story"                # 故事模板
     EDUCATIONAL = "educational"    # 教育模板
     SEASONAL = "seasonal"          # 节日/季节
@@ -51,7 +51,7 @@ class ResourceCategory(str, Enum):
 
 # Resource type to categories mapping
 TYPE_CATEGORIES = {
-    ResourceType.TEMPLATE: [
+    ResourceType.PROJECT: [
         ResourceCategory.STORY,
         ResourceCategory.EDUCATIONAL,
         ResourceCategory.SEASONAL,
@@ -86,7 +86,7 @@ class ResourceService:
     Service for managing system resources.
     
     Handles:
-    - System templates and assets
+    - System projects and assets
     - Resource categorization
     - Tier-based access control
     - Resource search and filtering
@@ -112,7 +112,7 @@ class ResourceService:
         
         Args:
             user: Current user profile
-            resource_type: Filter by type (template, sticker, image, etc.)
+            resource_type: Filter by type (project, sticker, image, etc.)
             category: Filter by category
             allowed_tiers_filter: Filter by tier (free, starter, pro)
             search: Search in name/tags
@@ -158,8 +158,8 @@ class ResourceService:
             # Base access check based on allowed_tiers
             is_accessible = self.access_control.can_access_resource(user, allowed_tiers)
             
-            # PRD v3.2: Project Template is only accessible to Pro users
-            # Even if allowed_tiers would grant access, Starter cannot use templates
+            # PRD v3.2: Project is only accessible to Pro users
+            # Even if allowed_tiers would grant access, Starter cannot use projects
             if item_type == "project" and user_tier != "pro":
                 is_accessible = False
             
@@ -209,7 +209,7 @@ class ResourceService:
         
         is_accessible = self.access_control.can_access_resource(user, allowed_tiers)
         
-        # PRD v3.2: Project Template is only accessible to Pro users
+        # PRD v3.2: Project is only accessible to Pro users
         if item_type == "project" and user_tier != "pro":
             is_accessible = False
         
@@ -247,7 +247,7 @@ class ResourceService:
             include_locked=True  # Show locked stickers with lock icon
         )
     
-    def get_templates(
+    def get_projects(
         self,
         user: dict,
         category: str = None,
@@ -255,7 +255,7 @@ class ResourceService:
         limit: int = 20
     ) -> Dict[str, Any]:
         """
-        Get project templates.
+        Get marketplace projects.
         
         Args:
             user: Current user profile
@@ -264,11 +264,11 @@ class ResourceService:
             limit: Items per page
         
         Returns:
-            Templates with access info
+            Projects with access info
         """
         return self.get_resources(
             user=user,
-            resource_type=ResourceType.TEMPLATE,
+            resource_type=ResourceType.PROJECT,
             category=category,
             page=page,
             limit=limit,

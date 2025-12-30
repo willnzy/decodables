@@ -1,6 +1,6 @@
 """
 Resources Router
-API endpoints for system resources (templates, stickers, assets)
+API endpoints for system resources (projects, stickers, assets)
 
 @module routers/resources
 """
@@ -51,7 +51,7 @@ class BulkImportRequest(BaseModel):
 
 @router.get("")
 async def list_resources(
-    type: Optional[str] = Query(None, description="Resource type (template, sticker, image, etc.)"),
+    type: Optional[str] = Query(None, description="Resource type (project, sticker, image, etc.)"),
     category: Optional[str] = Query(None, description="Category filter"),
     tier: Optional[str] = Query(None, description="Tier filter (free, starter, pro)"),
     search: Optional[str] = Query(None, description="Search in name/tags"),
@@ -126,20 +126,20 @@ async def get_stickers(
     )
 
 
-@router.get("/templates")
-async def get_templates(
+@router.get("/projects")
+async def get_projects(
     category: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(optional_user)
 ):
     """
-    Get project templates.
-    Convenience endpoint that filters by template type.
+    Get marketplace projects.
+    Convenience endpoint that filters by project type.
     """
     resource_service = get_resource_service()
     
-    return resource_service.get_templates(
+    return resource_service.get_projects(
         user=user,
         category=category,
         page=page,
