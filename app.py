@@ -616,7 +616,9 @@ def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: d
     return get_assets(user["id"], target_proj)
 
 @app.post("/api/user/assets")
+@limiter.limit("20/minute")  # 上传限频
 async def upload_asset(
+    request: Request,
     file: UploadFile = File(...),
     project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user)
@@ -734,7 +736,8 @@ class ProjectCreate(BaseModel):
     canvas_data: Optional[dict] = None
 
 @app.post("/api/projects")
-def new_project(req: ProjectCreate = None, user: dict = Depends(get_current_user)):
+@limiter.limit("20/minute")  # 创建项目限频
+def new_project(request: Request, req: ProjectCreate = None, user: dict = Depends(get_current_user)):
     p = create_project(user["id"], req.title if req else None, req.canvas_data if req else None)
     log_activity(user["id"], "create_project")
     return p
@@ -1095,7 +1098,8 @@ Return ONLY valid JSON, no markdown formatting."""
 
 # [新增] 从项目直接生成 PDF（用于 Dashboard）- 免费
 @app.get("/api/projects/{project_id}/pdf")
-def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")  # PDF 生成消耗服务器资源
+def get_project_pdf(request: Request, project_id: str, user: dict = Depends(get_current_user)):
     """从保存的项目数据生成 PDF，无需再次传入图片和文字 - 永久免费"""
     proj = get_project_detail(project_id, user["id"])
     if not proj:
@@ -1149,7 +1153,8 @@ def get_project_pdf(project_id: str, user: dict = Depends(get_current_user)):
 
 # [新增] 预览 PDF 为图片（防止用户绕过下载）
 @app.get("/api/projects/{project_id}/preview")
-def preview_project_as_image(project_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("20/minute")  # 预览生成限频
+def preview_project_as_image(request: Request, project_id: str, user: dict = Depends(get_current_user)):
     """生成 PDF 预览图片，防止用户直接下载 PDF"""
     import fitz  # PyMuPDF
     
@@ -1213,7 +1218,8 @@ def preview_project_as_image(project_id: str, user: dict = Depends(get_current_u
         raise HTTPException(500, "Failed to generate preview")
 
 @app.post("/api/generate/pdf")
-def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")  # PDF 生成限频
+def dl_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """生成 PDF - 永久免费（根据 PRD v3.0）"""
     # 不再扣费，仅更新 hash 用于缓存/版本识别
     proj = get_project_detail(req.project_id, user["id"])
@@ -1227,7 +1233,8 @@ def dl_pdf(req: PdfGenRequest, user: dict = Depends(get_current_user)):
     return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=zine.pdf"})
 
 @app.post("/api/export/zip")
-def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("5/minute")  # ZIP 打包资源消耗大
+def dl_zip(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """导出 ZIP - 仅 Pro 可用 (PRD v3.2)"""
     # Normalize tier to lowercase for consistent comparison
     user_tier = (user.get("tier") or "").lower()
@@ -1240,7 +1247,8 @@ def dl_zip(req: PdfGenRequest, user: dict = Depends(get_current_user)):
 
 # [新增] 从项目直接导出 ZIP（PDF + 图片）
 @app.get("/api/projects/{project_id}/zip")
-def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("5/minute")  # ZIP 打包资源消耗大
+def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_current_user)):
     """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）- 仅 Pro 可用 (PRD v3.2)"""
     # 检查权限 - Pro only (PRD v3.2)
     # Normalize tier to lowercase for consistent comparison
@@ -1332,7 +1340,9 @@ def get_project_zip(project_id: str, user: dict = Depends(get_current_user)):
 
 # --- Marketplace ---
 @app.get("/api/marketplace/items")
+@limiter.limit("60/minute")  # 列表查询限频
 def marketplace_items(
+    request: Request,
     featured: bool = False, 
     resource_type: Optional[str] = None,
     sort: Optional[str] = "latest",  # 'latest' | 'popular' | 'best_selling'
@@ -1428,7 +1438,8 @@ def marketplace_item_detail(
     return item
 
 @app.post("/api/marketplace/publish")
-def marketplace_publish(req: MarketplacePublishRequest, user: dict = Depends(require_member)):
+@limiter.limit("10/minute")  # 发布限频
+def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: dict = Depends(require_member)):
     """
     发布商品（提交审核）（PRD 第7/8章）
     
@@ -1491,7 +1502,8 @@ def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(
     return {"status": "unpublished"}
 
 @app.post("/api/marketplace/purchase")
-def marketplace_purchase(req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")  # 购买限频防刷
+def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
     """购买商品"""
     result = execute_purchase(user["id"], req.listing_id)
     
@@ -1546,7 +1558,8 @@ def marketplace_leaderboard(
 
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
-def pay(req: CheckoutRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("5/minute")  # 支付接口严格限频
+def pay(request: Request, req: CheckoutRequest, user: dict = Depends(get_current_user)):
     # 检查是否有折扣
     discount = get_user_discount(user["id"], req.plan_type)
     discount_percent = discount.get("discount_percent", 0) if discount else 0
@@ -1555,19 +1568,22 @@ def pay(req: CheckoutRequest, user: dict = Depends(get_current_user)):
     return {"url": url, "discount_applied": discount_percent}
 
 @app.post("/api/payment/portal")
-def portal(user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")  # 账单门户限频
+def portal(request: Request, user: dict = Depends(get_current_user)):
     if not user.get("stripe_customer_id"): raise HTTPException(400, "No subscription found")
     return {"url": create_portal_session(user["id"], user.get("stripe_customer_id"))}
 
 @app.post("/api/support/email")
-def ticket(req: SupportTicketRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("3/minute")  # 防垃圾工单
+def ticket(request: Request, req: SupportTicketRequest, user: dict = Depends(get_current_user)):
     # Use provided email or fallback to user's profile email
     email = req.email or user.get("email", "unknown@user.com")
     create_support_ticket(user["id"], email, req.message)
     return {"status": "ok"}
 
 @app.post("/api/contact")
-def contact_form(req: ContactFormRequest):
+@limiter.limit("3/minute")  # 公开接口严格限频防滥用
+def contact_form(request: Request, req: ContactFormRequest):
     """
     Public contact form endpoint - no authentication required.
     Used by Contact Us page for both logged in and guest users.
@@ -1577,7 +1593,8 @@ def contact_form(req: ContactFormRequest):
     return {"status": "ok"}
 
 @app.post("/api/feedback")
-def feedback_with_images(req: FeedbackWithImagesRequest, request: Request):
+@limiter.limit("3/minute")  # 防垃圾反馈
+def feedback_with_images(request: Request, req: FeedbackWithImagesRequest):
     """
     Submit feedback with optional images.
     Works for both logged in and guest users.
@@ -1600,7 +1617,8 @@ def feedback_with_images(req: FeedbackWithImagesRequest, request: Request):
 
 # --- Admin ---
 @app.get("/api/admin/users")
-def adm_users(query: str, admin: dict = Depends(require_admin)):
+@limiter.limit("60/minute")  # 搜索限频防爬取
+def adm_users(request: Request, query: str, admin: dict = Depends(require_admin)):
     return search_users(query)
 
 @app.get("/api/admin/user/{uid}")
@@ -1608,7 +1626,8 @@ def adm_audit(uid: str, admin: dict = Depends(require_admin)):
     return get_full_user_audit(uid)
 
 @app.post("/api/admin/credits/adjust")
-def adm_adj(req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("30/minute")  # Admin 操作限频
+def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
     """手动调整用户积分（可指定 bucket）"""
     admin_adjust_credits(req.user_id, req.amount, req.bucket, req.reason)
     log_activity(admin["id"], "admin_credits_adjust", {
@@ -1628,7 +1647,8 @@ def adm_adj(req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
     return {"status": "ok"}
 
 @app.post("/api/admin/tier/update")
-def adm_tier(req: AdminTierRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("30/minute")  # Admin 操作限频
+def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(require_admin)):
     # 获取当前等级用于日志
     old_profile = get_user_profile(req.user_id)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
@@ -1728,7 +1748,8 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     }
 
 @app.post("/api/admin/refund")
-def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")  # 退款操作严格限频
+def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     """
     Admin 退款操作
     
@@ -1836,7 +1857,8 @@ def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     }
 
 @app.post("/api/admin/subscription/cancel")
-def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")  # 订阅操作严格限频
+def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
     """
     Admin 取消用户订阅
     
@@ -1952,7 +1974,8 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
     }
 
 @app.post("/api/admin/subscription/downgrade")
-def adm_downgrade_subscription(req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")  # 订阅操作严格限频
+def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
     """
     Admin 帮用户降级订阅
     
@@ -2182,7 +2205,8 @@ def adm_downgrade_subscription(req: AdminDowngradeRequest, admin: dict = Depends
     raise HTTPException(400, "Invalid downgrade path")
 
 @app.post("/api/admin/broadcast")
-def adm_broadcast(req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("5/minute")  # 群发限频防滥用
+def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
     """群发系统通知"""
     notification = create_broadcast(req.title, req.content, req.target_group)
     log_activity(admin["id"], "admin_broadcast", {
@@ -2513,7 +2537,8 @@ class UserEventsRequest(BaseModel):
     events: List[dict]
 
 @app.post("/api/analytics/events")
-async def log_analytics_events(req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
+@limiter.limit("60/minute")  # 事件上报限频（批量接口）
+async def log_analytics_events(request: Request, req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
     """
     记录用户行为事件
     支持批量提交
