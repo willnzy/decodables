@@ -688,6 +688,46 @@ def restore_project(project_id: str):
     }).eq("id", project_id).execute()
     return res.data[0] if res.data else None
 
+
+def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
+    """获取用户已删除的项目列表"""
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    # 选择需要的字段：项目名称、预览图、删除时间、项目ID
+    res = supabase.table("projects").select(
+        "id, title, canvas_data, deleted_at, created_at, updated_at, paper_size"
+    ).eq("user_id", user_id).eq("is_deleted", True)\
+        .order("deleted_at", desc=True).range(start, end).execute()
+    
+    # 获取总数
+    count_res = supabase.table("projects").select("id", count="exact")\
+        .eq("user_id", user_id).eq("is_deleted", True).execute()
+    total = count_res.count if count_res.count else 0
+    
+    return {
+        "items": res.data or [],
+        "total": total,
+        "page": page
+    }
+
+
+def user_restore_project(project_id: str, user_id: str):
+    """用户恢复自己已删除的项目"""
+    # 先检查项目是否属于该用户且已删除
+    check = supabase.table("projects").select("id")\
+        .eq("id", project_id).eq("user_id", user_id).eq("is_deleted", True).execute()
+    
+    if not check.data:
+        raise Exception("Project not found or not deleted")
+    
+    res = supabase.table("projects").update({
+        "is_deleted": False,
+        "deleted_at": None
+    }).eq("id", project_id).eq("user_id", user_id).execute()
+    
+    return res.data[0] if res.data else None
+
 def update_project_hash(project_id: str, new_hash: str):
     """仅更新 Hash 值（用于缓存/去重，不参与扣费）"""
     supabase.table("projects").update({"last_downloaded_hash": new_hash})\

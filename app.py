@@ -740,6 +740,35 @@ def list_projects(
     print(f"[API] list_projects: items={len(items) if items else 0}, total={total_count}")
     return {"items": items, "total": total_count, "page": page}
 
+
+@app.get("/api/projects/deleted")
+def list_deleted_projects(
+    page: int = 1,
+    limit: int = 20,
+    user: dict = Depends(get_current_user)
+):
+    """获取用户已删除的项目列表"""
+    from db_service import get_user_deleted_projects
+    return get_user_deleted_projects(user["id"], page, limit)
+
+
+@app.post("/api/projects/{project_id}/restore")
+def restore_user_project(
+    project_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """用户恢复自己已删除的项目"""
+    from db_service import user_restore_project
+    try:
+        project = user_restore_project(project_id, user["id"])
+        if project:
+            log_activity(user["id"], "restore_project", {"project_id": project_id})
+            return {"status": "ok", "project": project}
+        else:
+            raise HTTPException(status_code=404, detail="Project not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 class ProjectCreate(BaseModel):
     title: Optional[str] = "My Magic Story"
     canvas_data: Optional[dict] = None
