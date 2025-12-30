@@ -2241,3 +2241,65 @@ def admin_get_event_stats(start_date: str = None, end_date: str = None, group_by
         stats[key] += 1
     
     return [{"key": k, "count": v} for k, v in sorted(stats.items(), key=lambda x: -x[1])]
+
+
+# ===========================================
+# Aggregated Stats Functions (聚合统计)
+# ===========================================
+
+def get_aggregated_stats(stat_type: str, use_cache: bool = True):
+    """
+    获取聚合统计数据
+    优先使用缓存，如果缓存不存在则实时计算
+    """
+    if use_cache:
+        # Try to get from cache first
+        try:
+            res = supabase.table("aggregated_stats").select("data, updated_at")\
+                .eq("stat_type", stat_type)\
+                .order("date", desc=True)\
+                .limit(1).execute()
+            
+            if res.data:
+                cache = res.data[0]
+                # Check if cache is fresh (within 1 hour)
+                updated_at = cache.get("updated_at")
+                if updated_at:
+                    from datetime import timedelta
+                    now = datetime.now(timezone.utc)
+                    cache_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    if now - cache_time < timedelta(hours=1):
+                        return cache.get("data", {})
+        except Exception as e:
+            print(f"Cache lookup failed: {e}")
+    
+    # Fall back to real-time calculation
+    return None
+
+
+def get_aggregated_stats_range(stat_type: str, days: int = 30):
+    """
+    获取指定天数范围内的聚合统计
+    """
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    res = supabase.table("aggregated_stats").select("date, data")\
+        .eq("stat_type", stat_type)\
+        .gte("date", start_date)\
+        .order("date", desc=False).execute()
+    
+    return res.data or []
+
+
+def upsert_aggregated_stats(date_str: str, stat_type: str, data: dict):
+    """
+    更新或插入聚合统计数据
+    """
+    supabase.table("aggregated_stats").upsert({
+        "date": date_str,
+        "stat_type": stat_type,
+        "data": data,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }, on_conflict="date,stat_type").execute()

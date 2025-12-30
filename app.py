@@ -2544,3 +2544,40 @@ def adm_get_event_stats(
 ):
     """获取事件统计"""
     return admin_get_event_stats(start_date, end_date, group_by)
+
+
+# ===========================================
+# Admin - Aggregated Stats APIs (聚合统计)
+# ===========================================
+
+@app.get("/api/admin/aggregated/{stat_type}")
+def adm_get_aggregated_stats(
+    stat_type: str,
+    use_cache: bool = True,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取聚合统计数据
+    stat_type: daily_users, daily_revenue, daily_projects, credit_usage_30d, 
+               tier_distribution, conversion_funnel_30d, event_stats_7d
+    """
+    from db_service import get_aggregated_stats
+    data = get_aggregated_stats(stat_type, use_cache)
+    
+    if data is None:
+        return {"data": None, "message": "No cached data available. Run aggregation task first."}
+    
+    return {"data": data}
+
+
+@app.get("/api/admin/aggregated/{stat_type}/range")
+def adm_get_aggregated_stats_range(
+    stat_type: str,
+    days: int = 30,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取指定天数范围内的聚合统计
+    """
+    from db_service import get_aggregated_stats_range
+    return get_aggregated_stats_range(stat_type, days)
