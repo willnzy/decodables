@@ -695,10 +695,11 @@ def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
     end = start + limit - 1
     
     # 选择需要的字段：项目名称、预览图、删除时间、项目ID
+    # 注意：只选择数据库中确实存在的字段
     res = supabase.table("projects").select(
-        "id, title, canvas_data, deleted_at, created_at, updated_at, paper_size"
+        "id, title, canvas_data, deleted_at, created_at, updated_at"
     ).eq("user_id", user_id).eq("is_deleted", True)\
-        .order("deleted_at", desc=True).range(start, end).execute()
+        .order("updated_at", desc=True).range(start, end).execute()
     
     # 获取总数
     count_res = supabase.table("projects").select("id", count="exact")\
