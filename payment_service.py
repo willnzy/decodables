@@ -114,3 +114,126 @@ def get_subscription_status(customer_id: str):
     except Exception as e:
         print(f"Get Subscription Error: {e}")
         return None
+
+
+# ==========================================
+# Admin 操作函数
+# ==========================================
+
+def get_customer_subscriptions(customer_id: str):
+    """
+    获取客户的所有订阅（包括活跃和已取消的）
+    """
+    try:
+        subscriptions = stripe.Subscription.list(
+            customer=customer_id,
+            limit=10
+        )
+        return subscriptions.data
+    except Exception as e:
+        print(f"Get Subscriptions Error: {e}")
+        return []
+
+def get_customer_payments(customer_id: str, limit: int = 10):
+    """
+    获取客户的付款历史（用于退款）
+    Returns: List of PaymentIntent objects
+    """
+    try:
+        # 获取 PaymentIntents
+        payment_intents = stripe.PaymentIntent.list(
+            customer=customer_id,
+            limit=limit
+        )
+        
+        # 过滤出成功的付款
+        successful_payments = [
+            pi for pi in payment_intents.data 
+            if pi.status == 'succeeded'
+        ]
+        
+        return successful_payments
+    except Exception as e:
+        print(f"Get Customer Payments Error: {e}")
+        return []
+
+def cancel_subscription(subscription_id: str, immediate: bool = False):
+    """
+    取消订阅
+    
+    Args:
+        subscription_id: Stripe 订阅 ID
+        immediate: True = 立即取消，False = 在当前计费周期结束时取消
+    
+    Returns:
+        { success: bool, subscription: Subscription, error: str }
+    """
+    try:
+        if immediate:
+            # 立即取消
+            subscription = stripe.Subscription.cancel(subscription_id)
+        else:
+            # 在计费周期结束时取消
+            subscription = stripe.Subscription.modify(
+                subscription_id,
+                cancel_at_period_end=True
+            )
+        
+        return {
+            "success": True,
+            "subscription": subscription,
+            "error": None
+        }
+    except stripe.error.StripeError as e:
+        print(f"Cancel Subscription Error: {e}")
+        return {
+            "success": False,
+            "subscription": None,
+            "error": str(e)
+        }
+
+def create_refund(payment_intent_id: str, amount_cents: int = None, reason: str = "requested_by_customer"):
+    """
+    创建退款
+    
+    Args:
+        payment_intent_id: Stripe PaymentIntent ID
+        amount_cents: 退款金额（以分为单位），None 表示全额退款
+        reason: 退款原因 ('duplicate', 'fraudulent', 'requested_by_customer')
+    
+    Returns:
+        { success: bool, refund: Refund, error: str }
+    """
+    try:
+        refund_params = {
+            "payment_intent": payment_intent_id,
+            "reason": reason
+        }
+        
+        if amount_cents is not None:
+            refund_params["amount"] = amount_cents
+        
+        refund = stripe.Refund.create(**refund_params)
+        
+        return {
+            "success": True,
+            "refund": refund,
+            "error": None
+        }
+    except stripe.error.StripeError as e:
+        print(f"Create Refund Error: {e}")
+        return {
+            "success": False,
+            "refund": None,
+            "error": str(e)
+        }
+
+def get_payment_intent_details(payment_intent_id: str):
+    """
+    获取 PaymentIntent 详情
+    """
+    try:
+        return stripe.PaymentIntent.retrieve(payment_intent_id)
+    except stripe.error.StripeError as e:
+        print(f"Get PaymentIntent Error: {e}")
+        return None

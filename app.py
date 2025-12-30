@@ -45,7 +45,11 @@ from db_service import (
     # Supabase client
     supabase
 )
-from payment_service import create_checkout_session, create_portal_session, construct_event
+from payment_service import (
+    create_checkout_session, create_portal_session, construct_event,
+    get_customer_subscriptions, get_customer_payments, cancel_subscription, 
+    create_refund, get_payment_intent_details
+)
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
 from story_generator import generate_story_json, client as openai_client # 复用 client
@@ -316,6 +320,18 @@ class ListingUpdateRequest(BaseModel):
     allowed_tiers: Optional[List[str]] = None
 
 class AdminModerationRejectRequest(BaseModel):
+    reason: str
+
+class AdminRefundRequest(BaseModel):
+    user_id: str
+    payment_intent_id: str
+    amount_cents: Optional[int] = None  # None = 全额退款
+    reason: str
+
+class AdminCancelSubscriptionRequest(BaseModel):
+    user_id: str
+    subscription_id: str
+    immediate: bool = False  # True = 立即取消，False = 周期结束取消
     reason: str
 
 # ==========================================
@@ -1573,6 +1589,158 @@ def adm_discount(req: AdminDiscountRequest, admin: dict = Depends(require_admin)
         "discount_percent": req.discount_percent
     })
     return discount
+
+@app.get("/api/admin/user/{uid}/payments")
+def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
+    """获取用户的付款历史（用于退款操作）"""
+    user = get_user_profile(uid)
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    customer_id = user.get("stripe_customer_id")
+    if not customer_id:
+        return {"payments": [], "subscriptions": []}
+    
+    # 获取付款历史
+    payments = get_customer_payments(customer_id, limit=20)
+    payment_list = []
+    for pi in payments:
+        payment_list.append({
+            "id": pi.id,
+            "amount": pi.amount,
+            "currency": pi.currency,
+            "status": pi.status,
+            "created": pi.created,
+            "description": pi.description,
+            "refunded": pi.amount_received != pi.amount if hasattr(pi, 'amount_received') else False,
+        })
+    
+    # 获取订阅信息
+    subscriptions = get_customer_subscriptions(customer_id)
+    sub_list = []
+    for sub in subscriptions:
+        sub_list.append({
+            "id": sub.id,
+            "status": sub.status,
+            "current_period_end": sub.current_period_end,
+            "cancel_at_period_end": sub.cancel_at_period_end,
+            "plan": sub.items.data[0].price.id if sub.items.data else None,
+            "created": sub.created,
+        })
+    
+    return {"payments": payment_list, "subscriptions": sub_list}
+
+@app.post("/api/admin/refund")
+def adm_refund(req: AdminRefundRequest, admin: dict = Depends(require_admin)):
+    """
+    Admin 退款操作
+    
+    支持全额或部分退款
+    """
+    user = get_user_profile(req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    # 获取 PaymentIntent 详情
+    pi = get_payment_intent_details(req.payment_intent_id)
+    if not pi:
+        raise HTTPException(404, "Payment not found")
+    
+    # 执行退款
+    result = create_refund(
+        req.payment_intent_id,
+        amount_cents=req.amount_cents,
+        reason="requested_by_customer"
+    )
+    
+    if not result["success"]:
+        raise HTTPException(400, f"Refund failed: {result['error']}")
+    
+    refund = result["refund"]
+    refund_amount = refund.amount
+    currency = refund.currency.upper()
+    
+    # 记录退款到用户的交易历史
+    log_payment_record(
+        req.user_id,
+        -refund_amount,  # 负数表示退款
+        currency,
+        "refund",
+        f"Refund - ${refund_amount/100:.2f} | Reason: {req.reason}"
+    )
+    
+    # 记录管理员操作日志
+    log_activity(admin["id"], "admin_refund", {
+        "target_user": req.user_id,
+        "payment_intent_id": req.payment_intent_id,
+        "refund_id": refund.id,
+        "amount_cents": refund_amount,
+        "reason": req.reason
+    })
+    
+    return {
+        "status": "refunded",
+        "refund_id": refund.id,
+        "amount": refund_amount,
+        "currency": currency
+    }
+
+@app.post("/api/admin/subscription/cancel")
+def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
+    """
+    Admin 取消用户订阅
+    
+    immediate=True: 立即取消
+    immediate=False: 在当前计费周期结束时取消
+    """
+    user = get_user_profile(req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    # 执行取消订阅
+    result = cancel_subscription(req.subscription_id, immediate=req.immediate)
+    
+    if not result["success"]:
+        raise HTTPException(400, f"Cancel subscription failed: {result['error']}")
+    
+    subscription = result["subscription"]
+    
+    # 如果是立即取消，更新用户 tier 为 free
+    if req.immediate:
+        update_subscription_tier(req.user_id, "free", subscription_status="canceled")
+        
+        # 记录到用户的交易历史
+        log_payment_record(
+            req.user_id,
+            0,
+            "USD",
+            "sub_canceled",
+            f"Subscription Canceled (Immediate) | Reason: {req.reason}"
+        )
+    else:
+        # 记录到用户的交易历史 - 周期结束取消
+        log_payment_record(
+            req.user_id,
+            0,
+            "USD",
+            "sub_cancel_scheduled",
+            f"Subscription Cancel Scheduled | Reason: {req.reason}"
+        )
+    
+    # 记录管理员操作日志
+    log_activity(admin["id"], "admin_cancel_subscription", {
+        "target_user": req.user_id,
+        "subscription_id": req.subscription_id,
+        "immediate": req.immediate,
+        "reason": req.reason
+    })
+    
+    return {
+        "status": "canceled" if req.immediate else "cancel_scheduled",
+        "subscription_id": subscription.id,
+        "cancel_at_period_end": subscription.cancel_at_period_end,
+        "current_period_end": subscription.current_period_end
+    }
 
 @app.post("/api/admin/broadcast")
 def adm_broadcast(req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
