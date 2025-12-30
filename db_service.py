@@ -1163,8 +1163,8 @@ def create_support_ticket(user_id: str, email: str, message: str):
         # 不抛出异常，工单已保存到数据库
 
 
-def send_support_email(user_id: str, user_email: str, message: str):
-    """发送支持邮件到客服邮箱"""
+def send_support_email(user_id: str, user_email: str, message: str, images: list = None):
+    """发送支持邮件到客服邮箱，支持图片附件"""
     try:
         import resend
         from config import RESEND_API_KEY, SUPPORT_EMAIL, SUPPORT_EMAIL_FROM
@@ -1183,25 +1183,47 @@ def send_support_email(user_id: str, user_email: str, message: str):
         <hr>
         <h3>消息内容:</h3>
         <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap;">{message}</pre>
+        """
+        
+        # 如果有图片，在邮件中显示
+        if images and len(images) > 0:
+            html_content += """
+            <hr>
+            <h3>附带截图:</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            """
+            for i, img in enumerate(images):
+                # img 是 base64 数据
+                html_content += f'<img src="{img.get("data", "")}" alt="Screenshot {i+1}" style="max-width: 300px; border: 1px solid #ddd; border-radius: 5px;" />'
+            html_content += "</div>"
+        
+        html_content += """
         <hr>
         <p style="color: #666; font-size: 12px;">此邮件由 Make Decodables 支持系统自动发送</p>
         """
         
-        resend.Emails.send({
+        email_data = {
             "from": SUPPORT_EMAIL_FROM,
             "to": SUPPORT_EMAIL,
             "subject": f"[Make Decodables] 新工单 - 来自 {user_email}",
             "html": html_content,
-            "reply_to": user_email  # 方便直接回复用户
-        })
+            "reply_to": user_email
+        }
         
-        print(f"[INFO] Support email sent to {SUPPORT_EMAIL}")
+        resend.Emails.send(email_data)
+        
+        print(f"[INFO] Support email sent to {SUPPORT_EMAIL} with {len(images) if images else 0} images")
         
     except ImportError:
         print("[WARNING] resend package not installed, skipping email")
     except Exception as e:
         print(f"[ERROR] Failed to send email via Resend: {e}")
         raise
+
+
+def send_feedback_with_images(user_id: str, user_email: str, message: str, images: list = None):
+    """发送反馈邮件（带图片）到客服邮箱"""
+    send_support_email(user_id, user_email, message, images)
 
 def search_users(query: str):
     """[Admin] 搜索用户 (支持 ID 或 Email 模糊搜索)"""

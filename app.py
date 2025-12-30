@@ -270,6 +270,11 @@ class ContactFormRequest(BaseModel):
     email: str  # Required for guest users
     message: str
 
+class FeedbackWithImagesRequest(BaseModel):
+    email: str
+    message: str
+    images: Optional[List[dict]] = []  # List of {name, data} where data is base64
+
 class AdminAdjustRequest(BaseModel):
     user_id: str
     amount: int
@@ -1490,6 +1495,28 @@ def contact_form(req: ContactFormRequest):
     # Create support ticket with "guest" as user_id for unauthenticated users
     create_support_ticket("guest", req.email, req.message)
     return {"status": "ok"}
+
+@app.post("/api/feedback")
+def feedback_with_images(req: FeedbackWithImagesRequest, request: Request):
+    """
+    Submit feedback with optional images.
+    Works for both logged in and guest users.
+    """
+    from db_service import send_feedback_with_images
+    
+    # Try to get user info if authenticated
+    user_id = "guest"
+    try:
+        auth_header = request.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            payload = verify_clerk_token(token)
+            user_id = payload.get("sub", "guest")
+    except:
+        pass
+    
+    send_feedback_with_images(user_id, req.email, req.message, req.images)
+    return {"status": "ok", "message": "Feedback submitted successfully"}
 
 # --- Admin ---
 @app.get("/api/admin/users")
