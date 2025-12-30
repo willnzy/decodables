@@ -2633,3 +2633,170 @@ def adm_run_aggregation(
     task_type: all, hourly, daily
     """
     return run_aggregation_now(task_type)
+
+
+# ===========================================
+# Admin - System Configuration (系统配置)
+# ===========================================
+
+from config_service import (
+    get_config, set_config, get_all_configs, 
+    batch_update_configs, apply_rate_limit_preset,
+    clear_config_cache, RATE_LIMIT_PRESETS
+)
+from rate_limiter import get_current_limits
+
+
+class ConfigUpdateRequest(BaseModel):
+    config_key: str
+    config_value: dict
+
+
+class BatchConfigUpdateRequest(BaseModel):
+    updates: List[dict]  # [{"config_key": "...", "config_value": {...}}, ...]
+
+
+class RateLimitPresetRequest(BaseModel):
+    preset: str  # "strict", "normal", "relaxed", "disabled"
+
+
+@app.get("/api/admin/config")
+def adm_get_all_configs(
+    category: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取所有系统配置
+    
+    category: rate_limit, analytics, system, 或不传获取全部
+    """
+    configs = get_all_configs(category)
+    return {"configs": configs}
+
+
+@app.get("/api/admin/config/{config_key:path}")
+def adm_get_config(
+    config_key: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取单个配置项
+    """
+    config = get_config(config_key, use_cache=False)  # 不使用缓存，获取最新值
+    if config is None:
+        raise HTTPException(404, f"Config not found: {config_key}")
+    return {"config_key": config_key, "config_value": config}
+
+
+@app.put("/api/admin/config")
+@limiter.limit("30/minute")
+def adm_update_config(
+    request: Request,
+    req: ConfigUpdateRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    更新单个配置项
+    """
+    success = set_config(req.config_key, req.config_value, admin["id"])
+    if not success:
+        raise HTTPException(500, "Failed to update config")
+    
+    # 记录操作日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="config_update",
+        target_user_id=None,
+        details=f"Updated {req.config_key}",
+        reason=None
+    )
+    
+    return {"status": "ok", "config_key": req.config_key}
+
+
+@app.put("/api/admin/config/batch")
+@limiter.limit("10/minute")
+def adm_batch_update_configs(
+    request: Request,
+    req: BatchConfigUpdateRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    批量更新配置
+    """
+    results = batch_update_configs(req.updates, admin["id"])
+    
+    # 记录操作日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="config_batch_update",
+        target_user_id=None,
+        details=f"Updated {len(req.updates)} configs",
+        reason=None
+    )
+    
+    return {"status": "ok", "results": results}
+
+
+@app.get("/api/admin/rate-limits")
+def adm_get_rate_limits(admin: dict = Depends(require_admin)):
+    """
+    获取当前所有限频配置（格式化后）
+    """
+    return get_current_limits()
+
+
+@app.post("/api/admin/rate-limits/preset")
+@limiter.limit("5/minute")
+def adm_apply_rate_limit_preset(
+    request: Request,
+    req: RateLimitPresetRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    应用限频预设
+    
+    preset: "strict" | "normal" | "relaxed" | "disabled"
+    """
+    if req.preset not in RATE_LIMIT_PRESETS:
+        raise HTTPException(400, f"Invalid preset. Available: {list(RATE_LIMIT_PRESETS.keys())}")
+    
+    success = apply_rate_limit_preset(req.preset, admin["id"])
+    if not success:
+        raise HTTPException(500, "Failed to apply preset")
+    
+    # 记录操作日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="rate_limit_preset",
+        target_user_id=None,
+        details=f"Applied preset: {req.preset}",
+        reason=None
+    )
+    
+    return {
+        "status": "ok", 
+        "preset": req.preset,
+        "description": RATE_LIMIT_PRESETS[req.preset].get("description")
+    }
+
+
+@app.get("/api/admin/rate-limits/presets")
+def adm_get_rate_limit_presets(admin: dict = Depends(require_admin)):
+    """
+    获取可用的限频预设列表
+    """
+    return {"presets": RATE_LIMIT_PRESETS}
+
+
+@app.post("/api/admin/config/cache/clear")
+@limiter.limit("10/minute")
+def adm_clear_config_cache(
+    request: Request,
+    admin: dict = Depends(require_admin)
+):
+    """
+    清除配置缓存（立即生效新配置）
+    """
+    clear_config_cache()
+    return {"status": "ok", "message": "Config cache cleared"}
