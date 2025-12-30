@@ -44,6 +44,8 @@ from db_service import (
     admin_get_behavior_analysis, log_user_event, admin_get_user_events, admin_get_event_stats,
     # 通知
     get_user_notifications, mark_notification_read, create_broadcast,
+    send_notification_to_user, send_notification_to_users, get_users_by_tier,
+    get_all_notification_stats, get_notification_history,
     # 折扣
     get_user_discount, create_user_discount,
     # 日志
@@ -2213,7 +2215,120 @@ def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = De
         "target_group": req.target_group,
         "title": req.title
     })
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="broadcast",
+        target_user_id=None,
+        details=f"Broadcast to {req.target_group}: {req.title[:50]}",
+        reason=None
+    )
     return notification
+
+
+class AdminSendNotificationRequest(BaseModel):
+    user_id: str
+    title: str
+    content: str
+    notification_type: Optional[str] = "system"
+
+
+class AdminBatchNotificationRequest(BaseModel):
+    user_ids: List[str]
+    title: str
+    content: str
+    notification_type: Optional[str] = "system"
+
+
+@app.post("/api/admin/notification/send")
+@limiter.limit("30/minute")
+def adm_send_notification(request: Request, req: AdminSendNotificationRequest, admin: dict = Depends(require_admin)):
+    """发送通知给单个用户"""
+    notification = send_notification_to_user(
+        user_id=req.user_id,
+        title=req.title,
+        content=req.content,
+        notification_type=req.notification_type
+    )
+    
+    if not notification:
+        raise HTTPException(500, "Failed to send notification")
+    
+    log_activity(admin["id"], "admin_notification_send", {
+        "target_user": req.user_id,
+        "title": req.title
+    })
+    
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="notification_send",
+        target_user_id=req.user_id,
+        details=f"Notification: {req.title[:50]}",
+        reason=None
+    )
+    
+    return {"status": "sent", "notification": notification}
+
+
+@app.post("/api/admin/notification/batch")
+@limiter.limit("10/minute")
+def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest, admin: dict = Depends(require_admin)):
+    """批量发送通知给多个用户"""
+    if len(req.user_ids) > 100:
+        raise HTTPException(400, "Cannot send to more than 100 users at once")
+    
+    notifications = send_notification_to_users(
+        user_ids=req.user_ids,
+        title=req.title,
+        content=req.content,
+        notification_type=req.notification_type
+    )
+    
+    log_activity(admin["id"], "admin_notification_batch", {
+        "user_count": len(req.user_ids),
+        "title": req.title
+    })
+    
+    # 记录到审计日志
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="notification_batch",
+        target_user_id=None,
+        details=f"Batch notification to {len(req.user_ids)} users: {req.title[:50]}",
+        reason=None
+    )
+    
+    return {"status": "sent", "count": len(notifications)}
+
+
+@app.get("/api/admin/notification/stats")
+def adm_notification_stats(admin: dict = Depends(require_admin)):
+    """获取通知统计"""
+    return get_all_notification_stats()
+
+
+@app.get("/api/admin/notification/history")
+def adm_notification_history(
+    page: int = 1, 
+    limit: int = 50,
+    notification_type: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """获取通知发送历史"""
+    notifications = get_notification_history(page, limit, notification_type)
+    return {"notifications": notifications, "page": page}
+
+
+@app.get("/api/admin/users/by-tier/{tier}")
+def adm_get_users_by_tier(tier: str, admin: dict = Depends(require_admin)):
+    """获取指定等级的用户列表"""
+    if tier not in ["free", "starter", "pro"]:
+        raise HTTPException(400, "Invalid tier. Must be 'free', 'starter', or 'pro'")
+    
+    user_ids = get_users_by_tier(tier)
+    return {"tier": tier, "count": len(user_ids), "user_ids": user_ids}
+
 
 @app.post("/api/admin/projects/{project_id}/restore")
 def adm_restore_project(project_id: str, admin: dict = Depends(require_admin)):

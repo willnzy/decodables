@@ -1163,6 +1163,79 @@ def create_broadcast(title: str, content: str, target_group: str = "all"):
     res = supabase.table("notifications").insert(data).execute()
     return res.data[0]
 
+
+def send_notification_to_user(user_id: str, title: str, content: str, notification_type: str = "system"):
+    """[Admin] 发送通知给单个用户"""
+    data = {
+        "user_id": user_id,
+        "target_group": None,
+        "title": title,
+        "content": content,
+        "notification_type": notification_type,
+        "is_read": False
+    }
+    res = supabase.table("notifications").insert(data).execute()
+    return res.data[0] if res.data else None
+
+
+def send_notification_to_users(user_ids: list, title: str, content: str, notification_type: str = "system"):
+    """[Admin] 批量发送通知给多个用户"""
+    notifications = []
+    for user_id in user_ids:
+        data = {
+            "user_id": user_id,
+            "target_group": None,
+            "title": title,
+            "content": content,
+            "notification_type": notification_type,
+            "is_read": False
+        }
+        notifications.append(data)
+    
+    if notifications:
+        res = supabase.table("notifications").insert(notifications).execute()
+        return res.data
+    return []
+
+
+def get_users_by_tier(tier: str):
+    """获取指定 tier 的所有用户 ID"""
+    res = supabase.table("profiles").select("id").eq("tier", tier).execute()
+    return [u["id"] for u in res.data] if res.data else []
+
+
+def get_all_notification_stats():
+    """获取通知统计"""
+    # 总通知数
+    total_res = supabase.table("notifications").select("id", count="exact").execute()
+    
+    # 未读通知数
+    unread_res = supabase.table("notifications").select("id", count="exact").eq("is_read", False).execute()
+    
+    # 最近7天的通知
+    from datetime import datetime, timedelta
+    week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+    recent_res = supabase.table("notifications").select("id", count="exact")\
+        .gte("created_at", week_ago).execute()
+    
+    return {
+        "total": total_res.count or 0,
+        "unread": unread_res.count or 0,
+        "recent_7d": recent_res.count or 0
+    }
+
+
+def get_notification_history(page: int = 1, limit: int = 50, notification_type: str = None):
+    """获取通知发送历史"""
+    query = supabase.table("notifications").select("*")
+    
+    if notification_type:
+        query = query.eq("notification_type", notification_type)
+    
+    offset = (page - 1) * limit
+    res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+    return res.data or []
+
 # ==========================================
 # 7. 折扣系统 (Discounts)
 # ==========================================
