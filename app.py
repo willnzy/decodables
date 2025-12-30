@@ -21,7 +21,7 @@ from db_service import (
     get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
     refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
     # Credits
-    log_credit_transaction, credit_deduct, add_credits_permanent, add_credits_monthly,
+    log_credit_transaction, log_payment_record, credit_deduct, add_credits_permanent, add_credits_monthly,
     deduct_credits_atomic, add_credits, get_credit_history,
     # 项目
     get_user_projects, get_project_detail, create_project, save_project,
@@ -425,23 +425,32 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
         session = event['data']['object']
         uid = session['metadata'].get('user_id')
         plan = session['metadata'].get('plan_type')
+        amount_total = session.get('amount_total', 0)  # 以分为单位
+        currency = session.get('currency', 'usd').upper()
         
         if uid and plan:
             if plan == 'credits_100':
                 # 购买积分：计入 permanent
                 add_credits_permanent(uid, 100, "Purchase 100 Credits", "topup_purchase")
-                log_activity(uid, "credits_purchase", {"amount": 100})
+                # 记录付款
+                log_payment_record(uid, amount_total, currency, "credits_purchase", f"Purchase 100 Credits - ${amount_total/100:.2f}")
+                log_activity(uid, "credits_purchase", {"amount": 100, "payment": amount_total})
             elif plan in ['starter', 'pro']:
                 # 新订阅：更新 tier + 赠送月度积分
                 update_subscription_tier(uid, plan, session.get('customer'), "active")
                 amt = 500 if plan == 'starter' else 1000
                 add_credits_monthly(uid, amt, f"{plan.capitalize()} Monthly Credits", "sub_grant")
-                log_activity(uid, "subscription_started", {"plan": plan})
+                # 记录订阅付款
+                log_payment_record(uid, amount_total, currency, "sub_payment", f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}")
+                log_activity(uid, "subscription_started", {"plan": plan, "payment": amount_total})
     
     # 订阅续费成功（月度刷新）
     elif event_type == 'invoice.payment_succeeded':
         invoice = event['data']['object']
         customer_id = invoice.get('customer')
+        amount_paid = invoice.get('amount_paid', 0)  # 以分为单位
+        currency = invoice.get('currency', 'usd').upper()
+        billing_reason = invoice.get('billing_reason', '')  # subscription_create, subscription_cycle, etc.
         
         # 查找用户
         if customer_id:
@@ -454,10 +463,12 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 uid = user['id']
                 tier = user['tier']
                 
-                # 刷新月度积分（重置，不结转）
-                if tier in ['starter', 'pro']:
+                # 刷新月度积分（重置，不结转）- 只在续费时刷新
+                if tier in ['starter', 'pro'] and billing_reason == 'subscription_cycle':
                     refresh_monthly_credits(uid, tier)
-                    log_activity(uid, "monthly_credits_refreshed", {"tier": tier})
+                    # 记录续费付款
+                    log_payment_record(uid, amount_paid, currency, "sub_renewal", f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}")
+                    log_activity(uid, "monthly_credits_refreshed", {"tier": tier, "payment": amount_paid})
     
     # 订阅取消/过期
     elif event_type in ['customer.subscription.deleted', 'customer.subscription.updated']:

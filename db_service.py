@@ -336,6 +336,36 @@ def log_credit_transaction(
         "created_at": datetime.now().isoformat()
     }).execute()
 
+def log_payment_record(
+    user_id: str, 
+    amount_cents: int, 
+    currency: str,
+    type: str,  # 'sub_payment', 'sub_renewal', 'credits_purchase'
+    description: str
+):
+    """
+    记录付款记录（订阅费用、积分购买等）
+    amount_cents: 金额（以分为单位）
+    currency: 货币代码（如 'USD'）
+    type: 付款类型
+    description: 描述
+    """
+    # 获取用户当前余额用于记录
+    profile = supabase.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).single().execute()
+    balance_monthly = profile.data.get("credits_monthly", 0) if profile.data else 0
+    balance_permanent = profile.data.get("credits_permanent", 0) if profile.data else 0
+    
+    supabase.table("credit_transactions").insert({
+        "user_id": user_id,
+        "amount": 0,  # 付款记录不影响积分
+        "bucket": "payment",  # 特殊桶标识这是付款记录
+        "balance_monthly_after": balance_monthly,
+        "balance_permanent_after": balance_permanent,
+        "type": type,
+        "description": f"{description} | {currency} {amount_cents}",  # 包含金额信息
+        "created_at": datetime.now().isoformat()
+    }).execute()
+
 def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dict:
     """
     [核心] 统一扣费函数
