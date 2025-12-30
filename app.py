@@ -289,6 +289,14 @@ class AdminTierRequest(BaseModel):
     user_id: str
     tier: str
 
+class AdminDowngradeRequest(BaseModel):
+    user_id: str
+    user_code: str  # 用于验证
+    user_email: str  # 用于验证
+    target_tier: str  # 'starter' | 'free'
+    immediate: bool = False  # True: 立即生效, False: 周期结束后生效
+    reason: str
+
 class AdminDiscountRequest(BaseModel):
     user_id: str
     discount_percent: int
@@ -1861,6 +1869,227 @@ def adm_cancel_subscription(req: AdminCancelSubscriptionRequest, admin: dict = D
         "cancel_at_period_end": subscription.cancel_at_period_end,
         "current_period_end": subscription.current_period_end
     }
+
+@app.post("/api/admin/subscription/downgrade")
+def adm_downgrade_subscription(req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
+    """
+    Admin 帮用户降级订阅
+    
+    支持的降级路径:
+    - Pro -> Starter (变更订阅计划)
+    - Pro -> Free (取消订阅)
+    - Starter -> Free (取消订阅)
+    
+    immediate=True: 立即生效
+    immediate=False: 周期结束后生效
+    
+    安全检查:
+    1. 验证用户存在
+    2. 验证用户ID与邮箱匹配
+    3. 验证目标等级低于当前等级
+    4. 验证 Stripe 订阅状态
+    """
+    import stripe
+    
+    user = get_user_profile(req.user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    # 【安全检查1】验证用户ID (user_code)
+    stored_user_code = user.get("user_code")
+    if not stored_user_code:
+        raise HTTPException(400, "User has no user code assigned")
+    if stored_user_code != req.user_code:
+        raise HTTPException(403, "User code does not match")
+    
+    # 【安全检查2】验证邮箱
+    if user.get("email") != req.user_email:
+        raise HTTPException(403, "User email does not match")
+    
+    current_tier = user.get("tier", "free")
+    target_tier = req.target_tier.lower()
+    
+    # 【安全检查3】验证等级降级路径
+    tier_levels = {"free": 0, "starter": 1, "pro": 2}
+    if tier_levels.get(target_tier, -1) >= tier_levels.get(current_tier, 0):
+        raise HTTPException(400, f"Cannot downgrade from {current_tier} to {target_tier}")
+    
+    if target_tier not in ["free", "starter"]:
+        raise HTTPException(400, "Invalid target tier. Must be 'free' or 'starter'")
+    
+    customer_id = user.get("stripe_customer_id")
+    
+    # 情况1: 降级到 Free (取消订阅)
+    if target_tier == "free":
+        if not customer_id:
+            # 没有 Stripe 订阅，直接更新数据库
+            update_subscription_tier(req.user_id, "free", subscription_status="inactive")
+            
+            # 清零月度积分
+            supabase.table("profiles").update({
+                "credits_monthly": 0
+            }).eq("id", req.user_id).execute()
+            
+            log_payment_record(
+                req.user_id, 0, "USD", "tier_downgrade",
+                f"Downgrade from {current_tier.title()} to Free (No subscription) | Reason: {req.reason}"
+            )
+            
+            log_activity(admin["id"], "admin_downgrade", {
+                "target_user": req.user_id,
+                "from_tier": current_tier,
+                "to_tier": "free",
+                "immediate": req.immediate,
+                "reason": req.reason
+            })
+            
+            return {
+                "status": "downgraded",
+                "from_tier": current_tier,
+                "to_tier": "free"
+            }
+        
+        # 有 Stripe 订阅，需要取消
+        subscriptions = get_customer_subscriptions(customer_id)
+        active_sub = None
+        for sub in subscriptions:
+            if sub.status in ['active', 'trialing']:
+                active_sub = sub
+                break
+        
+        if not active_sub:
+            # 没有活跃订阅，直接更新
+            update_subscription_tier(req.user_id, "free", subscription_status="inactive")
+            supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
+            
+            log_payment_record(
+                req.user_id, 0, "USD", "tier_downgrade",
+                f"Downgrade from {current_tier.title()} to Free | Reason: {req.reason}"
+            )
+            
+            log_activity(admin["id"], "admin_downgrade", {
+                "target_user": req.user_id,
+                "from_tier": current_tier,
+                "to_tier": "free",
+                "reason": req.reason
+            })
+            
+            return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
+        
+        # 取消订阅
+        if req.immediate:
+            result = cancel_subscription(active_sub.id, immediate=True)
+            if not result["success"]:
+                raise HTTPException(400, f"Failed to cancel subscription: {result['error']}")
+            
+            update_subscription_tier(req.user_id, "free", subscription_status="canceled")
+            supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
+            
+            log_payment_record(
+                req.user_id, 0, "USD", "tier_downgrade",
+                f"Downgrade from {current_tier.title()} to Free (Immediate) | Reason: {req.reason}"
+            )
+        else:
+            result = cancel_subscription(active_sub.id, immediate=False)
+            if not result["success"]:
+                raise HTTPException(400, f"Failed to schedule cancellation: {result['error']}")
+            
+            log_payment_record(
+                req.user_id, 0, "USD", "tier_downgrade_scheduled",
+                f"Downgrade scheduled: {current_tier.title()} to Free | Effective: {result['subscription'].current_period_end} | Reason: {req.reason}"
+            )
+        
+        log_activity(admin["id"], "admin_downgrade", {
+            "target_user": req.user_id,
+            "from_tier": current_tier,
+            "to_tier": "free",
+            "immediate": req.immediate,
+            "subscription_id": active_sub.id,
+            "reason": req.reason
+        })
+        
+        return {
+            "status": "downgraded" if req.immediate else "downgrade_scheduled",
+            "from_tier": current_tier,
+            "to_tier": "free",
+            "subscription_id": active_sub.id
+        }
+    
+    # 情况2: Pro -> Starter (变更订阅计划)
+    if current_tier == "pro" and target_tier == "starter":
+        if not customer_id:
+            raise HTTPException(400, "User has no Stripe customer ID for subscription change")
+        
+        subscriptions = get_customer_subscriptions(customer_id)
+        active_sub = None
+        for sub in subscriptions:
+            if sub.status in ['active', 'trialing']:
+                active_sub = sub
+                break
+        
+        if not active_sub:
+            raise HTTPException(400, "No active subscription found to downgrade")
+        
+        # 获取 Starter 价格 ID
+        starter_price_id = os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
+        if not starter_price_id:
+            raise HTTPException(500, "Starter price ID not configured")
+        
+        try:
+            # 修改订阅计划
+            # proration_behavior: 
+            # - 'create_prorations': 按比例退款差额
+            # - 'none': 不退款，立即生效
+            # - 'always_invoice': 立即开发票
+            updated_sub = stripe.Subscription.modify(
+                active_sub.id,
+                items=[{
+                    "id": active_sub.items.data[0].id,
+                    "price": starter_price_id
+                }],
+                proration_behavior='create_prorations' if req.immediate else 'none',
+                billing_cycle_anchor='unchanged' if not req.immediate else 'now'
+            )
+            
+            if req.immediate:
+                # 立即更新用户等级
+                update_subscription_tier(req.user_id, "starter", subscription_status="active")
+                
+                # 调整月度积分为 Starter 额度 (500)
+                supabase.table("profiles").update({
+                    "credits_monthly": 500
+                }).eq("id", req.user_id).execute()
+                
+                log_payment_record(
+                    req.user_id, 0, "USD", "tier_downgrade",
+                    f"Downgrade from Pro to Starter (Immediate) | Reason: {req.reason}"
+                )
+            else:
+                log_payment_record(
+                    req.user_id, 0, "USD", "tier_downgrade_scheduled",
+                    f"Downgrade scheduled: Pro to Starter | Next billing: {updated_sub.current_period_end} | Reason: {req.reason}"
+                )
+            
+            log_activity(admin["id"], "admin_downgrade", {
+                "target_user": req.user_id,
+                "from_tier": "pro",
+                "to_tier": "starter",
+                "immediate": req.immediate,
+                "subscription_id": active_sub.id,
+                "reason": req.reason
+            })
+            
+            return {
+                "status": "downgraded" if req.immediate else "downgrade_scheduled",
+                "from_tier": "pro",
+                "to_tier": "starter",
+                "subscription_id": active_sub.id
+            }
+            
+        except stripe.error.StripeError as e:
+            raise HTTPException(400, f"Stripe error: {str(e)}")
+    
+    raise HTTPException(400, "Invalid downgrade path")
 
 @app.post("/api/admin/broadcast")
 def adm_broadcast(req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
