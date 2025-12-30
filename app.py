@@ -419,12 +419,14 @@ async def clerk_webhook(request: Request):
         email = data["email_addresses"][0]["email_address"]
         username = data.get("username")
         image_url = data.get("image_url")
+        first_name = data.get("first_name")
+        last_name = data.get("last_name")
         
         # 检查用户是否已存在（可能已通过 JIT 创建）
         existing_profile = get_user_profile(user_id)
         if existing_profile:
             # 用户已存在（通过 JIT 创建），更新可能缺失的信息
-            update_user_profile(user_id, avatar_url=image_url, username=username)
+            update_user_profile(user_id, avatar_url=image_url, username=username, first_name=first_name, last_name=last_name)
             # 如果 email 为空，单独更新 email
             if not existing_profile.get("email") and email:
                 supabase.table("profiles").update({"email": email}).eq("id", user_id).execute()
@@ -437,28 +439,33 @@ async def clerk_webhook(request: Request):
             print(f"⚠️ User with email {email} already exists, skipping creation")
             return {"status": "skipped", "reason": "email_exists"}
         
-        # 创建用户档案
-        create_user_profile(user_id, email, username, image_url)
+        # 创建用户档案（包含姓名信息）
+        create_user_profile(user_id, email, username, image_url, first_name=first_name, last_name=last_name)
         
         # 记录注册行为
         log_activity(user_id, "user_signup", {
             "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
             "method": "clerk"
         })
     
     elif event_type == "user.updated":
-        # 用户更新资料（头像、用户名等）
+        # 用户更新资料（头像、用户名、姓名等）
         user_id = data.get("id")
         new_avatar = data.get("image_url")
         new_username = data.get("username")
+        new_first_name = data.get("first_name")
+        new_last_name = data.get("last_name")
         
-        # 同步更新到 Supabase
-        update_user_profile(user_id, avatar_url=new_avatar, username=new_username)
+        # 同步更新到 Supabase（包含姓名）
+        update_user_profile(user_id, avatar_url=new_avatar, username=new_username, first_name=new_first_name, last_name=new_last_name)
         
         # 记录更新行为
         log_activity(user_id, "profile_updated", {
             "avatar_changed": new_avatar is not None,
-            "username_changed": new_username is not None
+            "username_changed": new_username is not None,
+            "name_changed": new_first_name is not None or new_last_name is not None
         })
         print(f"✅ Updated profile for user {user_id}")
     

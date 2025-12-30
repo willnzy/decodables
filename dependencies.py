@@ -75,11 +75,13 @@ async def get_current_user(authorization: str = Header(None)):
         # Extract user info from JWT payload
         # Clerk JWT typically includes these fields in sessionClaims
         email = payload.get("email") or payload.get("primary_email") or ""
-        username = payload.get("username") or payload.get("name") or payload.get("first_name") or ""
+        username = payload.get("username") or payload.get("name") or ""
         avatar_url = payload.get("image_url") or payload.get("picture") or ""
+        first_name = payload.get("first_name") or ""
+        last_name = payload.get("last_name") or ""
         
-        # Create user profile with 50 signup bonus credits
-        create_user_profile(user_id, email, username, avatar_url)
+        # Create user profile with 50 signup bonus credits (including name info)
+        create_user_profile(user_id, email, username, avatar_url, first_name=first_name, last_name=last_name)
         
         # Fetch the newly created profile
         profile = get_user_profile(user_id)

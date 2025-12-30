@@ -30,6 +30,8 @@ create table if not exists profiles (
   id text primary key, -- 对应 Clerk user_id
   email text,
   username text,
+  first_name text,     -- 用户名字（来自 Clerk）
+  last_name text,      -- 用户姓氏（来自 Clerk）
   avatar_url text,
   
   -- 用户唯一标识码（格式: YYYYMMDDHHMMSS+毫秒+6位序号）

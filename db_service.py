@@ -189,7 +189,7 @@ def generate_user_code() -> str:
     return f"{timestamp_part}{sequence_part}"
 
 
-def create_user_profile(user_id: str, email: str, username: str, avatar_url: str):
+def create_user_profile(user_id: str, email: str, username: str, avatar_url: str, first_name: str = None, last_name: str = None):
     """
     创建新用户并赠送初始积分
     根据 PRD: Free 用户赠送 50 Credits (One-time, Permanent)
@@ -201,6 +201,8 @@ def create_user_profile(user_id: str, email: str, username: str, avatar_url: str
         "id": user_id,
         "email": email,
         "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
         "avatar_url": avatar_url,
         "user_code": user_code,    # 用户唯一标识码
         "credits_monthly": 0,      # 订阅每月赠送
@@ -234,9 +236,9 @@ def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = 
         data["stripe_customer_id"] = stripe_customer_id
     supabase.table("profiles").update(data).eq("id", user_id).execute()
 
-def update_user_profile(user_id: str, avatar_url: str = None, username: str = None):
+def update_user_profile(user_id: str, avatar_url: str = None, username: str = None, first_name: str = None, last_name: str = None):
     """
-    更新用户档案（头像、用户名）
+    更新用户档案（头像、用户名、姓名）
     用于处理 Clerk user.updated webhook 事件
     """
     data = {}
@@ -244,6 +246,10 @@ def update_user_profile(user_id: str, avatar_url: str = None, username: str = No
         data["avatar_url"] = avatar_url
     if username is not None:
         data["username"] = username
+    if first_name is not None:
+        data["first_name"] = first_name
+    if last_name is not None:
+        data["last_name"] = last_name
     
     if data:
         supabase.table("profiles").update(data).eq("id", user_id).execute()
