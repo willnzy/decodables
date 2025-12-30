@@ -576,9 +576,34 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
         query = query.ilike("title", f"%{search_term}%")
     
     res = query.range(start, end).order("updated_at", desc=True).execute()
-    items_count = len(res.data) if res.data else 0
+    items = res.data or []
+    items_count = len(items)
     print(f"[GET_PROJECTS] Returned {items_count} items")
-    return res.data
+    
+    # 获取这些项目对应的 marketplace_listings（如果有的话）
+    if items:
+        project_ids = [item["id"] for item in items]
+        listings_res = supabase.table("marketplace_listings").select(
+            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits"
+        ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
+        
+        # 建立 resource_url -> listing 的映射
+        listings_map = {}
+        if listings_res.data:
+            for listing in listings_res.data:
+                listings_map[listing["resource_url"]] = {
+                    "id": listing["id"],
+                    "moderation_status": listing["moderation_status"],
+                    "is_public": listing["is_public"],
+                    "allowed_tiers": listing["allowed_tiers"],
+                    "price_credits": listing["price_credits"],
+                }
+        
+        # 将 listing 信息附加到项目数据
+        for item in items:
+            item["marketplace_listing"] = listings_map.get(item["id"])
+    
+    return items
 
 def count_user_projects(user_id: str, search: str = None):
     """获取用户项目总数（用于分页和限制检查）"""
