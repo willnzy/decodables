@@ -1156,6 +1156,15 @@ def mark_notification_read(notification_id: str, user_id: str):
     supabase.table("notifications").update({"is_read": True})\
         .eq("id", notification_id).execute()
 
+
+def mark_all_notifications_read(user_id: str):
+    """标记用户所有通知为已读"""
+    # 标记个人通知
+    supabase.table("notifications").update({"is_read": True})\
+        .eq("user_id", user_id).eq("is_read", False).execute()
+    # 注意：广播通知 (user_id=null) 需要单独处理已读状态
+    # 这里暂时只处理个人通知
+
 def create_broadcast(title: str, content: str, target_group: str = "all"):
     """[Admin] 创建广播通知"""
     data = {

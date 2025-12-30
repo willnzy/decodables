@@ -43,7 +43,7 @@ from db_service import (
     admin_get_conversion_funnel, admin_get_ai_insights, admin_get_ai_recommendations,
     admin_get_behavior_analysis, log_user_event, admin_get_user_events, admin_get_event_stats,
     # 通知
-    get_user_notifications, mark_notification_read, create_broadcast,
+    get_user_notifications, mark_notification_read, mark_all_notifications_read, create_broadcast,
     send_notification_to_user, send_notification_to_users, get_users_by_tier,
     get_all_notification_stats, get_notification_history,
     # 折扣
@@ -704,6 +704,13 @@ def my_notifications(unread_only: bool = False, user: dict = Depends(get_current
 def mark_read(id: str, user: dict = Depends(get_current_user)):
     """标记通知为已读"""
     mark_notification_read(id, user["id"])
+    return {"status": "ok"}
+
+
+@app.post("/api/user/notifications/read-all")
+def mark_all_read(user: dict = Depends(get_current_user)):
+    """标记所有通知为已读"""
+    mark_all_notifications_read(user["id"])
     return {"status": "ok"}
 
 @app.get("/api/resources/stickers")
