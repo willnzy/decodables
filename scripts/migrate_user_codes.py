@@ -31,7 +31,12 @@ def generate_user_code_for_existing_user(user_index: int, created_at: str) -> st
     """
     为现有用户生成 user_code
     使用用户的 created_at 时间作为时间戳部分
+    
+    时间统一转换为 UTC-0
+    序号补0到6位数
     """
+    from datetime import timezone
+    
     try:
         # 解析 created_at 时间
         if 'T' in created_at:
@@ -40,18 +45,26 @@ def generate_user_code_for_existing_user(user_index: int, created_at: str) -> st
         else:
             dt = datetime.fromisoformat(created_at)
         
-        # 生成时间戳部分 (精确到毫秒)
+        # 确保时间是 UTC
+        if dt.tzinfo is None:
+            # 如果没有时区信息，假设是 UTC
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            # 转换为 UTC
+            dt = dt.astimezone(timezone.utc)
+        
+        # 生成时间戳部分 (精确到毫秒, UTC 时间)
         timestamp_part = dt.strftime("%Y%m%d%H%M%S") + f"{dt.microsecond // 1000:03d}"
         
-        # 序号部分 (6位)
+        # 序号部分 (6位, 补0)
         sequence_part = f"{user_index:06d}"
         
         return f"{timestamp_part}{sequence_part}"
     except Exception as e:
         print(f"  ⚠️ Error parsing date '{created_at}': {e}")
-        # 使用当前时间作为 fallback
-        now = datetime.now()
-        timestamp_part = now.strftime("%Y%m%d%H%M%S") + f"{now.microsecond // 1000:03d}"
+        # 使用当前 UTC 时间作为 fallback
+        now_utc = datetime.now(timezone.utc)
+        timestamp_part = now_utc.strftime("%Y%m%d%H%M%S") + f"{now_utc.microsecond // 1000:03d}"
         sequence_part = f"{user_index:06d}"
         return f"{timestamp_part}{sequence_part}"
 

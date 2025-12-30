@@ -6,6 +6,10 @@
 -- 
 -- User Code 格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(6位)
 -- 例如: 20251230143025123000001
+-- 
+-- 注意:
+-- - 时间使用 UTC-0 (created_at 在 Supabase 中已经是 timestamptz，默认 UTC)
+-- - 序号补0到6位数 (000001 - 999999)
 -- ==============================================================================
 
 -- 步骤 1: 添加 user_code 字段（如果不存在）
@@ -23,22 +27,22 @@ BEGIN
 END $$;
 
 -- 步骤 2: 为现有用户生成 user_code
--- 使用 created_at 时间戳 + 行号作为序号
+-- 使用 created_at 时间戳 (转换为 UTC) + 行号作为序号
 WITH numbered_users AS (
   SELECT 
     id,
-    created_at,
+    created_at AT TIME ZONE 'UTC' as created_at_utc,
     ROW_NUMBER() OVER (ORDER BY created_at) as row_num
   FROM profiles
   WHERE user_code IS NULL
 )
 UPDATE profiles p
 SET user_code = 
-  -- 日期部分: YYYYMMDDHHMMSS
-  TO_CHAR(nu.created_at, 'YYYYMMDDHH24MISS') ||
-  -- 毫秒部分: 3位
-  LPAD(EXTRACT(MILLISECONDS FROM nu.created_at)::text, 3, '0') ||
-  -- 序号部分: 6位
+  -- 日期部分: YYYYMMDDHHMMSS (UTC 时间)
+  TO_CHAR(nu.created_at_utc, 'YYYYMMDDHH24MISS') ||
+  -- 毫秒部分: 3位，补0
+  LPAD(FLOOR(EXTRACT(MILLISECONDS FROM nu.created_at_utc))::int::text, 3, '0') ||
+  -- 序号部分: 6位，补0
   LPAD(nu.row_num::text, 6, '0')
 FROM numbered_users nu
 WHERE p.id = nu.id;

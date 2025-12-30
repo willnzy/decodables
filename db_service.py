@@ -168,17 +168,22 @@ def generate_user_code() -> str:
     格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(6位)
     例如: 20251230143025123000001
     
+    时间使用 UTC-0 (协调世界时)，确保全球一致
+    序号补0到6位数
+    
     总长度: 14 + 3 + 6 = 23 位
     """
-    # 获取当前时间（精确到毫秒）
-    now = datetime.now()
-    timestamp_part = now.strftime("%Y%m%d%H%M%S") + f"{now.microsecond // 1000:03d}"
+    from datetime import timezone
+    
+    # 获取当前 UTC 时间（精确到毫秒）
+    now_utc = datetime.now(timezone.utc)
+    timestamp_part = now_utc.strftime("%Y%m%d%H%M%S") + f"{now_utc.microsecond // 1000:03d}"
     
     # 获取当前用户总数
     count_result = supabase.table("profiles").select("id", count="exact").execute()
     user_count = count_result.count if count_result.count else 0
     
-    # 序号 = 当前用户数 + 1，补齐6位
+    # 序号 = 当前用户数 + 1，补齐6位 (000001 - 999999)
     sequence_part = f"{user_count + 1:06d}"
     
     return f"{timestamp_part}{sequence_part}"
