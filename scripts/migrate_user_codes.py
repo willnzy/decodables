@@ -33,7 +33,7 @@ def generate_user_code_for_existing_user(user_index: int, created_at: str) -> st
     使用用户的 created_at 时间作为时间戳部分
     
     时间统一转换为 UTC-0
-    序号补0到6位数
+    序号补0到7位数
     """
     from datetime import timezone
     
@@ -56,8 +56,8 @@ def generate_user_code_for_existing_user(user_index: int, created_at: str) -> st
         # 生成时间戳部分 (精确到毫秒, UTC 时间)
         timestamp_part = dt.strftime("%Y%m%d%H%M%S") + f"{dt.microsecond // 1000:03d}"
         
-        # 序号部分 (6位, 补0)
-        sequence_part = f"{user_index:06d}"
+        # 序号部分 (7位, 补0)
+        sequence_part = f"{user_index:07d}"
         
         return f"{timestamp_part}{sequence_part}"
     except Exception as e:
@@ -65,7 +65,7 @@ def generate_user_code_for_existing_user(user_index: int, created_at: str) -> st
         # 使用当前 UTC 时间作为 fallback
         now_utc = datetime.now(timezone.utc)
         timestamp_part = now_utc.strftime("%Y%m%d%H%M%S") + f"{now_utc.microsecond // 1000:03d}"
-        sequence_part = f"{user_index:06d}"
+        sequence_part = f"{user_index:07d}"
         return f"{timestamp_part}{sequence_part}"
 
 

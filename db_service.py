@@ -165,13 +165,13 @@ def get_user_profile(user_id: str):
 def generate_user_code() -> str:
     """
     生成唯一用户标识码
-    格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(6位)
-    例如: 20251230143025123000001
+    格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(7位)
+    例如: 202512301430251230000001
     
     时间使用 UTC-0 (协调世界时)，确保全球一致
-    序号补0到6位数
+    序号补0到7位数
     
-    总长度: 14 + 3 + 6 = 23 位
+    总长度: 14 + 3 + 7 = 24 位
     """
     from datetime import timezone
     
@@ -183,8 +183,8 @@ def generate_user_code() -> str:
     count_result = supabase.table("profiles").select("id", count="exact").execute()
     user_count = count_result.count if count_result.count else 0
     
-    # 序号 = 当前用户数 + 1，补齐6位 (000001 - 999999)
-    sequence_part = f"{user_count + 1:06d}"
+    # 序号 = 当前用户数 + 1，补齐7位 (0000001 - 9999999)
+    sequence_part = f"{user_count + 1:07d}"
     
     return f"{timestamp_part}{sequence_part}"
 

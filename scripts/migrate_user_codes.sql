@@ -4,12 +4,12 @@
 -- 步骤 1: 添加字段（如果不存在）
 -- 步骤 2: 为现有用户生成 user_code
 -- 
--- User Code 格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(6位)
--- 例如: 20251230143025123000001
+-- User Code 格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(7位)
+-- 例如: 202512301430251230000001
 -- 
 -- 注意:
 -- - 时间使用 UTC-0 (created_at 在 Supabase 中已经是 timestamptz，默认 UTC)
--- - 序号补0到6位数 (000001 - 999999)
+-- - 序号补0到7位数 (0000001 - 9999999)
 -- ==============================================================================
 
 -- 步骤 1: 添加 user_code 字段（如果不存在）
@@ -42,8 +42,8 @@ SET user_code =
   TO_CHAR(nu.created_at_utc, 'YYYYMMDDHH24MISS') ||
   -- 毫秒部分: 3位，补0
   LPAD(FLOOR(EXTRACT(MILLISECONDS FROM nu.created_at_utc))::int::text, 3, '0') ||
-  -- 序号部分: 6位，补0
-  LPAD(nu.row_num::text, 6, '0')
+  -- 序号部分: 7位，补0
+  LPAD(nu.row_num::text, 7, '0')
 FROM numbered_users nu
 WHERE p.id = nu.id;
 
