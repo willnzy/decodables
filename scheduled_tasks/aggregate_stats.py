@@ -612,6 +612,86 @@ def aggregate_feature_usage():
     log("✅ Feature usage aggregation complete")
 
 
+def aggregate_export_stats():
+    """
+    Aggregate export/download statistics
+    导出/下载操作统计聚合（PDF、ZIP、打印、预览）
+    """
+    log("📊 Starting export stats aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    
+    # 统计最近30天的导出数据
+    stats_by_date = {}
+    total_pdf = 0
+    total_zip = 0
+    total_print = 0
+    total_preview = 0
+    
+    for i in range(30):
+        date = (now - timedelta(days=i)).date()
+        date_str = date.isoformat()
+        next_date = date + timedelta(days=1)
+        
+        try:
+            # 从 activity_logs 统计
+            logs = supabase.table("activity_logs").select("action")\
+                .in_("action", ["download_pdf", "export_zip", "print_project", "preview_pdf"])\
+                .gte("created_at", date.isoformat())\
+                .lt("created_at", next_date.isoformat()).execute()
+            
+            day_stats = {"pdf": 0, "zip": 0, "print": 0, "preview": 0}
+            for log_entry in logs.data or []:
+                action = log_entry.get("action", "")
+                if action == "download_pdf":
+                    day_stats["pdf"] += 1
+                    total_pdf += 1
+                elif action == "export_zip":
+                    day_stats["zip"] += 1
+                    total_zip += 1
+                elif action == "print_project":
+                    day_stats["print"] += 1
+                    total_print += 1
+                elif action == "preview_pdf":
+                    day_stats["preview"] += 1
+                    total_preview += 1
+            
+            stats_by_date[date_str] = day_stats
+        except Exception as e:
+            log(f"  Warning: Failed to get export logs for {date_str}: {e}")
+    
+    # 构建趋势数据（最近30天，从旧到新排序）
+    trend_data = []
+    for i in range(29, -1, -1):
+        date = (now - timedelta(days=i)).date()
+        date_str = date.isoformat()
+        day_stats = stats_by_date.get(date_str, {"pdf": 0, "zip": 0, "print": 0, "preview": 0})
+        trend_data.append({
+            "date": date.strftime("%m/%d"),
+            **day_stats
+        })
+    
+    stats_data = {
+        "date": now.strftime("%Y-%m-%d"),
+        "stat_type": "export_stats_30d",
+        "data": {
+            "totalPdf": total_pdf,
+            "totalZip": total_zip,
+            "totalPrint": total_print,
+            "totalPreview": total_preview,
+            "trend": trend_data
+        },
+        "updated_at": now.isoformat()
+    }
+    
+    supabase.table("aggregated_stats").upsert(
+        stats_data,
+        on_conflict="date,stat_type"
+    ).execute()
+    
+    log(f"✅ Export stats aggregation complete: PDF={total_pdf}, ZIP={total_zip}, Print={total_print}, Preview={total_preview}")
+
+
 def run_hourly_tasks():
     """Run tasks that should be executed hourly"""
     log("🕐 Running hourly aggregation tasks...")
@@ -635,6 +715,7 @@ def run_daily_tasks():
     aggregate_generation_stats()
     aggregate_marketplace_stats()
     aggregate_retention_stats()
+    aggregate_export_stats()
     
     log("✅ Daily tasks complete")
 

@@ -1210,6 +1210,9 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
         img_buffer = BytesIO(pix.tobytes("png"))
         pdf_doc.close()
         
+        # 记录预览行为
+        log_activity(user["id"], "preview_pdf", {"project_id": project_id})
+        
         return StreamingResponse(
             img_buffer, 
             media_type="image/png",
@@ -1245,6 +1248,7 @@ def dl_zip(request: Request, req: PdfGenRequest, user: dict = Depends(get_curren
     buf = BytesIO()
     create_assets_zip(req.image_urls, buf)
     buf.seek(0)
+    log_activity(user["id"], "export_zip", {"project_id": req.project_id})
     return StreamingResponse(buf, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=assets.zip"})
 
 # [新增] 从项目直接导出 ZIP（PDF + 图片）
@@ -1334,6 +1338,10 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
                 print(f"ZIP: Failed to add image {i+1}: {e}")
     
     zip_buffer.seek(0)
+    
+    # 记录 ZIP 下载行为
+    log_activity(user["id"], "export_zip", {"project_id": project_id})
+    
     return StreamingResponse(
         zip_buffer, 
         media_type="application/zip", 
@@ -2600,6 +2608,24 @@ def adm_get_credit_usage_stats(
 ):
     """获取积分使用统计"""
     return admin_get_credit_usage_stats(start_date, end_date)
+
+@app.get("/api/admin/stats/exports")
+def adm_get_export_stats(admin: dict = Depends(require_admin)):
+    """获取导出操作统计（PDF、ZIP、打印、预览）"""
+    # 从 aggregated_stats 表获取预聚合的数据
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "export_stats_30d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"totalPdf": 0, "totalZip": 0, "totalPrint": 0, "totalPreview": 0, "trend": []}
+    except Exception as e:
+        print(f"Failed to get export stats: {e}")
+        return {"totalPdf": 0, "totalZip": 0, "totalPrint": 0, "totalPreview": 0, "trend": []}
 
 @app.get("/api/admin/stats/tier-distribution")
 def adm_get_tier_distribution(admin: dict = Depends(require_admin)):
