@@ -89,6 +89,7 @@ create table if not exists projects (
   thumbnail_url text,
   last_downloaded_hash text, -- 仅用于缓存/版本识别（不参与扣费）
   is_deleted boolean default false,
+  deleted_at timestamptz default null, -- 删除时间，用于显示删除历史
 
   -- 可选：用于快速提示项目包含锁定资源
   contains_locked_elements boolean default false,
