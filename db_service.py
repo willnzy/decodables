@@ -590,7 +590,7 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     if items:
         project_ids = [item["id"] for item in items]
         listings_res = supabase.table("marketplace_listings").select(
-            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits"
+            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
         ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
         
         # 建立 resource_url -> listing 的映射
