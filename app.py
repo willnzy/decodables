@@ -872,6 +872,24 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
         "usage_recorded": new_usage_recorded
     }
 
+@app.post("/api/projects/{id}/duplicate")
+@limiter.limit("10/minute")  # 复制项目限频
+def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_user)):
+    """复制项目（购买的项目不能复制）"""
+    from db_service import duplicate_project
+    try:
+        new_project = duplicate_project(id, user["id"])
+        if new_project:
+            log_activity(user["id"], "duplicate_project", {"source_project_id": id, "new_project_id": new_project["id"]})
+            return new_project
+        else:
+            raise HTTPException(500, "Failed to duplicate project")
+    except Exception as e:
+        error_msg = str(e)
+        if "cannot be duplicated" in error_msg.lower() or "purchased" in error_msg.lower():
+            raise HTTPException(403, error_msg)
+        raise HTTPException(400, error_msg)
+
 @app.delete("/api/projects/{id}")
 def delete_proj(id: str, user: dict = Depends(get_current_user)):
     try:

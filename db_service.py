@@ -695,6 +695,35 @@ def create_project(user_id: str, title: str = None, canvas_data: dict = None):
     res = supabase.table("projects").insert(data).execute()
     return res.data[0]
 
+def duplicate_project(project_id: str, user_id: str):
+    """
+    复制项目（仅限自己创建的项目，购买的项目不能复制）
+    
+    Returns: 新项目数据 或抛出异常
+    """
+    # 获取原项目
+    original = supabase.table("projects").select("*")\
+        .eq("id", project_id).eq("user_id", user_id).eq("is_deleted", False).single().execute()
+    
+    if not original.data:
+        raise Exception("Project not found or permission denied")
+    
+    # 检查是否为购买的项目（有 source_listing_id 的项目不能复制）
+    if original.data.get("source_listing_id"):
+        raise Exception("Purchased projects cannot be duplicated. This project is for personal use only.")
+    
+    # 创建新项目，复制内容但不复制 source_listing_id
+    new_data = {
+        "user_id": user_id,
+        "title": f"{original.data.get('title', 'My Magic Story')} (Copy)",
+        "canvas_data": original.data.get("canvas_data", {}),
+        "thumbnail_url": original.data.get("thumbnail_url"),
+        "last_downloaded_hash": ""
+    }
+    
+    res = supabase.table("projects").insert(new_data).execute()
+    return res.data[0] if res.data else None
+
 def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbnail_url: str = None, title: str = None):
     """保存项目"""
     print(f"[DB_SAVE] Starting save for project {project_id}")
