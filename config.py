@@ -23,6 +23,11 @@ CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
 # Stripe
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
+# Email (Resend)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@makedecodables.com")
+SUPPORT_EMAIL_FROM = os.environ.get("SUPPORT_EMAIL_FROM", "noreply@makedecodables.com")
+
 # CORS Settings
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development

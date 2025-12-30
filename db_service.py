@@ -1145,7 +1145,8 @@ def log_activity(user_id: str, action: str, metadata: dict = None):
     }).execute()
 
 def create_support_ticket(user_id: str, email: str, message: str):
-    """创建工单"""
+    """创建工单并发送邮件通知"""
+    # 1. 保存到数据库
     supabase.table("support_tickets").insert({
         "user_id": user_id,
         "email": email,
@@ -1153,6 +1154,54 @@ def create_support_ticket(user_id: str, email: str, message: str):
         "category": "ticket_submission",
         "status": "open"
     }).execute()
+    
+    # 2. 发送邮件通知到客服邮箱
+    try:
+        send_support_email(user_id, email, message)
+    except Exception as e:
+        print(f"[WARNING] Failed to send support email: {e}")
+        # 不抛出异常，工单已保存到数据库
+
+
+def send_support_email(user_id: str, user_email: str, message: str):
+    """发送支持邮件到客服邮箱"""
+    try:
+        import resend
+        from config import RESEND_API_KEY, SUPPORT_EMAIL, SUPPORT_EMAIL_FROM
+        
+        if not RESEND_API_KEY:
+            print("[WARNING] RESEND_API_KEY not configured, skipping email")
+            return
+        
+        resend.api_key = RESEND_API_KEY
+        
+        # 构建邮件内容
+        html_content = f"""
+        <h2>新的客服工单</h2>
+        <p><strong>用户ID:</strong> {user_id}</p>
+        <p><strong>用户邮箱:</strong> {user_email}</p>
+        <hr>
+        <h3>消息内容:</h3>
+        <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap;">{message}</pre>
+        <hr>
+        <p style="color: #666; font-size: 12px;">此邮件由 Make Decodables 支持系统自动发送</p>
+        """
+        
+        resend.Emails.send({
+            "from": SUPPORT_EMAIL_FROM,
+            "to": SUPPORT_EMAIL,
+            "subject": f"[Make Decodables] 新工单 - 来自 {user_email}",
+            "html": html_content,
+            "reply_to": user_email  # 方便直接回复用户
+        })
+        
+        print(f"[INFO] Support email sent to {SUPPORT_EMAIL}")
+        
+    except ImportError:
+        print("[WARNING] resend package not installed, skipping email")
+    except Exception as e:
+        print(f"[ERROR] Failed to send email via Resend: {e}")
+        raise
 
 def search_users(query: str):
     """[Admin] 搜索用户 (支持 ID 或 Email 模糊搜索)"""

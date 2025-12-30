@@ -19,3 +19,4 @@ pymupdf
 pytest
 pytest-asyncio
 httpx
+resend
