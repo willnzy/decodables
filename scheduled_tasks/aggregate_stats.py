@@ -9,9 +9,9 @@ This script should be run periodically (e.g., every hour via cron) to:
 3. Generate AI insights cache
 
 Usage:
-    python aggregate_stats.py              # Run all aggregations
-    python aggregate_stats.py --daily      # Run daily aggregations only
-    python aggregate_stats.py --hourly     # Run hourly aggregations only
+    python scheduled_tasks/aggregate_stats.py              # Run all aggregations
+    python scheduled_tasks/aggregate_stats.py --daily      # Run daily aggregations only
+    python scheduled_tasks/aggregate_stats.py --hourly     # Run hourly aggregations only
 
 Cron example (run every hour):
     0 * * * * cd /path/to/decodables && python scheduled_tasks/aggregate_stats.py --hourly
@@ -30,17 +30,19 @@ from collections import defaultdict
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from supabase import create_client, Client
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-# Initialize Supabase client
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+# Import supabase client from db_service (reuse existing setup)
+from db_service import supabase
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ Error: SUPABASE_URL and SUPABASE_KEY environment variables are required")
+if supabase is None:
+    print("❌ Error: Supabase client not initialized. Check SUPABASE_URL and SUPABASE_KEY environment variables.")
     sys.exit(1)
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def log(message):
@@ -193,17 +195,20 @@ def aggregate_daily_projects():
             .gte("created_at", date.isoformat())\
             .lt("created_at", next_date.isoformat()).execute()
         
-        # Count completed projects (have cover_url)
+        # Count completed projects (have canvas_data)
         completed = supabase.table("projects").select("id", count="exact")\
             .gte("created_at", date.isoformat())\
             .lt("created_at", next_date.isoformat())\
-            .not_.is_("cover_url", "null").execute()
+            .not_.is_("canvas_data", "null").execute()
         
-        # Count exports from activity_logs
-        exports = supabase.table("activity_logs").select("action")\
-            .in_("action", ["export_pdf", "export_zip"])\
-            .gte("created_at", date.isoformat())\
-            .lt("created_at", next_date.isoformat()).execute()
+        # Count exports from activity_logs (if table exists)
+        try:
+            exports = supabase.table("activity_logs").select("action")\
+                .in_("action", ["export_pdf", "export_zip"])\
+                .gte("created_at", date.isoformat())\
+                .lt("created_at", next_date.isoformat()).execute()
+        except Exception:
+            exports = type('obj', (object,), {'data': []})()  # Empty result
         
         stats_data = {
             "date": date_str,
