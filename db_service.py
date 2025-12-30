@@ -671,16 +671,21 @@ def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbn
 
 def soft_delete_project(project_id: str, user_id: str):
     """软删除项目"""
-    res = supabase.table("projects").update({"is_deleted": True})\
-        .eq("id", project_id).eq("user_id", user_id).execute()
+    from datetime import datetime
+    res = supabase.table("projects").update({
+        "is_deleted": True,
+        "deleted_at": datetime.utcnow().isoformat()
+    }).eq("id", project_id).eq("user_id", user_id).execute()
     if not res.data:
         raise Exception("Project not found or permission denied")
     return True
 
 def restore_project(project_id: str):
     """[Admin] 恢复被删除的项目"""
-    res = supabase.table("projects").update({"is_deleted": False})\
-        .eq("id", project_id).execute()
+    res = supabase.table("projects").update({
+        "is_deleted": False,
+        "deleted_at": None
+    }).eq("id", project_id).execute()
     return res.data[0] if res.data else None
 
 def update_project_hash(project_id: str, new_hash: str):
