@@ -1171,10 +1171,19 @@ def send_notification_to_user(user_id: str, title: str, content: str, notificati
         "target_group": None,
         "title": title,
         "content": content,
-        "notification_type": notification_type,
         "is_read": False
     }
-    res = supabase.table("notifications").insert(data).execute()
+    # 尝试添加 notification_type（如果表支持）
+    try:
+        data["notification_type"] = notification_type
+        res = supabase.table("notifications").insert(data).execute()
+    except Exception as e:
+        # 如果字段不存在，移除后重试
+        if "notification_type" in str(e):
+            del data["notification_type"]
+            res = supabase.table("notifications").insert(data).execute()
+        else:
+            raise e
     return res.data[0] if res.data else None
 
 
@@ -1187,15 +1196,28 @@ def send_notification_to_users(user_ids: list, title: str, content: str, notific
             "target_group": None,
             "title": title,
             "content": content,
-            "notification_type": notification_type,
             "is_read": False
         }
         notifications.append(data)
     
-    if notifications:
+    if not notifications:
+        return []
+    
+    # 尝试添加 notification_type（如果表支持）
+    try:
+        for n in notifications:
+            n["notification_type"] = notification_type
         res = supabase.table("notifications").insert(notifications).execute()
-        return res.data
-    return []
+    except Exception as e:
+        # 如果字段不存在，移除后重试
+        if "notification_type" in str(e):
+            for n in notifications:
+                if "notification_type" in n:
+                    del n["notification_type"]
+            res = supabase.table("notifications").insert(notifications).execute()
+        else:
+            raise e
+    return res.data
 
 
 def get_users_by_tier(tier: str):
@@ -1206,35 +1228,51 @@ def get_users_by_tier(tier: str):
 
 def get_all_notification_stats():
     """获取通知统计"""
-    # 总通知数
-    total_res = supabase.table("notifications").select("id", count="exact").execute()
-    
-    # 未读通知数
-    unread_res = supabase.table("notifications").select("id", count="exact").eq("is_read", False).execute()
-    
-    # 最近7天的通知
-    from datetime import datetime, timedelta
-    week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-    recent_res = supabase.table("notifications").select("id", count="exact")\
-        .gte("created_at", week_ago).execute()
-    
-    return {
-        "total": total_res.count or 0,
-        "unread": unread_res.count or 0,
-        "recent_7d": recent_res.count or 0
-    }
+    try:
+        # 总通知数
+        total_res = supabase.table("notifications").select("id", count="exact").execute()
+        
+        # 未读通知数
+        unread_res = supabase.table("notifications").select("id", count="exact").eq("is_read", False).execute()
+        
+        # 最近7天的通知
+        from datetime import datetime, timedelta
+        week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+        recent_res = supabase.table("notifications").select("id", count="exact")\
+            .gte("created_at", week_ago).execute()
+        
+        return {
+            "total": total_res.count or 0,
+            "unread": unread_res.count or 0,
+            "recent_7d": recent_res.count or 0
+        }
+    except Exception as e:
+        print(f"[get_all_notification_stats] Error: {e}")
+        return {
+            "total": 0,
+            "unread": 0,
+            "recent_7d": 0
+        }
 
 
 def get_notification_history(page: int = 1, limit: int = 50, notification_type: str = None):
     """获取通知发送历史"""
-    query = supabase.table("notifications").select("*")
-    
-    if notification_type:
-        query = query.eq("notification_type", notification_type)
-    
-    offset = (page - 1) * limit
-    res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-    return res.data or []
+    try:
+        query = supabase.table("notifications").select("*")
+        
+        # 只有当指定了类型且表支持该字段时才过滤
+        if notification_type:
+            try:
+                query = query.eq("notification_type", notification_type)
+            except:
+                pass  # 字段不存在，忽略过滤
+        
+        offset = (page - 1) * limit
+        res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"[get_notification_history] Error: {e}")
+        return []
 
 # ==========================================
 # 7. 折扣系统 (Discounts)
