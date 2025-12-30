@@ -1621,7 +1621,8 @@ def feedback_with_images(request: Request, req: FeedbackWithImagesRequest):
 @app.get("/api/admin/users")
 @limiter.limit("60/minute")  # 搜索限频防爬取
 def adm_users(request: Request, query: str, admin: dict = Depends(require_admin)):
-    return search_users(query)
+    users = search_users(query)
+    return {"users": users}
 
 @app.get("/api/admin/user/{uid}")
 def adm_audit(uid: str, admin: dict = Depends(require_admin)):
