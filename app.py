@@ -1700,10 +1700,14 @@ def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(requ
     old_profile = get_user_profile(req.user_id)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
     
-    update_subscription_tier(req.user_id, req.tier)
+    # 根据 tier 设置正确的 subscription_status
+    # starter/pro 应该是 active，free 应该是 inactive
+    subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
+    update_subscription_tier(req.user_id, req.tier, subscription_status=subscription_status)
     log_activity(admin["id"], "admin_tier_update", {
         "target_user": req.user_id,
-        "new_tier": req.tier
+        "new_tier": req.tier,
+        "subscription_status": subscription_status
     })
     # 记录到审计日志
     admin_log_operation(
