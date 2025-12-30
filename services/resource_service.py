@@ -12,41 +12,41 @@ from .access_control import AccessControl
 
 class ResourceType(str, Enum):
     """Resource type enumeration"""
-    PROJECT = "project"          # 项目模板
-    STICKER = "sticker"            # 贴纸
-    IMAGE = "image"                # 图片素材
-    BACKGROUND = "background"      # 背景图
-    FRAME = "frame"                # 边框/装饰框
-    EMOJI = "emoji"                # 表情符号
-    FONT = "font"                  # 字体
-    SHAPE = "shape"                # 形状/图形
-    ICON = "icon"                  # 图标
-    PATTERN = "pattern"            # 图案/纹理
+    PROJECT = "project"          # Project Template
+    STICKER = "sticker"            # Sticker
+    IMAGE = "image"                # Image Asset
+    BACKGROUND = "background"      # Background Image
+    FRAME = "frame"                # Frame/Decoration
+    EMOJI = "emoji"                # Emoji
+    FONT = "font"                  # Font
+    SHAPE = "shape"                # Shape/Graphic
+    ICON = "icon"                  # Icon
+    PATTERN = "pattern"            # Pattern/Texture
 
 
 class ResourceCategory(str, Enum):
     """Resource category enumeration"""
     # Project categories
-    STORY = "story"                # 故事模板
-    EDUCATIONAL = "educational"    # 教育模板
-    SEASONAL = "seasonal"          # 节日/季节
-    BLANK = "blank"                # 空白模板
+    STORY = "story"                # Story Template
+    EDUCATIONAL = "educational"    # Educational Template
+    SEASONAL = "seasonal"          # Festival/Seasonal
+    BLANK = "blank"                # Blank Template
     
     # Sticker categories
-    ANIMALS = "animals"            # 动物
-    NATURE = "nature"              # 自然
-    PEOPLE = "people"              # 人物
-    FOOD = "food"                  # 食物
-    OBJECTS = "objects"            # 物品
-    EMOTIONS = "emotions"          # 表情/情绪
-    EDUCATION = "education"        # 教育相关
-    HOLIDAY = "holiday"            # 节日
+    ANIMALS = "animals"            # Animals
+    NATURE = "nature"              # Nature
+    PEOPLE = "people"              # People
+    FOOD = "food"                  # Food
+    OBJECTS = "objects"            # Objects
+    EMOTIONS = "emotions"          # Expressions/Emotions
+    EDUCATION = "education"        # Educational
+    HOLIDAY = "holiday"            # Holiday
     
     # General
-    POPULAR = "popular"            # 热门
-    NEW = "new"                    # 最新
-    AI_GENERATED = "ai_generated"  # AI生成
-    USER_UPLOAD = "user_upload"    # 用户上传
+    POPULAR = "popular"            # Popular
+    NEW = "new"                    # Newest
+    AI_GENERATED = "ai_generated"  # AI Generated
+    USER_UPLOAD = "user_upload"    # User Upload
 
 
 # Resource type to categories mapping

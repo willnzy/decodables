@@ -3,32 +3,32 @@ from supabase import create_client, Client
 from datetime import datetime, timezone
 import uuid
 
-# 从环境变量获取配置
+# Get configuration from environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-# 初始化客户端
+# Initialize client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 # ==========================================
-# 0. 权限校验函数 (Permission Helpers)
+# 0. Permission Helpers
 # ==========================================
 
 def is_member(user: dict) -> bool:
     """
-    检查用户是否为有效会员
-    只有 Starter/Pro 且订阅有效才算会员
+    Check if user is an active member.
+    Only Starter/Pro with active subscription are considered members.
     """
     if not user:
         return False
     tier = user.get("tier", "free")
     subscription_status = user.get("subscription_status", "inactive")
     
-    # 只有 starter/pro 才是会员
+    # Only starter/pro are members
     if tier not in ["starter", "pro"]:
         return False
     
-    # 订阅必须是有效状态
+    # Subscription must be active
     if subscription_status not in ["active", "trialing"]:
         return False
     
@@ -36,22 +36,22 @@ def is_member(user: dict) -> bool:
 
 def can_access_resource(user: dict, allowed_tiers: list) -> bool:
     """
-    检查用户是否有权限访问资源
+    Check if user has permission to access the resource.
     
-    规则:
-    - 若 'free' in allowed_tiers：允许访问（不需要会员）
-    - 若 'free' not in allowed_tiers：必须 is_member(user)=true 且 user.tier in allowed_tiers
+    Rules:
+    - If 'free' in allowed_tiers: Access allowed (no membership required)
+    - If 'free' not in allowed_tiers: Must be is_member(user)=true AND user.tier in allowed_tiers
     """
     if not user or not allowed_tiers:
         return False
     
     user_tier = user.get("tier", "free")
     
-    # 如果资源允许 free 用户访问，任何人都可以
+    # If resource allows free users, anyone can access
     if "free" in allowed_tiers:
         return True
     
-    # 否则必须是有效会员且 tier 在允许列表中
+    # Otherwise must be active member and tier in allowed list
     if not is_member(user):
         return False
     
@@ -59,12 +59,12 @@ def can_access_resource(user: dict, allowed_tiers: list) -> bool:
 
 def publish_permission(user: dict, resource_type: str, price_credits: int) -> dict:
     """
-    检查用户发布权限（PRD 第7章）
+    Check user publish permission (PRD Chapter 7)
     
-    规则:
-    - Free：不能发布任何内容
-    - Starter：仅允许 resource_type='asset' 且 price_credits=0
-    - Pro：允许 resource_type='asset'|'project' 且 price_credits 在 0..500
+    Rules:
+    - Free: Cannot publish anything
+    - Starter: Only allow resource_type='asset' AND price_credits=0
+    - Pro: Allow resource_type='asset'|'project' AND price_credits in 0..500
     
     Returns: { allowed: bool, reason: str }
     """
@@ -73,22 +73,22 @@ def publish_permission(user: dict, resource_type: str, price_credits: int) -> di
     
     tier = user.get("tier", "free")
     
-    # Free 用户不能发布
+    # Free users cannot publish
     if tier == "free":
         return {"allowed": False, "reason": "Free users cannot publish. Upgrade to Starter or Pro."}
     
-    # 价格上限校验
+    # Price limit check
     if price_credits < 0 or price_credits > 500:
         return {"allowed": False, "reason": "Price must be between 0 and 500 credits"}
     
-    # Starter 用户限制
+    # Starter user limits
     if tier == "starter":
         if resource_type != "asset":
             return {"allowed": False, "reason": "Starter users can only publish Assets. Upgrade to Pro to publish Projects."}
         if price_credits > 0:
             return {"allowed": False, "reason": "Starter users can only publish free assets. Upgrade to Pro to sell."}
     
-    # Pro 用户可以发布 asset 或 project
+    # Pro users can publish asset or project
     if tier == "pro":
         if resource_type not in ["asset", "project"]:
             return {"allowed": False, "reason": "Invalid resource type. Must be 'asset' or 'project'."}
@@ -97,9 +97,9 @@ def publish_permission(user: dict, resource_type: str, price_credits: int) -> di
 
 def validate_allowed_tiers(allowed_tiers: list) -> dict:
     """
-    校验 allowed_tiers 白名单（PRD 第7章）
+    Validate allowed_tiers whitelist (PRD Chapter 7)
     
-    仅允许以下三种之一:
+    Only allow one of the following:
     - ['free']
     - ['starter', 'pro']
     - ['pro']
@@ -126,9 +126,9 @@ def validate_allowed_tiers(allowed_tiers: list) -> dict:
 
 def listing_is_public_visible(listing: dict) -> bool:
     """
-    检查 listing 是否公开可见（PRD 第8章）
+    Check if listing is publicly visible (PRD Chapter 8)
     
-    必须同时满足:
+    Must satisfy:
     - is_public = true
     - is_deleted = false
     - moderation_status = 'approved'
@@ -143,47 +143,47 @@ def listing_is_public_visible(listing: dict) -> bool:
     )
 
 def get_total_credits(user: dict) -> int:
-    """获取用户总可用积分 (monthly + permanent)"""
+    """Get user total available credits (monthly + permanent)"""
     if not user:
         return 0
     return user.get("credits_monthly", 0) + user.get("credits_permanent", 0)
 
 # ==========================================
-# 1. 用户档案 (Profiles)
+# 1. User Profiles
 # ==========================================
 
 def get_user_profile(user_id: str):
-    """获取用户信息"""
+    """Get user profile"""
     res = supabase.table("profiles").select("*").eq("id", user_id).execute()
     if res.data:
         user = res.data[0]
-        # 计算总积分（兼容前端现有代码）
+        # Calculate total credits (compatible with frontend)
         user["credits"] = get_total_credits(user)
         return user
     return None
 
 def generate_user_code() -> str:
     """
-    生成唯一用户标识码
-    格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(7位)
-    例如: 202512301430251230000001
+    Generate unique user code
+    Format: YYYYMMDDHHMMSS + ms(3 digits) + sequence(7 digits)
+    Example: 202512301430251230000001
     
-    时间使用 UTC-0 (协调世界时)，确保全球一致
-    序号补0到7位数
+    Use UTC-0 time to ensure global consistency
+    Sequence padded to 7 digits
     
-    总长度: 14 + 3 + 7 = 24 位
+    Total length: 14 + 3 + 7 = 24 chars
     """
     from datetime import timezone
     
-    # 获取当前 UTC 时间（精确到毫秒）
+    # Get current UTC time (precise to ms)
     now_utc = datetime.now(timezone.utc)
     timestamp_part = now_utc.strftime("%Y%m%d%H%M%S") + f"{now_utc.microsecond // 1000:03d}"
     
-    # 获取当前用户总数
+    # Get current user count
     count_result = supabase.table("profiles").select("id", count="exact").execute()
     user_count = count_result.count if count_result.count else 0
     
-    # 序号 = 当前用户数 + 1，补齐7位 (0000001 - 9999999)
+    # Sequence = current count + 1, padded to 7 digits
     sequence_part = f"{user_count + 1:07d}"
     
     return f"{timestamp_part}{sequence_part}"
@@ -191,10 +191,10 @@ def generate_user_code() -> str:
 
 def create_user_profile(user_id: str, email: str, username: str, avatar_url: str, first_name: str = None, last_name: str = None):
     """
-    创建新用户并赠送初始积分
-    根据 PRD: Free 用户赠送 50 Credits (One-time, Permanent)
+    Create new user and grant initial credits
+    According to PRD: Free users get 50 Credits (One-time, Permanent)
     """
-    # 生成唯一用户标识码
+    # Generate unique user code
     user_code = generate_user_code()
     
     data = {
@@ -204,15 +204,15 @@ def create_user_profile(user_id: str, email: str, username: str, avatar_url: str
         "first_name": first_name,
         "last_name": last_name,
         "avatar_url": avatar_url,
-        "user_code": user_code,    # 用户唯一标识码
-        "credits_monthly": 0,      # 订阅每月赠送
-        "credits_permanent": 50,   # 注册赠送 50 Credits (永久)
+        "user_code": user_code,    # User unique code
+        "credits_monthly": 0,      # Monthly subscription credits
+        "credits_permanent": 50,   # Registration bonus 50 Credits (Permanent)
         "tier": "free",
         "subscription_status": "inactive",
         "role": "user"
     }
     supabase.table("profiles").insert(data).execute()
-    # 记录赠送流水
+    # Log bonus transaction
     log_credit_transaction(
         user_id=user_id, 
         amount=50, 
@@ -225,8 +225,8 @@ def create_user_profile(user_id: str, email: str, username: str, avatar_url: str
 
 def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = None, subscription_status: str = "active"):
     """
-    更新订阅等级
-    同时更新 tier、subscription_status 和 stripe_customer_id
+    Update subscription tier
+    Updates tier, subscription_status and stripe_customer_id
     """
     data = {
         "tier": tier,
@@ -238,8 +238,8 @@ def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = 
 
 def update_user_profile(user_id: str, avatar_url: str = None, username: str = None, first_name: str = None, last_name: str = None):
     """
-    更新用户档案（头像、用户名、姓名）
-    用于处理 Clerk user.updated webhook 事件
+    Update user profile (avatar, username, name)
+    Used for Clerk user.updated webhook events
     """
     data = {}
     if avatar_url is not None:
@@ -258,10 +258,10 @@ def update_user_profile(user_id: str, avatar_url: str = None, username: str = No
 
 def refresh_monthly_credits(user_id: str, tier: str):
     """
-    刷新月度积分（订阅周期开始时调用）
+    Refresh monthly credits (called at subscription cycle start)
     - Starter: 500 credits/month
     - Pro: 1000 credits/month
-    - 不结转：直接重置为当月额度（permanent credits 不受影响）
+    - No rollover: Reset directly to monthly quota (permanent credits unaffected)
     """
     monthly_amounts = {
         "starter": 500,
@@ -275,22 +275,22 @@ def refresh_monthly_credits(user_id: str, tier: str):
     if not profile:
         return False
     
-    # 重要：permanent credits 不受影响，保持不变
+    # Important: permanent credits are unaffected
     permanent = profile.get("credits_permanent", 0)
     
-    # 重置月度积分（不结转）- 只重置 monthly，不影响 permanent
+    # Reset monthly credits (no rollover) - only reset monthly
     supabase.table("profiles").update({
         "credits_monthly": new_monthly,
         "monthly_credits_cycle_anchor": datetime.now().isoformat()
     }).eq("id", user_id).execute()
     
-    # 记录流水
+    # Log transaction
     log_credit_transaction(
         user_id=user_id,
         amount=new_monthly,
         bucket="monthly",
         balance_monthly_after=new_monthly,
-        balance_permanent_after=permanent,  # permanent credits 保持不变
+        balance_permanent_after=permanent,  # permanent credits preserved
         type="sub_grant",
         description=f"Monthly {tier.capitalize()} Credits (Reset - Permanent credits preserved)"
     )
@@ -299,12 +299,12 @@ def refresh_monthly_credits(user_id: str, tier: str):
 
 def check_and_reset_monthly_credits_if_needed(user_id: str):
     """
-    检查并重置月度积分（如果需要）
-    在用户登录或获取用户信息时调用，确保 monthly credits 按时重置
+    Check and reset monthly credits if needed
+    Called on user login or profile fetch to ensure monthly credits reset on time
     
-    规则：
-    - 如果 monthly_credits_cycle_anchor 不存在或超过 30 天，且用户是 Starter/Pro，则重置
-    - permanent credits 永远不会被重置
+    Rules:
+    - If monthly_credits_cycle_anchor missing or > 30 days, and user is Starter/Pro, reset
+    - permanent credits never reset
     """
     profile = get_user_profile(user_id)
     if not profile:
@@ -313,7 +313,7 @@ def check_and_reset_monthly_credits_if_needed(user_id: str):
     tier = profile.get("tier", "free")
     subscription_status = profile.get("subscription_status", "inactive")
     
-    # 只有 Starter/Pro 且订阅有效才需要重置
+    # Only Starter/Pro with active sub need reset
     if tier not in ["starter", "pro"]:
         return False
     
@@ -322,12 +322,12 @@ def check_and_reset_monthly_credits_if_needed(user_id: str):
     
     cycle_anchor = profile.get("monthly_credits_cycle_anchor")
     
-    # 如果没有 cycle_anchor，说明是第一次，需要设置
+    # If no cycle_anchor, it's first time, set it
     if not cycle_anchor:
         refresh_monthly_credits(user_id, tier)
         return True
     
-    # 检查是否超过 30 天（一个月）
+    # Check if > 30 days (one month)
     try:
         anchor_date = datetime.fromisoformat(cycle_anchor.replace('Z', '+00:00'))
         if anchor_date.tzinfo is None:
@@ -336,12 +336,12 @@ def check_and_reset_monthly_credits_if_needed(user_id: str):
         now = datetime.now(timezone.utc)
         days_since_reset = (now - anchor_date).total_seconds() / (24 * 3600)
         
-        # 如果超过 30 天，重置 monthly credits
+        # If > 30 days, reset monthly credits
         if days_since_reset >= 30:
             refresh_monthly_credits(user_id, tier)
             return True
     except (ValueError, TypeError) as e:
-        # 如果日期解析失败，重置一次
+        # If date parse fails, reset once
         print(f"Warning: Failed to parse monthly_credits_cycle_anchor for user {user_id}: {e}")
         refresh_monthly_credits(user_id, tier)
         return True
@@ -349,7 +349,7 @@ def check_and_reset_monthly_credits_if_needed(user_id: str):
     return False
 
 # ==========================================
-# 2. 积分与交易 (Credits & Transactions)
+# 2. Credits & Transactions
 # ==========================================
 
 def log_credit_transaction(
@@ -361,7 +361,7 @@ def log_credit_transaction(
     type: str, 
     description: str
 ):
-    """[内部调用] 记录流水 - 支持 Credits 分桶"""
+    """[Internal] Log transaction - Support Credits Buckets"""
     supabase.table("credit_transactions").insert({
         "user_id": user_id,
         "amount": amount,
@@ -381,32 +381,32 @@ def log_payment_record(
     description: str
 ):
     """
-    记录付款记录（订阅费用、积分购买等）
-    amount_cents: 金额（以分为单位）
-    currency: 货币代码（如 'USD'）
-    type: 付款类型
-    description: 描述
+    Log payment record (subscription fee, credits purchase, etc.)
+    amount_cents: Amount in cents
+    currency: Currency code (e.g. 'USD')
+    type: Payment type
+    description: Description
     """
-    # 获取用户当前余额用于记录
+    # Get user current balance for logging
     profile = supabase.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).single().execute()
     balance_monthly = profile.data.get("credits_monthly", 0) if profile.data else 0
     balance_permanent = profile.data.get("credits_permanent", 0) if profile.data else 0
     
     supabase.table("credit_transactions").insert({
         "user_id": user_id,
-        "amount": 0,  # 付款记录不影响积分
-        "bucket": "payment",  # 特殊桶标识这是付款记录
+        "amount": 0,  # Payment record doesn't affect credits directly here
+        "bucket": "payment",  # Special bucket for payment records
         "balance_monthly_after": balance_monthly,
         "balance_permanent_after": balance_permanent,
         "type": type,
-        "description": f"{description} | {currency} {amount_cents}",  # 包含金额信息
+        "description": f"{description} | {currency} {amount_cents}",  # Include amount info
         "created_at": datetime.now().isoformat()
     }).execute()
 
 def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dict:
     """
-    [核心] 统一扣费函数
-    扣费优先级: 优先扣 Monthly Credits，不足部分再扣 Permanent Credits
+    [Core] Unified deduction function
+    Priority: Deduct Monthly Credits first, then Permanent Credits
     
     Returns: { success: bool, balance_monthly: int, balance_permanent: int }
     Raises: Exception if insufficient credits or concurrency conflict
@@ -422,14 +422,14 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
     if total < amount:
         raise Exception("CREDITS_INSUFFICIENT")
     
-    # 计算扣费分配
+    # Calculate deduction allocation
     deduct_from_monthly = min(monthly, amount)
     deduct_from_permanent = amount - deduct_from_monthly
     
     new_monthly = monthly - deduct_from_monthly
     new_permanent = permanent - deduct_from_permanent
     
-    # 乐观锁更新（检查原始值）
+    # Optimistic locking update (check original values)
     res = supabase.table("profiles").update({
         "credits_monthly": new_monthly,
         "credits_permanent": new_permanent
@@ -438,7 +438,7 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
     if not res.data:
         raise Exception("Concurrency conflict, please retry")
     
-    # 记录流水（按实际扣减的桶分别记录）
+    # Log transactions (log separately for each bucket)
     if deduct_from_monthly > 0:
         log_credit_transaction(
             user_id=user_id,
@@ -470,8 +470,8 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
 
 def add_credits_permanent(user_id: str, amount: int, description: str, type: str = "topup_purchase"):
     """
-    增加永久积分（用于购买/售卖获得）
-    用户购买/售卖获得的 Credits 都是永久的
+    Add permanent credits (for purchase/sale earnings)
+    Credits earned from buying/selling are always permanent
     """
     profile = get_user_profile(user_id)
     if not profile:
@@ -499,7 +499,7 @@ def add_credits_permanent(user_id: str, amount: int, description: str, type: str
 
 def add_credits_monthly(user_id: str, amount: int, description: str, type: str = "sub_grant"):
     """
-    增加月度积分（用于订阅赠送）
+    Add monthly credits (for subscription grants)
     """
     profile = get_user_profile(user_id)
     if not profile:
@@ -525,18 +525,18 @@ def add_credits_monthly(user_id: str, amount: int, description: str, type: str =
     
     return {"balance_monthly": new_monthly, "balance_permanent": permanent}
 
-# 兼容旧接口
+# Backward compatibility
 def deduct_credits_atomic(user_id: str, amount: int, type: str, description: str):
-    """[兼容] 原子扣费 - 内部调用 credit_deduct"""
+    """[Compat] Atomic deduction - internally calls credit_deduct"""
     result = credit_deduct(user_id, amount, type, description)
     return result["success"]
 
 def add_credits(user_id: str, amount: int, description: str, type: str = "purchase"):
-    """[兼容] 增加积分 - 默认增加到 permanent"""
+    """[Compat] Add credits - defaults to adding to permanent"""
     return add_credits_permanent(user_id, amount, description, type)
 
 def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
-    """获取积分历史"""
+    """Get credit history"""
     start = (page - 1) * limit
     end = start + limit - 1
     res = supabase.table("credit_transactions")\
@@ -548,28 +548,28 @@ def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
     return res.data
 
 # ==========================================
-# 3. 项目管理 (Projects)
+# 3. Project Management (Projects)
 # ==========================================
 
 def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str = None, include_canvas_data: bool = True):
-    """获取项目列表
+    """Get project list
     
     Args:
-        user_id: 用户ID
-        page: 页码
-        limit: 每页数量
-        search: 搜索关键词
-        include_canvas_data: 是否包含 canvas_data（用于分步加载优化）
+        user_id: User ID
+        page: Page number
+        limit: Items per page
+        search: Search query
+        include_canvas_data: Whether to include canvas_data (for step loading optimization)
     """
     start = (page - 1) * limit
     end = start + limit - 1
     print(f"[GET_PROJECTS] Query params: user_id={user_id}, page={page}, limit={limit}, search={search}, include_canvas_data={include_canvas_data}")
     
-    # 根据 include_canvas_data 决定查询字段
+    # Determine fields based on include_canvas_data
     if include_canvas_data:
         select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, created_at, updated_at"
     else:
-        # 不包含 canvas_data，只返回基本信息（加载更快）
+        # Without canvas_data, return basic info only (faster load)
         select_fields = "id, title, thumbnail_url, source_listing_id, created_at, updated_at"
     
     query = supabase.table("projects").select(select_fields)\
@@ -586,14 +586,14 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     items_count = len(items)
     print(f"[GET_PROJECTS] Returned {items_count} items")
     
-    # 获取这些项目对应的 marketplace_listings（如果有的话）
+    # Get corresponding marketplace_listings (if any)
     if items:
         project_ids = [item["id"] for item in items]
         listings_res = supabase.table("marketplace_listings").select(
             "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
         ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
         
-        # 建立 resource_url -> listing 的映射
+        # Build resource_url -> listing map
         listings_map = {}
         if listings_res.data:
             for listing in listings_res.data:
@@ -606,11 +606,11 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
                     "sales_count": listing["sales_count"],
                 }
         
-        # 将 listing 信息附加到项目数据
+        # Attach listing info to project data
         for item in items:
             item["marketplace_listing"] = listings_map.get(item["id"])
         
-        # 获取购买来源的 listing 信息
+        # Get purchase source listing info
         source_listing_ids = [item["source_listing_id"] for item in items if item.get("source_listing_id")]
         if source_listing_ids:
             source_listings_res = supabase.table("marketplace_listings").select(
@@ -625,7 +625,7 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
                         "sales_count": listing["sales_count"],
                     }
             
-            # 将购买来源信息附加到项目数据
+            # Attach purchase info to project data
             for item in items:
                 if item.get("source_listing_id"):
                     item["purchase_info"] = source_listings_map.get(item["source_listing_id"])
@@ -633,12 +633,12 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     return items
 
 def count_user_projects(user_id: str, search: str = None):
-    """获取用户项目总数（用于分页和限制检查）"""
+    """Get total user projects count (for pagination and limit check)"""
     try:
         print(f"[COUNT] Starting count query for user_id: {user_id}, search: {search}")
         
-        # 方法1: 直接查询所有符合条件的项目ID，然后计数
-        # 这是最可靠的方式，避免 Supabase count 参数的兼容性问题
+        # Method 1: Query IDs and count
+        # Most reliable way, avoids Supabase count param compatibility issues
         query = supabase.table("projects").select("id")\
             .eq("user_id", user_id).eq("is_deleted", False)
         
@@ -650,7 +650,7 @@ def count_user_projects(user_id: str, search: str = None):
         
         res = query.execute()
         
-        # 直接使用返回的数据长度作为计数
+        # Use result length as count
         count_value = len(res.data) if res.data else 0
         print(f"[COUNT] Final count: {count_value}")
         return count_value
@@ -662,7 +662,7 @@ def count_user_projects(user_id: str, search: str = None):
         return 0
 
 def get_project_detail(project_id: str, user_id: str):
-    """获取项目详情"""
+    """Get project detail"""
     print(f"[DB_GET] Fetching project {project_id} for user {user_id}")
     res = supabase.table("projects").select("*")\
         .eq("id", project_id).eq("user_id", user_id).single().execute()
@@ -685,7 +685,7 @@ def get_project_detail(project_id: str, user_id: str):
     return res.data
 
 def create_project(user_id: str, title: str = None, canvas_data: dict = None):
-    """创建项目（可选带初始数据）"""
+    """Create project (optionally with initial data)"""
     data = {
         "user_id": user_id,
         "title": title or "My Magic Story",
@@ -697,22 +697,22 @@ def create_project(user_id: str, title: str = None, canvas_data: dict = None):
 
 def duplicate_project(project_id: str, user_id: str):
     """
-    复制项目（仅限自己创建的项目，购买的项目不能复制）
+    Duplicate project (Only own created projects, purchased projects cannot be duplicated)
     
-    Returns: 新项目数据 或抛出异常
+    Returns: New project data or raises Exception
     """
-    # 获取原项目
+    # Get original project
     original = supabase.table("projects").select("*")\
         .eq("id", project_id).eq("user_id", user_id).eq("is_deleted", False).single().execute()
     
     if not original.data:
         raise Exception("Project not found or permission denied")
     
-    # 检查是否为购买的项目（有 source_listing_id 的项目不能复制）
+    # Check if purchased project (projects with source_listing_id cannot be duplicated)
     if original.data.get("source_listing_id"):
         raise Exception("Purchased projects cannot be duplicated. This project is for personal use only.")
     
-    # 创建新项目，复制内容但不复制 source_listing_id
+    # Create new project, copy content but not source_listing_id
     new_data = {
         "user_id": user_id,
         "title": f"{original.data.get('title', 'My Magic Story')} (Copy)",
@@ -725,7 +725,7 @@ def duplicate_project(project_id: str, user_id: str):
     return res.data[0] if res.data else None
 
 def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbnail_url: str = None, title: str = None):
-    """保存项目"""
+    """Save project"""
     print(f"[DB_SAVE] Starting save for project {project_id}")
     data = {
         "updated_at": datetime.now().isoformat()
@@ -751,7 +751,7 @@ def save_project(project_id: str, user_id: str, canvas_data: dict = None, thumbn
     print(f"[DB_SAVE] Save completed for project {project_id}")
 
 def soft_delete_project(project_id: str, user_id: str):
-    """软删除项目"""
+    """Soft delete project"""
     from datetime import datetime
     res = supabase.table("projects").update({
         "is_deleted": True,
@@ -762,7 +762,7 @@ def soft_delete_project(project_id: str, user_id: str):
     return True
 
 def restore_project(project_id: str):
-    """[Admin] 恢复被删除的项目"""
+    """[Admin] Restore deleted project"""
     res = supabase.table("projects").update({
         "is_deleted": False,
         "deleted_at": None
@@ -771,23 +771,23 @@ def restore_project(project_id: str):
 
 
 def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
-    """获取用户已删除的项目列表（30天内）"""
+    """Get user deleted projects (last 30 days)"""
     from datetime import datetime, timedelta, timezone
     
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # 只返回30天内删除的项目
+    # Only return projects deleted in last 30 days
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     
-    # 选择需要的字段：项目名称、预览图、删除时间、项目ID
+    # Select fields: title, thumbnail, deleted_at, id
     res = supabase.table("projects").select(
         "id, title, thumbnail_url, deleted_at, created_at, updated_at"
     ).eq("user_id", user_id).eq("is_deleted", True)\
         .gte("deleted_at", cutoff_date)\
         .order("deleted_at", desc=True).range(start, end).execute()
     
-    # 获取总数（30天内）
+    # Get total count (last 30 days)
     count_res = supabase.table("projects").select("id", count="exact")\
         .eq("user_id", user_id).eq("is_deleted", True)\
         .gte("deleted_at", cutoff_date).execute()
@@ -801,8 +801,8 @@ def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
 
 
 def user_restore_project(project_id: str, user_id: str):
-    """用户恢复自己已删除的项目"""
-    # 先检查项目是否属于该用户且已删除
+    """User restore own deleted project"""
+    # Check if project belongs to user and is deleted
     check = supabase.table("projects").select("id")\
         .eq("id", project_id).eq("user_id", user_id).eq("is_deleted", True).execute()
     
@@ -817,12 +817,12 @@ def user_restore_project(project_id: str, user_id: str):
     return res.data[0] if res.data else None
 
 def update_project_hash(project_id: str, new_hash: str):
-    """仅更新 Hash 值（用于缓存/去重，不参与扣费）"""
+    """Update Hash only (for cache/dedup, no credit deduction)"""
     supabase.table("projects").update({"last_downloaded_hash": new_hash})\
         .eq("id", project_id).execute()
 
 def get_all_projects_feed(page: int = 1, limit: int = 50):
-    """[Admin] 获取全站项目流"""
+    """[Admin] Get all projects feed"""
     start = (page - 1) * limit
     end = start + limit - 1
     res = supabase.table("projects").select("*, profiles(email, username)")\
@@ -832,11 +832,11 @@ def get_all_projects_feed(page: int = 1, limit: int = 50):
     return res.data
 
 # ==========================================
-# 4. 素材与资源 (Assets & Resources)
+# 4. Assets & Resources
 # ==========================================
 
 def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt: str = None):
-    """保存素材"""
+    """Save asset"""
     data = {
         "user_id": user_id,
         "url": url,
@@ -847,7 +847,7 @@ def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt
     supabase.table("assets").insert(data).execute()
 
 def get_assets(user_id: str, project_id: str = None):
-    """获取用户素材"""
+    """Get user assets"""
     query = supabase.table("assets").select("*").eq("user_id", user_id).eq("is_deleted", False)
     if project_id:
         query = query.eq("project_id", project_id)
@@ -856,12 +856,12 @@ def get_assets(user_id: str, project_id: str = None):
 
 def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"):
     """
-    获取系统公共资源 (贴纸等)
-    根据用户 tier 过滤可访问的资源
+    Get system resources (stickers, etc.)
+    Filter accessible resources by user tier
     """
     res = supabase.table("system_resources").select("*").eq("type", resource_type).execute()
     
-    # 过滤用户有权访问的资源
+    # Filter accessible resources
     accessible = []
     for resource in res.data or []:
         allowed_tiers = resource.get("allowed_tiers", ["free", "starter", "pro"])
@@ -874,7 +874,7 @@ def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"
     return accessible
 
 # ==========================================
-# 5. Marketplace (市场)
+# 5. Marketplace
 # ==========================================
 
 def get_marketplace_listings(
@@ -889,43 +889,43 @@ def get_marketplace_listings(
     user_id: str = None
 ):
     """
-    获取市场商品列表（PRD 第13章）
+    Get marketplace listings (PRD Chapter 13)
     
-    公共列表默认返回: moderation_status='approved' AND is_public=true AND is_deleted=false
-    mine=true 时返回本人全状态（包括 draft/pending/rejected/approved）
+    Public list defaults: moderation_status='approved' AND is_public=true AND is_deleted=false
+    mine=true: Returns all statuses for owner (draft/pending/rejected/approved)
     """
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # 明确指定使用 seller_id 关系（因为 moderated_by 关系也存在）
-    # 使用 profiles!marketplace_listings_seller_id_fkey 明确指定卖家关系
+    # Explicitly specify seller relationship
+    # using profiles!marketplace_listings_seller_id_fkey
     query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")
     
     if mine and user_id:
-        # 卖家查看自己的 listing（全状态）
+        # Seller views own listings (all statuses)
         query = query.eq("seller_id", user_id).eq("is_deleted", False)
     else:
-        # 公共列表：必须 approved + public + not deleted（PRD 强制规则）
+        # Public list: Must be approved + public + not deleted (PRD rule)
         query = query.eq("is_public", True)\
             .eq("is_deleted", False)\
             .eq("moderation_status", "approved")
     
-    # 资源类型过滤
+    # Resource type filter
     if resource_type:
         query = query.eq("resource_type", resource_type)
     
-    # Tier 过滤
+    # Tier filter
     if tier_filter and tier_filter != "all":
-        # 使用 contains 查询 allowed_tiers 数组
+        # Use contains for allowed_tiers array
         query = query.contains("allowed_tiers", [tier_filter])
     
-    # 价格过滤
+    # Price filter
     if price_filter == "free":
         query = query.eq("price_credits", 0)
     elif price_filter == "paid":
         query = query.gt("price_credits", 0)
     
-    # 排序
+    # Sorting
     if featured or sort == "best_selling":
         query = query.order("sales_count", desc=True)
     elif sort == "popular":
@@ -938,12 +938,12 @@ def get_marketplace_listings(
 
 def get_marketplace_item(listing_id: str, user_id: str = None):
     """
-    获取单个 listing 详情（PRD 第13章）
+    Get single listing detail (PRD Chapter 13)
     
-    公共访问: 仅允许 approved + public + not deleted
-    卖家本人: 可看自己的任意状态
+    Public access: Only approved + public + not deleted
+    Seller access: Own listing in any status
     """
-    # 明确指定使用 seller_id 关系
+    # Explicitly specify seller relationship
     res = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")\
         .eq("id", listing_id).single().execute()
     
@@ -952,7 +952,7 @@ def get_marketplace_item(listing_id: str, user_id: str = None):
     
     listing = res.data
     
-    # 检查访问权限
+    # Check access permission
     is_seller = user_id and listing.get("seller_id") == user_id
     is_visible = listing_is_public_visible(listing)
     
@@ -962,7 +962,7 @@ def get_marketplace_item(listing_id: str, user_id: str = None):
     return listing
 
 def get_seller_listings(seller_id: str, page: int = 1, limit: int = 20):
-    """获取卖家自己的商品"""
+    """Get seller's own listings"""
     start = (page - 1) * limit
     end = start + limit - 1
     
@@ -983,9 +983,9 @@ def create_listing(
     submit_for_review: bool = True
 ):
     """
-    创建商品 listing（PRD 第7/8章）
+    Create listing (PRD Chapter 7/8)
     
-    提交后 moderation_status='pending'，必须管理员审核通过后才能上架
+    After submission moderation_status='pending', must be approved by admin to be listed
     """
     data = {
         "seller_id": seller_id,
@@ -996,7 +996,7 @@ def create_listing(
         "resource_type": resource_type,
         "price_credits": price_credits,
         "allowed_tiers": allowed_tiers or ["free"],
-        "is_public": True,  # 用户希望公开，但仍不可见直到 approved
+        "is_public": True,  # User wants public, but not visible until approved
         "is_deleted": False,
         "sales_count": 0,
         "usage_count": 0,
@@ -1010,12 +1010,12 @@ def create_listing(
 
 def submit_listing_for_review(listing_id: str, seller_id: str):
     """
-    提交 listing 审核（PRD 第8章）
+    Submit listing for review (PRD Chapter 8)
     
     draft -> pending
-    rejected -> pending（允许修改后再次提交）
+    rejected -> pending (allow resubmission after modification)
     """
-    # 获取 listing 并验证所有权
+    # Get listing and verify ownership
     res = supabase.table("marketplace_listings").select("*")\
         .eq("id", listing_id).eq("seller_id", seller_id).single().execute()
     
@@ -1025,11 +1025,11 @@ def submit_listing_for_review(listing_id: str, seller_id: str):
     listing = res.data
     current_status = listing.get("moderation_status", "draft")
     
-    # 只有 draft 或 rejected 可以提交
+    # Only draft or rejected can be submitted
     if current_status not in ["draft", "rejected"]:
         return {"error": f"Cannot submit listing with status '{current_status}'"}
     
-    # 更新状态
+    # Update status
     update_res = supabase.table("marketplace_listings").update({
         "moderation_status": "pending",
         "is_public": True
@@ -1039,9 +1039,9 @@ def submit_listing_for_review(listing_id: str, seller_id: str):
 
 def unpublish_listing(listing_id: str, seller_id: str):
     """
-    下架 listing（PRD 第13章）
+    Unpublish listing (PRD Chapter 13)
     
-    设置 is_public=false，不改变历史 purchases 与 usage_count
+    Set is_public=false, preserve history purchases and usage_count
     """
     res = supabase.table("marketplace_listings").update({
         "is_public": False
@@ -1050,7 +1050,7 @@ def unpublish_listing(listing_id: str, seller_id: str):
     return res.data[0] if res.data else None
 
 def update_listing(listing_id: str, seller_id: str, updates: dict):
-    """更新商品（只能修改自己的）"""
+    """Update listing (only own listings)"""
     allowed_fields = ["title", "description", "price_credits", "is_public", "allowed_tiers"]
     data = {k: v for k, v in updates.items() if k in allowed_fields}
     
@@ -1059,27 +1059,27 @@ def update_listing(listing_id: str, seller_id: str, updates: dict):
     return res.data[0] if res.data else None
 
 def check_user_purchase(user_id: str, listing_id: str) -> bool:
-    """检查用户是否已购买某商品"""
+    """Check if user has purchased a listing"""
     res = supabase.table("user_purchases").select("id")\
         .eq("user_id", user_id).eq("listing_id", listing_id).execute()
     return len(res.data) > 0
 
 def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     """
-    执行购买逻辑（PRD 第13章）
+    Execute purchase logic (PRD Chapter 13)
     
-    规则:
-    0) 校验 listing: moderation_status='approved' AND is_public=true AND is_deleted=false
-    1) 校验 listing.allowed_tiers 与用户权限
-    2) 去重：若已购买则直接返回成功
-    3) 事务扣费：买家扣 price（优先 monthly）
-    4) 卖家入账：price × 90%（计入 permanent）
-    5) 平台抽成 10%
-    6) 写入 user_purchases
+    Rules:
+    0) Validate listing: moderation_status='approved' AND is_public=true AND is_deleted=false
+    1) Validate listing.allowed_tiers vs user permissions
+    2) Dedup: If already purchased return success
+    3) Transaction deduct: Buyer pays price (priority monthly)
+    4) Seller credit: price * 90% (to permanent)
+    5) Platform fee: 10%
+    6) Write user_purchases
     
     Returns: { success: bool, message: str }
     """
-    # 0. 获取商品信息（必须 approved + public + not deleted）
+    # 0. Get listing info (must be approved + public + not deleted)
     listing_res = supabase.table("marketplace_listings").select("*")\
         .eq("id", listing_id)\
         .eq("is_public", True)\
@@ -1095,20 +1095,20 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     seller_id = listing.get("seller_id")
     allowed_tiers = listing.get("allowed_tiers", ["free", "starter", "pro"])
     
-    # 2. 获取买家信息
+    # 2. Get buyer info
     buyer = get_user_profile(buyer_id)
     if not buyer:
         return {"success": False, "message": "Buyer not found"}
     
-    # 3. 权限校验
+    # 3. Permission check
     if not can_access_resource(buyer, allowed_tiers):
         return {"success": False, "message": "Upgrade required to purchase this item"}
     
-    # 4. 去重检查
+    # 4. Dedup check
     if check_user_purchase(buyer_id, listing_id):
         return {"success": True, "message": "Already purchased", "already_owned": True}
     
-    # 5. 免费商品处理
+    # 5. Free item handling
     if price == 0:
         supabase.table("user_purchases").insert({
             "user_id": buyer_id,
@@ -1117,7 +1117,7 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
         }).execute()
         return {"success": True, "message": "Free item claimed"}
     
-    # 6. 扣除买家积分
+    # 6. Deduct buyer credits
     try:
         credit_deduct(buyer_id, price, "market_purchase", f"Purchase: {listing.get('title', 'Item')}")
     except Exception as e:
@@ -1125,7 +1125,7 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
             return {"success": False, "message": "Insufficient credits"}
         raise e
     
-    # 7. 卖家入账（90%）
+    # 7. Seller credits (90%)
     if seller_id:
         seller_amount = int(price * 0.9)
         add_credits_permanent(
@@ -1135,14 +1135,14 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
             type="market_sale"
         )
     
-    # 8. 记录购买
+    # 8. Record purchase
     supabase.table("user_purchases").insert({
         "user_id": buyer_id,
         "listing_id": listing_id,
         "price_paid": price
     }).execute()
     
-    # 9. 更新销量
+    # 9. Update sales count
     supabase.table("marketplace_listings").update({
         "sales_count": listing.get("sales_count", 0) + 1
     }).eq("id", listing_id).execute()
@@ -1150,7 +1150,7 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     return {"success": True, "message": "Purchase successful"}
 
 def get_user_purchases(user_id: str, page: int = 1, limit: int = 50):
-    """获取用户已购买的商品"""
+    """Get user purchased items"""
     start = (page - 1) * limit
     end = start + limit - 1
     
@@ -1160,20 +1160,20 @@ def get_user_purchases(user_id: str, page: int = 1, limit: int = 50):
     return res.data
 
 def get_seller_stats(seller_id: str) -> dict:
-    """获取卖家统计数据（PRD 第13章）"""
-    # 获取所有商品
+    """Get seller stats (PRD Chapter 13)"""
+    # Get all listings
     listings = supabase.table("marketplace_listings").select("id, sales_count, usage_count, price_credits, moderation_status")\
         .eq("seller_id", seller_id).eq("is_deleted", False).execute().data
     
     total_sales = sum(l.get("sales_count", 0) for l in listings)
     total_usage = sum(l.get("usage_count", 0) for l in listings)
     
-    # 计算总收入（90% 分成）
+    # Calculate total revenue (90% share)
     total_earned = 0
     for listing in listings:
         total_earned += int(listing.get("price_credits", 0) * listing.get("sales_count", 0) * 0.9)
     
-    # 按审核状态统计
+    # Count by status
     status_counts = {}
     for listing in listings:
         status = listing.get("moderation_status", "draft")
@@ -1188,36 +1188,36 @@ def get_seller_stats(seller_id: str) -> dict:
     }
 
 # ==========================================
-# 5.1 Listing Usage（使用次数统计）
+# 5.1 Listing Usage (Usage Count)
 # ==========================================
 
 def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str) -> bool:
     """
-    记录 listing 使用（PRD 第9章）
+    Record listing usage (PRD Chapter 9)
     
-    去重规则: (listing_id, used_by_user_id, project_id) unique
-    同一用户对同一 listing 在同一项目内重复 Apply，不重复计数
+    Dedup rule: (listing_id, used_by_user_id, project_id) unique
+    Same user applying same listing to same project counts once
     
     Returns: True if new usage recorded, False if already exists
     """
-    # 检查是否已存在
+    # Check existence
     existing = supabase.table("listing_usage").select("id")\
         .eq("listing_id", listing_id)\
         .eq("used_by_user_id", used_by_user_id)\
         .eq("project_id", project_id).execute()
     
     if existing.data:
-        return False  # 已存在，不重复计数
+        return False  # Exists, no count
     
     try:
-        # 插入使用记录
+        # Insert usage record
         supabase.table("listing_usage").insert({
             "listing_id": listing_id,
             "used_by_user_id": used_by_user_id,
             "project_id": project_id
         }).execute()
         
-        # 增加 usage_count
+        # Increment usage_count
         listing = supabase.table("marketplace_listings").select("usage_count")\
             .eq("id", listing_id).single().execute()
         
@@ -1234,14 +1234,14 @@ def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str)
 
 def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int = 10):
     """
-    获取排行榜（PRD 第9章）
+    Get leaderboard (PRD Chapter 9)
     
     period: 'monthly' | 'all_time'
     board_type: 'all' | 'project' | 'asset'
     
     Returns: Top 10 listings with usage_count and rank
     """
-    # 明确指定使用 seller_id 关系
+    # Explicitly specify seller relationship
     query = supabase.table("marketplace_listings").select("id, title, thumbnail_url, usage_count, resource_type, seller_id, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")\
         .eq("is_public", True)\
         .eq("is_deleted", False)\
@@ -1254,7 +1254,7 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
     
     res = query.execute()
     
-    # 添加排名
+    # Add rank
     leaderboard = []
     for idx, item in enumerate(res.data or []):
         item["rank"] = idx + 1
@@ -1267,10 +1267,10 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
 # ==========================================
 
 def get_user_notifications(user_id: str, unread_only: bool = False, limit: int = 20):
-    """获取用户通知"""
+    """Get user notifications"""
     query = supabase.table("notifications").select("*")
     
-    # 个人通知 + 广播通知
+    # Personal + Broadcast notifications
     query = query.or_(f"user_id.eq.{user_id},user_id.is.null")
     
     if unread_only:
@@ -1280,23 +1280,23 @@ def get_user_notifications(user_id: str, unread_only: bool = False, limit: int =
     return res.data
 
 def mark_notification_read(notification_id: str, user_id: str):
-    """标记通知为已读"""
+    """Mark notification as read"""
     supabase.table("notifications").update({"is_read": True})\
         .eq("id", notification_id).execute()
 
 
 def mark_all_notifications_read(user_id: str):
-    """标记用户所有通知为已读"""
-    # 标记个人通知
+    """Mark all user notifications as read"""
+    # Mark personal notifications
     supabase.table("notifications").update({"is_read": True})\
         .eq("user_id", user_id).eq("is_read", False).execute()
-    # 注意：广播通知 (user_id=null) 需要单独处理已读状态
-    # 这里暂时只处理个人通知
+    # Note: Broadcast notifications (user_id=null) need separate handling for read status
+    # Currently only handling personal notifications
 
 def create_broadcast(title: str, content: str, target_group: str = "all"):
-    """[Admin] 创建广播通知"""
+    """[Admin] Create broadcast notification"""
     data = {
-        "user_id": None,  # NULL = 广播
+        "user_id": None,  # NULL = Broadcast
         "target_group": target_group,
         "title": title,
         "content": content,
@@ -1307,7 +1307,7 @@ def create_broadcast(title: str, content: str, target_group: str = "all"):
 
 
 def send_notification_to_user(user_id: str, title: str, content: str, notification_type: str = "system"):
-    """[Admin] 发送通知给单个用户"""
+    """[Admin] Send notification to single user"""
     data = {
         "user_id": user_id,
         "target_group": None,
@@ -1315,12 +1315,12 @@ def send_notification_to_user(user_id: str, title: str, content: str, notificati
         "content": content,
         "is_read": False
     }
-    # 尝试添加 notification_type（如果表支持）
+    # Try adding notification_type (if supported by table)
     try:
         data["notification_type"] = notification_type
         res = supabase.table("notifications").insert(data).execute()
     except Exception as e:
-        # 如果字段不存在，移除后重试
+        # If field doesn't exist, remove and retry
         if "notification_type" in str(e):
             del data["notification_type"]
             res = supabase.table("notifications").insert(data).execute()
@@ -1330,7 +1330,7 @@ def send_notification_to_user(user_id: str, title: str, content: str, notificati
 
 
 def send_notification_to_users(user_ids: list, title: str, content: str, notification_type: str = "system"):
-    """[Admin] 批量发送通知给多个用户"""
+    """[Admin] Batch send notifications to multiple users"""
     notifications = []
     for user_id in user_ids:
         data = {
@@ -1345,13 +1345,13 @@ def send_notification_to_users(user_ids: list, title: str, content: str, notific
     if not notifications:
         return []
     
-    # 尝试添加 notification_type（如果表支持）
+    # Try adding notification_type (if supported by table)
     try:
         for n in notifications:
             n["notification_type"] = notification_type
         res = supabase.table("notifications").insert(notifications).execute()
     except Exception as e:
-        # 如果字段不存在，移除后重试
+        # If field doesn't exist, remove and retry
         if "notification_type" in str(e):
             for n in notifications:
                 if "notification_type" in n:
@@ -1363,21 +1363,21 @@ def send_notification_to_users(user_ids: list, title: str, content: str, notific
 
 
 def get_users_by_tier(tier: str):
-    """获取指定 tier 的所有用户 ID"""
+    """Get all user IDs for specific tier"""
     res = supabase.table("profiles").select("id").eq("tier", tier).execute()
     return [u["id"] for u in res.data] if res.data else []
 
 
 def get_all_notification_stats():
-    """获取通知统计"""
+    """Get notification stats"""
     try:
-        # 总通知数
+        # Total notifications
         total_res = supabase.table("notifications").select("id", count="exact").execute()
         
-        # 未读通知数
+        # Unread notifications
         unread_res = supabase.table("notifications").select("id", count="exact").eq("is_read", False).execute()
         
-        # 最近7天的通知
+        # Recent 7 days notifications
         from datetime import datetime, timedelta
         week_ago = (datetime.now() - timedelta(days=7)).isoformat()
         recent_res = supabase.table("notifications").select("id", count="exact")\
@@ -1398,16 +1398,16 @@ def get_all_notification_stats():
 
 
 def get_notification_history(page: int = 1, limit: int = 50, notification_type: str = None):
-    """获取通知发送历史"""
+    """Get notification history"""
     try:
         query = supabase.table("notifications").select("*")
         
-        # 只有当指定了类型且表支持该字段时才过滤
+        # Only filter if type specified and supported
         if notification_type:
             try:
                 query = query.eq("notification_type", notification_type)
             except:
-                pass  # 字段不存在，忽略过滤
+                pass  # Field doesn't exist, ignore filter
         
         offset = (page - 1) * limit
         res = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
@@ -1417,11 +1417,11 @@ def get_notification_history(page: int = 1, limit: int = 50, notification_type: 
         return []
 
 # ==========================================
-# 7. 折扣系统 (Discounts)
+# 7. Discounts System
 # ==========================================
 
 def get_user_discount(user_id: str, target_plan: str = None):
-    """获取用户有效折扣"""
+    """Get user valid discount"""
     query = supabase.table("user_discounts").select("*")\
         .eq("user_id", user_id)\
         .gte("valid_until", datetime.now().isoformat())
@@ -1433,7 +1433,7 @@ def get_user_discount(user_id: str, target_plan: str = None):
     return res.data[0] if res.data else None
 
 def create_user_discount(user_id: str, discount_percent: int, valid_days: int, target_plan: str = None):
-    """[Admin] 创建用户折扣"""
+    """[Admin] Create user discount"""
     from datetime import timedelta
     valid_until = datetime.now() + timedelta(days=valid_days)
     
@@ -1447,11 +1447,11 @@ def create_user_discount(user_id: str, discount_percent: int, valid_days: int, t
     return res.data[0]
 
 # ==========================================
-# 8. 运营与后台 (Admin & Ops)
+# 8. Admin & Ops
 # ==========================================
 
 def log_activity(user_id: str, action: str, metadata: dict = None):
-    """记录用户行为日志"""
+    """Log user activity"""
     supabase.table("activity_logs").insert({
         "user_id": user_id,
         "action": action,
@@ -1459,8 +1459,8 @@ def log_activity(user_id: str, action: str, metadata: dict = None):
     }).execute()
 
 def create_support_ticket(user_id: str, email: str, message: str):
-    """创建工单并发送邮件通知"""
-    # 1. 保存到数据库
+    """Create support ticket and send email notification"""
+    # 1. Save to DB
     supabase.table("support_tickets").insert({
         "user_id": user_id,
         "email": email,
@@ -1469,16 +1469,16 @@ def create_support_ticket(user_id: str, email: str, message: str):
         "status": "open"
     }).execute()
     
-    # 2. 发送邮件通知到客服邮箱
+    # 2. Send email notification to support
     try:
         send_support_email(user_id, email, message)
     except Exception as e:
         print(f"[WARNING] Failed to send support email: {e}")
-        # 不抛出异常，工单已保存到数据库
+        # Don't raise exception, ticket saved to DB
 
 
 def send_support_email(user_id: str, user_email: str, message: str, images: list = None):
-    """发送支持邮件到客服邮箱，支持图片附件"""
+    """Send support email to support address, with image attachments support"""
     try:
         import resend
         from config import RESEND_API_KEY, SUPPORT_EMAIL, SUPPORT_EMAIL_FROM
@@ -1489,37 +1489,37 @@ def send_support_email(user_id: str, user_email: str, message: str, images: list
         
         resend.api_key = RESEND_API_KEY
         
-        # 构建邮件内容
+        # Build email content
         html_content = f"""
-        <h2>新的客服工单</h2>
-        <p><strong>用户ID:</strong> {user_id}</p>
-        <p><strong>用户邮箱:</strong> {user_email}</p>
+        <h2>New Support Ticket</h2>
+        <p><strong>User ID:</strong> {user_id}</p>
+        <p><strong>User Email:</strong> {user_email}</p>
         <hr>
-        <h3>消息内容:</h3>
+        <h3>Message Content:</h3>
         <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap;">{message}</pre>
         """
         
-        # 如果有图片，在邮件中显示
+        # If images present, show in email
         if images and len(images) > 0:
             html_content += """
             <hr>
-            <h3>附带截图:</h3>
+            <h3>Attached Screenshots:</h3>
             <div style="display: flex; flex-wrap: wrap; gap: 10px;">
             """
             for i, img in enumerate(images):
-                # img 是 base64 数据
+                # img is base64 data
                 html_content += f'<img src="{img.get("data", "")}" alt="Screenshot {i+1}" style="max-width: 300px; border: 1px solid #ddd; border-radius: 5px;" />'
             html_content += "</div>"
         
         html_content += """
         <hr>
-        <p style="color: #666; font-size: 12px;">此邮件由 Make Decodables 支持系统自动发送</p>
+        <p style="color: #666; font-size: 12px;">This email is automatically sent by Make Decodables Support System</p>
         """
         
         email_data = {
             "from": SUPPORT_EMAIL_FROM,
             "to": SUPPORT_EMAIL,
-            "subject": f"[Make Decodables] 新工单 - 来自 {user_email}",
+            "subject": f"[Make Decodables] New Ticket - From {user_email}",
             "html": html_content,
             "reply_to": user_email
         }
@@ -1536,11 +1536,11 @@ def send_support_email(user_id: str, user_email: str, message: str, images: list
 
 
 def send_feedback_with_images(user_id: str, user_email: str, message: str, images: list = None):
-    """发送反馈邮件（带图片）到客服邮箱"""
+    """Send feedback email (with images) to support address"""
     send_support_email(user_id, user_email, message, images)
 
 def search_users(query: str):
-    """[Admin] 搜索用户 (支持 ID 或 Email 模糊搜索)"""
+    """[Admin] Search users (supports ID or Email fuzzy search)"""
     res = supabase.table("profiles").select("*")\
         .or_(f"id.eq.{query},email.ilike.%{query}%")\
         .execute()
@@ -1548,24 +1548,24 @@ def search_users(query: str):
 
 def get_full_user_audit(user_id: str):
     """
-    [Admin] 获取用户全方位视图：档案、流水、日志、工单
+    [Admin] Get full user audit view: profile, transactions, logs, tickets
     """
-    # 1. 档案
+    # 1. Profile
     profile = get_user_profile(user_id)
     
-    # 2. 积分流水
+    # 2. Credit Transactions
     txs = supabase.table("credit_transactions").select("*")\
         .eq("user_id", user_id).order("created_at", desc=True).execute().data
     
-    # 3. 行为日志
+    # 3. Activity Logs
     logs = supabase.table("activity_logs").select("*")\
         .eq("user_id", user_id).order("created_at", desc=True).limit(50).execute().data
     
-    # 4. 工单记录
+    # 4. Support Tickets
     tickets = supabase.table("support_tickets").select("*")\
         .eq("user_id", user_id).order("created_at", desc=True).execute().data
     
-    # 5. 购买记录
+    # 5. Purchases
     purchases = get_user_purchases(user_id)
     
     return {
@@ -1578,7 +1578,7 @@ def get_full_user_audit(user_id: str):
 
 def admin_adjust_credits(user_id: str, amount: int, bucket: str, reason: str):
     """
-    [Admin] 手动调整积分
+    [Admin] Manually adjust credits
     bucket: 'monthly' | 'permanent'
     """
     profile = get_user_profile(user_id)
@@ -1614,12 +1614,12 @@ def admin_get_moderation_list(
     limit: int = 20
 ):
     """
-    [Admin] 获取审核列表（PRD 第16章）
+    [Admin] Get moderation list (PRD Chapter 16)
     """
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # 明确指定使用 seller_id 关系（卖家信息，包含 user_code）
+    # Explicitly specify seller relationship (seller info, including user_code)
     query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url, user_code, first_name, last_name)")\
         .eq("is_deleted", False)
     
@@ -1636,9 +1636,9 @@ def admin_get_moderation_list(
 
 def admin_get_moderation_detail(listing_id: str):
     """
-    [Admin] 获取审核详情（PRD 第16章）
+    [Admin] Get moderation detail (PRD Chapter 16)
     """
-    # 明确指定使用 seller_id 关系（卖家信息）
+    # Explicitly specify seller relationship (seller info)
     res = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url)")\
         .eq("id", listing_id).single().execute()
     
@@ -1646,7 +1646,7 @@ def admin_get_moderation_detail(listing_id: str):
 
 def admin_approve_listing(listing_id: str, admin_id: str):
     """
-    [Admin] 批准 listing（PRD 第16章）
+    [Admin] Approve listing (PRD Chapter 16)
     
     pending -> approved
     """
@@ -1662,9 +1662,9 @@ def admin_approve_listing(listing_id: str, admin_id: str):
 
 def admin_reject_listing(listing_id: str, admin_id: str, reason: str):
     """
-    [Admin] 拒绝 listing（PRD 第16章）
+    [Admin] Reject listing (PRD Chapter 16)
     
-    pending -> rejected（必须附原因）
+    pending -> rejected (reason required)
     """
     from datetime import datetime
     
@@ -1682,7 +1682,7 @@ def admin_reject_listing(listing_id: str, admin_id: str, reason: str):
 
 def admin_delete_listing(listing_id: str):
     """
-    [Admin] 软删除 listing（PRD 第16章）
+    [Admin] Soft delete listing (PRD Chapter 16)
     """
     res = supabase.table("marketplace_listings").update({
         "is_deleted": True
@@ -1692,9 +1692,9 @@ def admin_delete_listing(listing_id: str):
 
 def admin_unpublish_listing(listing_id: str):
     """
-    [Admin] 强制下架 listing（PRD 第16章）
+    [Admin] Force unpublish listing (PRD Chapter 16)
     
-    设置 is_public=false
+    Set is_public=false
     """
     res = supabase.table("marketplace_listings").update({
         "is_public": False
@@ -1709,16 +1709,16 @@ def admin_unpublish_listing(listing_id: str):
 
 def admin_log_operation(admin_id: str, operation_type: str, target_user_id: str = None, details: str = None, reason: str = None):
     """
-    [Admin] 记录管理员操作日志
+    [Admin] Log admin operation
     
     operation_type: 
-      - credit_adjust: 积分调整
-      - tier_change: 等级变更
-      - refund: 退款
-      - subscription_cancel: 取消订阅
-      - subscription_downgrade: 降级订阅
-      - listing_approve: 审核通过
-      - listing_reject: 审核拒绝
+      - credit_adjust: Credit adjustment
+      - tier_change: Tier change
+      - refund: Refund
+      - subscription_cancel: Cancel subscription
+      - subscription_downgrade: Downgrade subscription
+      - listing_approve: Listing approved
+      - listing_reject: Listing rejected
     """
     supabase.table("admin_operation_logs").insert({
         "admin_id": admin_id,
@@ -1739,7 +1739,7 @@ def admin_get_operation_logs(
     limit: int = 50
 ):
     """
-    [Admin] 获取操作日志列表
+    [Admin] Get operation logs list
     """
     start = (page - 1) * limit
     end = start + limit - 1
@@ -1759,7 +1759,7 @@ def admin_get_operation_logs(
     if end_date:
         query = query.lte("created_at", end_date)
     
-    # 先获取总数
+    # Get total count first
     count_query = supabase.table("admin_operation_logs").select("id", count="exact")
     if operation_type:
         count_query = count_query.eq("operation_type", operation_type)
@@ -1770,10 +1770,10 @@ def admin_get_operation_logs(
     count_res = count_query.execute()
     total = count_res.count if count_res.count else 0
     
-    # 获取分页数据
+    # Get paginated data
     res = query.order("created_at", desc=True).range(start, end).execute()
     
-    # 格式化返回数据
+    # Format return data
     logs = []
     for item in res.data or []:
         logs.append({
@@ -1803,7 +1803,7 @@ def admin_get_operation_logs(
 
 def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, include_deleted: bool = True):
     """
-    [Admin] 获取指定用户的所有项目
+    [Admin] Get all projects for a specific user
     """
     start = (page - 1) * limit
     end = start + limit - 1
@@ -1813,14 +1813,14 @@ def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, includ
     if not include_deleted:
         query = query.is_("deleted_at", "null")
     
-    # 获取总数
+    # Get total count
     count_query = supabase.table("projects").select("id", count="exact").eq("user_id", user_id)
     if not include_deleted:
         count_query = count_query.is_("deleted_at", "null")
     count_res = count_query.execute()
     total = count_res.count if count_res.count else 0
     
-    # 获取分页数据
+    # Get paginated data
     res = query.order("created_at", desc=True).range(start, end).execute()
     
     return {
@@ -1837,12 +1837,12 @@ def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, includ
 
 def admin_get_dashboard_stats(period: str = "month"):
     """
-    [Admin] 获取仪表盘关键统计数据
+    [Admin] Get dashboard key stats
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
     
-    # 计算时间范围
+    # Calculate time range
     if period == "week":
         days = 7
     elif period == "month":
@@ -1855,27 +1855,27 @@ def admin_get_dashboard_stats(period: str = "month"):
     start_date = (now - timedelta(days=days)).isoformat()
     prev_start = (now - timedelta(days=days*2)).isoformat()
     
-    # 当前周期用户数
+    # Users in current period
     users_current = supabase.table("profiles").select("id", count="exact")\
         .gte("created_at", start_date).execute()
     current_users = users_current.count or 0
     
-    # 上一周期用户数
+    # Users in previous period
     users_prev = supabase.table("profiles").select("id", count="exact")\
         .gte("created_at", prev_start).lt("created_at", start_date).execute()
     prev_users = users_prev.count or 0
     
-    # 总用户数
+    # Total users
     total_users = supabase.table("profiles").select("id", count="exact").execute()
     
-    # 当前周期收入 (从 credit_transactions 中统计 payment 类型)
+    # Current period revenue (from credit_transactions payment type)
     revenue_current = supabase.table("credit_transactions").select("description")\
         .eq("bucket", "payment").gte("created_at", start_date).execute()
     
     current_revenue = 0
     for tx in revenue_current.data or []:
         desc = tx.get("description", "")
-        # 解析金额 (格式: "... | USD 1499")
+        # Parse amount (Format: "... | USD 1499")
         if "|" in desc:
             parts = desc.split("|")[-1].strip().split()
             if len(parts) >= 2:
@@ -1884,7 +1884,7 @@ def admin_get_dashboard_stats(period: str = "month"):
                 except:
                     pass
     
-    # 上一周期收入
+    # Previous period revenue
     revenue_prev = supabase.table("credit_transactions").select("description")\
         .eq("bucket", "payment").gte("created_at", prev_start).lt("created_at", start_date).execute()
     
@@ -1899,14 +1899,14 @@ def admin_get_dashboard_stats(period: str = "month"):
                 except:
                     pass
     
-    # 项目统计
+    # Project stats
     projects_current = supabase.table("projects").select("id", count="exact")\
         .gte("created_at", start_date).execute()
     projects_prev = supabase.table("projects").select("id", count="exact")\
         .gte("created_at", prev_start).lt("created_at", start_date).execute()
     total_projects = supabase.table("projects").select("id", count="exact").execute()
     
-    # 积分使用统计
+    # Credit usage stats
     credits_current = supabase.table("credit_transactions").select("amount")\
         .lt("amount", 0).gte("created_at", start_date).execute()
     credits_used = sum(abs(tx.get("amount", 0)) for tx in credits_current.data or [])
@@ -1915,7 +1915,7 @@ def admin_get_dashboard_stats(period: str = "month"):
         .lt("amount", 0).gte("created_at", prev_start).lt("created_at", start_date).execute()
     prev_credits = sum(abs(tx.get("amount", 0)) for tx in credits_prev.data or [])
     
-    # 计算增长率
+    # Calculate growth rate
     def calc_growth(current, prev):
         if prev == 0:
             return 100 if current > 0 else 0
@@ -1934,7 +1934,7 @@ def admin_get_dashboard_stats(period: str = "month"):
 
 def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, group_by: str = "day"):
     """
-    [Admin] 获取用户增长统计
+    [Admin] Get user growth stats
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
@@ -1944,12 +1944,12 @@ def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, gr
     if not end_date:
         end_date = now.isoformat()
     
-    # 获取时间范围内注册的用户
+    # Get users registered in time range
     users = supabase.table("profiles").select("created_at")\
         .gte("created_at", start_date).lte("created_at", end_date)\
         .order("created_at").execute()
     
-    # 按日期分组统计
+    # Group by date
     from collections import defaultdict
     daily_new = defaultdict(int)
     daily_active = defaultdict(int)
@@ -1958,7 +1958,7 @@ def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, gr
         date_str = user.get("created_at", "")[:10]  # YYYY-MM-DD
         daily_new[date_str] += 1
     
-    # 获取活跃用户 (有 activity_logs 的用户)
+    # Get active users (users with activity_logs)
     activities = supabase.table("activity_logs").select("user_id, created_at")\
         .gte("created_at", start_date).lte("created_at", end_date).execute()
     
@@ -1970,7 +1970,7 @@ def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, gr
     for date_str, users_set in daily_active_users.items():
         daily_active[date_str] = len(users_set)
     
-    # 生成结果
+    # Generate result
     result = []
     current = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
     end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
@@ -1989,7 +1989,7 @@ def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, gr
 
 def admin_get_revenue_stats(start_date: str = None, end_date: str = None, group_by: str = "day"):
     """
-    [Admin] 获取收入统计
+    [Admin] Get revenue stats
     """
     from datetime import timedelta
     from collections import defaultdict
@@ -2000,7 +2000,7 @@ def admin_get_revenue_stats(start_date: str = None, end_date: str = None, group_
     if not end_date:
         end_date = now.isoformat()
     
-    # 获取付款记录
+    # Get payment records
     payments = supabase.table("credit_transactions").select("created_at, type, description")\
         .eq("bucket", "payment").gte("created_at", start_date).lte("created_at", end_date).execute()
     
@@ -2012,7 +2012,7 @@ def admin_get_revenue_stats(start_date: str = None, end_date: str = None, group_
         tx_type = tx.get("type", "")
         desc = tx.get("description", "")
         
-        # 解析金额
+        # Parse amount
         amount = 0
         if "|" in desc:
             parts = desc.split("|")[-1].strip().split()
@@ -2027,7 +2027,7 @@ def admin_get_revenue_stats(start_date: str = None, end_date: str = None, group_
         else:
             daily_credits[date_str] += amount
     
-    # 生成结果
+    # Generate result
     result = []
     current = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
     end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
@@ -2046,7 +2046,7 @@ def admin_get_revenue_stats(start_date: str = None, end_date: str = None, group_
 
 def admin_get_project_stats(start_date: str = None, end_date: str = None):
     """
-    [Admin] 获取项目统计
+    [Admin] Get project stats
     """
     from datetime import timedelta
     from collections import defaultdict
@@ -2057,7 +2057,7 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
     if not end_date:
         end_date = now.isoformat()
     
-    # 获取项目数据
+    # Get project data
     projects = supabase.table("projects").select("created_at, updated_at, cover_url")\
         .gte("created_at", start_date).lte("created_at", end_date).execute()
     
@@ -2069,11 +2069,11 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
         created_date = project.get("created_at", "")[:10]
         daily_created[created_date] += 1
         
-        # 有 cover_url 视为完成
+        # Consider completed if cover_url exists
         if project.get("cover_url"):
             daily_completed[created_date] += 1
     
-    # 获取导出记录
+    # Get export records
     exports = supabase.table("activity_logs").select("created_at")\
         .in_("action", ["export_pdf", "export_zip"])\
         .gte("created_at", start_date).lte("created_at", end_date).execute()
@@ -2082,7 +2082,7 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
         date_str = export.get("created_at", "")[:10]
         daily_exported[date_str] += 1
     
-    # 生成结果
+    # Generate result
     result = []
     current = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
     end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
@@ -2102,7 +2102,7 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
 
 def admin_get_credit_usage_stats(start_date: str = None, end_date: str = None):
     """
-    [Admin] 获取积分使用统计
+    [Admin] Get credit usage stats
     """
     from datetime import timedelta
     from collections import defaultdict
@@ -2113,7 +2113,7 @@ def admin_get_credit_usage_stats(start_date: str = None, end_date: str = None):
     if not end_date:
         end_date = now.isoformat()
     
-    # 获取积分消耗记录
+    # Get credit consumption records
     transactions = supabase.table("credit_transactions").select("type, amount")\
         .lt("amount", 0).gte("created_at", start_date).lte("created_at", end_date).execute()
     
@@ -2133,16 +2133,16 @@ def admin_get_credit_usage_stats(start_date: str = None, end_date: str = None):
         label = type_labels.get(tx_type, tx_type.replace("_", " ").title())
         usage_by_type[label] += amount
     
-    # 转换为列表格式
+    # Convert to list format
     result = [{"action": k, "credits": v} for k, v in sorted(usage_by_type.items(), key=lambda x: -x[1])]
     
     return result
 
 def admin_get_tier_distribution():
     """
-    [Admin] 获取用户等级分布
+    [Admin] Get user tier distribution
     """
-    # 统计各等级用户数
+    # Count users by tier
     free_count = supabase.table("profiles").select("id", count="exact").eq("tier", "free").execute()
     starter_count = supabase.table("profiles").select("id", count="exact").eq("tier", "starter").execute()
     pro_count = supabase.table("profiles").select("id", count="exact").eq("tier", "pro").execute()
@@ -2155,7 +2155,7 @@ def admin_get_tier_distribution():
 
 def admin_get_conversion_funnel(period: str = "month"):
     """
-    [Admin] 获取转化漏斗数据
+    [Admin] Get conversion funnel data
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
@@ -2169,25 +2169,25 @@ def admin_get_conversion_funnel(period: str = "month"):
     
     start_date = (now - timedelta(days=days)).isoformat()
     
-    # 1. 注册用户数
+    # 1. Signups
     signups = supabase.table("profiles").select("id", count="exact")\
         .gte("created_at", start_date).execute()
     
-    # 2. 创建过项目的用户
+    # 2. Users who created projects
     project_users = supabase.table("projects").select("user_id")\
         .gte("created_at", start_date).execute()
     unique_project_users = len(set(p.get("user_id") for p in project_users.data or []))
     
-    # 3. 付费用户 (有过付款记录)
+    # 3. Paid users (with payment records)
     paid_users = supabase.table("credit_transactions").select("user_id")\
         .eq("bucket", "payment").gte("created_at", start_date).execute()
     unique_paid_users = len(set(p.get("user_id") for p in paid_users.data or []))
     
-    # 4. 活跃订阅用户
+    # 4. Active subscribers
     active_subs = supabase.table("profiles").select("id", count="exact")\
         .in_("tier", ["starter", "pro"]).eq("subscription_status", "active").execute()
     
-    # 估算访客数 (注册的 3-4 倍)
+    # Estimate visitors (3-4x signups)
     visitors = (signups.count or 0) * 4
     
     return [
@@ -2205,8 +2205,8 @@ def admin_get_conversion_funnel(period: str = "month"):
 
 def admin_get_ai_insights(analysis_type: str = "all"):
     """
-    [Admin] 获取 AI 洞察
-    基于实际数据生成洞察
+    [Admin] Get AI insights
+    Generate insights based on real data
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
@@ -2214,7 +2214,7 @@ def admin_get_ai_insights(analysis_type: str = "all"):
     
     insights = []
     
-    # 1. 分析项目创建情况
+    # 1. Analyze project creation
     projects = supabase.table("projects").select("user_id, created_at, cover_url, title")\
         .gte("created_at", start_date).execute()
     
@@ -2234,7 +2234,7 @@ def admin_get_ai_insights(analysis_type: str = "all"):
                 "dataPoints": [f"{completion_rate:.1f}% completion rate", f"{total_projects} total projects", f"{completed_projects} completed"]
             })
     
-    # 2. 分析用户留存
+    # 2. Analyze user retention
     users_30d = supabase.table("profiles").select("id", count="exact")\
         .gte("created_at", start_date).execute()
     
@@ -2256,7 +2256,7 @@ def admin_get_ai_insights(analysis_type: str = "all"):
                 "dataPoints": [f"{active_rate:.1f}% active rate", f"{unique_active} active users", f"{total_users.count} total users"]
             })
     
-    # 3. 分析付费转化
+    # 3. Analyze paid conversion
     paid_users = supabase.table("profiles").select("id", count="exact")\
         .in_("tier", ["starter", "pro"]).execute()
     
@@ -2277,7 +2277,7 @@ def admin_get_ai_insights(analysis_type: str = "all"):
 
 def admin_get_ai_recommendations(area: str = "all"):
     """
-    [Admin] 获取 AI 优化建议
+    [Admin] Get AI recommendations
     """
     recommendations = [
         {
@@ -2345,7 +2345,7 @@ def admin_get_ai_recommendations(area: str = "all"):
 
 def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
     """
-    [Admin] 获取用户行为分析
+    [Admin] Get user behavior analysis
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
@@ -2353,11 +2353,11 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
     if not start_date:
         start_date = (now - timedelta(days=30)).isoformat()
     
-    # 活跃用户统计
+    # Active users stats
     activities = supabase.table("activity_logs").select("user_id, action, created_at")\
         .gte("created_at", start_date).execute()
     
-    # 计算平均会话时长 (简化估算)
+    # Calculate avg session duration (simplified estimation)
     user_sessions = {}
     for activity in activities.data or []:
         user_id = activity.get("user_id")
@@ -2365,14 +2365,14 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
             user_sessions[user_id] = []
         user_sessions[user_id].append(activity.get("created_at"))
     
-    # 项目完成率
+    # Project completion rate
     projects = supabase.table("projects").select("id, cover_url")\
         .gte("created_at", start_date).execute()
     total_projects = len(projects.data or [])
     completed = len([p for p in (projects.data or []) if p.get("cover_url")])
     completion_rate = f"{(completed / max(total_projects, 1) * 100):.0f}%"
     
-    # 功能采用率 (使用过高级功能的用户比例)
+    # Feature adoption rate (users who used advanced features)
     advanced_actions = ["smart_scan", "regenerate", "export_pdf"]
     advanced_users = set()
     all_users = set()
@@ -2383,7 +2383,7 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
     
     feature_adoption = f"{(len(advanced_users) / max(len(all_users), 1) * 100):.0f}%"
     
-    # 流失风险用户 (14天以上未活跃)
+    # Churn risk users (inactive for 14+ days)
     cutoff = (now - timedelta(days=14)).isoformat()
     all_profiles = supabase.table("profiles").select("id").execute()
     recent_active = supabase.table("activity_logs").select("user_id")\
@@ -2392,12 +2392,12 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
     
     churn_risk = len([p for p in (all_profiles.data or []) if p.get("id") not in recent_active_set])
     
-    # 警告信息
+    # Warnings
     warnings = []
     if churn_risk > 20:
         warnings.append(f"{churn_risk} users showing signs of churn (no activity in 14+ days)")
     
-    # 检查积分使用激增
+    # Check for credit usage spike
     credits_this_week = supabase.table("credit_transactions").select("amount")\
         .lt("amount", 0).gte("created_at", (now - timedelta(days=7)).isoformat()).execute()
     credits_last_week = supabase.table("credit_transactions").select("amount")\
@@ -2411,7 +2411,7 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
         warnings.append("Credit usage spike detected - may need pricing adjustment")
     
     return {
-        "avgSessionDuration": "5m 30s",  # 简化返回
+        "avgSessionDuration": "5m 30s",  # Simplified return
         "completionRate": completion_rate,
         "featureAdoption": feature_adoption,
         "churnRisk": churn_risk,
@@ -2425,7 +2425,7 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
 
 def log_user_event(user_id: str, event_type: str, properties: dict = None, session_id: str = None):
     """
-    记录用户行为事件
+    Log user behavioral event
     """
     supabase.table("user_events").insert({
         "user_id": user_id,
@@ -2444,7 +2444,7 @@ def admin_get_user_events(
     limit: int = 100
 ):
     """
-    [Admin] 获取用户事件列表
+    [Admin] Get user event list
     """
     start = (page - 1) * limit
     end = start + limit - 1
@@ -2469,7 +2469,7 @@ def admin_get_user_events(
 
 def admin_get_event_stats(start_date: str = None, end_date: str = None, group_by: str = "event_type"):
     """
-    [Admin] 获取事件统计
+    [Admin] Get event stats
     """
     from datetime import timedelta
     from collections import defaultdict
@@ -2497,13 +2497,13 @@ def admin_get_event_stats(start_date: str = None, end_date: str = None, group_by
 
 
 # ===========================================
-# Aggregated Stats Functions (聚合统计)
+# Aggregated Stats Functions (Aggregated Stats)
 # ===========================================
 
 def get_aggregated_stats(stat_type: str, use_cache: bool = True):
     """
-    获取聚合统计数据
-    优先使用缓存，如果缓存不存在则实时计算
+    Get aggregated stats
+    Use cache preferentially, calculate in real-time if cache not exists
     """
     if use_cache:
         # Try to get from cache first
@@ -2532,7 +2532,7 @@ def get_aggregated_stats(stat_type: str, use_cache: bool = True):
 
 def get_aggregated_stats_range(stat_type: str, days: int = 30):
     """
-    获取指定天数范围内的聚合统计
+    Get aggregated stats within date range
     """
     from datetime import timedelta
     now = datetime.now(timezone.utc)
@@ -2548,7 +2548,7 @@ def get_aggregated_stats_range(stat_type: str, days: int = 30):
 
 def upsert_aggregated_stats(date_str: str, stat_type: str, data: dict):
     """
-    更新或插入聚合统计数据
+    Update or insert aggregated stats data
     """
     supabase.table("aggregated_stats").upsert({
         "date": date_str,
