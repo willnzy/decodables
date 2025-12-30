@@ -2815,6 +2815,48 @@ def adm_get_tier_conversion(admin: dict = Depends(require_admin)):
         return {"error": str(e)}
 
 
+@app.get("/api/admin/stats/performance")
+def adm_get_performance_metrics(admin: dict = Depends(require_admin)):
+    """获取页面性能指标统计"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "performance_metrics_7d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {"metrics": {}, "by_page": {}, "total_samples": 0}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/stats/user-distribution")
+def adm_get_user_distribution(admin: dict = Depends(require_admin)):
+    """获取用户分布统计（国家、浏览器、OS、设备）"""
+    try:
+        result = supabase.table("aggregated_stats")\
+            .select("data")\
+            .eq("stat_type", "user_distribution_7d")\
+            .order("date", desc=True)\
+            .limit(1).execute()
+        
+        if result.data:
+            return result.data[0].get("data", {})
+        return {
+            "country": [],
+            "browser": [],
+            "os": [],
+            "device_type": [],
+            "language": [],
+            "timezone": [],
+            "total_sessions": 0
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ==========================================
 # Admin AI Analysis (AI 分析)
 # ==========================================
@@ -2852,14 +2894,91 @@ def adm_get_behavior_analysis(
 class UserEventsRequest(BaseModel):
     events: List[dict]
 
+def get_client_ip(request: Request) -> str:
+    """
+    获取客户端真实 IP 地址
+    支持常见的代理头：X-Forwarded-For, X-Real-IP, CF-Connecting-IP
+    """
+    # Cloudflare
+    if cf_ip := request.headers.get("CF-Connecting-IP"):
+        return cf_ip
+    
+    # Standard proxy headers
+    if x_forwarded_for := request.headers.get("X-Forwarded-For"):
+        # 获取第一个 IP（最原始的客户端 IP）
+        return x_forwarded_for.split(",")[0].strip()
+    
+    if x_real_ip := request.headers.get("X-Real-IP"):
+        return x_real_ip
+    
+    # 直接连接
+    return request.client.host if request.client else "unknown"
+
+
+def get_country_from_ip(ip: str) -> dict:
+    """
+    根据 IP 获取国家信息
+    优先使用 Cloudflare 提供的头信息，否则使用 IP 库
+    """
+    # 如果有 Cloudflare 提供的国家代码
+    # 这需要在请求处理时获取，这里作为备用
+    
+    # 使用简单的 IP 前缀判断（生产环境应使用 GeoIP 库）
+    # 这里只做示例，实际应该使用 maxminddb 或调用 GeoIP API
+    country_info = {
+        "country_code": "unknown",
+        "country_name": "Unknown",
+        "continent": "Unknown",
+    }
+    
+    # 简单判断一些常见的 IP 段（示例用）
+    if ip.startswith("127.") or ip.startswith("localhost") or ip == "::1":
+        country_info = {"country_code": "LOCAL", "country_name": "Localhost", "continent": "Local"}
+    elif ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
+        country_info = {"country_code": "PRIVATE", "country_name": "Private Network", "continent": "Private"}
+    
+    return country_info
+
+
+def get_cloudflare_geo(request: Request) -> dict:
+    """
+    从 Cloudflare 请求头获取地理位置信息
+    """
+    return {
+        "country_code": request.headers.get("CF-IPCountry", "unknown"),
+        "city": request.headers.get("CF-IPCity", "unknown"),
+        "region": request.headers.get("CF-IPRegion", "unknown"),
+        "timezone": request.headers.get("CF-IPTimezone", "unknown"),
+    }
+
+
 @app.post("/api/analytics/events")
 @limiter.limit("60/minute")  # 事件上报限频（批量接口）
 async def log_analytics_events(request: Request, req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
     """
     记录用户行为事件
     支持批量提交
+    自动附加 IP、国家、设备信息
     """
     user_id = user.get("id") if user else None
+    
+    # 获取客户端 IP 和地理位置
+    client_ip = get_client_ip(request)
+    geo_info = get_cloudflare_geo(request)
+    country_info = get_country_from_ip(client_ip) if geo_info.get("country_code") == "unknown" else {}
+    
+    # 合并地理位置信息
+    location_info = {
+        "ip": client_ip,
+        "country_code": geo_info.get("country_code") or country_info.get("country_code", "unknown"),
+        "city": geo_info.get("city", "unknown"),
+        "region": geo_info.get("region", "unknown"),
+        "cf_timezone": geo_info.get("timezone", "unknown"),
+    }
+    
+    # 获取请求头中的用户代理信息
+    user_agent = request.headers.get("User-Agent", "unknown")
+    accept_language = request.headers.get("Accept-Language", "unknown")
     
     # 需要同时记录到 activity_logs 的事件类型
     ACTIVITY_LOG_EVENTS = {
@@ -2874,20 +2993,41 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
     for event in req.events:
         event_type = event.get("event_type")
         properties = event.get("properties", {})
+        env_info = event.get("env", {})
+        
+        # 合并后端获取的信息到 properties
+        enriched_properties = {
+            **properties,
+            # 后端获取的信息（覆盖前端的，更准确）
+            "server_ip": client_ip,
+            "server_country": location_info.get("country_code"),
+            "server_city": location_info.get("city"),
+            "server_region": location_info.get("region"),
+            "server_user_agent": user_agent,
+            "server_accept_language": accept_language,
+            # 前端环境信息
+            "client_browser": env_info.get("browser"),
+            "client_os": env_info.get("os"),
+            "client_device_type": env_info.get("device_type"),
+            "client_timezone": env_info.get("timezone"),
+            "client_timezone_offset": env_info.get("timezone_offset"),
+            "client_language": env_info.get("language"),
+            "client_connection_type": env_info.get("connection_type"),
+        }
         
         # 记录到 user_events
         log_user_event(
             user_id=user_id,
             event_type=event_type,
-            properties=properties,
+            properties=enriched_properties,
             session_id=event.get("session_id")
         )
         
         # 对于关键操作，同时记录到 activity_logs
         if user_id and event_type in ACTIVITY_LOG_EVENTS:
-            log_activity(user_id, ACTIVITY_LOG_EVENTS[event_type], properties)
+            log_activity(user_id, ACTIVITY_LOG_EVENTS[event_type], enriched_properties)
     
-    return {"status": "ok", "count": len(req.events)}
+    return {"status": "ok", "count": len(req.events), "ip": client_ip, "country": location_info.get("country_code")}
 
 @app.get("/api/admin/events")
 def adm_get_user_events(

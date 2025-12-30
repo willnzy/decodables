@@ -1248,6 +1248,205 @@ def aggregate_asset_usage():
         log(f"❌ Asset usage aggregation failed: {e}")
 
 
+def aggregate_performance_metrics():
+    """
+    Aggregate page performance metrics (Core Web Vitals)
+    页面性能指标聚合
+    """
+    log("⚡ Starting performance metrics aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=7)).isoformat()
+    
+    try:
+        # 从 user_events 获取性能指标事件
+        events = supabase.table("user_events").select("properties")\
+            .eq("event_type", "performance_metrics")\
+            .gte("created_at", start_date).execute()
+        
+        if not events.data:
+            log("  No performance data found")
+            return
+        
+        # 聚合各项指标
+        metrics_agg = {
+            "lcp": {"values": [], "ratings": defaultdict(int)},
+            "fid": {"values": [], "ratings": defaultdict(int)},
+            "cls": {"values": [], "ratings": defaultdict(int)},
+            "fcp": {"values": [], "ratings": defaultdict(int)},
+            "ttfb": {"values": [], "ratings": defaultdict(int)},
+            "dom_complete": {"values": []},
+            "load_complete": {"values": []},
+        }
+        
+        page_metrics = defaultdict(lambda: {"count": 0, "lcp_sum": 0, "fcp_sum": 0})
+        
+        for event in events.data or []:
+            props = event.get("properties", {})
+            page_url = props.get("page_url", "/")
+            
+            # 聚合各项指标
+            for metric in ["lcp", "fid", "cls", "fcp", "ttfb", "domComplete", "loadComplete"]:
+                key = metric.lower().replace("complete", "_complete")
+                value = props.get(metric) or props.get(key)
+                if value is not None and isinstance(value, (int, float)):
+                    if key in metrics_agg:
+                        metrics_agg[key]["values"].append(value)
+                    
+                    # 统计评级
+                    rating = props.get(f"{metric}_rating") or props.get(f"{key}_rating")
+                    if rating and key in metrics_agg and "ratings" in metrics_agg[key]:
+                        metrics_agg[key]["ratings"][rating] += 1
+            
+            # 按页面聚合
+            page_metrics[page_url]["count"] += 1
+            if lcp := props.get("lcp"):
+                page_metrics[page_url]["lcp_sum"] += lcp
+            if fcp := props.get("fcp"):
+                page_metrics[page_url]["fcp_sum"] += fcp
+        
+        # 计算统计值
+        def calc_stats(values):
+            if not values:
+                return {"avg": 0, "p50": 0, "p75": 0, "p95": 0, "count": 0}
+            sorted_vals = sorted(values)
+            n = len(sorted_vals)
+            return {
+                "avg": round(sum(values) / n, 1),
+                "p50": sorted_vals[int(n * 0.5)] if n > 0 else 0,
+                "p75": sorted_vals[int(n * 0.75)] if n > 0 else 0,
+                "p95": sorted_vals[int(n * 0.95)] if n > 0 else 0,
+                "count": n
+            }
+        
+        # 构建聚合数据
+        aggregated = {}
+        for key, data in metrics_agg.items():
+            aggregated[key] = {
+                "stats": calc_stats(data["values"]),
+                "ratings": dict(data.get("ratings", {}))
+            }
+        
+        # 按页面的平均指标
+        page_averages = {}
+        for page, data in page_metrics.items():
+            if data["count"] > 0:
+                page_averages[page] = {
+                    "count": data["count"],
+                    "avg_lcp": round(data["lcp_sum"] / data["count"], 1) if data["lcp_sum"] else 0,
+                    "avg_fcp": round(data["fcp_sum"] / data["count"], 1) if data["fcp_sum"] else 0,
+                }
+        
+        stats_data = {
+            "date": now.strftime("%Y-%m-%d"),
+            "stat_type": "performance_metrics_7d",
+            "data": {
+                "metrics": aggregated,
+                "by_page": dict(sorted(page_averages.items(), key=lambda x: -x[1]["count"])[:20]),
+                "total_samples": len(events.data),
+            },
+            "updated_at": now.isoformat()
+        }
+        
+        supabase.table("aggregated_stats").upsert(
+            stats_data,
+            on_conflict="date,stat_type"
+        ).execute()
+        
+        log(f"✅ Performance metrics aggregation complete: {len(events.data)} samples")
+    except Exception as e:
+        log(f"❌ Performance metrics aggregation failed: {e}")
+
+
+def aggregate_user_distribution():
+    """
+    Aggregate user distribution by country, browser, OS, device
+    用户地理/设备分布聚合
+    """
+    log("🌍 Starting user distribution aggregation...")
+    
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=7)).isoformat()
+    
+    try:
+        # 从 user_events 获取 session_start 事件
+        events = supabase.table("user_events").select("properties")\
+            .eq("event_type", "session_start")\
+            .gte("created_at", start_date).execute()
+        
+        if not events.data:
+            log("  No session data found")
+            return
+        
+        # 聚合分布数据
+        distributions = {
+            "country": defaultdict(int),
+            "browser": defaultdict(int),
+            "os": defaultdict(int),
+            "device_type": defaultdict(int),
+            "language": defaultdict(int),
+            "timezone": defaultdict(int),
+        }
+        
+        for event in events.data or []:
+            props = event.get("properties", {})
+            
+            # 国家（优先使用服务端数据）
+            country = props.get("server_country") or props.get("country_code") or "unknown"
+            distributions["country"][country] += 1
+            
+            # 浏览器
+            browser = props.get("client_browser") or props.get("browser") or "unknown"
+            # 简化浏览器名称
+            browser_name = browser.split()[0] if browser else "unknown"
+            distributions["browser"][browser_name] += 1
+            
+            # 操作系统
+            os_info = props.get("client_os") or props.get("os") or "unknown"
+            # 简化 OS 名称
+            os_name = os_info.split()[0] if os_info else "unknown"
+            distributions["os"][os_name] += 1
+            
+            # 设备类型
+            device = props.get("client_device_type") or props.get("device_type") or "unknown"
+            distributions["device_type"][device] += 1
+            
+            # 语言
+            lang = props.get("client_language") or props.get("language") or "unknown"
+            # 简化语言代码
+            lang_code = lang.split("-")[0] if lang else "unknown"
+            distributions["language"][lang_code] += 1
+            
+            # 时区
+            tz = props.get("client_timezone") or props.get("timezone") or "unknown"
+            distributions["timezone"][tz] += 1
+        
+        # 转换为列表格式并排序
+        result = {}
+        for key, counts in distributions.items():
+            sorted_items = sorted(counts.items(), key=lambda x: -x[1])[:30]  # Top 30
+            result[key] = [{"name": k, "count": v} for k, v in sorted_items]
+        
+        stats_data = {
+            "date": now.strftime("%Y-%m-%d"),
+            "stat_type": "user_distribution_7d",
+            "data": {
+                **result,
+                "total_sessions": len(events.data),
+            },
+            "updated_at": now.isoformat()
+        }
+        
+        supabase.table("aggregated_stats").upsert(
+            stats_data,
+            on_conflict="date,stat_type"
+        ).execute()
+        
+        log(f"✅ User distribution aggregation complete: {len(events.data)} sessions")
+    except Exception as e:
+        log(f"❌ User distribution aggregation failed: {e}")
+
+
 def run_hourly_tasks():
     """Run tasks that should be executed hourly"""
     log("🕐 Running hourly aggregation tasks...")
@@ -1256,6 +1455,8 @@ def run_hourly_tasks():
     aggregate_event_stats()
     aggregate_feature_usage()
     aggregate_page_views()
+    aggregate_performance_metrics()  # 新增：性能指标聚合
+    aggregate_user_distribution()    # 新增：用户分布聚合
     
     log("✅ Hourly tasks complete")
 
