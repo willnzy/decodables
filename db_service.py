@@ -1569,8 +1569,8 @@ def admin_get_moderation_list(
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # 明确指定使用 seller_id 关系（卖家信息）
-    query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url)")\
+    # 明确指定使用 seller_id 关系（卖家信息，包含 user_code）
+    query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, email, avatar_url, user_code, first_name, last_name)")\
         .eq("is_deleted", False)
     
     if status and status != "all":
