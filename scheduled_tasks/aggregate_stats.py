@@ -228,7 +228,7 @@ def aggregate_daily_projects():
 def aggregate_credit_usage():
     """
     Aggregate credit usage by type
-    
+    Summarizes 30-day credit spend grouped by transaction category.
     """
     log("⚡ Starting credit usage aggregation...")
     
@@ -274,7 +274,7 @@ def aggregate_credit_usage():
 def aggregate_tier_distribution():
     """
     Aggregate user tier distribution
-    
+    Captures current counts of users in each subscription tier.
     """
     log("👥 Starting tier distribution aggregation...")
     
@@ -306,7 +306,7 @@ def aggregate_tier_distribution():
 def aggregate_conversion_funnel():
     """
     Aggregate conversion funnel data
-    
+    Builds a 30-day funnel from visitors through signups to subscribers.
     """
     log("📈 Starting conversion funnel aggregation...")
     
@@ -360,7 +360,7 @@ def aggregate_conversion_funnel():
 def aggregate_event_stats():
     """
     Aggregate user event statistics
-    
+    Counts the last-week volume for every tracked event type.
     """
     log("📊 Starting event stats aggregation...")
     
@@ -394,7 +394,7 @@ def aggregate_event_stats():
 def aggregate_generation_stats():
     """
     Aggregate AI generation statistics
-    AI 
+    Summarizes success, failure, and usage counts for AI generation events.
     """
     log("🎨 Starting generation stats aggregation...")
     
@@ -449,7 +449,7 @@ def aggregate_generation_stats():
 def aggregate_marketplace_stats():
     """
     Aggregate marketplace statistics
-    
+    Provides 30-day volume, revenue, and usage metrics for marketplace activity.
     """
     log("🏪 Starting marketplace stats aggregation...")
     
@@ -507,7 +507,7 @@ def aggregate_marketplace_stats():
 def aggregate_retention_stats():
     """
     Aggregate user retention statistics
-    
+    Computes retention rates for multiple cohorts (D1, D7, D30).
     """
     log("📈 Starting retention stats aggregation...")
     
@@ -564,7 +564,7 @@ def aggregate_retention_stats():
 def aggregate_feature_usage():
     """
     Aggregate feature usage statistics
-    
+    Tracks how often key buttons and features are triggered in the last week.
     """
     log("⚙️ Starting feature usage aggregation...")
     
@@ -611,13 +611,13 @@ def aggregate_feature_usage():
 def aggregate_export_stats():
     """
     Aggregate export/download statistics
-    /（PDF、ZIP、、）
+    Tracks PDF, ZIP, print, and preview actions across the last 30 days.
     """
     log("📊 Starting export stats aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 30
+    # Analyze export activity for the last 30 days
     stats_by_date = {}
     total_pdf = 0
     total_zip = 0
@@ -630,7 +630,7 @@ def aggregate_export_stats():
         next_date = date + timedelta(days=1)
         
         try:
-            #  activity_logs 
+            # Count export-related actions from activity_logs
             logs = supabase.table("activity_logs").select("action")\
                 .in_("action", ["download_pdf", "export_zip", "print_project", "preview_pdf"])\
                 .gte("created_at", date.isoformat())\
@@ -656,7 +656,7 @@ def aggregate_export_stats():
         except Exception as e:
             log(f"  Warning: Failed to get export logs for {date_str}: {e}")
     
-    # （30，）
+    # Build a chronological trend list covering the same 30-day window
     trend_data = []
     for i in range(29, -1, -1):
         date = (now - timedelta(days=i)).date()
@@ -691,18 +691,18 @@ def aggregate_export_stats():
 def aggregate_tier_activity():
     """
     Aggregate user activity by tier
-    
+    Breaks down seven-day activity metrics for each subscription tier.
     """
     log("👥 Starting tier activity aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # （7）
+    # Measure activity with a seven-day lookback window
     tier_activity = {}
     tiers = ["free", "starter", "pro"]
     
     for tier in tiers:
-        # 
+        # Load every user belonging to the current tier
         users = supabase.table("profiles").select("id")\
             .eq("tier", tier).execute()
         user_ids = [u.get("id") for u in users.data or []]
@@ -717,13 +717,13 @@ def aggregate_tier_activity():
             }
             continue
         
-        # （7）
+        # Check for activity within the last seven days
         start_date = (now - timedelta(days=7)).isoformat()
         
         active_users_set = set()
         total_actions = 0
         
-        # （）
+        # Query in batches to avoid excessively large requests
         batch_size = 100
         for i in range(0, min(len(user_ids), 500), batch_size):
             batch_ids = user_ids[i:i+batch_size]
@@ -760,13 +760,13 @@ def aggregate_tier_activity():
 def aggregate_subscription_events():
     """
     Aggregate subscription events (upgrades, downgrades, cancellations, refunds)
-    （、、、）
+    Captures 30-day totals for upgrades, downgrades, cancellations, and refunds.
     """
     log("💳 Starting subscription events aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 30
+    # Track subscription-related events over the last 30 days
     subscription_stats_by_date = {}
     total_upgrades = 0
     total_downgrades = 0
@@ -780,7 +780,7 @@ def aggregate_subscription_events():
         
         day_stats = {"upgrades": 0, "downgrades": 0, "cancellations": 0, "refunds": 0}
         
-        #  admin_operation_logs 
+        # Use admin_operation_logs entries to detect tier changes
         try:
             logs = supabase.table("admin_operation_logs").select("action")\
                 .in_("action", ["tier_upgraded", "tier_downgraded", "subscription_cancelled", "refund_processed"])\
@@ -804,7 +804,7 @@ def aggregate_subscription_events():
         except Exception as e:
             log(f"  Warning: Failed to get subscription events for {date_str}: {e}")
         
-        #  credit_transactions 
+        # Include any refund transactions recorded in credit_transactions
         try:
             refunds = supabase.table("credit_transactions").select("id", count="exact")\
                 .eq("type", "refund")\
@@ -817,7 +817,7 @@ def aggregate_subscription_events():
         
         subscription_stats_by_date[date_str] = day_stats
     
-    # 
+    # Convert the per-day map into a chronological trend array
     trend_data = []
     for i in range(29, -1, -1):
         date = (now - timedelta(days=i)).date()
@@ -852,13 +852,13 @@ def aggregate_subscription_events():
 def aggregate_page_views():
     """
     Aggregate page view statistics
-    
+    Summarizes page views, tier distribution, and totals for the last week.
     """
     log("📄 Starting page view aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    #  user_events 
+    # Retrieve page_view events from user_events
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
@@ -877,7 +877,7 @@ def aggregate_page_views():
             page_counts[page_name] += 1
             page_tier_counts[page_name][user_tier] += 1
         
-        # 
+        # Convert raw counts into a structure that can be stored in the DB
         page_data = {}
         for page, count in page_counts.items():
             page_data[page] = {
@@ -909,19 +909,19 @@ def aggregate_page_views():
 def aggregate_project_details():
     """
     Aggregate detailed project statistics (deletions, OCR usage, page counts)
-    （、OCR、）
+    Collects deletion counts, OCR usage, and sampled page totals.
     """
     log("📁 Starting project details aggregation...")
     
     now = datetime.now(timezone.utc)
     start_date = (now - timedelta(days=30)).isoformat()
     
-    # 
+    # Count projects that were deleted recently
     deleted_count = supabase.table("projects").select("id", count="exact")\
         .eq("is_deleted", True)\
         .gte("deleted_at", start_date).execute()
     
-    #  OCR （ user_events）
+    # Count OCR scans captured in user_events
     try:
         ocr_events = supabase.table("user_events").select("id", count="exact")\
             .eq("event_type", "ocr_scan")\
@@ -930,8 +930,8 @@ def aggregate_project_details():
     except Exception:
         ocr_count = 0
     
-    # （ projects.canvas_data）
-    # ： JSONB，，
+    # Estimate page counts using sampled projects.canvas_data entries
+    # Note: parsing JSONB is expensive, so we approximate via sampling
     projects_with_data = supabase.table("projects").select("canvas_data")\
         .not_.is_("canvas_data", "null")\
         .gte("created_at", start_date)\
@@ -969,7 +969,7 @@ def aggregate_project_details():
 def aggregate_returning_users():
     """
     Aggregate returning user statistics (users who came back after inactivity)
-    （）
+    Identifies cohorts who were inactive for a period but reactivated today.
     """
     log("🔄 Starting returning users aggregation...")
     
@@ -979,11 +979,11 @@ def aggregate_returning_users():
     returning_data = {}
     
     for period_days in [7, 14, 30]:
-        #  X ，
+        # Consider users who were inactive for the given number of days
         inactive_start = today - timedelta(days=period_days)
         inactive_end = today - timedelta(days=1)
         
-        # 
+        # Fetch users who are currently active today
         active_today = supabase.table("activity_logs").select("user_id")\
             .gte("created_at", today.isoformat())\
             .lt("created_at", now.isoformat()).execute()
@@ -993,16 +993,16 @@ def aggregate_returning_users():
             returning_data[f"returning_{period_days}d"] = {"count": 0, "ids": []}
             continue
         
-        #  X 
+        # Check if those users were inactive during the lookback window
         returning_users = []
-        for user_id in list(active_today_ids)[:100]:  # 
+        for user_id in list(active_today_ids)[:100]:  # Limit to 100 users to keep queries manageable
             activity_in_period = supabase.table("activity_logs").select("id", count="exact")\
                 .eq("user_id", user_id)\
                 .gte("created_at", inactive_start.isoformat())\
                 .lt("created_at", inactive_end.isoformat()).execute()
             
             if (activity_in_period.count or 0) == 0:
-                # 
+                # Ensure they had activity before the inactive window
                 earlier_activity = supabase.table("activity_logs").select("id", count="exact")\
                     .eq("user_id", user_id)\
                     .lt("created_at", inactive_start.isoformat()).execute()
@@ -1012,7 +1012,7 @@ def aggregate_returning_users():
         
         returning_data[f"returning_{period_days}d"] = {
             "count": len(returning_users),
-            "sample_ids": returning_users[:10]  # 10
+            "sample_ids": returning_users[:10]  # Keep the first 10 IDs as a reference sample
         }
     
     stats_data = {
@@ -1033,7 +1033,7 @@ def aggregate_returning_users():
 def aggregate_tier_trend():
     """
     Aggregate tier distribution trend over time
-    
+    Builds a 30-day timeline of user counts per tier and estimated guests.
     """
     log("📈 Starting tier trend aggregation...")
     
@@ -1047,8 +1047,8 @@ def aggregate_tier_trend():
         date_str = date.strftime("%Y-%m-%d")
         next_date = date + timedelta(days=1)
         
-        # 
-        # ：，
+        # Count cumulative users for each tier up to this date
+        # Note: this is an approximation rather than an exact snapshot
         tier_counts = {}
         for tier in ["free", "starter", "pro"]:
             count = supabase.table("profiles").select("id", count="exact")\
@@ -1056,16 +1056,16 @@ def aggregate_tier_trend():
                 .lt("created_at", next_date.isoformat()).execute()
             tier_counts[tier] = count.count or 0
         
-        # （4）
+        # Approximate guest traffic as three times the registered total
         total_registered = sum(tier_counts.values())
-        tier_counts["guest"] = total_registered * 3  # 
+        tier_counts["guest"] = total_registered * 3  # Estimated guest count
         
         trend_data.append({
             "date": date.strftime("%m/%d"),
             **tier_counts
         })
     
-    # 
+    # Reverse to present the trend from oldest to newest day
     trend_data.reverse()
     
     stats_data = {
@@ -1086,7 +1086,7 @@ def aggregate_tier_trend():
 def aggregate_tier_conversion():
     """
     Aggregate tier conversion data (guest->free, free->starter, etc.)
-    
+    Summarizes tier-change flows observed during the last 30 days.
     """
     log("🔄 Starting tier conversion aggregation...")
     
@@ -1095,7 +1095,7 @@ def aggregate_tier_conversion():
     
     conversion_data = []
     
-    #  admin_operation_logs 
+    # Inspect admin_operation_logs to find tier change operations
     try:
         logs = supabase.table("admin_operation_logs").select("action, details")\
             .in_("action", ["tier_upgraded", "tier_changed", "tier_downgraded"])\
@@ -1112,7 +1112,7 @@ def aggregate_tier_conversion():
                 key = f"{old_tier}_{new_tier}"
                 conversion_counts[key]["count"] += 1
         
-        # 
+        # Convert the aggregated map into a list of conversion entries
         for key, data in conversion_counts.items():
             parts = key.split("_")
             if len(parts) == 2:
@@ -1120,12 +1120,12 @@ def aggregate_tier_conversion():
                     "from": parts[0].capitalize() if parts[0] != "free" else "Free",
                     "to": parts[1].capitalize() if parts[1] != "free" else "Free",
                     "count": data["count"],
-                    "rate": 0  # 
+                    "rate": 0  # Placeholder until conversion rates can be computed accurately
                 })
     except Exception as e:
         log(f"  Warning: Failed to get conversion logs: {e}")
     
-    #  Free （）
+    # Include guest-to-free conversions (new registrations)
     new_free = supabase.table("profiles").select("id", count="exact")\
         .eq("tier", "free")\
         .gte("created_at", start_date).execute()
@@ -1134,10 +1134,10 @@ def aggregate_tier_conversion():
         "from": "Guest",
         "to": "Free",
         "count": new_free.count or 0,
-        "rate": 25  # ， session 
+        "rate": 25  # Estimated rate; refine once session data is available
     })
     
-    # 
+    # Include guest-to-paid conversions (Starter or Pro)
     new_paid = supabase.table("profiles").select("id", count="exact")\
         .in_("tier", ["starter", "pro"])\
         .gte("created_at", start_date).execute()
@@ -1147,7 +1147,7 @@ def aggregate_tier_conversion():
             "from": "Guest",
             "to": "Starter/Pro",
             "count": new_paid.count or 0,
-            "rate": 5  # 
+            "rate": 5  # Estimated rate for direct guest-to-paid conversions
         })
     
     stats_data = {
@@ -1168,20 +1168,20 @@ def aggregate_tier_conversion():
 def aggregate_asset_usage():
     """
     Aggregate marketplace asset usage statistics
-    
+    Ranks marketplace listings by overall and unique-user usage.
     """
     log("🎨 Starting asset usage aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    #  listing 
+    # Retrieve usage logs together with associated listing metadata
     try:
-        #  listing_usage  marketplace_listings
+        # Join listing_usage records with marketplace_listings details
         usage_data = supabase.table("listing_usage").select(
             "listing_id, used_by_user_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type, seller_id)"
         ).execute()
         
-        # 
+        # Aggregate counts per listing and track unique users
         usage_counts = defaultdict(lambda: {"count": 0, "unique_users": set(), "listing": None})
         
         for record in usage_data.data or []:
@@ -1195,7 +1195,7 @@ def aggregate_asset_usage():
                 if not usage_counts[listing_id]["listing"]:
                     usage_counts[listing_id]["listing"] = listing_info
         
-        # 
+        # Convert the aggregation map into a sortable list
         rankings = []
         for listing_id, data in usage_counts.items():
             listing = data["listing"] or {}
@@ -1209,17 +1209,17 @@ def aggregate_asset_usage():
                 "unique_users": len(data["unique_users"])
             })
         
-        # ，50
+        # Sort by usage count and keep the top 50 records overall
         rankings.sort(key=lambda x: -x["usage_count"])
         top_assets = rankings[:50]
         
-        # 
+        # Create per-type rankings as well
         by_type = {}
         for item in rankings:
             rtype = item.get("resource_type", "other")
             if rtype not in by_type:
                 by_type[rtype] = []
-            if len(by_type[rtype]) < 20:  # 20
+            if len(by_type[rtype]) < 20:  # Limit each type to 20 entries
                 by_type[rtype].append(item)
         
         stats_data = {
@@ -1247,7 +1247,7 @@ def aggregate_asset_usage():
 def aggregate_performance_metrics():
     """
     Aggregate page performance metrics (Core Web Vitals)
-    
+    Analyzes Web Vitals and key page timing metrics reported by clients.
     """
     log("⚡ Starting performance metrics aggregation...")
     
@@ -1255,7 +1255,7 @@ def aggregate_performance_metrics():
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
-        #  user_events 
+        # Pull performance_metrics events from user_events
         events = supabase.table("user_events").select("properties")\
             .eq("event_type", "performance_metrics")\
             .gte("created_at", start_date).execute()
@@ -1264,7 +1264,7 @@ def aggregate_performance_metrics():
             log("  No performance data found")
             return
         
-        # 
+        # Prepare accumulation structures for numeric values and ratings
         metrics_agg = {
             "lcp": {"values": [], "ratings": defaultdict(int)},
             "fid": {"values": [], "ratings": defaultdict(int)},
@@ -1281,7 +1281,7 @@ def aggregate_performance_metrics():
             props = event.get("properties", {})
             page_url = props.get("page_url", "/")
             
-            # 
+            # Aggregate each metric value and capture rating buckets when present
             for metric in ["lcp", "fid", "cls", "fcp", "ttfb", "domComplete", "loadComplete"]:
                 key = metric.lower().replace("complete", "_complete")
                 value = props.get(metric) or props.get(key)
@@ -1289,19 +1289,19 @@ def aggregate_performance_metrics():
                     if key in metrics_agg:
                         metrics_agg[key]["values"].append(value)
                     
-                    # 
+                    # Track qualitative ratings (good/needs-improvement/poor)
                     rating = props.get(f"{metric}_rating") or props.get(f"{key}_rating")
                     if rating and key in metrics_agg and "ratings" in metrics_agg[key]:
                         metrics_agg[key]["ratings"][rating] += 1
             
-            # 
+            # Build per-page aggregates to compute averages later
             page_metrics[page_url]["count"] += 1
             if lcp := props.get("lcp"):
                 page_metrics[page_url]["lcp_sum"] += lcp
             if fcp := props.get("fcp"):
                 page_metrics[page_url]["fcp_sum"] += fcp
         
-        # 
+        # Helper function to compute averages and percentiles
         def calc_stats(values):
             if not values:
                 return {"avg": 0, "p50": 0, "p75": 0, "p95": 0, "count": 0}
@@ -1315,7 +1315,7 @@ def aggregate_performance_metrics():
                 "count": n
             }
         
-        # 
+        # Build the merged metrics payload
         aggregated = {}
         for key, data in metrics_agg.items():
             aggregated[key] = {
@@ -1323,7 +1323,7 @@ def aggregate_performance_metrics():
                 "ratings": dict(data.get("ratings", {}))
             }
         
-        # 
+        # Compute per-page averages for the most frequently sampled pages
         page_averages = {}
         for page, data in page_metrics.items():
             if data["count"] > 0:
@@ -1357,7 +1357,7 @@ def aggregate_performance_metrics():
 def aggregate_user_distribution():
     """
     Aggregate user distribution by country, browser, OS, device
-    /
+    Summarizes geo, platform, language, and timezone distribution of sessions.
     """
     log("🌍 Starting user distribution aggregation...")
     
@@ -1365,7 +1365,7 @@ def aggregate_user_distribution():
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
-        #  user_events  session_start 
+        # Fetch session_start events from user_events
         events = supabase.table("user_events").select("properties")\
             .eq("event_type", "session_start")\
             .gte("created_at", start_date).execute()
@@ -1374,7 +1374,7 @@ def aggregate_user_distribution():
             log("  No session data found")
             return
         
-        # 
+        # Set up distribution counters for each dimension
         distributions = {
             "country": defaultdict(int),
             "browser": defaultdict(int),
@@ -1387,37 +1387,37 @@ def aggregate_user_distribution():
         for event in events.data or []:
             props = event.get("properties", {})
             
-            # （）
+            # Prefer server-derived country info when available
             country = props.get("server_country") or props.get("country_code") or "unknown"
             distributions["country"][country] += 1
             
-            # 
+            # Track the browser reported by the client
             browser = props.get("client_browser") or props.get("browser") or "unknown"
-            # 
+            # Normalize browser names by taking the first token
             browser_name = browser.split()[0] if browser else "unknown"
             distributions["browser"][browser_name] += 1
             
-            # 
+            # Track the operating system
             os_info = props.get("client_os") or props.get("os") or "unknown"
-            #  OS 
+            # Normalize OS names in the same way
             os_name = os_info.split()[0] if os_info else "unknown"
             distributions["os"][os_name] += 1
             
-            # 
+            # Capture the device type (desktop, mobile, etc.)
             device = props.get("client_device_type") or props.get("device_type") or "unknown"
             distributions["device_type"][device] += 1
             
-            # 
+            # Capture preferred language codes
             lang = props.get("client_language") or props.get("language") or "unknown"
-            # 
+            # Reduce language codes to their primary subtag
             lang_code = lang.split("-")[0] if lang else "unknown"
             distributions["language"][lang_code] += 1
             
-            # 
+            # Record timezone information
             tz = props.get("client_timezone") or props.get("timezone") or "unknown"
             distributions["timezone"][tz] += 1
         
-        # 
+        # Convert distributions into sorted top-N lists for display
         result = {}
         for key, counts in distributions.items():
             sorted_items = sorted(counts.items(), key=lambda x: -x[1])[:30]  # Top 30
@@ -1451,24 +1451,24 @@ def run_hourly_tasks():
     aggregate_event_stats()
     aggregate_feature_usage()
     aggregate_page_views()
-    aggregate_performance_metrics()  # ：
-    aggregate_user_distribution()    # ：
+    aggregate_performance_metrics()  # Include performance aggregation in the hourly cycle
+    aggregate_user_distribution()    # Include user distribution aggregation in the hourly cycle
     
     log("✅ Hourly tasks complete")
 
 
 def cleanup_expired_deleted_projects():
     """
-    30（）
+    Permanently delete projects that have been in the trash for more than 30 days.
     Projects deleted more than 30 days ago are permanently removed
     """
     log("🗑️ Cleaning up expired deleted projects...")
     
     try:
-        # 30
+        # Determine the cutoff timestamp (30 days ago)
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         
-        # 
+        # Fetch projects whose deleted_at is older than the cutoff
         expired_projects = supabase.table("projects").select("id, title, user_id, deleted_at")\
             .eq("is_deleted", True)\
             .lt("deleted_at", cutoff_date)\
@@ -1481,7 +1481,7 @@ def cleanup_expired_deleted_projects():
         count = len(expired_projects.data)
         log(f"   Found {count} projects to permanently delete")
         
-        # 
+        # Permanently delete each expired project
         for project in expired_projects.data:
             try:
                 supabase.table("projects").delete().eq("id", project["id"]).execute()
@@ -1499,7 +1499,7 @@ def run_daily_tasks():
     """Run tasks that should be executed daily"""
     log("📅 Running daily aggregation tasks...")
     
-    # 
+    # Clear out expired soft-deleted projects before aggregations
     cleanup_expired_deleted_projects()
     
     aggregate_daily_user_stats()
@@ -1513,7 +1513,7 @@ def run_daily_tasks():
     aggregate_export_stats()
     aggregate_asset_usage()
     
-    # 
+    # Run behavioral and retention aggregations after the core metrics
     aggregate_tier_activity()
     aggregate_subscription_events()
     aggregate_project_details()
