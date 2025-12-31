@@ -862,7 +862,7 @@ def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt
     supabase.table("assets").insert(data).execute()
 
 def get_assets(user_id: str, project_id: str = None):
-    """Get user assets with marketplace_listing info"""
+    """Get user assets with marketplace_listing info and purchase_info"""
     query = supabase.table("assets").select("*").eq("user_id", user_id).eq("is_deleted", False)
     if project_id:
         query = query.eq("project_id", project_id)
@@ -893,6 +893,26 @@ def get_assets(user_id: str, project_id: str = None):
         # Attach listing info to asset data
         for item in items:
             item["marketplace_listing"] = listings_map.get(item["id"])
+        
+        # Get purchase source listing info (for purchased assets)
+        source_listing_ids = [item["source_listing_id"] for item in items if item.get("source_listing_id")]
+        if source_listing_ids:
+            source_listings_res = supabase.table("marketplace_listings").select(
+                "id, price_credits, sales_count"
+            ).in_("id", source_listing_ids).execute()
+            
+            source_listings_map = {}
+            if source_listings_res.data:
+                for listing in source_listings_res.data:
+                    source_listings_map[listing["id"]] = {
+                        "price_credits": listing["price_credits"],
+                        "sales_count": listing["sales_count"],
+                    }
+            
+            # Attach purchase info to asset data
+            for item in items:
+                if item.get("source_listing_id"):
+                    item["purchase_info"] = source_listings_map.get(item["source_listing_id"])
     
     return items
 
