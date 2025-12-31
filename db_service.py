@@ -697,7 +697,10 @@ def create_project(user_id: str, title: str = None, canvas_data: dict = None):
 
 def duplicate_project(project_id: str, user_id: str):
     """
-    Duplicate project (Only own created projects, purchased projects cannot be duplicated)
+    Duplicate/Copy a project.
+    
+    - Own projects: Creates copy with title + " copied"
+    - Purchased projects: Creates copy with same title, records source info
     
     Returns: New project data or raises Exception
     """
@@ -708,18 +711,26 @@ def duplicate_project(project_id: str, user_id: str):
     if not original.data:
         raise Exception("Project not found or permission denied")
     
-    # Check if purchased project (projects with source_listing_id cannot be duplicated)
-    if original.data.get("source_listing_id"):
-        raise Exception("Purchased projects cannot be duplicated. This project is for personal use only.")
+    original_title = original.data.get('title', 'Untitled Project')
+    is_purchased = bool(original.data.get("source_listing_id"))
     
-    # Create new project, copy content but not source_listing_id
+    # Create new project data
     new_data = {
         "user_id": user_id,
-        "title": f"{original.data.get('title', 'My Magic Story')} (Copy)",
         "canvas_data": original.data.get("canvas_data", {}),
         "thumbnail_url": original.data.get("thumbnail_url"),
         "last_downloaded_hash": ""
     }
+    
+    if is_purchased:
+        # Purchased project: keep same name, record source info
+        new_data["title"] = original_title
+        new_data["source_listing_id"] = original.data.get("source_listing_id")
+        # Store original project reference for tracking
+        new_data["copied_from_project_id"] = project_id
+    else:
+        # Own project: add " copied" suffix
+        new_data["title"] = f"{original_title} copied"
     
     res = supabase.table("projects").insert(new_data).execute()
     return res.data[0] if res.data else None
@@ -2556,3 +2567,129 @@ def upsert_aggregated_stats(date_str: str, stat_type: str, data: dict):
         "data": data,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }, on_conflict="date,stat_type").execute()
+
+
+# ===========================================
+# Content Reports
+# ===========================================
+
+def create_report(reporter_id: str, listing_id: str, reason: str):
+    """
+    Create a content report for a marketplace listing.
+    
+    Returns: Report data or raises Exception if duplicate
+    """
+    # Check if already reported (pending/reviewed)
+    existing = supabase.table("content_reports").select("id")\
+        .eq("reporter_id", reporter_id)\
+        .eq("listing_id", listing_id)\
+        .in_("status", ["pending", "reviewed"]).execute()
+    
+    if existing.data:
+        raise Exception("You have already reported this item")
+    
+    # Verify listing exists
+    listing = supabase.table("marketplace_listings").select("id, title")\
+        .eq("id", listing_id).single().execute()
+    
+    if not listing.data:
+        raise Exception("Listing not found")
+    
+    data = {
+        "reporter_id": reporter_id,
+        "listing_id": listing_id,
+        "reason": reason,
+        "status": "pending"
+    }
+    
+    res = supabase.table("content_reports").insert(data).execute()
+    return res.data[0] if res.data else None
+
+
+def get_user_reports(user_id: str, page: int = 1, limit: int = 20):
+    """Get reports submitted by a user."""
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    res = supabase.table("content_reports")\
+        .select("*, marketplace_listings(id, title, thumbnail_url)")\
+        .eq("reporter_id", user_id)\
+        .order("created_at", desc=True)\
+        .range(start, end).execute()
+    
+    return res.data or []
+
+
+def admin_get_reports(
+    status: str = None,
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    [Admin] Get all content reports with optional filtering.
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    query = supabase.table("content_reports")\
+        .select("*, marketplace_listings(id, title, thumbnail_url, seller_id, resource_type), profiles!content_reports_reporter_id_fkey(id, username, avatar_url)")
+    
+    if status:
+        query = query.eq("status", status)
+    
+    res = query.order("created_at", desc=True).range(start, end).execute()
+    
+    return res.data or []
+
+
+def admin_get_reports_count(status: str = None):
+    """[Admin] Get count of reports by status."""
+    query = supabase.table("content_reports").select("id", count="exact")
+    
+    if status:
+        query = query.eq("status", status)
+    
+    res = query.execute()
+    return res.count or 0
+
+
+def admin_respond_to_report(
+    report_id: str,
+    admin_id: str,
+    status: str,
+    response: str = None
+):
+    """
+    [Admin] Respond to a content report.
+    
+    Args:
+        report_id: Report ID
+        admin_id: Admin user ID
+        status: New status ('reviewed', 'resolved', 'dismissed')
+        response: Admin's response message to the reporter
+    """
+    if status not in ["reviewed", "resolved", "dismissed"]:
+        raise Exception("Invalid status")
+    
+    data = {
+        "status": status,
+        "reviewed_by": admin_id,
+        "reviewed_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if response:
+        data["admin_response"] = response
+    
+    res = supabase.table("content_reports").update(data)\
+        .eq("id", report_id).execute()
+    
+    return res.data[0] if res.data else None
+
+
+def admin_get_report_detail(report_id: str):
+    """[Admin] Get detailed report information."""
+    res = supabase.table("content_reports")\
+        .select("*, marketplace_listings(id, title, thumbnail_url, seller_id, resource_type, description), profiles!content_reports_reporter_id_fkey(id, username, avatar_url, email)")\
+        .eq("id", report_id).single().execute()
+    
+    return res.data

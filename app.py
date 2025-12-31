@@ -874,7 +874,11 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
 @app.post("/api/projects/{id}/duplicate")
 @limiter.limit("10/minute")  # Project duplication rate limit
 def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_user)):
-    """Duplicate a project (disallowed for purchased projects)."""
+    """
+    Duplicate/Copy a project.
+    - Own projects: Creates copy with title + " copied"
+    - Purchased projects: Creates copy with same title, preserves source info
+    """
     from db_service import duplicate_project
     try:
         new_project = duplicate_project(id, user["id"])
@@ -882,11 +886,9 @@ def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_u
             log_activity(user["id"], "duplicate_project", {"source_project_id": id, "new_project_id": new_project["id"]})
             return new_project
         else:
-            raise HTTPException(500, "Failed to duplicate project")
+            raise HTTPException(500, "Failed to copy project")
     except Exception as e:
         error_msg = str(e)
-        if "cannot be duplicated" in error_msg.lower() or "purchased" in error_msg.lower():
-            raise HTTPException(403, error_msg)
         raise HTTPException(400, error_msg)
 
 @app.delete("/api/projects/{id}")
@@ -1624,6 +1626,40 @@ def marketplace_leaderboard(
     """
     leaderboard = get_leaderboard(period=period, board_type=type, limit=10)
     return {"items": leaderboard, "period": period, "type": type}
+
+
+# --- Content Reports ---
+class ReportRequest(BaseModel):
+    listing_id: str
+    reason: str
+
+@app.post("/api/marketplace/report")
+@limiter.limit("10/minute")  # Rate limit for reports
+def submit_report(request: Request, req: ReportRequest, user: dict = Depends(get_current_user)):
+    """
+    Submit a content report for a marketplace listing.
+    
+    Users can report listings for copyright violations, inappropriate content, etc.
+    """
+    from db_service import create_report
+    try:
+        report = create_report(user["id"], req.listing_id, req.reason)
+        if report:
+            log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
+            return {"success": True, "report_id": report["id"], "message": "Report submitted successfully"}
+        raise HTTPException(500, "Failed to submit report")
+    except Exception as e:
+        error_msg = str(e)
+        if "already reported" in error_msg.lower():
+            raise HTTPException(400, error_msg)
+        raise HTTPException(500, error_msg)
+
+@app.get("/api/marketplace/my-reports")
+def get_my_reports(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
+    """Get reports submitted by the current user."""
+    from db_service import get_user_reports
+    reports = get_user_reports(user["id"], page, limit)
+    return {"items": reports, "total": len(reports)}
 
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
@@ -2528,6 +2564,86 @@ def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admi
     
     log_activity(admin["id"], "admin_moderation_unpublish", {"listing_id": listing_id})
     return {"status": "unpublished", "listing_id": listing_id}
+
+
+# ==========================================
+# Admin Content Reports
+# ==========================================
+
+@app.get("/api/admin/reports")
+def adm_get_reports(
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get all content reports with optional status filtering.
+    
+    Args:
+        status: Filter by status ('pending', 'reviewed', 'resolved', 'dismissed')
+    """
+    from db_service import admin_get_reports, admin_get_reports_count
+    reports = admin_get_reports(status=status, page=page, limit=limit)
+    total = admin_get_reports_count(status=status)
+    return {"items": reports, "total": total, "page": page}
+
+@app.get("/api/admin/reports/stats")
+def adm_get_reports_stats(admin: dict = Depends(require_admin)):
+    """Get reports statistics by status."""
+    from db_service import admin_get_reports_count
+    return {
+        "pending": admin_get_reports_count("pending"),
+        "reviewed": admin_get_reports_count("reviewed"),
+        "resolved": admin_get_reports_count("resolved"),
+        "dismissed": admin_get_reports_count("dismissed"),
+        "total": admin_get_reports_count()
+    }
+
+@app.get("/api/admin/reports/{report_id}")
+def adm_get_report_detail(report_id: str, admin: dict = Depends(require_admin)):
+    """Get detailed information about a specific report."""
+    from db_service import admin_get_report_detail
+    report = admin_get_report_detail(report_id)
+    if not report:
+        raise HTTPException(404, "Report not found")
+    return report
+
+class ReportResponseRequest(BaseModel):
+    status: str  # 'reviewed' | 'resolved' | 'dismissed'
+    response: Optional[str] = None
+
+@app.post("/api/admin/reports/{report_id}/respond")
+def adm_respond_to_report(
+    report_id: str,
+    req: ReportResponseRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Respond to a content report.
+    
+    Admin can update status and optionally provide a response message to the reporter.
+    """
+    from db_service import admin_respond_to_report
+    
+    try:
+        result = admin_respond_to_report(
+            report_id=report_id,
+            admin_id=admin["id"],
+            status=req.status,
+            response=req.response
+        )
+        if result:
+            admin_log_operation(
+                admin["id"], 
+                "report_response", 
+                details=f"Report {report_id} - Status: {req.status}",
+                reason=req.response
+            )
+            return {"success": True, "report": result}
+        raise HTTPException(404, "Report not found")
+    except Exception as e:
+        raise HTTPException(400, str(e))
 
 
 # ==========================================
