@@ -65,7 +65,7 @@ class CreditService:
         NOTE: For production, this should use a database transaction (RPC function)
         to ensure atomicity. Current implementation does a best-effort approach.
         
-        PRD requirement: "原子化扣费: 任何扣分操作必须使用数据库事务"
+        PRD requirement: ": "
         
         Args:
             user_id: User ID
@@ -223,7 +223,7 @@ class CreditService:
     def is_first_generation(self, user_id: str) -> bool:
         """
         Check if this is user's first AI generation.
-        PRD: 首次生成 0 Credits 作为 onboarding 体验
+        PRD:  0 Credits  onboarding 
         
         Args:
             user_id: User ID
@@ -240,7 +240,7 @@ class CreditService:
     def get_generation_cost(self, user_id: str) -> int:
         """
         Get cost for AI image generation.
-        PRD: 5 Credits/Image, 首次生成 0 Credits
+        PRD: 5 Credits/Image,  0 Credits
         
         Args:
             user_id: User ID

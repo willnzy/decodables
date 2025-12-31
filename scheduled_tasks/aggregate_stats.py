@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Scheduled Data Aggregation Task
-定时数据聚合任务
 
 This script should be run periodically (e.g., every hour via cron) to:
 1. Pre-compute dashboard statistics
@@ -53,8 +52,7 @@ def log(message):
 
 def aggregate_daily_user_stats():
     """
-    Aggregate daily user statistics
-    每日用户统计聚合
+    Aggregate daily user statistics.
     """
     log("📊 Starting daily user stats aggregation...")
     
@@ -115,8 +113,7 @@ def aggregate_daily_user_stats():
 
 def aggregate_daily_revenue():
     """
-    Aggregate daily revenue statistics
-    每日收入统计聚合
+    Aggregate daily revenue statistics.
     """
     log("💰 Starting daily revenue aggregation...")
     
@@ -177,8 +174,7 @@ def aggregate_daily_revenue():
 
 def aggregate_daily_projects():
     """
-    Aggregate daily project statistics
-    每日项目统计聚合
+    Aggregate daily project statistics.
     """
     log("📁 Starting daily projects aggregation...")
     
@@ -232,7 +228,7 @@ def aggregate_daily_projects():
 def aggregate_credit_usage():
     """
     Aggregate credit usage by type
-    积分使用统计聚合
+    
     """
     log("⚡ Starting credit usage aggregation...")
     
@@ -278,7 +274,7 @@ def aggregate_credit_usage():
 def aggregate_tier_distribution():
     """
     Aggregate user tier distribution
-    用户等级分布聚合
+    
     """
     log("👥 Starting tier distribution aggregation...")
     
@@ -310,7 +306,7 @@ def aggregate_tier_distribution():
 def aggregate_conversion_funnel():
     """
     Aggregate conversion funnel data
-    转化漏斗聚合
+    
     """
     log("📈 Starting conversion funnel aggregation...")
     
@@ -364,7 +360,7 @@ def aggregate_conversion_funnel():
 def aggregate_event_stats():
     """
     Aggregate user event statistics
-    用户事件统计聚合
+    
     """
     log("📊 Starting event stats aggregation...")
     
@@ -398,7 +394,7 @@ def aggregate_event_stats():
 def aggregate_generation_stats():
     """
     Aggregate AI generation statistics
-    AI 生成统计聚合
+    AI 
     """
     log("🎨 Starting generation stats aggregation...")
     
@@ -453,7 +449,7 @@ def aggregate_generation_stats():
 def aggregate_marketplace_stats():
     """
     Aggregate marketplace statistics
-    市场统计聚合
+    
     """
     log("🏪 Starting marketplace stats aggregation...")
     
@@ -511,7 +507,7 @@ def aggregate_marketplace_stats():
 def aggregate_retention_stats():
     """
     Aggregate user retention statistics
-    用户留存统计聚合
+    
     """
     log("📈 Starting retention stats aggregation...")
     
@@ -568,7 +564,7 @@ def aggregate_retention_stats():
 def aggregate_feature_usage():
     """
     Aggregate feature usage statistics
-    功能使用统计聚合
+    
     """
     log("⚙️ Starting feature usage aggregation...")
     
@@ -615,13 +611,13 @@ def aggregate_feature_usage():
 def aggregate_export_stats():
     """
     Aggregate export/download statistics
-    导出/下载操作统计聚合（PDF、ZIP、打印、预览）
+    /（PDF、ZIP、、）
     """
     log("📊 Starting export stats aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 统计最近30天的导出数据
+    # 30
     stats_by_date = {}
     total_pdf = 0
     total_zip = 0
@@ -634,7 +630,7 @@ def aggregate_export_stats():
         next_date = date + timedelta(days=1)
         
         try:
-            # 从 activity_logs 统计
+            #  activity_logs 
             logs = supabase.table("activity_logs").select("action")\
                 .in_("action", ["download_pdf", "export_zip", "print_project", "preview_pdf"])\
                 .gte("created_at", date.isoformat())\
@@ -660,7 +656,7 @@ def aggregate_export_stats():
         except Exception as e:
             log(f"  Warning: Failed to get export logs for {date_str}: {e}")
     
-    # 构建趋势数据（最近30天，从旧到新排序）
+    # （30，）
     trend_data = []
     for i in range(29, -1, -1):
         date = (now - timedelta(days=i)).date()
@@ -695,18 +691,18 @@ def aggregate_export_stats():
 def aggregate_tier_activity():
     """
     Aggregate user activity by tier
-    按用户等级统计活跃度
+    
     """
     log("👥 Starting tier activity aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 统计各等级的活跃情况（最近7天）
+    # （7）
     tier_activity = {}
     tiers = ["free", "starter", "pro"]
     
     for tier in tiers:
-        # 获取该等级的所有用户
+        # 
         users = supabase.table("profiles").select("id")\
             .eq("tier", tier).execute()
         user_ids = [u.get("id") for u in users.data or []]
@@ -721,13 +717,13 @@ def aggregate_tier_activity():
             }
             continue
         
-        # 统计活跃用户（最近7天有活动）
+        # （7）
         start_date = (now - timedelta(days=7)).isoformat()
         
         active_users_set = set()
         total_actions = 0
         
-        # 分批查询（避免查询太大）
+        # （）
         batch_size = 100
         for i in range(0, min(len(user_ids), 500), batch_size):
             batch_ids = user_ids[i:i+batch_size]
@@ -764,13 +760,13 @@ def aggregate_tier_activity():
 def aggregate_subscription_events():
     """
     Aggregate subscription events (upgrades, downgrades, cancellations, refunds)
-    订阅事件统计（升级、降级、取消、退款）
+    （、、、）
     """
     log("💳 Starting subscription events aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 最近30天的事件统计
+    # 30
     subscription_stats_by_date = {}
     total_upgrades = 0
     total_downgrades = 0
@@ -784,7 +780,7 @@ def aggregate_subscription_events():
         
         day_stats = {"upgrades": 0, "downgrades": 0, "cancellations": 0, "refunds": 0}
         
-        # 从 admin_operation_logs 获取管理员操作记录
+        #  admin_operation_logs 
         try:
             logs = supabase.table("admin_operation_logs").select("action")\
                 .in_("action", ["tier_upgraded", "tier_downgraded", "subscription_cancelled", "refund_processed"])\
@@ -808,7 +804,7 @@ def aggregate_subscription_events():
         except Exception as e:
             log(f"  Warning: Failed to get subscription events for {date_str}: {e}")
         
-        # 也从 credit_transactions 获取退款记录
+        #  credit_transactions 
         try:
             refunds = supabase.table("credit_transactions").select("id", count="exact")\
                 .eq("type", "refund")\
@@ -821,7 +817,7 @@ def aggregate_subscription_events():
         
         subscription_stats_by_date[date_str] = day_stats
     
-    # 构建趋势数据
+    # 
     trend_data = []
     for i in range(29, -1, -1):
         date = (now - timedelta(days=i)).date()
@@ -856,13 +852,13 @@ def aggregate_subscription_events():
 def aggregate_page_views():
     """
     Aggregate page view statistics
-    页面访问统计聚合
+    
     """
     log("📄 Starting page view aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 从 user_events 获取页面访问数据
+    #  user_events 
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
@@ -881,7 +877,7 @@ def aggregate_page_views():
             page_counts[page_name] += 1
             page_tier_counts[page_name][user_tier] += 1
         
-        # 转换为可存储格式
+        # 
         page_data = {}
         for page, count in page_counts.items():
             page_data[page] = {
@@ -913,19 +909,19 @@ def aggregate_page_views():
 def aggregate_project_details():
     """
     Aggregate detailed project statistics (deletions, OCR usage, page counts)
-    项目详细统计（删除、OCR使用、页面数）
+    （、OCR、）
     """
     log("📁 Starting project details aggregation...")
     
     now = datetime.now(timezone.utc)
     start_date = (now - timedelta(days=30)).isoformat()
     
-    # 统计删除的项目
+    # 
     deleted_count = supabase.table("projects").select("id", count="exact")\
         .eq("is_deleted", True)\
         .gte("deleted_at", start_date).execute()
     
-    # 统计 OCR 使用（从 user_events）
+    #  OCR （ user_events）
     try:
         ocr_events = supabase.table("user_events").select("id", count="exact")\
             .eq("event_type", "ocr_scan")\
@@ -934,8 +930,8 @@ def aggregate_project_details():
     except Exception:
         ocr_count = 0
     
-    # 统计页面总数（从 projects.canvas_data）
-    # 注：这需要解析 JSONB，比较复杂，用估算
+    # （ projects.canvas_data）
+    # ： JSONB，，
     projects_with_data = supabase.table("projects").select("canvas_data")\
         .not_.is_("canvas_data", "null")\
         .gte("created_at", start_date)\
@@ -973,7 +969,7 @@ def aggregate_project_details():
 def aggregate_returning_users():
     """
     Aggregate returning user statistics (users who came back after inactivity)
-    回流用户统计（不活跃后回归的用户）
+    （）
     """
     log("🔄 Starting returning users aggregation...")
     
@@ -983,11 +979,11 @@ def aggregate_returning_users():
     returning_data = {}
     
     for period_days in [7, 14, 30]:
-        # 用户在 X 天前不活跃，但今天又活跃了
+        #  X ，
         inactive_start = today - timedelta(days=period_days)
         inactive_end = today - timedelta(days=1)
         
-        # 获取今天活跃的用户
+        # 
         active_today = supabase.table("activity_logs").select("user_id")\
             .gte("created_at", today.isoformat())\
             .lt("created_at", now.isoformat()).execute()
@@ -997,16 +993,16 @@ def aggregate_returning_users():
             returning_data[f"returning_{period_days}d"] = {"count": 0, "ids": []}
             continue
         
-        # 检查这些用户在过去 X 天是否不活跃
+        #  X 
         returning_users = []
-        for user_id in list(active_today_ids)[:100]:  # 限制检查数量
+        for user_id in list(active_today_ids)[:100]:  # 
             activity_in_period = supabase.table("activity_logs").select("id", count="exact")\
                 .eq("user_id", user_id)\
                 .gte("created_at", inactive_start.isoformat())\
                 .lt("created_at", inactive_end.isoformat()).execute()
             
             if (activity_in_period.count or 0) == 0:
-                # 确认用户在更早之前有过活动
+                # 
                 earlier_activity = supabase.table("activity_logs").select("id", count="exact")\
                     .eq("user_id", user_id)\
                     .lt("created_at", inactive_start.isoformat()).execute()
@@ -1016,7 +1012,7 @@ def aggregate_returning_users():
         
         returning_data[f"returning_{period_days}d"] = {
             "count": len(returning_users),
-            "sample_ids": returning_users[:10]  # 只保存前10个作为示例
+            "sample_ids": returning_users[:10]  # 10
         }
     
     stats_data = {
@@ -1037,7 +1033,7 @@ def aggregate_returning_users():
 def aggregate_tier_trend():
     """
     Aggregate tier distribution trend over time
-    各等级用户数趋势聚合
+    
     """
     log("📈 Starting tier trend aggregation...")
     
@@ -1051,8 +1047,8 @@ def aggregate_tier_trend():
         date_str = date.strftime("%Y-%m-%d")
         next_date = date + timedelta(days=1)
         
-        # 统计截止到该日期的各等级用户数
-        # 注：这是一个简化的统计，实际应该用快照或更精确的方法
+        # 
+        # ：，
         tier_counts = {}
         for tier in ["free", "starter", "pro"]:
             count = supabase.table("profiles").select("id", count="exact")\
@@ -1060,16 +1056,16 @@ def aggregate_tier_trend():
                 .lt("created_at", next_date.isoformat()).execute()
             tier_counts[tier] = count.count or 0
         
-        # 估算游客数（注册用户的4倍减去已注册）
+        # （4）
         total_registered = sum(tier_counts.values())
-        tier_counts["guest"] = total_registered * 3  # 估算
+        tier_counts["guest"] = total_registered * 3  # 
         
         trend_data.append({
             "date": date.strftime("%m/%d"),
             **tier_counts
         })
     
-    # 反转使其从旧到新
+    # 
     trend_data.reverse()
     
     stats_data = {
@@ -1090,7 +1086,7 @@ def aggregate_tier_trend():
 def aggregate_tier_conversion():
     """
     Aggregate tier conversion data (guest->free, free->starter, etc.)
-    用户转化数据聚合
+    
     """
     log("🔄 Starting tier conversion aggregation...")
     
@@ -1099,7 +1095,7 @@ def aggregate_tier_conversion():
     
     conversion_data = []
     
-    # 从 admin_operation_logs 获取等级变更记录
+    #  admin_operation_logs 
     try:
         logs = supabase.table("admin_operation_logs").select("action, details")\
             .in_("action", ["tier_upgraded", "tier_changed", "tier_downgraded"])\
@@ -1116,7 +1112,7 @@ def aggregate_tier_conversion():
                 key = f"{old_tier}_{new_tier}"
                 conversion_counts[key]["count"] += 1
         
-        # 转换为列表格式
+        # 
         for key, data in conversion_counts.items():
             parts = key.split("_")
             if len(parts) == 2:
@@ -1124,12 +1120,12 @@ def aggregate_tier_conversion():
                     "from": parts[0].capitalize() if parts[0] != "free" else "Free",
                     "to": parts[1].capitalize() if parts[1] != "free" else "Free",
                     "count": data["count"],
-                    "rate": 0  # 需要更多数据来计算转化率
+                    "rate": 0  # 
                 })
     except Exception as e:
         log(f"  Warning: Failed to get conversion logs: {e}")
     
-    # 添加游客到 Free 的转化（新注册用户）
+    #  Free （）
     new_free = supabase.table("profiles").select("id", count="exact")\
         .eq("tier", "free")\
         .gte("created_at", start_date).execute()
@@ -1138,10 +1134,10 @@ def aggregate_tier_conversion():
         "from": "Guest",
         "to": "Free",
         "count": new_free.count or 0,
-        "rate": 25  # 估算值，可基于 session 数据计算
+        "rate": 25  # ， session 
     })
     
-    # 添加游客直接到付费的转化
+    # 
     new_paid = supabase.table("profiles").select("id", count="exact")\
         .in_("tier", ["starter", "pro"])\
         .gte("created_at", start_date).execute()
@@ -1151,7 +1147,7 @@ def aggregate_tier_conversion():
             "from": "Guest",
             "to": "Starter/Pro",
             "count": new_paid.count or 0,
-            "rate": 5  # 估算值
+            "rate": 5  # 
         })
     
     stats_data = {
@@ -1172,20 +1168,20 @@ def aggregate_tier_conversion():
 def aggregate_asset_usage():
     """
     Aggregate marketplace asset usage statistics
-    素材使用排名统计聚合
+    
     """
     log("🎨 Starting asset usage aggregation...")
     
     now = datetime.now(timezone.utc)
     
-    # 获取所有使用记录并关联 listing 信息
+    #  listing 
     try:
-        # 获取 listing_usage 并关联 marketplace_listings
+        #  listing_usage  marketplace_listings
         usage_data = supabase.table("listing_usage").select(
             "listing_id, used_by_user_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type, seller_id)"
         ).execute()
         
-        # 统计每个素材的使用次数
+        # 
         usage_counts = defaultdict(lambda: {"count": 0, "unique_users": set(), "listing": None})
         
         for record in usage_data.data or []:
@@ -1199,7 +1195,7 @@ def aggregate_asset_usage():
                 if not usage_counts[listing_id]["listing"]:
                     usage_counts[listing_id]["listing"] = listing_info
         
-        # 转换为排名列表
+        # 
         rankings = []
         for listing_id, data in usage_counts.items():
             listing = data["listing"] or {}
@@ -1213,17 +1209,17 @@ def aggregate_asset_usage():
                 "unique_users": len(data["unique_users"])
             })
         
-        # 按使用次数排序，取前50
+        # ，50
         rankings.sort(key=lambda x: -x["usage_count"])
         top_assets = rankings[:50]
         
-        # 按类型分组排名
+        # 
         by_type = {}
         for item in rankings:
             rtype = item.get("resource_type", "other")
             if rtype not in by_type:
                 by_type[rtype] = []
-            if len(by_type[rtype]) < 20:  # 每类型取前20
+            if len(by_type[rtype]) < 20:  # 20
                 by_type[rtype].append(item)
         
         stats_data = {
@@ -1251,7 +1247,7 @@ def aggregate_asset_usage():
 def aggregate_performance_metrics():
     """
     Aggregate page performance metrics (Core Web Vitals)
-    页面性能指标聚合
+    
     """
     log("⚡ Starting performance metrics aggregation...")
     
@@ -1259,7 +1255,7 @@ def aggregate_performance_metrics():
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
-        # 从 user_events 获取性能指标事件
+        #  user_events 
         events = supabase.table("user_events").select("properties")\
             .eq("event_type", "performance_metrics")\
             .gte("created_at", start_date).execute()
@@ -1268,7 +1264,7 @@ def aggregate_performance_metrics():
             log("  No performance data found")
             return
         
-        # 聚合各项指标
+        # 
         metrics_agg = {
             "lcp": {"values": [], "ratings": defaultdict(int)},
             "fid": {"values": [], "ratings": defaultdict(int)},
@@ -1285,7 +1281,7 @@ def aggregate_performance_metrics():
             props = event.get("properties", {})
             page_url = props.get("page_url", "/")
             
-            # 聚合各项指标
+            # 
             for metric in ["lcp", "fid", "cls", "fcp", "ttfb", "domComplete", "loadComplete"]:
                 key = metric.lower().replace("complete", "_complete")
                 value = props.get(metric) or props.get(key)
@@ -1293,19 +1289,19 @@ def aggregate_performance_metrics():
                     if key in metrics_agg:
                         metrics_agg[key]["values"].append(value)
                     
-                    # 统计评级
+                    # 
                     rating = props.get(f"{metric}_rating") or props.get(f"{key}_rating")
                     if rating and key in metrics_agg and "ratings" in metrics_agg[key]:
                         metrics_agg[key]["ratings"][rating] += 1
             
-            # 按页面聚合
+            # 
             page_metrics[page_url]["count"] += 1
             if lcp := props.get("lcp"):
                 page_metrics[page_url]["lcp_sum"] += lcp
             if fcp := props.get("fcp"):
                 page_metrics[page_url]["fcp_sum"] += fcp
         
-        # 计算统计值
+        # 
         def calc_stats(values):
             if not values:
                 return {"avg": 0, "p50": 0, "p75": 0, "p95": 0, "count": 0}
@@ -1319,7 +1315,7 @@ def aggregate_performance_metrics():
                 "count": n
             }
         
-        # 构建聚合数据
+        # 
         aggregated = {}
         for key, data in metrics_agg.items():
             aggregated[key] = {
@@ -1327,7 +1323,7 @@ def aggregate_performance_metrics():
                 "ratings": dict(data.get("ratings", {}))
             }
         
-        # 按页面的平均指标
+        # 
         page_averages = {}
         for page, data in page_metrics.items():
             if data["count"] > 0:
@@ -1361,7 +1357,7 @@ def aggregate_performance_metrics():
 def aggregate_user_distribution():
     """
     Aggregate user distribution by country, browser, OS, device
-    用户地理/设备分布聚合
+    /
     """
     log("🌍 Starting user distribution aggregation...")
     
@@ -1369,7 +1365,7 @@ def aggregate_user_distribution():
     start_date = (now - timedelta(days=7)).isoformat()
     
     try:
-        # 从 user_events 获取 session_start 事件
+        #  user_events  session_start 
         events = supabase.table("user_events").select("properties")\
             .eq("event_type", "session_start")\
             .gte("created_at", start_date).execute()
@@ -1378,7 +1374,7 @@ def aggregate_user_distribution():
             log("  No session data found")
             return
         
-        # 聚合分布数据
+        # 
         distributions = {
             "country": defaultdict(int),
             "browser": defaultdict(int),
@@ -1391,37 +1387,37 @@ def aggregate_user_distribution():
         for event in events.data or []:
             props = event.get("properties", {})
             
-            # 国家（优先使用服务端数据）
+            # （）
             country = props.get("server_country") or props.get("country_code") or "unknown"
             distributions["country"][country] += 1
             
-            # 浏览器
+            # 
             browser = props.get("client_browser") or props.get("browser") or "unknown"
-            # 简化浏览器名称
+            # 
             browser_name = browser.split()[0] if browser else "unknown"
             distributions["browser"][browser_name] += 1
             
-            # 操作系统
+            # 
             os_info = props.get("client_os") or props.get("os") or "unknown"
-            # 简化 OS 名称
+            #  OS 
             os_name = os_info.split()[0] if os_info else "unknown"
             distributions["os"][os_name] += 1
             
-            # 设备类型
+            # 
             device = props.get("client_device_type") or props.get("device_type") or "unknown"
             distributions["device_type"][device] += 1
             
-            # 语言
+            # 
             lang = props.get("client_language") or props.get("language") or "unknown"
-            # 简化语言代码
+            # 
             lang_code = lang.split("-")[0] if lang else "unknown"
             distributions["language"][lang_code] += 1
             
-            # 时区
+            # 
             tz = props.get("client_timezone") or props.get("timezone") or "unknown"
             distributions["timezone"][tz] += 1
         
-        # 转换为列表格式并排序
+        # 
         result = {}
         for key, counts in distributions.items():
             sorted_items = sorted(counts.items(), key=lambda x: -x[1])[:30]  # Top 30
@@ -1455,24 +1451,24 @@ def run_hourly_tasks():
     aggregate_event_stats()
     aggregate_feature_usage()
     aggregate_page_views()
-    aggregate_performance_metrics()  # 新增：性能指标聚合
-    aggregate_user_distribution()    # 新增：用户分布聚合
+    aggregate_performance_metrics()  # ：
+    aggregate_user_distribution()    # ：
     
     log("✅ Hourly tasks complete")
 
 
 def cleanup_expired_deleted_projects():
     """
-    清理30天前删除的项目（永久删除）
+    30（）
     Projects deleted more than 30 days ago are permanently removed
     """
     log("🗑️ Cleaning up expired deleted projects...")
     
     try:
-        # 计算30天前的时间
+        # 30
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         
-        # 查找需要永久删除的项目
+        # 
         expired_projects = supabase.table("projects").select("id, title, user_id, deleted_at")\
             .eq("is_deleted", True)\
             .lt("deleted_at", cutoff_date)\
@@ -1485,7 +1481,7 @@ def cleanup_expired_deleted_projects():
         count = len(expired_projects.data)
         log(f"   Found {count} projects to permanently delete")
         
-        # 永久删除这些项目
+        # 
         for project in expired_projects.data:
             try:
                 supabase.table("projects").delete().eq("id", project["id"]).execute()
@@ -1503,7 +1499,7 @@ def run_daily_tasks():
     """Run tasks that should be executed daily"""
     log("📅 Running daily aggregation tasks...")
     
-    # 清理过期的已删除项目
+    # 
     cleanup_expired_deleted_projects()
     
     aggregate_daily_user_stats()
@@ -1517,7 +1513,7 @@ def run_daily_tasks():
     aggregate_export_stats()
     aggregate_asset_usage()
     
-    # 新增聚合任务
+    # 
     aggregate_tier_activity()
     aggregate_subscription_events()
     aggregate_project_details()

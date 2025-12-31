@@ -1,18 +1,18 @@
 -- ==============================================================================
--- 迁移脚本：为 profiles 表添加 user_code 字段
+-- ： profiles  user_code 
 -- 
--- 步骤 1: 添加字段（如果不存在）
--- 步骤 2: 为现有用户生成 user_code
+--  1: （）
+--  2:  user_code
 -- 
--- User Code 格式: YYYYMMDDHHMMSS + 毫秒(3位) + 用户序号(7位)
--- 例如: 202512301430251230000001
+-- User Code : YYYYMMDDHHMMSS + (3) + (7)
+-- : 202512301430251230000001
 -- 
--- 注意:
--- - 时间使用 UTC-0 (created_at 在 Supabase 中已经是 timestamptz，默认 UTC)
--- - 序号补0到7位数 (0000001 - 9999999)
+-- :
+-- -  UTC-0 (created_at  Supabase  timestamptz， UTC)
+-- - 07 (0000001 - 9999999)
 -- ==============================================================================
 
--- 步骤 1: 添加 user_code 字段（如果不存在）
+--  1:  user_code （）
 DO $$ 
 BEGIN
   IF NOT EXISTS (
@@ -26,8 +26,8 @@ BEGIN
   END IF;
 END $$;
 
--- 步骤 2: 为现有用户生成 user_code
--- 使用 created_at 时间戳 (转换为 UTC) + 行号作为序号
+--  2:  user_code
+--  created_at  ( UTC) + 
 WITH numbered_users AS (
   SELECT 
     id,
@@ -38,23 +38,23 @@ WITH numbered_users AS (
 )
 UPDATE profiles p
 SET user_code = 
-  -- 日期部分: YYYYMMDDHHMMSS (UTC 时间)
+  -- : YYYYMMDDHHMMSS (UTC )
   TO_CHAR(nu.created_at_utc, 'YYYYMMDDHH24MISS') ||
-  -- 毫秒部分: 3位，补0
+  -- : 3，0
   LPAD(FLOOR(EXTRACT(MILLISECONDS FROM nu.created_at_utc))::int::text, 3, '0') ||
-  -- 序号部分: 7位，补0
+  -- : 7，0
   LPAD(nu.row_num::text, 7, '0')
 FROM numbered_users nu
 WHERE p.id = nu.id;
 
--- 验证结果
+-- 
 SELECT 
   COUNT(*) as total_users,
   COUNT(user_code) as users_with_code,
   COUNT(*) - COUNT(user_code) as users_without_code
 FROM profiles;
 
--- 查看生成的 user_code 示例
+--  user_code 
 SELECT id, email, user_code, created_at 
 FROM profiles 
 WHERE user_code IS NOT NULL 

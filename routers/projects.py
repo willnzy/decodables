@@ -126,8 +126,8 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
     """
     Save/update project (PRD v3.2).
     
-    - Free 用户 7天游玩期检查：如果注册超过7天，阻止编辑
-    - 项目数量限制检查：如果降级后超过限制，阻止编辑
+    - Free  7：7，
+    - ：，
     - Save Project does NOT charge credits
     - Validates access to referenced listings
     - Records listing usage for usage_count

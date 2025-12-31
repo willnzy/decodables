@@ -1,8 +1,8 @@
 """
 Background Scheduler for Data Aggregation Tasks
-后台定时任务调度器
 
-集成到 FastAPI 应用中，在 Railway 上自动运行
+
+ FastAPI ， Railway 
 """
 
 import os
@@ -41,7 +41,7 @@ def run_daily_aggregation():
 def init_scheduler():
     """
     Initialize and start the scheduler
-    在 FastAPI 启动时调用
+     FastAPI 
     """
     # Only run scheduler in production or if explicitly enabled
     enable_scheduler = os.environ.get("ENABLE_SCHEDULER", "true").lower() == "true"
@@ -77,7 +77,7 @@ def init_scheduler():
 def shutdown_scheduler():
     """
     Shutdown the scheduler gracefully
-    在 FastAPI 关闭时调用
+     FastAPI 
     """
     if scheduler.running:
         scheduler.shutdown(wait=False)
@@ -86,7 +86,7 @@ def shutdown_scheduler():
 def run_aggregation_now(task_type: str = "all"):
     """
     Manually trigger aggregation (for admin API)
-    手动触发聚合（用于 admin API）
+    （ admin API）
     """
     if task_type == "hourly":
         run_hourly_aggregation()

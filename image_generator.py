@@ -7,7 +7,7 @@ from supabase import create_client, Client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-BUCKET_NAME = "generated-images" # 对应 PRD 的 Bucket
+BUCKET_NAME = "generated-images" #  PRD  Bucket
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
@@ -31,7 +31,7 @@ async def generate_and_upload_single(session, prompt, index, task_id, model="flu
             model_endpoint = "fal-ai/flux/schnell"
             num_inference_steps = 4  # Faster generation
         
-        # 1. 调用 Fal
+        # 1.  Fal
         handler = await fal_client.submit_async(
             model_endpoint,
             arguments={
@@ -44,7 +44,7 @@ async def generate_and_upload_single(session, prompt, index, task_id, model="flu
         result = await handler.get()
         image_url = result['images'][0]['url']
         
-        # 2. 转存 Supabase
+        # 2.  Supabase
         async with session.get(image_url) as response:
             if response.status == 200:
                 image_bytes = await response.read()

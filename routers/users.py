@@ -30,12 +30,12 @@ def get_me(user: dict = Depends(get_current_user)):
     """
     user_id = user["id"]
     
-    # 检查并重置 monthly credits（如果需要）
-    # 这确保即使 Stripe webhook 没有触发，monthly credits 也会按时重置
-    # permanent credits 永远不会被重置
+    #  monthly credits（）
+    #  Stripe webhook ，monthly credits 
+    # permanent credits 
     check_and_reset_monthly_credits_if_needed(user_id)
     
-    # 重新获取用户信息（可能已更新）
+    # （）
     user_profile = get_user_profile(user_id)
     if not user_profile:
         # Fallback to user dict if profile not found

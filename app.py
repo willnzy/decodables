@@ -811,12 +811,12 @@ def get_proj(id: str, user: dict = Depends(get_current_user)):
 @app.put("/api/projects/{id}")
 def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user)):
     """
-    保存项目（PRD 第12章）
+    Save project API (PRD §12).
     
-    - Save Project 不扣费
-    - 保存 canvas_data 与引用关系
-    - 必须校验：项目中新增引用的 listing 是否可用（can_access_resource）
-    - 使用次数统计：对新产生的 listing 应用写入 listing_usage
+    - No credits charged for saving
+    - Persist canvas_data and listing references
+    - Validate access to any newly added listings (can_access_resource)
+    - Record listing usage stats for newly referenced items
     """
     # Debug: Log incoming canvas_data
     if req.canvas_data:
@@ -835,14 +835,14 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
     locked_elements = []
     new_usage_recorded = []
     
-    # 如果有新增的 listing 引用
+    # Handle newly referenced listings
     if req.used_listing_ids:
         for listing_id in req.used_listing_ids:
-            # 获取 listing 信息
+            # Fetch listing details
             listing = get_marketplace_item(listing_id, user["id"])
             
             if listing:
-                # 检查访问权限
+                # Verify access permissions
                 allowed_tiers = listing.get("allowed_tiers", ["free"])
                 if not can_access_resource(user, allowed_tiers):
                     locked_elements.append({
@@ -851,15 +851,15 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
                         "reason": "Upgrade required to access this resource"
                     })
                 else:
-                    # 记录使用（去重）
+                    # Record usage (deduplicated)
                     is_new = record_listing_usage(listing_id, user["id"], id)
                     if is_new:
                         new_usage_recorded.append(listing_id)
     
-    # 保存项目
+    # Persist project
     save_project(id, user["id"], req.canvas_data, req.thumbnail_url, req.title)
     
-    # 更新项目的 contains_locked_elements 标记
+    # Flag project if it contains locked elements
     if locked_elements:
         supabase.table("projects").update({
             "contains_locked_elements": True
@@ -874,7 +874,7 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
 @app.post("/api/projects/{id}/duplicate")
 @limiter.limit("10/minute")  # Project duplication rate limit
 def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_user)):
-    """复制项目（购买的项目不能复制）"""
+    """Duplicate a project (disallowed for purchased projects)."""
     from db_service import duplicate_project
     try:
         new_project = duplicate_project(id, user["id"])
@@ -950,7 +950,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "model_used": model  # Return model info for debugging
     }
 
-# [升级] 高级 OCR 接口 - 支持识别表格、文字、图片区域
+# Advanced OCR endpoint - detects tables, text, and images
 @app.post("/api/tools/ocr")
 @limiter.limit("10/minute")
 async def ocr_tool(
@@ -960,19 +960,19 @@ async def ocr_tool(
     user: dict = Depends(get_current_user)
 ):
     """
-    高级智能识图 - Pro 可用
+    Advanced Smart Scan (Pro only).
     
-    识别图片中的：
-    - 文字内容（支持多语言）
-    - 表格结构
-    - 手绘图片区域
+    Recognizes the following from uploaded images:
+    - Text content (multi-language)
+    - Table structures
+    - Handwritten or sketched regions
     
-    返回结构化 JSON，可直接添加到画布
+    Returns structured JSON suitable for direct canvas insertion.
     """
     if user["tier"] != "pro":
         raise HTTPException(status_code=403, detail="Upgrade to Teacher Pro to use Smart Scan")
     
-    # 扣费 5 Credits
+    # Deduct 5 credits for Smart Scan
     try:
         credit_result = credit_deduct(user["id"], 5, "ocr", "Smart Scan")
     except Exception as e:
@@ -981,11 +981,11 @@ async def ocr_tool(
         raise
     
     try:
-        # 读取文件内容
+        # Read file contents
         contents = await file.read()
         base64_image = base64.b64encode(contents).decode('utf-8')
         
-        # 上传原始图片到 Supabase Storage
+        # Upload original image to Supabase Storage
         import uuid
         from image_generator import supabase as storage_supabase, BUCKET_NAME
         
@@ -1004,7 +1004,7 @@ async def ocr_tool(
             except Exception as upload_err:
                 print(f"Failed to upload scan source: {upload_err}")
         
-        # 使用 GPT-4o 进行高级 OCR - 自适应提示词
+        # Use GPT-4o for adaptive OCR prompts
         ocr_prompt = """You are an expert OCR and content analysis system. 
 
 STEP 1: First, identify what type of content this image contains:
@@ -1054,7 +1054,7 @@ CRITICAL EXTRACTION RULES:
 Return ONLY valid JSON, no markdown formatting."""
 
         response = openai_client.chat.completions.create(
-            model="gpt-4o",  # 使用 GPT-4o 获得最佳识别效果
+            model="gpt-4o",  # Use GPT-4o for best recognition accuracy
             messages=[
                 {
                     "role": "user",
@@ -1068,11 +1068,11 @@ Return ONLY valid JSON, no markdown formatting."""
             response_format={"type": "json_object"}
         )
         
-        # 解析 OCR 结果
+        # Parse OCR response
         import json
         ocr_result = json.loads(response.choices[0].message.content)
         
-        # 转换为画布元素
+        # Convert extracted content into canvas elements
         canvas_elements = []
         y_offset = 50
         
@@ -1113,14 +1113,14 @@ Return ONLY valid JSON, no markdown formatting."""
                 })
                 y_offset += 220
         
-        # 保存到 assets 表
+        # Persist scan data in assets table
         scan_data = {
             "source_image_url": source_image_url,
             "ocr_result": ocr_result,
             "canvas_elements": canvas_elements
         }
         
-        # 存储为 scanned 类型的 asset
+        # Store as a 'scanned' asset entry
         asset_id = None
         try:
             asset_result = supabase.table("assets").insert({
@@ -1158,29 +1158,29 @@ Return ONLY valid JSON, no markdown formatting."""
 
 # --- Export ---
 
-# [新增] 从项目直接生成 PDF（用于 Dashboard）- 免费
+# Generate PDF directly from project data (Dashboard) - free
 @app.get("/api/projects/{project_id}/pdf")
-@limiter.limit("10/minute")  # PDF 生成消耗服务器资源
+@limiter.limit("10/minute")  # PDF generation consumes server resources
 def get_project_pdf(request: Request, project_id: str, user: dict = Depends(get_current_user)):
-    """从保存的项目数据生成 PDF，无需再次传入图片和文字 - 永久免费"""
+    """Generate a PDF from stored project data without re-uploading assets (always free)."""
     proj = get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
     
     canvas_data = proj.get("canvas_data", {})
     
-    # 处理新旧格式
+    # Handle legacy vs new canvas_data formats
     if isinstance(canvas_data, list):
-        # 旧格式: canvas_data 直接是 pages 数组
+        # Legacy format: canvas_data is a pages array
         pages = canvas_data
         paper_size = "US_LETTER"
     else:
-        # 新格式: canvas_data 是 { pages, paperSize }
+        # New format: canvas_data is { pages, paperSize }
         pages = canvas_data.get("pages", [])
         paper_size_raw = canvas_data.get("paperSize", "Letter")
         paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
     
-    # 提取图片 URL 和文字
+    # Extract preview images and prompt text
     image_urls = []
     texts = []
     for page in pages:
@@ -1191,20 +1191,20 @@ def get_project_pdf(request: Request, project_id: str, user: dict = Depends(get_
             image_urls.append("")
             texts.append("")
     
-    # 补齐 8 页
+    # Pad to 8 pages
     while len(image_urls) < 8:
         image_urls.append("")
         texts.append("")
     
-    # 生成 PDF
+    # Render PDF
     buf = BytesIO()
     create_foldable_book(image_urls, texts, buf, paper_type=paper_size)
     buf.seek(0)
     
-    # 生成文件名
+    # Build filename
     title = proj.get("title", "project").replace(" ", "_")
     
-    # 记录下载行为（不扣费）
+    # Log download (no credits deducted)
     log_activity(user["id"], "download_pdf", {"project_id": project_id})
     
     return StreamingResponse(
@@ -1213,11 +1213,11 @@ def get_project_pdf(request: Request, project_id: str, user: dict = Depends(get_
         headers={"Content-Disposition": f"attachment; filename={title}.pdf"}
     )
 
-# [新增] 预览 PDF 为图片（防止用户绕过下载）
+# Generate PDF preview image (prevent direct download bypass)
 @app.get("/api/projects/{project_id}/preview")
 @limiter.limit("20/minute")  # Preview generation rate limit
 def preview_project_as_image(request: Request, project_id: str, user: dict = Depends(get_current_user)):
-    """生成 PDF 预览图片，防止用户直接下载 PDF"""
+    """Generate a PNG preview of the PDF to deter direct downloads."""
     import fitz  # PyMuPDF
     
     proj = get_project_detail(project_id, user["id"])
@@ -1226,7 +1226,7 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
     
     canvas_data = proj.get("canvas_data", {})
     
-    # 处理新旧格式
+    # Handle legacy vs new canvas_data structure
     if isinstance(canvas_data, list):
         pages = canvas_data
         paper_size = "US_LETTER"
@@ -1235,7 +1235,7 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
         paper_size_raw = canvas_data.get("paperSize", "Letter")
         paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
     
-    # 提取图片 URL 和文字
+    # Extract preview images and text prompts
     image_urls = []
     texts = []
     for page in pages:
@@ -1246,31 +1246,31 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
             image_urls.append("")
             texts.append("")
     
-    # 补齐 8 页
+    # Pad to 8 pages
     while len(image_urls) < 8:
         image_urls.append("")
         texts.append("")
     
-    # 生成 PDF 到内存
+    # Render PDF into memory
     pdf_buffer = BytesIO()
     create_foldable_book(image_urls, texts, pdf_buffer, paper_type=paper_size)
     pdf_buffer.seek(0)
     
-    # 将 PDF 转换为图片
+    # Convert the PDF into an image
     try:
         pdf_doc = fitz.open(stream=pdf_buffer.read(), filetype="pdf")
-        page = pdf_doc[0]  # 只有一页
+        page = pdf_doc[0]  # Single page booklet
         
-        # 设置缩放比例（2x 为高清预览）
+        # Render at 2x zoom for crisp preview
         zoom = 2.0
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat)
         
-        # 转换为 PNG
+        # Convert to PNG
         img_buffer = BytesIO(pix.tobytes("png"))
         pdf_doc.close()
         
-        # 记录预览行为
+        # Log preview event
         log_activity(user["id"], "preview_pdf", {"project_id": project_id})
         
         return StreamingResponse(
@@ -1285,8 +1285,8 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
 @app.post("/api/generate/pdf")
 @limiter.limit("10/minute")  # PDF generation rate limit
 def dl_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
-    """生成 PDF - 永久免费（根据 PRD v3.0）"""
-    # 不再扣费，仅更新 hash 用于缓存/版本识别
+    """Generate a PDF (always free per PRD v3.0)."""
+    # No credits charged; only update hash for cache/version tracking
     proj = get_project_detail(req.project_id, user["id"])
     if proj and req.current_hash != proj.get("last_downloaded_hash"):
         update_project_hash(req.project_id, req.current_hash)
@@ -1298,9 +1298,9 @@ def dl_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_curren
     return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=zine.pdf"})
 
 @app.post("/api/export/zip")
-@limiter.limit("5/minute")  # ZIP 打包资源消耗大
+@limiter.limit("5/minute")  # ZIP export is resource intensive
 def dl_zip(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
-    """导出 ZIP - 仅 Pro 可用 (PRD v3.2)"""
+    """Export a ZIP (Pro only, PRD v3.2)."""
     # Normalize tier to lowercase for consistent comparison
     user_tier = (user.get("tier") or "").lower()
     if user_tier != "pro":
@@ -1311,12 +1311,12 @@ def dl_zip(request: Request, req: PdfGenRequest, user: dict = Depends(get_curren
     log_activity(user["id"], "export_zip", {"project_id": req.project_id})
     return StreamingResponse(buf, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=assets.zip"})
 
-# [新增] 从项目直接导出 ZIP（PDF + 图片）
+# Export ZIP directly from saved project (PDF + images)
 @app.get("/api/projects/{project_id}/zip")
-@limiter.limit("5/minute")  # ZIP 打包资源消耗大
+@limiter.limit("5/minute")  # ZIP export is resource intensive
 def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_current_user)):
-    """从保存的项目数据导出 ZIP（包含 PDF 和所有图片）- 仅 Pro 可用 (PRD v3.2)"""
-    # 检查权限 - Pro only (PRD v3.2)
+    """Export a ZIP from stored project data (includes PDF + images) - Pro only (PRD v3.2)."""
+    # Enforce Pro-only access (PRD v3.2)
     # Normalize tier to lowercase for consistent comparison
     user_tier = (user.get("tier") or "").lower()
     if user_tier != "pro":
@@ -1328,7 +1328,7 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
     
     canvas_data = proj.get("canvas_data", {})
     
-    # 处理新旧格式
+    # Handle legacy vs new canvas_data
     if isinstance(canvas_data, list):
         pages = canvas_data
         paper_size = "US_LETTER"
@@ -1337,7 +1337,7 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
         paper_size_raw = canvas_data.get("paperSize", "Letter")
         paper_size = "A4" if paper_size_raw == "A4" else "US_LETTER"
     
-    # 提取图片 URL 和文字
+    # Extract preview images and text
     image_urls = []
     texts = []
     for page in pages:
@@ -1348,25 +1348,25 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
             image_urls.append("")
             texts.append("")
     
-    # 补齐 8 页
+    # Pad to 8 pages
     while len(image_urls) < 8:
         image_urls.append("")
         texts.append("")
     
     title = proj.get("title", "project").replace(" ", "_")
     
-    # 创建 ZIP（包含 PDF 和图片）
+    # Build ZIP containing PDF and all images
     import zipfile
     zip_buffer = BytesIO()
     
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # 1. 生成并添加 PDF
+        # 1. Generate and add PDF
         pdf_buffer = BytesIO()
         create_foldable_book(image_urls, texts, pdf_buffer, paper_type=paper_size)
         pdf_buffer.seek(0)
         zf.writestr(f"{title}.pdf", pdf_buffer.read())
         
-        # 2. 添加所有图片
+        # 2. Add all images
         import requests
         import re
         
@@ -1376,7 +1376,7 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
             
             try:
                 if img_url.startswith('data:'):
-                    # Base64 图片
+                    # Handle base64-embedded images
                     match = re.match(r'data:image/([^;]+);base64,(.+)', img_url)
                     if match:
                         ext = match.group(1)
@@ -1385,10 +1385,10 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
                         img_data = base64.b64decode(match.group(2))
                         zf.writestr(f"Page_{i+1}.{ext}", img_data)
                 else:
-                    # URL 图片
+                    # Handle HTTP image URLs
                     resp = requests.get(img_url, timeout=10)
                     if resp.status_code == 200:
-                        # 从 Content-Type 或 URL 推断扩展名
+                        # Infer file extension from Content-Type or URL
                         content_type = resp.headers.get('content-type', 'image/png')
                         ext = content_type.split('/')[-1].split(';')[0]
                         if ext == 'jpeg':
@@ -1399,7 +1399,7 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
     
     zip_buffer.seek(0)
     
-    # 记录 ZIP 下载行为
+    # Log ZIP export event
     log_activity(user["id"], "export_zip", {"project_id": project_id})
     
     return StreamingResponse(
@@ -1424,16 +1424,16 @@ def marketplace_items(
     user: dict = Depends(get_current_user)
 ):
     """
-    获取市场商品列表（PRD 第13章）
+    Fetch marketplace listings (PRD §13).
     
-    公共列表默认返回: moderation_status='approved' AND is_public=true AND is_deleted=false
-    mine=true 时返回本人全状态
+    Public results default to moderation_status='approved', is_public=true, is_deleted=false.
+    When mine=true, return the caller's listings across all states.
     """
     try:
         print(f"[marketplace_items] Request params: resource_type={resource_type}, sort={sort}, tier={tier}, price={price}, mine={mine}, page={page}, limit={limit}")
         print(f"[marketplace_items] User: {user.get('id', 'unknown')}, tier: {user.get('tier', 'unknown')}")
         
-        # 调用数据库查询
+        # Query database for listings
         items = get_marketplace_listings(
             featured=featured,
             resource_type=resource_type,
@@ -1448,7 +1448,7 @@ def marketplace_items(
         
         print(f"[marketplace_items] Retrieved {len(items)} items from database")
         
-        # 为每个商品添加用户可访问性和购买状态
+        # Enrich each item with accessibility and ownership flags
         for item in items:
             try:
                 allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
@@ -1460,7 +1460,7 @@ def marketplace_items(
                 print(f"[marketplace_items] Error processing item {item.get('id', 'unknown')}: {e}")
                 import traceback
                 print(traceback.format_exc())
-                # 设置默认值
+                # Fall back to safe defaults
                 item["is_accessible"] = False
                 item["is_owned"] = False
         
@@ -1468,7 +1468,7 @@ def marketplace_items(
         print(f"[marketplace_items] Returning {len(items)} items")
         return result
     except HTTPException:
-        # 重新抛出 HTTPException（保持状态码）
+        # Propagate HTTPException with original status code
         raise
     except Exception as e:
         import traceback
@@ -1483,16 +1483,16 @@ def marketplace_item_detail(
     user: dict = Depends(get_current_user)
 ):
     """
-    获取单个 listing 详情（PRD 第13章）
+    Retrieve single listing details (PRD §13).
     
-    公共访问: 仅允许 approved + public + not deleted
-    卖家本人: 可看自己的任意状态
-    Admin: 可看任意
+    - Public access: only approved + public + not deleted
+    - Seller: can view their own listings in any state
+    - Admin: unrestricted access
     """
     item = get_marketplace_item(listing_id, user["id"])
     
     if not item:
-        # Admin 可以看任意状态
+        # Allow admins to load any status directly
         if user.get("role") == "admin":
             item = supabase.table("marketplace_listings").select("*, profiles(username, avatar_url)")\
                 .eq("id", listing_id).single().execute().data
@@ -1500,7 +1500,7 @@ def marketplace_item_detail(
         if not item:
             raise HTTPException(404, "Listing not found")
     
-    # 添加权限信息
+    # Attach permission info
     allowed_tiers = item.get("allowed_tiers", ["free", "starter", "pro"])
     item["is_accessible"] = can_access_resource(user, allowed_tiers)
     item["is_owned"] = check_user_purchase(user["id"], item["id"])
@@ -1511,26 +1511,26 @@ def marketplace_item_detail(
 @limiter.limit("10/minute")  # Publish rate limit
 def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: dict = Depends(require_member)):
     """
-    发布商品（提交审核）（PRD 第7/8章）
+    Submit listing for review (PRD §7/8).
     
-    权限:
-    - Free: 拒绝任何发布
-    - Starter: 仅允许 resource_type='asset' 且 price_credits=0
-    - Pro: 允许 resource_type='asset'|'project' 且 price_credits 在 0..500
+    Permissions:
+    - Free: cannot publish
+    - Starter: resource_type='asset' and price_credits must be 0
+    - Pro: resource_type in {'asset','project'} with price_credits 0..500
     
-    提交后 moderation_status='pending'，必须管理员审核通过后才能上架
+    Listing enters moderation_status='pending' and requires admin approval.
     """
-    # 1. 校验发布权限
+    # 1. Validate publish permission
     perm = publish_permission(user, req.resource_type, req.price_credits)
     if not perm["allowed"]:
         raise HTTPException(403, perm["reason"])
     
-    # 2. 校验 allowed_tiers 白名单
+    # 2. Validate allowed_tiers whitelist
     tiers_validation = validate_allowed_tiers(req.allowed_tiers)
     if not tiers_validation["valid"]:
         raise HTTPException(400, tiers_validation["reason"])
     
-    # 3. 创建 listing（自动进入 pending 状态）
+    # 3. Create listing (auto-pending)
     listing = create_listing(
         seller_id=user["id"],
         title=req.title,
@@ -1558,9 +1558,9 @@ def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: 
 @app.post("/api/marketplace/unpublish")
 def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
     """
-    下架商品（PRD 第13章）
+    Unpublish listing (PRD §13).
     
-    设置 is_public=false，不改变历史 purchases 与 usage_count
+    Sets is_public=false while preserving purchases and usage_count.
     """
     result = unpublish_listing(req.listing_id, user["id"])
     
@@ -1574,7 +1574,7 @@ def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(
 @app.post("/api/marketplace/purchase")
 @limiter.limit("10/minute")  # Purchase rate limit (anti-fraud)
 def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
-    """购买商品"""
+    """Purchase a marketplace listing."""
     result = execute_purchase(user["id"], req.listing_id)
     
     if not result["success"]:
@@ -1592,13 +1592,13 @@ def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user
 
 @app.get("/api/marketplace/my-listings")
 def my_listings(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
-    """获取我的上架商品"""
+    """Retrieve listings published by the current user."""
     items = get_seller_listings(user["id"], page, limit)
     return {"items": items, "total": len(items)}
 
 @app.put("/api/marketplace/listings/{listing_id}")
 def update_my_listing(listing_id: str, req: ListingUpdateRequest, user: dict = Depends(get_current_user)):
-    """更新我的商品"""
+    """Update one of the current user's listings."""
     updates = req.dict(exclude_none=True)
     result = update_listing(listing_id, user["id"], updates)
     if not result:
@@ -1607,7 +1607,7 @@ def update_my_listing(listing_id: str, req: ListingUpdateRequest, user: dict = D
 
 @app.get("/api/marketplace/seller/stats")
 def seller_stats(user: dict = Depends(get_current_user)):
-    """获取卖家统计数据（PRD 第13章）"""
+    """Fetch seller stats (PRD §13)."""
     stats = get_seller_stats(user["id"])
     return stats
 
@@ -1618,10 +1618,9 @@ def marketplace_leaderboard(
     user: dict = Depends(get_current_user)
 ):
     """
-    获取排行榜（PRD 第9章）
+    Fetch leaderboard (PRD §9).
     
-    返回 Top 10 listings with usage_count and rank
-    仅统计 approved 且 is_public=true 且 is_deleted=false
+    Returns top 10 listings with usage_count and rank (approved + public + not deleted only).
     """
     leaderboard = get_leaderboard(period=period, board_type=type, limit=10)
     return {"items": leaderboard, "period": period, "type": type}
@@ -1630,7 +1629,7 @@ def marketplace_leaderboard(
 @app.post("/api/payment/checkout")
 @limiter.limit("5/minute")  # Strict rate limit for payment APIs
 def pay(request: Request, req: CheckoutRequest, user: dict = Depends(get_current_user)):
-    # 检查是否有折扣
+    # Apply discount if available
     discount = get_user_discount(user["id"], req.plan_type)
     discount_percent = discount.get("discount_percent", 0) if discount else 0
     
@@ -1644,7 +1643,7 @@ def portal(request: Request, user: dict = Depends(get_current_user)):
     return {"url": create_portal_session(user["id"], user.get("stripe_customer_id"))}
 
 @app.post("/api/support/email")
-@limiter.limit("3/minute")  # 防垃圾工单
+@limiter.limit("3/minute")  # Support ticket anti-spam limit
 def ticket(request: Request, req: SupportTicketRequest, user: dict = Depends(get_current_user)):
     # Use provided email or fallback to user's profile email
     email = req.email or user.get("email", "unknown@user.com")
@@ -1663,7 +1662,7 @@ def contact_form(request: Request, req: ContactFormRequest):
     return {"status": "ok"}
 
 @app.post("/api/feedback")
-@limiter.limit("3/minute")  # 防垃圾反馈
+@limiter.limit("3/minute")  # Feedback anti-spam limit
 def feedback_with_images(request: Request, req: FeedbackWithImagesRequest):
     """
     Submit feedback with optional images.
@@ -1699,7 +1698,7 @@ def adm_audit(uid: str, admin: dict = Depends(require_admin)):
 @app.post("/api/admin/credits/adjust")
 @limiter.limit("30/minute")  # Admin action rate limit
 def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
-    """手动调整用户积分（可指定 bucket）"""
+    """Manually adjust a user's credits (supports bucket selection)."""
     admin_adjust_credits(req.user_id, req.amount, req.bucket, req.reason)
     log_activity(admin["id"], "admin_credits_adjust", {
         "target_user": req.user_id,
@@ -1707,7 +1706,7 @@ def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(req
         "bucket": req.bucket,
         "reason": req.reason
     })
-    # 记录到审计日志
+    # Record in admin audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="credit_adjust",
@@ -1720,12 +1719,12 @@ def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(req
 @app.post("/api/admin/tier/update")
 @limiter.limit("30/minute")  # Admin action rate limit
 def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(require_admin)):
-    # 获取当前等级用于日志
+    # Capture current tier for logging
     old_profile = get_user_profile(req.user_id)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
     
-    # 根据 tier 设置正确的 subscription_status
-    # starter/pro 应该是 active，free 应该是 inactive
+    # Derive subscription_status from target tier
+    # Starter/Pro => active, Free => inactive
     subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
     update_subscription_tier(req.user_id, req.tier, subscription_status=subscription_status)
     log_activity(admin["id"], "admin_tier_update", {
@@ -1733,7 +1732,7 @@ def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(requ
         "new_tier": req.tier,
         "subscription_status": subscription_status
     })
-    # 记录到审计日志
+    # Record tier change in audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="tier_change",
@@ -1745,7 +1744,7 @@ def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(requ
 
 @app.post("/api/admin/discount")
 def adm_discount(req: AdminDiscountRequest, admin: dict = Depends(require_admin)):
-    """设置用户折扣"""
+    """Create a user-specific discount."""
     discount = create_user_discount(
         req.user_id, 
         req.discount_percent, 
@@ -1761,13 +1760,13 @@ def adm_discount(req: AdminDiscountRequest, admin: dict = Depends(require_admin)
 @app.get("/api/admin/user/{uid}/payments")
 def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     """
-    获取用户的付款历史（用于退款操作）
+    Fetch a user's payment history (for refund workflows).
     
-    返回:
-    - user_code: 用户唯一标识码（用于验证）
-    - user_email: 用户邮箱
-    - payments: 付款记录列表，包含可退款金额
-    - subscriptions: 订阅记录列表，包含状态信息
+    Returns:
+    - user_code: unique verification code
+    - user_email: email on file
+    - payments: list with refundable amounts
+    - subscriptions: subscription history with status info
     """
     user = get_user_profile(uid)
     if not user:
@@ -1780,20 +1779,20 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     if not customer_id:
         return {"user_code": user_code, "user_email": user_email, "payments": [], "subscriptions": []}
     
-    # 获取付款历史
+    # Retrieve payment list
     payments = get_customer_payments(customer_id, limit=20)
     payment_list = []
     for pi in payments:
-        # 计算已退款金额和可退款金额
+        # Calculate refunded vs refundable amounts
         amount_refunded = pi.amount - (pi.amount_received if hasattr(pi, 'amount_received') else pi.amount)
         refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
         is_fully_refunded = refundable_amount <= 0
         
         payment_list.append({
             "id": pi.id,
-            "amount": pi.amount,  # 原始金额
-            "amount_refunded": amount_refunded,  # 已退款金额
-            "refundable_amount": refundable_amount,  # 可退款金额
+            "amount": pi.amount,  # Original charge amount
+            "amount_refunded": amount_refunded,  # Amount already refunded
+            "refundable_amount": refundable_amount,  # Remaining refundable amount
             "currency": pi.currency,
             "status": pi.status,
             "created": pi.created,
@@ -1802,7 +1801,7 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
             "is_fully_refunded": is_fully_refunded,
         })
     
-    # 获取订阅信息
+    # Retrieve subscription information
     subscriptions = get_customer_subscriptions(customer_id)
     sub_list = []
     for sub in subscriptions:
@@ -1826,62 +1825,58 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
 @limiter.limit("10/minute")  # Refund operation rate limit
 def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     """
-    Admin 退款操作
-    
-    支持全额或部分退款
-    
-    安全检查:
-    1. 验证用户存在
-    2. 验证用户ID与邮箱匹配
-    3. 验证 PaymentIntent 存在
-    4. 验证 PaymentIntent 属于该用户
-    5. 验证退款金额不超过可退款金额
-    6. 验证 PaymentIntent 未被完全退款
+    Admin refund operation (full or partial) with safety checks:
+    1. User must exist
+    2. user_code/email must match records
+    3. PaymentIntent must exist
+    4. PaymentIntent must belong to the user
+    5. Refund amount cannot exceed refundable amount
+    6. PaymentIntent must not be fully refunded already
     """
     user = get_user_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
     
-    # 【安全检查】验证用户ID (user_code) 与用户匹配
+    # Safety check: ensure user_code matches profile
     stored_user_code = user.get("user_code")
     if not stored_user_code:
         raise HTTPException(400, "User has no user code assigned")
     if stored_user_code != req.user_code:
         raise HTTPException(403, "User code does not match. Please verify the user code.")
     
-    # 获取用户的 Stripe Customer ID
+    # Fetch user's Stripe customer ID
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
         raise HTTPException(400, "User has no Stripe customer ID")
     
-    # 获取 PaymentIntent 详情
+    # Fetch PaymentIntent details
     pi = get_payment_intent_details(req.payment_intent_id)
     if not pi:
         raise HTTPException(404, "Payment not found")
     
-    # 【安全检查1】验证 PaymentIntent 属于该用户
+    # Safety check #1: ensure PaymentIntent belongs to user
     if pi.customer != customer_id:
         raise HTTPException(403, "Payment does not belong to this user")
     
-    # 【安全检查2】验证 PaymentIntent 状态
+    # Safety check #2: validate PaymentIntent status
     if pi.status != 'succeeded':
         raise HTTPException(400, f"Cannot refund payment with status: {pi.status}")
     
-    # 【安全检查3】计算可退款金额
-    # amount_received 是实际收到的金额，已扣除之前的退款
+    # Safety check #3: compute refundable amount
+    # amount_received is net of prior refunds
     refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
     
     if refundable_amount <= 0:
         raise HTTPException(400, "Payment has already been fully refunded")
     
-    # 【安全检查4】验证部分退款金额
+    # Safety check #4: validate partial refund amount
     if req.amount_cents is not None:
         if req.amount_cents <= 0:
             raise HTTPException(400, "Refund amount must be positive")
         if req.amount_cents > refundable_amount:
             raise HTTPException(400, f"Refund amount ({req.amount_cents}) exceeds refundable amount ({refundable_amount})")
     
-    # 执行退款
+    # Execute Stripe refund
     result = create_refund(
         req.payment_intent_id,
         amount_cents=req.amount_cents,
@@ -1895,16 +1890,16 @@ def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(
     refund_amount = refund.amount
     currency = refund.currency.upper()
     
-    # 记录退款到用户的交易历史
+    # Record refund in user transaction history
     log_payment_record(
         req.user_id,
-        -refund_amount,  # 负数表示退款
+        -refund_amount,  # Negative to denote refund
         currency,
         "refund",
         f"Refund - ${refund_amount/100:.2f} | Reason: {req.reason}"
     )
     
-    # 记录管理员操作日志
+    # Log admin operation
     log_activity(admin["id"], "admin_refund", {
         "target_user": req.user_id,
         "payment_intent_id": req.payment_intent_id,
@@ -1915,7 +1910,7 @@ def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(
         "reason": req.reason
     })
     
-    # 记录到审计日志
+    # Capture audit entry
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="refund",
@@ -1935,18 +1930,18 @@ def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(
 @limiter.limit("10/minute")  # Subscription operation rate limit
 def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
     """
-    Admin 取消用户订阅
+    Admin-initiated subscription cancellation.
     
-    immediate=True: 立即取消
-    immediate=False: 在当前计费周期结束时取消
+    - immediate=True: cancel immediately
+    - immediate=False: cancel at end of current billing period
     
-    安全检查:
-    1. 验证用户存在
-    2. 验证用户ID与邮箱匹配
-    3. 验证用户有 Stripe Customer ID
-    4. 验证订阅属于该用户
-    5. 验证订阅当前状态是活跃的
-    6. 验证订阅未被预约取消
+    Safety checklist:
+    1. User exists
+    2. user_code/email matches
+    3. Stripe customer ID present
+    4. Subscription belongs to user
+    5. Subscription status is active/trialing/past_due
+    6. Subscription not already scheduled for cancellation
     """
     import stripe
     
@@ -1954,37 +1949,37 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
     if not user:
         raise HTTPException(404, "User not found")
     
-    # 【安全检查】验证用户ID (user_code) 与用户匹配
+    # Safety check: ensure user_code matches profile
     stored_user_code = user.get("user_code")
     if not stored_user_code:
         raise HTTPException(400, "User has no user code assigned")
     if stored_user_code != req.user_code:
         raise HTTPException(403, "User code does not match. Please verify the user code.")
     
-    # 获取用户的 Stripe Customer ID
+    # Retrieve Stripe customer ID
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
         raise HTTPException(400, "User has no Stripe customer ID")
     
-    # 【安全检查1】获取并验证订阅详情
+    # Safety check #1: fetch subscription details
     try:
         subscription_detail = stripe.Subscription.retrieve(req.subscription_id)
     except stripe.error.StripeError as e:
         raise HTTPException(404, f"Subscription not found: {str(e)}")
     
-    # 【安全检查2】验证订阅属于该用户
+    # Safety check #2: subscription belongs to user
     if subscription_detail.customer != customer_id:
         raise HTTPException(403, "Subscription does not belong to this user")
     
-    # 【安全检查3】验证订阅状态
+    # Safety check #3: subscription status is cancellable
     if subscription_detail.status not in ['active', 'trialing', 'past_due']:
         raise HTTPException(400, f"Cannot cancel subscription with status: {subscription_detail.status}")
     
-    # 【安全检查4】验证订阅未被预约取消（如果选择周期结束取消）
+    # Safety check #4: not already scheduled for cancellation (when delayed)
     if not req.immediate and subscription_detail.cancel_at_period_end:
         raise HTTPException(400, "Subscription is already scheduled for cancellation")
     
-    # 执行取消订阅
+    # Execute cancellation
     result = cancel_subscription(req.subscription_id, immediate=req.immediate)
     
     if not result["success"]:
@@ -1992,7 +1987,7 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
     
     subscription = result["subscription"]
     
-    # 获取订阅 plan 名称用于记录
+    # Determine plan name for logging
     plan_name = "Unknown"
     if subscription_detail.items.data:
         price_id = subscription_detail.items.data[0].price.id
@@ -2001,11 +1996,11 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
         elif 'pro' in price_id.lower():
             plan_name = "Pro"
     
-    # 如果是立即取消，更新用户 tier 为 free
+    # Immediate cancellation → downgrade to Free
     if req.immediate:
         update_subscription_tier(req.user_id, "free", subscription_status="canceled")
         
-        # 记录到用户的交易历史
+        # Log transaction history entry
         log_payment_record(
             req.user_id,
             0,
@@ -2014,7 +2009,7 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
             f"{plan_name} Subscription Canceled (Immediate) | Reason: {req.reason}"
         )
     else:
-        # 记录到用户的交易历史 - 周期结束取消
+        # Log scheduled cancellation entry
         log_payment_record(
             req.user_id,
             0,
@@ -2023,7 +2018,7 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
             f"{plan_name} Subscription Cancel Scheduled | Ends: {subscription.current_period_end} | Reason: {req.reason}"
         )
     
-    # 记录管理员操作日志
+    # Log admin action
     log_activity(admin["id"], "admin_cancel_subscription", {
         "target_user": req.user_id,
         "subscription_id": req.subscription_id,
@@ -2032,7 +2027,7 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
         "reason": req.reason
     })
     
-    # 记录到审计日志
+    # Capture audit entry
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="subscription_cancel",
@@ -2052,21 +2047,21 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
 @limiter.limit("10/minute")  # Subscription operation rate limit
 def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
     """
-    Admin 帮用户降级订阅
+    Admin-assisted subscription downgrade.
     
-    支持的降级路径:
-    - Pro -> Starter (变更订阅计划)
-    - Pro -> Free (取消订阅)
-    - Starter -> Free (取消订阅)
+    Supported downgrade paths:
+    - Pro → Starter (plan change)
+    - Pro → Free (cancel subscription)
+    - Starter → Free (cancel subscription)
     
-    immediate=True: 立即生效
-    immediate=False: 周期结束后生效
+    - immediate=True: take effect immediately
+    - immediate=False: apply after current period
     
-    安全检查:
-    1. 验证用户存在
-    2. 验证用户ID与邮箱匹配
-    3. 验证目标等级低于当前等级
-    4. 验证 Stripe 订阅状态
+    Safety checklist:
+    1. User exists
+    2. user_code/email matches
+    3. Target tier is lower than current tier
+    4. Stripe subscription is valid
     """
     import stripe
     
@@ -2074,21 +2069,21 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
     if not user:
         raise HTTPException(404, "User not found")
     
-    # 【安全检查1】验证用户ID (user_code)
+    # Safety check #1: validate user_code
     stored_user_code = user.get("user_code")
     if not stored_user_code:
         raise HTTPException(400, "User has no user code assigned")
     if stored_user_code != req.user_code:
         raise HTTPException(403, "User code does not match")
     
-    # 【安全检查2】验证邮箱
+    # Safety check #2: validate email
     if user.get("email") != req.user_email:
         raise HTTPException(403, "User email does not match")
     
     current_tier = user.get("tier", "free")
     target_tier = req.target_tier.lower()
     
-    # 【安全检查3】验证等级降级路径
+    # Safety check #3: verify downgrade path
     tier_levels = {"free": 0, "starter": 1, "pro": 2}
     if tier_levels.get(target_tier, -1) >= tier_levels.get(current_tier, 0):
         raise HTTPException(400, f"Cannot downgrade from {current_tier} to {target_tier}")
@@ -2098,13 +2093,13 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
     
     customer_id = user.get("stripe_customer_id")
     
-    # 情况1: 降级到 Free (取消订阅)
+    # Case 1: downgrading to Free (subscription cancellation)
     if target_tier == "free":
         if not customer_id:
-            # 没有 Stripe 订阅，直接更新数据库
+            # No Stripe subscription; update DB directly
             update_subscription_tier(req.user_id, "free", subscription_status="inactive")
             
-            # 清零月度积分
+            # Reset monthly credits
             supabase.table("profiles").update({
                 "credits_monthly": 0
             }).eq("id", req.user_id).execute()
@@ -2128,7 +2123,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
                 "to_tier": "free"
             }
         
-        # 有 Stripe 订阅，需要取消
+        # Active Stripe subscription must be canceled
         subscriptions = get_customer_subscriptions(customer_id)
         active_sub = None
         for sub in subscriptions:
@@ -2137,7 +2132,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
                 break
         
         if not active_sub:
-            # 没有活跃订阅，直接更新
+            # No active subscription; update directly
             update_subscription_tier(req.user_id, "free", subscription_status="inactive")
             supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
             
@@ -2155,7 +2150,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
             
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
         
-        # 取消订阅
+        # Cancel subscription
         if req.immediate:
             result = cancel_subscription(active_sub.id, immediate=True)
             if not result["success"]:
@@ -2194,7 +2189,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
             "subscription_id": active_sub.id
         }
     
-    # 情况2: Pro -> Starter (变更订阅计划)
+    # Case 2: Pro → Starter (plan change)
     if current_tier == "pro" and target_tier == "starter":
         if not customer_id:
             raise HTTPException(400, "User has no Stripe customer ID for subscription change")
@@ -2209,17 +2204,17 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
         if not active_sub:
             raise HTTPException(400, "No active subscription found to downgrade")
         
-        # 获取 Starter 价格 ID
+        # Lookup Starter price ID
         starter_price_id = os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
         if not starter_price_id:
             raise HTTPException(500, "Starter price ID not configured")
         
         try:
-            # 修改订阅计划
-            # proration_behavior: 
-            # - 'create_prorations': 按比例退款差额
-            # - 'none': 不退款，立即生效
-            # - 'always_invoice': 立即开发票
+            # Modify subscription plan
+            # proration_behavior options:
+            # - 'create_prorations': issue prorated credit
+            # - 'none': no refund, immediate switch
+            # - 'always_invoice': generate invoice immediately
             updated_sub = stripe.Subscription.modify(
                 active_sub.id,
                 items=[{
@@ -2231,10 +2226,10 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
             )
             
             if req.immediate:
-                # 立即更新用户等级
+                # Update tier immediately
                 update_subscription_tier(req.user_id, "starter", subscription_status="active")
                 
-                # 调整月度积分为 Starter 额度 (500)
+                # Adjust monthly credits to Starter allowance (500)
                 supabase.table("profiles").update({
                     "credits_monthly": 500
                 }).eq("id", req.user_id).execute()
@@ -2258,7 +2253,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
                 "reason": req.reason
             })
             
-            # 记录到审计日志
+            # Record downgrade in audit log
             admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="subscription_downgrade",
@@ -2282,13 +2277,13 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
 @app.post("/api/admin/broadcast")
 @limiter.limit("5/minute")  # Broadcast rate limit (abuse protection)
 def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
-    """群发系统通知"""
+    """Send a system-wide broadcast notification."""
     notification = create_broadcast(req.title, req.content, req.target_group)
     log_activity(admin["id"], "admin_broadcast", {
         "target_group": req.target_group,
         "title": req.title
     })
-    # 记录到审计日志
+    # Capture audit entry
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="broadcast",
@@ -2316,7 +2311,7 @@ class AdminBatchNotificationRequest(BaseModel):
 @app.post("/api/admin/notification/send")
 @limiter.limit("30/minute")
 def adm_send_notification(request: Request, req: AdminSendNotificationRequest, admin: dict = Depends(require_admin)):
-    """发送通知给单个用户"""
+    """Send a notification to a single user."""
     notification = send_notification_to_user(
         user_id=req.user_id,
         title=req.title,
@@ -2332,7 +2327,7 @@ def adm_send_notification(request: Request, req: AdminSendNotificationRequest, a
         "title": req.title
     })
     
-    # 记录到审计日志
+    # Record in audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="notification_send",
@@ -2347,7 +2342,7 @@ def adm_send_notification(request: Request, req: AdminSendNotificationRequest, a
 @app.post("/api/admin/notification/batch")
 @limiter.limit("10/minute")
 def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest, admin: dict = Depends(require_admin)):
-    """批量发送通知给多个用户"""
+    """Send notifications to multiple users."""
     if len(req.user_ids) > 100:
         raise HTTPException(400, "Cannot send to more than 100 users at once")
     
@@ -2363,7 +2358,7 @@ def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest,
         "title": req.title
     })
     
-    # 记录到审计日志
+    # Record in audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="notification_batch",
@@ -2377,7 +2372,7 @@ def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest,
 
 @app.get("/api/admin/notification/stats")
 def adm_notification_stats(admin: dict = Depends(require_admin)):
-    """获取通知统计"""
+    """Fetch notification statistics."""
     return get_all_notification_stats()
 
 
@@ -2388,14 +2383,14 @@ def adm_notification_history(
     notification_type: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
-    """获取通知发送历史"""
+    """Fetch notification delivery history."""
     notifications = get_notification_history(page, limit, notification_type)
     return {"notifications": notifications, "page": page}
 
 
 @app.get("/api/admin/users/by-tier/{tier}")
 def adm_get_users_by_tier(tier: str, admin: dict = Depends(require_admin)):
-    """获取指定等级的用户列表"""
+    """List user IDs for a specified tier."""
     if tier not in ["free", "starter", "pro"]:
         raise HTTPException(400, "Invalid tier. Must be 'free', 'starter', or 'pro'")
     
@@ -2405,7 +2400,7 @@ def adm_get_users_by_tier(tier: str, admin: dict = Depends(require_admin)):
 
 @app.post("/api/admin/projects/{project_id}/restore")
 def adm_restore_project(project_id: str, admin: dict = Depends(require_admin)):
-    """恢复被删除的项目"""
+    """Restore a deleted project."""
     project = restore_project(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
@@ -2414,11 +2409,11 @@ def adm_restore_project(project_id: str, admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/projects/feed")
 def adm_projects_feed(page: int = 1, limit: int = 50, admin: dict = Depends(require_admin)):
-    """获取全站项目流"""
+    """Fetch the site-wide project feed."""
     items = get_all_projects_feed(page, limit)
     return {"items": items, "total": len(items), "page": page}
 
-# --- Admin Marketplace Moderation (PRD 第16章) ---
+# --- Admin Marketplace Moderation (PRD §16) ---
 @app.get("/api/admin/marketplace/moderation/list")
 def adm_moderation_list(
     status: Optional[str] = None,  # 'pending' | 'approved' | 'rejected' | 'all'
@@ -2428,7 +2423,7 @@ def adm_moderation_list(
     admin: dict = Depends(require_admin)
 ):
     """
-    获取审核列表（PRD 第16章）
+    Retrieve moderation list (PRD §16).
     
     Tabs: Pending / Approved / Rejected / All
     """
@@ -2443,10 +2438,10 @@ def adm_moderation_list(
 @app.get("/api/admin/marketplace/moderation/{listing_id}")
 def adm_moderation_detail(listing_id: str, admin: dict = Depends(require_admin)):
     """
-    获取审核详情（PRD 第16章）
+    Retrieve moderation detail (PRD §16).
     
-    预览: thumbnail + resource_url
-    元信息: title/description/allowed_tiers/price_credits
+    Preview: thumbnail + resource_url
+    Metadata: title/description/allowed_tiers/price_credits
     """
     item = admin_get_moderation_detail(listing_id)
     if not item:
@@ -2456,9 +2451,9 @@ def adm_moderation_detail(listing_id: str, admin: dict = Depends(require_admin))
 @app.post("/api/admin/marketplace/moderation/{listing_id}/approve")
 def adm_moderation_approve(listing_id: str, admin: dict = Depends(require_admin)):
     """
-    批准 listing（PRD 第16章）
+    Approve listing (PRD §16).
     
-    pending -> approved
+    pending → approved
     """
     result = admin_approve_listing(listing_id, admin["id"])
     if not result:
@@ -2466,7 +2461,7 @@ def adm_moderation_approve(listing_id: str, admin: dict = Depends(require_admin)
     
     log_activity(admin["id"], "admin_moderation_approve", {"listing_id": listing_id})
     
-    # 记录到审计日志
+    # Record approval in audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="listing_approve",
@@ -2483,9 +2478,9 @@ def adm_moderation_reject(
     admin: dict = Depends(require_admin)
 ):
     """
-    拒绝 listing（PRD 第16章）
+    Reject listing (PRD §16).
     
-    pending -> rejected（必须附原因）
+    pending → rejected (reason required)
     """
     try:
         result = admin_reject_listing(listing_id, admin["id"], req.reason)
@@ -2500,7 +2495,7 @@ def adm_moderation_reject(
         "reason": req.reason
     })
     
-    # 记录到审计日志
+    # Record rejection in audit log
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="listing_reject",
@@ -2513,9 +2508,7 @@ def adm_moderation_reject(
 @app.post("/api/admin/marketplace/moderation/{listing_id}/delete")
 def adm_moderation_delete(listing_id: str, admin: dict = Depends(require_admin)):
     """
-    软删除 listing（PRD 第16章）
-    
-    设置 is_deleted=true
+    Soft-delete listing (PRD §16) by setting is_deleted=true.
     """
     result = admin_delete_listing(listing_id)
     if not result:
@@ -2527,9 +2520,7 @@ def adm_moderation_delete(listing_id: str, admin: dict = Depends(require_admin))
 @app.post("/api/admin/marketplace/moderation/{listing_id}/unpublish")
 def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admin)):
     """
-    强制下架 listing（PRD 第16章）
-    
-    设置 is_public=false
+    Force-unpublish a listing (PRD §16) by setting is_public=false.
     """
     result = admin_unpublish_listing(listing_id)
     if not result:
@@ -2540,7 +2531,7 @@ def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admi
 
 
 # ==========================================
-# Admin Operation Logs (审计日志)
+# Admin Operation Logs (audit trail)
 # ==========================================
 
 @app.get("/api/admin/logs")
@@ -2554,7 +2545,7 @@ def adm_get_operation_logs(
     limit: int = 50,
     admin: dict = Depends(require_admin)
 ):
-    """获取管理员操作日志"""
+    """Fetch administrator operation logs."""
     return admin_get_operation_logs(
         operation_type=operation_type,
         admin_id=admin_id,
@@ -2572,7 +2563,7 @@ def adm_export_operation_logs(
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
-    """导出操作日志为CSV"""
+    """Export operation logs as CSV."""
     import csv
     from io import StringIO
     
@@ -2581,7 +2572,7 @@ def adm_export_operation_logs(
         start_date=start_date,
         end_date=end_date,
         page=1,
-        limit=10000  # 导出最多1万条
+        limit=10000  # Export up to 10k rows
     )
     
     output = StringIO()
@@ -2608,7 +2599,7 @@ def adm_export_operation_logs(
 
 
 # ==========================================
-# Admin User Projects (用户项目管理)
+# Admin User Projects (management)
 # ==========================================
 
 @app.get("/api/admin/user/{uid}/projects")
@@ -2619,12 +2610,12 @@ def adm_get_user_projects(
     include_deleted: bool = True,
     admin: dict = Depends(require_admin)
 ):
-    """获取指定用户的所有项目"""
+    """Fetch all projects owned by a specific user."""
     return admin_get_user_projects(uid, page, limit, include_deleted)
 
 
 # ==========================================
-# Admin Stats & Analytics (统计分析)
+# Admin Stats & Analytics
 # ==========================================
 
 @app.get("/api/admin/stats/dashboard")
@@ -2632,7 +2623,7 @@ def adm_get_dashboard_stats(
     period: str = "month",
     admin: dict = Depends(require_admin)
 ):
-    """获取仪表盘关键统计"""
+    """Fetch dashboard KPIs."""
     return admin_get_dashboard_stats(period)
 
 @app.get("/api/admin/stats/user-growth")
@@ -2642,7 +2633,7 @@ def adm_get_user_growth_stats(
     group_by: str = "day",
     admin: dict = Depends(require_admin)
 ):
-    """获取用户增长统计"""
+    """Fetch user growth stats."""
     return admin_get_user_growth_stats(start_date, end_date, group_by)
 
 @app.get("/api/admin/stats/revenue")
@@ -2652,7 +2643,7 @@ def adm_get_revenue_stats(
     group_by: str = "day",
     admin: dict = Depends(require_admin)
 ):
-    """获取收入统计"""
+    """Fetch revenue stats."""
     return admin_get_revenue_stats(start_date, end_date, group_by)
 
 @app.get("/api/admin/stats/projects")
@@ -2661,7 +2652,7 @@ def adm_get_project_stats(
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
-    """获取项目统计"""
+    """Fetch project stats."""
     return admin_get_project_stats(start_date, end_date)
 
 @app.get("/api/admin/stats/credits")
@@ -2670,13 +2661,13 @@ def adm_get_credit_usage_stats(
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
-    """获取积分使用统计"""
+    """Fetch credit usage stats."""
     return admin_get_credit_usage_stats(start_date, end_date)
 
 @app.get("/api/admin/stats/exports")
 def adm_get_export_stats(admin: dict = Depends(require_admin)):
-    """获取导出操作统计（PDF、ZIP、打印、预览）"""
-    # 从 aggregated_stats 表获取预聚合的数据
+    """Fetch export operation stats (PDF, ZIP, print, preview)."""
+    # Read pre-aggregated data from aggregated_stats
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2693,7 +2684,7 @@ def adm_get_export_stats(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/assets")
 def adm_get_asset_usage_stats(admin: dict = Depends(require_admin)):
-    """获取素材使用排名统计"""
+    """Fetch asset usage ranking stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2710,14 +2701,14 @@ def adm_get_asset_usage_stats(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/user/{uid}/asset-usage")
 def adm_get_user_asset_usage(uid: str, admin: dict = Depends(require_admin)):
-    """获取特定用户的素材使用统计"""
+    """Fetch asset usage stats for a specific user."""
     try:
-        # 获取用户使用的素材
+        # Retrieve assets used by the user
         usage_res = supabase.table("listing_usage").select(
             "listing_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type)"
         ).eq("used_by_user_id", uid).execute()
         
-        # 统计使用次数
+        # Count usage occurrences
         usage_counts = {}
         for record in usage_res.data or []:
             listing_id = record.get("listing_id")
@@ -2733,12 +2724,12 @@ def adm_get_user_asset_usage(uid: str, admin: dict = Depends(require_admin)):
                     }
                 usage_counts[listing_id]["count"] += 1
         
-        # 转换为排名列表
+        # Convert into ranking list
         user_assets = list(usage_counts.values())
         user_assets.sort(key=lambda x: -x["count"])
         
         return {
-            "assets": user_assets[:20],  # 前20个
+            "assets": user_assets[:20],  # Top 20
             "total_assets_used": len(user_assets),
             "total_usage": sum(a["count"] for a in user_assets)
         }
@@ -2748,7 +2739,7 @@ def adm_get_user_asset_usage(uid: str, admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/tier-distribution")
 def adm_get_tier_distribution(admin: dict = Depends(require_admin)):
-    """获取用户等级分布"""
+    """Fetch user tier distribution."""
     return admin_get_tier_distribution()
 
 @app.get("/api/admin/stats/conversion-funnel")
@@ -2756,13 +2747,13 @@ def adm_get_conversion_funnel(
     period: str = "month",
     admin: dict = Depends(require_admin)
 ):
-    """获取转化漏斗数据"""
+    """Fetch conversion funnel stats."""
     return admin_get_conversion_funnel(period)
 
 
 @app.get("/api/admin/stats/tier-activity")
 def adm_get_tier_activity(admin: dict = Depends(require_admin)):
-    """获取各等级用户活跃度统计"""
+    """Fetch per-tier activity stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2779,7 +2770,7 @@ def adm_get_tier_activity(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/subscription-events")
 def adm_get_subscription_events(admin: dict = Depends(require_admin)):
-    """获取订阅事件统计（升级、降级、取消、退款）"""
+    """Fetch subscription event stats (upgrade/downgrade/cancel/refund)."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2796,7 +2787,7 @@ def adm_get_subscription_events(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/page-views")
 def adm_get_page_views(admin: dict = Depends(require_admin)):
-    """获取页面访问统计"""
+    """Fetch page view stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2813,7 +2804,7 @@ def adm_get_page_views(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/project-details")
 def adm_get_project_details(admin: dict = Depends(require_admin)):
-    """获取项目详细统计（删除、OCR、页面数）"""
+    """Fetch detailed project stats (deleted, OCR, page counts)."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2830,7 +2821,7 @@ def adm_get_project_details(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/returning-users")
 def adm_get_returning_users(admin: dict = Depends(require_admin)):
-    """获取回流用户统计"""
+    """Fetch returning user stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2847,7 +2838,7 @@ def adm_get_returning_users(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/tier-trend")
 def adm_get_tier_trend(admin: dict = Depends(require_admin)):
-    """获取各等级用户数趋势"""
+    """Fetch tier trend (user counts by tier over time)."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2864,7 +2855,7 @@ def adm_get_tier_trend(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/tier-conversion")
 def adm_get_tier_conversion(admin: dict = Depends(require_admin)):
-    """获取用户转化数据"""
+    """Fetch tier conversion stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2881,7 +2872,7 @@ def adm_get_tier_conversion(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/performance")
 def adm_get_performance_metrics(admin: dict = Depends(require_admin)):
-    """获取页面性能指标统计"""
+    """Fetch page performance (Core Web Vitals) stats."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2898,7 +2889,7 @@ def adm_get_performance_metrics(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/stats/user-distribution")
 def adm_get_user_distribution(admin: dict = Depends(require_admin)):
-    """获取用户分布统计（国家、浏览器、OS、设备）"""
+    """Fetch user distribution stats (country, browser, OS, device)."""
     try:
         result = supabase.table("aggregated_stats")\
             .select("data")\
@@ -2923,11 +2914,11 @@ def adm_get_user_distribution(admin: dict = Depends(require_admin)):
 
 @app.get("/api/admin/user/{uid}/env-stats")
 def adm_get_user_env_stats(uid: str, admin: dict = Depends(require_admin)):
-    """获取单个用户的环境信息统计（IP、国家、浏览器、OS、设备等）"""
+    """Fetch environment stats for a specific user (IP, country, browser, OS, device)."""
     try:
         from collections import defaultdict
         
-        # 获取用户最近的事件记录（最近30天）
+        # Pull recent events (last 30 days)
         start_date = (datetime.now() - timedelta(days=30)).isoformat()
         
         events = supabase.table("user_events")\
@@ -2953,7 +2944,7 @@ def adm_get_user_env_stats(uid: str, admin: dict = Depends(require_admin)):
                 "page_views": [],
             }
         
-        # 聚合统计
+        # Aggregate stats
         country_counts = defaultdict(int)
         browser_counts = defaultdict(int)
         os_counts = defaultdict(int)
@@ -2970,56 +2961,56 @@ def adm_get_user_env_stats(uid: str, admin: dict = Depends(require_admin)):
             props = event.get("properties", {})
             created_at = event.get("created_at")
             
-            # 时间统计
+            # Track timestamps
             if created_at:
                 if not last_seen:
                     last_seen = created_at
                 first_seen = created_at
             
-            # IP（取最后一个）
+            # Capture most recent IP
             ip = props.get("server_ip") or props.get("ip")
             if ip and not last_ip:
                 last_ip = ip
             
-            # 国家
+            # Country
             country = props.get("server_country") or props.get("country_code")
             if country and country not in ("unknown", ""):
                 country_counts[country] += 1
             
-            # 浏览器
+            # Browser
             browser = props.get("client_browser") or props.get("browser")
             if browser:
                 browser_name = browser.split()[0] if browser else "unknown"
                 browser_counts[browser_name] += 1
             
-            # 操作系统
+            # Operating system
             os_info = props.get("client_os") or props.get("os")
             if os_info:
                 os_name = os_info.split()[0] if os_info else "unknown"
                 os_counts[os_name] += 1
             
-            # 设备类型
+            # Device type
             device = props.get("client_device_type") or props.get("device_type")
             if device:
                 device_counts[device] += 1
             
-            # 语言
+            # Language
             lang = props.get("client_language") or props.get("language")
             if lang:
                 lang_code = lang.split("-")[0] if lang else "unknown"
                 language_counts[lang_code] += 1
             
-            # 时区
+            # Timezone
             tz = props.get("client_timezone") or props.get("timezone")
             if tz:
                 timezone_counts[tz] += 1
             
-            # 页面访问
+            # Page views
             page_url = props.get("page_url")
             if page_url and event.get("event_type") == "page_view":
                 page_view_counts[page_url] += 1
         
-        # 转换为列表格式并排序
+        # Convert aggregated counts into sorted lists
         def to_sorted_list(counts, limit=10):
             return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])[:limit]]
         
@@ -3041,7 +3032,7 @@ def adm_get_user_env_stats(uid: str, admin: dict = Depends(require_admin)):
 
 
 # ==========================================
-# Admin AI Analysis (AI 分析)
+# Admin AI Analysis
 # ==========================================
 
 @app.get("/api/admin/ai/insights")
@@ -3049,7 +3040,7 @@ def adm_get_ai_insights(
     type: str = "all",
     admin: dict = Depends(require_admin)
 ):
-    """获取 AI 洞察"""
+    """Fetch AI insights."""
     return admin_get_ai_insights(type)
 
 @app.get("/api/admin/ai/recommendations")
@@ -3057,7 +3048,7 @@ def adm_get_ai_recommendations(
     area: str = "all",
     admin: dict = Depends(require_admin)
 ):
-    """获取 AI 优化建议"""
+    """Fetch AI optimization recommendations."""
     return admin_get_ai_recommendations(area)
 
 @app.get("/api/admin/ai/behavior-analysis")
@@ -3066,12 +3057,12 @@ def adm_get_behavior_analysis(
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
-    """获取用户行为分析"""
+    """Fetch AI-powered user behavior analysis."""
     return admin_get_behavior_analysis(start_date, end_date)
 
 
 # ==========================================
-# User Events Tracking (用户事件追踪)
+# User Events Tracking
 # ==========================================
 
 class UserEventsRequest(BaseModel):
@@ -3079,8 +3070,7 @@ class UserEventsRequest(BaseModel):
 
 def get_client_ip(request: Request) -> str:
     """
-    获取客户端真实 IP 地址
-    支持常见的代理头：X-Forwarded-For, X-Real-IP, CF-Connecting-IP
+    Retrieve the client IP, supporting X-Forwarded-For / X-Real-IP / CF-Connecting-IP.
     """
     # Cloudflare
     if cf_ip := request.headers.get("CF-Connecting-IP"):
@@ -3088,33 +3078,30 @@ def get_client_ip(request: Request) -> str:
     
     # Standard proxy headers
     if x_forwarded_for := request.headers.get("X-Forwarded-For"):
-        # 获取第一个 IP（最原始的客户端 IP）
+        # Use first IP in list (originating client)
         return x_forwarded_for.split(",")[0].strip()
     
     if x_real_ip := request.headers.get("X-Real-IP"):
         return x_real_ip
     
-    # 直接连接
+    # Direct connection fallback
     return request.client.host if request.client else "unknown"
 
 
 def get_country_from_ip(ip: str) -> dict:
     """
-    根据 IP 获取国家信息
-    优先使用 Cloudflare 提供的头信息，否则使用 IP 库
+    Infer country from IP (demo only – use GeoIP in production).
     """
-    # 如果有 Cloudflare 提供的国家代码
-    # 这需要在请求处理时获取，这里作为备用
+    # Cloudflare country header preferred (must be captured at request time)
     
-    # 使用简单的 IP 前缀判断（生产环境应使用 GeoIP 库）
-    # 这里只做示例，实际应该使用 maxminddb 或调用 GeoIP API
+    # Simple IP prefix heuristic (replace with GeoIP API)
     country_info = {
         "country_code": "unknown",
         "country_name": "Unknown",
         "continent": "Unknown",
     }
     
-    # 简单判断一些常见的 IP 段（示例用）
+    # Sample prefix checks for demo purposes
     if ip.startswith("127.") or ip.startswith("localhost") or ip == "::1":
         country_info = {"country_code": "LOCAL", "country_name": "Localhost", "continent": "Local"}
     elif ip.startswith("192.168.") or ip.startswith("10.") or ip.startswith("172."):
@@ -3125,7 +3112,7 @@ def get_country_from_ip(ip: str) -> dict:
 
 def get_cloudflare_geo(request: Request) -> dict:
     """
-    从 Cloudflare 请求头获取地理位置信息
+    Extract geo info from Cloudflare headers.
     """
     return {
         "country_code": request.headers.get("CF-IPCountry", "unknown"),
@@ -3139,18 +3126,16 @@ def get_cloudflare_geo(request: Request) -> dict:
 @limiter.limit("60/minute")  # Event ingestion rate limit (batch)
 async def log_analytics_events(request: Request, req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
     """
-    记录用户行为事件
-    支持批量提交
-    自动附加 IP、国家、设备信息
+    Record user analytics events (batch submission with auto IP/geo/device enrichment).
     """
     user_id = user.get("id") if user else None
     
-    # 获取客户端 IP 和地理位置
+    # Enrich with server-side IP + geo
     client_ip = get_client_ip(request)
     geo_info = get_cloudflare_geo(request)
     country_info = get_country_from_ip(client_ip) if geo_info.get("country_code") == "unknown" else {}
     
-    # 合并地理位置信息
+    # Merge geo info
     location_info = {
         "ip": client_ip,
         "country_code": geo_info.get("country_code") or country_info.get("country_code", "unknown"),
@@ -3159,11 +3144,11 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
         "cf_timezone": geo_info.get("timezone", "unknown"),
     }
     
-    # 获取请求头中的用户代理信息
+    # Capture user agent metadata
     user_agent = request.headers.get("User-Agent", "unknown")
     accept_language = request.headers.get("Accept-Language", "unknown")
     
-    # 需要同时记录到 activity_logs 的事件类型
+    # Event types that should also log to activity_logs
     ACTIVITY_LOG_EVENTS = {
         "project_print": "print_project",
         "project_export_pdf": "download_pdf",
@@ -3178,17 +3163,17 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
         properties = event.get("properties", {})
         env_info = event.get("env", {})
         
-        # 合并后端获取的信息到 properties
+        # Merge server-side enrichment into properties
         enriched_properties = {
             **properties,
-            # 后端获取的信息（覆盖前端的，更准确）
+            # Server-side info (authoritative)
             "server_ip": client_ip,
             "server_country": location_info.get("country_code"),
             "server_city": location_info.get("city"),
             "server_region": location_info.get("region"),
             "server_user_agent": user_agent,
             "server_accept_language": accept_language,
-            # 前端环境信息
+            # Client-provided environment info
             "client_browser": env_info.get("browser"),
             "client_os": env_info.get("os"),
             "client_device_type": env_info.get("device_type"),
@@ -3198,7 +3183,7 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
             "client_connection_type": env_info.get("connection_type"),
         }
         
-        # 记录到 user_events
+        # Store event
         log_user_event(
             user_id=user_id,
             event_type=event_type,
@@ -3206,7 +3191,7 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
             session_id=event.get("session_id")
         )
         
-        # 对于关键操作，同时记录到 activity_logs
+        # Mirror key events into activity_logs
         if user_id and event_type in ACTIVITY_LOG_EVENTS:
             log_activity(user_id, ACTIVITY_LOG_EVENTS[event_type], enriched_properties)
     
@@ -3222,7 +3207,7 @@ def adm_get_user_events(
     limit: int = 100,
     admin: dict = Depends(require_admin)
 ):
-    """获取用户事件列表"""
+    """Fetch user events (with optional filters)."""
     return admin_get_user_events(
         event_type=event_type,
         user_id=user_id,
@@ -3239,12 +3224,12 @@ def adm_get_event_stats(
     group_by: str = "event_type",
     admin: dict = Depends(require_admin)
 ):
-    """获取事件统计"""
+    """Fetch event statistics (grouped by event_type by default)."""
     return admin_get_event_stats(start_date, end_date, group_by)
 
 
 # ===========================================
-# Admin - Aggregated Stats APIs (聚合统计)
+# Admin - Aggregated Stats APIs
 # ===========================================
 
 @app.get("/api/admin/aggregated/{stat_type}")
@@ -3254,9 +3239,9 @@ def adm_get_aggregated_stats(
     admin: dict = Depends(require_admin)
 ):
     """
-    获取聚合统计数据
-    stat_type: daily_users, daily_revenue, daily_projects, credit_usage_30d, 
-               tier_distribution, conversion_funnel_30d, event_stats_7d
+    Fetch aggregated stats for the given stat_type.
+    Supported types: daily_users, daily_revenue, daily_projects, credit_usage_30d,
+    tier_distribution, conversion_funnel_30d, event_stats_7d, etc.
     """
     from db_service import get_aggregated_stats
     data = get_aggregated_stats(stat_type, use_cache)
@@ -3273,9 +3258,7 @@ def adm_get_aggregated_stats_range(
     days: int = 30,
     admin: dict = Depends(require_admin)
 ):
-    """
-    获取指定天数范围内的聚合统计
-    """
+    """Fetch aggregated stats over a specific number of days."""
     from db_service import get_aggregated_stats_range
     return get_aggregated_stats_range(stat_type, days)
 
@@ -3285,15 +3268,12 @@ def adm_run_aggregation(
     task_type: str = "all",
     admin: dict = Depends(require_admin)
 ):
-    """
-    手动触发数据聚合任务
-    task_type: all, hourly, daily
-    """
+    """Manually trigger aggregation task (task_type: all | hourly | daily)."""
     return run_aggregation_now(task_type)
 
 
 # ===========================================
-# Admin - System Configuration (系统配置)
+# Admin - System Configuration
 # ===========================================
 
 from config_service import (
@@ -3323,9 +3303,7 @@ def adm_get_all_configs(
     admin: dict = Depends(require_admin)
 ):
     """
-    获取所有系统配置
-    
-    category: rate_limit, analytics, system, 或不传获取全部
+    Fetch system configs, optionally filtered by category (rate_limit/analytics/system).
     """
     configs = get_all_configs(category)
     return {"configs": configs}
@@ -3336,10 +3314,8 @@ def adm_get_config(
     config_key: str,
     admin: dict = Depends(require_admin)
 ):
-    """
-    获取单个配置项
-    """
-    config = get_config(config_key, use_cache=False)  # 不使用缓存，获取最新值
+    """Fetch a single config key (bypass cache)."""
+    config = get_config(config_key, use_cache=False)
     if config is None:
         raise HTTPException(404, f"Config not found: {config_key}")
     return {"config_key": config_key, "config_value": config}
@@ -3352,14 +3328,12 @@ def adm_update_config(
     req: ConfigUpdateRequest,
     admin: dict = Depends(require_admin)
 ):
-    """
-    更新单个配置项
-    """
+    """Update a single config entry."""
     success = set_config(req.config_key, req.config_value, admin["id"])
     if not success:
         raise HTTPException(500, "Failed to update config")
     
-    # 记录操作日志
+    # Record audit operation
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_update",
@@ -3378,12 +3352,10 @@ def adm_batch_update_configs(
     req: BatchConfigUpdateRequest,
     admin: dict = Depends(require_admin)
 ):
-    """
-    批量更新配置
-    """
+    """Batch update multiple config entries."""
     results = batch_update_configs(req.updates, admin["id"])
     
-    # 记录操作日志
+    # Record audit operation
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_batch_update",
@@ -3397,9 +3369,7 @@ def adm_batch_update_configs(
 
 @app.get("/api/admin/rate-limits")
 def adm_get_rate_limits(admin: dict = Depends(require_admin)):
-    """
-    获取当前所有限频配置（格式化后）
-    """
+    """Fetch the current formatted rate-limit configuration."""
     return get_current_limits()
 
 
@@ -3410,11 +3380,7 @@ def adm_apply_rate_limit_preset(
     req: RateLimitPresetRequest,
     admin: dict = Depends(require_admin)
 ):
-    """
-    应用限频预设
-    
-    preset: "strict" | "normal" | "relaxed" | "disabled"
-    """
+    """Apply a rate-limit preset ("strict" | "normal" | "relaxed" | "disabled")."""
     if req.preset not in RATE_LIMIT_PRESETS:
         raise HTTPException(400, f"Invalid preset. Available: {list(RATE_LIMIT_PRESETS.keys())}")
     
@@ -3422,7 +3388,7 @@ def adm_apply_rate_limit_preset(
     if not success:
         raise HTTPException(500, "Failed to apply preset")
     
-    # 记录操作日志
+    # Record audit operation
     admin_log_operation(
         admin_id=admin["id"],
         operation_type="rate_limit_preset",
@@ -3440,9 +3406,7 @@ def adm_apply_rate_limit_preset(
 
 @app.get("/api/admin/rate-limits/presets")
 def adm_get_rate_limit_presets(admin: dict = Depends(require_admin)):
-    """
-    获取可用的限频预设列表
-    """
+    """Fetch available rate-limit presets."""
     return {"presets": RATE_LIMIT_PRESETS}
 
 
@@ -3452,8 +3416,6 @@ def adm_clear_config_cache(
     request: Request,
     admin: dict = Depends(require_admin)
 ):
-    """
-    清除配置缓存（立即生效新配置）
-    """
+    """Clear config cache to apply new settings immediately."""
     clear_config_cache()
     return {"status": "ok", "message": "Config cache cleared"}

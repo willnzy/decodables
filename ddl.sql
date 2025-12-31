@@ -1,60 +1,60 @@
 -- ==============================================================================
--- Make Decodables 数据库完整初始化脚本 (v3.2 - Admin Analytics + System Config)
--- 包含：核心表结构 + 最终版 RLS 安全策略
+-- Make Decodables Database Initialization Script (v3.2 - Admin Analytics + System Config)
+-- Includes: core schema + final RLS policies
 -- 
--- 重要更新 (v3.0):
--- - Credits 分桶：credits_monthly + credits_permanent
--- - Marketplace 表：marketplace_listings, user_purchases
--- - 通知系统：notifications
--- - 折扣系统：user_discounts
--- - system_resources 增加 allowed_tiers
+-- Highlights (v3.0):
+-- - Credit buckets: credits_monthly + credits_permanent
+-- - Marketplace tables: marketplace_listings, user_purchases
+-- - Notification system: notifications
+-- - Discount system: user_discounts
+-- - system_resources adds allowed_tiers
 --
--- 重要更新 (v3.1):
--- - assets 表增加 metadata 字段：存储扫描结果、画布元素等结构化数据
--- - assets.type 支持 'scanned' 类型（AI Smart Scan OCR）
+-- Highlights (v3.1):
+-- - assets.metadata column for scanned results, canvas elements, etc.
+-- - assets.type supports 'scanned' (AI Smart Scan OCR)
 --
--- 重要更新 (v3.2):
--- - admin_operation_logs 表：管理员操作审计日志
--- - user_events 表：用户行为追踪事件
--- - aggregated_stats 表：预计算统计数据（定时任务聚合）
--- - system_config 表：动态系统配置（限频、Analytics 等）
--- - notifications 表增加 notification_type 字段
+-- Highlights (v3.2):
+-- - admin_operation_logs: admin audit trail
+-- - user_events: detailed user event tracking
+-- - aggregated_stats: scheduled precomputed stats
+-- - system_config: dynamic config (rate limits, analytics, etc.)
+-- - notifications adds notification_type column
 -- ==============================================================================
 
 -- ==========================================
--- Part 1: 建表 (Schema Definition)
+-- Part 1: Schema Definition
 -- ==========================================
 
--- 1. 用户档案表 (User Profiles)
+-- 1. User profiles
 create table if not exists profiles (
-  id text primary key, -- 对应 Clerk user_id
+  id text primary key, -- Matches Clerk user_id
   email text,
   username text,
-  first_name text,     -- 用户名字（来自 Clerk）
-  last_name text,      -- 用户姓氏（来自 Clerk）
+  first_name text,     -- From Clerk
+  last_name text,      -- From Clerk
   avatar_url text,
   
-  -- 用户唯一标识码（格式: YYYYMMDDHHMMSS+毫秒+6位序号）
-  -- 例如: 20251230143025123000001
+  -- Unique user code (format: YYYYMMDDHHMMSS + ms + 6 digits)
+  -- Example: 20251230143025123000001
   user_code text unique,
 
-  -- Credits 分桶（重要）
-  credits_monthly int default 0,    -- 订阅每月赠送：每月刷新，不结转
-  credits_permanent int default 0,  -- 用户购买/售卖获得：永不过期
+  -- Credit buckets (important)
+  credits_monthly int default 0,    -- Subscription grant: resets monthly, no rollover
+  credits_permanent int default 0,  -- Earned via purchase/sales: never expires
 
   tier text default 'free', -- 'free', 'starter', 'pro'
 
-  -- 订阅状态（用于"会员有效"判断）
+  -- Subscription status (used for membership checks)
   subscription_status text default 'inactive', -- 'active' | 'inactive' | 'past_due' | 'canceled' | 'trialing'
-  subscription_valid_until timestamptz,        -- 可选：用于离线判定
-  monthly_credits_cycle_anchor timestamptz,    -- 可选：用于每月刷新基准点（与 Stripe 周期对齐）
+  subscription_valid_until timestamptz,        -- Optional: offline membership check
+  monthly_credits_cycle_anchor timestamptz,    -- Optional: anchor for monthly refresh
 
   stripe_customer_id text,
   role text default 'user', -- 'user', 'admin'
   created_at timestamptz default now()
 );
 
--- 2. 用户折扣表 (User Discounts)
+-- 2. User discounts
 create table if not exists user_discounts (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
@@ -64,14 +64,14 @@ create table if not exists user_discounts (
   created_at timestamptz default now()
 );
 
--- 3. 积分流水表 (Financial Ledger)
+-- 3. Credit ledger
 create table if not exists credit_transactions (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
 
-  amount int not null, -- 变动值 (+100, -50)
+  amount int not null, -- Delta (+100, -50)
 
-  -- 标记本次变动影响哪个桶（monthly/permanent），便于审计
+  -- Identify which bucket was affected for auditing
   bucket text not null default 'permanent', -- 'monthly' | 'permanent'
 
   balance_monthly_after int not null default 0,
@@ -82,56 +82,56 @@ create table if not exists credit_transactions (
   created_at timestamptz default now()
 );
 
--- 4. 项目表 (User Projects)
+-- 4. User projects
 create table if not exists projects (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
   title text default 'My Magic Story',
   canvas_data jsonb default '{}'::jsonb, -- Fabric.js JSON
   thumbnail_url text,
-  last_downloaded_hash text, -- 仅用于缓存/版本识别（不参与扣费）
+  last_downloaded_hash text, -- Cache/version identifier (no billing impact)
   is_deleted boolean default false,
-  deleted_at timestamptz default null, -- 删除时间，用于显示删除历史
+  deleted_at timestamptz default null, -- Deletion timestamp for history
 
-  -- 可选：用于快速提示项目包含锁定资源
+  -- Optional flag for locked content
   contains_locked_elements boolean default false,
   
-  -- 购买来源：如果项目是从购买的模版创建的，记录来源 listing ID
+  -- Source listing if project was created from a purchased template
   source_listing_id uuid references marketplace_listings(id),
 
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 
--- 5. 市场商品表 (Marketplace Listings)
--- PRD 定义: 强制审核后上架 + 定价上限 + 使用次数统计
+-- 5. Marketplace listings
+-- PRD: must pass moderation + price caps + usage tracking
 create table if not exists marketplace_listings (
   id uuid default gen_random_uuid() primary key,
-  seller_id text references profiles(id), -- NULL = 官方资源
+  seller_id text references profiles(id), -- NULL = official asset
   title text not null,
   description text,
   thumbnail_url text not null,
   resource_url text not null,
-  resource_type text not null, -- 'project' | 'asset'（可细分 'image'|'sticker'）
+  resource_type text not null, -- 'project' | 'asset' (e.g. 'image'|'sticker')
   price_credits int not null default 0, -- 0..500
-  allowed_tiers text[] not null default '{free, starter, pro}', -- 分级访问与购买
+  allowed_tiers text[] not null default '{free, starter, pro}', -- Tier-gated access/purchase
 
-  usage_count bigint default 0, -- 使用次数（排行榜用）
-  sales_count int default 0, -- 销售次数
+  usage_count bigint default 0, -- Times used (leaderboards)
+  sales_count int default 0, -- Number of sales
 
   is_public boolean default false,
   is_deleted boolean default false,
 
-  -- 审核相关字段（PRD 强制审核后上架）
+  -- Moderation fields
   moderation_status text not null default 'draft', -- 'draft'|'pending'|'approved'|'rejected'
-  moderation_note text, -- 拒绝原因或管理员备注
-  moderated_by text references profiles(id), -- 审核人
-  moderated_at timestamptz, -- 审核时间
+  moderation_note text, -- Rejection reason / admin notes
+  moderated_by text references profiles(id), -- Moderator ID
+  moderated_at timestamptz, -- Moderation timestamp
 
   created_at timestamptz default now()
 );
 
--- 6. 用户已购资源表 (User Purchases)
+-- 6. User purchases
 create table if not exists user_purchases (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
@@ -141,33 +141,33 @@ create table if not exists user_purchases (
   unique(user_id, listing_id)
 );
 
--- 7. 用户素材表 (User Assets)
--- PRD 定义: 存储用户上传、AI生成、OCR扫描的图片资源
--- type 字段说明:
---   'uploaded'     - 用户手动上传的图片
---   'ai_generated' - AI Generate 生成的图片
---   'scanned'      - AI Smart Scan (OCR) 扫描的图片
--- metadata 字段说明 (仅 scanned 类型使用):
---   source_image_url: 原始扫描图片 URL
---   ocr_result: { blocks: [...], summary: "..." } - 结构化识别结果
---   canvas_elements: [...] - 预转换的画布元素
+-- 7. User assets
+-- Stores user uploads, AI generations, and OCR scans.
+-- type field:
+--   'uploaded'     - user upload
+--   'ai_generated' - AI-generated image
+--   'scanned'      - AI Smart Scan (OCR) result
+-- metadata (scanned only):
+--   source_image_url: original scan
+--   ocr_result: structured OCR output
+--   canvas_elements: precomputed canvas elements
 create table if not exists assets (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
-  project_id uuid references projects(id), -- 可为空，上传时关联项目
+  project_id uuid references projects(id), -- Optional project association
   url text not null,
   type text not null, -- 'uploaded' | 'ai_generated' | 'scanned'
-  prompt text, -- AI生成时的提示词
-  metadata jsonb, -- 扫描结果、画布元素等结构化数据 (v3.1 新增)
+  prompt text, -- Prompt for AI generations
+  metadata jsonb, -- Structured scan/canvas data (added v3.1)
   is_deleted boolean default false,
   created_at timestamptz default now()
 );
 create index if not exists idx_assets_user_proj on assets(user_id, project_id);
 
--- 8. 站内信/通知表 (Notifications)
+-- 8. Notifications
 create table if not exists notifications (
   id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id), -- NULL = 全员广播
+  user_id text references profiles(id), -- NULL = broadcast
   target_group text, -- 'all', 'free', 'starter', 'pro'
   notification_type text default 'system', -- 'system', 'promotion', 'update', 'warning'
   title text not null,
@@ -176,7 +176,7 @@ create table if not exists notifications (
   created_at timestamptz default now()
 );
 
--- 9. 系统资源表 (System Resources)
+-- 9. System resources
 create table if not exists system_resources (
   id uuid default gen_random_uuid() primary key,
   type text not null, -- 'sticker', 'project'
@@ -186,7 +186,7 @@ create table if not exists system_resources (
   created_at timestamptz default now()
 );
 
--- 10. 行为日志表 (User Behavior Logs)
+-- 10. Activity logs
 create table if not exists activity_logs (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id),
@@ -195,7 +195,7 @@ create table if not exists activity_logs (
   created_at timestamptz default now()
 );
 
--- 11. 客服与运营记录表 (Support & Admin Ops)
+-- 11. Support & admin ops
 create table if not exists support_tickets (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id),
@@ -207,8 +207,8 @@ create table if not exists support_tickets (
   created_at timestamptz default now()
 );
 
--- 12. Listing 使用记录表 (Listing Usage - 去重计数)
--- PRD 定义: 用于统计 usage_count，去重规则 (listing_id, user_id, project_id)
+-- 12. Listing usage table (deduplicated counts)
+-- PRD: track usage_count with unique key (listing_id, user_id, project_id)
 create table if not exists listing_usage (
   id uuid default gen_random_uuid() primary key,
   listing_id uuid references marketplace_listings(id) not null,
@@ -218,8 +218,8 @@ create table if not exists listing_usage (
   unique(listing_id, used_by_user_id, project_id)
 );
 
--- 13. 排行榜快照表 (Leaderboard Snapshots - 缓存榜单)
--- PRD 定义: 可选，用于缓存周期性榜单数据
+-- 13. Leaderboard snapshots (cache)
+-- Optional cache for periodic leaderboards
 create table if not exists leaderboard_snapshots (
   id uuid default gen_random_uuid() primary key,
   period_start date not null,
@@ -230,8 +230,8 @@ create table if not exists leaderboard_snapshots (
   unique(period_start, period_end, board_type)
 );
 
--- 14. 管理员操作日志表 (Admin Operation Logs - 审计日志)
--- v3.2 新增: 用于记录所有管理员操作，便于对账和审计
+-- 14. Admin operation logs (audit)
+-- Added v3.2: capture all admin actions for auditing
 create table if not exists admin_operation_logs (
   id uuid default gen_random_uuid() primary key,
   admin_id text not null references profiles(id),
@@ -246,11 +246,11 @@ create index if not exists idx_admin_logs_operation_type on admin_operation_logs
 create index if not exists idx_admin_logs_admin_id on admin_operation_logs(admin_id);
 create index if not exists idx_admin_logs_target_user on admin_operation_logs(target_user_id);
 
--- 15. 用户行为事件表 (User Events - 用户行为追踪)
--- v3.2 新增: 用于追踪用户行为，支持分析和优化
+-- 15. User events (behavior tracking)
+-- Added v3.2: supports analytics and optimization
 create table if not exists user_events (
   id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id), -- 可为空（匿名用户）
+  user_id text references profiles(id), -- Nullable for anonymous users
   event_type text not null,
   properties jsonb default '{}',
   session_id text,
@@ -262,8 +262,8 @@ create index if not exists idx_user_events_user_id on user_events(user_id);
 create index if not exists idx_user_events_session on user_events(session_id);
 create index if not exists idx_user_events_properties on user_events using gin(properties);
 
--- 16. 聚合统计表 (Aggregated Stats - 预计算统计数据)
--- v3.2 新增: 用于存储定时任务预计算的统计数据
+-- 16. Aggregated stats (precomputed)
+-- Added v3.2: store scheduled aggregation output
 create table if not exists aggregated_stats (
   id uuid default gen_random_uuid() primary key,
   date date not null,
@@ -276,8 +276,8 @@ create index if not exists idx_agg_stats_date on aggregated_stats(date desc);
 create index if not exists idx_agg_stats_type on aggregated_stats(stat_type);
 create index if not exists idx_agg_stats_date_type on aggregated_stats(date desc, stat_type);
 
--- 17. 系统配置表 (System Config - 动态系统参数)
--- v3.2 新增: 用于存储可动态调整的系统参数（限频、Analytics 等）
+-- 17. System config (dynamic parameters)
+-- Added v3.2: runtime-adjustable settings (rate limits, analytics, etc.)
 create table if not exists system_config (
   id uuid default gen_random_uuid() primary key,
   config_key text unique not null,
@@ -286,13 +286,13 @@ create table if not exists system_config (
   description text,
   is_active boolean default true,
   updated_at timestamptz default now(),
-  updated_by text -- 最后修改的管理员ID
+  updated_by text -- Last modifying admin ID
 );
 create index if not exists idx_system_config_key on system_config(config_key);
 create index if not exists idx_system_config_category on system_config(category);
 
 -- ==========================================
--- Part 2: RLS 安全策略配置
+-- Part 2: RLS policy configuration
 -- ==========================================
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_discounts ENABLE ROW LEVEL SECURITY;
@@ -413,7 +413,7 @@ create policy "Public can view leaderboard" on leaderboard_snapshots for select
 using (true);
 
 -- [Admin Operation Logs] (v3.2)
--- 只有 service_role 可以访问（后端通过 service key 访问）
+-- Restrict to service_role (backend via service key)
 drop policy if exists "Service role full access to admin_logs" on admin_operation_logs;
 create policy "Service role full access to admin_logs" on admin_operation_logs for all
 to service_role
@@ -421,7 +421,7 @@ using (true)
 with check (true);
 
 -- [User Events] (v3.2)
--- Service role 完全访问
+-- Full access for service_role
 drop policy if exists "Service role full access to user_events" on user_events;
 create policy "Service role full access to user_events" on user_events for all
 to service_role
@@ -429,7 +429,7 @@ using (true)
 with check (true);
 
 -- [Aggregated Stats] (v3.2)
--- 只有 service_role 可以访问
+-- Restrict to service_role
 drop policy if exists "Service role full access to aggregated_stats" on aggregated_stats;
 create policy "Service role full access to aggregated_stats" on aggregated_stats for all
 to service_role
@@ -437,7 +437,7 @@ using (true)
 with check (true);
 
 -- [System Config] (v3.2)
--- 只有 service_role 可以访问
+-- Restrict to service_role
 drop policy if exists "Service role full access to system_config" on system_config;
 create policy "Service role full access to system_config" on system_config for all
 to service_role
@@ -445,48 +445,48 @@ using (true)
 with check (true);
 
 -- ==========================================
--- Part 3: 迁移脚本（如果从旧版本升级）
+-- Part 3: Migration scripts (upgrade from older versions)
 -- ==========================================
--- 如果你需要从旧版本迁移，请运行以下命令：
+-- Run these commands when migrating:
 
--- 1. 添加新列到 profiles (v3.0)
+-- 1. Add new columns to profiles (v3.0)
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_monthly int default 0;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_permanent int default 0;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_status text default 'inactive';
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_valid_until timestamptz;
 -- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS monthly_credits_cycle_anchor timestamptz;
 
--- 2. 迁移旧的 credits 到 credits_permanent (v3.0)
+-- 2. Move legacy credits into credits_permanent (v3.0)
 -- UPDATE profiles SET credits_permanent = COALESCE(credits, 0) WHERE credits_permanent = 0;
 
--- 3. 添加新列到 credit_transactions (v3.0)
+-- 3. Add new columns to credit_transactions (v3.0)
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS bucket text default 'permanent';
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_monthly_after int default 0;
 -- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_permanent_after int default 0;
 
--- 4. 更新旧的 credit_transactions 记录 (v3.0)
+-- 4. Update legacy credit_transactions rows (v3.0)
 -- UPDATE credit_transactions SET balance_permanent_after = balance_after WHERE balance_permanent_after = 0;
 
--- 5. 添加 allowed_tiers 到 system_resources (v3.0)
+-- 5. Add allowed_tiers to system_resources (v3.0)
 -- ALTER TABLE system_resources ADD COLUMN IF NOT EXISTS allowed_tiers text[] default '{free, starter, pro}';
 -- UPDATE system_resources SET allowed_tiers = CASE WHEN is_pro_only THEN '{pro}' ELSE '{free, starter, pro}' END;
 
 -- ==========================================
--- Part 4: v3.1 迁移脚本（PRD 完整对齐 + Advanced OCR）
+-- Part 4: v3.1 migration (PRD parity + Advanced OCR)
 -- ==========================================
--- 如果从旧版本升级，请运行以下迁移命令：
+-- Run these when upgrading:
 
--- 1. marketplace_listings 表新增字段（审核系统 + 使用统计）
+-- 1. Add moderation/usage fields to marketplace_listings
 ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS usage_count bigint default 0;
 ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_status text not null default 'draft';
 ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_note text;
 ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_by text references profiles(id);
 ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_at timestamptz;
 
--- 2. assets 表新增字段（OCR 扫描结果）
+-- 2. Add OCR metadata column to assets
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
 
--- 3. 创建 listing_usage 表（如果不存在）
+-- 3. Create listing_usage if missing
 CREATE TABLE IF NOT EXISTS listing_usage (
   id uuid default gen_random_uuid() primary key,
   listing_id uuid references marketplace_listings(id) not null,
@@ -497,7 +497,7 @@ CREATE TABLE IF NOT EXISTS listing_usage (
 );
 ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
 
--- 4. 创建 leaderboard_snapshots 表（如果不存在）
+-- 4. Create leaderboard_snapshots if missing
 CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
   id uuid default gen_random_uuid() primary key,
   period_start date not null,
@@ -509,22 +509,22 @@ CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
 );
 ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
 
--- 5. 将旧的 'user_upload' type 更新为 'uploaded'（如果有旧数据）
+-- 5. Normalize old 'user_upload' to 'uploaded'
 UPDATE assets SET type = 'uploaded' WHERE type = 'user_upload';
 
--- 6. 将没有审核状态的旧 listings 设置为 approved（已上线数据）
+-- 6. Set legacy approved listings without status to 'approved'
 UPDATE marketplace_listings SET moderation_status = 'approved' WHERE moderation_status IS NULL AND is_public = true;
 
 -- ==========================================
--- Part 5: v3.2 迁移脚本（Admin Analytics + System Config）
+-- Part 5: v3.2 migration (Admin Analytics + System Config)
 -- ==========================================
--- 如果从旧版本升级，请运行以下迁移命令：
+-- Run these when upgrading:
 
--- 1. notifications 表新增 notification_type 字段
+-- 1. Add notification_type to notifications
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_type TEXT DEFAULT 'system';
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
 
--- 2. 创建 admin_operation_logs 表（如果不存在）
+-- 2. Create admin_operation_logs if missing
 CREATE TABLE IF NOT EXISTS admin_operation_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   admin_id TEXT NOT NULL REFERENCES profiles(id),
@@ -540,7 +540,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_id ON admin_operation_logs(admin
 CREATE INDEX IF NOT EXISTS idx_admin_logs_target_user ON admin_operation_logs(target_user_id);
 ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
 
--- 3. 创建 user_events 表（如果不存在）
+-- 3. Create user_events table if missing
 CREATE TABLE IF NOT EXISTS user_events (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT REFERENCES profiles(id),
@@ -556,7 +556,7 @@ CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_user_events_properties ON user_events USING GIN(properties);
 ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
 
--- 4. 创建 aggregated_stats 表（如果不存在）
+-- 4. Create aggregated_stats table if missing
 CREATE TABLE IF NOT EXISTS aggregated_stats (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   date DATE NOT NULL,
@@ -570,7 +570,7 @@ CREATE INDEX IF NOT EXISTS idx_agg_stats_type ON aggregated_stats(stat_type);
 CREATE INDEX IF NOT EXISTS idx_agg_stats_date_type ON aggregated_stats(date DESC, stat_type);
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 
--- 5. 创建 system_config 表（如果不存在）
+-- 5. Create system_config table if missing
 CREATE TABLE IF NOT EXISTS system_config (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   config_key TEXT UNIQUE NOT NULL,
@@ -585,7 +585,7 @@ CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(config_key);
 CREATE INDEX IF NOT EXISTS idx_system_config_category ON system_config(category);
 ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
 
--- 6. RLS 策略 (只有 service_role 可以访问)
+-- 6. RLS policy (service_role only)
 DROP POLICY IF EXISTS "Service role full access to admin_logs" ON admin_operation_logs;
 CREATE POLICY "Service role full access to admin_logs" ON admin_operation_logs FOR ALL
 TO service_role USING (true) WITH CHECK (true);
@@ -602,7 +602,7 @@ DROP POLICY IF EXISTS "Service role full access to system_config" ON system_conf
 CREATE POLICY "Service role full access to system_config" ON system_config FOR ALL
 TO service_role USING (true) WITH CHECK (true);
 
--- 7. 创建系统配置相关的函数
+-- 7. Create system config helper functions
 CREATE OR REPLACE FUNCTION update_system_config_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -617,7 +617,7 @@ CREATE TRIGGER trigger_update_system_config_timestamp
     FOR EACH ROW
     EXECUTE FUNCTION update_system_config_timestamp();
 
--- 8. 创建获取限频配置的函数
+-- 8. Create helper to fetch rate-limit config
 CREATE OR REPLACE FUNCTION get_rate_limit_config(p_config_key TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -637,7 +637,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 9. 创建聚合统计相关的函数
+-- 9. Create aggregated stats helper functions
 CREATE OR REPLACE FUNCTION get_latest_stats(p_stat_type VARCHAR)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -677,7 +677,7 @@ BEGIN
 END;
 $$;
 
--- 10. 为现有表添加优化索引
+-- 10. Add optimized indexes
 CREATE INDEX IF NOT EXISTS idx_profiles_tier ON profiles(tier);
 CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON profiles(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_subscription_status ON profiles(subscription_status);
@@ -692,43 +692,43 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
 
--- 11. 插入默认的系统配置（限频配置）
+-- 11. Insert default system configs (rate limits)
 INSERT INTO system_config (config_key, config_value, category, description) VALUES
--- 支付相关 (高风险，严格限制)
-('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', '支付结账接口限频'),
-('rate_limit.payment.portal', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', '账单门户接口限频'),
-('rate_limit.marketplace.purchase', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', '市场购买接口限频'),
--- AI 生成相关 (资源密集)
-('rate_limit.generate.story', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'AI故事生成限频'),
-('rate_limit.generate.images', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'AI图片生成限频'),
-('rate_limit.tools.ocr', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'OCR识别限频'),
--- 导出相关 (服务器资源消耗)
-('rate_limit.export.pdf', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'PDF导出限频'),
-('rate_limit.export.zip', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'ZIP导出限频'),
-('rate_limit.export.preview', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', '预览图生成限频'),
--- 用户操作
-('rate_limit.projects.create', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', '创建项目限频'),
-('rate_limit.assets.upload', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', '素材上传限频'),
-('rate_limit.marketplace.publish', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', '商品发布限频'),
--- 公开接口 (防滥用)
-('rate_limit.support.email', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', '工单提交限频'),
-('rate_limit.contact.form', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', '联系表单限频'),
-('rate_limit.feedback.submit', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', '反馈提交限频'),
--- Admin 操作
-('rate_limit.admin.credits', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin积分调整限频'),
-('rate_limit.admin.tier', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin等级更新限频'),
-('rate_limit.admin.refund', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin退款限频'),
-('rate_limit.admin.subscription', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin订阅操作限频'),
-('rate_limit.admin.broadcast', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Admin群发限频'),
--- 查询接口
-('rate_limit.admin.search', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Admin搜索限频'),
-('rate_limit.marketplace.list', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', '市场列表限频'),
-('rate_limit.analytics.events', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', '事件上报限频'),
--- 全局默认配置
-('rate_limit.global.default', '{"limit": 100, "window": "minute", "enabled": true}', 'rate_limit', '全局默认限频'),
-('rate_limit.global.enabled', '{"enabled": true}', 'rate_limit', '是否启用全局限频'),
--- Analytics 配置
-('analytics.enabled', '{"enabled": true}', 'analytics', '是否启用用户行为追踪'),
-('analytics.sampling_rate', '{"critical": 1.0, "important": 1.0, "normal": 0.3, "debug": 0.0}', 'analytics', '事件采样率'),
-('analytics.min_level', '{"level": "normal"}', 'analytics', '最低追踪级别')
+-- Payments (high risk, strict limits)
+('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Checkout API limit'),
+('rate_limit.payment.portal', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Billing portal limit'),
+('rate_limit.marketplace.purchase', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Marketplace purchase limit'),
+-- AI generation (resource intensive)
+('rate_limit.generate.story', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'AI story generation limit'),
+('rate_limit.generate.images', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'AI image generation limit'),
+('rate_limit.tools.ocr', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'OCR limit'),
+-- Export operations (resource heavy)
+('rate_limit.export.pdf', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'PDF export limit'),
+('rate_limit.export.zip', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'ZIP export limit'),
+('rate_limit.export.preview', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Preview generation limit'),
+-- User operations
+('rate_limit.projects.create', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Project creation limit'),
+('rate_limit.assets.upload', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Asset upload limit'),
+('rate_limit.marketplace.publish', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Listing publish limit'),
+-- Public endpoints (abuse protection)
+('rate_limit.support.email', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Support ticket limit'),
+('rate_limit.contact.form', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Contact form limit'),
+('rate_limit.feedback.submit', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Feedback submission limit'),
+-- Admin operations
+('rate_limit.admin.credits', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin credit adjustment limit'),
+('rate_limit.admin.tier', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin tier update limit'),
+('rate_limit.admin.refund', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin refund limit'),
+('rate_limit.admin.subscription', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin subscription ops limit'),
+('rate_limit.admin.broadcast', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Admin broadcast limit'),
+-- Query endpoints
+('rate_limit.admin.search', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Admin search limit'),
+('rate_limit.marketplace.list', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Marketplace listing limit'),
+('rate_limit.analytics.events', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Analytics event ingestion limit'),
+-- Global defaults
+('rate_limit.global.default', '{"limit": 100, "window": "minute", "enabled": true}', 'rate_limit', 'Global default limit'),
+('rate_limit.global.enabled', '{"enabled": true}', 'rate_limit', 'Enable/disable global rate limit'),
+-- Analytics configuration
+('analytics.enabled', '{"enabled": true}', 'analytics', 'Enable analytics tracking'),
+('analytics.sampling_rate', '{"critical": 1.0, "important": 1.0, "normal": 0.3, "debug": 0.0}', 'analytics', 'Event sampling rates'),
+('analytics.min_level', '{"level": "normal"}', 'analytics', 'Minimum tracking level')
 ON CONFLICT (config_key) DO NOTHING;

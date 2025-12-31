@@ -13,12 +13,12 @@ PRICE_MAP = {
 
 def create_checkout_session(user_id: str, plan_type: str, discount_percent: int = 0):
     """
-    创建 Stripe Checkout Session
+     Stripe Checkout Session
     
     Args:
-        user_id: 用户 ID
+        user_id:  ID
         plan_type: 'credits_100', 'starter', 'pro'
-        discount_percent: 折扣百分比 (0-100)
+        discount_percent:  (0-100)
     """
     price_id = PRICE_MAP.get(plan_type)
     if not price_id:
@@ -37,9 +37,9 @@ def create_checkout_session(user_id: str, plan_type: str, discount_percent: int 
             "metadata": {"user_id": user_id, "plan_type": plan_type},
         }
         
-        # 如果有折扣，创建优惠券
+        # ，
         if discount_percent > 0 and discount_percent <= 100:
-            # 创建一次性优惠券
+            # 
             coupon = stripe.Coupon.create(
                 percent_off=discount_percent,
                 duration="once",
@@ -47,7 +47,7 @@ def create_checkout_session(user_id: str, plan_type: str, discount_percent: int 
             )
             session_params["discounts"] = [{"coupon": coupon.id}]
         
-        # 允许促销码
+        # 
         if discount_percent == 0:
             session_params["allow_promotion_codes"] = True
         
@@ -58,7 +58,7 @@ def create_checkout_session(user_id: str, plan_type: str, discount_percent: int 
         return None
 
 def create_portal_session(user_id: str, customer_id: str):
-    """创建客户门户链接 (用于取消订阅/换卡)"""
+    """ (/)"""
     if not customer_id:
         raise Exception("No Stripe Customer ID found")
     try:
@@ -79,7 +79,7 @@ def construct_event(payload, sig_header):
 
 def get_subscription_status(customer_id: str):
     """
-    获取客户的订阅状态
+    
     Returns: { status: str, tier: str, current_period_end: datetime }
     """
     try:
@@ -93,7 +93,7 @@ def get_subscription_status(customer_id: str):
             sub = subscriptions.data[0]
             price_id = sub['items']['data'][0]['price']['id']
             
-            # 根据 price_id 判断 tier
+            #  price_id  tier
             tier = 'free'
             if price_id == PRICE_MAP.get('starter'):
                 tier = 'starter'
@@ -117,12 +117,12 @@ def get_subscription_status(customer_id: str):
 
 
 # ==========================================
-# Admin 操作函数
+# Admin 
 # ==========================================
 
 def get_customer_subscriptions(customer_id: str):
     """
-    获取客户的所有订阅（包括活跃和已取消的）
+    （）
     """
     try:
         subscriptions = stripe.Subscription.list(
@@ -136,17 +136,17 @@ def get_customer_subscriptions(customer_id: str):
 
 def get_customer_payments(customer_id: str, limit: int = 10):
     """
-    获取客户的付款历史（用于退款）
+    （）
     Returns: List of PaymentIntent objects
     """
     try:
-        # 获取 PaymentIntents
+        #  PaymentIntents
         payment_intents = stripe.PaymentIntent.list(
             customer=customer_id,
             limit=limit
         )
         
-        # 过滤出成功的付款
+        # 
         successful_payments = [
             pi for pi in payment_intents.data 
             if pi.status == 'succeeded'
@@ -159,21 +159,21 @@ def get_customer_payments(customer_id: str, limit: int = 10):
 
 def cancel_subscription(subscription_id: str, immediate: bool = False):
     """
-    取消订阅
+    
     
     Args:
-        subscription_id: Stripe 订阅 ID
-        immediate: True = 立即取消，False = 在当前计费周期结束时取消
+        subscription_id: Stripe  ID
+        immediate: True = ，False = 
     
     Returns:
         { success: bool, subscription: Subscription, error: str }
     """
     try:
         if immediate:
-            # 立即取消
+            # 
             subscription = stripe.Subscription.cancel(subscription_id)
         else:
-            # 在计费周期结束时取消
+            # 
             subscription = stripe.Subscription.modify(
                 subscription_id,
                 cancel_at_period_end=True
@@ -194,12 +194,12 @@ def cancel_subscription(subscription_id: str, immediate: bool = False):
 
 def create_refund(payment_intent_id: str, amount_cents: int = None, reason: str = "requested_by_customer"):
     """
-    创建退款
+    
     
     Args:
         payment_intent_id: Stripe PaymentIntent ID
-        amount_cents: 退款金额（以分为单位），None 表示全额退款
-        reason: 退款原因 ('duplicate', 'fraudulent', 'requested_by_customer')
+        amount_cents: （），None 
+        reason:  ('duplicate', 'fraudulent', 'requested_by_customer')
     
     Returns:
         { success: bool, refund: Refund, error: str }
@@ -230,7 +230,7 @@ def create_refund(payment_intent_id: str, amount_cents: int = None, reason: str 
 
 def get_payment_intent_details(payment_intent_id: str):
     """
-    获取 PaymentIntent 详情
+     PaymentIntent 
     """
     try:
         return stripe.PaymentIntent.retrieve(payment_intent_id)
