@@ -590,7 +590,7 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     if items:
         project_ids = [item["id"] for item in items]
         listings_res = supabase.table("marketplace_listings").select(
-            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
+            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count, version, changelog, version_history, description"
         ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
         
         # Build resource_url -> listing map
@@ -604,6 +604,10 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
                     "allowed_tiers": listing["allowed_tiers"],
                     "price_credits": listing["price_credits"],
                     "sales_count": listing["sales_count"],
+                    "version": listing.get("version", "1.0"),
+                    "changelog": listing.get("changelog", ""),
+                    "version_history": listing.get("version_history", []),
+                    "description": listing.get("description", ""),
                 }
         
         # Attach listing info to project data
@@ -1019,17 +1023,76 @@ def create_listing(
     price_credits: int,
     allowed_tiers: list = None,
     submit_for_review: bool = True,
-    resource_id: str = None
+    resource_id: str = None,
+    version: str = "1.0",
+    changelog: str = ""
 ):
     """
-    Create listing (PRD Chapter 7/8)
+    Create or update listing (PRD Chapter 7/8)
+    
+    If a listing already exists for this resource (by resource_id or resource_url),
+    update it with new version; otherwise create a new listing.
     
     After submission moderation_status='pending', must be approved by admin to be listed
     
     Args:
         resource_id: The actual ID of the resource (asset.id or project.id)
         resource_url: For assets, the image URL; for projects, same as resource_id
+        version: Version number (e.g., "1.0")
+        changelog: What's new in this version
     """
+    from datetime import datetime
+    
+    # Check if listing already exists for this resource
+    existing_query = supabase.table("marketplace_listings").select("*")\
+        .eq("seller_id", seller_id).eq("is_deleted", False)
+    
+    # Try to find by resource_id first (preferred), then by resource_url
+    if resource_id:
+        existing_query = existing_query.eq("resource_id", resource_id)
+    else:
+        existing_query = existing_query.eq("resource_url", resource_url)
+    
+    existing_res = existing_query.execute()
+    existing_listing = existing_res.data[0] if existing_res.data else None
+    
+    if existing_listing:
+        # Update existing listing with new version
+        current_history = existing_listing.get("version_history") or []
+        
+        # Add new version to history
+        new_entry = {
+            "version": version,
+            "changelog": changelog,
+            "published_at": datetime.now().isoformat(),
+        }
+        current_history.append(new_entry)
+        
+        update_data = {
+            "title": title,
+            "description": description,
+            "thumbnail_url": thumbnail_url,
+            "price_credits": price_credits,
+            "allowed_tiers": allowed_tiers or ["free"],
+            "version": version,
+            "changelog": changelog,
+            "version_history": current_history,
+            "moderation_status": "pending" if submit_for_review else "draft",
+            "moderation_note": None,  # Clear previous moderation note
+            "is_public": True,
+        }
+        
+        res = supabase.table("marketplace_listings").update(update_data)\
+            .eq("id", existing_listing["id"]).execute()
+        return res.data[0] if res.data else None
+    
+    # Create new listing
+    version_history = [{
+        "version": version,
+        "changelog": changelog,
+        "published_at": datetime.now().isoformat(),
+    }]
+    
     data = {
         "seller_id": seller_id,
         "title": title,
@@ -1047,7 +1110,10 @@ def create_listing(
         "moderation_status": "pending" if submit_for_review else "draft",
         "moderation_note": None,
         "moderated_by": None,
-        "moderated_at": None
+        "moderated_at": None,
+        "version": version,
+        "changelog": changelog,
+        "version_history": version_history,
     }
     res = supabase.table("marketplace_listings").insert(data).execute()
     return res.data[0]

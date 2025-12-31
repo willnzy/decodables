@@ -123,7 +123,9 @@ def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
         resource_type=req.resource_type,
         price_credits=req.price_credits,
         allowed_tiers=req.allowed_tiers or ["free"],
-        resource_id=req.resource_id  # Pass the actual resource ID
+        resource_id=req.resource_id,  # Pass the actual resource ID
+        version=req.version or "1.0",
+        changelog=req.changelog or ""
     )
     
     # Submit for review (sets moderation_status='pending', is_public=true)

@@ -127,6 +127,8 @@ class ListingCreate(BaseModel):
     resource_type: str
     price_credits: int = Field(default=0, ge=0, le=MAX_LISTING_PRICE)
     allowed_tiers: Optional[List[str]] = None
+    version: Optional[str] = Field(default="1.0", max_length=20)  # Version number
+    changelog: Optional[str] = Field(default="", max_length=500)  # What's new in this version
     
     @field_validator('resource_type')
     @classmethod
