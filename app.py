@@ -1,5 +1,5 @@
 import os
-import jwt # 需安装 pyjwt
+import jwt # requires pyjwt
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,43 +12,43 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
-# 导入服务模块
+# Import service modules
 from db_service import (
-    # 权限校验
+    # Access control
     is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
     get_total_credits,
-    # 用户
+    # Users
     get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
     refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
     # Credits
     log_credit_transaction, log_payment_record, credit_deduct, add_credits_permanent, add_credits_monthly,
     deduct_credits_atomic, add_credits, get_credit_history,
-    # 项目
+    # Projects
     get_user_projects, get_project_detail, create_project, save_project,
     soft_delete_project, restore_project, update_project_hash, get_all_projects_feed,
-    count_user_projects,  # 准确计算项目总数
-    # 素材
+    count_user_projects,  # Accurate project total
+    # Assets
     save_asset, get_assets, get_system_resources,
     # Marketplace
     get_marketplace_listings, get_marketplace_item, get_seller_listings, create_listing,
     submit_listing_for_review, unpublish_listing, update_listing, check_user_purchase,
     execute_purchase, get_user_purchases, get_seller_stats, record_listing_usage, get_leaderboard,
-    # Admin 审核
+    # Admin moderation
     admin_get_moderation_list, admin_get_moderation_detail, admin_approve_listing,
     admin_reject_listing, admin_delete_listing, admin_unpublish_listing,
-    # Admin 新增功能
+    # Admin features
     admin_log_operation, admin_get_operation_logs, admin_get_user_projects,
     admin_get_dashboard_stats, admin_get_user_growth_stats, admin_get_revenue_stats,
     admin_get_project_stats, admin_get_credit_usage_stats, admin_get_tier_distribution,
     admin_get_conversion_funnel, admin_get_ai_insights, admin_get_ai_recommendations,
     admin_get_behavior_analysis, log_user_event, admin_get_user_events, admin_get_event_stats,
-    # 通知
+    # Notifications
     get_user_notifications, mark_notification_read, mark_all_notifications_read, create_broadcast,
     send_notification_to_user, send_notification_to_users, get_users_by_tier,
     get_all_notification_stats, get_notification_history,
-    # 折扣
+    # Discounts
     get_user_discount, create_user_discount,
-    # 日志
+    # Logs
     log_activity, create_support_ticket,
     # Supabase client
     supabase
@@ -60,12 +60,12 @@ from payment_service import (
 )
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
-from story_generator import generate_story_json, client as openai_client # 复用 client
+from story_generator import generate_story_json, client as openai_client # reuse client
 
-# 环境变量检查
+# Environment variables
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
-# [安全] Clerk 的公钥 (PEM格式)，用于验证 Token 签名。
-# 生产环境请从 Clerk Dashboard -> API Keys -> JWKS 获取，或设置 CLERK_PEM_PUBLIC_KEY 环境变量
+# Security: Clerk public key (PEM) for token verification.
+# Production: fetch from Clerk Dashboard -> API Keys -> JWKS or set CLERK_PEM_PUBLIC_KEY.
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY") 
 
 limiter = Limiter(key_func=get_remote_address)
@@ -73,12 +73,12 @@ app = FastAPI(title="MagicZine AI API v3.0 (Production)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS 配置 - 明确允许的来源
+# CORS configuration - allowed origins
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",                      # 本地开发环境
-    "http://127.0.0.1:3000",                      # 本地开发环境（备用）
-    "https://make-decodables.vercel.app",         # Vercel 生产环境
-    "https://decodables-production.up.railway.app" # Railway API 自身
+    "http://localhost:3000",                      # Local development
+    "http://127.0.0.1:3000",                      # Local development (fallback)
+    "https://make-decodables.vercel.app",         # Vercel production
+    "https://decodables-production.up.railway.app" # Railway API host
 ]
 
 app.add_middleware(
@@ -88,29 +88,29 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=3600,  # 预检请求缓存时间（秒）
+    max_age=3600,  # Preflight cache duration (seconds)
 )
 
 # ===========================================
-# 定时任务调度器 (Background Scheduler)
+# Background scheduler
 # ===========================================
 from scheduler import init_scheduler, shutdown_scheduler, run_aggregation_now
 
 @app.on_event("startup")
 async def startup_event():
-    """FastAPI 启动时初始化定时任务"""
+    """Initialize scheduled jobs when FastAPI starts."""
     init_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """FastAPI 关闭时停止定时任务"""
+    """Stop scheduled jobs when FastAPI shuts down."""
     shutdown_scheduler()
 
-# 添加中间件确保所有响应都包含 CORS 头（即使出错）
+# Middleware to ensure every response has CORS headers, even on errors
 @app.middleware("http")
 async def add_cors_header(request: Request, call_next):
     """
-    确保所有响应都包含 CORS 头，即使发生错误
+    Ensure every response contains CORS headers, even when exceptions occur.
     """
     try:
         response = await call_next(request)
@@ -120,7 +120,7 @@ async def add_cors_header(request: Request, call_next):
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
     except Exception as e:
-        # 如果发生异常，也要返回带 CORS 头的错误响应
+        # Return an error response with CORS headers when exceptions occur
         origin = request.headers.get("origin")
         cors_headers = {}
         if origin and origin in ALLOWED_ORIGINS:
@@ -137,20 +137,20 @@ async def add_cors_header(request: Request, call_next):
             headers=cors_headers
         )
 
-# 全局异常处理器 - 确保所有错误响应都包含 CORS 头
+# Global exception handler - ensure error responses include CORS headers
 from fastapi.responses import JSONResponse
 from fastapi import Request
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
-    全局异常处理器，确保所有错误响应都包含 CORS 头
+    Global exception handler that attaches CORS headers to error responses.
     """
     import traceback
     print(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
     print(traceback.format_exc())
     
-    # 获取请求的 origin
+    # Determine request origin
     origin = request.headers.get("origin")
     cors_headers = {}
     if origin and origin in [
@@ -164,7 +164,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "Access-Control-Allow-Credentials": "true",
         }
     
-    # 如果是 HTTPException，保持原有状态码
+    # Preserve status code for HTTPException
     if isinstance(exc, HTTPException):
         return JSONResponse(
             status_code=exc.status_code,
@@ -172,7 +172,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             headers=cors_headers
         )
     
-    # 其他异常返回 500
+    # All other exceptions -> 500
     return JSONResponse(
         status_code=500,
         content={
@@ -183,13 +183,13 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # ==========================================
-# 1. 鉴权依赖 (Auth)
+# 1. Authentication dependencies
 # ==========================================
 async def get_current_user(authorization: str = Header(None)):
     """
-    验证 Bearer Token。
-    生产环境模式：验证 JWT 签名。
-    开发环境模式：如果未配置公钥，为了方便测试，可能会回退到不安全模式(需谨慎)。
+    Validate the Bearer token.
+    Production mode: verify JWT signature.
+    Development mode: if the public key is missing, fall back to an insecure mode for local testing.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Token")
@@ -198,11 +198,11 @@ async def get_current_user(authorization: str = Header(None)):
     payload = None
     
     # -------------------------------------------------------
-    # [Real Auth] 生产环境验证逻辑
+    # [Real Auth] Production path
     # -------------------------------------------------------
     if CLERK_PEM_PUBLIC_KEY:
         try:
-            # 验证 Clerk 签发的 JWT
+            # Verify Clerk-issued JWT
             payload = jwt.decode(token, CLERK_PEM_PUBLIC_KEY, algorithms=["RS256"], options={"verify_aud": False})
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:
@@ -210,34 +210,34 @@ async def get_current_user(authorization: str = Header(None)):
         except jwt.InvalidTokenError as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
     else:
-        # [Dev Auth] 如果没配公钥，仅提取 user_id (仅限本地开发!)
-        # 警告：这不安全，仅用于未配置 Clerk 时的快速调试
+        # [Dev Auth] Without a public key, only extract user_id (local dev only)
+        # WARNING: insecure fallback for quick debugging
         print("⚠️ WARNING: Running in INSECURE AUTH mode (Missing CLERK_PEM_PUBLIC_KEY)")
         try:
-            # 不验证签名，仅解码
+            # Decode without signature verification
             payload = jwt.decode(token, options={"verify_signature": False})
             user_id = payload.get("sub")
         except:
-            # 如果连解码都失败，那可能是个假 token
-            user_id = token # 回退到 Mock 逻辑: 假设 token 就是 user_id
+            # If decoding fails, treat token string as user_id (mock fallback)
+            user_id = token
 
-    # 查库确保用户存在
+    # Ensure the user exists in the database
     profile = get_user_profile(user_id)
     
-    # 如果用户不存在数据库，尝试自动创建（处理 webhook 延迟或失败的情况）
+    # Auto-create the user when missing (handles delayed or failed webhooks)
     if not profile:
-        # 从 JWT payload 中提取用户信息
+        # Extract user info from JWT payload
         email = ""
         username = ""
         avatar_url = ""
         
         if payload:
-            # Clerk JWT 中可能包含的字段
+            # Possible Clerk JWT fields
             email = payload.get("email", payload.get("primary_email", ""))
             username = payload.get("username", payload.get("name", ""))
             avatar_url = payload.get("image_url", payload.get("picture", ""))
         
-        # 创建用户 profile
+        # Create the user profile
         try:
             create_user_profile(user_id, email, username, avatar_url)
             profile = get_user_profile(user_id)
@@ -253,8 +253,8 @@ async def get_current_user(authorization: str = Header(None)):
 
 async def get_current_user_optional(authorization: str = Header(None)):
     """
-    可选的用户验证，用于追踪匿名用户行为。
-    不会抛出异常，无 token 时返回 None。
+    Optional user lookup used for tracking anonymous behavior.
+    Returns None if no token is provided.
     """
     if not authorization or not authorization.startswith("Bearer "):
         return None
@@ -268,25 +268,25 @@ async def get_current_user_optional(authorization: str = Header(None)):
             profile = get_user_profile(user_id)
             return profile
         else:
-            # 开发模式
+            # Development mode
             return None
     except Exception:
         return None
 
 async def require_admin(user: dict = Depends(get_current_user)):
-    """管理员权限守卫"""
+    """Guard that ensures the caller is an admin."""
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 async def require_member(user: dict = Depends(get_current_user)):
-    """会员权限守卫（Starter/Pro）"""
+    """Guard that ensures the caller is a Starter/Pro member."""
     if not is_member(user):
         raise HTTPException(status_code=403, detail="Membership required")
     return user
 
 # ==========================================
-# 2. 数据模型 (Models)
+# 2. Data models
 # ==========================================
 class StoryGenRequest(BaseModel):
     topic: str
@@ -306,7 +306,7 @@ class ProjectUpdate(BaseModel):
     canvas_data: Optional[dict] = None
     thumbnail_url: Optional[str] = None
     title: Optional[str] = None
-    used_listing_ids: Optional[List[str]] = None  # 新增应用的 listing IDs
+    used_listing_ids: Optional[List[str]] = None  # Newly referenced listing IDs
 
 class CheckoutRequest(BaseModel):
     plan_type: str  # 'credits_100', 'starter', or 'pro'
@@ -336,10 +336,10 @@ class AdminTierRequest(BaseModel):
 
 class AdminDowngradeRequest(BaseModel):
     user_id: str
-    user_code: str  # 用于验证
-    user_email: str  # 用于验证
+    user_code: str  # For verification
+    user_email: str  # For verification
     target_tier: str  # 'starter' | 'free'
-    immediate: bool = False  # True: 立即生效, False: 周期结束后生效
+    immediate: bool = False  # True = immediate, False = apply at period end
     reason: str
 
 class AdminDiscountRequest(BaseModel):
@@ -360,7 +360,7 @@ class MarketplacePublishRequest(BaseModel):
     resource_url: str
     resource_type: str  # 'project' | 'asset'
     price_credits: int = 0
-    allowed_tiers: List[str]  # 必填，仅允许 ['free'] / ['starter','pro'] / ['pro']
+    allowed_tiers: List[str]  # Required; only ['free'], ['starter','pro'], or ['pro']
 
 class MarketplacePurchaseRequest(BaseModel):
     listing_id: str
@@ -377,20 +377,20 @@ class AdminModerationRejectRequest(BaseModel):
 
 class AdminRefundRequest(BaseModel):
     user_id: str
-    user_code: str  # 用户唯一标识码，需要与邮箱匹配验证
+    user_code: str  # Must match email for verification
     payment_intent_id: str
-    amount_cents: Optional[int] = None  # None = 全额退款
+    amount_cents: Optional[int] = None  # None = full refund
     reason: str
 
 class AdminCancelSubscriptionRequest(BaseModel):
     user_id: str
-    user_code: str  # 用户唯一标识码，需要与邮箱匹配验证
+    user_code: str  # Must match email for verification
     subscription_id: str
-    immediate: bool = False  # True = 立即取消，False = 周期结束取消
+    immediate: bool = False  # True = cancel now, False = cancel at period end
     reason: str
 
 # ==========================================
-# 3. 接口实现 (Routes)
+# 3. Routes
 # ==========================================
 
 @app.get("/health")
@@ -422,27 +422,27 @@ async def clerk_webhook(request: Request):
         first_name = data.get("first_name")
         last_name = data.get("last_name")
         
-        # 检查用户是否已存在（可能已通过 JIT 创建）
+        # Check whether the user already exists (may have been created via JIT)
         existing_profile = get_user_profile(user_id)
         if existing_profile:
-            # 用户已存在（通过 JIT 创建），更新可能缺失的信息
+            # Update missing info for the existing JIT-created user
             update_user_profile(user_id, avatar_url=image_url, username=username, first_name=first_name, last_name=last_name)
-            # 如果 email 为空，单独更新 email
+            # If email is missing, update it separately
             if not existing_profile.get("email") and email:
                 supabase.table("profiles").update({"email": email}).eq("id", user_id).execute()
             print(f"✅ User {user_id} already exists (JIT created), updated profile info")
             return {"status": "updated", "reason": "jit_created"}
         
-        # 检查 email 唯一性（防止同一邮箱注册多个账号）
+        # Ensure email uniqueness (avoid duplicate accounts)
         existing_by_email = search_users(email)
         if existing_by_email:
             print(f"⚠️ User with email {email} already exists, skipping creation")
             return {"status": "skipped", "reason": "email_exists"}
         
-        # 创建用户档案（包含姓名信息）
+        # Create a full profile (including names)
         create_user_profile(user_id, email, username, image_url, first_name=first_name, last_name=last_name)
         
-        # 记录注册行为
+        # Log signup event
         log_activity(user_id, "user_signup", {
             "email": email,
             "first_name": first_name,
@@ -451,17 +451,17 @@ async def clerk_webhook(request: Request):
         })
     
     elif event_type == "user.updated":
-        # 用户更新资料（头像、用户名、姓名等）
+        # User updated avatar/username/names
         user_id = data.get("id")
         new_avatar = data.get("image_url")
         new_username = data.get("username")
         new_first_name = data.get("first_name")
         new_last_name = data.get("last_name")
         
-        # 同步更新到 Supabase（包含姓名）
+        # Sync updates to Supabase (including name fields)
         update_user_profile(user_id, avatar_url=new_avatar, username=new_username, first_name=new_first_name, last_name=new_last_name)
         
-        # 记录更新行为
+        # Log profile update
         log_activity(user_id, "profile_updated", {
             "avatar_changed": new_avatar is not None,
             "username_changed": new_username is not None,
@@ -470,7 +470,7 @@ async def clerk_webhook(request: Request):
         print(f"✅ Updated profile for user {user_id}")
     
     elif event_type == "session.created":
-        # 记录登录行为
+        # Log login event
         user_id = data.get("user_id")
         if user_id:
             log_activity(user_id, "user_login", {
@@ -479,7 +479,7 @@ async def clerk_webhook(request: Request):
             })
     
     elif event_type in ["session.ended", "session.removed", "session.revoked"]:
-        # 记录登出行为
+        # Log logout event
         user_id = data.get("user_id")
         if user_id:
             log_activity(user_id, "user_logout", {
@@ -498,41 +498,41 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
     
     event_type = event['type']
     
-    # 一次性购买完成
+    # One-time purchase completed
     if event_type == 'checkout.session.completed':
         session = event['data']['object']
         uid = session['metadata'].get('user_id')
         plan = session['metadata'].get('plan_type')
-        amount_total = session.get('amount_total', 0)  # 以分为单位
+        amount_total = session.get('amount_total', 0)  # Amount in cents
         currency = session.get('currency', 'usd').upper()
         
         if uid and plan:
             if plan == 'credits_100':
-                # 购买积分：计入 permanent
+                # Purchase credits -> add to permanent bucket
                 add_credits_permanent(uid, 100, "Purchase 100 Credits", "topup_purchase")
-                # 记录付款
+                # Log payment
                 log_payment_record(uid, amount_total, currency, "credits_purchase", f"Purchase 100 Credits - ${amount_total/100:.2f}")
                 log_activity(uid, "credits_purchase", {"amount": 100, "payment": amount_total})
             elif plan in ['starter', 'pro']:
-                # 新订阅：更新 tier + 赠送月度积分
+                # New subscription: update tier and grant monthly credits
                 update_subscription_tier(uid, plan, session.get('customer'), "active")
                 amt = 500 if plan == 'starter' else 1000
                 add_credits_monthly(uid, amt, f"{plan.capitalize()} Monthly Credits", "sub_grant")
-                # 记录订阅付款
+                # Log subscription payment
                 log_payment_record(uid, amount_total, currency, "sub_payment", f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}")
                 log_activity(uid, "subscription_started", {"plan": plan, "payment": amount_total})
     
-    # 订阅续费成功（月度刷新）
+    # Subscription renewal (monthly refresh)
     elif event_type == 'invoice.payment_succeeded':
         invoice = event['data']['object']
         customer_id = invoice.get('customer')
-        amount_paid = invoice.get('amount_paid', 0)  # 以分为单位
+        amount_paid = invoice.get('amount_paid', 0)  # Amount in cents
         currency = invoice.get('currency', 'usd').upper()
         billing_reason = invoice.get('billing_reason', '')  # subscription_create, subscription_cycle, etc.
         
-        # 查找用户
+        # Look up user
         if customer_id:
-            # 通过 stripe_customer_id 查找用户
+            # Match via stripe_customer_id
             user_res = supabase.table("profiles").select("id, tier")\
                 .eq("stripe_customer_id", customer_id).execute()
             
@@ -541,14 +541,14 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 uid = user['id']
                 tier = user['tier']
                 
-                # 刷新月度积分（重置，不结转）- 只在续费时刷新
+                # Refresh monthly credits (reset, no rollover) on renewal
                 if tier in ['starter', 'pro'] and billing_reason == 'subscription_cycle':
                     refresh_monthly_credits(uid, tier)
-                    # 记录续费付款
+                    # Log renewal payment
                     log_payment_record(uid, amount_paid, currency, "sub_renewal", f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}")
                     log_activity(uid, "monthly_credits_refreshed", {"tier": tier, "payment": amount_paid})
     
-    # 订阅取消/过期
+    # Subscription canceled or expired
     elif event_type in ['customer.subscription.deleted', 'customer.subscription.updated']:
         subscription = event['data']['object']
         customer_id = subscription.get('customer')
@@ -562,13 +562,13 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 uid = user_res.data[0]['id']
                 
                 if status in ['canceled', 'unpaid', 'past_due']:
-                    # 降级到 free
+                    # Downgrade to free
                     update_subscription_tier(uid, 'free', subscription_status='inactive')
                     log_activity(uid, "subscription_ended", {"reason": status})
                 elif status == 'active':
-                    # 订阅恢复
+                    # Subscription reactivated
                     plan_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
-                    # 根据 price_id 判断 tier（需要配置映射）
+                    # Map price_id to tier
                     new_tier = 'starter' if 'starter' in plan_id.lower() else 'pro'
                     update_subscription_tier(uid, new_tier, subscription_status='active')
     
@@ -588,11 +588,10 @@ def get_me(user: dict = Depends(get_current_user)):
     
     user_id = user["id"]
     
-    # 检查并重置 monthly credits（如果需要）
-    # permanent credits 永远不会被重置
+    # Reset monthly credits when needed (permanent credits never reset)
     check_and_reset_monthly_credits_if_needed(user_id)
     
-    # 重新获取用户信息（可能已更新）
+    # Fetch the latest profile data (it may have changed)
     user_profile = get_user_profile(user_id)
     if not user_profile:
         # Fallback to user dict if profile not found
@@ -612,27 +611,27 @@ def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current
 @app.get("/api/user/assets")
 def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: dict = Depends(get_current_user)):
     """
-    获取用户素材
+    Fetch user assets.
     
-    - Starter用户：只能看到当前项目的素材
-    - Pro用户：可以看到所有项目的素材（Cross-Project History）
-    - 购买的素材：不受项目限制
+    - Starter: restricted to current project assets
+    - Pro: can access assets across all projects (history)
+    - Purchased assets: always accessible
     """
-    # Pro 用户可以访问所有历史素材
+    # Only Pro users can access cross-project history
     if scope == "all" and user["tier"] != "pro":
         raise HTTPException(403, "Pro required for cross-project history")
     target_proj = project_id if scope != "all" else None
     return get_assets(user["id"], target_proj)
 
 @app.post("/api/user/assets")
-@limiter.limit("20/minute")  # 上传限频
+@limiter.limit("20/minute")  # Upload rate limit
 async def upload_asset(
     request: Request,
     file: UploadFile = File(...),
     project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user)
 ):
-    """上传用户素材图片 - 仅 Pro 可用 (PRD v3.2)"""
+    """Upload personal assets (Pro only, PRD v3.2)."""
     # Check personal upload permission (Pro only - PRD v3.2)
     # Normalize tier to lowercase for consistent comparison
     user_tier = (user.get("tier") or "").lower()
@@ -645,36 +644,36 @@ async def upload_asset(
     import uuid
     from image_generator import supabase as storage_supabase, BUCKET_NAME
     
-    # 验证文件类型
+    # Validate file type
     allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
     if file.content_type not in allowed_types:
         raise HTTPException(400, f"Unsupported file type: {file.content_type}")
     
-    # 验证文件大小 (5MB)
+    # Validate file size (5MB)
     contents = await file.read()
     if len(contents) > 5 * 1024 * 1024:
         raise HTTPException(400, "File too large. Maximum size is 5MB")
     
-    # 检查 storage client 是否可用
+    # Ensure storage client is configured
     if not storage_supabase:
         raise HTTPException(500, "Storage service not configured")
     
-    # 生成唯一文件名
+    # Generate a unique filename
     ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
     filename = f"uploads/{user['id']}/{uuid.uuid4()}.{ext}"
     
     try:
-        # 上传文件到 generated-images bucket (复用 image_generator 的客户端)
+        # Upload file to generated-images bucket (reuse image_generator client)
         storage_supabase.storage.from_(BUCKET_NAME).upload(
             path=filename,
             file=contents,
             file_options={"content-type": file.content_type}
         )
         
-        # 获取公开 URL
+        # Fetch the public URL
         url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
         
-        # 保存到 assets 表
+        # Save metadata into assets table
         save_asset(user["id"], url, "uploaded", project_id)
         
         return {"url": url, "filename": filename}
@@ -685,44 +684,44 @@ async def upload_asset(
 
 @app.delete("/api/user/assets/{asset_id}")
 def delete_asset(asset_id: str, user: dict = Depends(get_current_user)):
-    """删除用户素材（软删除）"""
-    # 验证素材属于当前用户
+    """Soft-delete a user asset."""
+    # Ensure the asset belongs to the current user
     asset = supabase.table("assets").select("*").eq("id", asset_id).eq("user_id", user["id"]).single().execute()
     if not asset.data:
         raise HTTPException(404, "Asset not found")
     
-    # 软删除
+    # Soft delete
     supabase.table("assets").update({"is_deleted": True}).eq("id", asset_id).execute()
     return {"success": True, "message": "Asset deleted"}
 
 @app.get("/api/user/purchases")
 def my_purchases(page: int = 1, limit: int = 50, user: dict = Depends(get_current_user)):
-    """获取用户已购买的商品"""
+    """Fetch the user's purchased items."""
     items = get_user_purchases(user["id"], page, limit)
     return {"items": items, "total": len(items)}
 
 @app.get("/api/user/notifications")
 def my_notifications(unread_only: bool = False, user: dict = Depends(get_current_user)):
-    """获取用户通知"""
+    """Fetch user notifications."""
     items = get_user_notifications(user["id"], unread_only)
     return {"items": items}
 
 @app.post("/api/user/notifications/{id}/read")
 def mark_read(id: str, user: dict = Depends(get_current_user)):
-    """标记通知为已读"""
+    """Mark a notification as read."""
     mark_notification_read(id, user["id"])
     return {"status": "ok"}
 
 
 @app.post("/api/user/notifications/read-all")
 def mark_all_read(user: dict = Depends(get_current_user)):
-    """标记所有通知为已读"""
+    """Mark all notifications as read."""
     mark_all_notifications_read(user["id"])
     return {"status": "ok"}
 
 @app.get("/api/resources/stickers")
 def get_stickers(user: dict = Depends(get_current_user)):
-    """获取贴纸库（根据用户权限过滤）"""
+    """Fetch sticker resources filtered by tier."""
     return get_system_resources("sticker", user["tier"])
 
 # --- Projects ---
@@ -731,18 +730,18 @@ def list_projects(
     page: int = 1, 
     limit: int = 6, 
     search: str = None, 
-    include_canvas_data: bool = True,  # 新增：是否包含 canvas_data（用于分步加载）
+    include_canvas_data: bool = True,  # Whether to include canvas_data for staged loading
     user: dict = Depends(get_current_user)
 ):
-    """获取用户项目列表，支持分页和搜索
+    """List user projects with pagination and search support.
     
-    分步加载优化：
-    - include_canvas_data=false: 只返回基本信息（快速加载）
-    - include_canvas_data=true: 返回完整信息包括 canvas_data（用于渲染预览图）
+    Staged loading:
+    - include_canvas_data=False: return basic info only (faster)
+    - include_canvas_data=True: include canvas_data for preview rendering
     """
     print(f"[API] list_projects: page={page}, limit={limit}, search={search}, include_canvas_data={include_canvas_data}, user_id={user['id']}")
     items = get_user_projects(user["id"], page, limit, search, include_canvas_data)
-    # 使用 count_user_projects 获取准确的项目总数
+    # Use count_user_projects for an accurate total
     total_count = count_user_projects(user["id"], search)
     print(f"[API] list_projects: items={len(items) if items else 0}, total={total_count}")
     return {"items": items, "total": total_count, "page": page}
@@ -754,7 +753,7 @@ def list_deleted_projects(
     limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
-    """获取用户已删除的项目列表"""
+    """Retrieve the user's deleted projects."""
     from db_service import get_user_deleted_projects
     return get_user_deleted_projects(user["id"], page, limit)
 
@@ -764,7 +763,7 @@ def restore_user_project(
     project_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """用户恢复自己已删除的项目"""
+    """Allow a user to restore their own deleted project."""
     from db_service import user_restore_project
     try:
         project = user_restore_project(project_id, user["id"])
@@ -781,7 +780,7 @@ class ProjectCreate(BaseModel):
     canvas_data: Optional[dict] = None
 
 @app.post("/api/projects")
-@limiter.limit("20/minute")  # 创建项目限频
+@limiter.limit("20/minute")  # Project creation rate limit
 def new_project(request: Request, req: ProjectCreate = None, user: dict = Depends(get_current_user)):
     p = create_project(user["id"], req.title if req else None, req.canvas_data if req else None)
     log_activity(user["id"], "create_project")
@@ -873,7 +872,7 @@ def save_proj(id: str, req: ProjectUpdate, user: dict = Depends(get_current_user
     }
 
 @app.post("/api/projects/{id}/duplicate")
-@limiter.limit("10/minute")  # 复制项目限频
+@limiter.limit("10/minute")  # Project duplication rate limit
 def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_user)):
     """复制项目（购买的项目不能复制）"""
     from db_service import duplicate_project
@@ -1216,7 +1215,7 @@ def get_project_pdf(request: Request, project_id: str, user: dict = Depends(get_
 
 # [新增] 预览 PDF 为图片（防止用户绕过下载）
 @app.get("/api/projects/{project_id}/preview")
-@limiter.limit("20/minute")  # 预览生成限频
+@limiter.limit("20/minute")  # Preview generation rate limit
 def preview_project_as_image(request: Request, project_id: str, user: dict = Depends(get_current_user)):
     """生成 PDF 预览图片，防止用户直接下载 PDF"""
     import fitz  # PyMuPDF
@@ -1284,7 +1283,7 @@ def preview_project_as_image(request: Request, project_id: str, user: dict = Dep
         raise HTTPException(500, "Failed to generate preview")
 
 @app.post("/api/generate/pdf")
-@limiter.limit("10/minute")  # PDF 生成限频
+@limiter.limit("10/minute")  # PDF generation rate limit
 def dl_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """生成 PDF - 永久免费（根据 PRD v3.0）"""
     # 不再扣费，仅更新 hash 用于缓存/版本识别
@@ -1411,7 +1410,7 @@ def get_project_zip(request: Request, project_id: str, user: dict = Depends(get_
 
 # --- Marketplace ---
 @app.get("/api/marketplace/items")
-@limiter.limit("60/minute")  # 列表查询限频
+@limiter.limit("60/minute")  # Listing query rate limit
 def marketplace_items(
     request: Request,
     featured: bool = False, 
@@ -1509,7 +1508,7 @@ def marketplace_item_detail(
     return item
 
 @app.post("/api/marketplace/publish")
-@limiter.limit("10/minute")  # 发布限频
+@limiter.limit("10/minute")  # Publish rate limit
 def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: dict = Depends(require_member)):
     """
     发布商品（提交审核）（PRD 第7/8章）
@@ -1573,7 +1572,7 @@ def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(
     return {"status": "unpublished"}
 
 @app.post("/api/marketplace/purchase")
-@limiter.limit("10/minute")  # 购买限频防刷
+@limiter.limit("10/minute")  # Purchase rate limit (anti-fraud)
 def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
     """购买商品"""
     result = execute_purchase(user["id"], req.listing_id)
@@ -1629,7 +1628,7 @@ def marketplace_leaderboard(
 
 # --- Pay & Support ---
 @app.post("/api/payment/checkout")
-@limiter.limit("5/minute")  # 支付接口严格限频
+@limiter.limit("5/minute")  # Strict rate limit for payment APIs
 def pay(request: Request, req: CheckoutRequest, user: dict = Depends(get_current_user)):
     # 检查是否有折扣
     discount = get_user_discount(user["id"], req.plan_type)
@@ -1639,7 +1638,7 @@ def pay(request: Request, req: CheckoutRequest, user: dict = Depends(get_current
     return {"url": url, "discount_applied": discount_percent}
 
 @app.post("/api/payment/portal")
-@limiter.limit("10/minute")  # 账单门户限频
+@limiter.limit("10/minute")  # Billing portal rate limit
 def portal(request: Request, user: dict = Depends(get_current_user)):
     if not user.get("stripe_customer_id"): raise HTTPException(400, "No subscription found")
     return {"url": create_portal_session(user["id"], user.get("stripe_customer_id"))}
@@ -1653,7 +1652,7 @@ def ticket(request: Request, req: SupportTicketRequest, user: dict = Depends(get
     return {"status": "ok"}
 
 @app.post("/api/contact")
-@limiter.limit("3/minute")  # 公开接口严格限频防滥用
+@limiter.limit("3/minute")  # Public endpoint rate limit (abuse protection)
 def contact_form(request: Request, req: ContactFormRequest):
     """
     Public contact form endpoint - no authentication required.
@@ -1688,7 +1687,7 @@ def feedback_with_images(request: Request, req: FeedbackWithImagesRequest):
 
 # --- Admin ---
 @app.get("/api/admin/users")
-@limiter.limit("60/minute")  # 搜索限频防爬取
+@limiter.limit("60/minute")  # Search rate limit (anti-scraping)
 def adm_users(request: Request, query: str, admin: dict = Depends(require_admin)):
     users = search_users(query)
     return {"users": users}
@@ -1698,7 +1697,7 @@ def adm_audit(uid: str, admin: dict = Depends(require_admin)):
     return get_full_user_audit(uid)
 
 @app.post("/api/admin/credits/adjust")
-@limiter.limit("30/minute")  # Admin 操作限频
+@limiter.limit("30/minute")  # Admin action rate limit
 def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(require_admin)):
     """手动调整用户积分（可指定 bucket）"""
     admin_adjust_credits(req.user_id, req.amount, req.bucket, req.reason)
@@ -1719,7 +1718,7 @@ def adm_adj(request: Request, req: AdminAdjustRequest, admin: dict = Depends(req
     return {"status": "ok"}
 
 @app.post("/api/admin/tier/update")
-@limiter.limit("30/minute")  # Admin 操作限频
+@limiter.limit("30/minute")  # Admin action rate limit
 def adm_tier(request: Request, req: AdminTierRequest, admin: dict = Depends(require_admin)):
     # 获取当前等级用于日志
     old_profile = get_user_profile(req.user_id)
@@ -1824,7 +1823,7 @@ def adm_user_payments(uid: str, admin: dict = Depends(require_admin)):
     }
 
 @app.post("/api/admin/refund")
-@limiter.limit("10/minute")  # 退款操作严格限频
+@limiter.limit("10/minute")  # Refund operation rate limit
 def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(require_admin)):
     """
     Admin 退款操作
@@ -1933,7 +1932,7 @@ def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = Depends(
     }
 
 @app.post("/api/admin/subscription/cancel")
-@limiter.limit("10/minute")  # 订阅操作严格限频
+@limiter.limit("10/minute")  # Subscription operation rate limit
 def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
     """
     Admin 取消用户订阅
@@ -2050,7 +2049,7 @@ def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionReques
     }
 
 @app.post("/api/admin/subscription/downgrade")
-@limiter.limit("10/minute")  # 订阅操作严格限频
+@limiter.limit("10/minute")  # Subscription operation rate limit
 def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
     """
     Admin 帮用户降级订阅
@@ -2281,7 +2280,7 @@ def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, adm
     raise HTTPException(400, "Invalid downgrade path")
 
 @app.post("/api/admin/broadcast")
-@limiter.limit("5/minute")  # 群发限频防滥用
+@limiter.limit("5/minute")  # Broadcast rate limit (abuse protection)
 def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
     """群发系统通知"""
     notification = create_broadcast(req.title, req.content, req.target_group)
@@ -3137,7 +3136,7 @@ def get_cloudflare_geo(request: Request) -> dict:
 
 
 @app.post("/api/analytics/events")
-@limiter.limit("60/minute")  # 事件上报限频（批量接口）
+@limiter.limit("60/minute")  # Event ingestion rate limit (batch)
 async def log_analytics_events(request: Request, req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
     """
     记录用户行为事件

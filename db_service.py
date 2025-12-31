@@ -112,7 +112,7 @@ def validate_allowed_tiers(allowed_tiers: list) -> dict:
         ['pro']
     ]
     
-    # 排序后比较
+    # Compare after sorting
     sorted_tiers = sorted(allowed_tiers) if allowed_tiers else []
     
     for valid_combo in valid_combinations:
@@ -1263,7 +1263,7 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
     return leaderboard
 
 # ==========================================
-# 6. 通知系统 (Notifications)
+# 6. Notification System
 # ==========================================
 
 def get_user_notifications(user_id: str, unread_only: bool = False, limit: int = 20):
@@ -1604,7 +1604,7 @@ def admin_adjust_credits(user_id: str, amount: int, bucket: str, reason: str):
     return True
 
 # ==========================================
-# 8.1 Admin 审核功能（Marketplace Moderation）
+# 8.1 Admin Moderation (Marketplace)
 # ==========================================
 
 def admin_get_moderation_list(
@@ -1704,7 +1704,7 @@ def admin_unpublish_listing(listing_id: str):
 
 
 # ==========================================
-# 15. Admin Operation Logs (审计日志)
+# 15. Admin Operation Logs (Audit)
 # ==========================================
 
 def admin_log_operation(admin_id: str, operation_type: str, target_user_id: str = None, details: str = None, reason: str = None):
@@ -1798,7 +1798,7 @@ def admin_get_operation_logs(
 
 
 # ==========================================
-# 16. Admin User Projects (用户项目管理)
+# 16. Admin User Projects (Management)
 # ==========================================
 
 def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, include_deleted: bool = True):
@@ -1832,7 +1832,7 @@ def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, includ
 
 
 # ==========================================
-# 17. Admin Stats & Analytics (统计分析)
+# 17. Admin Stats & Analytics
 # ==========================================
 
 def admin_get_dashboard_stats(period: str = "month"):
@@ -2200,7 +2200,7 @@ def admin_get_conversion_funnel(period: str = "month"):
 
 
 # ==========================================
-# 18. Admin AI Analysis (AI 分析)
+# 18. Admin AI Analysis
 # ==========================================
 
 def admin_get_ai_insights(analysis_type: str = "all"):
@@ -2420,7 +2420,7 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
 
 
 # ==========================================
-# 19. User Events Tracking (用户事件追踪)
+# 19. User Events Tracking
 # ==========================================
 
 def log_user_event(user_id: str, event_type: str, properties: dict = None, session_id: str = None):

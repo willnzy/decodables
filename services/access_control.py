@@ -166,7 +166,7 @@ class AccessControl:
         Check if user can use OCR/Smart Scan.
         
         Rules (PRD v3.2):
-        - Pro: Yes (5 Credits/次)
+        - Pro: Yes (5 credits per use)
         - Free: Trial only
         - Starter: No (not included in Starter plan)
         
