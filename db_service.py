@@ -858,12 +858,38 @@ def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt
     supabase.table("assets").insert(data).execute()
 
 def get_assets(user_id: str, project_id: str = None):
-    """Get user assets"""
+    """Get user assets with marketplace_listing info"""
     query = supabase.table("assets").select("*").eq("user_id", user_id).eq("is_deleted", False)
     if project_id:
         query = query.eq("project_id", project_id)
     res = query.order("created_at", desc=True).execute()
-    return res.data
+    items = res.data or []
+    
+    # Get corresponding marketplace_listings (if any) - matching get_projects pattern
+    if items:
+        asset_ids = [item["id"] for item in items]
+        listings_res = supabase.table("marketplace_listings").select(
+            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
+        ).in_("resource_url", asset_ids).eq("is_deleted", False).execute()
+        
+        # Build resource_url -> listing map
+        listings_map = {}
+        if listings_res.data:
+            for listing in listings_res.data:
+                listings_map[listing["resource_url"]] = {
+                    "id": listing["id"],
+                    "moderation_status": listing["moderation_status"],
+                    "is_public": listing["is_public"],
+                    "allowed_tiers": listing["allowed_tiers"],
+                    "price_credits": listing["price_credits"],
+                    "sales_count": listing["sales_count"],
+                }
+        
+        # Attach listing info to asset data
+        for item in items:
+            item["marketplace_listing"] = listings_map.get(item["id"])
+    
+    return items
 
 def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"):
     """
