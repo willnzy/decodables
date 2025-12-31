@@ -865,18 +865,19 @@ def get_assets(user_id: str, project_id: str = None):
     res = query.order("created_at", desc=True).execute()
     items = res.data or []
     
-    # Get corresponding marketplace_listings (if any) - matching get_projects pattern
+    # Get corresponding marketplace_listings (if any)
+    # Use resource_id column to match asset.id
     if items:
         asset_ids = [item["id"] for item in items]
         listings_res = supabase.table("marketplace_listings").select(
-            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
-        ).in_("resource_url", asset_ids).eq("is_deleted", False).execute()
+            "id, resource_id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count"
+        ).in_("resource_id", asset_ids).eq("is_deleted", False).execute()
         
-        # Build resource_url -> listing map
+        # Build resource_id -> listing map
         listings_map = {}
         if listings_res.data:
             for listing in listings_res.data:
-                listings_map[listing["resource_url"]] = {
+                listings_map[listing["resource_id"]] = {
                     "id": listing["id"],
                     "moderation_status": listing["moderation_status"],
                     "is_public": listing["is_public"],
@@ -1017,12 +1018,17 @@ def create_listing(
     resource_type: str,
     price_credits: int,
     allowed_tiers: list = None,
-    submit_for_review: bool = True
+    submit_for_review: bool = True,
+    resource_id: str = None
 ):
     """
     Create listing (PRD Chapter 7/8)
     
     After submission moderation_status='pending', must be approved by admin to be listed
+    
+    Args:
+        resource_id: The actual ID of the resource (asset.id or project.id)
+        resource_url: For assets, the image URL; for projects, same as resource_id
     """
     data = {
         "seller_id": seller_id,
@@ -1030,6 +1036,7 @@ def create_listing(
         "description": description,
         "thumbnail_url": thumbnail_url,
         "resource_url": resource_url,
+        "resource_id": resource_id,  # Store actual resource ID
         "resource_type": resource_type,
         "price_credits": price_credits,
         "allowed_tiers": allowed_tiers or ["free"],

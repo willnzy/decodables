@@ -123,6 +123,7 @@ class ListingCreate(BaseModel):
     description: Optional[str] = Field(default="", max_length=500)
     thumbnail_url: str
     resource_url: str
+    resource_id: Optional[str] = None  # The actual ID of the resource (asset.id or project.id)
     resource_type: str
     price_credits: int = Field(default=0, ge=0, le=MAX_LISTING_PRICE)
     allowed_tiers: Optional[List[str]] = None
