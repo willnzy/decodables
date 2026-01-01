@@ -1,4 +1,5 @@
 import os
+import logging
 import jwt # requires pyjwt
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form, Query
@@ -11,6 +12,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 # Import service modules
 from db_service import (

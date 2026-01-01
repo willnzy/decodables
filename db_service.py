@@ -2779,7 +2779,7 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
             end_date = now.isoformat()
         
         # Get project data
-        projects = supabase.table("projects").select("created_at, updated_at, cover_url")\
+        projects = supabase.table("projects").select("created_at, updated_at, thumbnail_url")\
             .gte("created_at", start_date).lte("created_at", end_date).execute()
         
         daily_created = defaultdict(int)
@@ -2790,8 +2790,8 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
             created_date = project.get("created_at", "")[:10]
             daily_created[created_date] += 1
             
-            # Consider completed if cover_url exists
-            if project.get("cover_url"):
+            # Consider completed if thumbnail_url exists
+            if project.get("thumbnail_url"):
                 daily_completed[created_date] += 1
         
         # Get export records - use try/except in case activity_logs table doesn't exist
