@@ -2811,6 +2811,132 @@ def adm_notification_stats(admin: dict = Depends(require_admin)):
     return get_all_notification_stats()
 
 
+# --- Admin Error Logs ---
+@app.get("/api/admin/error-logs")
+def adm_get_error_logs(
+    page: int = 1,
+    limit: int = 50,
+    error_type: Optional[str] = None,
+    status_code: Optional[int] = None,
+    user_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Fetch error logs with filtering and pagination.
+    
+    Args:
+        page: Page number (1-based)
+        limit: Items per page (max 100)
+        error_type: Filter by error type (API, NETWORK, JS_ERROR, etc.)
+        status_code: Filter by HTTP status code
+        user_id: Filter by user ID
+        start_date: Filter from date (ISO format)
+        end_date: Filter to date (ISO format)
+        search: Search in message and endpoint
+    """
+    try:
+        limit = min(limit, 100)  # Cap at 100
+        offset = (page - 1) * limit
+        
+        # Build query
+        query = supabase.table("error_logs").select("*", count="exact")
+        
+        # Apply filters
+        if error_type:
+            query = query.eq("error_type", error_type)
+        if status_code:
+            query = query.eq("status_code", status_code)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        if start_date:
+            query = query.gte("created_at", start_date)
+        if end_date:
+            query = query.lte("created_at", end_date)
+        if search:
+            query = query.or_(f"message.ilike.%{search}%,endpoint.ilike.%{search}%")
+        
+        # Execute with pagination
+        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        
+        total = result.count or 0
+        total_pages = (total + limit - 1) // limit
+        
+        return {
+            "logs": result.data or [],
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+        }
+    except Exception as e:
+        print(f"[Admin] Error fetching error logs: {e}")
+        raise HTTPException(500, f"Failed to fetch error logs: {str(e)}")
+
+
+@app.get("/api/admin/error-logs/stats")
+def adm_get_error_stats(
+    hours: int = 24,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get error statistics for the specified time period.
+    
+    Args:
+        hours: Number of hours to look back (default 24)
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        
+        # Get counts by type
+        type_query = supabase.table("error_logs").select(
+            "error_type", count="exact"
+        ).gte("created_at", cutoff)
+        
+        # Get all errors in time period
+        errors = supabase.table("error_logs").select(
+            "error_type, status_code, endpoint"
+        ).gte("created_at", cutoff).execute()
+        
+        # Calculate statistics
+        by_type = {}
+        by_status = {}
+        by_endpoint = {}
+        
+        for err in (errors.data or []):
+            # Count by type
+            t = err.get("error_type", "UNKNOWN")
+            by_type[t] = by_type.get(t, 0) + 1
+            
+            # Count by status
+            s = err.get("status_code") or 0
+            by_status[s] = by_status.get(s, 0) + 1
+            
+            # Count by endpoint (top 10)
+            e = err.get("endpoint")
+            if e:
+                e = e.split("?")[0]  # Remove query params
+                by_endpoint[e] = by_endpoint.get(e, 0) + 1
+        
+        # Sort endpoints by count and take top 10
+        top_endpoints = sorted(by_endpoint.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        return {
+            "hours": hours,
+            "total": len(errors.data or []),
+            "by_type": by_type,
+            "by_status": by_status,
+            "top_endpoints": dict(top_endpoints),
+        }
+    except Exception as e:
+        print(f"[Admin] Error fetching error stats: {e}")
+        raise HTTPException(500, f"Failed to fetch error stats: {str(e)}")
+
+
 @app.get("/api/admin/notification/history")
 def adm_notification_history(
     page: int = 1, 
