@@ -653,6 +653,7 @@ class ErrorLogRequest(BaseModel):
     context: Optional[dict] = None
     client_timestamp: Optional[str] = None
     session_id: Optional[str] = None
+    user_code: Optional[str] = None  # User code for easier identification
 
 class ErrorLogBatchRequest(BaseModel):
     """Request model for batch error logging"""
@@ -687,6 +688,7 @@ async def log_error(request: ErrorLogRequest, authorization: Optional[str] = Hea
             "endpoint": request.endpoint[:500] if request.endpoint else None,
             "method": request.method,
             "user_id": user_id,
+            "user_code": request.user_code,
             "session_id": request.session_id,
             "page_url": request.page_url[:2000] if request.page_url else None,
             "user_agent": request.user_agent[:500] if request.user_agent else None,
@@ -735,6 +737,7 @@ async def log_errors_batch(request: ErrorLogBatchRequest, authorization: Optiona
                 "endpoint": err.endpoint[:500] if err.endpoint else None,
                 "method": err.method,
                 "user_id": user_id,
+                "user_code": err.user_code,
                 "session_id": err.session_id,
                 "page_url": err.page_url[:2000] if err.page_url else None,
                 "user_agent": err.user_agent[:500] if err.user_agent else None,
@@ -2818,7 +2821,7 @@ def adm_get_error_logs(
     limit: int = 50,
     error_type: Optional[str] = None,
     status_code: Optional[int] = None,
-    user_id: Optional[str] = None,
+    user_code: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     search: Optional[str] = None,
@@ -2832,7 +2835,7 @@ def adm_get_error_logs(
         limit: Items per page (max 100)
         error_type: Filter by error type (API, NETWORK, JS_ERROR, etc.)
         status_code: Filter by HTTP status code
-        user_id: Filter by user ID
+        user_code: Filter by user code (e.g., USR001)
         start_date: Filter from date (ISO format)
         end_date: Filter to date (ISO format)
         search: Search in message and endpoint
@@ -2849,8 +2852,8 @@ def adm_get_error_logs(
             query = query.eq("error_type", error_type)
         if status_code:
             query = query.eq("status_code", status_code)
-        if user_id:
-            query = query.eq("user_id", user_id)
+        if user_code:
+            query = query.ilike("user_code", f"%{user_code}%")
         if start_date:
             query = query.gte("created_at", start_date)
         if end_date:
