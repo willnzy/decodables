@@ -2862,7 +2862,7 @@ def adm_get_error_logs(
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         
         total = result.count or 0
-        total_pages = (total + limit - 1) // limit
+        total_pages = (total + limit - 1) // limit if total > 0 else 1
         
         return {
             "logs": result.data or [],
@@ -2872,8 +2872,19 @@ def adm_get_error_logs(
             "total_pages": total_pages,
         }
     except Exception as e:
-        print(f"[Admin] Error fetching error logs: {e}")
-        raise HTTPException(500, f"Failed to fetch error logs: {str(e)}")
+        error_msg = str(e)
+        print(f"[Admin] Error fetching error logs: {error_msg}")
+        # If table doesn't exist, return empty data instead of error
+        if "relation" in error_msg.lower() and "does not exist" in error_msg.lower():
+            return {
+                "logs": [],
+                "total": 0,
+                "page": page,
+                "limit": limit,
+                "total_pages": 1,
+                "warning": "Error logs table not created. Please run the migration."
+            }
+        raise HTTPException(500, f"Failed to fetch error logs: {error_msg}")
 
 
 @app.get("/api/admin/error-logs/stats")
@@ -2891,11 +2902,6 @@ def adm_get_error_stats(
         from datetime import datetime, timedelta
         
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        
-        # Get counts by type
-        type_query = supabase.table("error_logs").select(
-            "error_type", count="exact"
-        ).gte("created_at", cutoff)
         
         # Get all errors in time period
         errors = supabase.table("error_logs").select(
@@ -2933,8 +2939,19 @@ def adm_get_error_stats(
             "top_endpoints": dict(top_endpoints),
         }
     except Exception as e:
-        print(f"[Admin] Error fetching error stats: {e}")
-        raise HTTPException(500, f"Failed to fetch error stats: {str(e)}")
+        error_msg = str(e)
+        print(f"[Admin] Error fetching error stats: {error_msg}")
+        # If table doesn't exist, return empty stats instead of error
+        if "relation" in error_msg.lower() and "does not exist" in error_msg.lower():
+            return {
+                "hours": hours,
+                "total": 0,
+                "by_type": {},
+                "by_status": {},
+                "top_endpoints": {},
+                "warning": "Error logs table not created. Please run the migration."
+            }
+        raise HTTPException(500, f"Failed to fetch error stats: {error_msg}")
 
 
 @app.get("/api/admin/notification/history")
