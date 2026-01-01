@@ -295,6 +295,8 @@ class StoryGenRequest(BaseModel):
 class ImageGenRequest(BaseModel):
     project_id: str
     prompts: List[str]
+    reference_image: Optional[str] = None  # Base64 encoded image or URL
+    reference_strength: Optional[float] = 0.7  # 0.0-1.0, higher = more similar to reference
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1178,14 +1180,19 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     Model selection based on tier:
     - Free/Starter: Standard model (flux-schnell)
     - Pro: High-quality model (flux-dev)
+    
+    Supports optional reference image for style/content guidance.
     """
     blacklist = ["nsfw", "nude", "sex"]
     if any(w in p.lower() for p in req.prompts for w in blacklist):
         raise HTTPException(400, "Safety Violation")
     
-    cost = len(req.prompts) * 5
+    # Reference image costs extra (7 credits vs 5)
+    base_cost = 7 if req.reference_image else 5
+    cost = len(req.prompts) * base_cost
     try:
-        result = credit_deduct(user["id"], cost, "generation", f"Gen {len(req.prompts)} images")
+        result = credit_deduct(user["id"], cost, "generation", 
+            f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""))
     except Exception as e:
         if "INSUFFICIENT" in str(e):
             raise HTTPException(402, "Insufficient credits")
@@ -1201,7 +1208,13 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         # Standard model for Free/Starter users
         model = "flux-schnell"
     
-    urls, task_id = await generate_8_images(req.prompts, model=model)
+    # Generate images (with or without reference)
+    urls, task_id = await generate_8_images(
+        req.prompts, 
+        model=model,
+        reference_image=req.reference_image,
+        reference_strength=req.reference_strength or 0.7
+    )
     for url, prompt in zip(urls, req.prompts):
         save_asset(user["id"], url, "ai_generated", req.project_id, prompt)
     
@@ -1210,7 +1223,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "balance": result["total"],
         "balance_monthly": result["balance_monthly"],
         "balance_permanent": result["balance_permanent"],
-        "model_used": model  # Return model info for debugging
+        "model_used": model,
+        "used_reference": bool(req.reference_image)
     }
 
 # Advanced OCR endpoint - detects tables, text, and images
