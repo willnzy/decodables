@@ -1731,6 +1731,10 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
             "listing_id": listing_id,
             "price_paid": 0
         }).execute()
+        
+        # Also create purchased item copy for free items
+        _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id)
+        
         return {"success": True, "message": "Free item claimed"}
     
     # 6. Deduct buyer credits
@@ -1763,7 +1767,64 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
         "sales_count": listing.get("sales_count", 0) + 1
     }).eq("id", listing_id).execute()
     
+    # 10. Create purchased item copy in buyer's library
+    _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id)
+    
     return {"success": True, "message": "Purchase successful"}
+
+
+def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, listing_id: str):
+    """
+    Create a copy of the purchased item in buyer's library.
+    For projects: creates a new project record with is_purchased=True
+    For assets: creates a new asset record with is_purchased=True
+    """
+    resource_type = listing.get("resource_type", "project")
+    resource_url = listing.get("resource_url")  # This is the original project/asset ID
+    resource_id = listing.get("resource_id")  # v3.3: Direct reference to asset
+    
+    if resource_type == "project" and resource_url:
+        # Get original project data
+        original_project = supabase.table("projects").select("*")\
+            .eq("id", resource_url).single().execute()
+        
+        if original_project.data:
+            # Create a copy for the buyer
+            new_project_data = {
+                "user_id": buyer_id,
+                "title": original_project.data.get("title"),
+                "canvas_data": original_project.data.get("canvas_data", {}),
+                "thumbnail_url": original_project.data.get("thumbnail_url"),
+                "is_purchased": True,
+                "source_listing_id": listing_id,
+                "origin_owner_id": seller_id,
+            }
+            supabase.table("projects").insert(new_project_data).execute()
+            print(f"[PURCHASE] Created purchased project for buyer {buyer_id}")
+    
+    elif resource_type == "asset":
+        # For assets, use resource_id if available, otherwise try resource_url
+        original_asset_id = resource_id or resource_url
+        
+        if original_asset_id:
+            # Get original asset data
+            original_asset = supabase.table("assets").select("*")\
+                .eq("id", original_asset_id).single().execute()
+            
+            if original_asset.data:
+                # Create a reference for the buyer (same URL, different record)
+                new_asset_data = {
+                    "user_id": buyer_id,
+                    "url": original_asset.data.get("url"),
+                    "name": original_asset.data.get("name"),
+                    "type": original_asset.data.get("type", "image"),
+                    "prompt": original_asset.data.get("prompt"),
+                    "is_purchased": True,
+                    "source_listing_id": listing_id,
+                    "origin_owner_id": seller_id,
+                }
+                supabase.table("assets").insert(new_asset_data).execute()
+                print(f"[PURCHASE] Created purchased asset for buyer {buyer_id}")
 
 def get_user_purchases(user_id: str, page: int = 1, limit: int = 50):
     """Get user purchased items"""
