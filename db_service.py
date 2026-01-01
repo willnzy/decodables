@@ -971,11 +971,33 @@ def get_dashboard_projects(
         ]
         total = len(items)  # Recalculate total after filtering
     
+    # Get counts for all view types (for tab badges)
+    # Count all (non-deleted) projects
+    all_count_res = supabase.table("projects").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False).execute()
+    all_count = len(all_count_res.data) if all_count_res.data else 0
+    
+    # Count bought projects
+    bought_count_res = supabase.table("projects").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False).eq("is_purchased", True).execute()
+    bought_count = len(bought_count_res.data) if bought_count_res.data else 0
+    
+    # Count selling projects (with active listings)
+    selling_count_res = supabase.table("marketplace_listings").select("id")\
+        .eq("seller_id", user_id).eq("resource_type", "project")\
+        .eq("is_public", True).eq("moderation_status", "approved").eq("is_deleted", False).execute()
+    selling_count = len(selling_count_res.data) if selling_count_res.data else 0
+    
     return {
         "items": items,
         "total": total,
         "page": page,
-        "view_type": view_type
+        "view_type": view_type,
+        "counts": {
+            "all": all_count,
+            "bought": bought_count,
+            "selling": selling_count
+        }
     }
 
 
@@ -1238,11 +1260,33 @@ def get_dashboard_assets(
         ]
         total = len(items)  # Recalculate total after filtering
     
+    # Get counts for all view types (for tab badges)
+    # Count all (non-deleted) assets
+    all_count_res = supabase.table("assets").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False).execute()
+    all_count = len(all_count_res.data) if all_count_res.data else 0
+    
+    # Count bought assets
+    bought_count_res = supabase.table("assets").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False).eq("is_purchased", True).execute()
+    bought_count = len(bought_count_res.data) if bought_count_res.data else 0
+    
+    # Count selling assets (with active listings)
+    selling_count_res = supabase.table("marketplace_listings").select("id")\
+        .eq("seller_id", user_id).eq("resource_type", "asset")\
+        .eq("is_public", True).eq("moderation_status", "approved").eq("is_deleted", False).execute()
+    selling_count = len(selling_count_res.data) if selling_count_res.data else 0
+    
     return {
         "items": items,
         "total": total,
         "page": page,
-        "view_type": view_type
+        "view_type": view_type,
+        "counts": {
+            "all": all_count,
+            "bought": bought_count,
+            "selling": selling_count
+        }
     }
 
 
