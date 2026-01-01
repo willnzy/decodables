@@ -297,6 +297,7 @@ class ImageGenRequest(BaseModel):
     prompts: List[str]
     reference_image: Optional[str] = None  # Base64 encoded image or URL
     reference_strength: Optional[float] = 0.7  # 0.0-1.0, higher = more similar to reference
+    image_size: Optional[str] = "landscape_4_3"  # Image aspect ratio: landscape_4_3, square, portrait_4_3, etc.
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1213,7 +1214,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         req.prompts, 
         model=model,
         reference_image=req.reference_image,
-        reference_strength=req.reference_strength or 0.7
+        reference_strength=req.reference_strength or 0.7,
+        image_size=req.image_size or "landscape_4_3"
     )
     for url, prompt in zip(urls, req.prompts):
         save_asset(user["id"], url, "ai_generated", req.project_id, prompt)

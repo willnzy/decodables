@@ -62,7 +62,8 @@ async def generate_and_upload_single(
     task_id, 
     model="flux-schnell",
     reference_image_url=None,
-    reference_strength=0.7
+    reference_strength=0.7,
+    image_size="landscape_4_3"
 ):
     """
     Generate a single image and upload to Supabase Storage.
@@ -75,6 +76,7 @@ async def generate_and_upload_single(
         model: Model name (flux-schnell for standard, flux-dev for high-quality)
         reference_image_url: Optional URL of reference image for image-to-image
         reference_strength: Strength of reference influence (0.0-1.0)
+        image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
     """
     try:
         # Determine if using image-to-image or text-to-image
@@ -91,7 +93,7 @@ async def generate_and_upload_single(
                     "prompt": prompt + ", children's book style, safe for work, colorful",
                     "image_url": reference_image_url,
                     "strength": reference_strength,  # 0.0 = identical to input, 1.0 = ignore input
-                    "image_size": "landscape_4_3",
+                    "image_size": image_size,
                     "num_inference_steps": 28,
                     "enable_safety_checker": True
                 },
@@ -111,7 +113,7 @@ async def generate_and_upload_single(
                 model_endpoint,
                 arguments={
                     "prompt": prompt + ", children's book style, safe for work, colorful",
-                    "image_size": "landscape_4_3",
+                    "image_size": image_size,
                     "num_inference_steps": num_inference_steps,
                     "enable_safety_checker": True
                 },
@@ -142,7 +144,8 @@ async def generate_8_images(
     prompts: list, 
     model="flux-schnell",
     reference_image: str = None,
-    reference_strength: float = 0.7
+    reference_strength: float = 0.7,
+    image_size: str = "landscape_4_3"
 ):
     """
     Generate images using specified model, optionally with reference image.
@@ -152,6 +155,7 @@ async def generate_8_images(
         model: Model name (flux-schnell for standard, flux-dev for high-quality)
         reference_image: Optional base64 image or URL for style reference
         reference_strength: How much to follow reference (0.0-1.0, higher = more similar)
+        image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
     
     Returns:
         Tuple of (image_urls, task_id)
@@ -176,7 +180,8 @@ async def generate_8_images(
                 task_id, 
                 model=model,
                 reference_image_url=reference_image_url,
-                reference_strength=reference_strength
+                reference_strength=reference_strength,
+                image_size=image_size
             ))
         image_urls = await asyncio.gather(*tasks)
     
