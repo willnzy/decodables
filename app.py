@@ -2867,8 +2867,26 @@ def adm_get_error_logs(
         total = result.count or 0
         total_pages = (total + limit - 1) // limit if total > 0 else 1
         
+        logs = result.data or []
+        
+        # Enrich logs with user_code from profiles if missing
+        user_ids_without_code = [
+            log["user_id"] for log in logs 
+            if log.get("user_id") and not log.get("user_code")
+        ]
+        
+        if user_ids_without_code:
+            # Fetch user codes from profiles
+            profiles_result = supabase.table("profiles").select("id, user_code").in_("id", list(set(user_ids_without_code))).execute()
+            user_code_map = {p["id"]: p.get("user_code") for p in (profiles_result.data or [])}
+            
+            # Enrich logs
+            for log in logs:
+                if log.get("user_id") and not log.get("user_code"):
+                    log["user_code"] = user_code_map.get(log["user_id"])
+        
         return {
-            "logs": result.data or [],
+            "logs": logs,
             "total": total,
             "page": page,
             "limit": limit,
