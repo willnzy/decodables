@@ -145,10 +145,72 @@ from fastapi import Request
 async def global_exception_handler(request: Request, exc: Exception):
     """
     Global exception handler that attaches CORS headers to error responses.
+    Also logs errors to the database for debugging.
     """
     import traceback
+    import uuid
+    from datetime import datetime, timezone
+    
+    error_traceback = traceback.format_exc()
     print(f"Unhandled exception: {type(exc).__name__}: {str(exc)}")
-    print(traceback.format_exc())
+    print(error_traceback)
+    
+    # Determine status code
+    status_code = exc.status_code if isinstance(exc, HTTPException) else 500
+    
+    # Try to extract user info from authorization header
+    user_id = None
+    user_code = None
+    try:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            # Try to decode token to get user info
+            try:
+                import jwt
+                payload = jwt.decode(token, options={"verify_signature": False})
+                user_id = payload.get("sub") or payload.get("user_id")
+                # Try to get user_code from database
+                if user_id:
+                    try:
+                        profile = supabase.table("profiles").select("user_code").eq("id", user_id).execute()
+                        if profile.data:
+                            user_code = profile.data[0].get("user_code")
+                    except:
+                        pass
+            except:
+                pass
+    except:
+        pass
+    
+    # Log error to database (non-blocking)
+    try:
+        error_id = f"srv_{int(datetime.now(timezone.utc).timestamp() * 1000)}_{uuid.uuid4().hex[:8]}"
+        error_entry = {
+            "id": error_id,
+            "type": "SERVER",
+            "status": status_code,
+            "code": "SERVER_ERROR" if status_code == 500 else "HTTP_ERROR",
+            "endpoint": f"{request.method} {request.url.path}",
+            "message": str(exc),
+            "stack_trace": error_traceback,
+            "user_id": user_id,
+            "user_code": user_code,
+            "session_id": request.headers.get("x-session-id"),
+            "page_url": request.headers.get("referer"),
+            "user_agent": request.headers.get("user-agent"),
+            "context": {
+                "url": str(request.url),
+                "method": request.method,
+                "query_params": dict(request.query_params),
+                "exception_type": type(exc).__name__,
+            },
+            "server_time": datetime.now(timezone.utc).isoformat(),
+        }
+        # Insert to database
+        supabase.table("error_logs").insert(error_entry).execute()
+    except Exception as log_error:
+        print(f"Failed to log error to database: {log_error}")
     
     # Determine request origin
     origin = request.headers.get("origin")
