@@ -26,13 +26,13 @@ AND NOT EXISTS (
 );
 
 -- Step 2: Create purchased assets for existing purchases  
-INSERT INTO assets (user_id, url, name, type, prompt, is_purchased, source_listing_id, origin_owner_id, created_at)
+INSERT INTO assets (user_id, url, type, prompt, description, is_purchased, source_listing_id, origin_owner_id, created_at)
 SELECT 
     up.user_id,
     a.url,
-    a.name,
     a.type,
     a.prompt,
+    a.description,
     true as is_purchased,
     up.listing_id as source_listing_id,
     ml.seller_id as origin_owner_id,

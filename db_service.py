@@ -1816,9 +1816,9 @@ def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, li
                 new_asset_data = {
                     "user_id": buyer_id,
                     "url": original_asset.data.get("url"),
-                    "name": original_asset.data.get("name"),
                     "type": original_asset.data.get("type", "image"),
                     "prompt": original_asset.data.get("prompt"),
+                    "description": original_asset.data.get("description"),
                     "is_purchased": True,
                     "source_listing_id": listing_id,
                     "origin_owner_id": seller_id,
