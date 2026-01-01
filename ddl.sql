@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.2 - Admin Analytics + System Config)
+-- Make Decodables Database Initialization Script (v3.3 - Dashboard & Marketplace Refactor)
 -- Includes: core schema + final RLS policies
 -- 
 -- Highlights (v3.0):
@@ -19,6 +19,15 @@
 -- - aggregated_stats: scheduled precomputed stats
 -- - system_config: dynamic config (rate limits, analytics, etc.)
 -- - notifications adds notification_type column
+--
+-- Highlights (v3.3):
+-- - Dashboard refactor: soft delete enhancement (is_hidden_from_trash)
+-- - Purchase tracking fields (is_purchased, origin_owner_id, listing_status)
+-- - Seller stats fields (unique_buyers_count, total_revenue)
+-- - Dashboard views (dashboard_projects, dashboard_assets, seller_stats_summary)
+-- - Auto-sync triggers for listing status
+-- - marketplace_listings adds version, changelog, version_history
+-- - content_reports table for user reports
 -- ==============================================================================
 
 -- ==========================================
@@ -90,14 +99,23 @@ create table if not exists projects (
   canvas_data jsonb default '{}'::jsonb, -- Fabric.js JSON
   thumbnail_url text,
   last_downloaded_hash text, -- Cache/version identifier (no billing impact)
+  
+  -- Soft delete fields
   is_deleted boolean default false,
-  deleted_at timestamptz default null, -- Deletion timestamp for history
+  deleted_at timestamptz default null, -- Deletion timestamp for 30-day retention
+  is_hidden_from_trash boolean default false, -- v3.3: True = hidden from trash UI
 
   -- Optional flag for locked content
   contains_locked_elements boolean default false,
   
   -- Source listing if project was created from a purchased template
   source_listing_id uuid references marketplace_listings(id),
+  
+  -- v3.3: Purchase tracking & dashboard optimization
+  is_purchased boolean default false, -- Redundant flag for fast filtering
+  origin_owner_id text references profiles(id), -- Original creator (for purchased projects)
+  listing_status text default null, -- Cached: 'draft'|'pending'|'approved'|'rejected'
+  marketplace_listing_id uuid references marketplace_listings(id), -- Link to own listing
 
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -113,11 +131,14 @@ create table if not exists marketplace_listings (
   thumbnail_url text not null,
   resource_url text not null,
   resource_type text not null, -- 'project' | 'asset' (e.g. 'image'|'sticker')
+  resource_id uuid, -- v3.3: Links to actual project.id or asset.id
   price_credits int not null default 0, -- 0..500
   allowed_tiers text[] not null default '{free, starter, pro}', -- Tier-gated access/purchase
 
   usage_count bigint default 0, -- Times used (leaderboards)
   sales_count int default 0, -- Number of sales
+  unique_buyers_count int default 0, -- v3.3: Distinct buyer count
+  total_revenue int default 0, -- v3.3: Accumulated seller earnings
 
   is_public boolean default false,
   is_deleted boolean default false,
@@ -127,6 +148,11 @@ create table if not exists marketplace_listings (
   moderation_note text, -- Rejection reason / admin notes
   moderated_by text references profiles(id), -- Moderator ID
   moderated_at timestamptz, -- Moderation timestamp
+  
+  -- Version tracking fields (added v3.1)
+  version varchar(20) default '1.0', -- Current version number
+  changelog text default '', -- What's new in current version
+  version_history jsonb default '[]'::jsonb, -- [{version, changelog, published_at}]
 
   created_at timestamptz default now()
 );
@@ -158,8 +184,21 @@ create table if not exists assets (
   url text not null,
   type text not null, -- 'uploaded' | 'ai_generated' | 'scanned'
   prompt text, -- Prompt for AI generations
+  description text, -- v3.3: Separate description field
   metadata jsonb, -- Structured scan/canvas data (added v3.1)
+  
+  -- Soft delete fields
   is_deleted boolean default false,
+  deleted_at timestamptz default null, -- v3.3: Deletion timestamp for 30-day retention
+  is_hidden_from_trash boolean default false, -- v3.3: True = hidden from trash UI
+  
+  -- v3.3: Purchase tracking & dashboard optimization
+  source_listing_id uuid references marketplace_listings(id), -- Purchased from this listing
+  is_purchased boolean default false, -- Redundant flag for fast filtering
+  origin_owner_id text references profiles(id), -- Original creator (for purchased assets)
+  listing_status text default null, -- Cached: 'draft'|'pending'|'approved'|'rejected'
+  marketplace_listing_id uuid references marketplace_listings(id), -- Link to own listing
+  
   created_at timestamptz default now()
 );
 create index if not exists idx_assets_user_proj on assets(user_id, project_id);
@@ -291,6 +330,58 @@ create table if not exists system_config (
 create index if not exists idx_system_config_key on system_config(config_key);
 create index if not exists idx_system_config_category on system_config(category);
 
+-- 18. Content reports (user-submitted reports for marketplace items)
+-- Added v3.3: Allows users to report inappropriate/copyright content
+create table if not exists content_reports (
+  id uuid default gen_random_uuid() primary key,
+  reporter_id text not null references profiles(id),
+  listing_id uuid not null references marketplace_listings(id),
+  reason text not null, -- User-provided reason for report
+  status text default 'pending', -- 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+  admin_response text, -- Admin's response to the reporter
+  reviewed_by text references profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_reports_status on content_reports(status);
+create index if not exists idx_reports_listing_id on content_reports(listing_id);
+create index if not exists idx_reports_reporter_id on content_reports(reporter_id);
+create index if not exists idx_reports_created_at on content_reports(created_at desc);
+-- Prevent duplicate active reports from same user for same listing
+create unique index if not exists idx_reports_unique_user_listing 
+  on content_reports(reporter_id, listing_id) 
+  where status in ('pending', 'reviewed');
+
+-- ==========================================
+-- Part 1.5: v3.3 Dashboard Optimized Indexes
+-- ==========================================
+
+-- Projects indexes for dashboard queries
+CREATE INDEX IF NOT EXISTS idx_projects_user_deleted ON projects(user_id, is_deleted, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_projects_user_purchased ON projects(user_id, is_purchased) WHERE is_purchased = true;
+CREATE INDEX IF NOT EXISTS idx_projects_user_listing_status ON projects(user_id, listing_status) WHERE listing_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_projects_trash ON projects(user_id, is_deleted, is_hidden_from_trash) 
+  WHERE is_deleted = true AND is_hidden_from_trash = false;
+CREATE INDEX IF NOT EXISTS idx_projects_marketplace_listing ON projects(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
+
+-- Assets indexes for dashboard queries
+CREATE INDEX IF NOT EXISTS idx_assets_user_deleted ON assets(user_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_assets_user_purchased ON assets(user_id, is_purchased) WHERE is_purchased = true;
+CREATE INDEX IF NOT EXISTS idx_assets_user_listing_status ON assets(user_id, listing_status) WHERE listing_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_assets_trash ON assets(user_id, is_deleted, is_hidden_from_trash)
+  WHERE is_deleted = true AND is_hidden_from_trash = false;
+CREATE INDEX IF NOT EXISTS idx_assets_marketplace_listing ON assets(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
+
+-- Marketplace listings indexes
+CREATE INDEX IF NOT EXISTS idx_listings_resource_id ON marketplace_listings(resource_id) WHERE resource_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_resource_id ON marketplace_listings(resource_id);
+CREATE INDEX IF NOT EXISTS idx_listings_seller_public ON marketplace_listings(seller_id, is_public, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_version ON marketplace_listings(version);
+
+-- Projects additional indexes
+CREATE INDEX IF NOT EXISTS idx_projects_deleted_at ON projects(deleted_at);
+
 -- ==========================================
 -- Part 2: RLS policy configuration
 -- ==========================================
@@ -311,6 +402,7 @@ ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
 
 create or replace function is_admin() returns boolean language sql security definer as $$
 select exists (
@@ -444,165 +536,244 @@ to service_role
 using (true)
 with check (true);
 
--- ==========================================
--- Part 3: Migration scripts (upgrade from older versions)
--- ==========================================
--- Run these commands when migrating:
+-- [Content Reports] (v3.3)
+-- Users can view their own reports
+drop policy if exists "Users can view own reports" on content_reports;
+create policy "Users can view own reports" on content_reports for select
+using ((select auth.jwt() ->> 'sub') = reporter_id);
 
--- 1. Add new columns to profiles (v3.0)
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_monthly int default 0;
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS credits_permanent int default 0;
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_status text default 'inactive';
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS subscription_valid_until timestamptz;
--- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS monthly_credits_cycle_anchor timestamptz;
+-- Users can create reports
+drop policy if exists "Users can create reports" on content_reports;
+create policy "Users can create reports" on content_reports for insert
+with check ((select auth.jwt() ->> 'sub') = reporter_id);
 
--- 2. Move legacy credits into credits_permanent (v3.0)
--- UPDATE profiles SET credits_permanent = COALESCE(credits, 0) WHERE credits_permanent = 0;
+-- Admin can view all reports
+drop policy if exists "Admin can view all reports" on content_reports;
+create policy "Admin can view all reports" on content_reports for select
+using (is_admin());
 
--- 3. Add new columns to credit_transactions (v3.0)
--- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS bucket text default 'permanent';
--- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_monthly_after int default 0;
--- ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS balance_permanent_after int default 0;
-
--- 4. Update legacy credit_transactions rows (v3.0)
--- UPDATE credit_transactions SET balance_permanent_after = balance_after WHERE balance_permanent_after = 0;
-
--- 5. Add allowed_tiers to system_resources (v3.0)
--- ALTER TABLE system_resources ADD COLUMN IF NOT EXISTS allowed_tiers text[] default '{free, starter, pro}';
--- UPDATE system_resources SET allowed_tiers = CASE WHEN is_pro_only THEN '{pro}' ELSE '{free, starter, pro}' END;
+-- Admin can update reports
+drop policy if exists "Admin can update reports" on content_reports;
+create policy "Admin can update reports" on content_reports for update
+using (is_admin());
 
 -- ==========================================
--- Part 4: v3.1 migration (PRD parity + Advanced OCR)
+-- Part 3: v3.3 Dashboard Views
 -- ==========================================
--- Run these when upgrading:
 
--- 1. Add moderation/usage fields to marketplace_listings
-ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS usage_count bigint default 0;
-ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_status text not null default 'draft';
-ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderation_note text;
-ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_by text references profiles(id);
-ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS moderated_at timestamptz;
+-- View for user's projects dashboard (All/Bought/Selling combined)
+-- This view returns all necessary data for the dashboard in one query
+CREATE OR REPLACE VIEW dashboard_projects AS
+SELECT 
+  p.id,
+  p.user_id,
+  p.title,
+  p.thumbnail_url,
+  p.canvas_data,
+  p.is_deleted,
+  p.deleted_at,
+  p.is_hidden_from_trash,
+  p.is_purchased,
+  p.source_listing_id,
+  p.origin_owner_id,
+  p.listing_status,
+  p.marketplace_listing_id,
+  p.contains_locked_elements,
+  p.created_at,
+  p.updated_at,
+  -- Listing details if exists
+  ml.id as listing_id,
+  ml.title as listing_title,
+  ml.price_credits as listing_price,
+  ml.is_public as listing_is_public,
+  ml.moderation_status as listing_moderation_status,
+  ml.sales_count as listing_sales_count,
+  ml.unique_buyers_count as listing_unique_buyers,
+  ml.total_revenue as listing_total_revenue,
+  ml.usage_count as listing_usage_count,
+  -- Origin owner info (for purchased projects)
+  op.username as origin_owner_username,
+  op.avatar_url as origin_owner_avatar
+FROM projects p
+LEFT JOIN marketplace_listings ml ON p.marketplace_listing_id = ml.id
+LEFT JOIN profiles op ON p.origin_owner_id = op.id;
 
--- 2. Add OCR metadata column to assets
-ALTER TABLE assets ADD COLUMN IF NOT EXISTS metadata jsonb;
+-- View for user's assets dashboard (All/Bought/Selling combined)
+CREATE OR REPLACE VIEW dashboard_assets AS
+SELECT 
+  a.id,
+  a.user_id,
+  a.url,
+  a.type,
+  a.prompt,
+  a.description,
+  a.metadata,
+  a.is_deleted,
+  a.deleted_at,
+  a.is_hidden_from_trash,
+  a.is_purchased,
+  a.source_listing_id,
+  a.origin_owner_id,
+  a.listing_status,
+  a.marketplace_listing_id,
+  a.project_id,
+  a.created_at,
+  -- Listing details if exists
+  ml.id as listing_id,
+  ml.title as listing_title,
+  ml.description as listing_description,
+  ml.price_credits as listing_price,
+  ml.is_public as listing_is_public,
+  ml.moderation_status as listing_moderation_status,
+  ml.sales_count as listing_sales_count,
+  ml.unique_buyers_count as listing_unique_buyers,
+  ml.total_revenue as listing_total_revenue,
+  ml.usage_count as listing_usage_count,
+  -- Origin owner info (for purchased assets)
+  op.username as origin_owner_username,
+  op.avatar_url as origin_owner_avatar
+FROM assets a
+LEFT JOIN marketplace_listings ml ON a.marketplace_listing_id = ml.id
+LEFT JOIN profiles op ON a.origin_owner_id = op.id;
 
--- 3. Create listing_usage if missing
-CREATE TABLE IF NOT EXISTS listing_usage (
-  id uuid default gen_random_uuid() primary key,
-  listing_id uuid references marketplace_listings(id) not null,
-  used_by_user_id text references profiles(id) not null,
-  project_id uuid references projects(id) not null,
-  used_at timestamptz default now(),
-  unique(listing_id, used_by_user_id, project_id)
-);
-ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
-
--- 4. Create leaderboard_snapshots if missing
-CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
-  id uuid default gen_random_uuid() primary key,
-  period_start date not null,
-  period_end date not null,
-  board_type text not null,
-  top_list jsonb not null,
-  created_at timestamptz default now(),
-  unique(period_start, period_end, board_type)
-);
-ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
-
--- 5. Normalize old 'user_upload' to 'uploaded'
-UPDATE assets SET type = 'uploaded' WHERE type = 'user_upload';
-
--- 6. Set legacy approved listings without status to 'approved'
-UPDATE marketplace_listings SET moderation_status = 'approved' WHERE moderation_status IS NULL AND is_public = true;
+-- View for seller stats aggregation
+CREATE OR REPLACE VIEW seller_stats_summary AS
+SELECT 
+  seller_id,
+  COUNT(*) as total_listings,
+  SUM(CASE WHEN is_public = true AND moderation_status = 'approved' THEN 1 ELSE 0 END) as active_listings,
+  SUM(sales_count) as total_sales,
+  SUM(unique_buyers_count) as total_unique_buyers,
+  SUM(total_revenue) as total_revenue,
+  SUM(usage_count) as total_usage
+FROM marketplace_listings
+WHERE is_deleted = false
+GROUP BY seller_id;
 
 -- ==========================================
--- Part 5: v3.2 migration (Admin Analytics + System Config)
+-- Part 4: v3.3 Helper Functions & Triggers
 -- ==========================================
--- Run these when upgrading:
 
--- 1. Add notification_type to notifications
-ALTER TABLE notifications ADD COLUMN IF NOT EXISTS notification_type TEXT DEFAULT 'system';
-CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
+-- Function to sync listing status to projects/assets
+-- Called automatically when a marketplace listing is created/updated
+CREATE OR REPLACE FUNCTION sync_listing_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Update project if this is a project listing
+  IF NEW.resource_type = 'project' AND NEW.resource_id IS NOT NULL THEN
+    UPDATE projects 
+    SET 
+      listing_status = NEW.moderation_status,
+      marketplace_listing_id = NEW.id
+    WHERE id = NEW.resource_id::uuid;
+  END IF;
+  
+  -- Update asset if this is an asset listing
+  IF NEW.resource_type = 'asset' AND NEW.resource_id IS NOT NULL THEN
+    UPDATE assets 
+    SET 
+      listing_status = NEW.moderation_status,
+      marketplace_listing_id = NEW.id
+    WHERE id = NEW.resource_id::uuid;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- 2. Create admin_operation_logs if missing
-CREATE TABLE IF NOT EXISTS admin_operation_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  admin_id TEXT NOT NULL REFERENCES profiles(id),
-  operation_type TEXT NOT NULL,
-  target_user_id TEXT REFERENCES profiles(id),
-  details TEXT,
-  reason TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_created_at ON admin_operation_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_operation_type ON admin_operation_logs(operation_type);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_id ON admin_operation_logs(admin_id);
-CREATE INDEX IF NOT EXISTS idx_admin_logs_target_user ON admin_operation_logs(target_user_id);
-ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
+-- Trigger for listing status sync
+DROP TRIGGER IF EXISTS trigger_sync_listing_status ON marketplace_listings;
+CREATE TRIGGER trigger_sync_listing_status
+  AFTER INSERT OR UPDATE OF moderation_status, is_public, is_deleted
+  ON marketplace_listings
+  FOR EACH ROW
+  EXECUTE FUNCTION sync_listing_status();
 
--- 3. Create user_events table if missing
-CREATE TABLE IF NOT EXISTS user_events (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id),
-  event_type TEXT NOT NULL,
-  properties JSONB DEFAULT '{}',
-  session_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_user_events_created_at ON user_events(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_user_events_event_type ON user_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_user_events_user_id ON user_events(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_user_events_properties ON user_events USING GIN(properties);
-ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
+-- Function to update seller stats after purchase
+CREATE OR REPLACE FUNCTION update_seller_stats_on_purchase()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_listing_price INT;
+  v_seller_revenue INT;
+BEGIN
+  -- Get listing price
+  SELECT price_credits INTO v_listing_price
+  FROM marketplace_listings
+  WHERE id = NEW.listing_id;
+  
+  -- Calculate seller revenue (90% to seller after 10% platform fee)
+  v_seller_revenue := FLOOR(v_listing_price * 0.9);
+  
+  -- Update listing stats
+  UPDATE marketplace_listings
+  SET 
+    sales_count = sales_count + 1,
+    unique_buyers_count = (
+      SELECT COUNT(DISTINCT user_id) 
+      FROM user_purchases 
+      WHERE listing_id = NEW.listing_id
+    ),
+    total_revenue = total_revenue + v_seller_revenue
+  WHERE id = NEW.listing_id;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- 4. Create aggregated_stats table if missing
-CREATE TABLE IF NOT EXISTS aggregated_stats (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  date DATE NOT NULL,
-  stat_type TEXT NOT NULL,
-  data JSONB NOT NULL DEFAULT '{}',
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(date, stat_type)
-);
-CREATE INDEX IF NOT EXISTS idx_agg_stats_date ON aggregated_stats(date DESC);
-CREATE INDEX IF NOT EXISTS idx_agg_stats_type ON aggregated_stats(stat_type);
-CREATE INDEX IF NOT EXISTS idx_agg_stats_date_type ON aggregated_stats(date DESC, stat_type);
-ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
+-- Trigger for purchase stats
+DROP TRIGGER IF EXISTS trigger_update_seller_stats ON user_purchases;
+CREATE TRIGGER trigger_update_seller_stats
+  AFTER INSERT ON user_purchases
+  FOR EACH ROW
+  EXECUTE FUNCTION update_seller_stats_on_purchase();
 
--- 5. Create system_config table if missing
-CREATE TABLE IF NOT EXISTS system_config (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  config_key TEXT UNIQUE NOT NULL,
-  config_value JSONB NOT NULL,
-  category TEXT NOT NULL DEFAULT 'general',
-  description TEXT,
-  is_active BOOLEAN DEFAULT true,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_by TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(config_key);
-CREATE INDEX IF NOT EXISTS idx_system_config_category ON system_config(category);
-ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
+-- Function to set deleted_at timestamp on soft delete
+CREATE OR REPLACE FUNCTION set_deleted_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.is_deleted = true AND OLD.is_deleted = false THEN
+    NEW.deleted_at = NOW();
+  END IF;
+  IF NEW.is_deleted = false AND OLD.is_deleted = true THEN
+    NEW.deleted_at = NULL;
+    NEW.is_hidden_from_trash = false;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- 6. RLS policy (service_role only)
-DROP POLICY IF EXISTS "Service role full access to admin_logs" ON admin_operation_logs;
-CREATE POLICY "Service role full access to admin_logs" ON admin_operation_logs FOR ALL
-TO service_role USING (true) WITH CHECK (true);
+-- Triggers for deleted_at on projects and assets
+DROP TRIGGER IF EXISTS trigger_projects_deleted_at ON projects;
+CREATE TRIGGER trigger_projects_deleted_at
+  BEFORE UPDATE OF is_deleted ON projects
+  FOR EACH ROW
+  EXECUTE FUNCTION set_deleted_timestamp();
 
-DROP POLICY IF EXISTS "Service role full access to user_events" ON user_events;
-CREATE POLICY "Service role full access to user_events" ON user_events FOR ALL
-TO service_role USING (true) WITH CHECK (true);
+DROP TRIGGER IF EXISTS trigger_assets_deleted_at ON assets;
+CREATE TRIGGER trigger_assets_deleted_at
+  BEFORE UPDATE OF is_deleted ON assets
+  FOR EACH ROW
+  EXECUTE FUNCTION set_deleted_timestamp();
 
-DROP POLICY IF EXISTS "Service role full access to aggregated_stats" ON aggregated_stats;
-CREATE POLICY "Service role full access to aggregated_stats" ON aggregated_stats FOR ALL
-TO service_role USING (true) WITH CHECK (true);
+-- Function to update content_reports updated_at
+CREATE OR REPLACE FUNCTION update_reports_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-DROP POLICY IF EXISTS "Service role full access to system_config" ON system_config;
-CREATE POLICY "Service role full access to system_config" ON system_config FOR ALL
-TO service_role USING (true) WITH CHECK (true);
+DROP TRIGGER IF EXISTS trigger_reports_updated_at ON content_reports;
+CREATE TRIGGER trigger_reports_updated_at
+    BEFORE UPDATE ON content_reports
+    FOR EACH ROW
+    EXECUTE FUNCTION update_reports_updated_at();
 
--- 7. Create system config helper functions
+-- ==========================================
+-- Part 5: v3.2 Helper Functions (System Config)
+-- ==========================================
+
 CREATE OR REPLACE FUNCTION update_system_config_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -617,7 +788,7 @@ CREATE TRIGGER trigger_update_system_config_timestamp
     FOR EACH ROW
     EXECUTE FUNCTION update_system_config_timestamp();
 
--- 8. Create helper to fetch rate-limit config
+-- Helper to fetch rate-limit config
 CREATE OR REPLACE FUNCTION get_rate_limit_config(p_config_key TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -637,7 +808,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 9. Create aggregated stats helper functions
+-- Aggregated stats helper functions
 CREATE OR REPLACE FUNCTION get_latest_stats(p_stat_type VARCHAR)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -677,7 +848,10 @@ BEGIN
 END;
 $$;
 
--- 10. Add optimized indexes
+-- ==========================================
+-- Part 6: Core Optimized Indexes
+-- ==========================================
+
 CREATE INDEX IF NOT EXISTS idx_profiles_tier ON profiles(tier);
 CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON profiles(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_subscription_status ON profiles(subscription_status);
@@ -692,7 +866,12 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
 
--- 11. Insert default system configs (rate limits)
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
+
+-- ==========================================
+-- Part 7: Default System Configs (Rate Limits)
+-- ==========================================
+
 INSERT INTO system_config (config_key, config_value, category, description) VALUES
 -- Payments (high risk, strict limits)
 ('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Checkout API limit'),
@@ -732,3 +911,61 @@ INSERT INTO system_config (config_key, config_value, category, description) VALU
 ('analytics.sampling_rate', '{"critical": 1.0, "important": 1.0, "normal": 0.3, "debug": 0.0}', 'analytics', 'Event sampling rates'),
 ('analytics.min_level', '{"level": "normal"}', 'analytics', 'Minimum tracking level')
 ON CONFLICT (config_key) DO NOTHING;
+
+-- ==========================================
+-- Migration Scripts (for existing installations)
+-- ==========================================
+
+-- v3.3 Migration: Run these to upgrade existing databases
+
+-- 1. Add v3.3 columns to projects
+-- ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_hidden_from_trash BOOLEAN DEFAULT false;
+-- ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_purchased BOOLEAN DEFAULT false;
+-- ALTER TABLE projects ADD COLUMN IF NOT EXISTS origin_owner_id TEXT REFERENCES profiles(id);
+-- ALTER TABLE projects ADD COLUMN IF NOT EXISTS listing_status TEXT DEFAULT NULL;
+-- ALTER TABLE projects ADD COLUMN IF NOT EXISTS marketplace_listing_id UUID REFERENCES marketplace_listings(id);
+
+-- 2. Add v3.3 columns to assets
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_hidden_from_trash BOOLEAN DEFAULT false;
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS source_listing_id UUID REFERENCES marketplace_listings(id);
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_purchased BOOLEAN DEFAULT false;
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS origin_owner_id TEXT REFERENCES profiles(id);
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS listing_status TEXT DEFAULT NULL;
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS marketplace_listing_id UUID REFERENCES marketplace_listings(id);
+-- ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL;
+
+-- 3. Add v3.3 columns to marketplace_listings
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS resource_id UUID;
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS unique_buyers_count INT DEFAULT 0;
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS total_revenue INT DEFAULT 0;
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS version VARCHAR(20) DEFAULT '1.0';
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS changelog TEXT DEFAULT '';
+-- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS version_history JSONB DEFAULT '[]'::jsonb;
+
+-- 4. Create content_reports table (run the CREATE TABLE statement from Part 1 if not exists)
+
+-- 5. Sync existing data
+-- UPDATE projects SET is_purchased = true WHERE source_listing_id IS NOT NULL AND is_purchased = false;
+-- 
+-- UPDATE projects p SET 
+--   listing_status = ml.moderation_status,
+--   marketplace_listing_id = ml.id
+-- FROM marketplace_listings ml
+-- WHERE ml.resource_type = 'project' AND ml.resource_id IS NOT NULL 
+--   AND ml.resource_id::uuid = p.id AND ml.is_deleted = false AND p.listing_status IS NULL;
+-- 
+-- UPDATE assets a SET 
+--   listing_status = ml.moderation_status,
+--   marketplace_listing_id = ml.id
+-- FROM marketplace_listings ml
+-- WHERE ml.resource_type = 'asset' AND ml.resource_id IS NOT NULL 
+--   AND ml.resource_id::uuid = a.id AND ml.is_deleted = false AND a.listing_status IS NULL;
+-- 
+-- UPDATE marketplace_listings ml SET unique_buyers_count = (
+--   SELECT COUNT(DISTINCT user_id) FROM user_purchases up WHERE up.listing_id = ml.id
+-- ) WHERE unique_buyers_count = 0 AND sales_count > 0;
+-- 
+-- UPDATE marketplace_listings ml SET total_revenue = FLOOR(
+--   (SELECT COALESCE(SUM(price_paid), 0) FROM user_purchases WHERE listing_id = ml.id) * 0.9
+-- ) WHERE total_revenue = 0 AND sales_count > 0;
