@@ -1,7 +1,7 @@
 import os
 import jwt # requires pyjwt
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -758,6 +758,70 @@ def list_deleted_projects(
     return get_user_deleted_projects(user["id"], page, limit)
 
 
+@app.get("/api/projects/dashboard")
+def dashboard_projects(
+    view: str = Query("all", regex="^(all|bought|selling)$"),
+    page: int = 1, 
+    limit: int = 20, 
+    search: str = None,
+    include_canvas: bool = True,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get projects for dashboard with view type filtering (PRD v3.3).
+    
+    Args:
+        view: View type - "all" (default), "bought", or "selling"
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+        search: Search query to filter projects by title (optional)
+        include_canvas: Whether to include canvas_data (default: true)
+    
+    Returns:
+        Projects list with:
+        - items: Array of projects with marketplace_listing info
+        - total: Total count for current view
+        - page: Current page
+        - view_type: Current view type
+        
+    View Types:
+        - all: Shows all projects (created + bought + selling)
+        - bought: Only purchased projects (read-only)
+        - selling: Only projects with active marketplace listings
+    """
+    from db_service import get_dashboard_projects
+    
+    print(f"[API] dashboard_projects: view={view}, page={page}, search={search}")
+    
+    result = get_dashboard_projects(
+        user_id=user["id"],
+        view_type=view,
+        page=page,
+        limit=limit,
+        search=search,
+        include_canvas_data=include_canvas
+    )
+    
+    return result
+
+
+@app.get("/api/projects/seller-stats")
+def get_project_seller_stats(user: dict = Depends(get_current_user)):
+    """
+    Get seller statistics for projects (PRD v3.3).
+    
+    Returns:
+        Dict with:
+        - total_selling: Number of active project listings
+        - total_sales: Total number of sales across all listings
+        - unique_buyers: Total unique buyers
+        - total_revenue: Total credits earned from sales
+        - total_usage: Total usage count across all listings
+    """
+    from db_service import get_seller_project_stats
+    return get_seller_project_stats(user["id"])
+
+
 @app.post("/api/projects/{project_id}/restore")
 def restore_user_project(
     project_id: str,
@@ -892,12 +956,44 @@ def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_u
         raise HTTPException(400, error_msg)
 
 @app.delete("/api/projects/{id}")
-def delete_proj(id: str, user: dict = Depends(get_current_user)):
+def delete_proj(id: str, permanent: bool = False, user: dict = Depends(get_current_user)):
+    """
+    Delete a project (PRD v3.3).
+    
+    Args:
+        id: Project ID to delete
+        permanent: If true, permanently hides from trash (stage 2 delete)
+                   If false, soft delete to trash (stage 1 delete)
+    
+    Stage 1 (permanent=false):
+        - Sets is_deleted=true, deleted_at=now()
+        - Project appears in trash for 30 days
+        - Can be restored
+    
+    Stage 2 (permanent=true):
+        - Sets is_hidden_from_trash=true
+        - Project no longer visible to user
+        - Data retained in database
+    """
     try:
-        soft_delete_project(id, user["id"])
-        return {"status": "deleted"}
-    except:
-        raise HTTPException(404, "Project not found")
+        if permanent:
+            # Stage 2: Permanently hide from trash
+            from db_service import permanently_hide_project
+            result = permanently_hide_project(id, user["id"])
+            if result:
+                log_activity(user["id"], "permanent_delete_project", {"project_id": id})
+                return {"status": "permanently_hidden", "stage": 2}
+            else:
+                raise HTTPException(404, "Project not found or not in trash")
+        else:
+            # Stage 1: Soft delete to trash
+            soft_delete_project(id, user["id"])
+            log_activity(user["id"], "delete_project", {"project_id": id})
+            return {"status": "deleted", "stage": 1}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(404, str(e) or "Project not found")
 
 # --- Core Gen ---
 @app.post("/api/generate/story")
