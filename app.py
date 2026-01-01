@@ -293,7 +293,7 @@ class StoryGenRequest(BaseModel):
     style: Optional[str] = "Children's book illustration"
 
 class ImageGenRequest(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None  # Optional - may be None when generating from Dashboard
     prompts: List[str]
     reference_image: Optional[str] = None  # Base64 encoded image or URL
     reference_strength: Optional[float] = 0.7  # 0.0-1.0, higher = more similar to reference
