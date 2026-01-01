@@ -2,7 +2,7 @@
 -- This fixes historical purchases that only exist in user_purchases but not in projects/assets
 
 -- Step 1: Create purchased projects for existing purchases
--- Note: resource_url for projects stores the project UUID as a string
+-- Try resource_id first (v3.3+), fallback to resource_url (legacy)
 INSERT INTO projects (user_id, title, canvas_data, thumbnail_url, is_purchased, source_listing_id, origin_owner_id, created_at, updated_at)
 SELECT 
     up.user_id,
@@ -16,10 +16,16 @@ SELECT
     up.purchased_at as updated_at
 FROM user_purchases up
 JOIN marketplace_listings ml ON up.listing_id = ml.id
-JOIN projects p ON p.id::text = ml.resource_url
+JOIN projects p ON (
+    -- Try resource_id first (preferred, v3.3+)
+    (ml.resource_id IS NOT NULL AND p.id = ml.resource_id)
+    OR
+    -- Fallback to resource_url if it's a valid UUID (legacy)
+    (ml.resource_id IS NULL AND ml.resource_url IS NOT NULL 
+     AND ml.resource_url ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     AND p.id::text = ml.resource_url)
+)
 WHERE ml.resource_type = 'project'
-AND ml.resource_url IS NOT NULL
-AND ml.resource_url ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'  -- Only valid UUIDs
 AND NOT EXISTS (
     -- Check if purchased project already exists for this user
     SELECT 1 FROM projects existing 
