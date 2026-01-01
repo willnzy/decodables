@@ -2768,57 +2768,76 @@ def admin_get_project_stats(start_date: str = None, end_date: str = None):
     """
     [Admin] Get project stats
     """
-    from datetime import timedelta
-    from collections import defaultdict
-    now = datetime.now(timezone.utc)
-    
-    if not start_date:
-        start_date = (now - timedelta(days=30)).isoformat()
-    if not end_date:
-        end_date = now.isoformat()
-    
-    # Get project data
-    projects = supabase.table("projects").select("created_at, updated_at, cover_url")\
-        .gte("created_at", start_date).lte("created_at", end_date).execute()
-    
-    daily_created = defaultdict(int)
-    daily_completed = defaultdict(int)
-    daily_exported = defaultdict(int)
-    
-    for project in projects.data or []:
-        created_date = project.get("created_at", "")[:10]
-        daily_created[created_date] += 1
+    try:
+        from datetime import timedelta
+        from collections import defaultdict
+        now = datetime.now(timezone.utc)
         
-        # Consider completed if cover_url exists
-        if project.get("cover_url"):
-            daily_completed[created_date] += 1
-    
-    # Get export records
-    exports = supabase.table("activity_logs").select("created_at")\
-        .in_("action", ["export_pdf", "export_zip"])\
-        .gte("created_at", start_date).lte("created_at", end_date).execute()
-    
-    for export in exports.data or []:
-        date_str = export.get("created_at", "")[:10]
-        daily_exported[date_str] += 1
-    
-    # Generate result
-    result = []
-    current = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-    end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-    
-    while current <= end:
-        date_str = current.strftime("%Y-%m-%d")
-        display_date = current.strftime("%b %d")
-        result.append({
-            "date": display_date,
-            "created": daily_created.get(date_str, 0),
-            "completed": daily_completed.get(date_str, 0),
-            "exported": daily_exported.get(date_str, 0)
-        })
-        current += timedelta(days=1)
-    
-    return result
+        if not start_date:
+            start_date = (now - timedelta(days=30)).isoformat()
+        if not end_date:
+            end_date = now.isoformat()
+        
+        # Get project data
+        projects = supabase.table("projects").select("created_at, updated_at, cover_url")\
+            .gte("created_at", start_date).lte("created_at", end_date).execute()
+        
+        daily_created = defaultdict(int)
+        daily_completed = defaultdict(int)
+        daily_exported = defaultdict(int)
+        
+        for project in projects.data or []:
+            created_date = project.get("created_at", "")[:10]
+            daily_created[created_date] += 1
+            
+            # Consider completed if cover_url exists
+            if project.get("cover_url"):
+                daily_completed[created_date] += 1
+        
+        # Get export records - use try/except in case activity_logs table doesn't exist
+        try:
+            exports = supabase.table("activity_logs").select("created_at")\
+                .in_("action", ["export_pdf", "export_zip"])\
+                .gte("created_at", start_date).lte("created_at", end_date).execute()
+            
+            for export in exports.data or []:
+                date_str = export.get("created_at", "")[:10]
+                daily_exported[date_str] += 1
+        except Exception as e:
+            logger.warning(f"Could not fetch activity_logs: {e}")
+        
+        # Generate result - handle date parsing more robustly
+        result = []
+        try:
+            # Remove microseconds and handle timezone
+            start_clean = start_date.split(".")[0].replace("Z", "+00:00")
+            end_clean = end_date.split(".")[0].replace("Z", "+00:00")
+            if "+" not in start_clean and "-" not in start_clean[-6:]:
+                start_clean += "+00:00"
+            if "+" not in end_clean and "-" not in end_clean[-6:]:
+                end_clean += "+00:00"
+            current = datetime.fromisoformat(start_clean)
+            end_dt = datetime.fromisoformat(end_clean)
+        except Exception as e:
+            logger.warning(f"Date parsing error: {e}, using defaults")
+            current = now - timedelta(days=30)
+            end_dt = now
+        
+        while current <= end_dt:
+            date_str = current.strftime("%Y-%m-%d")
+            display_date = current.strftime("%b %d")
+            result.append({
+                "date": display_date,
+                "created": daily_created.get(date_str, 0),
+                "completed": daily_completed.get(date_str, 0),
+                "exported": daily_exported.get(date_str, 0)
+            })
+            current += timedelta(days=1)
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error in admin_get_project_stats: {e}")
+        return []
 
 def admin_get_credit_usage_stats(start_date: str = None, end_date: str = None):
     """
