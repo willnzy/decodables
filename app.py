@@ -637,6 +637,120 @@ async def track_analytics_events(request: AnalyticsEventsRequest):
         print(f"[Analytics] Error storing events: {e}")
         return {"status": "ok", "events_received": len(request.events), "warning": "Some events may not have been stored"}
 
+# --- Error Logging ---
+class ErrorLogRequest(BaseModel):
+    """Request model for error logging"""
+    error_id: Optional[str] = None
+    error_type: str  # API, NETWORK, JS_ERROR, UNHANDLED_REJECTION, REACT_ERROR, CORS, OTHER
+    error_code: Optional[str] = None
+    message: str
+    status_code: Optional[int] = None
+    endpoint: Optional[str] = None
+    method: Optional[str] = None
+    page_url: Optional[str] = None
+    user_agent: Optional[str] = None
+    stack_trace: Optional[str] = None
+    context: Optional[dict] = None
+    client_timestamp: Optional[str] = None
+    session_id: Optional[str] = None
+
+class ErrorLogBatchRequest(BaseModel):
+    """Request model for batch error logging"""
+    errors: List[ErrorLogRequest]
+
+@app.post("/api/logs/error")
+async def log_error(request: ErrorLogRequest, authorization: Optional[str] = Header(None)):
+    """
+    Receive and store a single error log from frontend.
+    Does not require authentication - errors should be logged even for unauthenticated users.
+    """
+    try:
+        # Try to extract user_id from token if provided
+        user_id = None
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                token = authorization.split(" ")[1]
+                # Simple decode without verification for logging purposes
+                import jwt
+                decoded = jwt.decode(token, options={"verify_signature": False})
+                user_id = decoded.get("sub")
+            except:
+                pass
+        
+        # Insert error log
+        error_data = {
+            "error_id": request.error_id,
+            "error_type": request.error_type,
+            "error_code": request.error_code,
+            "message": request.message[:2000] if request.message else None,  # Limit message length
+            "status_code": request.status_code,
+            "endpoint": request.endpoint[:500] if request.endpoint else None,
+            "method": request.method,
+            "user_id": user_id,
+            "session_id": request.session_id,
+            "page_url": request.page_url[:2000] if request.page_url else None,
+            "user_agent": request.user_agent[:500] if request.user_agent else None,
+            "stack_trace": request.stack_trace[:5000] if request.stack_trace else None,
+            "context": request.context or {},
+            "client_timestamp": request.client_timestamp,
+        }
+        
+        supabase.table("error_logs").insert(error_data).execute()
+        
+        # Also log to console for immediate visibility
+        print(f"[ErrorLog] {request.error_type} - {request.message[:100] if request.message else 'No message'}")
+        
+        return {"status": "ok"}
+    except Exception as e:
+        # Don't fail on logging errors
+        print(f"[ErrorLog] Failed to store error: {e}")
+        return {"status": "ok", "warning": "Error may not have been stored"}
+
+@app.post("/api/logs/errors")
+async def log_errors_batch(request: ErrorLogBatchRequest, authorization: Optional[str] = Header(None)):
+    """
+    Receive and store batch error logs from frontend.
+    """
+    try:
+        # Try to extract user_id from token if provided
+        user_id = None
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                token = authorization.split(" ")[1]
+                import jwt
+                decoded = jwt.decode(token, options={"verify_signature": False})
+                user_id = decoded.get("sub")
+            except:
+                pass
+        
+        # Insert all errors
+        error_records = []
+        for err in request.errors:
+            error_records.append({
+                "error_id": err.error_id,
+                "error_type": err.error_type,
+                "error_code": err.error_code,
+                "message": err.message[:2000] if err.message else None,
+                "status_code": err.status_code,
+                "endpoint": err.endpoint[:500] if err.endpoint else None,
+                "method": err.method,
+                "user_id": user_id,
+                "session_id": err.session_id,
+                "page_url": err.page_url[:2000] if err.page_url else None,
+                "user_agent": err.user_agent[:500] if err.user_agent else None,
+                "stack_trace": err.stack_trace[:5000] if err.stack_trace else None,
+                "context": err.context or {},
+                "client_timestamp": err.client_timestamp,
+            })
+        
+        if error_records:
+            supabase.table("error_logs").insert(error_records).execute()
+        
+        return {"status": "ok", "errors_received": len(error_records)}
+    except Exception as e:
+        print(f"[ErrorLog] Failed to store batch errors: {e}")
+        return {"status": "ok", "warning": "Some errors may not have been stored"}
+
 # --- User ---
 @app.get("/api/user/me")
 def get_me(user: dict = Depends(get_current_user)):
