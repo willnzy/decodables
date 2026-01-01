@@ -31,6 +31,9 @@
 --
 -- Highlights (v3.4):
 -- - analytics_events table for frontend analytics tracking
+--
+-- Highlights (v3.5):
+-- - error_logs table for centralized error monitoring
 -- ==============================================================================
 
 -- ==========================================
@@ -352,6 +355,47 @@ create index if not exists idx_analytics_events_event_type on analytics_events(e
 create index if not exists idx_analytics_events_created_at on analytics_events(created_at desc);
 create index if not exists idx_analytics_events_session_id on analytics_events(session_id);
 
+-- 17. Error logs (centralized error monitoring)
+-- Added v3.5: stores frontend and API errors for debugging and monitoring
+create table if not exists error_logs (
+  id uuid default gen_random_uuid() primary key,
+  
+  -- Error identification
+  error_id varchar(100),           -- Frontend generated error ID
+  error_type varchar(50) not null, -- API, NETWORK, JS_ERROR, UNHANDLED_REJECTION, REACT_ERROR, CORS, OTHER
+  error_code varchar(50),          -- Error code (UNAUTHORIZED, NETWORK_ERROR, etc.)
+  
+  -- Error details
+  message text not null,
+  status_code integer,             -- HTTP status code for API errors
+  endpoint varchar(500),           -- API endpoint
+  method varchar(10),              -- HTTP method
+  
+  -- User context
+  user_id varchar(100),            -- User ID if authenticated
+  user_code varchar(20),           -- User code for easier identification (e.g., USR001)
+  session_id varchar(100),         -- Browser session ID
+  page_url text,                   -- Page where error occurred
+  user_agent text,                 -- Browser/device info
+  
+  -- Stack trace and additional info
+  stack_trace text,
+  context jsonb default '{}',      -- Additional context data
+  
+  -- Timestamps
+  client_timestamp timestamptz,    -- When error occurred on client
+  created_at timestamptz default now(),
+  
+  -- Type constraint
+  constraint error_logs_type_check check (error_type in ('API', 'NETWORK', 'JS_ERROR', 'UNHANDLED_REJECTION', 'REACT_ERROR', 'CORS', 'OTHER'))
+);
+create index if not exists idx_error_logs_created_at on error_logs(created_at desc);
+create index if not exists idx_error_logs_user_id on error_logs(user_id);
+create index if not exists idx_error_logs_user_code on error_logs(user_code);
+create index if not exists idx_error_logs_error_type on error_logs(error_type);
+create index if not exists idx_error_logs_status_code on error_logs(status_code);
+create index if not exists idx_error_logs_endpoint on error_logs(endpoint);
+
 -- 18. Aggregated stats (precomputed)
 -- Added v3.2: store scheduled aggregation output
 create table if not exists aggregated_stats (
@@ -452,6 +496,7 @@ ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
@@ -582,6 +627,18 @@ with check (true);
 -- Only service role can read (for admin analytics)
 drop policy if exists "Service role read analytics events" on analytics_events;
 create policy "Service role read analytics events" on analytics_events for select
+to service_role
+using (true);
+
+-- [Error Logs] (v3.5)
+-- Allow insert from anyone (errors should be logged even for unauthenticated users)
+drop policy if exists "Allow insert error logs" on error_logs;
+create policy "Allow insert error logs" on error_logs for insert
+with check (true);
+
+-- Service role can read all (for admin panel)
+drop policy if exists "Service role read error logs" on error_logs;
+create policy "Service role read error logs" on error_logs for select
 to service_role
 using (true);
 
