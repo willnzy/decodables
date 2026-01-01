@@ -28,6 +28,9 @@
 -- - Auto-sync triggers for listing status
 -- - marketplace_listings adds version, changelog, version_history
 -- - content_reports table for user reports
+--
+-- Highlights (v3.4):
+-- - analytics_events table for frontend analytics tracking
 -- ==============================================================================
 
 -- ==========================================
@@ -333,7 +336,23 @@ create index if not exists idx_user_events_user_id on user_events(user_id);
 create index if not exists idx_user_events_session on user_events(session_id);
 create index if not exists idx_user_events_properties on user_events using gin(properties);
 
--- 16. Aggregated stats (precomputed)
+-- 16. Analytics events (frontend tracking)
+-- Added v3.4: stores frontend analytics events for user behavior tracking
+create table if not exists analytics_events (
+  id uuid default gen_random_uuid() primary key,
+  user_id text, -- Optional, may be null for anonymous users
+  event_type text not null,
+  event_level text, -- 'critical', 'important', 'normal'
+  event_data jsonb not null default '{}',
+  session_id text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_analytics_events_user_id on analytics_events(user_id);
+create index if not exists idx_analytics_events_event_type on analytics_events(event_type);
+create index if not exists idx_analytics_events_created_at on analytics_events(created_at desc);
+create index if not exists idx_analytics_events_session_id on analytics_events(session_id);
+
+-- 18. Aggregated stats (precomputed)
 -- Added v3.2: store scheduled aggregation output
 create table if not exists aggregated_stats (
   id uuid default gen_random_uuid() primary key,
@@ -347,7 +366,7 @@ create index if not exists idx_agg_stats_date on aggregated_stats(date desc);
 create index if not exists idx_agg_stats_type on aggregated_stats(stat_type);
 create index if not exists idx_agg_stats_date_type on aggregated_stats(date desc, stat_type);
 
--- 17. System config (dynamic parameters)
+-- 19. System config (dynamic parameters)
 -- Added v3.2: runtime-adjustable settings (rate limits, analytics, etc.)
 create table if not exists system_config (
   id uuid default gen_random_uuid() primary key,
@@ -362,7 +381,7 @@ create table if not exists system_config (
 create index if not exists idx_system_config_key on system_config(config_key);
 create index if not exists idx_system_config_category on system_config(category);
 
--- 18. Content reports (user-submitted reports for marketplace items)
+-- 20. Content reports (user-submitted reports for marketplace items)
 -- Added v3.3: Allows users to report inappropriate/copyright content
 create table if not exists content_reports (
   id uuid default gen_random_uuid() primary key,
@@ -432,6 +451,7 @@ ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
@@ -551,6 +571,19 @@ create policy "Service role full access to user_events" on user_events for all
 to service_role
 using (true)
 with check (true);
+
+-- [Analytics Events] (v3.4)
+-- Allow insert from service_role (backend API)
+drop policy if exists "Service role insert analytics events" on analytics_events;
+create policy "Service role insert analytics events" on analytics_events for insert
+to service_role
+with check (true);
+
+-- Only service role can read (for admin analytics)
+drop policy if exists "Service role read analytics events" on analytics_events;
+create policy "Service role read analytics events" on analytics_events for select
+to service_role
+using (true);
 
 -- [Aggregated Stats] (v3.2)
 -- Restrict to service_role

@@ -394,6 +394,19 @@ class AdminCancelSubscriptionRequest(BaseModel):
     immediate: bool = False  # True = cancel now, False = cancel at period end
     reason: str
 
+class AnalyticsEvent(BaseModel):
+    event_type: str
+    event_level: Optional[str] = None
+    timestamp: Optional[str] = None
+    utc_timestamp: Optional[str] = None
+    properties: Optional[dict] = None
+    session_id: Optional[str] = None
+    env: Optional[dict] = None
+    user_properties: Optional[dict] = None
+
+class AnalyticsEventsRequest(BaseModel):
+    events: List[AnalyticsEvent]
+
 # ==========================================
 # 3. Routes
 # ==========================================
@@ -578,6 +591,48 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                     update_subscription_tier(uid, new_tier, subscription_status='active')
     
     return {"status": "ok"}
+
+# --- Analytics ---
+@app.post("/api/analytics/events")
+async def track_analytics_events(request: AnalyticsEventsRequest):
+    """
+    Receive and store analytics events from frontend.
+    Events are batched and sent periodically.
+    """
+    try:
+        events = request.events
+        
+        # Store events in database
+        for event in events:
+            event_data = {
+                "event_type": event.event_type,
+                "event_level": event.event_level,
+                "timestamp": event.timestamp,
+                "properties": event.properties or {},
+                "session_id": event.session_id,
+                "env": event.env or {},
+                "user_properties": event.user_properties or {},
+            }
+            
+            # Try to get user_id from user_properties
+            user_id = None
+            if event.user_properties:
+                user_id = event.user_properties.get("user_id")
+            
+            # Insert into analytics_events table
+            supabase.table("analytics_events").insert({
+                "user_id": user_id,
+                "event_type": event.event_type,
+                "event_level": event.event_level,
+                "event_data": event_data,
+                "session_id": event.session_id,
+            }).execute()
+        
+        return {"status": "ok", "events_received": len(events)}
+    except Exception as e:
+        # Log error but don't fail - analytics should not break the app
+        print(f"[Analytics] Error storing events: {e}")
+        return {"status": "ok", "events_received": len(request.events), "warning": "Some events may not have been stored"}
 
 # --- User ---
 @app.get("/api/user/me")
