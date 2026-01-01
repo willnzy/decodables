@@ -2,6 +2,7 @@
 -- This fixes historical purchases that only exist in user_purchases but not in projects/assets
 
 -- Step 1: Create purchased projects for existing purchases
+-- Note: resource_url for projects stores the project UUID as a string
 INSERT INTO projects (user_id, title, canvas_data, thumbnail_url, is_purchased, source_listing_id, origin_owner_id, created_at, updated_at)
 SELECT 
     up.user_id,
@@ -15,8 +16,10 @@ SELECT
     up.purchased_at as updated_at
 FROM user_purchases up
 JOIN marketplace_listings ml ON up.listing_id = ml.id
-JOIN projects p ON ml.resource_url::uuid = p.id
+JOIN projects p ON p.id::text = ml.resource_url
 WHERE ml.resource_type = 'project'
+AND ml.resource_url IS NOT NULL
+AND ml.resource_url ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'  -- Only valid UUIDs
 AND NOT EXISTS (
     -- Check if purchased project already exists for this user
     SELECT 1 FROM projects existing 
@@ -26,6 +29,7 @@ AND NOT EXISTS (
 );
 
 -- Step 2: Create purchased assets for existing purchases  
+-- Use resource_id (UUID reference) instead of resource_url (which may be a URL string)
 INSERT INTO assets (user_id, url, type, prompt, description, is_purchased, source_listing_id, origin_owner_id, created_at)
 SELECT 
     up.user_id,
@@ -39,8 +43,9 @@ SELECT
     up.purchased_at as created_at
 FROM user_purchases up
 JOIN marketplace_listings ml ON up.listing_id = ml.id
-JOIN assets a ON (ml.resource_id = a.id OR ml.resource_url::uuid = a.id)
+JOIN assets a ON ml.resource_id = a.id
 WHERE ml.resource_type = 'asset'
+AND ml.resource_id IS NOT NULL
 AND NOT EXISTS (
     -- Check if purchased asset already exists for this user
     SELECT 1 FROM assets existing 
