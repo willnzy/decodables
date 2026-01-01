@@ -141,7 +141,7 @@ class UserRepository(BaseRepository):
         """
         offset = (page - 1) * limit
         result = self.supabase.table("user_purchases").select(
-            "*, marketplace_listings(id, title, thumbnail_url, resource_type, resource_url)"
+            "*, marketplace_listings(id, title, thumbnail_url, resource_type, resource_url, resource_id)"
         ).eq("user_id", user_id).order(
             "purchased_at", desc=True
         ).range(offset, offset + limit - 1).execute()

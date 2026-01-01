@@ -589,26 +589,30 @@ def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str 
     # Get corresponding marketplace_listings (if any)
     if items:
         project_ids = [item["id"] for item in items]
+        # Use resource_id to match project.id (unified design)
         listings_res = supabase.table("marketplace_listings").select(
-            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count, version, changelog, version_history, description"
-        ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
+            "id, resource_id, moderation_status, is_public, allowed_tiers, price_credits, sales_count, version, changelog, version_history, description"
+        ).in_("resource_id", project_ids).eq("is_deleted", False).execute()
         
-        # Build resource_url -> listing map
+        # Build resource_id -> listing map
         listings_map = {}
         if listings_res.data:
             for listing in listings_res.data:
-                listings_map[listing["resource_url"]] = {
-                    "id": listing["id"],
-                    "moderation_status": listing["moderation_status"],
-                    "is_public": listing["is_public"],
-                    "allowed_tiers": listing["allowed_tiers"],
-                    "price_credits": listing["price_credits"],
-                    "sales_count": listing["sales_count"],
-                    "version": listing.get("version", "1.0"),
-                    "changelog": listing.get("changelog", ""),
-                    "version_history": listing.get("version_history", []),
-                    "description": listing.get("description", ""),
-                }
+                # resource_id is UUID, convert to string for matching
+                rid = str(listing["resource_id"]) if listing.get("resource_id") else None
+                if rid:
+                    listings_map[rid] = {
+                        "id": listing["id"],
+                        "moderation_status": listing["moderation_status"],
+                        "is_public": listing["is_public"],
+                        "allowed_tiers": listing["allowed_tiers"],
+                        "price_credits": listing["price_credits"],
+                        "sales_count": listing["sales_count"],
+                        "version": listing.get("version", "1.0"),
+                        "changelog": listing.get("changelog", ""),
+                        "version_history": listing.get("version_history", []),
+                        "description": listing.get("description", ""),
+                    }
         
         # Attach listing info to project data
         for item in items:
@@ -933,16 +937,17 @@ def get_dashboard_projects(
                 if item.get("marketplace_listing_id"):
                     item["marketplace_listing"] = listings_map.get(item["marketplace_listing_id"])
         
-        # Also check by resource_url (backwards compatibility)
-        listings_by_url_res = supabase.table("marketplace_listings").select(
-            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue, version, changelog"
-        ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
+        # Also check by resource_id (for projects without marketplace_listing_id)
+        listings_by_id_res = supabase.table("marketplace_listings").select(
+            "id, resource_id, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue, version, changelog"
+        ).in_("resource_id", project_ids).eq("is_deleted", False).execute()
         
-        if listings_by_url_res.data:
-            for listing in listings_by_url_res.data:
+        if listings_by_id_res.data:
+            for listing in listings_by_id_res.data:
                 # Find the project and add listing if not already present
+                rid = str(listing["resource_id"]) if listing.get("resource_id") else None
                 for item in items:
-                    if item["id"] == listing["resource_url"] and not item.get("marketplace_listing"):
+                    if rid and item["id"] == rid and not item.get("marketplace_listing"):
                         item["marketplace_listing"] = listing
         
         # Get origin owner info for purchased projects
@@ -1780,13 +1785,13 @@ def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, li
     For assets: creates a new asset record with is_purchased=True
     """
     resource_type = listing.get("resource_type", "project")
-    resource_url = listing.get("resource_url")  # This is the original project/asset ID
-    resource_id = listing.get("resource_id")  # v3.3: Direct reference to asset
+    resource_url = listing.get("resource_url")  # For assets: image URL; for projects: thumbnail URL
+    resource_id = listing.get("resource_id")  # The actual resource UUID (project.id or asset.id)
     
-    if resource_type == "project" and resource_url:
-        # Get original project data
+    if resource_type == "project" and resource_id:
+        # Get original project data using resource_id (unified design)
         original_project = supabase.table("projects").select("*")\
-            .eq("id", resource_url).single().execute()
+            .eq("id", resource_id).single().execute()
         
         if original_project.data:
             # Create a copy for the buyer

@@ -166,6 +166,7 @@ class ListingResponse(BaseModel):
     description: Optional[str] = None
     thumbnail_url: str
     resource_url: str
+    resource_id: Optional[str] = None  # The actual resource UUID (project.id or asset.id)
     resource_type: str
     price_credits: int
     allowed_tiers: List[str]
