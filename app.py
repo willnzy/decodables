@@ -683,16 +683,121 @@ async def upload_asset(
         raise HTTPException(500, f"Failed to upload file: {str(e)}")
 
 @app.delete("/api/user/assets/{asset_id}")
-def delete_asset(asset_id: str, user: dict = Depends(get_current_user)):
-    """Soft-delete a user asset."""
-    # Ensure the asset belongs to the current user
-    asset = supabase.table("assets").select("*").eq("id", asset_id).eq("user_id", user["id"]).single().execute()
-    if not asset.data:
-        raise HTTPException(404, "Asset not found")
+def delete_asset(asset_id: str, permanent: bool = False, user: dict = Depends(get_current_user)):
+    """
+    Delete a user asset (PRD v3.3).
     
-    # Soft delete
-    supabase.table("assets").update({"is_deleted": True}).eq("id", asset_id).execute()
-    return {"success": True, "message": "Asset deleted"}
+    Args:
+        asset_id: Asset ID to delete
+        permanent: If true, permanently hides from trash (stage 2 delete)
+                   If false, soft delete to trash (stage 1 delete)
+    """
+    from db_service import soft_delete_asset, permanently_hide_asset
+    
+    try:
+        if permanent:
+            # Stage 2: Permanently hide from trash
+            result = permanently_hide_asset(asset_id, user["id"])
+            if result:
+                log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
+                return {"success": True, "status": "permanently_hidden", "stage": 2}
+            else:
+                raise HTTPException(404, "Asset not found or not in trash")
+        else:
+            # Stage 1: Soft delete to trash
+            soft_delete_asset(asset_id, user["id"])
+            log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
+            return {"success": True, "status": "deleted", "stage": 1}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(404, str(e) or "Asset not found")
+
+
+@app.get("/api/user/assets/dashboard")
+def dashboard_assets(
+    view: str = Query("all", regex="^(all|bought|selling)$"),
+    page: int = 1, 
+    limit: int = 15,  # 15 per page (5x3 grid)
+    search: str = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get assets for dashboard with view type filtering (PRD v3.3).
+    
+    Args:
+        view: View type - "all" (default), "bought", or "selling"
+        page: Page number (default: 1)
+        limit: Items per page (default: 15 for 5x3 grid)
+        search: Search query to filter assets by name/description
+    
+    Returns:
+        Assets list with:
+        - items: Array of assets with marketplace_listing info
+        - total: Total count for current view
+        - page: Current page
+        - view_type: Current view type
+    """
+    from db_service import get_dashboard_assets
+    
+    print(f"[API] dashboard_assets: view={view}, page={page}, search={search}")
+    
+    result = get_dashboard_assets(
+        user_id=user["id"],
+        view_type=view,
+        page=page,
+        limit=limit,
+        search=search
+    )
+    
+    return result
+
+
+@app.get("/api/user/assets/seller-stats")
+def get_asset_seller_stats(user: dict = Depends(get_current_user)):
+    """
+    Get seller statistics for assets (PRD v3.3).
+    
+    Returns:
+        Dict with:
+        - total_selling: Number of active asset listings
+        - total_sales: Total number of sales across all listings
+        - unique_buyers: Total unique buyers
+        - total_revenue: Total credits earned from sales
+        - total_usage: Total usage count across all listings
+    """
+    from db_service import get_seller_asset_stats
+    return get_seller_asset_stats(user["id"])
+
+
+@app.get("/api/user/assets/deleted")
+def list_deleted_assets(
+    page: int = 1,
+    limit: int = 20,
+    user: dict = Depends(get_current_user)
+):
+    """Retrieve the user's deleted assets (last 30 days)."""
+    from db_service import get_user_deleted_assets
+    return get_user_deleted_assets(user["id"], page, limit)
+
+
+@app.post("/api/user/assets/{asset_id}/restore")
+def restore_user_asset(
+    asset_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Allow a user to restore their own deleted asset."""
+    from db_service import restore_asset
+    try:
+        asset = restore_asset(asset_id, user["id"])
+        if asset:
+            log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
+            return {"status": "ok", "asset": asset}
+        else:
+            raise HTTPException(status_code=404, detail="Asset not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/api/user/purchases")
 def my_purchases(page: int = 1, limit: int = 50, user: dict = Depends(get_current_user)):

@@ -1114,6 +1114,250 @@ def get_assets(user_id: str, project_id: str = None):
     
     return items
 
+
+def get_dashboard_assets(
+    user_id: str, 
+    view_type: str = "all",  # "all" | "bought" | "selling"
+    page: int = 1, 
+    limit: int = 15,  # 15 per page (5x3 grid)
+    search: str = None
+):
+    """
+    Get assets for dashboard with view type filtering.
+    
+    Args:
+        user_id: User ID
+        view_type: "all" (uploaded + bought + selling), "bought" (purchased only), "selling" (active listings)
+        page: Page number
+        limit: Items per page (default: 15 for 5x3 grid)
+        search: Search query for asset name/description
+    
+    Returns:
+        Dict with items, total, page, and view-specific metadata
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    print(f"[DASHBOARD_ASSETS] view_type={view_type}, user_id={user_id}, page={page}")
+    
+    # Build base query
+    query = supabase.table("assets").select("*")\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    # Apply view type filter
+    if view_type == "bought":
+        # Only purchased assets (is_purchased = true OR source_listing_id IS NOT NULL)
+        query = query.eq("is_purchased", True)
+    elif view_type == "selling":
+        # Only assets with active listings (listing_status is not null)
+        query = query.not_.is_("listing_status", "null")
+    # "all" - no additional filter
+    
+    # Apply search filter
+    if search and search.strip():
+        search_term = search.strip()
+        # Search in name or description
+        query = query.or_(f"name.ilike.%{search_term}%,description.ilike.%{search_term}%")
+    
+    # Execute query with pagination
+    res = query.range(start, end).order("created_at", desc=True).execute()
+    items = res.data or []
+    
+    # Get total count with same filters
+    count_query = supabase.table("assets").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    if view_type == "bought":
+        count_query = count_query.eq("is_purchased", True)
+    elif view_type == "selling":
+        count_query = count_query.not_.is_("listing_status", "null")
+    
+    if search and search.strip():
+        search_term = search.strip()
+        count_query = count_query.or_(f"name.ilike.%{search_term}%,description.ilike.%{search_term}%")
+    
+    count_res = count_query.execute()
+    total = len(count_res.data) if count_res.data else 0
+    
+    # Enrich with marketplace listing data
+    if items:
+        asset_ids = [item["id"] for item in items]
+        marketplace_listing_ids = [item["marketplace_listing_id"] for item in items if item.get("marketplace_listing_id")]
+        
+        # Get marketplace listings for these assets
+        if marketplace_listing_ids:
+            listings_res = supabase.table("marketplace_listings").select(
+                "id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue, usage_count"
+            ).in_("id", marketplace_listing_ids).execute()
+            
+            listings_map = {}
+            if listings_res.data:
+                for listing in listings_res.data:
+                    listings_map[listing["id"]] = listing
+            
+            # Attach listing info to assets
+            for item in items:
+                if item.get("marketplace_listing_id"):
+                    item["marketplace_listing"] = listings_map.get(item["marketplace_listing_id"])
+        
+        # Also check by resource_id (backwards compatibility)
+        listings_by_id_res = supabase.table("marketplace_listings").select(
+            "id, resource_id, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue"
+        ).in_("resource_id", asset_ids).eq("is_deleted", False).execute()
+        
+        if listings_by_id_res.data:
+            for listing in listings_by_id_res.data:
+                # Find the asset and add listing if not already present
+                for item in items:
+                    if item["id"] == listing["resource_id"] and not item.get("marketplace_listing"):
+                        item["marketplace_listing"] = listing
+        
+        # Get origin owner info for purchased assets
+        origin_owner_ids = [item["origin_owner_id"] for item in items if item.get("origin_owner_id")]
+        if origin_owner_ids:
+            owners_res = supabase.table("profiles").select(
+                "id, username, avatar_url"
+            ).in_("id", origin_owner_ids).execute()
+            
+            owners_map = {}
+            if owners_res.data:
+                for owner in owners_res.data:
+                    owners_map[owner["id"]] = owner
+            
+            for item in items:
+                if item.get("origin_owner_id"):
+                    item["origin_owner"] = owners_map.get(item["origin_owner_id"])
+    
+    # Filter for "selling" view: only show assets with active public listings
+    if view_type == "selling":
+        items = [
+            item for item in items 
+            if item.get("marketplace_listing") and 
+               item["marketplace_listing"].get("is_public") and 
+               item["marketplace_listing"].get("moderation_status") == "approved"
+        ]
+        total = len(items)  # Recalculate total after filtering
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "view_type": view_type
+    }
+
+
+def get_seller_asset_stats(user_id: str):
+    """
+    Get seller statistics for assets (for Selling view header).
+    
+    Returns:
+        Dict with total_selling, total_sales, unique_buyers, total_revenue
+    """
+    # Get all active asset listings for this seller
+    res = supabase.table("marketplace_listings").select(
+        "id, sales_count, unique_buyers_count, total_revenue, usage_count"
+    ).eq("seller_id", user_id)\
+        .eq("resource_type", "asset")\
+        .eq("is_public", True)\
+        .eq("moderation_status", "approved")\
+        .eq("is_deleted", False).execute()
+    
+    listings = res.data or []
+    
+    # Aggregate stats
+    total_selling = len(listings)
+    total_sales = sum(l.get("sales_count", 0) for l in listings)
+    unique_buyers = sum(l.get("unique_buyers_count", 0) for l in listings)
+    total_revenue = sum(l.get("total_revenue", 0) for l in listings)
+    total_usage = sum(l.get("usage_count", 0) for l in listings)
+    
+    return {
+        "total_selling": total_selling,
+        "total_sales": total_sales,
+        "unique_buyers": unique_buyers,
+        "total_revenue": total_revenue,
+        "total_usage": total_usage
+    }
+
+
+def get_user_deleted_assets(user_id: str, page: int = 1, limit: int = 20):
+    """Get user deleted assets (last 30 days, excluding hidden from trash)"""
+    from datetime import datetime, timedelta, timezone
+    
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    # Only return assets deleted in last 30 days AND not hidden from trash
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    
+    res = supabase.table("assets").select(
+        "id, name, url, thumbnail_url, deleted_at, created_at"
+    ).eq("user_id", user_id).eq("is_deleted", True)\
+        .eq("is_hidden_from_trash", False)\
+        .gte("deleted_at", cutoff_date)\
+        .order("deleted_at", desc=True).range(start, end).execute()
+    
+    # Get total count
+    count_res = supabase.table("assets").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", True)\
+        .eq("is_hidden_from_trash", False)\
+        .gte("deleted_at", cutoff_date).execute()
+    total = len(count_res.data) if count_res.data else 0
+    
+    return {
+        "items": res.data or [],
+        "total": total,
+        "page": page
+    }
+
+
+def soft_delete_asset(asset_id: str, user_id: str):
+    """Soft delete asset (stage 1)"""
+    from datetime import datetime
+    res = supabase.table("assets").update({
+        "is_deleted": True,
+        "deleted_at": datetime.utcnow().isoformat()
+    }).eq("id", asset_id).eq("user_id", user_id).execute()
+    if not res.data:
+        raise Exception("Asset not found or permission denied")
+    return True
+
+
+def permanently_hide_asset(asset_id: str, user_id: str):
+    """
+    Permanently hide asset from trash (soft delete stage 2).
+    Asset data is retained but invisible to user.
+    """
+    # Check if asset belongs to user and is already deleted
+    check = supabase.table("assets").select("id")\
+        .eq("id", asset_id).eq("user_id", user_id).eq("is_deleted", True).execute()
+    
+    if not check.data:
+        raise Exception("Asset not found or not in trash")
+    
+    res = supabase.table("assets").update({
+        "is_hidden_from_trash": True
+    }).eq("id", asset_id).eq("user_id", user_id).execute()
+    
+    return res.data[0] if res.data else None
+
+
+def restore_asset(asset_id: str, user_id: str):
+    """Restore deleted asset"""
+    check = supabase.table("assets").select("id")\
+        .eq("id", asset_id).eq("user_id", user_id).eq("is_deleted", True).execute()
+    
+    if not check.data:
+        raise Exception("Asset not found or not deleted")
+    
+    res = supabase.table("assets").update({
+        "is_deleted": False,
+        "deleted_at": None
+    }).eq("id", asset_id).eq("user_id", user_id).execute()
+    
+    return res.data[0] if res.data else None
+
+
 def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"):
     """
     Get system resources (stickers, etc.)
