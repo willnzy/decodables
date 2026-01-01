@@ -364,6 +364,11 @@ class MarketplacePublishRequest(BaseModel):
 
 class MarketplacePurchaseRequest(BaseModel):
     listing_id: str
+    idempotency_key: Optional[str] = None  # Prevent duplicate purchases
+    utm_source: Optional[str] = None  # Analytics tracking
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+    referral_context: Optional[str] = None  # 'homepage', 'search', 'category', etc.
 
 class ListingUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -1778,7 +1783,15 @@ def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(
 @limiter.limit("10/minute")  # Purchase rate limit (anti-fraud)
 def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
     """Purchase a marketplace listing."""
-    result = execute_purchase(user["id"], req.listing_id)
+    result = execute_purchase(
+        buyer_id=user["id"], 
+        listing_id=req.listing_id,
+        idempotency_key=req.idempotency_key,
+        utm_source=req.utm_source,
+        utm_medium=req.utm_medium,
+        utm_campaign=req.utm_campaign,
+        referral_context=req.referral_context
+    )
     
     if not result["success"]:
         if "Upgrade" in result["message"]:

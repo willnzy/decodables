@@ -60,6 +60,10 @@ create table if not exists profiles (
 
   stripe_customer_id text,
   role text default 'user', -- 'user', 'admin'
+  
+  -- v3.4: User cohort for retention analysis
+  cohort_month text, -- Format: '2026-01' (auto-set from created_at)
+  
   created_at timestamptz default now()
 );
 
@@ -73,7 +77,7 @@ create table if not exists user_discounts (
   created_at timestamptz default now()
 );
 
--- 3. Credit ledger
+-- 3. Credit ledger (APPEND-ONLY - no updates or deletes allowed)
 create table if not exists credit_transactions (
   id uuid default gen_random_uuid() primary key,
   user_id text references profiles(id) not null,
@@ -88,8 +92,15 @@ create table if not exists credit_transactions (
 
   type text not null, -- 'signup_bonus', 'topup_purchase', 'sub_grant', 'generation', 'ocr', 'market_purchase', 'market_sale', 'admin_adj'
   description text,
+  
+  -- v3.4: Idempotency key for duplicate prevention
+  idempotency_key text,
+  
   created_at timestamptz default now()
 );
+-- Idempotency index
+create unique index if not exists idx_transactions_idempotency 
+on credit_transactions(idempotency_key) where idempotency_key is not null;
 
 -- 4. User projects
 create table if not exists projects (
@@ -164,8 +175,29 @@ create table if not exists user_purchases (
   listing_id uuid references marketplace_listings(id) not null,
   price_paid int not null,
   purchased_at timestamptz default now(),
+  
+  -- v3.4: Idempotency key for duplicate prevention
+  idempotency_key text,
+  
+  -- v3.4: Snapshot - capture listing state at purchase time
+  snapshot_title text,
+  snapshot_thumbnail_url text,
+  snapshot_description text,
+  snapshot_version text,
+  snapshot_resource_type text,
+  snapshot_resource_id uuid,
+  
+  -- v3.4: Analytics tracking
+  utm_source text,
+  utm_medium text,
+  utm_campaign text,
+  referral_context text, -- 'homepage', 'search', 'category', 'direct_link'
+  
   unique(user_id, listing_id)
 );
+-- Idempotency index (allow NULL, only constrain non-null values)
+create unique index if not exists idx_purchases_idempotency 
+on user_purchases(idempotency_key) where idempotency_key is not null;
 
 -- 7. User assets
 -- Stores user uploads, AI generations, and OCR scans.
@@ -754,6 +786,28 @@ CREATE TRIGGER trigger_assets_deleted_at
   BEFORE UPDATE OF is_deleted ON assets
   FOR EACH ROW
   EXECUTE FUNCTION set_deleted_timestamp();
+
+-- v3.4: Append-Only constraint for credit_transactions (financial audit)
+-- Prevents UPDATE and DELETE on credit_transactions table
+CREATE OR REPLACE FUNCTION prevent_credit_modification()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'credit_transactions is append-only. For refunds, insert a negative amount record.';
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS prevent_credit_update ON credit_transactions;
+CREATE TRIGGER prevent_credit_update
+    BEFORE UPDATE ON credit_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_credit_modification();
+
+DROP TRIGGER IF EXISTS prevent_credit_delete ON credit_transactions;
+CREATE TRIGGER prevent_credit_delete
+    BEFORE DELETE ON credit_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_credit_modification();
 
 -- Function to update content_reports updated_at
 CREATE OR REPLACE FUNCTION update_reports_updated_at()

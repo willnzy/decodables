@@ -1685,7 +1685,15 @@ def check_user_purchase(user_id: str, listing_id: str) -> bool:
         .eq("user_id", user_id).eq("listing_id", listing_id).execute()
     return len(res.data) > 0
 
-def execute_purchase(buyer_id: str, listing_id: str) -> dict:
+def execute_purchase(
+    buyer_id: str, 
+    listing_id: str,
+    idempotency_key: str = None,
+    utm_source: str = None,
+    utm_medium: str = None,
+    utm_campaign: str = None,
+    referral_context: str = None
+) -> dict:
     """
     Execute purchase logic (PRD Chapter 13)
     
@@ -1696,11 +1704,23 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     3) Transaction deduct: Buyer pays price (priority monthly)
     4) Seller credit: price * 90% (to permanent)
     5) Platform fee: 10%
-    6) Write user_purchases
+    6) Write user_purchases with snapshot
+    
+    Args:
+        idempotency_key: Unique key to prevent duplicate purchases
+        utm_source/utm_medium/utm_campaign: Analytics tracking
+        referral_context: Where user came from ('homepage', 'search', etc.)
     
     Returns: { success: bool, message: str }
     """
-    # 0. Get listing info (must be approved + public + not deleted)
+    # 0. Idempotency check - prevent duplicate purchases from retries
+    if idempotency_key:
+        existing = supabase.table("user_purchases").select("id")\
+            .eq("idempotency_key", idempotency_key).execute()
+        if existing.data:
+            return {"success": True, "message": "Already processed", "already_owned": True}
+    
+    # 1. Get listing info (must be approved + public + not deleted)
     listing_res = supabase.table("marketplace_listings").select("*")\
         .eq("id", listing_id)\
         .eq("is_public", True)\
@@ -1725,17 +1745,35 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
     if not can_access_resource(buyer, allowed_tiers):
         return {"success": False, "message": "Upgrade required to purchase this item"}
     
-    # 4. Dedup check
+    # 4. Dedup check (by listing_id)
     if check_user_purchase(buyer_id, listing_id):
         return {"success": True, "message": "Already purchased", "already_owned": True}
     
-    # 5. Free item handling
+    # 5. Build purchase record with snapshot (used for both free and paid)
+    purchase_record = {
+        "user_id": buyer_id,
+        "listing_id": listing_id,
+        "price_paid": price,
+        # Idempotency key for duplicate prevention
+        "idempotency_key": idempotency_key,
+        # Snapshot - capture listing state at purchase time
+        "snapshot_title": listing.get("title"),
+        "snapshot_thumbnail_url": listing.get("thumbnail_url"),
+        "snapshot_description": listing.get("description"),
+        "snapshot_version": listing.get("version", "1.0"),
+        "snapshot_resource_type": listing.get("resource_type"),
+        "snapshot_resource_id": listing.get("resource_id"),
+        # Analytics tracking
+        "utm_source": utm_source,
+        "utm_medium": utm_medium,
+        "utm_campaign": utm_campaign,
+        "referral_context": referral_context,
+    }
+    
+    # 6. Free item handling
     if price == 0:
-        supabase.table("user_purchases").insert({
-            "user_id": buyer_id,
-            "listing_id": listing_id,
-            "price_paid": 0
-        }).execute()
+        purchase_record["price_paid"] = 0
+        supabase.table("user_purchases").insert(purchase_record).execute()
         
         # Also create purchased item copy for free items
         _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id)
@@ -1760,12 +1798,8 @@ def execute_purchase(buyer_id: str, listing_id: str) -> dict:
             type="market_sale"
         )
     
-    # 8. Record purchase
-    supabase.table("user_purchases").insert({
-        "user_id": buyer_id,
-        "listing_id": listing_id,
-        "price_paid": price
-    }).execute()
+    # 8. Record purchase with snapshot
+    supabase.table("user_purchases").insert(purchase_record).execute()
     
     # 9. Update sales count
     supabase.table("marketplace_listings").update({
