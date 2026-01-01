@@ -7,13 +7,14 @@ Handles project-related API endpoints
 
 from typing import Optional, List
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from dependencies import get_current_user
 from db_service import (
     get_user_projects, get_project_detail, create_project as db_create_project,
     save_project, soft_delete_project, get_marketplace_item,
-    can_access_resource, record_listing_usage, count_user_projects, supabase
+    can_access_resource, record_listing_usage, count_user_projects, supabase,
+    get_dashboard_projects, get_seller_project_stats, permanently_hide_project
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -63,6 +64,67 @@ def list_projects(page: int = 1, limit: int = 20, search: str = None, user: dict
     }
     print(f"[API] Returning result: {len(items) if items else 0} items, total: {total_count}, page: {page}")
     return result
+
+
+@router.get("/dashboard")
+def dashboard_projects(
+    view: str = Query("all", regex="^(all|bought|selling)$"),
+    page: int = 1, 
+    limit: int = 20, 
+    search: str = None,
+    include_canvas: bool = True,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get projects for dashboard with view type filtering (PRD v3.3).
+    
+    Args:
+        view: View type - "all" (default), "bought", or "selling"
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+        search: Search query to filter projects by title (optional)
+        include_canvas: Whether to include canvas_data (default: true)
+    
+    Returns:
+        Projects list with:
+        - items: Array of projects with marketplace_listing info
+        - total: Total count for current view
+        - page: Current page
+        - view_type: Current view type
+        
+    View Types:
+        - all: Shows all projects (created + bought + selling)
+        - bought: Only purchased projects (read-only)
+        - selling: Only projects with active marketplace listings
+    """
+    print(f"[API] dashboard_projects: view={view}, page={page}, search={search}")
+    
+    result = get_dashboard_projects(
+        user_id=user["id"],
+        view_type=view,
+        page=page,
+        limit=limit,
+        search=search,
+        include_canvas_data=include_canvas
+    )
+    
+    return result
+
+
+@router.get("/seller-stats")
+def get_project_seller_stats(user: dict = Depends(get_current_user)):
+    """
+    Get seller statistics for projects (PRD v3.3).
+    
+    Returns:
+        Dict with:
+        - total_selling: Number of active project listings
+        - total_sales: Total number of sales across all listings
+        - unique_buyers: Total unique buyers
+        - total_revenue: Total credits earned from sales
+        - total_usage: Total usage count across all listings
+    """
+    return get_seller_project_stats(user["id"])
 
 
 @router.post("")
@@ -242,18 +304,44 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+def delete_project(project_id: str, permanent: bool = False, user: dict = Depends(get_current_user)):
     """
-    Soft delete a project.
+    Delete a project (PRD v3.3).
+    
+    Args:
+        project_id: Project ID to delete
+        permanent: If true, permanently hides from trash (stage 2 delete)
+                   If false, soft delete to trash (stage 1 delete)
+    
+    Stage 1 (permanent=false):
+        - Sets is_deleted=true, deleted_at=now()
+        - Project appears in trash for 30 days
+        - Can be restored
+    
+    Stage 2 (permanent=true):
+        - Sets is_hidden_from_trash=true
+        - Project no longer visible to user
+        - Data retained in database
     
     Raises:
         HTTPException: 404 if project not found
     
     Returns:
-        Deletion status
+        Deletion status with stage info
     """
-    result = soft_delete_project(project_id, user["id"])
-    if not result:
-        raise HTTPException(404, "Project not found")
-    return {"status": "deleted"}
+    if permanent:
+        # Stage 2: Permanently hide from trash
+        try:
+            result = permanently_hide_project(project_id, user["id"])
+            if not result:
+                raise HTTPException(404, "Project not found or not in trash")
+            return {"status": "permanently_hidden", "stage": 2}
+        except Exception as e:
+            raise HTTPException(404, str(e))
+    else:
+        # Stage 1: Soft delete to trash
+        result = soft_delete_project(project_id, user["id"])
+        if not result:
+            raise HTTPException(404, "Project not found")
+        return {"status": "deleted", "stage": 1}
 

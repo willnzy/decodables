@@ -704,7 +704,9 @@ def duplicate_project(project_id: str, user_id: str):
     Duplicate/Copy a project.
     
     - Own projects: Creates copy with title + " copied"
-    - Purchased projects: Creates copy with same title, records source info
+    - Purchased projects: Creates editable copy, NOT shown in Bought view
+      - Records origin_owner_id to track original creator
+      - Does NOT set is_purchased=true (so it shows in All, not Bought)
     
     Returns: New project data or raises Exception
     """
@@ -716,25 +718,29 @@ def duplicate_project(project_id: str, user_id: str):
         raise Exception("Project not found or permission denied")
     
     original_title = original.data.get('title', 'Untitled Project')
-    is_purchased = bool(original.data.get("source_listing_id"))
+    is_purchased = bool(original.data.get("source_listing_id")) or bool(original.data.get("is_purchased"))
     
     # Create new project data
     new_data = {
         "user_id": user_id,
         "canvas_data": original.data.get("canvas_data", {}),
         "thumbnail_url": original.data.get("thumbnail_url"),
-        "last_downloaded_hash": ""
+        "last_downloaded_hash": "",
+        "is_purchased": False,  # Duplicated projects are NOT purchased, they're user-created copies
     }
     
     if is_purchased:
-        # Purchased project: keep same name, record source info
-        new_data["title"] = original_title
+        # Purchased project: keep same name, record origin info for traceability
+        new_data["title"] = f"{original_title} (Copy)"
+        # Record the original owner ID for tracking origin
+        new_data["origin_owner_id"] = original.data.get("origin_owner_id") or original.data.get("user_id")
+        # Keep reference to source listing for traceability
         new_data["source_listing_id"] = original.data.get("source_listing_id")
-        # Store original project reference for tracking
-        new_data["copied_from_project_id"] = project_id
     else:
         # Own project: add " copied" suffix
         new_data["title"] = f"{original_title} copied"
+        # For own projects, origin_owner_id is the user themselves
+        new_data["origin_owner_id"] = user_id
     
     res = supabase.table("projects").insert(new_data).execute()
     return res.data[0] if res.data else None
@@ -786,25 +792,27 @@ def restore_project(project_id: str):
 
 
 def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
-    """Get user deleted projects (last 30 days)"""
+    """Get user deleted projects (last 30 days, excluding hidden from trash)"""
     from datetime import datetime, timedelta, timezone
     
     start = (page - 1) * limit
     end = start + limit - 1
     
-    # Only return projects deleted in last 30 days
+    # Only return projects deleted in last 30 days AND not hidden from trash
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     
     # Select fields: title, thumbnail, deleted_at, id
     res = supabase.table("projects").select(
         "id, title, thumbnail_url, deleted_at, created_at, updated_at"
     ).eq("user_id", user_id).eq("is_deleted", True)\
+        .eq("is_hidden_from_trash", False)\
         .gte("deleted_at", cutoff_date)\
         .order("deleted_at", desc=True).range(start, end).execute()
     
-    # Get total count (last 30 days)
+    # Get total count (last 30 days, excluding hidden)
     count_res = supabase.table("projects").select("id", count="exact")\
         .eq("user_id", user_id).eq("is_deleted", True)\
+        .eq("is_hidden_from_trash", False)\
         .gte("deleted_at", cutoff_date).execute()
     total = count_res.count if count_res.count else 0
     
@@ -812,6 +820,196 @@ def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
         "items": res.data or [],
         "total": total,
         "page": page
+    }
+
+
+def permanently_hide_project(project_id: str, user_id: str):
+    """
+    Permanently hide project from trash (soft delete stage 2).
+    Project data is retained but invisible to user.
+    """
+    # Check if project belongs to user and is already deleted
+    check = supabase.table("projects").select("id")\
+        .eq("id", project_id).eq("user_id", user_id).eq("is_deleted", True).execute()
+    
+    if not check.data:
+        raise Exception("Project not found or not in trash")
+    
+    res = supabase.table("projects").update({
+        "is_hidden_from_trash": True
+    }).eq("id", project_id).eq("user_id", user_id).execute()
+    
+    return res.data[0] if res.data else None
+
+
+def get_dashboard_projects(
+    user_id: str, 
+    view_type: str = "all",  # "all" | "bought" | "selling"
+    page: int = 1, 
+    limit: int = 20, 
+    search: str = None,
+    include_canvas_data: bool = True
+):
+    """
+    Get projects for dashboard with view type filtering.
+    
+    Args:
+        user_id: User ID
+        view_type: "all" (created + bought + selling), "bought" (purchased only), "selling" (active listings)
+        page: Page number
+        limit: Items per page
+        search: Search query
+        include_canvas_data: Whether to include canvas_data
+    
+    Returns:
+        Dict with items, total, page, and view-specific metadata
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    print(f"[DASHBOARD_PROJECTS] view_type={view_type}, user_id={user_id}, page={page}")
+    
+    # Determine select fields
+    if include_canvas_data:
+        select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
+    else:
+        select_fields = "id, title, thumbnail_url, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
+    
+    # Build base query
+    query = supabase.table("projects").select(select_fields)\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    # Apply view type filter
+    if view_type == "bought":
+        # Only purchased projects (is_purchased = true OR source_listing_id IS NOT NULL)
+        query = query.eq("is_purchased", True)
+    elif view_type == "selling":
+        # Only projects with active listings (listing_status = 'approved' and marketplace_listing.is_public = true)
+        query = query.not_.is_("listing_status", "null")
+    # "all" - no additional filter (shows all: created + bought + selling)
+    
+    # Apply search filter
+    if search and search.strip():
+        search_term = search.strip()
+        query = query.ilike("title", f"%{search_term}%")
+    
+    # Execute query
+    res = query.range(start, end).order("updated_at", desc=True).execute()
+    items = res.data or []
+    
+    # Get total count with same filters
+    count_query = supabase.table("projects").select("id")\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    if view_type == "bought":
+        count_query = count_query.eq("is_purchased", True)
+    elif view_type == "selling":
+        count_query = count_query.not_.is_("listing_status", "null")
+    
+    if search and search.strip():
+        count_query = count_query.ilike("title", f"%{search.strip()}%")
+    
+    count_res = count_query.execute()
+    total = len(count_res.data) if count_res.data else 0
+    
+    # Enrich with marketplace listing data
+    if items:
+        project_ids = [item["id"] for item in items]
+        marketplace_listing_ids = [item["marketplace_listing_id"] for item in items if item.get("marketplace_listing_id")]
+        
+        # Get marketplace listings for these projects
+        if marketplace_listing_ids:
+            listings_res = supabase.table("marketplace_listings").select(
+                "id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue, usage_count, version, changelog"
+            ).in_("id", marketplace_listing_ids).execute()
+            
+            listings_map = {}
+            if listings_res.data:
+                for listing in listings_res.data:
+                    listings_map[listing["id"]] = listing
+            
+            # Attach listing info to projects
+            for item in items:
+                if item.get("marketplace_listing_id"):
+                    item["marketplace_listing"] = listings_map.get(item["marketplace_listing_id"])
+        
+        # Also check by resource_url (backwards compatibility)
+        listings_by_url_res = supabase.table("marketplace_listings").select(
+            "id, resource_url, moderation_status, is_public, allowed_tiers, price_credits, sales_count, unique_buyers_count, total_revenue, version, changelog"
+        ).in_("resource_url", project_ids).eq("is_deleted", False).execute()
+        
+        if listings_by_url_res.data:
+            for listing in listings_by_url_res.data:
+                # Find the project and add listing if not already present
+                for item in items:
+                    if item["id"] == listing["resource_url"] and not item.get("marketplace_listing"):
+                        item["marketplace_listing"] = listing
+        
+        # Get origin owner info for purchased projects
+        origin_owner_ids = [item["origin_owner_id"] for item in items if item.get("origin_owner_id")]
+        if origin_owner_ids:
+            owners_res = supabase.table("profiles").select(
+                "id, username, avatar_url"
+            ).in_("id", origin_owner_ids).execute()
+            
+            owners_map = {}
+            if owners_res.data:
+                for owner in owners_res.data:
+                    owners_map[owner["id"]] = owner
+            
+            for item in items:
+                if item.get("origin_owner_id"):
+                    item["origin_owner"] = owners_map.get(item["origin_owner_id"])
+    
+    # Filter for "selling" view: only show projects with active public listings
+    if view_type == "selling":
+        items = [
+            item for item in items 
+            if item.get("marketplace_listing") and 
+               item["marketplace_listing"].get("is_public") and 
+               item["marketplace_listing"].get("moderation_status") == "approved"
+        ]
+        total = len(items)  # Recalculate total after filtering
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "view_type": view_type
+    }
+
+
+def get_seller_project_stats(user_id: str):
+    """
+    Get seller statistics for projects (for Selling view header).
+    
+    Returns:
+        Dict with total_selling, total_sales, unique_buyers, total_revenue
+    """
+    # Get all active project listings for this seller
+    res = supabase.table("marketplace_listings").select(
+        "id, sales_count, unique_buyers_count, total_revenue, usage_count"
+    ).eq("seller_id", user_id)\
+        .eq("resource_type", "project")\
+        .eq("is_public", True)\
+        .eq("moderation_status", "approved")\
+        .eq("is_deleted", False).execute()
+    
+    listings = res.data or []
+    
+    # Aggregate stats
+    total_selling = len(listings)
+    total_sales = sum(l.get("sales_count", 0) for l in listings)
+    unique_buyers = sum(l.get("unique_buyers_count", 0) for l in listings)  # Note: May overcount across listings
+    total_revenue = sum(l.get("total_revenue", 0) for l in listings)
+    total_usage = sum(l.get("usage_count", 0) for l in listings)
+    
+    return {
+        "total_selling": total_selling,
+        "total_sales": total_sales,
+        "unique_buyers": unique_buyers,
+        "total_revenue": total_revenue,
+        "total_usage": total_usage
     }
 
 
