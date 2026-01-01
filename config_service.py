@@ -16,6 +16,10 @@ from supabase import create_client, Client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")  # Service role key
 
+# Ensure URL has trailing slash to avoid SDK warning
+if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
+    SUPABASE_URL = SUPABASE_URL + '/'
+
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

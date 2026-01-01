@@ -778,7 +778,7 @@ def delete_asset(asset_id: str, permanent: bool = False, user: dict = Depends(ge
 
 @app.get("/api/user/assets/dashboard")
 def dashboard_assets(
-    view: str = Query("all", regex="^(all|bought|selling)$"),
+    view: str = Query("all", pattern="^(all|bought|selling)$"),
     page: int = 1, 
     limit: int = 15,  # 15 per page (5x3 grid)
     search: str = None,
@@ -927,7 +927,7 @@ def list_deleted_projects(
 
 @app.get("/api/projects/dashboard")
 def dashboard_projects(
-    view: str = Query("all", regex="^(all|bought|selling)$"),
+    view: str = Query("all", pattern="^(all|bought|selling)$"),
     page: int = 1, 
     limit: int = 20, 
     search: str = None,

@@ -10,6 +10,10 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 BUCKET_NAME = "generated-images"  # PRD Bucket
 
+# Ensure URL has trailing slash to avoid SDK warning
+if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
+    SUPABASE_URL = SUPABASE_URL + '/'
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 
