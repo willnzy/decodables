@@ -373,7 +373,7 @@ create table if not exists error_logs (
   
   -- User context
   user_id varchar(100),            -- User ID if authenticated
-  user_code varchar(20),           -- User code for easier identification (e.g., USR001)
+  user_code varchar(30),           -- User code (format: YYYYMMDDHHMMSS + ms + 6 digits = 23 chars)
   session_id varchar(100),         -- Browser session ID
   page_url text,                   -- Page where error occurred
   user_agent text,                 -- Browser/device info
