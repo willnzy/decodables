@@ -721,6 +721,7 @@ def add_credits(user_id: str, amount: int, description: str, type: str = "purcha
     """[Compat] Add credits - defaults to adding to permanent"""
     return add_credits_permanent(user_id, amount, description, type, timezone=timezone)
 
+@retry_on_network_error()
 def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
     """Get credit history"""
     start = (page - 1) * limit
@@ -737,6 +738,7 @@ def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
 # 3. Project Management (Projects)
 # ==========================================
 
+@retry_on_network_error()
 def get_user_projects(user_id: str, page: int = 1, limit: int = 20, search: str = None, include_canvas_data: bool = True):
     """Get project list
     
@@ -1048,6 +1050,7 @@ def permanently_hide_project(project_id: str, user_id: str):
     return res.data[0] if res.data else None
 
 
+@retry_on_network_error()
 def get_dashboard_projects(
     user_id: str, 
     view_type: str = "all",  # "all" | "bought" | "selling"
@@ -1298,6 +1301,7 @@ def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt
     }
     supabase.table("assets").insert(data).execute()
 
+@retry_on_network_error()
 def get_assets(user_id: str, project_id: str = None):
     """Get user assets with marketplace_listing info and purchase_info"""
     query = supabase.table("assets").select("*").eq("user_id", user_id).eq("is_deleted", False)
@@ -1354,6 +1358,7 @@ def get_assets(user_id: str, project_id: str = None):
     return items
 
 
+@retry_on_network_error()
 def get_dashboard_assets(
     user_id: str, 
     view_type: str = "all",  # "all" | "bought" | "selling"
@@ -2213,6 +2218,7 @@ def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int
 # 6. Notification System
 # ==========================================
 
+@retry_on_network_error()
 def get_user_notifications(user_id: str, unread_only: bool = False, limit: int = 20):
     """Get user notifications"""
     query = supabase.table("notifications").select("*")
