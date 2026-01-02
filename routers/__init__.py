@@ -1,19 +1,10 @@
 """
 Routers Package
 API route modules
+
+Note: Import routers directly from their modules to avoid circular imports.
+Example: from routers.admin import router as admin_router
 """
 
-from .users import router as users_router
-from .projects import router as projects_router
-from .marketplace import router as marketplace_router
-from .admin import router as admin_router
-from .resources import router as resources_router
-
-__all__ = [
-    'users_router',
-    'projects_router', 
-    'marketplace_router',
-    'admin_router',
-    'resources_router',
-]
-
+# Don't auto-import routers here to avoid circular dependency issues
+# Import them directly where needed in app.py
