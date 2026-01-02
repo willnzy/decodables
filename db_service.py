@@ -1,7 +1,14 @@
 import os
+import time
+import logging
+from functools import wraps
 from supabase import create_client, Client
 from datetime import datetime, timezone
 import uuid
+import httpx
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Get configuration from environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -11,8 +18,122 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
     SUPABASE_URL = SUPABASE_URL + '/'
 
-# Initialize client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+# ==========================================
+# Network Retry Configuration
+# ==========================================
+
+# Retry settings
+MAX_RETRIES = 3
+RETRY_DELAY = 0.5  # seconds
+RETRY_BACKOFF = 2  # exponential backoff multiplier
+
+# Network error keywords to trigger retry
+RETRYABLE_ERRORS = [
+    'resource temporarily unavailable',
+    'connection reset',
+    'connection refused', 
+    'timeout',
+    'timed out',
+    'network is unreachable',
+    'name or service not known',
+    'temporary failure in name resolution',
+    'ssl: certificate_verify_failed',
+    'readtimeout',
+    'connecttimeout',
+]
+
+def is_retryable_error(error: Exception) -> bool:
+    """Check if error is retryable (network-related)"""
+    error_str = str(error).lower()
+    return any(keyword in error_str for keyword in RETRYABLE_ERRORS)
+
+def retry_on_network_error(max_retries: int = MAX_RETRIES, delay: float = RETRY_DELAY, backoff: float = RETRY_BACKOFF):
+    """
+    Decorator for automatic retry on network errors.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries (seconds)
+        backoff: Multiplier for exponential backoff
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_error = None
+            current_delay = delay
+            
+            for attempt in range(max_retries + 1):  # +1 for initial attempt
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    
+                    # Only retry on network-related errors
+                    if not is_retryable_error(e):
+                        raise e
+                    
+                    # Don't retry on last attempt
+                    if attempt >= max_retries:
+                        logger.error(f"[DB] {func.__name__} failed after {max_retries + 1} attempts: {e}")
+                        raise e
+                    
+                    # Log retry attempt
+                    logger.warning(
+                        f"[DB] {func.__name__} network error (attempt {attempt + 1}/{max_retries + 1}), "
+                        f"retrying in {current_delay:.1f}s: {e}"
+                    )
+                    
+                    # Wait before retry with exponential backoff
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+            
+            raise last_error
+        return wrapper
+    return decorator
+
+# ==========================================
+# Supabase Client with Timeout Configuration
+# ==========================================
+
+def create_supabase_client() -> Client:
+    """Create Supabase client with optimized timeout settings"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    
+    # Configure httpx client with timeouts
+    # - connect: time to establish connection
+    # - read: time to receive response
+    # - write: time to send request
+    # - pool: time to acquire connection from pool
+    timeout_config = httpx.Timeout(
+        timeout=30.0,      # Total timeout
+        connect=10.0,      # Connection timeout
+        read=20.0,         # Read timeout
+        write=10.0,        # Write timeout
+        pool=5.0           # Pool timeout
+    )
+    
+    # Configure connection limits
+    limits = httpx.Limits(
+        max_keepalive_connections=20,  # Max idle connections
+        max_connections=100,           # Max total connections
+        keepalive_expiry=30.0          # Idle connection expiry (seconds)
+    )
+    
+    try:
+        return create_client(
+            SUPABASE_URL,
+            SUPABASE_KEY,
+            options={
+                "postgrest_client_timeout": 30,  # PostgREST timeout
+            }
+        )
+    except Exception as e:
+        logger.error(f"[DB] Failed to create Supabase client: {e}")
+        return None
+
+# Initialize client with optimized settings
+supabase: Client = create_supabase_client()
 
 # ==========================================
 # 0. Permission Helpers
@@ -156,8 +277,9 @@ def get_total_credits(user: dict) -> int:
 # 1. User Profiles
 # ==========================================
 
+@retry_on_network_error()
 def get_user_profile(user_id: str):
-    """Get user profile"""
+    """Get user profile with automatic retry on network errors"""
     res = supabase.table("profiles").select("*").eq("id", user_id).execute()
     if res.data:
         user = res.data[0]
@@ -193,6 +315,7 @@ def generate_user_code() -> str:
     return f"{timestamp_part}{sequence_part}"
 
 
+@retry_on_network_error()
 def create_user_profile(user_id: str, email: str, username: str, avatar_url: str, first_name: str = None, last_name: str = None):
     """
     Create new user and grant initial credits
@@ -673,8 +796,9 @@ def count_user_projects(user_id: str, search: str = None):
         # Fallback: return 0 on error
         return 0
 
+@retry_on_network_error()
 def get_project_detail(project_id: str, user_id: str):
-    """Get project detail"""
+    """Get project detail with automatic retry on network errors"""
     print(f"[DB_GET] Fetching project {project_id} for user {user_id}")
     res = supabase.table("projects").select("*")\
         .eq("id", project_id).eq("user_id", user_id).single().execute()
@@ -696,8 +820,9 @@ def get_project_detail(project_id: str, user_id: str):
     
     return res.data
 
+@retry_on_network_error()
 def create_project(user_id: str, title: str = None, canvas_data: dict = None):
-    """Create project (optionally with initial data)"""
+    """Create project (optionally with initial data) with automatic retry on network errors"""
     data = {
         "user_id": user_id,
         "title": title or "My Magic Story",
@@ -1434,6 +1559,7 @@ def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"
 # 5. Marketplace
 # ==========================================
 
+@retry_on_network_error()
 def get_marketplace_listings(
     featured: bool = False, 
     resource_type: str = None, 
@@ -1446,7 +1572,7 @@ def get_marketplace_listings(
     user_id: str = None
 ):
     """
-    Get marketplace listings (PRD Chapter 13)
+    Get marketplace listings (PRD Chapter 13) with automatic retry on network errors
     
     Public list defaults: moderation_status='approved' AND is_public=true AND is_deleted=false
     mine=true: Returns all statuses for owner (draft/pending/rejected/approved)
@@ -1493,9 +1619,10 @@ def get_marketplace_listings(
     res = query.range(start, end).execute()
     return res.data
 
+@retry_on_network_error()
 def get_marketplace_item(listing_id: str, user_id: str = None):
     """
-    Get single listing detail (PRD Chapter 13)
+    Get single listing detail (PRD Chapter 13) with automatic retry on network errors
     
     Public access: Only approved + public + not deleted
     Seller access: Own listing in any status
