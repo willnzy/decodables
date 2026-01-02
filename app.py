@@ -3609,17 +3609,11 @@ def ticket(request: Request, req: SupportTicketRequest, user: dict = Depends(get
     return {"status": "ok"}
 
 # --- AI Support Chat ---
-# Load knowledge base once at startup
-KNOWLEDGE_BASE_PATH = os.path.join(os.path.dirname(__file__), "knowledge_base.md")
-SUPPORT_KNOWLEDGE_BASE = ""
-try:
-    with open(KNOWLEDGE_BASE_PATH, "r", encoding="utf-8") as f:
-        SUPPORT_KNOWLEDGE_BASE = f.read()
-except Exception as e:
-    print(f"Warning: Could not load knowledge base: {e}")
-    SUPPORT_KNOWLEDGE_BASE = "Make Decodables is a tool for creating 8-page foldable mini-books."
+# Import assistant ID from config
+from config import OPENAI_ASSISTANT_ID
 
-SUPPORT_SYSTEM_PROMPT = f"""You are a friendly and helpful customer support assistant for Make Decodables.
+# Fallback system prompt (used when images attached, or assistant not configured)
+SUPPORT_SYSTEM_PROMPT_FALLBACK = """You are a friendly and helpful customer support assistant for Make Decodables.
 
 Your role is to:
 1. Answer questions about Make Decodables product features, pricing, and usage
@@ -3634,95 +3628,188 @@ Important guidelines:
 - Use simple language suitable for teachers and parents
 - If a question is outside the scope of Make Decodables, politely redirect
 
-Here is the product knowledge base:
-
-{SUPPORT_KNOWLEDGE_BASE}
+Key product info:
+- Make Decodables creates 8-page foldable mini-books
+- Free plan: 50 bonus credits, PDF export
+- Starter ($14.9/mo): 500 monthly credits, ZIP export, marketplace
+- Pro ($29.9/mo): 1000 monthly credits, OCR, all features
+- AI image: 5 credits, OCR: 5 credits
+- Contact: WhatsApp +1 725 290 0525, email info@makedecodables.com
 
 Remember: Be helpful, concise, and friendly!"""
+
+
+async def chat_with_assistant(message: str, conversation_history: list) -> dict:
+    """
+    Use OpenAI Assistants API with RAG for text-only chat.
+    Creates a new thread for each conversation (stateless).
+    """
+    import time
+    
+    # Create a new thread
+    thread = openai_client.beta.threads.create()
+    
+    # Add conversation history to thread (last 6 messages for context)
+    for msg in conversation_history[-6:]:
+        if msg.get("role") in ["user", "assistant"]:
+            openai_client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role=msg["role"],
+                content=msg["content"]
+            )
+    
+    # Add current user message
+    openai_client.beta.threads.messages.create(
+        thread_id=thread.id,
+        role="user",
+        content=message
+    )
+    
+    # Create a run
+    run = openai_client.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=OPENAI_ASSISTANT_ID
+    )
+    
+    # Wait for completion (with timeout)
+    max_wait = 30  # 30 seconds timeout
+    start_time = time.time()
+    while run.status in ["queued", "in_progress"]:
+        if time.time() - start_time > max_wait:
+            raise TimeoutError("Assistant response timed out")
+        time.sleep(0.5)
+        run = openai_client.beta.threads.runs.retrieve(
+            thread_id=thread.id,
+            run_id=run.id
+        )
+    
+    if run.status != "completed":
+        raise Exception(f"Run failed with status: {run.status}")
+    
+    # Get the assistant's response
+    messages = openai_client.beta.threads.messages.list(
+        thread_id=thread.id,
+        order="desc",
+        limit=1
+    )
+    
+    assistant_message = messages.data[0].content[0].text.value
+    
+    # Clean up thread (optional, helps manage resources)
+    try:
+        openai_client.beta.threads.delete(thread.id)
+    except:
+        pass
+    
+    return {
+        "status": "ok",
+        "message": assistant_message,
+        "source": "assistant"
+    }
+
+
+async def chat_with_vision(message: str, images: list, conversation_history: list) -> dict:
+    """
+    Use Chat Completions API with GPT-4o for image analysis.
+    """
+    messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT_FALLBACK}]
+    
+    # Add conversation history
+    for msg in conversation_history[-10:]:
+        if msg.get("role") in ["user", "assistant"]:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+    
+    # Build multi-modal content
+    content = []
+    
+    if message.strip():
+        content.append({"type": "text", "text": message})
+    else:
+        content.append({"type": "text", "text": "Please describe what you see in these images and help me with any questions I might have."})
+    
+    # Add images (limit to 3)
+    for img in images[:3]:
+        img_data = img.data
+        if img_data.startswith("data:"):
+            img_data = img_data.split(",", 1)[1] if "," in img_data else img_data
+        
+        media_type = "image/jpeg"
+        if img.name.lower().endswith(".png"):
+            media_type = "image/png"
+        elif img.name.lower().endswith(".gif"):
+            media_type = "image/gif"
+        elif img.name.lower().endswith(".webp"):
+            media_type = "image/webp"
+        
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{media_type};base64,{img_data}",
+                "detail": "low"
+            }
+        })
+    
+    messages.append({"role": "user", "content": content})
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        max_tokens=500,
+        temperature=0.7,
+    )
+    
+    return {
+        "status": "ok",
+        "message": response.choices[0].message.content,
+        "source": "vision",
+        "usage": {
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+        }
+    }
+
 
 @app.post("/api/chat/support")
 @limiter.limit("20/minute")  # AI chat rate limit
 async def chat_support(request: Request, req: ChatSupportRequest):
     """
     AI-powered support chat endpoint.
-    Uses GPT-4o for vision (when images attached) or GPT-4o-mini for text-only.
+    - Text-only: Uses Assistants API with RAG (knowledge base retrieval)
+    - With images: Uses Chat Completions API with GPT-4o Vision
     No authentication required - available to all users.
     """
     try:
-        # Check if images are attached
         has_images = req.images and len(req.images) > 0
         
-        # Build messages array
-        messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT}]
-        
-        # Add conversation history (last 10 messages to keep context manageable)
-        for msg in req.conversation_history[-10:]:
-            if msg.get("role") in ["user", "assistant"]:
-                messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
-        
-        # Build user message content
         if has_images:
-            # Multi-modal message with images
-            content = []
-            
-            # Add text if present
-            if req.message.strip():
-                content.append({"type": "text", "text": req.message})
-            else:
-                content.append({"type": "text", "text": "Please describe what you see in these images and help me with any questions I might have."})
-            
-            # Add images (limit to 3)
-            for img in req.images[:3]:
-                # Extract base64 data (remove data URL prefix if present)
-                img_data = img.data
-                if img_data.startswith("data:"):
-                    img_data = img_data.split(",", 1)[1] if "," in img_data else img_data
-                
-                # Determine media type
-                media_type = "image/jpeg"  # Default
-                if img.name.lower().endswith(".png"):
-                    media_type = "image/png"
-                elif img.name.lower().endswith(".gif"):
-                    media_type = "image/gif"
-                elif img.name.lower().endswith(".webp"):
-                    media_type = "image/webp"
-                
-                content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{media_type};base64,{img_data}",
-                        "detail": "low"  # Use low detail for cost efficiency
-                    }
-                })
-            
-            messages.append({"role": "user", "content": content})
-            model = "gpt-4o"  # Use GPT-4o for vision
+            # Use Vision API for image analysis
+            return await chat_with_vision(req.message, req.images, req.conversation_history)
+        elif OPENAI_ASSISTANT_ID:
+            # Use Assistants API with RAG
+            return await chat_with_assistant(req.message, req.conversation_history)
         else:
-            # Text-only message
+            # Fallback to Chat Completions (if assistant not configured)
+            messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT_FALLBACK}]
+            for msg in req.conversation_history[-10:]:
+                if msg.get("role") in ["user", "assistant"]:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
             messages.append({"role": "user", "content": req.message})
-            model = "gpt-4o-mini"  # Use cheaper model for text-only
-        
-        # Call OpenAI API
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=500,
-            temperature=0.7,
-        )
-        
-        assistant_message = response.choices[0].message.content
-        
-        return {
-            "status": "ok",
-            "message": assistant_message,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7,
+            )
+            
+            return {
+                "status": "ok",
+                "message": response.choices[0].message.content,
+                "source": "fallback"
             }
-        }
     except Exception as e:
         print(f"AI Chat Error: {e}")
         return {

@@ -28,6 +28,9 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@makedecodables.com")
 SUPPORT_EMAIL_FROM = os.environ.get("SUPPORT_EMAIL_FROM", "noreply@makedecodables.com")
 
+# OpenAI Assistant (for AI Support Chat)
+OPENAI_ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
+
 # CORS Settings
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development
