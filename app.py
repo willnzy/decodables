@@ -2158,6 +2158,97 @@ async def use_page_prompt_template(
         raise HTTPException(500, f"Failed to update: {str(e)}")
 
 
+# PDF Preview endpoint - converts PDF pages to images for selection
+@app.post("/api/tools/pdf-preview")
+@limiter.limit("10/minute")
+async def pdf_preview(
+    request: Request,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Convert PDF to page preview images (Pro only).
+    Returns thumbnail URLs for each page to allow user selection.
+    No credits charged for preview.
+    """
+    if user["tier"] != "pro":
+        raise HTTPException(status_code=403, detail="Upgrade to Teacher Pro to use Smart Scan")
+    
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(400, "Only PDF files are supported")
+    
+    try:
+        import fitz  # PyMuPDF
+        import uuid
+        from image_generator import supabase as storage_supabase, BUCKET_NAME
+        
+        contents = await file.read()
+        
+        # Limit file size (20MB max for PDF)
+        if len(contents) > 20 * 1024 * 1024:
+            raise HTTPException(400, "PDF file too large. Maximum size is 20MB")
+        
+        # Open PDF
+        pdf_doc = fitz.open(stream=contents, filetype="pdf")
+        total_pages = len(pdf_doc)
+        
+        # Limit pages (max 20 pages)
+        if total_pages > 20:
+            raise HTTPException(400, f"PDF has too many pages ({total_pages}). Maximum is 20 pages")
+        
+        # Generate preview for each page
+        pages = []
+        preview_id = uuid.uuid4().hex[:8]
+        
+        for page_num in range(total_pages):
+            page = pdf_doc[page_num]
+            
+            # Render page to image (150 DPI for preview, smaller file size)
+            mat = fitz.Matrix(150/72, 150/72)  # 150 DPI
+            pix = page.get_pixmap(matrix=mat)
+            img_bytes = pix.tobytes("png")
+            
+            # Upload to storage
+            filename = f"pdf-previews/{user['id']}/{preview_id}/page_{page_num + 1}.png"
+            
+            preview_url = None
+            if storage_supabase:
+                try:
+                    storage_supabase.storage.from_(BUCKET_NAME).upload(
+                        path=filename,
+                        file=img_bytes,
+                        file_options={"content-type": "image/png"}
+                    )
+                    preview_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
+                except Exception as e:
+                    print(f"Failed to upload preview: {e}")
+            
+            pages.append({
+                "page_number": page_num + 1,
+                "preview_url": preview_url,
+                "width": pix.width,
+                "height": pix.height
+            })
+        
+        pdf_doc.close()
+        
+        return {
+            "success": True,
+            "preview_id": preview_id,
+            "total_pages": total_pages,
+            "pages": pages
+        }
+        
+    except fitz.FileDataError:
+        raise HTTPException(400, "Invalid or corrupted PDF file")
+    except Exception as e:
+        print(f"PDF Preview Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Failed to process PDF: {str(e)}")
+
+
 # Advanced OCR endpoint - detects tables, text, and images
 @app.post("/api/tools/ocr")
 @limiter.limit("10/minute")
@@ -2165,55 +2256,82 @@ async def ocr_tool(
     request: Request, 
     file: UploadFile = File(...), 
     project_id: Optional[str] = Form(None),
+    page_numbers: Optional[str] = Form(None),  # Comma-separated page numbers for PDF
     user: dict = Depends(get_current_user)
 ):
     """
     Advanced Smart Scan (Pro only).
     
-    Recognizes the following from uploaded images:
+    Recognizes the following from uploaded images or PDF pages:
     - Text content (multi-language)
     - Table structures
     - Handwritten or sketched regions
+    
+    For PDF: pass page_numbers as comma-separated list (e.g., "1,2,3")
+    Cost: 5 credits per page/image
     
     Returns structured JSON suitable for direct canvas insertion.
     """
     if user["tier"] != "pro":
         raise HTTPException(status_code=403, detail="Upgrade to Teacher Pro to use Smart Scan")
     
-    # Deduct 5 credits for Smart Scan
+    import uuid
+    import json
+    import fitz  # PyMuPDF
+    from image_generator import supabase as storage_supabase, BUCKET_NAME
+    
+    contents = await file.read()
+    is_pdf = file.filename.lower().endswith('.pdf')
+    
+    # Parse page numbers for PDF
+    selected_pages = []
+    if is_pdf and page_numbers:
+        try:
+            selected_pages = [int(p.strip()) for p in page_numbers.split(',') if p.strip()]
+        except ValueError:
+            raise HTTPException(400, "Invalid page_numbers format. Use comma-separated numbers like '1,2,3'")
+    
+    # Calculate credits needed
+    if is_pdf:
+        if not selected_pages:
+            raise HTTPException(400, "Please specify page_numbers for PDF scanning")
+        credits_needed = len(selected_pages) * 5
+    else:
+        credits_needed = 5
+    
+    # Check and deduct credits
     try:
-        credit_result = credit_deduct(user["id"], 5, "ocr", "Smart Scan")
+        credit_result = credit_deduct(user["id"], credits_needed, "ocr", f"Smart Scan ({len(selected_pages) if is_pdf else 1} pages)")
     except Exception as e:
         if "INSUFFICIENT" in str(e):
-            raise HTTPException(402, "Insufficient credits")
+            raise HTTPException(402, f"Insufficient credits. Need {credits_needed} credits.")
         raise
     
     try:
-        # Read file contents
-        contents = await file.read()
-        base64_image = base64.b64encode(contents).decode('utf-8')
-        
-        # Upload original image to Supabase Storage
-        import uuid
-        from image_generator import supabase as storage_supabase, BUCKET_NAME
-        
-        ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
-        filename = f"scans/{user['id']}/{uuid.uuid4()}.{ext}"
-        
-        source_image_url = None
-        if storage_supabase:
-            try:
-                storage_supabase.storage.from_(BUCKET_NAME).upload(
-                    path=filename,
-                    file=contents,
-                    file_options={"content-type": file.content_type or "image/png"}
-                )
-                source_image_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
-            except Exception as upload_err:
-                print(f"Failed to upload scan source: {upload_err}")
-        
-        # Use GPT-4o for advanced OCR with layout preservation
-        ocr_prompt = """You are an expert OCR and document analysis AI. Your goal is to PERFECTLY extract ALL content from ANY type of image.
+        # Helper function to process single image OCR
+        async def process_single_image(img_bytes, page_num=None):
+            """Process a single image and return OCR result"""
+            base64_image = base64.b64encode(img_bytes).decode('utf-8')
+            
+            # Upload image to storage
+            page_suffix = f"_page{page_num}" if page_num else ""
+            ext = 'png' if is_pdf else (file.filename.split('.')[-1] if '.' in file.filename else 'png')
+            filename = f"scans/{user['id']}/{uuid.uuid4()}{page_suffix}.{ext}"
+            
+            source_image_url = None
+            if storage_supabase:
+                try:
+                    storage_supabase.storage.from_(BUCKET_NAME).upload(
+                        path=filename,
+                        file=img_bytes,
+                        file_options={"content-type": "image/png" if is_pdf else (file.content_type or "image/png")}
+                    )
+                    source_image_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
+                except Exception as upload_err:
+                    print(f"Failed to upload scan source: {upload_err}")
+            
+            # OCR Prompt
+            ocr_prompt = """You are an expert OCR and document analysis AI. Your goal is to PERFECTLY extract ALL content from ANY type of image.
 
 ## ANALYSIS APPROACH
 1. Analyze what type of content the image contains
@@ -2332,190 +2450,220 @@ Use ONLY the block types that match the actual content:
 
 Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
 
-        response = openai_client.chat.completions.create(
-            model="gpt-4o",  # Use GPT-4o for best recognition accuracy
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert OCR system specialized in educational materials, worksheets, and children's books. Extract content with maximum precision and preserve the original layout."
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": ocr_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}
-                    ],
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert OCR system. Extract content with maximum precision and preserve the original layout."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": ocr_prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "high"}}
+                        ],
+                    }
+                ],
+                max_tokens=4000,
+                response_format={"type": "json_object"}
+            )
+            
+            ocr_result = json.loads(response.choices[0].message.content)
+            
+            # Convert to canvas elements
+            canvas_elements = []
+            CANVAS_WIDTH, CANVAS_HEIGHT = 500, 700
+            
+            def pos_to_px(pos):
+                if not pos:
+                    return {"x": 50, "y": 50, "width": 400, "height": 50}
+                return {
+                    "x": int(pos.get("x", 10) * CANVAS_WIDTH / 100),
+                    "y": int(pos.get("y", 10) * CANVAS_HEIGHT / 100),
+                    "width": int(pos.get("width", 80) * CANVAS_WIDTH / 100),
+                    "height": int(pos.get("height", 10) * CANVAS_HEIGHT / 100)
                 }
-            ],
-            max_tokens=4000,  # Increased for complex documents
-            response_format={"type": "json_object"}
-        )
-        
-        # Parse OCR response
-        import json
-        ocr_result = json.loads(response.choices[0].message.content)
-        
-        # Convert extracted content into canvas elements with enhanced positioning
-        canvas_elements = []
-        
-        # Canvas size reference (standard page)
-        CANVAS_WIDTH = 500
-        CANVAS_HEIGHT = 700
-        
-        def pos_to_px(pos):
-            """Convert percentage position to pixel coordinates"""
-            if not pos:
-                return {"x": 50, "y": 50, "width": 400, "height": 50}
+            
+            def get_font_size(style):
+                size_map = {"xlarge": 36, "large": 28, "medium": 20, "small": 16, "xsmall": 12}
+                if isinstance(style, dict):
+                    return size_map.get(style.get("fontSize", "medium"), 20)
+                return 28 if style in ["title", "heading"] else 16
+            
+            def get_font_weight(style):
+                if isinstance(style, dict):
+                    return style.get("fontWeight", "normal")
+                return "bold" if style in ["title", "heading"] else "normal"
+            
+            for block in ocr_result.get("blocks", []):
+                pos = pos_to_px(block.get("position"))
+                
+                if block["type"] == "text":
+                    style = block.get("style", {})
+                    canvas_elements.append({
+                        "type": "text",
+                        "content": block["content"],
+                        "x": pos["x"], "y": pos["y"], "width": pos["width"],
+                        "fontSize": get_font_size(style),
+                        "fontWeight": get_font_weight(style),
+                        "fontStyle": style.get("fontStyle", "normal") if isinstance(style, dict) else "normal",
+                        "textAlign": style.get("align", "left") if isinstance(style, dict) else "left"
+                    })
+                elif block["type"] == "speech_bubble":
+                    canvas_elements.append({
+                        "type": "speech_bubble",
+                        "content": block.get("content", ""),
+                        "bubbleStyle": block.get("bubbleStyle", "speech"),
+                        "x": pos["x"], "y": pos["y"], "width": pos["width"], "height": pos["height"]
+                    })
+                elif block["type"] == "table":
+                    cells = block.get("cells", [])
+                    normalized_cells = []
+                    for row in cells:
+                        normalized_row = []
+                        for cell in row:
+                            if isinstance(cell, dict):
+                                normalized_row.append(cell.get("text", str(cell)))
+                            else:
+                                normalized_row.append(str(cell) if cell else "")
+                        normalized_cells.append(normalized_row)
+                    canvas_elements.append({
+                        "type": "table",
+                        "rows": block.get("rows", len(cells)),
+                        "cols": block.get("cols", len(cells[0]) if cells else 0),
+                        "cells": normalized_cells,
+                        "tableStyle": block.get("tableStyle", {"hasBorder": True}),
+                        "x": pos["x"], "y": pos["y"], "width": pos["width"],
+                        "height": pos["height"] or block.get("rows", 3) * 40
+                    })
+                elif block["type"] == "list":
+                    items = block.get("items", [])
+                    list_content = "\n".join([f"{item.get('marker', '•')} {item.get('text', '')}" for item in items])
+                    canvas_elements.append({
+                        "type": "text",
+                        "content": list_content,
+                        "listType": block.get("listStyle", "bullet"),
+                        "x": pos["x"], "y": pos["y"], "width": pos["width"],
+                        "fontSize": 16, "fontWeight": "normal"
+                    })
+                elif block["type"] == "image":
+                    canvas_elements.append({
+                        "type": "image_placeholder",
+                        "imageType": block.get("imageType", "illustration"),
+                        "description": block.get("description", ""),
+                        "subjects": block.get("subjects", []),
+                        "style": block.get("style", "cartoon"),
+                        "colors": block.get("colors", []),
+                        "regeneration_prompt": block.get("regeneration_prompt", block.get("description", "")),
+                        "x": pos["x"], "y": pos["y"], "width": pos["width"],
+                        "height": pos["height"] or 200
+                    })
+            
             return {
-                "x": int(pos.get("x", 10) * CANVAS_WIDTH / 100),
-                "y": int(pos.get("y", 10) * CANVAS_HEIGHT / 100),
-                "width": int(pos.get("width", 80) * CANVAS_WIDTH / 100),
-                "height": int(pos.get("height", 10) * CANVAS_HEIGHT / 100)
+                "page_number": page_num,
+                "source_image_url": source_image_url,
+                "ocr_result": ocr_result,
+                "canvas_elements": canvas_elements,
+                "summary": ocr_result.get("summary", "")
             }
         
-        def get_font_size(style):
-            """Get pixel font size from style"""
-            size_map = {"xlarge": 36, "large": 28, "medium": 20, "small": 16, "xsmall": 12}
-            if isinstance(style, dict):
-                return size_map.get(style.get("fontSize", "medium"), 20)
-            # Legacy format
-            if style in ["title", "heading"]:
-                return 28
-            return 16
-        
-        def get_font_weight(style):
-            """Get font weight from style"""
-            if isinstance(style, dict):
-                return style.get("fontWeight", "normal")
-            if style in ["title", "heading"]:
-                return "bold"
-            return "normal"
-        
-        for block in ocr_result.get("blocks", []):
-            pos = pos_to_px(block.get("position"))
+        # Process based on file type
+        if is_pdf:
+            # PDF: Process selected pages
+            pdf_doc = fitz.open(stream=contents, filetype="pdf")
+            total_pages = len(pdf_doc)
             
-            if block["type"] == "text":
-                style = block.get("style", {})
-                canvas_elements.append({
-                    "type": "text",
-                    "content": block["content"],
-                    "x": pos["x"],
-                    "y": pos["y"],
-                    "width": pos["width"],
-                    "fontSize": get_font_size(style),
-                    "fontWeight": get_font_weight(style),
-                    "fontStyle": style.get("fontStyle", "normal") if isinstance(style, dict) else "normal",
-                    "textAlign": style.get("align", "left") if isinstance(style, dict) else "left"
-                })
+            # Validate page numbers
+            for pn in selected_pages:
+                if pn < 1 or pn > total_pages:
+                    raise HTTPException(400, f"Invalid page number {pn}. PDF has {total_pages} pages.")
+            
+            # Process each selected page
+            page_results = []
+            for page_num in selected_pages:
+                page = pdf_doc[page_num - 1]  # 0-indexed
+                mat = fitz.Matrix(200/72, 200/72)  # 200 DPI for OCR
+                pix = page.get_pixmap(matrix=mat)
+                img_bytes = pix.tobytes("png")
                 
-            elif block["type"] == "speech_bubble":
-                canvas_elements.append({
-                    "type": "speech_bubble",
-                    "content": block.get("content", ""),
-                    "bubbleStyle": block.get("bubbleStyle", "speech"),
-                    "tailDirection": block.get("tailDirection", "bottom-left"),
-                    "x": pos["x"],
-                    "y": pos["y"],
-                    "width": pos["width"],
-                    "height": pos["height"]
-                })
-                
-            elif block["type"] == "table":
-                # Enhanced table with cell styles
-                cells = block.get("cells", [])
-                # Normalize cells to consistent format
-                normalized_cells = []
-                for row in cells:
-                    normalized_row = []
-                    for cell in row:
-                        if isinstance(cell, dict):
-                            normalized_row.append(cell.get("text", str(cell)))
-                        else:
-                            normalized_row.append(str(cell) if cell else "")
-                    normalized_cells.append(normalized_row)
-                
-                canvas_elements.append({
-                    "type": "table",
-                    "rows": block.get("rows", len(cells)),
-                    "cols": block.get("cols", len(cells[0]) if cells else 0),
-                    "cells": normalized_cells,
-                    "tableStyle": block.get("tableStyle", {"hasBorder": True}),
-                    "x": pos["x"],
-                    "y": pos["y"],
-                    "width": pos["width"],
-                    "height": pos["height"] or block.get("rows", 3) * 40
-                })
-                
-            elif block["type"] == "list":
-                # Convert list to text block with formatted content
-                items = block.get("items", [])
-                list_content = "\n".join([
-                    f"{item.get('marker', '•')} {item.get('text', '')}" 
-                    for item in items
-                ])
-                canvas_elements.append({
-                    "type": "text",
-                    "content": list_content,
-                    "listType": block.get("listStyle", "bullet"),
-                    "x": pos["x"],
-                    "y": pos["y"],
-                    "width": pos["width"],
-                    "fontSize": 16,
-                    "fontWeight": "normal"
-                })
-                
-            elif block["type"] == "image":
-                canvas_elements.append({
-                    "type": "image_placeholder",
-                    "imageType": block.get("imageType", "illustration"),
-                    "description": block.get("description", ""),
-                    "subjects": block.get("subjects", []),
-                    "style": block.get("style", "cartoon"),
-                    "colors": block.get("colors", []),
-                    "regeneration_prompt": block.get("regeneration_prompt", block.get("description", "")),
-                    "x": pos["x"],
-                    "y": pos["y"],
-                    "width": pos["width"],
-                    "height": pos["height"] or 200
-                })
-        
-        # Persist scan data in assets table
-        scan_data = {
-            "source_image_url": source_image_url,
-            "ocr_result": ocr_result,
-            "canvas_elements": canvas_elements
-        }
-        
-        # Store as a 'scanned' asset entry
-        asset_id = None
-        try:
-            asset_result = supabase.table("assets").insert({
-                "user_id": user["id"],
-                "project_id": project_id,
-                "url": source_image_url or "",
-                "type": "scanned",
-                "metadata": scan_data
-            }).execute()
-            if asset_result.data:
-                asset_id = asset_result.data[0]["id"]
-        except Exception as save_err:
-            print(f"Failed to save scanned asset: {save_err}")
-        
-        return {
-            "success": True,
-            "asset_id": asset_id,
-            "source_image_url": source_image_url,
-            "ocr_result": ocr_result,
-            "canvas_elements": canvas_elements,
-            "summary": ocr_result.get("summary", ""),
-            "balance": credit_result["total"],
-            "balance_monthly": credit_result["balance_monthly"],
-            "balance_permanent": credit_result["balance_permanent"]
-        }
+                result = await process_single_image(img_bytes, page_num)
+                page_results.append(result)
+            
+            pdf_doc.close()
+            
+            # Save to assets
+            asset_id = None
+            try:
+                asset_result = supabase.table("assets").insert({
+                    "user_id": user["id"],
+                    "project_id": project_id,
+                    "url": page_results[0]["source_image_url"] if page_results else "",
+                    "type": "scanned",
+                    "metadata": {
+                        "is_pdf": True,
+                        "total_pages": total_pages,
+                        "scanned_pages": selected_pages,
+                        "page_results": page_results
+                    }
+                }).execute()
+                if asset_result.data:
+                    asset_id = asset_result.data[0]["id"]
+            except Exception as save_err:
+                print(f"Failed to save scanned asset: {save_err}")
+            
+            return {
+                "success": True,
+                "is_pdf": True,
+                "asset_id": asset_id,
+                "total_pages": total_pages,
+                "scanned_pages": selected_pages,
+                "page_results": page_results,
+                "balance": credit_result["total"],
+                "balance_monthly": credit_result["balance_monthly"],
+                "balance_permanent": credit_result["balance_permanent"]
+            }
+        else:
+            # Image: Process single image
+            result = await process_single_image(contents)
+            
+            # Save to assets
+            asset_id = None
+            try:
+                asset_result = supabase.table("assets").insert({
+                    "user_id": user["id"],
+                    "project_id": project_id,
+                    "url": result["source_image_url"] or "",
+                    "type": "scanned",
+                    "metadata": {
+                        "source_image_url": result["source_image_url"],
+                        "ocr_result": result["ocr_result"],
+                        "canvas_elements": result["canvas_elements"]
+                    }
+                }).execute()
+                if asset_result.data:
+                    asset_id = asset_result.data[0]["id"]
+            except Exception as save_err:
+                print(f"Failed to save scanned asset: {save_err}")
+            
+            return {
+                "success": True,
+                "is_pdf": False,
+                "asset_id": asset_id,
+                "source_image_url": result["source_image_url"],
+                "ocr_result": result["ocr_result"],
+                "canvas_elements": result["canvas_elements"],
+                "summary": result["summary"],
+                "balance": credit_result["total"],
+                "balance_monthly": credit_result["balance_monthly"],
+                "balance_permanent": credit_result["balance_permanent"]
+            }
         
     except json.JSONDecodeError as je:
         print(f"OCR JSON Parse Error: {je}")
         raise HTTPException(500, "Failed to parse OCR result")
+    except fitz.FileDataError:
+        raise HTTPException(400, "Invalid or corrupted PDF file")
     except Exception as e:
         print(f"OCR Error: {e}")
         import traceback
