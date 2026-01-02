@@ -2448,12 +2448,6 @@ Use ONLY the block types that match the actual content:
 - width, height = size as percentage of page
 - Be precise to allow layout reconstruction
 
-## CRITICAL RULES:
-1. You MUST return valid JSON - never return empty
-2. If you cannot read text clearly, use your best guess with [unclear] marker
-3. For children's books/comics, always extract speech bubbles and narrative text
-4. Even for simple images, return at least a summary block
-
 Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
 
             response = openai_client.chat.completions.create(
@@ -2475,53 +2469,17 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                 response_format={"type": "json_object"}
             )
             
-            # Check for empty response with detailed logging
+            # Check for empty response
             content = response.choices[0].message.content
-            finish_reason = response.choices[0].finish_reason
-            usage_info = response.usage if hasattr(response, 'usage') else None
-            
             if not content:
-                # Log everything in single line for easier debugging
-                print(f"OCR Warning: Empty response from GPT-4o | finish_reason={finish_reason} | image_size={len(image_contents)}bytes | model={response.model} | usage={usage_info}")
-                
-                # If finish_reason is 'stop' but content is empty, the model couldn't generate valid JSON
-                # Try a simpler fallback request
-                print("OCR: Attempting fallback with simplified prompt...")
-                try:
-                    fallback_response = openai_client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": "Please describe all text and visual content you can see in this image. Return as JSON with format: {\"content_type\": \"document\", \"blocks\": [{\"type\": \"text\", \"content\": \"...\"}], \"summary\": \"...\"}"},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}", "detail": "high"}}
-                                ],
-                            }
-                        ],
-                        max_tokens=2000,
-                        response_format={"type": "json_object"}
-                    )
-                    fallback_content = fallback_response.choices[0].message.content
-                    if fallback_content:
-                        print(f"OCR: Fallback succeeded with {len(fallback_content)} chars")
-                        ocr_result = json.loads(fallback_content)
-                    else:
-                        print(f"OCR: Fallback also returned empty")
-                        ocr_result = {
-                            "content_type": "unknown",
-                            "blocks": [],
-                            "summary": "Could not extract content from this image. The image may be too blurry, blank, or unrecognizable."
-                        }
-                except Exception as e:
-                    print(f"OCR: Fallback failed: {e}")
-                    ocr_result = {
-                        "content_type": "unknown",
-                        "blocks": [],
-                        "summary": "Could not extract content from this image."
-                    }
+                print(f"OCR Warning: Empty response from GPT-4o")
+                # Return a minimal result instead of failing
+                ocr_result = {
+                    "content_type": "unknown",
+                    "blocks": [],
+                    "summary": "Could not extract content from this image"
+                }
             else:
-                print(f"OCR: Received {len(content)} chars, finish_reason={finish_reason}")
                 ocr_result = json.loads(content)
             
             # Convert to canvas elements
@@ -2645,8 +2603,7 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             
             pdf_doc.close()
             
-            # Note: Scanned source images are NOT saved to user's assets library
-            # They are only stored temporarily in storage for OCR processing
+            # Note: Scanned files are NOT saved to user's assets library
             
             return {
                 "success": True,
@@ -2662,8 +2619,7 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             # Image: Process single image
             result = await process_single_image(contents)
             
-            # Note: Scanned source images are NOT saved to user's assets library
-            # They are only stored temporarily in storage for OCR processing
+            # Note: Scanned files are NOT saved to user's assets library
             
             return {
                 "success": True,
