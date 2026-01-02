@@ -5,7 +5,6 @@ from functools import wraps
 from supabase import create_client, Client
 from datetime import datetime, timezone
 import uuid
-import httpx
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -92,48 +91,16 @@ def retry_on_network_error(max_retries: int = MAX_RETRIES, delay: float = RETRY_
     return decorator
 
 # ==========================================
-# Supabase Client with Timeout Configuration
+# Supabase Client Initialization
 # ==========================================
 
-def create_supabase_client() -> Client:
-    """Create Supabase client with optimized timeout settings"""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return None
-    
-    # Configure httpx client with timeouts
-    # - connect: time to establish connection
-    # - read: time to receive response
-    # - write: time to send request
-    # - pool: time to acquire connection from pool
-    timeout_config = httpx.Timeout(
-        timeout=30.0,      # Total timeout
-        connect=10.0,      # Connection timeout
-        read=20.0,         # Read timeout
-        write=10.0,        # Write timeout
-        pool=5.0           # Pool timeout
-    )
-    
-    # Configure connection limits
-    limits = httpx.Limits(
-        max_keepalive_connections=20,  # Max idle connections
-        max_connections=100,           # Max total connections
-        keepalive_expiry=30.0          # Idle connection expiry (seconds)
-    )
-    
-    try:
-        return create_client(
-            SUPABASE_URL,
-            SUPABASE_KEY,
-            options={
-                "postgrest_client_timeout": 30,  # PostgREST timeout
-            }
-        )
-    except Exception as e:
-        logger.error(f"[DB] Failed to create Supabase client: {e}")
-        return None
+# Initialize client (simple and reliable)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
-# Initialize client with optimized settings
-supabase: Client = create_supabase_client()
+if supabase:
+    logger.info("[DB] Supabase client initialized successfully")
+else:
+    logger.warning("[DB] Supabase client not initialized - missing URL or KEY")
 
 # ==========================================
 # 0. Permission Helpers
