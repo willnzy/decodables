@@ -4858,6 +4858,7 @@ def adm_get_error_logs(
     error_type: Optional[str] = None,
     status_code: Optional[int] = None,
     user_code: Optional[str] = None,
+    request_id: Optional[str] = None,  # v3.12: Support request_id search
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     search: Optional[str] = None,
@@ -4872,6 +4873,7 @@ def adm_get_error_logs(
         error_type: Filter by error type (API, NETWORK, JS_ERROR, etc.)
         status_code: Filter by HTTP status code
         user_code: Filter by user code (e.g., USR001)
+        request_id: Filter by request ID (full or partial match)
         start_date: Filter from date (ISO format)
         end_date: Filter to date (ISO format)
         search: Search in message and endpoint
@@ -4890,6 +4892,9 @@ def adm_get_error_logs(
             query = query.eq("status_code", status_code)
         if user_code:
             query = query.ilike("user_code", f"%{user_code}%")
+        if request_id:
+            # v3.12: Support partial request_id match
+            query = query.ilike("request_id", f"%{request_id}%")
         if start_date:
             query = query.gte("created_at", start_date)
         if end_date:
