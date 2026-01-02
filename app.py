@@ -401,10 +401,16 @@ class SupportTicketRequest(BaseModel):
     email: Optional[str] = None  # Optional - will use user's email if not provided
     message: str
 
+class ChatImageData(BaseModel):
+    """Image data for chat"""
+    name: str
+    data: str  # Base64 encoded image
+
 class ChatSupportRequest(BaseModel):
     """Request model for AI support chat"""
     message: str
     conversation_history: Optional[List[dict]] = []  # Previous messages for context
+    images: Optional[List[ChatImageData]] = []  # Optional images for vision analysis
 
 class ContactFormRequest(BaseModel):
     email: str  # Required for guest users
@@ -3639,10 +3645,13 @@ Remember: Be helpful, concise, and friendly!"""
 async def chat_support(request: Request, req: ChatSupportRequest):
     """
     AI-powered support chat endpoint.
-    Uses GPT-4o-mini for cost-effective responses.
+    Uses GPT-4o for vision (when images attached) or GPT-4o-mini for text-only.
     No authentication required - available to all users.
     """
     try:
+        # Check if images are attached
+        has_images = req.images and len(req.images) > 0
+        
         # Build messages array
         messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT}]
         
@@ -3654,12 +3663,51 @@ async def chat_support(request: Request, req: ChatSupportRequest):
                     "content": msg["content"]
                 })
         
-        # Add current user message
-        messages.append({"role": "user", "content": req.message})
+        # Build user message content
+        if has_images:
+            # Multi-modal message with images
+            content = []
+            
+            # Add text if present
+            if req.message.strip():
+                content.append({"type": "text", "text": req.message})
+            else:
+                content.append({"type": "text", "text": "Please describe what you see in these images and help me with any questions I might have."})
+            
+            # Add images (limit to 3)
+            for img in req.images[:3]:
+                # Extract base64 data (remove data URL prefix if present)
+                img_data = img.data
+                if img_data.startswith("data:"):
+                    img_data = img_data.split(",", 1)[1] if "," in img_data else img_data
+                
+                # Determine media type
+                media_type = "image/jpeg"  # Default
+                if img.name.lower().endswith(".png"):
+                    media_type = "image/png"
+                elif img.name.lower().endswith(".gif"):
+                    media_type = "image/gif"
+                elif img.name.lower().endswith(".webp"):
+                    media_type = "image/webp"
+                
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{media_type};base64,{img_data}",
+                        "detail": "low"  # Use low detail for cost efficiency
+                    }
+                })
+            
+            messages.append({"role": "user", "content": content})
+            model = "gpt-4o"  # Use GPT-4o for vision
+        else:
+            # Text-only message
+            messages.append({"role": "user", "content": req.message})
+            model = "gpt-4o-mini"  # Use cheaper model for text-only
         
         # Call OpenAI API
         response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",  # Cost-effective model
+            model=model,
             messages=messages,
             max_tokens=500,
             temperature=0.7,
