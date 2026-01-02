@@ -2005,6 +2005,144 @@ async def use_template(
         raise HTTPException(500, f"Failed to update: {str(e)}")
 
 
+# ==================================================
+# Page Design Templates API (for AI Design Page)
+# ==================================================
+
+class PageDesignTemplateCreate(BaseModel):
+    name: str
+    layout: Optional[str] = "image_top"
+    story_theme: Optional[str] = None
+    main_character: Optional[str] = None
+    style: Optional[str] = "cartoon"
+    creativity_level: Optional[float] = 0.3
+    negative_prompt: Optional[str] = None
+    generation_mode: Optional[str] = "guided"
+
+
+@app.get("/api/page-design/templates")
+@limiter.limit("60/minute")
+async def get_page_design_templates(
+    request: Request,
+    user: dict = Depends(get_current_user)
+):
+    """Get user's saved page design templates."""
+    try:
+        result = supabase.table("page_design_templates") \
+            .select("*") \
+            .eq("user_id", user["id"]) \
+            .order("use_count", desc=True) \
+            .execute()
+        
+        return {"templates": result.data}
+    except Exception as e:
+        logger.error(f"Failed to fetch page design templates: {e}")
+        raise HTTPException(500, f"Failed to fetch templates: {str(e)}")
+
+
+@app.post("/api/page-design/templates")
+@limiter.limit("30/minute")
+async def create_page_design_template(
+    request: Request,
+    req: PageDesignTemplateCreate,
+    user: dict = Depends(get_current_user)
+):
+    """Create a new page design template."""
+    try:
+        # Check template limit (max 20 per user)
+        count_result = supabase.table("page_design_templates") \
+            .select("id", count="exact") \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        if count_result.count and count_result.count >= 20:
+            raise HTTPException(400, "Maximum 20 templates allowed. Please delete some first.")
+        
+        template_data = {
+            "user_id": user["id"],
+            "name": req.name,
+            "layout": req.layout,
+            "story_theme": req.story_theme,
+            "main_character": req.main_character,
+            "style": req.style,
+            "creativity_level": req.creativity_level,
+            "negative_prompt": req.negative_prompt,
+            "generation_mode": req.generation_mode,
+        }
+        
+        result = supabase.table("page_design_templates") \
+            .insert(template_data) \
+            .execute()
+        
+        return {"success": True, "template": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create page design template: {e}")
+        raise HTTPException(500, f"Failed to create template: {str(e)}")
+
+
+@app.delete("/api/page-design/templates/{template_id}")
+@limiter.limit("30/minute")
+async def delete_page_design_template(
+    request: Request,
+    template_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Delete a page design template."""
+    try:
+        result = supabase.table("page_design_templates") \
+            .delete() \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        return {"success": True, "deleted": template_id}
+    except Exception as e:
+        logger.error(f"Failed to delete page design template: {e}")
+        raise HTTPException(500, f"Failed to delete template: {str(e)}")
+
+
+@app.post("/api/page-design/templates/{template_id}/use")
+@limiter.limit("60/minute")
+async def use_page_design_template(
+    request: Request,
+    template_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Mark a page design template as used (increments use_count)."""
+    try:
+        # First get current count
+        get_result = supabase.table("page_design_templates") \
+            .select("use_count") \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .single() \
+            .execute()
+        
+        if not get_result.data:
+            raise HTTPException(404, "Template not found")
+        
+        current_count = get_result.data.get("use_count", 0)
+        
+        # Update count and last_used_at
+        result = supabase.table("page_design_templates") \
+            .update({
+                "use_count": current_count + 1,
+                "last_used_at": datetime.utcnow().isoformat()
+            }) \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        return {"success": True, "use_count": current_count + 1}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update page design template usage: {e}")
+        raise HTTPException(500, f"Failed to update: {str(e)}")
+
+
 # Advanced OCR endpoint - detects tables, text, and images
 @app.post("/api/tools/ocr")
 @limiter.limit("10/minute")
