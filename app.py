@@ -2212,67 +2212,157 @@ async def ocr_tool(
             except Exception as upload_err:
                 print(f"Failed to upload scan source: {upload_err}")
         
-        # Use GPT-4o for adaptive OCR prompts
-        ocr_prompt = """You are an expert OCR and content analysis system. 
+        # Use GPT-4o for advanced OCR with layout preservation
+        ocr_prompt = """You are an expert OCR and document analysis AI. Your goal is to PERFECTLY reconstruct the original document's content AND layout.
 
-STEP 1: First, identify what type of content this image contains:
-- Document/Worksheet: forms, worksheets, printed documents
-- Handwritten: notes, handwriting, sketches with text
-- Logo/Brand: logos, banners, marketing materials
-- Photo with text: photos containing signs, labels, or captions
-- Table/Data: spreadsheets, data tables
-- Mixed: combination of the above
+## ANALYSIS APPROACH
+1. First, mentally divide the image into a grid (imagine it as 100x100 units)
+2. Identify all distinct content regions (text areas, tables, images, icons)
+3. For each region, extract content with precise positioning
 
-STEP 2: Based on the content type, extract ALL information appropriately.
-
-OUTPUT FORMAT (JSON):
+## OUTPUT FORMAT (JSON)
 {
-  "content_type": "document" | "handwritten" | "logo" | "photo" | "table" | "mixed",
+  "content_type": "worksheet" | "storybook" | "document" | "handwritten" | "mixed",
+  "page_layout": {
+    "orientation": "portrait" | "landscape",
+    "has_border": true | false,
+    "background": "white" | "colored" | "textured"
+  },
   "blocks": [
     {
       "type": "text",
-      "content": "Exact text as it appears - MUST extract ALL readable text",
-      "style": "title" | "heading" | "paragraph" | "bullet" | "label" | "handwritten" | "logo_text",
-      "position": "top" | "middle" | "bottom"
+      "content": "Exact text as it appears",
+      "style": {
+        "variant": "title" | "heading" | "subheading" | "paragraph" | "bullet" | "label" | "caption" | "handwritten" | "speech_bubble",
+        "fontSize": "xlarge" | "large" | "medium" | "small" | "xsmall",
+        "fontWeight": "bold" | "semibold" | "normal",
+        "fontStyle": "normal" | "italic",
+        "align": "left" | "center" | "right",
+        "isUppercase": false
+      },
+      "position": {
+        "x": 10,
+        "y": 5,
+        "width": 80,
+        "height": 10
+      }
     },
     {
       "type": "table",
       "rows": 3,
-      "cols": 2, 
-      "cells": [["Cell content..."]],
-      "position": "top" | "middle" | "bottom"
+      "cols": 4,
+      "cells": [
+        [{"text": "h", "style": "large_letter"}, {"text": "n", "style": "large_letter"}, ...],
+        [{"text": "yum", "style": "word"}, {"text": "pot", "style": "word"}, ...]
+      ],
+      "tableStyle": {
+        "hasHeader": false,
+        "hasBorder": true,
+        "cellPadding": "normal"
+      },
+      "position": {
+        "x": 5,
+        "y": 15,
+        "width": 90,
+        "height": 30
+      }
     },
     {
       "type": "image",
-      "description": "Detailed description of non-text visuals (icons, illustrations, photos)",
-      "position": "top" | "middle" | "bottom"
+      "imageType": "illustration" | "icon" | "photo" | "logo" | "diagram",
+      "description": "Detailed description for AI regeneration",
+      "subjects": ["turkey", "hen"],
+      "style": "cartoon" | "realistic" | "sketch" | "clipart" | "icon",
+      "colors": ["brown", "orange", "yellow", "red"],
+      "regeneration_prompt": "Cute cartoon-style brown turkey and hen characters, simple children's book illustration, warm colors, friendly expressions, white background",
+      "position": {
+        "x": 20,
+        "y": 10,
+        "width": 60,
+        "height": 50
+      }
+    },
+    {
+      "type": "speech_bubble",
+      "content": "Yum!",
+      "bubbleStyle": "speech" | "thought" | "shout",
+      "tailDirection": "bottom-left" | "bottom-right" | "left" | "right",
+      "position": {
+        "x": 15,
+        "y": 5,
+        "width": 15,
+        "height": 10
+      }
+    },
+    {
+      "type": "list",
+      "items": [
+        {"marker": "■", "text": "Focus Skill: CVC words"},
+        {"marker": "■", "text": "High frequency words: look, said, the..."}
+      ],
+      "listStyle": "bullet" | "numbered" | "checkbox",
+      "position": {
+        "x": 5,
+        "y": 70,
+        "width": 90,
+        "height": 20
+      }
     }
   ],
-  "summary": "What this image contains and its purpose"
+  "summary": "Brief description of the document's purpose",
+  "detected_language": "en"
 }
 
-CRITICAL EXTRACTION RULES:
-1. **ALL TEXT MUST BE EXTRACTED** - every readable character, word, sentence
-2. **Logo text is still TEXT** - "Make Decodables" in a logo = text block with style "logo_text"
-3. **Separate blocks for separate text areas** - don't merge unrelated text
-4. **Tables must preserve structure** - extract cell by cell
-5. **Handwriting** - transcribe as accurately as possible, mark style as "handwritten"
-6. **Numbers, dates, codes** - extract exactly as shown
+## CRITICAL EXTRACTION RULES
 
-Return ONLY valid JSON, no markdown formatting."""
+### Text Extraction
+1. **EXTRACT EVERY SINGLE CHARACTER** - miss nothing
+2. **Preserve exact spelling** - including intentional misspellings in educational materials
+3. **Capture formatting** - bold, italic, size differences
+4. **Speech bubbles** - extract as separate speech_bubble blocks
+5. **Page numbers, headers, footers** - include them with appropriate labels
+
+### Table Extraction  
+6. **Cell-by-cell accuracy** - each cell content exactly as shown
+7. **Recognize table types** - letter grids, word grids, question tables
+8. **Merged cells** - indicate with rowspan/colspan if present
+9. **Table within table** - extract as nested structure
+
+### Image/Illustration Extraction
+10. **Generate regeneration prompts** - detailed enough for AI to recreate similar images
+11. **Identify subjects** - characters, objects, animals
+12. **Note art style** - cartoon, realistic, sketch, clipart
+13. **Describe colors** - main colors used
+14. **Icons/symbols** - describe precisely (e.g., "yellow lightbulb icon")
+
+### Position System (0-100 scale)
+15. **x, y** = top-left corner position (0,0 is top-left of page)
+16. **width, height** = size as percentage of page
+17. **Be precise** - positions should allow reconstruction of layout
+
+### Special Cases
+18. **Handwriting** - transcribe best guess, mark confidence
+19. **Decorative borders** - note in page_layout
+20. **Watermarks** - extract if readable
+
+Return ONLY valid JSON, no markdown formatting or explanations."""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o",  # Use GPT-4o for best recognition accuracy
             messages=[
                 {
+                    "role": "system",
+                    "content": "You are an expert OCR system specialized in educational materials, worksheets, and children's books. Extract content with maximum precision and preserve the original layout."
+                },
+                {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": ocr_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}
                     ],
                 }
             ],
-            max_tokens=2000,
+            max_tokens=4000,  # Increased for complex documents
             response_format={"type": "json_object"}
         )
         
@@ -2280,46 +2370,129 @@ Return ONLY valid JSON, no markdown formatting."""
         import json
         ocr_result = json.loads(response.choices[0].message.content)
         
-        # Convert extracted content into canvas elements
+        # Convert extracted content into canvas elements with enhanced positioning
         canvas_elements = []
-        y_offset = 50
+        
+        # Canvas size reference (standard page)
+        CANVAS_WIDTH = 500
+        CANVAS_HEIGHT = 700
+        
+        def pos_to_px(pos):
+            """Convert percentage position to pixel coordinates"""
+            if not pos:
+                return {"x": 50, "y": 50, "width": 400, "height": 50}
+            return {
+                "x": int(pos.get("x", 10) * CANVAS_WIDTH / 100),
+                "y": int(pos.get("y", 10) * CANVAS_HEIGHT / 100),
+                "width": int(pos.get("width", 80) * CANVAS_WIDTH / 100),
+                "height": int(pos.get("height", 10) * CANVAS_HEIGHT / 100)
+            }
+        
+        def get_font_size(style):
+            """Get pixel font size from style"""
+            size_map = {"xlarge": 36, "large": 28, "medium": 20, "small": 16, "xsmall": 12}
+            if isinstance(style, dict):
+                return size_map.get(style.get("fontSize", "medium"), 20)
+            # Legacy format
+            if style in ["title", "heading"]:
+                return 28
+            return 16
+        
+        def get_font_weight(style):
+            """Get font weight from style"""
+            if isinstance(style, dict):
+                return style.get("fontWeight", "normal")
+            if style in ["title", "heading"]:
+                return "bold"
+            return "normal"
         
         for block in ocr_result.get("blocks", []):
+            pos = pos_to_px(block.get("position"))
+            
             if block["type"] == "text":
+                style = block.get("style", {})
                 canvas_elements.append({
                     "type": "text",
                     "content": block["content"],
-                    "x": 50,
-                    "y": y_offset,
-                    "width": 400,
-                    "fontSize": 24 if block.get("style") == "title" else 16,
-                    "fontWeight": "bold" if block.get("style") == "title" else "normal"
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "width": pos["width"],
+                    "fontSize": get_font_size(style),
+                    "fontWeight": get_font_weight(style),
+                    "fontStyle": style.get("fontStyle", "normal") if isinstance(style, dict) else "normal",
+                    "textAlign": style.get("align", "left") if isinstance(style, dict) else "left"
                 })
-                y_offset += 60 if block.get("style") == "title" else 40
+                
+            elif block["type"] == "speech_bubble":
+                canvas_elements.append({
+                    "type": "speech_bubble",
+                    "content": block.get("content", ""),
+                    "bubbleStyle": block.get("bubbleStyle", "speech"),
+                    "tailDirection": block.get("tailDirection", "bottom-left"),
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "width": pos["width"],
+                    "height": pos["height"]
+                })
                 
             elif block["type"] == "table":
+                # Enhanced table with cell styles
+                cells = block.get("cells", [])
+                # Normalize cells to consistent format
+                normalized_cells = []
+                for row in cells:
+                    normalized_row = []
+                    for cell in row:
+                        if isinstance(cell, dict):
+                            normalized_row.append(cell.get("text", str(cell)))
+                        else:
+                            normalized_row.append(str(cell) if cell else "")
+                    normalized_cells.append(normalized_row)
+                
                 canvas_elements.append({
                     "type": "table",
-                    "rows": block["rows"],
-                    "cols": block["cols"],
-                    "cells": block["cells"],
-                    "x": 50,
-                    "y": y_offset,
-                    "width": 400,
-                    "height": block["rows"] * 40
+                    "rows": block.get("rows", len(cells)),
+                    "cols": block.get("cols", len(cells[0]) if cells else 0),
+                    "cells": normalized_cells,
+                    "tableStyle": block.get("tableStyle", {"hasBorder": True}),
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "width": pos["width"],
+                    "height": pos["height"] or block.get("rows", 3) * 40
                 })
-                y_offset += block["rows"] * 40 + 20
+                
+            elif block["type"] == "list":
+                # Convert list to text block with formatted content
+                items = block.get("items", [])
+                list_content = "\n".join([
+                    f"{item.get('marker', '•')} {item.get('text', '')}" 
+                    for item in items
+                ])
+                canvas_elements.append({
+                    "type": "text",
+                    "content": list_content,
+                    "listType": block.get("listStyle", "bullet"),
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "width": pos["width"],
+                    "fontSize": 16,
+                    "fontWeight": "normal"
+                })
                 
             elif block["type"] == "image":
                 canvas_elements.append({
                     "type": "image_placeholder",
-                    "description": block["description"],
-                    "x": 50,
-                    "y": y_offset,
-                    "width": 200,
-                    "height": 200
+                    "imageType": block.get("imageType", "illustration"),
+                    "description": block.get("description", ""),
+                    "subjects": block.get("subjects", []),
+                    "style": block.get("style", "cartoon"),
+                    "colors": block.get("colors", []),
+                    "regeneration_prompt": block.get("regeneration_prompt", block.get("description", "")),
+                    "x": pos["x"],
+                    "y": pos["y"],
+                    "width": pos["width"],
+                    "height": pos["height"] or 200
                 })
-                y_offset += 220
         
         # Persist scan data in assets table
         scan_data = {
