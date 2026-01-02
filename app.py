@@ -2213,139 +2213,124 @@ async def ocr_tool(
                 print(f"Failed to upload scan source: {upload_err}")
         
         # Use GPT-4o for advanced OCR with layout preservation
-        ocr_prompt = """You are an expert OCR and document analysis AI. Your goal is to PERFECTLY reconstruct the original document's content AND layout.
+        ocr_prompt = """You are an expert OCR and document analysis AI. Your goal is to PERFECTLY extract ALL content from ANY type of image.
 
 ## ANALYSIS APPROACH
-1. First, mentally divide the image into a grid (imagine it as 100x100 units)
-2. Identify all distinct content regions (text areas, tables, images, icons)
-3. For each region, extract content with precise positioning
+1. Analyze what type of content the image contains
+2. Divide the image into a virtual 100x100 grid for positioning
+3. Extract EVERY piece of content with its position
+
+## SUPPORTED CONTENT TYPES
+Automatically detect the most appropriate type:
+- "document": business documents, letters, forms, PDFs
+- "worksheet": educational materials, exercises, quizzes
+- "storybook": children's books, comics, illustrated stories
+- "handwritten": notes, sketches, handwriting
+- "receipt": receipts, invoices, tickets
+- "screenshot": app screenshots, web pages
+- "photo": photographs with text (signs, labels, menus)
+- "presentation": slides, posters, infographics
+- "mixed": combination of multiple types
 
 ## OUTPUT FORMAT (JSON)
 {
-  "content_type": "worksheet" | "storybook" | "document" | "handwritten" | "mixed",
+  "content_type": "<detected_type>",
   "page_layout": {
     "orientation": "portrait" | "landscape",
-    "has_border": true | false,
-    "background": "white" | "colored" | "textured"
+    "has_border": boolean,
+    "background": "white" | "colored" | "textured" | "photo"
   },
   "blocks": [
-    {
-      "type": "text",
-      "content": "Exact text as it appears",
-      "style": {
-        "variant": "title" | "heading" | "subheading" | "paragraph" | "bullet" | "label" | "caption" | "handwritten" | "speech_bubble",
-        "fontSize": "xlarge" | "large" | "medium" | "small" | "xsmall",
-        "fontWeight": "bold" | "semibold" | "normal",
-        "fontStyle": "normal" | "italic",
-        "align": "left" | "center" | "right",
-        "isUppercase": false
-      },
-      "position": {
-        "x": 10,
-        "y": 5,
-        "width": 80,
-        "height": 10
-      }
-    },
-    {
-      "type": "table",
-      "rows": 3,
-      "cols": 4,
-      "cells": [
-        [{"text": "h", "style": "large_letter"}, {"text": "n", "style": "large_letter"}, ...],
-        [{"text": "yum", "style": "word"}, {"text": "pot", "style": "word"}, ...]
-      ],
-      "tableStyle": {
-        "hasHeader": false,
-        "hasBorder": true,
-        "cellPadding": "normal"
-      },
-      "position": {
-        "x": 5,
-        "y": 15,
-        "width": 90,
-        "height": 30
-      }
-    },
-    {
-      "type": "image",
-      "imageType": "illustration" | "icon" | "photo" | "logo" | "diagram",
-      "description": "Detailed description for AI regeneration",
-      "subjects": ["turkey", "hen"],
-      "style": "cartoon" | "realistic" | "sketch" | "clipart" | "icon",
-      "colors": ["brown", "orange", "yellow", "red"],
-      "regeneration_prompt": "Cute cartoon-style brown turkey and hen characters, simple children's book illustration, warm colors, friendly expressions, white background",
-      "position": {
-        "x": 20,
-        "y": 10,
-        "width": 60,
-        "height": 50
-      }
-    },
-    {
-      "type": "speech_bubble",
-      "content": "Yum!",
-      "bubbleStyle": "speech" | "thought" | "shout",
-      "tailDirection": "bottom-left" | "bottom-right" | "left" | "right",
-      "position": {
-        "x": 15,
-        "y": 5,
-        "width": 15,
-        "height": 10
-      }
-    },
-    {
-      "type": "list",
-      "items": [
-        {"marker": "■", "text": "Focus Skill: CVC words"},
-        {"marker": "■", "text": "High frequency words: look, said, the..."}
-      ],
-      "listStyle": "bullet" | "numbered" | "checkbox",
-      "position": {
-        "x": 5,
-        "y": 70,
-        "width": 90,
-        "height": 20
-      }
-    }
+    // Include ONLY block types that exist in the image
   ],
-  "summary": "Brief description of the document's purpose",
-  "detected_language": "en"
+  "summary": "Brief description of what this image contains",
+  "detected_language": "en" | "zh" | "es" | "fr" | etc.
 }
 
-## CRITICAL EXTRACTION RULES
+## BLOCK TYPE DEFINITIONS
+Use ONLY the block types that match the actual content:
 
-### Text Extraction
-1. **EXTRACT EVERY SINGLE CHARACTER** - miss nothing
-2. **Preserve exact spelling** - including intentional misspellings in educational materials
-3. **Capture formatting** - bold, italic, size differences
-4. **Speech bubbles** - extract as separate speech_bubble blocks
-5. **Page numbers, headers, footers** - include them with appropriate labels
+### TEXT BLOCK (for any text content)
+{
+  "type": "text",
+  "content": "<exact text>",
+  "style": {
+    "variant": "title" | "heading" | "subheading" | "paragraph" | "label" | "caption" | "code" | "handwritten",
+    "fontSize": "xlarge" | "large" | "medium" | "small" | "xsmall",
+    "fontWeight": "bold" | "semibold" | "normal",
+    "fontStyle": "normal" | "italic",
+    "align": "left" | "center" | "right"
+  },
+  "position": {"x": 0-100, "y": 0-100, "width": 0-100, "height": 0-100}
+}
 
-### Table Extraction  
-6. **Cell-by-cell accuracy** - each cell content exactly as shown
-7. **Recognize table types** - letter grids, word grids, question tables
-8. **Merged cells** - indicate with rowspan/colspan if present
-9. **Table within table** - extract as nested structure
+### TABLE BLOCK (for any tabular data)
+{
+  "type": "table",
+  "rows": <number>,
+  "cols": <number>,
+  "cells": [[<cell_content>, ...], ...],
+  "tableStyle": {
+    "hasHeader": boolean,
+    "hasBorder": boolean
+  },
+  "position": {"x": 0-100, "y": 0-100, "width": 0-100, "height": 0-100}
+}
 
-### Image/Illustration Extraction
-10. **Generate regeneration prompts** - detailed enough for AI to recreate similar images
-11. **Identify subjects** - characters, objects, animals
-12. **Note art style** - cartoon, realistic, sketch, clipart
-13. **Describe colors** - main colors used
-14. **Icons/symbols** - describe precisely (e.g., "yellow lightbulb icon")
+### IMAGE BLOCK (for illustrations, photos, icons, logos, diagrams)
+{
+  "type": "image",
+  "imageType": "illustration" | "icon" | "photo" | "logo" | "diagram" | "chart" | "signature",
+  "description": "<what the image shows>",
+  "subjects": ["<main subject 1>", "<main subject 2>"],
+  "style": "cartoon" | "realistic" | "sketch" | "clipart" | "icon" | "photo",
+  "colors": ["<color1>", "<color2>"],
+  "regeneration_prompt": "<detailed prompt for AI to recreate similar image>",
+  "position": {"x": 0-100, "y": 0-100, "width": 0-100, "height": 0-100}
+}
 
-### Position System (0-100 scale)
-15. **x, y** = top-left corner position (0,0 is top-left of page)
-16. **width, height** = size as percentage of page
-17. **Be precise** - positions should allow reconstruction of layout
+### LIST BLOCK (for bullet points, numbered lists, checklists)
+{
+  "type": "list",
+  "items": [{"marker": "<bullet/number>", "text": "<item text>"}, ...],
+  "listStyle": "bullet" | "numbered" | "checkbox" | "custom",
+  "position": {"x": 0-100, "y": 0-100, "width": 0-100, "height": 0-100}
+}
 
-### Special Cases
-18. **Handwriting** - transcribe best guess, mark confidence
-19. **Decorative borders** - note in page_layout
-20. **Watermarks** - extract if readable
+### SPEECH BUBBLE (only for comic-style speech/thought bubbles)
+{
+  "type": "speech_bubble",
+  "content": "<text inside bubble>",
+  "bubbleStyle": "speech" | "thought" | "shout",
+  "position": {"x": 0-100, "y": 0-100, "width": 0-100, "height": 0-100}
+}
 
-Return ONLY valid JSON, no markdown formatting or explanations."""
+## EXTRACTION RULES
+
+### MUST DO:
+1. Extract EVERY readable character - numbers, symbols, punctuation
+2. Preserve exact spelling and capitalization
+3. Detect and preserve text formatting (bold, italic, size)
+4. Capture tables with exact cell contents
+5. Describe all visual elements (images, icons, logos)
+6. Include page numbers, headers, footers, watermarks
+7. Estimate positions accurately using the 0-100 scale
+
+### ADAPTIVE BEHAVIOR:
+- For RECEIPTS: Focus on line items, prices, totals, dates
+- For SCREENSHOTS: Capture UI elements, buttons, labels
+- For HANDWRITING: Best-effort transcription, note uncertainty
+- For FORMS: Extract field labels and filled values
+- For MENUS/SIGNS: Capture all text with hierarchy
+- For EDUCATIONAL MATERIALS: Preserve structure (questions, answers, instructions)
+- For COMICS/STORYBOOKS: Extract speech bubbles and narrative text separately
+
+### POSITION SYSTEM:
+- x, y = top-left corner (0,0 is page top-left)
+- width, height = size as percentage of page
+- Be precise to allow layout reconstruction
+
+Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
 
         response = openai_client.chat.completions.create(
             model="gpt-4o",  # Use GPT-4o for best recognition accuracy
