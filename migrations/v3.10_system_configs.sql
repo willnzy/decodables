@@ -315,7 +315,8 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('ERROR_SELECT_IMAGES_TO_SAVE', 'Please select at least one image to save', 'text', 'error_msg', 'Error when no images selected to save'),
   ('ERROR_TITLE_REQUIRED', 'Title is required', 'text', 'error_msg', 'Error when title is empty'),
   ('ERROR_DESCRIPTION_REQUIRED', 'Description is required', 'text', 'error_msg', 'Error when description is empty'),
-  ('ERROR_PUBLISH_FAILED', 'Failed to publish. Please try again.', 'text', 'error_msg', 'Error when publish fails')
+  ('ERROR_PUBLISH_FAILED', 'Failed to publish. Please try again.', 'text', 'error_msg', 'Error when publish fails'),
+  ('ERROR_CONTACT_FORM_FAILED', 'Failed to send message. Please try again or email us directly.', 'text', 'error_msg', 'Error when contact form fails')
 
 ON CONFLICT (key) DO NOTHING;
 
