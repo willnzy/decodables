@@ -34,6 +34,9 @@
 --
 -- Highlights (v3.5):
 -- - error_logs table for centralized error monitoring
+--
+-- Highlights (v3.6):
+-- - user_generation_templates table for AI image generation presets
 -- ==============================================================================
 
 -- ==========================================
@@ -448,6 +451,39 @@ create unique index if not exists idx_reports_unique_user_listing
   on content_reports(reporter_id, listing_id) 
   where status in ('pending', 'reviewed');
 
+-- 21. User generation templates (AI image generation presets)
+-- Added v3.6: Stores user-saved generation presets for quick access
+create table if not exists user_generation_templates (
+  id uuid default gen_random_uuid() primary key,
+  user_id text not null,  -- Clerk user IDs are strings, not UUIDs
+  
+  -- Template info
+  name text not null,
+  description text,
+  
+  -- Saved 5W1H parameters
+  character_type text,
+  character_custom text,
+  action_type text,
+  action_custom text,
+  setting_type text,
+  setting_custom text,
+  style text default 'cartoon',
+  moods text[] default '{warm}',
+  aspect_ratio text default 'square',
+  creativity_level real default 0.3,
+  
+  -- Usage tracking
+  use_count int default 0,
+  last_used_at timestamptz,
+  
+  -- Audit fields
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_user_templates_user on user_generation_templates(user_id);
+create index if not exists idx_user_templates_user_usage on user_generation_templates(user_id, use_count desc);
+
 -- ==========================================
 -- Part 1.5: v3.3 Dashboard Optimized Indexes
 -- ==========================================
@@ -500,6 +536,7 @@ ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_generation_templates ENABLE ROW LEVEL SECURITY;
 
 create or replace function is_admin() returns boolean language sql security definer as $$
 select exists (
@@ -678,6 +715,14 @@ using (is_admin());
 drop policy if exists "Admin can update reports" on content_reports;
 create policy "Admin can update reports" on content_reports for update
 using (is_admin());
+
+-- [User Generation Templates] (v3.6)
+-- Full access for service_role (backend API)
+drop policy if exists "Service role full access to templates" on user_generation_templates;
+create policy "Service role full access to templates" on user_generation_templates for all
+to service_role
+using (true)
+with check (true);
 
 -- ==========================================
 -- Part 3: v3.3 Dashboard Views
@@ -913,6 +958,21 @@ CREATE TRIGGER trigger_reports_updated_at
     BEFORE UPDATE ON content_reports
     FOR EACH ROW
     EXECUTE FUNCTION update_reports_updated_at();
+
+-- Function to update user_generation_templates updated_at
+CREATE OR REPLACE FUNCTION update_templates_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_templates_updated_at ON user_generation_templates;
+CREATE TRIGGER trigger_templates_updated_at
+    BEFORE UPDATE ON user_generation_templates
+    FOR EACH ROW
+    EXECUTE FUNCTION update_templates_updated_at();
 
 -- ==========================================
 -- Part 5: v3.2 Helper Functions (System Config)
