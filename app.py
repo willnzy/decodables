@@ -401,6 +401,11 @@ class SupportTicketRequest(BaseModel):
     email: Optional[str] = None  # Optional - will use user's email if not provided
     message: str
 
+class ChatSupportRequest(BaseModel):
+    """Request model for AI support chat"""
+    message: str
+    conversation_history: Optional[List[dict]] = []  # Previous messages for context
+
 class ContactFormRequest(BaseModel):
     email: str  # Required for guest users
     message: str
@@ -3596,6 +3601,87 @@ def ticket(request: Request, req: SupportTicketRequest, user: dict = Depends(get
     email = req.email or user.get("email", "unknown@user.com")
     create_support_ticket(user["id"], email, req.message)
     return {"status": "ok"}
+
+# --- AI Support Chat ---
+# Load knowledge base once at startup
+KNOWLEDGE_BASE_PATH = os.path.join(os.path.dirname(__file__), "knowledge_base.md")
+SUPPORT_KNOWLEDGE_BASE = ""
+try:
+    with open(KNOWLEDGE_BASE_PATH, "r", encoding="utf-8") as f:
+        SUPPORT_KNOWLEDGE_BASE = f.read()
+except Exception as e:
+    print(f"Warning: Could not load knowledge base: {e}")
+    SUPPORT_KNOWLEDGE_BASE = "Make Decodables is a tool for creating 8-page foldable mini-books."
+
+SUPPORT_SYSTEM_PROMPT = f"""You are a friendly and helpful customer support assistant for Make Decodables.
+
+Your role is to:
+1. Answer questions about Make Decodables product features, pricing, and usage
+2. Help users troubleshoot common issues
+3. Guide users on how to use different features
+4. Be concise, friendly, and professional
+
+Important guidelines:
+- Keep responses short and helpful (2-4 sentences when possible)
+- If you're not sure about something, suggest the user contact human support via WhatsApp (+1 725 290 0525) or email (info@makedecodables.com)
+- Always be encouraging and positive
+- Use simple language suitable for teachers and parents
+- If a question is outside the scope of Make Decodables, politely redirect
+
+Here is the product knowledge base:
+
+{SUPPORT_KNOWLEDGE_BASE}
+
+Remember: Be helpful, concise, and friendly!"""
+
+@app.post("/api/chat/support")
+@limiter.limit("20/minute")  # AI chat rate limit
+async def chat_support(request: Request, req: ChatSupportRequest):
+    """
+    AI-powered support chat endpoint.
+    Uses GPT-4o-mini for cost-effective responses.
+    No authentication required - available to all users.
+    """
+    try:
+        # Build messages array
+        messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT}]
+        
+        # Add conversation history (last 10 messages to keep context manageable)
+        for msg in req.conversation_history[-10:]:
+            if msg.get("role") in ["user", "assistant"]:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
+        
+        # Add current user message
+        messages.append({"role": "user", "content": req.message})
+        
+        # Call OpenAI API
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # Cost-effective model
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+        )
+        
+        assistant_message = response.choices[0].message.content
+        
+        return {
+            "status": "ok",
+            "message": assistant_message,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+            }
+        }
+    except Exception as e:
+        print(f"AI Chat Error: {e}")
+        return {
+            "status": "error",
+            "message": "I'm having trouble connecting right now. Please try WhatsApp (+1 725 290 0525) or email info@makedecodables.com for immediate help!",
+            "error": str(e)
+        }
 
 @app.post("/api/contact")
 @limiter.limit("3/minute")  # Public endpoint rate limit (abuse protection)
