@@ -140,7 +140,134 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('PLAN_FEATURE_OCR', 'Smart Scan (OCR)', 'text', 'plan_features', 'OCR feature description'),
   ('PLAN_FEATURE_COMMERCIAL_LICENSE', 'Commercial License', 'text', 'plan_features', 'Commercial license feature description'),
   ('PLAN_FEATURE_PERSONAL_UPLOAD', 'Personal Asset Upload', 'text', 'plan_features', 'Personal upload feature description'),
-  ('PLAN_FEATURE_PROJECT_TEMPLATES', 'Project Templates', 'text', 'plan_features', 'Project templates feature description')
+  ('PLAN_FEATURE_PROJECT_TEMPLATES', 'Project Templates', 'text', 'plan_features', 'Project templates feature description'),
+  
+  -- ==========================================
+  -- Toast Success Messages
+  -- ==========================================
+  ('TOAST_TEMPLATE_SAVED', '✨ Template saved!', 'text', 'toast', 'Toast when template is saved'),
+  ('TOAST_TEMPLATE_DELETED', 'Template deleted', 'text', 'toast', 'Toast when template is deleted'),
+  ('TOAST_DESIGN_GENERATED', 'Design generated! Select and Import to apply.', 'text', 'toast', 'Toast when AI design is generated'),
+  ('TOAST_AI_IDEA_CREATED', '✨ AI created a new idea for you!', 'text', 'toast', 'Toast when AI inspiration is generated'),
+  ('TOAST_IMAGE_SAVED', 'Image saved to My Assets', 'text', 'toast', 'Toast when image is saved to assets'),
+  ('TOAST_IMAGE_ADDED', 'Image added to page', 'text', 'toast', 'Toast when image is added to page'),
+  ('TOAST_CONFIG_UPDATED', 'Configuration updated successfully', 'text', 'toast', 'Toast when config is updated'),
+  ('TOAST_CONFIG_CREATED', 'Configuration created successfully', 'text', 'toast', 'Toast when config is created'),
+  ('TOAST_CONFIG_DELETED', 'Configuration deleted', 'text', 'toast', 'Toast when config is deleted'),
+  ('TOAST_CACHE_INVALIDATED', 'Cache invalidated successfully', 'text', 'toast', 'Toast when cache is invalidated'),
+  ('TOAST_SAVED_SUCCESS', 'Saved successfully!', 'text', 'toast', 'Generic save success toast'),
+  ('TOAST_LISTING_UPDATED', 'Listing updated successfully!', 'text', 'toast', 'Toast when marketplace listing is updated'),
+  ('TOAST_FEEDBACK_EARNED', '+5 credits earned!', 'text', 'toast', 'Toast when user earns credits from feedback'),
+  
+  -- ==========================================
+  -- Toast Warning Messages
+  -- ==========================================
+  ('TOAST_MAX_IMAGES_REACHED', 'Maximum {max} images allowed', 'text', 'toast', 'Toast when max images limit reached'),
+  ('TOAST_VOICE_NOT_SUPPORTED', 'Voice input is not supported in your browser. Please use Chrome or Edge.', 'text', 'toast', 'Toast when voice input not supported'),
+  ('TOAST_FILL_REQUIRED_FIELDS', 'Please fill in all required fields.', 'text', 'toast', 'Toast when required fields are empty'),
+  ('TOAST_WAIT_BEFORE_SENDING', 'Please wait a moment before sending another message.', 'text', 'toast', 'Toast rate limit warning'),
+  ('TOAST_SIGN_IN_TO_GENERATE', 'Please sign in to generate images', 'text', 'toast', 'Toast when user needs to sign in'),
+  
+  -- ==========================================
+  -- Toast Error Messages
+  -- ==========================================
+  ('TOAST_TEMPLATE_SAVE_FAILED', 'Failed to save template', 'text', 'toast', 'Toast when template save fails'),
+  ('TOAST_TEMPLATE_DELETE_FAILED', 'Failed to delete template', 'text', 'toast', 'Toast when template delete fails'),
+  ('TOAST_FEEDBACK_SEND_FAILED', 'Failed to send feedback. Please try again.', 'text', 'toast', 'Toast when feedback send fails'),
+  ('TOAST_SUPPORT_SEND_FAILED', 'Failed to send message. Please try again or contact us via WhatsApp.', 'text', 'toast', 'Toast when support message fails'),
+  ('TOAST_CHECKOUT_FAILED', 'Failed to start checkout. Please try again.', 'text', 'toast', 'Toast when checkout fails'),
+  ('TOAST_PORTAL_OPEN_FAILED', 'Unable to open subscription portal.', 'text', 'toast', 'Toast when portal open fails'),
+  ('TOAST_PORTAL_FAILED', 'Failed to open subscription portal.', 'text', 'toast', 'Toast when portal fails'),
+  ('TOAST_CONFIG_LOAD_FAILED', 'Failed to load configurations', 'text', 'toast', 'Toast when config load fails'),
+  ('TOAST_CONFIG_KEY_REQUIRED', 'Config key is required', 'text', 'toast', 'Toast when config key is missing'),
+  ('TOAST_CONFIG_DELETE_FAILED', 'Failed to delete configuration', 'text', 'toast', 'Toast when config delete fails'),
+  ('TOAST_CONFIG_TOGGLE_FAILED', 'Failed to toggle configuration', 'text', 'toast', 'Toast when config toggle fails'),
+  ('TOAST_CACHE_INVALIDATE_FAILED', 'Failed to invalidate cache', 'text', 'toast', 'Toast when cache invalidate fails'),
+  ('TOAST_SETTING_UPDATE_FAILED', 'Failed to update setting', 'text', 'toast', 'Toast when setting update fails'),
+  ('TOAST_SAVE_FAILED', 'Failed to save. Please try again.', 'text', 'toast', 'Generic save failed toast'),
+  ('TOAST_PRESET_APPLY_FAILED', 'Failed to apply preset. Please try again.', 'text', 'toast', 'Toast when preset apply fails'),
+  ('TOAST_UNPUBLISH_FAILED', 'Failed to unpublish. Please try again.', 'text', 'toast', 'Toast when unpublish fails'),
+  ('TOAST_UPLOAD_FAILED', 'Upload failed: {error}', 'text', 'toast', 'Toast when upload fails with error'),
+  ('TOAST_REPORT_SUBMIT_FAILED', 'Failed to submit report. Please try again.', 'text', 'toast', 'Toast when report submit fails'),
+  
+  -- ==========================================
+  -- Error Messages (setError)
+  -- ==========================================
+  ('ERROR_SIGN_IN_TO_GENERATE', 'Please sign in to generate', 'text', 'error_msg', 'Error when user needs to sign in to generate'),
+  ('ERROR_NOT_ENOUGH_CREDITS', 'Not enough credits', 'text', 'error_msg', 'Error when user has insufficient credits'),
+  ('ERROR_CONTENT_POLICY', 'Content Policy Violation: Please modify your prompt', 'text', 'error_msg', 'Error for content policy violation'),
+  ('ERROR_SELECT_DESIGN', 'Please select a design to import', 'text', 'error_msg', 'Error when no design is selected'),
+  ('ERROR_SELECT_IMAGE_OR_PDF', 'Please select an image or PDF file', 'text', 'error_msg', 'Error when no file is selected'),
+  ('ERROR_SELECT_PAGE_TO_SCAN', 'Please select at least one page to scan', 'text', 'error_msg', 'Error when no pages selected for scan'),
+  ('ERROR_SIGN_IN_TO_CREATE_PROJECT', 'Please sign in to create a project', 'text', 'error_msg', 'Error when user needs to sign in to create project'),
+  ('ERROR_PROJECT_LIMIT_MESSAGE', 'You have reached the maximum number of projects ({max}). Please upgrade to {plan} to create more projects.', 'text', 'error_msg', 'Error when project limit is reached'),
+  ('ERROR_ENTER_PROMPT', 'Please enter a prompt or fill in the form', 'text', 'error_msg', 'Error when prompt is empty'),
+  ('ERROR_ENTER_WHAT_TO_DRAW', 'Please enter what to draw', 'text', 'error_msg', 'Error when draw prompt is empty'),
+  ('ERROR_DESCRIBE_CHARACTER', 'Please describe your character', 'text', 'error_msg', 'Error when character description is empty'),
+  ('ERROR_SELECT_IMAGES_TO_SAVE', 'Please select at least one image to save', 'text', 'error_msg', 'Error when no images selected to save'),
+  ('ERROR_TITLE_REQUIRED', 'Title is required', 'text', 'error_msg', 'Error when title is missing'),
+  ('ERROR_DESCRIPTION_REQUIRED', 'Description is required', 'text', 'error_msg', 'Error when description is missing'),
+  ('ERROR_STARTER_FREE_ONLY', 'Starter members can only publish free assets. Upgrade to Pro to set a price.', 'text', 'error_msg', 'Error for starter tier pricing restriction'),
+  ('ERROR_GENERATION_FAILED', 'Generation failed. Please try again.', 'text', 'error_msg', 'Generic generation failed error'),
+  ('ERROR_SCAN_FAILED', 'Scan failed. Please try again.', 'text', 'error_msg', 'Error when scan fails'),
+  ('ERROR_PUBLISH_FAILED', 'Failed to publish. Please try again.', 'text', 'error_msg', 'Error when publish fails'),
+  ('ERROR_SELECT_REPORT_REASON', 'Please select a report reason', 'text', 'error_msg', 'Error when report reason not selected'),
+  ('ERROR_PROVIDE_REPORT_DETAILS', 'Please provide more details about the issue', 'text', 'error_msg', 'Error when report details are empty'),
+  ('ERROR_ALREADY_REPORTED', 'You have already reported this item', 'text', 'error_msg', 'Error when item already reported'),
+  ('ERROR_TEMPLATE_NAME_REQUIRED', 'Please enter a template name', 'text', 'error_msg', 'Error when template name is empty'),
+  
+  -- ==========================================
+  -- Credits Display Texts
+  -- ==========================================
+  ('UI_CREDITS_PER_IMAGE', '{cost} Credits per image', 'text', 'ui', 'Credits cost per image display'),
+  ('UI_CREDITS_PER_SCAN', '{cost} Credits per scan', 'text', 'ui', 'Credits cost per scan display'),
+  ('UI_COST_CREDITS', 'Cost: {cost} credits', 'text', 'ui', 'Generic credits cost display'),
+  ('UI_COST_PAGES_CREDITS', 'Cost: {cost} credits ({pages} pages × {per_page})', 'text', 'ui', 'Credits cost with pages breakdown'),
+  ('UI_BALANCE_CREDITS', 'Balance: {balance} credits', 'text', 'ui', 'Credits balance display'),
+  ('UI_BUY_CREDITS', 'Buy Credits', 'text', 'ui', 'Buy credits button text'),
+  ('UI_CREDITS_100_PERMANENT', '100 permanent credits', 'text', 'ui', '100 permanent credits label'),
+  ('UI_CREDITS_PER_100', '/ 100 credits', 'text', 'ui', 'Price per 100 credits label'),
+  ('UI_CREDITS_NEVER_EXPIRE', '✨ All rewards are permanent credits (never expire)', 'text', 'ui', 'Permanent credits description'),
+  
+  -- ==========================================
+  -- Feedback/Support UI Texts
+  -- ==========================================
+  ('UI_FEEDBACK_PROMO', '🎉 Get credits by sharing your feedback!', 'text', 'ui', 'Feedback promo banner text'),
+  ('UI_FEEDBACK_EARN_CREDITS', 'Earn credits by sharing ideas!', 'text', 'ui', 'Feedback earn credits prompt'),
+  ('UI_FEEDBACK_SUBMISSION_TITLE', 'Earn Submission Credits', 'text', 'ui', 'Feedback submission section title'),
+  ('UI_FEEDBACK_SUBMISSION_DESC', 'Get {credits} permanent credits instantly!', 'text', 'ui', 'Feedback submission description'),
+  ('UI_FEEDBACK_FEATURED_DESC', 'Receive +{credits} permanent credits!', 'text', 'ui', 'Featured feedback description'),
+  ('UI_FEEDBACK_PLACEHOLDER', 'Please describe your feedback in detail...', 'text', 'ui', 'Feedback textarea placeholder'),
+  ('UI_SUPPORT_FALLBACK', 'Sorry, I couldn''t connect. Please try WhatsApp (+1 725 290 0525) or email info@makedecodables.com', 'text', 'ui', 'Support chat fallback message'),
+  
+  -- ==========================================
+  -- Project Related Texts
+  -- ==========================================
+  ('UI_PROJECT_READONLY_TRIAL', 'Your 7-day trial period has expired. This project is read-only.', 'text', 'ui', 'Trial expired project message'),
+  ('UI_CREATE_PROJECT_TITLE', 'Create New Project', 'text', 'ui', 'Create project modal title'),
+  ('UI_CREATE_PROJECT_DESC', 'Start a new zine project', 'text', 'ui', 'Create project modal description'),
+  
+  -- ==========================================
+  -- Publish/Marketplace Texts
+  -- ==========================================
+  ('UI_PUBLISH_TITLE_REQUIRED', 'Title is required', 'text', 'ui', 'Publish form title required'),
+  ('UI_PUBLISH_DESC_REQUIRED', 'Description is required', 'text', 'ui', 'Publish form description required'),
+  ('UI_REPORT_WARNING', 'False reports may result in account restrictions. Please only report genuine issues.', 'text', 'ui', 'Report form warning'),
+  ('UI_REPORT_PLACEHOLDER', 'Please provide any additional context about this report...', 'text', 'ui', 'Report form placeholder'),
+  
+  -- ==========================================
+  -- Admin Panel Texts
+  -- ==========================================
+  ('UI_ADMIN_USER_CODE_MISMATCH', 'User code does not match. Please verify with the customer.', 'text', 'ui', 'Admin user verification error'),
+  ('UI_ADMIN_VIEW_CREDITS', 'View your credits balance and upgrade options', 'text', 'ui', 'Credits dialog description'),
+  ('UI_ADMIN_UPGRADE_TO_PURCHASE', 'Upgrade to purchase credits.', 'text', 'ui', 'Upgrade required for credits message'),
+  ('UI_ADMIN_REFUND_CANCEL_HELP', 'For refunds or subscription cancellation, please contact support.', 'text', 'ui', 'Refund/cancel help text'),
+  
+  -- ==========================================
+  -- Error Boundary Text
+  -- ==========================================
+  ('UI_ERROR_BOUNDARY_TITLE', 'Something went wrong', 'text', 'ui', 'Error boundary title'),
+  ('UI_PREVIEW_LOAD_FAILED', 'Failed to load preview', 'text', 'ui', 'Preview load failed message')
 
 ON CONFLICT (key) DO NOTHING;
 
