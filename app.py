@@ -2185,9 +2185,9 @@ async def pdf_preview(
         
         contents = await file.read()
         
-        # Limit file size (20MB max for PDF)
-        if len(contents) > 20 * 1024 * 1024:
-            raise HTTPException(400, "PDF file too large. Maximum size is 20MB")
+        # Limit file size (5MB max)
+        if len(contents) > 5 * 1024 * 1024:
+            raise HTTPException(400, "File too large. Maximum size is 5MB")
         
         # Open PDF
         pdf_doc = fitz.open(stream=contents, filetype="pdf")
