@@ -42,6 +42,9 @@ class ResourceCategory(str, Enum):
     EDUCATION = "education"        # Educational
     HOLIDAY = "holiday"            # Holiday
     
+    # Background/Pattern categories
+    PATTERN = "pattern"            # Pattern/Texture
+    
     # General
     POPULAR = "popular"            # Popular
     NEW = "new"                    # Newest
