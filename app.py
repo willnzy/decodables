@@ -2469,7 +2469,18 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                 response_format={"type": "json_object"}
             )
             
-            ocr_result = json.loads(response.choices[0].message.content)
+            # Check for empty response
+            content = response.choices[0].message.content
+            if not content:
+                print(f"OCR Warning: Empty response from GPT-4o")
+                # Return a minimal result instead of failing
+                ocr_result = {
+                    "content_type": "unknown",
+                    "blocks": [],
+                    "summary": "Could not extract content from this image"
+                }
+            else:
+                ocr_result = json.loads(content)
             
             # Convert to canvas elements
             canvas_elements = []
