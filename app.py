@@ -377,6 +377,10 @@ class ImageGenRequest(BaseModel):
     where: Optional[str] = None  # Setting/scene (e.g., "in a garden", "underwater")
     moods: Optional[List[str]] = None  # Mood tags (e.g., ["warm", "joyful"])
     enhance_prompt: Optional[bool] = False  # Whether to use LLM enhancement for 5W1H mode
+    # New: Negative prompt support
+    negative_prompt: Optional[str] = None  # Elements to avoid (e.g., "text, watermark, blurry")
+    # New: Batch generation support (generate multiple variations)
+    num_images: Optional[int] = 1  # Number of variations (1-4)
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1387,9 +1391,13 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     if any(w in p.lower() for p in req.prompts for w in blacklist):
         raise HTTPException(400, "Safety Violation")
     
+    # Validate and clamp num_images (1-4)
+    num_images = max(1, min(4, req.num_images or 1))
+    
     # Reference image costs extra (7 credits vs 5)
     base_cost = 7 if req.reference_image else 5
-    cost = len(req.prompts) * base_cost
+    # Cost is multiplied by number of images generated
+    cost = len(req.prompts) * base_cost * num_images
     try:
         result = credit_deduct(user["id"], cost, "generation", 
             f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""))
@@ -1462,6 +1470,11 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
             logger.warning(f"5W1H prompt enhancement failed, using original: {e}")
             # Fall back to original prompts if enhancement fails
     
+    # Generate a unique batch ID for this generation
+    import time
+    batch_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    generation_start = time.time()
+    
     # Generate images (with or without reference)
     urls, task_id = await generate_8_images(
         prompts_to_use, 
@@ -1470,16 +1483,62 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         reference_strength=req.reference_strength or 0.7,
         image_size=req.image_size or "landscape_4_3",
         generation_mode=generation_mode,  # Pass mode for parameter adjustment
-        creativity_level=creativity_level  # Pass creativity level for flexible mode
+        creativity_level=creativity_level,  # Pass creativity level for flexible mode
+        negative_prompt=req.negative_prompt,  # New: negative prompt
+        num_images=num_images  # New: batch generation
     )
     
+    generation_time_ms = int((time.time() - generation_start) * 1000)
+    
     # Save assets with original theme as description if enhanced
-    for url, prompt in zip(urls, prompts_to_use):
-        asset_prompt = f"[{req.theme}] {prompt}" if req.theme else prompt
+    # Also save to user_generations for history tracking
+    generated_records = []
+    enhanced_prompt_text = enhancement_result.get("enhanced_prompt") if enhancement_result else None
+    
+    for idx, url in enumerate(urls):
+        if not url:
+            continue
+            
+        # Get the prompt used for this image
+        prompt_idx = idx // num_images if num_images > 1 else idx
+        prompt_used = prompts_to_use[prompt_idx] if prompt_idx < len(prompts_to_use) else prompts_to_use[0]
+        asset_prompt = f"[{req.theme}] {prompt_used}" if req.theme else prompt_used
+        
+        # Save to assets table (existing functionality)
         save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt)
+        
+        # Save to user_generations table for history
+        try:
+            generation_record = {
+                "user_id": user["id"],
+                "image_url": url,
+                "original_prompt": req.prompts[0] if req.prompts else None,
+                "enhanced_prompt": enhanced_prompt_text,
+                "negative_prompt": req.negative_prompt,
+                "style": req.style,
+                "moods": req.moods,
+                "aspect_ratio": req.image_size or "landscape_4_3",
+                "generation_mode": generation_mode,
+                "creativity_level": creativity_level,
+                "who_param": req.who,
+                "what_param": req.what,
+                "where_param": req.where,
+                "has_reference": bool(req.reference_image),
+                "reference_strength": req.reference_strength if req.reference_image else None,
+                "batch_id": batch_id,
+                "batch_index": idx,
+                "credits_used": base_cost,
+                "model_used": model,
+                "generation_time_ms": generation_time_ms // num_images if num_images > 1 else generation_time_ms,
+            }
+            
+            supabase.table("user_generations").insert(generation_record).execute()
+            generated_records.append(generation_record)
+        except Exception as e:
+            logger.warning(f"Failed to save generation history: {e}")
     
     response = {
-        "image_urls": urls, 
+        "image_urls": [url for url in urls if url],  # Filter out None values
         "balance": result["total"],
         "balance_monthly": result["balance_monthly"],
         "balance_permanent": result["balance_permanent"],
@@ -1487,7 +1546,10 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "used_reference": bool(req.reference_image),
         "generation_mode": generation_mode,
         "creativity_level": creativity_level,
-        "prompt_enhanced": prompt_enhanced
+        "prompt_enhanced": prompt_enhanced,
+        "batch_id": batch_id,
+        "num_images": len([url for url in urls if url]),
+        "generation_time_ms": generation_time_ms,
     }
     
     # Include enhancement details if available
@@ -1613,6 +1675,334 @@ Return JSON:
             "category": category,
             "fallback": True
         }
+
+
+# ==========================================
+# User Generation History API
+# ==========================================
+
+class GenerationHistoryQuery(BaseModel):
+    limit: Optional[int] = 20
+    offset: Optional[int] = 0
+    favorites_only: Optional[bool] = False
+
+
+@app.get("/api/generations/history")
+@limiter.limit("60/minute")
+async def get_generation_history(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    favorites_only: bool = False,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Get user's image generation history.
+    
+    Returns paginated list of generated images with metadata.
+    Supports filtering by favorites.
+    """
+    try:
+        # Clamp limit
+        limit = max(1, min(100, limit))
+        
+        query = supabase.table("user_generations") \
+            .select("*") \
+            .eq("user_id", user["id"]) \
+            .order("created_at", desc=True)
+        
+        if favorites_only:
+            query = query.eq("is_favorited", True)
+        
+        result = query.range(offset, offset + limit - 1).execute()
+        
+        # Get total count for pagination
+        count_query = supabase.table("user_generations") \
+            .select("id", count="exact") \
+            .eq("user_id", user["id"])
+        if favorites_only:
+            count_query = count_query.eq("is_favorited", True)
+        count_result = count_query.execute()
+        
+        return {
+            "generations": result.data,
+            "total": count_result.count if count_result.count else len(result.data),
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch generation history: {e}")
+        raise HTTPException(500, f"Failed to fetch history: {str(e)}")
+
+
+class FavoriteRequest(BaseModel):
+    generation_id: str
+    is_favorited: bool
+
+
+@app.post("/api/generations/favorite")
+@limiter.limit("60/minute")
+async def toggle_favorite(
+    request: Request,
+    req: FavoriteRequest,
+    user: dict = Depends(get_current_user)
+):
+    """Toggle favorite status of a generated image."""
+    try:
+        result = supabase.table("user_generations") \
+            .update({"is_favorited": req.is_favorited}) \
+            .eq("id", req.generation_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(404, "Generation not found")
+        
+        return {"success": True, "is_favorited": req.is_favorited}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to toggle favorite: {e}")
+        raise HTTPException(500, f"Failed to update: {str(e)}")
+
+
+@app.delete("/api/generations/{generation_id}")
+@limiter.limit("30/minute")
+async def delete_generation(
+    request: Request,
+    generation_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Delete a generated image from history."""
+    try:
+        result = supabase.table("user_generations") \
+            .delete() \
+            .eq("id", generation_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        return {"success": True, "deleted": generation_id}
+    except Exception as e:
+        logger.error(f"Failed to delete generation: {e}")
+        raise HTTPException(500, f"Failed to delete: {str(e)}")
+
+
+@app.delete("/api/generations/batch")
+@limiter.limit("10/minute")
+async def clear_generation_history(
+    request: Request,
+    keep_favorites: bool = True,
+    user: dict = Depends(get_current_user)
+):
+    """Clear all generation history, optionally keeping favorites."""
+    try:
+        query = supabase.table("user_generations") \
+            .delete() \
+            .eq("user_id", user["id"])
+        
+        if keep_favorites:
+            query = query.eq("is_favorited", False)
+        
+        result = query.execute()
+        
+        return {"success": True, "deleted_count": len(result.data) if result.data else 0}
+    except Exception as e:
+        logger.error(f"Failed to clear history: {e}")
+        raise HTTPException(500, f"Failed to clear: {str(e)}")
+
+
+# ==========================================
+# User Generation Templates API
+# ==========================================
+
+class TemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    character_type: Optional[str] = None
+    character_custom: Optional[str] = None
+    action_type: Optional[str] = None
+    action_custom: Optional[str] = None
+    setting_type: Optional[str] = None
+    setting_custom: Optional[str] = None
+    style: Optional[str] = "cartoon"
+    moods: Optional[List[str]] = ["warm"]
+    aspect_ratio: Optional[str] = "square"
+    creativity_level: Optional[float] = 0.3
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    character_type: Optional[str] = None
+    character_custom: Optional[str] = None
+    action_type: Optional[str] = None
+    action_custom: Optional[str] = None
+    setting_type: Optional[str] = None
+    setting_custom: Optional[str] = None
+    style: Optional[str] = None
+    moods: Optional[List[str]] = None
+    aspect_ratio: Optional[str] = None
+    creativity_level: Optional[float] = None
+
+
+@app.get("/api/generations/templates")
+@limiter.limit("60/minute")
+async def get_templates(
+    request: Request,
+    user: dict = Depends(get_current_user)
+):
+    """Get user's saved generation templates."""
+    try:
+        result = supabase.table("user_generation_templates") \
+            .select("*") \
+            .eq("user_id", user["id"]) \
+            .order("use_count", desc=True) \
+            .execute()
+        
+        return {"templates": result.data}
+    except Exception as e:
+        logger.error(f"Failed to fetch templates: {e}")
+        raise HTTPException(500, f"Failed to fetch templates: {str(e)}")
+
+
+@app.post("/api/generations/templates")
+@limiter.limit("30/minute")
+async def create_template(
+    request: Request,
+    req: TemplateCreate,
+    user: dict = Depends(get_current_user)
+):
+    """Create a new generation template."""
+    try:
+        # Check template limit (max 20 per user)
+        count_result = supabase.table("user_generation_templates") \
+            .select("id", count="exact") \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        if count_result.count and count_result.count >= 20:
+            raise HTTPException(400, "Maximum 20 templates allowed. Please delete some first.")
+        
+        template_data = {
+            "user_id": user["id"],
+            "name": req.name,
+            "description": req.description,
+            "character_type": req.character_type,
+            "character_custom": req.character_custom,
+            "action_type": req.action_type,
+            "action_custom": req.action_custom,
+            "setting_type": req.setting_type,
+            "setting_custom": req.setting_custom,
+            "style": req.style,
+            "moods": req.moods,
+            "aspect_ratio": req.aspect_ratio,
+            "creativity_level": req.creativity_level,
+        }
+        
+        result = supabase.table("user_generation_templates") \
+            .insert(template_data) \
+            .execute()
+        
+        return {"success": True, "template": result.data[0] if result.data else None}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create template: {e}")
+        raise HTTPException(500, f"Failed to create template: {str(e)}")
+
+
+@app.put("/api/generations/templates/{template_id}")
+@limiter.limit("30/minute")
+async def update_template(
+    request: Request,
+    template_id: str,
+    req: TemplateUpdate,
+    user: dict = Depends(get_current_user)
+):
+    """Update an existing template."""
+    try:
+        # Build update data, excluding None values
+        update_data = {k: v for k, v in req.dict().items() if v is not None}
+        
+        if not update_data:
+            raise HTTPException(400, "No fields to update")
+        
+        result = supabase.table("user_generation_templates") \
+            .update(update_data) \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(404, "Template not found")
+        
+        return {"success": True, "template": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update template: {e}")
+        raise HTTPException(500, f"Failed to update template: {str(e)}")
+
+
+@app.delete("/api/generations/templates/{template_id}")
+@limiter.limit("30/minute")
+async def delete_template(
+    request: Request,
+    template_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Delete a template."""
+    try:
+        result = supabase.table("user_generation_templates") \
+            .delete() \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        return {"success": True, "deleted": template_id}
+    except Exception as e:
+        logger.error(f"Failed to delete template: {e}")
+        raise HTTPException(500, f"Failed to delete template: {str(e)}")
+
+
+@app.post("/api/generations/templates/{template_id}/use")
+@limiter.limit("60/minute")
+async def use_template(
+    request: Request,
+    template_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Mark a template as used (increments use_count)."""
+    try:
+        # First get current count
+        get_result = supabase.table("user_generation_templates") \
+            .select("use_count") \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .single() \
+            .execute()
+        
+        if not get_result.data:
+            raise HTTPException(404, "Template not found")
+        
+        current_count = get_result.data.get("use_count", 0)
+        
+        # Update count and last_used_at
+        result = supabase.table("user_generation_templates") \
+            .update({
+                "use_count": current_count + 1,
+                "last_used_at": datetime.utcnow().isoformat()
+            }) \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        return {"success": True, "use_count": current_count + 1}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update template usage: {e}")
+        raise HTTPException(500, f"Failed to update: {str(e)}")
 
 
 # Advanced OCR endpoint - detects tables, text, and images

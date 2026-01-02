@@ -145,7 +145,8 @@ async def generate_and_upload_single(
     reference_strength=0.7,
     image_size="landscape_4_3",
     generation_mode="guided",
-    creativity_level=0.3
+    creativity_level=0.3,
+    negative_prompt=None
 ):
     """
     Generate a single image and upload to Supabase Storage.
@@ -161,6 +162,7 @@ async def generate_and_upload_single(
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
         generation_mode: "guided" (accurate) or "flexible" (creative)
         creativity_level: 0.0-1.0, controls creativity in flexible mode
+        negative_prompt: Optional negative prompt (elements to avoid)
     """
     try:
         # Get mode-specific parameters (creativity_level only affects flexible mode)
@@ -174,6 +176,21 @@ async def generate_and_upload_single(
         # Prepare the prompt with children's book context
         full_prompt = f"{prompt}, children's book style, safe for work, colorful"
         
+        # Build base arguments
+        base_args = {
+            "prompt": full_prompt,
+            "image_size": image_size,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "enable_safety_checker": True
+        }
+        
+        # Add negative prompt if provided (supported by flux models)
+        if negative_prompt:
+            # Append default safe content guidelines to negative prompt
+            full_negative = f"{negative_prompt}, nsfw, violence, gore, disturbing"
+            base_args["negative_prompt"] = full_negative
+        
         if use_img2img:
             print(f"🎨 [{generation_mode}] Generating {index} with reference (strength={reference_strength}, steps={num_inference_steps}, cfg={guidance_scale})...")
             # Image-to-image mode using flux-dev
@@ -182,17 +199,14 @@ async def generate_and_upload_single(
             handler = await fal_client.submit_async(
                 model_endpoint,
                 arguments={
-                    "prompt": full_prompt,
+                    **base_args,
                     "image_url": reference_image_url,
                     "strength": reference_strength,  # 0.0 = identical to input, 1.0 = ignore input
-                    "image_size": image_size,
-                    "num_inference_steps": num_inference_steps,
-                    "guidance_scale": guidance_scale,
-                    "enable_safety_checker": True
                 },
             )
         else:
-            print(f"🎨 [{generation_mode}] Generating {index} with {model} (steps={num_inference_steps}, cfg={guidance_scale})...")
+            neg_info = f", neg={len(negative_prompt)}chars" if negative_prompt else ""
+            print(f"🎨 [{generation_mode}] Generating {index} with {model} (steps={num_inference_steps}, cfg={guidance_scale}{neg_info})...")
             
             # Select model endpoint based on model type
             if model == "flux-dev":
@@ -202,13 +216,7 @@ async def generate_and_upload_single(
             
             handler = await fal_client.submit_async(
                 model_endpoint,
-                arguments={
-                    "prompt": full_prompt,
-                    "image_size": image_size,
-                    "num_inference_steps": num_inference_steps,
-                    "guidance_scale": guidance_scale,
-                    "enable_safety_checker": True
-                },
+                arguments=base_args,
             )
         
         result = await handler.get()
@@ -239,7 +247,9 @@ async def generate_8_images(
     reference_strength: float = 0.7,
     image_size: str = "landscape_4_3",
     generation_mode: str = "guided",
-    creativity_level: float = 0.3
+    creativity_level: float = 0.3,
+    negative_prompt: str = None,
+    num_images: int = 1
 ):
     """
     Generate images using specified model, optionally with reference image.
@@ -252,6 +262,8 @@ async def generate_8_images(
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
         generation_mode: "guided" (accurate) or "flexible" (creative)
         creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
+        negative_prompt: Optional text describing what to avoid in the image
+        num_images: Number of variations to generate per prompt (1-4)
     
     Returns:
         Tuple of (image_urls, task_id)
@@ -266,7 +278,11 @@ async def generate_8_images(
     # Clamp creativity_level to valid range
     creativity_level = max(0.0, min(1.0, creativity_level))
     
-    print(f"🚀 Starting image generation: model={model}, mode={generation_mode}, creativity={creativity_level:.2f}, prompts={len(prompts)}")
+    # Clamp num_images to valid range (1-4)
+    num_images = max(1, min(4, num_images))
+    
+    neg_info = f", negative_prompt={len(negative_prompt) if negative_prompt else 0}chars" if negative_prompt else ""
+    print(f"🚀 Starting image generation: model={model}, mode={generation_mode}, creativity={creativity_level:.2f}, prompts={len(prompts)}, variations={num_images}{neg_info}")
     
     async with aiohttp.ClientSession() as session:
         # Upload reference image if provided
@@ -275,24 +291,29 @@ async def generate_8_images(
             if not reference_image_url:
                 print("⚠️ Failed to process reference image, falling back to text-only generation")
         
-        # Generate images
+        # Generate images - if num_images > 1, generate variations for each prompt
         tasks = []
-        for i, prompt in enumerate(prompts):
-            tasks.append(generate_and_upload_single(
-                session, 
-                prompt, 
-                i, 
-                task_id, 
-                model=model,
-                reference_image_url=reference_image_url,
-                reference_strength=reference_strength,
-                image_size=image_size,
-                generation_mode=generation_mode,
-                creativity_level=creativity_level
-            ))
+        total_index = 0
+        for prompt in prompts:
+            for variation in range(num_images):
+                tasks.append(generate_and_upload_single(
+                    session, 
+                    prompt, 
+                    total_index, 
+                    task_id, 
+                    model=model,
+                    reference_image_url=reference_image_url,
+                    reference_strength=reference_strength,
+                    image_size=image_size,
+                    generation_mode=generation_mode,
+                    creativity_level=creativity_level,
+                    negative_prompt=negative_prompt
+                ))
+                total_index += 1
         image_urls = await asyncio.gather(*tasks)
     
     success_count = len([u for u in image_urls if u])
-    print(f"✅ Generation complete: {success_count}/{len(prompts)} images generated")
+    total_requested = len(prompts) * num_images
+    print(f"✅ Generation complete: {success_count}/{total_requested} images generated")
     
     return image_urls, task_id
