@@ -1007,6 +1007,7 @@ class CreateAssetFromUrlRequest(BaseModel):
 
 @app.post("/api/user/assets/from-url")
 def create_asset_from_url(
+    http_request: Request,
     request: CreateAssetFromUrlRequest,
     user: dict = Depends(get_current_user)
 ):
@@ -1036,6 +1037,9 @@ def create_asset_from_url(
                 "message": "Asset already exists in library"
             }
         
+        # v3.9: Get timezone from request for snapshot
+        tz = get_request_timezone(http_request, user_id=user.get("id"))
+        
         # Create new asset record
         asset_data = {
             "user_id": user["id"],
@@ -1044,7 +1048,8 @@ def create_asset_from_url(
             "project_id": request.project_id,
             "description": request.description,
             "metadata": request.metadata,
-            "usage_count": 1  # Start with 1 since it's being used
+            "usage_count": 1,  # Start with 1 since it's being used
+            "timezone": tz  # v3.9: Snapshot timezone
         }
         
         result = supabase.table("assets").insert(asset_data).select().execute()
@@ -1694,6 +1699,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
                 "credits_used": base_cost,
                 "model_used": model,
                 "generation_time_ms": generation_time_ms // num_images if num_images > 1 else generation_time_ms,
+                "timezone": tz,  # v3.9: Snapshot timezone
             }
             
             supabase.table("user_generations").insert(generation_record).execute()
@@ -3008,6 +3014,8 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             should_save = save_to_assets and save_to_assets.lower() == "true"
             if should_save and page_results:
                 try:
+                    # v3.9: Get timezone from request for snapshot
+                    tz = get_request_timezone(request, user_id=user.get("id"))
                     asset_result = supabase.table("assets").insert({
                         "user_id": user["id"],
                         "project_id": project_id,
@@ -3017,7 +3025,8 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                             "is_pdf": True,
                             "total_pages": total_pages,
                             "scanned_pages": selected_pages
-                        }
+                        },
+                        "timezone": tz  # v3.9: Snapshot timezone
                     }).execute()
                     if asset_result.data:
                         asset_id = asset_result.data[0]["id"]
@@ -3044,6 +3053,8 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             should_save = save_to_assets and save_to_assets.lower() == "true"
             if should_save:
                 try:
+                    # v3.9: Get timezone from request for snapshot
+                    tz = get_request_timezone(request, user_id=user.get("id"))
                     asset_result = supabase.table("assets").insert({
                         "user_id": user["id"],
                         "project_id": project_id,
@@ -3052,7 +3063,8 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                         "metadata": {
                             "source_image_url": result["source_image_url"],
                             "ocr_summary": result["ocr_result"].get("summary", "")
-                        }
+                        },
+                        "timezone": tz  # v3.9: Snapshot timezone
                     }).execute()
                     if asset_result.data:
                         asset_id = asset_result.data[0]["id"]
