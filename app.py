@@ -72,6 +72,10 @@ from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
 from story_generator import generate_story_json, client as openai_client # reuse client
 from prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
+from analytics_service import (
+    track_event, track_ai_generation, track_payment, 
+    track_marketplace_action, track_project_action, AnalyticsEvents
+)
 
 # Environment variables
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
@@ -638,6 +642,8 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 # Log payment
                 log_payment_record(uid, amount_total, currency, "credits_purchase", f"Purchase 100 Credits - ${amount_total/100:.2f}")
                 log_activity(uid, "credits_purchase", {"amount": 100, "payment": amount_total})
+                # Analytics: Track credits purchase
+                track_payment(uid, AnalyticsEvents.CREDITS_PURCHASED, amount_total, currency, extra_properties={"credits_amount": 100})
             elif plan in ['starter', 'pro']:
                 # New subscription: update tier and grant monthly credits
                 update_subscription_tier(uid, plan, session.get('customer'), "active")
@@ -646,6 +652,8 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 # Log subscription payment
                 log_payment_record(uid, amount_total, currency, "sub_payment", f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}")
                 log_activity(uid, "subscription_started", {"plan": plan, "payment": amount_total})
+                # Analytics: Track subscription started
+                track_payment(uid, AnalyticsEvents.CHECKOUT_COMPLETED, amount_total, currency, plan=plan)
     
     # Subscription renewal (monthly refresh)
     elif event_type == 'invoice.payment_succeeded':
@@ -1802,6 +1810,22 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     if enhancement_result:
         response["enhanced_prompt"] = enhancement_result.get("enhanced_prompt")
         response["key_elements"] = enhancement_result.get("key_elements", [])
+    
+    # Analytics: Track AI generation success (fire-and-forget, non-blocking)
+    track_ai_generation(
+        user_id=user["id"],
+        success=True,
+        model=model,
+        cost_credits=base_cost,
+        duration_ms=generation_time_ms,
+        extra_properties={
+            "batch_id": batch_id,
+            "num_images": len([url for url in urls if url]),
+            "generation_mode": generation_mode,
+            "has_reference": bool(req.reference_image),
+            "prompt_enhanced": prompt_enhanced,
+        }
+    )
     
     return response
 
