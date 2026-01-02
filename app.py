@@ -2257,6 +2257,7 @@ async def ocr_tool(
     file: UploadFile = File(...), 
     project_id: Optional[str] = Form(None),
     page_numbers: Optional[str] = Form(None),  # Comma-separated page numbers for PDF
+    save_to_assets: Optional[str] = Form("true"),  # Whether to save to user's assets library
     user: dict = Depends(get_current_user)
 ):
     """
@@ -2603,11 +2604,31 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             
             pdf_doc.close()
             
-            # Note: Scanned files are NOT saved to user's assets library
+            # Optionally save to assets library
+            asset_id = None
+            should_save = save_to_assets and save_to_assets.lower() == "true"
+            if should_save and page_results:
+                try:
+                    asset_result = supabase.table("assets").insert({
+                        "user_id": user["id"],
+                        "project_id": project_id,
+                        "url": page_results[0]["source_image_url"] if page_results else "",
+                        "type": "scanned",
+                        "metadata": {
+                            "is_pdf": True,
+                            "total_pages": total_pages,
+                            "scanned_pages": selected_pages
+                        }
+                    }).execute()
+                    if asset_result.data:
+                        asset_id = asset_result.data[0]["id"]
+                except Exception as save_err:
+                    print(f"Failed to save scanned asset: {save_err}")
             
             return {
                 "success": True,
                 "is_pdf": True,
+                "asset_id": asset_id,
                 "total_pages": total_pages,
                 "scanned_pages": selected_pages,
                 "page_results": page_results,
@@ -2619,11 +2640,30 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             # Image: Process single image
             result = await process_single_image(contents)
             
-            # Note: Scanned files are NOT saved to user's assets library
+            # Optionally save to assets library
+            asset_id = None
+            should_save = save_to_assets and save_to_assets.lower() == "true"
+            if should_save:
+                try:
+                    asset_result = supabase.table("assets").insert({
+                        "user_id": user["id"],
+                        "project_id": project_id,
+                        "url": result["source_image_url"] or "",
+                        "type": "scanned",
+                        "metadata": {
+                            "source_image_url": result["source_image_url"],
+                            "ocr_summary": result["ocr_result"].get("summary", "")
+                        }
+                    }).execute()
+                    if asset_result.data:
+                        asset_id = asset_result.data[0]["id"]
+                except Exception as save_err:
+                    print(f"Failed to save scanned asset: {save_err}")
             
             return {
                 "success": True,
                 "is_pdf": False,
+                "asset_id": asset_id,
                 "source_image_url": result["source_image_url"],
                 "ocr_result": result["ocr_result"],
                 "canvas_elements": result["canvas_elements"],
