@@ -2,6 +2,9 @@
 
 This document contains all information about Make Decodables product for AI customer support.
 
+**Website:** https://makedecodables.com
+**Manual/Help Center:** https://makedecodables.com/manual
+
 ## Product Overview
 
 Make Decodables is a powerful yet easy-to-use tool for creating 8-page foldable mini-books (also known as "zines"). Target users include:
@@ -9,7 +12,11 @@ Make Decodables is a powerful yet easy-to-use tool for creating 8-page foldable 
 - Parents making personalized stories for children
 - Creative storytellers and content creators
 
+**Learn more:** https://makedecodables.com/about-us
+
 ## Subscription Plans
+
+**Pricing page:** https://makedecodables.com/#pricing
 
 ### Free (Pay As You Go)
 - **Price:** $0
@@ -34,6 +41,8 @@ Make Decodables is a powerful yet easy-to-use tool for creating 8-page foldable 
   - Publish paid content
   - Priority support
 
+**Compare plans:** https://makedecodables.com/manual (see Subscription Plans section)
+
 ## Credit System
 
 ### Credit Types
@@ -53,10 +62,13 @@ Your very first AI-generated image is free.
 
 ## Key Features
 
+**Full feature guide:** https://makedecodables.com/manual
+
 ### 1. Creating Mini-Books
 - Start from Dashboard → Click "New Project"
 - Choose: Blank Template, Story Templates, or Educational Templates
 - Use the editor with Text Tool, Image Tool, Sticker Library, Background settings
+- **Dashboard:** https://makedecodables.com/dashboard
 
 ### 2. AI Image Generation
 - Click the ✨ AI Generate button
@@ -92,6 +104,8 @@ Your very first AI-generated image is free.
 - Pro: Can set prices 0-500 credits
 - Revenue split: You earn 90%, Platform fee 10%
 - Earnings are Permanent Credits (cannot be withdrawn as cash)
+- **Browse Marketplace:** https://makedecodables.com/marketplace
+- **Marketplace Guidelines:** https://makedecodables.com/marketplace-guidelines
 
 ## Folding Instructions (8-Page Mini-Book)
 
@@ -142,6 +156,13 @@ Your very first AI-generated image is free.
 - **Email:** info@makedecodables.com
 - **WhatsApp:** +1 (725) 290 0525
 - **Website:** https://makedecodables.com
+- **Contact page:** https://makedecodables.com/contact-us
+
+## Policies
+
+- **Privacy Policy:** https://makedecodables.com/privacy-policy
+- **Terms of Service:** https://makedecodables.com/term-of-service
+- **Billing Policy:** https://makedecodables.com/billing-policy
 
 ## Frequently Asked Questions
 
