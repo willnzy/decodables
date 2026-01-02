@@ -1,10 +1,12 @@
 import os
 import logging
 import jwt # requires pyjwt
+import traceback
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from io import BytesIO
 import base64
@@ -13,8 +15,23 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
-# Setup logger
-logger = logging.getLogger(__name__)
+# v3.12: Unified error handling
+from exceptions import (
+    AppException, ErrorCode, ErrorResponse,
+    UnauthorizedException, ForbiddenException, AdminRequiredException,
+    NotFoundException, ProjectNotFoundException, InsufficientCreditsException,
+    ValidationException, RateLimitException, InternalServerException
+)
+from middleware import (
+    RequestIDMiddleware, setup_logging, 
+    get_request_id, set_user_id
+)
+
+# Setup structured logging with request context
+logger = setup_logging(
+    level=logging.INFO,
+    json_format=os.environ.get("LOG_FORMAT") == "json"  # JSON in production
+)
 
 # v3.9: Import timezone utilities
 from timezone_utils import get_request_timezone
@@ -102,9 +119,171 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
-    expose_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Response-Time", "*"],
     max_age=3600,  # Preflight cache duration (seconds)
 )
+
+# v3.12: Request ID middleware for tracing
+app.add_middleware(RequestIDMiddleware)
+
+
+# ==========================================
+# Global Exception Handlers (v3.12)
+# ==========================================
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """
+    Handle custom application exceptions.
+    Returns a standardized error response with request_id for tracing.
+    """
+    request_id = get_request_id() or getattr(request.state, 'request_id', None)
+    
+    # Log the error with full context (context is NOT exposed to client)
+    logger.warning(
+        f"AppException: {exc.code} - {exc.message}",
+        extra={
+            "error_code": exc.code,
+            "status_code": exc.status_code,
+            "context": exc.context,
+            "path": request.url.path,
+            "method": request.method,
+        }
+    )
+    
+    # Build response
+    error_response = exc.to_response(request_id)
+    
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump(exclude_none=True),
+        headers=exc.headers or {}
+    )
+    
+    # Add request ID to response header
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors (422).
+    Converts validation errors to our standard format.
+    """
+    request_id = get_request_id() or getattr(request.state, 'request_id', None)
+    
+    # Extract validation error details
+    errors = []
+    for error in exc.errors():
+        field = ".".join(str(loc) for loc in error["loc"][1:])  # Skip 'body' prefix
+        errors.append({
+            "field": field or "body",
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    
+    logger.warning(
+        f"Validation error on {request.method} {request.url.path}",
+        extra={"errors": errors, "body": str(exc.body)[:500]}  # Truncate body
+    )
+    
+    error_response = ErrorResponse(
+        code=ErrorCode.VALIDATION_ERROR.value,
+        message="Request validation failed",
+        request_id=request_id,
+        details={"errors": errors}
+    )
+    
+    response = JSONResponse(
+        status_code=422,
+        content=error_response.model_dump(exclude_none=True)
+    )
+    
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle FastAPI HTTPException (convert to our format).
+    """
+    request_id = get_request_id() or getattr(request.state, 'request_id', None)
+    
+    # Map common HTTP status codes to our error codes
+    code_map = {
+        400: ErrorCode.BAD_REQUEST,
+        401: ErrorCode.AUTH_UNAUTHORIZED,
+        403: ErrorCode.AUTH_FORBIDDEN,
+        404: ErrorCode.RESOURCE_NOT_FOUND,
+        429: ErrorCode.TOO_MANY_REQUESTS,
+        500: ErrorCode.SERVER_ERROR,
+    }
+    
+    error_code = code_map.get(exc.status_code, ErrorCode.SERVER_ERROR)
+    
+    error_response = ErrorResponse(
+        code=error_code.value,
+        message=str(exc.detail),
+        request_id=request_id
+    )
+    
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump(exclude_none=True)
+    )
+    
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all handler for unhandled exceptions.
+    
+    IMPORTANT: This is the "firewall" that prevents raw Python errors
+    from being exposed to clients. It logs the full stack trace for
+    debugging while returning a sanitized error to the client.
+    """
+    request_id = get_request_id() or getattr(request.state, 'request_id', None)
+    
+    # Log FULL error details (stack trace, context) for debugging
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: {type(exc).__name__}: {exc}",
+        extra={
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "path": request.url.path,
+            "method": request.method,
+            "query_params": str(request.query_params),
+        },
+        exc_info=True  # Include full stack trace
+    )
+    
+    # Return SANITIZED error to client (no internal details)
+    error_response = ErrorResponse(
+        code=ErrorCode.SERVER_ERROR.value,
+        message="Internal server error. Please try again later.",
+        request_id=request_id
+    )
+    
+    response = JSONResponse(
+        status_code=500,
+        content=error_response.model_dump(exclude_none=True)
+    )
+    
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    
+    return response
 
 # ===========================================
 # Background scheduler
@@ -121,39 +300,8 @@ async def shutdown_event():
     """Stop scheduled jobs when FastAPI shuts down."""
     shutdown_scheduler()
 
-# Middleware to ensure every response has CORS headers, even on errors
-@app.middleware("http")
-async def add_cors_header(request: Request, call_next):
-    """
-    Ensure every response contains CORS headers, even when exceptions occur.
-    """
-    try:
-        response = await call_next(request)
-        origin = request.headers.get("origin")
-        if origin and origin in ALLOWED_ORIGINS:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        return response
-    except Exception as e:
-        # Return an error response with CORS headers when exceptions occur
-        origin = request.headers.get("origin")
-        cors_headers = {}
-        if origin and origin in ALLOWED_ORIGINS:
-            cors_headers = {
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Credentials": "true",
-            }
-        import traceback
-        print(f"Middleware exception: {e}")
-        print(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error"},
-            headers=cors_headers
-        )
-
-# Global exception handler - ensure error responses include CORS headers
-from fastapi.responses import JSONResponse
+# Note: CORS error handling is now part of the global exception handlers (v3.12)
+# The CORSMiddleware + RequestIDMiddleware combination handles all cases
 from fastapi import Request
 
 @app.exception_handler(Exception)
