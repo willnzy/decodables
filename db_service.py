@@ -3048,11 +3048,11 @@ def admin_get_ai_insights(analysis_type: str = "all"):
     insights = []
     
     # 1. Analyze project creation
-    projects = supabase.table("projects").select("user_id, created_at, cover_url, title")\
+    projects = supabase.table("projects").select("user_id, created_at, thumbnail_url, title")\
         .gte("created_at", start_date).execute()
     
     total_projects = len(projects.data or [])
-    completed_projects = len([p for p in (projects.data or []) if p.get("cover_url")])
+    completed_projects = len([p for p in (projects.data or []) if p.get("thumbnail_url")])
     
     if total_projects > 0:
         completion_rate = completed_projects / total_projects * 100
@@ -3199,10 +3199,10 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
         user_sessions[user_id].append(activity.get("created_at"))
     
     # Project completion rate
-    projects = supabase.table("projects").select("id, cover_url")\
+    projects = supabase.table("projects").select("id, thumbnail_url")\
         .gte("created_at", start_date).execute()
     total_projects = len(projects.data or [])
-    completed = len([p for p in (projects.data or []) if p.get("cover_url")])
+    completed = len([p for p in (projects.data or []) if p.get("thumbnail_url")])
     completion_rate = f"{(completed / max(total_projects, 1) * 100):.0f}%"
     
     # Feature adoption rate (users who used advanced features)
