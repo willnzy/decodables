@@ -282,6 +282,30 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('TOAST_SAVE_FAILED', 'Failed to save. Please try again.', 'text', 'toast', 'Toast when save fails'),
   
   -- ==========================================
+  -- Additional Toast Messages (Round 3 - Editor Page)
+  -- ==========================================
+  ('TOAST_COPY_FAILED', 'Failed to copy', 'text', 'toast', 'Toast when copy fails'),
+  ('TOAST_CREATE_PROJECT_FAILED', 'Failed to create project. Please try again.', 'text', 'toast', 'Toast when project creation fails'),
+  ('TOAST_SAVE_TITLE_FAILED', 'Failed to save title', 'text', 'toast', 'Toast when title save fails'),
+  ('TOAST_CANNOT_COPY_LOCKED_PAGE', 'Cannot copy to locked page', 'text', 'toast', 'Toast when trying to copy to locked page'),
+  ('TOAST_SIGN_IN_TO_GENERATE', 'Please sign in to generate images', 'text', 'toast', 'Toast prompting sign in for generation'),
+  ('TOAST_CONTENT_POLICY_VIOLATION', 'Content Policy Violation: Please modify your prompt and try again.', 'text', 'toast', 'Toast for content policy violation'),
+  ('TOAST_GENERATION_FAILED', 'Generation failed. Please try again.', 'text', 'toast', 'Toast when generation fails'),
+  ('TOAST_SIGN_IN_TO_EXPORT', 'Please sign in to export', 'text', 'toast', 'Toast prompting sign in for export'),
+  ('TOAST_EXPORT_FAILED', 'Export failed. Please try again.', 'text', 'toast', 'Toast when PDF export fails'),
+  ('TOAST_ZIP_EXPORT_FAILED', 'ZIP export failed. Please try again.', 'text', 'toast', 'Toast when ZIP export fails'),
+  ('TOAST_UNABLE_GET_IMAGE_URL', 'Unable to get image URL', 'text', 'toast', 'Toast when image URL cannot be retrieved'),
+  ('TOAST_LOCAL_IMAGE_UPLOAD_FIRST', 'Local images need to be uploaded first. Use "Upload > Save to My Assets".', 'text', 'toast', 'Toast for local image upload requirement'),
+  ('TOAST_SAVE_TO_ASSETS_FAILED', 'Failed to save: {error}', 'text', 'toast', 'Toast when save to assets fails'),
+  ('TOAST_SAVE_BEFORE_DUPLICATE', 'Please save the project first before duplicating', 'text', 'toast', 'Toast prompting save before duplicate'),
+  ('TOAST_PROJECT_DUPLICATED', 'Project duplicated successfully!', 'text', 'toast', 'Toast when project is duplicated'),
+  ('TOAST_DUPLICATE_PROJECT_FAILED', 'Failed to duplicate project. Please try again.', 'text', 'toast', 'Toast when project duplication fails'),
+  ('TOAST_PRINT_FAILED', 'Print failed. Please try again.', 'text', 'toast', 'Toast when print fails'),
+  ('TOAST_ASSET_PUBLISHED', 'Asset published successfully!', 'text', 'toast', 'Toast when asset is published'),
+  ('TOAST_ASSET_UNPUBLISHED', 'Asset unpublished', 'text', 'toast', 'Toast when asset is unpublished'),
+  ('TOAST_PROJECT_PUBLISHED', 'Project published successfully!', 'text', 'toast', 'Toast when project is published'),
+  
+  -- ==========================================
   -- Additional Error Messages (Round 2)
   -- ==========================================
   ('ERROR_STARTER_PUBLISH_FREE_ONLY', 'Starter members can only publish free assets. Upgrade to Pro to set a price.', 'text', 'error_msg', 'Error for starter tier pricing restriction'),
