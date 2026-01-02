@@ -2015,7 +2015,7 @@ def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str)
     Returns: True if new usage recorded, False if already exists
     """
     # Check existence
-    existing = supabase.table("listing_usage").select("id")\
+    existing = supabase.table("listing_usages").select("id")\
         .eq("listing_id", listing_id)\
         .eq("used_by_user_id", used_by_user_id)\
         .eq("project_id", project_id).execute()
@@ -2025,7 +2025,7 @@ def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str)
     
     try:
         # Insert usage record
-        supabase.table("listing_usage").insert({
+        supabase.table("listing_usages").insert({
             "listing_id": listing_id,
             "used_by_user_id": used_by_user_id,
             "project_id": project_id

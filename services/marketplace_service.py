@@ -177,7 +177,7 @@ class MarketplaceService:
         """
         try:
             # Try to insert (will fail if exists due to unique constraint)
-            self.supabase.table("listing_usage").insert({
+            self.supabase.table("listing_usages").insert({
                 "listing_id": listing_id,
                 "used_by_user_id": user_id,
                 "project_id": project_id

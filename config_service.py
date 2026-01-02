@@ -99,7 +99,7 @@ def get_config(config_key: str, use_cache: bool = True) -> Optional[Dict[str, An
     # 
     if supabase:
         try:
-            result = supabase.table("system_config")\
+            result = supabase.table("system_configs")\
                 .select("config_value, is_active")\
                 .eq("config_key", config_key)\
                 .single()\
@@ -140,7 +140,7 @@ def set_config(config_key: str, config_value: Dict[str, Any], updated_by: str = 
         return False
     
     try:
-        result = supabase.table("system_config")\
+        result = supabase.table("system_configs")\
             .update({
                 "config_value": config_value,
                 "updated_by": updated_by
@@ -185,7 +185,7 @@ def get_all_configs(category: str = None) -> List[Dict[str, Any]]:
         return configs
     
     try:
-        query = supabase.table("system_config").select("*")
+        query = supabase.table("system_configs").select("*")
         if category:
             query = query.eq("category", category)
         

@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.3 - Dashboard & Marketplace Refactor)
+-- Make Decodables Database Initialization Script (v3.8 - Naming Convention Refactor)
 -- Includes: core schema + final RLS policies
 -- 
 -- Highlights (v3.0):
@@ -17,7 +17,7 @@
 -- - admin_operation_logs: admin audit trail
 -- - user_events: detailed user event tracking
 -- - aggregated_stats: scheduled precomputed stats
--- - system_config: dynamic config (rate limits, analytics, etc.)
+-- - system_configs: dynamic config (rate limits, analytics, etc.)
 -- - notifications adds notification_type column
 --
 -- Highlights (v3.3):
@@ -36,10 +36,18 @@
 -- - error_logs table for centralized error monitoring
 --
 -- Highlights (v3.6):
--- - user_generation_templates table for AI image generation presets
+-- - asset_prompt_templates table for AI image generation presets (5W1H naming)
 --
 -- Highlights (v3.7):
--- - page_design_templates table for AI Design Page presets
+-- - page_prompt_templates table for AI Design Page presets
+--
+-- Highlights (v3.8):
+-- - Naming convention refactor: plural tables, 5W1H column names
+-- - listing_usage → listing_usages
+-- - system_config → system_configs
+-- - user_generation_templates → asset_prompt_templates
+-- - page_design_templates → page_prompt_templates
+-- - character_type/action_type/setting_type → who_type/what_type/where_type
 -- ==============================================================================
 
 -- ==========================================
@@ -290,9 +298,9 @@ create table if not exists support_tickets (
   created_at timestamptz default now()
 );
 
--- 12. Listing usage table (deduplicated counts)
+-- 12. Listing usages table (deduplicated counts)
 -- PRD: track usage_count with unique key (listing_id, user_id, project_id)
-create table if not exists listing_usage (
+create table if not exists listing_usages (
   id uuid default gen_random_uuid() primary key,
   listing_id uuid references marketplace_listings(id) not null,
   used_by_user_id text references profiles(id) not null,
@@ -416,9 +424,9 @@ create index if not exists idx_agg_stats_date on aggregated_stats(date desc);
 create index if not exists idx_agg_stats_type on aggregated_stats(stat_type);
 create index if not exists idx_agg_stats_date_type on aggregated_stats(date desc, stat_type);
 
--- 19. System config (dynamic parameters)
+-- 19. System configs (dynamic parameters)
 -- Added v3.2: runtime-adjustable settings (rate limits, analytics, etc.)
-create table if not exists system_config (
+create table if not exists system_configs (
   id uuid default gen_random_uuid() primary key,
   config_key text unique not null,
   config_value jsonb not null,
@@ -428,8 +436,8 @@ create table if not exists system_config (
   updated_at timestamptz default now(),
   updated_by text -- Last modifying admin ID
 );
-create index if not exists idx_system_config_key on system_config(config_key);
-create index if not exists idx_system_config_category on system_config(category);
+create index if not exists idx_system_configs_key on system_configs(config_key);
+create index if not exists idx_system_configs_category on system_configs(category);
 
 -- 20. Content reports (user-submitted reports for marketplace items)
 -- Added v3.3: Allows users to report inappropriate/copyright content
@@ -454,9 +462,9 @@ create unique index if not exists idx_reports_unique_user_listing
   on content_reports(reporter_id, listing_id) 
   where status in ('pending', 'reviewed');
 
--- 21. User generation templates (AI image generation presets)
+-- 21. Asset prompt templates (AI image generation presets with 5W1H naming)
 -- Added v3.6: Stores user-saved generation presets for quick access
-create table if not exists user_generation_templates (
+create table if not exists asset_prompt_templates (
   id uuid default gen_random_uuid() primary key,
   user_id text not null,  -- Clerk user IDs are strings, not UUIDs
   
@@ -464,17 +472,18 @@ create table if not exists user_generation_templates (
   name text not null,
   description text,
   
-  -- Saved 5W1H parameters
-  character_type text,
-  character_custom text,
-  action_type text,
-  action_custom text,
-  setting_type text,
-  setting_custom text,
+  -- Saved 5W1H parameters (using 5W1H naming convention)
+  who_type text,      -- Character type (was character_type)
+  who_custom text,    -- Custom character (was character_custom)
+  what_type text,     -- Action type (was action_type)
+  what_custom text,   -- Custom action (was action_custom)
+  where_type text,    -- Setting type (was setting_type)
+  where_custom text,  -- Custom setting (was setting_custom)
   style text default 'cartoon',
   moods text[] default '{warm}',
   aspect_ratio text default 'square',
   creativity_level real default 0.3,
+  negative_prompt text,  -- Elements to avoid
   
   -- Usage tracking
   use_count int default 0,
@@ -484,12 +493,12 @@ create table if not exists user_generation_templates (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-create index if not exists idx_user_templates_user on user_generation_templates(user_id);
-create index if not exists idx_user_templates_user_usage on user_generation_templates(user_id, use_count desc);
+create index if not exists idx_asset_prompt_templates_user on asset_prompt_templates(user_id);
+create index if not exists idx_asset_prompt_templates_usage on asset_prompt_templates(user_id, use_count desc);
 
--- 22. Page design templates (AI Design Page presets)
+-- 22. Page prompt templates (AI Design Page presets)
 -- Added v3.7: Stores user-saved page design presets for quick access
-create table if not exists page_design_templates (
+create table if not exists page_prompt_templates (
   id uuid default gen_random_uuid() primary key,
   user_id text not null,  -- Clerk user IDs are strings
   
@@ -513,8 +522,8 @@ create table if not exists page_design_templates (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-create index if not exists idx_page_design_templates_user on page_design_templates(user_id);
-create index if not exists idx_page_design_templates_usage on page_design_templates(user_id, use_count desc);
+create index if not exists idx_page_prompt_templates_user on page_prompt_templates(user_id);
+create index if not exists idx_page_prompt_templates_usage on page_prompt_templates(user_id, use_count desc);
 
 -- ==========================================
 -- Part 1.5: v3.3 Dashboard Optimized Indexes
@@ -559,17 +568,17 @@ ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE listing_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE listing_usages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leaderboard_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_operation_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
-ALTER TABLE system_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_generation_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE page_design_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE page_prompt_templates ENABLE ROW LEVEL SECURITY;
 
 create or replace function is_admin() returns boolean language sql security definer as $$
 select exists (
@@ -657,13 +666,13 @@ drop policy if exists "Users CRUD own tickets or Admin manage all" on support_ti
 create policy "Users CRUD own tickets or Admin manage all" on support_tickets for all
 using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
 
--- [Listing Usage]
-drop policy if exists "Users can insert own usage" on listing_usage;
-create policy "Users can insert own usage" on listing_usage for insert
+-- [Listing Usages]
+drop policy if exists "Users can insert own usage" on listing_usages;
+create policy "Users can insert own usage" on listing_usages for insert
 with check ((select auth.jwt() ->> 'sub') = used_by_user_id);
 
-drop policy if exists "Users view own usage or Admin view all" on listing_usage;
-create policy "Users view own usage or Admin view all" on listing_usage for select
+drop policy if exists "Users view own usage or Admin view all" on listing_usages;
+create policy "Users view own usage or Admin view all" on listing_usages for select
 using ((select auth.jwt() ->> 'sub') = used_by_user_id or is_admin());
 
 -- [Leaderboard Snapshots]
@@ -720,10 +729,10 @@ to service_role
 using (true)
 with check (true);
 
--- [System Config] (v3.2)
+-- [System Configs] (v3.2)
 -- Restrict to service_role
-drop policy if exists "Service role full access to system_config" on system_config;
-create policy "Service role full access to system_config" on system_config for all
+drop policy if exists "Service role full access to system_configs" on system_configs;
+create policy "Service role full access to system_configs" on system_configs for all
 to service_role
 using (true)
 with check (true);
@@ -749,18 +758,18 @@ drop policy if exists "Admin can update reports" on content_reports;
 create policy "Admin can update reports" on content_reports for update
 using (is_admin());
 
--- [User Generation Templates] (v3.6)
+-- [Asset Prompt Templates] (v3.6)
 -- Full access for service_role (backend API)
-drop policy if exists "Service role full access to templates" on user_generation_templates;
-create policy "Service role full access to templates" on user_generation_templates for all
+drop policy if exists "Service role full access to asset prompt templates" on asset_prompt_templates;
+create policy "Service role full access to asset prompt templates" on asset_prompt_templates for all
 to service_role
 using (true)
 with check (true);
 
--- [Page Design Templates] (v3.7)
+-- [Page Prompt Templates] (v3.7)
 -- Full access for service_role (backend API)
-drop policy if exists "Service role full access to page design templates" on page_design_templates;
-create policy "Service role full access to page design templates" on page_design_templates for all
+drop policy if exists "Service role full access to page prompt templates" on page_prompt_templates;
+create policy "Service role full access to page prompt templates" on page_prompt_templates for all
 to service_role
 using (true)
 with check (true);
@@ -1000,8 +1009,8 @@ CREATE TRIGGER trigger_reports_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_reports_updated_at();
 
--- Function to update user_generation_templates updated_at
-CREATE OR REPLACE FUNCTION update_templates_updated_at()
+-- Function to update asset_prompt_templates updated_at
+CREATE OR REPLACE FUNCTION update_asset_prompt_templates_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -1009,14 +1018,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_templates_updated_at ON user_generation_templates;
-CREATE TRIGGER trigger_templates_updated_at
-    BEFORE UPDATE ON user_generation_templates
+DROP TRIGGER IF EXISTS trigger_asset_prompt_templates_updated_at ON asset_prompt_templates;
+CREATE TRIGGER trigger_asset_prompt_templates_updated_at
+    BEFORE UPDATE ON asset_prompt_templates
     FOR EACH ROW
-    EXECUTE FUNCTION update_templates_updated_at();
+    EXECUTE FUNCTION update_asset_prompt_templates_updated_at();
 
--- Function to update page_design_templates updated_at
-CREATE OR REPLACE FUNCTION update_page_design_templates_updated_at()
+-- Function to update page_prompt_templates updated_at
+CREATE OR REPLACE FUNCTION update_page_prompt_templates_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -1024,17 +1033,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_page_design_templates_updated_at ON page_design_templates;
-CREATE TRIGGER trigger_page_design_templates_updated_at
-    BEFORE UPDATE ON page_design_templates
+DROP TRIGGER IF EXISTS trigger_page_prompt_templates_updated_at ON page_prompt_templates;
+CREATE TRIGGER trigger_page_prompt_templates_updated_at
+    BEFORE UPDATE ON page_prompt_templates
     FOR EACH ROW
-    EXECUTE FUNCTION update_page_design_templates_updated_at();
+    EXECUTE FUNCTION update_page_prompt_templates_updated_at();
 
 -- ==========================================
 -- Part 5: v3.2 Helper Functions (System Config)
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION update_system_config_timestamp()
+CREATE OR REPLACE FUNCTION update_system_configs_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -1042,11 +1051,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_update_system_config_timestamp ON system_config;
-CREATE TRIGGER trigger_update_system_config_timestamp
-    BEFORE UPDATE ON system_config
+DROP TRIGGER IF EXISTS trigger_update_system_configs_timestamp ON system_configs;
+CREATE TRIGGER trigger_update_system_configs_timestamp
+    BEFORE UPDATE ON system_configs
     FOR EACH ROW
-    EXECUTE FUNCTION update_system_config_timestamp();
+    EXECUTE FUNCTION update_system_configs_timestamp();
 
 -- Helper to fetch rate-limit config
 CREATE OR REPLACE FUNCTION get_rate_limit_config(p_config_key TEXT)
@@ -1055,12 +1064,12 @@ DECLARE
     v_config JSONB;
 BEGIN
     SELECT config_value INTO v_config
-    FROM system_config
+    FROM system_configs
     WHERE config_key = p_config_key AND is_active = true;
     
     IF v_config IS NULL THEN
         SELECT config_value INTO v_config
-        FROM system_config
+        FROM system_configs
         WHERE config_key = 'rate_limit.global.default' AND is_active = true;
     END IF;
     
@@ -1132,7 +1141,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_
 -- Part 7: Default System Configs (Rate Limits)
 -- ==========================================
 
-INSERT INTO system_config (config_key, config_value, category, description) VALUES
+INSERT INTO system_configs (config_key, config_value, category, description) VALUES
 -- Payments (high risk, strict limits)
 ('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Checkout API limit'),
 ('rate_limit.payment.portal', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Billing portal limit'),

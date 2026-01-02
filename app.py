@@ -1815,45 +1815,54 @@ async def clear_generation_history(
 # User Generation Templates API
 # ==========================================
 
-class TemplateCreate(BaseModel):
+class AssetPromptTemplateCreate(BaseModel):
+    """Create request for asset prompt template (5W1H naming convention)."""
     name: str
     description: Optional[str] = None
-    character_type: Optional[str] = None
-    character_custom: Optional[str] = None
-    action_type: Optional[str] = None
-    action_custom: Optional[str] = None
-    setting_type: Optional[str] = None
-    setting_custom: Optional[str] = None
+    who_type: Optional[str] = None      # Character type (was character_type)
+    who_custom: Optional[str] = None    # Custom character (was character_custom)
+    what_type: Optional[str] = None     # Action type (was action_type)
+    what_custom: Optional[str] = None   # Custom action (was action_custom)
+    where_type: Optional[str] = None    # Setting type (was setting_type)
+    where_custom: Optional[str] = None  # Custom setting (was setting_custom)
     style: Optional[str] = "cartoon"
     moods: Optional[List[str]] = ["warm"]
     aspect_ratio: Optional[str] = "square"
     creativity_level: Optional[float] = 0.3
+    negative_prompt: Optional[str] = None
 
 
-class TemplateUpdate(BaseModel):
+class AssetPromptTemplateUpdate(BaseModel):
+    """Update request for asset prompt template (5W1H naming convention)."""
     name: Optional[str] = None
     description: Optional[str] = None
-    character_type: Optional[str] = None
-    character_custom: Optional[str] = None
-    action_type: Optional[str] = None
-    action_custom: Optional[str] = None
-    setting_type: Optional[str] = None
-    setting_custom: Optional[str] = None
+    who_type: Optional[str] = None
+    who_custom: Optional[str] = None
+    what_type: Optional[str] = None
+    what_custom: Optional[str] = None
+    where_type: Optional[str] = None
+    where_custom: Optional[str] = None
     style: Optional[str] = None
     moods: Optional[List[str]] = None
     aspect_ratio: Optional[str] = None
     creativity_level: Optional[float] = None
+    negative_prompt: Optional[str] = None
 
 
-@app.get("/api/generations/templates")
+# Backward compatibility aliases
+TemplateCreate = AssetPromptTemplateCreate
+TemplateUpdate = AssetPromptTemplateUpdate
+
+
+@app.get("/api/asset-prompt/templates")
 @limiter.limit("60/minute")
-async def get_templates(
+async def get_asset_prompt_templates(
     request: Request,
     user: dict = Depends(get_current_user)
 ):
-    """Get user's saved generation templates."""
+    """Get user's saved asset prompt templates."""
     try:
-        result = supabase.table("user_generation_templates") \
+        result = supabase.table("asset_prompt_templates") \
             .select("*") \
             .eq("user_id", user["id"]) \
             .order("use_count", desc=True) \
@@ -1861,21 +1870,21 @@ async def get_templates(
         
         return {"templates": result.data}
     except Exception as e:
-        logger.error(f"Failed to fetch templates: {e}")
+        logger.error(f"Failed to fetch asset prompt templates: {e}")
         raise HTTPException(500, f"Failed to fetch templates: {str(e)}")
 
 
-@app.post("/api/generations/templates")
+@app.post("/api/asset-prompt/templates")
 @limiter.limit("30/minute")
-async def create_template(
+async def create_asset_prompt_template(
     request: Request,
-    req: TemplateCreate,
+    req: AssetPromptTemplateCreate,
     user: dict = Depends(get_current_user)
 ):
-    """Create a new generation template."""
+    """Create a new asset prompt template."""
     try:
         # Check template limit (max 20 per user)
-        count_result = supabase.table("user_generation_templates") \
+        count_result = supabase.table("asset_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user["id"]) \
             .execute()
@@ -1887,19 +1896,20 @@ async def create_template(
             "user_id": user["id"],
             "name": req.name,
             "description": req.description,
-            "character_type": req.character_type,
-            "character_custom": req.character_custom,
-            "action_type": req.action_type,
-            "action_custom": req.action_custom,
-            "setting_type": req.setting_type,
-            "setting_custom": req.setting_custom,
+            "who_type": req.who_type,
+            "who_custom": req.who_custom,
+            "what_type": req.what_type,
+            "what_custom": req.what_custom,
+            "where_type": req.where_type,
+            "where_custom": req.where_custom,
             "style": req.style,
             "moods": req.moods,
             "aspect_ratio": req.aspect_ratio,
             "creativity_level": req.creativity_level,
+            "negative_prompt": req.negative_prompt,
         }
         
-        result = supabase.table("user_generation_templates") \
+        result = supabase.table("asset_prompt_templates") \
             .insert(template_data) \
             .execute()
         
@@ -1907,19 +1917,19 @@ async def create_template(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create template: {e}")
+        logger.error(f"Failed to create asset prompt template: {e}")
         raise HTTPException(500, f"Failed to create template: {str(e)}")
 
 
-@app.put("/api/generations/templates/{template_id}")
+@app.put("/api/asset-prompt/templates/{template_id}")
 @limiter.limit("30/minute")
-async def update_template(
+async def update_asset_prompt_template(
     request: Request,
     template_id: str,
-    req: TemplateUpdate,
+    req: AssetPromptTemplateUpdate,
     user: dict = Depends(get_current_user)
 ):
-    """Update an existing template."""
+    """Update an existing asset prompt template."""
     try:
         # Build update data, excluding None values
         update_data = {k: v for k, v in req.dict().items() if v is not None}
@@ -1927,7 +1937,7 @@ async def update_template(
         if not update_data:
             raise HTTPException(400, "No fields to update")
         
-        result = supabase.table("user_generation_templates") \
+        result = supabase.table("asset_prompt_templates") \
             .update(update_data) \
             .eq("id", template_id) \
             .eq("user_id", user["id"]) \
@@ -1940,20 +1950,20 @@ async def update_template(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update template: {e}")
+        logger.error(f"Failed to update asset prompt template: {e}")
         raise HTTPException(500, f"Failed to update template: {str(e)}")
 
 
-@app.delete("/api/generations/templates/{template_id}")
+@app.delete("/api/asset-prompt/templates/{template_id}")
 @limiter.limit("30/minute")
-async def delete_template(
+async def delete_asset_prompt_template(
     request: Request,
     template_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """Delete a template."""
+    """Delete an asset prompt template."""
     try:
-        result = supabase.table("user_generation_templates") \
+        result = supabase.table("asset_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user["id"]) \
@@ -1961,21 +1971,21 @@ async def delete_template(
         
         return {"success": True, "deleted": template_id}
     except Exception as e:
-        logger.error(f"Failed to delete template: {e}")
+        logger.error(f"Failed to delete asset prompt template: {e}")
         raise HTTPException(500, f"Failed to delete template: {str(e)}")
 
 
-@app.post("/api/generations/templates/{template_id}/use")
+@app.post("/api/asset-prompt/templates/{template_id}/use")
 @limiter.limit("60/minute")
-async def use_template(
+async def use_asset_prompt_template(
     request: Request,
     template_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """Mark a template as used (increments use_count)."""
+    """Mark an asset prompt template as used (increments use_count)."""
     try:
         # First get current count
-        get_result = supabase.table("user_generation_templates") \
+        get_result = supabase.table("asset_prompt_templates") \
             .select("use_count") \
             .eq("id", template_id) \
             .eq("user_id", user["id"]) \
@@ -1988,7 +1998,7 @@ async def use_template(
         current_count = get_result.data.get("use_count", 0)
         
         # Update count and last_used_at
-        result = supabase.table("user_generation_templates") \
+        result = supabase.table("asset_prompt_templates") \
             .update({
                 "use_count": current_count + 1,
                 "last_used_at": datetime.utcnow().isoformat()
@@ -2001,15 +2011,16 @@ async def use_template(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update template usage: {e}")
+        logger.error(f"Failed to update asset prompt template usage: {e}")
         raise HTTPException(500, f"Failed to update: {str(e)}")
 
 
 # ==================================================
-# Page Design Templates API (for AI Design Page)
+# Page Prompt Templates API (for AI Design Page)
 # ==================================================
 
-class PageDesignTemplateCreate(BaseModel):
+class PagePromptTemplateCreate(BaseModel):
+    """Create request for page prompt template."""
     name: str
     layout: Optional[str] = "image_top"
     story_theme: Optional[str] = None
@@ -2020,15 +2031,19 @@ class PageDesignTemplateCreate(BaseModel):
     generation_mode: Optional[str] = "guided"
 
 
-@app.get("/api/page-design/templates")
+# Backward compatibility alias
+PageDesignTemplateCreate = PagePromptTemplateCreate
+
+
+@app.get("/api/page-prompt/templates")
 @limiter.limit("60/minute")
-async def get_page_design_templates(
+async def get_page_prompt_templates(
     request: Request,
     user: dict = Depends(get_current_user)
 ):
-    """Get user's saved page design templates."""
+    """Get user's saved page prompt templates."""
     try:
-        result = supabase.table("page_design_templates") \
+        result = supabase.table("page_prompt_templates") \
             .select("*") \
             .eq("user_id", user["id"]) \
             .order("use_count", desc=True) \
@@ -2036,21 +2051,21 @@ async def get_page_design_templates(
         
         return {"templates": result.data}
     except Exception as e:
-        logger.error(f"Failed to fetch page design templates: {e}")
+        logger.error(f"Failed to fetch page prompt templates: {e}")
         raise HTTPException(500, f"Failed to fetch templates: {str(e)}")
 
 
-@app.post("/api/page-design/templates")
+@app.post("/api/page-prompt/templates")
 @limiter.limit("30/minute")
-async def create_page_design_template(
+async def create_page_prompt_template(
     request: Request,
-    req: PageDesignTemplateCreate,
+    req: PagePromptTemplateCreate,
     user: dict = Depends(get_current_user)
 ):
-    """Create a new page design template."""
+    """Create a new page prompt template."""
     try:
         # Check template limit (max 20 per user)
-        count_result = supabase.table("page_design_templates") \
+        count_result = supabase.table("page_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user["id"]) \
             .execute()
@@ -2070,7 +2085,7 @@ async def create_page_design_template(
             "generation_mode": req.generation_mode,
         }
         
-        result = supabase.table("page_design_templates") \
+        result = supabase.table("page_prompt_templates") \
             .insert(template_data) \
             .execute()
         
@@ -2078,20 +2093,20 @@ async def create_page_design_template(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create page design template: {e}")
+        logger.error(f"Failed to create page prompt template: {e}")
         raise HTTPException(500, f"Failed to create template: {str(e)}")
 
 
-@app.delete("/api/page-design/templates/{template_id}")
+@app.delete("/api/page-prompt/templates/{template_id}")
 @limiter.limit("30/minute")
-async def delete_page_design_template(
+async def delete_page_prompt_template(
     request: Request,
     template_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """Delete a page design template."""
+    """Delete a page prompt template."""
     try:
-        result = supabase.table("page_design_templates") \
+        result = supabase.table("page_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user["id"]) \
@@ -2099,21 +2114,21 @@ async def delete_page_design_template(
         
         return {"success": True, "deleted": template_id}
     except Exception as e:
-        logger.error(f"Failed to delete page design template: {e}")
+        logger.error(f"Failed to delete page prompt template: {e}")
         raise HTTPException(500, f"Failed to delete template: {str(e)}")
 
 
-@app.post("/api/page-design/templates/{template_id}/use")
+@app.post("/api/page-prompt/templates/{template_id}/use")
 @limiter.limit("60/minute")
-async def use_page_design_template(
+async def use_page_prompt_template(
     request: Request,
     template_id: str,
     user: dict = Depends(get_current_user)
 ):
-    """Mark a page design template as used (increments use_count)."""
+    """Mark a page prompt template as used (increments use_count)."""
     try:
         # First get current count
-        get_result = supabase.table("page_design_templates") \
+        get_result = supabase.table("page_prompt_templates") \
             .select("use_count") \
             .eq("id", template_id) \
             .eq("user_id", user["id"]) \
@@ -2126,7 +2141,7 @@ async def use_page_design_template(
         current_count = get_result.data.get("use_count", 0)
         
         # Update count and last_used_at
-        result = supabase.table("page_design_templates") \
+        result = supabase.table("page_prompt_templates") \
             .update({
                 "use_count": current_count + 1,
                 "last_used_at": datetime.utcnow().isoformat()
@@ -2139,7 +2154,7 @@ async def use_page_design_template(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update page design template usage: {e}")
+        logger.error(f"Failed to update page prompt template usage: {e}")
         raise HTTPException(500, f"Failed to update: {str(e)}")
 
 
@@ -4180,7 +4195,7 @@ def adm_get_user_asset_usage(uid: str, admin: dict = Depends(require_admin)):
     """Fetch asset usage stats for a specific user."""
     try:
         # Retrieve assets used by the user
-        usage_res = supabase.table("listing_usage").select(
+        usage_res = supabase.table("listing_usages").select(
             "listing_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type)"
         ).eq("used_by_user_id", uid).execute()
         

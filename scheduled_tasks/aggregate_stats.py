@@ -475,9 +475,9 @@ def aggregate_marketplace_stats():
         total_purchases = 0
         total_revenue = 0
     
-    # Get usage stats from listing_usage
+    # Get usage stats from listing_usages
     try:
-        usage = supabase.table("listing_usage").select("id", count="exact")\
+        usage = supabase.table("listing_usages").select("id", count="exact")\
             .gte("used_at", start_date).execute()
         total_usage = usage.count or 0
     except Exception:
@@ -1176,8 +1176,8 @@ def aggregate_asset_usage():
     
     # Retrieve usage logs together with associated listing metadata
     try:
-        # Join listing_usage records with marketplace_listings details
-        usage_data = supabase.table("listing_usage").select(
+        # Join listing_usages records with marketplace_listings details
+        usage_data = supabase.table("listing_usages").select(
             "listing_id, used_by_user_id, used_at, marketplace_listings(id, title, thumbnail_url, resource_type, seller_id)"
         ).execute()
         
