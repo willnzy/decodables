@@ -74,10 +74,10 @@ def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current
         limit: Items per page
     
     Returns:
-        Credit history with pagination
+        Credit history with pagination (items, total count, page)
     """
-    items = get_credit_history(user["id"], page, limit)
-    return {"items": items, "total": len(items), "page": page}
+    result = get_credit_history(user["id"], page, limit)
+    return {"items": result["items"], "total": result["total"], "page": page}
 
 
 @router.get("/assets")

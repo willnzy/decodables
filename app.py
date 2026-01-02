@@ -882,8 +882,8 @@ def get_me(user: dict = Depends(get_current_user)):
 
 @app.get("/api/user/history")
 def get_history(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
-    items = get_credit_history(user["id"], page, limit)
-    return {"items": items, "total": len(items), "page": page}
+    result = get_credit_history(user["id"], page, limit)
+    return {"items": result["items"], "total": result["total"], "page": page}
 
 @app.get("/api/user/assets")
 def my_assets(project_id: Optional[str]=None, scope: Optional[str]=None, user: dict = Depends(get_current_user)):

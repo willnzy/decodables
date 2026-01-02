@@ -723,16 +723,31 @@ def add_credits(user_id: str, amount: int, description: str, type: str = "purcha
 
 @retry_on_network_error()
 def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
-    """Get credit history"""
+    """Get credit history with total count for pagination
+    
+    Returns:
+        dict: { "items": [...], "total": int }
+    """
     start = (page - 1) * limit
     end = start + limit - 1
+    
+    # Get paginated items
     res = supabase.table("credit_transactions")\
         .select("*")\
         .eq("user_id", user_id)\
         .order("created_at", desc=True)\
         .range(start, end)\
         .execute()
-    return res.data
+    
+    # Get total count (using count option)
+    count_res = supabase.table("credit_transactions")\
+        .select("id", count="exact")\
+        .eq("user_id", user_id)\
+        .execute()
+    
+    total = count_res.count if count_res.count is not None else len(res.data)
+    
+    return {"items": res.data, "total": total}
 
 # ==========================================
 # 3. Project Management (Projects)
