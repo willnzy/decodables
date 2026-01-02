@@ -316,7 +316,36 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('ERROR_TITLE_REQUIRED', 'Title is required', 'text', 'error_msg', 'Error when title is empty'),
   ('ERROR_DESCRIPTION_REQUIRED', 'Description is required', 'text', 'error_msg', 'Error when description is empty'),
   ('ERROR_PUBLISH_FAILED', 'Failed to publish. Please try again.', 'text', 'error_msg', 'Error when publish fails'),
-  ('ERROR_CONTACT_FORM_FAILED', 'Failed to send message. Please try again or email us directly.', 'text', 'error_msg', 'Error when contact form fails')
+  ('ERROR_CONTACT_FORM_FAILED', 'Failed to send message. Please try again or email us directly.', 'text', 'error_msg', 'Error when contact form fails'),
+  
+  -- ==========================================
+  -- Confirm Dialog Text (Round 4)
+  -- ==========================================
+  ('DIALOG_DELETE_ASSET_TITLE', 'Delete Asset?', 'text', 'dialog', 'Delete asset dialog title'),
+  ('DIALOG_DELETE_ASSET_SUBTITLE', 'Remove this asset from your library', 'text', 'dialog', 'Delete asset dialog subtitle'),
+  ('DIALOG_DELETE_ASSET_DESC', 'This action cannot be undone. The asset will be permanently removed from your library.', 'text', 'dialog', 'Delete asset dialog description'),
+  ('DIALOG_PUBLISH_ASSET_TITLE', 'Publish to Marketplace?', 'text', 'dialog', 'Publish asset dialog title'),
+  ('DIALOG_PUBLISH_ASSET_SUBTITLE', 'Share your asset with the community', 'text', 'dialog', 'Publish asset dialog subtitle'),
+  ('DIALOG_PUBLISH_ASSET_DESC', 'Your asset will be reviewed and made available in the Marketplace for other users to use.', 'text', 'dialog', 'Publish asset dialog description'),
+  ('DIALOG_OVERWRITE_PAGE_TITLE', 'Overwrite Page Content?', 'text', 'dialog', 'Overwrite page dialog title'),
+  ('DIALOG_OVERWRITE_PAGE_DESC', 'The imported design will replace any existing content. This action cannot be undone.', 'text', 'dialog', 'Overwrite page dialog description'),
+  ('DIALOG_UNPUBLISH_PROJECT_TITLE', 'Unpublish Project?', 'text', 'dialog', 'Unpublish project dialog title'),
+  ('DIALOG_UNPUBLISH_PROJECT_DESC', 'This will remove your project from the Marketplace. Users who already purchased it can still use it. You can republish it anytime.', 'text', 'dialog', 'Unpublish project dialog description'),
+  ('DIALOG_RESTORE_PROJECT_TITLE', 'Restore Project', 'text', 'dialog', 'Restore project dialog title'),
+  ('DIALOG_RESTORE_PROJECT_DESC', 'The project will be moved back to your active projects list.', 'text', 'dialog', 'Restore project dialog description'),
+  ('DIALOG_DELETE_PROJECT_TITLE', 'Delete Project', 'text', 'dialog', 'Delete project dialog title'),
+  ('DIALOG_DELETE_PROJECT_DESC', 'This action cannot be undone. All project data will be permanently deleted.', 'text', 'dialog', 'Delete project dialog description'),
+  ('DIALOG_ACCOUNT_STATUS_TITLE', 'Account Status', 'text', 'dialog', 'Account status dialog title'),
+  
+  -- ==========================================
+  -- Placeholder Text (Round 4)
+  -- ==========================================
+  ('PLACEHOLDER_LISTING_TITLE', 'Enter a title for your listing', 'text', 'placeholder', 'Listing title input placeholder'),
+  ('PLACEHOLDER_LISTING_DESC', 'Describe what you''re publishing...', 'text', 'placeholder', 'Listing description input placeholder'),
+  ('PLACEHOLDER_ASSET_DESC', 'Describe your asset...', 'text', 'placeholder', 'Asset description input placeholder'),
+  ('PLACEHOLDER_AI_PROMPT', 'e.g., A curious cat exploring a magical garden with glowing flowers, children''s book illustration style', 'text', 'placeholder', 'AI prompt input placeholder'),
+  ('PLACEHOLDER_AI_SUBJECT', 'e.g., A friendly dragon helping a child', 'text', 'placeholder', 'AI subject input placeholder'),
+  ('PLACEHOLDER_AI_MOOD', 'e.g., peaceful, adventurous, mysterious', 'text', 'placeholder', 'AI mood input placeholder')
 
 ON CONFLICT (key) DO NOTHING;
 
