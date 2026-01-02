@@ -65,7 +65,7 @@ from payment_service import (
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
 from story_generator import generate_story_json, client as openai_client # reuse client
-from prompt_enhancer import enhance_prompt  # AI Design Page prompt enhancement
+from prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
 
 # Environment variables
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
@@ -365,12 +365,18 @@ class ImageGenRequest(BaseModel):
     reference_image: Optional[str] = None  # Base64 encoded image or URL
     reference_strength: Optional[float] = 0.7  # 0.0-1.0, higher = more similar to reference
     image_size: Optional[str] = "landscape_4_3"  # Image aspect ratio: landscape_4_3, square, portrait_4_3, etc.
-    # AI Design Page enhancement parameters
+    # AI Design Page enhancement parameters (theme-based)
     theme: Optional[str] = None  # Page theme for prompt enhancement (e.g., "Counting fun")
     character: Optional[str] = None  # Character description for prompt enhancement
-    style: Optional[str] = None  # Art style: cartoon, watercolor, sketch, fantasy, realistic, flat
+    style: Optional[str] = None  # Art style: cartoon, watercolor, sketch, fantasy, realistic, flat, scifi
     generation_mode: Optional[str] = "guided"  # "guided" (accurate) or "flexible" (creative)
     creativity_level: Optional[float] = 0.3  # 0.0-1.0, 0=precise/accurate, 1=very creative
+    # 5W1H Asset Generation parameters (Generate Assets with AI)
+    who: Optional[str] = None  # Main character description (e.g., "a curious cat")
+    what: Optional[str] = None  # Action/activity (e.g., "exploring", "playing")
+    where: Optional[str] = None  # Setting/scene (e.g., "in a garden", "underwater")
+    moods: Optional[List[str]] = None  # Mood tags (e.g., ["warm", "joyful"])
+    enhance_prompt: Optional[bool] = False  # Whether to use LLM enhancement for 5W1H mode
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1411,13 +1417,15 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     creativity_level = req.creativity_level if req.creativity_level is not None else 0.3
     creativity_level = max(0.0, min(1.0, creativity_level))  # Clamp to valid range
     
-    # Prepare prompts - use enhancement if theme is provided (AI Design Page mode)
+    # Prepare prompts - use enhancement based on mode
+    # Mode 1: AI Design Page (theme-based enhancement)
+    # Mode 2: 5W1H Asset Generation (who/what/where-based enhancement)
     prompts_to_use = req.prompts
     prompt_enhanced = False
     enhancement_result = None
     
     if req.theme:
-        # AI Design Page mode: enhance the prompt using LLM
+        # AI Design Page mode: enhance the prompt using LLM (theme-based)
         try:
             enhancement_result = enhance_prompt(
                 theme=req.theme,
@@ -1429,9 +1437,29 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
             # Replace the original prompt with the enhanced one
             prompts_to_use = [enhancement_result["enhanced_prompt"]]
             prompt_enhanced = True
-            logger.info(f"Prompt enhanced for user {user['id']}: {req.theme} -> {len(enhancement_result['enhanced_prompt'])} chars")
+            logger.info(f"Prompt enhanced (theme) for user {user['id']}: {req.theme} -> {len(enhancement_result['enhanced_prompt'])} chars")
         except Exception as e:
             logger.warning(f"Prompt enhancement failed, using original: {e}")
+            # Fall back to original prompts if enhancement fails
+    
+    elif req.who and req.enhance_prompt:
+        # 5W1H Asset Generation mode: enhance using structured 5W1H inputs
+        try:
+            enhancement_result = enhance_asset_prompt(
+                who=req.who,
+                what=req.what,
+                where=req.where,
+                style=req.style or "cartoon",
+                moods=req.moods,
+                mode=generation_mode,
+                creativity_level=creativity_level
+            )
+            # Replace the original prompt with the enhanced one
+            prompts_to_use = [enhancement_result["enhanced_prompt"]]
+            prompt_enhanced = True
+            logger.info(f"Prompt enhanced (5W1H) for user {user['id']}: {req.who} -> {len(enhancement_result['enhanced_prompt'])} chars")
+        except Exception as e:
+            logger.warning(f"5W1H prompt enhancement failed, using original: {e}")
             # Fall back to original prompts if enhancement fails
     
     # Generate images (with or without reference)
@@ -1468,6 +1496,124 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         response["key_elements"] = enhancement_result.get("key_elements", [])
     
     return response
+
+
+# ==========================================
+# AI Inspiration Generator - generates creative suggestions using LLM
+# ==========================================
+class InspirationRequest(BaseModel):
+    category: Optional[str] = None  # 'character', 'scene', 'story', 'all'
+    style: Optional[str] = None  # Art style preference
+
+
+@app.post("/api/generate/inspiration")
+@limiter.limit("30/minute")
+async def gen_inspiration(request: Request, req: InspirationRequest, user: dict = Depends(get_current_user)):
+    """
+    Generate creative inspiration suggestions using AI.
+    
+    This is a free endpoint (no credits required) that helps users
+    get started with image generation ideas.
+    
+    Returns structured suggestions for characters, actions, settings, and styles.
+    """
+    try:
+        category = req.category or "all"
+        
+        # Build the prompt based on category
+        if category == "character":
+            prompt = """Generate 3 creative character ideas for children's book illustrations.
+Each character should be unique, imaginative, and child-friendly.
+
+Return JSON:
+{
+  "suggestions": [
+    {"character": "description", "personality": "trait"}
+  ]
+}"""
+        elif category == "scene":
+            prompt = """Generate 3 creative scene/setting ideas for children's book illustrations.
+Each scene should be vivid, magical, and spark imagination.
+
+Return JSON:
+{
+  "suggestions": [
+    {"setting": "description", "atmosphere": "mood description"}
+  ]
+}"""
+        elif category == "story":
+            prompt = """Generate 3 creative mini-story ideas for children's book illustrations.
+Each story should have a character, action, and setting that work together.
+
+Return JSON:
+{
+  "suggestions": [
+    {"character": "who", "action": "what they're doing", "setting": "where", "mood": "atmosphere"}
+  ]
+}"""
+        else:  # "all" - complete inspiration
+            prompt = """Generate 3 complete creative ideas for children's book illustrations.
+Each idea should include a character, what they're doing, where, and suggested art style.
+Be creative, whimsical, and child-friendly!
+
+Return JSON:
+{
+  "suggestions": [
+    {
+      "character": "A curious orange tabby cat with big sparkly eyes",
+      "action": "discovering a hidden treasure chest",
+      "setting": "in an enchanted forest clearing with glowing mushrooms",
+      "style": "watercolor",
+      "moods": ["adventurous", "mysterious"]
+    }
+  ]
+}"""
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a creative children's book illustrator. Generate imaginative, whimsical, and age-appropriate ideas."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.9,  # High temperature for creativity
+            max_tokens=500
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        return {"suggestions": result.get("suggestions", []), "category": category}
+        
+    except Exception as e:
+        logger.error(f"Inspiration generation failed: {e}")
+        # Return fallback suggestions
+        return {
+            "suggestions": [
+                {
+                    "character": "A friendly robot with colorful lights",
+                    "action": "learning to dance",
+                    "setting": "in a cozy playroom",
+                    "style": "cartoon",
+                    "moods": ["joyful", "funny"]
+                },
+                {
+                    "character": "A brave little mouse with a tiny hat",
+                    "action": "exploring a magical library",
+                    "setting": "among giant books and floating lanterns",
+                    "style": "fantasy",
+                    "moods": ["adventurous", "mysterious"]
+                },
+                {
+                    "character": "A wise owl wearing spectacles",
+                    "action": "teaching baby animals",
+                    "setting": "in a sunlit forest clearing",
+                    "style": "watercolor",
+                    "moods": ["warm", "peaceful"]
+                }
+            ],
+            "category": category,
+            "fallback": True
+        }
+
 
 # Advanced OCR endpoint - detects tables, text, and images
 @app.post("/api/tools/ocr")
