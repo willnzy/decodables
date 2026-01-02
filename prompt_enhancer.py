@@ -97,7 +97,8 @@ def enhance_prompt(
     theme: str,
     character: Optional[str] = None,
     style: str = 'cartoon',
-    mode: str = 'guided'
+    mode: str = 'guided',
+    creativity_level: float = 0.3
 ) -> dict:
     """
     Enhance a simple user description into a detailed image prompt.
@@ -107,6 +108,7 @@ def enhance_prompt(
         character: Main character description (optional)
         style: Art style ID (cartoon, watercolor, sketch, fantasy, realistic, flat)
         mode: "guided" (more accurate) or "flexible" (more creative)
+        creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
     
     Returns:
         dict with enhanced_prompt, key_elements, and composition
@@ -119,6 +121,15 @@ Character: {character or 'Not specified - use appropriate characters for the the
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Mode: {mode}"""
 
+    # Calculate temperature based on mode and creativity_level
+    # Guided mode: 0.2-0.5 range (lower for accuracy)
+    # Flexible mode: uses creativity_level to interpolate 0.3-0.9
+    if mode == 'guided':
+        temperature = 0.3  # Fixed low temperature for guided mode
+    else:
+        # Map creativity_level (0-1) to temperature (0.3-0.9)
+        temperature = 0.3 + (creativity_level * 0.6)
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -127,7 +138,7 @@ Mode: {mode}"""
                 {"role": "system", "content": PROMPT_ENHANCER_SYSTEM},
                 {"role": "user", "content": user_input}
             ],
-            temperature=0.4 if mode == 'guided' else 0.7,  # Lower temp for guided mode
+            temperature=temperature,
             max_tokens=300
         )
         

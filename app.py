@@ -370,6 +370,7 @@ class ImageGenRequest(BaseModel):
     character: Optional[str] = None  # Character description for prompt enhancement
     style: Optional[str] = None  # Art style: cartoon, watercolor, sketch, fantasy, realistic, flat
     generation_mode: Optional[str] = "guided"  # "guided" (accurate) or "flexible" (creative)
+    creativity_level: Optional[float] = 0.3  # 0.0-1.0, 0=precise/accurate, 1=very creative
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1406,6 +1407,10 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     if generation_mode not in ["guided", "flexible"]:
         generation_mode = "guided"
     
+    # Get creativity level (0.0-1.0, default 0.3)
+    creativity_level = req.creativity_level if req.creativity_level is not None else 0.3
+    creativity_level = max(0.0, min(1.0, creativity_level))  # Clamp to valid range
+    
     # Prepare prompts - use enhancement if theme is provided (AI Design Page mode)
     prompts_to_use = req.prompts
     prompt_enhanced = False
@@ -1418,7 +1423,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
                 theme=req.theme,
                 character=req.character,
                 style=req.style or "cartoon",
-                mode=generation_mode
+                mode=generation_mode,
+                creativity_level=creativity_level
             )
             # Replace the original prompt with the enhanced one
             prompts_to_use = [enhancement_result["enhanced_prompt"]]
@@ -1435,7 +1441,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         reference_image=req.reference_image,
         reference_strength=req.reference_strength or 0.7,
         image_size=req.image_size or "landscape_4_3",
-        generation_mode=generation_mode  # Pass mode for parameter adjustment
+        generation_mode=generation_mode,  # Pass mode for parameter adjustment
+        creativity_level=creativity_level  # Pass creativity level for flexible mode
     )
     
     # Save assets with original theme as description if enhanced
@@ -1451,6 +1458,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         "model_used": model,
         "used_reference": bool(req.reference_image),
         "generation_mode": generation_mode,
+        "creativity_level": creativity_level,
         "prompt_enhanced": prompt_enhanced
     }
     

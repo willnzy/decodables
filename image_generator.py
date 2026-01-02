@@ -63,19 +63,38 @@ GENERATION_MODE_PARAMS = {
 }
 
 
-def get_generation_params(model: str, mode: str) -> dict:
+def get_generation_params(model: str, mode: str, creativity_level: float = 0.3) -> dict:
     """
-    Get generation parameters based on model and mode.
+    Get generation parameters based on model, mode, and creativity level.
     
     Args:
         model: Model name (flux-dev or flux-schnell)
         mode: Generation mode (guided or flexible)
+        creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
+                         Only affects flexible mode
     
     Returns:
         dict with num_inference_steps and guidance_scale
     """
-    mode_params = GENERATION_MODE_PARAMS.get(mode, GENERATION_MODE_PARAMS["guided"])
-    return mode_params.get(model, mode_params.get("flux-schnell"))
+    if mode == "guided":
+        # Guided mode: use fixed high-accuracy settings
+        mode_params = GENERATION_MODE_PARAMS["guided"]
+        return mode_params.get(model, mode_params.get("flux-schnell"))
+    else:
+        # Flexible mode: interpolate guidance_scale based on creativity_level
+        # Higher creativity = lower guidance_scale (more artistic freedom)
+        base_params = GENERATION_MODE_PARAMS["flexible"].get(model, GENERATION_MODE_PARAMS["flexible"]["flux-schnell"])
+        
+        # Interpolate guidance_scale: creativity 0 -> cfg 4.0, creativity 1 -> cfg 1.5
+        # This gives a range from "somewhat creative" to "very creative"
+        max_cfg = 4.0  # More precise
+        min_cfg = 1.5  # Very creative
+        guidance_scale = max_cfg - (creativity_level * (max_cfg - min_cfg))
+        
+        return {
+            "num_inference_steps": base_params["num_inference_steps"],
+            "guidance_scale": guidance_scale
+        }
 
 
 async def upload_reference_image(session, reference_image: str, task_id: str) -> str:
@@ -125,7 +144,8 @@ async def generate_and_upload_single(
     reference_image_url=None,
     reference_strength=0.7,
     image_size="landscape_4_3",
-    generation_mode="guided"
+    generation_mode="guided",
+    creativity_level=0.3
 ):
     """
     Generate a single image and upload to Supabase Storage.
@@ -140,10 +160,11 @@ async def generate_and_upload_single(
         reference_strength: Strength of reference influence (0.0-1.0)
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
         generation_mode: "guided" (accurate) or "flexible" (creative)
+        creativity_level: 0.0-1.0, controls creativity in flexible mode
     """
     try:
-        # Get mode-specific parameters
-        gen_params = get_generation_params(model, generation_mode)
+        # Get mode-specific parameters (creativity_level only affects flexible mode)
+        gen_params = get_generation_params(model, generation_mode, creativity_level)
         num_inference_steps = gen_params["num_inference_steps"]
         guidance_scale = gen_params["guidance_scale"]
         
@@ -217,7 +238,8 @@ async def generate_8_images(
     reference_image: str = None,
     reference_strength: float = 0.7,
     image_size: str = "landscape_4_3",
-    generation_mode: str = "guided"
+    generation_mode: str = "guided",
+    creativity_level: float = 0.3
 ):
     """
     Generate images using specified model, optionally with reference image.
@@ -229,6 +251,7 @@ async def generate_8_images(
         reference_strength: How much to follow reference (0.0-1.0, higher = more similar)
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
         generation_mode: "guided" (accurate) or "flexible" (creative)
+        creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
     
     Returns:
         Tuple of (image_urls, task_id)
@@ -240,7 +263,10 @@ async def generate_8_images(
     if generation_mode not in ["guided", "flexible"]:
         generation_mode = "guided"
     
-    print(f"🚀 Starting image generation: model={model}, mode={generation_mode}, prompts={len(prompts)}")
+    # Clamp creativity_level to valid range
+    creativity_level = max(0.0, min(1.0, creativity_level))
+    
+    print(f"🚀 Starting image generation: model={model}, mode={generation_mode}, creativity={creativity_level:.2f}, prompts={len(prompts)}")
     
     async with aiohttp.ClientSession() as session:
         # Upload reference image if provided
@@ -261,7 +287,8 @@ async def generate_8_images(
                 reference_image_url=reference_image_url,
                 reference_strength=reference_strength,
                 image_size=image_size,
-                generation_mode=generation_mode
+                generation_mode=generation_mode,
+                creativity_level=creativity_level
             ))
         image_urls = await asyncio.gather(*tasks)
     
