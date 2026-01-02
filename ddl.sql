@@ -1,53 +1,21 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.8 - Naming Convention Refactor)
--- Includes: core schema + final RLS policies
+-- Make Decodables Database Initialization Script (v3.12 - Complete)
+-- Includes: core schema + RLS policies + v3.9-v3.12 updates
 -- 
--- Highlights (v3.0):
--- - Credit buckets: credits_monthly + credits_permanent
--- - Marketplace tables: marketplace_listings, user_purchases
--- - Notification system: notifications
--- - Discount system: user_discounts
--- - system_resources adds allowed_tiers
---
--- Highlights (v3.1):
--- - assets.metadata column for scanned results, canvas elements, etc.
--- - assets.type supports 'scanned' (AI Smart Scan OCR)
---
--- Highlights (v3.2):
--- - admin_operation_logs: admin audit trail
--- - user_events: detailed user event tracking
--- - aggregated_stats: scheduled precomputed stats
--- - system_configs: dynamic config (rate limits, analytics, etc.)
--- - notifications adds notification_type column
---
--- Highlights (v3.3):
--- - Dashboard refactor: soft delete enhancement (is_hidden_from_trash)
--- - Purchase tracking fields (is_purchased, origin_owner_id, listing_status)
--- - Seller stats fields (unique_buyers_count, total_revenue)
--- - Dashboard views (dashboard_projects, dashboard_assets, seller_stats_summary)
--- - Auto-sync triggers for listing status
--- - marketplace_listings adds version, changelog, version_history
--- - content_reports table for user reports
---
--- Highlights (v3.4):
--- - analytics_events table for frontend analytics tracking
---
--- Highlights (v3.5):
--- - error_logs table for centralized error monitoring
---
--- Highlights (v3.6):
--- - asset_prompt_templates table for AI image generation presets (5W1H naming)
---
--- Highlights (v3.7):
--- - page_prompt_templates table for AI Design Page presets
---
--- Highlights (v3.8):
--- - Naming convention refactor: plural tables, 5W1H column names
--- - listing_usage → listing_usages
--- - system_config → system_configs
--- - user_generation_templates → asset_prompt_templates
--- - page_design_templates → page_prompt_templates
--- - character_type/action_type/setting_type → who_type/what_type/where_type
+-- Version History:
+-- v3.0: Credit buckets, marketplace, notifications, discounts
+-- v3.1: assets.metadata, OCR support
+-- v3.2: admin_operation_logs, user_events, aggregated_stats, system_configs
+-- v3.3: Dashboard refactor, soft delete, purchase tracking, content_reports
+-- v3.4: analytics_events, cohort tracking
+-- v3.5: error_logs
+-- v3.6: asset_prompt_templates (5W1H naming)
+-- v3.7: page_prompt_templates
+-- v3.8: Naming convention refactor
+-- v3.9: Timezone support (timezone + created_at_local columns)
+-- v3.10: System configs refactor (key, value, value_type, config_group)
+-- v3.11: Analytics events enhancement (event_name, context)
+-- v3.12: Analytics aggregation tables (daily/monthly metrics, cohorts, funnels)
 -- ==============================================================================
 
 -- ==========================================
@@ -55,492 +23,573 @@
 -- ==========================================
 
 -- 1. User profiles
-create table if not exists profiles (
-  id text primary key, -- Matches Clerk user_id
-  email text,
-  username text,
-  first_name text,     -- From Clerk
-  last_name text,      -- From Clerk
-  avatar_url text,
-  
-  -- Unique user code (format: YYYYMMDDHHMMSS + ms + 6 digits)
-  -- Example: 20251230143025123000001
-  user_code text unique,
-
-  -- Credit buckets (important)
-  credits_monthly int default 0,    -- Subscription grant: resets monthly, no rollover
-  credits_permanent int default 0,  -- Earned via purchase/sales: never expires
-
-  tier text default 'free', -- 'free', 'starter', 'pro'
-
-  -- Subscription status (used for membership checks)
-  subscription_status text default 'inactive', -- 'active' | 'inactive' | 'past_due' | 'canceled' | 'trialing'
-  subscription_valid_until timestamptz,        -- Optional: offline membership check
-  monthly_credits_cycle_anchor timestamptz,    -- Optional: anchor for monthly refresh
-
-  stripe_customer_id text,
-  role text default 'user', -- 'user', 'admin'
-  
-  -- v3.4: User cohort for retention analysis
-  cohort_month text, -- Format: '2026-01' (auto-set from created_at)
-  
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS profiles (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  avatar_url TEXT,
+  user_code TEXT UNIQUE,
+  credits_monthly INT DEFAULT 0,
+  credits_permanent INT DEFAULT 0,
+  tier TEXT DEFAULT 'free',
+  subscription_status TEXT DEFAULT 'inactive',
+  subscription_valid_until TIMESTAMPTZ,
+  monthly_credits_cycle_anchor TIMESTAMPTZ,
+  stripe_customer_id TEXT,
+  role TEXT DEFAULT 'user',
+  cohort_month TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 2. User discounts
-create table if not exists user_discounts (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id) not null,
-  discount_percent int not null,
-  valid_until timestamptz,
-  target_plan text,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS user_discounts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id) NOT NULL,
+  discount_percent INT NOT NULL,
+  valid_until TIMESTAMPTZ,
+  target_plan TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Credit ledger (APPEND-ONLY - no updates or deletes allowed)
-create table if not exists credit_transactions (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id) not null,
-
-  amount int not null, -- Delta (+100, -50)
-
-  -- Identify which bucket was affected for auditing
-  bucket text not null default 'permanent', -- 'monthly' | 'permanent'
-
-  balance_monthly_after int not null default 0,
-  balance_permanent_after int not null default 0,
-
-  type text not null, -- 'signup_bonus', 'topup_purchase', 'sub_grant', 'generation', 'ocr', 'market_purchase', 'market_sale', 'admin_adj'
-  description text,
-  
-  -- v3.4: Idempotency key for duplicate prevention
-  idempotency_key text,
-  
-  created_at timestamptz default now()
+-- 3. Credit ledger (APPEND-ONLY)
+CREATE TABLE IF NOT EXISTS credit_transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id) NOT NULL,
+  amount INT NOT NULL,
+  bucket TEXT NOT NULL DEFAULT 'permanent',
+  balance_monthly_after INT NOT NULL DEFAULT 0,
+  balance_permanent_after INT NOT NULL DEFAULT 0,
+  type TEXT NOT NULL,
+  description TEXT,
+  idempotency_key TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
--- Idempotency index
-create unique index if not exists idx_transactions_idempotency 
-on credit_transactions(idempotency_key) where idempotency_key is not null;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_idempotency 
+ON credit_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- 4. User projects
-create table if not exists projects (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id) not null,
-  title text default 'My Magic Story',
-  canvas_data jsonb default '{}'::jsonb, -- Fabric.js JSON
-  thumbnail_url text,
-  last_downloaded_hash text, -- Cache/version identifier (no billing impact)
-  
-  -- Soft delete fields
-  is_deleted boolean default false,
-  deleted_at timestamptz default null, -- Deletion timestamp for 30-day retention
-  is_hidden_from_trash boolean default false, -- v3.3: True = hidden from trash UI
-
-  -- Optional flag for locked content
-  contains_locked_elements boolean default false,
-  
-  -- Source listing if project was created from a purchased template
-  source_listing_id uuid references marketplace_listings(id),
-  
-  -- v3.3: Purchase tracking & dashboard optimization
-  is_purchased boolean default false, -- Redundant flag for fast filtering
-  origin_owner_id text references profiles(id), -- Original creator (for purchased projects)
-  listing_status text default null, -- Cached: 'draft'|'pending'|'approved'|'rejected'
-  marketplace_listing_id uuid references marketplace_listings(id), -- Link to own listing
-
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS projects (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id) NOT NULL,
+  title TEXT DEFAULT 'My Magic Story',
+  canvas_data JSONB DEFAULT '{}'::jsonb,
+  thumbnail_url TEXT,
+  last_downloaded_hash TEXT,
+  is_deleted BOOLEAN DEFAULT false,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
+  is_hidden_from_trash BOOLEAN DEFAULT false,
+  contains_locked_elements BOOLEAN DEFAULT false,
+  source_listing_id UUID,
+  is_purchased BOOLEAN DEFAULT false,
+  origin_owner_id TEXT,
+  listing_status TEXT DEFAULT NULL,
+  marketplace_listing_id UUID,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  updated_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 5. Marketplace listings
--- PRD: must pass moderation + price caps + usage tracking
-create table if not exists marketplace_listings (
-  id uuid default gen_random_uuid() primary key,
-  seller_id text references profiles(id), -- NULL = official asset
-  title text not null,
-  description text,
-  thumbnail_url text not null,
-  resource_url text not null,
-  resource_type text not null, -- 'project' | 'asset' (e.g. 'image'|'sticker')
-  resource_id uuid, -- v3.3: Links to actual project.id or asset.id
-  price_credits int not null default 0, -- 0..500
-  allowed_tiers text[] not null default '{free, starter, pro}', -- Tier-gated access/purchase
-
-  usage_count bigint default 0, -- Times used (leaderboards)
-  sales_count int default 0, -- Number of sales
-  unique_buyers_count int default 0, -- v3.3: Distinct buyer count
-  total_revenue int default 0, -- v3.3: Accumulated seller earnings
-
-  is_public boolean default false,
-  is_deleted boolean default false,
-
-  -- Moderation fields
-  moderation_status text not null default 'draft', -- 'draft'|'pending'|'approved'|'rejected'
-  moderation_note text, -- Rejection reason / admin notes
-  moderated_by text references profiles(id), -- Moderator ID
-  moderated_at timestamptz, -- Moderation timestamp
-  
-  -- Version tracking fields (added v3.1)
-  version varchar(20) default '1.0', -- Current version number
-  changelog text default '', -- What's new in current version
-  version_history jsonb default '[]'::jsonb, -- [{version, changelog, published_at}]
-
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS marketplace_listings (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  seller_id TEXT REFERENCES profiles(id),
+  title TEXT NOT NULL,
+  description TEXT,
+  thumbnail_url TEXT NOT NULL,
+  resource_url TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id UUID,
+  price_credits INT NOT NULL DEFAULT 0,
+  allowed_tiers TEXT[] NOT NULL DEFAULT '{free, starter, pro}',
+  usage_count BIGINT DEFAULT 0,
+  sales_count INT DEFAULT 0,
+  unique_buyers_count INT DEFAULT 0,
+  total_revenue INT DEFAULT 0,
+  is_public BOOLEAN DEFAULT false,
+  is_deleted BOOLEAN DEFAULT false,
+  moderation_status TEXT NOT NULL DEFAULT 'draft',
+  moderation_note TEXT,
+  moderated_by TEXT REFERENCES profiles(id),
+  moderated_at TIMESTAMPTZ,
+  version VARCHAR(20) DEFAULT '1.0',
+  changelog TEXT DEFAULT '',
+  version_history JSONB DEFAULT '[]'::jsonb,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 6. User purchases
-create table if not exists user_purchases (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id) not null,
-  listing_id uuid references marketplace_listings(id) not null,
-  price_paid int not null,
-  purchased_at timestamptz default now(),
-  
-  -- v3.4: Idempotency key for duplicate prevention
-  idempotency_key text,
-  
-  -- v3.4: Snapshot - capture listing state at purchase time
-  snapshot_title text,
-  snapshot_thumbnail_url text,
-  snapshot_description text,
-  snapshot_version text,
-  snapshot_resource_type text,
-  snapshot_resource_id uuid,
-  
-  -- v3.4: Analytics tracking
-  utm_source text,
-  utm_medium text,
-  utm_campaign text,
-  referral_context text, -- 'homepage', 'search', 'category', 'direct_link'
-  
-  unique(user_id, listing_id)
+CREATE TABLE IF NOT EXISTS user_purchases (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id) NOT NULL,
+  listing_id UUID REFERENCES marketplace_listings(id) NOT NULL,
+  price_paid INT NOT NULL,
+  purchased_at TIMESTAMPTZ DEFAULT NOW(),
+  idempotency_key TEXT,
+  snapshot_title TEXT,
+  snapshot_thumbnail_url TEXT,
+  snapshot_description TEXT,
+  snapshot_version TEXT,
+  snapshot_resource_type TEXT,
+  snapshot_resource_id UUID,
+  utm_source TEXT,
+  utm_medium TEXT,
+  utm_campaign TEXT,
+  referral_context TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  purchased_at_local TIMESTAMP,
+  UNIQUE(user_id, listing_id)
 );
--- Idempotency index (allow NULL, only constrain non-null values)
-create unique index if not exists idx_purchases_idempotency 
-on user_purchases(idempotency_key) where idempotency_key is not null;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_purchases_idempotency 
+ON user_purchases(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- 7. User assets
--- Stores user uploads, AI generations, and OCR scans.
--- type field:
---   'uploaded'     - user upload
---   'ai_generated' - AI-generated image
---   'scanned'      - AI Smart Scan (OCR) result
--- metadata (scanned only):
---   source_image_url: original scan
---   ocr_result: structured OCR output
---   canvas_elements: precomputed canvas elements
-create table if not exists assets (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id) not null,
-  project_id uuid references projects(id), -- Optional project association
-  url text not null,
-  type text not null, -- 'uploaded' | 'ai_generated' | 'scanned'
-  prompt text, -- Prompt for AI generations
-  description text, -- v3.3: Separate description field
-  metadata jsonb, -- Structured scan/canvas data (added v3.1)
-  
-  -- v3.4: Usage tracking for asset management
-  usage_count int default 0, -- Number of times asset is used in projects
-  
-  -- Soft delete fields
-  is_deleted boolean default false,
-  deleted_at timestamptz default null, -- v3.3: Deletion timestamp for 30-day retention
-  is_hidden_from_trash boolean default false, -- v3.3: True = hidden from trash UI
-  
-  -- v3.3: Purchase tracking & dashboard optimization
-  source_listing_id uuid references marketplace_listings(id), -- Purchased from this listing
-  is_purchased boolean default false, -- Redundant flag for fast filtering
-  origin_owner_id text references profiles(id), -- Original creator (for purchased assets)
-  listing_status text default null, -- Cached: 'draft'|'pending'|'approved'|'rejected'
-  marketplace_listing_id uuid references marketplace_listings(id), -- Link to own listing
-  
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS assets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id) NOT NULL,
+  project_id UUID REFERENCES projects(id),
+  url TEXT NOT NULL,
+  type TEXT NOT NULL,
+  prompt TEXT,
+  description TEXT,
+  metadata JSONB,
+  is_deleted BOOLEAN DEFAULT false,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
+  is_hidden_from_trash BOOLEAN DEFAULT false,
+  source_listing_id UUID REFERENCES marketplace_listings(id),
+  is_purchased BOOLEAN DEFAULT false,
+  origin_owner_id TEXT REFERENCES profiles(id),
+  listing_status TEXT DEFAULT NULL,
+  marketplace_listing_id UUID REFERENCES marketplace_listings(id),
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_assets_user_proj on assets(user_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_assets_user_proj ON assets(user_id, project_id);
 
 -- 8. Notifications
-create table if not exists notifications (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id), -- NULL = broadcast
-  target_group text, -- 'all', 'free', 'starter', 'pro'
-  notification_type text default 'system', -- 'system', 'promotion', 'update', 'warning'
-  title text not null,
-  content text not null,
-  is_read boolean default false,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id),
+  target_group TEXT,
+  notification_type TEXT DEFAULT 'system',
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT false,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 9. System resources
-create table if not exists system_resources (
-  id uuid default gen_random_uuid() primary key,
-  type text not null, -- 'sticker', 'project'
-  category text,
-  url text not null,
-  allowed_tiers text[] default '{free, starter, pro}',
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS system_resources (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  type TEXT NOT NULL,
+  category TEXT,
+  url TEXT NOT NULL,
+  allowed_tiers TEXT[] DEFAULT '{free, starter, pro}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 10. Activity logs
-create table if not exists activity_logs (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id),
-  action text not null,
-  metadata jsonb,
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id),
+  action TEXT NOT NULL,
+  metadata JSONB,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 11. Support & admin ops
-create table if not exists support_tickets (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id),
-  admin_id text references profiles(id),
-  category text not null,
-  content text,
-  metadata jsonb,
-  status text default 'closed',
-  created_at timestamptz default now()
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id),
+  admin_id TEXT REFERENCES profiles(id),
+  category TEXT NOT NULL,
+  content TEXT,
+  metadata JSONB,
+  status TEXT DEFAULT 'closed',
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 12. Listing usages table (deduplicated counts)
--- PRD: track usage_count with unique key (listing_id, user_id, project_id)
-create table if not exists listing_usages (
-  id uuid default gen_random_uuid() primary key,
-  listing_id uuid references marketplace_listings(id) not null,
-  used_by_user_id text references profiles(id) not null,
-  project_id uuid references projects(id) not null,
-  used_at timestamptz default now(),
-  unique(listing_id, used_by_user_id, project_id)
+-- 12. Listing usages table
+CREATE TABLE IF NOT EXISTS listing_usages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  listing_id UUID REFERENCES marketplace_listings(id) NOT NULL,
+  used_by_user_id TEXT REFERENCES profiles(id) NOT NULL,
+  project_id UUID REFERENCES projects(id) NOT NULL,
+  used_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(listing_id, used_by_user_id, project_id)
 );
 
--- 13. Leaderboard snapshots (cache)
--- Optional cache for periodic leaderboards
-create table if not exists leaderboard_snapshots (
-  id uuid default gen_random_uuid() primary key,
-  period_start date not null,
-  period_end date not null,
-  board_type text not null, -- 'all' | 'project' | 'asset'
-  top_list jsonb not null, -- [{listing_id, usage_count, rank}, ...]
-  created_at timestamptz default now(),
-  unique(period_start, period_end, board_type)
+-- 13. Leaderboard snapshots
+CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  board_type TEXT NOT NULL,
+  top_list JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(period_start, period_end, board_type)
 );
 
--- 14. Admin operation logs (audit)
--- Added v3.2: capture all admin actions for auditing
-create table if not exists admin_operation_logs (
-  id uuid default gen_random_uuid() primary key,
-  admin_id text not null references profiles(id),
-  operation_type text not null, -- 'credit_adjust', 'tier_change', 'refund', 'subscription_cancel', etc.
-  target_user_id text references profiles(id),
-  details text,
-  reason text,
-  created_at timestamptz default now()
+-- 14. Admin operation logs
+CREATE TABLE IF NOT EXISTS admin_operation_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  admin_id TEXT NOT NULL REFERENCES profiles(id),
+  operation_type TEXT NOT NULL,
+  target_user_id TEXT REFERENCES profiles(id),
+  details TEXT,
+  reason TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_admin_logs_created_at on admin_operation_logs(created_at desc);
-create index if not exists idx_admin_logs_operation_type on admin_operation_logs(operation_type);
-create index if not exists idx_admin_logs_admin_id on admin_operation_logs(admin_id);
-create index if not exists idx_admin_logs_target_user on admin_operation_logs(target_user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_created_at ON admin_operation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_operation_type ON admin_operation_logs(operation_type);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_admin_id ON admin_operation_logs(admin_id);
+CREATE INDEX IF NOT EXISTS idx_admin_logs_target_user ON admin_operation_logs(target_user_id);
 
--- 15. User events (behavior tracking)
--- Added v3.2: supports analytics and optimization
-create table if not exists user_events (
-  id uuid default gen_random_uuid() primary key,
-  user_id text references profiles(id), -- Nullable for anonymous users
-  event_type text not null,
-  properties jsonb default '{}',
-  session_id text,
-  created_at timestamptz default now()
+-- 15. User events
+CREATE TABLE IF NOT EXISTS user_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id),
+  event_type TEXT NOT NULL,
+  properties JSONB DEFAULT '{}',
+  session_id TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_user_events_created_at on user_events(created_at desc);
-create index if not exists idx_user_events_event_type on user_events(event_type);
-create index if not exists idx_user_events_user_id on user_events(user_id);
-create index if not exists idx_user_events_session on user_events(session_id);
-create index if not exists idx_user_events_properties on user_events using gin(properties);
+CREATE INDEX IF NOT EXISTS idx_user_events_created_at ON user_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_event_type ON user_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_user_events_user_id ON user_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_user_events_properties ON user_events USING gin(properties);
 
--- 16. Analytics events (frontend tracking)
--- Added v3.4: stores frontend analytics events for user behavior tracking
-create table if not exists analytics_events (
-  id uuid default gen_random_uuid() primary key,
-  user_id text, -- Optional, may be null for anonymous users
-  event_type text not null,
-  event_level text, -- 'critical', 'important', 'normal'
-  event_data jsonb not null default '{}',
-  session_id text,
-  created_at timestamptz default now()
+-- 16. Analytics events (v3.4 + v3.11 enhancements)
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT,
+  event_type TEXT NOT NULL,
+  event_name TEXT,  -- v3.11: Normalized event name
+  event_level TEXT,
+  event_data JSONB NOT NULL DEFAULT '{}',
+  context JSONB DEFAULT '{}',  -- v3.11: Rich context (device, geo, etc.)
+  session_id TEXT,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_analytics_events_user_id on analytics_events(user_id);
-create index if not exists idx_analytics_events_event_type on analytics_events(event_type);
-create index if not exists idx_analytics_events_created_at on analytics_events(created_at desc);
-create index if not exists idx_analytics_events_session_id on analytics_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name ON analytics_events(event_name);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
 
--- 17. Error logs (centralized error monitoring)
--- Added v3.5: stores frontend and API errors for debugging and monitoring
-create table if not exists error_logs (
-  id uuid default gen_random_uuid() primary key,
-  
-  -- Error identification
-  error_id varchar(100),           -- Frontend generated error ID
-  error_type varchar(50) not null, -- API, NETWORK, JS_ERROR, UNHANDLED_REJECTION, REACT_ERROR, CORS, OTHER
-  error_code varchar(50),          -- Error code (UNAUTHORIZED, NETWORK_ERROR, etc.)
-  
-  -- Error details
-  message text not null,
-  status_code integer,             -- HTTP status code for API errors
-  endpoint varchar(500),           -- API endpoint
-  method varchar(10),              -- HTTP method
-  
-  -- User context
-  user_id varchar(100),            -- User ID if authenticated
-  user_code varchar(30),           -- User code (format: YYYYMMDDHHMMSS + ms + 6 digits = 23 chars)
-  session_id varchar(100),         -- Browser session ID
-  page_url text,                   -- Page where error occurred
-  user_agent text,                 -- Browser/device info
-  
-  -- Stack trace and additional info
-  stack_trace text,
-  context jsonb default '{}',      -- Additional context data
-  
-  -- Timestamps
-  client_timestamp timestamptz,    -- When error occurred on client
-  created_at timestamptz default now(),
-  
-  -- Type constraint
-  constraint error_logs_type_check check (error_type in ('API', 'NETWORK', 'JS_ERROR', 'UNHANDLED_REJECTION', 'REACT_ERROR', 'CORS', 'OTHER'))
+-- 17. Error logs
+CREATE TABLE IF NOT EXISTS error_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  error_id VARCHAR(100),
+  error_type VARCHAR(50) NOT NULL,
+  error_code VARCHAR(50),
+  message TEXT NOT NULL,
+  status_code INTEGER,
+  endpoint VARCHAR(500),
+  method VARCHAR(10),
+  user_id VARCHAR(100),
+  user_code VARCHAR(30),
+  session_id VARCHAR(100),
+  page_url TEXT,
+  user_agent TEXT,
+  stack_trace TEXT,
+  context JSONB DEFAULT '{}',
+  client_timestamp TIMESTAMPTZ,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT error_logs_type_check CHECK (error_type IN ('API', 'NETWORK', 'JS_ERROR', 'UNHANDLED_REJECTION', 'REACT_ERROR', 'CORS', 'OTHER'))
 );
-create index if not exists idx_error_logs_created_at on error_logs(created_at desc);
-create index if not exists idx_error_logs_user_id on error_logs(user_id);
-create index if not exists idx_error_logs_user_code on error_logs(user_code);
-create index if not exists idx_error_logs_error_type on error_logs(error_type);
-create index if not exists idx_error_logs_status_code on error_logs(status_code);
-create index if not exists idx_error_logs_endpoint on error_logs(endpoint);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_user_id ON error_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_error_logs_user_code ON error_logs(user_code);
+CREATE INDEX IF NOT EXISTS idx_error_logs_error_type ON error_logs(error_type);
+CREATE INDEX IF NOT EXISTS idx_error_logs_status_code ON error_logs(status_code);
+CREATE INDEX IF NOT EXISTS idx_error_logs_endpoint ON error_logs(endpoint);
 
--- 18. Aggregated stats (precomputed)
--- Added v3.2: store scheduled aggregation output
-create table if not exists aggregated_stats (
-  id uuid default gen_random_uuid() primary key,
-  date date not null,
-  stat_type text not null, -- 'daily_users', 'daily_revenue', 'daily_projects', etc.
-  data jsonb not null default '{}',
-  updated_at timestamptz default now(),
-  unique(date, stat_type)
+-- 18. Aggregated stats
+CREATE TABLE IF NOT EXISTS aggregated_stats (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  date DATE NOT NULL,
+  stat_type TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(date, stat_type)
 );
-create index if not exists idx_agg_stats_date on aggregated_stats(date desc);
-create index if not exists idx_agg_stats_type on aggregated_stats(stat_type);
-create index if not exists idx_agg_stats_date_type on aggregated_stats(date desc, stat_type);
+CREATE INDEX IF NOT EXISTS idx_agg_stats_date ON aggregated_stats(date DESC);
+CREATE INDEX IF NOT EXISTS idx_agg_stats_type ON aggregated_stats(stat_type);
+CREATE INDEX IF NOT EXISTS idx_agg_stats_date_type ON aggregated_stats(date DESC, stat_type);
 
--- 19. System configs (dynamic parameters)
--- Added v3.2: runtime-adjustable settings (rate limits, analytics, etc.)
-create table if not exists system_configs (
-  id uuid default gen_random_uuid() primary key,
-  config_key text unique not null,
-  config_value jsonb not null,
-  category text not null default 'general', -- 'rate_limit', 'analytics', 'system'
-  description text,
-  is_active boolean default true,
-  updated_at timestamptz default now(),
-  updated_by text -- Last modifying admin ID
-);
-create index if not exists idx_system_configs_key on system_configs(config_key);
-create index if not exists idx_system_configs_category on system_configs(category);
+-- 19. System configs (v3.10 - Refactored with correct field names)
+-- Uses: key, value, value_type, config_group
+DROP TABLE IF EXISTS config_audit_logs CASCADE;
+DROP TABLE IF EXISTS system_configs CASCADE;
 
--- 20. Content reports (user-submitted reports for marketplace items)
--- Added v3.3: Allows users to report inappropriate/copyright content
-create table if not exists content_reports (
-  id uuid default gen_random_uuid() primary key,
-  reporter_id text not null references profiles(id),
-  listing_id uuid not null references marketplace_listings(id),
-  reason text not null, -- User-provided reason for report
-  status text default 'pending', -- 'pending' | 'reviewed' | 'resolved' | 'dismissed'
-  admin_response text, -- Admin's response to the reporter
-  reviewed_by text references profiles(id),
-  reviewed_at timestamptz,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE TABLE system_configs (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  value_type TEXT NOT NULL DEFAULT 'text',
+  config_group TEXT NOT NULL DEFAULT 'general',
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by TEXT
 );
-create index if not exists idx_reports_status on content_reports(status);
-create index if not exists idx_reports_listing_id on content_reports(listing_id);
-create index if not exists idx_reports_reporter_id on content_reports(reporter_id);
-create index if not exists idx_reports_created_at on content_reports(created_at desc);
--- Prevent duplicate active reports from same user for same listing
-create unique index if not exists idx_reports_unique_user_listing 
-  on content_reports(reporter_id, listing_id) 
-  where status in ('pending', 'reviewed');
+CREATE INDEX IF NOT EXISTS idx_system_configs_group ON system_configs(config_group);
+CREATE INDEX IF NOT EXISTS idx_system_configs_active ON system_configs(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_system_configs_updated ON system_configs(updated_at DESC);
 
--- 21. Asset prompt templates (AI image generation presets with 5W1H naming)
--- Added v3.6: Stores user-saved generation presets for quick access
-create table if not exists asset_prompt_templates (
-  id uuid default gen_random_uuid() primary key,
-  user_id text not null,  -- Clerk user IDs are strings, not UUIDs
-  
-  -- Template info
-  name text not null,
-  description text,
-  
-  -- Saved 5W1H parameters (using 5W1H naming convention)
-  who_type text,      -- Character type (was character_type)
-  who_custom text,    -- Custom character (was character_custom)
-  what_type text,     -- Action type (was action_type)
-  what_custom text,   -- Custom action (was action_custom)
-  where_type text,    -- Setting type (was setting_type)
-  where_custom text,  -- Custom setting (was setting_custom)
-  style text default 'cartoon',
-  moods text[] default '{warm}',
-  aspect_ratio text default 'square',
-  creativity_level real default 0.3,
-  negative_prompt text,  -- Elements to avoid
-  
-  -- Usage tracking
-  use_count int default 0,
-  last_used_at timestamptz,
-  
-  -- Audit fields
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+-- 20. Config audit logs (v3.10)
+CREATE TABLE IF NOT EXISTS config_audit_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  config_key TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  action TEXT NOT NULL,
+  changed_by TEXT,
+  changed_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_asset_prompt_templates_user on asset_prompt_templates(user_id);
-create index if not exists idx_asset_prompt_templates_usage on asset_prompt_templates(user_id, use_count desc);
+CREATE INDEX IF NOT EXISTS idx_config_audit_key ON config_audit_logs(config_key);
+CREATE INDEX IF NOT EXISTS idx_config_audit_time ON config_audit_logs(changed_at DESC);
 
--- 22. Page prompt templates (AI Design Page presets)
--- Added v3.7: Stores user-saved page design presets for quick access
-create table if not exists page_prompt_templates (
-  id uuid default gen_random_uuid() primary key,
-  user_id text not null,  -- Clerk user IDs are strings
-  
-  -- Template info
-  name text not null,
-  
-  -- Page design parameters
-  layout text default 'image_top',  -- full_image, full_text, image_top, text_top
-  story_theme text,
-  main_character text,
-  style text default 'cartoon',
-  creativity_level real default 0.3,
-  negative_prompt text,
-  generation_mode text default 'guided',  -- guided or flexible
-  
-  -- Usage tracking
-  use_count integer default 0,
-  last_used_at timestamptz,
-  
-  -- Timestamps
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+-- 21. Content reports
+CREATE TABLE IF NOT EXISTS content_reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  reporter_id TEXT NOT NULL REFERENCES profiles(id),
+  listing_id UUID NOT NULL REFERENCES marketplace_listings(id),
+  reason TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  admin_response TEXT,
+  reviewed_by TEXT REFERENCES profiles(id),
+  reviewed_at TIMESTAMPTZ,
+  -- v3.9: Timezone support
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-create index if not exists idx_page_prompt_templates_user on page_prompt_templates(user_id);
-create index if not exists idx_page_prompt_templates_usage on page_prompt_templates(user_id, use_count desc);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON content_reports(status);
+CREATE INDEX IF NOT EXISTS idx_reports_listing_id ON content_reports(listing_id);
+CREATE INDEX IF NOT EXISTS idx_reports_reporter_id ON content_reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_reports_created_at ON content_reports(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_unique_user_listing 
+  ON content_reports(reporter_id, listing_id) 
+  WHERE status IN ('pending', 'reviewed');
+
+-- 22. Asset prompt templates
+CREATE TABLE IF NOT EXISTS asset_prompt_templates (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  who_type TEXT,
+  who_custom TEXT,
+  what_type TEXT,
+  what_custom TEXT,
+  where_type TEXT,
+  where_custom TEXT,
+  style TEXT DEFAULT 'cartoon',
+  moods TEXT[] DEFAULT '{warm}',
+  aspect_ratio TEXT DEFAULT 'square',
+  creativity_level REAL DEFAULT 0.3,
+  negative_prompt TEXT,
+  use_count INT DEFAULT 0,
+  last_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_asset_prompt_templates_user ON asset_prompt_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_asset_prompt_templates_usage ON asset_prompt_templates(user_id, use_count DESC);
+
+-- 23. Page prompt templates
+CREATE TABLE IF NOT EXISTS page_prompt_templates (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  layout TEXT DEFAULT 'image_top',
+  story_theme TEXT,
+  main_character TEXT,
+  style TEXT DEFAULT 'cartoon',
+  creativity_level REAL DEFAULT 0.3,
+  negative_prompt TEXT,
+  generation_mode TEXT DEFAULT 'guided',
+  use_count INTEGER DEFAULT 0,
+  last_used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_user ON page_prompt_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_usage ON page_prompt_templates(user_id, use_count DESC);
 
 -- ==========================================
--- Part 1.5: v3.3 Dashboard Optimized Indexes
+-- Part 1.5: v3.12 Analytics Aggregation Tables
 -- ==========================================
 
--- Projects indexes for dashboard queries
+-- 24. Daily metrics aggregation
+CREATE TABLE IF NOT EXISTS analytics_daily_metrics (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  metric_date DATE NOT NULL UNIQUE,
+  -- User metrics
+  dau INT DEFAULT 0,
+  new_users INT DEFAULT 0,
+  returning_users INT DEFAULT 0,
+  -- Engagement metrics
+  total_sessions INT DEFAULT 0,
+  avg_session_duration_sec INT DEFAULT 0,
+  pages_per_session REAL DEFAULT 0,
+  -- AI usage
+  ai_generations INT DEFAULT 0,
+  ai_credits_used INT DEFAULT 0,
+  -- Marketplace
+  marketplace_purchases INT DEFAULT 0,
+  marketplace_revenue INT DEFAULT 0,
+  -- Projects
+  projects_created INT DEFAULT 0,
+  projects_exported INT DEFAULT 0,
+  -- Raw data for drill-down
+  raw_data JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON analytics_daily_metrics(metric_date DESC);
+
+-- 25. Monthly metrics aggregation
+CREATE TABLE IF NOT EXISTS analytics_monthly_metrics (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  metric_month DATE NOT NULL UNIQUE,
+  -- User metrics
+  mau INT DEFAULT 0,
+  new_users INT DEFAULT 0,
+  churned_users INT DEFAULT 0,
+  -- Revenue metrics
+  mrr DECIMAL(12,2) DEFAULT 0,
+  arr DECIMAL(12,2) DEFAULT 0,
+  arpu DECIMAL(8,2) DEFAULT 0,
+  -- Conversion
+  trial_to_paid_rate REAL DEFAULT 0,
+  free_to_paid_rate REAL DEFAULT 0,
+  -- Tier distribution
+  tier_distribution JSONB DEFAULT '{}',
+  -- Raw data
+  raw_data JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_monthly_metrics_month ON analytics_monthly_metrics(metric_month DESC);
+
+-- 26. User cohorts
+CREATE TABLE IF NOT EXISTS analytics_user_cohorts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT REFERENCES profiles(id),
+  cohort_date DATE NOT NULL,
+  cohort_type TEXT NOT NULL DEFAULT 'signup',
+  first_action_at TIMESTAMPTZ,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, cohort_type)
+);
+CREATE INDEX IF NOT EXISTS idx_user_cohorts_date ON analytics_user_cohorts(cohort_date);
+CREATE INDEX IF NOT EXISTS idx_user_cohorts_type ON analytics_user_cohorts(cohort_type);
+
+-- 27. Cohort retention
+CREATE TABLE IF NOT EXISTS analytics_cohort_retention (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  cohort_date DATE NOT NULL,
+  cohort_type TEXT NOT NULL DEFAULT 'week',
+  cohort_size INT DEFAULT 0,
+  retention_d1 REAL DEFAULT 0,
+  retention_d7 REAL DEFAULT 0,
+  retention_d14 REAL DEFAULT 0,
+  retention_d30 REAL DEFAULT 0,
+  retention_d60 REAL DEFAULT 0,
+  retention_d90 REAL DEFAULT 0,
+  raw_data JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(cohort_date, cohort_type)
+);
+CREATE INDEX IF NOT EXISTS idx_cohort_retention_date ON analytics_cohort_retention(cohort_date DESC);
+
+-- 28. Error summary aggregation
+CREATE TABLE IF NOT EXISTS analytics_error_summary (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  summary_date DATE NOT NULL,
+  error_type TEXT NOT NULL,
+  error_code TEXT,
+  endpoint TEXT,
+  occurrence_count INT DEFAULT 0,
+  affected_users INT DEFAULT 0,
+  sample_message TEXT,
+  sample_request_id TEXT,
+  trend_vs_previous REAL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(summary_date, error_type, error_code, endpoint)
+);
+CREATE INDEX IF NOT EXISTS idx_error_summary_date ON analytics_error_summary(summary_date DESC);
+CREATE INDEX IF NOT EXISTS idx_error_summary_type ON analytics_error_summary(error_type);
+
+-- 29. Funnel metrics
+CREATE TABLE IF NOT EXISTS analytics_funnel_metrics (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  metric_date DATE NOT NULL,
+  funnel_type TEXT NOT NULL DEFAULT 'main',
+  stage_visitors INT DEFAULT 0,
+  stage_signups INT DEFAULT 0,
+  stage_activated INT DEFAULT 0,
+  stage_engaged INT DEFAULT 0,
+  stage_converted INT DEFAULT 0,
+  conversion_rates JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(metric_date, funnel_type)
+);
+CREATE INDEX IF NOT EXISTS idx_funnel_metrics_date ON analytics_funnel_metrics(metric_date DESC);
+
+-- ==========================================
+-- Part 1.6: Dashboard Optimized Indexes
+-- ==========================================
+
 CREATE INDEX IF NOT EXISTS idx_projects_user_deleted ON projects(user_id, is_deleted, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_projects_user_purchased ON projects(user_id, is_purchased) WHERE is_purchased = true;
 CREATE INDEX IF NOT EXISTS idx_projects_user_listing_status ON projects(user_id, listing_status) WHERE listing_status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_projects_trash ON projects(user_id, is_deleted, is_hidden_from_trash) 
   WHERE is_deleted = true AND is_hidden_from_trash = false;
 CREATE INDEX IF NOT EXISTS idx_projects_marketplace_listing ON projects(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_projects_deleted_at ON projects(deleted_at);
 
--- Assets indexes for dashboard queries
 CREATE INDEX IF NOT EXISTS idx_assets_user_deleted ON assets(user_id, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_assets_user_purchased ON assets(user_id, is_purchased) WHERE is_purchased = true;
 CREATE INDEX IF NOT EXISTS idx_assets_user_listing_status ON assets(user_id, listing_status) WHERE listing_status IS NOT NULL;
@@ -548,18 +597,15 @@ CREATE INDEX IF NOT EXISTS idx_assets_trash ON assets(user_id, is_deleted, is_hi
   WHERE is_deleted = true AND is_hidden_from_trash = false;
 CREATE INDEX IF NOT EXISTS idx_assets_marketplace_listing ON assets(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
 
--- Marketplace listings indexes
 CREATE INDEX IF NOT EXISTS idx_listings_resource_id ON marketplace_listings(resource_id) WHERE resource_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_marketplace_listings_resource_id ON marketplace_listings(resource_id);
 CREATE INDEX IF NOT EXISTS idx_listings_seller_public ON marketplace_listings(seller_id, is_public, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_marketplace_listings_version ON marketplace_listings(version);
 
--- Projects additional indexes
-CREATE INDEX IF NOT EXISTS idx_projects_deleted_at ON projects(deleted_at);
+-- ==========================================
+-- Part 2: RLS Policy Configuration
+-- ==========================================
 
--- ==========================================
--- Part 2: RLS policy configuration
--- ==========================================
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_discounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
@@ -579,284 +625,246 @@ ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asset_prompt_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE page_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_daily_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_monthly_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_user_cohorts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_cohort_retention ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_error_summary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_funnel_metrics ENABLE ROW LEVEL SECURITY;
 
-create or replace function is_admin() returns boolean language sql security definer as $$
-select exists (
-  select 1 from profiles
-  where id = (select auth.jwt() ->> 'sub') and role = 'admin'
+-- Admin check function
+CREATE OR REPLACE FUNCTION is_admin() RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER AS $$
+SELECT EXISTS (
+  SELECT 1 FROM profiles
+  WHERE id = (SELECT auth.jwt() ->> 'sub') AND role = 'admin'
 );
 $$;
 
 -- [Profiles]
-drop policy if exists "View profiles" on profiles;
-create policy "View profiles" on profiles for select
-using ((select auth.jwt() ->> 'sub') = id or is_admin());
+DROP POLICY IF EXISTS "View profiles" ON profiles;
+CREATE POLICY "View profiles" ON profiles FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = id OR is_admin());
 
-drop policy if exists "Update profiles" on profiles;
-create policy "Update profiles" on profiles for update
-using ((select auth.jwt() ->> 'sub') = id);
+DROP POLICY IF EXISTS "Update profiles" ON profiles;
+CREATE POLICY "Update profiles" ON profiles FOR UPDATE
+USING ((SELECT auth.jwt() ->> 'sub') = id);
 
-drop policy if exists "Insert profiles" on profiles;
-create policy "Insert profiles" on profiles for insert
-with check ((select auth.jwt() ->> 'sub') = id);
+DROP POLICY IF EXISTS "Insert profiles" ON profiles;
+CREATE POLICY "Insert profiles" ON profiles FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = id);
 
 -- [User Discounts]
-drop policy if exists "Users read own discounts" on user_discounts;
-create policy "Users read own discounts" on user_discounts for select
-using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
+DROP POLICY IF EXISTS "Users read own discounts" ON user_discounts;
+CREATE POLICY "Users read own discounts" ON user_discounts FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = user_id OR is_admin());
 
 -- [Projects]
-drop policy if exists "Users can CRUD own projects" on projects;
-create policy "Users can CRUD own projects" on projects for all
-using ((select auth.jwt() ->> 'sub') = user_id);
+DROP POLICY IF EXISTS "Users can CRUD own projects" ON projects;
+CREATE POLICY "Users can CRUD own projects" ON projects FOR ALL
+USING ((SELECT auth.jwt() ->> 'sub') = user_id);
 
 -- [Marketplace Listings]
-drop policy if exists "Read Listings" on marketplace_listings;
-create policy "Read Listings" on marketplace_listings for select
-using (is_public = true or (select auth.jwt() ->> 'sub') = seller_id or is_admin());
+DROP POLICY IF EXISTS "Read Listings" ON marketplace_listings;
+CREATE POLICY "Read Listings" ON marketplace_listings FOR SELECT
+USING (is_public = true OR (SELECT auth.jwt() ->> 'sub') = seller_id OR is_admin());
 
-drop policy if exists "Manage Listings" on marketplace_listings;
-create policy "Manage Listings" on marketplace_listings for update
-using ((select auth.jwt() ->> 'sub') = seller_id);
+DROP POLICY IF EXISTS "Manage Listings" ON marketplace_listings;
+CREATE POLICY "Manage Listings" ON marketplace_listings FOR UPDATE
+USING ((SELECT auth.jwt() ->> 'sub') = seller_id);
 
-drop policy if exists "Insert Listings" on marketplace_listings;
-create policy "Insert Listings" on marketplace_listings for insert
-with check ((select auth.jwt() ->> 'sub') = seller_id);
+DROP POLICY IF EXISTS "Insert Listings" ON marketplace_listings;
+CREATE POLICY "Insert Listings" ON marketplace_listings FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = seller_id);
 
 -- [User Purchases]
-drop policy if exists "Read Purchases" on user_purchases;
-create policy "Read Purchases" on user_purchases for select
-using ((select auth.jwt() ->> 'sub') = user_id);
+DROP POLICY IF EXISTS "Read Purchases" ON user_purchases;
+CREATE POLICY "Read Purchases" ON user_purchases FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = user_id);
 
-drop policy if exists "Insert Purchases" on user_purchases;
-create policy "Insert Purchases" on user_purchases for insert
-with check ((select auth.jwt() ->> 'sub') = user_id);
+DROP POLICY IF EXISTS "Insert Purchases" ON user_purchases;
+CREATE POLICY "Insert Purchases" ON user_purchases FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = user_id);
 
 -- [Assets]
-drop policy if exists "Users can CRUD own assets" on assets;
-create policy "Users can CRUD own assets" on assets for all
-using ((select auth.jwt() ->> 'sub') = user_id);
+DROP POLICY IF EXISTS "Users can CRUD own assets" ON assets;
+CREATE POLICY "Users can CRUD own assets" ON assets FOR ALL
+USING ((SELECT auth.jwt() ->> 'sub') = user_id);
 
 -- [Notifications]
-drop policy if exists "Read Notifications" on notifications;
-create policy "Read Notifications" on notifications for select
-using (user_id = (select auth.jwt() ->> 'sub') or user_id is null);
+DROP POLICY IF EXISTS "Read Notifications" ON notifications;
+CREATE POLICY "Read Notifications" ON notifications FOR SELECT
+USING (user_id = (SELECT auth.jwt() ->> 'sub') OR user_id IS NULL);
 
 -- [Credit Transactions]
-drop policy if exists "Users view own txs or Admin view all" on credit_transactions;
-create policy "Users view own txs or Admin view all" on credit_transactions for select
-using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
+DROP POLICY IF EXISTS "Users view own txs or Admin view all" ON credit_transactions;
+CREATE POLICY "Users view own txs or Admin view all" ON credit_transactions FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = user_id OR is_admin());
 
 -- [System Resources]
-drop policy if exists "Public can view system resources" on system_resources;
-create policy "Public can view system resources" on system_resources for select
-using (true);
+DROP POLICY IF EXISTS "Public can view system resources" ON system_resources;
+CREATE POLICY "Public can view system resources" ON system_resources FOR SELECT
+USING (true);
 
 -- [Activity Logs]
-drop policy if exists "Users can insert own logs" on activity_logs;
-create policy "Users can insert own logs" on activity_logs for insert
-with check ((select auth.jwt() ->> 'sub') = user_id);
+DROP POLICY IF EXISTS "Users can insert own logs" ON activity_logs;
+CREATE POLICY "Users can insert own logs" ON activity_logs FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = user_id);
 
-drop policy if exists "Users view own logs or Admin view all" on activity_logs;
-create policy "Users view own logs or Admin view all" on activity_logs for select
-using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
+DROP POLICY IF EXISTS "Users view own logs or Admin view all" ON activity_logs;
+CREATE POLICY "Users view own logs or Admin view all" ON activity_logs FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = user_id OR is_admin());
 
 -- [Support Tickets]
-drop policy if exists "Users CRUD own tickets or Admin manage all" on support_tickets;
-create policy "Users CRUD own tickets or Admin manage all" on support_tickets for all
-using ((select auth.jwt() ->> 'sub') = user_id or is_admin());
+DROP POLICY IF EXISTS "Users CRUD own tickets or Admin manage all" ON support_tickets;
+CREATE POLICY "Users CRUD own tickets or Admin manage all" ON support_tickets FOR ALL
+USING ((SELECT auth.jwt() ->> 'sub') = user_id OR is_admin());
 
 -- [Listing Usages]
-drop policy if exists "Users can insert own usage" on listing_usages;
-create policy "Users can insert own usage" on listing_usages for insert
-with check ((select auth.jwt() ->> 'sub') = used_by_user_id);
+DROP POLICY IF EXISTS "Users can insert own usage" ON listing_usages;
+CREATE POLICY "Users can insert own usage" ON listing_usages FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = used_by_user_id);
 
-drop policy if exists "Users view own usage or Admin view all" on listing_usages;
-create policy "Users view own usage or Admin view all" on listing_usages for select
-using ((select auth.jwt() ->> 'sub') = used_by_user_id or is_admin());
+DROP POLICY IF EXISTS "Users view own usage or Admin view all" ON listing_usages;
+CREATE POLICY "Users view own usage or Admin view all" ON listing_usages FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = used_by_user_id OR is_admin());
 
 -- [Leaderboard Snapshots]
-drop policy if exists "Public can view leaderboard" on leaderboard_snapshots;
-create policy "Public can view leaderboard" on leaderboard_snapshots for select
-using (true);
+DROP POLICY IF EXISTS "Public can view leaderboard" ON leaderboard_snapshots;
+CREATE POLICY "Public can view leaderboard" ON leaderboard_snapshots FOR SELECT
+USING (true);
 
--- [Admin Operation Logs] (v3.2)
--- Restrict to service_role (backend via service key)
-drop policy if exists "Service role full access to admin_logs" on admin_operation_logs;
-create policy "Service role full access to admin_logs" on admin_operation_logs for all
-to service_role
-using (true)
-with check (true);
+-- [Service role access policies for backend-only tables]
+DROP POLICY IF EXISTS "Service role full access to admin_logs" ON admin_operation_logs;
+CREATE POLICY "Service role full access to admin_logs" ON admin_operation_logs FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
--- [User Events] (v3.2)
--- Full access for service_role
-drop policy if exists "Service role full access to user_events" on user_events;
-create policy "Service role full access to user_events" on user_events for all
-to service_role
-using (true)
-with check (true);
+DROP POLICY IF EXISTS "Service role full access to user_events" ON user_events;
+CREATE POLICY "Service role full access to user_events" ON user_events FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
--- [Analytics Events] (v3.4)
--- Allow insert from service_role (backend API)
-drop policy if exists "Service role insert analytics events" on analytics_events;
-create policy "Service role insert analytics events" on analytics_events for insert
-to service_role
-with check (true);
+DROP POLICY IF EXISTS "Service role insert analytics events" ON analytics_events;
+CREATE POLICY "Service role insert analytics events" ON analytics_events FOR INSERT
+TO service_role WITH CHECK (true);
 
--- Only service role can read (for admin analytics)
-drop policy if exists "Service role read analytics events" on analytics_events;
-create policy "Service role read analytics events" on analytics_events for select
-to service_role
-using (true);
+DROP POLICY IF EXISTS "Service role read analytics events" ON analytics_events;
+CREATE POLICY "Service role read analytics events" ON analytics_events FOR SELECT
+TO service_role USING (true);
 
--- [Error Logs] (v3.5)
--- Allow insert from anyone (errors should be logged even for unauthenticated users)
-drop policy if exists "Allow insert error logs" on error_logs;
-create policy "Allow insert error logs" on error_logs for insert
-with check (true);
+DROP POLICY IF EXISTS "Allow insert error logs" ON error_logs;
+CREATE POLICY "Allow insert error logs" ON error_logs FOR INSERT WITH CHECK (true);
 
--- Service role can read all (for admin panel)
-drop policy if exists "Service role read error logs" on error_logs;
-create policy "Service role read error logs" on error_logs for select
-to service_role
-using (true);
+DROP POLICY IF EXISTS "Service role read error logs" ON error_logs;
+CREATE POLICY "Service role read error logs" ON error_logs FOR SELECT
+TO service_role USING (true);
 
--- [Aggregated Stats] (v3.2)
--- Restrict to service_role
-drop policy if exists "Service role full access to aggregated_stats" on aggregated_stats;
-create policy "Service role full access to aggregated_stats" on aggregated_stats for all
-to service_role
-using (true)
-with check (true);
+DROP POLICY IF EXISTS "Service role full access to aggregated_stats" ON aggregated_stats;
+CREATE POLICY "Service role full access to aggregated_stats" ON aggregated_stats FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
--- [System Configs] (v3.2)
--- Restrict to service_role
-drop policy if exists "Service role full access to system_configs" on system_configs;
-create policy "Service role full access to system_configs" on system_configs for all
-to service_role
-using (true)
-with check (true);
+-- [System Configs] (v3.10 - public read for active, admin write)
+DROP POLICY IF EXISTS "Public can read active configs" ON system_configs;
+CREATE POLICY "Public can read active configs" ON system_configs FOR SELECT
+USING (is_active = true);
 
--- [Content Reports] (v3.3)
--- Users can view their own reports
-drop policy if exists "Users can view own reports" on content_reports;
-create policy "Users can view own reports" on content_reports for select
-using ((select auth.jwt() ->> 'sub') = reporter_id);
+DROP POLICY IF EXISTS "Service role full access to system_configs" ON system_configs;
+CREATE POLICY "Service role full access to system_configs" ON system_configs FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
--- Users can create reports
-drop policy if exists "Users can create reports" on content_reports;
-create policy "Users can create reports" on content_reports for insert
-with check ((select auth.jwt() ->> 'sub') = reporter_id);
+-- [Config Audit Logs]
+DROP POLICY IF EXISTS "Service role access to config_audit_logs" ON config_audit_logs;
+CREATE POLICY "Service role access to config_audit_logs" ON config_audit_logs FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
--- Admin can view all reports
-drop policy if exists "Admin can view all reports" on content_reports;
-create policy "Admin can view all reports" on content_reports for select
-using (is_admin());
+-- [Content Reports]
+DROP POLICY IF EXISTS "Users can view own reports" ON content_reports;
+CREATE POLICY "Users can view own reports" ON content_reports FOR SELECT
+USING ((SELECT auth.jwt() ->> 'sub') = reporter_id);
 
--- Admin can update reports
-drop policy if exists "Admin can update reports" on content_reports;
-create policy "Admin can update reports" on content_reports for update
-using (is_admin());
+DROP POLICY IF EXISTS "Users can create reports" ON content_reports;
+CREATE POLICY "Users can create reports" ON content_reports FOR INSERT
+WITH CHECK ((SELECT auth.jwt() ->> 'sub') = reporter_id);
 
--- [Asset Prompt Templates] (v3.6)
--- Full access for service_role (backend API)
-drop policy if exists "Service role full access to asset prompt templates" on asset_prompt_templates;
-create policy "Service role full access to asset prompt templates" on asset_prompt_templates for all
-to service_role
-using (true)
-with check (true);
+DROP POLICY IF EXISTS "Admin can view all reports" ON content_reports;
+CREATE POLICY "Admin can view all reports" ON content_reports FOR SELECT
+USING (is_admin());
 
--- [Page Prompt Templates] (v3.7)
--- Full access for service_role (backend API)
-drop policy if exists "Service role full access to page prompt templates" on page_prompt_templates;
-create policy "Service role full access to page prompt templates" on page_prompt_templates for all
-to service_role
-using (true)
-with check (true);
+DROP POLICY IF EXISTS "Admin can update reports" ON content_reports;
+CREATE POLICY "Admin can update reports" ON content_reports FOR UPDATE
+USING (is_admin());
+
+-- [Template tables]
+DROP POLICY IF EXISTS "Service role full access to asset prompt templates" ON asset_prompt_templates;
+CREATE POLICY "Service role full access to asset prompt templates" ON asset_prompt_templates FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to page prompt templates" ON page_prompt_templates;
+CREATE POLICY "Service role full access to page prompt templates" ON page_prompt_templates FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+-- [Analytics aggregation tables]
+DROP POLICY IF EXISTS "Service role full access to daily metrics" ON analytics_daily_metrics;
+CREATE POLICY "Service role full access to daily metrics" ON analytics_daily_metrics FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to monthly metrics" ON analytics_monthly_metrics;
+CREATE POLICY "Service role full access to monthly metrics" ON analytics_monthly_metrics FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to user cohorts" ON analytics_user_cohorts;
+CREATE POLICY "Service role full access to user cohorts" ON analytics_user_cohorts FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to cohort retention" ON analytics_cohort_retention;
+CREATE POLICY "Service role full access to cohort retention" ON analytics_cohort_retention FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to error summary" ON analytics_error_summary;
+CREATE POLICY "Service role full access to error summary" ON analytics_error_summary FOR ALL
+TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Service role full access to funnel metrics" ON analytics_funnel_metrics;
+CREATE POLICY "Service role full access to funnel metrics" ON analytics_funnel_metrics FOR ALL
+TO service_role USING (true) WITH CHECK (true);
 
 -- ==========================================
--- Part 3: v3.3 Dashboard Views
+-- Part 3: Dashboard Views
 -- ==========================================
 
--- View for user's projects dashboard (All/Bought/Selling combined)
--- This view returns all necessary data for the dashboard in one query
 CREATE OR REPLACE VIEW dashboard_projects AS
 SELECT 
-  p.id,
-  p.user_id,
-  p.title,
-  p.thumbnail_url,
-  p.canvas_data,
-  p.is_deleted,
-  p.deleted_at,
-  p.is_hidden_from_trash,
-  p.is_purchased,
-  p.source_listing_id,
-  p.origin_owner_id,
-  p.listing_status,
-  p.marketplace_listing_id,
-  p.contains_locked_elements,
-  p.created_at,
-  p.updated_at,
-  -- Listing details if exists
-  ml.id as listing_id,
-  ml.title as listing_title,
-  ml.price_credits as listing_price,
-  ml.is_public as listing_is_public,
-  ml.moderation_status as listing_moderation_status,
-  ml.sales_count as listing_sales_count,
-  ml.unique_buyers_count as listing_unique_buyers,
-  ml.total_revenue as listing_total_revenue,
-  ml.usage_count as listing_usage_count,
-  -- Origin owner info (for purchased projects)
-  op.username as origin_owner_username,
-  op.avatar_url as origin_owner_avatar
+  p.id, p.user_id, p.title, p.thumbnail_url, p.canvas_data,
+  p.is_deleted, p.deleted_at, p.is_hidden_from_trash, p.is_purchased,
+  p.source_listing_id, p.origin_owner_id, p.listing_status,
+  p.marketplace_listing_id, p.contains_locked_elements, p.created_at, p.updated_at,
+  ml.id as listing_id, ml.title as listing_title, ml.price_credits as listing_price,
+  ml.is_public as listing_is_public, ml.moderation_status as listing_moderation_status,
+  ml.sales_count as listing_sales_count, ml.unique_buyers_count as listing_unique_buyers,
+  ml.total_revenue as listing_total_revenue, ml.usage_count as listing_usage_count,
+  op.username as origin_owner_username, op.avatar_url as origin_owner_avatar
 FROM projects p
 LEFT JOIN marketplace_listings ml ON p.marketplace_listing_id = ml.id
 LEFT JOIN profiles op ON p.origin_owner_id = op.id;
 
--- View for user's assets dashboard (All/Bought/Selling combined)
 CREATE OR REPLACE VIEW dashboard_assets AS
 SELECT 
-  a.id,
-  a.user_id,
-  a.url,
-  a.type,
-  a.prompt,
-  a.description,
-  a.metadata,
-  a.is_deleted,
-  a.deleted_at,
-  a.is_hidden_from_trash,
-  a.is_purchased,
-  a.source_listing_id,
-  a.origin_owner_id,
-  a.listing_status,
-  a.marketplace_listing_id,
-  a.project_id,
-  a.created_at,
-  -- Listing details if exists
-  ml.id as listing_id,
-  ml.title as listing_title,
-  ml.description as listing_description,
-  ml.price_credits as listing_price,
-  ml.is_public as listing_is_public,
-  ml.moderation_status as listing_moderation_status,
-  ml.sales_count as listing_sales_count,
-  ml.unique_buyers_count as listing_unique_buyers,
-  ml.total_revenue as listing_total_revenue,
+  a.id, a.user_id, a.url, a.type, a.prompt, a.description, a.metadata,
+  a.is_deleted, a.deleted_at, a.is_hidden_from_trash, a.is_purchased,
+  a.source_listing_id, a.origin_owner_id, a.listing_status,
+  a.marketplace_listing_id, a.project_id, a.created_at,
+  ml.id as listing_id, ml.title as listing_title, ml.description as listing_description,
+  ml.price_credits as listing_price, ml.is_public as listing_is_public,
+  ml.moderation_status as listing_moderation_status, ml.sales_count as listing_sales_count,
+  ml.unique_buyers_count as listing_unique_buyers, ml.total_revenue as listing_total_revenue,
   ml.usage_count as listing_usage_count,
-  -- Origin owner info (for purchased assets)
-  op.username as origin_owner_username,
-  op.avatar_url as origin_owner_avatar
+  op.username as origin_owner_username, op.avatar_url as origin_owner_avatar
 FROM assets a
 LEFT JOIN marketplace_listings ml ON a.marketplace_listing_id = ml.id
 LEFT JOIN profiles op ON a.origin_owner_id = op.id;
 
--- View for seller stats aggregation
 CREATE OR REPLACE VIEW seller_stats_summary AS
 SELECT 
   seller_id,
@@ -871,373 +879,304 @@ WHERE is_deleted = false
 GROUP BY seller_id;
 
 -- ==========================================
--- Part 4: v3.3 Helper Functions & Triggers
+-- Part 4: Materialized Views for Analytics
 -- ==========================================
 
--- Function to sync listing status to projects/assets
--- Called automatically when a marketplace listing is created/updated
+-- DAU Trend with 7-day moving average
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_dau_trend AS
+SELECT 
+  metric_date,
+  dau,
+  new_users,
+  returning_users,
+  AVG(dau) OVER (ORDER BY metric_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as dau_7day_avg
+FROM analytics_daily_metrics
+ORDER BY metric_date DESC;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_dau_trend_date ON mv_dau_trend(metric_date);
+
+-- Top Errors
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_top_errors AS
+SELECT 
+  error_type,
+  error_code,
+  endpoint,
+  SUM(occurrence_count) as total_occurrences,
+  SUM(affected_users) as total_affected_users,
+  MAX(summary_date) as last_seen
+FROM analytics_error_summary
+WHERE summary_date >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY error_type, error_code, endpoint
+ORDER BY total_occurrences DESC
+LIMIT 100;
+
+-- Daily Event Summary
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_daily_event_summary AS
+SELECT 
+  DATE(created_at) as event_date,
+  COALESCE(event_name, event_type) as event_name,
+  COUNT(*) as event_count,
+  COUNT(DISTINCT user_id) as unique_users,
+  COUNT(DISTINCT session_id) as unique_sessions
+FROM analytics_events
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY DATE(created_at), COALESCE(event_name, event_type)
+ORDER BY event_date DESC, event_count DESC;
+
+CREATE INDEX IF NOT EXISTS idx_mv_daily_event_date ON mv_daily_event_summary(event_date);
+
+-- ==========================================
+-- Part 5: Helper Functions & Triggers
+-- ==========================================
+
+-- Sync listing status
 CREATE OR REPLACE FUNCTION sync_listing_status()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Update project if this is a project listing
   IF NEW.resource_type = 'project' AND NEW.resource_id IS NOT NULL THEN
-    UPDATE projects 
-    SET 
-      listing_status = NEW.moderation_status,
-      marketplace_listing_id = NEW.id
+    UPDATE projects SET listing_status = NEW.moderation_status, marketplace_listing_id = NEW.id
     WHERE id = NEW.resource_id::uuid;
   END IF;
-  
-  -- Update asset if this is an asset listing
   IF NEW.resource_type = 'asset' AND NEW.resource_id IS NOT NULL THEN
-    UPDATE assets 
-    SET 
-      listing_status = NEW.moderation_status,
-      marketplace_listing_id = NEW.id
+    UPDATE assets SET listing_status = NEW.moderation_status, marketplace_listing_id = NEW.id
     WHERE id = NEW.resource_id::uuid;
   END IF;
-  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for listing status sync
 DROP TRIGGER IF EXISTS trigger_sync_listing_status ON marketplace_listings;
 CREATE TRIGGER trigger_sync_listing_status
   AFTER INSERT OR UPDATE OF moderation_status, is_public, is_deleted
-  ON marketplace_listings
-  FOR EACH ROW
-  EXECUTE FUNCTION sync_listing_status();
+  ON marketplace_listings FOR EACH ROW EXECUTE FUNCTION sync_listing_status();
 
--- Function to update seller stats after purchase
+-- Update seller stats on purchase
 CREATE OR REPLACE FUNCTION update_seller_stats_on_purchase()
 RETURNS TRIGGER AS $$
-DECLARE
-  v_listing_price INT;
-  v_seller_revenue INT;
+DECLARE v_listing_price INT; v_seller_revenue INT;
 BEGIN
-  -- Get listing price
-  SELECT price_credits INTO v_listing_price
-  FROM marketplace_listings
-  WHERE id = NEW.listing_id;
-  
-  -- Calculate seller revenue (90% to seller after 10% platform fee)
+  SELECT price_credits INTO v_listing_price FROM marketplace_listings WHERE id = NEW.listing_id;
   v_seller_revenue := FLOOR(v_listing_price * 0.9);
-  
-  -- Update listing stats
-  UPDATE marketplace_listings
-  SET 
+  UPDATE marketplace_listings SET 
     sales_count = sales_count + 1,
-    unique_buyers_count = (
-      SELECT COUNT(DISTINCT user_id) 
-      FROM user_purchases 
-      WHERE listing_id = NEW.listing_id
-    ),
+    unique_buyers_count = (SELECT COUNT(DISTINCT user_id) FROM user_purchases WHERE listing_id = NEW.listing_id),
     total_revenue = total_revenue + v_seller_revenue
   WHERE id = NEW.listing_id;
-  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger for purchase stats
 DROP TRIGGER IF EXISTS trigger_update_seller_stats ON user_purchases;
 CREATE TRIGGER trigger_update_seller_stats
-  AFTER INSERT ON user_purchases
-  FOR EACH ROW
-  EXECUTE FUNCTION update_seller_stats_on_purchase();
+  AFTER INSERT ON user_purchases FOR EACH ROW EXECUTE FUNCTION update_seller_stats_on_purchase();
 
--- Function to set deleted_at timestamp on soft delete
+-- Set deleted timestamp
 CREATE OR REPLACE FUNCTION set_deleted_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.is_deleted = true AND OLD.is_deleted = false THEN
-    NEW.deleted_at = NOW();
-  END IF;
-  IF NEW.is_deleted = false AND OLD.is_deleted = true THEN
-    NEW.deleted_at = NULL;
-    NEW.is_hidden_from_trash = false;
-  END IF;
+  IF NEW.is_deleted = true AND OLD.is_deleted = false THEN NEW.deleted_at = NOW(); END IF;
+  IF NEW.is_deleted = false AND OLD.is_deleted = true THEN NEW.deleted_at = NULL; NEW.is_hidden_from_trash = false; END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Triggers for deleted_at on projects and assets
 DROP TRIGGER IF EXISTS trigger_projects_deleted_at ON projects;
 CREATE TRIGGER trigger_projects_deleted_at
-  BEFORE UPDATE OF is_deleted ON projects
-  FOR EACH ROW
-  EXECUTE FUNCTION set_deleted_timestamp();
+  BEFORE UPDATE OF is_deleted ON projects FOR EACH ROW EXECUTE FUNCTION set_deleted_timestamp();
 
 DROP TRIGGER IF EXISTS trigger_assets_deleted_at ON assets;
 CREATE TRIGGER trigger_assets_deleted_at
-  BEFORE UPDATE OF is_deleted ON assets
-  FOR EACH ROW
-  EXECUTE FUNCTION set_deleted_timestamp();
+  BEFORE UPDATE OF is_deleted ON assets FOR EACH ROW EXECUTE FUNCTION set_deleted_timestamp();
 
--- v3.4: Append-Only constraint for credit_transactions (financial audit)
--- Prevents UPDATE and DELETE on credit_transactions table
+-- Prevent credit modification (append-only)
 CREATE OR REPLACE FUNCTION prevent_credit_modification()
 RETURNS TRIGGER AS $$
 BEGIN
-    RAISE EXCEPTION 'credit_transactions is append-only. For refunds, insert a negative amount record.';
-    RETURN NULL;
+  RAISE EXCEPTION 'credit_transactions is append-only. For refunds, insert a negative amount record.';
+  RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS prevent_credit_update ON credit_transactions;
 CREATE TRIGGER prevent_credit_update
-    BEFORE UPDATE ON credit_transactions
-    FOR EACH ROW
-    EXECUTE FUNCTION prevent_credit_modification();
+  BEFORE UPDATE ON credit_transactions FOR EACH ROW EXECUTE FUNCTION prevent_credit_modification();
 
 DROP TRIGGER IF EXISTS prevent_credit_delete ON credit_transactions;
 CREATE TRIGGER prevent_credit_delete
-    BEFORE DELETE ON credit_transactions
-    FOR EACH ROW
-    EXECUTE FUNCTION prevent_credit_modification();
+  BEFORE DELETE ON credit_transactions FOR EACH ROW EXECUTE FUNCTION prevent_credit_modification();
 
--- Function to update content_reports updated_at
-CREATE OR REPLACE FUNCTION update_reports_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
+-- Auto-update timestamps
+CREATE OR REPLACE FUNCTION update_timestamp() RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trigger_reports_updated_at ON content_reports;
-CREATE TRIGGER trigger_reports_updated_at
-    BEFORE UPDATE ON content_reports
-    FOR EACH ROW
-    EXECUTE FUNCTION update_reports_updated_at();
-
--- Function to update asset_prompt_templates updated_at
-CREATE OR REPLACE FUNCTION update_asset_prompt_templates_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+CREATE TRIGGER trigger_reports_updated_at BEFORE UPDATE ON content_reports FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 DROP TRIGGER IF EXISTS trigger_asset_prompt_templates_updated_at ON asset_prompt_templates;
-CREATE TRIGGER trigger_asset_prompt_templates_updated_at
-    BEFORE UPDATE ON asset_prompt_templates
-    FOR EACH ROW
-    EXECUTE FUNCTION update_asset_prompt_templates_updated_at();
-
--- Function to update page_prompt_templates updated_at
-CREATE OR REPLACE FUNCTION update_page_prompt_templates_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+CREATE TRIGGER trigger_asset_prompt_templates_updated_at BEFORE UPDATE ON asset_prompt_templates FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 DROP TRIGGER IF EXISTS trigger_page_prompt_templates_updated_at ON page_prompt_templates;
-CREATE TRIGGER trigger_page_prompt_templates_updated_at
-    BEFORE UPDATE ON page_prompt_templates
-    FOR EACH ROW
-    EXECUTE FUNCTION update_page_prompt_templates_updated_at();
+CREATE TRIGGER trigger_page_prompt_templates_updated_at BEFORE UPDATE ON page_prompt_templates FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+DROP TRIGGER IF EXISTS trigger_system_configs_updated_at ON system_configs;
+CREATE TRIGGER trigger_system_configs_updated_at BEFORE UPDATE ON system_configs FOR EACH ROW EXECUTE FUNCTION update_timestamp();
 
 -- ==========================================
--- Part 5: v3.2 Helper Functions (System Config)
+-- Part 6: Helper Functions (System Config)
 -- ==========================================
 
-CREATE OR REPLACE FUNCTION update_system_configs_timestamp()
-RETURNS TRIGGER AS $$
+-- Get config by key with fallback
+CREATE OR REPLACE FUNCTION get_config(config_key TEXT, default_value TEXT DEFAULT NULL)
+RETURNS TEXT LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE result TEXT;
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
+  SELECT value INTO result FROM system_configs WHERE key = config_key AND is_active = true;
+  RETURN COALESCE(result, default_value);
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
-DROP TRIGGER IF EXISTS trigger_update_system_configs_timestamp ON system_configs;
-CREATE TRIGGER trigger_update_system_configs_timestamp
-    BEFORE UPDATE ON system_configs
-    FOR EACH ROW
-    EXECUTE FUNCTION update_system_configs_timestamp();
+-- Get configs by group
+CREATE OR REPLACE FUNCTION get_configs_by_group(group_name TEXT)
+RETURNS TABLE(key TEXT, value TEXT, value_type TEXT, description TEXT) LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN QUERY SELECT sc.key, sc.value, sc.value_type, sc.description
+  FROM system_configs sc WHERE sc.config_group = group_name AND sc.is_active = true ORDER BY sc.key;
+END;
+$$;
 
--- Helper to fetch rate-limit config
+-- Get rate limit config
 CREATE OR REPLACE FUNCTION get_rate_limit_config(p_config_key TEXT)
 RETURNS JSONB AS $$
-DECLARE
-    v_config JSONB;
+DECLARE v_config JSONB;
 BEGIN
-    SELECT config_value INTO v_config
-    FROM system_configs
-    WHERE config_key = p_config_key AND is_active = true;
-    
-    IF v_config IS NULL THEN
-        SELECT config_value INTO v_config
-        FROM system_configs
-        WHERE config_key = 'rate_limit.global.default' AND is_active = true;
-    END IF;
-    
-    RETURN COALESCE(v_config, '{"limit": 100, "window": "minute", "enabled": true}'::JSONB);
+  SELECT value::JSONB INTO v_config FROM system_configs WHERE key = p_config_key AND is_active = true;
+  IF v_config IS NULL THEN
+    SELECT value::JSONB INTO v_config FROM system_configs WHERE key = 'rate_limit.global.default' AND is_active = true;
+  END IF;
+  RETURN COALESCE(v_config, '{"limit": 100, "window": "minute", "enabled": true}'::JSONB);
 END;
 $$ LANGUAGE plpgsql;
 
--- Aggregated stats helper functions
-CREATE OR REPLACE FUNCTION get_latest_stats(p_stat_type VARCHAR)
-RETURNS JSONB
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    result JSONB;
+-- Aggregated stats helpers
+CREATE OR REPLACE FUNCTION get_latest_stats(p_stat_type VARCHAR) RETURNS JSONB LANGUAGE plpgsql AS $$
+DECLARE result JSONB;
 BEGIN
-    SELECT data INTO result
-    FROM aggregated_stats
-    WHERE stat_type = p_stat_type
-    ORDER BY date DESC
-    LIMIT 1;
-    
-    RETURN COALESCE(result, '{}'::JSONB);
+  SELECT data INTO result FROM aggregated_stats WHERE stat_type = p_stat_type ORDER BY date DESC LIMIT 1;
+  RETURN COALESCE(result, '{}'::JSONB);
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION get_stats_range(
-    p_stat_type VARCHAR,
-    p_start_date DATE,
-    p_end_date DATE DEFAULT CURRENT_DATE
-)
-RETURNS TABLE (
-    date DATE,
-    data JSONB
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION get_stats_range(p_stat_type VARCHAR, p_start_date DATE, p_end_date DATE DEFAULT CURRENT_DATE)
+RETURNS TABLE (date DATE, data JSONB) LANGUAGE plpgsql AS $$
 BEGIN
-    RETURN QUERY
-    SELECT a.date, a.data
-    FROM aggregated_stats a
-    WHERE a.stat_type = p_stat_type
-      AND a.date >= p_start_date
-      AND a.date <= p_end_date
-    ORDER BY a.date ASC;
+  RETURN QUERY SELECT a.date, a.data FROM aggregated_stats a
+  WHERE a.stat_type = p_stat_type AND a.date >= p_start_date AND a.date <= p_end_date ORDER BY a.date ASC;
+END;
+$$;
+
+-- Refresh materialized views
+CREATE OR REPLACE FUNCTION refresh_analytics_views() RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY mv_dau_trend;
+  REFRESH MATERIALIZED VIEW mv_top_errors;
+  REFRESH MATERIALIZED VIEW mv_daily_event_summary;
 END;
 $$;
 
 -- ==========================================
--- Part 6: Core Optimized Indexes
+-- Part 7: Core Optimized Indexes
 -- ==========================================
 
 CREATE INDEX IF NOT EXISTS idx_profiles_tier ON profiles(tier);
 CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON profiles(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_subscription_status ON profiles(subscription_status);
-
 CREATE INDEX IF NOT EXISTS idx_credit_tx_bucket ON credit_transactions(bucket);
 CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type);
 CREATE INDEX IF NOT EXISTS idx_credit_tx_created_at ON credit_transactions(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
 CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at DESC);
-
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
 
 -- ==========================================
--- Part 7: Default System Configs (Rate Limits)
+-- Part 8: Default System Configs (v3.10 format)
 -- ==========================================
 
-INSERT INTO system_configs (config_key, config_value, category, description) VALUES
--- Payments (high risk, strict limits)
-('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Checkout API limit'),
-('rate_limit.payment.portal', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Billing portal limit'),
-('rate_limit.marketplace.purchase', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Marketplace purchase limit'),
--- AI generation (resource intensive)
-('rate_limit.generate.story', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'AI story generation limit'),
-('rate_limit.generate.images', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'AI image generation limit'),
-('rate_limit.tools.ocr', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'OCR limit'),
--- Export operations (resource heavy)
-('rate_limit.export.pdf', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'PDF export limit'),
-('rate_limit.export.zip', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'ZIP export limit'),
-('rate_limit.export.preview', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Preview generation limit'),
--- User operations
-('rate_limit.projects.create', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Project creation limit'),
-('rate_limit.assets.upload', '{"limit": 20, "window": "minute", "enabled": true}', 'rate_limit', 'Asset upload limit'),
-('rate_limit.marketplace.publish', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Listing publish limit'),
--- Public endpoints (abuse protection)
-('rate_limit.support.email', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Support ticket limit'),
-('rate_limit.contact.form', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Contact form limit'),
-('rate_limit.feedback.submit', '{"limit": 3, "window": "minute", "enabled": true}', 'rate_limit', 'Feedback submission limit'),
--- Admin operations
-('rate_limit.admin.credits', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin credit adjustment limit'),
-('rate_limit.admin.tier', '{"limit": 30, "window": "minute", "enabled": true}', 'rate_limit', 'Admin tier update limit'),
-('rate_limit.admin.refund', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin refund limit'),
-('rate_limit.admin.subscription', '{"limit": 10, "window": "minute", "enabled": true}', 'rate_limit', 'Admin subscription ops limit'),
-('rate_limit.admin.broadcast', '{"limit": 5, "window": "minute", "enabled": true}', 'rate_limit', 'Admin broadcast limit'),
--- Query endpoints
-('rate_limit.admin.search', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Admin search limit'),
-('rate_limit.marketplace.list', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Marketplace listing limit'),
-('rate_limit.analytics.events', '{"limit": 60, "window": "minute", "enabled": true}', 'rate_limit', 'Analytics event ingestion limit'),
--- Global defaults
-('rate_limit.global.default', '{"limit": 100, "window": "minute", "enabled": true}', 'rate_limit', 'Global default limit'),
-('rate_limit.global.enabled', '{"enabled": true}', 'rate_limit', 'Enable/disable global rate limit'),
--- Analytics configuration
-('analytics.enabled', '{"enabled": true}', 'analytics', 'Enable analytics tracking'),
-('analytics.sampling_rate', '{"critical": 1.0, "important": 1.0, "normal": 0.3, "debug": 0.0}', 'analytics', 'Event sampling rates'),
-('analytics.min_level', '{"level": "normal"}', 'analytics', 'Minimum tracking level')
-ON CONFLICT (config_key) DO NOTHING;
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+  -- Rate Limits
+  ('rate_limit.payment.checkout', '{"limit": 5, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Checkout API limit'),
+  ('rate_limit.payment.portal', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Billing portal limit'),
+  ('rate_limit.marketplace.purchase', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Marketplace purchase limit'),
+  ('rate_limit.generate.story', '{"limit": 20, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'AI story generation limit'),
+  ('rate_limit.generate.images', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'AI image generation limit'),
+  ('rate_limit.tools.ocr', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'OCR limit'),
+  ('rate_limit.export.pdf', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'PDF export limit'),
+  ('rate_limit.export.zip', '{"limit": 5, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'ZIP export limit'),
+  ('rate_limit.export.preview', '{"limit": 20, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Preview generation limit'),
+  ('rate_limit.projects.create', '{"limit": 20, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Project creation limit'),
+  ('rate_limit.assets.upload', '{"limit": 20, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Asset upload limit'),
+  ('rate_limit.marketplace.publish', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Listing publish limit'),
+  ('rate_limit.support.email', '{"limit": 3, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Support ticket limit'),
+  ('rate_limit.contact.form', '{"limit": 3, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Contact form limit'),
+  ('rate_limit.feedback.submit', '{"limit": 3, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Feedback submission limit'),
+  ('rate_limit.admin.credits', '{"limit": 30, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin credit adjustment limit'),
+  ('rate_limit.admin.tier', '{"limit": 30, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin tier update limit'),
+  ('rate_limit.admin.refund', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin refund limit'),
+  ('rate_limit.admin.subscription', '{"limit": 10, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin subscription ops limit'),
+  ('rate_limit.admin.broadcast', '{"limit": 5, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin broadcast limit'),
+  ('rate_limit.admin.search', '{"limit": 60, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Admin search limit'),
+  ('rate_limit.marketplace.list', '{"limit": 60, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Marketplace listing limit'),
+  ('rate_limit.analytics.events', '{"limit": 60, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Analytics event ingestion limit'),
+  ('rate_limit.global.default', '{"limit": 100, "window": "minute", "enabled": true}', 'json', 'rate_limit', 'Global default limit'),
+  ('rate_limit.global.enabled', '{"enabled": true}', 'json', 'rate_limit', 'Enable/disable global rate limit'),
+  
+  -- Analytics configuration
+  ('analytics.enabled', '{"enabled": true}', 'json', 'analytics', 'Enable analytics tracking'),
+  ('analytics.sampling_rate', '{"critical": 1.0, "important": 1.0, "normal": 0.3, "debug": 0.0}', 'json', 'analytics', 'Event sampling rates'),
+  ('analytics.min_level', '{"level": "normal"}', 'json', 'analytics', 'Minimum tracking level'),
+  
+  -- Feature Flags
+  ('FEATURE_AI_GENERATION', 'true', 'boolean', 'feature_flag', 'Enable AI image generation'),
+  ('FEATURE_MARKETPLACE', 'true', 'boolean', 'feature_flag', 'Enable marketplace'),
+  ('FEATURE_OCR', 'true', 'boolean', 'feature_flag', 'Enable OCR/Smart Scan'),
+  ('FEATURE_ZIP_EXPORT', 'true', 'boolean', 'feature_flag', 'Enable ZIP export'),
+  
+  -- Limits
+  ('FREE_PROJECT_LIMIT', '1', 'number', 'limits', 'Max projects for free tier'),
+  ('STARTER_PROJECT_LIMIT', '20', 'number', 'limits', 'Max projects for starter tier'),
+  ('PRO_PROJECT_LIMIT', '200', 'number', 'limits', 'Max projects for pro tier'),
+  ('MAX_UPLOAD_FILE_SIZE_MB', '5', 'number', 'limits', 'Max file upload size in MB'),
+  ('MAX_LISTING_PRICE', '500', 'number', 'limits', 'Max marketplace listing price'),
+  
+  -- Credits
+  ('CREDITS_PER_IMAGE', '5', 'number', 'credits', 'Credits per AI image'),
+  ('CREDITS_PER_OCR', '5', 'number', 'credits', 'Credits per OCR'),
+  ('CREDITS_PER_AI_DESIGN_PAGE', '5', 'number', 'credits', 'Credits per AI design page'),
+  ('SIGNUP_BONUS_CREDITS', '50', 'number', 'credits', 'Signup bonus credits'),
+  
+  -- Pricing
+  ('STARTER_PLAN_PRICE', '14.9', 'number', 'pricing', 'Starter monthly price'),
+  ('PRO_PLAN_PRICE', '29.9', 'number', 'pricing', 'Pro monthly price'),
+  ('STARTER_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Starter monthly credits'),
+  ('PRO_MONTHLY_CREDITS', '1000', 'number', 'pricing', 'Pro monthly credits'),
+  
+  -- UI Text
+  ('UI_UPGRADE_CTA', 'Upgrade Now', 'text', 'ui', 'Upgrade button text'),
+  ('UI_TRIAL_EXPIRED', 'Your 7-day trial period has expired. This project is read-only.', 'text', 'ui', 'Trial expired message'),
+  
+  -- Marketing
+  ('HOME_HERO_TITLE', 'Create Beautiful 8-Page Zines in Minutes', 'text', 'marketing', 'Homepage hero title'),
+  ('HOME_HERO_SUBTITLE', 'AI-powered story generation meets easy drag-and-drop editing.', 'text', 'marketing', 'Homepage hero subtitle')
+
+ON CONFLICT (key) DO UPDATE SET
+  value = EXCLUDED.value,
+  value_type = EXCLUDED.value_type,
+  config_group = EXCLUDED.config_group,
+  description = EXCLUDED.description,
+  updated_at = NOW();
 
 -- ==========================================
--- Migration Scripts (for existing installations)
+-- Done!
 -- ==========================================
-
--- v3.3 Migration: Run these to upgrade existing databases
-
--- 1. Add v3.3 columns to projects
--- ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_hidden_from_trash BOOLEAN DEFAULT false;
--- ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_purchased BOOLEAN DEFAULT false;
--- ALTER TABLE projects ADD COLUMN IF NOT EXISTS origin_owner_id TEXT REFERENCES profiles(id);
--- ALTER TABLE projects ADD COLUMN IF NOT EXISTS listing_status TEXT DEFAULT NULL;
--- ALTER TABLE projects ADD COLUMN IF NOT EXISTS marketplace_listing_id UUID REFERENCES marketplace_listings(id);
-
--- 2. Add v3.3 columns to assets
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_hidden_from_trash BOOLEAN DEFAULT false;
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS source_listing_id UUID REFERENCES marketplace_listings(id);
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_purchased BOOLEAN DEFAULT false;
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS origin_owner_id TEXT REFERENCES profiles(id);
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS listing_status TEXT DEFAULT NULL;
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS marketplace_listing_id UUID REFERENCES marketplace_listings(id);
--- ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL;
-
--- 3. Add v3.3 columns to marketplace_listings
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS resource_id UUID;
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS unique_buyers_count INT DEFAULT 0;
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS total_revenue INT DEFAULT 0;
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS version VARCHAR(20) DEFAULT '1.0';
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS changelog TEXT DEFAULT '';
--- ALTER TABLE marketplace_listings ADD COLUMN IF NOT EXISTS version_history JSONB DEFAULT '[]'::jsonb;
-
--- 4. Create content_reports table (run the CREATE TABLE statement from Part 1 if not exists)
-
--- 5. Sync existing data
--- UPDATE projects SET is_purchased = true WHERE source_listing_id IS NOT NULL AND is_purchased = false;
--- 
--- UPDATE projects p SET 
---   listing_status = ml.moderation_status,
---   marketplace_listing_id = ml.id
--- FROM marketplace_listings ml
--- WHERE ml.resource_type = 'project' AND ml.resource_id IS NOT NULL 
---   AND ml.resource_id::uuid = p.id AND ml.is_deleted = false AND p.listing_status IS NULL;
--- 
--- UPDATE assets a SET 
---   listing_status = ml.moderation_status,
---   marketplace_listing_id = ml.id
--- FROM marketplace_listings ml
--- WHERE ml.resource_type = 'asset' AND ml.resource_id IS NOT NULL 
---   AND ml.resource_id::uuid = a.id AND ml.is_deleted = false AND a.listing_status IS NULL;
--- 
--- UPDATE marketplace_listings ml SET unique_buyers_count = (
---   SELECT COUNT(DISTINCT user_id) FROM user_purchases up WHERE up.listing_id = ml.id
--- ) WHERE unique_buyers_count = 0 AND sales_count > 0;
--- 
--- UPDATE marketplace_listings ml SET total_revenue = FLOOR(
---   (SELECT COALESCE(SUM(price_paid), 0) FROM user_purchases WHERE listing_id = ml.id) * 0.9
--- ) WHERE total_revenue = 0 AND sales_count > 0;
