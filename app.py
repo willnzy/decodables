@@ -126,6 +126,10 @@ app.add_middleware(
 # v3.12: Request ID middleware for tracing
 app.add_middleware(RequestIDMiddleware)
 
+# v3.13: Mount admin router (configs, moderation, etc.)
+from routers.admin import router as admin_router
+app.include_router(admin_router)
+
 
 # ==========================================
 # Global Exception Handlers (v3.12)
