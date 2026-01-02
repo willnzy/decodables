@@ -2645,30 +2645,12 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             
             pdf_doc.close()
             
-            # Save to assets
-            asset_id = None
-            try:
-                asset_result = supabase.table("assets").insert({
-                    "user_id": user["id"],
-                    "project_id": project_id,
-                    "url": page_results[0]["source_image_url"] if page_results else "",
-                    "type": "scanned",
-                    "metadata": {
-                        "is_pdf": True,
-                        "total_pages": total_pages,
-                        "scanned_pages": selected_pages,
-                        "page_results": page_results
-                    }
-                }).execute()
-                if asset_result.data:
-                    asset_id = asset_result.data[0]["id"]
-            except Exception as save_err:
-                print(f"Failed to save scanned asset: {save_err}")
+            # Note: Scanned source images are NOT saved to user's assets library
+            # They are only stored temporarily in storage for OCR processing
             
             return {
                 "success": True,
                 "is_pdf": True,
-                "asset_id": asset_id,
                 "total_pages": total_pages,
                 "scanned_pages": selected_pages,
                 "page_results": page_results,
@@ -2680,29 +2662,12 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             # Image: Process single image
             result = await process_single_image(contents)
             
-            # Save to assets
-            asset_id = None
-            try:
-                asset_result = supabase.table("assets").insert({
-                    "user_id": user["id"],
-                    "project_id": project_id,
-                    "url": result["source_image_url"] or "",
-                    "type": "scanned",
-                    "metadata": {
-                        "source_image_url": result["source_image_url"],
-                        "ocr_result": result["ocr_result"],
-                        "canvas_elements": result["canvas_elements"]
-                    }
-                }).execute()
-                if asset_result.data:
-                    asset_id = asset_result.data[0]["id"]
-            except Exception as save_err:
-                print(f"Failed to save scanned asset: {save_err}")
+            # Note: Scanned source images are NOT saved to user's assets library
+            # They are only stored temporarily in storage for OCR processing
             
             return {
                 "success": True,
                 "is_pdf": False,
-                "asset_id": asset_id,
                 "source_image_url": result["source_image_url"],
                 "ocr_result": result["ocr_result"],
                 "canvas_elements": result["canvas_elements"],
