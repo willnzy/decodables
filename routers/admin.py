@@ -10,9 +10,16 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from dependencies import require_admin
 from db_service import (
-    admin_search_users, admin_get_user_audit, admin_adjust_credits,
-    admin_update_tier, admin_create_discount, admin_broadcast,
-    admin_restore_project, admin_get_projects_feed,
+    # User functions (actual names in db_service.py)
+    search_users as admin_search_users,
+    get_full_user_audit as admin_get_user_audit,
+    admin_adjust_credits,
+    update_subscription_tier as admin_update_tier,
+    create_user_discount as admin_create_discount,
+    create_broadcast as admin_broadcast,
+    restore_project as admin_restore_project,
+    get_all_projects_feed as admin_get_projects_feed,
+    # Moderation functions
     admin_get_moderation_list, get_marketplace_item,
     admin_approve_listing, admin_reject_listing, 
     admin_delete_listing, admin_unpublish_listing,
