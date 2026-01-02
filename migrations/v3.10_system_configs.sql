@@ -304,6 +304,7 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('TOAST_ASSET_PUBLISHED', 'Asset published successfully!', 'text', 'toast', 'Toast when asset is published'),
   ('TOAST_ASSET_UNPUBLISHED', 'Asset unpublished', 'text', 'toast', 'Toast when asset is unpublished'),
   ('TOAST_PROJECT_PUBLISHED', 'Project published successfully!', 'text', 'toast', 'Toast when project is published'),
+  ('TOAST_SIGN_IN_TO_CONTINUE', 'Please sign in to continue', 'text', 'toast', 'Toast prompting sign in to continue'),
   
   -- ==========================================
   -- Additional Error Messages (Round 2)
