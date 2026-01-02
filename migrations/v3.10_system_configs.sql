@@ -412,7 +412,8 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('UI_SAVE_TEMPLATE_DESC', 'Save your current settings as a reusable template for quick access later.', 'text', 'ui', 'Save template dialog description'),
   ('UI_UPLOAD_OR_AI', 'Upload images or generate with AI', 'text', 'ui', 'Upload or AI hint'),
   ('UI_GENERATE_TO_PREVIEW', 'Generate to see previews', 'text', 'ui', 'Generate to preview hint'),
-  ('UI_HISTORY_APPEAR_HERE', 'Your history will appear here', 'text', 'ui', 'History empty hint')
+  ('UI_HISTORY_APPEAR_HERE', 'Your history will appear here', 'text', 'ui', 'History empty hint'),
+  ('TOAST_IMAGE_ALREADY_EXISTS', 'Image was already in your asset library', 'text', 'toast', 'Toast when image already exists')
 
 ON CONFLICT (key) DO NOTHING;
 
