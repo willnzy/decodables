@@ -65,6 +65,7 @@ from payment_service import (
 from image_generator import generate_8_images
 from zine_generator import create_foldable_book, create_assets_zip
 from story_generator import generate_story_json, client as openai_client # reuse client
+from prompt_enhancer import enhance_prompt  # AI Design Page prompt enhancement
 
 # Environment variables
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
@@ -364,6 +365,11 @@ class ImageGenRequest(BaseModel):
     reference_image: Optional[str] = None  # Base64 encoded image or URL
     reference_strength: Optional[float] = 0.7  # 0.0-1.0, higher = more similar to reference
     image_size: Optional[str] = "landscape_4_3"  # Image aspect ratio: landscape_4_3, square, portrait_4_3, etc.
+    # AI Design Page enhancement parameters
+    theme: Optional[str] = None  # Page theme for prompt enhancement (e.g., "Counting fun")
+    character: Optional[str] = None  # Character description for prompt enhancement
+    style: Optional[str] = None  # Art style: cartoon, watercolor, sketch, fantasy, realistic, flat
+    generation_mode: Optional[str] = "guided"  # "guided" (accurate) or "flexible" (creative)
 
 class PdfGenRequest(BaseModel):
     project_id: str
@@ -1365,7 +1371,10 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     - Free/Starter: Standard model (flux-schnell)
     - Pro: High-quality model (flux-dev)
     
-    Supports optional reference image for style/content guidance.
+    Supports:
+    - Optional reference image for style/content guidance
+    - AI Design Page mode with prompt enhancement (when theme is provided)
+    - Generation modes: "guided" (accurate) or "flexible" (creative)
     """
     blacklist = ["nsfw", "nude", "sex"]
     if any(w in p.lower() for p in req.prompts for w in blacklist):
@@ -1392,25 +1401,65 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         # Standard model for Free/Starter users
         model = "flux-schnell"
     
+    # Get generation mode (default: guided for accuracy)
+    generation_mode = req.generation_mode or "guided"
+    if generation_mode not in ["guided", "flexible"]:
+        generation_mode = "guided"
+    
+    # Prepare prompts - use enhancement if theme is provided (AI Design Page mode)
+    prompts_to_use = req.prompts
+    prompt_enhanced = False
+    enhancement_result = None
+    
+    if req.theme:
+        # AI Design Page mode: enhance the prompt using LLM
+        try:
+            enhancement_result = enhance_prompt(
+                theme=req.theme,
+                character=req.character,
+                style=req.style or "cartoon",
+                mode=generation_mode
+            )
+            # Replace the original prompt with the enhanced one
+            prompts_to_use = [enhancement_result["enhanced_prompt"]]
+            prompt_enhanced = True
+            logger.info(f"Prompt enhanced for user {user['id']}: {req.theme} -> {len(enhancement_result['enhanced_prompt'])} chars")
+        except Exception as e:
+            logger.warning(f"Prompt enhancement failed, using original: {e}")
+            # Fall back to original prompts if enhancement fails
+    
     # Generate images (with or without reference)
     urls, task_id = await generate_8_images(
-        req.prompts, 
+        prompts_to_use, 
         model=model,
         reference_image=req.reference_image,
         reference_strength=req.reference_strength or 0.7,
-        image_size=req.image_size or "landscape_4_3"
+        image_size=req.image_size or "landscape_4_3",
+        generation_mode=generation_mode  # Pass mode for parameter adjustment
     )
-    for url, prompt in zip(urls, req.prompts):
-        save_asset(user["id"], url, "ai_generated", req.project_id, prompt)
     
-    return {
+    # Save assets with original theme as description if enhanced
+    for url, prompt in zip(urls, prompts_to_use):
+        asset_prompt = f"[{req.theme}] {prompt}" if req.theme else prompt
+        save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt)
+    
+    response = {
         "image_urls": urls, 
         "balance": result["total"],
         "balance_monthly": result["balance_monthly"],
         "balance_permanent": result["balance_permanent"],
         "model_used": model,
-        "used_reference": bool(req.reference_image)
+        "used_reference": bool(req.reference_image),
+        "generation_mode": generation_mode,
+        "prompt_enhanced": prompt_enhanced
     }
+    
+    # Include enhancement details if available
+    if enhancement_result:
+        response["enhanced_prompt"] = enhancement_result.get("enhanced_prompt")
+        response["key_elements"] = enhancement_result.get("key_elements", [])
+    
+    return response
 
 # Advanced OCR endpoint - detects tables, text, and images
 @app.post("/api/tools/ocr")

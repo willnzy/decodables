@@ -1,3 +1,17 @@
+"""
+Image Generator Service
+
+Uses FAL AI's Flux models to generate images from text prompts.
+Supports:
+- Text-to-image generation
+- Image-to-image with reference
+- Generation modes: guided (accurate) vs flexible (creative)
+
+Model selection based on user tier:
+- Free/Starter: flux-schnell (fast, 4 steps)
+- Pro: flux-dev (high quality, 28+ steps)
+"""
+
 import asyncio
 import fal_client
 import os
@@ -15,6 +29,53 @@ if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
     SUPABASE_URL = SUPABASE_URL + '/'
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+
+# ===========================================
+# Generation Mode Parameters
+# ===========================================
+# These parameters control the accuracy vs creativity trade-off
+# Based on industry standard CFG (Classifier-Free Guidance) tuning
+
+GENERATION_MODE_PARAMS = {
+    "guided": {
+        # More accurate: strictly follows the prompt
+        "flux-dev": {
+            "num_inference_steps": 35,  # More steps = finer details
+            "guidance_scale": 4.5,      # Higher CFG = stricter prompt adherence
+        },
+        "flux-schnell": {
+            "num_inference_steps": 4,   # Schnell is optimized for 4 steps
+            "guidance_scale": 3.5,      # Slightly higher for accuracy
+        },
+    },
+    "flexible": {
+        # More creative: allows artistic interpretation
+        "flux-dev": {
+            "num_inference_steps": 28,  # Standard steps
+            "guidance_scale": 2.5,      # Lower CFG = more freedom
+        },
+        "flux-schnell": {
+            "num_inference_steps": 4,   # Schnell is optimized for 4 steps
+            "guidance_scale": 2.5,      # Standard for creativity
+        },
+    },
+}
+
+
+def get_generation_params(model: str, mode: str) -> dict:
+    """
+    Get generation parameters based on model and mode.
+    
+    Args:
+        model: Model name (flux-dev or flux-schnell)
+        mode: Generation mode (guided or flexible)
+    
+    Returns:
+        dict with num_inference_steps and guidance_scale
+    """
+    mode_params = GENERATION_MODE_PARAMS.get(mode, GENERATION_MODE_PARAMS["guided"])
+    return mode_params.get(model, mode_params.get("flux-schnell"))
 
 
 async def upload_reference_image(session, reference_image: str, task_id: str) -> str:
@@ -63,7 +124,8 @@ async def generate_and_upload_single(
     model="flux-schnell",
     reference_image_url=None,
     reference_strength=0.7,
-    image_size="landscape_4_3"
+    image_size="landscape_4_3",
+    generation_mode="guided"
 ):
     """
     Generate a single image and upload to Supabase Storage.
@@ -77,44 +139,53 @@ async def generate_and_upload_single(
         reference_image_url: Optional URL of reference image for image-to-image
         reference_strength: Strength of reference influence (0.0-1.0)
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
+        generation_mode: "guided" (accurate) or "flexible" (creative)
     """
     try:
+        # Get mode-specific parameters
+        gen_params = get_generation_params(model, generation_mode)
+        num_inference_steps = gen_params["num_inference_steps"]
+        guidance_scale = gen_params["guidance_scale"]
+        
         # Determine if using image-to-image or text-to-image
         use_img2img = reference_image_url is not None
         
+        # Prepare the prompt with children's book context
+        full_prompt = f"{prompt}, children's book style, safe for work, colorful"
+        
         if use_img2img:
-            print(f"🎨 Generating {index} with reference image (strength={reference_strength})...")
+            print(f"🎨 [{generation_mode}] Generating {index} with reference (strength={reference_strength}, steps={num_inference_steps}, cfg={guidance_scale})...")
             # Image-to-image mode using flux-dev
             model_endpoint = "fal-ai/flux/dev/image-to-image"
             
             handler = await fal_client.submit_async(
                 model_endpoint,
                 arguments={
-                    "prompt": prompt + ", children's book style, safe for work, colorful",
+                    "prompt": full_prompt,
                     "image_url": reference_image_url,
                     "strength": reference_strength,  # 0.0 = identical to input, 1.0 = ignore input
                     "image_size": image_size,
-                    "num_inference_steps": 28,
+                    "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
                     "enable_safety_checker": True
                 },
             )
         else:
-            print(f"🎨 Generating {index} with model {model}...")
+            print(f"🎨 [{generation_mode}] Generating {index} with {model} (steps={num_inference_steps}, cfg={guidance_scale})...")
             
-            # Select model endpoint and parameters based on model type
+            # Select model endpoint based on model type
             if model == "flux-dev":
                 model_endpoint = "fal-ai/flux/dev"
-                num_inference_steps = 28
             else:
                 model_endpoint = "fal-ai/flux/schnell"
-                num_inference_steps = 4
             
             handler = await fal_client.submit_async(
                 model_endpoint,
                 arguments={
-                    "prompt": prompt + ", children's book style, safe for work, colorful",
+                    "prompt": full_prompt,
                     "image_size": image_size,
                     "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
                     "enable_safety_checker": True
                 },
             )
@@ -145,7 +216,8 @@ async def generate_8_images(
     model="flux-schnell",
     reference_image: str = None,
     reference_strength: float = 0.7,
-    image_size: str = "landscape_4_3"
+    image_size: str = "landscape_4_3",
+    generation_mode: str = "guided"
 ):
     """
     Generate images using specified model, optionally with reference image.
@@ -156,12 +228,19 @@ async def generate_8_images(
         reference_image: Optional base64 image or URL for style reference
         reference_strength: How much to follow reference (0.0-1.0, higher = more similar)
         image_size: Image aspect ratio (landscape_4_3, square, portrait_4_3, etc.)
+        generation_mode: "guided" (accurate) or "flexible" (creative)
     
     Returns:
         Tuple of (image_urls, task_id)
     """
     task_id = uuid.uuid4().hex[:8]
     reference_image_url = None
+    
+    # Validate generation_mode
+    if generation_mode not in ["guided", "flexible"]:
+        generation_mode = "guided"
+    
+    print(f"🚀 Starting image generation: model={model}, mode={generation_mode}, prompts={len(prompts)}")
     
     async with aiohttp.ClientSession() as session:
         # Upload reference image if provided
@@ -181,8 +260,12 @@ async def generate_8_images(
                 model=model,
                 reference_image_url=reference_image_url,
                 reference_strength=reference_strength,
-                image_size=image_size
+                image_size=image_size,
+                generation_mode=generation_mode
             ))
         image_urls = await asyncio.gather(*tasks)
+    
+    success_count = len([u for u in image_urls if u])
+    print(f"✅ Generation complete: {success_count}/{len(prompts)} images generated")
     
     return image_urls, task_id
