@@ -124,7 +124,13 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('UI_UPLOAD_HINT_IMAGE_SVG', 'JPG, PNG, GIF, WebP, SVG · Max {size}MB', 'text', 'ui', 'File type hint for image upload with SVG'),
   ('UI_UPLOAD_HINT_IMAGE_PDF', 'Images (JPG, PNG, WebP) or PDF · Max {size}MB', 'text', 'ui', 'File type hint for image/PDF upload'),
   ('UI_UPLOAD_HINT_REFERENCE', 'PNG, JPG, WebP · Max {size}MB', 'text', 'ui', 'File type hint for reference image upload'),
+  ('UI_UPLOAD_HINT_REFERENCE_COMPACT', 'JPG/PNG/WebP|Max {size}MB', 'text', 'ui', 'Compact file type hint with pipe as line separator'),
   ('UI_UPLOAD_HINT_FEEDBACK', 'Max 5 images, {size}MB each', 'text', 'ui', 'File type hint for feedback image upload'),
+  
+  -- File Upload Error Messages  
+  ('ERROR_INVALID_IMAGE_TYPE', 'Please upload JPG, PNG, or WebP image', 'text', 'error_msg', 'Error when invalid image type uploaded'),
+  ('ERROR_INVALID_IMAGE_TYPE_FULL', 'Please upload an image file (PNG, JPG, WebP)', 'text', 'error_msg', 'Error when invalid image type uploaded (full format)'),
+  ('ERROR_INVALID_IMAGE_TYPE_ALL', 'Only JPG, PNG, GIF, WebP images are allowed', 'text', 'error_msg', 'Error when invalid image type uploaded (all formats)'),
   
   -- Plan Feature Descriptions
   ('PLAN_FEATURE_STARTER_PROJECTS', 'Up to 20 projects', 'text', 'plan_features', 'Starter plan project limit description'),
