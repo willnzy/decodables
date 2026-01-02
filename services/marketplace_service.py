@@ -6,7 +6,7 @@ Handles marketplace business logic
 """
 
 from typing import Optional, Dict, Any, List
-from .credit_service import CreditService
+from .credit_service import CreditService, DEFAULT_TIMEZONE
 from .access_control import AccessControl
 from config import SELLER_REVENUE_PERCENT
 
@@ -29,7 +29,8 @@ class MarketplaceService:
     def execute_purchase(
         self, 
         listing_id: str, 
-        buyer_id: str
+        buyer_id: str,
+        timezone: str = DEFAULT_TIMEZONE
     ) -> Dict[str, Any]:
         """
         Execute a marketplace purchase.
@@ -45,6 +46,7 @@ class MarketplaceService:
         Args:
             listing_id: Listing ID
             buyer_id: Buyer user ID
+            timezone: IANA timezone for transaction snapshot (e.g., 'Asia/Shanghai')
         
         Returns:
             Result dict with success status
@@ -99,12 +101,13 @@ class MarketplaceService:
         price = listing.get("price_credits", 0)
         seller_id = listing.get("seller_id")
         
-        # If free, just record purchase
+        # If free, just record purchase with timezone snapshot
         if price == 0:
             self.supabase.table("user_purchases").insert({
                 "user_id": buyer_id,
                 "listing_id": listing_id,
-                "price_paid": 0
+                "price_paid": 0,
+                "timezone": timezone
             }).execute()
             
             # Increment sales count (use update instead of RPC for compatibility)
@@ -118,10 +121,11 @@ class MarketplaceService:
         if not self.credit_service.has_enough(buyer_id, price):
             return {"success": False, "status": 402, "error": "Insufficient credits"}
         
-        # Deduct from buyer
+        # Deduct from buyer with timezone snapshot
         success, msg = self.credit_service.deduct(
             buyer_id, price, "market_purchase", 
-            f"Purchased: {listing.get('title', 'Listing')}"
+            f"Purchased: {listing.get('title', 'Listing')}",
+            timezone=timezone
         )
         
         if not success:
@@ -130,18 +134,20 @@ class MarketplaceService:
         # Calculate seller revenue (90%)
         seller_revenue = int(price * SELLER_REVENUE_PERCENT / 100)
         
-        # Add to seller (if not official listing)
+        # Add to seller (if not official listing) with timezone snapshot
         if seller_id:
             self.credit_service.add(
                 seller_id, seller_revenue, "permanent",
-                "market_sale", f"Sale: {listing.get('title', 'Listing')}"
+                "market_sale", f"Sale: {listing.get('title', 'Listing')}",
+                timezone=timezone
             )
         
-        # Record purchase
+        # Record purchase with timezone snapshot
         self.supabase.table("user_purchases").insert({
             "user_id": buyer_id,
             "listing_id": listing_id,
-            "price_paid": price
+            "price_paid": price,
+            "timezone": timezone
         }).execute()
         
         # Increment sales count

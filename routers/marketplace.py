@@ -6,7 +6,7 @@ Handles marketplace-related API endpoints
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from dependencies import get_current_user, require_member
 from db_service import (
     get_marketplace_listings, get_marketplace_item, 
@@ -23,6 +23,7 @@ from exceptions import (
     InsufficientCreditsException
 )
 from services import get_access_control, get_marketplace_service
+from timezone_utils import get_request_timezone
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
@@ -91,7 +92,7 @@ def get_item(listing_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/publish")
-def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
+def publish_item(request: Request, req: ListingCreate, user: dict = Depends(require_member)):
     """
     Publish to marketplace (submit for review).
     
@@ -113,6 +114,9 @@ def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
     if req.allowed_tiers and not access_control.validate_allowed_tiers(req.allowed_tiers):
         raise InvalidTiersException()
     
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
+    
     # Create listing
     listing = create_listing(
         seller_id=user["id"],
@@ -125,7 +129,8 @@ def publish_item(req: ListingCreate, user: dict = Depends(require_member)):
         allowed_tiers=req.allowed_tiers or ["free"],
         resource_id=req.resource_id,  # Pass the actual resource ID
         version=req.version or "1.0",
-        changelog=req.changelog or ""
+        changelog=req.changelog or "",
+        timezone=tz
     )
     
     # Submit for review (sets moderation_status='pending', is_public=true)
@@ -157,7 +162,7 @@ def unpublish_item(req: UnpublishRequest, user: dict = Depends(get_current_user)
 
 
 @router.post("/purchase")
-def purchase_item(req: PurchaseRequest, user: dict = Depends(get_current_user)):
+def purchase_item(request: Request, req: PurchaseRequest, user: dict = Depends(get_current_user)):
     """
     Purchase a marketplace item.
     
@@ -171,8 +176,11 @@ def purchase_item(req: PurchaseRequest, user: dict = Depends(get_current_user)):
     Returns:
         Purchase result
     """
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
+    
     marketplace_service = get_marketplace_service()
-    result = marketplace_service.execute_purchase(req.listing_id, user["id"])
+    result = marketplace_service.execute_purchase(req.listing_id, user["id"], timezone=tz)
     
     if not result.get("success"):
         error = result.get("error", "Purchase failed")

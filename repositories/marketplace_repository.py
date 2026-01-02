@@ -309,7 +309,8 @@ class MarketplaceRepository(BaseRepository):
         self,
         user_id: str,
         listing_id: str,
-        price_paid: int
+        price_paid: int,
+        timezone: str = "UTC"
     ) -> Optional[Dict[str, Any]]:
         """
         Record a purchase.
@@ -318,6 +319,7 @@ class MarketplaceRepository(BaseRepository):
             user_id: Buyer user ID
             listing_id: Listing ID
             price_paid: Amount paid
+            timezone: IANA timezone for transaction snapshot (e.g., 'Asia/Shanghai')
         
         Returns:
             Created purchase record
@@ -325,7 +327,8 @@ class MarketplaceRepository(BaseRepository):
         result = self.supabase.table("user_purchases").insert({
             "user_id": user_id,
             "listing_id": listing_id,
-            "price_paid": price_paid
+            "price_paid": price_paid,
+            "timezone": timezone
         }).execute()
         return result.data[0] if result.data else None
     

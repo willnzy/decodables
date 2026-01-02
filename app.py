@@ -16,6 +16,9 @@ from svix.webhooks import Webhook, WebhookVerificationError
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# v3.9: Import timezone utilities
+from timezone_utils import get_request_timezone
+
 # Import service modules
 from db_service import (
     # Access control
@@ -948,7 +951,9 @@ async def upload_asset(
         url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
         
         # Save metadata into assets table
-        save_asset(user["id"], url, "uploaded", project_id)
+        # v3.9: Get timezone from request for snapshot
+        tz = get_request_timezone(request, user_id=user.get("id"))
+        save_asset(user["id"], url, "uploaded", project_id, timezone=tz)
         
         return {"url": url, "filename": filename}
     except Exception as e:
@@ -1367,7 +1372,9 @@ class ProjectCreate(BaseModel):
 @app.post("/api/projects")
 @limiter.limit("20/minute")  # Project creation rate limit
 def new_project(request: Request, req: ProjectCreate = None, user: dict = Depends(get_current_user)):
-    p = create_project(user["id"], req.title if req else None, req.canvas_data if req else None)
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
+    p = create_project(user["id"], req.title if req else None, req.canvas_data if req else None, timezone=tz)
     log_activity(user["id"], "create_project")
     return p
 
@@ -1466,7 +1473,9 @@ def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_u
     """
     from db_service import duplicate_project
     try:
-        new_project = duplicate_project(id, user["id"])
+        # v3.9: Get timezone from request for snapshot
+        tz = get_request_timezone(request, user_id=user.get("id"))
+        new_project = duplicate_project(id, user["id"], timezone=tz)
         if new_project:
             log_activity(user["id"], "duplicate_project", {"source_project_id": id, "new_project_id": new_project["id"]})
             return new_project
@@ -1658,7 +1667,9 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         asset_prompt = f"[{req.theme}] {prompt_used}" if req.theme else prompt_used
         
         # Save to assets table (existing functionality)
-        save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt)
+        # v3.9: Get timezone from request for snapshot
+        tz = get_request_timezone(request, user_id=user.get("id"))
+        save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt, timezone=tz)
         
         # Save to user_generations table for history
         try:
@@ -3447,6 +3458,8 @@ def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: 
         raise HTTPException(400, tiers_validation["reason"])
     
     # 3. Create listing (auto-pending)
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
     listing = create_listing(
         seller_id=user["id"],
         title=req.title,
@@ -3456,7 +3469,8 @@ def marketplace_publish(request: Request, req: MarketplacePublishRequest, user: 
         resource_type=req.resource_type,
         price_credits=req.price_credits,
         allowed_tiers=req.allowed_tiers,
-        submit_for_review=True
+        submit_for_review=True,
+        timezone=tz
     )
     
     log_activity(user["id"], "marketplace_publish", {
@@ -3491,6 +3505,8 @@ def marketplace_unpublish(req: MarketplacePurchaseRequest, user: dict = Depends(
 @limiter.limit("10/minute")  # Purchase rate limit (anti-fraud)
 def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user: dict = Depends(get_current_user)):
     """Purchase a marketplace listing."""
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
     result = execute_purchase(
         buyer_id=user["id"], 
         listing_id=req.listing_id,
@@ -3498,7 +3514,8 @@ def marketplace_purchase(request: Request, req: MarketplacePurchaseRequest, user
         utm_source=req.utm_source,
         utm_medium=req.utm_medium,
         utm_campaign=req.utm_campaign,
-        referral_context=req.referral_context
+        referral_context=req.referral_context,
+        timezone=tz
     )
     
     if not result["success"]:

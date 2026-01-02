@@ -8,6 +8,9 @@ Handles credit-related business logic
 from typing import Optional, Tuple, Literal
 from config import CREDITS_PER_IMAGE, CREDITS_PER_OCR
 
+# Default timezone for transactions
+DEFAULT_TIMEZONE = "UTC"
+
 
 class CreditService:
     """
@@ -55,7 +58,8 @@ class CreditService:
         user_id: str, 
         amount: int, 
         tx_type: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        timezone: str = DEFAULT_TIMEZONE
     ) -> Tuple[bool, str]:
         """
         Deduct credits from user's account.
@@ -72,6 +76,7 @@ class CreditService:
             amount: Amount to deduct (positive number)
             tx_type: Transaction type (e.g., 'generation', 'ocr', 'market_purchase')
             description: Optional description
+            timezone: IANA timezone for transaction snapshot (e.g., 'Asia/Shanghai')
         
         Returns:
             Tuple of (success, message)
@@ -114,7 +119,7 @@ class CreditService:
             if not result.data:
                 return (False, "Balance changed during transaction, please retry")
             
-            # Record transaction
+            # Record transaction with timezone snapshot
             self.supabase.table("credit_transactions").insert({
                 "user_id": user_id,
                 "amount": -amount,
@@ -122,7 +127,8 @@ class CreditService:
                 "balance_monthly_after": new_monthly,
                 "balance_permanent_after": new_permanent,
                 "type": tx_type,
-                "description": description
+                "description": description,
+                "timezone": timezone
             }).execute()
             
             return (True, f"Deducted {amount} credits")
@@ -137,7 +143,8 @@ class CreditService:
         amount: int, 
         bucket: Literal["monthly", "permanent"],
         tx_type: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        timezone: str = DEFAULT_TIMEZONE
     ) -> Tuple[bool, str]:
         """
         Add credits to user's account.
@@ -148,6 +155,7 @@ class CreditService:
             bucket: Which bucket to add to ('monthly' or 'permanent')
             tx_type: Transaction type
             description: Optional description
+            timezone: IANA timezone for transaction snapshot (e.g., 'Asia/Shanghai')
         
         Returns:
             Tuple of (success, message)
@@ -171,7 +179,7 @@ class CreditService:
                 "credits_permanent": new_permanent
             }).eq("id", user_id).execute()
             
-            # Record transaction
+            # Record transaction with timezone snapshot
             self.supabase.table("credit_transactions").insert({
                 "user_id": user_id,
                 "amount": amount,
@@ -179,20 +187,27 @@ class CreditService:
                 "balance_monthly_after": new_monthly,
                 "balance_permanent_after": new_permanent,
                 "type": tx_type,
-                "description": description
+                "description": description,
+                "timezone": timezone
             }).execute()
             
             return (True, f"Added {amount} credits to {bucket}")
         except Exception as e:
             return (False, str(e))
     
-    def reset_monthly(self, user_id: str, amount: int) -> Tuple[bool, str]:
+    def reset_monthly(
+        self, 
+        user_id: str, 
+        amount: int,
+        timezone: str = DEFAULT_TIMEZONE
+    ) -> Tuple[bool, str]:
         """
         Reset monthly credits (subscription cycle).
         
         Args:
             user_id: User ID
             amount: New monthly credit amount (based on tier)
+            timezone: IANA timezone for transaction snapshot
         
         Returns:
             Tuple of (success, message)
@@ -205,7 +220,7 @@ class CreditService:
                 "credits_monthly": amount
             }).eq("id", user_id).execute()
             
-            # Record transaction
+            # Record transaction with timezone snapshot
             self.supabase.table("credit_transactions").insert({
                 "user_id": user_id,
                 "amount": amount - monthly,  # Net change
@@ -213,7 +228,8 @@ class CreditService:
                 "balance_monthly_after": amount,
                 "balance_permanent_after": permanent,
                 "type": "sub_grant",
-                "description": "Monthly credits reset"
+                "description": "Monthly credits reset",
+                "timezone": timezone
             }).execute()
             
             return (True, f"Monthly credits reset to {amount}")

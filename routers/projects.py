@@ -7,7 +7,7 @@ Handles project-related API endpoints
 
 from typing import Optional, List
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from dependencies import get_current_user
 from db_service import (
@@ -16,6 +16,7 @@ from db_service import (
     can_access_resource, record_listing_usage, count_user_projects, supabase,
     get_dashboard_projects, get_seller_project_stats, permanently_hide_project
 )
+from timezone_utils import get_request_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -128,7 +129,7 @@ def get_project_seller_stats(user: dict = Depends(get_current_user)):
 
 
 @router.post("")
-def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
+def create_project(request: Request, req: ProjectCreate, user: dict = Depends(get_current_user)):
     """
     Create a new project (PRD v3.2).
     
@@ -163,7 +164,9 @@ def create_project(req: ProjectCreate, user: dict = Depends(get_current_user)):
             f"Please upgrade to create more projects."
         )
     
-    return db_create_project(user["id"], req.title, req.canvas_data)
+    # v3.9: Get timezone from request for snapshot
+    tz = get_request_timezone(request, user_id=user.get("id"))
+    return db_create_project(user["id"], req.title, req.canvas_data, timezone=tz)
 
 
 @router.get("/{project_id}")

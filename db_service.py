@@ -536,7 +536,8 @@ def log_payment_record(
     amount_cents: int, 
     currency: str,
     type: str,  # 'sub_payment', 'sub_renewal', 'credits_purchase'
-    description: str
+    description: str,
+    timezone: str = "UTC"
 ):
     """
     Log payment record (subscription fee, credits purchase, etc.)
@@ -544,6 +545,7 @@ def log_payment_record(
     currency: Currency code (e.g. 'USD')
     type: Payment type
     description: Description
+    timezone: IANA timezone for transaction snapshot
     """
     # Get user current balance for logging
     profile = supabase.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).single().execute()
@@ -558,6 +560,7 @@ def log_payment_record(
         "balance_permanent_after": balance_permanent,
         "type": type,
         "description": f"{description} | {currency} {amount_cents}",  # Include amount info
+        "timezone": timezone,  # v3.9: Snapshot timezone
         "created_at": datetime.now().isoformat()
     }).execute()
 
@@ -877,18 +880,26 @@ def get_project_detail(project_id: str, user_id: str):
     return res.data
 
 @retry_on_network_error()
-def create_project(user_id: str, title: str = None, canvas_data: dict = None):
-    """Create project (optionally with initial data) with automatic retry on network errors"""
+def create_project(user_id: str, title: str = None, canvas_data: dict = None, timezone: str = "UTC"):
+    """Create project (optionally with initial data) with automatic retry on network errors
+    
+    Args:
+        user_id: User ID
+        title: Project title
+        canvas_data: Initial canvas data
+        timezone: IANA timezone for transaction snapshot
+    """
     data = {
         "user_id": user_id,
         "title": title or "My Magic Story",
         "canvas_data": canvas_data or {},
-        "last_downloaded_hash": ""
+        "last_downloaded_hash": "",
+        "timezone": timezone  # v3.9: Snapshot timezone
     }
     res = supabase.table("projects").insert(data).execute()
     return res.data[0]
 
-def duplicate_project(project_id: str, user_id: str):
+def duplicate_project(project_id: str, user_id: str, timezone: str = "UTC"):
     """
     Duplicate/Copy a project.
     
@@ -896,6 +907,11 @@ def duplicate_project(project_id: str, user_id: str):
     - Purchased projects: Creates editable copy, NOT shown in Bought view
       - Records origin_owner_id to track original creator
       - Does NOT set is_purchased=true (so it shows in All, not Bought)
+    
+    Args:
+        project_id: Project ID to duplicate
+        user_id: User ID
+        timezone: IANA timezone for transaction snapshot
     
     Returns: New project data or raises Exception
     """
@@ -916,6 +932,7 @@ def duplicate_project(project_id: str, user_id: str):
         "thumbnail_url": original.data.get("thumbnail_url"),
         "last_downloaded_hash": "",
         "is_purchased": False,  # Duplicated projects are NOT purchased, they're user-created copies
+        "timezone": timezone,  # v3.9: Snapshot timezone
     }
     
     if is_purchased:
@@ -1260,14 +1277,24 @@ def get_all_projects_feed(page: int = 1, limit: int = 50):
 # 4. Assets & Resources
 # ==========================================
 
-def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt: str = None):
-    """Save asset"""
+def save_asset(user_id: str, url: str, type: str, project_id: str = None, prompt: str = None, timezone: str = "UTC"):
+    """Save asset
+    
+    Args:
+        user_id: User ID
+        url: Asset URL
+        type: Asset type
+        project_id: Optional project ID
+        prompt: Optional generation prompt
+        timezone: IANA timezone for transaction snapshot
+    """
     data = {
         "user_id": user_id,
         "url": url,
         "type": type,
         "project_id": project_id,
-        "prompt": prompt
+        "prompt": prompt,
+        "timezone": timezone  # v3.9: Snapshot timezone
     }
     supabase.table("assets").insert(data).execute()
 
@@ -1723,7 +1750,8 @@ def create_listing(
     submit_for_review: bool = True,
     resource_id: str = None,
     version: str = "1.0",
-    changelog: str = ""
+    changelog: str = "",
+    timezone: str = "UTC"
 ):
     """
     Create or update listing (PRD Chapter 7/8)
@@ -1738,6 +1766,7 @@ def create_listing(
         resource_url: For assets, the image URL; for projects, same as resource_id
         version: Version number (e.g., "1.0")
         changelog: What's new in this version
+        timezone: IANA timezone for transaction snapshot
     """
     from datetime import datetime
     
@@ -1812,6 +1841,7 @@ def create_listing(
         "version": version,
         "changelog": changelog,
         "version_history": version_history,
+        "timezone": timezone,  # v3.9: Snapshot timezone
     }
     res = supabase.table("marketplace_listings").insert(data).execute()
     return res.data[0]
@@ -1879,7 +1909,8 @@ def execute_purchase(
     utm_source: str = None,
     utm_medium: str = None,
     utm_campaign: str = None,
-    referral_context: str = None
+    referral_context: str = None,
+    timezone: str = "UTC"
 ) -> dict:
     """
     Execute purchase logic (PRD Chapter 13)
@@ -1897,6 +1928,7 @@ def execute_purchase(
         idempotency_key: Unique key to prevent duplicate purchases
         utm_source/utm_medium/utm_campaign: Analytics tracking
         referral_context: Where user came from ('homepage', 'search', etc.)
+        timezone: IANA timezone for transaction snapshot
     
     Returns: { success: bool, message: str }
     """
@@ -1955,6 +1987,8 @@ def execute_purchase(
         "utm_medium": utm_medium,
         "utm_campaign": utm_campaign,
         "referral_context": referral_context,
+        # v3.9: Timezone snapshot
+        "timezone": timezone,
     }
     
     # 6. Free item handling
@@ -1963,13 +1997,13 @@ def execute_purchase(
         supabase.table("user_purchases").insert(purchase_record).execute()
         
         # Also create purchased item copy for free items
-        _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id)
+        _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id, timezone=timezone)
         
         return {"success": True, "message": "Free item claimed"}
     
     # 6. Deduct buyer credits
     try:
-        credit_deduct(buyer_id, price, "market_purchase", f"Purchase: {listing.get('title', 'Item')}")
+        credit_deduct(buyer_id, price, "market_purchase", f"Purchase: {listing.get('title', 'Item')}", timezone=timezone)
     except Exception as e:
         if "INSUFFICIENT" in str(e):
             return {"success": False, "message": "Insufficient credits"}
@@ -1982,7 +2016,8 @@ def execute_purchase(
             seller_id, 
             seller_amount, 
             f"Sale: {listing.get('title', 'Item')}", 
-            type="market_sale"
+            type="market_sale",
+            timezone=timezone
         )
     
     # 8. Record purchase with snapshot
@@ -1994,16 +2029,23 @@ def execute_purchase(
     }).eq("id", listing_id).execute()
     
     # 10. Create purchased item copy in buyer's library
-    _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id)
+    _create_purchased_item_copy(buyer_id, listing, seller_id, listing_id, timezone=timezone)
     
     return {"success": True, "message": "Purchase successful"}
 
 
-def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, listing_id: str):
+def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, listing_id: str, timezone: str = "UTC"):
     """
     Create a copy of the purchased item in buyer's library.
     For projects: creates a new project record with is_purchased=True
     For assets: creates a new asset record with is_purchased=True
+    
+    Args:
+        buyer_id: Buyer user ID
+        listing: Listing data
+        seller_id: Seller user ID
+        listing_id: Listing ID
+        timezone: IANA timezone for transaction snapshot
     """
     resource_type = listing.get("resource_type", "project")
     resource_url = listing.get("resource_url")  # For assets: image URL; for projects: thumbnail URL
@@ -2024,6 +2066,7 @@ def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, li
                 "is_purchased": True,
                 "source_listing_id": listing_id,
                 "origin_owner_id": seller_id,
+                "timezone": timezone,  # v3.9: Snapshot timezone
             }
             supabase.table("projects").insert(new_project_data).execute()
             print(f"[PURCHASE] Created purchased project for buyer {buyer_id}")
@@ -2048,6 +2091,7 @@ def _create_purchased_item_copy(buyer_id: str, listing: dict, seller_id: str, li
                     "is_purchased": True,
                     "source_listing_id": listing_id,
                     "origin_owner_id": seller_id,
+                    "timezone": timezone,  # v3.9: Snapshot timezone
                 }
                 supabase.table("assets").insert(new_asset_data).execute()
                 print(f"[PURCHASE] Created purchased asset for buyer {buyer_id}")
