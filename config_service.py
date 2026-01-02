@@ -96,19 +96,24 @@ def get_config(config_key: str, use_cache: bool = True) -> Optional[Dict[str, An
                 if cache_time and (datetime.now() - cache_time).total_seconds() < CACHE_TTL_SECONDS:
                     return _config_cache[config_key]
     
-    # 
+    # 查询数据库
     if supabase:
         try:
             result = supabase.table("system_configs")\
-                .select("config_value, is_active")\
-                .eq("config_key", config_key)\
+                .select("value, is_active")\
+                .eq("key", config_key)\
                 .single()\
                 .execute()
             
             if result.data and result.data.get("is_active"):
-                config_value = result.data["config_value"]
+                # value 是 TEXT 类型，需要解析 JSON
+                raw_value = result.data["value"]
+                try:
+                    config_value = json.loads(raw_value) if raw_value else None
+                except:
+                    config_value = raw_value
                 
-                # 
+                # 缓存结果
                 with _cache_lock:
                     _config_cache[config_key] = config_value
                     _cache_timestamp[config_key] = datetime.now()
@@ -142,10 +147,10 @@ def set_config(config_key: str, config_value: Dict[str, Any], updated_by: str = 
     try:
         result = supabase.table("system_configs")\
             .update({
-                "config_value": config_value,
+                "value": json.dumps(config_value) if isinstance(config_value, dict) else str(config_value),
                 "updated_by": updated_by
             })\
-            .eq("config_key", config_key)\
+            .eq("key", config_key)\
             .execute()
         
         # 
@@ -172,14 +177,14 @@ def get_all_configs(category: str = None) -> List[Dict[str, Any]]:
         
     """
     if not supabase:
-        # 
+        # 返回默认配置
         configs = []
         for key, value in DEFAULT_RATE_LIMITS.items():
             if category is None or key.startswith(f"{category}."):
                 configs.append({
-                    "config_key": key,
-                    "config_value": value,
-                    "category": key.split(".")[0] + "." + key.split(".")[1] if "." in key else "general",
+                    "key": key,
+                    "value": json.dumps(value),
+                    "config_group": key.split(".")[0] + "." + key.split(".")[1] if "." in key else "general",
                     "is_active": True
                 })
         return configs
@@ -187,9 +192,9 @@ def get_all_configs(category: str = None) -> List[Dict[str, Any]]:
     try:
         query = supabase.table("system_configs").select("*")
         if category:
-            query = query.eq("category", category)
+            query = query.eq("config_group", category)
         
-        result = query.order("config_key").execute()
+        result = query.order("key").execute()
         return result.data or []
     except Exception as e:
         print(f"[ConfigService] Error fetching configs: {e}")
@@ -320,13 +325,17 @@ def apply_rate_limit_preset(preset_name: str, updated_by: str = None) -> bool:
             if key.startswith("rate_limit.") and key != "rate_limit.global.enabled":
                 set_config(key, value, updated_by)
     else:
-        # 
+        # 应用乘数
         configs = get_all_configs("rate_limit")
         for config in configs:
-            key = config["config_key"]
+            key = config["key"]
             if key != "rate_limit.global.enabled" and key != "rate_limit.global.default":
-                value = config["config_value"]
-                if "limit" in value:
+                raw_value = config["value"]
+                try:
+                    value = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+                except:
+                    value = raw_value
+                if isinstance(value, dict) and "limit" in value:
                     new_limit = max(1, int(value["limit"] * multiplier))
                     set_config(key, {**value, "limit": new_limit}, updated_by)
     

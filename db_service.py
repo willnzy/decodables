@@ -3730,14 +3730,14 @@ def get_system_config(key: str, default_value: str = None):
     
     try:
         res = supabase.table("system_configs")\
-            .select("config_value, value_type, is_active")\
-            .eq("config_key", key)\
+            .select("value, value_type, is_active")\
+            .eq("key", key)\
             .eq("is_active", True)\
             .single()\
             .execute()
         
         if res.data:
-            value = res.data["config_value"]
+            value = res.data["value"]
             _set_cached_config(key, value)
             return value
     except Exception as e:
@@ -3769,27 +3769,19 @@ def get_all_system_configs(group: str = None, include_inactive: bool = False):
     
     try:
         query = supabase.table("system_configs")\
-            .select("config_key, config_value, value_type, category, description, is_active, updated_at")
+            .select("key, value, value_type, config_group, description, is_active, updated_at")
         
         if not include_inactive:
             query = query.eq("is_active", True)
         
         if group:
-            query = query.eq("category", group)
+            query = query.eq("config_group", group)
         
-        res = query.order("category").order("config_key").execute()
+        res = query.order("config_group").order("key").execute()
         
         if res.data:
-            # Cache as dict for easy lookup, transform to expected format
-            config_dict = {item["config_key"]: {
-                "key": item["config_key"],
-                "value": item["config_value"],
-                "value_type": item.get("value_type", "json"),
-                "config_group": item["category"],
-                "description": item.get("description"),
-                "is_active": item.get("is_active", True),
-                "updated_at": item.get("updated_at")
-            } for item in res.data}
+            # Cache as dict for easy lookup
+            config_dict = {item["key"]: item for item in res.data}
             if not include_inactive:
                 _set_cached_config(cache_key, config_dict)
             return config_dict
@@ -3817,13 +3809,13 @@ def get_configs_by_group(group: str):
     
     try:
         res = supabase.table("system_configs")\
-            .select("config_key, config_value, value_type")\
-            .eq("category", group)\
+            .select("key, value, value_type")\
+            .eq("config_group", group)\
             .eq("is_active", True)\
             .execute()
         
         if res.data:
-            result = {item["config_key"]: item["config_value"] for item in res.data}
+            result = {item["key"]: item["value"] for item in res.data}
             _set_cached_config(cache_key, result)
             return result
     except Exception as e:
@@ -3858,30 +3850,16 @@ def admin_get_system_configs(
         .select("*", count="exact")
     
     if group:
-        query = query.eq("category", group)
+        query = query.eq("config_group", group)
     
     if search:
-        # Search in config_key or description (case insensitive)
-        query = query.or_(f"config_key.ilike.%{search}%,description.ilike.%{search}%")
+        # Search in key or description (case insensitive)
+        query = query.or_(f"key.ilike.%{search}%,description.ilike.%{search}%")
     
-    res = query.order("category").order("config_key").range(start, end).execute()
-    
-    # Transform to expected format for frontend
-    items = []
-    for item in (res.data or []):
-        items.append({
-            "key": item.get("config_key"),
-            "value": item.get("config_value"),
-            "value_type": item.get("value_type", "json"),
-            "config_group": item.get("category"),
-            "description": item.get("description"),
-            "is_active": item.get("is_active", True),
-            "updated_at": item.get("updated_at"),
-            "id": item.get("id")
-        })
+    res = query.order("config_group").order("key").range(start, end).execute()
     
     return {
-        "items": items,
+        "items": res.data or [],
         "total": res.count or 0,
         "page": page,
         "limit": limit
@@ -3897,10 +3875,10 @@ def admin_get_config_groups():
     """
     try:
         res = supabase.table("system_configs")\
-            .select("category")\
+            .select("config_group")\
             .execute()
         
-        groups = list(set(item["category"] for item in res.data if item.get("category")))
+        groups = list(set(item["config_group"] for item in res.data if item.get("config_group")))
         return sorted(groups)
     except Exception as e:
         logger.error(f"[Config] Failed to get config groups: {e}")
@@ -3931,10 +3909,10 @@ def admin_create_system_config(
     """
     try:
         data = {
-            "config_key": key,
-            "config_value": value,
+            "key": key,
+            "value": value,
             "value_type": value_type,
-            "category": config_group,
+            "config_group": config_group,
             "description": description,
             "is_active": True,
             "updated_by": admin_id
@@ -3982,21 +3960,21 @@ def admin_update_system_config(
     try:
         # Get current value for audit
         current = supabase.table("system_configs")\
-            .select("config_value")\
-            .eq("config_key", key)\
+            .select("value")\
+            .eq("key", key)\
             .single()\
             .execute()
         
-        old_value = current.data["config_value"] if current.data else None
+        old_value = current.data["value"] if current.data else None
         
         # Build update data
         data = {"updated_by": admin_id}
         if value is not None:
-            data["config_value"] = value
+            data["value"] = value
         if value_type is not None:
             data["value_type"] = value_type
         if config_group is not None:
-            data["category"] = config_group
+            data["config_group"] = config_group
         if description is not None:
             data["description"] = description
         if is_active is not None:
@@ -4004,7 +3982,7 @@ def admin_update_system_config(
         
         res = supabase.table("system_configs")\
             .update(data)\
-            .eq("config_key", key)\
+            .eq("key", key)\
             .execute()
         
         if res.data:
@@ -4034,16 +4012,16 @@ def admin_delete_system_config(key: str, admin_id: str = None):
     try:
         # Get current value for audit
         current = supabase.table("system_configs")\
-            .select("config_value")\
-            .eq("config_key", key)\
+            .select("value")\
+            .eq("key", key)\
             .single()\
             .execute()
         
-        old_value = current.data["config_value"] if current.data else None
+        old_value = current.data["value"] if current.data else None
         
         res = supabase.table("system_configs")\
             .delete()\
-            .eq("config_key", key)\
+            .eq("key", key)\
             .execute()
         
         if res.data:
