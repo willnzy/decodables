@@ -2469,17 +2469,32 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                 response_format={"type": "json_object"}
             )
             
-            # Check for empty response
+            # Check for empty response with detailed logging
             content = response.choices[0].message.content
+            finish_reason = response.choices[0].finish_reason
+            
             if not content:
+                # Log detailed info for debugging
                 print(f"OCR Warning: Empty response from GPT-4o")
-                # Return a minimal result instead of failing
+                print(f"  - Finish reason: {finish_reason}")
+                print(f"  - Image size: {len(image_contents)} bytes")
+                print(f"  - Model: {response.model}")
+                if hasattr(response, 'usage'):
+                    print(f"  - Tokens used: {response.usage}")
+                
+                # Possible reasons for empty response:
+                # 1. Content policy violation (image flagged)
+                # 2. Image too blurry/unreadable
+                # 3. Image essentially blank
+                # 4. Processing timeout
+                
                 ocr_result = {
                     "content_type": "unknown",
                     "blocks": [],
-                    "summary": "Could not extract content from this image"
+                    "summary": "Could not extract content from this image. The image may be too blurry, blank, or unrecognizable."
                 }
             else:
+                print(f"OCR: Received {len(content)} chars, finish_reason={finish_reason}")
                 ocr_result = json.loads(content)
             
             # Convert to canvas elements
