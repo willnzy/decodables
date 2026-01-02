@@ -2580,6 +2580,218 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                 "summary": ocr_result.get("summary", "")
             }
         
+        # Helper: Analyze if PDF page is text-based or scanned
+        def analyze_pdf_page(page) -> dict:
+            """
+            Analyze a PDF page to determine if it's text-based or scanned.
+            Returns analysis info including text content if available.
+            """
+            # Try to extract text directly
+            text_dict = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+            blocks = text_dict.get("blocks", [])
+            
+            text_blocks = []
+            image_blocks = []
+            total_text_chars = 0
+            
+            for block in blocks:
+                if block.get("type") == 0:  # Text block
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text = span.get("text", "").strip()
+                            if text:
+                                total_text_chars += len(text)
+                                text_blocks.append({
+                                    "text": text,
+                                    "bbox": span.get("bbox"),
+                                    "font": span.get("font", ""),
+                                    "size": span.get("size", 12),
+                                    "flags": span.get("flags", 0),  # bold, italic flags
+                                })
+                elif block.get("type") == 1:  # Image block
+                    image_blocks.append({
+                        "bbox": block.get("bbox"),
+                        "width": block.get("width", 0),
+                        "height": block.get("height", 0),
+                    })
+            
+            # Determine page type
+            # If we have significant text, it's text-based
+            is_text_based = total_text_chars > 50
+            
+            return {
+                "is_text_based": is_text_based,
+                "text_blocks": text_blocks,
+                "image_blocks": image_blocks,
+                "total_chars": total_text_chars,
+            }
+        
+        # Helper: Extract embedded images from PDF page
+        def extract_page_images(page, page_num, pdf_doc) -> list:
+            """Extract embedded images from a PDF page."""
+            extracted_images = []
+            image_list = page.get_images(full=True)
+            
+            for img_index, img in enumerate(image_list):
+                try:
+                    xref = img[0]
+                    base_image = pdf_doc.extract_image(xref)
+                    if base_image:
+                        image_bytes = base_image["image"]
+                        image_ext = base_image["ext"]
+                        
+                        # Upload to storage
+                        img_filename = f"pdf-images/{user['id']}/{uuid.uuid4()}_p{page_num}_img{img_index}.{image_ext}"
+                        img_url = None
+                        if storage_supabase:
+                            try:
+                                storage_supabase.storage.from_(BUCKET_NAME).upload(
+                                    path=img_filename,
+                                    file=image_bytes,
+                                    file_options={"content-type": f"image/{image_ext}"}
+                                )
+                                img_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(img_filename)
+                            except Exception as e:
+                                print(f"Failed to upload PDF image: {e}")
+                        
+                        if img_url:
+                            extracted_images.append({
+                                "url": img_url,
+                                "width": base_image.get("width", 0),
+                                "height": base_image.get("height", 0),
+                                "ext": image_ext,
+                            })
+                except Exception as e:
+                    print(f"Failed to extract image {img_index} from page {page_num}: {e}")
+            
+            return extracted_images
+        
+        # Helper: Process text-based PDF page (direct extraction, no AI needed)
+        def process_text_pdf_page(page, page_num, analysis, extracted_images) -> dict:
+            """
+            Process a text-based PDF page using direct extraction.
+            Much faster and cheaper than OCR.
+            """
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+            
+            blocks = []
+            canvas_elements = []
+            
+            # Group text blocks by vertical position for better structure
+            for tb in analysis["text_blocks"]:
+                bbox = tb["bbox"]
+                # Convert bbox to percentage positions (0-100)
+                x = (bbox[0] / page_width) * 100
+                y = (bbox[1] / page_height) * 100
+                w = ((bbox[2] - bbox[0]) / page_width) * 100
+                h = ((bbox[3] - bbox[1]) / page_height) * 100
+                
+                # Determine text style based on font size and flags
+                font_size = tb["size"]
+                flags = tb["flags"]
+                is_bold = flags & 2**4  # Bold flag
+                is_italic = flags & 2**1  # Italic flag
+                
+                # Map font size to our scale
+                if font_size >= 24:
+                    size_variant = "xlarge"
+                    style_variant = "title"
+                elif font_size >= 18:
+                    size_variant = "large"
+                    style_variant = "heading"
+                elif font_size >= 14:
+                    size_variant = "medium"
+                    style_variant = "subheading"
+                elif font_size >= 10:
+                    size_variant = "small"
+                    style_variant = "paragraph"
+                else:
+                    size_variant = "xsmall"
+                    style_variant = "caption"
+                
+                blocks.append({
+                    "type": "text",
+                    "content": tb["text"],
+                    "style": {
+                        "variant": style_variant,
+                        "fontSize": size_variant,
+                        "fontWeight": "bold" if is_bold else "normal",
+                        "fontStyle": "italic" if is_italic else "normal",
+                        "align": "left"
+                    },
+                    "position": {"x": x, "y": y, "width": w, "height": h}
+                })
+                
+                # Create canvas element
+                canvas_elements.append({
+                    "type": "textbox",
+                    "text": tb["text"],
+                    "left": x * 6.12,  # Scale to ~612px canvas
+                    "top": y * 7.92,   # Scale to ~792px canvas
+                    "width": max(w * 6.12, 100),
+                    "fontSize": int(font_size),
+                    "fontWeight": "bold" if is_bold else "normal",
+                    "fontStyle": "italic" if is_italic else "normal",
+                })
+            
+            # Add extracted images as blocks
+            for idx, img in enumerate(extracted_images):
+                blocks.append({
+                    "type": "image",
+                    "imageType": "photo",
+                    "description": "Embedded image from PDF",
+                    "url": img["url"],
+                    "position": {"x": 50, "y": 50, "width": 30, "height": 30}  # Default position
+                })
+                canvas_elements.append({
+                    "type": "image",
+                    "src": img["url"],
+                    "left": 200,
+                    "top": 200 + idx * 150,
+                    "width": min(img["width"], 200),
+                    "height": min(img["height"], 200),
+                })
+            
+            # Generate preview image for this page
+            mat = fitz.Matrix(150/72, 150/72)
+            pix = page.get_pixmap(matrix=mat)
+            preview_bytes = pix.tobytes("png")
+            
+            preview_filename = f"scans/{user['id']}/{uuid.uuid4()}_page{page_num}_preview.png"
+            preview_url = None
+            if storage_supabase:
+                try:
+                    storage_supabase.storage.from_(BUCKET_NAME).upload(
+                        path=preview_filename,
+                        file=preview_bytes,
+                        file_options={"content-type": "image/png"}
+                    )
+                    preview_url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(preview_filename)
+                except Exception as e:
+                    print(f"Failed to upload preview: {e}")
+            
+            return {
+                "page_number": page_num,
+                "source_image_url": preview_url,
+                "extraction_method": "direct",  # Indicate direct extraction was used
+                "ocr_result": {
+                    "content_type": "document",
+                    "page_layout": {
+                        "orientation": "portrait" if page_height > page_width else "landscape",
+                        "has_border": False,
+                        "background": "white"
+                    },
+                    "blocks": blocks,
+                    "summary": f"Text-based PDF page with {len(analysis['text_blocks'])} text blocks and {len(extracted_images)} images",
+                    "detected_language": "en"
+                },
+                "canvas_elements": canvas_elements,
+                "summary": f"Extracted {len(analysis['text_blocks'])} text blocks, {len(extracted_images)} images",
+                "extracted_images": extracted_images
+            }
+        
         # Process based on file type
         if is_pdf:
             # PDF: Process selected pages
@@ -2591,18 +2803,41 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                 if pn < 1 or pn > total_pages:
                     raise HTTPException(400, f"Invalid page number {pn}. PDF has {total_pages} pages.")
             
-            # Process each selected page
+            # Process each selected page with smart detection
             page_results = []
+            extraction_stats = {"direct": 0, "ocr": 0}
+            
             for page_num in selected_pages:
                 page = pdf_doc[page_num - 1]  # 0-indexed
-                mat = fitz.Matrix(200/72, 200/72)  # 200 DPI for OCR
-                pix = page.get_pixmap(matrix=mat)
-                img_bytes = pix.tobytes("png")
                 
-                result = await process_single_image(img_bytes, page_num)
+                # Step 1: Analyze page type
+                analysis = analyze_pdf_page(page)
+                
+                # Step 2: Extract embedded images
+                extracted_images = extract_page_images(page, page_num, pdf_doc)
+                
+                # Step 3: Choose extraction method
+                if analysis["is_text_based"]:
+                    # Direct extraction - faster and no AI cost
+                    print(f"[PDF] Page {page_num}: Using direct text extraction ({analysis['total_chars']} chars)")
+                    result = process_text_pdf_page(page, page_num, analysis, extracted_images)
+                    extraction_stats["direct"] += 1
+                else:
+                    # OCR fallback for scanned pages
+                    print(f"[PDF] Page {page_num}: Using OCR (scanned/image-based page)")
+                    mat = fitz.Matrix(200/72, 200/72)  # 200 DPI for OCR
+                    pix = page.get_pixmap(matrix=mat)
+                    img_bytes = pix.tobytes("png")
+                    result = await process_single_image(img_bytes, page_num)
+                    result["extraction_method"] = "ocr"
+                    result["extracted_images"] = extracted_images
+                    extraction_stats["ocr"] += 1
+                
                 page_results.append(result)
             
             pdf_doc.close()
+            
+            print(f"[PDF] Extraction complete: {extraction_stats['direct']} pages direct, {extraction_stats['ocr']} pages OCR")
             
             # Optionally save to assets library
             asset_id = None
