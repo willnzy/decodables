@@ -29,6 +29,7 @@ from db_service import (
     # Users
     get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
     refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
+    update_user_timezone,
     # Credits
     log_credit_transaction, log_payment_record, credit_deduct, add_credits_permanent, add_credits_monthly,
     deduct_credits_atomic, add_credits, get_credit_history,
@@ -420,6 +421,10 @@ class ChatSupportRequest(BaseModel):
 class ContactFormRequest(BaseModel):
     email: str  # Required for guest users
     message: str
+
+class TimezoneUpdateRequest(BaseModel):
+    """Request body for updating user timezone."""
+    timezone: str  # IANA timezone identifier (e.g., 'Asia/Shanghai')
 
 class FeedbackWithImagesRequest(BaseModel):
     email: str
@@ -1251,6 +1256,27 @@ def mark_all_read(user: dict = Depends(get_current_user)):
     """Mark all notifications as read."""
     mark_all_notifications_read(user["id"])
     return {"status": "ok"}
+
+
+@app.put("/api/user/timezone")
+def update_timezone(request: TimezoneUpdateRequest, user: dict = Depends(get_current_user)):
+    """
+    Update user's timezone.
+    Called automatically when user logs in from browser to sync their timezone.
+    """
+    timezone = request.timezone
+    
+    # Basic validation for IANA timezone format
+    if '/' not in timezone and timezone != 'UTC':
+        return {"success": False, "error": "Invalid timezone format. Use IANA format like 'Asia/Shanghai'"}
+    
+    success = update_user_timezone(user["id"], timezone)
+    return {
+        "success": success,
+        "timezone": timezone,
+        "message": f"Timezone updated to {timezone}" if success else "Failed to update timezone"
+    }
+
 
 # --- System Configs (Public) ---
 @app.get("/api/configs")
