@@ -977,6 +977,148 @@ def delete_asset(asset_id: str, permanent: bool = False, user: dict = Depends(ge
         raise HTTPException(404, str(e) or "Asset not found")
 
 
+# ==========================================
+# Asset Management APIs (v3.4)
+# ==========================================
+
+class CreateAssetFromUrlRequest(BaseModel):
+    """Request body for creating asset from existing URL"""
+    url: str
+    project_id: Optional[str] = None
+    type: Optional[str] = "uploaded"  # uploaded/ai_generated/scanned
+    description: Optional[str] = None
+    metadata: Optional[dict] = None
+
+@app.post("/api/user/assets/from-url")
+def create_asset_from_url(
+    request: CreateAssetFromUrlRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Create an asset entry from an existing URL (v3.4).
+    Used when user wants to save a page image to their asset library.
+    
+    Unlike upload_asset, this doesn't upload a new file - it just creates
+    an asset record for an already-uploaded image URL.
+    """
+    user_tier = (user.get("tier") or "").lower()
+    if user_tier != "pro":
+        raise HTTPException(403, "Saving to asset library requires Pro plan")
+    
+    try:
+        # Check if URL already exists in user's assets
+        existing = supabase.table("assets").select("id").eq(
+            "user_id", user["id"]
+        ).eq("url", request.url).eq("is_deleted", False).execute()
+        
+        if existing.data and len(existing.data) > 0:
+            # Return existing asset ID
+            return {
+                "success": True,
+                "asset_id": existing.data[0]["id"],
+                "is_existing": True,
+                "message": "Asset already exists in library"
+            }
+        
+        # Create new asset record
+        asset_data = {
+            "user_id": user["id"],
+            "url": request.url,
+            "type": request.type or "uploaded",
+            "project_id": request.project_id,
+            "description": request.description,
+            "metadata": request.metadata,
+            "usage_count": 1  # Start with 1 since it's being used
+        }
+        
+        result = supabase.table("assets").insert(asset_data).select().execute()
+        
+        if result.data:
+            log_activity(user["id"], "create_asset_from_url", {"asset_id": result.data[0]["id"]})
+            return {
+                "success": True,
+                "asset_id": result.data[0]["id"],
+                "is_existing": False,
+                "asset": result.data[0]
+            }
+        else:
+            raise HTTPException(500, "Failed to create asset")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating asset from URL: {e}")
+        raise HTTPException(500, f"Failed to create asset: {str(e)}")
+
+
+@app.get("/api/user/assets/check-url")
+def check_asset_url(
+    url: str = Query(..., description="URL to check"),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Check if a URL exists in user's asset library (v3.4).
+    Used to determine if "Save to Assets" button should be shown.
+    """
+    try:
+        result = supabase.table("assets").select("id, type, created_at, usage_count").eq(
+            "user_id", user["id"]
+        ).eq("url", url).eq("is_deleted", False).execute()
+        
+        if result.data and len(result.data) > 0:
+            return {
+                "exists": True,
+                "asset_id": result.data[0]["id"],
+                "type": result.data[0]["type"],
+                "usage_count": result.data[0].get("usage_count", 0),
+                "created_at": result.data[0]["created_at"]
+            }
+        else:
+            return {
+                "exists": False,
+                "asset_id": None
+            }
+    except Exception as e:
+        print(f"Error checking asset URL: {e}")
+        raise HTTPException(500, f"Failed to check asset: {str(e)}")
+
+
+@app.post("/api/user/assets/{asset_id}/increment-usage")
+def increment_asset_usage(
+    asset_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Increment the usage count for an asset (v3.4).
+    Called when an asset is added to a page from the library.
+    """
+    try:
+        # Verify ownership
+        asset = supabase.table("assets").select("id, usage_count").eq(
+            "id", asset_id
+        ).eq("user_id", user["id"]).eq("is_deleted", False).execute()
+        
+        if not asset.data:
+            raise HTTPException(404, "Asset not found")
+        
+        current_count = asset.data[0].get("usage_count", 0) or 0
+        
+        # Increment usage count
+        result = supabase.table("assets").update({
+            "usage_count": current_count + 1
+        }).eq("id", asset_id).execute()
+        
+        return {
+            "success": True,
+            "usage_count": current_count + 1
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error incrementing asset usage: {e}")
+        raise HTTPException(500, f"Failed to update asset: {str(e)}")
+
+
 @app.get("/api/user/assets/dashboard")
 def dashboard_assets(
     view: str = Query("all", pattern="^(all|bought|selling)$"),

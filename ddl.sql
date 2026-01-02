@@ -239,6 +239,9 @@ create table if not exists assets (
   description text, -- v3.3: Separate description field
   metadata jsonb, -- Structured scan/canvas data (added v3.1)
   
+  -- v3.4: Usage tracking for asset management
+  usage_count int default 0, -- Number of times asset is used in projects
+  
   -- Soft delete fields
   is_deleted boolean default false,
   deleted_at timestamptz default null, -- v3.3: Deletion timestamp for 30-day retention
