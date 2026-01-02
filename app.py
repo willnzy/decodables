@@ -5781,6 +5781,60 @@ def adm_get_behavior_analysis(
     return admin_get_behavior_analysis(start_date, end_date)
 
 
+@app.post("/api/admin/ai/generate-report")
+@limiter.limit("5/minute")  # Limit AI report generation to prevent abuse
+async def adm_generate_ai_report(
+    request: Request,
+    report_type: str = "comprehensive",
+    time_range: str = "30d",
+    admin: dict = Depends(require_admin)
+):
+    """
+    Generate a comprehensive AI-powered business intelligence report.
+    
+    This endpoint uses GPT-4o to analyze metrics data and generate:
+    - Key Insights with attribution analysis
+    - Operational Strategy recommendations
+    - Product Design implications
+    
+    Args:
+        report_type: "comprehensive" | "growth" | "product" | "commercial"
+        time_range: "7d" | "30d" | "90d"
+    
+    Returns:
+        Full Markdown report with structured metrics summary
+    """
+    from ai_report_service import generate_ai_business_report
+    
+    try:
+        report = generate_ai_business_report(
+            report_type=report_type,
+            time_range=time_range
+        )
+        return report
+    except Exception as e:
+        logger.error(f"Error generating AI report: {e}")
+        raise HTTPException(500, detail=f"Failed to generate AI report: {str(e)}")
+
+
+@app.get("/api/admin/ai/quick-insights")
+def adm_get_quick_insights(
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get quick rule-based insights for dashboard preview.
+    This is faster than full AI report generation.
+    """
+    from ai_report_service import get_quick_insights
+    
+    try:
+        insights = get_quick_insights()
+        return {"insights": insights}
+    except Exception as e:
+        logger.error(f"Error getting quick insights: {e}")
+        return {"insights": [], "error": str(e)}
+
+
 # ==========================================
 # User Events Tracking
 # ==========================================

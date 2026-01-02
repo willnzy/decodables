@@ -1,8 +1,9 @@
 """
 Background Scheduler for Data Aggregation Tasks
 
+v3.12: Integrated new metrics ETL system for industry-standard SaaS analytics.
 
- FastAPI ， Railway 
+Runs on FastAPI startup in Railway deployment.
 """
 
 import os
@@ -19,24 +20,44 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def run_hourly_aggregation():
-    """Run hourly aggregation tasks"""
+    """Run hourly aggregation tasks (both legacy and new ETL)"""
     logger.info(f"[{datetime.now()}] 🕐 Starting hourly aggregation...")
+    
+    # Run new metrics ETL (v3.12)
+    try:
+        from scheduled_tasks.metrics_etl import run_hourly_etl
+        run_hourly_etl()
+        logger.info(f"[{datetime.now()}] ✅ Metrics ETL (hourly) complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
+    
+    # Run legacy aggregation for backwards compatibility
     try:
         from scheduled_tasks.aggregate_stats import run_hourly_tasks
         run_hourly_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Hourly aggregation complete")
+        logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Hourly aggregation failed: {e}")
+        logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
 
 def run_daily_aggregation():
-    """Run daily aggregation tasks"""
+    """Run daily aggregation tasks (both legacy and new ETL)"""
     logger.info(f"[{datetime.now()}] 📅 Starting daily aggregation...")
+    
+    # Run new metrics ETL (v3.12) - industry-standard SaaS metrics
+    try:
+        from scheduled_tasks.metrics_etl import run_daily_etl
+        run_daily_etl()
+        logger.info(f"[{datetime.now()}] ✅ Metrics ETL (daily) complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
+    
+    # Run legacy aggregation for backwards compatibility
     try:
         from scheduled_tasks.aggregate_stats import run_daily_tasks
         run_daily_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Daily aggregation complete")
+        logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Daily aggregation failed: {e}")
+        logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
 
 def init_scheduler():
     """
