@@ -365,6 +365,8 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('LOADING_SAVING', 'Saving...', 'text', 'loading', 'Saving loading state'),
   ('LOADING_DELETING', 'Deleting...', 'text', 'loading', 'Deleting loading state'),
   ('LOADING_RESTORING', 'Restoring...', 'text', 'loading', 'Restoring loading state'),
+  ('LOADING_DEFAULT', 'Loading...', 'text', 'loading', 'Default loading state'),
+  ('LOADING_EDITOR', 'Loading editor...', 'text', 'loading', 'Editor loading state'),
   
   -- ==========================================
   -- Empty States (Round 5)
@@ -381,7 +383,36 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   -- ==========================================
   ('SIGNIN_VIEW_PROJECTS', 'Please sign in to view your projects', 'text', 'signin', 'Sign in prompt for projects'),
   ('SIGNIN_VIEW_TRANSACTIONS', 'Please sign in to view your transaction history', 'text', 'signin', 'Sign in prompt for transactions'),
-  ('SIGNIN_ACCESS_MARKETPLACE', 'Please sign in to access the Marketplace', 'text', 'signin', 'Sign in prompt for marketplace')
+  ('SIGNIN_ACCESS_MARKETPLACE', 'Please sign in to access the Marketplace', 'text', 'signin', 'Sign in prompt for marketplace'),
+  
+  -- ==========================================
+  -- Static UI Text (Round 6)
+  -- ==========================================
+  ('UI_UPGRADE_REQUIRED', 'Upgrade Required', 'text', 'ui', 'Upgrade required title'),
+  ('UI_UPGRADE_TO_PRO', 'Upgrade to Pro', 'text', 'ui', 'Upgrade to Pro button/title'),
+  ('UI_UPGRADE_TO_SHARE', 'Upgrade to Pro to share your creative work on the Marketplace.', 'text', 'ui', 'Upgrade to share prompt'),
+  ('UI_UPGRADE_TO_PURCHASE', 'Upgrade to purchase credits.', 'text', 'ui', 'Upgrade to purchase credits'),
+  ('UI_BUY_CREDITS', 'Buy Credits', 'text', 'ui', 'Buy credits title'),
+  ('UI_BUY_MORE_CREDITS', 'Buy More Credits', 'text', 'ui', 'Buy more credits title'),
+  ('UI_BUY_ANYTIME', 'Buy anytime, use forever', 'text', 'ui', 'Credits purchase description'),
+  ('UI_GO_TO_HOME', 'Go to Home', 'text', 'ui', 'Go to home button'),
+  ('UI_SIGN_IN', 'Sign In', 'text', 'ui', 'Sign in button'),
+  ('UI_SAVE_TEMPLATE_HINT', 'Save your current settings as a template', 'text', 'ui', 'Save template hint'),
+  ('UI_SAVE_SETTINGS_HINT', 'Save your settings below to reuse later', 'text', 'ui', 'Save settings hint'),
+  ('UI_CREATE_PAGE_WITH_AI', 'Create page content with AI', 'text', 'ui', 'Create page with AI description'),
+  ('UI_CREATE_TABLE_HINT', 'Create a table with custom rows and columns', 'text', 'ui', 'Create table hint'),
+  ('UI_UPLOAD_OR_AI', 'Upload images or generate with AI', 'text', 'ui', 'Upload or AI hint'),
+  ('UI_GENERATE_TO_PREVIEW', 'Generate to see previews', 'text', 'ui', 'Generate to preview hint'),
+  ('UI_GENERATE_IMAGES_HINT', 'Generate images and import your favorites', 'text', 'ui', 'Generate images hint'),
+  ('UI_HISTORY_APPEAR_HERE', 'Your history will appear here', 'text', 'ui', 'History empty hint'),
+  ('UI_CURRENT_PROJECT_ONLY', 'Current Project Only', 'text', 'ui', 'Current project only label'),
+  ('UI_UPGRADE_TO_ACCESS_ASSETS', 'Upgrade to Pro to access all assets', 'text', 'ui', 'Upgrade to access assets'),
+  ('UI_SUBSCRIBE_TO_PRO', 'Subscribe to Pro', 'text', 'ui', 'Subscribe to Pro button text'),
+  ('UI_TRIAL_EXPIRED', 'Trial Expired', 'text', 'ui', 'Trial expired label'),
+  ('UI_SAVE_TEMPLATE_DESC', 'Save your current settings as a reusable template for quick access later.', 'text', 'ui', 'Save template dialog description'),
+  ('UI_UPLOAD_OR_AI', 'Upload images or generate with AI', 'text', 'ui', 'Upload or AI hint'),
+  ('UI_GENERATE_TO_PREVIEW', 'Generate to see previews', 'text', 'ui', 'Generate to preview hint'),
+  ('UI_HISTORY_APPEAR_HERE', 'Your history will appear here', 'text', 'ui', 'History empty hint')
 
 ON CONFLICT (key) DO NOTHING;
 
