@@ -6,12 +6,19 @@ Handles user-related API endpoints
 """
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from typing import Optional
 from dependencies import get_current_user
 from db_service import (
     get_user_profile, get_credit_history, get_assets,
     get_user_purchases, get_user_notifications, mark_notification_read,
-    check_and_reset_monthly_credits_if_needed
+    check_and_reset_monthly_credits_if_needed, update_user_timezone
 )
+
+
+class TimezoneUpdateRequest(BaseModel):
+    """Request body for updating user timezone."""
+    timezone: str = Field(..., min_length=1, max_length=50, description="IANA timezone identifier (e.g., 'Asia/Shanghai')")
 
 router = APIRouter(prefix="/api/user", tags=["users"])
 
@@ -127,4 +134,50 @@ def read_notification(notification_id: str, user: dict = Depends(get_current_use
         Updated notification
     """
     return mark_notification_read(notification_id, user["id"])
+
+
+@router.post("/notifications/read-all")
+def read_all_notifications(user: dict = Depends(get_current_user)):
+    """
+    Mark all notifications as read.
+    
+    Returns:
+        Success message
+    """
+    from db_service import mark_all_notifications_read
+    mark_all_notifications_read(user["id"])
+    return {"success": True, "message": "All notifications marked as read"}
+
+
+@router.put("/timezone")
+def update_timezone(request: TimezoneUpdateRequest, user: dict = Depends(get_current_user)):
+    """
+    Update user's timezone.
+    
+    Called automatically when user logs in from browser to sync their timezone.
+    Timezone is stored in IANA format (e.g., 'Asia/Shanghai', 'America/New_York').
+    
+    This enables the "dual storage" strategy:
+    - UTC for all business logic and calculations
+    - Local time (computed via trigger) for Admin panel display
+    
+    Args:
+        request: TimezoneUpdateRequest with timezone field
+    
+    Returns:
+        Success status and updated timezone
+    """
+    timezone = request.timezone
+    
+    # Basic validation for IANA timezone format
+    if '/' not in timezone and timezone != 'UTC':
+        return {"success": False, "error": "Invalid timezone format. Use IANA format like 'Asia/Shanghai'"}
+    
+    success = update_user_timezone(user["id"], timezone)
+    
+    return {
+        "success": success,
+        "timezone": timezone,
+        "message": f"Timezone updated to {timezone}" if success else "Failed to update timezone"
+    }
 

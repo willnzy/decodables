@@ -283,10 +283,19 @@ def generate_user_code() -> str:
 
 
 @retry_on_network_error()
-def create_user_profile(user_id: str, email: str, username: str, avatar_url: str, first_name: str = None, last_name: str = None):
+def create_user_profile(user_id: str, email: str, username: str, avatar_url: str, first_name: str = None, last_name: str = None, timezone: str = "UTC"):
     """
     Create new user and grant initial credits
     According to PRD: Free users get 50 Credits (One-time, Permanent)
+    
+    Args:
+        user_id: Clerk user ID
+        email: User email
+        username: Username
+        avatar_url: Avatar URL
+        first_name: First name
+        last_name: Last name
+        timezone: IANA timezone identifier (e.g., 'Asia/Shanghai', 'America/New_York')
     """
     # Generate unique user code
     user_code = generate_user_code()
@@ -303,10 +312,11 @@ def create_user_profile(user_id: str, email: str, username: str, avatar_url: str
         "credits_permanent": 50,   # Registration bonus 50 Credits (Permanent)
         "tier": "free",
         "subscription_status": "inactive",
-        "role": "user"
+        "role": "user",
+        "timezone": timezone or "UTC",  # User timezone (IANA format)
     }
     supabase.table("profiles").insert(data).execute()
-    # Log bonus transaction
+    # Log bonus transaction with timezone snapshot
     log_credit_transaction(
         user_id=user_id, 
         amount=50, 
@@ -314,7 +324,8 @@ def create_user_profile(user_id: str, email: str, username: str, avatar_url: str
         balance_monthly_after=0, 
         balance_permanent_after=50, 
         type="signup_bonus", 
-        description="Welcome Bonus - 50 Credits"
+        description="Welcome Bonus - 50 Credits",
+        timezone=timezone or "UTC"  # v3.9: Snapshot timezone at registration
     )
 
 def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = None, subscription_status: str = "active"):
@@ -330,10 +341,18 @@ def update_subscription_tier(user_id: str, tier: str, stripe_customer_id: str = 
         data["stripe_customer_id"] = stripe_customer_id
     supabase.table("profiles").update(data).eq("id", user_id).execute()
 
-def update_user_profile(user_id: str, avatar_url: str = None, username: str = None, first_name: str = None, last_name: str = None):
+def update_user_profile(user_id: str, avatar_url: str = None, username: str = None, first_name: str = None, last_name: str = None, timezone: str = None):
     """
-    Update user profile (avatar, username, name)
+    Update user profile (avatar, username, name, timezone)
     Used for Clerk user.updated webhook events
+    
+    Args:
+        user_id: User ID
+        avatar_url: Avatar URL
+        username: Username
+        first_name: First name
+        last_name: Last name
+        timezone: IANA timezone identifier (e.g., 'Asia/Shanghai')
     """
     data = {}
     if avatar_url is not None:
@@ -344,11 +363,48 @@ def update_user_profile(user_id: str, avatar_url: str = None, username: str = No
         data["first_name"] = first_name
     if last_name is not None:
         data["last_name"] = last_name
+    if timezone is not None:
+        data["timezone"] = timezone
     
     if data:
         supabase.table("profiles").update(data).eq("id", user_id).execute()
         return True
     return False
+
+
+def update_user_timezone(user_id: str, timezone: str):
+    """
+    Update user timezone.
+    Called when user logs in from a new timezone or explicitly changes timezone.
+    
+    Args:
+        user_id: User ID
+        timezone: IANA timezone identifier (e.g., 'Asia/Shanghai', 'America/New_York')
+    
+    Returns:
+        bool: True if updated successfully
+    """
+    if not timezone:
+        return False
+    
+    supabase.table("profiles").update({"timezone": timezone}).eq("id", user_id).execute()
+    return True
+
+
+def get_user_timezone(user_id: str) -> str:
+    """
+    Get user's timezone.
+    
+    Args:
+        user_id: User ID
+    
+    Returns:
+        str: IANA timezone identifier, defaults to 'UTC'
+    """
+    result = supabase.table("profiles").select("timezone").eq("id", user_id).single().execute()
+    if result.data:
+        return result.data.get("timezone") or "UTC"
+    return "UTC"
 
 def refresh_monthly_credits(user_id: str, tier: str):
     """
@@ -453,9 +509,16 @@ def log_credit_transaction(
     balance_monthly_after: int, 
     balance_permanent_after: int, 
     type: str, 
-    description: str
+    description: str,
+    timezone: str = "UTC"  # v3.9: Snapshot timezone for dual-storage
 ):
-    """[Internal] Log transaction - Support Credits Buckets"""
+    """
+    [Internal] Log transaction - Support Credits Buckets
+    
+    v3.9: Added timezone parameter for dual-storage strategy.
+    The timezone is a "snapshot" of the user's timezone at transaction time.
+    Trigger will auto-compute created_at_local.
+    """
     supabase.table("credit_transactions").insert({
         "user_id": user_id,
         "amount": amount,
@@ -464,6 +527,7 @@ def log_credit_transaction(
         "balance_permanent_after": balance_permanent_after,
         "type": type,
         "description": description,
+        "timezone": timezone,  # v3.9: Snapshot timezone
         "created_at": datetime.now().isoformat()
     }).execute()
 
@@ -497,10 +561,17 @@ def log_payment_record(
         "created_at": datetime.now().isoformat()
     }).execute()
 
-def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dict:
+def credit_deduct(user_id: str, amount: int, type: str, description: str, timezone: str = "UTC") -> dict:
     """
     [Core] Unified deduction function
     Priority: Deduct Monthly Credits first, then Permanent Credits
+    
+    Args:
+        user_id: User ID
+        amount: Amount to deduct
+        type: Transaction type
+        description: Transaction description
+        timezone: v3.9 - Snapshot timezone for dual-storage
     
     Returns: { success: bool, balance_monthly: int, balance_permanent: int }
     Raises: Exception if insufficient credits or concurrency conflict
@@ -532,7 +603,7 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
     if not res.data:
         raise Exception("Concurrency conflict, please retry")
     
-    # Log transactions (log separately for each bucket)
+    # Log transactions (log separately for each bucket) with timezone snapshot
     if deduct_from_monthly > 0:
         log_credit_transaction(
             user_id=user_id,
@@ -541,7 +612,8 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
             balance_monthly_after=new_monthly,
             balance_permanent_after=new_permanent,
             type=type,
-            description=description
+            description=description,
+            timezone=timezone
         )
     
     if deduct_from_permanent > 0:
@@ -552,7 +624,8 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
             balance_monthly_after=new_monthly,
             balance_permanent_after=new_permanent,
             type=type,
-            description=description
+            description=description,
+            timezone=timezone
         )
     
     return {
@@ -562,10 +635,17 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str) -> dic
         "total": new_monthly + new_permanent
     }
 
-def add_credits_permanent(user_id: str, amount: int, description: str, type: str = "topup_purchase"):
+def add_credits_permanent(user_id: str, amount: int, description: str, type: str = "topup_purchase", timezone: str = "UTC"):
     """
     Add permanent credits (for purchase/sale earnings)
     Credits earned from buying/selling are always permanent
+    
+    Args:
+        user_id: User ID
+        amount: Amount to add
+        description: Transaction description
+        type: Transaction type
+        timezone: v3.9 - Snapshot timezone for dual-storage
     """
     profile = get_user_profile(user_id)
     if not profile:
@@ -586,14 +666,22 @@ def add_credits_permanent(user_id: str, amount: int, description: str, type: str
         balance_monthly_after=monthly,
         balance_permanent_after=new_permanent,
         type=type,
-        description=description
+        description=description,
+        timezone=timezone
     )
     
     return {"balance_monthly": monthly, "balance_permanent": new_permanent}
 
-def add_credits_monthly(user_id: str, amount: int, description: str, type: str = "sub_grant"):
+def add_credits_monthly(user_id: str, amount: int, description: str, type: str = "sub_grant", timezone: str = "UTC"):
     """
     Add monthly credits (for subscription grants)
+    
+    Args:
+        user_id: User ID
+        amount: Amount to add
+        description: Transaction description
+        type: Transaction type
+        timezone: v3.9 - Snapshot timezone for dual-storage
     """
     profile = get_user_profile(user_id)
     if not profile:
@@ -614,20 +702,21 @@ def add_credits_monthly(user_id: str, amount: int, description: str, type: str =
         balance_monthly_after=new_monthly,
         balance_permanent_after=permanent,
         type=type,
-        description=description
+        description=description,
+        timezone=timezone
     )
     
     return {"balance_monthly": new_monthly, "balance_permanent": permanent}
 
 # Backward compatibility
-def deduct_credits_atomic(user_id: str, amount: int, type: str, description: str):
+def deduct_credits_atomic(user_id: str, amount: int, type: str, description: str, timezone: str = "UTC"):
     """[Compat] Atomic deduction - internally calls credit_deduct"""
-    result = credit_deduct(user_id, amount, type, description)
+    result = credit_deduct(user_id, amount, type, description, timezone=timezone)
     return result["success"]
 
-def add_credits(user_id: str, amount: int, description: str, type: str = "purchase"):
+def add_credits(user_id: str, amount: int, description: str, type: str = "purchase", timezone: str = "UTC"):
     """[Compat] Add credits - defaults to adding to permanent"""
-    return add_credits_permanent(user_id, amount, description, type)
+    return add_credits_permanent(user_id, amount, description, type, timezone=timezone)
 
 def get_credit_history(user_id: str, page: int = 1, limit: int = 20):
     """Get credit history"""
