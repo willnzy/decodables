@@ -74,7 +74,7 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('FREE_PROJECT_LIMIT', '1', 'number', 'limits', 'Maximum projects for free tier users'),
   ('STARTER_PROJECT_LIMIT', '20', 'number', 'limits', 'Maximum projects for starter tier users'),
   ('PRO_PROJECT_LIMIT', '200', 'number', 'limits', 'Maximum projects for pro tier users'),
-  ('MAX_UPLOAD_SIZE_MB', '5', 'number', 'limits', 'Maximum file upload size in MB'),
+  ('MAX_UPLOAD_FILE_SIZE_MB', '5', 'number', 'limits', 'Maximum file upload size in MB'),
   ('MAX_LISTING_PRICE', '500', 'number', 'limits', 'Maximum price for marketplace listings in credits'),
   
   -- Credits/Costs Group
@@ -118,6 +118,13 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('UI_CREDITS_LABEL_PERMANENT', 'Permanent Credits', 'text', 'ui', 'Label for permanent credits'),
   ('UI_CREDITS_ABBREVIATION_MONTHLY', 'Monthly', 'text', 'ui', 'Abbreviation for monthly credits'),
   ('UI_CREDITS_ABBREVIATION_PERMANENT', 'Permanent', 'text', 'ui', 'Abbreviation for permanent credits'),
+  
+  -- File Upload Hints
+  ('UI_UPLOAD_HINT_IMAGE', 'JPG, PNG, GIF, WebP · Max {size}MB', 'text', 'ui', 'File type hint for image upload'),
+  ('UI_UPLOAD_HINT_IMAGE_SVG', 'JPG, PNG, GIF, WebP, SVG · Max {size}MB', 'text', 'ui', 'File type hint for image upload with SVG'),
+  ('UI_UPLOAD_HINT_IMAGE_PDF', 'Images (JPG, PNG, WebP) or PDF · Max {size}MB', 'text', 'ui', 'File type hint for image/PDF upload'),
+  ('UI_UPLOAD_HINT_REFERENCE', 'PNG, JPG, WebP · Max {size}MB', 'text', 'ui', 'File type hint for reference image upload'),
+  ('UI_UPLOAD_HINT_FEEDBACK', 'Max 5 images, {size}MB each', 'text', 'ui', 'File type hint for feedback image upload'),
   
   -- Plan Feature Descriptions
   ('PLAN_FEATURE_STARTER_PROJECTS', 'Up to 20 projects', 'text', 'plan_features', 'Starter plan project limit description'),
