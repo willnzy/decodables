@@ -345,7 +345,43 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('PLACEHOLDER_ASSET_DESC', 'Describe your asset...', 'text', 'placeholder', 'Asset description input placeholder'),
   ('PLACEHOLDER_AI_PROMPT', 'e.g., A curious cat exploring a magical garden with glowing flowers, children''s book illustration style', 'text', 'placeholder', 'AI prompt input placeholder'),
   ('PLACEHOLDER_AI_SUBJECT', 'e.g., A friendly dragon helping a child', 'text', 'placeholder', 'AI subject input placeholder'),
-  ('PLACEHOLDER_AI_MOOD', 'e.g., peaceful, adventurous, mysterious', 'text', 'placeholder', 'AI mood input placeholder')
+  ('PLACEHOLDER_AI_MOOD', 'e.g., peaceful, adventurous, mysterious', 'text', 'placeholder', 'AI mood input placeholder'),
+  
+  -- ==========================================
+  -- Button Text (Round 5)
+  -- ==========================================
+  ('BTN_YES_DELETE', 'Yes, Delete', 'text', 'button', 'Delete confirmation button'),
+  ('BTN_YES_UNPUBLISH', 'Yes, Unpublish', 'text', 'button', 'Unpublish confirmation button'),
+  ('BTN_YES_OVERWRITE', 'Yes, Overwrite', 'text', 'button', 'Overwrite confirmation button'),
+  ('BTN_PUBLISH', 'Publish', 'text', 'button', 'Publish button'),
+  ('BTN_CANCEL', 'Cancel', 'text', 'button', 'Cancel button'),
+  ('BTN_DELETE', 'Delete', 'text', 'button', 'Delete button'),
+  ('BTN_RESTORE', 'Restore', 'text', 'button', 'Restore button'),
+  
+  -- ==========================================
+  -- Loading States (Round 5)
+  -- ==========================================
+  ('LOADING_GENERATING', 'Generating...', 'text', 'loading', 'Generating loading state'),
+  ('LOADING_SAVING', 'Saving...', 'text', 'loading', 'Saving loading state'),
+  ('LOADING_DELETING', 'Deleting...', 'text', 'loading', 'Deleting loading state'),
+  ('LOADING_RESTORING', 'Restoring...', 'text', 'loading', 'Restoring loading state'),
+  
+  -- ==========================================
+  -- Empty States (Round 5)
+  -- ==========================================
+  ('EMPTY_NO_ASSETS', 'No assets yet', 'text', 'empty_state', 'Empty assets message'),
+  ('EMPTY_NO_TEMPLATES', 'No saved templates yet', 'text', 'empty_state', 'Empty templates message'),
+  ('EMPTY_NO_DESIGNS', 'No designs yet', 'text', 'empty_state', 'Empty designs message'),
+  ('EMPTY_NO_IMAGES', 'No images yet', 'text', 'empty_state', 'Empty images message'),
+  ('EMPTY_NO_TRANSACTIONS', 'No transactions yet', 'text', 'empty_state', 'Empty transactions message'),
+  ('EMPTY_NO_ASSETS_FOUND', 'No assets found', 'text', 'empty_state', 'No assets found message'),
+  
+  -- ==========================================
+  -- Sign-in Prompts (Round 5)
+  -- ==========================================
+  ('SIGNIN_VIEW_PROJECTS', 'Please sign in to view your projects', 'text', 'signin', 'Sign in prompt for projects'),
+  ('SIGNIN_VIEW_TRANSACTIONS', 'Please sign in to view your transaction history', 'text', 'signin', 'Sign in prompt for transactions'),
+  ('SIGNIN_ACCESS_MARKETPLACE', 'Please sign in to access the Marketplace', 'text', 'signin', 'Sign in prompt for marketplace')
 
 ON CONFLICT (key) DO NOTHING;
 
