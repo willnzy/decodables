@@ -1,8 +1,9 @@
 """
 Dynamic Rate Limiter
- - 
+动态速率限制器 - 从数据库读取配置
 """
 
+import json
 from functools import wraps
 from typing import Callable, Optional
 from fastapi import Request, HTTPException
@@ -121,11 +122,16 @@ def get_current_limits() -> dict:
     global_enabled = True
     
     for config in configs:
-        key = config["config_key"]
-        value = config["config_value"]
+        key = config.get("key")
+        # value is TEXT in v3.10 schema, may need JSON parsing
+        raw_value = config.get("value")
+        try:
+            value = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+        except:
+            value = raw_value
         
         if key == "rate_limit.global.enabled":
-            global_enabled = value.get("enabled", True)
+            global_enabled = value.get("enabled", True) if isinstance(value, dict) else True
         else:
             limits[key] = value
     
