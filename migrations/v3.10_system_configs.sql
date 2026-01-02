@@ -267,7 +267,30 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   -- Error Boundary Text
   -- ==========================================
   ('UI_ERROR_BOUNDARY_TITLE', 'Something went wrong', 'text', 'ui', 'Error boundary title'),
-  ('UI_PREVIEW_LOAD_FAILED', 'Failed to load preview', 'text', 'ui', 'Preview load failed message')
+  ('UI_PREVIEW_LOAD_FAILED', 'Failed to load preview', 'text', 'ui', 'Preview load failed message'),
+  
+  -- ==========================================
+  -- Additional Toast Messages (Round 2)
+  -- ==========================================
+  ('TOAST_IMAGE_SAVED_TO_ASSETS', 'Image saved to My Assets', 'text', 'toast', 'Toast when image saved to assets'),
+  ('TOAST_IMAGE_ADDED_TO_PAGE', 'Image added to page', 'text', 'toast', 'Toast when image added to page'),
+  ('TOAST_PORTAL_UNABLE_OPEN', 'Unable to open subscription portal.', 'text', 'toast', 'Toast when portal cannot open'),
+  ('TOAST_PORTAL_FAILED', 'Failed to open subscription portal.', 'text', 'toast', 'Toast when portal fails to open'),
+  ('TOAST_UPLOAD_FAILED', 'Upload failed: {error}', 'text', 'toast', 'Toast when upload fails'),
+  ('TOAST_UNPUBLISH_FAILED', 'Failed to unpublish. Please try again.', 'text', 'toast', 'Toast when unpublish fails'),
+  ('TOAST_LISTING_UPDATED', 'Listing updated successfully!', 'text', 'toast', 'Toast when listing is updated'),
+  ('TOAST_SAVE_FAILED', 'Failed to save. Please try again.', 'text', 'toast', 'Toast when save fails'),
+  
+  -- ==========================================
+  -- Additional Error Messages (Round 2)
+  -- ==========================================
+  ('ERROR_STARTER_PUBLISH_FREE_ONLY', 'Starter members can only publish free assets. Upgrade to Pro to set a price.', 'text', 'error_msg', 'Error for starter tier pricing restriction'),
+  ('ERROR_ENTER_WHAT_TO_DRAW', 'Please enter what to draw', 'text', 'error_msg', 'Error when prompt is empty'),
+  ('ERROR_NOT_ENOUGH_CREDITS', 'Not enough credits', 'text', 'error_msg', 'Error when credits are insufficient'),
+  ('ERROR_SELECT_IMAGES_TO_SAVE', 'Please select at least one image to save', 'text', 'error_msg', 'Error when no images selected to save'),
+  ('ERROR_TITLE_REQUIRED', 'Title is required', 'text', 'error_msg', 'Error when title is empty'),
+  ('ERROR_DESCRIPTION_REQUIRED', 'Description is required', 'text', 'error_msg', 'Error when description is empty'),
+  ('ERROR_PUBLISH_FAILED', 'Failed to publish. Please try again.', 'text', 'error_msg', 'Error when publish fails')
 
 ON CONFLICT (key) DO NOTHING;
 
