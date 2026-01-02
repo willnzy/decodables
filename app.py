@@ -24,6 +24,8 @@ from db_service import (
     # Access control
     is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
     get_total_credits,
+    # System configs (public)
+    get_system_config, get_all_system_configs, get_configs_by_group,
     # Users
     get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
     refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
@@ -1249,6 +1251,54 @@ def mark_all_read(user: dict = Depends(get_current_user)):
     """Mark all notifications as read."""
     mark_all_notifications_read(user["id"])
     return {"status": "ok"}
+
+# --- System Configs (Public) ---
+@app.get("/api/configs")
+def get_public_configs(group: Optional[str] = None):
+    """
+    Get all active system configs (public endpoint).
+    Used by frontend to fetch texts and feature flags.
+    
+    Args:
+        group: Optional filter by config_group
+    
+    Returns:
+        Dict of key -> config object
+    """
+    configs = get_all_system_configs(group=group, include_inactive=False)
+    return {"configs": configs}
+
+
+@app.get("/api/configs/{key}")
+def get_single_config(key: str, default: Optional[str] = None):
+    """
+    Get a single config value by key (public endpoint).
+    
+    Args:
+        key: Config key
+        default: Default value if not found
+    
+    Returns:
+        Config value or default
+    """
+    value = get_system_config(key, default)
+    return {"key": key, "value": value}
+
+
+@app.get("/api/configs/group/{group_name}")
+def get_config_group(group_name: str):
+    """
+    Get all configs in a specific group (public endpoint).
+    
+    Args:
+        group_name: Config group name
+    
+    Returns:
+        Dict of key -> value
+    """
+    configs = get_configs_by_group(group_name)
+    return {"group": group_name, "configs": configs}
+
 
 @app.get("/api/resources/stickers")
 def get_stickers(user: dict = Depends(get_current_user)):

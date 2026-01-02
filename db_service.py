@@ -3669,3 +3669,433 @@ def admin_get_report_detail(report_id: str):
         .eq("id", report_id).single().execute()
     
     return res.data
+
+
+# ==========================================
+# System Configuration Functions
+# ==========================================
+
+# In-memory cache for system configs (simple TTL cache)
+_config_cache = {}
+_config_cache_time = {}
+CONFIG_CACHE_TTL = 300  # 5 minutes cache TTL
+
+
+def _get_cached_config(key: str):
+    """Get config from cache if not expired."""
+    if key in _config_cache:
+        cache_time = _config_cache_time.get(key, 0)
+        if time.time() - cache_time < CONFIG_CACHE_TTL:
+            return _config_cache[key]
+    return None
+
+
+def _set_cached_config(key: str, value):
+    """Set config in cache."""
+    _config_cache[key] = value
+    _config_cache_time[key] = time.time()
+
+
+def _invalidate_config_cache(key: str = None):
+    """Invalidate config cache. If key is None, invalidate all."""
+    global _config_cache, _config_cache_time
+    if key:
+        _config_cache.pop(key, None)
+        _config_cache_time.pop(key, None)
+        # Also invalidate the 'all' cache
+        _config_cache.pop("__all__", None)
+        _config_cache_time.pop("__all__", None)
+    else:
+        _config_cache = {}
+        _config_cache_time = {}
+
+
+@retry_on_network_error()
+def get_system_config(key: str, default_value: str = None):
+    """
+    Get a single system config value by key.
+    Uses in-memory cache with TTL.
+    
+    Args:
+        key: Config key
+        default_value: Default value if config not found
+    
+    Returns:
+        Config value or default_value
+    """
+    # Check cache first
+    cached = _get_cached_config(key)
+    if cached is not None:
+        return cached
+    
+    try:
+        res = supabase.table("system_configs")\
+            .select("value, value_type, is_active")\
+            .eq("key", key)\
+            .eq("is_active", True)\
+            .single()\
+            .execute()
+        
+        if res.data:
+            value = res.data["value"]
+            _set_cached_config(key, value)
+            return value
+    except Exception as e:
+        logger.warning(f"[Config] Failed to get config {key}: {e}")
+    
+    return default_value
+
+
+@retry_on_network_error()
+def get_all_system_configs(group: str = None, include_inactive: bool = False):
+    """
+    Get all system configs, optionally filtered by group.
+    Uses in-memory cache with TTL.
+    
+    Args:
+        group: Optional config_group filter
+        include_inactive: Include inactive configs (admin only)
+    
+    Returns:
+        List of config objects or dict keyed by config key
+    """
+    cache_key = f"__all__{group or 'all'}_{include_inactive}"
+    
+    # Check cache first (only for public queries)
+    if not include_inactive:
+        cached = _get_cached_config(cache_key)
+        if cached is not None:
+            return cached
+    
+    try:
+        query = supabase.table("system_configs")\
+            .select("key, value, value_type, config_group, description, is_active, updated_at")
+        
+        if not include_inactive:
+            query = query.eq("is_active", True)
+        
+        if group:
+            query = query.eq("config_group", group)
+        
+        res = query.order("config_group").order("key").execute()
+        
+        if res.data:
+            # Cache as dict for easy lookup
+            config_dict = {item["key"]: item for item in res.data}
+            if not include_inactive:
+                _set_cached_config(cache_key, config_dict)
+            return config_dict
+    except Exception as e:
+        logger.error(f"[Config] Failed to get all configs: {e}")
+    
+    return {}
+
+
+@retry_on_network_error()
+def get_configs_by_group(group: str):
+    """
+    Get all configs in a specific group.
+    
+    Args:
+        group: Config group name
+    
+    Returns:
+        Dict of key -> value
+    """
+    cache_key = f"__group__{group}"
+    cached = _get_cached_config(cache_key)
+    if cached is not None:
+        return cached
+    
+    try:
+        res = supabase.table("system_configs")\
+            .select("key, value, value_type")\
+            .eq("config_group", group)\
+            .eq("is_active", True)\
+            .execute()
+        
+        if res.data:
+            result = {item["key"]: item["value"] for item in res.data}
+            _set_cached_config(cache_key, result)
+            return result
+    except Exception as e:
+        logger.warning(f"[Config] Failed to get configs for group {group}: {e}")
+    
+    return {}
+
+
+def admin_get_system_configs(
+    group: str = None,
+    search: str = None,
+    page: int = 1,
+    limit: int = 50
+):
+    """
+    [Admin] Get all system configs with pagination and filtering.
+    
+    Args:
+        group: Filter by config_group
+        search: Search in key or description
+        page: Page number
+        limit: Items per page
+    
+    Returns:
+        Dict with items and total count
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    # Build query
+    query = supabase.table("system_configs")\
+        .select("*", count="exact")
+    
+    if group:
+        query = query.eq("config_group", group)
+    
+    if search:
+        # Search in key or description (case insensitive)
+        query = query.or_(f"key.ilike.%{search}%,description.ilike.%{search}%")
+    
+    res = query.order("config_group").order("key").range(start, end).execute()
+    
+    return {
+        "items": res.data or [],
+        "total": res.count or 0,
+        "page": page,
+        "limit": limit
+    }
+
+
+def admin_get_config_groups():
+    """
+    [Admin] Get all distinct config groups.
+    
+    Returns:
+        List of group names
+    """
+    try:
+        res = supabase.table("system_configs")\
+            .select("config_group")\
+            .execute()
+        
+        groups = list(set(item["config_group"] for item in res.data if item.get("config_group")))
+        return sorted(groups)
+    except Exception as e:
+        logger.error(f"[Config] Failed to get config groups: {e}")
+        return []
+
+
+def admin_create_system_config(
+    key: str,
+    value: str,
+    value_type: str = "text",
+    config_group: str = "general",
+    description: str = None,
+    admin_id: str = None
+):
+    """
+    [Admin] Create a new system config.
+    
+    Args:
+        key: Unique config key
+        value: Config value
+        value_type: Type of value ('text', 'boolean', 'json', 'number')
+        config_group: Config group
+        description: Description for admins
+        admin_id: Admin user ID for audit
+    
+    Returns:
+        Created config object
+    """
+    try:
+        data = {
+            "key": key,
+            "value": value,
+            "value_type": value_type,
+            "config_group": config_group,
+            "description": description,
+            "is_active": True,
+            "updated_by": admin_id
+        }
+        
+        res = supabase.table("system_configs").insert(data).execute()
+        
+        if res.data:
+            # Log audit
+            _log_config_audit(key, None, value, "create", admin_id)
+            # Invalidate cache
+            _invalidate_config_cache()
+            return res.data[0]
+    except Exception as e:
+        logger.error(f"[Config] Failed to create config {key}: {e}")
+        raise Exception(f"Failed to create config: {str(e)}")
+    
+    return None
+
+
+def admin_update_system_config(
+    key: str,
+    value: str = None,
+    value_type: str = None,
+    config_group: str = None,
+    description: str = None,
+    is_active: bool = None,
+    admin_id: str = None
+):
+    """
+    [Admin] Update an existing system config.
+    
+    Args:
+        key: Config key to update
+        value: New value (optional)
+        value_type: New type (optional)
+        config_group: New group (optional)
+        description: New description (optional)
+        is_active: Enable/disable (optional)
+        admin_id: Admin user ID for audit
+    
+    Returns:
+        Updated config object
+    """
+    try:
+        # Get current value for audit
+        current = supabase.table("system_configs")\
+            .select("value")\
+            .eq("key", key)\
+            .single()\
+            .execute()
+        
+        old_value = current.data["value"] if current.data else None
+        
+        # Build update data
+        data = {"updated_by": admin_id}
+        if value is not None:
+            data["value"] = value
+        if value_type is not None:
+            data["value_type"] = value_type
+        if config_group is not None:
+            data["config_group"] = config_group
+        if description is not None:
+            data["description"] = description
+        if is_active is not None:
+            data["is_active"] = is_active
+        
+        res = supabase.table("system_configs")\
+            .update(data)\
+            .eq("key", key)\
+            .execute()
+        
+        if res.data:
+            # Log audit
+            _log_config_audit(key, old_value, value, "update", admin_id)
+            # Invalidate cache for this key
+            _invalidate_config_cache(key)
+            return res.data[0]
+    except Exception as e:
+        logger.error(f"[Config] Failed to update config {key}: {e}")
+        raise Exception(f"Failed to update config: {str(e)}")
+    
+    return None
+
+
+def admin_delete_system_config(key: str, admin_id: str = None):
+    """
+    [Admin] Delete a system config.
+    
+    Args:
+        key: Config key to delete
+        admin_id: Admin user ID for audit
+    
+    Returns:
+        True if deleted
+    """
+    try:
+        # Get current value for audit
+        current = supabase.table("system_configs")\
+            .select("value")\
+            .eq("key", key)\
+            .single()\
+            .execute()
+        
+        old_value = current.data["value"] if current.data else None
+        
+        res = supabase.table("system_configs")\
+            .delete()\
+            .eq("key", key)\
+            .execute()
+        
+        if res.data:
+            # Log audit
+            _log_config_audit(key, old_value, None, "delete", admin_id)
+            # Invalidate cache
+            _invalidate_config_cache(key)
+            return True
+    except Exception as e:
+        logger.error(f"[Config] Failed to delete config {key}: {e}")
+        raise Exception(f"Failed to delete config: {str(e)}")
+    
+    return False
+
+
+def _log_config_audit(
+    config_key: str,
+    old_value: str,
+    new_value: str,
+    action: str,
+    admin_id: str
+):
+    """
+    Log config change to audit table.
+    """
+    try:
+        supabase.table("config_audit_logs").insert({
+            "config_key": config_key,
+            "old_value": old_value,
+            "new_value": new_value,
+            "action": action,
+            "changed_by": admin_id
+        }).execute()
+    except Exception as e:
+        logger.warning(f"[Config] Failed to log audit: {e}")
+
+
+def admin_get_config_audit_logs(
+    config_key: str = None,
+    page: int = 1,
+    limit: int = 50
+):
+    """
+    [Admin] Get config audit logs.
+    
+    Args:
+        config_key: Filter by specific config key
+        page: Page number
+        limit: Items per page
+    
+    Returns:
+        List of audit log entries
+    """
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
+    query = supabase.table("config_audit_logs")\
+        .select("*, profiles!config_audit_logs_changed_by_fkey(id, username, avatar_url)")
+    
+    if config_key:
+        query = query.eq("config_key", config_key)
+    
+    res = query.order("changed_at", desc=True).range(start, end).execute()
+    
+    return res.data or []
+
+
+def invalidate_config_cache_api():
+    """
+    API endpoint helper to manually invalidate all config cache.
+    Called after admin updates.
+    
+    Returns:
+        True if successful
+    """
+    _invalidate_config_cache()
+    return True

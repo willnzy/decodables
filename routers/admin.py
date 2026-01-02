@@ -15,7 +15,12 @@ from db_service import (
     admin_restore_project, admin_get_projects_feed,
     admin_get_moderation_list, get_marketplace_item,
     admin_approve_listing, admin_reject_listing, 
-    admin_delete_listing, admin_unpublish_listing
+    admin_delete_listing, admin_unpublish_listing,
+    # System Config Functions
+    admin_get_system_configs, admin_get_config_groups,
+    admin_create_system_config, admin_update_system_config,
+    admin_delete_system_config, admin_get_config_audit_logs,
+    invalidate_config_cache_api
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -256,4 +261,155 @@ def unpublish_listing(listing_id: str, admin: dict = Depends(require_admin)):
     if not result:
         raise HTTPException(404, "Listing not found")
     return {"status": "unpublished", "listing_id": listing_id}
+
+
+# ==========================================
+# System Configuration Routes
+# ==========================================
+
+class ConfigCreateRequest(BaseModel):
+    key: str
+    value: str
+    value_type: str = "text"  # 'text', 'boolean', 'json', 'number'
+    config_group: str = "general"
+    description: Optional[str] = None
+
+
+class ConfigUpdateRequest(BaseModel):
+    value: Optional[str] = None
+    value_type: Optional[str] = None
+    config_group: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/configs")
+def get_configs(
+    group: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get all system configs with filtering.
+    
+    Args:
+        group: Filter by config_group
+        search: Search in key or description
+    
+    Returns:
+        Paginated configs
+    """
+    return admin_get_system_configs(group, search, page, limit)
+
+
+@router.get("/configs/groups")
+def get_config_groups(admin: dict = Depends(require_admin)):
+    """
+    Get all distinct config groups.
+    
+    Returns:
+        List of group names
+    """
+    groups = admin_get_config_groups()
+    return {"groups": groups}
+
+
+@router.post("/configs")
+def create_config(req: ConfigCreateRequest, admin: dict = Depends(require_admin)):
+    """
+    Create a new system config.
+    
+    Returns:
+        Created config
+    """
+    try:
+        result = admin_create_system_config(
+            key=req.key,
+            value=req.value,
+            value_type=req.value_type,
+            config_group=req.config_group,
+            description=req.description,
+            admin_id=admin["id"]
+        )
+        if result:
+            return {"status": "created", "config": result}
+        raise HTTPException(500, "Failed to create config")
+    except Exception as e:
+        if "duplicate key" in str(e).lower():
+            raise HTTPException(409, f"Config key '{req.key}' already exists")
+        raise HTTPException(500, str(e))
+
+
+@router.put("/configs/{key}")
+def update_config(key: str, req: ConfigUpdateRequest, admin: dict = Depends(require_admin)):
+    """
+    Update an existing system config.
+    
+    Returns:
+        Updated config
+    """
+    try:
+        result = admin_update_system_config(
+            key=key,
+            value=req.value,
+            value_type=req.value_type,
+            config_group=req.config_group,
+            description=req.description,
+            is_active=req.is_active,
+            admin_id=admin["id"]
+        )
+        if result:
+            return {"status": "updated", "config": result}
+        raise HTTPException(404, "Config not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.delete("/configs/{key}")
+def delete_config(key: str, admin: dict = Depends(require_admin)):
+    """
+    Delete a system config.
+    
+    Returns:
+        Status
+    """
+    try:
+        result = admin_delete_system_config(key, admin["id"])
+        if result:
+            return {"status": "deleted", "key": key}
+        raise HTTPException(404, "Config not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/configs/audit")
+def get_config_audit_logs(
+    config_key: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get config change audit logs.
+    
+    Returns:
+        Audit log entries
+    """
+    logs = admin_get_config_audit_logs(config_key, page, limit)
+    return {"items": logs, "page": page}
+
+
+@router.post("/configs/cache/invalidate")
+def invalidate_cache(admin: dict = Depends(require_admin)):
+    """
+    Manually invalidate all config cache.
+    Useful for forcing immediate updates across all instances.
+    
+    Returns:
+        Status
+    """
+    invalidate_config_cache_api()
+    return {"status": "cache_invalidated"}
 
