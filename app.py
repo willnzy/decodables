@@ -3639,52 +3639,67 @@ Key product info:
 Remember: Be helpful, concise, and friendly!"""
 
 
-async def chat_with_assistant(message: str, conversation_history: list) -> dict:
+async def chat_with_assistant(message: str, conversation_history: list, max_retries: int = 3) -> dict:
     """
     Use OpenAI Assistants API with RAG for text-only chat.
     Creates a new thread for each conversation (stateless).
+    Includes retry logic for network errors.
     """
     import time
     
-    # Create a new thread
-    thread = openai_client.beta.threads.create()
-    
-    # Add conversation history to thread (last 6 messages for context)
-    for msg in conversation_history[-6:]:
-        if msg.get("role") in ["user", "assistant"]:
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            # Create a new thread
+            thread = openai_client.beta.threads.create()
+            
+            # Add conversation history to thread (last 6 messages for context)
+            for msg in conversation_history[-6:]:
+                if msg.get("role") in ["user", "assistant"]:
+                    openai_client.beta.threads.messages.create(
+                        thread_id=thread.id,
+                        role=msg["role"],
+                        content=msg["content"]
+                    )
+            
+            # Add current user message
             openai_client.beta.threads.messages.create(
                 thread_id=thread.id,
-                role=msg["role"],
-                content=msg["content"]
+                role="user",
+                content=message
             )
-    
-    # Add current user message
-    openai_client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=message
-    )
-    
-    # Create a run
-    run = openai_client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=OPENAI_ASSISTANT_ID
-    )
-    
-    # Wait for completion (with timeout)
-    max_wait = 30  # 30 seconds timeout
-    start_time = time.time()
-    while run.status in ["queued", "in_progress"]:
-        if time.time() - start_time > max_wait:
-            raise TimeoutError("Assistant response timed out")
-        time.sleep(0.5)
-        run = openai_client.beta.threads.runs.retrieve(
-            thread_id=thread.id,
-            run_id=run.id
-        )
-    
-    if run.status != "completed":
-        raise Exception(f"Run failed with status: {run.status}")
+            
+            # Create a run
+            run = openai_client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=OPENAI_ASSISTANT_ID
+            )
+            
+            # Wait for completion (with timeout)
+            max_wait = 30  # 30 seconds timeout
+            start_time = time.time()
+            while run.status in ["queued", "in_progress"]:
+                if time.time() - start_time > max_wait:
+                    raise TimeoutError("Assistant response timed out")
+                time.sleep(0.5)
+                run = openai_client.beta.threads.runs.retrieve(
+                    thread_id=thread.id,
+                    run_id=run.id
+                )
+            
+            if run.status != "completed":
+                raise Exception(f"Run failed with status: {run.status}")
+            
+            # Success - break out of retry loop
+            break
+            
+        except Exception as e:
+            last_error = e
+            print(f"AI Chat attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))  # Exponential backoff
+            else:
+                raise last_error
     
     # Get the assistant's response
     messages = openai_client.beta.threads.messages.list(
@@ -3708,10 +3723,13 @@ async def chat_with_assistant(message: str, conversation_history: list) -> dict:
     }
 
 
-async def chat_with_vision(message: str, images: list, conversation_history: list) -> dict:
+async def chat_with_vision(message: str, images: list, conversation_history: list, max_retries: int = 3) -> dict:
     """
     Use Chat Completions API with GPT-4o for image analysis.
+    Includes retry logic for network errors.
     """
+    import time
+    
     messages = [{"role": "system", "content": SUPPORT_SYSTEM_PROMPT_FALLBACK}]
     
     # Add conversation history
@@ -3754,22 +3772,33 @@ async def chat_with_vision(message: str, images: list, conversation_history: lis
     
     messages.append({"role": "user", "content": content})
     
-    response = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        max_tokens=500,
-        temperature=0.7,
-    )
+    # Retry logic for network errors
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7,
+            )
+            
+            return {
+                "status": "ok",
+                "message": response.choices[0].message.content,
+                "source": "vision",
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                }
+            }
+        except Exception as e:
+            last_error = e
+            print(f"Vision API attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(1 * (attempt + 1))  # Exponential backoff
     
-    return {
-        "status": "ok",
-        "message": response.choices[0].message.content,
-        "source": "vision",
-        "usage": {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-        }
-    }
+    raise last_error
 
 
 @app.post("/api/chat/support")
