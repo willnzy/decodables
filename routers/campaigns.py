@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-from dependencies import get_current_user_optional, get_current_user
+from dependencies import optional_user, get_current_user
 from db_service import supabase, add_credits_permanent
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
@@ -29,7 +29,7 @@ class DismissRequest(BaseModel):
 
 @router.get("/active")
 async def get_active_campaigns(
-    user: Optional[dict] = Depends(get_current_user_optional)
+    user: Optional[dict] = Depends(optional_user)
 ) -> Dict[str, Any]:
     """
     Get all active campaigns visible to the current user.
