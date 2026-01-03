@@ -412,46 +412,93 @@ def generate_summary_report() -> Dict[str, Any]:
 # Main Entry Point
 # ==========================================
 
-def run_scheduler(campaigns: bool = True, themes: bool = True):
+def run_scheduler(campaigns: bool = True, themes: bool = True, use_logger: bool = True):
     """Run the scheduler tasks."""
-    log("=" * 60)
-    log("🚀 Campaign & Theme Scheduler Started")
-    log("=" * 60)
     
-    if campaigns:
-        log("\n📢 Processing Campaigns...")
-        results = update_campaign_statuses()
-        log(f"   Activated: {results['activated']}, Ended: {results['ended']}, Errors: {results['errors']}")
+    # Determine task type for logging
+    if campaigns and themes:
+        task_type = 'full'
+    elif campaigns:
+        task_type = 'campaigns'
+    else:
+        task_type = 'themes'
+    
+    # Import TaskLogger
+    task_logger = None
+    if use_logger:
+        try:
+            from task_logger import TaskLogger
+            task_logger = TaskLogger('campaign_scheduler', task_type)
+        except ImportError:
+            pass
+    
+    # Use context manager if available
+    if task_logger:
+        task_logger.__enter__()
+    
+    try:
+        log("=" * 60)
+        log("🚀 Campaign & Theme Scheduler Started")
+        log("=" * 60)
         
-        # Check upcoming campaigns
-        upcoming = get_upcoming_campaigns(24)
-        if upcoming:
-            log(f"\n⏰ {len(upcoming)} campaign(s) starting in next 24 hours:")
-            for c in upcoming:
-                log(f"   - {c['name']} (starts at {c['start_at']})")
-    
-    if themes:
-        log("\n🎨 Checking Holiday Themes...")
-        current = log_current_theme()
+        campaign_results = {"activated": 0, "ended": 0, "errors": 0}
+        current_theme = None
         
-        # Check upcoming themes
-        upcoming = get_upcoming_themes(7)
-        if upcoming:
-            log(f"\n📅 {len(upcoming)} theme(s) coming in next 7 days:")
-            for t in upcoming:
-                log(f"   - {t['name']} (in {t['starts_in_days']} days)")
+        if campaigns:
+            log("\n📢 Processing Campaigns...")
+            campaign_results = update_campaign_statuses()
+            log(f"   Activated: {campaign_results['activated']}, Ended: {campaign_results['ended']}, Errors: {campaign_results['errors']}")
+            
+            # Check upcoming campaigns
+            upcoming = get_upcoming_campaigns(24)
+            if upcoming:
+                log(f"\n⏰ {len(upcoming)} campaign(s) starting in next 24 hours:")
+                for c in upcoming:
+                    log(f"   - {c['name']} (starts at {c['start_at']})")
+        
+        if themes:
+            log("\n🎨 Checking Holiday Themes...")
+            current_theme_data = log_current_theme()
+            current_theme = current_theme_data['name'] if current_theme_data else None
+            
+            # Check upcoming themes
+            upcoming = get_upcoming_themes(7)
+            if upcoming:
+                log(f"\n📅 {len(upcoming)} theme(s) coming in next 7 days:")
+                for t in upcoming:
+                    log(f"   - {t['name']} (in {t['starts_in_days']} days)")
+        
+        # Generate summary
+        log("\n📊 Summary Report:")
+        report = generate_summary_report()
+        log(f"   Campaigns: {report['campaigns']['active']} active, {report['campaigns']['scheduled']} scheduled")
+        log(f"   Themes: {report['themes']['total']} configured, Current: {report['themes']['current'] or 'None'}")
+        
+        log("\n" + "=" * 60)
+        log("✅ Scheduler completed successfully")
+        log("=" * 60)
+        
+        # Set task result for logging
+        if task_logger:
+            task_logger.set_result({
+                'campaigns_activated': campaign_results['activated'],
+                'campaigns_ended': campaign_results['ended'],
+                'campaigns_errors': campaign_results['errors'],
+                'campaigns_active': report['campaigns']['active'],
+                'campaigns_scheduled': report['campaigns']['scheduled'],
+                'current_theme': current_theme,
+                'themes_total': report['themes']['total'],
+            })
+        
+        return report
+        
+    except Exception as e:
+        log(f"❌ Scheduler failed: {e}", "ERROR")
+        raise
     
-    # Generate summary
-    log("\n📊 Summary Report:")
-    report = generate_summary_report()
-    log(f"   Campaigns: {report['campaigns']['active']} active, {report['campaigns']['scheduled']} scheduled")
-    log(f"   Themes: {report['themes']['total']} configured, Current: {report['themes']['current'] or 'None'}")
-    
-    log("\n" + "=" * 60)
-    log("✅ Scheduler completed successfully")
-    log("=" * 60)
-    
-    return report
+    finally:
+        if task_logger:
+            task_logger.__exit__(None, None, None)
 
 
 if __name__ == '__main__':
@@ -459,6 +506,7 @@ if __name__ == '__main__':
     parser.add_argument('--campaigns', action='store_true', help='Process campaigns only')
     parser.add_argument('--themes', action='store_true', help='Process themes only')
     parser.add_argument('--report', action='store_true', help='Generate report only')
+    parser.add_argument('--no-log', action='store_true', help='Disable task logging to database')
     
     args = parser.parse_args()
     
@@ -470,4 +518,4 @@ if __name__ == '__main__':
         # Default: run both if neither specified
         campaigns = args.campaigns or not args.themes
         themes = args.themes or not args.campaigns
-        run_scheduler(campaigns=campaigns, themes=themes)
+        run_scheduler(campaigns=campaigns, themes=themes, use_logger=not args.no_log)

@@ -632,3 +632,211 @@ def get_campaign_stats(
         },
         "recent_claims": (claims.data or [])[:20]
     }
+
+
+# ==========================================
+# Scheduled Task Monitoring Routes (v3.15)
+# ==========================================
+
+@router.get("/tasks/status")
+def get_task_status(admin: dict = Depends(require_admin)):
+    """
+    Get the latest status of all scheduled tasks.
+    
+    Returns:
+        List of tasks with their latest run status
+    """
+    try:
+        # Try to use the view first
+        result = supabase.table('v_latest_task_status').select('*').execute()
+        if result.data:
+            return {"tasks": result.data}
+    except:
+        pass
+    
+    # Fallback: manual query
+    # Get distinct task names
+    tasks_result = supabase.rpc('get_distinct_task_names').execute()
+    
+    if not tasks_result.data:
+        # Direct query approach
+        result = supabase.table('scheduled_task_logs').select(
+            'task_name'
+        ).order('started_at', desc=True).limit(100).execute()
+        
+        task_names = list(set(r['task_name'] for r in (result.data or [])))
+    else:
+        task_names = [r['task_name'] for r in tasks_result.data]
+    
+    tasks = []
+    for task_name in task_names:
+        latest = supabase.table('scheduled_task_logs').select('*').eq(
+            'task_name', task_name
+        ).order('started_at', desc=True).limit(1).execute()
+        
+        if latest.data:
+            task = latest.data[0]
+            # Calculate minutes since last run
+            if task.get('started_at'):
+                started = datetime.fromisoformat(task['started_at'].replace('Z', '+00:00'))
+                minutes_ago = (datetime.now(timezone.utc) - started).total_seconds() / 60
+                task['minutes_since_last_run'] = round(minutes_ago, 1)
+            tasks.append(task)
+    
+    return {"tasks": tasks}
+
+
+@router.get("/tasks/logs")
+def get_task_logs(
+    task_name: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get scheduled task execution logs.
+    
+    Args:
+        task_name: Filter by task name
+        status: Filter by status (running/success/failed)
+        limit: Number of logs to return
+    
+    Returns:
+        List of task execution logs
+    """
+    query = supabase.table('scheduled_task_logs').select('*')
+    
+    if task_name:
+        query = query.eq('task_name', task_name)
+    if status:
+        query = query.eq('status', status)
+    
+    result = query.order('started_at', desc=True).limit(limit).execute()
+    
+    return {"logs": result.data or []}
+
+
+@router.get("/tasks/health")
+def get_tasks_health(admin: dict = Depends(require_admin)):
+    """
+    Get health status of scheduled tasks.
+    
+    Checks if tasks are running on schedule and flags any issues.
+    
+    Returns:
+        Health status with alerts
+    """
+    # Expected intervals (in minutes)
+    expected_intervals = {
+        'campaign_scheduler': 60,      # Should run at least hourly
+        'metrics_etl': 1440,           # Should run daily
+        'aggregate_stats': 1440,       # Should run daily
+    }
+    
+    health = {
+        "status": "healthy",
+        "tasks": [],
+        "alerts": []
+    }
+    
+    for task_name, max_interval in expected_intervals.items():
+        latest = supabase.table('scheduled_task_logs').select('*').eq(
+            'task_name', task_name
+        ).order('started_at', desc=True).limit(1).execute()
+        
+        task_health = {
+            "task_name": task_name,
+            "expected_interval_minutes": max_interval,
+            "status": "unknown",
+            "last_run": None,
+            "last_status": None,
+            "minutes_since_last_run": None
+        }
+        
+        if latest.data:
+            task = latest.data[0]
+            task_health["last_run"] = task.get('started_at')
+            task_health["last_status"] = task.get('status')
+            task_health["last_result"] = task.get('result_summary')
+            
+            if task.get('started_at'):
+                started = datetime.fromisoformat(task['started_at'].replace('Z', '+00:00'))
+                minutes_ago = (datetime.now(timezone.utc) - started).total_seconds() / 60
+                task_health["minutes_since_last_run"] = round(minutes_ago, 1)
+                
+                # Check if overdue
+                if minutes_ago > max_interval * 1.5:
+                    task_health["status"] = "overdue"
+                    health["alerts"].append({
+                        "level": "warning",
+                        "message": f"{task_name} is overdue (last run {round(minutes_ago)} minutes ago)"
+                    })
+                elif task.get('status') == 'failed':
+                    task_health["status"] = "failed"
+                    health["alerts"].append({
+                        "level": "error",
+                        "message": f"{task_name} last run failed: {task.get('error_message', 'Unknown error')}"
+                    })
+                elif task.get('status') == 'running':
+                    task_health["status"] = "running"
+                else:
+                    task_health["status"] = "healthy"
+        else:
+            task_health["status"] = "never_run"
+            health["alerts"].append({
+                "level": "info",
+                "message": f"{task_name} has never been executed"
+            })
+        
+        health["tasks"].append(task_health)
+    
+    # Set overall status
+    if any(t["status"] == "failed" for t in health["tasks"]):
+        health["status"] = "degraded"
+    elif any(t["status"] == "overdue" for t in health["tasks"]):
+        health["status"] = "warning"
+    elif all(t["status"] in ["healthy", "running"] for t in health["tasks"]):
+        health["status"] = "healthy"
+    
+    return health
+
+
+@router.post("/tasks/{task_name}/run")
+def trigger_task(
+    task_name: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Manually trigger a scheduled task.
+    
+    Note: This runs synchronously and may timeout for long-running tasks.
+    For production, consider using a job queue.
+    """
+    import subprocess
+    import os
+    
+    # Map task names to scripts
+    task_scripts = {
+        'campaign_scheduler': 'scheduled_tasks/campaign_scheduler.py',
+        'metrics_etl': 'scheduled_tasks/metrics_etl.py --hourly',
+        'aggregate_stats': 'scheduled_tasks/aggregate_stats.py --hourly',
+    }
+    
+    if task_name not in task_scripts:
+        raise HTTPException(400, f"Unknown task: {task_name}")
+    
+    script = task_scripts[task_name]
+    
+    try:
+        # Run in background (non-blocking)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = f"cd {base_dir} && python {script}"
+        subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        return {
+            "status": "triggered",
+            "task_name": task_name,
+            "message": f"Task {task_name} has been triggered"
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Failed to trigger task: {str(e)}")
