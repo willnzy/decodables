@@ -382,3 +382,253 @@ def refresh_metrics(admin: dict = Depends(require_admin)):
         return {"status": "success", "message": "Metrics refresh completed"}
     except Exception as e:
         raise HTTPException(500, f"Metrics refresh failed: {str(e)}")
+
+
+# ==========================================
+# Campaign Management Routes (v3.13)
+# ==========================================
+
+class CampaignCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: str  # credits_gift | credits_discount | credits_bonus
+    config: dict
+    target_type: str = 'all'
+    target_config: Optional[dict] = {}
+    notification_channels: list = ['banner']
+    notification_config: Optional[dict] = {}
+    start_at: str  # ISO datetime
+    end_at: str    # ISO datetime
+    timezone: str = 'America/New_York'
+    usage_limit: Optional[int] = None
+    usage_per_user: int = 1
+
+
+class CampaignUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+    config: Optional[dict] = None
+    target_type: Optional[str] = None
+    target_config: Optional[dict] = None
+    notification_channels: Optional[list] = None
+    notification_config: Optional[dict] = None
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+    timezone: Optional[str] = None
+    usage_limit: Optional[int] = None
+    usage_per_user: Optional[int] = None
+    status: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/campaigns")
+def list_campaigns(
+    status: Optional[str] = None,
+    type: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    admin: dict = Depends(require_admin)
+):
+    """
+    List all campaigns with filtering.
+    
+    Args:
+        status: Filter by status (draft/scheduled/active/paused/ended)
+        type: Filter by type (credits_gift/credits_discount/credits_bonus)
+        page: Page number
+        limit: Items per page
+    
+    Returns:
+        Paginated list of campaigns
+    """
+    query = supabase.table('campaigns').select('*', count='exact')
+    
+    if status:
+        query = query.eq('status', status)
+    if type:
+        query = query.eq('type', type)
+    
+    offset = (page - 1) * limit
+    result = query.order('created_at', desc=True).range(offset, offset + limit - 1).execute()
+    
+    return {
+        "items": result.data or [],
+        "total": result.count or 0,
+        "page": page,
+        "limit": limit,
+        "total_pages": (result.count + limit - 1) // limit if result.count else 0
+    }
+
+
+@router.get("/campaigns/{campaign_id}")
+def get_campaign(
+    campaign_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get campaign details.
+    """
+    result = supabase.table('campaigns').select('*').eq('id', campaign_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Campaign not found")
+    
+    return result.data[0]
+
+
+@router.post("/campaigns")
+def create_campaign(
+    req: CampaignCreateRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Create a new campaign.
+    """
+    from datetime import datetime
+    
+    # Determine initial status based on start time
+    now = datetime.utcnow()
+    start_at = datetime.fromisoformat(req.start_at.replace('Z', '+00:00'))
+    status = 'scheduled' if start_at.replace(tzinfo=None) > now else 'active'
+    
+    data = {
+        "name": req.name,
+        "description": req.description,
+        "type": req.type,
+        "config": req.config,
+        "target_type": req.target_type,
+        "target_config": req.target_config or {},
+        "notification_channels": req.notification_channels,
+        "notification_config": req.notification_config or {},
+        "start_at": req.start_at,
+        "end_at": req.end_at,
+        "timezone": req.timezone,
+        "usage_limit": req.usage_limit,
+        "usage_per_user": req.usage_per_user,
+        "status": status,
+        "created_by": admin['id'],
+    }
+    
+    result = supabase.table('campaigns').insert(data).execute()
+    
+    if not result.data:
+        raise HTTPException(500, "Failed to create campaign")
+    
+    return {"status": "created", "campaign": result.data[0]}
+
+
+@router.put("/campaigns/{campaign_id}")
+def update_campaign(
+    campaign_id: str,
+    req: CampaignUpdateRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Update an existing campaign.
+    """
+    from datetime import datetime
+    
+    # Build update data (only include non-None fields)
+    data = {k: v for k, v in req.dict().items() if v is not None}
+    data['updated_at'] = datetime.utcnow().isoformat()
+    
+    result = supabase.table('campaigns').update(data).eq('id', campaign_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Campaign not found")
+    
+    return {"status": "updated", "campaign": result.data[0]}
+
+
+@router.delete("/campaigns/{campaign_id}")
+def delete_campaign(
+    campaign_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Delete a campaign.
+    """
+    supabase.table('campaigns').delete().eq('id', campaign_id).execute()
+    return {"status": "deleted"}
+
+
+@router.post("/campaigns/{campaign_id}/activate")
+def activate_campaign(
+    campaign_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Activate a campaign.
+    """
+    from datetime import datetime
+    
+    result = supabase.table('campaigns').update({
+        'status': 'active',
+        'is_active': True,
+        'updated_at': datetime.utcnow().isoformat()
+    }).eq('id', campaign_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Campaign not found")
+    
+    return {"status": "activated", "campaign": result.data[0]}
+
+
+@router.post("/campaigns/{campaign_id}/pause")
+def pause_campaign(
+    campaign_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Pause a campaign.
+    """
+    from datetime import datetime
+    
+    result = supabase.table('campaigns').update({
+        'status': 'paused',
+        'updated_at': datetime.utcnow().isoformat()
+    }).eq('id', campaign_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Campaign not found")
+    
+    return {"status": "paused", "campaign": result.data[0]}
+
+
+@router.get("/campaigns/{campaign_id}/stats")
+def get_campaign_stats(
+    campaign_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get campaign statistics.
+    """
+    # Get campaign
+    campaign = supabase.table('campaigns').select('*').eq('id', campaign_id).execute()
+    if not campaign.data:
+        raise HTTPException(404, "Campaign not found")
+    
+    campaign_data = campaign.data[0]
+    
+    # Get claims
+    claims = supabase.table('campaign_claims').select('*', count='exact').eq(
+        'campaign_id', campaign_id
+    ).execute()
+    
+    total_credits = sum(c.get('credits_received', 0) or 0 for c in (claims.data or []))
+    
+    usage_limit = campaign_data.get('usage_limit')
+    usage_rate = None
+    if usage_limit:
+        usage_rate = round((claims.count or 0) / usage_limit * 100, 1)
+    
+    return {
+        "campaign": campaign_data,
+        "stats": {
+            "total_claims": claims.count or 0,
+            "total_credits_given": total_credits,
+            "usage_rate": usage_rate,
+        },
+        "recent_claims": (claims.data or [])[:20]
+    }
