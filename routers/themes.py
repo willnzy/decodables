@@ -141,11 +141,16 @@ def _check_dynamic_date(date_rule: dict, check_date: date) -> bool:
 
 def calculate_dynamic_date(rule: str, year: int) -> Optional[date]:
     """
-    Calculate dynamic US holiday dates.
+    Calculate dynamic holiday dates.
     
     Supported rules:
     - us_thanksgiving: 4th Thursday of November
     - black_friday: Day after Thanksgiving
+    - mothers_day: 2nd Sunday of May
+    - fathers_day: 3rd Sunday of June
+    - memorial_day: Last Monday of May
+    - labor_day: First Monday of September
+    - mlk_day: 3rd Monday of January
     - easter: (Not implemented - complex calculation)
     
     Args:
@@ -171,6 +176,41 @@ def calculate_dynamic_date(rule: str, year: int) -> Optional[date]:
             return thanksgiving + timedelta(days=1)
         return None
     
+    elif rule == 'mothers_day':
+        # [Why]: Mother's Day is the 2nd Sunday of May
+        may_first = date(year, 5, 1)
+        # Find first Sunday (weekday 6 in Python, 0=Monday)
+        days_until_sunday = (6 - may_first.weekday() + 7) % 7
+        first_sunday = may_first + timedelta(days=days_until_sunday)
+        # If May 1 is Sunday, first_sunday is May 1
+        if may_first.weekday() == 6:
+            first_sunday = may_first
+        # Add 1 week to get 2nd Sunday
+        return first_sunday + timedelta(weeks=1)
+    
+    elif rule == 'fathers_day':
+        # [Why]: Father's Day is the 3rd Sunday of June
+        june_first = date(year, 6, 1)
+        # Find first Sunday
+        days_until_sunday = (6 - june_first.weekday() + 7) % 7
+        first_sunday = june_first + timedelta(days=days_until_sunday)
+        if june_first.weekday() == 6:
+            first_sunday = june_first
+        # Add 2 weeks to get 3rd Sunday
+        return first_sunday + timedelta(weeks=2)
+    
+    elif rule == 'mlk_day':
+        # [Why]: MLK Day is the 3rd Monday of January
+        jan_first = date(year, 1, 1)
+        # Find first Monday (weekday 0)
+        days_until_monday = (7 - jan_first.weekday()) % 7
+        if jan_first.weekday() == 0:
+            first_monday = jan_first
+        else:
+            first_monday = jan_first + timedelta(days=days_until_monday)
+        # Add 2 weeks to get 3rd Monday
+        return first_monday + timedelta(weeks=2)
+    
     elif rule == 'easter':
         # [Why]: Easter requires the Computus algorithm
         # Can be implemented if needed; skipping for now
@@ -187,6 +227,8 @@ def calculate_dynamic_date(rule: str, year: int) -> Optional[date]:
         # [Why]: First Monday of September
         sept_first = date(year, 9, 1)
         days_until_monday = (7 - sept_first.weekday()) % 7
+        if sept_first.weekday() == 0:
+            return sept_first
         return sept_first + timedelta(days=days_until_monday)
     
     return None
