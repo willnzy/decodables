@@ -14,7 +14,7 @@ on:
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04，PGDG 源更稳定
     timeout-minutes: 15
 
     steps:
@@ -28,10 +28,21 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # 安装 boto3
           pip install boto3
-          # 确保 pg_dump 可用
+          
+          # 添加 PostgreSQL 官方 APT 源
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17 gnupg
+          
+          # 安装 PostgreSQL 17 客户端
+          sudo apt-get install -y postgresql-client-17
+          
+          # 验证版本
+          echo "pg_dump version:"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Run backup
         env:
@@ -41,6 +52,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          # 指定 PostgreSQL 17 的 pg_dump 路径
+          PATH: /usr/lib/postgresql/17/bin:$PATH
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "🔍 Running in dry-run mode..."
@@ -74,7 +87,6 @@ jobs:
             --
             Make Decodables 自动备份系统
 
-      - name: Send success notification (optional)
+      - name: Backup success log
         if: success() && inputs.dry_run != true
-        run: |
-          echo "✅ Backup completed successfully at $(date)"
+        run: echo "✅ Backup completed successfully at $(date)"
