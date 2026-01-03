@@ -730,17 +730,59 @@ def main():
     parser.add_argument("--daily", action="store_true", help="Run daily aggregation")
     parser.add_argument("--hourly", action="store_true", help="Run hourly quick stats")
     parser.add_argument("--backfill", type=int, metavar="DAYS", help="Backfill last N days")
+    parser.add_argument("--no-log", action="store_true", help="Disable task logging")
     args = parser.parse_args()
     
+    # Determine task type
     if args.backfill:
-        backfill_metrics(args.backfill)
+        task_type = f'backfill_{args.backfill}d'
     elif args.hourly:
-        run_hourly_etl()
+        task_type = 'hourly'
     elif args.daily:
-        run_daily_etl()
+        task_type = 'daily'
     else:
-        # Default: run daily
-        run_daily_etl()
+        task_type = 'daily'
+    
+    # Import TaskLogger
+    task_logger = None
+    if not args.no_log:
+        try:
+            from task_logger import TaskLogger
+            task_logger = TaskLogger('metrics_etl', task_type)
+        except ImportError:
+            pass
+    
+    # Run with logging
+    if task_logger:
+        task_logger.__enter__()
+    
+    try:
+        if args.backfill:
+            backfill_metrics(args.backfill)
+            result = {'backfill_days': args.backfill}
+        elif args.hourly:
+            run_hourly_etl()
+            result = {'type': 'hourly'}
+        elif args.daily:
+            run_daily_etl()
+            result = {'type': 'daily'}
+        else:
+            run_daily_etl()
+            result = {'type': 'daily'}
+        
+        # Set result summary
+        if task_logger:
+            task_logger.set_result({
+                'task_type': task_type,
+                'status': 'completed',
+                **result
+            })
+    except Exception as e:
+        log(f"❌ ETL failed: {e}")
+        raise
+    finally:
+        if task_logger:
+            task_logger.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

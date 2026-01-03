@@ -1538,14 +1538,50 @@ def main():
     parser = argparse.ArgumentParser(description="Run scheduled data aggregation tasks")
     parser.add_argument("--hourly", action="store_true", help="Run hourly tasks only")
     parser.add_argument("--daily", action="store_true", help="Run daily tasks only")
+    parser.add_argument("--no-log", action="store_true", help="Disable task logging")
     args = parser.parse_args()
     
+    # Determine task type
     if args.hourly:
-        run_hourly_tasks()
+        task_type = 'hourly'
     elif args.daily:
-        run_daily_tasks()
+        task_type = 'daily'
     else:
-        run_all_tasks()
+        task_type = 'full'
+    
+    # Import TaskLogger
+    task_logger = None
+    if not args.no_log:
+        try:
+            from task_logger import TaskLogger
+            task_logger = TaskLogger('aggregate_stats', task_type)
+        except ImportError:
+            pass
+    
+    # Run with logging
+    if task_logger:
+        task_logger.__enter__()
+    
+    try:
+        if args.hourly:
+            run_hourly_tasks()
+        elif args.daily:
+            run_daily_tasks()
+        else:
+            run_all_tasks()
+        
+        # Set result summary
+        if task_logger:
+            task_logger.set_result({
+                'task_type': task_type,
+                'status': 'completed'
+            })
+    except Exception as e:
+        log(f"❌ Task failed: {e}")
+        raise
+    finally:
+        if task_logger:
+            task_logger.__exit__(None, None, None)
 
 
 if __name__ == "__main__":
