@@ -16,6 +16,10 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime, timezone
 import json
+import sys
+
+# Mock stripe module BEFORE importing payment_service
+sys.modules['stripe'] = MagicMock()
 
 
 # ============================================

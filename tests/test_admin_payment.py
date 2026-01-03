@@ -13,9 +13,22 @@ Test Coverage:
 
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 import json
+import sys
+
+# Mock stripe module BEFORE importing app or payment_service
+sys.modules['stripe'] = MagicMock()
+
+# Check if required dependencies are available
+try:
+    import jwt
+    import supabase
+    HAS_DEPS = True
+except ImportError:
+    HAS_DEPS = False
+
+pytestmark = pytest.mark.skipif(not HAS_DEPS, reason="Missing dependencies (jwt, supabase)")
 
 
 # ============================================
@@ -25,10 +38,13 @@ import json
 @pytest.fixture
 def client():
     """Create test client with mocked dependencies"""
+    if not HAS_DEPS:
+        pytest.skip("Missing dependencies")
     with patch('payment_service.stripe'):
         with patch('app.supabase') as mock_supabase:
             mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
             from app import app
+            from fastapi.testclient import TestClient
             return TestClient(app)
 
 
