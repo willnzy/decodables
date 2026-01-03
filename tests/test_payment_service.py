@@ -106,10 +106,10 @@ class TestCreateCheckoutSession:
         # Import after mocking
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session, PRICE_MAP
+        from services.payment_service import create_checkout_session, PRICE_MAP
         
         # Patch PRICE_MAP
-        with patch.dict('payment_service.PRICE_MAP', {
+        with patch.dict('services.payment_service.PRICE_MAP', {
             'credits_100': 'price_credits_100_test',
             'starter': 'price_starter_test',
             'pro': 'price_pro_test'
@@ -132,9 +132,9 @@ class TestCreateCheckoutSession:
         """
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {
+        with patch.dict('services.payment_service.PRICE_MAP', {
             'credits_100': 'price_credits_100_test',
             'starter': 'price_starter_test',
             'pro': 'price_pro_test'
@@ -151,9 +151,9 @@ class TestCreateCheckoutSession:
         """
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {
+        with patch.dict('services.payment_service.PRICE_MAP', {
             'credits_100': 'price_credits_100_test',
             'starter': 'price_starter_test',
             'pro': 'price_pro_test'
@@ -172,9 +172,9 @@ class TestCreateCheckoutSession:
         mock_stripe.Coupon.create.return_value = mock_coupon
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
+        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
             result = create_checkout_session('user_123', 'credits_100', discount_percent=20)
         
         # Verify coupon was created
@@ -193,9 +193,9 @@ class TestCreateCheckoutSession:
         """
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
+        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
             result = create_checkout_session('user_123', 'credits_100', discount_percent=0)
         
         session_kwargs = mock_stripe.checkout.Session.create.call_args[1]
@@ -205,9 +205,9 @@ class TestCreateCheckoutSession:
         """
         ❌ FAIL: Raises error for invalid plan type
         """
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {
+        with patch.dict('services.payment_service.PRICE_MAP', {
             'credits_100': 'price_test',
             'starter': None,  # Simulate missing price
         }):
@@ -222,9 +222,9 @@ class TestCreateCheckoutSession:
         """
         mock_stripe.checkout.Session.create.side_effect = Exception('Stripe API Down')
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
+        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
             result = create_checkout_session('user_123', 'credits_100')
         
         assert result is None
@@ -244,7 +244,7 @@ class TestCreatePortalSession:
         mock_portal = Mock(url='https://billing.stripe.com/portal/sess_123')
         mock_stripe.billing_portal.Session.create.return_value = mock_portal
         
-        from payment_service import create_portal_session
+        from services.payment_service import create_portal_session
         
         result = create_portal_session('user_123', 'cus_test_123')
         
@@ -255,7 +255,7 @@ class TestCreatePortalSession:
         """
         ❌ FAIL: Raises error when no customer ID provided
         """
-        from payment_service import create_portal_session
+        from services.payment_service import create_portal_session
         
         with pytest.raises(Exception) as exc_info:
             create_portal_session('user_123', None)
@@ -268,7 +268,7 @@ class TestCreatePortalSession:
         """
         mock_stripe.billing_portal.Session.create.side_effect = Exception('API Error')
         
-        from payment_service import create_portal_session
+        from services.payment_service import create_portal_session
         
         result = create_portal_session('user_123', 'cus_test_123')
         assert result is None
@@ -292,7 +292,7 @@ class TestConstructEvent:
         }
         mock_stripe.Webhook.construct_event.return_value = mock_event
         
-        from payment_service import construct_event
+        from services.payment_service import construct_event
         
         result = construct_event(b'payload', 'sig_header_valid')
         
@@ -308,7 +308,7 @@ class TestConstructEvent:
             'Webhook signature verification failed'
         )
         
-        from payment_service import construct_event
+        from services.payment_service import construct_event
         
         with pytest.raises(Exception) as exc_info:
             construct_event(b'payload', 'sig_invalid')
@@ -323,7 +323,7 @@ class TestConstructEvent:
             'No payload provided'
         )
         
-        from payment_service import construct_event
+        from services.payment_service import construct_event
         
         with pytest.raises(Exception):
             construct_event(b'', 'sig_header')
@@ -336,7 +336,7 @@ class TestConstructEvent:
             'Signature verification failed'
         )
         
-        from payment_service import construct_event
+        from services.payment_service import construct_event
         
         with pytest.raises(Exception) as exc_info:
             # Simulate attacker modifying payload but keeping old signature
@@ -363,7 +363,7 @@ class TestCreateRefund:
         )
         mock_stripe.Refund.create.return_value = mock_refund
         
-        from payment_service import create_refund
+        from services.payment_service import create_refund
         
         result = create_refund('pi_test_123')
         
@@ -382,7 +382,7 @@ class TestCreateRefund:
         mock_refund = Mock(id='re_test_456', status='succeeded', amount=500)
         mock_stripe.Refund.create.return_value = mock_refund
         
-        from payment_service import create_refund
+        from services.payment_service import create_refund
         
         result = create_refund('pi_test_123', amount_cents=500)
         
@@ -398,7 +398,7 @@ class TestCreateRefund:
         mock_refund = Mock(id='re_test_789', status='succeeded')
         mock_stripe.Refund.create.return_value = mock_refund
         
-        from payment_service import create_refund
+        from services.payment_service import create_refund
         
         result = create_refund('pi_test_123', reason='duplicate')
         
@@ -415,7 +415,7 @@ class TestCreateRefund:
         mock_stripe.error.StripeError = Exception
         mock_stripe.Refund.create.side_effect = Exception('Card declined')
         
-        from payment_service import create_refund
+        from services.payment_service import create_refund
         
         result = create_refund('pi_test_invalid')
         
@@ -438,7 +438,7 @@ class TestCancelSubscription:
         sample_subscription.status = 'canceled'
         mock_stripe.Subscription.cancel.return_value = sample_subscription
         
-        from payment_service import cancel_subscription
+        from services.payment_service import cancel_subscription
         
         result = cancel_subscription('sub_test_123', immediate=True)
         
@@ -452,7 +452,7 @@ class TestCancelSubscription:
         sample_subscription.cancel_at_period_end = True
         mock_stripe.Subscription.modify.return_value = sample_subscription
         
-        from payment_service import cancel_subscription
+        from services.payment_service import cancel_subscription
         
         result = cancel_subscription('sub_test_123', immediate=False)
         
@@ -469,7 +469,7 @@ class TestCancelSubscription:
         mock_stripe.error.StripeError = Exception
         mock_stripe.Subscription.cancel.side_effect = Exception('Subscription not found')
         
-        from payment_service import cancel_subscription
+        from services.payment_service import cancel_subscription
         
         result = cancel_subscription('sub_invalid', immediate=True)
         
@@ -490,7 +490,7 @@ class TestGetPaymentIntentDetails:
         """
         mock_stripe.PaymentIntent.retrieve.return_value = sample_payment_intent
         
-        from payment_service import get_payment_intent_details
+        from services.payment_service import get_payment_intent_details
         
         result = get_payment_intent_details('pi_test_123')
         
@@ -504,7 +504,7 @@ class TestGetPaymentIntentDetails:
         mock_stripe.error.StripeError = Exception
         mock_stripe.PaymentIntent.retrieve.side_effect = Exception('Not found')
         
-        from payment_service import get_payment_intent_details
+        from services.payment_service import get_payment_intent_details
         
         result = get_payment_intent_details('pi_invalid')
         
@@ -531,9 +531,9 @@ class TestGetSubscriptionStatus:
         
         mock_stripe.Subscription.list.return_value = Mock(data=[mock_subscription])
         
-        from payment_service import get_subscription_status
+        from services.payment_service import get_subscription_status
         
-        with patch.dict('payment_service.PRICE_MAP', {
+        with patch.dict('services.payment_service.PRICE_MAP', {
             'starter': 'price_starter_test',
             'pro': 'price_pro_test'
         }):
@@ -548,7 +548,7 @@ class TestGetSubscriptionStatus:
         """
         mock_stripe.Subscription.list.return_value = Mock(data=[])
         
-        from payment_service import get_subscription_status
+        from services.payment_service import get_subscription_status
         
         result = get_subscription_status('cus_test_123')
         
@@ -569,9 +569,9 @@ class TestSecurityCompliance:
         """
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
+        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
             create_checkout_session('user_123', 'credits_100')
         
         call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
@@ -588,9 +588,9 @@ class TestSecurityCompliance:
         """
         mock_stripe.checkout.Session.create.return_value = sample_checkout_session
         
-        from payment_service import create_checkout_session
+        from services.payment_service import create_checkout_session
         
-        with patch.dict('payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
+        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
             with patch('payment_service.FRONTEND_URL', 'https://decodables.com'):
                 create_checkout_session('user_123', 'credits_100')
         

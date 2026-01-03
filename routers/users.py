@@ -144,7 +144,7 @@ def read_all_notifications(user: dict = Depends(get_current_user)):
     Returns:
         Success message
     """
-    from db_service import mark_all_notifications_read
+    from services.db_service import mark_all_notifications_read
     mark_all_notifications_read(user["id"])
     return {"success": True, "message": "All notifications marked as read"}
 

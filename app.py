@@ -1054,7 +1054,7 @@ def get_me(user: dict = Depends(get_current_user)):
     - Monthly credits reset every 30 days for Starter/Pro users
     - Permanent credits are never reset
     """
-    from db_service import check_and_reset_monthly_credits_if_needed, get_user_profile
+    from services.db_service import check_and_reset_monthly_credits_if_needed, get_user_profile
     
     user_id = user["id"]
     
@@ -1112,7 +1112,7 @@ async def upload_asset(
         )
     
     import uuid
-    from image_generator import supabase as storage_supabase, BUCKET_NAME
+    from services.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
     
     # Validate file type
     allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
@@ -1164,7 +1164,7 @@ def delete_asset(asset_id: str, permanent: bool = False, user: dict = Depends(ge
         permanent: If true, permanently hides from trash (stage 2 delete)
                    If false, soft delete to trash (stage 1 delete)
     """
-    from db_service import soft_delete_asset, permanently_hide_asset
+    from services.db_service import soft_delete_asset, permanently_hide_asset
     
     try:
         if permanent:
@@ -1357,7 +1357,7 @@ def dashboard_assets(
         - page: Current page
         - view_type: Current view type
     """
-    from db_service import get_dashboard_assets
+    from services.db_service import get_dashboard_assets
     
     print(f"[API] dashboard_assets: view={view}, page={page}, search={search}")
     
@@ -1385,7 +1385,7 @@ def get_asset_seller_stats(user: dict = Depends(get_current_user)):
         - total_revenue: Total credits earned from sales
         - total_usage: Total usage count across all listings
     """
-    from db_service import get_seller_asset_stats
+    from services.db_service import get_seller_asset_stats
     return get_seller_asset_stats(user["id"])
 
 
@@ -1396,7 +1396,7 @@ def list_deleted_assets(
     user: dict = Depends(get_current_user)
 ):
     """Retrieve the user's deleted assets (last 30 days)."""
-    from db_service import get_user_deleted_assets
+    from services.db_service import get_user_deleted_assets
     return get_user_deleted_assets(user["id"], page, limit)
 
 
@@ -1406,7 +1406,7 @@ def restore_user_asset(
     user: dict = Depends(get_current_user)
 ):
     """Allow a user to restore their own deleted asset."""
-    from db_service import restore_asset
+    from services.db_service import restore_asset
     try:
         asset = restore_asset(asset_id, user["id"])
         if asset:
@@ -1547,7 +1547,7 @@ def list_deleted_projects(
     user: dict = Depends(get_current_user)
 ):
     """Retrieve the user's deleted projects."""
-    from db_service import get_user_deleted_projects
+    from services.db_service import get_user_deleted_projects
     return get_user_deleted_projects(user["id"], page, limit)
 
 
@@ -1582,7 +1582,7 @@ def dashboard_projects(
         - bought: Only purchased projects (read-only)
         - selling: Only projects with active marketplace listings
     """
-    from db_service import get_dashboard_projects
+    from services.db_service import get_dashboard_projects
     
     print(f"[API] dashboard_projects: view={view}, page={page}, search={search}")
     
@@ -1611,7 +1611,7 @@ def get_project_seller_stats(user: dict = Depends(get_current_user)):
         - total_revenue: Total credits earned from sales
         - total_usage: Total usage count across all listings
     """
-    from db_service import get_seller_project_stats
+    from services.db_service import get_seller_project_stats
     return get_seller_project_stats(user["id"])
 
 
@@ -1621,7 +1621,7 @@ def restore_user_project(
     user: dict = Depends(get_current_user)
 ):
     """Allow a user to restore their own deleted project."""
-    from db_service import user_restore_project
+    from services.db_service import user_restore_project
     try:
         project = user_restore_project(project_id, user["id"])
         if project:
@@ -1738,7 +1738,7 @@ def duplicate_proj(request: Request, id: str, user: dict = Depends(get_current_u
     - Own projects: Creates copy with title + " copied"
     - Purchased projects: Creates copy with same title, preserves source info
     """
-    from db_service import duplicate_project
+    from services.db_service import duplicate_project
     try:
         # v3.9: Get timezone from request for snapshot
         tz = get_request_timezone(request, user_id=user.get("id"))
@@ -1775,7 +1775,7 @@ def delete_proj(id: str, permanent: bool = False, user: dict = Depends(get_curre
     try:
         if permanent:
             # Stage 2: Permanently hide from trash
-            from db_service import permanently_hide_project
+            from services.db_service import permanently_hide_project
             result = permanently_hide_project(id, user["id"])
             if result:
                 log_activity(user["id"], "permanent_delete_project", {"project_id": id})
@@ -2629,7 +2629,7 @@ async def pdf_preview(
     try:
         import fitz  # PyMuPDF
         import uuid
-        from image_generator import supabase as storage_supabase, BUCKET_NAME
+        from services.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
         
         contents = await file.read()
         
@@ -2727,7 +2727,7 @@ async def ocr_tool(
     import uuid
     import json
     import fitz  # PyMuPDF
-    from image_generator import supabase as storage_supabase, BUCKET_NAME
+    from services.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
     
     contents = await file.read()
     is_pdf = file.filename.lower().endswith('.pdf')
@@ -3870,7 +3870,7 @@ def submit_report(request: Request, req: ReportRequest, user: dict = Depends(get
     
     Users can report listings for copyright violations, inappropriate content, etc.
     """
-    from db_service import create_report
+    from services.db_service import create_report
     try:
         report = create_report(user["id"], req.listing_id, req.reason)
         if report:
@@ -3886,7 +3886,7 @@ def submit_report(request: Request, req: ReportRequest, user: dict = Depends(get
 @app.get("/api/marketplace/my-reports")
 def get_my_reports(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
     """Get reports submitted by the current user."""
-    from db_service import get_user_reports
+    from services.db_service import get_user_reports
     reports = get_user_reports(user["id"], page, limit)
     return {"items": reports, "total": len(reports)}
 
@@ -4172,7 +4172,7 @@ def feedback_with_images(request: Request, req: FeedbackWithImagesRequest):
     Submit feedback with optional images.
     Works for both logged in and guest users.
     """
-    from db_service import send_feedback_with_images
+    from services.db_service import send_feedback_with_images
     
     # Try to get user info if authenticated
     user_id = "guest"
@@ -5217,7 +5217,7 @@ def adm_get_reports(
     Args:
         status: Filter by status ('pending', 'reviewed', 'resolved', 'dismissed')
     """
-    from db_service import admin_get_reports, admin_get_reports_count
+    from services.db_service import admin_get_reports, admin_get_reports_count
     reports = admin_get_reports(status=status, page=page, limit=limit)
     total = admin_get_reports_count(status=status)
     return {"items": reports, "total": total, "page": page}
@@ -5225,7 +5225,7 @@ def adm_get_reports(
 @app.get("/api/admin/reports/stats")
 def adm_get_reports_stats(admin: dict = Depends(require_admin)):
     """Get reports statistics by status."""
-    from db_service import admin_get_reports_count
+    from services.db_service import admin_get_reports_count
     return {
         "pending": admin_get_reports_count("pending"),
         "reviewed": admin_get_reports_count("reviewed"),
@@ -5237,7 +5237,7 @@ def adm_get_reports_stats(admin: dict = Depends(require_admin)):
 @app.get("/api/admin/reports/{report_id}")
 def adm_get_report_detail(report_id: str, admin: dict = Depends(require_admin)):
     """Get detailed information about a specific report."""
-    from db_service import admin_get_report_detail
+    from services.db_service import admin_get_report_detail
     report = admin_get_report_detail(report_id)
     if not report:
         raise HTTPException(404, "Report not found")
@@ -5258,7 +5258,7 @@ def adm_respond_to_report(
     
     Admin can update status and optionally provide a response message to the reporter.
     """
-    from db_service import admin_respond_to_report
+    from services.db_service import admin_respond_to_report
     
     try:
         result = admin_respond_to_report(
@@ -5834,7 +5834,7 @@ async def adm_generate_ai_report(
     Returns:
         Full Markdown report with structured metrics summary
     """
-    from ai_report_service import generate_ai_business_report
+    from services.ai_report_service import generate_ai_business_report
     
     try:
         report = generate_ai_business_report(
@@ -5855,7 +5855,7 @@ def adm_get_quick_insights(
     Get quick rule-based insights for dashboard preview.
     This is faster than full AI report generation.
     """
-    from ai_report_service import get_quick_insights
+    from services.ai_report_service import get_quick_insights
     
     try:
         insights = get_quick_insights()
@@ -6047,7 +6047,7 @@ def adm_get_aggregated_stats(
     Supported types: daily_users, daily_revenue, daily_projects, credit_usage_30d,
     tier_distribution, conversion_funnel_30d, event_stats_7d, etc.
     """
-    from db_service import get_aggregated_stats
+    from services.db_service import get_aggregated_stats
     data = get_aggregated_stats(stat_type, use_cache)
     
     if data is None:
@@ -6063,7 +6063,7 @@ def adm_get_aggregated_stats_range(
     admin: dict = Depends(require_admin)
 ):
     """Fetch aggregated stats over a specific number of days."""
-    from db_service import get_aggregated_stats_range
+    from services.db_service import get_aggregated_stats_range
     return get_aggregated_stats_range(stat_type, days)
 
 

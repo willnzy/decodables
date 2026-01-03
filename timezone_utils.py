@@ -208,7 +208,7 @@ def get_timezone_from_user_profile(user_id: Optional[str]) -> Optional[str]:
         return None
     
     try:
-        from db_service import get_user_timezone
+        from services.db_service import get_user_timezone
         tz = get_user_timezone(user_id)
         if tz and tz != "UTC":  # Only return if explicitly set
             logger.debug(f"Timezone from user profile: {tz}")

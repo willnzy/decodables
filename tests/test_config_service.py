@@ -14,7 +14,7 @@ with patch.dict('os.environ', {'SUPABASE_URL': 'https://test.supabase.co/', 'SUP
         mock_supabase = MagicMock()
         mock_create_client.return_value = mock_supabase
         
-        from config_service import (
+        from services.config_service import (
             get_config,
             set_config,
             get_all_configs,
@@ -205,7 +205,7 @@ class TestSetConfig:
     def test_clears_cache_after_update(self, mock_supabase):
         """Should clear cache after successful update"""
         # Pre-populate cache
-        from config_service import _config_cache
+        from services.config_service import _config_cache
         _config_cache["test_key"] = {"old": "value"}
         
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
@@ -349,7 +349,7 @@ class TestClearConfigCache:
     
     def test_clears_all_cache(self):
         """Should clear all cached configs"""
-        from config_service import _config_cache, _cache_timestamp
+        from services.config_service import _config_cache, _cache_timestamp
         
         # Populate cache
         _config_cache["key1"] = "value1"
