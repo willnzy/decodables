@@ -50,13 +50,14 @@ def get_env(name: str, required: bool = True) -> str:
 
 def find_command(name: str, search_paths: list = None) -> str:
     """查找命令的完整路径"""
-    # 常见路径
+    # PostgreSQL 17 优先，然后是其他路径
     default_paths = [
+        f"/usr/lib/postgresql/17/bin/{name}",
+        f"/usr/lib/postgresql/16/bin/{name}",
+        f"/usr/lib/postgresql/15/bin/{name}",
         f"/usr/bin/{name}",
         f"/bin/{name}",
         f"/usr/local/bin/{name}",
-        f"/usr/lib/postgresql/17/bin/{name}",
-        f"/usr/lib/postgresql/16/bin/{name}",
     ]
     
     paths = (search_paths or []) + default_paths
