@@ -24,11 +24,17 @@ supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# In-memory cache for rate limit configs
 # 
+# MULTI-INSTANCE NOTE:
+# This is a per-instance cache (not shared across instances).
+# When running multiple instances, each has its own cache.
+# TTL of 60s ensures configs sync within 1 minute across instances.
+# For instant sync, call the admin invalidate cache API on all instances.
 _config_cache: Dict[str, Any] = {}
 _cache_timestamp: Dict[str, datetime] = {}
 _cache_lock = threading.Lock()
-CACHE_TTL_SECONDS = 60  # 60
+CACHE_TTL_SECONDS = 60  # 60s TTL - acceptable delay for config propagation
 
 # （）
 DEFAULT_RATE_LIMITS = {

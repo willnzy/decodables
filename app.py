@@ -294,14 +294,34 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # ===========================================
 from scheduler import init_scheduler, shutdown_scheduler, run_aggregation_now
 
+# ==========================================
+# Instance Identification (for multi-instance deployment)
+# ==========================================
+# [Why]: When scaling to multiple instances, each instance needs a unique ID
+# for log tracing and debugging. This helps identify which instance handled a request.
+import uuid
+INSTANCE_ID = os.environ.get("RAILWAY_REPLICA_ID", uuid.uuid4().hex[:8])
+logger.info(f"🚀 Starting instance: {INSTANCE_ID}")
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Initialize scheduled jobs when FastAPI starts."""
+    """
+    Initialize scheduled jobs when FastAPI starts.
+    
+    MULTI-INSTANCE NOTE:
+    - Scheduler is controlled by ENABLE_SCHEDULER env var (default: true)
+    - When deploying multiple instances, set ENABLE_SCHEDULER=false for all
+      except ONE instance to prevent duplicate task execution.
+    - Railway deployment: Set env var in only one replica.
+    """
+    logger.info(f"📅 Instance {INSTANCE_ID} starting scheduler check...")
     init_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop scheduled jobs when FastAPI shuts down."""
+    logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
     shutdown_scheduler()
 
 # Note: CORS error handling is now part of the global exception handlers (v3.12)

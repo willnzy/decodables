@@ -3676,6 +3676,17 @@ def admin_get_report_detail(report_id: str):
 # ==========================================
 
 # In-memory cache for system configs (simple TTL cache)
+# 
+# MULTI-INSTANCE NOTE:
+# This cache is per-instance (not shared across instances).
+# When running multiple instances:
+# - Each instance has its own cache
+# - Config changes may take up to CONFIG_CACHE_TTL seconds to propagate
+# - This is acceptable for system configs that rarely change
+# - For instant propagation, use the admin API to invalidate cache on all instances,
+#   or reduce CONFIG_CACHE_TTL (trade-off: more DB queries)
+#
+# Future optimization: Use Redis for shared cache across instances
 _config_cache = {}
 _config_cache_time = {}
 CONFIG_CACHE_TTL = 300  # 5 minutes cache TTL

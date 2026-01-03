@@ -4,6 +4,23 @@ Background Scheduler for Data Aggregation Tasks
 v3.12: Integrated new metrics ETL system for industry-standard SaaS analytics.
 
 Runs on FastAPI startup in Railway deployment.
+
+MULTI-INSTANCE DEPLOYMENT GUIDE:
+================================
+When scaling to multiple instances, the scheduler should run on ONLY ONE instance
+to prevent duplicate task execution.
+
+Option 1: Environment Variable (Recommended for Railway)
+  - Set ENABLE_SCHEDULER=true on ONE instance only
+  - Set ENABLE_SCHEDULER=false on all other instances
+  - Railway: Use different env vars per replica
+
+Option 2: Leader Election (Future Enhancement)
+  - Use Redis distributed lock for automatic leader election
+  - Only the leader instance runs scheduled tasks
+  - More robust but requires Redis
+
+Current default: ENABLE_SCHEDULER=true (backwards compatible for single instance)
 """
 
 import os
