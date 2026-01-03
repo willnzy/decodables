@@ -1,6 +1,6 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.12 - Complete)
--- Includes: core schema + RLS policies + v3.9-v3.12 updates
+-- Make Decodables Database Initialization Script (v3.15 - Complete)
+-- Includes: core schema + RLS policies + v3.9-v3.15 updates
 -- 
 -- Version History:
 -- v3.0: Credit buckets, marketplace, notifications, discounts
@@ -16,6 +16,9 @@
 -- v3.10: System configs refactor (key, value, value_type, config_group)
 -- v3.11: Analytics events enhancement (event_name, context)
 -- v3.12: Analytics aggregation tables (daily/monthly metrics, cohorts, funnels)
+-- v3.13: Holiday themes + Marketing campaigns system
+-- v3.14: Global holidays expansion (28+ themes)
+-- v3.15: Scheduled task monitoring logs
 -- ==============================================================================
 
 -- ==========================================
@@ -1177,6 +1180,336 @@ ON CONFLICT (key) DO UPDATE SET
   config_group = EXCLUDED.config_group,
   description = EXCLUDED.description,
   updated_at = NOW();
+
+-- ==========================================
+-- Part 8: Holiday Themes & Marketing Campaigns (v3.13)
+-- ==========================================
+
+-- Holiday themes table
+CREATE TABLE IF NOT EXISTS holiday_themes (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    date_rule JSONB NOT NULL,
+    theme_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    priority INTEGER DEFAULT 50,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_holiday_themes_active ON holiday_themes(is_active, priority DESC);
+
+-- Marketing campaigns table
+CREATE TABLE IF NOT EXISTS campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    target_type TEXT NOT NULL DEFAULT 'all',
+    target_config JSONB DEFAULT '{}'::jsonb,
+    notification_channels TEXT[] DEFAULT ARRAY['banner'],
+    notification_config JSONB DEFAULT '{}'::jsonb,
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    timezone TEXT DEFAULT 'America/New_York',
+    usage_limit INTEGER,
+    usage_per_user INTEGER DEFAULT 1,
+    usage_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'draft',
+    is_active BOOLEAN DEFAULT true,
+    created_by TEXT REFERENCES profiles(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status, is_active);
+CREATE INDEX IF NOT EXISTS idx_campaigns_dates ON campaigns(start_at, end_at);
+
+-- Campaign claims tracking
+CREATE TABLE IF NOT EXISTS campaign_claims (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id),
+    credits_received INTEGER,
+    claimed_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(campaign_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_claims_user ON campaign_claims(user_id);
+
+-- Campaign notification dismissals
+CREATE TABLE IF NOT EXISTS campaign_dismissals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id),
+    channel TEXT NOT NULL,
+    dismissed_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(campaign_id, user_id, channel)
+);
+
+-- Helper function for US Thanksgiving
+CREATE OR REPLACE FUNCTION calculate_us_thanksgiving(year_val INTEGER)
+RETURNS DATE AS $$
+DECLARE
+    nov_first DATE;
+    first_thursday DATE;
+BEGIN
+    nov_first := make_date(year_val, 11, 1);
+    first_thursday := nov_first + ((4 - EXTRACT(DOW FROM nov_first)::INTEGER + 7) % 7);
+    RETURN first_thursday + 21;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Helper function for Mother's Day (2nd Sunday of May)
+CREATE OR REPLACE FUNCTION calculate_mothers_day(year_val INTEGER)
+RETURNS DATE AS $$
+DECLARE
+    first_day DATE;
+    first_sunday DATE;
+BEGIN
+    first_day := make_date(year_val, 5, 1);
+    first_sunday := first_day + ((7 - EXTRACT(DOW FROM first_day)::INTEGER) % 7);
+    IF EXTRACT(DOW FROM first_day) = 0 THEN
+        first_sunday := first_day;
+    END IF;
+    RETURN first_sunday + 7;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Helper function for Father's Day (3rd Sunday of June)
+CREATE OR REPLACE FUNCTION calculate_fathers_day(year_val INTEGER)
+RETURNS DATE AS $$
+DECLARE
+    first_day DATE;
+    first_sunday DATE;
+BEGIN
+    first_day := make_date(year_val, 6, 1);
+    first_sunday := first_day + ((7 - EXTRACT(DOW FROM first_day)::INTEGER) % 7);
+    IF EXTRACT(DOW FROM first_day) = 0 THEN
+        first_sunday := first_day;
+    END IF;
+    RETURN first_sunday + 14;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Dynamic date calculator
+CREATE OR REPLACE FUNCTION calculate_dynamic_date(rule_name TEXT, year_val INTEGER)
+RETURNS DATE AS $$
+BEGIN
+    CASE rule_name
+        WHEN 'us_thanksgiving' THEN
+            RETURN calculate_us_thanksgiving(year_val);
+        WHEN 'black_friday' THEN
+            RETURN calculate_us_thanksgiving(year_val) + 1;
+        WHEN 'mothers_day' THEN
+            RETURN calculate_mothers_day(year_val);
+        WHEN 'fathers_day' THEN
+            RETURN calculate_fathers_day(year_val);
+        ELSE
+            RETURN NULL;
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- RLS for campaigns
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_dismissals ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public can view active campaigns" ON campaigns
+    FOR SELECT USING (status = 'active' AND is_active = true);
+
+CREATE POLICY "Users can view own claims" ON campaign_claims
+    FOR SELECT USING (user_id = auth.uid()::text);
+
+CREATE POLICY "Users can insert own claims" ON campaign_claims
+    FOR INSERT WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users can manage own dismissals" ON campaign_dismissals
+    FOR ALL USING (user_id = auth.uid()::text);
+
+-- ==========================================
+-- Part 9: Holiday Themes Data (v3.13 + v3.14)
+-- ==========================================
+
+-- Insert default holiday themes (US holidays + Global celebrations)
+INSERT INTO holiday_themes (id, name, date_rule, theme_config, priority) VALUES
+
+-- US Holidays
+('newyear', 'New Year',
+ '{"type": "fixed", "start": "12-30", "end": "01-02"}',
+ '{"colors": {"primary": "#ffd700", "secondary": "#c0c0c0", "accent": "#ffffff", "banner_bg": "linear-gradient(135deg, #1a1a2e, #16213e)", "banner_text": "#ffd700"}, "badge": {"text": "🎉 Happy New Year!", "style": "sparkle"}, "decorations": {"type": "confetti", "density": "heavy"}, "banner_style": "gradient"}',
+ 100),
+
+('mlk', 'Martin Luther King Jr. Day',
+ '{"type": "dynamic", "rule": "mlk_day", "offset_start": -1, "offset_end": 0}',
+ '{"colors": {"primary": "#1a1a1a", "secondary": "#ffffff", "accent": "#c41e3a", "banner_bg": "#1a1a1a", "banner_text": "#ffffff"}, "badge": {"text": "✊ MLK Day - Dream of Equality", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "solid"}',
+ 60),
+
+('valentine', 'Valentine''s Day',
+ '{"type": "fixed", "start": "02-12", "end": "02-15"}',
+ '{"colors": {"primary": "#ff69b4", "secondary": "#ff1493", "accent": "#dc143c", "banner_bg": "linear-gradient(135deg, #ff69b4, #ff1493)", "banner_text": "#ffffff"}, "badge": {"text": "💝 Valentine''s Day", "style": "pulse"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
+ 50),
+
+('stpatrick', 'St. Patrick''s Day',
+ '{"type": "fixed", "start": "03-15", "end": "03-18"}',
+ '{"colors": {"primary": "#228b22", "secondary": "#32cd32", "accent": "#ffd700", "banner_bg": "#228b22", "banner_text": "#ffffff"}, "badge": {"text": "☘️ St. Patrick''s Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "solid"}',
+ 40),
+
+('july4th', 'Independence Day',
+ '{"type": "fixed", "start": "07-02", "end": "07-05"}',
+ '{"colors": {"primary": "#b22234", "secondary": "#3c3b6e", "accent": "#ffffff", "banner_bg": "#b22234", "banner_text": "#ffffff"}, "badge": {"text": "🇺🇸 Happy 4th of July!", "style": "default"}, "decorations": {"type": "fireworks", "density": "heavy"}, "banner_style": "striped"}',
+ 60),
+
+('halloween', 'Halloween',
+ '{"type": "fixed", "start": "10-28", "end": "11-01"}',
+ '{"colors": {"primary": "#ff6600", "secondary": "#1a1a1a", "accent": "#9933ff", "banner_bg": "#1a1a1a", "banner_text": "#ff6600"}, "badge": {"text": "🎃 Happy Halloween!", "style": "spooky"}, "decorations": {"type": "confetti", "density": "light"}, "banner_style": "solid"}',
+ 70),
+
+('thanksgiving', 'Thanksgiving',
+ '{"type": "dynamic", "rule": "us_thanksgiving", "offset_start": -1, "offset_end": 1}',
+ '{"colors": {"primary": "#cd853f", "secondary": "#8b4513", "accent": "#daa520", "banner_bg": "linear-gradient(135deg, #cd853f, #8b4513)", "banner_text": "#ffffff"}, "badge": {"text": "🦃 Happy Thanksgiving!", "style": "warm"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 80),
+
+('blackfriday', 'Black Friday',
+ '{"type": "dynamic", "rule": "black_friday", "offset_start": 0, "offset_end": 3}',
+ '{"colors": {"primary": "#000000", "secondary": "#1a1a1a", "accent": "#ff0000", "banner_bg": "#000000", "banner_text": "#ffffff"}, "badge": {"text": "🖤 BLACK FRIDAY DEALS!", "style": "flash"}, "decorations": {"type": "none"}, "banner_style": "solid"}',
+ 90),
+
+('christmas', 'Christmas',
+ '{"type": "fixed", "start": "12-20", "end": "12-26"}',
+ '{"colors": {"primary": "#c41e3a", "secondary": "#228b22", "accent": "#ffd700", "banner_bg": "#c41e3a", "banner_text": "#ffffff"}, "badge": {"text": "🎄 Merry Christmas!", "style": "festive"}, "decorations": {"type": "snowflakes", "density": "medium"}, "banner_style": "striped"}',
+ 95),
+
+-- Global Celebrations (v3.14)
+('lunar_newyear', 'Lunar New Year',
+ '{"type": "fixed", "start": "01-20", "end": "02-15"}',
+ '{"colors": {"primary": "#de2910", "secondary": "#ffde00", "accent": "#c41e3a", "banner_bg": "linear-gradient(135deg, #de2910, #c41e3a)", "banner_text": "#ffde00"}, "badge": {"text": "🧧 Happy Lunar New Year!", "style": "festive"}, "decorations": {"type": "confetti", "density": "medium"}, "banner_style": "gradient"}',
+ 75),
+
+('womens_day', 'International Women''s Day',
+ '{"type": "fixed", "start": "03-07", "end": "03-09"}',
+ '{"colors": {"primary": "#9b59b6", "secondary": "#8e44ad", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #9b59b6, #e91e63)", "banner_text": "#ffffff"}, "badge": {"text": "💜 International Women''s Day", "style": "default"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
+ 45),
+
+('pi_day', 'Pi Day & Einstein''s Birthday',
+ '{"type": "fixed", "start": "03-13", "end": "03-15"}',
+ '{"colors": {"primary": "#3498db", "secondary": "#2980b9", "accent": "#9b59b6", "banner_bg": "linear-gradient(135deg, #3498db, #9b59b6)", "banner_text": "#ffffff"}, "badge": {"text": "🔬 Pi Day & Einstein''s Birthday", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 35),
+
+('earth_day', 'Earth Day',
+ '{"type": "fixed", "start": "04-21", "end": "04-23"}',
+ '{"colors": {"primary": "#2ecc71", "secondary": "#27ae60", "accent": "#3498db", "banner_bg": "linear-gradient(135deg, #2ecc71, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "🌍 Earth Day - Protect Our Planet!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 50),
+
+('book_day', 'World Book Day',
+ '{"type": "fixed", "start": "04-22", "end": "04-24"}',
+ '{"colors": {"primary": "#8e44ad", "secondary": "#9b59b6", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #8e44ad, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "📖 World Book Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 35),
+
+('mothers_day', 'Mother''s Day',
+ '{"type": "dynamic", "rule": "mothers_day", "offset_start": -1, "offset_end": 0}',
+ '{"colors": {"primary": "#ff69b4", "secondary": "#db7093", "accent": "#ff1493", "banner_bg": "linear-gradient(135deg, #ff69b4, #ff1493)", "banner_text": "#ffffff"}, "badge": {"text": "💐 Happy Mother''s Day!", "style": "pulse"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
+ 70),
+
+('fathers_day', 'Father''s Day',
+ '{"type": "dynamic", "rule": "fathers_day", "offset_start": -1, "offset_end": 0}',
+ '{"colors": {"primary": "#2980b9", "secondary": "#3498db", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #2980b9, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "👔 Happy Father''s Day!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 70),
+
+('mandela_day', 'Nelson Mandela International Day',
+ '{"type": "fixed", "start": "07-17", "end": "07-19"}',
+ '{"colors": {"primary": "#2ecc71", "secondary": "#f1c40f", "accent": "#e74c3c", "banner_bg": "linear-gradient(135deg, #2ecc71, #27ae60)", "banner_text": "#ffffff"}, "badge": {"text": "✊ Mandela Day - 67 Minutes of Service", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 45),
+
+('peace_day', 'International Day of Peace',
+ '{"type": "fixed", "start": "09-20", "end": "09-22"}',
+ '{"colors": {"primary": "#3498db", "secondary": "#ffffff", "accent": "#2ecc71", "banner_bg": "linear-gradient(135deg, #3498db, #2ecc71)", "banner_text": "#ffffff"}, "badge": {"text": "☮️ International Day of Peace", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 45),
+
+('gandhi_day', 'International Day of Non-Violence',
+ '{"type": "fixed", "start": "10-01", "end": "10-03"}',
+ '{"colors": {"primary": "#ff9933", "secondary": "#ffffff", "accent": "#138808", "banner_bg": "linear-gradient(135deg, #ff9933, #ffffff, #138808)", "banner_text": "#2c3e50"}, "badge": {"text": "☮️ International Day of Non-Violence", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 45),
+
+('teachers_day', 'World Teachers'' Day',
+ '{"type": "fixed", "start": "10-04", "end": "10-06"}',
+ '{"colors": {"primary": "#27ae60", "secondary": "#2ecc71", "accent": "#f1c40f", "banner_bg": "linear-gradient(135deg, #27ae60, #2ecc71)", "banner_text": "#ffffff"}, "badge": {"text": "📚 World Teachers'' Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 40),
+
+('human_rights_day', 'Human Rights Day',
+ '{"type": "fixed", "start": "12-09", "end": "12-11"}',
+ '{"colors": {"primary": "#3498db", "secondary": "#2980b9", "accent": "#f1c40f", "banner_bg": "linear-gradient(135deg, #3498db, #2980b9)", "banner_text": "#ffffff"}, "badge": {"text": "🌐 Human Rights Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 50)
+
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    date_rule = EXCLUDED.date_rule,
+    theme_config = EXCLUDED.theme_config,
+    priority = EXCLUDED.priority,
+    updated_at = NOW();
+
+-- ==========================================
+-- Part 10: Scheduled Task Logs (v3.15)
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS scheduled_task_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_name TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    duration_ms INTEGER,
+    status TEXT NOT NULL DEFAULT 'running',
+    result_summary JSONB DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    error_stack TEXT,
+    hostname TEXT,
+    pid INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_logs_task_name ON scheduled_task_logs(task_name);
+CREATE INDEX IF NOT EXISTS idx_task_logs_started_at ON scheduled_task_logs(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_logs_status ON scheduled_task_logs(status);
+
+-- View for latest task status
+CREATE OR REPLACE VIEW v_latest_task_status AS
+SELECT DISTINCT ON (task_name)
+    task_name,
+    task_type,
+    started_at,
+    completed_at,
+    duration_ms,
+    status,
+    result_summary,
+    error_message,
+    hostname,
+    EXTRACT(EPOCH FROM (NOW() - started_at)) / 60 AS minutes_since_last_run
+FROM scheduled_task_logs
+ORDER BY task_name, started_at DESC;
+
+-- Cleanup function
+CREATE OR REPLACE FUNCTION cleanup_old_task_logs()
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM scheduled_task_logs
+    WHERE started_at < NOW() - INTERVAL '7 days';
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RLS for task logs
+ALTER TABLE scheduled_task_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role can manage task logs"
+    ON scheduled_task_logs FOR ALL
+    USING (true)
+    WITH CHECK (true);
 
 -- ==========================================
 -- Done!
