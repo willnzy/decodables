@@ -14,7 +14,7 @@ on:
 
 jobs:
   backup:
-    runs-on: ubuntu-22.04  # 使用 Ubuntu 22.04，PGDG 源更稳定
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
 
     steps:
@@ -28,21 +28,29 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # 安装 boto3
+          # 安装 Python 依赖
           pip install boto3
           
-          # 添加 PostgreSQL 官方 APT 源
+          # 更新 apt 并安装基础工具
+          sudo apt-get update
           sudo apt-get install -y wget gnupg
+          
+          # 添加 PostgreSQL 官方 APT 源
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          
+          # 再次更新 apt（加载新源）
           sudo apt-get update
           
           # 安装 PostgreSQL 17 客户端
           sudo apt-get install -y postgresql-client-17
           
-          # 验证版本
+          # 验证安装
+          echo "=== 验证安装 ==="
           echo "pg_dump version:"
           /usr/lib/postgresql/17/bin/pg_dump --version
+          echo "gpg version:"
+          gpg --version
 
       - name: Run backup
         env:
@@ -52,7 +60,6 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          # 指定 PostgreSQL 17 的 pg_dump 路径
           PATH: /usr/lib/postgresql/17/bin:$PATH
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
