@@ -130,6 +130,12 @@ app.add_middleware(RequestIDMiddleware)
 from routers.admin import router as admin_router
 app.include_router(admin_router)
 
+# v3.13: Holiday themes and marketing campaigns routers
+from routers.themes import router as themes_router
+from routers.campaigns import router as campaigns_router
+app.include_router(themes_router)
+app.include_router(campaigns_router)
+
 
 # ==========================================
 # Global Exception Handlers (v3.12)
