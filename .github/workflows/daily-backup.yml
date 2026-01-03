@@ -1,0 +1,80 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    # UTC 02:00 = 北京时间 10:00
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (只检查配置，不实际备份)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install boto3
+          # 确保 pg_dump 可用
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client gnupg
+
+      - name: Run backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🔍 Running in dry-run mode..."
+            python scripts/backup/backup_lite.py --dry-run --verbose
+          else
+            python scripts/backup/backup_lite.py --verbose
+          fi
+
+      - name: Send failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: 🚨 Make Decodables 数据库备份失败
+          to: ${{ secrets.EMAIL_USERNAME }}
+          from: Make Decodables Backup <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            ⚠️ 数据库备份失败！
+            
+            仓库: ${{ github.repository }}
+            时间: ${{ github.event.head_commit.timestamp }}
+            运行 ID: ${{ github.run_id }}
+            
+            请检查日志:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            --
+            Make Decodables 自动备份系统
+
+      - name: Send success notification (optional)
+        if: success() && inputs.dry_run != true
+        run: |
+          echo "✅ Backup completed successfully at $(date)"
