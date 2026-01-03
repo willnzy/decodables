@@ -31,7 +31,7 @@ jobs:
           pip install boto3
           # 确保 pg_dump 可用
           sudo apt-get update
-          sudo apt-get install -y postgresql-client gnupg
+          sudo apt-get install -y postgresql-client-17 gnupg
 
       - name: Run backup
         env:
