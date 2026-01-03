@@ -1172,7 +1172,11 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   
   -- Marketing
   ('HOME_HERO_TITLE', 'Create Beautiful 8-Page Zines in Minutes', 'text', 'marketing', 'Homepage hero title'),
-  ('HOME_HERO_SUBTITLE', 'AI-powered story generation meets easy drag-and-drop editing.', 'text', 'marketing', 'Homepage hero subtitle')
+  ('HOME_HERO_SUBTITLE', 'AI-powered story generation meets easy drag-and-drop editing.', 'text', 'marketing', 'Homepage hero subtitle'),
+  
+  -- Tooltip Text
+  ('TOOLTIP_DELETE', 'Delete', 'text', 'tooltip', 'Delete button tooltip when enabled'),
+  ('TOOLTIP_DELETE_DISABLED', 'Unpublish first to delete', 'text', 'tooltip', 'Delete button tooltip when project is published (disabled state)')
 
 ON CONFLICT (key) DO UPDATE SET
   value = EXCLUDED.value,
