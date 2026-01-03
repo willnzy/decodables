@@ -8,7 +8,7 @@ Handles marketplace-related API endpoints
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Request
 from dependencies import get_current_user, require_member
-from db_service import (
+from services.db_service import (
     get_marketplace_listings, get_marketplace_item, 
     create_listing, submit_listing_for_review, unpublish_listing as db_unpublish,
     get_leaderboard, supabase

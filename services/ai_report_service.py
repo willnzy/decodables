@@ -20,7 +20,7 @@ from enum import Enum
 import openai
 from collections import defaultdict
 
-from db_service import supabase
+from .db_service import supabase
 from config import OPENAI_API_KEY
 
 # Initialize OpenAI client

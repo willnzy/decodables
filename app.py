@@ -37,7 +37,7 @@ logger = setup_logging(
 from timezone_utils import get_request_timezone
 
 # Import service modules
-from db_service import (
+from services.db_service import (
     # Access control
     is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
     get_total_credits,
@@ -80,16 +80,16 @@ from db_service import (
     # Supabase client
     supabase
 )
-from payment_service import (
+from services.payment_service import (
     create_checkout_session, create_portal_session, construct_event,
     get_customer_subscriptions, get_customer_payments, cancel_subscription, 
     create_refund, get_payment_intent_details
 )
-from image_generator import generate_8_images
-from zine_generator import create_foldable_book, create_assets_zip
-from story_generator import generate_story_json, client as openai_client # reuse client
-from prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
-from analytics_service import (
+from services.ai.image_generator import generate_8_images
+from services.ai.zine_generator import create_foldable_book, create_assets_zip
+from services.ai.story_generator import generate_story_json, client as openai_client # reuse client
+from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
+from services.analytics_service import (
     track_event, track_ai_generation, track_payment, 
     track_marketplace_action, track_project_action, AnalyticsEvents
 )
@@ -6080,12 +6080,12 @@ def adm_run_aggregation(
 # Admin - System Configuration
 # ===========================================
 
-from config_service import (
+from services.config_service import (
     get_config, set_config, get_all_configs, 
     batch_update_configs, apply_rate_limit_preset,
     clear_config_cache, RATE_LIMIT_PRESETS
 )
-from rate_limiter import get_current_limits
+from services.rate_limiter import get_current_limits
 
 
 class ConfigUpdateRequest(BaseModel):

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from dependencies import optional_user, get_current_user
-from db_service import supabase, add_credits_permanent
+from services.db_service import supabase, add_credits_permanent
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 

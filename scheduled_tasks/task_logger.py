@@ -28,7 +28,7 @@ try:
 except ImportError:
     pass
 
-from db_service import supabase
+from services.db_service import supabase
 
 
 class TaskLogger:

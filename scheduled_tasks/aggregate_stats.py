@@ -37,7 +37,7 @@ except ImportError:
     pass
 
 # Import supabase client from db_service (reuse existing setup)
-from db_service import supabase
+from services.db_service import supabase
 
 if supabase is None:
     print("❌ Error: Supabase client not initialized. Check SUPABASE_URL and SUPABASE_KEY environment variables.")

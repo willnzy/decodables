@@ -9,7 +9,7 @@ from typing import Callable, Optional
 from fastapi import Request, HTTPException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
+from .config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
 
 
 def create_dynamic_limiter():

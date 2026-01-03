@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
 
 from app import dl_zip, get_project_zip, PdfGenRequest
-from db_service import get_project_detail
+from services.db_service import get_project_detail
 
 
 class TestZIPExport:

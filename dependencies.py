@@ -7,7 +7,7 @@ FastAPI dependency injection functions
 
 import jwt
 from fastapi import Header, Depends
-from db_service import get_user_profile, create_user_profile
+from services.db_service import get_user_profile, create_user_profile
 from config import CLERK_PEM_PUBLIC_KEY
 from exceptions import (
     UnauthorizedException,

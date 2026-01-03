@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from dependencies import require_admin
-from db_service import (
+from services.db_service import (
     # System Config Functions
     admin_get_system_configs, admin_get_config_groups,
     admin_create_system_config, admin_update_system_config,

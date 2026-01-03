@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from dependencies import get_current_user
-from db_service import (
+from services.db_service import (
     get_user_profile, get_credit_history, get_assets,
     get_user_purchases, get_user_notifications, mark_notification_read,
     check_and_reset_monthly_credits_if_needed, update_user_timezone

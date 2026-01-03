@@ -6,7 +6,7 @@ Creates and provides service instances
 """
 
 from functools import lru_cache
-from db_service import supabase
+from .db_service import supabase
 from .credit_service import CreditService
 from .marketplace_service import MarketplaceService
 from .access_control import AccessControl

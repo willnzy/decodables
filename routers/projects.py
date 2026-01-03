@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from dependencies import get_current_user
-from db_service import (
+from services.db_service import (
     get_user_projects, get_project_detail, create_project as db_create_project,
     save_project, soft_delete_project, get_marketplace_item,
     can_access_resource, record_listing_usage, count_user_projects, supabase,

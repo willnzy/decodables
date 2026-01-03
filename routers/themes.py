@@ -8,7 +8,7 @@ Provides public API for fetching current holiday theme based on date.
 from fastapi import APIRouter
 from datetime import date, timedelta
 from typing import Optional, Dict, Any
-from db_service import supabase
+from services.db_service import supabase
 
 router = APIRouter(prefix="/api/themes", tags=["themes"])
 
