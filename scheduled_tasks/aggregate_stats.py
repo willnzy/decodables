@@ -534,7 +534,7 @@ def aggregate_retention_stats():
         
         # Check how many were active today
         active_today = supabase.table("activity_logs").select("user_id")\
-            .in_("user_id", cohort_ids[:100])  # Limit to avoid query issues
+            .in_("user_id", cohort_ids[:100])\
             .gte("created_at", today.isoformat())\
             .lt("created_at", now.isoformat()).execute()
         
