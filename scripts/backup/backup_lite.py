@@ -46,6 +46,40 @@ def get_env(name: str, required: bool = True) -> str:
         sys.exit(1)
     return value or ""
 
+# ============ 工具函数 ============
+
+def find_command(name: str, search_paths: list = None) -> str:
+    """查找命令的完整路径"""
+    # 常见路径
+    default_paths = [
+        f"/usr/bin/{name}",
+        f"/bin/{name}",
+        f"/usr/local/bin/{name}",
+        f"/usr/lib/postgresql/17/bin/{name}",
+        f"/usr/lib/postgresql/16/bin/{name}",
+    ]
+    
+    paths = (search_paths or []) + default_paths
+    
+    for path in paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    
+    # 尝试 which 命令
+    try:
+        result = subprocess.run(
+            ["which", name],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
+        pass
+    
+    # 最后返回命令名称，让系统 PATH 处理
+    return name
+
 # ============ 核心函数 ============
 
 def create_temp_dir():
@@ -63,13 +97,15 @@ def run_pg_dump(database_url: str, output_file: Path) -> int:
     """执行 pg_dump 导出数据库"""
     logger.info("开始导出数据库...")
     
+    pg_dump_path = find_command("pg_dump")
+    logger.info(f"使用 pg_dump: {pg_dump_path}")
+    
     cmd = [
-        "pg_dump",
+        pg_dump_path,
         database_url,
         "--format=plain",
         "--no-owner",
         "--no-privileges",
-        "--verbose"
     ]
     
     try:
@@ -121,8 +157,11 @@ def encrypt_file(input_file: Path, output_file: Path, passphrase: str) -> int:
     """使用 GPG 对称加密"""
     logger.info("加密备份文件...")
     
+    gpg_path = find_command("gpg")
+    logger.info(f"使用 gpg: {gpg_path}")
+    
     cmd = [
-        "gpg",
+        gpg_path,
         "--symmetric",
         "--cipher-algo", "AES256",
         "--batch",
@@ -148,6 +187,9 @@ def encrypt_file(input_file: Path, output_file: Path, passphrase: str) -> int:
         logger.info(f"加密完成: {size / 1024 / 1024:.2f} MB")
         return size
         
+    except FileNotFoundError:
+        logger.error(f"加密错误: gpg 命令未找到，尝试路径: {gpg_path}")
+        return 0
     except Exception as e:
         logger.error(f"加密错误: {e}")
         return 0
@@ -254,6 +296,13 @@ def main():
             else:
                 logger.error(f"  ❌ {var}: 未设置")
                 all_set = False
+        
+        # 检查命令是否可用
+        logger.info("[DRY RUN] 检查命令...")
+        pg_dump_path = find_command("pg_dump")
+        gpg_path = find_command("gpg")
+        logger.info(f"  pg_dump: {pg_dump_path}")
+        logger.info(f"  gpg: {gpg_path}")
         
         if all_set:
             logger.info("[DRY RUN] ✅ 所有环境变量已配置")
