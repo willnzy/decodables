@@ -29,7 +29,7 @@ sys.modules['stripe'] = MagicMock()
 @pytest.fixture
 def mock_stripe():
     """Mock the entire Stripe module"""
-    with patch('payment_service.stripe') as mock:
+    with patch('services.payment_service.stripe') as mock:
         yield mock
 
 
@@ -591,7 +591,7 @@ class TestSecurityCompliance:
         from services.payment_service import create_checkout_session
         
         with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            with patch('payment_service.FRONTEND_URL', 'https://decodables.com'):
+            with patch('services.payment_service.FRONTEND_URL', 'https://decodables.com'):
                 create_checkout_session('user_123', 'credits_100')
         
         call_kwargs = mock_stripe.checkout.Session.create.call_args[1]

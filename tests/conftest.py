@@ -208,7 +208,7 @@ def mock_supabase():
 @pytest.fixture
 def mock_db_service():
     """Mock db_service functions"""
-    with patch('db_service.supabase') as mock_supabase:
+    with patch('services.db_service.supabase') as mock_supabase:
         yield mock_supabase
 
 

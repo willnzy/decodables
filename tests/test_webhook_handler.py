@@ -43,7 +43,7 @@ def client():
     """Create test client with mocked dependencies"""
     if not HAS_DEPS:
         pytest.skip("Missing dependencies")
-    with patch('payment_service.stripe'):
+    with patch('services.payment_service.stripe'):
         with patch('app.supabase') as mock_supabase:
             mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
             from app import app
@@ -162,7 +162,7 @@ class TestWebhookSignatureVerification:
     These tests ensure we reject forged/tampered webhook requests
     """
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     def test_valid_signature_accepted(self, mock_supabase, mock_construct, client):
         """
@@ -190,7 +190,7 @@ class TestWebhookSignatureVerification:
         assert response.status_code == 200
         assert response.json()['status'] == 'ok'
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_invalid_signature_rejected(self, mock_construct, client):
         """
         ❌ REJECT: Invalid signature returns 400
@@ -208,7 +208,7 @@ class TestWebhookSignatureVerification:
         
         assert response.status_code == 400
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_missing_signature_rejected(self, mock_construct, client):
         """
         ❌ REJECT: Missing signature header returns 400
@@ -226,7 +226,7 @@ class TestWebhookSignatureVerification:
         # Should fail validation
         assert response.status_code in [400, 422]
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_expired_timestamp_rejected(self, mock_construct, client):
         """
         ❌ REJECT: Old timestamp (replay attack) should be rejected
@@ -245,7 +245,7 @@ class TestWebhookSignatureVerification:
         
         assert response.status_code == 400
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_tampered_payload_rejected(self, mock_construct, client):
         """
         ❌ REJECT: Modified payload with original signature fails
@@ -277,7 +277,7 @@ class TestWebhookIdempotency:
     Stripe may send the same webhook multiple times
     """
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.add_credits_permanent')
     @patch('app.log_payment_record')
@@ -338,7 +338,7 @@ class TestWebhookIdempotency:
 class TestCheckoutSessionCompleted:
     """Tests for checkout.session.completed event handling"""
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.add_credits_permanent')
     @patch('app.log_payment_record')
@@ -382,7 +382,7 @@ class TestCheckoutSessionCompleted:
         assert call_args[0][1] == 999  # amount
         assert call_args[0][3] == 'credits_purchase'  # type
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.add_credits_monthly')
@@ -429,7 +429,7 @@ class TestCheckoutSessionCompleted:
         assert call_args[0] == 'user_sub_123'
         assert call_args[1] == 500  # Starter gets 500
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.add_credits_monthly')
@@ -467,7 +467,7 @@ class TestCheckoutSessionCompleted:
         call_args = mock_add_monthly.call_args[0]
         assert call_args[1] == 1000  # Pro gets 1000
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.add_credits_permanent')
     def test_missing_user_id_in_metadata(
         self, mock_add_credits, mock_construct, client
@@ -505,7 +505,7 @@ class TestCheckoutSessionCompleted:
 class TestInvoicePaymentSucceeded:
     """Tests for invoice.payment_succeeded event (subscription renewals)"""
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.refresh_monthly_credits')
     @patch('app.log_payment_record')
@@ -543,7 +543,7 @@ class TestInvoicePaymentSucceeded:
         assert response.status_code == 200
         mock_refresh.assert_called_once_with('user_renewal_123', 'starter')
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.refresh_monthly_credits')
     def test_subscription_create_does_not_refresh(
@@ -581,7 +581,7 @@ class TestInvoicePaymentSucceeded:
 class TestSubscriptionStatusChanges:
     """Tests for subscription lifecycle events"""
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.log_activity')
@@ -615,7 +615,7 @@ class TestSubscriptionStatusChanges:
             subscription_status='inactive'
         )
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.log_activity')
@@ -658,7 +658,7 @@ class TestSubscriptionStatusChanges:
 class TestUnknownEventTypes:
     """Tests for handling unknown/irrelevant webhook events"""
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_unknown_event_type_returns_ok(self, mock_construct, client):
         """
         ✅ PASS: Unknown event types don't crash, return ok
@@ -681,7 +681,7 @@ class TestUnknownEventTypes:
         assert response.status_code == 200
         assert response.json()['status'] == 'ok'
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_charge_events_ignored(self, mock_construct, client):
         """
         ✅ PASS: charge.* events are ignored (we use checkout.session)
@@ -714,7 +714,7 @@ class TestUnknownEventTypes:
 class TestWebhookEdgeCases:
     """Edge cases and error handling"""
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     def test_user_not_found_in_database(
         self, mock_supabase, mock_construct, client
@@ -745,7 +745,7 @@ class TestWebhookEdgeCases:
         # This might be a bug - credits shouldn't be added for non-existent users
         assert response.status_code == 200
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     def test_zero_amount_payment(self, mock_construct, client):
         """
         ⚠️ EDGE: $0 payment (100% coupon) still provisions credits
@@ -770,7 +770,7 @@ class TestWebhookEdgeCases:
         # Credits should still be added even for $0 payment
         mock_add.assert_called_once()
     
-    @patch('payment_service.construct_event')
+    @patch('services.payment_service.construct_event')
     @patch('app.supabase')
     def test_database_error_during_processing(
         self, mock_supabase, mock_construct, client

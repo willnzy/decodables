@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 # We need to mock supabase before importing config_service
 with patch.dict('os.environ', {'SUPABASE_URL': 'https://test.supabase.co/', 'SUPABASE_KEY': 'test-key'}):
-    with patch('config_service.create_client') as mock_create_client:
+    with patch('services.config_service.create_client') as mock_create_client:
         mock_supabase = MagicMock()
         mock_create_client.return_value = mock_supabase
         
@@ -100,7 +100,7 @@ class TestGetConfig:
         """Clear cache before each test"""
         clear_config_cache()
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_returns_config_from_database(self, mock_supabase):
         """Should return config value from database"""
         mock_result = MagicMock()
@@ -127,7 +127,7 @@ class TestGetConfig:
         else:
             assert "limit" in result
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_caching_works(self, mock_supabase):
         """Should cache results and not query database repeatedly"""
         mock_result = MagicMock()
@@ -149,7 +149,7 @@ class TestGetConfig:
         # Both should return same value
         assert result1 == result2
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_bypasses_cache_when_requested(self, mock_supabase):
         """Should bypass cache when use_cache=False"""
         mock_result = MagicMock()
@@ -166,7 +166,7 @@ class TestGetConfig:
         # Should query twice
         assert mock_supabase.table.call_count >= 2
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_handles_inactive_config(self, mock_supabase):
         """Should return default for inactive config"""
         mock_result = MagicMock()
@@ -190,7 +190,7 @@ class TestSetConfig:
         """Clear cache before each test"""
         clear_config_cache()
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_updates_config_in_database(self, mock_supabase):
         """Should update config in database"""
         mock_result = MagicMock()
@@ -201,7 +201,7 @@ class TestSetConfig:
         assert result is True
         mock_supabase.table.assert_called_with("system_configs")
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_clears_cache_after_update(self, mock_supabase):
         """Should clear cache after successful update"""
         # Pre-populate cache
@@ -215,7 +215,7 @@ class TestSetConfig:
         # Cache should be cleared for this key
         assert "test_key" not in _config_cache
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_handles_database_error(self, mock_supabase):
         """Should return False on database error"""
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("DB Error")
@@ -228,7 +228,7 @@ class TestSetConfig:
 class TestGetAllConfigs:
     """Tests for get_all_configs function"""
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_returns_all_configs(self, mock_supabase):
         """Should return all configs from database"""
         mock_result = MagicMock()
@@ -243,7 +243,7 @@ class TestGetAllConfigs:
         
         assert len(result) == 2
     
-    @patch('config_service.supabase')
+    @patch('services.config_service.supabase')
     def test_filters_by_category(self, mock_supabase):
         """Should filter by category when specified"""
         mock_result = MagicMock()
@@ -259,7 +259,7 @@ class TestGetAllConfigs:
     
     def test_returns_defaults_when_no_supabase(self):
         """Should return defaults when supabase is not available"""
-        with patch('config_service.supabase', None):
+        with patch('services.config_service.supabase', None):
             result = get_all_configs(category="rate_limit")
             
             # Should return configs from DEFAULT_RATE_LIMITS
@@ -271,7 +271,7 @@ class TestGetAllConfigs:
 class TestGetRateLimitString:
     """Tests for get_rate_limit_string function"""
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_formats_rate_limit_string(self, mock_get_config):
         """Should format rate limit as slowapi string"""
         mock_get_config.return_value = {
@@ -284,7 +284,7 @@ class TestGetRateLimitString:
         
         assert result == "10/minute"
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_returns_high_limit_when_disabled(self, mock_get_config):
         """Should return high limit when rate limit is disabled"""
         mock_get_config.return_value = {
@@ -297,7 +297,7 @@ class TestGetRateLimitString:
         
         assert result == "10000/minute"
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_handles_missing_config(self, mock_get_config):
         """Should handle missing config gracefully"""
         mock_get_config.return_value = None
@@ -311,7 +311,7 @@ class TestGetRateLimitString:
 class TestIsRateLimitEnabled:
     """Tests for is_rate_limit_enabled function"""
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_global_disabled_returns_false(self, mock_get_config):
         """Should return False when global is disabled"""
         mock_get_config.return_value = {"enabled": False}
@@ -320,7 +320,7 @@ class TestIsRateLimitEnabled:
         
         assert result is False
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_specific_key_disabled_returns_false(self, mock_get_config):
         """Should return False when specific key is disabled"""
         def side_effect(key):
@@ -334,7 +334,7 @@ class TestIsRateLimitEnabled:
         
         assert result is False
     
-    @patch('config_service.get_config')
+    @patch('services.config_service.get_config')
     def test_both_enabled_returns_true(self, mock_get_config):
         """Should return True when both global and specific are enabled"""
         mock_get_config.return_value = {"enabled": True}
@@ -365,7 +365,7 @@ class TestClearConfigCache:
 class TestBatchUpdateConfigs:
     """Tests for batch_update_configs function"""
     
-    @patch('config_service.set_config')
+    @patch('services.config_service.set_config')
     def test_updates_multiple_configs(self, mock_set_config):
         """Should update multiple configs"""
         mock_set_config.return_value = True
@@ -381,7 +381,7 @@ class TestBatchUpdateConfigs:
         assert result["key2"] is True
         assert mock_set_config.call_count == 2
     
-    @patch('config_service.set_config')
+    @patch('services.config_service.set_config')
     def test_handles_partial_failure(self, mock_set_config):
         """Should handle partial update failures"""
         mock_set_config.side_effect = [True, False]
@@ -398,7 +398,7 @@ class TestBatchUpdateConfigs:
     
     def test_skips_invalid_updates(self):
         """Should skip updates without key or value"""
-        with patch('config_service.set_config') as mock_set:
+        with patch('services.config_service.set_config') as mock_set:
             mock_set.return_value = True
             
             updates = [
@@ -416,8 +416,8 @@ class TestBatchUpdateConfigs:
 class TestApplyRateLimitPreset:
     """Tests for apply_rate_limit_preset function"""
     
-    @patch('config_service.set_config')
-    @patch('config_service.clear_config_cache')
+    @patch('services.config_service.set_config')
+    @patch('services.config_service.clear_config_cache')
     def test_applies_disabled_preset(self, mock_clear, mock_set_config):
         """Should disable global rate limiting for 'disabled' preset"""
         mock_set_config.return_value = True
@@ -431,8 +431,8 @@ class TestApplyRateLimitPreset:
             "admin"
         )
     
-    @patch('config_service.set_config')
-    @patch('config_service.clear_config_cache')
+    @patch('services.config_service.set_config')
+    @patch('services.config_service.clear_config_cache')
     def test_applies_normal_preset(self, mock_clear, mock_set_config):
         """Should reset to defaults for 'normal' preset"""
         mock_set_config.return_value = True
@@ -449,9 +449,9 @@ class TestApplyRateLimitPreset:
         
         assert result is False
     
-    @patch('config_service.set_config')
-    @patch('config_service.get_all_configs')
-    @patch('config_service.clear_config_cache')
+    @patch('services.config_service.set_config')
+    @patch('services.config_service.get_all_configs')
+    @patch('services.config_service.clear_config_cache')
     def test_applies_strict_preset_multiplier(self, mock_clear, mock_get_all, mock_set):
         """Should apply multiplier for 'strict' preset"""
         mock_set.return_value = True

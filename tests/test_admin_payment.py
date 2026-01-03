@@ -40,7 +40,7 @@ def client():
     """Create test client with mocked dependencies"""
     if not HAS_DEPS:
         pytest.skip("Missing dependencies")
-    with patch('payment_service.stripe'):
+    with patch('services.payment_service.stripe'):
         with patch('app.supabase') as mock_supabase:
             mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
             from app import app
@@ -119,8 +119,8 @@ class TestAdminGetUserPayments:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_customer_payments')
-    @patch('payment_service.get_customer_subscriptions')
+    @patch('services.payment_service.get_customer_payments')
+    @patch('services.payment_service.get_customer_subscriptions')
     def test_returns_payment_history(
         self, mock_get_subs, mock_get_payments, mock_supabase, mock_require_admin,
         client, mock_admin_user, mock_payment_intents, mock_subscriptions
@@ -207,8 +207,8 @@ class TestAdminCreateRefund:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_payment_intent_details')
-    @patch('payment_service.create_refund')
+    @patch('services.payment_service.get_payment_intent_details')
+    @patch('services.payment_service.create_refund')
     @patch('app.log_payment_record')
     @patch('app.log_admin_activity')
     def test_full_refund_success(
@@ -265,8 +265,8 @@ class TestAdminCreateRefund:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_payment_intent_details')
-    @patch('payment_service.create_refund')
+    @patch('services.payment_service.get_payment_intent_details')
+    @patch('services.payment_service.create_refund')
     def test_partial_refund_success(
         self, mock_create_refund, mock_get_pi, mock_supabase, mock_require_admin,
         client, mock_admin_user
@@ -318,7 +318,7 @@ class TestAdminCreateRefund:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_payment_intent_details')
+    @patch('services.payment_service.get_payment_intent_details')
     def test_refund_wrong_customer_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
         client, mock_admin_user
@@ -362,7 +362,7 @@ class TestAdminCreateRefund:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_payment_intent_details')
+    @patch('services.payment_service.get_payment_intent_details')
     def test_refund_already_refunded_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
         client, mock_admin_user
@@ -404,7 +404,7 @@ class TestAdminCreateRefund:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.get_payment_intent_details')
+    @patch('services.payment_service.get_payment_intent_details')
     def test_refund_nonexistent_payment_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
         client, mock_admin_user
@@ -476,7 +476,7 @@ class TestAdminCancelSubscription:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.cancel_subscription')
+    @patch('services.payment_service.cancel_subscription')
     @patch('app.log_payment_record')
     @patch('app.log_admin_activity')
     def test_immediate_cancellation_success(
@@ -524,7 +524,7 @@ class TestAdminCancelSubscription:
     
     @patch('app.require_admin')
     @patch('app.supabase')
-    @patch('payment_service.cancel_subscription')
+    @patch('services.payment_service.cancel_subscription')
     def test_end_of_period_cancellation_success(
         self, mock_cancel_sub, mock_supabase, mock_require_admin,
         client, mock_admin_user
@@ -652,7 +652,7 @@ class TestAdminPaymentEdgeCases:
             }]
         )
         
-        with patch('payment_service.get_payment_intent_details') as mock_get_pi:
+        with patch('services.payment_service.get_payment_intent_details') as mock_get_pi:
             mock_pi = Mock(
                 id='pi_small',
                 status='succeeded',
@@ -694,7 +694,7 @@ class TestAdminPaymentEdgeCases:
             }]
         )
         
-        with patch('payment_service.cancel_subscription') as mock_cancel:
+        with patch('services.payment_service.cancel_subscription') as mock_cancel:
             mock_cancel.return_value = {
                 'success': False,
                 'subscription': None,

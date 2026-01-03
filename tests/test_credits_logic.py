@@ -21,9 +21,9 @@ from services.db_service import (
 class TestMonthlyCreditsReset:
     """Test Rule 1: Monthly credits reset each month"""
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
     def test_refresh_monthly_credits_resets_monthly_only(self, mock_log, mock_supabase, mock_get_profile):
         """Monthly credits reset, permanent credits preserved"""
         # Setup: User has 100 monthly and 200 permanent credits
@@ -50,8 +50,8 @@ class TestMonthlyCreditsReset:
         call_kwargs = log_calls[0][1] if log_calls[0][0] == () else log_calls[0][0][1]
         assert call_kwargs.get('balance_permanent_after') == 200  # Unchanged
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.refresh_monthly_credits')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.refresh_monthly_credits')
     def test_check_reset_after_30_days(self, mock_refresh, mock_get_profile):
         """Monthly credits reset if cycle_anchor is over 30 days old"""
         # Setup: User with cycle_anchor 31 days ago
@@ -73,8 +73,8 @@ class TestMonthlyCreditsReset:
         assert mock_refresh.called
         assert result is True
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.refresh_monthly_credits')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.refresh_monthly_credits')
     def test_no_reset_before_30_days(self, mock_refresh, mock_get_profile):
         """Monthly credits don't reset if cycle_anchor is less than 30 days old"""
         # Setup: User with cycle_anchor 10 days ago
@@ -99,9 +99,9 @@ class TestMonthlyCreditsReset:
 class TestPermanentCreditsNeverExpire:
     """Test Rule 2: Permanent credits never expire"""
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
     def test_add_permanent_credits(self, mock_log, mock_supabase, mock_get_profile):
         """Adding permanent credits increases permanent balance"""
         mock_get_profile.return_value = {
@@ -118,8 +118,8 @@ class TestPermanentCreditsNeverExpire:
         assert result["balance_permanent"] == 250
         assert result["balance_monthly"] == 100  # Unchanged
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.refresh_monthly_credits')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.refresh_monthly_credits')
     def test_permanent_credits_preserved_on_reset(self, mock_refresh, mock_get_profile):
         """Permanent credits are preserved when monthly credits reset"""
         mock_get_profile.return_value = {
@@ -151,9 +151,9 @@ class TestPermanentCreditsNeverExpire:
 class TestDeductionPriority:
     """Test Rule 3: Deduct monthly credits first, then permanent credits"""
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
     def test_deduct_monthly_first(self, mock_log, mock_supabase, mock_get_profile):
         """Deduct from monthly credits first when sufficient"""
         mock_get_profile.return_value = {
@@ -170,9 +170,9 @@ class TestDeductionPriority:
         assert result["balance_monthly"] == 50  # 100 - 50
         assert result["balance_permanent"] == 200  # Unchanged
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
     def test_deduct_monthly_then_permanent(self, mock_log, mock_supabase, mock_get_profile):
         """Deduct from monthly first, then permanent when monthly insufficient"""
         mock_get_profile.return_value = {
@@ -189,9 +189,9 @@ class TestDeductionPriority:
         assert result["balance_monthly"] == 0  # All 30 used
         assert result["balance_permanent"] == 180  # 200 - 20
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
     def test_deduct_all_from_permanent_when_monthly_zero(self, mock_log, mock_supabase, mock_get_profile):
         """Deduct all from permanent when monthly credits are zero"""
         mock_get_profile.return_value = {
@@ -208,7 +208,7 @@ class TestDeductionPriority:
         assert result["balance_monthly"] == 0  # Unchanged
         assert result["balance_permanent"] == 150  # 200 - 50
     
-    @patch('db_service.get_user_profile')
+    @patch('services.db_service.get_user_profile')
     def test_insufficient_credits_error(self, mock_get_profile):
         """Raise error when total credits insufficient"""
         mock_get_profile.return_value = {
@@ -227,10 +227,10 @@ class TestDeductionPriority:
 class TestIntegrationScenarios:
     """Integration tests for real-world scenarios"""
     
-    @patch('db_service.get_user_profile')
-    @patch('db_service.supabase')
-    @patch('db_service.log_credit_transaction')
-    @patch('db_service.refresh_monthly_credits')
+    @patch('services.db_service.get_user_profile')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.log_credit_transaction')
+    @patch('services.db_service.refresh_monthly_credits')
     def test_complete_cycle_scenario(self, mock_refresh, mock_log, mock_supabase, mock_get_profile):
         """
         Scenario: User starts month with 500 monthly credits
