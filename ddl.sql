@@ -1,6 +1,6 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.15 - Complete)
--- Includes: core schema + RLS policies + v3.9-v3.15 updates
+-- Make Decodables Database Initialization Script (v3.18 - Complete)
+-- Includes: core schema + RLS policies + all updates through v3.18
 -- 
 -- Version History:
 -- v3.0: Credit buckets, marketplace, notifications, discounts
@@ -19,6 +19,9 @@
 -- v3.13: Holiday themes + Marketing campaigns system
 -- v3.14: Global holidays expansion (28+ themes)
 -- v3.15: Scheduled task monitoring logs
+-- v3.16: Tooltip configs
+-- v3.17: System resources enhancement + audit logs
+-- v3.18: Storage buckets (make-decodables-s, make-decodables-u)
 -- ==============================================================================
 
 -- ==========================================
@@ -200,15 +203,36 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. System resources
+-- 9. System resources (v3.17 enhanced)
 CREATE TABLE IF NOT EXISTS system_resources (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   type TEXT NOT NULL,
   category TEXT,
   url TEXT NOT NULL,
   allowed_tiers TEXT[] DEFAULT '{free, starter, pro}',
+  -- v3.17: Enhanced fields
+  name TEXT,
+  description TEXT,
+  thumbnail_url TEXT,
+  tags TEXT[] DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  file_size INTEGER,
+  file_type TEXT,
+  dimensions JSONB,
+  metadata JSONB DEFAULT '{}',
+  created_by TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- v3.17: System resources indexes
+CREATE INDEX IF NOT EXISTS idx_system_resources_type ON system_resources(type);
+CREATE INDEX IF NOT EXISTS idx_system_resources_category ON system_resources(category);
+CREATE INDEX IF NOT EXISTS idx_system_resources_tags ON system_resources USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_system_resources_active_type ON system_resources(type, is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_system_resources_sort ON system_resources(type, sort_order, created_at DESC);
 
 -- 10. Activity logs
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -296,10 +320,10 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT,
   event_type TEXT NOT NULL,
-  event_name TEXT,  -- v3.11: Normalized event name
+  event_name TEXT,
   event_level TEXT,
   event_data JSONB NOT NULL DEFAULT '{}',
-  context JSONB DEFAULT '{}',  -- v3.11: Rich context (device, geo, etc.)
+  context JSONB DEFAULT '{}',
   session_id TEXT,
   -- v3.9: Timezone support
   timezone TEXT DEFAULT 'UTC',
@@ -356,8 +380,7 @@ CREATE INDEX IF NOT EXISTS idx_agg_stats_date ON aggregated_stats(date DESC);
 CREATE INDEX IF NOT EXISTS idx_agg_stats_type ON aggregated_stats(stat_type);
 CREATE INDEX IF NOT EXISTS idx_agg_stats_date_type ON aggregated_stats(date DESC, stat_type);
 
--- 19. System configs (v3.10 - Refactored with correct field names)
--- Uses: key, value, value_type, config_group
+-- 19. System configs (v3.10)
 DROP TABLE IF EXISTS config_audit_logs CASCADE;
 DROP TABLE IF EXISTS system_configs CASCADE;
 
@@ -466,24 +489,18 @@ CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_usage ON page_prompt_templa
 CREATE TABLE IF NOT EXISTS analytics_daily_metrics (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   metric_date DATE NOT NULL UNIQUE,
-  -- User metrics
   dau INT DEFAULT 0,
   new_users INT DEFAULT 0,
   returning_users INT DEFAULT 0,
-  -- Engagement metrics
   total_sessions INT DEFAULT 0,
   avg_session_duration_sec INT DEFAULT 0,
   pages_per_session REAL DEFAULT 0,
-  -- AI usage
   ai_generations INT DEFAULT 0,
   ai_credits_used INT DEFAULT 0,
-  -- Marketplace
   marketplace_purchases INT DEFAULT 0,
   marketplace_revenue INT DEFAULT 0,
-  -- Projects
   projects_created INT DEFAULT 0,
   projects_exported INT DEFAULT 0,
-  -- Raw data for drill-down
   raw_data JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -494,20 +511,15 @@ CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON analytics_daily_metrics(met
 CREATE TABLE IF NOT EXISTS analytics_monthly_metrics (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   metric_month DATE NOT NULL UNIQUE,
-  -- User metrics
   mau INT DEFAULT 0,
   new_users INT DEFAULT 0,
   churned_users INT DEFAULT 0,
-  -- Revenue metrics
   mrr DECIMAL(12,2) DEFAULT 0,
   arr DECIMAL(12,2) DEFAULT 0,
   arpu DECIMAL(8,2) DEFAULT 0,
-  -- Conversion
   trial_to_paid_rate REAL DEFAULT 0,
   free_to_paid_rate REAL DEFAULT 0,
-  -- Tier distribution
   tier_distribution JSONB DEFAULT '{}',
-  -- Raw data
   raw_data JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -582,7 +594,26 @@ CREATE TABLE IF NOT EXISTS analytics_funnel_metrics (
 CREATE INDEX IF NOT EXISTS idx_funnel_metrics_date ON analytics_funnel_metrics(metric_date DESC);
 
 -- ==========================================
--- Part 1.6: Dashboard Optimized Indexes
+-- Part 1.6: v3.17 System Resource Audit Logs
+-- ==========================================
+
+-- 30. System resource audit logs
+CREATE TABLE IF NOT EXISTS system_resource_audit_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  resource_id UUID REFERENCES system_resources(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  old_data JSONB,
+  new_data JSONB,
+  changed_by TEXT NOT NULL,
+  changed_at TIMESTAMPTZ DEFAULT NOW(),
+  ip_address TEXT,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_resource_audit_resource_id ON system_resource_audit_logs(resource_id);
+CREATE INDEX IF NOT EXISTS idx_resource_audit_changed_at ON system_resource_audit_logs(changed_at DESC);
+
+-- ==========================================
+-- Part 1.7: Dashboard Optimized Indexes
 -- ==========================================
 
 CREATE INDEX IF NOT EXISTS idx_projects_user_deleted ON projects(user_id, is_deleted, deleted_at);
@@ -638,6 +669,7 @@ ALTER TABLE analytics_user_cohorts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_cohort_retention ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_error_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_funnel_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_resource_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Admin check function
 CREATE OR REPLACE FUNCTION is_admin() RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER AS $$
@@ -707,10 +739,26 @@ DROP POLICY IF EXISTS "Users view own txs or Admin view all" ON credit_transacti
 CREATE POLICY "Users view own txs or Admin view all" ON credit_transactions FOR SELECT
 USING ((SELECT auth.jwt() ->> 'sub') = user_id OR is_admin());
 
--- [System Resources]
+-- [System Resources] (v3.17 enhanced)
 DROP POLICY IF EXISTS "Public can view system resources" ON system_resources;
-CREATE POLICY "Public can view system resources" ON system_resources FOR SELECT
-USING (true);
+DROP POLICY IF EXISTS "Public can view active system resources" ON system_resources;
+DROP POLICY IF EXISTS "Admin full access to system resources" ON system_resources;
+
+CREATE POLICY "Public can view active system resources" ON system_resources FOR SELECT
+USING (is_active = true);
+
+CREATE POLICY "Admin full access to system resources" ON system_resources FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+-- [System Resource Audit Logs] (v3.17)
+DROP POLICY IF EXISTS "Admin can view resource audit logs" ON system_resource_audit_logs;
+CREATE POLICY "Admin can view resource audit logs" ON system_resource_audit_logs FOR SELECT
+USING (is_admin());
+
+DROP POLICY IF EXISTS "Service can insert audit logs" ON system_resource_audit_logs;
+CREATE POLICY "Service can insert audit logs" ON system_resource_audit_logs FOR INSERT
+WITH CHECK (true);
 
 -- [Activity Logs]
 DROP POLICY IF EXISTS "Users can insert own logs" ON activity_logs;
@@ -768,7 +816,7 @@ DROP POLICY IF EXISTS "Service role full access to aggregated_stats" ON aggregat
 CREATE POLICY "Service role full access to aggregated_stats" ON aggregated_stats FOR ALL
 TO service_role USING (true) WITH CHECK (true);
 
--- [System Configs] (v3.10 - public read for active, admin write)
+-- [System Configs]
 DROP POLICY IF EXISTS "Public can read active configs" ON system_configs;
 CREATE POLICY "Public can read active configs" ON system_configs FOR SELECT
 USING (is_active = true);
@@ -885,8 +933,8 @@ GROUP BY seller_id;
 -- Part 4: Materialized Views for Analytics
 -- ==========================================
 
--- DAU Trend with 7-day moving average
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_dau_trend AS
+DROP MATERIALIZED VIEW IF EXISTS mv_dau_trend CASCADE;
+CREATE MATERIALIZED VIEW mv_dau_trend AS
 SELECT 
   metric_date,
   dau,
@@ -898,8 +946,8 @@ ORDER BY metric_date DESC;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_dau_trend_date ON mv_dau_trend(metric_date);
 
--- Top Errors
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_top_errors AS
+DROP MATERIALIZED VIEW IF EXISTS mv_top_errors CASCADE;
+CREATE MATERIALIZED VIEW mv_top_errors AS
 SELECT 
   error_type,
   error_code,
@@ -913,8 +961,8 @@ GROUP BY error_type, error_code, endpoint
 ORDER BY total_occurrences DESC
 LIMIT 100;
 
--- Daily Event Summary
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_daily_event_summary AS
+DROP MATERIALIZED VIEW IF EXISTS mv_daily_event_summary CASCADE;
+CREATE MATERIALIZED VIEW mv_daily_event_summary AS
 SELECT 
   DATE(created_at) as event_date,
   COALESCE(event_name, event_type) as event_name,
@@ -1024,6 +1072,21 @@ CREATE TRIGGER trigger_page_prompt_templates_updated_at BEFORE UPDATE ON page_pr
 
 DROP TRIGGER IF EXISTS trigger_system_configs_updated_at ON system_configs;
 CREATE TRIGGER trigger_system_configs_updated_at BEFORE UPDATE ON system_configs FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+-- v3.17: System resources timestamp trigger
+CREATE OR REPLACE FUNCTION update_system_resources_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_system_resources_updated_at ON system_resources;
+CREATE TRIGGER trigger_system_resources_updated_at
+  BEFORE UPDATE ON system_resources
+  FOR EACH ROW
+  EXECUTE FUNCTION update_system_resources_timestamp();
 
 -- ==========================================
 -- Part 6: Helper Functions (System Config)
@@ -1174,7 +1237,7 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
   ('HOME_HERO_TITLE', 'Create Beautiful 8-Page Zines in Minutes', 'text', 'marketing', 'Homepage hero title'),
   ('HOME_HERO_SUBTITLE', 'AI-powered story generation meets easy drag-and-drop editing.', 'text', 'marketing', 'Homepage hero subtitle'),
   
-  -- Tooltip Text
+  -- Tooltip Text (v3.16)
   ('TOOLTIP_DELETE', 'Delete', 'text', 'tooltip', 'Delete button tooltip when enabled'),
   ('TOOLTIP_DELETE_DISABLED', 'Unpublish first to delete', 'text', 'tooltip', 'Delete button tooltip when project is published (disabled state)')
 
@@ -1186,7 +1249,7 @@ ON CONFLICT (key) DO UPDATE SET
   updated_at = NOW();
 
 -- ==========================================
--- Part 8: Holiday Themes & Marketing Campaigns (v3.13)
+-- Part 9: Holiday Themes & Marketing Campaigns (v3.13)
 -- ==========================================
 
 -- Holiday themes table
@@ -1321,35 +1384,31 @@ ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_dismissals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can view active campaigns" ON campaigns;
 CREATE POLICY "Public can view active campaigns" ON campaigns
     FOR SELECT USING (status = 'active' AND is_active = true);
 
+DROP POLICY IF EXISTS "Users can view own claims" ON campaign_claims;
 CREATE POLICY "Users can view own claims" ON campaign_claims
     FOR SELECT USING (user_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Users can insert own claims" ON campaign_claims;
 CREATE POLICY "Users can insert own claims" ON campaign_claims
     FOR INSERT WITH CHECK (user_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Users can manage own dismissals" ON campaign_dismissals;
 CREATE POLICY "Users can manage own dismissals" ON campaign_dismissals
     FOR ALL USING (user_id = auth.uid()::text);
 
 -- ==========================================
--- Part 9: Holiday Themes Data (v3.13 + v3.14)
+-- Part 10: Holiday Themes Data (v3.13 + v3.14)
 -- ==========================================
 
--- Insert default holiday themes (US holidays + Global celebrations)
 INSERT INTO holiday_themes (id, name, date_rule, theme_config, priority) VALUES
-
--- US Holidays
 ('newyear', 'New Year',
  '{"type": "fixed", "start": "12-30", "end": "01-02"}',
  '{"colors": {"primary": "#ffd700", "secondary": "#c0c0c0", "accent": "#ffffff", "banner_bg": "linear-gradient(135deg, #1a1a2e, #16213e)", "banner_text": "#ffd700"}, "badge": {"text": "🎉 Happy New Year!", "style": "sparkle"}, "decorations": {"type": "confetti", "density": "heavy"}, "banner_style": "gradient"}',
  100),
-
-('mlk', 'Martin Luther King Jr. Day',
- '{"type": "dynamic", "rule": "mlk_day", "offset_start": -1, "offset_end": 0}',
- '{"colors": {"primary": "#1a1a1a", "secondary": "#ffffff", "accent": "#c41e3a", "banner_bg": "#1a1a1a", "banner_text": "#ffffff"}, "badge": {"text": "✊ MLK Day - Dream of Equality", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "solid"}',
- 60),
 
 ('valentine', 'Valentine''s Day',
  '{"type": "fixed", "start": "02-12", "end": "02-15"}',
@@ -1361,6 +1420,21 @@ INSERT INTO holiday_themes (id, name, date_rule, theme_config, priority) VALUES
  '{"colors": {"primary": "#228b22", "secondary": "#32cd32", "accent": "#ffd700", "banner_bg": "#228b22", "banner_text": "#ffffff"}, "badge": {"text": "☘️ St. Patrick''s Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "solid"}',
  40),
 
+('earth_day', 'Earth Day',
+ '{"type": "fixed", "start": "04-21", "end": "04-23"}',
+ '{"colors": {"primary": "#2ecc71", "secondary": "#27ae60", "accent": "#3498db", "banner_bg": "linear-gradient(135deg, #2ecc71, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "🌍 Earth Day - Protect Our Planet!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 50),
+
+('mothers_day', 'Mother''s Day',
+ '{"type": "dynamic", "rule": "mothers_day", "offset_start": -1, "offset_end": 0}',
+ '{"colors": {"primary": "#ff69b4", "secondary": "#db7093", "accent": "#ff1493", "banner_bg": "linear-gradient(135deg, #ff69b4, #ff1493)", "banner_text": "#ffffff"}, "badge": {"text": "💐 Happy Mother''s Day!", "style": "pulse"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
+ 70),
+
+('fathers_day', 'Father''s Day',
+ '{"type": "dynamic", "rule": "fathers_day", "offset_start": -1, "offset_end": 0}',
+ '{"colors": {"primary": "#2980b9", "secondary": "#3498db", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #2980b9, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "👔 Happy Father''s Day!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 70),
+
 ('july4th', 'Independence Day',
  '{"type": "fixed", "start": "07-02", "end": "07-05"}',
  '{"colors": {"primary": "#b22234", "secondary": "#3c3b6e", "accent": "#ffffff", "banner_bg": "#b22234", "banner_text": "#ffffff"}, "badge": {"text": "🇺🇸 Happy 4th of July!", "style": "default"}, "decorations": {"type": "fireworks", "density": "heavy"}, "banner_style": "striped"}',
@@ -1370,6 +1444,11 @@ INSERT INTO holiday_themes (id, name, date_rule, theme_config, priority) VALUES
  '{"type": "fixed", "start": "10-28", "end": "11-01"}',
  '{"colors": {"primary": "#ff6600", "secondary": "#1a1a1a", "accent": "#9933ff", "banner_bg": "#1a1a1a", "banner_text": "#ff6600"}, "badge": {"text": "🎃 Happy Halloween!", "style": "spooky"}, "decorations": {"type": "confetti", "density": "light"}, "banner_style": "solid"}',
  70),
+
+('teachers_day', 'World Teachers'' Day',
+ '{"type": "fixed", "start": "10-04", "end": "10-06"}',
+ '{"colors": {"primary": "#27ae60", "secondary": "#2ecc71", "accent": "#f1c40f", "banner_bg": "linear-gradient(135deg, #27ae60, #2ecc71)", "banner_text": "#ffffff"}, "badge": {"text": "📚 World Teachers'' Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
+ 40),
 
 ('thanksgiving', 'Thanksgiving',
  '{"type": "dynamic", "rule": "us_thanksgiving", "offset_start": -1, "offset_end": 1}',
@@ -1384,68 +1463,7 @@ INSERT INTO holiday_themes (id, name, date_rule, theme_config, priority) VALUES
 ('christmas', 'Christmas',
  '{"type": "fixed", "start": "12-20", "end": "12-26"}',
  '{"colors": {"primary": "#c41e3a", "secondary": "#228b22", "accent": "#ffd700", "banner_bg": "#c41e3a", "banner_text": "#ffffff"}, "badge": {"text": "🎄 Merry Christmas!", "style": "festive"}, "decorations": {"type": "snowflakes", "density": "medium"}, "banner_style": "striped"}',
- 95),
-
--- Global Celebrations (v3.14)
-('lunar_newyear', 'Lunar New Year',
- '{"type": "fixed", "start": "01-20", "end": "02-15"}',
- '{"colors": {"primary": "#de2910", "secondary": "#ffde00", "accent": "#c41e3a", "banner_bg": "linear-gradient(135deg, #de2910, #c41e3a)", "banner_text": "#ffde00"}, "badge": {"text": "🧧 Happy Lunar New Year!", "style": "festive"}, "decorations": {"type": "confetti", "density": "medium"}, "banner_style": "gradient"}',
- 75),
-
-('womens_day', 'International Women''s Day',
- '{"type": "fixed", "start": "03-07", "end": "03-09"}',
- '{"colors": {"primary": "#9b59b6", "secondary": "#8e44ad", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #9b59b6, #e91e63)", "banner_text": "#ffffff"}, "badge": {"text": "💜 International Women''s Day", "style": "default"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
- 45),
-
-('pi_day', 'Pi Day & Einstein''s Birthday',
- '{"type": "fixed", "start": "03-13", "end": "03-15"}',
- '{"colors": {"primary": "#3498db", "secondary": "#2980b9", "accent": "#9b59b6", "banner_bg": "linear-gradient(135deg, #3498db, #9b59b6)", "banner_text": "#ffffff"}, "badge": {"text": "🔬 Pi Day & Einstein''s Birthday", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 35),
-
-('earth_day', 'Earth Day',
- '{"type": "fixed", "start": "04-21", "end": "04-23"}',
- '{"colors": {"primary": "#2ecc71", "secondary": "#27ae60", "accent": "#3498db", "banner_bg": "linear-gradient(135deg, #2ecc71, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "🌍 Earth Day - Protect Our Planet!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 50),
-
-('book_day', 'World Book Day',
- '{"type": "fixed", "start": "04-22", "end": "04-24"}',
- '{"colors": {"primary": "#8e44ad", "secondary": "#9b59b6", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #8e44ad, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "📖 World Book Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 35),
-
-('mothers_day', 'Mother''s Day',
- '{"type": "dynamic", "rule": "mothers_day", "offset_start": -1, "offset_end": 0}',
- '{"colors": {"primary": "#ff69b4", "secondary": "#db7093", "accent": "#ff1493", "banner_bg": "linear-gradient(135deg, #ff69b4, #ff1493)", "banner_text": "#ffffff"}, "badge": {"text": "💐 Happy Mother''s Day!", "style": "pulse"}, "decorations": {"type": "hearts", "density": "light"}, "banner_style": "gradient"}',
- 70),
-
-('fathers_day', 'Father''s Day',
- '{"type": "dynamic", "rule": "fathers_day", "offset_start": -1, "offset_end": 0}',
- '{"colors": {"primary": "#2980b9", "secondary": "#3498db", "accent": "#f39c12", "banner_bg": "linear-gradient(135deg, #2980b9, #3498db)", "banner_text": "#ffffff"}, "badge": {"text": "👔 Happy Father''s Day!", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 70),
-
-('mandela_day', 'Nelson Mandela International Day',
- '{"type": "fixed", "start": "07-17", "end": "07-19"}',
- '{"colors": {"primary": "#2ecc71", "secondary": "#f1c40f", "accent": "#e74c3c", "banner_bg": "linear-gradient(135deg, #2ecc71, #27ae60)", "banner_text": "#ffffff"}, "badge": {"text": "✊ Mandela Day - 67 Minutes of Service", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 45),
-
-('peace_day', 'International Day of Peace',
- '{"type": "fixed", "start": "09-20", "end": "09-22"}',
- '{"colors": {"primary": "#3498db", "secondary": "#ffffff", "accent": "#2ecc71", "banner_bg": "linear-gradient(135deg, #3498db, #2ecc71)", "banner_text": "#ffffff"}, "badge": {"text": "☮️ International Day of Peace", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 45),
-
-('gandhi_day', 'International Day of Non-Violence',
- '{"type": "fixed", "start": "10-01", "end": "10-03"}',
- '{"colors": {"primary": "#ff9933", "secondary": "#ffffff", "accent": "#138808", "banner_bg": "linear-gradient(135deg, #ff9933, #ffffff, #138808)", "banner_text": "#2c3e50"}, "badge": {"text": "☮️ International Day of Non-Violence", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 45),
-
-('teachers_day', 'World Teachers'' Day',
- '{"type": "fixed", "start": "10-04", "end": "10-06"}',
- '{"colors": {"primary": "#27ae60", "secondary": "#2ecc71", "accent": "#f1c40f", "banner_bg": "linear-gradient(135deg, #27ae60, #2ecc71)", "banner_text": "#ffffff"}, "badge": {"text": "📚 World Teachers'' Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 40),
-
-('human_rights_day', 'Human Rights Day',
- '{"type": "fixed", "start": "12-09", "end": "12-11"}',
- '{"colors": {"primary": "#3498db", "secondary": "#2980b9", "accent": "#f1c40f", "banner_bg": "linear-gradient(135deg, #3498db, #2980b9)", "banner_text": "#ffffff"}, "badge": {"text": "🌐 Human Rights Day", "style": "default"}, "decorations": {"type": "none"}, "banner_style": "gradient"}',
- 50)
+ 95)
 
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -1455,7 +1473,7 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = NOW();
 
 -- ==========================================
--- Part 10: Scheduled Task Logs (v3.15)
+-- Part 11: Scheduled Task Logs (v3.15)
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS scheduled_task_logs (
@@ -1510,11 +1528,112 @@ $$ LANGUAGE plpgsql;
 -- RLS for task logs
 ALTER TABLE scheduled_task_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Service role can manage task logs" ON scheduled_task_logs;
 CREATE POLICY "Service role can manage task logs"
     ON scheduled_task_logs FOR ALL
     USING (true)
     WITH CHECK (true);
 
 -- ==========================================
--- Done!
+-- Part 12: Storage Buckets Setup (v3.18)
 -- ==========================================
+
+-- Create make-decodables-s bucket (system assets)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'make-decodables-s',
+  'make-decodables-s',
+  true,
+  10485760,
+  ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Create make-decodables-u bucket (user content)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'make-decodables-u',
+  'make-decodables-u',
+  true,
+  52428800,
+  ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml', 'application/pdf']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Storage RLS Policies
+DROP POLICY IF EXISTS "make-decodables-s: public read" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny insert" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny update" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny delete" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: public read" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny insert" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny update" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny delete" ON storage.objects;
+
+-- make-decodables-s policies
+CREATE POLICY "make-decodables-s: public read"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'make-decodables-s');
+
+CREATE POLICY "make-decodables-s: deny insert"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'make-decodables-s' AND false);
+
+CREATE POLICY "make-decodables-s: deny update"
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'make-decodables-s' AND false);
+
+CREATE POLICY "make-decodables-s: deny delete"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'make-decodables-s' AND false);
+
+-- make-decodables-u policies
+CREATE POLICY "make-decodables-u: public read"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'make-decodables-u');
+
+CREATE POLICY "make-decodables-u: deny insert"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'make-decodables-u' AND false);
+
+CREATE POLICY "make-decodables-u: deny update"
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'make-decodables-u' AND false);
+
+CREATE POLICY "make-decodables-u: deny delete"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'make-decodables-u' AND false);
+
+-- ==========================================
+-- Done! v3.18 Complete Database Initialization
+-- ==========================================
+
+DO $$
+BEGIN
+  RAISE NOTICE '';
+  RAISE NOTICE '=====================================================';
+  RAISE NOTICE '✅ Make Decodables Database v3.18 - Setup Complete';
+  RAISE NOTICE '=====================================================';
+  RAISE NOTICE '';
+  RAISE NOTICE 'Tables created: 30+';
+  RAISE NOTICE 'Views created: 5';
+  RAISE NOTICE 'Materialized views: 3';
+  RAISE NOTICE 'Functions: 15+';
+  RAISE NOTICE 'Triggers: 10+';
+  RAISE NOTICE 'RLS Policies: 50+';
+  RAISE NOTICE '';
+  RAISE NOTICE 'Storage Buckets:';
+  RAISE NOTICE '  - make-decodables-s (system assets, 10MB)';
+  RAISE NOTICE '  - make-decodables-u (user content, 50MB)';
+  RAISE NOTICE '';
+  RAISE NOTICE 'Latest updates included:';
+  RAISE NOTICE '  - v3.17: System resources enhancement + audit logs';
+  RAISE NOTICE '  - v3.18: Storage buckets + RLS policies';
+  RAISE NOTICE '=====================================================';
+END $$;
