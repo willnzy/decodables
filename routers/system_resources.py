@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/admin/system-resources", tags=["Admin - System R
 # Constants
 # =====================================================
 
-SYSTEM_ASSETS_BUCKET = "md-system-assets"
+SYSTEM_ASSETS_BUCKET = "make-decodables-s"
 
 ALLOWED_TYPES = ["sticker", "template", "background", "frame", "icon", "pattern"]
 ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]

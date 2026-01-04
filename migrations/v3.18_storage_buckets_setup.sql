@@ -5,20 +5,19 @@
 -- =====================================================
 
 -- =====================================================
--- 桶设计原则：
--- 1. md-system-assets: 系统素材（Admin 管理，公开读取）
--- 2. md-ai-generated: AI 生成内容（后端写入，公开读取）
--- 3. md-user-content: 用户内容（后端写入，公开读取）
+-- 桶设计（2个桶）：
+-- 1. make-decodables-s: 系统素材（Admin 管理，公开读取）
+-- 2. make-decodables-u: 用户内容（后端写入，公开读取）
 -- =====================================================
 
 -- =====================================================
--- Step 1: 创建 md-system-assets 桶（系统素材）
+-- Step 1: 创建 make-decodables-s 桶（系统素材）
 -- =====================================================
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
-  'md-system-assets',
-  'md-system-assets',
+  'make-decodables-s',
+  'make-decodables-s',
   true,  -- 公开读取
   10485760,  -- 10MB 限制
   ARRAY[
@@ -35,34 +34,13 @@ ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- =====================================================
--- Step 2: 创建 md-ai-generated 桶（AI 生成内容）
+-- Step 2: 创建 make-decodables-u 桶（用户内容）
 -- =====================================================
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
-  'md-ai-generated',
-  'md-ai-generated',
-  true,  -- 公开读取
-  52428800,  -- 50MB 限制
-  ARRAY[
-    'image/png', 
-    'image/jpeg', 
-    'image/webp'
-  ]
-)
-ON CONFLICT (id) DO UPDATE SET
-  public = EXCLUDED.public,
-  file_size_limit = EXCLUDED.file_size_limit,
-  allowed_mime_types = EXCLUDED.allowed_mime_types;
-
--- =====================================================
--- Step 3: 创建 md-user-content 桶（用户内容）
--- =====================================================
-
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'md-user-content',
-  'md-user-content',
+  'make-decodables-u',
+  'make-decodables-u',
   true,  -- 公开读取
   52428800,  -- 50MB 限制
   ARRAY[
@@ -80,71 +58,54 @@ ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- =====================================================
--- Step 4: Storage RLS 策略
+-- Step 3: Storage RLS 策略
 -- =====================================================
 
--- ----- md-system-assets 策略 -----
+-- ----- make-decodables-s 策略 -----
 
 -- 公开读取
-DROP POLICY IF EXISTS "md-system-assets: public read" ON storage.objects;
-CREATE POLICY "md-system-assets: public read"
+DROP POLICY IF EXISTS "make-decodables-s: public read" ON storage.objects;
+CREATE POLICY "make-decodables-s: public read"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'md-system-assets');
+  USING (bucket_id = 'make-decodables-s');
 
 -- 仅服务端写入（通过 service_role key）
-DROP POLICY IF EXISTS "md-system-assets: service write" ON storage.objects;
-CREATE POLICY "md-system-assets: service write"
+DROP POLICY IF EXISTS "make-decodables-s: service write" ON storage.objects;
+CREATE POLICY "make-decodables-s: service write"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'md-system-assets');
+  WITH CHECK (bucket_id = 'make-decodables-s');
 
 -- 仅服务端更新
-DROP POLICY IF EXISTS "md-system-assets: service update" ON storage.objects;
-CREATE POLICY "md-system-assets: service update"
+DROP POLICY IF EXISTS "make-decodables-s: service update" ON storage.objects;
+CREATE POLICY "make-decodables-s: service update"
   ON storage.objects FOR UPDATE
-  USING (bucket_id = 'md-system-assets');
+  USING (bucket_id = 'make-decodables-s');
 
 -- 仅服务端删除
-DROP POLICY IF EXISTS "md-system-assets: service delete" ON storage.objects;
-CREATE POLICY "md-system-assets: service delete"
+DROP POLICY IF EXISTS "make-decodables-s: service delete" ON storage.objects;
+CREATE POLICY "make-decodables-s: service delete"
   ON storage.objects FOR DELETE
-  USING (bucket_id = 'md-system-assets');
+  USING (bucket_id = 'make-decodables-s');
 
--- ----- md-ai-generated 策略 -----
+-- ----- make-decodables-u 策略 -----
 
-DROP POLICY IF EXISTS "md-ai-generated: public read" ON storage.objects;
-CREATE POLICY "md-ai-generated: public read"
+DROP POLICY IF EXISTS "make-decodables-u: public read" ON storage.objects;
+CREATE POLICY "make-decodables-u: public read"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'md-ai-generated');
+  USING (bucket_id = 'make-decodables-u');
 
-DROP POLICY IF EXISTS "md-ai-generated: service write" ON storage.objects;
-CREATE POLICY "md-ai-generated: service write"
+DROP POLICY IF EXISTS "make-decodables-u: service write" ON storage.objects;
+CREATE POLICY "make-decodables-u: service write"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'md-ai-generated');
+  WITH CHECK (bucket_id = 'make-decodables-u');
 
-DROP POLICY IF EXISTS "md-ai-generated: service delete" ON storage.objects;
-CREATE POLICY "md-ai-generated: service delete"
+DROP POLICY IF EXISTS "make-decodables-u: service delete" ON storage.objects;
+CREATE POLICY "make-decodables-u: service delete"
   ON storage.objects FOR DELETE
-  USING (bucket_id = 'md-ai-generated');
-
--- ----- md-user-content 策略 -----
-
-DROP POLICY IF EXISTS "md-user-content: public read" ON storage.objects;
-CREATE POLICY "md-user-content: public read"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'md-user-content');
-
-DROP POLICY IF EXISTS "md-user-content: service write" ON storage.objects;
-CREATE POLICY "md-user-content: service write"
-  ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'md-user-content');
-
-DROP POLICY IF EXISTS "md-user-content: service delete" ON storage.objects;
-CREATE POLICY "md-user-content: service delete"
-  ON storage.objects FOR DELETE
-  USING (bucket_id = 'md-user-content');
+  USING (bucket_id = 'make-decodables-u');
 
 -- =====================================================
--- Step 5: 验证
+-- Step 4: 验证
 -- =====================================================
 
 DO $$
@@ -153,10 +114,9 @@ DECLARE
 BEGIN
   SELECT COUNT(*) INTO bucket_count 
   FROM storage.buckets 
-  WHERE id IN ('md-system-assets', 'md-ai-generated', 'md-user-content');
+  WHERE id IN ('make-decodables-s', 'make-decodables-u');
   
-  RAISE NOTICE '✅ Storage buckets created: % of 3', bucket_count;
-  RAISE NOTICE '  - md-system-assets: 系统素材（Admin 管理）';
-  RAISE NOTICE '  - md-ai-generated: AI 生成内容';
-  RAISE NOTICE '  - md-user-content: 用户上传内容';
+  RAISE NOTICE '✅ Storage buckets created: % of 2', bucket_count;
+  RAISE NOTICE '  - make-decodables-s: 系统素材（Admin 管理）';
+  RAISE NOTICE '  - make-decodables-u: 用户内容（AI生成、上传、扫描、PDF）';
 END $$;
