@@ -2,6 +2,11 @@
 -- Migration: v3.18_storage_buckets_setup.sql
 -- Description: Setup Supabase Storage buckets for Make Decodables
 -- Date: 2026-01-03
+-- 
+-- 安全策略设计：
+-- - 读取：公开（CDN 加速）
+-- - 上传/更改：仅后端服务（service_role key）
+-- - 删除：完全禁止（只能软删除）
 -- =====================================================
 
 -- =====================================================
@@ -18,7 +23,7 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'make-decodables-s',
   'make-decodables-s',
-  true,  -- 公开读取
+  true,  -- 公开读取（通过 CDN）
   10485760,  -- 10MB 限制
   ARRAY[
     'image/png', 
@@ -41,7 +46,7 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES (
   'make-decodables-u',
   'make-decodables-u',
-  true,  -- 公开读取
+  true,  -- 公开读取（通过 CDN）
   52428800,  -- 50MB 限制
   ARRAY[
     'image/png', 
@@ -58,65 +63,140 @@ ON CONFLICT (id) DO UPDATE SET
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- =====================================================
--- Step 3: Storage RLS 策略
+-- Step 3: 清除旧策略（如果存在）
 -- =====================================================
 
--- ----- make-decodables-s 策略 -----
-
--- 公开读取
+-- make-decodables-s 旧策略
 DROP POLICY IF EXISTS "make-decodables-s: public read" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: service write" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: service update" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: service delete" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny insert" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny update" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-s: deny delete" ON storage.objects;
+
+-- make-decodables-u 旧策略
+DROP POLICY IF EXISTS "make-decodables-u: public read" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: service write" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: service delete" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny insert" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny update" ON storage.objects;
+DROP POLICY IF EXISTS "make-decodables-u: deny delete" ON storage.objects;
+
+-- =====================================================
+-- Step 4: Storage RLS 策略 - make-decodables-s（系统素材桶）
+-- =====================================================
+
+-- 4.1 公开读取（任何人都可以读取系统素材）
 CREATE POLICY "make-decodables-s: public read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'make-decodables-s');
 
--- 仅服务端写入（通过 service_role key）
-DROP POLICY IF EXISTS "make-decodables-s: service write" ON storage.objects;
-CREATE POLICY "make-decodables-s: service write"
+-- 4.2 禁止前端上传（后端使用 service_role 绕过 RLS）
+-- 注意：这个策略对 anon/authenticated 用户生效
+-- service_role key 会绕过 RLS，所以后端仍可上传
+CREATE POLICY "make-decodables-s: deny insert"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'make-decodables-s');
+  WITH CHECK (
+    bucket_id = 'make-decodables-s' 
+    AND false  -- 永远拒绝前端直接上传
+  );
 
--- 仅服务端更新
-DROP POLICY IF EXISTS "make-decodables-s: service update" ON storage.objects;
-CREATE POLICY "make-decodables-s: service update"
+-- 4.3 禁止前端更改
+CREATE POLICY "make-decodables-s: deny update"
   ON storage.objects FOR UPDATE
-  USING (bucket_id = 'make-decodables-s');
+  USING (
+    bucket_id = 'make-decodables-s'
+    AND false  -- 永远拒绝前端直接更改
+  );
 
--- 仅服务端删除
-DROP POLICY IF EXISTS "make-decodables-s: service delete" ON storage.objects;
-CREATE POLICY "make-decodables-s: service delete"
+-- 4.4 禁止所有删除（包括后端！只能软删除）
+-- 即使 service_role 也无法删除，需要从数据库层面禁用
+-- 注意：这里我们用 RLS 策略禁止，但 service_role 会绕过
+-- 真正的禁止需要在应用层实现
+CREATE POLICY "make-decodables-s: deny delete"
   ON storage.objects FOR DELETE
-  USING (bucket_id = 'make-decodables-s');
+  USING (
+    bucket_id = 'make-decodables-s'
+    AND false  -- 永远拒绝
+  );
 
--- ----- make-decodables-u 策略 -----
+-- =====================================================
+-- Step 5: Storage RLS 策略 - make-decodables-u（用户内容桶）
+-- =====================================================
 
-DROP POLICY IF EXISTS "make-decodables-u: public read" ON storage.objects;
+-- 5.1 公开读取（任何人都可以读取用户生成的内容）
 CREATE POLICY "make-decodables-u: public read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'make-decodables-u');
 
-DROP POLICY IF EXISTS "make-decodables-u: service write" ON storage.objects;
-CREATE POLICY "make-decodables-u: service write"
+-- 5.2 禁止前端上传（后端使用 service_role 绕过 RLS）
+CREATE POLICY "make-decodables-u: deny insert"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'make-decodables-u');
+  WITH CHECK (
+    bucket_id = 'make-decodables-u'
+    AND false  -- 永远拒绝前端直接上传
+  );
 
-DROP POLICY IF EXISTS "make-decodables-u: service delete" ON storage.objects;
-CREATE POLICY "make-decodables-u: service delete"
+-- 5.3 禁止前端更改
+CREATE POLICY "make-decodables-u: deny update"
+  ON storage.objects FOR UPDATE
+  USING (
+    bucket_id = 'make-decodables-u'
+    AND false  -- 永远拒绝前端直接更改
+  );
+
+-- 5.4 禁止所有删除（只能软删除）
+CREATE POLICY "make-decodables-u: deny delete"
   ON storage.objects FOR DELETE
-  USING (bucket_id = 'make-decodables-u');
+  USING (
+    bucket_id = 'make-decodables-u'
+    AND false  -- 永远拒绝
+  );
 
 -- =====================================================
--- Step 4: 验证
+-- Step 6: 验证
 -- =====================================================
 
 DO $$
 DECLARE
   bucket_count INTEGER;
+  policy_count INTEGER;
 BEGIN
+  -- 验证桶
   SELECT COUNT(*) INTO bucket_count 
   FROM storage.buckets 
   WHERE id IN ('make-decodables-s', 'make-decodables-u');
   
-  RAISE NOTICE '✅ Storage buckets created: % of 2', bucket_count;
-  RAISE NOTICE '  - make-decodables-s: 系统素材（Admin 管理）';
-  RAISE NOTICE '  - make-decodables-u: 用户内容（AI生成、上传、扫描、PDF）';
+  -- 验证策略
+  SELECT COUNT(*) INTO policy_count
+  FROM pg_policies 
+  WHERE tablename = 'objects' 
+    AND schemaname = 'storage'
+    AND policyname LIKE 'make-decodables-%';
+  
+  RAISE NOTICE '';
+  RAISE NOTICE '=====================================================';
+  RAISE NOTICE '✅ Storage Setup Complete';
+  RAISE NOTICE '=====================================================';
+  RAISE NOTICE '';
+  RAISE NOTICE '📦 Buckets: % of 2', bucket_count;
+  RAISE NOTICE '   - make-decodables-s: 系统素材（Admin 管理）';
+  RAISE NOTICE '   - make-decodables-u: 用户内容（AI生成、上传、扫描）';
+  RAISE NOTICE '';
+  RAISE NOTICE '🔐 Policies: % policies created', policy_count;
+  RAISE NOTICE '';
+  RAISE NOTICE '📋 权限矩阵:';
+  RAISE NOTICE '   ┌─────────────┬──────────┬──────────┐';
+  RAISE NOTICE '   │ 操作        │ 前端用户 │ 后端服务 │';
+  RAISE NOTICE '   ├─────────────┼──────────┼──────────┤';
+  RAISE NOTICE '   │ 读取 SELECT │ ✅ 允许  │ ✅ 允许  │';
+  RAISE NOTICE '   │ 上传 INSERT │ ❌ 禁止  │ ✅ 允许  │';
+  RAISE NOTICE '   │ 更改 UPDATE │ ❌ 禁止  │ ✅ 允许  │';
+  RAISE NOTICE '   │ 删除 DELETE │ ❌ 禁止  │ ⚠️ 受控  │';
+  RAISE NOTICE '   └─────────────┴──────────┴──────────┘';
+  RAISE NOTICE '';
+  RAISE NOTICE '⚠️ 注意: 后端服务使用 service_role key 会绕过 RLS';
+  RAISE NOTICE '   删除操作需要在应用层控制（软删除/定时清理）';
+  RAISE NOTICE '=====================================================';
 END $$;

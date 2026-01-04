@@ -415,11 +415,14 @@ async def replace_resource_file(
 @router.delete("/{resource_id}")
 async def delete_resource(
     resource_id: str,
-    permanent: bool = Query(False, description="Permanently delete (including file)"),
     admin: dict = Depends(require_admin)
 ):
     """
-    Delete a system resource (soft delete by default)
+    Delete a system resource (soft delete only)
+    
+    v3.18: Permanent delete is disabled for security.
+    Files are only deactivated, not removed from storage.
+    Use scheduled cleanup tasks for actual file removal.
     """
     # Get current data
     current = supabase.table("system_resources")\
@@ -431,32 +434,20 @@ async def delete_resource(
     if not current.data:
         raise HTTPException(404, "Resource not found")
     
-    if permanent:
-        # Delete from storage
-        storage_path = current.data.get("metadata", {}).get("storage_path")
-        if storage_path:
-            try:
-                supabase.storage.from_(SYSTEM_ASSETS_BUCKET).remove([storage_path])
-            except Exception as e:
-                print(f"[WARN] Failed to delete file from storage: {e}")
-        
-        # Delete from database
-        supabase.table("system_resources").delete().eq("id", resource_id).execute()
-        
-        # Audit log
-        log_resource_audit(resource_id, "permanent_delete", current.data, {}, admin.get("id"))
-        
-        return {"message": "Resource permanently deleted", "id": resource_id}
-    else:
-        # Soft delete (deactivate)
-        supabase.table("system_resources")\
-            .update({"is_active": False, "updated_by": admin.get("id")})\
-            .eq("id", resource_id)\
-            .execute()
-        
-        log_resource_audit(resource_id, "deactivate", {"is_active": True}, {"is_active": False}, admin.get("id"))
-        
-        return {"message": "Resource deactivated", "id": resource_id}
+    # v3.18: Only soft delete (deactivate) - no permanent delete allowed
+    # Files remain in storage for audit/recovery purposes
+    supabase.table("system_resources")\
+        .update({
+            "is_active": False, 
+            "updated_by": admin.get("id"),
+            "updated_at": "now()"
+        })\
+        .eq("id", resource_id)\
+        .execute()
+    
+    log_resource_audit(resource_id, "deactivate", {"is_active": True}, {"is_active": False}, admin.get("id"))
+    
+    return {"message": "Resource deactivated (soft delete)", "id": resource_id}
 
 
 @router.post("/batch")
