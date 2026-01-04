@@ -107,9 +107,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration - allowed origins
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",                      # Local development
-    "http://127.0.0.1:3000",                      # Local development (fallback)
-    "https://make-decodables.vercel.app",         # Vercel production
+    "http://localhost:3000",                       # Local development
+    "http://127.0.0.1:3000",                       # Local development (fallback)
+    "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
+    "https://makedecodables.com",                  # Production domain
+    "https://www.makedecodables.com",              # Production domain (www)
+    "https://make-decodables.vercel.app",          # Vercel legacy
     "https://decodables-production.up.railway.app" # Railway API host
 ]
 
@@ -135,6 +138,10 @@ from routers.themes import router as themes_router
 from routers.campaigns import router as campaigns_router
 app.include_router(themes_router)
 app.include_router(campaigns_router)
+
+# v3.17: System resources management router
+from routers.system_resources import router as system_resources_router
+app.include_router(system_resources_router)
 
 
 # ==========================================
@@ -1128,12 +1135,12 @@ async def upload_asset(
     if not storage_supabase:
         raise HTTPException(500, "Storage service not configured")
     
-    # Generate a unique filename
+    # Generate a unique filename (v3.18: {user_id}/uploads/ path structure)
     ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
-    filename = f"uploads/{user['id']}/{uuid.uuid4()}.{ext}"
+    filename = f"{user['id']}/uploads/{uuid.uuid4()}.{ext}"
     
     try:
-        # Upload file to generated-images bucket (reuse image_generator client)
+        # Upload file to user content bucket (v3.18: make-decodables-u)
         storage_supabase.storage.from_(BUCKET_NAME).upload(
             path=filename,
             file=contents,
@@ -1905,6 +1912,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     generation_start = time.time()
     
     # Generate images (with or without reference)
+    # v3.18: Pass user_id for organized storage path ({user_id}/temp/{YYYY-MM-DD}/{task_id}/)
     urls, task_id = await generate_8_images(
         prompts_to_use, 
         model=model,
@@ -1914,7 +1922,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         generation_mode=generation_mode,  # Pass mode for parameter adjustment
         creativity_level=creativity_level,  # Pass creativity level for flexible mode
         negative_prompt=req.negative_prompt,  # New: negative prompt
-        num_images=num_images  # New: batch generation
+        num_images=num_images,  # New: batch generation
+        user_id=user["id"]  # v3.18: for storage path organization
     )
     
     generation_time_ms = int((time.time() - generation_start) * 1000)
@@ -2657,8 +2666,8 @@ async def pdf_preview(
             pix = page.get_pixmap(matrix=mat)
             img_bytes = pix.tobytes("png")
             
-            # Upload to storage
-            filename = f"pdf-previews/{user['id']}/{preview_id}/page_{page_num + 1}.png"
+            # Upload to storage (v3.18: {user_id}/previews/ path structure)
+            filename = f"{user['id']}/previews/{preview_id}/page_{page_num + 1}.png"
             
             preview_url = None
             if storage_supabase:
@@ -2762,10 +2771,10 @@ async def ocr_tool(
             """Process a single image and return OCR result"""
             base64_image = base64.b64encode(img_bytes).decode('utf-8')
             
-            # Upload image to storage
+            # Upload image to storage (v3.18: {user_id}/scans/ path structure)
             page_suffix = f"_page{page_num}" if page_num else ""
             ext = 'png' if is_pdf else (file.filename.split('.')[-1] if '.' in file.filename else 'png')
-            filename = f"scans/{user['id']}/{uuid.uuid4()}{page_suffix}.{ext}"
+            filename = f"{user['id']}/scans/{uuid.uuid4()}{page_suffix}.{ext}"
             
             source_image_url = None
             if storage_supabase:
@@ -3088,8 +3097,8 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
                         image_bytes = base_image["image"]
                         image_ext = base_image["ext"]
                         
-                        # Upload to storage
-                        img_filename = f"pdf-images/{user['id']}/{uuid.uuid4()}_p{page_num}_img{img_index}.{image_ext}"
+                        # Upload to storage (v3.18: {user_id}/scans/pdf-images/ path structure)
+                        img_filename = f"{user['id']}/scans/pdf-images/{uuid.uuid4()}_p{page_num}_img{img_index}.{image_ext}"
                         img_url = None
                         if storage_supabase:
                             try:
@@ -3207,7 +3216,7 @@ Return ONLY valid JSON. Do NOT include markdown formatting or explanations."""
             pix = page.get_pixmap(matrix=mat)
             preview_bytes = pix.tobytes("png")
             
-            preview_filename = f"scans/{user['id']}/{uuid.uuid4()}_page{page_num}_preview.png"
+            preview_filename = f"{user['id']}/scans/{uuid.uuid4()}_page{page_num}_preview.png"
             preview_url = None
             if storage_supabase:
                 try:

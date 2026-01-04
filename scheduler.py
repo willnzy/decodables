@@ -76,6 +76,18 @@ def run_daily_aggregation():
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
 
+
+def run_storage_cleanup():
+    """Run storage cleanup task (v3.18)"""
+    logger.info(f"[{datetime.now()}] 🧹 Starting storage cleanup...")
+    
+    try:
+        from scheduled_tasks.storage_cleanup import run_storage_cleanup as do_cleanup
+        result = do_cleanup()
+        logger.info(f"[{datetime.now()}] ✅ Storage cleanup complete: {result.get('files_deleted', 0)} files deleted, {result.get('space_freed_mb', 0)} MB freed")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Storage cleanup failed: {e}")
+
 def init_scheduler():
     """
     Initialize and start the scheduler
@@ -106,11 +118,21 @@ def init_scheduler():
         misfire_grace_time=3600  # 1 hour grace period
     )
     
+    # v3.18: Storage cleanup task - run at 3:00 AM UTC
+    scheduler.add_job(
+        run_storage_cleanup,
+        CronTrigger(hour=3, minute=0),  # 3:00 AM UTC
+        id="storage_cleanup",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+    
     # Start the scheduler
     scheduler.start()
     logger.info("📅 Scheduler started with jobs:")
     logger.info("   - Hourly aggregation: every hour at :05")
     logger.info("   - Daily aggregation: 2:00 AM UTC")
+    logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
 
 def shutdown_scheduler():
     """

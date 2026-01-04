@@ -1,0 +1,16 @@
+# Supabase Configuration for Make Decodables
+# This file is used for Supabase CLI and GitHub integration
+
+[project]
+name = "make-decodables"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323

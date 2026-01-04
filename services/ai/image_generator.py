@@ -22,7 +22,8 @@ from supabase import create_client, Client
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-BUCKET_NAME = "generated-images"  # PRD Bucket
+# Storage bucket name (v3.18: SEO-friendly bucket names)
+BUCKET_NAME = "make-decodables-u"  # User content bucket
 
 # Ensure URL has trailing slash to avoid SDK warning
 if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
@@ -97,13 +98,14 @@ def get_generation_params(model: str, mode: str, creativity_level: float = 0.3) 
         }
 
 
-async def upload_reference_image(session, reference_image: str, task_id: str) -> str:
+async def upload_reference_image(session, reference_image: str, task_id: str, user_id: str = None) -> str:
     """
     Upload reference image to Supabase and return public URL.
     
     Args:
         reference_image: Base64 encoded image (with or without data URI prefix) or URL
         task_id: Task ID for organizing files
+        user_id: User ID for path organization (v3.18)
     
     Returns:
         Public URL of the uploaded reference image
@@ -121,8 +123,14 @@ async def upload_reference_image(session, reference_image: str, task_id: str) ->
         # Decode base64
         image_bytes = base64.b64decode(reference_image)
         
-        # Upload to Supabase
-        filename = f"{task_id}/reference_{uuid.uuid4().hex[:8]}.png"
+        # Upload to Supabase (v3.18: organized by user_id/temp/YYYY-MM-DD/task_id/)
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        if user_id:
+            filename = f"{user_id}/temp/{today}/{task_id}/reference_{uuid.uuid4().hex[:8]}.png"
+        else:
+            filename = f"anonymous/temp/{today}/{task_id}/reference_{uuid.uuid4().hex[:8]}.png"
+        
         supabase.storage.from_(BUCKET_NAME).upload(
             path=filename,
             file=image_bytes,
@@ -146,7 +154,8 @@ async def generate_and_upload_single(
     image_size="landscape_4_3",
     generation_mode="guided",
     creativity_level=0.3,
-    negative_prompt=None
+    negative_prompt=None,
+    user_id=None
 ):
     """
     Generate a single image and upload to Supabase Storage.
@@ -163,6 +172,7 @@ async def generate_and_upload_single(
         generation_mode: "guided" (accurate) or "flexible" (creative)
         creativity_level: 0.0-1.0, controls creativity in flexible mode
         negative_prompt: Optional negative prompt (elements to avoid)
+        user_id: User ID for path organization (v3.18)
     """
     try:
         # Get mode-specific parameters (creativity_level only affects flexible mode)
@@ -222,11 +232,16 @@ async def generate_and_upload_single(
         result = await handler.get()
         image_url = result['images'][0]['url']
         
-        # Upload to Supabase
+        # Upload to Supabase (v3.18: organized by user_id/temp/YYYY-MM-DD/task_id/)
         async with session.get(image_url) as response:
             if response.status == 200:
                 image_bytes = await response.read()
-                filename = f"{task_id}/{uuid.uuid4().hex}.png"
+                from datetime import datetime, timezone
+                today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                if user_id:
+                    filename = f"{user_id}/temp/{today}/{task_id}/{uuid.uuid4().hex}.png"
+                else:
+                    filename = f"anonymous/temp/{today}/{task_id}/{uuid.uuid4().hex}.png"
                 
                 supabase.storage.from_(BUCKET_NAME).upload(
                     path=filename,
@@ -249,7 +264,8 @@ async def generate_8_images(
     generation_mode: str = "guided",
     creativity_level: float = 0.3,
     negative_prompt: str = None,
-    num_images: int = 1
+    num_images: int = 1,
+    user_id: str = None
 ):
     """
     Generate images using specified model, optionally with reference image.
@@ -264,6 +280,7 @@ async def generate_8_images(
         creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
         negative_prompt: Optional text describing what to avoid in the image
         num_images: Number of variations to generate per prompt (1-4)
+        user_id: User ID for path organization (v3.18: {user_id}/temp/{YYYY-MM-DD}/{task_id}/)
     
     Returns:
         Tuple of (image_urls, task_id)
@@ -287,7 +304,7 @@ async def generate_8_images(
     async with aiohttp.ClientSession() as session:
         # Upload reference image if provided
         if reference_image:
-            reference_image_url = await upload_reference_image(session, reference_image, task_id)
+            reference_image_url = await upload_reference_image(session, reference_image, task_id, user_id)
             if not reference_image_url:
                 print("⚠️ Failed to process reference image, falling back to text-only generation")
         
@@ -307,7 +324,8 @@ async def generate_8_images(
                     image_size=image_size,
                     generation_mode=generation_mode,
                     creativity_level=creativity_level,
-                    negative_prompt=negative_prompt
+                    negative_prompt=negative_prompt,
+                    user_id=user_id
                 ))
                 total_index += 1
         image_urls = await asyncio.gather(*tasks)
