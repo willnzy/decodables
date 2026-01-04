@@ -357,8 +357,23 @@ async def replace_resource_file(
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(400, f"File too large. Maximum: {MAX_FILE_SIZE // 1024 // 1024}MB")
     
-    # Delete old file from storage (optional, keeps history)
-    old_path = current.data.get("metadata", {}).get("storage_path")
+    # Get current metadata and version history
+    current_metadata = current.data.get("metadata", {})
+    old_path = current_metadata.get("storage_path")
+    old_url = current.data.get("url")
+    version_history = current_metadata.get("version_history", [])
+    
+    # Add current version to history before replacing
+    if old_path and old_url:
+        from datetime import datetime, timezone
+        version_history.append({
+            "version": len(version_history) + 1,
+            "url": old_url,
+            "storage_path": old_path,
+            "file_size": current.data.get("file_size"),
+            "replaced_at": datetime.now(timezone.utc).isoformat(),
+            "replaced_by": admin.get("id")
+        })
     
     # Upload new file
     ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
@@ -379,7 +394,7 @@ async def replace_resource_file(
     # Get new dimensions
     dimensions = get_image_dimensions(contents)
     
-    # Update record
+    # Update record with full version history
     update_data = {
         "url": url,
         "thumbnail_url": url,
@@ -388,10 +403,11 @@ async def replace_resource_file(
         "dimensions": dimensions,
         "updated_by": admin.get("id"),
         "metadata": {
-            **current.data.get("metadata", {}),
+            **current_metadata,
             "original_filename": file.filename,
             "storage_path": filename,
-            "previous_path": old_path
+            "current_version": len(version_history) + 1,
+            "version_history": version_history  # 保存所有历史版本
         }
     }
     
