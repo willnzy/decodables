@@ -107,9 +107,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration - allowed origins
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",                      # Local development
-    "http://127.0.0.1:3000",                      # Local development (fallback)
-    "https://make-decodables.vercel.app",         # Vercel production
+    "http://localhost:3000",                       # Local development
+    "http://127.0.0.1:3000",                       # Local development (fallback)
+    "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
+    "https://makedecodables.com",                  # Production domain
+    "https://www.makedecodables.com",              # Production domain (www)
+    "https://make-decodables.vercel.app",          # Vercel legacy
     "https://decodables-production.up.railway.app" # Railway API host
 ]
 
