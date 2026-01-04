@@ -136,6 +136,10 @@ from routers.campaigns import router as campaigns_router
 app.include_router(themes_router)
 app.include_router(campaigns_router)
 
+# v3.17: System resources management router
+from routers.system_resources import router as system_resources_router
+app.include_router(system_resources_router)
+
 
 # ==========================================
 # Global Exception Handlers (v3.12)
