@@ -840,3 +840,232 @@ def trigger_task(
         }
     except Exception as e:
         raise HTTPException(500, f"Failed to trigger task: {str(e)}")
+
+
+# ==========================================
+# AI Model Configuration Routes
+# ==========================================
+
+class AIModelConfigUpdate(BaseModel):
+    """AI model configuration update request"""
+    provider: str
+    model: str
+    fallback_provider: Optional[str] = None
+    fallback_model: Optional[str] = None
+    show_provider: Optional[bool] = False
+
+
+class AIImageModelConfigUpdate(BaseModel):
+    """AI image model configuration update request"""
+    provider: str
+    models: dict  # {"free": "model", "starter": "model", "pro": "model"}
+    fallback_provider: Optional[str] = None
+    fallback_model: Optional[str] = None
+    show_provider: Optional[bool] = False
+
+
+class AICanaryConfigUpdate(BaseModel):
+    """Canary release configuration update request"""
+    enabled: bool
+    text_reasoning: Optional[dict] = None  # {canary_provider, canary_model, traffic_percent, target_tiers}
+    image_generation: Optional[dict] = None
+
+
+class AIProviderStatusUpdate(BaseModel):
+    """Provider status update request"""
+    provider: str
+    enabled: bool
+
+
+@router.get("/ai/config")
+def get_ai_config(admin: dict = Depends(require_admin)):
+    """
+    Get all AI model configurations.
+    
+    Returns current settings for:
+    - User text model
+    - User image model
+    - Admin analysis model
+    - Enabled providers
+    - Canary release settings
+    """
+    from services.ai.model_config import (
+        get_text_model_config,
+        get_image_model_config,
+        get_admin_model_config,
+        get_enabled_providers,
+        get_all_provider_models,
+    )
+    from services.ai.canary import get_canary_stats
+    from services.ai.adapters import (
+        list_available_text_adapters,
+        list_available_image_adapters,
+    )
+    
+    text_config = get_text_model_config()
+    admin_config = get_admin_model_config()
+    
+    # Get image config for all tiers
+    image_configs = {}
+    for tier in ["free", "starter", "pro"]:
+        cfg = get_image_model_config(tier)
+        image_configs[tier] = {"provider": cfg.provider, "model": cfg.model}
+    
+    return {
+        "text_model": text_config.to_dict(),
+        "image_model": {
+            "provider": get_image_model_config("free").provider,
+            "models": image_configs,
+            "show_provider": get_image_model_config("free").show_provider,
+        },
+        "admin_model": admin_config.to_dict(),
+        "enabled_providers": get_enabled_providers(),
+        "available_models": get_all_provider_models(),
+        "canary": get_canary_stats(),
+        "adapter_status": {
+            "text": list_available_text_adapters(),
+            "image": list_available_image_adapters(),
+        },
+    }
+
+
+@router.put("/ai/config/text")
+def update_text_model_config(
+    config: AIModelConfigUpdate,
+    admin: dict = Depends(require_admin)
+):
+    """Update user text model configuration."""
+    from services.ai.model_config import update_text_model_config as update_config
+    
+    success = update_config(
+        provider=config.provider,
+        model=config.model,
+        fallback_provider=config.fallback_provider,
+        fallback_model=config.fallback_model,
+        show_provider=config.show_provider or False,
+        updated_by=admin.get("id"),
+    )
+    
+    if not success:
+        raise HTTPException(500, "Failed to update text model config")
+    
+    return {"success": True, "message": "Text model config updated"}
+
+
+@router.put("/ai/config/image")
+def update_image_model_config(
+    config: AIImageModelConfigUpdate,
+    admin: dict = Depends(require_admin)
+):
+    """Update user image model configuration."""
+    from services.ai.model_config import update_image_model_config as update_config
+    
+    success = update_config(
+        provider=config.provider,
+        models=config.models,
+        fallback_provider=config.fallback_provider,
+        fallback_model=config.fallback_model,
+        show_provider=config.show_provider or False,
+        updated_by=admin.get("id"),
+    )
+    
+    if not success:
+        raise HTTPException(500, "Failed to update image model config")
+    
+    return {"success": True, "message": "Image model config updated"}
+
+
+@router.put("/ai/config/admin")
+def update_admin_model_config(
+    config: AIModelConfigUpdate,
+    admin: dict = Depends(require_admin)
+):
+    """Update admin analysis model configuration."""
+    from services.ai.model_config import update_admin_model_config as update_config
+    
+    success = update_config(
+        provider=config.provider,
+        model=config.model,
+        fallback_provider=config.fallback_provider,
+        fallback_model=config.fallback_model,
+        updated_by=admin.get("id"),
+    )
+    
+    if not success:
+        raise HTTPException(500, "Failed to update admin model config")
+    
+    return {"success": True, "message": "Admin model config updated"}
+
+
+@router.put("/ai/config/provider")
+def update_provider_status(
+    config: AIProviderStatusUpdate,
+    admin: dict = Depends(require_admin)
+):
+    """Enable or disable an AI provider."""
+    from services.ai.model_config import update_provider_status as update_status
+    
+    success = update_status(
+        provider=config.provider,
+        enabled=config.enabled,
+        updated_by=admin.get("id"),
+    )
+    
+    if not success:
+        raise HTTPException(500, "Failed to update provider status")
+    
+    return {"success": True, "message": f"Provider {config.provider} {'enabled' if config.enabled else 'disabled'}"}
+
+
+@router.put("/ai/config/canary")
+def update_canary_config(
+    config: AICanaryConfigUpdate,
+    admin: dict = Depends(require_admin)
+):
+    """Update canary release configuration."""
+    from services.ai.canary import update_canary_config as update_config
+    
+    success = update_config(
+        enabled=config.enabled,
+        text_reasoning=config.text_reasoning,
+        image_generation=config.image_generation,
+        updated_by=admin.get("id"),
+    )
+    
+    if not success:
+        raise HTTPException(500, "Failed to update canary config")
+    
+    return {"success": True, "message": "Canary config updated"}
+
+
+@router.post("/ai/config/canary/disable")
+def disable_canary(admin: dict = Depends(require_admin)):
+    """Quickly disable all canary releases (emergency switch)."""
+    from services.ai.canary import disable_canary as do_disable
+    
+    success = do_disable(updated_by=admin.get("id"))
+    
+    if not success:
+        raise HTTPException(500, "Failed to disable canary")
+    
+    return {"success": True, "message": "All canary releases disabled"}
+
+
+@router.get("/ai/usage")
+def get_ai_usage(
+    days: int = 30,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get AI usage statistics.
+    
+    Returns:
+    - Summary (total calls, cost, by provider/model)
+    - Daily breakdown for charts
+    """
+    from services.ai.usage_tracker import get_usage_summary, get_daily_usage
+    
+    return {
+        "summary": get_usage_summary(days),
+        "daily": get_daily_usage(days),
+    }

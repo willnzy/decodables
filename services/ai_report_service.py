@@ -2,13 +2,14 @@
 AI Report Service - Deep Business Insights Generation
 ======================================================
 This module transforms raw data into actionable business intelligence
-using GPT-4o with expert-level System Prompts.
+using unified AI service with expert-level System Prompts.
 
 Features:
 - Data preprocessing with MoM/YoY calculations
 - Anomaly detection and threshold alerts
 - Expert System Prompt with 3-section output
 - Structured insights for operations, marketing, and product teams
+- Multi-provider support via unified AI service
 """
 
 import json
@@ -17,14 +18,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
-import openai
 from collections import defaultdict
 
 from .db_service import supabase
-from config import OPENAI_API_KEY
 
-# Initialize OpenAI client
-openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
 
@@ -646,12 +643,14 @@ def identify_anomalies(metrics: List[MetricData]) -> List[str]:
 # Main Report Generation Function
 # ============================================================
 
-def generate_ai_business_report(
+async def generate_ai_business_report(
     report_type: str = "comprehensive",
     time_range: str = "30d"
 ) -> Dict[str, Any]:
     """
     Generate a comprehensive AI-powered business intelligence report.
+    
+    Uses unified AI service with admin model configuration.
     
     Args:
         report_type: "comprehensive" | "growth" | "product" | "commercial"
@@ -664,6 +663,9 @@ def generate_ai_business_report(
         - anomalies: List of detected anomalies
         - generated_at: Timestamp
     """
+    from .ai.unified_text_service import unified_text
+    from .ai.model_config import get_admin_model_config
+    
     logger.info(f"Generating AI business report: type={report_type}, range={time_range}")
     
     # Collect all metrics
@@ -704,23 +706,27 @@ def generate_ai_business_report(
 {chr(10).join(anomalies) if anomalies else "当前无异常警报"}
 """
     
-    # Call o1 for analysis (最新推理模型)
+    # Call unified AI service with admin model
     try:
-        response = openai_client.chat.completions.create(
-            model="o1",  # 使用最新的 o1 推理模型，更强的分析能力
+        result = await unified_text.chat(
             messages=[
                 {"role": "system", "content": EXPERT_SYSTEM_PROMPT},
                 {"role": "user", "content": f"请分析以下数据并生成商业洞察报告：\n\n{metrics_context}"}
             ],
+            use_admin_model=True,
+            use_cache=False,  # Reports should always be fresh
             temperature=0.7,
             max_tokens=4000,
         )
         
-        report_markdown = response.choices[0].message.content
+        report_markdown = result.content
+        config = get_admin_model_config()
+        model_used = f"{config.provider}/{config.model}"
         
     except Exception as e:
-        logger.error(f"Error calling o1: {e}")
+        logger.error(f"[AIReport] Error generating report: {e}")
         report_markdown = f"## 报告生成失败\n\n无法生成 AI 分析报告: {str(e)}\n\n请稍后重试。"
+        model_used = "error"
     
     # Build structured response
     return {
@@ -735,6 +741,7 @@ def generate_ai_business_report(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "report_type": report_type,
         "time_range": time_range,
+        "model_used": model_used,
     }
 
 
