@@ -364,6 +364,31 @@ def delete_experiment(experiment_key: str, admin: dict = Depends(require_admin))
     return {"status": "deleted", "experiment_key": experiment_key}
 
 
+def _enrich_results_with_significance(results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    为实验结果添加统计显著性分析
+    
+    Args:
+        results: 原始实验结果
+        
+    Returns:
+        添加了统计显著性的结果
+    """
+    variants_data = results.get("variants", {})
+    if "control" in variants_data:
+        control_data = variants_data["control"]
+        for variant_key, variant_data in variants_data.items():
+            if variant_key != "control":
+                significance = experiment_service.calculate_statistical_significance(
+                    control_conversions=control_data.get("total_conversions", 0),
+                    control_exposures=control_data.get("total_exposures", 0),
+                    variant_conversions=variant_data.get("total_conversions", 0),
+                    variant_exposures=variant_data.get("total_exposures", 0)
+                )
+                variant_data["significance"] = significance
+    return results
+
+
 @admin_router.get("/{experiment_key}/results")
 def get_experiment_results(
     experiment_key: str,
@@ -386,21 +411,7 @@ def get_experiment_results(
     if not results:
         raise HTTPException(404, f"Experiment '{experiment_key}' not found")
     
-    # 计算统计显著性
-    variants_data = results.get("variants", {})
-    if "control" in variants_data:
-        control_data = variants_data["control"]
-        for variant_key, variant_data in variants_data.items():
-            if variant_key != "control":
-                significance = experiment_service.calculate_statistical_significance(
-                    control_conversions=control_data.get("total_conversions", 0),
-                    control_exposures=control_data.get("total_exposures", 0),
-                    variant_conversions=variant_data.get("total_conversions", 0),
-                    variant_exposures=variant_data.get("total_exposures", 0)
-                )
-                variant_data["significance"] = significance
-                
-    return results
+    return _enrich_results_with_significance(results)
 
 
 @admin_router.post("/{experiment_key}/aggregate")
@@ -465,24 +476,11 @@ def get_ai_analysis(
     if not experiment:
         raise HTTPException(404, f"Experiment '{experiment_key}' not found")
     
-    # 获取实验结果
+    # 获取实验结果并计算统计显著性
     results = experiment_service.get_experiment_results(experiment_key)
     if not results:
         results = {"variants": {}}
-    
-    # 计算统计显著性
-    variants_data = results.get("variants", {})
-    if "control" in variants_data:
-        control_data = variants_data["control"]
-        for variant_key, variant_data in variants_data.items():
-            if variant_key != "control":
-                significance = experiment_service.calculate_statistical_significance(
-                    control_conversions=control_data.get("total_conversions", 0),
-                    control_exposures=control_data.get("total_exposures", 0),
-                    variant_conversions=variant_data.get("total_conversions", 0),
-                    variant_exposures=variant_data.get("total_exposures", 0)
-                )
-                variant_data["significance"] = significance
+    results = _enrich_results_with_significance(results)
     
     # 调用 AI 分析
     additional_context = req.additional_context if req else None
@@ -510,24 +508,11 @@ def get_quick_recommendation(experiment_key: str, admin: dict = Depends(require_
     if not experiment:
         raise HTTPException(404, f"Experiment '{experiment_key}' not found")
     
-    # 获取实验结果
+    # 获取实验结果并计算统计显著性
     results = experiment_service.get_experiment_results(experiment_key)
     if not results:
         results = {"variants": {}}
-    
-    # 计算统计显著性
-    variants_data = results.get("variants", {})
-    if "control" in variants_data:
-        control_data = variants_data["control"]
-        for variant_key, variant_data in variants_data.items():
-            if variant_key != "control":
-                significance = experiment_service.calculate_statistical_significance(
-                    control_conversions=control_data.get("total_conversions", 0),
-                    control_exposures=control_data.get("total_exposures", 0),
-                    variant_conversions=variant_data.get("total_conversions", 0),
-                    variant_exposures=variant_data.get("total_exposures", 0)
-                )
-                variant_data["significance"] = significance
+    results = _enrich_results_with_significance(results)
     
     recommendation = experiment_ai_service.get_quick_recommendation(results)
     
