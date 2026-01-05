@@ -188,8 +188,17 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware)
 
 # v3.13: Mount admin router (configs, moderation, etc.)
-from routers.admin import router as admin_router
-app.include_router(admin_router)
+# v3.24: Admin routers refactored into smaller modules
+from routers.admin_system import router as admin_system_router
+from routers.admin_metrics import router as admin_metrics_router
+from routers.admin_campaigns import router as admin_campaigns_router
+from routers.admin_tasks_mgmt import router as admin_tasks_mgmt_router
+from routers.admin_ai_models import router as admin_ai_models_router
+app.include_router(admin_system_router)
+app.include_router(admin_metrics_router)
+app.include_router(admin_campaigns_router)
+app.include_router(admin_tasks_mgmt_router)
+app.include_router(admin_ai_models_router)
 
 # v3.13: Holiday themes and marketing campaigns routers
 from routers.themes import router as themes_router
