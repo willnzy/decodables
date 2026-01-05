@@ -287,8 +287,22 @@ def update_experiment_status(
     if new_status not in valid_statuses:
         logger.error(f"[ExperimentService] Invalid status: {new_status}")
         return False
+    
+    updates = {"status": new_status}
+    
+    # Auto-set start_at when starting experiment
+    if new_status == "running":
+        experiment = get_experiment(experiment_key)
+        if experiment and not experiment.get("start_at"):
+            updates["start_at"] = datetime.now(timezone.utc)
+    
+    # Auto-set end_at when completing experiment
+    if new_status == "completed":
+        experiment = get_experiment(experiment_key)
+        if experiment and not experiment.get("end_at"):
+            updates["end_at"] = datetime.now(timezone.utc)
         
-    result = update_experiment(experiment_key, {"status": new_status}, updated_by)
+    result = update_experiment(experiment_key, updates, updated_by)
     return result is not None
 
 
