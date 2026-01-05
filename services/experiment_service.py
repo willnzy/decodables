@@ -509,7 +509,7 @@ def track_exposure(
                 "experiment_key": experiment_key,
                 "variant_key": variant_key,
             }),
-            "user_code": user_identifier if not user_identifier.startswith("visitor_") else None,
+            "user_id": user_identifier if not user_identifier.startswith("visitor_") else None,
             "session_id": user_identifier if user_identifier.startswith("visitor_") else None,
         }).execute()
         
@@ -564,7 +564,7 @@ def track_conversion(
             "event_type": "md_experiment_converted",
             "event_name": "experiment_converted",
             "event_data": json.dumps(event_data),
-            "user_code": user_identifier if not user_identifier.startswith("visitor_") else None,
+            "user_id": user_identifier if not user_identifier.startswith("visitor_") else None,
             "session_id": user_identifier if user_identifier.startswith("visitor_") else None,
         }).execute()
         
