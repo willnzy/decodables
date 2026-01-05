@@ -648,5 +648,21 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION cleanup_old_webhook_events IS 'Clean up webhook events older than specified days';
 
 -- =============================================================================
+-- 8. Row Level Security for webhook_events
+-- =============================================================================
+
+ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policy if any (for idempotent migrations)
+DROP POLICY IF EXISTS webhook_events_service_policy ON webhook_events;
+
+-- Only service role can access webhook events (internal use only)
+CREATE POLICY webhook_events_service_policy ON webhook_events
+    FOR ALL
+    USING (auth.role() = 'service_role');
+
+COMMENT ON TABLE webhook_events IS 'Webhook event deduplication - service role only';
+
+-- =============================================================================
 -- End of Migration
 -- =============================================================================

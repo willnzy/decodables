@@ -328,6 +328,10 @@ CREATE INDEX IF NOT EXISTS idx_dismissals_user ON campaign_dismissals(user_id, c
 -- Holiday themes: Public read access
 ALTER TABLE holiday_themes ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if any (for idempotent migrations)
+DROP POLICY IF EXISTS "Holiday themes are publicly readable" ON holiday_themes;
+DROP POLICY IF EXISTS "Only admins can modify holiday themes" ON holiday_themes;
+
 CREATE POLICY "Holiday themes are publicly readable"
     ON holiday_themes FOR SELECT
     USING (true);

@@ -286,6 +286,10 @@ $$;
 -- =====================================================
 ALTER TABLE generation_tasks ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if any (for idempotent migrations)
+DROP POLICY IF EXISTS generation_tasks_select_policy ON generation_tasks;
+DROP POLICY IF EXISTS generation_tasks_service_policy ON generation_tasks;
+
 -- Users can only see their own tasks
 CREATE POLICY generation_tasks_select_policy ON generation_tasks
     FOR SELECT
