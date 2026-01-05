@@ -704,10 +704,10 @@ def generate_ai_business_report(
 {chr(10).join(anomalies) if anomalies else "当前无异常警报"}
 """
     
-    # Call GPT-4o for analysis
+    # Call o1 for analysis (最新推理模型)
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="o1",  # 使用最新的 o1 推理模型，更强的分析能力
             messages=[
                 {"role": "system", "content": EXPERT_SYSTEM_PROMPT},
                 {"role": "user", "content": f"请分析以下数据并生成商业洞察报告：\n\n{metrics_context}"}
@@ -719,7 +719,7 @@ def generate_ai_business_report(
         report_markdown = response.choices[0].message.content
         
     except Exception as e:
-        logger.error(f"Error calling GPT-4o: {e}")
+        logger.error(f"Error calling o1: {e}")
         report_markdown = f"## 报告生成失败\n\n无法生成 AI 分析报告: {str(e)}\n\n请稍后重试。"
     
     # Build structured response

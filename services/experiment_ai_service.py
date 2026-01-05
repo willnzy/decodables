@@ -146,7 +146,7 @@ def analyze_experiment_results(
     
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="o1",  # 使用最新的 o1 推理模型，更强的分析能力
             messages=[
                 {"role": "system", "content": EXPERIMENT_ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": f"请分析以下 A/B 测试实验数据：\n\n{data_context}"}
@@ -160,7 +160,7 @@ def analyze_experiment_results(
         return {
             "success": True,
             "analysis_markdown": analysis_markdown,
-            "model": "gpt-4o",
+            "model": "o1",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "tokens_used": response.usage.total_tokens if response.usage else None
         }
