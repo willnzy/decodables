@@ -1,0 +1,701 @@
+# MagicZine AI (Make Decodables) 业务逻辑规格文档
+
+> **版本**: v3.3  
+> **更新日期**: 2026-01-05  
+> **产品**: MagicZine AI / Make Decodables - AI 驱动的 8 页可折叠迷你书创作平台
+
+---
+
+## 目录
+
+1. [产品概述](#1-产品概述)
+2. [用户等级与订阅系统](#2-用户等级与订阅系统)
+3. [积分系统](#3-积分系统)
+4. [权限与访问控制](#4-权限与访问控制)
+5. [AI 服务](#5-ai-服务)
+6. [Marketplace 市场](#6-marketplace-市场)
+7. [项目管理](#7-项目管理)
+8. [资源管理](#8-资源管理)
+9. [导出功能](#9-导出功能)
+10. [A/B 测试与实验](#10-ab-测试与实验)
+11. [缓存系统](#11-缓存系统)
+12. [分析与追踪](#12-分析与追踪)
+13. [支付系统](#13-支付系统)
+
+---
+
+## 1. 产品概述
+
+### 1.1 产品定位
+
+**Make Decodables** 是一款面向 K-12 教师、家长、学生的 AI 驱动可折叠迷你书创作平台。用户可以通过简单的文字提示，30秒内生成带有一致性插图的 8 页迷你书，打印后只需简单折叠即可使用。
+
+### 1.2 核心价值
+
+| 价值 | 说明 |
+|------|------|
+| 快速创作 | 30秒内生成完整 8 页故事和插图 |
+| AI 驱动 | 文本生成 + 图像生成的完整 AI 工作流 |
+| 打印友好 | 单页纸打印，简单折叠即可成书 |
+| 教育导向 | 专为儿童阅读材料设计 |
+
+### 1.3 技术架构
+
+| 层级 | 技术栈 |
+|------|--------|
+| 前端 | Next.js 15 + React 19 + Tailwind CSS 4, Fabric.js 5.3 |
+| 状态管理 | Zustand 5 |
+| 认证 | Clerk |
+| UI组件 | Radix UI + Shadcn UI + Lucide Icons |
+| 后端 | Python FastAPI + Uvicorn |
+| 数据库 | Supabase (PostgreSQL) |
+| 缓存 | Redis (主) + Memory (降级) |
+| AI 图像 | Fal-client (Flux 模型) |
+| AI 文本 | OpenAI API |
+| 支付 | Stripe |
+| 部署 | Frontend: Vercel, Backend: Railway |
+
+---
+
+## 2. 用户等级与订阅系统
+
+### 2.1 用户等级定义
+
+| 等级 | 标识 | 是否会员 | 订阅状态要求 |
+|------|------|----------|--------------|
+| Free | `free` | ❌ 否 | 无 |
+| Starter | `starter` | ✅ 是 | `active` |
+| Pro | `pro` | ✅ 是 | `active` |
+
+**业务规则**:
+- 只有 `starter` 和 `pro` 是"会员"(Member)
+- 会员身份需要 `tier in ['starter', 'pro']` **且** `subscription_status = 'active'`
+- 订阅过期后，用户降级为 `free`
+
+### 2.2 订阅计划
+
+| 计划 | 月费 (USD) | 月度积分 | 核心功能 |
+|------|-----------|----------|----------|
+| Free | $0 | 50 (注册赠送永久积分) | 基础生成 + 30天试用 |
+| Starter | **$14.9** | 500 | 贴纸库、发布免费资源 |
+| Pro | **$24.9** | 1000 | 全部功能、OCR、ZIP导出、发布项目、商业授权 |
+
+### 2.3 试用期 (30天)
+
+**核心规则**:
+- 试用期时长：**30 天**（从注册日期开始）
+- 试用期内：Free 用户可以体验**所有**功能（等同 Pro）
+- 试用期结束后：
+  - 不属于 Free 的功能权益会"上锁"
+  - 已使用 Pro 功能创建的内容无法继续编辑（只读）
+  - 需要升级才能解锁
+
+**判断逻辑**:
+```python
+def is_in_trial(user):
+    if user.tier != "free":
+        return False
+    registration_date = user.created_at
+    days_since_registration = (now - registration_date).days
+    return days_since_registration <= 30
+```
+
+### 2.4 订阅生命周期
+
+```
+注册 → Free (赠送 50 永久积分) → 30天试用期开始
+  ↓
+升级 → Starter/Pro (立即生效)
+  ↓
+续费成功 → 重置月度积分为等级配额
+  ↓
+续费失败 → past_due → 宽限期 → 降级为 Free
+  ↓
+取消 → 当前周期结束后降级为 Free (不退费则继续有效)
+```
+
+### 2.5 匿名用户 (游客)
+
+**核心规则**: 游客 (`visitor_xxx`) **什么功能都用不了**
+- 无法创建项目
+- 无法生成图像
+- 无法访问编辑器
+- 无法购买市场商品
+- 只能浏览公开的市场列表
+
+---
+
+## 3. 积分系统
+
+### 3.1 积分类型
+
+| 类型 | 字段 | 有效期 | 来源 |
+|------|------|--------|------|
+| 月度积分 | `credits_monthly` | 每30天重置 | 订阅发放 |
+| 永久积分 | `credits_permanent` | 永不过期 | 购买、市场收入、注册赠送 |
+
+### 3.2 扣费优先级
+
+**核心规则**: 扣费时**先扣月度积分，再扣永久积分**
+
+```python
+# 扣费逻辑
+deduct_monthly = min(monthly_balance, amount)
+deduct_permanent = amount - deduct_monthly
+```
+
+**示例**:
+- 用户有 月度=30, 永久=100, 需要扣 50 积分
+- 扣 月度 30 + 永久 20 = 50
+- 结果: 月度=0, 永久=80
+
+### 3.3 积分消耗
+
+| 操作 | 消耗积分 | 特殊规则 |
+|------|----------|----------|
+| AI 图像生成 | **5 积分/张** | 无特殊 |
+| OCR/Smart Scan | **5 积分/次** | 仅 Pro 或试用期可用 |
+| 市场购买 | 0-500 积分 | 取决于商品定价 |
+| PDF 导出 | 0 | 免费 |
+| ZIP 导出 | 0 | 免费但仅限 Pro |
+
+### 3.4 积分获取
+
+| 来源 | 数量 | 积分类型 |
+|------|------|----------|
+| 注册赠送 | 50 | **永久** |
+| Starter 月度配额 | 500 | 月度 |
+| Pro 月度配额 | 1000 | 月度 |
+| 市场销售收入 | 售价×90% | **永久** |
+| 充值购买 (Credits Booster) | 100 积分/$4.99 | **永久** |
+
+### 3.5 月度重置规则
+
+- **重置时机**: 根据用户**订阅日期**计算，每 **30 天 UTC 0点** 重置
+- **重置方式**: 月度积分**覆盖重置**为等级配额（不是累加）
+- **不结转**: 未使用的月度积分**不结转**到下月
+- **触发机制**: Stripe Webhook `invoice.payment_succeeded` 触发
+
+```python
+# 订阅周期锚点
+monthly_credits_cycle_anchor = subscription_start_date
+
+# 重置检查
+if (now - cycle_anchor).days % 30 == 0 and now.hour == 0:
+    user.credits_monthly = TIER_CREDITS[user.tier]
+```
+
+---
+
+## 4. 权限与访问控制
+
+### 4.1 功能权限矩阵
+
+| 功能 | Free | Free (试用期) | Starter | Pro |
+|------|------|---------------|---------|-----|
+| AI 图像生成 | ✅ (付费) | ✅ | ✅ | ✅ |
+| 贴纸库 | ❌ | ✅ | ✅ | ✅ |
+| OCR/Smart Scan | ❌ | ✅ | ❌ | ✅ |
+| 项目模板 | ❌ | ✅ | ❌ | ✅ |
+| PDF 导出 | ⚠️ 水印 | ✅ | ✅ | ✅ |
+| ZIP 导出 | ❌ | ❌ | ❌ | ✅ |
+| 个人资源上传 | ❌ | ❌ | ❌ | ✅ |
+| 发布 Asset | ❌ | ❌ | ✅ (仅免费) | ✅ |
+| 发布 Project | ❌ | ❌ | ❌ | ✅ |
+| 购买 Asset | ✅ | ✅ | ✅ | ✅ |
+| 购买 Project | ❌ | ❌ | ❌ | ✅ |
+| 项目数量上限 | 1 | 1 | 20 | 200 |
+| 商业授权 | ❌ | ❌ | ❌ | ✅ |
+| 积分充值折扣 | 无 | 无 | 无 | 20% |
+
+### 4.2 资源访问控制 (allowed_tiers)
+
+资源(Resource/Listing)通过 `allowed_tiers` 字段控制访问：
+
+| allowed_tiers | 可访问用户 |
+|---------------|-----------|
+| `['free']` | 所有登录用户 |
+| `['starter', 'pro']` | 会员用户 |
+| `['pro']` | 仅 Pro 用户 |
+
+**有效的 allowed_tiers 组合** (白名单):
+- `['free']`
+- `['starter', 'pro']`
+- `['pro']`
+
+**访问检查逻辑**:
+```python
+def can_access_resource(user, allowed_tiers):
+    if 'free' in allowed_tiers:
+        return True  # 免费资源所有人可访问
+    if not is_member(user):
+        return False
+    return user.tier in allowed_tiers
+```
+
+### 4.3 发布权限
+
+| 用户等级 | 可发布类型 | 定价限制 |
+|----------|-----------|----------|
+| Free | ❌ 无法发布 | - |
+| Starter | Asset 仅 | **必须为 0 积分** |
+| Pro | Asset + Project | 0-500 积分 |
+
+**业务规则**:
+- 发布需要 **活跃订阅**（subscription_status = 'active'）
+- Starter 只能发布**免费资源**
+- Pro 可以自由定价 (0-500 积分)
+- 定价上限 **500 积分** (硬编码)
+
+### 4.4 锁定元素 (Locked Elements)
+
+当用户降级时，之前使用的高级素材会被"锁定"：
+
+```python
+# 画布保存时检查
+if contains_locked_elements(canvas_data, user):
+    # 方案1: 阻止保存，提示升级或删除锁定元素
+    # 方案2: 项目变为只读
+```
+
+---
+
+## 5. AI 服务
+
+### 5.1 模型配置
+
+**文本推理模型**:
+
+| 场景 | Provider | Model | 用途 |
+|------|----------|-------|------|
+| 用户文本 | openai | gpt-4o-mini | 故事生成、提示词增强 |
+| Admin 分析 | openai | gpt-4o | 业务报表分析 |
+
+**图像生成模型** (基于用户等级):
+
+| 用户等级 | Provider | Model | 特点 |
+|----------|----------|-------|------|
+| Free | fal | flux-schnell | 快速 (4步) |
+| Starter | fal | flux-schnell | 快速 (4步) |
+| Pro | fal | flux-dev | 高质量 (28+步) |
+
+### 5.2 生成模式
+
+| 模式 | 标识 | 特点 | 参数 |
+|------|------|------|------|
+| 精准 | `guided` | 严格遵循提示词 | 高 guidance_scale (3.5-4.5) |
+| 自由 | `flexible` | 允许艺术创作 | 低 guidance_scale (1.5-2.5) |
+
+**创意度滑块** (仅 flexible 模式):
+- 0.0 = 精准，guidance_scale = 4.0
+- 1.0 = 非常创意，guidance_scale = 1.5
+
+### 5.3 灰度发布 (Canary Release)
+
+**分流规则**:
+- 基于 `MD5(user_id + model_type)` 的确定性哈希
+- 哈希值 0-99，低于 `traffic_percent` 进入灰度
+- 同一用户在同一实验中始终获得相同分配
+
+**灰度配置示例**:
+```json
+{
+  "enabled": false,
+  "text_reasoning": {
+    "canary_provider": "qwen",
+    "canary_model": "qwen-plus",
+    "traffic_percent": 10,
+    "target_tiers": ["pro"]
+  }
+}
+```
+
+### 5.4 AI 缓存策略
+
+| 类型 | TTL | 说明 |
+|------|-----|------|
+| 文本结果 | **24 小时** | 相同 prompt+model+参数 |
+| 图像结果 | **不缓存** | 每次生成唯一 |
+
+### 5.5 Fallback 机制
+
+当主模型失败时，自动切换到备用模型：
+```
+主模型失败 → 检查 fallback 配置 → 调用备用模型 → 记录使用量
+```
+
+---
+
+## 6. Marketplace 市场
+
+### 6.1 资源类型
+
+| 类型 | 标识 | 可发布者 | 可购买者 |
+|------|------|----------|----------|
+| Asset (素材) | `asset` | Starter, Pro | 所有用户 |
+| Project (项目模板) | `project` | Pro | Pro |
+
+### 6.2 购买流程
+
+```
+1. 验证 listing 状态 (approved, public, not deleted)
+2. 检查 allowed_tiers 权限
+3. 检查 resource_type 权限 (project 仅 Pro)
+4. 检查是否已购买 (去重)
+5. 扣除买家积分 (monthly first)
+6. 添加卖家收入 (90% → permanent)
+7. 记录交易
+8. 增加 sales_count
+```
+
+### 6.3 收益分成
+
+| 角色 | 比例 |
+|------|------|
+| 卖家 | **90%** → 永久积分 |
+| 平台 | **10%** |
+
+**示例**: 定价 100 积分，卖家获得 90 永久积分
+
+### 6.4 审核状态机
+
+```
+draft → pending → approved / rejected
+              ↑              ↓ (编辑关键字段)
+              └──────────────┘
+```
+
+| 状态 | 标识 | 说明 | 市场可见性 |
+|------|------|------|-----------|
+| 草稿 | `draft` | 未提交 | ❌ |
+| 待审核 | `pending` | 已提交等待审核 | ❌ |
+| 已通过 | `approved` | 审核通过 | ✅ (需 is_public=true) |
+| 已拒绝 | `rejected` | 审核驳回 | ❌ |
+
+**市场可见条件**: `moderation_status='approved' AND is_public=true AND is_deleted=false`
+
+### 6.5 排行榜
+
+- 排序依据: `usage_count` (使用次数)
+- 筛选条件: approved + public + not deleted
+- 周期: monthly / all_time
+- 类型: all / project / asset
+
+---
+
+## 7. 项目管理
+
+### 7.1 项目限额
+
+| 等级 | 最大项目数 |
+|------|-----------|
+| Free | 1 |
+| Starter | 20 |
+| Pro | 200 |
+
+### 7.2 项目数据结构
+
+```javascript
+{
+  pages: [
+    {
+      canvasJson: { /* Fabric.js JSON */ },
+      previewImage: "data:image/png;base64,...",
+      isLocked: false,
+      prompt: "..."
+    },
+    // ... 8 pages total
+  ],
+  paperSize: "Letter"  // "Letter" | "A4"
+}
+```
+
+### 7.3 两阶段删除
+
+**软删除规则**:
+
+| 项目状态 | 删除操作 | 结果 |
+|----------|----------|------|
+| 自己的未上架项目 | 删除 | 软删除 (30天内可恢复) |
+| 30天后 | 自动 | 从删除历史移除 (仍是软删除) |
+| 已上架项目 | 删除 | Marketplace 不可见 |
+| 购买者的副本 | 原项目删除 | **不受影响**，正常使用 |
+
+**核心规则**: 
+- 用户购买后，获得的是独立副本
+- 原项目/素材是否删除，**不影响**已购买用户的使用
+
+### 7.4 自动保存
+
+- 防抖延迟: **3 秒**
+- 触发条件: 任意页面标记为 `isDirty`
+- 保存时检查: 试用期过期、项目超限、锁定元素
+
+---
+
+## 8. 资源管理
+
+### 8.1 资源类型
+
+| 类型 | 标识 | 说明 |
+|------|------|------|
+| 项目模板 | `template` | 完整 8 页项目 |
+| 贴纸 | `sticker` | 可添加到画布的图片 |
+| 图片 | `image` | 通用图片素材 |
+| 背景 | `background` | 页面背景 |
+| 边框 | `frame` | 装饰边框 |
+| 表情 | `emoji` | 表情图标 |
+| 图案 | `pattern` | 重复图案/纹理 |
+
+### 8.2 资源分类
+
+**模板分类**:
+- `story` - 📖 故事类
+- `educational` - 🎓 教育类
+- `seasonal` - 🌸 季节/节日
+- `blank` - 📄 空白模板
+
+**贴纸分类**:
+- `animals` - 🐾 动物
+- `nature` - 🌿 自然
+- `people` - 👥 人物
+- `food` - 🍎 食物
+- `objects` - 📦 物品
+- `emotions` - 😊 表情/情绪
+- `education` - 📚 教育
+- `holiday` - 🎄 节日
+
+### 8.3 Storage Bucket
+
+| Bucket 名称 | 用途 | 目录结构 |
+|-------------|------|----------|
+| `make-decodables-s` | 系统素材 (Admin 管理) | `stickers/{category}/`, `templates/{type}/`, `backgrounds/` |
+| `make-decodables-u` | 用户内容 | `{user_id}/temp/{YYYY-MM-DD}/` (AI生成), `{user_id}/uploads/`, `{user_id}/scans/` |
+
+---
+
+## 9. 导出功能
+
+### 9.1 导出类型
+
+| 类型 | 格式 | 权限 | 积分消耗 |
+|------|------|------|----------|
+| PDF | .pdf | 所有用户 (Free 有水印) | 0 |
+| ZIP | .zip (含高清图片) | **仅 Pro** | 0 |
+| 打印 | 直接打印 | 所有用户 | 0 |
+
+### 9.2 PDF 水印规则
+
+| 用户等级 | 试用期内 | 试用期后 |
+|----------|----------|----------|
+| Free | 无水印 | 有水印 |
+| Starter | 无水印 | 无水印 |
+| Pro | 无水印 | 无水印 |
+
+---
+
+## 10. A/B 测试与实验
+
+### 10.1 实验类型
+
+| 类型 | 标识 | 说明 |
+|------|------|------|
+| A/B 测试 | `ab` | 两个变体对比 |
+| 多变体 | `multivariate` | 多个变体 |
+| 功能标志 | `feature_flag` | 开关控制 |
+
+### 10.2 变体分配
+
+**确定性哈希分配**:
+- 使用 `SHA256(experiment_key:user_identifier)` 
+- 哈希值 0-99
+- 同一用户在同一实验中始终获得相同变体
+- 支持权重分配
+
+**变体配置示例**:
+```json
+[
+  {"key": "control", "name": "对照组", "weight": 50},
+  {"key": "variant_a", "name": "变体A", "weight": 50}
+]
+```
+
+### 10.3 流量分配
+
+- `traffic_allocation`: 0-100，控制参与实验的流量比例
+- 100 = 全部流量参与
+- 50 = 50% 流量参与，其余不进入实验
+
+### 10.4 目标群体 (Targeting)
+
+```json
+{
+  "include_anonymous": true,  // 是否包含匿名用户
+  "tiers": ["pro"]            // 限定用户等级
+}
+```
+
+### 10.5 统计显著性
+
+使用 Z-Test 计算：
+- p-value < 0.05 = 显著
+- 置信度 = (1 - p_value) × 100
+
+---
+
+## 11. 缓存系统
+
+### 11.1 架构
+
+双层存储：Redis (主) → Memory (降级)
+
+- **自动故障转移**: Redis 不可用时自动切换内存缓存
+- **定期重连**: 每 30 秒检测 Redis 恢复
+- **命名空间隔离**: 按业务域划分缓存键前缀
+
+### 11.2 缓存 TTL
+
+| 类型 | 键前缀 | TTL | 说明 |
+|------|--------|-----|------|
+| 配置 | `md:config:` | 60s | 配置可能频繁更新 |
+| 实验 | `md:experiment:` | 60s | 实验状态需快速生效 |
+| AI 文本 | `md:ai:` | 24h | 文本结果稳定 |
+| AI 图像 | - | 不缓存 | 每次生成唯一 |
+| 统计 | `md:stats:` | 5min | 统计聚合有延迟 |
+| 限流 | `md:rl:` | 60s | 窗口周期 |
+
+---
+
+## 12. 分析与追踪
+
+### 12.1 Universal Analytics Layer
+
+所有事件使用 `md_` 前缀，推送到 GTM dataLayer：
+
+| 事件 | 类别 | 触发场景 |
+|------|------|---------|
+| `md_user_registered` | conversion | 用户注册完成 |
+| `md_subscription_started` | conversion | 订阅开始 |
+| `md_subscription_upgraded` | conversion | 订阅升级 |
+| `md_credits_purchased` | conversion | 积分购买 |
+| `md_ai_generation_completed` | engagement | AI 生成完成 |
+| `md_project_created` | engagement | 项目创建 |
+| `md_project_exported` | conversion | 项目导出 |
+| `md_marketplace_purchased` | conversion | 市场购买 |
+| `md_experiment_viewed` | system | 实验曝光 |
+| `md_experiment_converted` | system | 实验转化 |
+
+### 12.2 平台映射
+
+| 通用事件 | GA4 | Facebook | TikTok |
+|---------|-----|----------|--------|
+| `md_user_registered` | `sign_up` | `CompleteRegistration` | `CompleteRegistration` |
+| `md_subscription_started` | `purchase` | `Subscribe` | `Subscribe` |
+| `md_credits_purchased` | `purchase` | `Purchase` | `Purchase` |
+| `md_marketplace_purchased` | `purchase` | `Purchase` | `Purchase` |
+
+### 12.3 CAPI 服务
+
+支持服务端事件追踪：
+- Facebook Conversions API
+- TikTok Events API
+- Server-Side GTM
+
+---
+
+## 13. 支付系统
+
+### 13.1 支付方式
+
+| 方式 | 用途 | 模式 |
+|------|------|------|
+| Stripe | 订阅、充值 | subscription / payment |
+| PayPal | 备用 (计划中) | - |
+
+### 13.2 Stripe Price Map
+
+| Plan Type | Mode | 说明 |
+|-----------|------|------|
+| `starter` | subscription | Starter 订阅 |
+| `pro` | subscription | Pro 订阅 |
+| `credits_100` | payment | 100 积分充值包 |
+
+### 13.3 Webhook 事件
+
+| 事件 | 处理 |
+|------|------|
+| `checkout.session.completed` | 支付成功，发放积分/更新等级 |
+| `invoice.paid` | 订阅续期，重置月度积分 |
+| `customer.subscription.deleted` | 订阅取消，降级为 Free |
+| `customer.subscription.updated` | 订阅变更 |
+
+### 13.4 订阅取消规则
+
+- **不退费取消**: 当月订阅继续有效，直到有效期结束
+- **立即取消 + 退费**: 立即降级为 Free
+- **周期结束取消**: 设置 `cancel_at_period_end=true`
+
+---
+
+## 附录
+
+### A. 配置常量
+
+```python
+# config.py
+CREDITS_PER_IMAGE = 5
+CREDITS_PER_OCR = 5
+CREDITS_SIGNUP_BONUS = 50
+CREDITS_MONTHLY_STARTER = 500
+CREDITS_MONTHLY_PRO = 1000
+MAX_LISTING_PRICE = 500
+SELLER_REVENUE_PERCENT = 90
+VALID_TIERS = ["free", "starter", "pro"]
+MEMBER_TIERS = ["starter", "pro"]
+TRIAL_DAYS = 30
+```
+
+### B. 数据库关键表
+
+| 表名 | 用途 |
+|------|------|
+| `profiles` | 用户档案、积分余额、订阅状态 |
+| `projects` | 用户项目 |
+| `credit_transactions` | 积分交易记录 |
+| `marketplace_listings` | 市场商品 |
+| `user_purchases` | 用户购买记录 |
+| `listing_usage` | 商品使用记录 (去重) |
+| `experiments` | A/B 实验配置 |
+| `experiment_assignments` | 实验分配记录 |
+| `analytics_events` | 事件追踪 |
+| `system_configs` | 系统配置 |
+| `system_resources` | 系统资源 (贴纸/模板等) |
+| `notifications` | 用户通知 |
+
+### C. API 端点汇总
+
+| 模块 | 路由前缀 | 主要端点 |
+|------|----------|----------|
+| 用户 | `/api/users` | `/me`, `/credits/history`, `/assets`, `/notifications` |
+| 项目 | `/api/projects` | CRUD, `/dashboard`, `/seller-stats` |
+| 生成 | `/api/generate` | `/story`, `/images`, `/pdf` |
+| 市场 | `/api/marketplace` | `/items`, `/purchase`, `/publish`, `/leaderboard` |
+| 资源 | `/api/resources` | `/stickers`, `/backgrounds`, `/templates` |
+| 实验 | `/api/experiments` | `/variant`, `/track` |
+| 管理 | `/api/admin` | `/users`, `/credits/adjust`, `/marketplace/moderation`, `/configs`, `/metrics` |
+
+### D. 错误代码
+
+| 代码 | HTTP Status | 描述 |
+|------|-------------|------|
+| `OUT_OF_CREDITS` | 402 | 积分不足 |
+| `FORBIDDEN` | 403 | 无访问权限 |
+| `NOT_FOUND` | 404 | 资源不存在 |
+| `TRIAL_EXPIRED` | 403 | 试用期已过期 |
+| `PROJECT_LIMIT_REACHED` | 403 | 项目数量已达上限 |
+| `CONTENT_POLICY_VIOLATION` | 400 | 内容违规 |
+| `ALREADY_PURCHASED` | 200 | 已购买 (返回成功但 already_owned=true) |
+
+---
+
+*文档版本: v3.3 | 最后更新: 2026-01-05*
