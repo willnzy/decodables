@@ -11,6 +11,17 @@ import asyncio
 import time
 
 
+# Helper for running async functions
+def run_async(coro):
+    """Helper to run async functions in sync tests"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 class TestCAPIEventType:
     """Test CAPIEventType enum"""
     
@@ -190,7 +201,8 @@ class TestFacebookCAPIProvider:
         provider = FacebookCAPIProvider()
         assert provider.is_configured() is True
     
-    def test_send_event_returns_false_when_not_configured(self):
+    @pytest.mark.asyncio
+    async def test_send_event_returns_false_when_not_configured(self):
         """Returns False when not configured"""
         from services.capi_service import FacebookCAPIProvider, CAPIEvent, CAPIEventType
         
@@ -202,11 +214,12 @@ class TestFacebookCAPIProvider:
                 event_time=int(time.time()),
             )
             
-            result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+            result = await provider.send_event(event)
             assert result is False
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
-    def test_send_event_success(self):
+    async def test_send_event_success(self):
         """Successfully sends event (stub)"""
         from services.capi_service import FacebookCAPIProvider, CAPIEvent, CAPIEventType
         
@@ -217,11 +230,12 @@ class TestFacebookCAPIProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is True
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
-    def test_send_event_unknown_type(self):
+    async def test_send_event_unknown_type(self):
         """Returns False for unknown event type"""
         from services.capi_service import FacebookCAPIProvider, CAPIEvent
         
@@ -232,11 +246,12 @@ class TestFacebookCAPIProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is False
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123', 'FB_TEST_EVENT_CODE': 'TEST123'})
-    def test_send_event_with_test_code(self):
+    async def test_send_event_with_test_code(self):
         """Includes test event code when configured"""
         from services.capi_service import FacebookCAPIProvider, CAPIEvent, CAPIEventType
         
@@ -249,11 +264,12 @@ class TestFacebookCAPIProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is True
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
-    def test_send_events_batch(self):
+    async def test_send_events_batch(self):
         """Batch sends events one by one"""
         from services.capi_service import FacebookCAPIProvider, CAPIEvent, CAPIEventType
         
@@ -263,7 +279,7 @@ class TestFacebookCAPIProvider:
             CAPIEvent(event_name=CAPIEventType.CREDITS_PURCHASED, event_id="2", event_time=int(time.time())),
         ]
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_events_batch(events))
+        result = await provider.send_events_batch(events)
         
         assert result["sent"] == 2
         assert result["failed"] == 0
@@ -328,7 +344,8 @@ class TestTikTokEventsAPIProvider:
         provider = TikTokEventsAPIProvider()
         assert provider.is_configured() is True
     
-    def test_send_event_returns_false_when_not_configured(self):
+    @pytest.mark.asyncio
+    async def test_send_event_returns_false_when_not_configured(self):
         """Returns False when not configured"""
         from services.capi_service import TikTokEventsAPIProvider, CAPIEvent, CAPIEventType
         
@@ -340,11 +357,12 @@ class TestTikTokEventsAPIProvider:
                 event_time=int(time.time()),
             )
             
-            result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+            result = await provider.send_event(event)
             assert result is False
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'TIKTOK_PIXEL_ID': 'pixel123', 'TIKTOK_ACCESS_TOKEN': 'token123'})
-    def test_send_event_success(self):
+    async def test_send_event_success(self):
         """Successfully sends event (stub)"""
         from services.capi_service import TikTokEventsAPIProvider, CAPIEvent, CAPIEventType
         
@@ -355,11 +373,12 @@ class TestTikTokEventsAPIProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is True
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'TIKTOK_PIXEL_ID': 'pixel123', 'TIKTOK_ACCESS_TOKEN': 'token123'})
-    def test_send_event_unknown_type(self):
+    async def test_send_event_unknown_type(self):
         """Returns False for unknown event type"""
         from services.capi_service import TikTokEventsAPIProvider, CAPIEvent
         
@@ -370,11 +389,12 @@ class TestTikTokEventsAPIProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is False
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'TIKTOK_PIXEL_ID': 'pixel123', 'TIKTOK_ACCESS_TOKEN': 'token123'})
-    def test_send_events_batch(self):
+    async def test_send_events_batch(self):
         """Batch sends events"""
         from services.capi_service import TikTokEventsAPIProvider, CAPIEvent, CAPIEventType
         
@@ -383,7 +403,7 @@ class TestTikTokEventsAPIProvider:
             CAPIEvent(event_name=CAPIEventType.USER_REGISTERED, event_id="1", event_time=int(time.time())),
         ]
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_events_batch(events))
+        result = await provider.send_events_batch(events)
         
         assert result["sent"] == 1
 
@@ -407,7 +427,8 @@ class TestServerSideGTMProvider:
         provider = ServerSideGTMProvider()
         assert provider.is_configured() is True
     
-    def test_send_event_returns_false_when_not_configured(self):
+    @pytest.mark.asyncio
+    async def test_send_event_returns_false_when_not_configured(self):
         """Returns False when not configured"""
         from services.capi_service import ServerSideGTMProvider, CAPIEvent, CAPIEventType
         
@@ -419,11 +440,12 @@ class TestServerSideGTMProvider:
                 event_time=int(time.time()),
             )
             
-            result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+            result = await provider.send_event(event)
             assert result is False
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'SGTM_SERVER_URL': 'https://gtm.example.com'})
-    def test_send_event_success(self):
+    async def test_send_event_success(self):
         """Successfully sends event (stub)"""
         from services.capi_service import ServerSideGTMProvider, CAPIEvent, CAPIEventType
         
@@ -434,11 +456,12 @@ class TestServerSideGTMProvider:
             event_time=int(time.time()),
         )
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_event(event))
+        result = await provider.send_event(event)
         assert result is True
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'SGTM_SERVER_URL': 'https://gtm.example.com'})
-    def test_send_events_batch(self):
+    async def test_send_events_batch(self):
         """Batch sends events"""
         from services.capi_service import ServerSideGTMProvider, CAPIEvent, CAPIEventType
         
@@ -447,7 +470,7 @@ class TestServerSideGTMProvider:
             CAPIEvent(event_name=CAPIEventType.PAGE_VIEWED, event_id="1", event_time=int(time.time())),
         ]
         
-        result = asyncio.get_event_loop().run_until_complete(provider.send_events_batch(events))
+        result = await provider.send_events_batch(events)
         
         assert result["sent"] == 1
 
@@ -485,47 +508,46 @@ class TestCAPIService:
         assert service.is_enabled() is True
         assert len(service.providers) == 2
     
-    def test_track_conversion_skipped_when_not_enabled(self):
+    @pytest.mark.asyncio
+    async def test_track_conversion_skipped_when_not_enabled(self):
         """Track conversion skipped when no providers"""
         from services.capi_service import CAPIService, CAPIEventType
         
         with patch.dict('os.environ', {}, clear=True):
             service = CAPIService()
             
-            result = asyncio.get_event_loop().run_until_complete(
-                service.track_conversion(
-                    event_type=CAPIEventType.USER_REGISTERED,
-                    event_id="test-123",
-                    event_time=int(time.time()),
-                )
+            result = await service.track_conversion(
+                event_type=CAPIEventType.USER_REGISTERED,
+                event_id="test-123",
+                event_time=int(time.time()),
             )
             
             assert result["status"] == "skipped"
             assert result["reason"] == "no_providers_configured"
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
-    def test_track_conversion_success(self):
+    async def test_track_conversion_success(self):
         """Track conversion succeeds"""
         from services.capi_service import CAPIService, CAPIEventType, CAPIUserData
         
         service = CAPIService()
         
-        result = asyncio.get_event_loop().run_until_complete(
-            service.track_conversion(
-                event_type=CAPIEventType.CREDITS_PURCHASED,
-                event_id="test-123",
-                event_time=int(time.time()),
-                user_data=CAPIUserData(email="hashed_email"),
-                custom_data={"value": 9.99, "currency": "USD"},
-                event_source_url="https://example.com/checkout",
-            )
+        result = await service.track_conversion(
+            event_type=CAPIEventType.CREDITS_PURCHASED,
+            event_id="test-123",
+            event_time=int(time.time()),
+            user_data=CAPIUserData(email="hashed_email"),
+            custom_data={"value": 9.99, "currency": "USD"},
+            event_source_url="https://example.com/checkout",
         )
         
         assert "FacebookCAPIProvider" in result
         assert result["FacebookCAPIProvider"] == "success"
     
+    @pytest.mark.asyncio
     @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
-    def test_track_conversion_handles_exception(self):
+    async def test_track_conversion_handles_exception(self):
         """Track conversion handles provider exception"""
         from services.capi_service import CAPIService, CAPIEventType
         
@@ -534,12 +556,10 @@ class TestCAPIService:
         # Mock provider to raise exception
         service.providers[0].send_event = AsyncMock(side_effect=Exception("Network error"))
         
-        result = asyncio.get_event_loop().run_until_complete(
-            service.track_conversion(
-                event_type=CAPIEventType.USER_REGISTERED,
-                event_id="test-123",
-                event_time=int(time.time()),
-            )
+        result = await service.track_conversion(
+            event_type=CAPIEventType.USER_REGISTERED,
+            event_id="test-123",
+            event_time=int(time.time()),
         )
         
         assert "error:" in result["FacebookCAPIProvider"]
@@ -548,24 +568,23 @@ class TestCAPIService:
 class TestConvenienceFunctions:
     """Test convenience functions"""
     
+    @pytest.mark.asyncio
     @patch('services.capi_service.capi_service')
-    def test_track_purchase_conversion(self, mock_service):
+    async def test_track_purchase_conversion(self, mock_service):
         """Track purchase conversion"""
         from services.capi_service import track_purchase_conversion
         
         mock_service.track_conversion = AsyncMock(return_value={"status": "success"})
         
-        result = asyncio.get_event_loop().run_until_complete(
-            track_purchase_conversion(
-                event_id="purchase-123",
-                event_time=int(time.time()),
-                value=9.99,
-                currency="USD",
-                user_email="test@example.com",
-                user_id="user_123",
-                transaction_id="txn_abc",
-                event_source_url="https://example.com/checkout",
-            )
+        result = await track_purchase_conversion(
+            event_id="purchase-123",
+            event_time=int(time.time()),
+            value=9.99,
+            currency="USD",
+            user_email="test@example.com",
+            user_id="user_123",
+            transaction_id="txn_abc",
+            event_source_url="https://example.com/checkout",
         )
         
         mock_service.track_conversion.assert_called_once()
@@ -573,41 +592,39 @@ class TestConvenienceFunctions:
         assert call_kwargs["custom_data"]["value"] == 9.99
         assert call_kwargs["custom_data"]["transaction_id"] == "txn_abc"
     
+    @pytest.mark.asyncio
     @patch('services.capi_service.capi_service')
-    def test_track_purchase_conversion_without_optional(self, mock_service):
+    async def test_track_purchase_conversion_without_optional(self, mock_service):
         """Track purchase without optional fields"""
         from services.capi_service import track_purchase_conversion
         
         mock_service.track_conversion = AsyncMock(return_value={"status": "success"})
         
-        result = asyncio.get_event_loop().run_until_complete(
-            track_purchase_conversion(
-                event_id="purchase-123",
-                event_time=int(time.time()),
-                value=19.99,
-                currency="USD",
-            )
+        result = await track_purchase_conversion(
+            event_id="purchase-123",
+            event_time=int(time.time()),
+            value=19.99,
+            currency="USD",
         )
         
         call_kwargs = mock_service.track_conversion.call_args[1]
         assert "transaction_id" not in call_kwargs["custom_data"]
     
+    @pytest.mark.asyncio
     @patch('services.capi_service.capi_service')
-    def test_track_signup_conversion(self, mock_service):
+    async def test_track_signup_conversion(self, mock_service):
         """Track signup conversion"""
         from services.capi_service import track_signup_conversion
         
         mock_service.track_conversion = AsyncMock(return_value={"status": "success"})
         
-        result = asyncio.get_event_loop().run_until_complete(
-            track_signup_conversion(
-                event_id="signup-123",
-                event_time=int(time.time()),
-                user_email="new@example.com",
-                user_id="user_new",
-                signup_method="google",
-                event_source_url="https://example.com/signup",
-            )
+        result = await track_signup_conversion(
+            event_id="signup-123",
+            event_time=int(time.time()),
+            user_email="new@example.com",
+            user_id="user_new",
+            signup_method="google",
+            event_source_url="https://example.com/signup",
         )
         
         mock_service.track_conversion.assert_called_once()
@@ -627,3 +644,191 @@ class TestSingletonInstance:
         """Singleton is CAPIService instance"""
         from services.capi_service import capi_service, CAPIService
         assert isinstance(capi_service, CAPIService)
+
+
+class TestMoreEventTypes:
+    """Test additional event type mappings"""
+    
+    def test_all_event_types_defined(self):
+        """All CAPIEventType values exist"""
+        from services.capi_service import CAPIEventType
+        
+        # User lifecycle
+        assert CAPIEventType.USER_REGISTERED.value == "user_registered"
+        assert CAPIEventType.USER_LOGGED_IN.value == "user_logged_in"
+        
+        # Monetization
+        assert CAPIEventType.SUBSCRIPTION_STARTED.value == "subscription_started"
+        assert CAPIEventType.SUBSCRIPTION_UPGRADED.value == "subscription_upgraded"
+        assert CAPIEventType.CREDITS_PURCHASED.value == "credits_purchased"
+        assert CAPIEventType.MARKETPLACE_PURCHASED.value == "marketplace_purchased"
+        
+        # Engagement
+        assert CAPIEventType.AI_GENERATION_STARTED.value == "ai_generation_started"
+        assert CAPIEventType.AI_GENERATION_COMPLETED.value == "ai_generation_completed"
+        assert CAPIEventType.PROJECT_CREATED.value == "project_created"
+        assert CAPIEventType.PROJECT_EXPORTED.value == "project_exported"
+        
+        # Page views
+        assert CAPIEventType.PAGE_VIEWED.value == "page_viewed"
+
+
+class TestFacebookEventMapping:
+    """Test Facebook event type mapping"""
+    
+    @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
+    def test_all_event_types_mapped(self):
+        """All CAPIEventTypes are mapped to Facebook events"""
+        from services.capi_service import FacebookCAPIProvider, CAPIEventType
+        
+        provider = FacebookCAPIProvider()
+        
+        # Verify all event types have mappings
+        assert provider.EVENT_MAP[CAPIEventType.USER_REGISTERED] == "CompleteRegistration"
+        assert provider.EVENT_MAP[CAPIEventType.USER_LOGGED_IN] == "Login"
+        assert provider.EVENT_MAP[CAPIEventType.SUBSCRIPTION_STARTED] == "Subscribe"
+        assert provider.EVENT_MAP[CAPIEventType.SUBSCRIPTION_UPGRADED] == "Subscribe"
+        assert provider.EVENT_MAP[CAPIEventType.CREDITS_PURCHASED] == "Purchase"
+        assert provider.EVENT_MAP[CAPIEventType.MARKETPLACE_PURCHASED] == "Purchase"
+        assert provider.EVENT_MAP[CAPIEventType.AI_GENERATION_STARTED] == "InitiateCheckout"
+        assert provider.EVENT_MAP[CAPIEventType.AI_GENERATION_COMPLETED] == "ViewContent"
+        assert provider.EVENT_MAP[CAPIEventType.PROJECT_CREATED] == "AddToCart"
+        assert provider.EVENT_MAP[CAPIEventType.PROJECT_EXPORTED] == "Lead"
+        assert provider.EVENT_MAP[CAPIEventType.PAGE_VIEWED] == "PageView"
+
+
+class TestTikTokEventMapping:
+    """Test TikTok event type mapping"""
+    
+    @patch.dict('os.environ', {'TIKTOK_PIXEL_ID': 'pixel123', 'TIKTOK_ACCESS_TOKEN': 'token123'})
+    def test_all_event_types_mapped(self):
+        """All CAPIEventTypes are mapped to TikTok events"""
+        from services.capi_service import TikTokEventsAPIProvider, CAPIEventType
+        
+        provider = TikTokEventsAPIProvider()
+        
+        assert provider.EVENT_MAP[CAPIEventType.USER_REGISTERED] == "CompleteRegistration"
+        assert provider.EVENT_MAP[CAPIEventType.SUBSCRIPTION_STARTED] == "Subscribe"
+        assert provider.EVENT_MAP[CAPIEventType.CREDITS_PURCHASED] == "CompletePayment"
+        assert provider.EVENT_MAP[CAPIEventType.PROJECT_EXPORTED] == "SubmitForm"
+    
+    @patch.dict('os.environ', {'TIKTOK_PIXEL_ID': 'pixel123', 'TIKTOK_ACCESS_TOKEN': 'token123', 'TIKTOK_TEST_EVENT_CODE': 'TEST456'})
+    def test_test_event_code(self):
+        """Test event code is loaded from env"""
+        from services.capi_service import TikTokEventsAPIProvider
+        
+        provider = TikTokEventsAPIProvider()
+        assert provider.test_event_code == "TEST456"
+
+
+class TestServerSideGTMExtended:
+    """Extended tests for Server-Side GTM"""
+    
+    @patch.dict('os.environ', {'SGTM_SERVER_URL': 'https://gtm.example.com', 'SGTM_API_SECRET': 'secret123'})
+    def test_api_secret_loaded(self):
+        """API secret is loaded from env"""
+        from services.capi_service import ServerSideGTMProvider
+        
+        provider = ServerSideGTMProvider()
+        assert provider.api_secret == "secret123"
+
+
+class TestBatchEventProcessing:
+    """Test batch event processing scenarios"""
+    
+    @pytest.mark.asyncio
+    @patch.dict('os.environ', {'FB_PIXEL_ID': 'pixel123', 'FB_ACCESS_TOKEN': 'token123'})
+    async def test_batch_with_mixed_event_types(self):
+        """Batch processes events with mixed success/failure"""
+        from services.capi_service import FacebookCAPIProvider, CAPIEvent, CAPIEventType
+        
+        provider = FacebookCAPIProvider()
+        events = [
+            CAPIEvent(event_name=CAPIEventType.USER_REGISTERED, event_id="1", event_time=int(time.time())),
+            CAPIEvent(event_name="unknown_event", event_id="2", event_time=int(time.time())),  # Will fail
+            CAPIEvent(event_name=CAPIEventType.PAGE_VIEWED, event_id="3", event_time=int(time.time())),
+        ]
+        
+        result = await provider.send_events_batch(events)
+        
+        assert result["sent"] == 2
+        assert result["failed"] == 1
+
+
+class TestCAPIServiceProviderInit:
+    """Test CAPIService provider initialization"""
+    
+    @patch.dict('os.environ', {
+        'FB_PIXEL_ID': 'fb_pixel', 'FB_ACCESS_TOKEN': 'fb_token',
+        'TIKTOK_PIXEL_ID': 'tt_pixel', 'TIKTOK_ACCESS_TOKEN': 'tt_token',
+        'SGTM_SERVER_URL': 'https://gtm.example.com',
+    })
+    def test_all_providers_enabled(self):
+        """All three providers enabled"""
+        from services.capi_service import CAPIService, FacebookCAPIProvider, TikTokEventsAPIProvider, ServerSideGTMProvider
+        
+        service = CAPIService()
+        
+        assert service.is_enabled() is True
+        assert len(service.providers) == 3
+        
+        # Verify each provider type
+        provider_types = [type(p).__name__ for p in service.providers]
+        assert "FacebookCAPIProvider" in provider_types
+        assert "TikTokEventsAPIProvider" in provider_types
+        assert "ServerSideGTMProvider" in provider_types
+
+
+class TestCAPIUserDataEdgeCases:
+    """Test CAPIUserData edge cases"""
+    
+    def test_partial_user_data(self):
+        """User data with only some fields"""
+        from services.capi_service import CAPIUserData
+        
+        user_data = CAPIUserData(
+            email="hashed_email",
+            external_id="hashed_id",
+        )
+        
+        assert user_data.email == "hashed_email"
+        assert user_data.phone is None
+        assert user_data.external_id == "hashed_id"
+        assert user_data.first_name is None
+
+
+class TestCAPIEventCustomData:
+    """Test CAPIEvent custom_data handling"""
+    
+    def test_event_with_custom_data(self):
+        """Event with custom data payload"""
+        from services.capi_service import CAPIEvent, CAPIEventType
+        
+        event = CAPIEvent(
+            event_name=CAPIEventType.CREDITS_PURCHASED,
+            event_id="evt-123",
+            event_time=1704067200,
+            custom_data={
+                "value": 9.99,
+                "currency": "USD",
+                "contents": [{"id": "credits_pack_1", "quantity": 1}]
+            }
+        )
+        
+        assert event.custom_data["value"] == 9.99
+        assert event.custom_data["currency"] == "USD"
+    
+    def test_event_with_source_url(self):
+        """Event with source URL"""
+        from services.capi_service import CAPIEvent, CAPIEventType
+        
+        event = CAPIEvent(
+            event_name=CAPIEventType.PAGE_VIEWED,
+            event_id="evt-456",
+            event_time=1704067200,
+            event_source_url="https://example.com/pricing",
+            action_source="website",
+        )
+        
+        assert event.event_source_url == "https://example.com/pricing"
+        assert event.action_source == "website"
