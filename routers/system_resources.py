@@ -2,6 +2,9 @@
 System Resources Management Router
 Admin API for managing system assets (stickers, templates, etc.)
 
+@module routers.system_resources
+@version 3.24
+
 Features:
 - CRUD operations for system resources
 - File upload to Supabase Storage
@@ -9,88 +12,26 @@ Features:
 - Batch operations support
 """
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
-from typing import List, Optional
-from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
-from dependencies import get_current_user, require_admin
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from typing import List, Optional
+
+from dependencies import require_admin
 from services.db_service import supabase
+from schemas.system_resources import ResourceCreate, ResourceUpdate, ResourceBatchAction
+from services.system_resource_helpers import (
+    SYSTEM_ASSETS_BUCKET,
+    ALLOWED_TYPES,
+    ALLOWED_MIME_TYPES,
+    MAX_FILE_SIZE,
+    log_resource_audit,
+    get_image_dimensions,
+)
 
 router = APIRouter(prefix="/api/admin/system-resources", tags=["Admin - System Resources"])
 
-# =====================================================
-# Constants
-# =====================================================
-
-SYSTEM_ASSETS_BUCKET = "make-decodables-s"
-
-ALLOWED_TYPES = ["sticker", "template", "background", "frame", "icon", "pattern"]
-ALLOWED_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-# =====================================================
-# Schemas
-# =====================================================
-
-class ResourceCreate(BaseModel):
-    type: str
-    category: Optional[str] = None
-    name: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[List[str]] = []
-    allowed_tiers: Optional[List[str]] = ["free", "starter", "pro"]
-    sort_order: Optional[int] = 0
-    is_active: Optional[bool] = True
-    metadata: Optional[dict] = {}
-
-class ResourceUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    allowed_tiers: Optional[List[str]] = None
-    sort_order: Optional[int] = None
-    is_active: Optional[bool] = None
-    metadata: Optional[dict] = None
-
-class ResourceBatchAction(BaseModel):
-    resource_ids: List[str]
-    action: str  # "activate", "deactivate", "delete"
-
-# =====================================================
-# Helper Functions
-# =====================================================
-
-def log_resource_audit(
-    resource_id: str,
-    action: str,
-    old_data: dict,
-    new_data: dict,
-    changed_by: str
-):
-    """Log resource changes for audit trail"""
-    try:
-        supabase.table("system_resource_audit_logs").insert({
-            "resource_id": resource_id,
-            "action": action,
-            "old_data": old_data,
-            "new_data": new_data,
-            "changed_by": changed_by
-        }).execute()
-    except Exception as e:
-        print(f"[AUDIT] Failed to log: {e}")
-
-def get_image_dimensions(file_bytes: bytes) -> dict:
-    """Extract image dimensions from file bytes"""
-    try:
-        from PIL import Image
-        from io import BytesIO
-        img = Image.open(BytesIO(file_bytes))
-        return {"width": img.width, "height": img.height}
-    except:
-        return None
 
 # =====================================================
 # API Endpoints
@@ -135,16 +76,12 @@ async def list_system_resources(
         "has_more": (result.count or 0) > offset + limit
     }
 
+
 @router.get("/stats")
 async def get_resource_stats(admin: dict = Depends(require_admin)):
     """
     Get statistics about system resources
     """
-    # Count by type
-    type_stats = supabase.table("system_resources")\
-        .select("type", count="exact")\
-        .execute()
-    
     # Count active vs inactive
     active_count = supabase.table("system_resources")\
         .select("id", count="exact")\
@@ -179,6 +116,7 @@ async def get_resource_stats(admin: dict = Depends(require_admin)):
         "by_type": type_breakdown
     }
 
+
 @router.get("/{resource_id}")
 async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
     """
@@ -194,6 +132,7 @@ async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(404, "Resource not found")
     
     return result.data
+
 
 @router.post("")
 async def create_resource(
@@ -283,6 +222,7 @@ async def create_resource(
     
     return result.data[0]
 
+
 @router.patch("/{resource_id}")
 async def update_resource(
     resource_id: str,
@@ -325,6 +265,7 @@ async def update_resource(
     
     return result.data[0]
 
+
 @router.post("/{resource_id}/replace")
 async def replace_resource_file(
     resource_id: str,
@@ -360,7 +301,6 @@ async def replace_resource_file(
     
     # Add current version to history before replacing
     if old_path and old_url:
-        from datetime import datetime, timezone
         version_history.append({
             "version": len(version_history) + 1,
             "url": old_url,
@@ -402,7 +342,7 @@ async def replace_resource_file(
             "original_filename": file.filename,
             "storage_path": filename,
             "current_version": len(version_history) + 1,
-            "version_history": version_history  # 保存所有历史版本
+            "version_history": version_history
         }
     }
     
@@ -421,6 +361,7 @@ async def replace_resource_file(
     )
     
     return result.data[0]
+
 
 @router.delete("/{resource_id}")
 async def delete_resource(
@@ -445,7 +386,6 @@ async def delete_resource(
         raise HTTPException(404, "Resource not found")
     
     # v3.18: Only soft delete (deactivate) - no permanent delete allowed
-    # Files remain in storage for audit/recovery purposes
     supabase.table("system_resources")\
         .update({
             "is_active": False, 
@@ -458,6 +398,7 @@ async def delete_resource(
     log_resource_audit(resource_id, "deactivate", {"is_active": True}, {"is_active": False}, admin.get("id"))
     
     return {"message": "Resource deactivated (soft delete)", "id": resource_id}
+
 
 @router.post("/batch")
 async def batch_action(
@@ -491,6 +432,7 @@ async def batch_action(
     
     else:
         raise HTTPException(400, f"Unknown action: {action.action}")
+
 
 @router.get("/{resource_id}/audit-log")
 async def get_resource_audit_log(

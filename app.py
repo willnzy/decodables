@@ -224,8 +224,8 @@ app.include_router(webhooks_router)
 app.include_router(logs_router)
 
 # v3.24: Generation router (refactored from app.py)
-from routers.generation import router as generation_router
-app.include_router(generation_router)
+from routers.generation import include_generation_routers
+include_generation_routers(app)
 
 # v3.24: Tasks router (refactored from app.py)
 from routers.tasks import router as tasks_router
