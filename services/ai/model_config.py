@@ -2,13 +2,15 @@
 AI Model Configuration Service
 AI 模型配置服务
 
-Provides centralized access to AI model configurations
-stored in system_configs table.
+Provides:
+- Get model configuration from system_configs
+- Support for user text/image models
+- Support for admin analysis model
+- Provider availability checking
 """
 
 import logging
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, List
 
 from ..config_service import get_config
 
@@ -16,31 +18,31 @@ logger = logging.getLogger(__name__)
 
 
 # ==========================================
-# Default Configurations (Fallbacks)
+# Default Configurations (Fallback)
 # ==========================================
 
 DEFAULT_TEXT_CONFIG = {
     "provider": "openai",
     "model": "gpt-4o-mini",
     "fallback": {"provider": "openai", "model": "gpt-4o-mini"},
-    "show_provider": False,
+    "show_provider": False
 }
 
 DEFAULT_IMAGE_CONFIG = {
     "provider": "fal",
     "models": {
         "free": "flux-schnell",
-        "starter": "flux-schnell",
-        "pro": "flux-dev",
+        "starter": "flux-schnell", 
+        "pro": "flux-dev"
     },
     "fallback": {"provider": "fal", "model": "flux-schnell"},
-    "show_provider": False,
+    "show_provider": False
 }
 
 DEFAULT_ADMIN_CONFIG = {
     "provider": "openai",
     "model": "gpt-4o",
-    "fallback": {"provider": "openai", "model": "gpt-4o-mini"},
+    "fallback": {"provider": "openai", "model": "gpt-4o-mini"}
 }
 
 DEFAULT_ENABLED_PROVIDERS = {
@@ -50,138 +52,105 @@ DEFAULT_ENABLED_PROVIDERS = {
     "gemini": False,
     "grok": False,
     "jimeng": False,
-    "anthropic": False,
+    "anthropic": False
 }
-
-
-# ==========================================
-# Data Classes
-# ==========================================
-
-@dataclass
-class ModelConfig:
-    """Model configuration"""
-    provider: str
-    model: str
-    fallback_provider: Optional[str] = None
-    fallback_model: Optional[str] = None
-    show_provider: bool = False
-    
-    def to_dict(self) -> Dict:
-        return {
-            "provider": self.provider,
-            "model": self.model,
-            "fallback": {
-                "provider": self.fallback_provider,
-                "model": self.fallback_model,
-            } if self.fallback_provider else None,
-            "show_provider": self.show_provider,
-        }
 
 
 # ==========================================
 # Configuration Getters
 # ==========================================
 
-def get_text_model_config() -> ModelConfig:
+def get_text_model_config() -> Dict[str, Any]:
     """
-    Get user text reasoning model configuration.
+    获取用户文本推理模型配置
     
     Returns:
-        ModelConfig for text/chat operations
+        {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "fallback": {"provider": "openai", "model": "gpt-4o-mini"},
+            "show_provider": False
+        }
     """
-    config = get_config("ai_model.user.text_reasoning") or DEFAULT_TEXT_CONFIG
-    
-    fallback = config.get("fallback", {})
-    
-    return ModelConfig(
-        provider=config.get("provider", "openai"),
-        model=config.get("model", "gpt-4o-mini"),
-        fallback_provider=fallback.get("provider"),
-        fallback_model=fallback.get("model"),
-        show_provider=config.get("show_provider", False),
-    )
+    config = get_config("ai_model.user.text_reasoning")
+    if not config:
+        logger.debug("[ModelConfig] Using default text model config")
+        return DEFAULT_TEXT_CONFIG.copy()
+    return config
 
 
-def get_image_model_config(tier: str = "free") -> ModelConfig:
+def get_image_model_config(tier: str = "free") -> Dict[str, Any]:
     """
-    Get user image generation model configuration.
+    获取用户图像生成模型配置
     
     Args:
-        tier: User tier ("free", "starter", "pro")
+        tier: 用户等级 (free, starter, pro)
         
     Returns:
-        ModelConfig for image generation
+        {
+            "provider": "fal",
+            "model": "flux-schnell",  # 根据 tier 选择
+            "fallback": {"provider": "fal", "model": "flux-schnell"},
+            "show_provider": False
+        }
     """
-    config = get_config("ai_model.user.image_generation") or DEFAULT_IMAGE_CONFIG
+    config = get_config("ai_model.user.image_generation")
+    if not config:
+        logger.debug("[ModelConfig] Using default image model config")
+        config = DEFAULT_IMAGE_CONFIG.copy()
     
-    # Get model based on tier
-    models = config.get("models", {})
+    # 根据 tier 选择具体模型
+    models = config.get("models", DEFAULT_IMAGE_CONFIG["models"])
     model = models.get(tier, models.get("free", "flux-schnell"))
     
-    fallback = config.get("fallback", {})
-    
-    return ModelConfig(
-        provider=config.get("provider", "fal"),
-        model=model,
-        fallback_provider=fallback.get("provider"),
-        fallback_model=fallback.get("model"),
-        show_provider=config.get("show_provider", False),
-    )
+    return {
+        "provider": config.get("provider", "fal"),
+        "model": model,
+        "fallback": config.get("fallback", DEFAULT_IMAGE_CONFIG["fallback"]),
+        "show_provider": config.get("show_provider", False)
+    }
 
 
-def get_admin_model_config() -> ModelConfig:
+def get_admin_model_config() -> Dict[str, Any]:
     """
-    Get admin analysis model configuration.
+    获取 Admin 分析模型配置
     
     Returns:
-        ModelConfig for admin AI analysis
+        {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "fallback": {"provider": "openai", "model": "gpt-4o-mini"}
+        }
     """
-    config = get_config("ai_model.admin.analysis") or DEFAULT_ADMIN_CONFIG
-    
-    fallback = config.get("fallback", {})
-    
-    return ModelConfig(
-        provider=config.get("provider", "openai"),
-        model=config.get("model", "gpt-4o"),
-        fallback_provider=fallback.get("provider"),
-        fallback_model=fallback.get("model"),
-    )
+    config = get_config("ai_model.admin.analysis")
+    if not config:
+        logger.debug("[ModelConfig] Using default admin model config")
+        return DEFAULT_ADMIN_CONFIG.copy()
+    return config
 
 
 def get_enabled_providers() -> Dict[str, bool]:
     """
-    Get enabled/disabled status of all providers.
+    获取已启用的 AI 提供商
     
     Returns:
-        Dict of provider -> is_enabled
+        {"openai": True, "fal": True, "qwen": False, ...}
     """
-    return get_config("ai_providers.enabled") or DEFAULT_ENABLED_PROVIDERS
-
-
-def is_provider_enabled(provider: str) -> bool:
-    """
-    Check if a specific provider is enabled.
-    
-    Args:
-        provider: Provider name
-        
-    Returns:
-        True if enabled
-    """
-    providers = get_enabled_providers()
-    return providers.get(provider, False)
+    config = get_config("ai_providers.enabled")
+    if not config:
+        return DEFAULT_ENABLED_PROVIDERS.copy()
+    return config
 
 
 def get_provider_models(provider: str) -> Dict[str, List[str]]:
     """
-    Get available models for a provider.
+    获取指定提供商的可用模型列表
     
     Args:
-        provider: Provider name
+        provider: 提供商名称
         
     Returns:
-        Dict with "text" and/or "image" model lists
+        {"text": ["gpt-4o-mini", "gpt-4o"], "image": ["dall-e-3"]}
     """
     all_models = get_config("ai_providers.models") or {}
     return all_models.get(provider, {})
@@ -189,189 +158,88 @@ def get_provider_models(provider: str) -> Dict[str, List[str]]:
 
 def get_all_provider_models() -> Dict[str, Dict[str, List[str]]]:
     """
-    Get all provider models configuration.
+    获取所有提供商的模型列表
     
     Returns:
-        Dict of provider -> {"text": [...], "image": [...]}
+        {
+            "openai": {"text": [...], "image": [...]},
+            "fal": {"image": [...]},
+            ...
+        }
     """
     return get_config("ai_providers.models") or {}
 
 
 def get_provider_timeout(provider: str, call_type: str = "text") -> int:
     """
-    Get timeout configuration for a provider.
+    获取提供商超时配置
     
     Args:
-        provider: Provider name
-        call_type: "text" or "image"
+        provider: 提供商名称
+        call_type: 调用类型 (text, image)
         
     Returns:
-        Timeout in seconds
+        超时秒数
     """
     timeouts = get_config("ai_providers.timeouts") or {}
     provider_timeouts = timeouts.get(provider, {})
     
-    if isinstance(provider_timeouts, dict):
-        return provider_timeouts.get(call_type, 60)
-    return provider_timeouts if isinstance(provider_timeouts, int) else 60
+    # 默认超时
+    default_timeout = 60 if call_type == "text" else 180
+    return provider_timeouts.get(call_type, default_timeout)
 
 
 def get_model_cost(provider: str, model: str) -> float:
     """
-    Get estimated cost for a model.
+    获取模型成本参考值
     
     Args:
-        provider: Provider name
-        model: Model name
+        provider: 提供商名称
+        model: 模型名称
         
     Returns:
-        Cost per 1M tokens or per image (USD)
+        成本 (USD per 1M tokens 或 per image)
     """
     costs = get_config("ai_providers.costs") or {}
     provider_costs = costs.get(provider, {})
     return provider_costs.get(model, 0.0)
 
 
-# ==========================================
-# Configuration Setters (Admin only)
-# ==========================================
-
-def update_text_model_config(
-    provider: str,
-    model: str,
-    fallback_provider: str = None,
-    fallback_model: str = None,
-    show_provider: bool = False,
-    updated_by: str = None
-) -> bool:
+def get_retry_config() -> Dict[str, Any]:
     """
-    Update user text model configuration.
+    获取重试配置
     
     Returns:
-        True if successful
-    """
-    from ..config_service import set_config
-    
-    config = {
-        "provider": provider,
-        "model": model,
-        "show_provider": show_provider,
-    }
-    
-    if fallback_provider and fallback_model:
-        config["fallback"] = {
-            "provider": fallback_provider,
-            "model": fallback_model,
+        {
+            "max_retries": 3,
+            "base_delay_ms": 1000,
+            "max_delay_ms": 10000,
+            "retry_on_status": [429, 500, 502, 503, 504]
         }
-    
-    return set_config("ai_model.user.text_reasoning", config, updated_by)
-
-
-def update_image_model_config(
-    provider: str,
-    models: Dict[str, str],
-    fallback_provider: str = None,
-    fallback_model: str = None,
-    show_provider: bool = False,
-    updated_by: str = None
-) -> bool:
     """
-    Update user image model configuration.
-    
-    Args:
-        models: Dict of tier -> model name
-        
-    Returns:
-        True if successful
-    """
-    from ..config_service import set_config
-    
-    config = {
-        "provider": provider,
-        "models": models,
-        "show_provider": show_provider,
+    return get_config("ai_providers.retry") or {
+        "max_retries": 3,
+        "base_delay_ms": 1000,
+        "max_delay_ms": 10000,
+        "retry_on_status": [429, 500, 502, 503, 504]
     }
-    
-    if fallback_provider and fallback_model:
-        config["fallback"] = {
-            "provider": fallback_provider,
-            "model": fallback_model,
-        }
-    
-    return set_config("ai_model.user.image_generation", config, updated_by)
-
-
-def update_admin_model_config(
-    provider: str,
-    model: str,
-    fallback_provider: str = None,
-    fallback_model: str = None,
-    updated_by: str = None
-) -> bool:
-    """
-    Update admin analysis model configuration.
-    
-    Returns:
-        True if successful
-    """
-    from ..config_service import set_config
-    
-    config = {
-        "provider": provider,
-        "model": model,
-    }
-    
-    if fallback_provider and fallback_model:
-        config["fallback"] = {
-            "provider": fallback_provider,
-            "model": fallback_model,
-        }
-    
-    return set_config("ai_model.admin.analysis", config, updated_by)
-
-
-def update_provider_status(provider: str, enabled: bool, updated_by: str = None) -> bool:
-    """
-    Enable or disable a provider.
-    
-    Returns:
-        True if successful
-    """
-    from ..config_service import set_config
-    
-    providers = get_enabled_providers()
-    providers[provider] = enabled
-    
-    return set_config("ai_providers.enabled", providers, updated_by)
 
 
 # ==========================================
-# Validation
+# Utility Functions
 # ==========================================
 
-def validate_model_config(provider: str, model: str, call_type: str = "text") -> bool:
-    """
-    Validate that a provider/model combination is valid and enabled.
-    
-    Args:
-        provider: Provider name
-        model: Model name
-        call_type: "text" or "image"
-        
-    Returns:
-        True if valid
-    """
-    # Check provider is enabled
-    if not is_provider_enabled(provider):
-        logger.warning(f"[ModelConfig] Provider not enabled: {provider}")
-        return False
-    
-    # Check model exists
-    provider_models = get_provider_models(provider)
-    available_models = provider_models.get(call_type, [])
-    
-    if model not in available_models:
-        logger.warning(f"[ModelConfig] Model not found: {provider}/{model}")
-        return False
-    
-    return True
+def is_provider_enabled(provider: str) -> bool:
+    """检查提供商是否启用"""
+    enabled = get_enabled_providers()
+    return enabled.get(provider, False)
+
+
+def get_fallback_config(config: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """从配置中提取 fallback 配置"""
+    return config.get("fallback")
+
+
+def should_show_provider(config: Dict[str, Any]) -> bool:
+    """检查是否应该向用户显示提供商信息"""
+    return config.get("show_provider", False)

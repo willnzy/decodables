@@ -1,58 +1,66 @@
 """
 OpenAI Adapter
-OpenAI 适配器
+OpenAI API 适配器
 
 Supports:
-- GPT-4o, GPT-4o-mini, o1, o1-mini (text)
-- DALL-E 3 (image)
+- GPT-4o, GPT-4o-mini, o1, o1-mini
+- DALL-E 3 for image generation
+- JSON mode response format
 """
 
 import os
+import time
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+
 import openai
 
 from ..base import (
-    BaseTextAdapter,
-    BaseImageAdapter,
-    AIProviderType,
-    TextCompletionResult,
-    ImageGenerationResult,
-    TextUsage,
-    ImageUsage,
-    AIAdapterError,
-    AIRateLimitError,
-    AIAuthenticationError,
-    AITimeoutError,
-    AIContentFilterError,
+    BaseTextAdapter, 
+    BaseImageAdapter, 
+    AIResponse, 
+    AIUsage,
+    AIErrorType,
+    classify_error
 )
 
 logger = logging.getLogger(__name__)
 
-# API Key
+# ==========================================
+# Configuration
+# ==========================================
+
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+# Available models
+OPENAI_TEXT_MODELS = [
+    "gpt-4o-mini",
+    "gpt-4o", 
+    "o1-mini",
+    "o1",
+]
+
+OPENAI_IMAGE_MODELS = [
+    "dall-e-3",
+]
+
+
+# ==========================================
+# Text Adapter
+# ==========================================
 
 class OpenAITextAdapter(BaseTextAdapter):
     """
-    OpenAI text completion adapter.
+    OpenAI 文本模型适配器
     
-    Supports models:
-    - gpt-4o-mini (fast, cost-effective)
-    - gpt-4o (powerful, multimodal)
-    - o1-mini (reasoning, fast)
-    - o1 (reasoning, advanced)
+    支持模型:
+    - gpt-4o-mini: 快速、低成本
+    - gpt-4o: 高质量、多模态
+    - o1-mini: 推理优化（轻量）
+    - o1: 推理优化（完整）
     """
     
-    provider = AIProviderType.OPENAI
-    
-    SUPPORTED_MODELS = [
-        "gpt-4o-mini",
-        "gpt-4o",
-        "o1-mini",
-        "o1",
-        "gpt-4-turbo",
-    ]
+    provider_name = "openai"
     
     def __init__(self):
         self._client = None
@@ -62,8 +70,8 @@ class OpenAITextAdapter(BaseTextAdapter):
     def is_available(self) -> bool:
         return self._client is not None
     
-    def get_supported_models(self) -> List[str]:
-        return self.SUPPORTED_MODELS.copy()
+    def get_available_models(self) -> List[str]:
+        return OPENAI_TEXT_MODELS.copy()
     
     async def chat_completion(
         self,
@@ -73,114 +81,125 @@ class OpenAITextAdapter(BaseTextAdapter):
         max_tokens: Optional[int] = None,
         response_format: Optional[Dict] = None,
         **kwargs
-    ) -> TextCompletionResult:
+    ) -> AIResponse:
         """
-        Perform chat completion using OpenAI API.
+        OpenAI Chat Completion
+        
+        Note:
+        - o1/o1-mini 不支持 system message，需要转换为 user message
+        - o1/o1-mini 不支持 temperature 和 response_format
         """
         if not self._client:
-            raise AIAuthenticationError(
+            return AIResponse.from_error(
                 "OpenAI API key not configured",
-                provider="openai"
+                AIErrorType.AUTH_ERROR,
+                self.provider_name,
+                model
             )
         
+        start_time = time.time()
+        
         try:
-            # Build request params
+            # 处理 o1 系列模型的特殊要求
+            processed_messages = messages
             params = {
                 "model": model,
-                "messages": messages,
+                "messages": processed_messages,
             }
             
-            # o1 models have different parameter requirements
             if model.startswith("o1"):
-                # o1 doesn't support temperature, max_tokens uses max_completion_tokens
+                # o1 不支持 system message，转换为 user message
+                processed_messages = self._convert_system_to_user(messages)
+                params["messages"] = processed_messages
+                # o1 也不支持 temperature 和某些参数
                 if max_tokens:
                     params["max_completion_tokens"] = max_tokens
             else:
+                # 常规模型
                 params["temperature"] = temperature
                 if max_tokens:
                     params["max_tokens"] = max_tokens
                 if response_format:
                     params["response_format"] = response_format
             
-            # Make request
+            # 调用 API
             response = await self._client.chat.completions.create(**params)
             
-            # Extract result
-            choice = response.choices[0]
-            content = choice.message.content or ""
+            latency_ms = int((time.time() - start_time) * 1000)
             
-            usage = TextUsage(
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                total_tokens=response.usage.total_tokens,
+            # 提取响应
+            content = response.choices[0].message.content or ""
+            usage = AIUsage(
+                input_tokens=response.usage.prompt_tokens if response.usage else 0,
+                output_tokens=response.usage.completion_tokens if response.usage else 0,
+                total_tokens=response.usage.total_tokens if response.usage else 0,
             )
             
-            return TextCompletionResult(
+            return AIResponse(
+                success=True,
                 content=content,
                 usage=usage,
                 model=model,
-                provider="openai",
-                finish_reason=choice.finish_reason or "stop",
+                provider=self.provider_name,
+                latency_ms=latency_ms,
+                raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
             
-        except openai.RateLimitError as e:
-            raise AIRateLimitError(
-                f"OpenAI rate limit: {e}",
-                provider="openai"
-            )
-        except openai.AuthenticationError as e:
-            raise AIAuthenticationError(
-                f"OpenAI auth error: {e}",
-                provider="openai"
-            )
-        except openai.APITimeoutError as e:
-            raise AITimeoutError(
-                f"OpenAI timeout: {e}",
-                provider="openai"
-            )
-        except openai.BadRequestError as e:
-            if "content_filter" in str(e).lower():
-                raise AIContentFilterError(
-                    f"Content filtered: {e}",
-                    provider="openai"
-                )
-            raise AIAdapterError(
-                f"OpenAI error: {e}",
-                provider="openai",
-                model=model
-            )
         except Exception as e:
-            logger.error(f"[OpenAI] Unexpected error: {e}")
-            raise AIAdapterError(
-                f"OpenAI error: {e}",
-                provider="openai",
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_type = classify_error(e, self.provider_name)
+            logger.error(f"[OpenAI] Chat completion error: {e}")
+            
+            return AIResponse(
+                success=False,
+                error=str(e),
+                error_type=error_type,
+                provider=self.provider_name,
                 model=model,
-                retryable=True
+                latency_ms=latency_ms
             )
+    
+    def _convert_system_to_user(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        将 system message 转换为 user message (用于 o1 系列)
+        
+        o1 不支持 system role，需要将 system prompt 作为 user message 的一部分
+        """
+        result = []
+        system_content = None
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_content = msg["content"]
+            else:
+                result.append(msg)
+        
+        # 将 system content 添加到第一个 user message
+        if system_content and result:
+            for i, msg in enumerate(result):
+                if msg["role"] == "user":
+                    result[i] = {
+                        "role": "user",
+                        "content": f"[System Instructions]\n{system_content}\n\n[User Message]\n{msg['content']}"
+                    }
+                    break
+        
+        return result
 
+
+# ==========================================
+# Image Adapter
+# ==========================================
 
 class OpenAIImageAdapter(BaseImageAdapter):
     """
-    OpenAI image generation adapter (DALL-E 3).
+    OpenAI DALL-E 图像生成适配器
     
-    Supports models:
-    - dall-e-3 (high quality)
-    - dall-e-2 (legacy)
+    支持模型:
+    - dall-e-3: 高质量图像生成
     """
     
-    provider = AIProviderType.OPENAI
-    
-    SUPPORTED_MODELS = ["dall-e-3", "dall-e-2"]
-    
-    # Size mappings
-    SIZE_MAPPING = {
-        "1024x1024": "1024x1024",
-        "1792x1024": "1792x1024",  # landscape
-        "1024x1792": "1024x1792",  # portrait
-        "landscape": "1792x1024",
-        "portrait": "1024x1792",
-        "square": "1024x1024",
-    }
+    provider_name = "openai"
     
     def __init__(self):
         self._client = None
@@ -190,8 +209,8 @@ class OpenAIImageAdapter(BaseImageAdapter):
     def is_available(self) -> bool:
         return self._client is not None
     
-    def get_supported_models(self) -> List[str]:
-        return self.SUPPORTED_MODELS.copy()
+    def get_available_models(self) -> List[str]:
+        return OPENAI_IMAGE_MODELS.copy()
     
     async def generate_image(
         self,
@@ -199,65 +218,94 @@ class OpenAIImageAdapter(BaseImageAdapter):
         model: str = "dall-e-3",
         size: str = "1024x1024",
         num_images: int = 1,
+        negative_prompt: Optional[str] = None,
+        quality: str = "standard",
+        style: str = "vivid",
         **kwargs
-    ) -> ImageGenerationResult:
+    ) -> AIResponse:
         """
-        Generate images using DALL-E.
+        DALL-E 图像生成
+        
+        Args:
+            prompt: 图像描述
+            model: 模型 (dall-e-3)
+            size: 尺寸 (1024x1024, 1792x1024, 1024x1792)
+            num_images: 生成数量 (DALL-E 3 仅支持 1)
+            quality: 质量 (standard, hd)
+            style: 风格 (vivid, natural)
         """
         if not self._client:
-            raise AIAuthenticationError(
+            return AIResponse.from_error(
                 "OpenAI API key not configured",
-                provider="openai"
+                AIErrorType.AUTH_ERROR,
+                self.provider_name,
+                model
             )
         
+        start_time = time.time()
+        
         try:
-            # Map size
-            actual_size = self.SIZE_MAPPING.get(size, "1024x1024")
+            # DALL-E 3 只支持 n=1
+            if model == "dall-e-3":
+                num_images = 1
             
-            # Build params
-            params = {
-                "model": model,
-                "prompt": prompt,
-                "size": actual_size,
-                "n": min(num_images, 1) if model == "dall-e-3" else num_images,
-                "quality": kwargs.get("quality", "standard"),
-                "style": kwargs.get("style", "vivid"),
-            }
+            # 如果有 negative prompt，追加到 prompt
+            full_prompt = prompt
+            if negative_prompt:
+                full_prompt = f"{prompt}. Avoid: {negative_prompt}"
             
-            # Make request
-            response = await self._client.images.generate(**params)
-            
-            # Extract URLs
-            images = [img.url for img in response.data if img.url]
-            
-            return ImageGenerationResult(
-                images=images,
-                usage=ImageUsage(images_generated=len(images)),
+            response = await self._client.images.generate(
                 model=model,
-                provider="openai",
+                prompt=full_prompt,
+                size=size,
+                n=num_images,
+                quality=quality,
+                style=style,
             )
             
-        except openai.RateLimitError as e:
-            raise AIRateLimitError(
-                f"OpenAI rate limit: {e}",
-                provider="openai"
+            latency_ms = int((time.time() - start_time) * 1000)
+            
+            # 提取图像 URL
+            image_urls = [img.url for img in response.data if img.url]
+            
+            return AIResponse(
+                success=True,
+                content=image_urls,
+                usage=AIUsage(images_generated=len(image_urls)),
+                model=model,
+                provider=self.provider_name,
+                latency_ms=latency_ms,
             )
-        except openai.BadRequestError as e:
-            if "content_policy" in str(e).lower():
-                raise AIContentFilterError(
-                    f"Content filtered: {e}",
-                    provider="openai"
-                )
-            raise AIAdapterError(
-                f"OpenAI error: {e}",
-                provider="openai",
-                model=model
-            )
+            
         except Exception as e:
-            logger.error(f"[OpenAI Image] Unexpected error: {e}")
-            raise AIAdapterError(
-                f"OpenAI image error: {e}",
-                provider="openai",
+            latency_ms = int((time.time() - start_time) * 1000)
+            error_type = classify_error(e, self.provider_name)
+            logger.error(f"[OpenAI] Image generation error: {e}")
+            
+            return AIResponse(
+                success=False,
+                content=[],
+                error=str(e),
+                error_type=error_type,
+                provider=self.provider_name,
                 model=model,
-                retryable=True
+                latency_ms=latency_ms
             )
+    
+    async def image_to_image(
+        self,
+        prompt: str,
+        image_url: str,
+        model: str = "dall-e-3",
+        strength: float = 0.7,
+        **kwargs
+    ) -> AIResponse:
+        """
+        DALL-E 不直接支持 image-to-image，返回不支持错误
+        """
+        return AIResponse.from_error(
+            "DALL-E 3 does not support image-to-image generation",
+            AIErrorType.INVALID_REQUEST,
+            self.provider_name,
+            model
+        )

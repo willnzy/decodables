@@ -1,30 +1,28 @@
 """
 AI Usage Tracker
-AI 使用量追踪
+AI 使用量追踪器
 
-Tracks AI API calls and aggregates to daily statistics.
-Used for cost monitoring and usage analytics.
+Provides:
+- Track AI API calls (async, non-blocking)
+- Daily aggregation via database function
+- Cost estimation
 """
 
-import os
 import logging
+import asyncio
 from datetime import date, datetime, timezone
 from typing import Optional
 from decimal import Decimal
 
+from ..db_service import supabase
+from .model_config import get_model_cost
+
 logger = logging.getLogger(__name__)
 
-# Supabase client
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-supabase = None
-if SUPABASE_URL and SUPABASE_KEY:
-    from supabase import create_client
-    if not SUPABASE_URL.endswith('/'):
-        SUPABASE_URL = SUPABASE_URL + '/'
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
+# ==========================================
+# Usage Tracking
+# ==========================================
 
 async def track_ai_usage(
     provider: str,
@@ -35,66 +33,67 @@ async def track_ai_usage(
     output_tokens: int = 0,
     images: int = 0,
     latency_ms: int = 0,
-    cost_usd: float = 0.0
+    error_type: Optional[str] = None
 ):
     """
-    Track an AI API call.
+    追踪 AI 调用使用量 (异步，非阻塞)
     
-    This function writes to ai_usage_daily table using upsert.
-    It's designed to be called after each AI operation.
+    这个函数调用数据库的 upsert_ai_usage_daily 函数，
+    将使用量写入日汇总表。
     
     Args:
-        provider: AI provider name (e.g., "openai", "fal")
-        model: Model name (e.g., "gpt-4o-mini", "flux-schnell")
-        call_type: Type of call ("text" or "image")
-        success: Whether the call succeeded
-        input_tokens: Number of input tokens (text only)
-        output_tokens: Number of output tokens (text only)
-        images: Number of images generated (image only)
-        latency_ms: Request latency in milliseconds
-        cost_usd: Estimated cost in USD
-        
-    Example:
-        >>> await track_ai_usage(
-        ...     provider="openai",
-        ...     model="gpt-4o-mini",
-        ...     call_type="text",
-        ...     success=True,
-        ...     input_tokens=150,
-        ...     output_tokens=200,
-        ...     latency_ms=320,
-        ...     cost_usd=0.0005
-        ... )
+        provider: 提供商名称 (openai, fal, qwen, etc.)
+        model: 模型名称
+        call_type: 调用类型 ('text' | 'image')
+        success: 是否成功
+        input_tokens: 输入 token 数
+        output_tokens: 输出 token 数
+        images: 生成的图像数
+        latency_ms: 延迟毫秒数
+        error_type: 错误类型 (如果失败)
     """
-    if not supabase:
-        logger.warning("[UsageTracker] Supabase not configured, skipping tracking")
-        return
-    
-    today = date.today().isoformat()
-    
     try:
-        # Use the upsert function we created in the migration
-        result = supabase.rpc("upsert_ai_usage_daily", {
-            "p_date": today,
-            "p_provider": provider,
-            "p_model": model,
-            "p_call_type": call_type,
-            "p_success": success,
-            "p_input_tokens": input_tokens,
-            "p_output_tokens": output_tokens,
-            "p_images": images,
-            "p_latency_ms": latency_ms,
-            "p_cost_usd": float(cost_usd),
-        }).execute()
+        today = date.today().isoformat()
         
-        logger.debug(
-            f"[UsageTracker] Tracked: {provider}/{model} "
-            f"({'success' if success else 'failed'})"
+        # 估算成本
+        cost_usd = _estimate_cost(
+            provider=provider,
+            model=model,
+            call_type=call_type,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            images=images
         )
         
+        # 调用数据库函数
+        if supabase:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: supabase.rpc("upsert_ai_usage_daily", {
+                    "p_date": today,
+                    "p_provider": provider,
+                    "p_model": model,
+                    "p_call_type": call_type,
+                    "p_success": success,
+                    "p_input_tokens": input_tokens,
+                    "p_output_tokens": output_tokens,
+                    "p_images": images,
+                    "p_latency_ms": latency_ms,
+                    "p_cost_usd": float(cost_usd),
+                    "p_error_type": error_type
+                }).execute()
+            )
+            
+            logger.debug(
+                f"[UsageTracker] Tracked: {provider}/{model} "
+                f"{'✓' if success else '✗'} "
+                f"tokens={input_tokens}+{output_tokens} "
+                f"cost=${cost_usd:.4f}"
+            )
+        
     except Exception as e:
-        # Don't let tracking failures affect the main operation
-        logger.error(f"[UsageTracker] Error tracking usage: {e}")
+        # 非关键操作，仅记录错误
+        logger.warning(f"[UsageTracker] Failed to track usage: {e}")
 
 
 def track_ai_usage_sync(
@@ -106,209 +105,160 @@ def track_ai_usage_sync(
     output_tokens: int = 0,
     images: int = 0,
     latency_ms: int = 0,
-    cost_usd: float = 0.0
+    error_type: Optional[str] = None
 ):
     """
-    Synchronous version of track_ai_usage.
+    同步版本的使用量追踪
     
-    For use in sync code paths.
+    用于非异步上下文。
     """
-    if not supabase:
-        return
-    
-    today = date.today().isoformat()
-    
     try:
-        supabase.rpc("upsert_ai_usage_daily", {
-            "p_date": today,
-            "p_provider": provider,
-            "p_model": model,
-            "p_call_type": call_type,
-            "p_success": success,
-            "p_input_tokens": input_tokens,
-            "p_output_tokens": output_tokens,
-            "p_images": images,
-            "p_latency_ms": latency_ms,
-            "p_cost_usd": float(cost_usd),
-        }).execute()
+        today = date.today().isoformat()
         
+        cost_usd = _estimate_cost(
+            provider=provider,
+            model=model,
+            call_type=call_type,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            images=images
+        )
+        
+        if supabase:
+            supabase.rpc("upsert_ai_usage_daily", {
+                "p_date": today,
+                "p_provider": provider,
+                "p_model": model,
+                "p_call_type": call_type,
+                "p_success": success,
+                "p_input_tokens": input_tokens,
+                "p_output_tokens": output_tokens,
+                "p_images": images,
+                "p_latency_ms": latency_ms,
+                "p_cost_usd": float(cost_usd),
+                "p_error_type": error_type
+            }).execute()
+            
     except Exception as e:
-        logger.error(f"[UsageTracker] Error tracking usage: {e}")
+        logger.warning(f"[UsageTracker] Failed to track usage (sync): {e}")
 
 
-# ==========================================
-# Cost Estimation
-# ==========================================
-
-def estimate_text_cost(
+def _estimate_cost(
     provider: str,
     model: str,
-    input_tokens: int,
-    output_tokens: int
-) -> float:
+    call_type: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    images: int = 0
+) -> Decimal:
     """
-    Estimate cost for a text completion.
+    估算 API 调用成本
     
-    Args:
-        provider: Provider name
-        model: Model name
-        input_tokens: Number of input tokens
-        output_tokens: Number of output tokens
-        
-    Returns:
-        Estimated cost in USD
+    基于配置的成本参考值计算。
+    文本模型: 成本 = (input_tokens + output_tokens) / 1M * cost_per_1M
+    图像模型: 成本 = images * cost_per_image
     """
-    from .model_config import get_model_cost
+    cost_per_unit = get_model_cost(provider, model)
     
-    # Get cost per 1M tokens
-    cost_per_million = get_model_cost(provider, model)
+    if call_type == "text":
+        # 文本模型: 按 token 计费 (cost 是 per 1M tokens)
+        total_tokens = input_tokens + output_tokens
+        cost = Decimal(str(cost_per_unit)) * Decimal(str(total_tokens)) / Decimal("1000000")
+    else:
+        # 图像模型: 按图像计费
+        cost = Decimal(str(cost_per_unit)) * Decimal(str(images))
     
-    if cost_per_million <= 0:
-        return 0.0
-    
-    # Calculate cost
-    # Most providers charge differently for input vs output
-    # For simplicity, we use average (can be refined per provider)
-    total_tokens = input_tokens + output_tokens
-    cost = (total_tokens / 1_000_000) * cost_per_million
-    
-    return round(cost, 6)
-
-
-def estimate_image_cost(provider: str, model: str, num_images: int = 1) -> float:
-    """
-    Estimate cost for image generation.
-    
-    Args:
-        provider: Provider name
-        model: Model name
-        num_images: Number of images generated
-        
-    Returns:
-        Estimated cost in USD
-    """
-    from .model_config import get_model_cost
-    
-    # Get cost per image
-    cost_per_image = get_model_cost(provider, model)
-    
-    if cost_per_image <= 0:
-        return 0.0
-    
-    return round(cost_per_image * num_images, 6)
+    return cost.quantize(Decimal("0.0001"))
 
 
 # ==========================================
-# Usage Statistics (Admin)
+# Query Functions
 # ==========================================
 
 def get_usage_summary(days: int = 30) -> dict:
     """
-    Get usage summary for the last N days.
+    获取使用量汇总
     
     Args:
-        days: Number of days to include
+        days: 天数范围
         
     Returns:
-        Summary dict with totals and breakdowns
+        {
+            "total_calls": 12345,
+            "total_cost_usd": 156.78,
+            "by_provider": {...},
+            "by_model": {...}
+        }
     """
     if not supabase:
-        return {"error": "Database not configured"}
-    
-    from datetime import timedelta
-    
-    start_date = (date.today() - timedelta(days=days)).isoformat()
+        return {}
     
     try:
-        result = supabase.table("ai_usage_daily")\
-            .select("*")\
-            .gte("date", start_date)\
-            .order("date", desc=True)\
-            .execute()
+        # 使用视图查询
+        result = supabase.from_("v_ai_usage_last_30_days").select("*").execute()
         
         if not result.data:
             return {
-                "period_days": days,
                 "total_calls": 0,
                 "total_cost_usd": 0,
                 "by_provider": {},
-                "by_model": {},
+                "by_model": {}
             }
         
-        # Aggregate
-        total_calls = 0
-        total_cost = 0.0
-        successful_calls = 0
-        by_provider = {}
-        by_model = {}
+        # 汇总
+        total_calls = sum(row.get("total_calls", 0) for row in result.data)
+        total_cost = sum(float(row.get("total_cost_usd", 0)) for row in result.data)
         
+        # 按提供商汇总
+        by_provider = {}
         for row in result.data:
-            calls = row.get("total_calls", 0)
-            cost = float(row.get("estimated_cost_usd", 0) or 0)
-            success = row.get("successful_calls", 0)
-            provider = row.get("provider", "unknown")
-            model = row.get("model", "unknown")
-            
-            total_calls += calls
-            total_cost += cost
-            successful_calls += success
-            
-            # By provider
+            provider = row.get("provider")
             if provider not in by_provider:
-                by_provider[provider] = {"calls": 0, "cost": 0, "success": 0}
-            by_provider[provider]["calls"] += calls
-            by_provider[provider]["cost"] += cost
-            by_provider[provider]["success"] += success
-            
-            # By model
-            model_key = f"{provider}/{model}"
-            if model_key not in by_model:
-                by_model[model_key] = {"calls": 0, "cost": 0, "success": 0}
-            by_model[model_key]["calls"] += calls
-            by_model[model_key]["cost"] += cost
-            by_model[model_key]["success"] += success
+                by_provider[provider] = {"calls": 0, "cost_usd": 0}
+            by_provider[provider]["calls"] += row.get("total_calls", 0)
+            by_provider[provider]["cost_usd"] += float(row.get("total_cost_usd", 0))
+        
+        # 按模型汇总
+        by_model = {}
+        for row in result.data:
+            model = row.get("model")
+            if model not in by_model:
+                by_model[model] = {"calls": 0, "cost_usd": 0}
+            by_model[model]["calls"] += row.get("total_calls", 0)
+            by_model[model]["cost_usd"] += float(row.get("total_cost_usd", 0))
         
         return {
-            "period_days": days,
             "total_calls": total_calls,
-            "successful_calls": successful_calls,
-            "success_rate": round(successful_calls / total_calls * 100, 1) if total_calls > 0 else 0,
             "total_cost_usd": round(total_cost, 2),
             "by_provider": by_provider,
             "by_model": by_model,
+            "details": result.data
         }
         
     except Exception as e:
-        logger.error(f"[UsageTracker] Error getting summary: {e}")
-        return {"error": str(e)}
+        logger.error(f"[UsageTracker] Failed to get usage summary: {e}")
+        return {}
 
 
-def get_daily_usage(days: int = 30) -> list:
+def get_daily_trend(days: int = 30) -> list:
     """
-    Get daily usage data for charts.
+    获取每日成本趋势
     
     Args:
-        days: Number of days
+        days: 天数范围
         
     Returns:
-        List of daily usage records
+        [
+            {"date": "2025-01-01", "cost_usd": 5.23, "calls": 456},
+            ...
+        ]
     """
     if not supabase:
         return []
     
-    from datetime import timedelta
-    
-    start_date = (date.today() - timedelta(days=days)).isoformat()
-    
     try:
-        result = supabase.table("ai_usage_daily")\
-            .select("date, provider, model, call_type, total_calls, successful_calls, estimated_cost_usd, avg_latency_ms")\
-            .gte("date", start_date)\
-            .order("date", desc=False)\
-            .execute()
-        
+        result = supabase.from_("v_ai_daily_cost_trend").select("*").execute()
         return result.data or []
-        
     except Exception as e:
-        logger.error(f"[UsageTracker] Error getting daily usage: {e}")
+        logger.error(f"[UsageTracker] Failed to get daily trend: {e}")
         return []

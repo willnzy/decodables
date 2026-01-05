@@ -1,229 +1,316 @@
 """
-Unified Image Service
-统一图像服务
+Unified Image AI Service
+统一图像 AI 服务
 
-Provides a single interface for all image generation operations.
-Handles:
-- Model configuration (tier-based)
-- Canary releases
-- Usage tracking
-- Fallback handling
+Provides:
+- Single entry point for all image AI operations
+- Automatic model selection based on user tier
+- Canary release support
+- Usage tracking (no caching for images)
+- Automatic fallback on errors
 """
 
-import time
 import logging
-from typing import Optional, Dict, List
+from typing import List, Optional, Any, Dict
 
-from .model_config import get_image_model_config, ModelConfig
-from .canary import should_use_canary
-from .usage_tracker import track_ai_usage, estimate_image_cost
+from .base import AIResponse, AIUsage, AIErrorType
 from .adapters import get_image_adapter
-from .base import (
-    ImageGenerationResult,
-    AIAdapterError,
+from .model_config import (
+    get_image_model_config,
+    get_fallback_config,
+    is_provider_enabled
 )
+from .canary import should_use_canary
+from .usage_tracker import track_ai_usage
 
 logger = logging.getLogger(__name__)
 
 
 class UnifiedImageService:
     """
-    Unified image generation service.
+    统一图像 AI 服务
     
-    Provides a single interface for all image generation,
-    abstracting away provider details and handling:
-    - Tier-based model selection
-    - Canary releases
-    - Usage tracking
-    - Automatic fallback
-    
-    Usage:
-        >>> from services.ai.unified_image_service import unified_image
-        >>> result = await unified_image.generate("A cute cat")
-        >>> print(result.images[0])  # URL
+    集成了:
+    - 模型配置管理 (按用户等级)
+    - 灰度发布
+    - 使用量追踪
+    - 自动降级
     """
     
     async def generate(
         self,
         prompt: str,
-        user_id: str = None,
+        user_id: Optional[str] = None,
         tier: str = "free",
-        size: str = "square",
+        size: str = "landscape_4_3",
         num_images: int = 1,
+        negative_prompt: Optional[str] = None,
+        num_inference_steps: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
         **kwargs
-    ) -> ImageGenerationResult:
+    ) -> AIResponse:
         """
-        Generate images from text prompt.
+        统一图像生成接口
         
         Args:
-            prompt: Text description of the image
-            user_id: User identifier (for canary bucketing)
-            tier: User tier ("free", "starter", "pro")
-            size: Image size/aspect ("square", "landscape", "portrait")
-            num_images: Number of images to generate
-            **kwargs: Provider-specific parameters
-                - num_inference_steps: Denoising steps
-                - guidance_scale: CFG scale
-                - seed: Random seed
-                
+            prompt: 图像描述
+            user_id: 用户 ID (用于灰度分流和追踪)
+            tier: 用户等级 (free, starter, pro)
+            size: 图像尺寸 (landscape_4_3, square, portrait_4_3, etc.)
+            num_images: 生成数量
+            negative_prompt: 负面提示词
+            num_inference_steps: 推理步数 (可选)
+            guidance_scale: CFG 值 (可选)
+            **kwargs: 其他参数
+            
         Returns:
-            ImageGenerationResult with image URLs
+            AIResponse 对象，content 为图像 URL 列表
         """
-        start_time = time.time()
-        
-        # 1. Get model configuration based on tier
+        # 1. 获取模型配置 (基于用户等级)
         config = get_image_model_config(tier)
-        provider = config.provider
-        model = config.model
+        provider = config.get("provider", "fal")
+        model = config.get("model", "flux-schnell")
         
-        # 2. Check canary release
+        # 2. 检查灰度
+        is_canary = False
         if user_id:
-            use_canary, canary_config = should_use_canary(
-                user_id, "image_generation", tier
-            )
+            use_canary, canary_config = should_use_canary(user_id, "image_generation", tier)
             if use_canary and canary_config:
                 provider = canary_config["provider"]
                 model = canary_config["model"]
+                is_canary = True
                 logger.info(f"[UnifiedImage] Using canary: {provider}/{model}")
         
-        # 3. Call AI provider
-        result = None
-        success = False
-        
-        try:
-            adapter = get_image_adapter(provider)
-            result = await adapter.generate_image(
-                prompt=prompt,
-                model=model,
-                size=size,
-                num_images=num_images,
-                **kwargs
-            )
-            success = True
-            
-        except AIAdapterError as e:
-            logger.warning(f"[UnifiedImage] Primary failed: {e}")
-            
-            # Try fallback
-            if config.fallback_provider and config.fallback_model:
-                try:
-                    logger.info(
-                        f"[UnifiedImage] Trying fallback: "
-                        f"{config.fallback_provider}/{config.fallback_model}"
-                    )
-                    fallback_adapter = get_image_adapter(config.fallback_provider)
-                    result = await fallback_adapter.generate_image(
-                        prompt=prompt,
-                        model=config.fallback_model,
-                        size=size,
-                        num_images=num_images,
-                        **kwargs
-                    )
-                    provider = config.fallback_provider
-                    model = config.fallback_model
-                    success = True
-                    
-                except Exception as fb_error:
-                    logger.error(f"[UnifiedImage] Fallback failed: {fb_error}")
-                    raise
+        # 3. 检查提供商是否启用
+        if not is_provider_enabled(provider):
+            logger.warning(f"[UnifiedImage] Provider not enabled: {provider}")
+            # 尝试使用 fallback
+            fallback = get_fallback_config(config)
+            if fallback:
+                provider = fallback["provider"]
+                model = fallback["model"]
             else:
-                raise
+                return AIResponse.from_error(
+                    f"Provider {provider} is not enabled",
+                    AIErrorType.AUTH_ERROR,
+                    provider,
+                    model
+                )
         
-        # 4. Track usage
-        latency_ms = int((time.time() - start_time) * 1000)
-        images_count = len(result.images) if result else 0
-        cost = estimate_image_cost(provider, model, images_count)
+        # 4. 获取适配器
+        adapter = get_image_adapter(provider)
+        if not adapter:
+            logger.error(f"[UnifiedImage] Adapter not available: {provider}")
+            return await self._try_fallback(
+                config, prompt, size, num_images, negative_prompt,
+                num_inference_steps, guidance_scale, user_id, **kwargs
+            )
         
+        # 5. 调用 AI
+        response = await adapter.generate_image(
+            prompt=prompt,
+            model=model,
+            size=size,
+            num_images=num_images,
+            negative_prompt=negative_prompt,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            **kwargs
+        )
+        
+        # 6. 追踪使用量 (异步)
         await track_ai_usage(
             provider=provider,
             model=model,
             call_type="image",
-            success=success,
-            images=images_count,
-            latency_ms=latency_ms,
-            cost_usd=cost,
+            success=response.success,
+            images=len(response.content) if isinstance(response.content, list) else 0,
+            latency_ms=response.latency_ms,
+            error_type=response.error_type
         )
         
-        return result
+        # 7. 失败时尝试 fallback
+        if not response.success and not is_canary:
+            fallback_response = await self._try_fallback(
+                config, prompt, size, num_images, negative_prompt,
+                num_inference_steps, guidance_scale, user_id, **kwargs
+            )
+            if fallback_response.success:
+                return fallback_response
+        
+        return response
     
-    async def generate_with_params(
+    async def image_to_image(
         self,
         prompt: str,
-        user_id: str = None,
+        image_url: str,
+        user_id: Optional[str] = None,
         tier: str = "free",
-        size: str = "square",
-        mode: str = "flexible",
-        creativity_level: float = 0.3,
+        strength: float = 0.7,
         **kwargs
-    ) -> ImageGenerationResult:
+    ) -> AIResponse:
         """
-        Generate images with generation mode parameters.
-        
-        This method translates generation mode and creativity level
-        into provider-specific parameters.
+        图生图接口
         
         Args:
-            prompt: Text description
-            user_id: User identifier
-            tier: User tier
-            size: Image size
-            mode: "guided" (accurate) or "flexible" (creative)
-            creativity_level: 0.0-1.0 (only for flexible mode)
-            **kwargs: Additional parameters
+            prompt: 图像描述
+            image_url: 参考图像 URL
+            user_id: 用户 ID
+            tier: 用户等级
+            strength: 参考强度 (0-1)
+            **kwargs: 其他参数
             
         Returns:
-            ImageGenerationResult
+            AIResponse 对象
         """
-        # Get model config to determine which model we'll use
+        # 获取配置 (图生图推荐使用 flux-dev)
         config = get_image_model_config(tier)
-        model = config.model
+        provider = config.get("provider", "fal")
         
-        # Translate mode to parameters
-        if mode == "guided":
-            # More accurate: higher CFG, more steps
-            if "flux-dev" in model or "flux-pro" in model:
-                kwargs.setdefault("num_inference_steps", 35)
-                kwargs.setdefault("guidance_scale", 4.5)
-            else:  # flux-schnell
-                kwargs.setdefault("num_inference_steps", 4)
-                kwargs.setdefault("guidance_scale", 3.5)
-        else:  # flexible
-            # More creative: lower CFG, adjusted by creativity level
-            base_cfg = 2.5
-            # Lower CFG = more creative
-            adjusted_cfg = base_cfg - (creativity_level * 1.0)
-            adjusted_cfg = max(1.5, adjusted_cfg)
-            
-            if "flux-dev" in model or "flux-pro" in model:
-                kwargs.setdefault("num_inference_steps", 28)
-            else:
-                kwargs.setdefault("num_inference_steps", 4)
-            
-            kwargs.setdefault("guidance_scale", adjusted_cfg)
+        # 图生图强制使用 flux-dev (质量更好)
+        model = "flux-dev" if provider == "fal" else config.get("model")
         
-        return await self.generate(
+        # 检查灰度
+        if user_id:
+            use_canary, canary_config = should_use_canary(user_id, "image_generation", tier)
+            if use_canary and canary_config:
+                provider = canary_config["provider"]
+                model = canary_config["model"]
+        
+        # 获取适配器
+        adapter = get_image_adapter(provider)
+        if not adapter:
+            return AIResponse.from_error(
+                f"Adapter not available: {provider}",
+                AIErrorType.AUTH_ERROR,
+                provider,
+                model
+            )
+        
+        # 调用 AI
+        response = await adapter.image_to_image(
             prompt=prompt,
-            user_id=user_id,
-            tier=tier,
-            size=size,
+            image_url=image_url,
+            model=model,
+            strength=strength,
             **kwargs
         )
+        
+        # 追踪使用量
+        await track_ai_usage(
+            provider=provider,
+            model=model,
+            call_type="image",
+            success=response.success,
+            images=len(response.content) if isinstance(response.content, list) else 0,
+            latency_ms=response.latency_ms,
+            error_type=response.error_type
+        )
+        
+        return response
+    
+    async def _try_fallback(
+        self,
+        config: Dict[str, Any],
+        prompt: str,
+        size: str,
+        num_images: int,
+        negative_prompt: Optional[str],
+        num_inference_steps: Optional[int],
+        guidance_scale: Optional[float],
+        user_id: Optional[str],
+        **kwargs
+    ) -> AIResponse:
+        """
+        尝试使用 fallback 模型
+        """
+        fallback = get_fallback_config(config)
+        if not fallback:
+            return AIResponse.from_error(
+                "No fallback configured",
+                AIErrorType.API_ERROR,
+                config.get("provider", ""),
+                config.get("model", "")
+            )
+        
+        fb_provider = fallback["provider"]
+        fb_model = fallback["model"]
+        
+        logger.info(f"[UnifiedImage] Trying fallback: {fb_provider}/{fb_model}")
+        
+        adapter = get_image_adapter(fb_provider)
+        if not adapter:
+            return AIResponse.from_error(
+                f"Fallback adapter not available: {fb_provider}",
+                AIErrorType.AUTH_ERROR,
+                fb_provider,
+                fb_model
+            )
+        
+        response = await adapter.generate_image(
+            prompt=prompt,
+            model=fb_model,
+            size=size,
+            num_images=num_images,
+            negative_prompt=negative_prompt,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            **kwargs
+        )
+        
+        # 追踪 fallback 使用量
+        await track_ai_usage(
+            provider=fb_provider,
+            model=fb_model,
+            call_type="image",
+            success=response.success,
+            images=len(response.content) if isinstance(response.content, list) else 0,
+            latency_ms=response.latency_ms,
+            error_type=response.error_type
+        )
+        
+        return response
 
 
-# Module-level singleton
-unified_image = UnifiedImageService()
+# 单例
+unified_image_service = UnifiedImageService()
 
 
-# Convenience function
+# ==========================================
+# Convenience Functions
+# ==========================================
+
 async def generate_image(
     prompt: str,
+    user_id: Optional[str] = None,
+    tier: str = "free",
     **kwargs
-) -> ImageGenerationResult:
+) -> AIResponse:
     """
-    Convenience function for unified_image.generate().
-    
-    Usage:
-        >>> from services.ai.unified_image_service import generate_image
-        >>> result = await generate_image("A sunset over mountains")
+    便捷函数: 生成图像
     """
-    return await unified_image.generate(prompt, **kwargs)
+    return await unified_image_service.generate(
+        prompt=prompt,
+        user_id=user_id,
+        tier=tier,
+        **kwargs
+    )
+
+
+async def image_to_image(
+    prompt: str,
+    image_url: str,
+    user_id: Optional[str] = None,
+    tier: str = "free",
+    **kwargs
+) -> AIResponse:
+    """
+    便捷函数: 图生图
+    """
+    return await unified_image_service.image_to_image(
+        prompt=prompt,
+        image_url=image_url,
+        user_id=user_id,
+        tier=tier,
+        **kwargs
+    )

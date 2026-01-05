@@ -1,62 +1,50 @@
 """
-Unified Text Service
-统一文本服务
+Unified Text AI Service
+统一文本 AI 服务
 
-Provides a single interface for all text/chat AI operations.
-Handles:
-- Model configuration
-- Canary releases
-- Caching
-- Usage tracking
-- Fallback handling
+Provides:
+- Single entry point for all text AI operations
+- Automatic model selection based on configuration
+- Canary release support
+- Caching and usage tracking
+- Automatic fallback on errors
 """
 
 import time
 import logging
 from typing import List, Dict, Optional, Any
 
+from .base import AIResponse, AIUsage, AIErrorType
+from .adapters import get_text_adapter
 from .model_config import (
     get_text_model_config,
     get_admin_model_config,
-    ModelConfig,
+    get_fallback_config,
+    is_provider_enabled
 )
 from .canary import should_use_canary
-from .usage_tracker import track_ai_usage, estimate_text_cost
-from .adapters import get_text_adapter
-from .base import (
-    TextCompletionResult,
-    AIAdapterError,
-    AIRateLimitError,
-)
-from ..cache import cache_service
+from .ai_cache import get_cached_result, set_cached_result
+from .usage_tracker import track_ai_usage
 
 logger = logging.getLogger(__name__)
 
 
 class UnifiedTextService:
     """
-    Unified text completion service.
+    统一文本 AI 服务
     
-    Provides a single interface for all text/chat operations,
-    abstracting away provider details and handling:
-    - Dynamic model selection
-    - Canary releases
-    - Caching (for identical prompts)
-    - Usage tracking
-    - Automatic fallback
-    
-    Usage:
-        >>> from services.ai.unified_text_service import unified_text
-        >>> result = await unified_text.chat([
-        ...     {"role": "user", "content": "Hello!"}
-        ... ])
-        >>> print(result.content)
+    集成了:
+    - 模型配置管理
+    - 灰度发布
+    - 缓存
+    - 使用量追踪
+    - 自动降级
     """
     
     async def chat(
         self,
         messages: List[Dict[str, str]],
-        user_id: str = None,
+        user_id: Optional[str] = None,
         tier: str = "free",
         use_admin_model: bool = False,
         use_cache: bool = True,
@@ -64,229 +52,224 @@ class UnifiedTextService:
         max_tokens: Optional[int] = None,
         response_format: Optional[Dict] = None,
         **kwargs
-    ) -> TextCompletionResult:
+    ) -> AIResponse:
         """
-        Perform chat completion.
+        统一聊天接口
         
         Args:
-            messages: List of message dicts with 'role' and 'content'
-            user_id: User identifier (for canary bucketing)
-            tier: User tier ("free", "starter", "pro")
-            use_admin_model: Use admin analysis model instead
-            use_cache: Enable response caching
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            response_format: Response format (e.g., {"type": "json_object"})
-            **kwargs: Additional provider-specific parameters
+            messages: 消息列表 [{"role": "user", "content": "..."}]
+            user_id: 用户 ID (用于灰度分流和追踪)
+            tier: 用户等级 (free, starter, pro)
+            use_admin_model: 是否使用 Admin 模型
+            use_cache: 是否使用缓存
+            temperature: 温度 (0-2)
+            max_tokens: 最大输出 token 数
+            response_format: 响应格式
+            **kwargs: 其他参数
             
         Returns:
-            TextCompletionResult with content and usage
+            AIResponse 对象
         """
-        start_time = time.time()
-        
-        # 1. Get model configuration
+        # 1. 获取模型配置
         if use_admin_model:
             config = get_admin_model_config()
         else:
             config = get_text_model_config()
         
-        provider = config.provider
-        model = config.model
+        provider = config.get("provider", "openai")
+        model = config.get("model", "gpt-4o-mini")
         
-        # 2. Check canary release
+        # 2. 检查灰度 (仅用户模型)
+        is_canary = False
         if user_id and not use_admin_model:
-            use_canary, canary_config = should_use_canary(
-                user_id, "text_reasoning", tier
-            )
+            use_canary, canary_config = should_use_canary(user_id, "text_reasoning", tier)
             if use_canary and canary_config:
                 provider = canary_config["provider"]
                 model = canary_config["model"]
+                is_canary = True
                 logger.info(f"[UnifiedText] Using canary: {provider}/{model}")
         
-        # 3. Check cache
-        prompt_key = self._make_cache_key(messages, provider, model, kwargs)
+        # 3. 检查缓存
+        prompt = messages[-1]["content"] if messages else ""
         if use_cache:
-            cached = cache_service.get_ai_result(prompt_key)
-            if cached:
-                logger.debug(f"[UnifiedText] Cache hit: {prompt_key[:16]}")
-                return TextCompletionResult(
-                    content=cached.get("content", ""),
-                    usage=cached.get("usage", {}),
-                    model=model,
-                    provider=provider,
-                    finish_reason="cached",
-                )
-        
-        # 4. Call AI provider
-        result = None
-        success = False
-        error_message = None
-        
-        try:
-            adapter = get_text_adapter(provider)
-            result = await adapter.chat_completion(
-                messages=messages,
-                model=model,
+            cached = get_cached_result(
+                provider, model, prompt, "text",
                 temperature=temperature,
                 max_tokens=max_tokens,
-                response_format=response_format,
-                **kwargs
+                response_format=response_format
             )
-            success = True
-            
-        except AIAdapterError as e:
-            error_message = str(e)
-            logger.warning(f"[UnifiedText] Primary failed: {e}")
-            
-            # Try fallback
-            if config.fallback_provider and config.fallback_model:
-                try:
-                    logger.info(
-                        f"[UnifiedText] Trying fallback: "
-                        f"{config.fallback_provider}/{config.fallback_model}"
-                    )
-                    fallback_adapter = get_text_adapter(config.fallback_provider)
-                    result = await fallback_adapter.chat_completion(
-                        messages=messages,
-                        model=config.fallback_model,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        response_format=response_format,
-                        **kwargs
-                    )
-                    # Update provider/model to fallback
-                    provider = config.fallback_provider
-                    model = config.fallback_model
-                    success = True
-                    
-                except Exception as fb_error:
-                    logger.error(f"[UnifiedText] Fallback also failed: {fb_error}")
-                    raise AIAdapterError(
-                        f"Both primary and fallback failed: {error_message}",
-                        provider=provider,
-                        model=model
-                    )
+            if cached:
+                logger.debug(f"[UnifiedText] Cache hit for {provider}/{model}")
+                return AIResponse(
+                    success=True,
+                    content=cached,
+                    model=model,
+                    provider=provider,
+                    usage=AIUsage()  # 缓存不消耗 token
+                )
+        
+        # 4. 检查提供商是否启用
+        if not is_provider_enabled(provider):
+            logger.warning(f"[UnifiedText] Provider not enabled: {provider}")
+            # 尝试使用 fallback
+            fallback = get_fallback_config(config)
+            if fallback:
+                provider = fallback["provider"]
+                model = fallback["model"]
             else:
-                raise
+                return AIResponse.from_error(
+                    f"Provider {provider} is not enabled",
+                    AIErrorType.AUTH_ERROR,
+                    provider,
+                    model
+                )
         
-        # 5. Track usage
-        latency_ms = int((time.time() - start_time) * 1000)
-        input_tokens = result.usage.input_tokens if result else 0
-        output_tokens = result.usage.output_tokens if result else 0
-        cost = estimate_text_cost(provider, model, input_tokens, output_tokens)
+        # 5. 获取适配器
+        adapter = get_text_adapter(provider)
+        if not adapter:
+            logger.error(f"[UnifiedText] Adapter not available: {provider}")
+            # 尝试 fallback
+            return await self._try_fallback(
+                config, messages, temperature, max_tokens, response_format, user_id, **kwargs
+            )
         
+        # 6. 调用 AI
+        response = await adapter.chat_completion(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            **kwargs
+        )
+        
+        # 7. 追踪使用量 (异步)
         await track_ai_usage(
             provider=provider,
             model=model,
             call_type="text",
-            success=success,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            latency_ms=latency_ms,
-            cost_usd=cost,
+            success=response.success,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            latency_ms=response.latency_ms,
+            error_type=response.error_type
         )
         
-        # 6. Cache result
-        if use_cache and result:
-            cache_service.set_ai_result(
-                prompt_key,
-                {
-                    "content": result.content,
-                    "usage": result.usage.to_dict(),
-                },
-                ttl=86400  # 24 hours
+        # 8. 缓存成功结果
+        if response.success and use_cache and response.content:
+            set_cached_result(
+                provider, model, prompt, response.content, "text",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format
             )
         
-        return result
+        # 9. 失败时尝试 fallback
+        if not response.success and not is_canary:
+            fallback_response = await self._try_fallback(
+                config, messages, temperature, max_tokens, response_format, user_id, **kwargs
+            )
+            if fallback_response.success:
+                return fallback_response
+        
+        return response
     
-    async def chat_simple(
+    async def _try_fallback(
         self,
-        prompt: str,
-        system_prompt: str = None,
-        **kwargs
-    ) -> str:
-        """
-        Simple chat interface for single-turn conversations.
-        
-        Args:
-            prompt: User prompt
-            system_prompt: Optional system prompt
-            **kwargs: Additional parameters for chat()
-            
-        Returns:
-            Response content string
-        """
-        messages = []
-        
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        
-        messages.append({"role": "user", "content": prompt})
-        
-        result = await self.chat(messages, **kwargs)
-        return result.content
-    
-    async def chat_json(
-        self,
+        config: Dict[str, Any],
         messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: Optional[int],
+        response_format: Optional[Dict],
+        user_id: Optional[str],
         **kwargs
-    ) -> Dict:
+    ) -> AIResponse:
         """
-        Chat with JSON response format.
-        
-        Args:
-            messages: Message list
-            **kwargs: Additional parameters
-            
-        Returns:
-            Parsed JSON response
+        尝试使用 fallback 模型
         """
-        import json
+        fallback = get_fallback_config(config)
+        if not fallback:
+            return AIResponse.from_error(
+                "No fallback configured",
+                AIErrorType.API_ERROR,
+                config.get("provider", ""),
+                config.get("model", "")
+            )
         
-        kwargs["response_format"] = {"type": "json_object"}
-        result = await self.chat(messages, **kwargs)
+        fb_provider = fallback["provider"]
+        fb_model = fallback["model"]
         
-        try:
-            return json.loads(result.content)
-        except json.JSONDecodeError:
-            logger.warning("[UnifiedText] Failed to parse JSON response")
-            return {"error": "Invalid JSON", "raw": result.content}
-    
-    def _make_cache_key(
-        self,
-        messages: List[Dict],
-        provider: str,
-        model: str,
-        kwargs: Dict
-    ) -> str:
-        """Generate cache key for request."""
-        import json
+        logger.info(f"[UnifiedText] Trying fallback: {fb_provider}/{fb_model}")
         
-        # Create deterministic string from request
-        prompt_str = json.dumps(messages, sort_keys=True)
-        params_str = json.dumps(kwargs, sort_keys=True)
+        adapter = get_text_adapter(fb_provider)
+        if not adapter:
+            return AIResponse.from_error(
+                f"Fallback adapter not available: {fb_provider}",
+                AIErrorType.AUTH_ERROR,
+                fb_provider,
+                fb_model
+            )
         
-        return cache_service.get_ai_hash(
-            prompt=prompt_str,
-            model=f"{provider}/{model}",
-            params={"kwargs": params_str}
+        response = await adapter.chat_completion(
+            messages=messages,
+            model=fb_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            **kwargs
         )
+        
+        # 追踪 fallback 使用量
+        await track_ai_usage(
+            provider=fb_provider,
+            model=fb_model,
+            call_type="text",
+            success=response.success,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            latency_ms=response.latency_ms,
+            error_type=response.error_type
+        )
+        
+        return response
 
 
-# Module-level singleton
-unified_text = UnifiedTextService()
+# 单例
+unified_text_service = UnifiedTextService()
 
 
-# Convenience function
+# ==========================================
+# Convenience Functions
+# ==========================================
+
 async def chat(
     messages: List[Dict[str, str]],
+    user_id: Optional[str] = None,
+    tier: str = "free",
     **kwargs
-) -> TextCompletionResult:
+) -> AIResponse:
     """
-    Convenience function for unified_text.chat().
-    
-    Usage:
-        >>> from services.ai.unified_text_service import chat
-        >>> result = await chat([{"role": "user", "content": "Hello"}])
+    便捷函数: 用户文本聊天
     """
-    return await unified_text.chat(messages, **kwargs)
+    return await unified_text_service.chat(
+        messages=messages,
+        user_id=user_id,
+        tier=tier,
+        use_admin_model=False,
+        **kwargs
+    )
+
+
+async def admin_chat(
+    messages: List[Dict[str, str]],
+    **kwargs
+) -> AIResponse:
+    """
+    便捷函数: Admin 分析聊天
+    """
+    return await unified_text_service.chat(
+        messages=messages,
+        use_admin_model=True,
+        use_cache=False,  # Admin 分析通常不缓存
+        **kwargs
+    )

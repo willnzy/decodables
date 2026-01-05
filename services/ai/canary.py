@@ -1,157 +1,171 @@
 """
-AI Model Canary Release
-AI 模型灰度发布
+Canary Release Logic for AI Models
+AI 模型灰度发布逻辑
 
-Provides deterministic traffic splitting for testing new AI models
-before full rollout.
-
-Features:
-- Hash-based user bucketing (deterministic)
-- Tier-based targeting
-- Configurable traffic percentage
+Provides:
+- Deterministic traffic splitting based on user ID
+- Support for targeting specific user tiers
+- Configuration-driven canary settings
 """
 
 import hashlib
 import logging
-from typing import Dict, Optional, Tuple
-from dataclasses import dataclass
+from typing import Tuple, Optional, Dict, Any
 
 from ..config_service import get_config
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class CanaryConfig:
-    """Canary release configuration"""
-    enabled: bool
-    canary_provider: str
-    canary_model: str
-    traffic_percent: int  # 0-100
-    target_tiers: list  # ["pro", "starter", ...]
+# ==========================================
+# Canary Release Functions
+# ==========================================
 
-
-def get_canary_config() -> Dict:
+def get_canary_config() -> Dict[str, Any]:
     """
-    Get full canary configuration from system_configs.
+    获取灰度发布配置
     
     Returns:
-        Canary config dict
+        {
+            "enabled": False,
+            "text_reasoning": {
+                "canary_provider": "qwen",
+                "canary_model": "qwen-plus",
+                "traffic_percent": 10,
+                "target_tiers": ["pro"]
+            },
+            "image_generation": {
+                "canary_provider": "jimeng",
+                "canary_model": "jimeng-2.1",
+                "traffic_percent": 5,
+                "target_tiers": ["pro"]
+            }
+        }
     """
-    return get_config("ai_model.canary") or {
-        "enabled": False,
-        "text_reasoning": None,
-        "image_generation": None,
-    }
-
-
-def _get_user_bucket(user_id: str, model_type: str) -> int:
-    """
-    Get deterministic bucket (0-99) for a user.
-    
-    Uses MD5 hash to ensure same user always gets same bucket.
-    
-    Args:
-        user_id: User identifier
-        model_type: "text_reasoning" or "image_generation"
-        
-    Returns:
-        Bucket number 0-99
-    """
-    # Create hash input
-    hash_input = f"{user_id}:{model_type}"
-    hash_value = hashlib.md5(hash_input.encode()).hexdigest()
-    
-    # Convert first 8 chars of hex to int, then mod 100
-    bucket = int(hash_value[:8], 16) % 100
-    
-    return bucket
+    return get_config("ai_model.canary") or {"enabled": False}
 
 
 def should_use_canary(
     user_id: str,
     model_type: str,
     tier: str = "free"
-) -> Tuple[bool, Optional[Dict]]:
+) -> Tuple[bool, Optional[Dict[str, str]]]:
     """
-    Determine if a user should use the canary model.
+    判断是否应该使用灰度模型
     
-    Uses deterministic hashing to ensure consistent experience
-    for the same user across requests.
+    基于用户 ID 的确定性哈希分流，确保同一用户始终获得相同的分配结果。
     
     Args:
-        user_id: User identifier (user code or visitor ID)
-        model_type: "text_reasoning" or "image_generation"
-        tier: User tier ("free", "starter", "pro")
+        user_id: 用户 ID (或 visitor_xxx)
+        model_type: 模型类型 ('text_reasoning' | 'image_generation')
+        tier: 用户等级 ('free', 'starter', 'pro')
         
     Returns:
-        Tuple of (should_use_canary, canary_config_dict or None)
-        
-    Example:
-        >>> use_canary, config = should_use_canary("user123", "text_reasoning", "pro")
-        >>> if use_canary:
-        ...     provider = config["provider"]
-        ...     model = config["model"]
+        (should_use_canary, canary_config)
+        - should_use_canary: 是否使用灰度模型
+        - canary_config: {"provider": "qwen", "model": "qwen-plus"} 或 None
     """
-    # Get canary config
+    # 获取灰度配置
     canary_config = get_canary_config()
     
-    # Check if canary is globally enabled
+    # 检查是否启用
     if not canary_config.get("enabled", False):
         return False, None
     
-    # Get model-specific canary config
+    # 获取对应模型类型的灰度配置
     model_canary = canary_config.get(model_type)
     if not model_canary:
+        logger.debug(f"[Canary] No canary config for model_type: {model_type}")
         return False, None
     
-    # Check tier targeting
+    # 检查目标 tier
     target_tiers = model_canary.get("target_tiers", [])
     if target_tiers and tier not in target_tiers:
-        # User's tier is not in target list
+        logger.debug(f"[Canary] User tier '{tier}' not in target_tiers: {target_tiers}")
         return False, None
     
-    # Get traffic percentage
+    # 获取流量百分比
     traffic_percent = model_canary.get("traffic_percent", 0)
     if traffic_percent <= 0:
         return False, None
     
-    # Determine user bucket
+    # 基于用户 ID 的确定性分流
     user_bucket = _get_user_bucket(user_id, model_type)
     
-    # Check if user is in canary group
     if user_bucket < traffic_percent:
-        logger.debug(
-            f"[Canary] User {user_id[:8]}... in canary group "
-            f"(bucket={user_bucket}, threshold={traffic_percent})"
-        )
+        logger.info(f"[Canary] User {user_id[:8]}... assigned to canary (bucket={user_bucket}, threshold={traffic_percent})")
         return True, {
-            "provider": model_canary.get("canary_provider"),
-            "model": model_canary.get("canary_model"),
+            "provider": model_canary["canary_provider"],
+            "model": model_canary["canary_model"]
         }
     
+    logger.debug(f"[Canary] User {user_id[:8]}... assigned to control (bucket={user_bucket}, threshold={traffic_percent})")
     return False, None
 
 
-def get_canary_stats() -> Dict:
+def _get_user_bucket(user_id: str, model_type: str) -> int:
     """
-    Get canary release statistics (for admin dashboard).
+    计算用户的分流桶 (0-99)
     
+    使用 MD5 哈希确保:
+    1. 同一用户在同一模型类型下始终获得相同的桶
+    2. 分布均匀
+    3. 不同模型类型的分配相互独立
+    
+    Args:
+        user_id: 用户 ID
+        model_type: 模型类型
+        
     Returns:
-        Dict with canary status and configuration
+        0-99 的整数
     """
-    canary_config = get_canary_config()
+    # 组合用户 ID 和模型类型
+    hash_input = f"{user_id}:{model_type}:canary"
     
+    # MD5 哈希
+    hash_value = hashlib.md5(hash_input.encode()).hexdigest()
+    
+    # 取前 8 位转换为整数，然后取模 100
+    bucket = int(hash_value[:8], 16) % 100
+    
+    return bucket
+
+
+def get_effective_model_config(
+    user_id: str,
+    model_type: str,
+    tier: str,
+    base_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    获取考虑灰度后的有效模型配置
+    
+    这是一个便捷函数，自动处理灰度判断和配置合并。
+    
+    Args:
+        user_id: 用户 ID
+        model_type: 模型类型 ('text_reasoning' | 'image_generation')
+        tier: 用户等级
+        base_config: 基础配置 (从 model_config.py 获取)
+        
+    Returns:
+        有效的模型配置，可能是基础配置或灰度配置
+    """
+    use_canary, canary_config = should_use_canary(user_id, model_type, tier)
+    
+    if use_canary and canary_config:
+        # 返回灰度配置
+        return {
+            **base_config,
+            "provider": canary_config["provider"],
+            "model": canary_config["model"],
+            "is_canary": True
+        }
+    
+    # 返回基础配置
     return {
-        "enabled": canary_config.get("enabled", False),
-        "text_reasoning": {
-            "active": canary_config.get("text_reasoning") is not None,
-            "config": canary_config.get("text_reasoning"),
-        },
-        "image_generation": {
-            "active": canary_config.get("image_generation") is not None,
-            "config": canary_config.get("image_generation"),
-        },
+        **base_config,
+        "is_canary": False
     }
 
 
@@ -159,68 +173,37 @@ def get_canary_stats() -> Dict:
 # Admin Functions
 # ==========================================
 
-def update_canary_config(
-    enabled: bool,
-    text_reasoning: Optional[Dict] = None,
-    image_generation: Optional[Dict] = None,
-    updated_by: str = None
-) -> bool:
+def get_canary_status() -> Dict[str, Any]:
     """
-    Update canary release configuration.
+    获取灰度发布状态 (用于 Admin 面板)
     
-    Args:
-        enabled: Global enable/disable
-        text_reasoning: Text model canary config
-        image_generation: Image model canary config
-        updated_by: Admin user ID
-        
     Returns:
-        True if successful
-        
-    Example config:
-        text_reasoning = {
-            "canary_provider": "qwen",
-            "canary_model": "qwen-plus",
-            "traffic_percent": 10,
-            "target_tiers": ["pro"]
+        {
+            "enabled": True/False,
+            "text_reasoning": {
+                "enabled": True,
+                "canary_provider": "qwen",
+                "canary_model": "qwen-plus",
+                "traffic_percent": 10,
+                "target_tiers": ["pro"]
+            },
+            "image_generation": {...}
         }
     """
-    from ..config_service import set_config
+    config = get_canary_config()
     
-    config = {
-        "enabled": enabled,
+    status = {
+        "enabled": config.get("enabled", False)
     }
     
-    if text_reasoning:
-        config["text_reasoning"] = {
-            "canary_provider": text_reasoning.get("canary_provider"),
-            "canary_model": text_reasoning.get("canary_model"),
-            "traffic_percent": text_reasoning.get("traffic_percent", 0),
-            "target_tiers": text_reasoning.get("target_tiers", []),
+    for model_type in ["text_reasoning", "image_generation"]:
+        model_canary = config.get(model_type, {})
+        status[model_type] = {
+            "enabled": bool(model_canary.get("canary_provider")),
+            "canary_provider": model_canary.get("canary_provider", ""),
+            "canary_model": model_canary.get("canary_model", ""),
+            "traffic_percent": model_canary.get("traffic_percent", 0),
+            "target_tiers": model_canary.get("target_tiers", [])
         }
     
-    if image_generation:
-        config["image_generation"] = {
-            "canary_provider": image_generation.get("canary_provider"),
-            "canary_model": image_generation.get("canary_model"),
-            "traffic_percent": image_generation.get("traffic_percent", 0),
-            "target_tiers": image_generation.get("target_tiers", []),
-        }
-    
-    return set_config("ai_model.canary", config, updated_by)
-
-
-def disable_canary(updated_by: str = None) -> bool:
-    """
-    Quickly disable all canary releases.
-    
-    Returns:
-        True if successful
-    """
-    from ..config_service import set_config
-    
-    # Keep existing config but disable
-    config = get_canary_config()
-    config["enabled"] = False
-    
-    return set_config("ai_model.canary", config, updated_by)
+    return status
