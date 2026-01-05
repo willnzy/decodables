@@ -23,7 +23,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
-from dependencies import require_admin, verify_auth
+from dependencies import require_admin
 from services import experiment_service
 
 # ==========================================

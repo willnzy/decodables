@@ -624,12 +624,13 @@ def aggregate_experiment_results(experiment_key: str = None) -> bool:
                 participants = participants_result.count or 0
                 
                 # 统计曝光次数（今天）
+                # 注意：需要获取 event_data 来过滤特定实验和变体
                 exposures_result = supabase.table("analytics_events")\
-                    .select("id", count="exact")\
+                    .select("event_data")\
                     .eq("event_type", "md_experiment_viewed")\
                     .gte("created_at", today.isoformat())\
                     .execute()
-                # 需要过滤 event_data 中的 experiment_key
+                # 过滤 event_data 中的 experiment_key 和 variant_key
                 exposures = 0
                 if exposures_result.data:
                     for event in exposures_result.data:
