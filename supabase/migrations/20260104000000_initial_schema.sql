@@ -307,6 +307,8 @@ CREATE TABLE IF NOT EXISTS user_events (
   -- v3.9: Timezone support
   timezone TEXT DEFAULT 'UTC',
   created_at_local TIMESTAMP,
+  -- v3.19: event_id for CAPI/sGTM deduplication
+  event_id VARCHAR(100),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_user_events_created_at ON user_events(created_at DESC);
@@ -314,8 +316,11 @@ CREATE INDEX IF NOT EXISTS idx_user_events_event_type ON user_events(event_type)
 CREATE INDEX IF NOT EXISTS idx_user_events_user_id ON user_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_user_events_properties ON user_events USING gin(properties);
+-- v3.19: event_id indexes for CAPI deduplication
+CREATE INDEX IF NOT EXISTS idx_user_events_event_id ON user_events(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_user_events_type_event_id ON user_events(event_type, event_id) WHERE event_id IS NOT NULL;
 
--- 16. Analytics events (v3.4 + v3.11 enhancements)
+-- 16. Analytics events (v3.4 + v3.11 enhancements + v3.19 event_id)
 CREATE TABLE IF NOT EXISTS analytics_events (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT,
@@ -328,6 +333,8 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   -- v3.9: Timezone support
   timezone TEXT DEFAULT 'UTC',
   created_at_local TIMESTAMP,
+  -- v3.19: event_id for CAPI/sGTM deduplication
+  event_id VARCHAR(100),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id ON analytics_events(user_id);
@@ -335,6 +342,9 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_event_type ON analytics_events(e
 CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name ON analytics_events(event_name);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at ON analytics_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id ON analytics_events(session_id);
+-- v3.19: event_id indexes for CAPI deduplication
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_id ON analytics_events(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_analytics_events_type_event_id ON analytics_events(event_type, event_id) WHERE event_id IS NOT NULL;
 
 -- 17. Error logs
 CREATE TABLE IF NOT EXISTS error_logs (

@@ -692,6 +692,7 @@ class AdminCancelSubscriptionRequest(BaseModel):
 
 class AnalyticsEvent(BaseModel):
     event_type: str
+    event_id: Optional[str] = None  # v3.19: For CAPI/sGTM deduplication
     event_level: Optional[str] = None
     timestamp: Optional[str] = None
     utc_timestamp: Optional[str] = None
@@ -893,46 +894,10 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
     return {"status": "ok"}
 
 # --- Analytics ---
-@app.post("/api/analytics/events")
-async def track_analytics_events(request: AnalyticsEventsRequest):
-    """
-    Receive and store analytics events from frontend.
-    Events are batched and sent periodically.
-    """
-    try:
-        events = request.events
-        
-        # Store events in database
-        for event in events:
-            event_data = {
-                "event_type": event.event_type,
-                "event_level": event.event_level,
-                "timestamp": event.timestamp,
-                "properties": event.properties or {},
-                "session_id": event.session_id,
-                "env": event.env or {},
-                "user_properties": event.user_properties or {},
-            }
-            
-            # Try to get user_id from user_properties
-            user_id = None
-            if event.user_properties:
-                user_id = event.user_properties.get("user_id")
-            
-            # Insert into analytics_events table
-            supabase.table("analytics_events").insert({
-                "user_id": user_id,
-                "event_type": event.event_type,
-                "event_level": event.event_level,
-                "event_data": event_data,
-                "session_id": event.session_id,
-            }).execute()
-        
-        return {"status": "ok", "events_received": len(events)}
-    except Exception as e:
-        # Log error but don't fail - analytics should not break the app
-        print(f"[Analytics] Error storing events: {e}")
-        return {"status": "ok", "events_received": len(request.events), "warning": "Some events may not have been stored"}
+# Note: The main analytics endpoint is at line ~5941 (log_analytics_events)
+# which has rate limiting, IP/geo enrichment, and writes to user_events table.
+# The AnalyticsEventsRequest model is kept for potential future use with
+# a separate structured analytics endpoint.
 
 # --- Error Logging ---
 class ErrorLogRequest(BaseModel):
@@ -5940,6 +5905,10 @@ def get_cloudflare_geo(request: Request) -> dict:
 async def log_analytics_events(request: Request, req: UserEventsRequest, user: dict = Depends(get_current_user_optional)):
     """
     Record user analytics events (batch submission with auto IP/geo/device enrichment).
+    
+    Writes to both user_events and analytics_events tables:
+    - user_events: For behavioral analytics with enriched properties
+    - analytics_events: For structured event tracking with event_level support
     """
     user_id = user.get("id") if user else None
     
@@ -5973,8 +5942,11 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
     
     for event in req.events:
         event_type = event.get("event_type")
+        event_id = event.get("event_id")  # v3.19: For CAPI deduplication
+        event_level = event.get("event_level")
         properties = event.get("properties", {})
         env_info = event.get("env", {})
+        user_properties = event.get("user_properties", {})
         
         # Merge server-side enrichment into properties
         enriched_properties = {
@@ -5996,15 +5968,41 @@ async def log_analytics_events(request: Request, req: UserEventsRequest, user: d
             "client_connection_type": env_info.get("connection_type"),
         }
         
-        # Store event
+        # 1. Store to user_events table (behavioral analytics)
+        # v3.19: Pass event_id for CAPI/sGTM deduplication
         log_user_event(
             user_id=user_id,
             event_type=event_type,
             properties=enriched_properties,
-            session_id=event.get("session_id")
+            session_id=event.get("session_id"),
+            event_id=event_id
         )
         
-        # Mirror key events into activity_logs
+        # 2. Also store to analytics_events table (structured analytics)
+        # This table supports event_level and is used for aggregation/reporting
+        try:
+            event_data = {
+                "event_type": event_type,
+                "event_level": event_level,
+                "timestamp": event.get("timestamp"),
+                "properties": enriched_properties,
+                "session_id": event.get("session_id"),
+                "env": env_info,
+                "user_properties": user_properties,
+            }
+            supabase.table("analytics_events").insert({
+                "user_id": user_id or user_properties.get("user_id"),
+                "event_type": event_type,
+                "event_id": event_id,  # v3.19: For CAPI deduplication
+                "event_level": event_level,
+                "event_data": event_data,
+                "session_id": event.get("session_id"),
+            }).execute()
+        except Exception as e:
+            # Don't fail if analytics_events insert fails
+            print(f"[Analytics] Warning: Failed to insert to analytics_events: {e}")
+        
+        # 3. Mirror key events into activity_logs
         if user_id and event_type in ACTIVITY_LOG_EVENTS:
             log_activity(user_id, ACTIVITY_LOG_EVENTS[event_type], enriched_properties)
     

@@ -124,10 +124,15 @@ def _insert_event(
     anonymous_id: Optional[str] = None,
     properties: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
+    event_id: Optional[str] = None,  # v3.19: For CAPI/sGTM deduplication
 ) -> bool:
     """
     Internal function to insert event into database.
     Returns True if successful, False otherwise.
+    
+    Args:
+        event_id: Optional event ID for CAPI/sGTM deduplication. 
+                  If not provided, auto-generated for server-side events.
     """
     if supabase is None:
         _logger.warning(f"Analytics: Supabase not available, skipping event: {event_name}")
@@ -135,8 +140,12 @@ def _insert_event(
     
     try:
         # Build event data
+        # v3.19: Include event_id for CAPI/sGTM deduplication
+        generated_event_id = event_id or str(uuid.uuid4())
+        
         event_data = {
             "event_name": event_name,
+            "event_id": generated_event_id,  # v3.19: For CAPI deduplication
             "user_id": user_id,
             "session_id": session_id or str(uuid.uuid4()),  # Generate if not provided
             "anonymous_id": anonymous_id,
@@ -172,6 +181,7 @@ def track_event(
     properties: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
     blocking: bool = False,
+    event_id: Optional[str] = None,  # v3.19: For CAPI/sGTM deduplication
 ) -> None:
     """
     Track an analytics event (fire-and-forget by default).
@@ -183,6 +193,7 @@ def track_event(
         properties: Event-specific data
         context: Additional context (IP, user agent, etc.)
         blocking: If True, wait for database write to complete
+        event_id: Optional event ID for CAPI/sGTM deduplication (v3.19)
     
     Example:
         track_event(
@@ -192,12 +203,12 @@ def track_event(
         )
     """
     if blocking:
-        _insert_event(event_name, user_id, session_id, None, properties, context)
+        _insert_event(event_name, user_id, session_id, None, properties, context, event_id)
     else:
         # Fire-and-forget: submit to thread pool
         _executor.submit(
             _insert_event,
-            event_name, user_id, session_id, None, properties, context
+            event_name, user_id, session_id, None, properties, context, event_id
         )
 
 
@@ -207,12 +218,16 @@ async def track_event_async(
     session_id: Optional[str] = None,
     properties: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
+    event_id: Optional[str] = None,  # v3.19: For CAPI/sGTM deduplication
 ) -> bool:
     """
     Track an analytics event asynchronously.
     
     Use this in async contexts (async def handlers).
     Returns True if successful.
+    
+    Args:
+        event_id: Optional event ID for CAPI/sGTM deduplication (v3.19)
     
     Example:
         await track_event_async(
@@ -227,7 +242,7 @@ async def track_event_async(
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         _executor,
-        lambda: _insert_event(event_name, user_id, session_id, None, properties, context)
+        lambda: _insert_event(event_name, user_id, session_id, None, properties, context, event_id)
     )
 
 

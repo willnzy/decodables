@@ -3410,15 +3410,23 @@ def admin_get_behavior_analysis(start_date: str = None, end_date: str = None):
 # 19. User Events Tracking
 # ==========================================
 
-def log_user_event(user_id: str, event_type: str, properties: dict = None, session_id: str = None):
+def log_user_event(user_id: str, event_type: str, properties: dict = None, session_id: str = None, event_id: str = None):
     """
     Log user behavioral event
+    
+    Args:
+        user_id: User ID
+        event_type: Event type string
+        properties: Event properties dict
+        session_id: Session ID
+        event_id: Optional event ID for CAPI/sGTM deduplication (v3.19)
     """
     supabase.table("user_events").insert({
         "user_id": user_id,
         "event_type": event_type,
         "properties": properties or {},
         "session_id": session_id,
+        "event_id": event_id,  # v3.19: For CAPI deduplication
         "created_at": datetime.now(timezone.utc).isoformat()
     }).execute()
 

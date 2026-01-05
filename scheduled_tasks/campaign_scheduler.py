@@ -24,6 +24,7 @@ Cron example (run every hour):
 
 import os
 import sys
+import uuid
 import argparse
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional, Dict, Any, List
@@ -283,6 +284,7 @@ def log_current_theme() -> Optional[Dict]:
                 try:
                     supabase.table('analytics_events').insert({
                         'event_type': 'holiday_theme_active',
+                        'event_id': str(uuid.uuid4()),  # v3.19: For consistency
                         'event_data': {
                             'theme_id': theme['id'],
                             'theme_name': theme['name'],
