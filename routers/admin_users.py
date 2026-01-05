@@ -175,9 +175,34 @@ def adm_users_by_tier(tier: str, admin: dict = Depends(require_admin)):
 
 
 @router.get("/user/{uid}/projects")
-def adm_user_projects(uid: str, admin: dict = Depends(require_admin)):
-    """Get all projects for a user (admin view)."""
-    return admin_get_user_projects(uid)
+def adm_user_projects(
+    uid: str,
+    page: int = 1,
+    limit: int = 20,
+    include_deleted: bool = True,
+    admin: dict = Depends(require_admin)
+):
+    """Fetch all projects owned by a specific user."""
+    return admin_get_user_projects(uid, page, limit, include_deleted)
+
+
+@router.post("/projects/{project_id}/restore")
+def adm_restore_project(project_id: str, admin: dict = Depends(require_admin)):
+    """Restore a deleted project."""
+    from services.db_service import restore_project
+    project = restore_project(project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    log_activity(admin["id"], "admin_project_restore", {"project_id": project_id})
+    return project
+
+
+@router.get("/projects/feed")
+def adm_projects_feed(page: int = 1, limit: int = 50, admin: dict = Depends(require_admin)):
+    """Fetch the site-wide project feed."""
+    from services.db_service import get_all_projects_feed
+    items = get_all_projects_feed(page, limit)
+    return {"items": items, "total": len(items), "page": page}
 
 
 @router.get("/user/{uid}/asset-usage")

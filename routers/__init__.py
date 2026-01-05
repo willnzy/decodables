@@ -36,6 +36,9 @@ from .admin_notifications import router as admin_notifications_router
 from .admin_stats import router as admin_stats_router
 from .admin_moderation import router as admin_moderation_router
 from .admin_logs import router as admin_logs_router
+from .admin_ai import router as admin_ai_router
+from .admin_events import router as admin_events_router
+from .admin_config import router as admin_config_router
 
 __all__ = [
     'admin_router',
@@ -59,4 +62,7 @@ __all__ = [
     'admin_stats_router',
     'admin_moderation_router',
     'admin_logs_router',
+    'admin_ai_router',
+    'admin_events_router',
+    'admin_config_router',
 ]
