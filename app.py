@@ -5822,7 +5822,7 @@ async def adm_generate_ai_report(
     from services.ai_report_service import generate_ai_business_report
     
     try:
-        report = await generate_ai_business_report(
+        report = generate_ai_business_report(
             report_type=report_type,
             time_range=time_range
         )

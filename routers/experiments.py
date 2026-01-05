@@ -459,7 +459,7 @@ class AIAnalysisRequest(BaseModel):
 
 
 @admin_router.post("/{experiment_key}/ai-analysis")
-async def get_ai_analysis(
+def get_ai_analysis(
     experiment_key: str,
     req: Optional[AIAnalysisRequest] = None,
     admin: dict = Depends(require_admin)
@@ -467,7 +467,7 @@ async def get_ai_analysis(
     """
     获取实验的 AI 分析报告
     
-    使用统一 AI 服务分析实验数据，提供深度洞察和可执行建议
+    使用 GPT-4o 分析实验数据，提供深度洞察和可执行建议
     """
     from services import experiment_ai_service
     
@@ -482,9 +482,9 @@ async def get_ai_analysis(
         results = {"variants": {}}
     results = _enrich_results_with_significance(results)
     
-    # 调用 AI 分析 (async)
+    # 调用 AI 分析
     additional_context = req.additional_context if req else None
-    analysis = await experiment_ai_service.analyze_experiment_results(
+    analysis = experiment_ai_service.analyze_experiment_results(
         experiment=experiment,
         results=results,
         additional_context=additional_context

@@ -1,14 +1,20 @@
 """
-Qwen / Wanx Adapter (阿里云通义千问/万相)
-通义千问文本 + 万相图像生成适配器
+阿里云 DashScope AI 适配器
 
-Supports:
-- Qwen text models (qwen-turbo, qwen-plus, qwen-max)
-- Wanx image generation (wan2.6-t2i, wan2.6-image)
+包含两个独立的模型系列:
+1. Qwen (通义千问) - 文本大模型
+   - qwen-turbo, qwen-plus, qwen-max
+   
+2. Wanx (通义万相) - 图像生成模型  
+   - wan2.6-t2i (文生图)
+   - wan2.6-image (图像编辑)
+
+注意: Qwen 和 Wanx 是两个不同的模型系列，不要混淆！
+两者共用同一个 DASHSCOPE_API_KEY。
 
 API Docs:
-- Text: https://help.aliyun.com/zh/dashscope/developer-reference/api-details
-- Image: https://help.aliyun.com/zh/model-studio/developer-reference/tongyi-wanxiang
+- Qwen: https://help.aliyun.com/zh/dashscope/developer-reference/api-details
+- Wanx: https://help.aliyun.com/zh/model-studio/developer-reference/tongyi-wanxiang
 """
 
 import os
@@ -219,12 +225,14 @@ class QwenTextAdapter(BaseTextAdapter):
 
 
 # ==========================================
-# Image Adapter (万相)
+# Image Adapter (通义万相 - Wanx)
 # ==========================================
 
-class QwenImageAdapter(BaseImageAdapter):
+class WanxImageAdapter(BaseImageAdapter):
     """
-    通义万相图像生成适配器
+    通义万相 (Wanx) 图像生成适配器
+    
+    注意: Wanx 是独立的图像生成模型，与 Qwen 文本模型不同！
     
     支持模型:
     - wan2.6-t2i: 文生图 (推荐)
@@ -232,7 +240,7 @@ class QwenImageAdapter(BaseImageAdapter):
     - wanx-v1: 旧版本
     """
     
-    provider_name = "qwen"
+    provider_name = "wanx"  # 独立的 provider 名称
     
     def __init__(self):
         self._api_key = DASHSCOPE_API_KEY

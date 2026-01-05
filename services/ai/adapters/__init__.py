@@ -157,13 +157,20 @@ def _auto_register_adapters():
     except ImportError as e:
         logger.debug(f"[AI Adapters] FAL adapter not available: {e}")
     
-    # Qwen (Alibaba)
+    # Qwen (阿里云通义千问 - 文本模型)
     try:
-        from .qwen_adapter import QwenTextAdapter, QwenImageAdapter
+        from .qwen_adapter import QwenTextAdapter
         register_text_adapter("qwen", QwenTextAdapter)
-        register_image_adapter("qwen", QwenImageAdapter)
     except ImportError as e:
-        logger.debug(f"[AI Adapters] Qwen adapter not available: {e}")
+        logger.debug(f"[AI Adapters] Qwen text adapter not available: {e}")
+    
+    # Wanx (阿里云通义万相 - 图像模型)
+    # 注意: Wanx 和 Qwen 是两个不同的模型系列！
+    try:
+        from .qwen_adapter import WanxImageAdapter
+        register_image_adapter("wanx", WanxImageAdapter)
+    except ImportError as e:
+        logger.debug(f"[AI Adapters] Wanx image adapter not available: {e}")
     
     # Gemini (Google)
     try:

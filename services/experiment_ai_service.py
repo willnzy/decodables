@@ -8,16 +8,23 @@ Features:
 - 可执行建议生成
 - 风险评估
 
-Uses unified AI service for provider abstraction.
-
 @module services/experiment_ai_service
 """
 
+import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
+import openai
 
 logger = logging.getLogger(__name__)
+
+# OpenAI client
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+openai_client = None
+
+if OPENAI_API_KEY:
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 
 # ============================================================
@@ -106,15 +113,13 @@ EXPERIMENT_ANALYSIS_SYSTEM_PROMPT = """你是一位拥有 10 年经验的增长�
 """
 
 
-async def analyze_experiment_results(
+def analyze_experiment_results(
     experiment: Dict[str, Any],
     results: Dict[str, Any],
     additional_context: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     使用 AI 分析实验结果
-    
-    Uses unified AI service with admin model configuration.
     
     Args:
         experiment: 实验配置信息
@@ -124,9 +129,13 @@ async def analyze_experiment_results(
     Returns:
         AI 分析报告
     """
-    from .ai.unified_text_service import unified_text
-    from .ai.model_config import get_admin_model_config
-    from .ai.base import AIAdapterError
+    if not openai_client:
+        logger.error("OpenAI client not initialized - API key missing")
+        return {
+            "success": False,
+            "error": "AI analysis unavailable - OpenAI API key not configured",
+            "analysis_markdown": None
+        }
     
     # 构建数据上下文
     data_context = _build_data_context(experiment, results)
@@ -136,38 +145,28 @@ async def analyze_experiment_results(
         data_context += f"\n\n## 额外上下文\n{additional_context}"
     
     try:
-        # 使用统一文本服务，指定使用 admin 模型
-        result = await unified_text.chat(
+        response = openai_client.chat.completions.create(
+            model="o1",  # 使用最新的 o1 推理模型，更强的分析能力
             messages=[
                 {"role": "system", "content": EXPERIMENT_ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": f"请分析以下 A/B 测试实验数据：\n\n{data_context}"}
             ],
-            use_admin_model=True,
-            use_cache=False,  # 分析结果不缓存
             temperature=0.7,
             max_tokens=2000,
         )
         
-        # 获取当前配置用于记录
-        config = get_admin_model_config()
+        analysis_markdown = response.choices[0].message.content
         
         return {
             "success": True,
-            "analysis_markdown": result.content,
-            "model": f"{config.provider}/{config.model}",
+            "analysis_markdown": analysis_markdown,
+            "model": "o1",
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "tokens_used": result.usage.total_tokens if result.usage else None
+            "tokens_used": response.usage.total_tokens if response.usage else None
         }
         
-    except AIAdapterError as e:
-        logger.error(f"[ExperimentAI] AI adapter error: {e}")
-        return {
-            "success": False,
-            "error": f"AI analysis failed: {e.message}",
-            "analysis_markdown": None
-        }
     except Exception as e:
-        logger.error(f"[ExperimentAI] Unexpected error: {e}")
+        logger.error(f"Error calling GPT-4o for experiment analysis: {e}")
         return {
             "success": False,
             "error": str(e),

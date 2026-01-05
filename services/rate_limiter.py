@@ -45,7 +45,7 @@ def create_limiter_from_url(redis_url: str = None) -> Limiter:
         )
     else:
         logger.warning("[RateLimiter] Using in-memory storage")
-        return Limiter(key_func=get_remote_address)
+    return Limiter(key_func=get_remote_address)
 
 
 # Global limiter instance

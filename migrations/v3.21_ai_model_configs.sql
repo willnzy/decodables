@@ -21,8 +21,9 @@
 INSERT INTO system_configs (key, value, value_type, config_group, description, is_active) VALUES
 
 -- 提供商启用状态
+-- 注意: qwen (千问-文本) 和 wanx (万相-图像) 是两个独立的 provider
 ('ai_providers.enabled', 
- '{"openai": true, "fal": true, "qwen": false, "gemini": false, "grok": false, "jimeng": false, "anthropic": false}', 
+ '{"openai": true, "fal": true, "qwen": false, "wanx": false, "gemini": false, "grok": false, "jimeng": false, "anthropic": false}', 
  'json', 'ai_providers', 'Enable/disable AI providers', true),
 
 -- 用户文本推理配置
@@ -45,19 +46,21 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
  '{"enabled": false, "text_reasoning": {"canary_provider": "qwen", "canary_model": "qwen-plus", "traffic_percent": 10, "target_tiers": ["pro"]}, "image_generation": {"canary_provider": "jimeng", "canary_model": "jimeng-2.1", "traffic_percent": 5, "target_tiers": ["pro"]}}', 
  'json', 'ai_models', 'Canary release configuration for A/B testing new models', true),
 
--- 各提供商可用模型列表 (含万相 2.6)
+-- 各提供商可用模型列表
+-- 注意: qwen (千问) 只有文本模型, wanx (万相) 只有图像模型
 ('ai_providers.models', 
- '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"], "image": ["wan2.6-t2i", "wan2.6-image", "wanx-v1"]}, "gemini": {"text": ["gemini-2.0-flash", "gemini-2.0-pro"], "image": ["imagen-3"]}, "grok": {"text": ["grok-2", "grok-2-vision"]}, "jimeng": {"image": ["jimeng-2.1", "jimeng-2.1-pro"]}, "anthropic": {"text": ["claude-3.5-sonnet", "claude-3.5-opus"]}}', 
+ '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"]}, "wanx": {"image": ["wan2.6-t2i", "wan2.6-image", "wanx-v1"]}, "gemini": {"text": ["gemini-2.0-flash", "gemini-2.0-pro"], "image": ["imagen-3"]}, "grok": {"text": ["grok-2", "grok-2-vision"]}, "jimeng": {"image": ["jimeng-2.1", "jimeng-2.1-pro"]}, "anthropic": {"text": ["claude-3.5-sonnet", "claude-3.5-opus"]}}', 
  'json', 'ai_providers', 'Available models per provider', true),
 
 -- 超时配置 (秒)
 ('ai_providers.timeouts', 
- '{"openai": {"text": 60, "image": 120}, "fal": {"image": 180}, "qwen": {"text": 60}, "gemini": {"text": 30}, "anthropic": {"text": 90}}', 
+ '{"openai": {"text": 60, "image": 120}, "fal": {"image": 180}, "qwen": {"text": 60}, "wanx": {"image": 180}, "gemini": {"text": 30}, "anthropic": {"text": 90}}', 
  'json', 'ai_providers', 'Timeout configuration in seconds', true),
 
 -- 成本参考 (用于预算估算, USD per 1M tokens or per image)
+-- 千问按 token 计费，万相按图片计费
 ('ai_providers.costs', 
- '{"openai": {"gpt-4o-mini": 0.15, "gpt-4o": 2.50, "o1-mini": 3.00, "o1": 15.00, "dall-e-3": 0.04}, "fal": {"flux-schnell": 0.003, "flux-dev": 0.025, "flux-pro": 0.05}, "qwen": {"qwen-turbo": 0.001, "qwen-plus": 0.004, "qwen-max": 0.02}, "anthropic": {"claude-3.5-sonnet": 3.00, "claude-3.5-opus": 15.00}}', 
+ '{"openai": {"gpt-4o-mini": 0.15, "gpt-4o": 2.50, "o1-mini": 3.00, "o1": 15.00, "dall-e-3": 0.04}, "fal": {"flux-schnell": 0.003, "flux-dev": 0.025, "flux-pro": 0.05}, "qwen": {"qwen-turbo": 0.001, "qwen-plus": 0.004, "qwen-max": 0.02}, "wanx": {"wan2.6-t2i": 0.02, "wan2.6-image": 0.03, "wanx-v1": 0.015}, "anthropic": {"claude-3.5-sonnet": 3.00, "claude-3.5-opus": 15.00}}', 
  'json', 'ai_providers', 'Cost reference per 1M tokens or per image (USD)', true),
 
 -- 重试配置
