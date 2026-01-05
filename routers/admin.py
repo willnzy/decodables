@@ -174,6 +174,162 @@ def invalidate_cache(admin: dict = Depends(require_admin)):
 
 
 # ==========================================
+# Cache Management API
+# ==========================================
+
+@router.get("/system/cache/status")
+def get_cache_status(admin: dict = Depends(require_admin)):
+    """
+    获取缓存系统状态
+    
+    Returns:
+        - backend: 当前使用的后端 (redis/memory)
+        - redis_available: Redis 是否可用
+        - redis_info: Redis 详细信息 (如果可用)
+        - key_stats: 各命名空间的键数量
+    """
+    from services.cache import cache_service, is_redis_available, get_redis_info
+    
+    result = {
+        "backend_info": cache_service.get_backend_info(),
+        "redis_info": None,
+        "key_stats": {}
+    }
+    
+    if is_redis_available():
+        result["redis_info"] = get_redis_info()
+        
+        # 统计各命名空间的键数量
+        try:
+            from services.cache.redis_client import get_redis_client
+            client = get_redis_client()
+            if client:
+                namespaces = ["md:config:", "md:experiment:", "md:ai:", "md:rl:", "md:stats:"]
+                for ns in namespaces:
+                    cursor = 0
+                    count = 0
+                    while True:
+                        cursor, keys = client.scan(cursor, match=f"{ns}*", count=100)
+                        count += len(keys)
+                        if cursor == 0:
+                            break
+                    result["key_stats"][ns.replace("md:", "").replace(":", "")] = count
+        except Exception as e:
+            result["key_stats_error"] = str(e)
+    
+    return result
+
+
+@router.get("/system/cache/keys")
+def list_cache_keys(
+    namespace: str = None,
+    pattern: str = None,
+    limit: int = 100,
+    admin: dict = Depends(require_admin)
+):
+    """
+    列出缓存键 (用于调试)
+    
+    Args:
+        namespace: 命名空间过滤 (config/experiment/ai/rl/stats)
+        pattern: 自定义匹配模式
+        limit: 返回数量上限
+    
+    Returns:
+        - keys: 键列表
+        - count: 总数
+    """
+    from services.cache import is_redis_available
+    from services.cache.redis_client import get_redis_client
+    
+    if not is_redis_available():
+        return {"error": "Redis not available, using memory fallback", "keys": [], "count": 0}
+    
+    client = get_redis_client()
+    if not client:
+        return {"error": "Cannot connect to Redis", "keys": [], "count": 0}
+    
+    # 构建匹配模式
+    if pattern:
+        match_pattern = pattern
+    elif namespace:
+        match_pattern = f"md:{namespace}:*"
+    else:
+        match_pattern = "md:*"
+    
+    # 扫描键
+    keys = []
+    cursor = 0
+    while len(keys) < limit:
+        cursor, batch = client.scan(cursor, match=match_pattern, count=100)
+        keys.extend(batch)
+        if cursor == 0:
+            break
+    
+    keys = keys[:limit]
+    
+    # 获取键的详细信息
+    key_info = []
+    for key in keys:
+        try:
+            ttl = client.ttl(key)
+            key_type = client.type(key)
+            key_info.append({
+                "key": key,
+                "type": key_type,
+                "ttl": ttl if ttl > 0 else ("no_expiry" if ttl == -1 else "expired")
+            })
+        except:
+            key_info.append({"key": key, "type": "unknown", "ttl": "unknown"})
+    
+    return {
+        "keys": key_info,
+        "count": len(key_info),
+        "pattern": match_pattern
+    }
+
+
+@router.delete("/system/cache/key/{key:path}")
+def delete_cache_key(
+    key: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    删除指定的缓存键
+    
+    Args:
+        key: 完整的缓存键 (如 md:config:rate_limit.xxx)
+    
+    Returns:
+        Status
+    """
+    from services.cache import cache_service
+    
+    cache_service.delete(key)
+    return {"status": "deleted", "key": key}
+
+
+@router.post("/system/cache/clear-all")
+def clear_all_cache(admin: dict = Depends(require_admin)):
+    """
+    清除所有缓存 (谨慎使用)
+    
+    会清除:
+    - 配置缓存
+    - 实验缓存
+    - AI 结果缓存
+    - 统计缓存
+    
+    Returns:
+        Status
+    """
+    from services.cache import cache_service
+    
+    cache_service.clear_all()
+    return {"status": "all_cache_cleared", "warning": "All caches have been cleared"}
+
+
+# ==========================================
 # Analytics & Metrics API (v3.12)
 # ==========================================
 
