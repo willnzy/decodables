@@ -1,6 +1,6 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.19 - Complete)
--- Includes: core schema + RLS policies + all updates through v3.19
+-- Make Decodables Database Initialization Script (v3.20 - Complete)
+-- Includes: core schema + RLS policies + all updates through v3.20
 -- 
 -- Version History:
 -- v3.0: Credit buckets, marketplace, notifications, discounts
@@ -23,6 +23,7 @@
 -- v3.17: System resources enhancement + audit logs
 -- v3.18: Storage buckets (make-decodables-s, make-decodables-u)
 -- v3.19: event_id for CAPI/Server-Side GTM deduplication
+-- v3.20: A/B Testing system (experiments, assignments, results)
 -- ==============================================================================
 
 -- ==========================================
@@ -1622,29 +1623,128 @@ CREATE POLICY "make-decodables-u: deny delete"
   USING (bucket_id = 'make-decodables-u' AND false);
 
 -- ==========================================
--- Done! v3.18 Complete Database Initialization
+-- v3.20: A/B Testing System
+-- ==========================================
+
+-- 1. 实验配置表
+CREATE TABLE IF NOT EXISTS experiments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  experiment_key VARCHAR(100) UNIQUE NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  experiment_type VARCHAR(20) DEFAULT 'ab',
+  status VARCHAR(20) DEFAULT 'draft',
+  variants JSONB NOT NULL DEFAULT '[{"key": "control", "name": "Control", "weight": 100}]',
+  targeting JSONB DEFAULT '{"include_anonymous": true}',
+  traffic_allocation INT DEFAULT 100 CHECK (traffic_allocation >= 0 AND traffic_allocation <= 100),
+  metrics JSONB DEFAULT '[]',
+  fallback_variant VARCHAR(100) DEFAULT 'control',
+  winning_variant VARCHAR(100),
+  start_at TIMESTAMPTZ,
+  end_at TIMESTAMPTZ,
+  created_by TEXT,
+  updated_by TEXT,
+  timezone TEXT DEFAULT 'UTC',
+  created_at_local TIMESTAMP,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. 用户分配记录表
+CREATE TABLE IF NOT EXISTS experiment_assignments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+  experiment_key VARCHAR(100) NOT NULL,
+  user_identifier VARCHAR(100) NOT NULL,
+  identifier_type VARCHAR(20) DEFAULT 'user',
+  variant_key VARCHAR(100) NOT NULL,
+  context JSONB DEFAULT '{}',
+  assigned_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(experiment_id, user_identifier)
+);
+
+-- 3. 实验结果聚合表
+CREATE TABLE IF NOT EXISTS experiment_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+  variant_key VARCHAR(100) NOT NULL,
+  date DATE NOT NULL,
+  hour INT DEFAULT 0,
+  participants INT DEFAULT 0,
+  exposures INT DEFAULT 0,
+  conversions INT DEFAULT 0,
+  conversion_rate DECIMAL(10, 6),
+  metrics_data JSONB DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(experiment_id, variant_key, date, hour)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status);
+CREATE INDEX IF NOT EXISTS idx_experiments_key ON experiments(experiment_key);
+CREATE INDEX IF NOT EXISTS idx_experiments_dates ON experiments(start_at, end_at);
+CREATE INDEX IF NOT EXISTS idx_experiments_created_at ON experiments(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exp_assignments_experiment ON experiment_assignments(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_exp_assignments_user ON experiment_assignments(user_identifier);
+CREATE INDEX IF NOT EXISTS idx_exp_assignments_key_user ON experiment_assignments(experiment_key, user_identifier);
+CREATE INDEX IF NOT EXISTS idx_exp_assignments_variant ON experiment_assignments(experiment_id, variant_key);
+
+CREATE INDEX IF NOT EXISTS idx_exp_results_experiment ON experiment_results(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_exp_results_experiment_date ON experiment_results(experiment_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_exp_results_variant ON experiment_results(experiment_id, variant_key);
+
+-- RLS
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_results ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access on experiments" ON experiments
+  FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on experiment_assignments" ON experiment_assignments
+  FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on experiment_results" ON experiment_results
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- 更新时间触发器
+CREATE OR REPLACE FUNCTION update_experiments_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_experiments_updated_at ON experiments;
+CREATE TRIGGER trg_experiments_updated_at
+  BEFORE UPDATE ON experiments
+  FOR EACH ROW
+  EXECUTE FUNCTION update_experiments_timestamp();
+
+-- ==========================================
+-- Done! v3.20 Complete Database Initialization
 -- ==========================================
 
 DO $$
 BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=====================================================';
-  RAISE NOTICE '✅ Make Decodables Database v3.18 - Setup Complete';
+  RAISE NOTICE '✅ Make Decodables Database v3.20 - Setup Complete';
   RAISE NOTICE '=====================================================';
   RAISE NOTICE '';
-  RAISE NOTICE 'Tables created: 30+';
+  RAISE NOTICE 'Tables created: 33+';
   RAISE NOTICE 'Views created: 5';
   RAISE NOTICE 'Materialized views: 3';
   RAISE NOTICE 'Functions: 15+';
-  RAISE NOTICE 'Triggers: 10+';
-  RAISE NOTICE 'RLS Policies: 50+';
+  RAISE NOTICE 'Triggers: 11+';
+  RAISE NOTICE 'RLS Policies: 53+';
   RAISE NOTICE '';
   RAISE NOTICE 'Storage Buckets:';
   RAISE NOTICE '  - make-decodables-s (system assets, 10MB)';
   RAISE NOTICE '  - make-decodables-u (user content, 50MB)';
   RAISE NOTICE '';
   RAISE NOTICE 'Latest updates included:';
-  RAISE NOTICE '  - v3.17: System resources enhancement + audit logs';
-  RAISE NOTICE '  - v3.18: Storage buckets + RLS policies';
+  RAISE NOTICE '  - v3.19: event_id for CAPI/Server-Side GTM';
+  RAISE NOTICE '  - v3.20: A/B Testing system';
   RAISE NOTICE '=====================================================';
 END $$;
