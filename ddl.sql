@@ -2064,6 +2064,242 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Atomic marketplace purchase function
+CREATE OR REPLACE FUNCTION execute_marketplace_purchase(
+    p_listing_id UUID,
+    p_buyer_id TEXT,
+    p_timezone TEXT DEFAULT 'UTC',
+    p_idempotency_key TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_listing RECORD;
+    v_buyer RECORD;
+    v_price INT;
+    v_seller_id TEXT;
+    v_seller_revenue INT;
+    v_buyer_monthly INT;
+    v_buyer_permanent INT;
+    v_deduct_monthly INT;
+    v_deduct_permanent INT;
+    v_new_buyer_monthly INT;
+    v_new_buyer_permanent INT;
+    v_existing_purchase RECORD;
+    v_purchase_id UUID;
+BEGIN
+    -- 1. Idempotency check
+    IF p_idempotency_key IS NOT NULL THEN
+        SELECT * INTO v_existing_purchase 
+        FROM user_purchases 
+        WHERE idempotency_key = p_idempotency_key
+        LIMIT 1;
+        
+        IF FOUND THEN
+            RETURN jsonb_build_object(
+                'success', true,
+                'idempotent', true,
+                'purchase_id', v_existing_purchase.id,
+                'message', 'Already processed'
+            );
+        END IF;
+    END IF;
+    
+    -- 2. Check if already purchased (by listing + buyer combo)
+    SELECT id INTO v_purchase_id
+    FROM user_purchases
+    WHERE user_id = p_buyer_id AND listing_id = p_listing_id
+    LIMIT 1;
+    
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_owned', true,
+            'purchase_id', v_purchase_id,
+            'message', 'Already purchased'
+        );
+    END IF;
+    
+    -- 3. Lock and get listing
+    SELECT * INTO v_listing
+    FROM marketplace_listings
+    WHERE id = p_listing_id
+    FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Listing not found', 
+            'status', 404
+        );
+    END IF;
+    
+    -- 4. Validate listing status
+    IF v_listing.moderation_status != 'approved' THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Listing is not approved', 
+            'status', 400
+        );
+    END IF;
+    
+    IF NOT COALESCE(v_listing.is_public, false) THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Listing is not public', 
+            'status', 400
+        );
+    END IF;
+    
+    IF COALESCE(v_listing.is_deleted, false) THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Listing has been deleted', 
+            'status', 400
+        );
+    END IF;
+    
+    v_price := COALESCE(v_listing.price_credits, 0);
+    v_seller_id := v_listing.seller_id;
+    
+    -- 5. Handle free items
+    IF v_price = 0 THEN
+        INSERT INTO user_purchases (user_id, listing_id, price_paid, timezone, idempotency_key)
+        VALUES (p_buyer_id, p_listing_id, 0, p_timezone, p_idempotency_key)
+        RETURNING id INTO v_purchase_id;
+        
+        UPDATE marketplace_listings 
+        SET sales_count = COALESCE(sales_count, 0) + 1
+        WHERE id = p_listing_id;
+        
+        RETURN jsonb_build_object(
+            'success', true,
+            'purchase_id', v_purchase_id,
+            'price_paid', 0,
+            'message', 'Free item acquired'
+        );
+    END IF;
+    
+    -- 6. Lock and get buyer
+    SELECT credits_monthly, credits_permanent 
+    INTO v_buyer_monthly, v_buyer_permanent
+    FROM profiles
+    WHERE id = p_buyer_id
+    FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Buyer not found', 
+            'status', 404
+        );
+    END IF;
+    
+    -- 7. Check buyer has enough credits
+    IF (v_buyer_monthly + v_buyer_permanent) < v_price THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Insufficient credits',
+            'status', 402,
+            'available', v_buyer_monthly + v_buyer_permanent,
+            'required', v_price
+        );
+    END IF;
+    
+    -- 8. Calculate deduction (monthly first)
+    v_deduct_monthly := LEAST(v_buyer_monthly, v_price);
+    v_deduct_permanent := v_price - v_deduct_monthly;
+    v_new_buyer_monthly := v_buyer_monthly - v_deduct_monthly;
+    v_new_buyer_permanent := v_buyer_permanent - v_deduct_permanent;
+    
+    -- 9. Deduct from buyer
+    UPDATE profiles SET
+        credits_monthly = v_new_buyer_monthly,
+        credits_permanent = v_new_buyer_permanent,
+        updated_at = NOW()
+    WHERE id = p_buyer_id;
+    
+    -- 10. Log buyer transaction(s)
+    IF v_deduct_monthly > 0 THEN
+        INSERT INTO credit_transactions (
+            user_id, amount, bucket, type, description, timezone,
+            balance_monthly_after, balance_permanent_after
+        ) VALUES (
+            p_buyer_id, -v_deduct_monthly, 'monthly',
+            'market_purchase', 
+            'Purchased: ' || COALESCE(v_listing.title, 'Item'),
+            p_timezone,
+            v_new_buyer_monthly, v_new_buyer_permanent
+        );
+    END IF;
+    
+    IF v_deduct_permanent > 0 THEN
+        INSERT INTO credit_transactions (
+            user_id, amount, bucket, type, description, timezone,
+            balance_monthly_after, balance_permanent_after
+        ) VALUES (
+            p_buyer_id, -v_deduct_permanent, 'permanent',
+            'market_purchase', 
+            'Purchased: ' || COALESCE(v_listing.title, 'Item'),
+            p_timezone,
+            v_new_buyer_monthly, v_new_buyer_permanent
+        );
+    END IF;
+    
+    -- 11. Add to seller (90% revenue)
+    v_seller_revenue := (v_price * 90) / 100;
+    
+    IF v_seller_id IS NOT NULL AND v_seller_revenue > 0 THEN
+        PERFORM 1 FROM profiles WHERE id = v_seller_id FOR UPDATE;
+        
+        UPDATE profiles SET
+            credits_permanent = credits_permanent + v_seller_revenue,
+            updated_at = NOW()
+        WHERE id = v_seller_id;
+        
+        INSERT INTO credit_transactions (
+            user_id, amount, bucket, type, description, timezone,
+            balance_monthly_after, balance_permanent_after
+        ) 
+        SELECT 
+            v_seller_id, v_seller_revenue, 'permanent',
+            'market_sale', 
+            'Sale: ' || COALESCE(v_listing.title, 'Item'),
+            p_timezone,
+            p.credits_monthly, p.credits_permanent
+        FROM profiles p WHERE p.id = v_seller_id;
+    END IF;
+    
+    -- 12. Record purchase
+    INSERT INTO user_purchases (user_id, listing_id, price_paid, timezone, idempotency_key)
+    VALUES (p_buyer_id, p_listing_id, v_price, p_timezone, p_idempotency_key)
+    RETURNING id INTO v_purchase_id;
+    
+    -- 13. Update sales count
+    UPDATE marketplace_listings 
+    SET sales_count = COALESCE(sales_count, 0) + 1
+    WHERE id = p_listing_id;
+    
+    -- 14. Return success
+    RETURN jsonb_build_object(
+        'success', true,
+        'purchase_id', v_purchase_id,
+        'price_paid', v_price,
+        'seller_revenue', v_seller_revenue,
+        'buyer_balance_monthly', v_new_buyer_monthly,
+        'buyer_balance_permanent', v_new_buyer_permanent,
+        'message', 'Purchase successful'
+    );
+    
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+        'success', false,
+        'error', SQLERRM,
+        'status', 500
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION execute_marketplace_purchase IS 'Atomic marketplace purchase with all credit operations in single transaction';
+
 CREATE OR REPLACE FUNCTION check_webhook_idempotency(
     p_event_id TEXT,
     p_event_type TEXT,
