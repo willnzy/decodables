@@ -32,6 +32,8 @@ from .generations import router as generations_router
 from .templates import router as templates_router
 from .admin_users import router as admin_users_router
 from .admin_subscriptions import router as admin_subscriptions_router
+from .admin_notifications import router as admin_notifications_router
+from .admin_stats import router as admin_stats_router
 
 __all__ = [
     'admin_router',
@@ -51,4 +53,6 @@ __all__ = [
     'templates_router',
     'admin_users_router',
     'admin_subscriptions_router',
+    'admin_notifications_router',
+    'admin_stats_router',
 ]
