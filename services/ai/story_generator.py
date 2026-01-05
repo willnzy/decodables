@@ -16,10 +16,18 @@ import json
 import asyncio
 import logging
 from typing import Optional
+from openai import OpenAI
 
 from .unified_text_service import unified_text_service
 
 logger = logging.getLogger(__name__)
+
+# ==========================================
+# Legacy OpenAI Client (向后兼容)
+# ==========================================
+# 用于 app.py 中其他需要直接访问 OpenAI API 的功能
+# 例如: Assistants API, Beta Threads, 等
+client = OpenAI()
 
 
 # ==========================================
