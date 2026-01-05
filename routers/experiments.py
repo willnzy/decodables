@@ -436,3 +436,102 @@ def clear_cache(admin: dict = Depends(require_admin)):
     """
     experiment_service.clear_experiment_cache()
     return {"status": "cache_cleared"}
+
+
+# ==========================================
+# AI Analysis Endpoints
+# ==========================================
+
+class AIAnalysisRequest(BaseModel):
+    """AI 分析请求"""
+    additional_context: Optional[str] = Field(None, description="额外上下文信息")
+
+
+@admin_router.post("/{experiment_key}/ai-analysis")
+def get_ai_analysis(
+    experiment_key: str,
+    req: Optional[AIAnalysisRequest] = None,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取实验的 AI 分析报告
+    
+    使用 GPT-4o 分析实验数据，提供深度洞察和可执行建议
+    """
+    from services import experiment_ai_service
+    
+    # 获取实验信息
+    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+    if not experiment:
+        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+    
+    # 获取实验结果
+    results = experiment_service.get_experiment_results(experiment_key)
+    if not results:
+        results = {"variants": {}}
+    
+    # 计算统计显著性
+    variants_data = results.get("variants", {})
+    if "control" in variants_data:
+        control_data = variants_data["control"]
+        for variant_key, variant_data in variants_data.items():
+            if variant_key != "control":
+                significance = experiment_service.calculate_statistical_significance(
+                    control_conversions=control_data.get("total_conversions", 0),
+                    control_exposures=control_data.get("total_exposures", 0),
+                    variant_conversions=variant_data.get("total_conversions", 0),
+                    variant_exposures=variant_data.get("total_exposures", 0)
+                )
+                variant_data["significance"] = significance
+    
+    # 调用 AI 分析
+    additional_context = req.additional_context if req else None
+    analysis = experiment_ai_service.analyze_experiment_results(
+        experiment=experiment,
+        results=results,
+        additional_context=additional_context
+    )
+    
+    if not analysis.get("success"):
+        raise HTTPException(500, analysis.get("error", "AI analysis failed"))
+    
+    return analysis
+
+
+@admin_router.get("/{experiment_key}/quick-recommendation")
+def get_quick_recommendation(experiment_key: str, admin: dict = Depends(require_admin)):
+    """
+    获取快速决策建议（不使用 AI，基于规则）
+    """
+    from services import experiment_ai_service
+    
+    # 获取实验信息
+    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+    if not experiment:
+        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+    
+    # 获取实验结果
+    results = experiment_service.get_experiment_results(experiment_key)
+    if not results:
+        results = {"variants": {}}
+    
+    # 计算统计显著性
+    variants_data = results.get("variants", {})
+    if "control" in variants_data:
+        control_data = variants_data["control"]
+        for variant_key, variant_data in variants_data.items():
+            if variant_key != "control":
+                significance = experiment_service.calculate_statistical_significance(
+                    control_conversions=control_data.get("total_conversions", 0),
+                    control_exposures=control_data.get("total_exposures", 0),
+                    variant_conversions=variant_data.get("total_conversions", 0),
+                    variant_exposures=variant_data.get("total_exposures", 0)
+                )
+                variant_data["significance"] = significance
+    
+    recommendation = experiment_ai_service.get_quick_recommendation(results)
+    
+    return {
+        "experiment_key": experiment_key,
+        "recommendation": recommendation
+    }

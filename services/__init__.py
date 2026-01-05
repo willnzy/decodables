@@ -15,6 +15,7 @@ from .service_factory import (
     get_resource_service,
 )
 from . import experiment_service
+from . import experiment_ai_service
 
 __all__ = [
     'CreditService',
@@ -29,5 +30,6 @@ __all__ = [
     'get_access_control',
     'get_resource_service',
     'experiment_service',
+    'experiment_ai_service',
 ]
 
