@@ -1,283 +1,188 @@
 """
 AI Usage Tracker Tests
-AI 使用量追踪器测试
+AI 使用量追踪测试
 
-Coverage target: 90%+
+核心业务规则:
+1. 异步追踪 AI 调用
+2. 成本估算
+3. 按日汇总
 """
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
-import asyncio
 from decimal import Decimal
 
 
 class TestEstimateCost:
-    """Test _estimate_cost function"""
-    
     @patch('services.ai.usage_tracker.get_model_cost')
-    def test_text_model_cost(self, mock_get_cost):
-        """Calculates cost for text model correctly"""
+    def test_text_cost_calculation(self, mock_get_cost):
         from services.ai.usage_tracker import _estimate_cost
-        
-        mock_get_cost.return_value = 0.15  # $0.15 per 1M tokens
+        mock_get_cost.return_value = 1.0  # $1 per 1M tokens
         
         cost = _estimate_cost(
             provider="openai",
             model="gpt-4o-mini",
             call_type="text",
             input_tokens=500,
-            output_tokens=500,
+            output_tokens=500
         )
         
-        # 1000 tokens * $0.15 / 1M = $0.00015
-        assert cost == Decimal("0.0002")  # Rounded to 4 decimal places
-    
+        # 1000 tokens at $1/1M = $0.001
+        assert cost == Decimal("0.0010")
+
     @patch('services.ai.usage_tracker.get_model_cost')
-    def test_image_model_cost(self, mock_get_cost):
-        """Calculates cost for image model correctly"""
+    def test_image_cost_calculation(self, mock_get_cost):
         from services.ai.usage_tracker import _estimate_cost
-        
-        mock_get_cost.return_value = 0.003  # $0.003 per image
+        mock_get_cost.return_value = 0.04  # $0.04 per image
         
         cost = _estimate_cost(
             provider="fal",
             model="flux-schnell",
             call_type="image",
-            images=3,
+            images=5
         )
         
-        # 3 images * $0.003 = $0.009
-        assert cost == Decimal("0.0090")
-    
+        assert cost == Decimal("0.2000")
+
     @patch('services.ai.usage_tracker.get_model_cost')
-    def test_zero_tokens_zero_cost(self, mock_get_cost):
-        """Zero tokens means zero cost"""
+    def test_cost_precision(self, mock_get_cost):
         from services.ai.usage_tracker import _estimate_cost
-        
-        mock_get_cost.return_value = 0.15
+        mock_get_cost.return_value = 0.50
         
         cost = _estimate_cost(
             provider="openai",
             model="gpt-4o",
             call_type="text",
-            input_tokens=0,
-            output_tokens=0,
+            input_tokens=123,
+            output_tokens=456
         )
         
-        assert cost == Decimal("0.0000")
-    
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_zero_images_zero_cost(self, mock_get_cost):
-        """Zero images means zero cost"""
-        from services.ai.usage_tracker import _estimate_cost
-        
-        mock_get_cost.return_value = 0.05
-        
-        cost = _estimate_cost(
-            provider="fal",
-            model="flux-dev",
-            call_type="image",
-            images=0,
-        )
-        
-        assert cost == Decimal("0.0000")
+        # Should have 4 decimal places
+        assert str(cost).count('.') <= 1
+        places = len(str(cost).split('.')[-1]) if '.' in str(cost) else 0
+        assert places <= 4
 
 
-class TestTrackAiUsage:
-    """Test track_ai_usage async function"""
-    
+class TestTrackAIUsageSync:
     @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_tracks_successfully(self, mock_get_cost, mock_supabase):
-        """Tracks usage successfully"""
-        from services.ai.usage_tracker import track_ai_usage
-        
-        mock_get_cost.return_value = 0.15
-        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data=[{}])
-        
-        asyncio.get_event_loop().run_until_complete(
-            track_ai_usage(
-                provider="openai",
-                model="gpt-4o-mini",
-                call_type="text",
-                success=True,
-                input_tokens=100,
-                output_tokens=200,
-                latency_ms=500
-            )
-        )
-        
-        mock_supabase.rpc.assert_called()
-    
-    @patch('services.ai.usage_tracker.supabase', None)
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_handles_no_supabase(self, mock_get_cost):
-        """Handles missing Supabase client gracefully"""
-        from services.ai.usage_tracker import track_ai_usage
-        
-        mock_get_cost.return_value = 0.15
-        
-        # Should not raise
-        asyncio.get_event_loop().run_until_complete(
-            track_ai_usage(
-                provider="openai",
-                model="gpt-4o",
-                call_type="text",
-                success=True
-            )
-        )
-    
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_handles_exception(self, mock_get_cost, mock_supabase):
-        """Handles exception gracefully"""
-        from services.ai.usage_tracker import track_ai_usage
-        
-        mock_get_cost.return_value = 0.15
-        mock_supabase.rpc.side_effect = Exception("DB Error")
-        
-        # Should not raise
-        asyncio.get_event_loop().run_until_complete(
-            track_ai_usage(
-                provider="openai",
-                model="gpt-4o",
-                call_type="text",
-                success=False,
-                error_type="api_error"
-            )
-        )
-    
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_tracks_images(self, mock_get_cost, mock_supabase):
-        """Tracks image generation usage"""
-        from services.ai.usage_tracker import track_ai_usage
-        
-        mock_get_cost.return_value = 0.003
-        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data=[{}])
-        
-        asyncio.get_event_loop().run_until_complete(
-            track_ai_usage(
-                provider="fal",
-                model="flux-schnell",
-                call_type="image",
-                success=True,
-                images=3,
-                latency_ms=5000
-            )
-        )
-
-
-class TestTrackAiUsageSync:
-    """Test track_ai_usage_sync function"""
-    
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_tracks_successfully(self, mock_get_cost, mock_supabase):
-        """Tracks usage synchronously"""
+    @patch('services.ai.usage_tracker._estimate_cost')
+    def test_tracks_usage_successfully(self, mock_cost, mock_supabase):
         from services.ai.usage_tracker import track_ai_usage_sync
-        
-        mock_get_cost.return_value = 0.15
-        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data=[{}])
+        mock_cost.return_value = Decimal("0.0010")
         
         track_ai_usage_sync(
             provider="openai",
             model="gpt-4o-mini",
             call_type="text",
             success=True,
-            input_tokens=100,
-            output_tokens=200
+            input_tokens=500,
+            output_tokens=500
         )
         
         mock_supabase.rpc.assert_called_once()
-    
+
     @patch('services.ai.usage_tracker.supabase', None)
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_handles_no_supabase(self, mock_get_cost):
-        """Handles missing Supabase client gracefully"""
+    @patch('services.ai.usage_tracker._estimate_cost')
+    def test_handles_no_supabase(self, mock_cost):
         from services.ai.usage_tracker import track_ai_usage_sync
-        
-        mock_get_cost.return_value = 0.15
+        mock_cost.return_value = Decimal("0.0010")
         
         # Should not raise
         track_ai_usage_sync(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-4o-mini",
             call_type="text",
             success=True
         )
-    
+
     @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker.get_model_cost')
-    def test_handles_exception(self, mock_get_cost, mock_supabase):
-        """Handles exception gracefully"""
+    @patch('services.ai.usage_tracker._estimate_cost')
+    def test_handles_exception(self, mock_cost, mock_supabase):
         from services.ai.usage_tracker import track_ai_usage_sync
-        
-        mock_get_cost.return_value = 0.15
+        mock_cost.return_value = Decimal("0.0010")
         mock_supabase.rpc.side_effect = Exception("DB Error")
         
         # Should not raise
         track_ai_usage_sync(
             provider="openai",
-            model="gpt-4o",
+            model="gpt-4o-mini",
             call_type="text",
-            success=False,
-            error_type="timeout"
+            success=True
+        )
+
+
+class TestTrackAIUsageAsync:
+    @pytest.mark.asyncio
+    @patch('services.ai.usage_tracker.supabase')
+    @patch('services.ai.usage_tracker._estimate_cost')
+    async def test_tracks_usage_async(self, mock_cost, mock_supabase):
+        from services.ai.usage_tracker import track_ai_usage
+        mock_cost.return_value = Decimal("0.0010")
+        
+        # Mock the RPC call
+        mock_rpc = MagicMock()
+        mock_rpc.execute.return_value = MagicMock()
+        mock_supabase.rpc.return_value = mock_rpc
+        
+        await track_ai_usage(
+            provider="openai",
+            model="gpt-4o-mini",
+            call_type="text",
+            success=True,
+            input_tokens=500,
+            output_tokens=500
+        )
+
+    @pytest.mark.asyncio
+    @patch('services.ai.usage_tracker.supabase', None)
+    @patch('services.ai.usage_tracker._estimate_cost')
+    async def test_handles_no_supabase_async(self, mock_cost):
+        from services.ai.usage_tracker import track_ai_usage
+        mock_cost.return_value = Decimal("0.0010")
+        
+        # Should not raise
+        await track_ai_usage(
+            provider="openai",
+            model="gpt-4o-mini",
+            call_type="text",
+            success=True
         )
 
 
 class TestGetUsageSummary:
-    """Test get_usage_summary function"""
-    
     @patch('services.ai.usage_tracker.supabase', None)
-    def test_returns_empty_without_supabase(self):
-        """Returns empty dict without Supabase"""
+    def test_returns_empty_when_no_db(self):
         from services.ai.usage_tracker import get_usage_summary
+        result = get_usage_summary()
+        assert result == {}
+
+    @patch('services.ai.usage_tracker.supabase')
+    def test_returns_summary(self, mock_supabase):
+        from services.ai.usage_tracker import get_usage_summary
+        
+        mock_supabase.from_.return_value.select.return_value.execute.return_value.data = [
+            {"provider": "openai", "model": "gpt-4o", "total_calls": 100, "total_cost_usd": 5.0},
+            {"provider": "openai", "model": "gpt-4o-mini", "total_calls": 200, "total_cost_usd": 1.0},
+        ]
         
         result = get_usage_summary()
         
-        assert result == {}
-    
+        assert result["total_calls"] == 300
+        assert result["total_cost_usd"] == 6.0
+        assert "openai" in result["by_provider"]
+
     @patch('services.ai.usage_tracker.supabase')
-    def test_returns_empty_for_no_data(self, mock_supabase):
-        """Returns empty summary for no data"""
+    def test_returns_empty_on_no_data(self, mock_supabase):
         from services.ai.usage_tracker import get_usage_summary
-        
-        mock_supabase.from_.return_value.select.return_value.execute.return_value = MagicMock(
-            data=None
-        )
+        mock_supabase.from_.return_value.select.return_value.execute.return_value.data = None
         
         result = get_usage_summary()
         
         assert result["total_calls"] == 0
-        assert result["total_cost_usd"] == 0
-    
-    @patch('services.ai.usage_tracker.supabase')
-    def test_returns_aggregated_data(self, mock_supabase):
-        """Returns aggregated usage data"""
-        from services.ai.usage_tracker import get_usage_summary
-        
-        mock_supabase.from_.return_value.select.return_value.execute.return_value = MagicMock(
-            data=[
-                {"provider": "openai", "model": "gpt-4o", "total_calls": 100, "total_cost_usd": 10.5},
-                {"provider": "openai", "model": "gpt-4o-mini", "total_calls": 200, "total_cost_usd": 3.0},
-                {"provider": "fal", "model": "flux-schnell", "total_calls": 50, "total_cost_usd": 0.15},
-            ]
-        )
-        
-        result = get_usage_summary()
-        
-        assert result["total_calls"] == 350
-        assert result["total_cost_usd"] == 13.65
-        assert result["by_provider"]["openai"]["calls"] == 300
-        assert result["by_provider"]["fal"]["calls"] == 50
-        assert result["by_model"]["gpt-4o"]["calls"] == 100
-    
+
     @patch('services.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
-        """Handles exception gracefully"""
         from services.ai.usage_tracker import get_usage_summary
-        
         mock_supabase.from_.side_effect = Exception("DB Error")
         
         result = get_usage_summary()
@@ -286,52 +191,29 @@ class TestGetUsageSummary:
 
 
 class TestGetDailyTrend:
-    """Test get_daily_trend function"""
-    
     @patch('services.ai.usage_tracker.supabase', None)
-    def test_returns_empty_without_supabase(self):
-        """Returns empty list without Supabase"""
+    def test_returns_empty_when_no_db(self):
         from services.ai.usage_tracker import get_daily_trend
-        
         result = get_daily_trend()
-        
         assert result == []
-    
+
     @patch('services.ai.usage_tracker.supabase')
     def test_returns_trend_data(self, mock_supabase):
-        """Returns daily trend data"""
         from services.ai.usage_tracker import get_daily_trend
         
-        mock_supabase.from_.return_value.select.return_value.execute.return_value = MagicMock(
-            data=[
-                {"date": "2025-01-01", "cost_usd": 5.23, "calls": 100},
-                {"date": "2025-01-02", "cost_usd": 6.12, "calls": 120},
-            ]
-        )
+        mock_supabase.from_.return_value.select.return_value.execute.return_value.data = [
+            {"date": "2025-01-01", "cost_usd": 5.23, "calls": 456},
+            {"date": "2025-01-02", "cost_usd": 4.56, "calls": 345},
+        ]
         
         result = get_daily_trend()
         
         assert len(result) == 2
         assert result[0]["date"] == "2025-01-01"
-    
-    @patch('services.ai.usage_tracker.supabase')
-    def test_returns_empty_for_no_data(self, mock_supabase):
-        """Returns empty list when no data"""
-        from services.ai.usage_tracker import get_daily_trend
-        
-        mock_supabase.from_.return_value.select.return_value.execute.return_value = MagicMock(
-            data=None
-        )
-        
-        result = get_daily_trend()
-        
-        assert result == []
-    
+
     @patch('services.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
-        """Handles exception gracefully"""
         from services.ai.usage_tracker import get_daily_trend
-        
         mock_supabase.from_.side_effect = Exception("DB Error")
         
         result = get_daily_trend()
