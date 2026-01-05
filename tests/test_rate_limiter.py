@@ -143,7 +143,8 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.is_rate_limit_enabled')
     @patch('services.rate_limiter.get_rate_limit_string')
     @patch('services.rate_limiter.limiter')
-    def test_raises_429_on_rate_limit_exceeded_async(self, mock_limiter, mock_get_string, mock_enabled):
+    @pytest.mark.asyncio
+    async def test_raises_429_on_rate_limit_exceeded_async(self, mock_limiter, mock_get_string, mock_enabled):
         """Raises 429 HTTPException when rate limit exceeded (async)"""
         from services.rate_limiter import dynamic_limit
         from fastapi import HTTPException
@@ -165,7 +166,7 @@ class TestDynamicLimit:
         mock_request = MagicMock()
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(test_endpoint(mock_request))
+            await test_endpoint(mock_request)
         
         assert exc_info.value.status_code == 429
         assert "Rate limit exceeded" in exc_info.value.detail
@@ -201,7 +202,8 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.is_rate_limit_enabled')
     @patch('services.rate_limiter.get_rate_limit_string')
     @patch('services.rate_limiter.limiter')
-    def test_reraises_other_exceptions_async(self, mock_limiter, mock_get_string, mock_enabled):
+    @pytest.mark.asyncio
+    async def test_reraises_other_exceptions_async(self, mock_limiter, mock_get_string, mock_enabled):
         """Re-raises non-rate-limit exceptions (async)"""
         from services.rate_limiter import dynamic_limit
         
@@ -218,7 +220,7 @@ class TestDynamicLimit:
         mock_request = MagicMock()
         
         with pytest.raises(ValueError) as exc_info:
-            asyncio.get_event_loop().run_until_complete(test_endpoint(mock_request))
+            await test_endpoint(mock_request)
         
         assert "some error" in str(exc_info.value)
     
