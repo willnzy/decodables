@@ -27,7 +27,26 @@ logger = logging.getLogger(__name__)
 # ==========================================
 # 用于 app.py 中其他需要直接访问 OpenAI API 的功能
 # 例如: Assistants API, Beta Threads, 等
-client = OpenAI()
+# 注意: 使用懒加载避免测试环境中缺少 API key 时报错
+_client = None
+
+def get_openai_client():
+    """获取 OpenAI client (懒加载)"""
+    global _client
+    if _client is None:
+        _client = OpenAI()
+    return _client
+
+# 向后兼容导出
+client = property(lambda self: get_openai_client())  # This won't work as module-level
+
+# 为了向后兼容，创建一个代理对象
+class _OpenAIClientProxy:
+    """OpenAI client 代理，支持懒加载"""
+    def __getattr__(self, name):
+        return getattr(get_openai_client(), name)
+
+client = _OpenAIClientProxy()
 
 
 # ==========================================

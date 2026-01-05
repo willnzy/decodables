@@ -1,425 +1,182 @@
 """
-Pytest configuration and fixtures for API tests
+Pytest Configuration and Fixtures
+pytest 配置和 fixtures
 
-This conftest.py provides:
-- Mock user fixtures for all tier levels
-- Database mock fixtures
-- External API mock fixtures (Stripe, FAL, OpenAI)
-- Test client factory
-- Common test utilities
+This file sets up the test environment to allow testing individual modules
+without triggering the full import chain that requires all dependencies.
 """
+
 import pytest
+import sys
 import os
-from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-import json
+import importlib.util
+from unittest.mock import MagicMock, patch
 
-# Set test environment
-os.environ.setdefault('TESTING', 'true')
-os.environ.setdefault('STRIPE_SECRET_KEY', 'sk_test_mock')
-os.environ.setdefault('STRIPE_WEBHOOK_SECRET', 'whsec_test_mock')
-
-# ============================================
-# Test Client Factory
-# ============================================
-
-def get_test_client():
-    """Lazy import TestClient and app to avoid import errors"""
-    from fastapi.testclient import TestClient
-    try:
-        from app import app
-        return TestClient(app)
-    except ImportError as e:
-        pytest.skip(f"Cannot import app: {e}")
-
-# ============================================
-# Mock User Data for Different Tiers
-# ============================================
-
-MOCK_FREE_USER = {
-    "id": "user_free_123",
-    "email": "free@test.com",
-    "tier": "free",
-    "subscription_status": "inactive",
-    "credits_monthly": 0,
-    "credits_permanent": 50,
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "user_code": "FREE001",
-    "timezone": "UTC",
-    "stripe_customer_id": None,
-}
-
-MOCK_FREE_USER_EXPIRED = {
-    "id": "user_free_expired_123",
-    "email": "free_expired@test.com",
-    "tier": "free",
-    "subscription_status": "inactive",
-    "credits_monthly": 0,
-    "credits_permanent": 50,
-    "created_at": (datetime.now(timezone.utc) - timedelta(days=8)).isoformat(),
-    "user_code": "FREE002",
-    "timezone": "UTC",
-    "stripe_customer_id": None,
-}
-
-MOCK_FREE_USER_NO_CREDITS = {
-    "id": "user_free_nocredits_123",
-    "email": "nocredits@test.com",
-    "tier": "free",
-    "subscription_status": "inactive",
-    "credits_monthly": 0,
-    "credits_permanent": 0,
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "user_code": "FREE003",
-    "timezone": "UTC",
-    "stripe_customer_id": None,
-}
-
-MOCK_STARTER_USER = {
-    "id": "user_starter_123",
-    "email": "starter@test.com",
-    "tier": "starter",
-    "subscription_status": "active",
-    "credits_monthly": 500,
-    "credits_permanent": 0,
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "user_code": "START001",
-    "timezone": "America/New_York",
-    "stripe_customer_id": "cus_starter_123",
-    "stripe_subscription_id": "sub_starter_123",
-}
-
-MOCK_PRO_USER = {
-    "id": "user_pro_123",
-    "email": "pro@test.com",
-    "tier": "pro",
-    "subscription_status": "active",
-    "credits_monthly": 1000,
-    "credits_permanent": 200,
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "user_code": "PRO001",
-    "timezone": "Asia/Shanghai",
-    "stripe_customer_id": "cus_pro_123",
-    "stripe_subscription_id": "sub_pro_123",
-}
-
-MOCK_ADMIN_USER = {
-    "id": "user_admin_123",
-    "email": "admin@test.com",
-    "tier": "pro",
-    "subscription_status": "active",
-    "credits_monthly": 9999,
-    "credits_permanent": 9999,
-    "created_at": datetime.now(timezone.utc).isoformat(),
-    "user_code": "ADMIN001",
-    "timezone": "UTC",
-    "is_admin": True,
-    "stripe_customer_id": "cus_admin_123",
-}
+# 添加项目根目录
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 
-# ============================================
-# Client Fixtures
-# ============================================
+# ==========================================
+# Environment Setup
+# ==========================================
 
-@pytest.fixture
-def client():
-    """Create a test client"""
-    return get_test_client()
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    """设置测试环境变量"""
+    os.environ.setdefault("OPENAI_API_KEY", "test-key-for-testing")
+    os.environ.setdefault("FAL_KEY", "test-fal-key")
+    os.environ.setdefault("DASHSCOPE_API_KEY", "test-dashscope-key")
+    os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co/")
+    os.environ.setdefault("SUPABASE_KEY", "test-supabase-key")
+    yield
 
 
-# ============================================
-# User Mock Fixtures
-# ============================================
+# ==========================================
+# Module Loading Helpers
+# ==========================================
 
-@pytest.fixture
-def mock_get_current_user_free():
-    """Mock get_current_user for Free tier"""
-    def _mock_user():
-        return MOCK_FREE_USER.copy()
-    return _mock_user
+def load_module_directly(module_name: str, file_path: str):
+    """
+    直接从文件加载模块，避免触发完整的导入链
+    """
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
-def mock_get_current_user_free_expired():
-    """Mock get_current_user for expired Free tier"""
-    def _mock_user():
-        return MOCK_FREE_USER_EXPIRED.copy()
-    return _mock_user
+def ai_base_module():
+    """加载 AI base 模块"""
+    return load_module_directly(
+        "services.ai.base",
+        os.path.join(PROJECT_ROOT, "services/ai/base.py")
+    )
 
 
-@pytest.fixture
-def mock_get_current_user_free_no_credits():
-    """Mock get_current_user for Free tier with no credits"""
-    def _mock_user():
-        return MOCK_FREE_USER_NO_CREDITS.copy()
-    return _mock_user
-
-
-@pytest.fixture
-def mock_get_current_user_starter():
-    """Mock get_current_user for Starter tier"""
-    def _mock_user():
-        return MOCK_STARTER_USER.copy()
-    return _mock_user
-
-
-@pytest.fixture
-def mock_get_current_user_pro():
-    """Mock get_current_user for Pro tier"""
-    def _mock_user():
-        return MOCK_PRO_USER.copy()
-    return _mock_user
-
-
-@pytest.fixture
-def mock_get_current_user_admin():
-    """Mock get_current_user for Admin user"""
-    def _mock_user():
-        return MOCK_ADMIN_USER.copy()
-    return _mock_user
-
-
-# ============================================
-# Database Mock Fixtures
-# ============================================
+# ==========================================
+# Mock Fixtures
+# ==========================================
 
 @pytest.fixture
 def mock_supabase():
-    """Mock Supabase client with chainable methods"""
-    mock_client = MagicMock()
-    
-    # Create chainable mock
-    mock_table = MagicMock()
-    mock_client.table.return_value = mock_table
-    
-    # Make all methods return self for chaining
-    for method in ['select', 'insert', 'update', 'delete', 'eq', 'neq', 
-                   'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'is_', 
-                   'in_', 'not_', 'or_', 'order', 'limit', 'range']:
-        getattr(mock_table, method).return_value = mock_table
-    
-    # Default execute returns empty
-    mock_table.execute.return_value = Mock(data=[], count=0)
-    
-    return mock_client
+    """Mock Supabase client"""
+    with patch('services.db_service.supabase') as mock:
+        mock.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        mock.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[])
+        mock.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        mock.rpc.return_value.execute.return_value = MagicMock(data=None)
+        yield mock
 
 
 @pytest.fixture
-def mock_db_service():
-    """Mock db_service functions"""
-    with patch('services.db_service.supabase') as mock_supabase:
-        yield mock_supabase
-
-
-# ============================================
-# External API Mock Fixtures
-# ============================================
-
-@pytest.fixture
-def mock_stripe():
-    """Mock Stripe API calls"""
-    with patch('stripe.checkout.Session') as mock_session, \
-         patch('stripe.billing_portal.Session') as mock_portal, \
-         patch('stripe.Refund') as mock_refund, \
-         patch('stripe.Subscription') as mock_subscription, \
-         patch('stripe.PaymentIntent') as mock_payment_intent, \
-         patch('stripe.Webhook') as mock_webhook:
-        
-        # Checkout session mock
-        mock_session.create.return_value = Mock(
-            id='cs_test_123',
-            url='https://checkout.stripe.com/test'
-        )
-        
-        # Portal session mock
-        mock_portal.create.return_value = Mock(
-            url='https://billing.stripe.com/test'
-        )
-        
-        # Refund mock
-        mock_refund.create.return_value = Mock(
-            id='re_test_123',
-            amount=1000,
-            status='succeeded'
-        )
-        
-        # Subscription mock
-        mock_subscription.modify.return_value = Mock(
-            id='sub_test_123',
-            status='active'
-        )
-        mock_subscription.delete.return_value = Mock(
-            id='sub_test_123',
-            status='canceled'
-        )
-        
-        # PaymentIntent mock
-        mock_payment_intent.retrieve.return_value = Mock(
-            id='pi_test_123',
-            amount=1000,
-            status='succeeded'
-        )
-        
-        yield {
-            'session': mock_session,
-            'portal': mock_portal,
-            'refund': mock_refund,
-            'subscription': mock_subscription,
-            'payment_intent': mock_payment_intent,
-            'webhook': mock_webhook,
-        }
+def mock_redis():
+    """Mock Redis client"""
+    with patch('services.cache.redis_client.get_redis_client') as mock:
+        redis_mock = MagicMock()
+        redis_mock.get.return_value = None
+        redis_mock.set.return_value = True
+        redis_mock.delete.return_value = 1
+        mock.return_value = redis_mock
+        yield redis_mock
 
 
 @pytest.fixture
-def mock_fal_ai():
-    """Mock FAL.ai image generation"""
-    with patch('fal_client.submit') as mock_submit:
-        mock_result = Mock()
-        mock_result.get.return_value = {
-            'images': [{'url': 'https://cdn.fal.ai/test_image.png'}]
-        }
-        mock_submit.return_value = mock_result
-        yield mock_submit
+def mock_openai_client():
+    """Mock OpenAI client"""
+    with patch('openai.OpenAI') as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        yield mock_client
 
 
 @pytest.fixture
-def mock_openai():
-    """Mock OpenAI API calls"""
-    with patch('openai.ChatCompletion.create') as mock_chat:
-        mock_chat.return_value = Mock(
-            choices=[Mock(message=Mock(content='Test response'))]
-        )
-        yield mock_chat
+def mock_fal_client():
+    """Mock FAL client"""
+    with patch('fal_client.submit_async') as mock:
+        yield mock
 
 
-# ============================================
-# Test Data Factories
-# ============================================
+# ==========================================
+# Test User Fixtures
+# ==========================================
 
 @pytest.fixture
-def project_factory():
-    """Factory for creating test project data"""
-    def _create_project(
-        project_id='proj_test_123',
-        user_id='user_test_123',
-        title='Test Project',
-        **kwargs
-    ):
-        return {
-            'id': project_id,
-            'user_id': user_id,
-            'title': title,
-            'canvas_data': kwargs.get('canvas_data', {'pages': []}),
-            'thumbnail_url': kwargs.get('thumbnail_url', 'https://cdn.../thumb.png'),
-            'created_at': datetime.now(timezone.utc).isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat(),
-            'deleted': False,
-            **kwargs
-        }
-    return _create_project
+def mock_free_user():
+    """Free tier user"""
+    return {
+        "id": "user_free_123",
+        "email": "free@test.com",
+        "tier": "free",
+        "role": "user",
+    }
 
 
 @pytest.fixture
-def asset_factory():
-    """Factory for creating test asset data"""
-    def _create_asset(
-        asset_id='asset_test_123',
-        user_id='user_test_123',
-        **kwargs
-    ):
-        return {
-            'id': asset_id,
-            'user_id': user_id,
-            'url': kwargs.get('url', 'https://cdn.../asset.png'),
-            'type': kwargs.get('type', 'uploaded'),
-            'description': kwargs.get('description', ''),
-            'created_at': datetime.now(timezone.utc).isoformat(),
-            'deleted': False,
-            **kwargs
-        }
-    return _create_asset
+def mock_pro_user():
+    """Pro tier user"""
+    return {
+        "id": "user_pro_456",
+        "email": "pro@test.com",
+        "tier": "pro",
+        "role": "user",
+    }
 
 
 @pytest.fixture
-def listing_factory():
-    """Factory for creating marketplace listing data"""
-    def _create_listing(
-        listing_id='listing_test_123',
-        seller_id='user_test_123',
-        **kwargs
-    ):
-        return {
-            'id': listing_id,
-            'seller_id': seller_id,
-            'title': kwargs.get('title', 'Test Listing'),
-            'description': kwargs.get('description', 'Test description'),
-            'price_credits': kwargs.get('price_credits', 50),
-            'resource_type': kwargs.get('resource_type', 'project'),
-            'status': kwargs.get('status', 'approved'),
-            'is_public': True,
-            'created_at': datetime.now(timezone.utc).isoformat(),
-            **kwargs
-        }
-    return _create_listing
+def mock_admin_user():
+    """Admin user"""
+    return {
+        "id": "admin_789",
+        "email": "admin@test.com",
+        "tier": "pro",
+        "role": "admin",
+    }
 
 
-# ============================================
-# Webhook Test Helpers
-# ============================================
+# ==========================================
+# AI Response Fixtures
+# ==========================================
 
 @pytest.fixture
-def stripe_webhook_payload():
-    """Create Stripe webhook test payloads"""
-    def _create_payload(event_type, data=None):
-        return {
-            'id': f'evt_test_{event_type}',
-            'type': event_type,
-            'created': int(datetime.now(timezone.utc).timestamp()),
-            'data': {
-                'object': data or {}
-            }
-        }
-    return _create_payload
-
-
-@pytest.fixture
-def stripe_signature():
-    """Create mock Stripe webhook signature"""
-    def _create_signature(payload, secret='whsec_test_mock'):
-        import hmac
-        import hashlib
-        timestamp = str(int(datetime.now(timezone.utc).timestamp()))
-        payload_str = json.dumps(payload) if isinstance(payload, dict) else payload
-        signed_payload = f'{timestamp}.{payload_str}'
-        signature = hmac.new(
-            secret.encode('utf-8'),
-            signed_payload.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-        return f't={timestamp},v1={signature}'
-    return _create_signature
-
-
-# ============================================
-# Test Markers
-# ============================================
-
-def pytest_configure(config):
-    """Configure custom markers"""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
-    )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "e2e: marks tests as end-to-end tests"
-    )
-    config.addinivalue_line(
-        "markers", "payment: marks tests related to payment processing"
-    )
-    config.addinivalue_line(
-        "markers", "auth: marks tests related to authentication"
+def successful_text_response():
+    """成功的文本 AI 响应"""
+    from services.ai.base import AIResponse, AIUsage
+    return AIResponse(
+        success=True,
+        content="Test response content",
+        usage=AIUsage(input_tokens=100, output_tokens=50, total_tokens=150),
+        model="gpt-4o-mini",
+        provider="openai",
+        latency_ms=150
     )
 
+
+@pytest.fixture
+def successful_image_response():
+    """成功的图像 AI 响应"""
+    from services.ai.base import AIResponse, AIUsage
+    return AIResponse(
+        success=True,
+        content=["https://example.com/image1.png", "https://example.com/image2.png"],
+        usage=AIUsage(images_generated=2),
+        model="flux-schnell",
+        provider="fal",
+        latency_ms=2500
+    )
+
+
+@pytest.fixture
+def failed_response():
+    """失败的 AI 响应"""
+    from services.ai.base import AIResponse, AIErrorType
+    return AIResponse(
+        success=False,
+        error="Rate limit exceeded",
+        error_type=AIErrorType.RATE_LIMIT,
+        provider="openai",
+        model="gpt-4o"
+    )
