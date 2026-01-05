@@ -217,11 +217,13 @@ from routers.experiments_admin import router as experiments_admin_router
 app.include_router(experiments_public_router)
 app.include_router(experiments_admin_router)
 
-# v3.24: Webhooks and Logs routers (refactored from app.py)
+# v3.24: Webhooks, Logs and Analytics routers (refactored from app.py)
 from routers.webhooks import router as webhooks_router
 from routers.logs import router as logs_router
+from routers.analytics import router as analytics_router
 app.include_router(webhooks_router)
 app.include_router(logs_router)
+app.include_router(analytics_router)
 
 # v3.24: Generation router (refactored from app.py)
 from routers.generation import include_generation_routers
@@ -276,6 +278,14 @@ from routers.config import router as config_router
 from routers.export import router as export_router
 app.include_router(config_router)
 app.include_router(export_router)
+
+# v3.24: Projects, Marketplace and Resources routers
+from routers.projects import router as projects_router
+from routers.marketplace import router as marketplace_router
+from routers.resources import router as resources_router
+app.include_router(projects_router)
+app.include_router(marketplace_router)
+app.include_router(resources_router)
 
 
 # ==========================================

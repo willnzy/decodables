@@ -3,16 +3,30 @@ Marketplace Router
 Handles marketplace-related API endpoints
 
 @module routers/marketplace
+
+Endpoints:
+- GET /api/marketplace/items - List marketplace items
+- GET /api/marketplace/item/{listing_id} - Get single item
+- POST /api/marketplace/publish - Publish to marketplace
+- POST /api/marketplace/unpublish - Unpublish a listing
+- POST /api/marketplace/purchase - Purchase an item
+- GET /api/marketplace/my-listings - Get user's listings
+- PUT /api/marketplace/listings/{listing_id} - Update listing
+- GET /api/marketplace/seller/stats - Get seller stats
+- GET /api/marketplace/leaderboard - Get leaderboard
+- POST /api/marketplace/report - Submit a report
+- GET /api/marketplace/my-reports - Get user's reports
 """
 
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from dependencies import get_current_user, require_member
 from services.db_service import (
     get_marketplace_listings, get_marketplace_item, 
     create_listing, submit_listing_for_review, unpublish_listing as db_unpublish,
-    get_leaderboard, supabase
+    get_leaderboard, supabase, create_report, get_user_reports, log_activity
 )
+from services.rate_limiter import limiter
 from schemas import (
     ListingCreate, ListingUpdate, PurchaseRequest,
     PurchaseResult, SellerStats, PaginatedResponse
@@ -333,4 +347,56 @@ def get_leaderboard_data(
     """
     marketplace_service = get_marketplace_service()
     return marketplace_service.get_leaderboard(period, type)
+
+
+# Report model
+class ReportRequest(BaseModel):
+    listing_id: str
+    reason: str
+
+
+@router.post("/report")
+@limiter.limit("10/minute")
+def submit_report(request: Request, req: ReportRequest, user: dict = Depends(get_current_user)):
+    """
+    Submit a content report for a marketplace listing.
+    
+    Users can report listings for copyright violations, inappropriate content, etc.
+    
+    Args:
+        req: Report request with listing_id and reason
+    
+    Returns:
+        Report confirmation with report_id
+    
+    Raises:
+        HTTPException: 400 if already reported, 500 if failed
+    """
+    try:
+        report = create_report(user["id"], req.listing_id, req.reason)
+        if report:
+            log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
+            return {"success": True, "report_id": report["id"], "message": "Report submitted successfully"}
+        raise HTTPException(500, "Failed to submit report")
+    except Exception as e:
+        error_msg = str(e)
+        if "already reported" in error_msg.lower():
+            raise HTTPException(400, error_msg)
+        raise HTTPException(500, error_msg)
+
+
+@router.get("/my-reports")
+def get_my_reports(page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
+    """
+    Get reports submitted by the current user.
+    
+    Args:
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+    
+    Returns:
+        List of user's reports
+    """
+    reports = get_user_reports(user["id"], page, limit)
+    return {"items": reports, "total": len(reports)}
 

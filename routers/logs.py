@@ -3,6 +3,10 @@ Logs Router - Error logging endpoints
 
 @module routers.logs
 @version 3.24
+
+Endpoints:
+- POST /api/logs/error - Log single error
+- POST /api/logs/errors - Log batch errors
 """
 
 import logging

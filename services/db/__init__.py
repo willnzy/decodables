@@ -162,6 +162,9 @@ from .admin_stats import (
     get_aggregated_stats,
     get_aggregated_stats_range,
     upsert_aggregated_stats,
+    admin_get_ai_insights,
+    admin_get_ai_recommendations,
+    admin_get_behavior_analysis,
 )
 
 # Config
@@ -243,6 +246,7 @@ __all__ = [
     'admin_get_credit_usage_stats', 'admin_get_conversion_funnel',
     'log_user_event', 'admin_get_user_events', 'admin_get_event_stats',
     'get_aggregated_stats', 'get_aggregated_stats_range', 'upsert_aggregated_stats',
+    'admin_get_ai_insights', 'admin_get_ai_recommendations', 'admin_get_behavior_analysis',
     
     # Config
     'get_system_config', 'get_all_system_configs', 'get_configs_by_group',
