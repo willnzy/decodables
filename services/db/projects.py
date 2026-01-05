@@ -235,46 +235,89 @@ def get_all_projects_feed(page: int = 1, limit: int = 50):
 # ==========================================
 
 @retry_on_network_error()
-def get_dashboard_projects(user_id: str, view: str = "all", page: int = 1, 
-                           limit: int = 20, search: str = None, include_canvas: bool = True):
-    """Get projects for dashboard with view filtering."""
+def get_dashboard_projects(
+    user_id: str,
+    view_type: str = "all",  # "all" | "bought" | "selling"
+    page: int = 1,
+    limit: int = 20,
+    search: str = None,
+    include_canvas_data: bool = True
+):
+    """
+    Get projects for dashboard with view type filtering.
+    
+    Args:
+        user_id: User ID
+        view_type: "all" (created + bought + selling), "bought" (purchased only), "selling" (active listings)
+        page: Page number
+        limit: Items per page
+        search: Search query
+        include_canvas_data: Whether to include canvas_data
+    
+    Returns:
+        Dict with items, total, page, and view-specific metadata
+    """
     if not supabase:
-        return {"items": [], "total": 0}
+        return {"items": [], "total": 0, "page": page, "view_type": view_type}
     
     offset = (page - 1) * limit
     
-    if view == "all":
-        fields = "*" if include_canvas else "id, title, thumbnail_url, created_at, updated_at"
-        query = supabase.table("projects").select(fields, count="exact")\
-            .eq("user_id", user_id).eq("is_deleted", False)
-        if search:
-            query = query.ilike("title", f"%{search}%")
-        result = query.order("updated_at", desc=True).range(offset, offset + limit - 1).execute()
-        return {"items": result.data or [], "total": result.count or 0}
+    # Determine select fields
+    if include_canvas_data:
+        select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
+    else:
+        select_fields = "id, title, thumbnail_url, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
     
-    elif view == "bought":
-        result = supabase.table("marketplace_purchases").select(
-            "id, purchased_at, project_id, projects(id, title, thumbnail_url, created_at)"
-        ).eq("buyer_id", user_id).order("purchased_at", desc=True)\
-        .range(offset, offset + limit - 1).execute()
+    # Build base query
+    query = supabase.table("projects").select(select_fields)\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    # Apply view type filter
+    if view_type == "bought":
+        query = query.eq("is_purchased", True)
+    elif view_type == "selling":
+        query = query.not_.is_("listing_status", "null")
+    
+    # Apply search filter
+    if search and search.strip():
+        query = query.ilike("title", f"%{search.strip()}%")
+    
+    # Execute query
+    result = query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
+    items = result.data or []
+    
+    # Get total count with same filters
+    count_query = supabase.table("projects").select("id", count="exact")\
+        .eq("user_id", user_id).eq("is_deleted", False)
+    
+    if view_type == "bought":
+        count_query = count_query.eq("is_purchased", True)
+    elif view_type == "selling":
+        count_query = count_query.not_.is_("listing_status", "null")
+    
+    if search and search.strip():
+        count_query = count_query.ilike("title", f"%{search.strip()}%")
+    
+    count_result = count_query.execute()
+    total = count_result.count or len(items)
+    
+    # Enrich with marketplace listing data if present
+    if items:
+        marketplace_listing_ids = [item.get("marketplace_listing_id") for item in items if item.get("marketplace_listing_id")]
         
-        items = []
-        for p in (result.data or []):
-            proj = p.get("projects")
-            if proj:
-                proj["is_purchased"] = True
-                proj["purchased_at"] = p.get("purchased_at")
-                items.append(proj)
-        return {"items": items, "total": len(items)}
+        if marketplace_listing_ids:
+            listings_res = supabase.table("marketplace_listings").select(
+                "id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, usage_count, version, changelog"
+            ).in_("id", marketplace_listing_ids).execute()
+            
+            listings_map = {l["id"]: l for l in (listings_res.data or [])}
+            
+            for item in items:
+                listing_id = item.get("marketplace_listing_id")
+                if listing_id and listing_id in listings_map:
+                    item["marketplace_listing_data"] = listings_map[listing_id]
     
-    elif view == "selling":
-        result = supabase.table("marketplace_listings").select(
-            "id, title, price, sales_count, moderation_status, is_public, project_id"
-        ).eq("user_id", user_id).eq("is_deleted", False)\
-        .order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-        return {"items": result.data or [], "total": len(result.data or [])}
-    
-    return {"items": [], "total": 0}
+    return {"items": items, "total": total, "page": page, "view_type": view_type}
 
 
 @retry_on_network_error()

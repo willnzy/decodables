@@ -157,40 +157,99 @@ def aggregate_tier_activity():
 
 
 def aggregate_performance_metrics():
-    """Aggregate performance metrics."""
-    log("📊 Starting performance metrics...")
+    """
+    Aggregate page performance metrics (Core Web Vitals).
+    Analyzes Web Vitals and key page timing metrics reported by clients.
+    """
+    log("⚡ Starting performance metrics aggregation...")
     supabase = get_supabase()
     if not supabase:
         return
     
     now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=7)).isoformat()
     
-    # API response times (from logs if available)
-    # This is a placeholder - real implementation would parse logs
-    
-    # Database query counts
-    query_stats = {
-        "profiles": 0,
-        "projects": 0,
-        "assets": 0,
-        "marketplace": 0
-    }
-    
-    # Count recent queries per table (approximation via activity)
-    for table in query_stats:
-        count = supabase.table("activity_logs").select("id", count="exact")\
-            .ilike("action", f"%{table}%")\
-            .gte("created_at", (now - timedelta(hours=1)).isoformat()).execute()
-        query_stats[table] = count.count or 0
-    
-    # Error rate (from error logs if available)
-    errors = supabase.table("error_logs").select("id", count="exact")\
-        .gte("created_at", (now - timedelta(hours=1)).isoformat()).execute() if supabase else None
-    
-    upsert_stats("performance", {
-        "table_activity": query_stats,
-        "errors_1h": errors.count if errors else 0,
-        "timestamp": now.isoformat()
-    })
-    
-    log("✅ Performance metrics complete")
+    try:
+        # Pull performance_metrics events from user_events
+        events = supabase.table("user_events").select("properties")\
+            .eq("event_type", "performance_metrics")\
+            .gte("created_at", start_date).execute()
+        
+        if not events.data:
+            log("  No performance data found")
+            return
+        
+        # Prepare accumulation structures for numeric values and ratings
+        metrics_agg = {
+            "lcp": {"values": [], "ratings": defaultdict(int)},
+            "fid": {"values": [], "ratings": defaultdict(int)},
+            "cls": {"values": [], "ratings": defaultdict(int)},
+            "fcp": {"values": [], "ratings": defaultdict(int)},
+            "ttfb": {"values": [], "ratings": defaultdict(int)},
+            "dom_complete": {"values": []},
+            "load_complete": {"values": []},
+        }
+        
+        page_metrics = defaultdict(lambda: {"count": 0, "lcp_sum": 0, "fcp_sum": 0})
+        
+        for event in events.data or []:
+            props = event.get("properties", {})
+            page_url = props.get("page_url", "/")
+            
+            # Aggregate each metric value and capture rating buckets
+            for metric in ["lcp", "fid", "cls", "fcp", "ttfb", "domComplete", "loadComplete"]:
+                key = metric.lower().replace("complete", "_complete")
+                value = props.get(metric) or props.get(key)
+                if value is not None and isinstance(value, (int, float)):
+                    if key in metrics_agg:
+                        metrics_agg[key]["values"].append(value)
+                    
+                    # Track qualitative ratings (good/needs-improvement/poor)
+                    rating = props.get(f"{metric}_rating") or props.get(f"{key}_rating")
+                    if rating and key in metrics_agg and "ratings" in metrics_agg[key]:
+                        metrics_agg[key]["ratings"][rating] += 1
+            
+            # Build per-page aggregates
+            page_metrics[page_url]["count"] += 1
+            if lcp := props.get("lcp"):
+                page_metrics[page_url]["lcp_sum"] += lcp
+            if fcp := props.get("fcp"):
+                page_metrics[page_url]["fcp_sum"] += fcp
+        
+        # Helper function to compute averages and percentiles
+        def calc_stats(values):
+            if not values:
+                return {}
+            sorted_v = sorted(values)
+            n = len(sorted_v)
+            return {
+                "count": n,
+                "avg": round(sum(sorted_v) / n, 2),
+                "p50": sorted_v[n // 2],
+                "p90": sorted_v[int(n * 0.9)] if n >= 10 else sorted_v[-1],
+                "p95": sorted_v[int(n * 0.95)] if n >= 20 else sorted_v[-1],
+            }
+        
+        # Build final stats dict
+        stats = {}
+        for metric, data in metrics_agg.items():
+            stats[metric] = calc_stats(data["values"])
+            if "ratings" in data and data["ratings"]:
+                stats[metric]["ratings"] = dict(data["ratings"])
+        
+        # Add per-page stats (top 10 by page view count)
+        top_pages = sorted(page_metrics.items(), key=lambda x: -x[1]["count"])[:10]
+        stats["by_page"] = {}
+        for page, pdata in top_pages:
+            cnt = pdata["count"]
+            stats["by_page"][page] = {
+                "views": cnt,
+                "avg_lcp": round(pdata["lcp_sum"] / cnt, 2) if cnt else 0,
+                "avg_fcp": round(pdata["fcp_sum"] / cnt, 2) if cnt else 0,
+            }
+        
+        upsert_stats("performance_metrics", stats)
+        log(f"✅ Performance metrics complete: {len(events.data)} events processed")
+        
+    except Exception as e:
+        log(f"⚠️ Performance metrics error: {e}")

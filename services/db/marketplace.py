@@ -6,7 +6,7 @@ Database Marketplace - Listing and purchase operations
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone as timezone_module
 
 from .core import supabase, retry_on_network_error, listing_is_public_visible
 
@@ -80,41 +80,141 @@ def get_seller_listings(seller_id: str, page: int = 1, limit: int = 20):
 
 
 @retry_on_network_error()
-def create_listing(user_id: str, title: str, description: str, resource_type: str,
-                   price: int, resource_id: str = None, preview_images: list = None,
-                   resource_data: dict = None, allowed_tiers: list = None):
-    """Create new marketplace listing."""
+def create_listing(
+    seller_id: str,
+    title: str,
+    description: str,
+    thumbnail_url: str,
+    resource_url: str,
+    resource_type: str,
+    price_credits: int,
+    allowed_tiers: list = None,
+    submit_for_review: bool = True,
+    resource_id: str = None,
+    version: str = "1.0",
+    changelog: str = "",
+    timezone: str = "UTC"
+):
+    """
+    Create or update listing (PRD Chapter 7/8).
+    
+    If a listing already exists for this resource (by resource_id or resource_url),
+    update it with new version; otherwise create a new listing.
+    
+    Args:
+        seller_id: Seller user ID
+        title: Listing title
+        description: Listing description
+        thumbnail_url: Thumbnail image URL
+        resource_url: Resource URL (for assets) or ID (for projects)
+        resource_type: 'asset' or 'project'
+        price_credits: Price in credits
+        allowed_tiers: List of tiers that can access
+        submit_for_review: Whether to submit for review immediately
+        resource_id: The actual resource ID
+        version: Version number
+        changelog: What's new in this version
+        timezone: IANA timezone for transaction snapshot
+    
+    Returns:
+        Created/updated listing
+    """
     if not supabase:
         return None
     
-    result = supabase.table("marketplace_listings").insert({
-        "user_id": user_id,
+    # Check if listing already exists for this resource
+    existing_query = supabase.table("marketplace_listings").select("*")\
+        .eq("seller_id", seller_id).eq("is_deleted", False)
+    
+    # Try to find by resource_id first (preferred), then by resource_url
+    if resource_id:
+        existing_query = existing_query.eq("resource_id", resource_id)
+    else:
+        existing_query = existing_query.eq("resource_url", resource_url)
+    
+    existing_res = existing_query.execute()
+    existing_listing = existing_res.data[0] if existing_res.data else None
+    
+    if existing_listing:
+        # Update existing listing with new version
+        current_history = existing_listing.get("version_history") or []
+        
+        # Add new version to history
+        new_entry = {
+            "version": version,
+            "changelog": changelog,
+            "published_at": datetime.now(timezone_module.utc).isoformat(),
+        }
+        current_history.append(new_entry)
+        
+        update_data = {
+            "title": title,
+            "description": description,
+            "thumbnail_url": thumbnail_url,
+            "price_credits": price_credits,
+            "allowed_tiers": allowed_tiers or ["free"],
+            "version": version,
+            "changelog": changelog,
+            "version_history": current_history,
+            "moderation_status": "pending" if submit_for_review else "draft",
+            "moderation_note": None,  # Clear previous moderation note
+            "is_public": True,
+        }
+        
+        res = supabase.table("marketplace_listings").update(update_data)\
+            .eq("id", existing_listing["id"]).execute()
+        return res.data[0] if res.data else None
+    
+    # Create new listing
+    version_history = [{
+        "version": version,
+        "changelog": changelog,
+        "published_at": datetime.now(timezone_module.utc).isoformat(),
+    }]
+    
+    data = {
+        "seller_id": seller_id,
         "title": title,
         "description": description,
+        "thumbnail_url": thumbnail_url,
+        "resource_url": resource_url,
+        "resource_id": resource_id,
         "resource_type": resource_type,
-        "price": price,
-        "project_id": resource_id if resource_type == "project" else None,
-        "preview_images": preview_images or [],
-        "resource_data": resource_data or {},
-        "allowed_tiers": allowed_tiers or ["all"],
-        "moderation_status": "pending",
-        "is_public": False,
-    }).execute()
-    
-    return result.data[0] if result.data else None
+        "price_credits": price_credits,
+        "allowed_tiers": allowed_tiers or ["free"],
+        "is_public": True,  # User wants public, but not visible until approved
+        "is_deleted": False,
+        "sales_count": 0,
+        "usage_count": 0,
+        "moderation_status": "pending" if submit_for_review else "draft",
+        "moderation_note": None,
+        "moderated_by": None,
+        "moderated_at": None,
+        "version": version,
+        "changelog": changelog,
+        "version_history": version_history,
+        "timezone": timezone,
+    }
+    res = supabase.table("marketplace_listings").insert(data).execute()
+    return res.data[0] if res.data else None
 
 
 @retry_on_network_error()
-def submit_listing_for_review(listing_id: str, seller_id: str):
+def submit_listing_for_review(listing_id: str, seller_id: str = None):
     """Submit listing for review."""
     if not supabase:
         return None
     
-    result = supabase.table("marketplace_listings").update({
+    query = supabase.table("marketplace_listings").update({
         "moderation_status": "pending",
-        "submitted_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", listing_id).eq("user_id", seller_id).execute()
+        "is_public": True,
+        "submitted_at": datetime.now(timezone_module.utc).isoformat()
+    }).eq("id", listing_id)
     
+    if seller_id:
+        query = query.eq("seller_id", seller_id)
+    
+    result = query.execute()
     return result.data[0] if result.data else None
 
 
