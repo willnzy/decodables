@@ -30,6 +30,8 @@ from .generation import router as generation_router
 from .tasks import router as tasks_router
 from .generations import router as generations_router
 from .templates import router as templates_router
+from .admin_users import router as admin_users_router
+from .admin_subscriptions import router as admin_subscriptions_router
 
 __all__ = [
     'admin_router',
@@ -47,4 +49,6 @@ __all__ = [
     'tasks_router',
     'generations_router',
     'templates_router',
+    'admin_users_router',
+    'admin_subscriptions_router',
 ]
