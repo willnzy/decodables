@@ -10,8 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from io import BytesIO
 import base64
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
@@ -100,7 +99,9 @@ CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 # Production: fetch from Clerk Dashboard -> API Keys -> JWKS or set CLERK_PEM_PUBLIC_KEY.
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY") 
 
-limiter = Limiter(key_func=get_remote_address)
+# Import Redis-backed limiter from rate_limiter module
+from services.rate_limiter import limiter
+
 app = FastAPI(title="MagicZine AI API v3.0 (Production)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -339,9 +340,13 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Stop scheduled jobs when FastAPI shuts down."""
+    """Stop scheduled jobs and close connections when FastAPI shuts down."""
     logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
     shutdown_scheduler()
+    
+    # Gracefully close Redis connection
+    from services.cache import close_redis
+    close_redis()
 
 # Note: CORS error handling is now part of the global exception handlers (v3.12)
 # The CORSMiddleware + RequestIDMiddleware combination handles all cases

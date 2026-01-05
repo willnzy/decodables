@@ -6,6 +6,8 @@ from supabase import create_client, Client
 from datetime import datetime, timezone
 import uuid
 
+from .cache import cache_service
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -3498,10 +3500,17 @@ def admin_get_event_stats(start_date: str = None, end_date: str = None, group_by
 def get_aggregated_stats(stat_type: str, use_cache: bool = True):
     """
     Get aggregated stats
-    Use cache preferentially, calculate in real-time if cache not exists
+    Use Redis cache preferentially, then DB cache, calculate in real-time if not exists
     """
+    from datetime import timedelta
+    
     if use_cache:
-        # Try to get from cache first
+        # Try Redis cache first
+        cached = cache_service.get_stats(stat_type)
+        if cached is not None:
+            return cached
+        
+        # Try to get from DB cache
         try:
             res = supabase.table("aggregated_stats").select("data, updated_at")\
                 .eq("stat_type", stat_type)\
@@ -3509,17 +3518,19 @@ def get_aggregated_stats(stat_type: str, use_cache: bool = True):
                 .limit(1).execute()
             
             if res.data:
-                cache = res.data[0]
+                db_cache = res.data[0]
                 # Check if cache is fresh (within 1 hour)
-                updated_at = cache.get("updated_at")
+                updated_at = db_cache.get("updated_at")
                 if updated_at:
-                    from datetime import timedelta
                     now = datetime.now(timezone.utc)
                     cache_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
                     if now - cache_time < timedelta(hours=1):
-                        return cache.get("data", {})
+                        data = db_cache.get("data", {})
+                        # Store in Redis for faster future access
+                        cache_service.set_stats(stat_type, data)
+                        return data
         except Exception as e:
-            print(f"Cache lookup failed: {e}")
+            logger.warning(f"[Stats] Cache lookup failed: {e}")
     
     # Fall back to real-time calculation
     return None
@@ -3551,6 +3562,9 @@ def upsert_aggregated_stats(date_str: str, stat_type: str, data: dict):
         "data": data,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }, on_conflict="date,stat_type").execute()
+    
+    # Invalidate Redis cache for this stat_type
+    cache_service.invalidate_stats_cache(stat_type)
 
 
 # ===========================================
@@ -3683,50 +3697,69 @@ def admin_get_report_detail(report_id: str):
 # System Configuration Functions
 # ==========================================
 
-# In-memory cache for system configs (simple TTL cache)
-# 
-# MULTI-INSTANCE NOTE:
-# This cache is per-instance (not shared across instances).
-# When running multiple instances:
-# - Each instance has its own cache
-# - Config changes may take up to CONFIG_CACHE_TTL seconds to propagate
-# - This is acceptable for system configs that rarely change
-# - For instant propagation, use the admin API to invalidate cache on all instances,
-#   or reduce CONFIG_CACHE_TTL (trade-off: more DB queries)
+# Redis-backed cache for system configs (shared across instances)
+# See services/cache/ for implementation details
 #
-# Future optimization: Use Redis for shared cache across instances
-_config_cache = {}
-_config_cache_time = {}
-CONFIG_CACHE_TTL = 300  # 5 minutes cache TTL
+# IMPORTANT: db_service uses a different cache key pattern than config_service
+# to avoid conflicts:
+# - db_service: stores raw string values (for generic system configs)
+# - config_service: stores parsed dict values (for rate limit configs)
+
+# Cache key prefix for db_service system configs (different from config_service)
+# This avoids conflicts with config_service which stores parsed rate limit dicts
+_DB_CONFIG_CACHE_PREFIX = "md:sysconfig:"
 
 
 def _get_cached_config(key: str):
-    """Get config from cache if not expired."""
-    if key in _config_cache:
-        cache_time = _config_cache_time.get(key, 0)
-        if time.time() - cache_time < CONFIG_CACHE_TTL:
-            return _config_cache[key]
-    return None
+    """
+    Get config from cache (string value).
+    
+    Note: Uses a separate cache namespace from config_service to avoid
+    type conflicts (db_service stores strings, config_service stores dicts).
+    """
+    cache_key = f"{_DB_CONFIG_CACHE_PREFIX}{key}"
+    return cache_service.get(cache_key)
 
 
 def _set_cached_config(key: str, value):
-    """Set config in cache."""
-    _config_cache[key] = value
-    _config_cache_time[key] = time.time()
+    """
+    Set config in cache (string value).
+    """
+    from .cache.cache_keys import CacheTTL
+    cache_key = f"{_DB_CONFIG_CACHE_PREFIX}{key}"
+    cache_service.set(cache_key, str(value) if value else "", CacheTTL.CONFIG)
+
+
+def _get_cached_config_dict(key: str):
+    """
+    Get config dict from cache (for get_all_system_configs, get_configs_by_group).
+    """
+    cache_key = f"{_DB_CONFIG_CACHE_PREFIX}{key}"
+    return cache_service.get_json(cache_key)
+
+
+def _set_cached_config_dict(key: str, value: dict):
+    """
+    Set config dict in cache (for get_all_system_configs, get_configs_by_group).
+    """
+    from .cache.cache_keys import CacheTTL
+    cache_key = f"{_DB_CONFIG_CACHE_PREFIX}{key}"
+    cache_service.set_json(cache_key, value, CacheTTL.CONFIG)
 
 
 def _invalidate_config_cache(key: str = None):
     """Invalidate config cache. If key is None, invalidate all."""
-    global _config_cache, _config_cache_time
     if key:
-        _config_cache.pop(key, None)
-        _config_cache_time.pop(key, None)
-        # Also invalidate the 'all' cache
-        _config_cache.pop("__all__", None)
-        _config_cache_time.pop("__all__", None)
+        cache_key = f"{_DB_CONFIG_CACHE_PREFIX}{key}"
+        cache_service.delete(cache_key)
+        # Also invalidate the "all" caches
+        cache_service.delete_pattern(f"{_DB_CONFIG_CACHE_PREFIX}__all__*")
+        cache_service.delete_pattern(f"{_DB_CONFIG_CACHE_PREFIX}__group__*")
     else:
-        _config_cache = {}
-        _config_cache_time = {}
+        cache_service.delete_pattern(f"{_DB_CONFIG_CACHE_PREFIX}*")
+    
+    # Also invalidate config_service cache (they may share some keys conceptually)
+    cache_service.invalidate_config_cache(key)
 
 
 @retry_on_network_error()
@@ -3782,7 +3815,7 @@ def get_all_system_configs(group: str = None, include_inactive: bool = False):
     
     # Check cache first (only for public queries)
     if not include_inactive:
-        cached = _get_cached_config(cache_key)
+        cached = _get_cached_config_dict(cache_key)
         if cached is not None:
             return cached
     
@@ -3802,7 +3835,7 @@ def get_all_system_configs(group: str = None, include_inactive: bool = False):
             # Cache as dict for easy lookup
             config_dict = {item["key"]: item for item in res.data}
             if not include_inactive:
-                _set_cached_config(cache_key, config_dict)
+                _set_cached_config_dict(cache_key, config_dict)
             return config_dict
     except Exception as e:
         logger.error(f"[Config] Failed to get all configs: {e}")
@@ -3822,7 +3855,7 @@ def get_configs_by_group(group: str):
         Dict of key -> value
     """
     cache_key = f"__group__{group}"
-    cached = _get_cached_config(cache_key)
+    cached = _get_cached_config_dict(cache_key)
     if cached is not None:
         return cached
     
@@ -3835,7 +3868,7 @@ def get_configs_by_group(group: str):
         
         if res.data:
             result = {item["key"]: item["value"] for item in res.data}
-            _set_cached_config(cache_key, result)
+            _set_cached_config_dict(cache_key, result)
             return result
     except Exception as e:
         logger.warning(f"[Config] Failed to get configs for group {group}: {e}")

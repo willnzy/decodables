@@ -15,9 +15,10 @@ import hashlib
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone, timedelta
-import threading
 
 from supabase import create_client, Client
+
+from .cache import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,6 @@ if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# In-memory cache for active experiments
-_experiment_cache: Dict[str, Dict] = {}
-_cache_timestamp: Dict[str, datetime] = {}
-_cache_lock = threading.Lock()
-CACHE_TTL_SECONDS = 60  # 60s TTL
 
 # ==========================================
 # Experiment CRUD Operations
@@ -127,15 +122,11 @@ def get_experiment(experiment_key: str, use_cache: bool = True) -> Optional[Dict
     Returns:
         实验配置对象
     """
-    global _experiment_cache, _cache_timestamp
-    
     # 检查缓存
     if use_cache:
-        with _cache_lock:
-            if experiment_key in _experiment_cache:
-                cache_time = _cache_timestamp.get(experiment_key)
-                if cache_time and (datetime.now() - cache_time).total_seconds() < CACHE_TTL_SECONDS:
-                    return _experiment_cache[experiment_key]
+        cached = cache_service.get_experiment(experiment_key)
+        if cached is not None:
+            return cached
     
     if not supabase:
         return None
@@ -150,9 +141,7 @@ def get_experiment(experiment_key: str, use_cache: bool = True) -> Optional[Dict
         if result.data:
             experiment = _parse_experiment(result.data)
             # 更新缓存
-            with _cache_lock:
-                _experiment_cache[experiment_key] = experiment
-                _cache_timestamp[experiment_key] = datetime.now()
+            cache_service.set_experiment(experiment_key, experiment)
             return experiment
         return None
         
@@ -917,14 +906,7 @@ def _calculate_variant(experiment: Dict, user_identifier: str) -> str:
 
 def _invalidate_cache(experiment_key: str = None):
     """清除缓存"""
-    global _experiment_cache, _cache_timestamp
-    with _cache_lock:
-        if experiment_key:
-            _experiment_cache.pop(experiment_key, None)
-            _cache_timestamp.pop(experiment_key, None)
-        else:
-            _experiment_cache.clear()
-            _cache_timestamp.clear()
+    cache_service.invalidate_experiment_cache(experiment_key)
 
 
 def clear_experiment_cache():

@@ -1,34 +1,65 @@
 """
 Dynamic Rate Limiter
-动态速率限制器 - 从数据库读取配置
+动态速率限制器 - 从数据库读取配置，使用 Redis 存储
+
+Provides:
+- Dynamic rate limits from system_configs
+- Redis storage for distributed rate limiting
+- Memory fallback when Redis unavailable
 """
 
 import json
+import logging
 from functools import wraps
-from typing import Callable, Optional
+from typing import Callable
+
 from fastapi import Request, HTTPException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
 from .config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
+from .cache import get_redis_client, is_redis_available
+
+logger = logging.getLogger(__name__)
 
 
-def create_dynamic_limiter():
-    """"""
-    return Limiter(key_func=get_remote_address)
+def create_limiter_from_url(redis_url: str = None) -> Limiter:
+    """
+    Create a Limiter with explicit Redis URL.
+    
+    Args:
+        redis_url: Redis connection URL (e.g., redis://localhost:6379/0)
+        
+    Returns:
+        Configured Limiter instance
+    """
+    import os
+    
+    url = redis_url or os.environ.get("REDIS_URL")
+    
+    if url:
+        logger.info("[RateLimiter] Using Redis storage")
+        return Limiter(
+            key_func=get_remote_address,
+            storage_uri=url
+        )
+    else:
+        logger.warning("[RateLimiter] Using in-memory storage")
+        return Limiter(key_func=get_remote_address)
 
 
-# 
-limiter = create_dynamic_limiter()
+# Global limiter instance
+limiter = create_limiter_from_url()
 
 
 def dynamic_limit(config_key: str):
     """
+    Decorator for dynamic rate limiting based on database config.
     
-    
-    ，
+    Reads limit config from system_configs table and applies it.
     
     Args:
-        config_key: ， "rate_limit.payment.checkout"
+        config_key: Config key (e.g., "rate_limit.payment.checkout")
     
     Usage:
         @app.post("/api/payment/checkout")
@@ -39,30 +70,15 @@ def dynamic_limit(config_key: str):
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(request: Request, *args, **kwargs):
-            # 
+            # Check if rate limiting is enabled
             if not is_rate_limit_enabled(config_key):
-                # ，
                 return await func(request, *args, **kwargs)
             
-            # 
+            # Get limit string
             limit_string = get_rate_limit_string(config_key)
             
-            #  slowapi 
-            # ：， slowapi 
-            from slowapi.util import get_remote_address
-            from slowapi.errors import RateLimitExceeded
-            
-            key = get_remote_address(request)
-            
-            # 
-            parts = limit_string.split("/")
-            limit = int(parts[0])
-            window = parts[1] if len(parts) > 1 else "minute"
-            
-            #  limiter 
-            # ：
             try:
-                # 
+                # Apply rate limit
                 limited_func = limiter.limit(limit_string)(func)
                 return await limited_func(request, *args, **kwargs)
             except Exception as e:
@@ -75,7 +91,7 @@ def dynamic_limit(config_key: str):
         
         @wraps(func)
         def sync_wrapper(request: Request, *args, **kwargs):
-            # 
+            # Check if rate limiting is enabled
             if not is_rate_limit_enabled(config_key):
                 return func(request, *args, **kwargs)
             
@@ -92,7 +108,7 @@ def dynamic_limit(config_key: str):
                     )
                 raise
         
-        # 
+        # Return appropriate wrapper based on function type
         import asyncio
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
@@ -103,7 +119,7 @@ def dynamic_limit(config_key: str):
 
 def get_current_limits() -> dict:
     """
-    （ API ）
+    Get current rate limit settings (for admin API).
     
     Returns:
         {
@@ -111,10 +127,11 @@ def get_current_limits() -> dict:
             "limits": {
                 "rate_limit.payment.checkout": {"limit": 5, "window": "minute", "enabled": True},
                 ...
-            }
+            },
+            "storage": "redis" or "memory"
         }
     """
-    from config_service import get_all_configs, DEFAULT_RATE_LIMITS
+    from .config_service import get_all_configs, DEFAULT_RATE_LIMITS
     
     configs = get_all_configs("rate_limit")
     
@@ -123,11 +140,10 @@ def get_current_limits() -> dict:
     
     for config in configs:
         key = config.get("key")
-        # value is TEXT in v3.10 schema, may need JSON parsing
         raw_value = config.get("value")
         try:
             value = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
-        except:
+        except (json.JSONDecodeError, TypeError):
             value = raw_value
         
         if key == "rate_limit.global.enabled":
@@ -135,12 +151,12 @@ def get_current_limits() -> dict:
         else:
             limits[key] = value
     
-    # ，
+    # Use defaults if no limits found
     if not limits:
         limits = {k: v for k, v in DEFAULT_RATE_LIMITS.items() if k != "rate_limit.global.enabled"}
     
     return {
         "global_enabled": global_enabled,
-        "limits": limits
+        "limits": limits,
+        "storage": "redis" if is_redis_available() else "memory"
     }
-

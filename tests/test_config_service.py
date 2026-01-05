@@ -1,6 +1,6 @@
 """
 Unit Tests for config_service.py
-Tests configuration service with caching and rate limit handling
+Tests configuration service with Redis caching and rate limit handling
 """
 
 import pytest
@@ -8,25 +8,25 @@ import json
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 
-# We need to mock supabase before importing config_service
+# We need to mock supabase and cache before importing config_service
 with patch.dict('os.environ', {'SUPABASE_URL': 'https://test.supabase.co/', 'SUPABASE_KEY': 'test-key'}):
     with patch('services.config_service.create_client') as mock_create_client:
-        mock_supabase = MagicMock()
-        mock_create_client.return_value = mock_supabase
-        
-        from services.config_service import (
-            get_config,
-            set_config,
-            get_all_configs,
-            get_rate_limit_string,
-            is_rate_limit_enabled,
-            clear_config_cache,
-            batch_update_configs,
-            apply_rate_limit_preset,
-            DEFAULT_RATE_LIMITS,
-            RATE_LIMIT_PRESETS,
-            CACHE_TTL_SECONDS,
-        )
+        with patch('services.config_service.cache_service') as mock_cache:
+            mock_supabase = MagicMock()
+            mock_create_client.return_value = mock_supabase
+            
+            from services.config_service import (
+                get_config,
+                set_config,
+                get_all_configs,
+                get_rate_limit_string,
+                is_rate_limit_enabled,
+                clear_config_cache,
+                batch_update_configs,
+                apply_rate_limit_preset,
+                DEFAULT_RATE_LIMITS,
+                RATE_LIMIT_PRESETS,
+            )
 
 
 class TestDefaultRateLimits:
@@ -100,9 +100,12 @@ class TestGetConfig:
         """Clear cache before each test"""
         clear_config_cache()
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_returns_config_from_database(self, mock_supabase):
+    def test_returns_config_from_database(self, mock_supabase, mock_cache):
         """Should return config value from database"""
+        mock_cache.get_config.return_value = None  # Cache miss
+        
         mock_result = MagicMock()
         mock_result.data = {
             "value": '{"limit": 10, "window": "minute", "enabled": true}',
@@ -127,31 +130,27 @@ class TestGetConfig:
         else:
             assert "limit" in result
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_caching_works(self, mock_supabase):
+    def test_caching_works(self, mock_supabase, mock_cache):
         """Should cache results and not query database repeatedly"""
-        mock_result = MagicMock()
-        mock_result.data = {
-            "value": '{"limit": 5}',
-            "is_active": True
-        }
+        mock_cache.get_config.return_value = {"limit": 5}
         
-        mock_table = MagicMock()
-        mock_table.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_result
-        mock_supabase.table.return_value = mock_table
-        
-        # First call - should hit database
+        # Both calls should use cache
         result1 = get_config("test_key", use_cache=True)
-        
-        # Second call - should use cache
         result2 = get_config("test_key", use_cache=True)
         
         # Both should return same value
         assert result1 == result2
+        # Database should not be queried when cache hit
+        mock_supabase.table.assert_not_called()
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_bypasses_cache_when_requested(self, mock_supabase):
+    def test_bypasses_cache_when_requested(self, mock_supabase, mock_cache):
         """Should bypass cache when use_cache=False"""
+        mock_cache.get_config.return_value = {"cached": "value"}
+        
         mock_result = MagicMock()
         mock_result.data = {
             "value": '{"value": "fresh"}',
@@ -163,12 +162,15 @@ class TestGetConfig:
         get_config("test_key", use_cache=False)
         get_config("test_key", use_cache=False)
         
-        # Should query twice
+        # Should query database even with cache
         assert mock_supabase.table.call_count >= 2
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_handles_inactive_config(self, mock_supabase):
+    def test_handles_inactive_config(self, mock_supabase, mock_cache):
         """Should return default for inactive config"""
+        mock_cache.get_config.return_value = None
+        
         mock_result = MagicMock()
         mock_result.data = {
             "value": '{"limit": 10}',
@@ -190,8 +192,9 @@ class TestSetConfig:
         """Clear cache before each test"""
         clear_config_cache()
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_updates_config_in_database(self, mock_supabase):
+    def test_updates_config_in_database(self, mock_supabase, mock_cache):
         """Should update config in database"""
         mock_result = MagicMock()
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = mock_result
@@ -201,22 +204,20 @@ class TestSetConfig:
         assert result is True
         mock_supabase.table.assert_called_with("system_configs")
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_clears_cache_after_update(self, mock_supabase):
+    def test_clears_cache_after_update(self, mock_supabase, mock_cache):
         """Should clear cache after successful update"""
-        # Pre-populate cache
-        from services.config_service import _config_cache
-        _config_cache["test_key"] = {"old": "value"}
-        
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
         
         set_config("test_key", {"new": "value"}, "admin")
         
-        # Cache should be cleared for this key
-        assert "test_key" not in _config_cache
+        # Cache should be invalidated
+        mock_cache.invalidate_config_cache.assert_called_with("test_key")
     
+    @patch('services.config_service.cache_service')
     @patch('services.config_service.supabase')
-    def test_handles_database_error(self, mock_supabase):
+    def test_handles_database_error(self, mock_supabase, mock_cache):
         """Should return False on database error"""
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("DB Error")
         
@@ -347,19 +348,12 @@ class TestIsRateLimitEnabled:
 class TestClearConfigCache:
     """Tests for clear_config_cache function"""
     
-    def test_clears_all_cache(self):
-        """Should clear all cached configs"""
-        from services.config_service import _config_cache, _cache_timestamp
-        
-        # Populate cache
-        _config_cache["key1"] = "value1"
-        _config_cache["key2"] = "value2"
-        _cache_timestamp["key1"] = datetime.now()
-        
+    @patch('services.config_service.cache_service')
+    def test_clears_all_cache(self, mock_cache):
+        """Should clear all cached configs via cache_service"""
         clear_config_cache()
         
-        assert len(_config_cache) == 0
-        assert len(_cache_timestamp) == 0
+        mock_cache.invalidate_config_cache.assert_called_once()
 
 
 class TestBatchUpdateConfigs:
@@ -462,12 +456,3 @@ class TestApplyRateLimitPreset:
         result = apply_rate_limit_preset("strict", "admin")
         
         assert result is True
-
-
-class TestCacheTTL:
-    """Tests for cache TTL behavior"""
-    
-    def test_cache_ttl_constant_defined(self):
-        """CACHE_TTL_SECONDS should be defined and reasonable"""
-        assert CACHE_TTL_SECONDS > 0
-        assert CACHE_TTL_SECONDS <= 3600  # Max 1 hour
