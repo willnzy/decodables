@@ -393,24 +393,20 @@ class TestCreditDeduction:
     积分扣除测试
     
     业务规则来源: BUSINESS_LOGIC_SPEC.md Section 3.2
+    v3.22: 使用 RPC 原子操作
     """
     
-    @patch('services.db_service.log_credit_transaction')
     @patch('services.db_service.supabase')
-    @patch('services.db_service.get_user_profile')
-    def test_deduction_priority_monthly_first(self, mock_get_profile, mock_supabase, mock_log):
-        """【业务规则 3.2】扣费优先级: 先扣月度积分"""
+    def test_deduction_priority_monthly_first(self, mock_supabase):
+        """【业务规则 3.2】扣费优先级: 先扣月度积分 (RPC 实现)"""
         from services.db_service import credit_deduct
         
-        # Mock 用户有 月度=30, 永久=100
-        mock_get_profile.return_value = {
-            "id": "user_001",
-            "credits_monthly": 30,
-            "credits_permanent": 100
-        }
-        
-        # Mock update 成功
-        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "user_001"}])
+        # Mock RPC 返回扣费结果（RPC 内部处理优先级逻辑）
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": True,
+            "balance_monthly": 0,  # 月度扣完
+            "balance_permanent": 80  # 永久扣了 20
+        })
         
         result = credit_deduct("user_001", 50, "generation", "Test deduction")
         
@@ -419,29 +415,34 @@ class TestCreditDeduction:
         assert result["balance_monthly"] == 0
         assert result["balance_permanent"] == 80
     
-    @patch('services.db_service.get_user_profile')
-    def test_insufficient_credits_raises_exception(self, mock_get_profile):
-        """【业务规则 3.2】积分不足时抛出异常"""
+    @patch('services.db_service.supabase')
+    def test_insufficient_credits_raises_exception(self, mock_supabase):
+        """【业务规则 3.2】积分不足时抛出异常 (RPC 实现)"""
         from services.db_service import credit_deduct
         
-        # Mock 用户积分不足
-        mock_get_profile.return_value = {
-            "id": "user_001",
-            "credits_monthly": 10,
-            "credits_permanent": 10
-        }
+        # Mock RPC 返回积分不足错误
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": False,
+            "error": "Insufficient credits",
+            "error_code": "CREDITS_INSUFFICIENT"
+        })
         
         with pytest.raises(Exception) as exc_info:
             credit_deduct("user_001", 100, "generation", "Test deduction")
         
         assert "CREDITS_INSUFFICIENT" in str(exc_info.value)
     
-    @patch('services.db_service.get_user_profile')
-    def test_user_not_found_raises_exception(self, mock_get_profile):
-        """【业务规则】用户不存在时抛出异常"""
+    @patch('services.db_service.supabase')
+    def test_user_not_found_raises_exception(self, mock_supabase):
+        """【业务规则】用户不存在时抛出异常 (RPC 实现)"""
         from services.db_service import credit_deduct
         
-        mock_get_profile.return_value = None
+        # Mock RPC 返回用户不存在错误
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": False,
+            "error": "User not found",
+            "error_code": "USER_NOT_FOUND"
+        })
         
         with pytest.raises(Exception) as exc_info:
             credit_deduct("nonexistent", 10, "generation", "Test")

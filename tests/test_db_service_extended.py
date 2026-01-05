@@ -412,21 +412,19 @@ class TestLogPaymentRecord:
 # ==========================================
 
 class TestAddCreditsMonthly:
-    """添加月度积分测试"""
+    """添加月度积分测试 (v3.22: 使用 RPC)"""
     
-    @patch('services.db_service.log_credit_transaction')
     @patch('services.db_service.supabase')
-    @patch('services.db_service.get_user_profile')
-    def test_add_monthly_credits(self, mock_get_profile, mock_supabase, mock_log):
-        """添加月度积分"""
+    def test_add_monthly_credits(self, mock_supabase):
+        """添加月度积分 (RPC 实现)"""
         from services.db_service import add_credits_monthly
         
-        mock_get_profile.return_value = {
-            "id": "user_001",
-            "credits_monthly": 100,
-            "credits_permanent": 50
-        }
-        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock()
+        # Mock RPC 返回添加结果
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": True,
+            "balance_monthly": 600,
+            "balance_permanent": 50
+        })
         
         result = add_credits_monthly("user_001", 500, "Monthly subscription grant")
         
