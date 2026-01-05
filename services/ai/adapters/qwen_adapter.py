@@ -17,11 +17,10 @@ API Docs:
 - Wanx: https://help.aliyun.com/zh/model-studio/developer-reference/tongyi-wanxiang
 """
 
-import os
 import time
 import logging
 import aiohttp
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional
 
 from ..base import (
     BaseTextAdapter,
@@ -31,65 +30,17 @@ from ..base import (
     AIErrorType,
     classify_error
 )
+from .qwen_config import (
+    DASHSCOPE_API_KEY,
+    TEXT_API_URL,
+    IMAGE_API_URL,
+    QWEN_TEXT_MODELS,
+    WANX_IMAGE_MODELS,
+    SIZE_MAPPING,
+)
 
 logger = logging.getLogger(__name__)
 
-# ==========================================
-# Configuration
-# ==========================================
-
-DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY")
-
-# API Endpoints (International)
-# 新加坡: dashscope-intl.aliyuncs.com
-# 北京: dashscope.aliyuncs.com
-DASHSCOPE_BASE_URL = os.environ.get(
-    "DASHSCOPE_BASE_URL", 
-    "https://dashscope-intl.aliyuncs.com"
-)
-
-# Text API endpoint
-TEXT_API_URL = f"{DASHSCOPE_BASE_URL}/api/v1/services/aigc/text-generation/generation"
-
-# Image API endpoint (万相)
-IMAGE_API_URL = f"{DASHSCOPE_BASE_URL}/api/v1/services/aigc/multimodal-generation/generation"
-
-# Available models
-QWEN_TEXT_MODELS = [
-    "qwen-turbo",      # 快速，低成本
-    "qwen-plus",       # 平衡
-    "qwen-max",        # 最高质量
-    "qwen-max-longcontext",  # 长上下文
-]
-
-WANX_IMAGE_MODELS = [
-    "wanx-v1",         # 万相 v1
-    "wan2.6-t2i",      # 万相 2.6 文生图
-    "wan2.6-image",    # 万相 2.6 图像编辑
-]
-
-# Size mapping: our format -> Wanx format
-# 万相使用 "宽*高" 格式
-SIZE_MAPPING = {
-    "square": "1024*1024",
-    "1:1": "1024*1024",
-    "landscape_4_3": "1280*960",
-    "4:3": "1280*960",
-    "portrait_4_3": "960*1280",
-    "3:4": "960*1280",
-    "landscape_16_9": "1280*720",
-    "16:9": "1280*720",
-    "portrait_9_16": "720*1280",
-    "9:16": "720*1280",
-    # 默认
-    "1024x1024": "1024*1024",
-    "1280x1280": "1280*1280",
-}
-
-
-# ==========================================
-# Text Adapter (千问)
-# ==========================================
 
 class QwenTextAdapter(BaseTextAdapter):
     """
@@ -121,9 +72,7 @@ class QwenTextAdapter(BaseTextAdapter):
         response_format: Optional[Dict] = None,
         **kwargs
     ) -> AIResponse:
-        """
-        千问 Chat Completion
-        """
+        """千问 Chat Completion"""
         if not self._api_key:
             return AIResponse.from_error(
                 "DASHSCOPE_API_KEY not configured",
@@ -140,25 +89,17 @@ class QwenTextAdapter(BaseTextAdapter):
                 "Authorization": f"Bearer {self._api_key}",
             }
             
-            # 构建请求体
             payload = {
                 "model": model,
-                "input": {
-                    "messages": messages
-                },
+                "input": {"messages": messages},
                 "parameters": {
                     "temperature": temperature,
-                    "result_format": "message",  # 返回 message 格式
+                    "result_format": "message",
                 }
             }
             
             if max_tokens:
                 payload["parameters"]["max_tokens"] = max_tokens
-            
-            # JSON 模式
-            if response_format and response_format.get("type") == "json_object":
-                # 千问通过 prompt 指示返回 JSON
-                pass
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -171,7 +112,6 @@ class QwenTextAdapter(BaseTextAdapter):
             
             latency_ms = int((time.time() - start_time) * 1000)
             
-            # 检查错误
             if "code" in result and result["code"]:
                 return AIResponse(
                     success=False,
@@ -182,16 +122,13 @@ class QwenTextAdapter(BaseTextAdapter):
                     latency_ms=latency_ms
                 )
             
-            # 提取响应
             output = result.get("output", {})
             choices = output.get("choices", [])
-            
             content = ""
             if choices:
                 message = choices[0].get("message", {})
                 content = message.get("content", "")
             
-            # 提取 usage
             usage_data = result.get("usage", {})
             usage = AIUsage(
                 input_tokens=usage_data.get("input_tokens", 0),
@@ -224,10 +161,6 @@ class QwenTextAdapter(BaseTextAdapter):
             )
 
 
-# ==========================================
-# Image Adapter (通义万相 - Wanx)
-# ==========================================
-
 class WanxImageAdapter(BaseImageAdapter):
     """
     通义万相 (Wanx) 图像生成适配器
@@ -240,7 +173,7 @@ class WanxImageAdapter(BaseImageAdapter):
     - wanx-v1: 旧版本
     """
     
-    provider_name = "wanx"  # 独立的 provider 名称
+    provider_name = "wanx"
     
     def __init__(self):
         self._api_key = DASHSCOPE_API_KEY
@@ -263,19 +196,7 @@ class WanxImageAdapter(BaseImageAdapter):
         seed: Optional[int] = None,
         **kwargs
     ) -> AIResponse:
-        """
-        万相图像生成
-        
-        Args:
-            prompt: 图像描述 (支持中英文)
-            model: 模型名称 (wan2.6-t2i, wan2.6-image, wanx-v1)
-            size: 图像尺寸 (支持多种格式，会自动转换)
-            num_images: 生成数量 (1-4)
-            negative_prompt: 负面提示词
-            prompt_extend: 是否启用提示词智能扩展
-            watermark: 是否添加水印
-            seed: 随机种子 (可选)
-        """
+        """万相图像生成"""
         if not self._api_key:
             return AIResponse.from_error(
                 "DASHSCOPE_API_KEY not configured",
@@ -292,27 +213,16 @@ class WanxImageAdapter(BaseImageAdapter):
                 "Authorization": f"Bearer {self._api_key}",
             }
             
-            # 转换尺寸格式
             wanx_size = SIZE_MAPPING.get(size, size)
-            # 确保格式正确 (宽*高)
             if "x" in wanx_size:
                 wanx_size = wanx_size.replace("x", "*")
             
-            # 限制生成数量
             num_images = max(1, min(4, num_images))
             
-            # 构建请求体 (万相 API 格式)
             payload = {
                 "model": model,
                 "input": {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"text": prompt}
-                            ]
-                        }
-                    ]
+                    "messages": [{"role": "user", "content": [{"text": prompt}]}]
                 },
                 "parameters": {
                     "size": wanx_size,
@@ -324,7 +234,6 @@ class WanxImageAdapter(BaseImageAdapter):
             
             if negative_prompt:
                 payload["parameters"]["negative_prompt"] = negative_prompt
-            
             if seed is not None:
                 payload["parameters"]["seed"] = seed
             
@@ -333,13 +242,12 @@ class WanxImageAdapter(BaseImageAdapter):
                     IMAGE_API_URL,
                     headers=headers,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=180)  # 图像生成可能较慢
+                    timeout=aiohttp.ClientTimeout(total=180)
                 ) as resp:
                     result = await resp.json()
             
             latency_ms = int((time.time() - start_time) * 1000)
             
-            # 检查错误
             if "code" in result and result["code"]:
                 return AIResponse(
                     success=False,
@@ -351,8 +259,6 @@ class WanxImageAdapter(BaseImageAdapter):
                     latency_ms=latency_ms
                 )
             
-            # 提取图像 URL
-            # 响应格式: output.choices[].message.content[].image
             image_urls = []
             output = result.get("output", {})
             choices = output.get("choices", [])
@@ -364,11 +270,8 @@ class WanxImageAdapter(BaseImageAdapter):
                     if "image" in content_item:
                         image_urls.append(content_item["image"])
             
-            # 提取 usage
             usage_data = result.get("usage", {})
-            usage = AIUsage(
-                images_generated=usage_data.get("image_count", len(image_urls))
-            )
+            usage = AIUsage(images_generated=usage_data.get("image_count", len(image_urls)))
             
             return AIResponse(
                 success=True,
@@ -403,15 +306,7 @@ class WanxImageAdapter(BaseImageAdapter):
         strength: float = 0.7,
         **kwargs
     ) -> AIResponse:
-        """
-        万相图像编辑 (图生图)
-        
-        Args:
-            prompt: 编辑指令
-            image_url: 参考图像 URL
-            model: 模型 (推荐 wan2.6-image)
-            strength: 编辑强度 (0-1)
-        """
+        """万相图像编辑 (图生图)"""
         if not self._api_key:
             return AIResponse.from_error(
                 "DASHSCOPE_API_KEY not configured",
@@ -428,19 +323,13 @@ class WanxImageAdapter(BaseImageAdapter):
                 "Authorization": f"Bearer {self._api_key}",
             }
             
-            # 构建请求体 (图像编辑模式)
             payload = {
                 "model": model,
                 "input": {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"text": prompt},
-                                {"image": image_url}
-                            ]
-                        }
-                    ]
+                    "messages": [{
+                        "role": "user",
+                        "content": [{"text": prompt}, {"image": image_url}]
+                    }]
                 },
                 "parameters": {
                     "prompt_extend": True,
@@ -460,7 +349,6 @@ class WanxImageAdapter(BaseImageAdapter):
             
             latency_ms = int((time.time() - start_time) * 1000)
             
-            # 检查错误
             if "code" in result and result["code"]:
                 return AIResponse(
                     success=False,
@@ -472,7 +360,6 @@ class WanxImageAdapter(BaseImageAdapter):
                     latency_ms=latency_ms
                 )
             
-            # 提取图像 URL
             image_urls = []
             output = result.get("output", {})
             choices = output.get("choices", [])
