@@ -236,36 +236,18 @@ class CreditService:
         except Exception as e:
             return (False, str(e))
     
-    def is_first_generation(self, user_id: str) -> bool:
-        """
-        Check if this is user's first AI generation.
-        PRD:  0 Credits  onboarding 
-        
-        Args:
-            user_id: User ID
-        
-        Returns:
-            True if user has never generated before
-        """
-        result = self.supabase.table("credit_transactions").select(
-            "id"
-        ).eq("user_id", user_id).eq("type", "generation").limit(1).execute()
-        
-        return not result.data or len(result.data) == 0
-    
-    def get_generation_cost(self, user_id: str) -> int:
+    @staticmethod
+    def get_generation_cost() -> int:
         """
         Get cost for AI image generation.
-        PRD: 5 Credits/Image,  0 Credits
         
-        Args:
-            user_id: User ID
+        Business Rule (v3.3 Section 3.3):
+        - AI 图像生成消耗 5 积分/张
+        - 无特殊规则（首次免费已移除）
         
         Returns:
-            Cost in credits (0 for first generation)
+            Cost in credits (always CREDITS_PER_IMAGE)
         """
-        if self.is_first_generation(user_id):
-            return 0
         return CREDITS_PER_IMAGE
     
     @staticmethod

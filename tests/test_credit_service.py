@@ -356,68 +356,43 @@ class TestCreditServiceResetMonthly:
         assert success is False
 
 
-class TestCreditServiceIsFirstGeneration:
-    """Test CreditService.is_first_generation"""
-    
-    def test_returns_true_for_new_user(self):
-        """Returns True for user with no generation history"""
-        from services.credit_service import CreditService
-        
-        mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[]
-        )
-        
-        service = CreditService(mock_supabase)
-        
-        assert service.is_first_generation("user_123") is True
-    
-    def test_returns_false_for_existing_user(self):
-        """Returns False for user with generation history"""
-        from services.credit_service import CreditService
-        
-        mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"id": 1}]
-        )
-        
-        service = CreditService(mock_supabase)
-        
-        assert service.is_first_generation("user_123") is False
-
-
 class TestCreditServiceGetGenerationCost:
-    """Test CreditService.get_generation_cost"""
+    """
+    Test CreditService.get_generation_cost
+    
+    【业务规则 - Business Spec v3.3 Section 3.3】
+    - AI 图像生成: 5 积分/张
+    - 无特殊规则（已移除首次免费）
+    """
     
     @patch('services.credit_service.CREDITS_PER_IMAGE', 5)
-    def test_returns_zero_for_first_generation(self):
-        """Returns 0 for first generation"""
+    def test_generation_cost_is_always_5_credits(self):
+        """【业务规则】每次 AI 图像生成固定消耗 5 积分"""
         from services.credit_service import CreditService
         
-        mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[]  # No previous generations
-        )
-        
-        service = CreditService(mock_supabase)
-        cost = service.get_generation_cost("user_123")
-        
-        assert cost == 0
-    
-    @patch('services.credit_service.CREDITS_PER_IMAGE', 5)
-    def test_returns_normal_cost(self):
-        """Returns normal cost for subsequent generations"""
-        from services.credit_service import CreditService
-        
-        mock_supabase = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"id": 1}]  # Has previous generations
-        )
-        
-        service = CreditService(mock_supabase)
-        cost = service.get_generation_cost("user_123")
-        
+        # 静态方法，无需实例化或传入 user_id
+        cost = CreditService.get_generation_cost()
         assert cost == 5
+    
+    @patch('services.credit_service.CREDITS_PER_IMAGE', 5)
+    def test_generation_cost_no_first_free(self):
+        """【业务规则验证】不存在"首次免费"，任何用户都是 5 积分"""
+        from services.credit_service import CreditService
+        
+        # 业务规则 v3.3: AI 图像生成固定 5 积分/张，无首次免费
+        # get_generation_cost 现在是静态方法，与用户无关
+        cost = CreditService.get_generation_cost()
+        
+        assert cost == 5, f"业务规则: AI 图像生成固定 5 积分/张。当前返回 {cost}"
+    
+    @patch('services.credit_service.CREDITS_PER_IMAGE', 10)
+    def test_generation_cost_uses_config(self):
+        """【实现细节】成本从配置常量读取"""
+        from services.credit_service import CreditService
+        
+        # 验证成本来自 CREDITS_PER_IMAGE 配置
+        cost = CreditService.get_generation_cost()
+        assert cost == 10
 
 
 class TestCreditServiceGetOcrCost:

@@ -42,32 +42,50 @@ class TestProjectLimitLogic:
 
 
 class TestFreeTrialLogic:
-    """Test Free 7-day trial logic (PRD v3.2)"""
+    """
+    Test Free 30-day trial logic (Business Spec v3.3)
     
-    def test_trial_within_7_days(self):
-        """User within 7-day trial can edit"""
+    业务规则:
+    - 试用期时长: 30 天（从注册日期开始）
+    - 试用期内: Free 用户可以体验所有功能（等同 Pro）
+    - 试用期结束后: 不属于 Free 的功能权益会"上锁"
+    """
+    
+    TRIAL_DAYS = 30  # 业务规则定义的试用期天数
+    
+    def test_trial_within_30_days(self):
+        """【业务规则】30天内的 Free 用户在试用期内，可使用全部功能"""
         created_at = datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         days_since_registration = (now - created_at).total_seconds() / (24 * 3600)
         
-        assert days_since_registration < 7
+        assert days_since_registration <= self.TRIAL_DAYS
     
-    def test_trial_expired_after_7_days(self):
-        """User after 7-day trial cannot edit"""
-        created_at = datetime.now(timezone.utc) - timedelta(days=8)
+    def test_trial_within_30_days_day_29(self):
+        """【业务规则】第29天的 Free 用户仍在试用期内"""
+        created_at = datetime.now(timezone.utc) - timedelta(days=29)
         now = datetime.now(timezone.utc)
         days_since_registration = (now - created_at).total_seconds() / (24 * 3600)
         
-        assert days_since_registration > 7
+        assert days_since_registration <= self.TRIAL_DAYS
     
-    def test_trial_exactly_7_days(self):
-        """User exactly at 7 days boundary"""
-        created_at = datetime.now(timezone.utc) - timedelta(days=7)
+    def test_trial_expired_after_30_days(self):
+        """【业务规则】超过30天的 Free 用户试用期已过期"""
+        created_at = datetime.now(timezone.utc) - timedelta(days=31)
         now = datetime.now(timezone.utc)
         days_since_registration = (now - created_at).total_seconds() / (24 * 3600)
         
-        # Should be approximately 7 days (within tolerance)
-        assert 6.9 < days_since_registration < 7.1
+        assert days_since_registration > self.TRIAL_DAYS
+    
+    def test_trial_exactly_30_days(self):
+        """【业务规则】正好第30天的用户仍在试用期内（<=30）"""
+        created_at = datetime.now(timezone.utc) - timedelta(days=30)
+        now = datetime.now(timezone.utc)
+        days_since_registration = (now - created_at).total_seconds() / (24 * 3600)
+        
+        # 30 天边界，应该还在试用期内 (days <= 30)
+        assert 29.9 < days_since_registration < 30.1
+        assert days_since_registration <= self.TRIAL_DAYS + 0.1  # 允许一点浮点误差
 
 
 class TestTierPermissions:
