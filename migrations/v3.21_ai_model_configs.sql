@@ -45,9 +45,9 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
  '{"enabled": false, "text_reasoning": {"canary_provider": "qwen", "canary_model": "qwen-plus", "traffic_percent": 10, "target_tiers": ["pro"]}, "image_generation": {"canary_provider": "jimeng", "canary_model": "jimeng-2.1", "traffic_percent": 5, "target_tiers": ["pro"]}}', 
  'json', 'ai_models', 'Canary release configuration for A/B testing new models', true),
 
--- 各提供商可用模型列表
+-- 各提供商可用模型列表 (含万相 2.6)
 ('ai_providers.models', 
- '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"], "image": ["wanx-v1"]}, "gemini": {"text": ["gemini-2.0-flash", "gemini-2.0-pro"], "image": ["imagen-3"]}, "grok": {"text": ["grok-2", "grok-2-vision"]}, "jimeng": {"image": ["jimeng-2.1", "jimeng-2.1-pro"]}, "anthropic": {"text": ["claude-3.5-sonnet", "claude-3.5-opus"]}}', 
+ '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"], "image": ["wan2.6-t2i", "wan2.6-image", "wanx-v1"]}, "gemini": {"text": ["gemini-2.0-flash", "gemini-2.0-pro"], "image": ["imagen-3"]}, "grok": {"text": ["grok-2", "grok-2-vision"]}, "jimeng": {"image": ["jimeng-2.1", "jimeng-2.1-pro"]}, "anthropic": {"text": ["claude-3.5-sonnet", "claude-3.5-opus"]}}', 
  'json', 'ai_providers', 'Available models per provider', true),
 
 -- 超时配置 (秒)
