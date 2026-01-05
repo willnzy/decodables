@@ -1,6 +1,6 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.20 - Complete)
--- Includes: core schema + RLS policies + all updates through v3.20
+-- Make Decodables Database Initialization Script (v3.23 - Complete)
+-- Includes: core schema + RLS policies + all updates through v3.23
 -- 
 -- Version History:
 -- v3.0: Credit buckets, marketplace, notifications, discounts
@@ -24,6 +24,10 @@
 -- v3.18: Storage buckets (make-decodables-s, make-decodables-u)
 -- v3.19: event_id for CAPI/Server-Side GTM deduplication
 -- v3.20: A/B Testing system (experiments, assignments, results)
+-- v3.21: AI model configs
+-- v3.22: Atomic transactions (credits, marketplace), Webhook idempotency
+-- v3.23: Task queue system (generation_tasks, async image generation)
+-- v3.24: User generations history table (遗漏补充)
 -- ==============================================================================
 
 -- ==========================================
@@ -1722,29 +1726,558 @@ CREATE TRIGGER trg_experiments_updated_at
   EXECUTE FUNCTION update_experiments_timestamp();
 
 -- ==========================================
--- Done! v3.20 Complete Database Initialization
+-- v3.21: AI Model Configuration System
+-- AI 模型配置管理系统
+-- ==========================================
+
+-- AI 模型相关配置 (写入 system_configs)
+INSERT INTO system_configs (key, value, value_type, config_group, description, is_active) VALUES
+('ai_providers.enabled', 
+ '{"openai": true, "fal": true, "qwen": false, "wanx": false, "gemini": false, "grok": false, "jimeng": false, "anthropic": false}', 
+ 'json', 'ai_providers', 'Enable/disable AI providers', true),
+('ai_model.user.text_reasoning', 
+ '{"provider": "openai", "model": "gpt-4o-mini", "fallback": {"provider": "openai", "model": "gpt-4o-mini"}, "show_provider": false}', 
+ 'json', 'ai_models', 'User text reasoning model configuration', true),
+('ai_model.user.image_generation', 
+ '{"provider": "fal", "models": {"free": "flux-schnell", "starter": "flux-schnell", "pro": "flux-dev"}, "fallback": {"provider": "fal", "model": "flux-schnell"}, "show_provider": false}', 
+ 'json', 'ai_models', 'User image generation model by tier', true),
+('ai_model.admin.analysis', 
+ '{"provider": "openai", "model": "gpt-4o", "fallback": {"provider": "openai", "model": "gpt-4o-mini"}}', 
+ 'json', 'ai_models', 'Admin analysis model configuration', true),
+('ai_model.canary', 
+ '{"enabled": false, "text_reasoning": {"canary_provider": "qwen", "canary_model": "qwen-plus", "traffic_percent": 10, "target_tiers": ["pro"]}, "image_generation": {"canary_provider": "jimeng", "canary_model": "jimeng-2.1", "traffic_percent": 5, "target_tiers": ["pro"]}}', 
+ 'json', 'ai_models', 'Canary release configuration for A/B testing new models', true),
+('ai_providers.models', 
+ '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"]}, "wanx": {"image": ["wan2.6-t2i", "wan2.6-image", "wanx-v1"]}, "gemini": {"text": ["gemini-2.0-flash", "gemini-2.0-pro"], "image": ["imagen-3"]}, "grok": {"text": ["grok-2", "grok-2-vision"]}, "jimeng": {"image": ["jimeng-2.1", "jimeng-2.1-pro"]}, "anthropic": {"text": ["claude-3.5-sonnet", "claude-3.5-opus"]}}', 
+ 'json', 'ai_providers', 'Available models per provider', true),
+('ai_providers.timeouts', 
+ '{"openai": {"text": 60, "image": 120}, "fal": {"image": 180}, "qwen": {"text": 60}, "wanx": {"image": 180}, "gemini": {"text": 30}, "anthropic": {"text": 90}}', 
+ 'json', 'ai_providers', 'Timeout configuration in seconds', true),
+('ai_providers.costs', 
+ '{"openai": {"gpt-4o-mini": 0.15, "gpt-4o": 2.50, "o1-mini": 3.00, "o1": 15.00, "dall-e-3": 0.04}, "fal": {"flux-schnell": 0.003, "flux-dev": 0.025, "flux-pro": 0.05}, "qwen": {"qwen-turbo": 0.001, "qwen-plus": 0.004, "qwen-max": 0.02}, "wanx": {"wan2.6-t2i": 0.02, "wan2.6-image": 0.03, "wanx-v1": 0.015}, "anthropic": {"claude-3.5-sonnet": 3.00, "claude-3.5-opus": 15.00}}', 
+ 'json', 'ai_providers', 'Cost reference per 1M tokens or per image (USD)', true),
+('ai_providers.retry', 
+ '{"max_retries": 3, "base_delay_ms": 1000, "max_delay_ms": 10000, "retry_on_status": [429, 500, 502, 503, 504]}', 
+ 'json', 'ai_providers', 'Retry configuration for AI API calls', true)
+ON CONFLICT (key) DO UPDATE SET 
+    value = EXCLUDED.value, 
+    description = EXCLUDED.description,
+    updated_at = NOW();
+
+-- AI 使用量日汇总表
+CREATE TABLE IF NOT EXISTS ai_usage_daily (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    date DATE NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+    total_calls INT DEFAULT 0,
+    successful_calls INT DEFAULT 0,
+    failed_calls INT DEFAULT 0,
+    total_input_tokens BIGINT DEFAULT 0,
+    total_output_tokens BIGINT DEFAULT 0,
+    total_images INT DEFAULT 0,
+    avg_latency_ms INT DEFAULT 0,
+    min_latency_ms INT,
+    max_latency_ms INT,
+    estimated_cost_usd DECIMAL(10, 4) DEFAULT 0,
+    error_counts JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, provider, model, call_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_date ON ai_usage_daily(date DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_provider ON ai_usage_daily(provider, date DESC);
+
+ALTER TABLE ai_usage_daily ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admin can read ai usage" ON ai_usage_daily;
+CREATE POLICY "Admin can read ai usage" ON ai_usage_daily
+    FOR SELECT USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid()::text AND role = 'admin'));
+
+DROP POLICY IF EXISTS "System can write ai usage" ON ai_usage_daily;
+CREATE POLICY "System can write ai usage" ON ai_usage_daily
+    FOR ALL USING (true);
+
+-- Upsert 函数
+CREATE OR REPLACE FUNCTION upsert_ai_usage_daily(
+    p_date DATE, p_provider TEXT, p_model TEXT, p_call_type TEXT,
+    p_success BOOLEAN, p_input_tokens BIGINT DEFAULT 0, p_output_tokens BIGINT DEFAULT 0,
+    p_images INT DEFAULT 0, p_latency_ms INT DEFAULT 0, p_cost_usd DECIMAL DEFAULT 0, p_error_type TEXT DEFAULT NULL
+) RETURNS VOID AS $$
+DECLARE v_error_counts JSONB;
+BEGIN
+    IF p_error_type IS NOT NULL THEN v_error_counts := jsonb_build_object(p_error_type, 1); ELSE v_error_counts := '{}'::jsonb; END IF;
+    INSERT INTO ai_usage_daily (date, provider, model, call_type, total_calls, successful_calls, failed_calls, total_input_tokens, total_output_tokens, total_images, avg_latency_ms, min_latency_ms, max_latency_ms, estimated_cost_usd, error_counts)
+    VALUES (p_date, p_provider, p_model, p_call_type, 1, CASE WHEN p_success THEN 1 ELSE 0 END, CASE WHEN p_success THEN 0 ELSE 1 END, p_input_tokens, p_output_tokens, p_images, p_latency_ms, p_latency_ms, p_latency_ms, p_cost_usd, v_error_counts)
+    ON CONFLICT (date, provider, model, call_type) DO UPDATE SET
+        total_calls = ai_usage_daily.total_calls + 1,
+        successful_calls = ai_usage_daily.successful_calls + CASE WHEN p_success THEN 1 ELSE 0 END,
+        failed_calls = ai_usage_daily.failed_calls + CASE WHEN p_success THEN 0 ELSE 1 END,
+        total_input_tokens = ai_usage_daily.total_input_tokens + p_input_tokens,
+        total_output_tokens = ai_usage_daily.total_output_tokens + p_output_tokens,
+        total_images = ai_usage_daily.total_images + p_images,
+        avg_latency_ms = CASE WHEN ai_usage_daily.total_calls = 0 THEN p_latency_ms ELSE ((ai_usage_daily.avg_latency_ms * ai_usage_daily.total_calls) + p_latency_ms) / (ai_usage_daily.total_calls + 1) END,
+        min_latency_ms = LEAST(COALESCE(ai_usage_daily.min_latency_ms, p_latency_ms), p_latency_ms),
+        max_latency_ms = GREATEST(COALESCE(ai_usage_daily.max_latency_ms, p_latency_ms), p_latency_ms),
+        estimated_cost_usd = ai_usage_daily.estimated_cost_usd + p_cost_usd,
+        error_counts = CASE WHEN p_error_type IS NOT NULL THEN ai_usage_daily.error_counts || jsonb_build_object(p_error_type, COALESCE((ai_usage_daily.error_counts->>p_error_type)::int, 0) + 1) ELSE ai_usage_daily.error_counts END,
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
+
+-- AI 使用量视图
+CREATE OR REPLACE VIEW v_ai_usage_last_30_days AS
+SELECT provider, model, call_type, SUM(total_calls) as total_calls, SUM(successful_calls) as successful_calls, SUM(failed_calls) as failed_calls,
+    ROUND(SUM(successful_calls)::numeric / NULLIF(SUM(total_calls), 0) * 100, 2) as success_rate,
+    SUM(total_input_tokens) as total_input_tokens, SUM(total_output_tokens) as total_output_tokens, SUM(total_images) as total_images,
+    ROUND(AVG(avg_latency_ms)) as avg_latency_ms, SUM(estimated_cost_usd) as total_cost_usd
+FROM ai_usage_daily WHERE date >= CURRENT_DATE - INTERVAL '30 days' GROUP BY provider, model, call_type ORDER BY total_cost_usd DESC;
+
+-- ==========================================
+-- v3.24: User Generations History Table
+-- 用户 AI 生成历史记录 (遗漏补充)
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS user_generations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    
+    -- Image info
+    image_url TEXT NOT NULL,
+    
+    -- Prompt details
+    original_prompt TEXT,
+    enhanced_prompt TEXT,
+    negative_prompt TEXT,
+    
+    -- Style parameters
+    style VARCHAR(50),
+    moods TEXT[],
+    aspect_ratio VARCHAR(50),
+    generation_mode VARCHAR(20),
+    creativity_level REAL,
+    
+    -- 5W1H parameters
+    who_param TEXT,
+    what_param TEXT,
+    where_param TEXT,
+    
+    -- Reference image
+    has_reference BOOLEAN DEFAULT false,
+    reference_strength REAL,
+    
+    -- Batch info
+    batch_id VARCHAR(50),
+    batch_index INTEGER,
+    
+    -- Credits and model
+    credits_used INTEGER DEFAULT 0,
+    model_used VARCHAR(100),
+    generation_time_ms INTEGER,
+    
+    -- Timezone support (v3.9)
+    timezone TEXT DEFAULT 'UTC',
+    created_at_local TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_generations_user_id ON user_generations(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_generations_batch_id ON user_generations(batch_id);
+CREATE INDEX IF NOT EXISTS idx_user_generations_created_at ON user_generations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_generations_model ON user_generations(model_used);
+
+ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS user_generations_select_policy ON user_generations;
+DROP POLICY IF EXISTS user_generations_service_policy ON user_generations;
+
+CREATE POLICY user_generations_select_policy ON user_generations
+    FOR SELECT
+    USING (user_id = auth.uid()::text OR auth.role() = 'service_role');
+
+CREATE POLICY user_generations_service_policy ON user_generations
+    FOR ALL
+    USING (auth.role() = 'service_role');
+
+-- ==========================================
+-- v3.22: Webhook Events for Idempotency
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id TEXT UNIQUE NOT NULL,
+    event_type TEXT NOT NULL,
+    processed_at TIMESTAMPTZ DEFAULT NOW(),
+    payload JSONB,
+    result JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_type ON webhook_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_created_at ON webhook_events(created_at);
+
+ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS webhook_events_service_policy ON webhook_events;
+CREATE POLICY webhook_events_service_policy ON webhook_events
+    FOR ALL
+    USING (auth.role() = 'service_role');
+
+-- ==========================================
+-- v3.22: Atomic Credit Functions
+-- ==========================================
+
+CREATE OR REPLACE FUNCTION deduct_credits_atomic(
+    p_user_id TEXT,
+    p_amount INT,
+    p_tx_type TEXT,
+    p_description TEXT DEFAULT NULL,
+    p_timezone TEXT DEFAULT 'UTC',
+    p_idempotency_key TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_deduct_monthly INT;
+    v_deduct_permanent INT;
+    v_new_monthly INT;
+    v_new_permanent INT;
+    v_bucket TEXT;
+    v_existing_tx RECORD;
+BEGIN
+    IF p_idempotency_key IS NOT NULL THEN
+        SELECT * INTO v_existing_tx 
+        FROM credit_transactions 
+        WHERE idempotency_key = p_idempotency_key
+        LIMIT 1;
+        
+        IF FOUND THEN
+            RETURN jsonb_build_object(
+                'success', true,
+                'idempotent', true,
+                'message', 'Already processed',
+                'balance_monthly', v_existing_tx.balance_monthly_after,
+                'balance_permanent', v_existing_tx.balance_permanent_after
+            );
+        END IF;
+    END IF;
+    
+    SELECT credits_monthly, credits_permanent 
+    INTO v_monthly, v_permanent
+    FROM profiles 
+    WHERE id = p_user_id 
+    FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found', 'error_code', 'USER_NOT_FOUND');
+    END IF;
+    
+    IF (v_monthly + v_permanent) < p_amount THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Insufficient credits', 'error_code', 'CREDITS_INSUFFICIENT');
+    END IF;
+    
+    v_deduct_monthly := LEAST(v_monthly, p_amount);
+    v_deduct_permanent := p_amount - v_deduct_monthly;
+    v_new_monthly := v_monthly - v_deduct_monthly;
+    v_new_permanent := v_permanent - v_deduct_permanent;
+    v_bucket := CASE WHEN v_deduct_monthly > 0 THEN 'monthly' ELSE 'permanent' END;
+    
+    UPDATE profiles 
+    SET credits_monthly = v_new_monthly, credits_permanent = v_new_permanent
+    WHERE id = p_user_id;
+    
+    IF v_deduct_monthly > 0 THEN
+        INSERT INTO credit_transactions (user_id, amount, bucket, balance_monthly_after, balance_permanent_after, type, description, timezone, idempotency_key)
+        VALUES (p_user_id, -v_deduct_monthly, 'monthly', v_new_monthly, v_new_permanent, p_tx_type, p_description, p_timezone, 
+                CASE WHEN v_deduct_permanent = 0 THEN p_idempotency_key ELSE NULL END);
+    END IF;
+    
+    IF v_deduct_permanent > 0 THEN
+        INSERT INTO credit_transactions (user_id, amount, bucket, balance_monthly_after, balance_permanent_after, type, description, timezone, idempotency_key)
+        VALUES (p_user_id, -v_deduct_permanent, 'permanent', v_new_monthly, v_new_permanent, p_tx_type, p_description, p_timezone, p_idempotency_key);
+    END IF;
+    
+    RETURN jsonb_build_object('success', true, 'deducted', p_amount, 'balance_monthly', v_new_monthly, 'balance_permanent', v_new_permanent, 'bucket', v_bucket);
+    
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM, 'error_code', 'DB_ERROR');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION add_credits_atomic(
+    p_user_id TEXT,
+    p_amount INT,
+    p_bucket TEXT,
+    p_tx_type TEXT,
+    p_description TEXT DEFAULT NULL,
+    p_timezone TEXT DEFAULT 'UTC',
+    p_idempotency_key TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_new_monthly INT;
+    v_new_permanent INT;
+    v_existing_tx RECORD;
+BEGIN
+    IF p_amount <= 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Amount must be positive', 'error_code', 'INVALID_AMOUNT');
+    END IF;
+    
+    IF p_bucket NOT IN ('monthly', 'permanent') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid bucket', 'error_code', 'INVALID_BUCKET');
+    END IF;
+    
+    IF p_idempotency_key IS NOT NULL THEN
+        SELECT * INTO v_existing_tx FROM credit_transactions WHERE idempotency_key = p_idempotency_key LIMIT 1;
+        IF FOUND THEN
+            RETURN jsonb_build_object('success', true, 'idempotent', true, 'message', 'Already processed');
+        END IF;
+    END IF;
+    
+    SELECT credits_monthly, credits_permanent INTO v_monthly, v_permanent FROM profiles WHERE id = p_user_id FOR UPDATE;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found', 'error_code', 'USER_NOT_FOUND');
+    END IF;
+    
+    IF p_bucket = 'monthly' THEN
+        v_new_monthly := v_monthly + p_amount;
+        v_new_permanent := v_permanent;
+    ELSE
+        v_new_monthly := v_monthly;
+        v_new_permanent := v_permanent + p_amount;
+    END IF;
+    
+    UPDATE profiles SET credits_monthly = v_new_monthly, credits_permanent = v_new_permanent WHERE id = p_user_id;
+    
+    INSERT INTO credit_transactions (user_id, amount, bucket, balance_monthly_after, balance_permanent_after, type, description, timezone, idempotency_key)
+    VALUES (p_user_id, p_amount, p_bucket, v_new_monthly, v_new_permanent, p_tx_type, p_description, p_timezone, p_idempotency_key);
+    
+    RETURN jsonb_build_object('success', true, 'added', p_amount, 'bucket', p_bucket, 'balance_monthly', v_new_monthly, 'balance_permanent', v_new_permanent);
+    
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM, 'error_code', 'DB_ERROR');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION check_webhook_idempotency(
+    p_event_id TEXT,
+    p_event_type TEXT,
+    p_payload JSONB DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_existing RECORD;
+BEGIN
+    SELECT * INTO v_existing FROM webhook_events WHERE event_id = p_event_id;
+    
+    IF FOUND THEN
+        RETURN jsonb_build_object('success', true, 'idempotent', true, 'message', 'Event already processed', 'original_result', v_existing.result);
+    END IF;
+    
+    INSERT INTO webhook_events (event_id, event_type, payload) VALUES (p_event_id, p_event_type, p_payload);
+    
+    RETURN jsonb_build_object('success', true, 'idempotent', false, 'should_process', true);
+    
+EXCEPTION WHEN unique_violation THEN
+    RETURN jsonb_build_object('success', true, 'idempotent', true, 'message', 'Concurrent processing detected');
+WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==========================================
+-- v3.23: Task Queue System
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS generation_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id VARCHAR(32) NOT NULL UNIQUE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    task_type VARCHAR(50) NOT NULL DEFAULT 'image_generation',
+    priority INTEGER NOT NULL DEFAULT 0,
+    params JSONB NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    progress INTEGER NOT NULL DEFAULT 0,
+    current_step INTEGER DEFAULT 0,
+    total_steps INTEGER DEFAULT 0,
+    progress_message VARCHAR(500),
+    result JSONB,
+    error_message TEXT,
+    error_code VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    queued_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    worker_id VARCHAR(100),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '24 hours')
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_user_id ON generation_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_task_id ON generation_tasks(task_id);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_status ON generation_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_created_at ON generation_tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_expires_at ON generation_tasks(expires_at) WHERE status IN ('completed', 'failed');
+
+ALTER TABLE generation_tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS generation_tasks_select_policy ON generation_tasks;
+DROP POLICY IF EXISTS generation_tasks_service_policy ON generation_tasks;
+
+CREATE POLICY generation_tasks_select_policy ON generation_tasks
+    FOR SELECT
+    USING (user_id = auth.uid()::text OR auth.role() = 'service_role');
+
+CREATE POLICY generation_tasks_service_policy ON generation_tasks
+    FOR ALL
+    USING (auth.role() = 'service_role');
+
+-- Task Queue RPC Functions
+CREATE OR REPLACE FUNCTION create_generation_task(
+    p_task_id VARCHAR(32),
+    p_user_id TEXT,
+    p_task_type VARCHAR(50),
+    p_params JSONB,
+    p_priority INTEGER DEFAULT 0,
+    p_total_steps INTEGER DEFAULT 8
+) RETURNS JSONB AS $$
+DECLARE
+    v_task_record generation_tasks%ROWTYPE;
+BEGIN
+    SELECT * INTO v_task_record FROM generation_tasks WHERE task_id = p_task_id;
+    
+    IF FOUND THEN
+        RETURN jsonb_build_object('success', true, 'idempotent', true, 'task_id', p_task_id, 'status', v_task_record.status);
+    END IF;
+    
+    INSERT INTO generation_tasks (task_id, user_id, task_type, params, priority, total_steps, status)
+    VALUES (p_task_id, p_user_id, p_task_type, p_params, p_priority, p_total_steps, 'pending')
+    RETURNING * INTO v_task_record;
+    
+    RETURN jsonb_build_object('success', true, 'idempotent', false, 'task_id', p_task_id, 'id', v_task_record.id, 'status', v_task_record.status);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION update_task_status(
+    p_task_id VARCHAR(32),
+    p_status VARCHAR(20),
+    p_progress INTEGER DEFAULT NULL,
+    p_current_step INTEGER DEFAULT NULL,
+    p_progress_message VARCHAR(500) DEFAULT NULL,
+    p_result JSONB DEFAULT NULL,
+    p_error_message TEXT DEFAULT NULL,
+    p_error_code VARCHAR(50) DEFAULT NULL,
+    p_worker_id VARCHAR(100) DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_task generation_tasks%ROWTYPE;
+BEGIN
+    UPDATE generation_tasks SET
+        status = p_status,
+        progress = COALESCE(p_progress, progress),
+        current_step = COALESCE(p_current_step, current_step),
+        progress_message = COALESCE(p_progress_message, progress_message),
+        result = COALESCE(p_result, result),
+        error_message = COALESCE(p_error_message, error_message),
+        error_code = COALESCE(p_error_code, error_code),
+        worker_id = COALESCE(p_worker_id, worker_id),
+        started_at = CASE WHEN p_status = 'processing' AND started_at IS NULL THEN NOW() ELSE started_at END,
+        completed_at = CASE WHEN p_status IN ('completed', 'failed', 'cancelled') THEN NOW() ELSE completed_at END,
+        queued_at = CASE WHEN p_status = 'queued' AND queued_at IS NULL THEN NOW() ELSE queued_at END
+    WHERE task_id = p_task_id
+    RETURNING * INTO v_task;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Task not found');
+    END IF;
+    
+    RETURN jsonb_build_object('success', true, 'task_id', p_task_id, 'status', v_task.status, 'progress', v_task.progress);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_task_details(
+    p_task_id VARCHAR(32),
+    p_user_id TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_task generation_tasks%ROWTYPE;
+BEGIN
+    IF p_user_id IS NOT NULL THEN
+        SELECT * INTO v_task FROM generation_tasks WHERE task_id = p_task_id AND user_id = p_user_id;
+    ELSE
+        SELECT * INTO v_task FROM generation_tasks WHERE task_id = p_task_id;
+    END IF;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Task not found');
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true, 'task_id', v_task.task_id, 'status', v_task.status,
+        'progress', v_task.progress, 'current_step', v_task.current_step, 'total_steps', v_task.total_steps,
+        'progress_message', v_task.progress_message, 'result', v_task.result,
+        'error_message', v_task.error_message, 'error_code', v_task.error_code,
+        'created_at', v_task.created_at, 'started_at', v_task.started_at, 'completed_at', v_task.completed_at
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION cleanup_expired_tasks() RETURNS INTEGER AS $$
+DECLARE
+    v_deleted INTEGER;
+BEGIN
+    DELETE FROM generation_tasks WHERE expires_at < NOW() AND status IN ('completed', 'failed', 'cancelled');
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    RETURN v_deleted;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==========================================
+-- v3.13 RLS Fix: Holiday Themes
+-- ==========================================
+
+ALTER TABLE holiday_themes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Holiday themes are publicly readable" ON holiday_themes;
+DROP POLICY IF EXISTS "Only admins can modify holiday themes" ON holiday_themes;
+
+CREATE POLICY "Holiday themes are publicly readable" ON holiday_themes
+    FOR SELECT USING (true);
+
+CREATE POLICY "Only admins can modify holiday themes" ON holiday_themes
+    FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+-- ==========================================
+-- Done! v3.23 Complete Database Initialization
 -- ==========================================
 
 DO $$
 BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=====================================================';
-  RAISE NOTICE '✅ Make Decodables Database v3.20 - Setup Complete';
+  RAISE NOTICE '✅ Make Decodables Database v3.24 - Setup Complete';
   RAISE NOTICE '=====================================================';
   RAISE NOTICE '';
-  RAISE NOTICE 'Tables created: 33+';
+  RAISE NOTICE 'Tables created: 38+';
   RAISE NOTICE 'Views created: 5';
   RAISE NOTICE 'Materialized views: 3';
-  RAISE NOTICE 'Functions: 15+';
+  RAISE NOTICE 'Functions: 25+';
   RAISE NOTICE 'Triggers: 11+';
-  RAISE NOTICE 'RLS Policies: 53+';
+  RAISE NOTICE 'RLS Policies: 60+';
   RAISE NOTICE '';
   RAISE NOTICE 'Storage Buckets:';
   RAISE NOTICE '  - make-decodables-s (system assets, 10MB)';
   RAISE NOTICE '  - make-decodables-u (user content, 50MB)';
   RAISE NOTICE '';
   RAISE NOTICE 'Latest updates included:';
-  RAISE NOTICE '  - v3.19: event_id for CAPI/Server-Side GTM';
   RAISE NOTICE '  - v3.20: A/B Testing system';
+  RAISE NOTICE '  - v3.22: Atomic transactions, Webhook idempotency';
+  RAISE NOTICE '  - v3.23: Task queue system (generation_tasks)';
+  RAISE NOTICE '  - v3.24: User generations history';
   RAISE NOTICE '=====================================================';
 END $$;

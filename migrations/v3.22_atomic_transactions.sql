@@ -76,7 +76,7 @@ END $$;
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION deduct_credits_atomic(
-    p_user_id UUID,
+    p_user_id TEXT,  -- Changed from UUID to TEXT (Clerk user IDs)
     p_amount INT,
     p_tx_type TEXT,
     p_description TEXT DEFAULT NULL,
@@ -203,7 +203,7 @@ COMMENT ON FUNCTION deduct_credits_atomic IS 'Atomic credit deduction with row l
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION add_credits_atomic(
-    p_user_id UUID,
+    p_user_id TEXT,  -- Changed from UUID to TEXT (Clerk user IDs)
     p_amount INT,
     p_bucket TEXT,  -- 'monthly' or 'permanent'
     p_tx_type TEXT,
@@ -320,7 +320,7 @@ COMMENT ON FUNCTION add_credits_atomic IS 'Atomic credit addition with row locki
 
 CREATE OR REPLACE FUNCTION execute_marketplace_purchase(
     p_listing_id UUID,
-    p_buyer_id UUID,
+    p_buyer_id TEXT,  -- Changed from UUID to TEXT (Clerk user IDs)
     p_timezone TEXT DEFAULT 'UTC',
     p_idempotency_key TEXT DEFAULT NULL
 ) RETURNS JSONB AS $$
@@ -328,7 +328,7 @@ DECLARE
     v_listing RECORD;
     v_buyer RECORD;
     v_price INT;
-    v_seller_id UUID;
+    v_seller_id TEXT;  -- Changed from UUID to TEXT
     v_seller_revenue INT;
     v_buyer_monthly INT;
     v_buyer_permanent INT;

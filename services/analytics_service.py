@@ -52,10 +52,14 @@ _logger = logging.getLogger(__name__)
 
 # Import Supabase client
 try:
-    from db_service import supabase
+    from .db_service import supabase
 except ImportError:
-    supabase = None
-    _logger.warning("Supabase client not available for analytics")
+    try:
+        # Fallback for direct script execution
+        from services.db_service import supabase
+    except ImportError:
+        supabase = None
+        _logger.warning("Supabase client not available for analytics")
 
 
 # ==========================================
