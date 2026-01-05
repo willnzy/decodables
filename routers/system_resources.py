@@ -135,7 +135,6 @@ async def list_system_resources(
         "has_more": (result.count or 0) > offset + limit
     }
 
-
 @router.get("/stats")
 async def get_resource_stats(admin: dict = Depends(require_admin)):
     """
@@ -180,7 +179,6 @@ async def get_resource_stats(admin: dict = Depends(require_admin)):
         "by_type": type_breakdown
     }
 
-
 @router.get("/{resource_id}")
 async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
     """
@@ -196,7 +194,6 @@ async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(404, "Resource not found")
     
     return result.data
-
 
 @router.post("")
 async def create_resource(
@@ -286,7 +283,6 @@ async def create_resource(
     
     return result.data[0]
 
-
 @router.patch("/{resource_id}")
 async def update_resource(
     resource_id: str,
@@ -328,7 +324,6 @@ async def update_resource(
     )
     
     return result.data[0]
-
 
 @router.post("/{resource_id}/replace")
 async def replace_resource_file(
@@ -427,7 +422,6 @@ async def replace_resource_file(
     
     return result.data[0]
 
-
 @router.delete("/{resource_id}")
 async def delete_resource(
     resource_id: str,
@@ -465,7 +459,6 @@ async def delete_resource(
     
     return {"message": "Resource deactivated (soft delete)", "id": resource_id}
 
-
 @router.post("/batch")
 async def batch_action(
     action: ResourceBatchAction,
@@ -498,7 +491,6 @@ async def batch_action(
     
     else:
         raise HTTPException(400, f"Unknown action: {action.action}")
-
 
 @router.get("/{resource_id}/audit-log")
 async def get_resource_audit_log(

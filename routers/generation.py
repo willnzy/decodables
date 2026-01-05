@@ -44,7 +44,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/generate", tags=["generation"])
 
-
 # ==========================================
 # Story Generation
 # ==========================================
@@ -62,7 +61,6 @@ def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends(get_c
         )
     except Exception as e:
         raise HTTPException(500, str(e))
-
 
 # ==========================================
 # Sync Image Generation
@@ -260,7 +258,6 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     
     return response
 
-
 # ==========================================
 # Async Image Generation (v3.23)
 # ==========================================
@@ -419,7 +416,6 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     
     return response
 
-
 # ==========================================
 # AI Inspiration Generator
 # ==========================================
@@ -530,7 +526,6 @@ Return JSON:
             "fallback": True
         }
 
-
 # ==========================================
 # PDF Generation
 # ==========================================
@@ -539,7 +534,6 @@ Return JSON:
 @limiter.limit("10/minute")
 def gen_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """Generate a PDF (always free per PRD v3.0)."""
-    # No credits charged; only update hash for cache/version tracking
     proj = get_project_detail(req.project_id, user["id"])
     if proj and req.current_hash != proj.get("last_downloaded_hash"):
         update_project_hash(req.project_id, req.current_hash)

@@ -211,8 +211,9 @@ from routers.system_resources import router as system_resources_router
 app.include_router(system_resources_router)
 
 # v3.20: A/B Testing experiments routers
-from routers.experiments import public_router as experiments_public_router
-from routers.experiments import admin_router as experiments_admin_router
+# v3.24: Experiments routers refactored
+from routers.experiments_public import router as experiments_public_router
+from routers.experiments_admin import router as experiments_admin_router
 app.include_router(experiments_public_router)
 app.include_router(experiments_admin_router)
 
