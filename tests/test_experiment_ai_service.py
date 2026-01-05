@@ -196,6 +196,74 @@ class TestBuildDataContext:
         context = _build_data_context(experiment, results)
         
         assert context is not None
+    
+    def test_build_context_with_significance_data(self):
+        """带显著性数据的上下文"""
+        from services.experiment_ai_service import _build_data_context
+        
+        experiment = {
+            "id": "exp_001",
+            "experiment_key": "test_exp",
+            "name": "Significance Test",
+            "variants": [
+                {"key": "control", "name": "Control", "weight": 50},
+                {"key": "variant_a", "name": "Variant A", "weight": 50}
+            ],
+            "status": "running"
+        }
+        
+        results = {
+            "variants": {
+                "control": {
+                    "total_participants": 1000,
+                    "total_exposures": 5000,
+                    "total_conversions": 100,
+                    "overall_conversion_rate": 0.02
+                },
+                "variant_a": {
+                    "total_participants": 1000,
+                    "total_exposures": 5000,
+                    "total_conversions": 150,
+                    "overall_conversion_rate": 0.03,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 95.5,
+                        "p_value": 0.045,
+                        "relative_uplift": 50.0
+                    }
+                }
+            }
+        }
+        
+        context = _build_data_context(experiment, results)
+        
+        assert "统计显著性" in context
+        assert "95.5" in context
+        assert "variant_a vs Control" in context
+    
+    def test_build_context_with_targeting_tiers(self):
+        """带目标等级的上下文"""
+        from services.experiment_ai_service import _build_data_context
+        
+        experiment = {
+            "id": "exp_001",
+            "experiment_key": "tier_test",
+            "name": "Tier Test",
+            "variants": [],
+            "status": "running",
+            "targeting": {
+                "include_anonymous": False,
+                "tiers": ["pro", "starter"]
+            }
+        }
+        
+        results = {"variants": {}}
+        
+        context = _build_data_context(experiment, results)
+        
+        assert "目标等级" in context
+        assert "pro" in context
+        assert "starter" in context
 
 
 # ==========================================
@@ -292,6 +360,138 @@ class TestGetQuickRecommendation:
         recommendation = get_quick_recommendation(results)
         
         assert recommendation is not None
+    
+    def test_recommendation_with_significant_winner_over_5_percent(self):
+        """有显著赢家且提升超过 5%"""
+        from services.experiment_ai_service import get_quick_recommendation
+        
+        results = {
+            "variants": {
+                "control": {
+                    "total_participants": 1000,
+                    "total_conversions": 100,
+                    "overall_conversion_rate": 0.10
+                },
+                "variant_a": {
+                    "total_participants": 1000,
+                    "total_conversions": 200,
+                    "overall_conversion_rate": 0.20,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 99.0,
+                        "p_value": 0.001,
+                        "relative_uplift": 100.0  # 100% uplift > 5%
+                    }
+                }
+            }
+        }
+        
+        recommendation = get_quick_recommendation(results)
+        
+        assert recommendation["recommendation"] == "winner_variant_a"
+        assert recommendation["confidence"] > 0
+        assert "variant_a" in recommendation["reason"]
+    
+    def test_recommendation_control_wins_variant_significantly_worse(self):
+        """对照组赢，变体显著差于对照组"""
+        from services.experiment_ai_service import get_quick_recommendation
+        
+        results = {
+            "variants": {
+                "control": {
+                    "total_participants": 1000,
+                    "total_conversions": 200,
+                    "overall_conversion_rate": 0.20
+                },
+                "variant_a": {
+                    "total_participants": 1000,
+                    "total_conversions": 100,
+                    "overall_conversion_rate": 0.10,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 95.0,
+                        "p_value": 0.02,
+                        "relative_uplift": -50.0  # -50% < -5%, control wins
+                    }
+                }
+            }
+        }
+        
+        recommendation = get_quick_recommendation(results)
+        
+        assert recommendation["recommendation"] == "winner_control"
+        assert "对照组" in recommendation["reason"] or "control" in recommendation["reason"].lower()
+    
+    def test_recommendation_with_multiple_significant_winners(self):
+        """多个变体都显著优于对照组，选择最佳"""
+        from services.experiment_ai_service import get_quick_recommendation
+        
+        results = {
+            "variants": {
+                "control": {
+                    "total_participants": 1000,
+                    "total_conversions": 100,
+                    "overall_conversion_rate": 0.10
+                },
+                "variant_a": {
+                    "total_participants": 1000,
+                    "total_conversions": 150,
+                    "overall_conversion_rate": 0.15,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 95.0,
+                        "p_value": 0.03,
+                        "relative_uplift": 50.0
+                    }
+                },
+                "variant_b": {
+                    "total_participants": 1000,
+                    "total_conversions": 180,
+                    "overall_conversion_rate": 0.18,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 98.0,
+                        "p_value": 0.01,
+                        "relative_uplift": 80.0  # 80% > 50%, this is the best
+                    }
+                }
+            }
+        }
+        
+        recommendation = get_quick_recommendation(results)
+        
+        # Should pick variant_b as it has higher uplift
+        assert recommendation["recommendation"] == "winner_variant_b"
+    
+    def test_recommendation_significant_but_low_uplift(self):
+        """显著但提升不到 5%，视为不显著"""
+        from services.experiment_ai_service import get_quick_recommendation
+        
+        results = {
+            "variants": {
+                "control": {
+                    "total_participants": 1000,
+                    "total_conversions": 100,
+                    "overall_conversion_rate": 0.10
+                },
+                "variant_a": {
+                    "total_participants": 1000,
+                    "total_conversions": 103,
+                    "overall_conversion_rate": 0.103,
+                    "significance": {
+                        "significant": True,
+                        "confidence_level": 95.0,
+                        "p_value": 0.04,
+                        "relative_uplift": 3.0  # 3% < 5%, not business meaningful
+                    }
+                }
+            }
+        }
+        
+        recommendation = get_quick_recommendation(results)
+        
+        # Low uplift should result in inconclusive
+        assert recommendation["recommendation"] == "inconclusive"
 
 
 # ==========================================

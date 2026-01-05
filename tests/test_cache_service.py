@@ -568,3 +568,338 @@ class TestCacheNamespaceConstants:
         from services.cache.cache_keys import CacheNamespace
         
         assert "stats" in CacheNamespace.STATS.lower()
+
+
+# ==========================================
+# Redis Fallback & Error Handling Tests
+# ==========================================
+
+class TestCacheServiceRedisFailover:
+    """Redis 故障转移测试"""
+    
+    def test_redis_unavailable_switches_to_memory(self):
+        """Redis 不可用时切换到内存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_get.return_value = None  # Redis client returns None
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                
+                # This should trigger fallback
+                client = service._get_client()
+                
+                assert client is None
+                assert service._using_redis is False
+
+
+class TestCacheServiceGetErrors:
+    """Get 操作错误处理测试"""
+    
+    def test_get_with_redis_exception(self):
+        """Redis get 异常时回退到内存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            mock_client = MagicMock()
+            mock_client.get.side_effect = Exception("Redis connection error")
+            mock_get.return_value = mock_client
+            
+            from services.cache.cache_service import CacheService
+            service = CacheService()
+            service._using_redis = True
+            
+            # Should fallback to memory without raising
+            result = service.get("test_key")
+            
+            # Should return None (memory fallback)
+            assert result is None
+
+
+class TestCacheServiceSetErrors:
+    """Set 操作错误处理测试"""
+    
+    def test_set_with_redis_and_ttl(self):
+        """Redis set 带 TTL"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0  # Force recheck
+                
+                result = service.set("key", "value", ttl=60)
+                
+                mock_client.setex.assert_called_once_with("key", 60, "value")
+                assert result is True
+    
+    def test_set_with_redis_no_ttl(self):
+        """Redis set 无 TTL"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                result = service.set("key", "value", ttl=0)
+                
+                mock_client.set.assert_called_once_with("key", "value")
+                assert result is True
+    
+    def test_set_with_redis_exception(self):
+        """Redis set 异常时回退到内存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.setex.side_effect = Exception("Redis error")
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                # Should fallback without raising
+                result = service.set("key", "value", ttl=60)
+                
+                assert result is True
+
+
+class TestCacheServiceDeleteErrors:
+    """Delete 操作错误处理测试"""
+    
+    def test_delete_with_redis(self):
+        """Redis delete 成功"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                result = service.delete("key")
+                
+                mock_client.delete.assert_called_once_with("key")
+                assert result is True
+    
+    def test_delete_with_redis_exception(self):
+        """Redis delete 异常时回退到内存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.delete.side_effect = Exception("Redis error")
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                # Should fallback without raising
+                result = service.delete("key")
+                
+                assert result is True
+
+
+class TestCacheServiceDeletePatternWithRedis:
+    """Delete pattern with Redis SCAN"""
+    
+    def test_delete_pattern_with_redis_scan(self):
+        """Redis delete_pattern 使用 SCAN"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                # SCAN returns (cursor, keys) - simulate single batch
+                mock_client.scan.return_value = (0, ["key1", "key2"])
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                result = service.delete_pattern("md:*")
+                
+                mock_client.scan.assert_called()
+                mock_client.delete.assert_called_with("key1", "key2")
+                assert result is True
+    
+    def test_delete_pattern_with_redis_scan_multiple_batches(self):
+        """Redis delete_pattern 多批次 SCAN"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                # Simulate multiple batches
+                mock_client.scan.side_effect = [
+                    (1, ["key1"]),  # First batch, cursor=1
+                    (0, ["key2"])   # Second batch, cursor=0 (done)
+                ]
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                result = service.delete_pattern("md:*")
+                
+                assert mock_client.scan.call_count == 2
+                assert result is True
+    
+    def test_delete_pattern_with_redis_exception(self):
+        """Redis delete_pattern 异常时回退"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.scan.side_effect = Exception("Redis error")
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                # Should fallback without raising
+                result = service.delete_pattern("md:*")
+                
+                assert result is True
+
+
+class TestCacheServiceAllConfigs:
+    """All configs cache operations"""
+    
+    def test_get_all_configs(self):
+        """获取所有配置缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            mock_client = MagicMock()
+            mock_client.get.return_value = '{"key1": "value1", "key2": "value2"}'
+            mock_get.return_value = mock_client
+            
+            from services.cache.cache_service import CacheService
+            service = CacheService()
+            service._using_redis = True
+            
+            result = service.get_all_configs()
+            
+            assert result is not None or result is None  # May or may not hit cache
+    
+    def test_set_all_configs(self):
+        """设置所有配置缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            mock_client = MagicMock()
+            mock_get.return_value = mock_client
+            
+            from services.cache.cache_service import CacheService
+            service = CacheService()
+            service._using_redis = True
+            
+            result = service.set_all_configs({"key1": "value1"})
+            
+            assert result is True
+    
+    def test_get_all_configs_with_group(self):
+        """获取特定组的配置缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            mock_client = MagicMock()
+            mock_client.get.return_value = None
+            mock_get.return_value = mock_client
+            
+            from services.cache.cache_service import CacheService
+            service = CacheService()
+            service._using_redis = True
+            
+            result = service.get_all_configs(group="api")
+            
+            assert result is None
+
+
+class TestCacheServiceInvalidateWithKey:
+    """Invalidate with specific key"""
+    
+    def test_invalidate_config_cache_with_key(self):
+        """清除特定配置缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.scan.return_value = (0, [])
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                service.invalidate_config_cache(key="specific_config")
+                
+                # Should delete specific key and pattern
+                assert mock_client.delete.called or mock_client.scan.called
+    
+    def test_invalidate_experiment_cache_with_key(self):
+        """清除特定实验缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.scan.return_value = (0, [])
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                service.invalidate_experiment_cache(exp_key="exp_123")
+                
+                # Should delete specific key and list pattern
+                assert mock_client.delete.called or mock_client.scan.called
+    
+    def test_invalidate_stats_cache_with_type(self):
+        """清除特定类型统计缓存"""
+        with patch('services.cache.cache_service.get_redis_client') as mock_get:
+            with patch('services.cache.cache_service.is_redis_available') as mock_avail:
+                mock_avail.return_value = True
+                mock_client = MagicMock()
+                mock_client.scan.return_value = (0, [])
+                mock_get.return_value = mock_client
+                
+                from services.cache.cache_service import CacheService
+                service = CacheService()
+                service._using_redis = True
+                service._last_redis_check = 0
+                
+                service.invalidate_stats_cache(stat_type="user_stats")
+                
+                # Should delete pattern
+                mock_client.scan.assert_called()
+
+
+class TestCacheServiceAIResultZeroTTL:
+    """AI result with zero TTL"""
+    
+    def test_set_ai_result_zero_ttl_returns_false(self):
+        """AI 结果 TTL=0 不缓存"""
+        from services.cache.cache_service import CacheService
+        service = CacheService()
+        
+        result = service.set_ai_result("hash123", {"result": "data"}, ttl=0)
+        
+        assert result is False

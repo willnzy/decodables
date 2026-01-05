@@ -6,10 +6,13 @@ Supports:
 - Flux models (schnell, dev, pro)
 - Text-to-image generation
 - Image-to-image with reference
+
+v3.22: Added retry mechanism and timeout configuration
 """
 
 import os
 import time
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -20,6 +23,7 @@ from ..base import (
     AIErrorType,
     classify_error
 )
+from ..retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,22 @@ FAL_MODEL_DEFAULTS = {
     },
 }
 
+# Timeout configuration (seconds)
+FAL_TIMEOUTS = {
+    "flux-schnell": 60,   # Fast model
+    "flux-dev": 120,      # Standard model
+    "flux-pro": 180,      # High quality model
+    "image-to-image": 120,
+    "default": 120,
+}
+
+
+def get_fal_timeout(model: str, operation: str = "text-to-image") -> int:
+    """Get timeout for FAL operation."""
+    if operation == "image-to-image":
+        return FAL_TIMEOUTS.get("image-to-image", FAL_TIMEOUTS["default"])
+    return FAL_TIMEOUTS.get(model, FAL_TIMEOUTS["default"])
+
 
 # ==========================================
 # Image Adapter
@@ -72,6 +92,10 @@ class FALImageAdapter(BaseImageAdapter):
     - flux-schnell: 快速生成 (4 steps)
     - flux-dev: 高质量 (28 steps)
     - flux-pro: 最高质量 (40 steps)
+    
+    v3.22 Features:
+    - Automatic retry on transient errors
+    - Configurable timeout per model
     """
     
     provider_name = "fal"
@@ -93,6 +117,7 @@ class FALImageAdapter(BaseImageAdapter):
     def get_available_models(self) -> List[str]:
         return FAL_IMAGE_MODELS.copy()
     
+    @with_retry(max_attempts=3, min_wait=2, max_wait=30)
     async def generate_image(
         self,
         prompt: str,
@@ -106,7 +131,7 @@ class FALImageAdapter(BaseImageAdapter):
         **kwargs
     ) -> AIResponse:
         """
-        FAL Flux 图像生成
+        FAL Flux 图像生成 (with retry and timeout)
         
         Args:
             prompt: 图像描述
@@ -137,6 +162,7 @@ class FALImageAdapter(BaseImageAdapter):
             )
         
         start_time = time.time()
+        timeout = get_fal_timeout(model)
         
         try:
             # 获取默认参数
@@ -156,9 +182,9 @@ class FALImageAdapter(BaseImageAdapter):
             if negative_prompt:
                 arguments["negative_prompt"] = negative_prompt
             
-            # 异步调用 FAL
+            # 异步调用 FAL with timeout
             handler = await self._fal.submit_async(endpoint, arguments=arguments)
-            result = await handler.get()
+            result = await asyncio.wait_for(handler.get(), timeout=timeout)
             
             latency_ms = int((time.time() - start_time) * 1000)
             
@@ -177,6 +203,18 @@ class FALImageAdapter(BaseImageAdapter):
                 raw_response=result
             )
             
+        except asyncio.TimeoutError:
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.error(f"[FAL] Image generation timed out after {timeout}s")
+            return AIResponse(
+                success=False,
+                content=[],
+                error=f"Request timed out after {timeout}s",
+                error_type=AIErrorType.TIMEOUT,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=latency_ms
+            )
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)
@@ -192,6 +230,7 @@ class FALImageAdapter(BaseImageAdapter):
                 latency_ms=latency_ms
             )
     
+    @with_retry(max_attempts=3, min_wait=2, max_wait=30)
     async def image_to_image(
         self,
         prompt: str,
@@ -204,7 +243,7 @@ class FALImageAdapter(BaseImageAdapter):
         **kwargs
     ) -> AIResponse:
         """
-        FAL Flux 图生图
+        FAL Flux 图生图 (with retry and timeout)
         
         Args:
             prompt: 图像描述
@@ -226,6 +265,7 @@ class FALImageAdapter(BaseImageAdapter):
         endpoint = "fal-ai/flux/dev/image-to-image"
         
         start_time = time.time()
+        timeout = get_fal_timeout(model, "image-to-image")
         
         try:
             # 获取默认参数
@@ -243,9 +283,9 @@ class FALImageAdapter(BaseImageAdapter):
                 "enable_safety_checker": enable_safety_checker,
             }
             
-            # 异步调用 FAL
+            # 异步调用 FAL with timeout
             handler = await self._fal.submit_async(endpoint, arguments=arguments)
-            result = await handler.get()
+            result = await asyncio.wait_for(handler.get(), timeout=timeout)
             
             latency_ms = int((time.time() - start_time) * 1000)
             
@@ -264,6 +304,18 @@ class FALImageAdapter(BaseImageAdapter):
                 raw_response=result
             )
             
+        except asyncio.TimeoutError:
+            latency_ms = int((time.time() - start_time) * 1000)
+            logger.error(f"[FAL] Image-to-image timed out after {timeout}s")
+            return AIResponse(
+                success=False,
+                content=[],
+                error=f"Request timed out after {timeout}s",
+                error_type=AIErrorType.TIMEOUT,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=latency_ms
+            )
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)

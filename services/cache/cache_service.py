@@ -111,7 +111,15 @@ class CacheService:
     
     Uses Redis when available, falls back to in-memory cache.
     Provides type-safe methods for different cache domains.
+    
+    v3.22 Features:
+    - Cache penetration protection via null value caching
+    - get_or_fetch pattern for automatic cache population
     """
+    
+    # v3.22: Null value marker and TTL for cache penetration protection
+    NULL_MARKER = "__CACHE_NULL__"
+    NULL_TTL = 60  # Cache null values for 60 seconds
     
     def __init__(self):
         self._fallback = MemoryFallbackCache()
@@ -254,6 +262,146 @@ class CacheService:
             return True
     
     # ==========================================
+    # Cache Penetration Protection (v3.22)
+    # ==========================================
+    
+    def get_with_null_protection(self, key: str) -> tuple:
+        """
+        Get value from cache with null value protection.
+        
+        Prevents cache penetration by caching null values for non-existent data.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Tuple of (is_cached, value):
+            - (True, value): Cache hit with actual value
+            - (True, None): Cache hit with null value (data doesn't exist)
+            - (False, None): Cache miss
+        """
+        value = self.get(key)
+        
+        if value is None:
+            return (False, None)  # Cache miss
+        
+        if value == self.NULL_MARKER:
+            return (True, None)  # Cache hit but data doesn't exist
+        
+        try:
+            return (True, json.loads(value))
+        except json.JSONDecodeError:
+            return (True, value)  # Return raw string if not JSON
+    
+    def set_null(self, key: str, ttl: int = None) -> bool:
+        """
+        Cache a null value to prevent cache penetration.
+        
+        Use this when a query returns no results to prevent
+        repeated database hits for non-existent data.
+        
+        Args:
+            key: Cache key
+            ttl: Time-to-live in seconds (defaults to NULL_TTL)
+            
+        Returns:
+            True if successful
+        """
+        actual_ttl = ttl if ttl is not None else self.NULL_TTL
+        return self.set(key, self.NULL_MARKER, actual_ttl)
+    
+    def get_or_fetch(
+        self, 
+        key: str, 
+        fetch_func,
+        ttl: int = 300,
+        null_ttl: int = None
+    ) -> Optional[Any]:
+        """
+        Get value from cache or fetch from source.
+        
+        This pattern automatically handles:
+        - Cache hits (returns cached value)
+        - Cache misses (fetches, caches, returns)
+        - Null results (caches null to prevent penetration)
+        
+        Args:
+            key: Cache key
+            fetch_func: Callable that fetches data if not in cache
+            ttl: Time-to-live for valid data
+            null_ttl: Time-to-live for null values (defaults to NULL_TTL)
+            
+        Returns:
+            The value (cached or freshly fetched), or None if not found
+            
+        Example:
+            def get_user(user_id):
+                return cache.get_or_fetch(
+                    f"user:{user_id}",
+                    lambda: db.get_user(user_id),
+                    ttl=300
+                )
+        """
+        is_cached, value = self.get_with_null_protection(key)
+        
+        if is_cached:
+            return value  # Return cached value (or None for null cache)
+        
+        # Cache miss - fetch from source
+        try:
+            result = fetch_func()
+        except Exception as e:
+            logger.error(f"[CacheService] Fetch error for {key}: {e}")
+            return None
+        
+        if result is None:
+            # Cache null value to prevent penetration
+            self.set_null(key, null_ttl)
+        else:
+            # Cache valid result
+            self.set_json(key, result, ttl)
+        
+        return result
+    
+    async def get_or_fetch_async(
+        self, 
+        key: str, 
+        fetch_func,
+        ttl: int = 300,
+        null_ttl: int = None
+    ) -> Optional[Any]:
+        """
+        Async version of get_or_fetch.
+        
+        Args:
+            key: Cache key
+            fetch_func: Async callable that fetches data if not in cache
+            ttl: Time-to-live for valid data
+            null_ttl: Time-to-live for null values
+            
+        Returns:
+            The value (cached or freshly fetched), or None if not found
+        """
+        is_cached, value = self.get_with_null_protection(key)
+        
+        if is_cached:
+            return value
+        
+        # Cache miss - fetch from source (async)
+        try:
+            result = await fetch_func()
+        except Exception as e:
+            logger.error(f"[CacheService] Async fetch error for {key}: {e}")
+            return None
+        
+        if result is None:
+            self.set_null(key, null_ttl)
+        else:
+            self.set_json(key, result, ttl)
+        
+        return result
+    
+    # ==========================================
     # JSON Operations
     # ==========================================
     
@@ -269,6 +417,10 @@ class CacheService:
         """
         value = self.get(key)
         if value is None:
+            return None
+        
+        # v3.22: Check for null marker
+        if value == self.NULL_MARKER:
             return None
         
         try:

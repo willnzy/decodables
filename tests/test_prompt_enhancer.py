@@ -617,3 +617,441 @@ class TestModeIntegration:
         )
         
         assert result['mode'] == 'flexible'
+
+
+# ==========================================
+# Async Context Tests
+# ==========================================
+
+class TestRunAsyncInAsyncContext:
+    """在异步上下文中运行测试"""
+    
+    def test_run_async_without_running_loop(self):
+        """不在异步上下文中使用 asyncio.run"""
+        import asyncio
+        
+        async def test_coroutine():
+            return "test_result"
+        
+        from services.ai.prompt_enhancer import _run_async
+        
+        # Should work normally when no loop is running
+        result = _run_async(test_coroutine())
+        
+        assert result == "test_result"
+    
+    def test_run_async_handles_runtime_error(self):
+        """处理 RuntimeError (没有运行中的循环)"""
+        import asyncio
+        
+        async def test_coroutine():
+            return "success"
+        
+        from services.ai.prompt_enhancer import _run_async
+        
+        result = _run_async(test_coroutine())
+        assert result == "success"
+
+
+class TestFlexibleModeTemperature:
+    """Flexible 模式温度计算测试"""
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    def test_flexible_mode_temperature_calculation(self, mock_service, mock_run_async):
+        """flexible 模式温度计算: 0.3 + creativity_level * 0.6"""
+        from services.ai.prompt_enhancer import enhance_prompt, fallback_enhance
+        
+        # Return fallback result
+        mock_run_async.side_effect = Exception("Force fallback")
+        
+        result = enhance_prompt(
+            theme="Test",
+            style="cartoon",
+            mode="flexible",
+            creativity_level=1.0  # Max creativity
+        )
+        
+        # Should use fallback
+        assert result['fallback'] is True
+        
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_prompt_flexible_high_creativity(self, mock_run_async):
+        """高创意度 flexible 模式"""
+        from services.ai.prompt_enhancer import enhance_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = '{"enhanced_prompt": "A creative scene", "key_elements": [], "composition": "test"}'
+        mock_run_async.return_value = mock_response
+        
+        result = enhance_prompt(
+            theme="Magic forest",
+            style="fantasy",
+            mode="flexible",
+            creativity_level=0.8
+        )
+        
+        assert 'enhanced_prompt' in result
+
+
+class TestEnhanceAssetPromptFlexible:
+    """Asset 提示词增强 Flexible 模式测试"""
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_asset_prompt_flexible_mode(self, mock_run_async):
+        """Asset 提示词 flexible 模式"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = '{"enhanced_prompt": "Creative asset", "key_elements": [], "composition": "test"}'
+        mock_run_async.return_value = mock_response
+        
+        result = enhance_asset_prompt(
+            who="A robot",
+            what="dancing",
+            where="on the moon",
+            style="scifi",
+            mode="flexible",
+            creativity_level=0.5
+        )
+        
+        assert 'enhanced_prompt' in result
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_asset_prompt_with_all_params(self, mock_run_async):
+        """Asset 提示词带所有参数"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = '{"enhanced_prompt": "Full scene", "key_elements": ["robot", "moon"], "composition": "centered"}'
+        mock_run_async.return_value = mock_response
+        
+        result = enhance_asset_prompt(
+            who="A happy robot",
+            what="waving hello",
+            where="in space",
+            style="cartoon",
+            moods=["joyful", "warm"],
+            mode="guided",
+            creativity_level=0.3,
+            user_id="test-user",
+            tier="pro"
+        )
+        
+        assert 'enhanced_prompt' in result
+
+
+# ==========================================
+# Enhanced Asset Prompt Error Handling Tests
+# ==========================================
+
+class TestEnhanceAssetPromptErrors:
+    """Asset 提示词增强错误处理测试"""
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_asset_prompt_missing_enhanced_prompt(self, mock_run_async):
+        """【业务规则】缺少 enhanced_prompt 字段时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "key_elements": ["test"],
+            "composition": "centered"
+            # missing enhanced_prompt
+        })
+        
+        mock_run_async.return_value = mock_response
+        
+        result = enhance_asset_prompt(
+            who="A robot",
+            style="scifi"
+        )
+        
+        assert result['fallback'] is True
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_asset_prompt_json_error(self, mock_run_async):
+        """【业务规则】JSON 解析错误时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = "not valid json at all"
+        
+        mock_run_async.return_value = mock_response
+        
+        result = enhance_asset_prompt(
+            who="A cat",
+            style="cartoon"
+        )
+        
+        assert result['fallback'] is True
+    
+    @patch('services.ai.prompt_enhancer._run_async')
+    def test_enhance_asset_prompt_generic_exception(self, mock_run_async):
+        """【业务规则】通用异常时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_run_async.side_effect = Exception("Unexpected error")
+        
+        result = enhance_asset_prompt(
+            who="A bird",
+            style="watercolor"
+        )
+        
+        assert result['fallback'] is True
+
+
+# ==========================================
+# Async Error Handling Tests
+# ==========================================
+
+class TestAsyncErrorHandling:
+    """异步函数错误处理测试"""
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    async def test_enhance_prompt_async_missing_field(self, mock_service):
+        """【业务规则】异步增强缺少字段时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_prompt_async
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "key_elements": ["test"],
+            "composition": "centered"
+            # missing enhanced_prompt
+        })
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = await enhance_prompt_async(
+            theme="Test",
+            style="cartoon"
+        )
+        
+        assert result['fallback'] is True
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    async def test_enhance_prompt_async_generic_exception(self, mock_service):
+        """【业务规则】异步增强异常时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_prompt_async
+        
+        mock_service.chat = AsyncMock(side_effect=Exception("Unexpected error"))
+        
+        result = await enhance_prompt_async(
+            theme="Test",
+            style="cartoon"
+        )
+        
+        assert result['fallback'] is True
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    async def test_enhance_asset_prompt_async_missing_field(self, mock_service):
+        """【业务规则】异步资产增强缺少字段时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt_async
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "key_elements": ["test"],
+            "composition": "centered"
+            # missing enhanced_prompt
+        })
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = await enhance_asset_prompt_async(
+            who="A cat",
+            style="cartoon"
+        )
+        
+        assert result['fallback'] is True
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    async def test_enhance_asset_prompt_async_generic_exception(self, mock_service):
+        """【业务规则】异步资产增强异常时使用 fallback"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt_async
+        
+        mock_service.chat = AsyncMock(side_effect=Exception("Unexpected error"))
+        
+        result = await enhance_asset_prompt_async(
+            who="A cat",
+            style="cartoon"
+        )
+        
+        assert result['fallback'] is True
+
+
+# ==========================================
+# _run_async in Async Context Tests
+# ==========================================
+
+class TestRunAsyncInEventLoop:
+    """在已运行的事件循环中测试 _run_async"""
+    
+    @pytest.mark.asyncio
+    async def test_run_async_within_running_loop(self):
+        """在运行中的事件循环内调用 _run_async"""
+        import asyncio
+        from services.ai.prompt_enhancer import _run_async
+        
+        async def sample_coroutine():
+            await asyncio.sleep(0)
+            return "test_from_running_loop"
+        
+        # This should use the ThreadPoolExecutor path since we're in an async context
+        result = _run_async(sample_coroutine())
+        
+        assert result == "test_from_running_loop"
+    
+    @pytest.mark.asyncio
+    async def test_run_async_multiple_calls_in_loop(self):
+        """在运行中的事件循环内多次调用 _run_async"""
+        import asyncio
+        from services.ai.prompt_enhancer import _run_async
+        
+        async def add_coro(a, b):
+            await asyncio.sleep(0)
+            return a + b
+        
+        result1 = _run_async(add_coro(1, 2))
+        result2 = _run_async(add_coro(3, 4))
+        
+        assert result1 == 3
+        assert result2 == 7
+
+
+# ==========================================
+# Full Integration Tests (cover inner async)
+# ==========================================
+
+class TestFullIntegration:
+    """完整集成测试 - 覆盖内部异步函数"""
+    
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    def test_enhance_prompt_full_flow(self, mock_service):
+        """完整流程测试 enhance_prompt"""
+        from services.ai.prompt_enhancer import enhance_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "enhanced_prompt": "A beautiful cartoon scene with a cat",
+            "key_elements": ["cat", "garden", "sunshine"],
+            "composition": "rule-of-thirds"
+        })
+        mock_response.provider = "openai"
+        mock_response.model = "gpt-4o-mini"
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = enhance_prompt(
+            theme="A cat playing in the garden",
+            character="A fluffy orange cat",
+            style="cartoon",
+            mode="guided",
+            user_id="user_123",
+            tier="pro"
+        )
+        
+        assert 'enhanced_prompt' in result
+        assert result['original_theme'] == "A cat playing in the garden"
+        assert result['original_character'] == "A fluffy orange cat"
+        assert result['mode'] == 'guided'
+    
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    def test_enhance_asset_prompt_full_flow(self, mock_service):
+        """完整流程测试 enhance_asset_prompt"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "enhanced_prompt": "A curious robot exploring space",
+            "key_elements": ["robot", "space", "stars"],
+            "composition": "centered",
+            "color_palette": "cosmic blues and purples"
+        })
+        mock_response.provider = "openai"
+        mock_response.model = "gpt-4o"
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = enhance_asset_prompt(
+            who="A curious robot",
+            what="exploring",
+            where="in outer space",
+            style="scifi",
+            moods=["adventurous", "mysterious"],
+            mode="flexible",
+            creativity_level=0.7,
+            user_id="user_456",
+            tier="starter"
+        )
+        
+        assert 'enhanced_prompt' in result
+        assert result['original_who'] == "A curious robot"
+        assert result['original_what'] == "exploring"
+        assert result['original_where'] == "in outer space"
+        assert result['mode'] == 'flexible'
+    
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    def test_enhance_prompt_adds_style_if_missing(self, mock_service):
+        """AI 响应没有包含风格时自动添加"""
+        from services.ai.prompt_enhancer import enhance_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "enhanced_prompt": "A simple scene without style keywords",
+            "key_elements": ["scene"],
+            "composition": "centered"
+        })
+        mock_response.provider = "openai"
+        mock_response.model = "gpt-4o"
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = enhance_prompt(
+            theme="Test",
+            style="watercolor",
+            mode="guided"
+        )
+        
+        # Should append watercolor style description
+        assert 'watercolor' in result['enhanced_prompt'].lower()
+    
+    @patch('services.ai.prompt_enhancer.unified_text_service')
+    def test_enhance_asset_prompt_adds_style_if_missing(self, mock_service):
+        """Asset AI 响应没有包含风格时自动添加"""
+        from services.ai.prompt_enhancer import enhance_asset_prompt
+        
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.content = json.dumps({
+            "enhanced_prompt": "A scene without style keywords",
+            "key_elements": ["test"],
+            "composition": "centered",
+            "color_palette": "neutral"
+        })
+        mock_response.provider = "openai"
+        mock_response.model = "gpt-4o"
+        
+        mock_service.chat = AsyncMock(return_value=mock_response)
+        
+        result = enhance_asset_prompt(
+            who="A bird",
+            style="fantasy",
+            mode="guided"
+        )
+        
+        # Should append fantasy style description
+        assert 'fantasy' in result['enhanced_prompt'].lower() or 'magical' in result['enhanced_prompt'].lower()

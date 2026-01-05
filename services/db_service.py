@@ -568,8 +568,13 @@ def log_payment_record(
 
 def credit_deduct(user_id: str, amount: int, type: str, description: str, timezone: str = "UTC") -> dict:
     """
-    [Core] Unified deduction function
+    [Core] Atomic deduction function using PostgreSQL RPC
     Priority: Deduct Monthly Credits first, then Permanent Credits
+    
+    v3.22: Uses atomic RPC function for:
+    - Row locking (SELECT FOR UPDATE) to prevent race conditions
+    - Atomic balance update and transaction logging
+    - Better consistency under concurrent access
     
     Args:
         user_id: User ID
@@ -578,72 +583,71 @@ def credit_deduct(user_id: str, amount: int, type: str, description: str, timezo
         description: Transaction description
         timezone: v3.9 - Snapshot timezone for dual-storage
     
-    Returns: { success: bool, balance_monthly: int, balance_permanent: int }
-    Raises: Exception if insufficient credits or concurrency conflict
+    Returns: { success: bool, balance_monthly: int, balance_permanent: int, total: int }
+    Raises: Exception if insufficient credits or user not found
     """
-    profile = get_user_profile(user_id)
-    if not profile:
-        raise Exception("User not found")
+    if amount <= 0:
+        # No deduction needed, return current balance
+        profile = get_user_profile(user_id)
+        if not profile:
+            raise Exception("User not found")
+        monthly = profile.get("credits_monthly", 0)
+        permanent = profile.get("credits_permanent", 0)
+        return {
+            "success": True,
+            "balance_monthly": monthly,
+            "balance_permanent": permanent,
+            "total": monthly + permanent
+        }
     
-    monthly = profile.get("credits_monthly", 0)
-    permanent = profile.get("credits_permanent", 0)
-    total = monthly + permanent
-    
-    if total < amount:
-        raise Exception("CREDITS_INSUFFICIENT")
-    
-    # Calculate deduction allocation
-    deduct_from_monthly = min(monthly, amount)
-    deduct_from_permanent = amount - deduct_from_monthly
-    
-    new_monthly = monthly - deduct_from_monthly
-    new_permanent = permanent - deduct_from_permanent
-    
-    # Optimistic locking update (check original values)
-    res = supabase.table("profiles").update({
-        "credits_monthly": new_monthly,
-        "credits_permanent": new_permanent
-    }).eq("id", user_id).eq("credits_monthly", monthly).eq("credits_permanent", permanent).execute()
-    
-    if not res.data:
-        raise Exception("Concurrency conflict, please retry")
-    
-    # Log transactions (log separately for each bucket) with timezone snapshot
-    if deduct_from_monthly > 0:
-        log_credit_transaction(
-            user_id=user_id,
-            amount=-deduct_from_monthly,
-            bucket="monthly",
-            balance_monthly_after=new_monthly,
-            balance_permanent_after=new_permanent,
-            type=type,
-            description=description,
-            timezone=timezone
-        )
-    
-    if deduct_from_permanent > 0:
-        log_credit_transaction(
-            user_id=user_id,
-            amount=-deduct_from_permanent,
-            bucket="permanent",
-            balance_monthly_after=new_monthly,
-            balance_permanent_after=new_permanent,
-            type=type,
-            description=description,
-            timezone=timezone
-        )
-    
-    return {
-        "success": True,
-        "balance_monthly": new_monthly,
-        "balance_permanent": new_permanent,
-        "total": new_monthly + new_permanent
-    }
+    try:
+        # Call atomic RPC function
+        result = supabase.rpc("deduct_credits_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount,
+            "p_tx_type": type,
+            "p_description": description,
+            "p_timezone": timezone,
+            "p_idempotency_key": None
+        }).execute()
+        
+        data = result.data
+        
+        if not data:
+            raise Exception("Database error: no response from RPC")
+        
+        if data.get("success"):
+            balance_monthly = data.get("balance_monthly", 0)
+            balance_permanent = data.get("balance_permanent", 0)
+            return {
+                "success": True,
+                "balance_monthly": balance_monthly,
+                "balance_permanent": balance_permanent,
+                "total": balance_monthly + balance_permanent
+            }
+        else:
+            error = data.get("error", "Unknown error")
+            error_code = data.get("error_code", "")
+            
+            # Map error codes to exceptions for backward compatibility
+            if error_code == "CREDITS_INSUFFICIENT":
+                raise Exception("CREDITS_INSUFFICIENT")
+            elif error_code == "USER_NOT_FOUND":
+                raise Exception("User not found")
+            else:
+                raise Exception(error)
+                
+    except Exception as e:
+        # Re-raise to maintain backward compatibility with callers
+        logger.error(f"[DB] credit_deduct error for {user_id}: {e}")
+        raise
 
 def add_credits_permanent(user_id: str, amount: int, description: str, type: str = "topup_purchase", timezone: str = "UTC"):
     """
-    Add permanent credits (for purchase/sale earnings)
+    Add permanent credits using atomic RPC (for purchase/sale earnings)
     Credits earned from buying/selling are always permanent
+    
+    v3.22: Uses atomic RPC function for consistency
     
     Args:
         user_id: User ID
@@ -652,34 +656,46 @@ def add_credits_permanent(user_id: str, amount: int, description: str, type: str
         type: Transaction type
         timezone: v3.9 - Snapshot timezone for dual-storage
     """
-    profile = get_user_profile(user_id)
-    if not profile:
+    if amount <= 0:
+        profile = get_user_profile(user_id)
+        if not profile:
+            return None
+        return {
+            "balance_monthly": profile.get("credits_monthly", 0),
+            "balance_permanent": profile.get("credits_permanent", 0)
+        }
+    
+    try:
+        result = supabase.rpc("add_credits_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount,
+            "p_bucket": "permanent",
+            "p_tx_type": type,
+            "p_description": description,
+            "p_timezone": timezone,
+            "p_idempotency_key": None
+        }).execute()
+        
+        data = result.data
+        
+        if data and data.get("success"):
+            return {
+                "balance_monthly": data.get("balance_monthly", 0),
+                "balance_permanent": data.get("balance_permanent", 0)
+            }
+        else:
+            logger.error(f"[DB] add_credits_permanent failed for {user_id}: {data}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"[DB] add_credits_permanent exception for {user_id}: {e}")
         return None
-    
-    monthly = profile.get("credits_monthly", 0)
-    permanent = profile.get("credits_permanent", 0)
-    new_permanent = permanent + amount
-    
-    supabase.table("profiles").update({
-        "credits_permanent": new_permanent
-    }).eq("id", user_id).execute()
-    
-    log_credit_transaction(
-        user_id=user_id,
-        amount=amount,
-        bucket="permanent",
-        balance_monthly_after=monthly,
-        balance_permanent_after=new_permanent,
-        type=type,
-        description=description,
-        timezone=timezone
-    )
-    
-    return {"balance_monthly": monthly, "balance_permanent": new_permanent}
 
 def add_credits_monthly(user_id: str, amount: int, description: str, type: str = "sub_grant", timezone: str = "UTC"):
     """
-    Add monthly credits (for subscription grants)
+    Add monthly credits using atomic RPC (for subscription grants)
+    
+    v3.22: Uses atomic RPC function for consistency
     
     Args:
         user_id: User ID
@@ -688,28 +704,34 @@ def add_credits_monthly(user_id: str, amount: int, description: str, type: str =
         type: Transaction type
         timezone: v3.9 - Snapshot timezone for dual-storage
     """
-    profile = get_user_profile(user_id)
-    if not profile:
+    if amount <= 0:
         return None
     
-    monthly = profile.get("credits_monthly", 0)
-    permanent = profile.get("credits_permanent", 0)
-    new_monthly = monthly + amount
-    
-    supabase.table("profiles").update({
-        "credits_monthly": new_monthly
-    }).eq("id", user_id).execute()
-    
-    log_credit_transaction(
-        user_id=user_id,
-        amount=amount,
-        bucket="monthly",
-        balance_monthly_after=new_monthly,
-        balance_permanent_after=permanent,
-        type=type,
-        description=description,
-        timezone=timezone
-    )
+    try:
+        result = supabase.rpc("add_credits_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount,
+            "p_bucket": "monthly",
+            "p_tx_type": type,
+            "p_description": description,
+            "p_timezone": timezone,
+            "p_idempotency_key": None
+        }).execute()
+        
+        data = result.data
+        
+        if data and data.get("success"):
+            return {
+                "balance_monthly": data.get("balance_monthly", 0),
+                "balance_permanent": data.get("balance_permanent", 0)
+            }
+        else:
+            logger.error(f"[DB] add_credits_monthly failed for {user_id}: {data}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"[DB] add_credits_monthly exception for {user_id}: {e}")
+        return None
     
     return {"balance_monthly": new_monthly, "balance_permanent": permanent}
 

@@ -1,5 +1,15 @@
+"""
+Payment Service
+Stripe 支付服务
+
+v3.22: Replaced print statements with structured logging
+"""
+
 import stripe
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -54,7 +64,7 @@ def create_checkout_session(user_id: str, plan_type: str, discount_percent: int 
         checkout_session = stripe.checkout.Session.create(**session_params)
         return checkout_session.url
     except Exception as e:
-        print(f"Stripe Checkout Error: {e}")
+        logger.error(f"[Stripe] Checkout session error for user {user_id}: {e}")
         return None
 
 def create_portal_session(user_id: str, customer_id: str):
@@ -68,7 +78,7 @@ def create_portal_session(user_id: str, customer_id: str):
         )
         return portal.url
     except Exception as e:
-        print(f"Portal Error: {e}")
+        logger.error(f"[Stripe] Portal session error for customer {customer_id}: {e}")
         return None
 
 def construct_event(payload, sig_header):
@@ -112,7 +122,7 @@ def get_subscription_status(customer_id: str):
             "current_period_end": None
         }
     except Exception as e:
-        print(f"Get Subscription Error: {e}")
+        logger.error(f"[Stripe] Get subscription error for customer {customer_id}: {e}")
         return None
 
 
@@ -131,7 +141,7 @@ def get_customer_subscriptions(customer_id: str):
         )
         return subscriptions.data
     except Exception as e:
-        print(f"Get Subscriptions Error: {e}")
+        logger.error(f"[Stripe] Get subscriptions error for customer {customer_id}: {e}")
         return []
 
 def get_customer_payments(customer_id: str, limit: int = 10):
@@ -154,7 +164,7 @@ def get_customer_payments(customer_id: str, limit: int = 10):
         
         return successful_payments
     except Exception as e:
-        print(f"Get Customer Payments Error: {e}")
+        logger.error(f"[Stripe] Get payments error for customer {customer_id}: {e}")
         return []
 
 def cancel_subscription(subscription_id: str, immediate: bool = False):
@@ -185,7 +195,7 @@ def cancel_subscription(subscription_id: str, immediate: bool = False):
             "error": None
         }
     except stripe.error.StripeError as e:
-        print(f"Cancel Subscription Error: {e}")
+        logger.error(f"[Stripe] Cancel subscription error for {subscription_id}: {e}")
         return {
             "success": False,
             "subscription": None,
@@ -221,7 +231,7 @@ def create_refund(payment_intent_id: str, amount_cents: int = None, reason: str 
             "error": None
         }
     except stripe.error.StripeError as e:
-        print(f"Create Refund Error: {e}")
+        logger.error(f"[Stripe] Create refund error for {payment_intent_id}: {e}")
         return {
             "success": False,
             "refund": None,
@@ -235,5 +245,5 @@ def get_payment_intent_details(payment_intent_id: str):
     try:
         return stripe.PaymentIntent.retrieve(payment_intent_id)
     except stripe.error.StripeError as e:
-        print(f"Get PaymentIntent Error: {e}")
+        logger.error(f"[Stripe] Get payment intent error for {payment_intent_id}: {e}")
         return None

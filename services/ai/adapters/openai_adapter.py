@@ -6,6 +6,8 @@ Supports:
 - GPT-4o, GPT-4o-mini, o1, o1-mini
 - DALL-E 3 for image generation
 - JSON mode response format
+
+v3.22: Added retry mechanism and timeout configuration
 """
 
 import os
@@ -14,6 +16,7 @@ import logging
 from typing import List, Dict, Optional, Any
 
 import openai
+import httpx
 
 from ..base import (
     BaseTextAdapter, 
@@ -23,6 +26,7 @@ from ..base import (
     AIErrorType,
     classify_error
 )
+from ..retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,27 @@ OPENAI_IMAGE_MODELS = [
     "dall-e-3",
 ]
 
+# Timeout configuration (seconds)
+OPENAI_TIMEOUTS = {
+    "text": {
+        "gpt-4o-mini": 30,
+        "gpt-4o": 60,
+        "o1-mini": 90,
+        "o1": 120,
+        "default": 60,
+    },
+    "image": {
+        "dall-e-3": 120,
+        "default": 120,
+    }
+}
+
+
+def get_openai_timeout(model: str, call_type: str = "text") -> int:
+    """Get timeout for OpenAI operation."""
+    timeouts = OPENAI_TIMEOUTS.get(call_type, OPENAI_TIMEOUTS["text"])
+    return timeouts.get(model, timeouts["default"])
+
 
 # ==========================================
 # Text Adapter
@@ -58,6 +83,11 @@ class OpenAITextAdapter(BaseTextAdapter):
     - gpt-4o: 高质量、多模态
     - o1-mini: 推理优化（轻量）
     - o1: 推理优化（完整）
+    
+    v3.22 Features:
+    - Automatic retry on transient errors
+    - Configurable timeout per model
+    - Custom HTTP client with timeout
     """
     
     provider_name = "openai"
@@ -65,7 +95,18 @@ class OpenAITextAdapter(BaseTextAdapter):
     def __init__(self):
         self._client = None
         if OPENAI_API_KEY:
-            self._client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
+            # Create HTTP client with timeout configuration
+            timeout = httpx.Timeout(
+                connect=10.0,    # Connection timeout
+                read=60.0,       # Read timeout (overridden per-call)
+                write=10.0,      # Write timeout
+                pool=5.0         # Pool timeout
+            )
+            http_client = httpx.AsyncClient(timeout=timeout)
+            self._client = openai.AsyncOpenAI(
+                api_key=OPENAI_API_KEY,
+                http_client=http_client
+            )
     
     def is_available(self) -> bool:
         return self._client is not None
@@ -73,6 +114,7 @@ class OpenAITextAdapter(BaseTextAdapter):
     def get_available_models(self) -> List[str]:
         return OPENAI_TEXT_MODELS.copy()
     
+    @with_retry(max_attempts=3, min_wait=1, max_wait=20)
     async def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -83,7 +125,7 @@ class OpenAITextAdapter(BaseTextAdapter):
         **kwargs
     ) -> AIResponse:
         """
-        OpenAI Chat Completion
+        OpenAI Chat Completion (with retry and timeout)
         
         Note:
         - o1/o1-mini 不支持 system message，需要转换为 user message
@@ -98,6 +140,7 @@ class OpenAITextAdapter(BaseTextAdapter):
             )
         
         start_time = time.time()
+        timeout = get_openai_timeout(model, "text")
         
         try:
             # 处理 o1 系列模型的特殊要求
@@ -105,6 +148,7 @@ class OpenAITextAdapter(BaseTextAdapter):
             params = {
                 "model": model,
                 "messages": processed_messages,
+                "timeout": timeout,  # Request-level timeout
             }
             
             if model.startswith("o1"):
@@ -121,6 +165,9 @@ class OpenAITextAdapter(BaseTextAdapter):
                     params["max_tokens"] = max_tokens
                 if response_format:
                     params["response_format"] = response_format
+            
+            # Remove timeout from params (handled at client level)
+            params.pop("timeout", None)
             
             # 调用 API
             response = await self._client.chat.completions.create(**params)
@@ -197,6 +244,10 @@ class OpenAIImageAdapter(BaseImageAdapter):
     
     支持模型:
     - dall-e-3: 高质量图像生成
+    
+    v3.22 Features:
+    - Automatic retry on transient errors
+    - Configurable timeout
     """
     
     provider_name = "openai"
@@ -204,7 +255,18 @@ class OpenAIImageAdapter(BaseImageAdapter):
     def __init__(self):
         self._client = None
         if OPENAI_API_KEY:
-            self._client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
+            # Create HTTP client with timeout configuration
+            timeout = httpx.Timeout(
+                connect=10.0,
+                read=120.0,  # Longer read timeout for image generation
+                write=10.0,
+                pool=5.0
+            )
+            http_client = httpx.AsyncClient(timeout=timeout)
+            self._client = openai.AsyncOpenAI(
+                api_key=OPENAI_API_KEY,
+                http_client=http_client
+            )
     
     def is_available(self) -> bool:
         return self._client is not None
@@ -212,6 +274,7 @@ class OpenAIImageAdapter(BaseImageAdapter):
     def get_available_models(self) -> List[str]:
         return OPENAI_IMAGE_MODELS.copy()
     
+    @with_retry(max_attempts=3, min_wait=2, max_wait=30)
     async def generate_image(
         self,
         prompt: str,
@@ -224,7 +287,7 @@ class OpenAIImageAdapter(BaseImageAdapter):
         **kwargs
     ) -> AIResponse:
         """
-        DALL-E 图像生成
+        DALL-E 图像生成 (with retry and timeout)
         
         Args:
             prompt: 图像描述

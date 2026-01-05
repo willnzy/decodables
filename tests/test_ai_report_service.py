@@ -551,3 +551,182 @@ class TestGetQuickInsights:
         insights = get_quick_insights()
         
         assert insights == []
+
+
+# ==========================================
+# Exception Handling Tests
+# ==========================================
+
+class TestExceptionHandling:
+    """Test exception handling in metric collection functions"""
+    
+    @patch('services.ai_report_service.supabase')
+    def test_collect_growth_metrics_exception(self, mock_supabase):
+        """collect_growth_metrics handles exceptions"""
+        from services.ai_report_service import collect_growth_metrics
+        
+        mock_supabase.table.side_effect = Exception("DB Error")
+        
+        # Should return empty list instead of raising
+        result = collect_growth_metrics()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_collect_conversion_metrics_exception(self, mock_supabase):
+        """collect_conversion_metrics handles exceptions"""
+        from services.ai_report_service import collect_conversion_metrics
+        
+        mock_supabase.table.side_effect = Exception("DB Error")
+        
+        result = collect_conversion_metrics()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_collect_retention_metrics_exception(self, mock_supabase):
+        """collect_retention_metrics handles exceptions"""
+        from services.ai_report_service import collect_retention_metrics
+        
+        mock_supabase.table.side_effect = Exception("DB Error")
+        
+        result = collect_retention_metrics()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_collect_product_metrics_exception(self, mock_supabase):
+        """collect_product_metrics handles exceptions"""
+        from services.ai_report_service import collect_product_metrics
+        
+        mock_supabase.table.side_effect = Exception("DB Error")
+        
+        result = collect_product_metrics()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_collect_user_behavior_trends_exception(self, mock_supabase):
+        """collect_user_behavior_trends handles exceptions"""
+        from services.ai_report_service import collect_user_behavior_trends
+        
+        mock_supabase.table.side_effect = Exception("DB Error")
+        
+        result = collect_user_behavior_trends()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_identify_anomalies_exception(self, mock_supabase):
+        """identify_anomalies handles exceptions"""
+        from services.ai_report_service import identify_anomalies, MetricData
+        
+        metrics = [
+            MetricData(name="Test", current_value=200, previous_value=100, year_ago_value=None)
+        ]
+        
+        # Should not raise
+        result = identify_anomalies(metrics)
+        
+        assert isinstance(result, list)
+
+
+class TestDataProcessingBranches:
+    """Test data processing conditional branches"""
+    
+    @patch('services.ai_report_service.supabase')
+    def test_dau_calculation_with_data(self, mock_supabase):
+        """DAU calculation processes activity data correctly"""
+        from services.ai_report_service import collect_growth_metrics
+        from collections import defaultdict
+        
+        # Mock profiles count
+        mock_count_result = MagicMock()
+        mock_count_result.count = 100
+        
+        # Mock activity logs with actual data
+        mock_activities = MagicMock()
+        mock_activities.data = [
+            {"user_id": "user1", "created_at": "2024-01-01T10:00:00Z"},
+            {"user_id": "user2", "created_at": "2024-01-01T11:00:00Z"},
+            {"user_id": "user1", "created_at": "2024-01-02T10:00:00Z"},
+            {"user_id": "user3", "created_at": "2024-01-02T11:00:00Z"},
+        ]
+        
+        mock_table = MagicMock()
+        mock_table.select.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.lt.return_value = mock_table
+        mock_table.execute.return_value = mock_activities
+        
+        mock_supabase.table.return_value = mock_table
+        
+        result = collect_growth_metrics()
+        
+        # Should return some metrics without error
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_dau_mau_ratio_with_positive_mau(self, mock_supabase):
+        """DAU/MAU ratio calculated when MAU > 0"""
+        from services.ai_report_service import collect_growth_metrics
+        
+        # Mock with enough data to have positive MAU
+        mock_result = MagicMock()
+        mock_result.data = [
+            {"user_id": f"user{i}", "created_at": f"2024-01-{(i % 28) + 1:02d}T10:00:00Z"}
+            for i in range(100)
+        ]
+        mock_result.count = 1000
+        
+        mock_table = MagicMock()
+        mock_table.select.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.lt.return_value = mock_table
+        mock_table.execute.return_value = mock_result
+        
+        mock_supabase.table.return_value = mock_table
+        
+        result = collect_growth_metrics()
+        
+        assert isinstance(result, list)
+    
+    @patch('services.ai_report_service.supabase')
+    def test_retention_with_cohort_data(self, mock_supabase):
+        """D1 retention calculated with cohort data"""
+        from services.ai_report_service import collect_retention_metrics
+        
+        # Mock cohort data
+        mock_cohort = MagicMock()
+        mock_cohort.data = [
+            {"id": "user1"},
+            {"id": "user2"},
+            {"id": "user3"},
+        ]
+        
+        # Mock activity data
+        mock_activity = MagicMock()
+        mock_activity.data = [
+            {"user_id": "user1"},
+            {"user_id": "user2"},
+        ]
+        
+        call_count = [0]
+        def mock_execute():
+            call_count[0] += 1
+            if call_count[0] % 2 == 1:
+                return mock_cohort
+            return mock_activity
+        
+        mock_table = MagicMock()
+        mock_table.select.return_value = mock_table
+        mock_table.gte.return_value = mock_table
+        mock_table.lt.return_value = mock_table
+        mock_table.in_.return_value = mock_table
+        mock_table.execute.side_effect = mock_execute
+        
+        mock_supabase.table.return_value = mock_table
+        
+        result = collect_retention_metrics()
+        
+        assert isinstance(result, list)

@@ -3,12 +3,20 @@ Marketplace Service
 Handles marketplace business logic
 
 @module services/marketplace_service
+
+Atomic Operations (v3.22):
+- Uses PostgreSQL RPC function for atomic purchase operations
+- All credit operations (buyer deduct, seller add) in single transaction
+- Idempotency support for duplicate request handling
 """
 
+import logging
 from typing import Optional, Dict, Any, List
 from .credit_service import CreditService, DEFAULT_TIMEZONE
 from .access_control import AccessControl
 from config import SELLER_REVENUE_PERCENT
+
+logger = logging.getLogger(__name__)
 
 
 class MarketplaceService:
@@ -16,9 +24,11 @@ class MarketplaceService:
     Service for managing marketplace operations.
     
     Key operations:
-    - Purchase (with 90/10 split)
+    - Purchase (with 90/10 split) - now atomic via RPC
     - Publish (with moderation)
     - Usage tracking
+    
+    v3.22: Purchase operations use atomic RPC for data consistency
     """
     
     def __init__(self, supabase):
@@ -30,28 +40,34 @@ class MarketplaceService:
         self, 
         listing_id: str, 
         buyer_id: str,
-        timezone: str = DEFAULT_TIMEZONE
+        timezone: str = DEFAULT_TIMEZONE,
+        idempotency_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Execute a marketplace purchase.
+        Execute a marketplace purchase using atomic RPC.
         
-        Flow:
+        v3.22: All operations in single database transaction:
         1. Validate listing (approved, public, not deleted)
-        2. Check buyer access (allowed_tiers)
-        3. Check if already purchased (dedup)
-        4. Deduct from buyer (monthly first, then permanent)
-        5. Add to seller (90% to permanent)
-        6. Record purchase
+        2. Check if already purchased (dedup)
+        3. Deduct from buyer (monthly first, then permanent)
+        4. Add to seller (90% to permanent)
+        5. Record purchase
+        6. Update sales count
+        
+        Note: Tier access validation is done BEFORE calling RPC
+        (RPC handles the atomic credit operations)
         
         Args:
             listing_id: Listing ID
             buyer_id: Buyer user ID
             timezone: IANA timezone for transaction snapshot (e.g., 'Asia/Shanghai')
+            idempotency_key: Optional key to prevent duplicate purchases
         
         Returns:
             Result dict with success status
         """
-        # Get listing
+        # Pre-validation: Get listing and buyer for tier access check
+        # (This is done outside RPC to keep RPC focused on atomic operations)
         listing = self.supabase.table("marketplace_listings").select(
             "*"
         ).eq("id", listing_id).single().execute()
@@ -59,17 +75,9 @@ class MarketplaceService:
         if not listing.data:
             return {"success": False, "status": 404, "error": "Listing not found"}
         
-        listing = listing.data
+        listing_data = listing.data
         
-        # Validate listing status
-        if listing.get("moderation_status") != "approved":
-            return {"success": False, "status": 400, "error": "Listing is not approved"}
-        if not listing.get("is_public", False):
-            return {"success": False, "status": 400, "error": "Listing is not public"}
-        if listing.get("is_deleted", False):
-            return {"success": False, "status": 400, "error": "Listing has been deleted"}
-        
-        # Get buyer profile
+        # Get buyer profile for tier check
         buyer = self.supabase.table("profiles").select(
             "*"
         ).eq("id", buyer_id).single().execute()
@@ -77,90 +85,63 @@ class MarketplaceService:
         if not buyer.data:
             return {"success": False, "status": 404, "error": "Buyer not found"}
         
-        buyer = buyer.data
+        buyer_data = buyer.data
         
-        # Check tier access
-        allowed_tiers = listing.get("allowed_tiers", ["free"])
-        if not self.access_control.can_access_resource(buyer, allowed_tiers):
+        # Check tier access (business logic not in RPC)
+        allowed_tiers = listing_data.get("allowed_tiers", ["free"])
+        if not self.access_control.can_access_resource(buyer_data, allowed_tiers):
             return {"success": False, "status": 403, "error": f"Requires {'/'.join(allowed_tiers)} membership"}
         
         # PRD v3.2: Starter can only purchase Assets, Pro can purchase Assets + Projects
-        resource_type = listing.get("resource_type", "asset")
-        buyer_tier = buyer.get("tier", "free")
+        resource_type = listing_data.get("resource_type", "asset")
+        buyer_tier = buyer_data.get("tier", "free")
         if resource_type == "project" and buyer_tier != "pro":
-            return {"success": False, "status": 403, "error": "Only Pro members can purchase projects. Upgrade to Pro to access projects."}
+            return {
+                "success": False, 
+                "status": 403, 
+                "error": "Only Pro members can purchase projects. Upgrade to Pro to access projects."
+            }
         
-        # Check if already purchased
-        existing = self.supabase.table("user_purchases").select(
-            "id"
-        ).eq("user_id", buyer_id).eq("listing_id", listing_id).execute()
-        
-        if existing.data and len(existing.data) > 0:
-            return {"success": True, "already_owned": True, "message": "Already purchased"}
-        
-        price = listing.get("price_credits", 0)
-        seller_id = listing.get("seller_id")
-        
-        # If free, just record purchase with timezone snapshot
-        if price == 0:
-            self.supabase.table("user_purchases").insert({
-                "user_id": buyer_id,
-                "listing_id": listing_id,
-                "price_paid": 0,
-                "timezone": timezone
+        # Execute atomic purchase via RPC
+        try:
+            result = self.supabase.rpc("execute_marketplace_purchase", {
+                "p_listing_id": listing_id,
+                "p_buyer_id": buyer_id,
+                "p_timezone": timezone,
+                "p_idempotency_key": idempotency_key
             }).execute()
             
-            # Increment sales count (use update instead of RPC for compatibility)
-            self.supabase.table("marketplace_listings").update({
-                "sales_count": listing.get("sales_count", 0) + 1
-            }).eq("id", listing_id).execute()
+            data = result.data
             
-            return {"success": True, "price_paid": 0, "message": "Free item acquired"}
-        
-        # Check buyer has enough credits
-        if not self.credit_service.has_enough(buyer_id, price):
-            return {"success": False, "status": 402, "error": "Insufficient credits"}
-        
-        # Deduct from buyer with timezone snapshot
-        success, msg = self.credit_service.deduct(
-            buyer_id, price, "market_purchase", 
-            f"Purchased: {listing.get('title', 'Listing')}",
-            timezone=timezone
-        )
-        
-        if not success:
-            return {"success": False, "status": 400, "error": msg}
-        
-        # Calculate seller revenue (90%)
-        seller_revenue = int(price * SELLER_REVENUE_PERCENT / 100)
-        
-        # Add to seller (if not official listing) with timezone snapshot
-        if seller_id:
-            self.credit_service.add(
-                seller_id, seller_revenue, "permanent",
-                "market_sale", f"Sale: {listing.get('title', 'Listing')}",
-                timezone=timezone
-            )
-        
-        # Record purchase with timezone snapshot
-        self.supabase.table("user_purchases").insert({
-            "user_id": buyer_id,
-            "listing_id": listing_id,
-            "price_paid": price,
-            "timezone": timezone
-        }).execute()
-        
-        # Increment sales count
-        self.supabase.table("marketplace_listings").update({
-            "sales_count": listing.get("sales_count", 0) + 1
-        }).eq("id", listing_id).execute()
-        
-        return {
-            "success": True,
-            "price_paid": price,
-            "seller_revenue": seller_revenue,
-            "message": "Purchase successful"
-        }
+            if not data:
+                logger.error(f"[Marketplace] RPC returned no data for purchase {listing_id}")
+                return {"success": False, "status": 500, "error": "Database error"}
+            
+            # Map RPC response to service response format
+            if data.get("success"):
+                response = {
+                    "success": True,
+                    "price_paid": data.get("price_paid", 0),
+                    "seller_revenue": data.get("seller_revenue", 0),
+                    "message": data.get("message", "Purchase successful")
+                }
+                
+                if data.get("already_owned"):
+                    response["already_owned"] = True
+                    
+                if data.get("idempotent"):
+                    response["idempotent"] = True
+                    logger.info(f"[Marketplace] Idempotent purchase for {buyer_id}: {idempotency_key}")
+                
+                return response
+            else:
+                status = data.get("status", 400)
+                error = data.get("error", "Purchase failed")
+                return {"success": False, "status": status, "error": error}
+                
+        except Exception as e:
+            logger.error(f"[Marketplace] Purchase exception for {listing_id}: {e}")
+            return {"success": False, "status": 500, "error": str(e)}
     
     def record_usage(
         self, 
@@ -271,4 +252,3 @@ class MarketplaceService:
             items.append(item)
         
         return items
-

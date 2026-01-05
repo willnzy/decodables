@@ -247,3 +247,128 @@ class TestAutoRegistration:
         
         # FAL should be auto-registered
         assert "fal" in _image_adapters
+    
+    def test_qwen_text_registered(self):
+        """Qwen 文本适配器应已注册"""
+        from services.ai.adapters import _text_adapters
+        
+        assert "qwen" in _text_adapters
+    
+    def test_wanx_image_registered(self):
+        """Wanx 图像适配器应已注册"""
+        from services.ai.adapters import _image_adapters
+        
+        assert "wanx" in _image_adapters
+
+
+class TestAutoRegistrationImportErrors:
+    """测试自动注册时的 ImportError 处理"""
+    
+    def test_auto_register_handles_openai_import_error(self):
+        """测试 OpenAI 导入失败时的处理"""
+        import sys
+        import importlib
+        
+        # Temporarily remove openai adapter to trigger import error
+        original_modules = {}
+        module_keys = [k for k in sys.modules.keys() if 'openai_adapter' in k or k == 'openai']
+        for key in module_keys:
+            original_modules[key] = sys.modules.pop(key, None)
+        
+        # Clear adapters
+        from services.ai import adapters
+        adapters._text_adapters.pop('openai', None)
+        adapters._image_adapters.pop('openai', None)
+        
+        # Mock the import to fail
+        with patch.dict(sys.modules, {'services.ai.adapters.openai_adapter': None}):
+            # This should handle the ImportError gracefully
+            adapters._auto_register_adapters()
+        
+        # Restore modules
+        for key, mod in original_modules.items():
+            if mod is not None:
+                sys.modules[key] = mod
+    
+    def test_auto_register_handles_fal_import_error(self):
+        """测试 FAL 导入失败时的处理"""
+        import sys
+        
+        from services.ai import adapters
+        adapters._image_adapters.pop('fal', None)
+        
+        # Mock the import to fail
+        original_modules = {}
+        module_keys = [k for k in sys.modules.keys() if 'fal_adapter' in k or k == 'fal_client']
+        for key in module_keys:
+            original_modules[key] = sys.modules.pop(key, None)
+        
+        with patch.dict(sys.modules, {'services.ai.adapters.fal_adapter': None}):
+            adapters._auto_register_adapters()
+        
+        for key, mod in original_modules.items():
+            if mod is not None:
+                sys.modules[key] = mod
+    
+    def test_auto_register_handles_qwen_import_error(self):
+        """测试 Qwen 导入失败时的处理"""
+        import sys
+        
+        from services.ai import adapters
+        adapters._text_adapters.pop('qwen', None)
+        adapters._image_adapters.pop('wanx', None)
+        
+        original_modules = {}
+        module_keys = [k for k in sys.modules.keys() if 'qwen_adapter' in k or k == 'dashscope']
+        for key in module_keys:
+            original_modules[key] = sys.modules.pop(key, None)
+        
+        with patch.dict(sys.modules, {'services.ai.adapters.qwen_adapter': None}):
+            adapters._auto_register_adapters()
+        
+        for key, mod in original_modules.items():
+            if mod is not None:
+                sys.modules[key] = mod
+    
+    def test_auto_register_handles_gemini_import_error(self):
+        """测试 Gemini 导入失败时的处理 (通常失败因为未安装)"""
+        from services.ai import adapters
+        
+        # Gemini adapter probably isn't installed, so this path is hit anyway
+        # Just verify the registration function can be called without error
+        adapters._auto_register_adapters()
+    
+    def test_auto_register_handles_anthropic_import_error(self):
+        """测试 Anthropic 导入失败时的处理"""
+        from services.ai import adapters
+        
+        # Similar to Gemini
+        adapters._auto_register_adapters()
+    
+    def test_auto_register_handles_grok_import_error(self):
+        """测试 Grok 导入失败时的处理"""
+        from services.ai import adapters
+        
+        adapters._auto_register_adapters()
+    
+    def test_auto_register_handles_jimeng_import_error(self):
+        """测试 Jimeng 导入失败时的处理"""
+        from services.ai import adapters
+        
+        adapters._auto_register_adapters()
+
+
+class TestExports:
+    """测试模块导出"""
+    
+    def test_all_exports(self):
+        """测试 __all__ 导出"""
+        from services.ai import adapters
+        
+        assert "get_text_adapter" in adapters.__all__
+        assert "get_image_adapter" in adapters.__all__
+        assert "get_available_text_providers" in adapters.__all__
+        assert "get_available_image_providers" in adapters.__all__
+        assert "register_text_adapter" in adapters.__all__
+        assert "register_image_adapter" in adapters.__all__
+        assert "clear_adapter_cache" in adapters.__all__

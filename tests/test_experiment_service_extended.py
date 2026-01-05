@@ -713,3 +713,194 @@ class TestSupabaseNotConfigured:
         result = get_experiment("test", use_cache=False)
         
         assert result is None
+
+
+# ==========================================
+# Aggregate Results With Event Data Parsing
+# ==========================================
+
+class TestAggregateWithEventDataParsing:
+    """聚合结果时解析 event_data 测试"""
+    
+    @patch('services.experiment_service.supabase')
+    @patch('services.experiment_service.list_experiments')
+    def test_aggregate_with_json_string_event_data(self, mock_list, mock_supabase):
+        """event_data 为 JSON 字符串时正确解析"""
+        from services.experiment_service import aggregate_experiment_results
+        
+        # Mock experiments list
+        mock_list.return_value = ([{
+            "id": "exp_001",
+            "experiment_key": "test_exp",
+            "variants": [{"key": "control", "weight": 50}, {"key": "variant_a", "weight": 50}]
+        }], 1)
+        
+        # Mock participants count
+        mock_count = MagicMock()
+        mock_count.count = 100
+        
+        # Mock exposure events with JSON string event_data
+        mock_exposures = MagicMock()
+        mock_exposures.data = [
+            {"event_data": '{"experiment_key": "test_exp", "variant_key": "control"}'},
+            {"event_data": '{"experiment_key": "test_exp", "variant_key": "control"}'}
+        ]
+        
+        # Mock conversion events
+        mock_conversions = MagicMock()
+        mock_conversions.data = [
+            {"event_data": '{"experiment_key": "test_exp", "variant_key": "control"}'}
+        ]
+        
+        def table_side_effect(table_name):
+            mock_table = MagicMock()
+            if table_name == "experiment_assignments":
+                mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_count
+            elif table_name == "analytics_events":
+                mock_chain = MagicMock()
+                mock_chain.eq.return_value = mock_chain
+                mock_chain.gte.return_value = mock_chain
+                mock_chain.execute.side_effect = [mock_exposures, mock_conversions]
+                mock_table.select.return_value = mock_chain
+            elif table_name == "experiment_results":
+                mock_table.upsert.return_value.execute.return_value = MagicMock()
+            return mock_table
+        
+        mock_supabase.table.side_effect = table_side_effect
+        
+        result = aggregate_experiment_results()
+        
+        assert result is True
+    
+    @patch('services.experiment_service.supabase')
+    @patch('services.experiment_service.list_experiments')
+    def test_aggregate_with_dict_event_data(self, mock_list, mock_supabase):
+        """event_data 为字典时正确处理"""
+        from services.experiment_service import aggregate_experiment_results
+        
+        mock_list.return_value = ([{
+            "id": "exp_001",
+            "experiment_key": "test_exp",
+            "variants": [{"key": "control", "weight": 100}]
+        }], 1)
+        
+        mock_count = MagicMock()
+        mock_count.count = 50
+        
+        # event_data as dict (not JSON string)
+        mock_events = MagicMock()
+        mock_events.data = [
+            {"event_data": {"experiment_key": "test_exp", "variant_key": "control"}}
+        ]
+        
+        def table_side_effect(table_name):
+            mock_table = MagicMock()
+            if table_name == "experiment_assignments":
+                mock_table.select.return_value.eq.return_value.eq.return_value.execute.return_value = mock_count
+            elif table_name == "analytics_events":
+                mock_chain = MagicMock()
+                mock_chain.eq.return_value = mock_chain
+                mock_chain.gte.return_value = mock_chain
+                mock_chain.execute.return_value = mock_events
+                mock_table.select.return_value = mock_chain
+            elif table_name == "experiment_results":
+                mock_table.upsert.return_value.execute.return_value = MagicMock()
+            return mock_table
+        
+        mock_supabase.table.side_effect = table_side_effect
+        
+        result = aggregate_experiment_results()
+        
+        assert result is True
+    
+    @patch('services.experiment_service.supabase')
+    @patch('services.experiment_service.list_experiments')
+    def test_aggregate_skip_variant_without_key(self, mock_list, mock_supabase):
+        """跳过没有 key 的 variant"""
+        from services.experiment_service import aggregate_experiment_results
+        
+        mock_list.return_value = ([{
+            "id": "exp_001",
+            "experiment_key": "test_exp",
+            "variants": [{"weight": 100}]  # No key
+        }], 1)
+        
+        result = aggregate_experiment_results()
+        
+        # Should still succeed, just skip the variant
+        assert result is True
+    
+    @patch('services.experiment_service.supabase')
+    @patch('services.experiment_service.list_experiments')
+    def test_aggregate_empty_experiment(self, mock_list, mock_supabase):
+        """跳过空实验"""
+        from services.experiment_service import aggregate_experiment_results
+        
+        mock_list.return_value = ([None, {"id": "exp_001", "experiment_key": "test", "variants": []}], 2)
+        
+        result = aggregate_experiment_results()
+        
+        assert result is True
+
+
+# ==========================================
+# Get Experiment Results Edge Cases
+# ==========================================
+
+class TestGetExperimentResultsEdgeCases:
+    """获取实验结果边缘情况"""
+    
+    @patch('services.experiment_service.supabase', None)
+    def test_get_results_no_supabase(self):
+        """无 Supabase 返回空字典"""
+        from services.experiment_service import get_experiment_results
+        
+        result = get_experiment_results("test_exp")
+        
+        assert result == {}
+
+
+# ==========================================
+# Create Experiment Return None After Insert
+# ==========================================
+
+class TestCreateExperimentReturnNone:
+    """创建实验返回 None 情况"""
+    
+    @patch('services.experiment_service.supabase')
+    @patch('services.experiment_service._invalidate_cache')
+    def test_create_returns_none_on_empty_result(self, mock_invalidate, mock_supabase):
+        """插入结果为空时返回 None"""
+        from services.experiment_service import create_experiment
+        
+        # Simulate insert success but result.data is empty
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=None)
+        
+        result = create_experiment(
+            experiment_key="test",
+            name="Test",
+            variants=[{"key": "control", "weight": 100}]
+        )
+        
+        assert result is None
+
+
+# ==========================================
+# Get Experiment Error Handling
+# ==========================================
+
+class TestGetExperimentError:
+    """获取实验错误处理"""
+    
+    @patch('services.experiment_service.cache_service')
+    @patch('services.experiment_service.supabase')
+    def test_get_experiment_db_error(self, mock_supabase, mock_cache):
+        """数据库错误时返回 None"""
+        from services.experiment_service import get_experiment
+        
+        mock_cache.get_experiment.return_value = None
+        mock_supabase.table.return_value.select.side_effect = Exception("DB Error")
+        
+        result = get_experiment("test", use_cache=False)
+        
+        assert result is None

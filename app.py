@@ -14,6 +14,58 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
+# v3.22: Sentry Error Tracking (optional, enabled via SENTRY_DSN env var)
+SENTRY_DSN = os.environ.get("SENTRY_DSN")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.logging import LoggingIntegration
+        
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                LoggingIntegration(
+                    level=logging.INFO,
+                    event_level=logging.ERROR
+                ),
+            ],
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            environment=os.environ.get("ENV", "development"),
+            release=os.environ.get("APP_VERSION", "3.22.0"),
+            send_default_pii=False,  # Don't send PII by default
+            before_send=lambda event, hint: _sanitize_sentry_event(event),
+        )
+        logging.info("[Sentry] Error tracking initialized")
+    except ImportError:
+        logging.warning("[Sentry] sentry-sdk not installed, skipping initialization")
+    except Exception as e:
+        logging.error(f"[Sentry] Initialization failed: {e}")
+
+
+def _sanitize_sentry_event(event):
+    """
+    Sanitize Sentry event before sending.
+    Remove sensitive data like auth tokens, API keys, etc.
+    """
+    if "request" in event:
+        if "headers" in event["request"]:
+            headers = event["request"]["headers"]
+            # Redact sensitive headers
+            sensitive_headers = ["authorization", "x-api-key", "cookie", "x-auth-token"]
+            for key in list(headers.keys()):
+                if key.lower() in sensitive_headers:
+                    headers[key] = "[REDACTED]"
+        
+        # Redact sensitive query params
+        if "query_string" in event["request"]:
+            qs = event["request"]["query_string"]
+            if "token" in qs.lower() or "key" in qs.lower():
+                event["request"]["query_string"] = "[REDACTED]"
+    
+    return event
+
 # v3.12: Unified error handling
 from exceptions import (
     AppException, ErrorCode, ErrorResponse,
@@ -816,13 +868,40 @@ async def clerk_webhook(request: Request):
 
 @app.post("/api/webhooks/stripe")
 async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Header(None)):
+    """
+    Stripe webhook handler with idempotency protection.
+    
+    v3.22: Added idempotency check via PostgreSQL RPC to prevent duplicate processing.
+    Stripe may send the same webhook multiple times, this ensures we only process once.
+    """
     payload = await request.body()
     try:
         event = construct_event(payload, stripe_signature)
     except Exception as e:
         raise HTTPException(400, str(e))
     
+    event_id = event.get('id')
     event_type = event['type']
+    
+    # v3.22: Idempotency check - prevent duplicate event processing
+    try:
+        idempotency_result = supabase.rpc("check_webhook_idempotency", {
+            "p_event_id": event_id,
+            "p_event_type": event_type,
+            "p_payload": event
+        }).execute()
+        
+        check_data = idempotency_result.data
+        if check_data and check_data.get("idempotent"):
+            # Event already processed, return success
+            logger.info(f"[Webhook] Duplicate event ignored: {event_id} ({event_type})")
+            return {"status": "already_processed", "event_id": event_id}
+    except Exception as e:
+        # If idempotency check fails, log but continue processing
+        # (better to risk double-processing than to miss events entirely)
+        logger.warning(f"[Webhook] Idempotency check failed for {event_id}: {e}")
+    
+    process_result = {"status": "ok"}
     
     # One-time purchase completed
     if event_type == 'checkout.session.completed':
@@ -841,6 +920,7 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 log_activity(uid, "credits_purchase", {"amount": 100, "payment": amount_total})
                 # Analytics: Track credits purchase
                 track_payment(uid, AnalyticsEvents.CREDITS_PURCHASED, amount_total, currency, extra_properties={"credits_amount": 100})
+                process_result = {"status": "ok", "action": "credits_added", "user_id": uid}
             elif plan in ['starter', 'pro']:
                 # New subscription: update tier and grant monthly credits
                 update_subscription_tier(uid, plan, session.get('customer'), "active")
@@ -851,6 +931,7 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                 log_activity(uid, "subscription_started", {"plan": plan, "payment": amount_total})
                 # Analytics: Track subscription started
                 track_payment(uid, AnalyticsEvents.CHECKOUT_COMPLETED, amount_total, currency, plan=plan)
+                process_result = {"status": "ok", "action": "subscription_started", "user_id": uid, "plan": plan}
     
     # Subscription renewal (monthly refresh)
     elif event_type == 'invoice.payment_succeeded':
@@ -877,6 +958,7 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                     # Log renewal payment
                     log_payment_record(uid, amount_paid, currency, "sub_renewal", f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}")
                     log_activity(uid, "monthly_credits_refreshed", {"tier": tier, "payment": amount_paid})
+                    process_result = {"status": "ok", "action": "credits_refreshed", "user_id": uid}
     
     # Subscription canceled or expired
     elif event_type in ['customer.subscription.deleted', 'customer.subscription.updated']:
@@ -895,14 +977,25 @@ async def stripe_webhook_endpoint(request: Request, stripe_signature: str = Head
                     # Downgrade to free
                     update_subscription_tier(uid, 'free', subscription_status='inactive')
                     log_activity(uid, "subscription_ended", {"reason": status})
+                    process_result = {"status": "ok", "action": "subscription_ended", "user_id": uid}
                 elif status == 'active':
                     # Subscription reactivated
                     plan_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
                     # Map price_id to tier
                     new_tier = 'starter' if 'starter' in plan_id.lower() else 'pro'
                     update_subscription_tier(uid, new_tier, subscription_status='active')
+                    process_result = {"status": "ok", "action": "subscription_reactivated", "user_id": uid}
     
-    return {"status": "ok"}
+    # v3.22: Update webhook result for logging
+    try:
+        supabase.rpc("update_webhook_result", {
+            "p_event_id": event_id,
+            "p_result": process_result
+        }).execute()
+    except Exception as e:
+        logger.warning(f"[Webhook] Failed to update result for {event_id}: {e}")
+    
+    return process_result
 
 # --- Analytics ---
 # Note: The main analytics endpoint is at line ~5941 (log_analytics_events)

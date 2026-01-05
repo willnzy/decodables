@@ -91,6 +91,15 @@ from .ai_cache import (
     invalidate_ai_cache,
 )
 
+# v3.22: 重试工具
+from .retry import (
+    with_retry,
+    is_retryable_error,
+    STANDARD_RETRY,
+    AGGRESSIVE_RETRY,
+    LIGHT_RETRY,
+)
+
 # 适配器工厂
 from .adapters import (
     get_text_adapter,
@@ -158,6 +167,13 @@ __all__ = [
     'get_cached_result',
     'set_cached_result',
     'invalidate_ai_cache',
+    
+    # Retry (v3.22)
+    'with_retry',
+    'is_retryable_error',
+    'STANDARD_RETRY',
+    'AGGRESSIVE_RETRY',
+    'LIGHT_RETRY',
     
     # Adapters
     'get_text_adapter',
