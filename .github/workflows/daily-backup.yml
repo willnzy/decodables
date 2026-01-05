@@ -1,4 +1,4 @@
-name: Daily Database Backup
+name: Daily Backup (Database + Storage)
 
 on:
   schedule:
@@ -11,9 +11,21 @@ on:
         required: false
         default: false
         type: boolean
+      skip_database:
+        description: 'Skip database backup'
+        required: false
+        default: false
+        type: boolean
+      skip_storage:
+        description: 'Skip storage backup'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  backup:
+  # ============ 数据库备份 ============
+  backup-database:
+    if: ${{ inputs.skip_database != true }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
 
@@ -52,7 +64,7 @@ jobs:
           echo "gpg version:"
           gpg --version
 
-      - name: Run backup
+      - name: Run database backup
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
@@ -63,13 +75,13 @@ jobs:
           PATH: /usr/lib/postgresql/17/bin:$PATH
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            echo "🔍 Running in dry-run mode..."
+            echo "🔍 Running database backup in dry-run mode..."
             python scripts/backup/backup_lite.py --dry-run --verbose
           else
             python scripts/backup/backup_lite.py --verbose
           fi
 
-      - name: Send failure email
+      - name: Send database backup failure email
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
@@ -85,7 +97,6 @@ jobs:
             ⚠️ 数据库备份失败！
             
             仓库: ${{ github.repository }}
-            时间: ${{ github.event.head_commit.timestamp }}
             运行 ID: ${{ github.run_id }}
             
             请检查日志:
@@ -94,6 +105,69 @@ jobs:
             --
             Make Decodables 自动备份系统
 
-      - name: Backup success log
+      - name: Database backup success log
         if: success() && inputs.dry_run != true
-        run: echo "✅ Backup completed successfully at $(date)"
+        run: echo "✅ Database backup completed successfully at $(date)"
+
+  # ============ Storage 增量备份 ============
+  backup-storage:
+    if: ${{ inputs.skip_storage != true }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install boto3 httpx
+
+      - name: Run storage backup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_STORAGE_BUCKET: ${{ secrets.R2_STORAGE_BUCKET }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🔍 Running storage backup in dry-run mode..."
+            python scripts/backup/backup_storage.py --dry-run --verbose
+          else
+            python scripts/backup/backup_storage.py --verbose
+          fi
+
+      - name: Send storage backup failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: 🚨 Make Decodables Storage 备份失败
+          to: ${{ secrets.EMAIL_USERNAME }}
+          from: Make Decodables Backup <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            ⚠️ Storage 增量备份失败！
+            
+            仓库: ${{ github.repository }}
+            运行 ID: ${{ github.run_id }}
+            
+            请检查日志:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            --
+            Make Decodables 自动备份系统
+
+      - name: Storage backup success log
+        if: success() && inputs.dry_run != true
+        run: echo "✅ Storage backup completed successfully at $(date)"
