@@ -7,23 +7,28 @@ AI 服务模块
 - 模型配置管理
 - 灰度发布
 - 使用量追踪
-- 适配器 (OpenAI, FAL, etc.)
+- 适配器 (OpenAI, FAL, Qwen, Wanx, etc.)
 
-原有服务 (向后兼容):
-- image_generator: FAL 图像生成
+业务服务 (基于统一服务):
+- image_generator: 图像生成 (多图、参考图、存储)
 - story_generator: 故事 JSON 生成
 - prompt_enhancer: 提示词增强
 - zine_generator: 可折叠书生成
 """
 
 # ==========================================
-# Legacy Exports (向后兼容)
+# Business Services (基于统一 AI 服务)
 # ==========================================
 
-from .image_generator import generate_8_images
-from .story_generator import generate_story_json
+from .image_generator import generate_8_images, generate_images_async
+from .story_generator import generate_story_json, generate_story_json_async
 from .zine_generator import create_foldable_book, create_assets_zip
-from .prompt_enhancer import enhance_prompt, enhance_asset_prompt
+from .prompt_enhancer import (
+    enhance_prompt, 
+    enhance_asset_prompt,
+    enhance_prompt_async,
+    enhance_asset_prompt_async,
+)
 
 # ==========================================
 # New Unified Services (v3.21)
@@ -100,13 +105,17 @@ from .adapters import (
 # ==========================================
 
 __all__ = [
-    # Legacy
+    # Business Services (基于统一 AI 服务)
     'generate_8_images',
+    'generate_images_async',
     'generate_story_json',
+    'generate_story_json_async',
     'create_foldable_book',
     'create_assets_zip',
     'enhance_prompt',
     'enhance_asset_prompt',
+    'enhance_prompt_async',
+    'enhance_asset_prompt_async',
     
     # Base classes
     'AIResponse',

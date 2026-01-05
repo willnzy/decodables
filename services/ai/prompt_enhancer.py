@@ -1,15 +1,22 @@
 """
 Prompt Enhancement Service for AI Image Generation
+提示词增强服务
 
-Uses GPT-4o-mini to expand user's simple descriptions into detailed,
+Uses unified AI service to expand user's simple descriptions into detailed,
 high-quality image generation prompts.
+使用统一 AI 服务将用户的简单描述扩展为详细、高质量的图像生成提示词。
 
 This is a standard technique used by:
 - DALL-E 3 (uses GPT-4 to rewrite prompts)
 - Midjourney (automatic prompt expansion)
 - Adobe Firefly (built-in prompt optimization)
 
-Cost: ~$0.0003 per call (100-200 input + 150 output tokens)
+Features:
+- Automatic model selection from admin configuration
+- Canary release support
+- Usage tracking
+- Caching (same input produces same output)
+- Automatic fallback on errors
 
 Supports two enhancement modes:
 1. AI Design Page mode (theme-based): For page-level illustrations
@@ -17,13 +24,19 @@ Supports two enhancement modes:
 """
 
 import json
-import os
-from openai import OpenAI
+import asyncio
+import logging
 from typing import Optional, List
 
-client = OpenAI()
+from .unified_text_service import unified_text_service
 
-# System prompt for the enhancer - designed for children's book illustrations
+logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# System Prompts
+# ==========================================
+
 PROMPT_ENHANCER_SYSTEM = """You are an expert prompt engineer specializing in children's book illustrations.
 
 Your task: Transform a user's simple idea into a detailed, high-quality image generation prompt.
@@ -86,7 +99,6 @@ OUTPUT (JSON only):
 Return ONLY valid JSON, no markdown or explanation."""
 
 
-# System prompt for 5W1H asset generation enhancement
 ASSET_ENHANCER_SYSTEM = """You are an expert prompt engineer specializing in children's book illustrations.
 
 Your task: Transform structured 5W1H inputs into a detailed, high-quality image generation prompt.
@@ -152,7 +164,10 @@ OUTPUT (JSON only):
 Return ONLY valid JSON, no markdown or explanation."""
 
 
-# Style descriptions to augment the prompt
+# ==========================================
+# Style and Mood Descriptions
+# ==========================================
+
 STYLE_DESCRIPTIONS = {
     'cartoon': 'cartoon style, bold outlines, vibrant saturated colors, expressive characters, playful proportions',
     'watercolor': 'watercolor painting style, soft color bleeding, artistic texture, gentle gradients, delicate brushstrokes',
@@ -163,7 +178,6 @@ STYLE_DESCRIPTIONS = {
     'scifi': 'science fiction style, futuristic elements, neon accents, sleek technology, space or cyber aesthetic'
 }
 
-# Mood descriptions for 5W1H enhancement
 MOOD_DESCRIPTIONS = {
     'warm': 'warm, heartwarming atmosphere, golden hour lighting, cozy feeling',
     'adventurous': 'adventurous, exciting, dynamic energy, sense of movement',
@@ -174,62 +188,105 @@ MOOD_DESCRIPTIONS = {
 }
 
 
+# ==========================================
+# Helper: Run async in sync context
+# ==========================================
+
+def _run_async(coro):
+    """在同步上下文中运行异步协程"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    
+    if loop and loop.is_running():
+        # 已在异步上下文中，使用线程池
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    else:
+        # 不在异步上下文中，直接运行
+        return asyncio.run(coro)
+
+
+# ==========================================
+# Main Functions
+# ==========================================
+
 def enhance_prompt(
     theme: str,
     character: Optional[str] = None,
     style: str = 'cartoon',
     mode: str = 'guided',
-    creativity_level: float = 0.3
+    creativity_level: float = 0.3,
+    user_id: Optional[str] = None,
+    tier: str = "free"
 ) -> dict:
     """
-    Enhance a simple user description into a detailed image prompt.
+    增强简单描述为详细的图像生成提示词 (主题模式)
     
     Args:
-        theme: What the page is about (e.g., "Counting fun", "A day at the zoo")
-        character: Main character description (optional)
-        style: Art style ID (cartoon, watercolor, sketch, fantasy, realistic, flat)
-        mode: "guided" (more accurate) or "flexible" (more creative)
-        creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
+        theme: 页面主题 (e.g., "Counting fun", "A day at the zoo")
+        character: 主角描述 (可选)
+        style: 艺术风格 ID (cartoon, watercolor, sketch, fantasy, realistic, flat)
+        mode: "guided" (准确) 或 "flexible" (创意)
+        creativity_level: 0.0-1.0 创意程度 (0=精确, 1=非常创意)
+        user_id: 用户 ID (用于灰度和追踪)
+        tier: 用户等级 (free, starter, pro)
     
     Returns:
-        dict with enhanced_prompt, key_elements, and composition
+        包含 enhanced_prompt, key_elements, composition 的字典
         
-    Cost: ~$0.0003 per call
+    Note:
+        - 模型选择由 Admin 配置管理
+        - 支持灰度发布测试新模型
+        - 自动追踪使用量
+        - 相同输入会使用缓存
+        - 失败时使用本地 fallback
     """
-    # Build user message
+    # 构建用户输入
     user_input = f"""Theme: {theme}
 Character: {character or 'Not specified - use appropriate characters for the theme'}
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Mode: {mode}"""
 
-    # Calculate temperature based on mode and creativity_level
-    # Guided mode: 0.2-0.5 range (lower for accuracy)
-    # Flexible mode: uses creativity_level to interpolate 0.3-0.9
+    # 计算温度
     if mode == 'guided':
-        temperature = 0.3  # Fixed low temperature for guided mode
+        temperature = 0.3
     else:
-        # Map creativity_level (0-1) to temperature (0.3-0.9)
         temperature = 0.3 + (creativity_level * 0.6)
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+    async def _enhance_async():
+        response = await unified_text_service.chat(
             messages=[
                 {"role": "system", "content": PROMPT_ENHANCER_SYSTEM},
                 {"role": "user", "content": user_input}
             ],
+            user_id=user_id,
+            tier=tier,
             temperature=temperature,
-            max_tokens=300
+            max_tokens=300,
+            response_format={"type": "json_object"},
+            use_cache=True,  # 相同输入可以缓存
         )
+        return response
+
+    try:
+        response = _run_async(_enhance_async())
         
-        result = json.loads(response.choices[0].message.content)
+        if not response.success:
+            logger.warning(f"[PromptEnhancer] AI call failed: {response.error}, using fallback")
+            print(f"❌ Prompt enhancement failed: {response.error}")
+            return fallback_enhance(theme, character, style, mode)
         
-        # Ensure required fields exist
+        result = json.loads(response.content)
+        
+        # 确保必需字段存在
         if 'enhanced_prompt' not in result:
             raise ValueError("Missing enhanced_prompt in response")
-            
-        # Add style suffix if not present
+        
+        # 添加风格后缀（如果不存在）
         enhanced = result['enhanced_prompt']
         style_desc = STYLE_DESCRIPTIONS.get(style, '')
         if style_desc and style not in enhanced.lower():
@@ -240,57 +297,19 @@ Mode: {mode}"""
         result['original_character'] = character
         result['mode'] = mode
         
-        print(f"✨ Prompt enhanced ({mode} mode): {len(enhanced)} chars")
+        model_info = f"{response.provider}/{response.model}" if response.provider else "unknown"
+        print(f"✨ Prompt enhanced ({mode} mode, {model_info}): {len(enhanced)} chars")
+        
         return result
         
-    except Exception as e:
-        print(f"❌ Prompt enhancement failed: {e}")
-        # Fallback: return a basic enhanced prompt without LLM
+    except json.JSONDecodeError as e:
+        logger.warning(f"[PromptEnhancer] JSON parse error: {e}, using fallback")
+        print(f"❌ Prompt enhancement failed: Invalid JSON")
         return fallback_enhance(theme, character, style, mode)
-
-
-def fallback_enhance(
-    theme: str,
-    character: Optional[str] = None,
-    style: str = 'cartoon',
-    mode: str = 'guided'
-) -> dict:
-    """
-    Fallback prompt enhancement without LLM call.
-    Used when the API call fails.
-    """
-    parts = []
-    
-    # Subject
-    if character:
-        parts.append(f"{character}")
-    
-    # Theme/action
-    if theme:
-        if character:
-            parts.append(f"in a scene about {theme}")
-        else:
-            parts.append(f"Scene depicting {theme}")
-    
-    # Style
-    style_desc = STYLE_DESCRIPTIONS.get(style, 'colorful illustration')
-    parts.append(style_desc)
-    
-    # Standard suffixes
-    parts.append("children's book illustration")
-    parts.append("high quality, detailed, safe for children")
-    
-    enhanced_prompt = ", ".join(parts)
-    
-    return {
-        'enhanced_prompt': enhanced_prompt,
-        'key_elements': [theme, character or 'characters', style],
-        'composition': 'centered',
-        'original_theme': theme,
-        'original_character': character,
-        'mode': mode,
-        'fallback': True  # Flag to indicate fallback was used
-    }
+    except Exception as e:
+        logger.warning(f"[PromptEnhancer] Error: {e}, using fallback")
+        print(f"❌ Prompt enhancement failed: {e}")
+        return fallback_enhance(theme, character, style, mode)
 
 
 def enhance_asset_prompt(
@@ -300,29 +319,30 @@ def enhance_asset_prompt(
     style: str = 'cartoon',
     moods: Optional[List[str]] = None,
     mode: str = 'guided',
-    creativity_level: float = 0.3
+    creativity_level: float = 0.3,
+    user_id: Optional[str] = None,
+    tier: str = "free"
 ) -> dict:
     """
-    Enhance a 5W1H-structured input into a detailed image prompt.
+    增强 5W1H 结构化输入为详细的图像生成提示词
     
-    This is optimized for the "Generate Assets with AI" modal which uses
-    structured form inputs (Who/What/Where/Style/Mood).
+    用于 "Generate Assets with AI" 模态框的结构化表单输入。
     
     Args:
-        who: Main character description (required)
-        what: Action or activity (optional)
-        where: Setting/scene (optional)
-        style: Art style ID (cartoon, watercolor, sketch, fantasy, realistic, scifi, flat)
-        moods: List of mood tags (warm, adventurous, mysterious, joyful, peaceful, funny)
-        mode: "guided" (more accurate) or "flexible" (more creative)
-        creativity_level: 0.0-1.0 slider value (0=precise, 1=very creative)
+        who: 主角描述 (必需)
+        what: 动作或活动 (可选)
+        where: 场景/设置 (可选)
+        style: 艺术风格 ID (cartoon, watercolor, sketch, fantasy, realistic, scifi, flat)
+        moods: 情绪标签列表 (warm, adventurous, mysterious, joyful, peaceful, funny)
+        mode: "guided" (准确) 或 "flexible" (创意)
+        creativity_level: 0.0-1.0 创意程度 (0=精确, 1=非常创意)
+        user_id: 用户 ID (用于灰度和追踪)
+        tier: 用户等级 (free, starter, pro)
     
     Returns:
-        dict with enhanced_prompt, key_elements, composition, color_palette
-        
-    Cost: ~$0.0003 per call
+        包含 enhanced_prompt, key_elements, composition, color_palette 的字典
     """
-    # Build structured input
+    # 构建结构化输入
     mood_list = moods or ['warm']
     mood_descriptions = [MOOD_DESCRIPTIONS.get(m, m) for m in mood_list if m]
     
@@ -333,32 +353,42 @@ Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Moods: {', '.join(mood_list)} ({'; '.join(mood_descriptions[:3])})
 Mode: {mode}"""
 
-    # Calculate temperature based on mode and creativity_level
+    # 计算温度
     if mode == 'guided':
-        temperature = 0.3  # Fixed low temperature for guided mode
+        temperature = 0.3
     else:
-        # Map creativity_level (0-1) to temperature (0.3-0.9)
         temperature = 0.3 + (creativity_level * 0.6)
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+    async def _enhance_async():
+        response = await unified_text_service.chat(
             messages=[
                 {"role": "system", "content": ASSET_ENHANCER_SYSTEM},
                 {"role": "user", "content": user_input}
             ],
+            user_id=user_id,
+            tier=tier,
             temperature=temperature,
-            max_tokens=400
+            max_tokens=400,
+            response_format={"type": "json_object"},
+            use_cache=True,
         )
+        return response
+
+    try:
+        response = _run_async(_enhance_async())
         
-        result = json.loads(response.choices[0].message.content)
+        if not response.success:
+            logger.warning(f"[AssetEnhancer] AI call failed: {response.error}, using fallback")
+            print(f"❌ Asset prompt enhancement failed: {response.error}")
+            return fallback_asset_enhance(who, what, where, style, moods, mode)
         
-        # Ensure required fields exist
+        result = json.loads(response.content)
+        
+        # 确保必需字段存在
         if 'enhanced_prompt' not in result:
             raise ValueError("Missing enhanced_prompt in response")
-            
-        # Add style suffix if not present
+        
+        # 添加风格后缀
         enhanced = result['enhanced_prompt']
         style_desc = STYLE_DESCRIPTIONS.get(style, '')
         if style_desc and style not in enhanced.lower():
@@ -371,13 +401,187 @@ Mode: {mode}"""
         result['original_moods'] = moods
         result['mode'] = mode
         
-        print(f"✨ Asset prompt enhanced ({mode} mode): {len(enhanced)} chars")
+        model_info = f"{response.provider}/{response.model}" if response.provider else "unknown"
+        print(f"✨ Asset prompt enhanced ({mode} mode, {model_info}): {len(enhanced)} chars")
+        
+        return result
+        
+    except json.JSONDecodeError as e:
+        logger.warning(f"[AssetEnhancer] JSON parse error: {e}, using fallback")
+        print(f"❌ Asset prompt enhancement failed: Invalid JSON")
+        return fallback_asset_enhance(who, what, where, style, moods, mode)
+    except Exception as e:
+        logger.warning(f"[AssetEnhancer] Error: {e}, using fallback")
+        print(f"❌ Asset prompt enhancement failed: {e}")
+        return fallback_asset_enhance(who, what, where, style, moods, mode)
+
+
+# ==========================================
+# Async Versions (for direct async usage)
+# ==========================================
+
+async def enhance_prompt_async(
+    theme: str,
+    character: Optional[str] = None,
+    style: str = 'cartoon',
+    mode: str = 'guided',
+    creativity_level: float = 0.3,
+    user_id: Optional[str] = None,
+    tier: str = "free"
+) -> dict:
+    """异步版本的 enhance_prompt"""
+    user_input = f"""Theme: {theme}
+Character: {character or 'Not specified - use appropriate characters for the theme'}
+Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
+Mode: {mode}"""
+
+    temperature = 0.3 if mode == 'guided' else 0.3 + (creativity_level * 0.6)
+
+    try:
+        response = await unified_text_service.chat(
+            messages=[
+                {"role": "system", "content": PROMPT_ENHANCER_SYSTEM},
+                {"role": "user", "content": user_input}
+            ],
+            user_id=user_id,
+            tier=tier,
+            temperature=temperature,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+            use_cache=True,
+        )
+        
+        if not response.success:
+            return fallback_enhance(theme, character, style, mode)
+        
+        result = json.loads(response.content)
+        
+        if 'enhanced_prompt' not in result:
+            raise ValueError("Missing enhanced_prompt")
+        
+        enhanced = result['enhanced_prompt']
+        style_desc = STYLE_DESCRIPTIONS.get(style, '')
+        if style_desc and style not in enhanced.lower():
+            enhanced = f"{enhanced}, {style_desc}"
+        
+        result['enhanced_prompt'] = enhanced
+        result['original_theme'] = theme
+        result['original_character'] = character
+        result['mode'] = mode
+        
         return result
         
     except Exception as e:
-        print(f"❌ Asset prompt enhancement failed: {e}")
-        # Fallback: return a basic enhanced prompt without LLM
+        logger.warning(f"[PromptEnhancer] Error: {e}, using fallback")
+        return fallback_enhance(theme, character, style, mode)
+
+
+async def enhance_asset_prompt_async(
+    who: str,
+    what: Optional[str] = None,
+    where: Optional[str] = None,
+    style: str = 'cartoon',
+    moods: Optional[List[str]] = None,
+    mode: str = 'guided',
+    creativity_level: float = 0.3,
+    user_id: Optional[str] = None,
+    tier: str = "free"
+) -> dict:
+    """异步版本的 enhance_asset_prompt"""
+    mood_list = moods or ['warm']
+    mood_descriptions = [MOOD_DESCRIPTIONS.get(m, m) for m in mood_list if m]
+    
+    user_input = f"""Who: {who}
+What: {what or 'in a natural pose'}
+Where: {where or 'in a simple background'}
+Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
+Moods: {', '.join(mood_list)} ({'; '.join(mood_descriptions[:3])})
+Mode: {mode}"""
+
+    temperature = 0.3 if mode == 'guided' else 0.3 + (creativity_level * 0.6)
+
+    try:
+        response = await unified_text_service.chat(
+            messages=[
+                {"role": "system", "content": ASSET_ENHANCER_SYSTEM},
+                {"role": "user", "content": user_input}
+            ],
+            user_id=user_id,
+            tier=tier,
+            temperature=temperature,
+            max_tokens=400,
+            response_format={"type": "json_object"},
+            use_cache=True,
+        )
+        
+        if not response.success:
+            return fallback_asset_enhance(who, what, where, style, moods, mode)
+        
+        result = json.loads(response.content)
+        
+        if 'enhanced_prompt' not in result:
+            raise ValueError("Missing enhanced_prompt")
+        
+        enhanced = result['enhanced_prompt']
+        style_desc = STYLE_DESCRIPTIONS.get(style, '')
+        if style_desc and style not in enhanced.lower():
+            enhanced = f"{enhanced}, {style_desc}"
+        
+        result['enhanced_prompt'] = enhanced
+        result['original_who'] = who
+        result['original_what'] = what
+        result['original_where'] = where
+        result['original_moods'] = moods
+        result['mode'] = mode
+        
+        return result
+        
+    except Exception as e:
+        logger.warning(f"[AssetEnhancer] Error: {e}, using fallback")
         return fallback_asset_enhance(who, what, where, style, moods, mode)
+
+
+# ==========================================
+# Fallback Functions
+# ==========================================
+
+def fallback_enhance(
+    theme: str,
+    character: Optional[str] = None,
+    style: str = 'cartoon',
+    mode: str = 'guided'
+) -> dict:
+    """
+    本地 fallback 提示词增强（不调用 AI）
+    当 AI 服务不可用时使用。
+    """
+    parts = []
+    
+    if character:
+        parts.append(f"{character}")
+    
+    if theme:
+        if character:
+            parts.append(f"in a scene about {theme}")
+        else:
+            parts.append(f"Scene depicting {theme}")
+    
+    style_desc = STYLE_DESCRIPTIONS.get(style, 'colorful illustration')
+    parts.append(style_desc)
+    parts.append("children's book illustration")
+    parts.append("high quality, detailed, safe for children")
+    
+    enhanced_prompt = ", ".join(parts)
+    
+    return {
+        'enhanced_prompt': enhanced_prompt,
+        'key_elements': [theme, character or 'characters', style],
+        'composition': 'centered',
+        'original_theme': theme,
+        'original_character': character,
+        'mode': mode,
+        'fallback': True
+    }
 
 
 def fallback_asset_enhance(
@@ -389,32 +593,25 @@ def fallback_asset_enhance(
     mode: str = 'guided'
 ) -> dict:
     """
-    Fallback 5W1H prompt enhancement without LLM call.
-    Used when the API call fails.
+    本地 fallback 5W1H 提示词增强（不调用 AI）
     """
     parts = []
     
-    # Who (required)
     parts.append(who)
     
-    # What (action)
     if what:
         parts.append(what)
     
-    # Where (setting)
     if where:
         parts.append(where)
     
-    # Style
     style_desc = STYLE_DESCRIPTIONS.get(style, 'colorful illustration')
     parts.append(style_desc)
     
-    # Moods
     if moods:
         mood_prompts = [MOOD_DESCRIPTIONS.get(m, m) for m in moods[:3]]
         parts.extend(mood_prompts)
     
-    # Standard suffixes
     parts.append("children's book illustration")
     parts.append("high quality, detailed, vibrant colors")
     
@@ -434,9 +631,11 @@ def fallback_asset_enhance(
     }
 
 
-# Test the module
+# ==========================================
+# Test
+# ==========================================
+
 if __name__ == "__main__":
-    # Test guided mode (theme-based)
     print("\n=== THEME-BASED: GUIDED MODE TEST ===")
     result = enhance_prompt(
         theme="Counting fun with numbers 1-5",
@@ -446,7 +645,6 @@ if __name__ == "__main__":
     )
     print(json.dumps(result, indent=2))
     
-    # Test flexible mode (theme-based)
     print("\n=== THEME-BASED: FLEXIBLE MODE TEST ===")
     result = enhance_prompt(
         theme="Learning to share",
@@ -456,7 +654,6 @@ if __name__ == "__main__":
     )
     print(json.dumps(result, indent=2))
     
-    # Test 5W1H asset enhancement - guided
     print("\n=== 5W1H ASSET: GUIDED MODE TEST ===")
     result = enhance_asset_prompt(
         who="A curious orange tabby cat with big green eyes",
@@ -468,7 +665,6 @@ if __name__ == "__main__":
     )
     print(json.dumps(result, indent=2))
     
-    # Test 5W1H asset enhancement - flexible
     print("\n=== 5W1H ASSET: FLEXIBLE MODE TEST ===")
     result = enhance_asset_prompt(
         who="A friendly robot helper",

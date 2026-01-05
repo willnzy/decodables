@@ -1780,7 +1780,13 @@ def delete_proj(id: str, permanent: bool = False, user: dict = Depends(get_curre
 @limiter.limit("20/minute")
 def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends(get_current_user)):
     try:
-        return generate_story_json(req.topic)
+        # v3.21: Pass user_id and tier for unified AI service
+        tier = (user.get("tier") or "free").lower()
+        return generate_story_json(
+            req.topic, 
+            user_id=user["id"],
+            tier=tier
+        )
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -1847,12 +1853,15 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     if req.theme:
         # AI Design Page mode: enhance the prompt using LLM (theme-based)
         try:
+            # v3.21: Pass user_id and tier for unified AI service
             enhancement_result = enhance_prompt(
                 theme=req.theme,
                 character=req.character,
                 style=req.style or "cartoon",
                 mode=generation_mode,
-                creativity_level=creativity_level
+                creativity_level=creativity_level,
+                user_id=user["id"],
+                tier=tier
             )
             # Replace the original prompt with the enhanced one
             prompts_to_use = [enhancement_result["enhanced_prompt"]]
@@ -1865,6 +1874,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     elif req.who and req.enhance_prompt:
         # 5W1H Asset Generation mode: enhance using structured 5W1H inputs
         try:
+            # v3.21: Pass user_id and tier for unified AI service
             enhancement_result = enhance_asset_prompt(
                 who=req.who,
                 what=req.what,
@@ -1872,7 +1882,9 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
                 style=req.style or "cartoon",
                 moods=req.moods,
                 mode=generation_mode,
-                creativity_level=creativity_level
+                creativity_level=creativity_level,
+                user_id=user["id"],
+                tier=tier
             )
             # Replace the original prompt with the enhanced one
             prompts_to_use = [enhancement_result["enhanced_prompt"]]
@@ -1889,9 +1901,10 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     
     # Generate images (with or without reference)
     # v3.18: Pass user_id for organized storage path ({user_id}/temp/{YYYY-MM-DD}/{task_id}/)
+    # v3.21: Pass tier for unified AI service model selection
     urls, task_id = await generate_8_images(
         prompts_to_use, 
-        model=model,
+        model=model,  # 保留用于向后兼容，实际由 tier 和配置决定
         reference_image=req.reference_image,
         reference_strength=req.reference_strength or 0.7,
         image_size=req.image_size or "landscape_4_3",
@@ -1899,7 +1912,8 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         creativity_level=creativity_level,  # Pass creativity level for flexible mode
         negative_prompt=req.negative_prompt,  # New: negative prompt
         num_images=num_images,  # New: batch generation
-        user_id=user["id"]  # v3.18: for storage path organization
+        user_id=user["id"],  # v3.18: for storage path organization
+        tier=tier  # v3.21: for unified AI service model selection
     )
     
     generation_time_ms = int((time.time() - generation_start) * 1000)
