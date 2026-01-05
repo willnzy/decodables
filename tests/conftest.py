@@ -34,6 +34,76 @@ if 'fal_client' not in sys.modules:
     fal_mock.submit_async = AsyncMock()
     sys.modules['fal_client'] = fal_mock
 
+# Mock FastAPI and related modules if not installed
+try:
+    import fastapi
+except ImportError:
+    fastapi_mock = MagicMock()
+    fastapi_mock.Request = MagicMock()
+    fastapi_mock.HTTPException = type('HTTPException', (Exception,), {
+        '__init__': lambda self, status_code=500, detail="": setattr(self, 'status_code', status_code) or setattr(self, 'detail', detail)
+    })
+    fastapi_mock.Depends = MagicMock()
+    fastapi_mock.APIRouter = MagicMock()
+    fastapi_mock.FastAPI = MagicMock()
+    sys.modules['fastapi'] = fastapi_mock
+    sys.modules['fastapi.testclient'] = MagicMock()
+    sys.modules['fastapi.testclient'].TestClient = MagicMock()
+
+# Mock slowapi if not installed
+try:
+    import slowapi
+except ImportError:
+    slowapi_mock = MagicMock()
+    slowapi_mock.Limiter = MagicMock(return_value=MagicMock())
+    slowapi_mock.util = MagicMock()
+    slowapi_mock.util.get_remote_address = MagicMock()
+    sys.modules['slowapi'] = slowapi_mock
+    sys.modules['slowapi.util'] = slowapi_mock.util
+
+# Mock supabase if not installed  
+try:
+    import supabase
+except ImportError:
+    supabase_mock = MagicMock()
+    supabase_mock.create_client = MagicMock()
+    sys.modules['supabase'] = supabase_mock
+
+# Mock stripe if not installed
+try:
+    import stripe
+except ImportError:
+    stripe_mock = MagicMock()
+    sys.modules['stripe'] = stripe_mock
+
+# Mock redis if not installed
+try:
+    import redis
+except ImportError:
+    redis_mock = MagicMock()
+    redis_mock.Redis = MagicMock()
+    redis_mock.ConnectionPool = MagicMock()
+    redis_mock.ConnectionError = type('ConnectionError', (Exception,), {})
+    sys.modules['redis'] = redis_mock
+
+# Mock openai if not installed or API key not set
+try:
+    import openai
+except ImportError:
+    openai_mock = MagicMock()
+    openai_mock.OpenAI = MagicMock()
+    sys.modules['openai'] = openai_mock
+
+# Set environment variables BEFORE importing config
+os.environ.setdefault('OPENAI_API_KEY', 'test-key')
+os.environ.setdefault('FAL_KEY', 'test-fal-key')
+os.environ.setdefault('SUPABASE_URL', 'https://test.supabase.co')
+os.environ.setdefault('SUPABASE_KEY', 'test-supabase-key')
+os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
+os.environ.setdefault('RESEND_API_KEY', 'test-resend-key')
+os.environ.setdefault('STRIPE_API_KEY', 'test-stripe-key')
+os.environ.setdefault('DASHSCOPE_API_KEY', 'test-dashscope-key')
+
 # 添加项目根目录
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:

@@ -96,11 +96,13 @@ class TestUnifiedTextService:
         assert response.error_type == AIErrorType.AUTH_ERROR
     
     @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_fallback_config')
     @patch('services.ai.unified_text_service.get_text_model_config')
     @patch('services.ai.unified_text_service.is_provider_enabled')
     @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.get_cached_result')
     async def test_adapter_not_available(
-        self, mock_get_adapter, mock_is_enabled, mock_get_config
+        self, mock_cache_get, mock_get_adapter, mock_is_enabled, mock_get_config, mock_fallback
     ):
         """适配器不可用时返回错误"""
         from services.ai.unified_text_service import unified_text_service
@@ -111,7 +113,9 @@ class TestUnifiedTextService:
             "fallback": None
         }
         mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
         mock_get_adapter.return_value = None  # 适配器不可用
+        mock_fallback.return_value = None  # 无 fallback 配置
         
         response = await unified_text_service.chat(
             messages=[{"role": "user", "content": "Hello"}]
@@ -122,9 +126,8 @@ class TestUnifiedTextService:
     @pytest.mark.asyncio
     @patch('services.ai.unified_text_service.get_cached_result')
     @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
     async def test_cache_hit(
-        self, mock_is_enabled, mock_get_config, mock_cache_get
+        self, mock_get_config, mock_cache_get
     ):
         """缓存命中时直接返回"""
         from services.ai.unified_text_service import unified_text_service
@@ -133,15 +136,9 @@ class TestUnifiedTextService:
             "provider": "openai",
             "model": "gpt-4o-mini"
         }
-        mock_is_enabled.return_value = True
         
-        # 返回缓存结果
-        mock_cache_get.return_value = AIResponse(
-            success=True,
-            content="Cached response",
-            model="gpt-4o-mini",
-            provider="openai"
-        )
+        # 缓存返回的是字符串内容，不是 AIResponse
+        mock_cache_get.return_value = "Cached response"
         
         response = await unified_text_service.chat(
             messages=[{"role": "user", "content": "Hello"}],
@@ -150,6 +147,7 @@ class TestUnifiedTextService:
         
         assert response.success is True
         assert response.content == "Cached response"
+        mock_cache_get.assert_called_once()
     
     @pytest.mark.asyncio
     @patch('services.ai.unified_text_service.get_admin_model_config')
@@ -200,12 +198,12 @@ class TestUnifiedImageService:
     """UnifiedImageService 测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_image_model_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.track_ai_usage')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_successful_image_generation(
-        self, mock_track, mock_get_adapter, mock_is_enabled, mock_get_config
+        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """成功的图像生成"""
         from services.ai.unified_image_service import unified_image_service
@@ -227,7 +225,6 @@ class TestUnifiedImageService:
             latency_ms=2500
         ))
         mock_get_adapter.return_value = mock_adapter
-        mock_track.return_value = None
         
         response = await unified_image_service.generate(
             prompt="A cute cat",
@@ -240,12 +237,12 @@ class TestUnifiedImageService:
         assert response.content[0].startswith("https://")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_image_model_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.track_ai_usage')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_tier_based_model_selection(
-        self, mock_track, mock_get_adapter, mock_is_enabled, mock_get_config
+        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """基于等级的模型选择"""
         from services.ai.unified_image_service import unified_image_service
@@ -266,7 +263,6 @@ class TestUnifiedImageService:
             provider="fal"
         ))
         mock_get_adapter.return_value = mock_adapter
-        mock_track.return_value = None
         
         response = await unified_image_service.generate(
             prompt="High quality image",
@@ -278,12 +274,12 @@ class TestUnifiedImageService:
         mock_get_config.assert_called_once_with("pro")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_image_model_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.track_ai_usage')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image(
-        self, mock_track, mock_get_adapter, mock_is_enabled, mock_get_config
+        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """图生图功能"""
         from services.ai.unified_image_service import unified_image_service
@@ -303,7 +299,6 @@ class TestUnifiedImageService:
             provider="fal"
         ))
         mock_get_adapter.return_value = mock_adapter
-        mock_track.return_value = None
         
         response = await unified_image_service.image_to_image(
             prompt="Make it more colorful",
@@ -467,12 +462,12 @@ class TestUnifiedServicesEdgeCases:
         assert isinstance(response, AIResponse)
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_image_model_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.track_ai_usage')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_very_long_prompt(
-        self, mock_track, mock_get_adapter, mock_is_enabled, mock_get_config
+        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """超长提示词"""
         from services.ai.unified_image_service import unified_image_service
@@ -489,7 +484,6 @@ class TestUnifiedServicesEdgeCases:
             content=["https://example.com/image.png"]
         ))
         mock_get_adapter.return_value = mock_adapter
-        mock_track.return_value = None
         
         long_prompt = "A beautiful " * 1000  # 很长的提示词
         
@@ -499,3 +493,246 @@ class TestUnifiedServicesEdgeCases:
         
         # 应该正常处理
         assert isinstance(response, AIResponse)
+
+
+# ==========================================
+# Additional Coverage Tests
+# ==========================================
+
+class TestUnifiedTextServiceAdditionalCoverage:
+    """补充覆盖率测试 - UnifiedTextService"""
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_provider_not_enabled_with_fallback(
+        self, mock_cache_get, mock_track, mock_get_adapter, 
+        mock_is_enabled, mock_get_config, mock_fallback
+    ):
+        """提供商未启用时使用 fallback（覆盖 117-118 行）"""
+        from services.ai.unified_text_service import unified_text_service
+        
+        mock_get_config.return_value = {
+            "provider": "disabled_provider",
+            "model": "some-model",
+        }
+        mock_is_enabled.return_value = False
+        mock_cache_get.return_value = None
+        
+        # 配置 fallback
+        mock_fallback.return_value = {
+            "provider": "openai",
+            "model": "gpt-4o-mini"
+        }
+        
+        mock_adapter = MagicMock()
+        mock_adapter.chat_completion = AsyncMock(return_value=AIResponse(
+            success=True,
+            content="Fallback response",
+            model="gpt-4o-mini",
+            provider="openai"
+        ))
+        mock_get_adapter.return_value = mock_adapter
+        
+        response = await unified_text_service.chat(
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        assert response.success is True
+        # 应该使用 fallback provider
+        mock_get_adapter.assert_called_with("openai")
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_adapter_not_available_with_fallback_success(
+        self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
+        mock_get_config, mock_fallback
+    ):
+        """主适配器不可用，fallback 成功（覆盖 130-132 行）"""
+        from services.ai.unified_text_service import unified_text_service
+        
+        mock_get_config.return_value = {
+            "provider": "qwen",
+            "model": "qwen-plus",
+        }
+        mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
+        
+        # 配置 fallback
+        mock_fallback.return_value = {
+            "provider": "openai",
+            "model": "gpt-4o-mini"
+        }
+        
+        # 主适配器不可用，fallback 适配器可用
+        fallback_adapter = MagicMock()
+        fallback_adapter.chat_completion = AsyncMock(return_value=AIResponse(
+            success=True,
+            content="Fallback success",
+            model="gpt-4o-mini",
+            provider="openai"
+        ))
+        
+        # 第一次返回 None（主适配器），第二次返回 fallback 适配器
+        mock_get_adapter.side_effect = [None, fallback_adapter]
+        
+        with patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock):
+            response = await unified_text_service.chat(
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+        
+        assert response.success is True
+        assert response.content == "Fallback success"
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_try_fallback_no_config(
+        self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
+        mock_get_config, mock_fallback
+    ):
+        """_try_fallback 没有配置时返回错误（覆盖 192 行）"""
+        from services.ai.unified_text_service import unified_text_service
+        
+        mock_get_config.return_value = {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+        }
+        mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
+        mock_get_adapter.return_value = None
+        mock_fallback.return_value = None  # 无 fallback 配置
+        
+        response = await unified_text_service.chat(
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        assert response.success is False
+        assert response.error_type == AIErrorType.API_ERROR
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_try_fallback_adapter_not_available(
+        self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
+        mock_get_config, mock_fallback
+    ):
+        """fallback adapter 不可用时返回错误（覆盖 206 行）"""
+        from services.ai.unified_text_service import unified_text_service
+        
+        mock_get_config.return_value = {
+            "provider": "qwen",
+            "model": "qwen-plus",
+        }
+        mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
+        
+        # 配置 fallback
+        mock_fallback.return_value = {
+            "provider": "anthropic",
+            "model": "claude-3"
+        }
+        
+        # 两个适配器都返回 None
+        mock_get_adapter.return_value = None
+        
+        response = await unified_text_service.chat(
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        
+        assert response.success is False
+        assert response.error_type == AIErrorType.AUTH_ERROR
+
+
+class TestConvenienceFunctions:
+    """便捷函数测试（覆盖 254, 270 行）"""
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_chat_convenience_function(
+        self, mock_cache_get, mock_track, mock_get_adapter, 
+        mock_is_enabled, mock_get_config
+    ):
+        """测试 chat 便捷函数（覆盖 254 行）"""
+        from services.ai.unified_text_service import chat
+        
+        mock_get_config.return_value = {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+        }
+        mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
+        
+        mock_adapter = MagicMock()
+        mock_adapter.chat_completion = AsyncMock(return_value=AIResponse(
+            success=True,
+            content="Response from chat",
+            model="gpt-4o-mini",
+            provider="openai"
+        ))
+        mock_get_adapter.return_value = mock_adapter
+        
+        response = await chat(
+            messages=[{"role": "user", "content": "Hello"}],
+            user_id="user_123",
+            tier="free"
+        )
+        
+        assert response.success is True
+        assert response.content == "Response from chat"
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_text_service.get_admin_model_config')
+    @patch('services.ai.unified_text_service.is_provider_enabled')
+    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_text_service.get_cached_result')
+    async def test_admin_chat_convenience_function(
+        self, mock_cache_get, mock_track, mock_get_adapter, 
+        mock_is_enabled, mock_get_admin_config
+    ):
+        """测试 admin_chat 便捷函数（覆盖 270 行）"""
+        from services.ai.unified_text_service import admin_chat
+        
+        mock_get_admin_config.return_value = {
+            "provider": "openai",
+            "model": "gpt-4o",
+        }
+        mock_is_enabled.return_value = True
+        mock_cache_get.return_value = None
+        
+        mock_adapter = MagicMock()
+        mock_adapter.chat_completion = AsyncMock(return_value=AIResponse(
+            success=True,
+            content="Admin analysis result",
+            model="gpt-4o",
+            provider="openai"
+        ))
+        mock_get_adapter.return_value = mock_adapter
+        
+        response = await admin_chat(
+            messages=[{"role": "user", "content": "Analyze data"}]
+        )
+        
+        assert response.success is True
+        assert response.content == "Admin analysis result"
+        # admin_chat 应该使用 admin 模型配置
+        mock_get_admin_config.assert_called_once()

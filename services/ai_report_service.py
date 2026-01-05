@@ -13,6 +13,7 @@ Features:
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
@@ -21,10 +22,10 @@ import openai
 from collections import defaultdict
 
 from .db_service import supabase
-from config import OPENAI_API_KEY
 
-# Initialize OpenAI client
-openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Initialize OpenAI client (get API key from environment)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+openai_client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 logger = logging.getLogger(__name__)
 
 
