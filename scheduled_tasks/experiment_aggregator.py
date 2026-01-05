@@ -18,10 +18,8 @@ Usage:
 
 import os
 import sys
-import json
 import argparse
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -135,23 +133,26 @@ def aggregate_experiment_results():
                 )
                 
                 # Upsert 到 experiment_results 表
+                # 表使用 date + hour 作为时间粒度
                 result_data = {
                     "experiment_id": experiment_id,
                     "variant_key": variant_key,
-                    "period_start": current_hour.isoformat(),
-                    "period_end": (current_hour + timedelta(hours=1)).isoformat(),
+                    "date": current_hour.strftime("%Y-%m-%d"),
+                    "hour": current_hour.hour,
                     "exposures": hourly_exposures,
                     "conversions": hourly_conversions,
                     "conversion_rate": round(conversion_rate, 4),
-                    "total_exposures": total_exposures,
-                    "total_conversions": total_conversions,
-                    "total_conversion_value": total_conversion_value,
+                    "metrics_data": {
+                        "total_exposures": total_exposures,
+                        "total_conversions": total_conversions,
+                        "total_conversion_value": total_conversion_value,
+                    },
                     "updated_at": now.isoformat(),
                 }
                 
                 supabase.table("experiment_results").upsert(
                     result_data,
-                    on_conflict="experiment_id,variant_key,period_start"
+                    on_conflict="experiment_id,variant_key,date,hour"
                 ).execute()
                 
                 aggregated_count += 1
@@ -191,14 +192,13 @@ def aggregate_experiment_daily_summary():
             
             for days_ago in range(30):
                 date = today - timedelta(days=days_ago)
-                next_date = date + timedelta(days=1)
                 date_str = date.strftime("%Y-%m-%d")
                 
                 # 从 experiment_results 获取该天的数据
+                # 表使用 date 字段
                 results = supabase.table("experiment_results").select("*")\
                     .eq("experiment_id", experiment_id)\
-                    .gte("period_start", date.isoformat())\
-                    .lt("period_start", next_date.isoformat()).execute()
+                    .eq("date", date_str).execute()
                 
                 # 按变体聚合
                 variant_data = {}

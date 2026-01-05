@@ -19,7 +19,7 @@ Admin Endpoints:
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
@@ -542,7 +542,6 @@ def get_experiment_trend(
     Returns:
         每日的曝光和转化数据，按变体分组
     """
-    from datetime import timedelta
     from services.db_service import supabase
     
     # 限制最大天数
@@ -558,21 +557,20 @@ def get_experiment_trend(
     variant_keys = [v.get("key") for v in variants]
     
     now = datetime.now(timezone.utc)
-    start_date = now - timedelta(days=days)
+    start_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
     
     # 从 experiment_results 获取聚合数据
+    # 表使用 date 和 hour 字段
     results_data = supabase.table("experiment_results").select("*")\
         .eq("experiment_id", experiment_id)\
-        .gte("period_start", start_date.isoformat())\
-        .order("period_start").execute()
+        .gte("date", start_date)\
+        .order("date").execute()
     
     # 按日期聚合
     daily_data = {}
     
     for result in results_data.data or []:
-        period_start = result.get("period_start", "")
-        # 提取日期部分
-        date_str = period_start[:10] if period_start else ""
+        date_str = result.get("date", "")
         
         if not date_str:
             continue
@@ -634,7 +632,6 @@ def get_hourly_trend(
     Returns:
         每小时的曝光和转化数据
     """
-    from datetime import timedelta
     from services.db_service import supabase
     
     # 限制最大小时数
@@ -651,24 +648,35 @@ def get_hourly_trend(
     
     now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
+    start_date = start_time.strftime("%Y-%m-%d")
     
     # 从 experiment_results 获取小时级数据
+    # 表使用 date 和 hour 字段
     results_data = supabase.table("experiment_results").select("*")\
         .eq("experiment_id", experiment_id)\
-        .gte("period_start", start_time.isoformat())\
-        .order("period_start").execute()
+        .gte("date", start_date)\
+        .order("date").order("hour").execute()
     
     # 构建趋势数据
     trend_list = []
     for result in results_data.data or []:
-        period_start = result.get("period_start", "")
+        date_str = result.get("date", "")
+        hour = result.get("hour", 0)
         variant_key = result.get("variant_key")
         
+        # 构建时间字符串
+        time_str = f"{date_str}T{hour:02d}:00:00"
+        
+        # 过滤掉 start_time 之前的数据
+        result_datetime = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        if result_datetime.replace(tzinfo=timezone.utc) < start_time:
+            continue
+        
         # 查找是否已有该时间点的数据
-        existing = next((t for t in trend_list if t.get("time") == period_start), None)
+        existing = next((t for t in trend_list if t.get("time") == time_str), None)
         
         if not existing:
-            existing = {"time": period_start}
+            existing = {"time": time_str}
             for vk in variant_keys:
                 existing[f"{vk}_exposures"] = 0
                 existing[f"{vk}_conversions"] = 0
