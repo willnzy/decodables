@@ -83,6 +83,15 @@ def aggregate_experiment_results():
             variant_key = variant.get("key")
             
             try:
+                # 获取该变体在当前小时的参与人数（被分配的）
+                participants = supabase.table("experiment_assignments").select("id", count="exact")\
+                    .eq("experiment_id", experiment_id)\
+                    .eq("variant_key", variant_key)\
+                    .gte("assigned_at", current_hour.isoformat())\
+                    .lt("assigned_at", (current_hour + timedelta(hours=1)).isoformat()).execute()
+                
+                hourly_participants = participants.count or 0
+                
                 # 获取该变体在当前小时的曝光数
                 exposures = supabase.table("experiment_assignments").select("id", count="exact")\
                     .eq("experiment_id", experiment_id)\
@@ -139,6 +148,7 @@ def aggregate_experiment_results():
                     "variant_key": variant_key,
                     "date": current_hour.strftime("%Y-%m-%d"),
                     "hour": current_hour.hour,
+                    "participants": hourly_participants,
                     "exposures": hourly_exposures,
                     "conversions": hourly_conversions,
                     "conversion_rate": round(conversion_rate, 4),
