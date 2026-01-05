@@ -3,6 +3,18 @@ Projects Router
 Handles project-related API endpoints
 
 @module routers/projects
+
+Endpoints:
+- GET /api/projects - List user projects
+- GET /api/projects/deleted - List deleted projects
+- GET /api/projects/dashboard - Dashboard view
+- GET /api/projects/seller-stats - Seller statistics
+- POST /api/projects - Create project
+- GET /api/projects/{project_id} - Get project details
+- PUT /api/projects/{project_id} - Update project
+- DELETE /api/projects/{project_id} - Delete project
+- POST /api/projects/{project_id}/restore - Restore deleted project
+- POST /api/projects/{project_id}/duplicate - Duplicate project
 """
 
 from typing import Optional, List
@@ -14,8 +26,10 @@ from services.db_service import (
     get_user_projects, get_project_detail, create_project as db_create_project,
     save_project, soft_delete_project, get_marketplace_item,
     can_access_resource, record_listing_usage, count_user_projects, supabase,
-    get_dashboard_projects, get_seller_project_stats, permanently_hide_project
+    get_dashboard_projects, get_seller_project_stats, permanently_hide_project,
+    get_user_deleted_projects, user_restore_project, duplicate_project, log_activity
 )
+from services.rate_limiter import limiter
 from timezone_utils import get_request_timezone
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -110,6 +124,25 @@ def dashboard_projects(
     )
     
     return result
+
+
+@router.get("/deleted")
+def list_deleted_projects(
+    page: int = 1,
+    limit: int = 20,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Retrieve the user's deleted projects.
+    
+    Args:
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+    
+    Returns:
+        List of deleted projects that can be restored
+    """
+    return get_user_deleted_projects(user["id"], page, limit)
 
 
 @router.get("/seller-stats")
@@ -347,4 +380,65 @@ def delete_project(project_id: str, permanent: bool = False, user: dict = Depend
         if not result:
             raise HTTPException(404, "Project not found")
         return {"status": "deleted", "stage": 1}
+
+
+@router.post("/{project_id}/restore")
+def restore_project(project_id: str, user: dict = Depends(get_current_user)):
+    """
+    Restore a deleted project (PRD v3.3).
+    
+    Allows a user to restore their own deleted project from trash.
+    
+    Args:
+        project_id: Project ID to restore
+    
+    Returns:
+        Restored project details
+    
+    Raises:
+        HTTPException: 404 if project not found
+        HTTPException: 400 if restore fails
+    """
+    try:
+        project = user_restore_project(project_id, user["id"])
+        if project:
+            log_activity(user["id"], "restore_project", {"project_id": project_id})
+            return {"status": "ok", "project": project}
+        else:
+            raise HTTPException(status_code=404, detail="Project not found")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{project_id}/duplicate")
+@limiter.limit("10/minute")
+def duplicate_project_endpoint(request: Request, project_id: str, user: dict = Depends(get_current_user)):
+    """
+    Duplicate/Copy a project (PRD v3.2).
+    
+    - Own projects: Creates copy with title + " copied"
+    - Purchased projects: Creates copy with same title, preserves source info
+    
+    Args:
+        project_id: Project ID to duplicate
+    
+    Returns:
+        New duplicated project
+    
+    Raises:
+        HTTPException: 400 if duplication fails
+        HTTPException: 500 if copy fails
+    """
+    try:
+        # v3.9: Get timezone from request for snapshot
+        tz = get_request_timezone(request, user_id=user.get("id"))
+        new_project = duplicate_project(project_id, user["id"], timezone=tz)
+        if new_project:
+            log_activity(user["id"], "duplicate_project", {"source_project_id": project_id, "new_project_id": new_project["id"]})
+            return new_project
+        else:
+            raise HTTPException(500, "Failed to copy project")
+    except Exception as e:
+        error_msg = str(e)
+        raise HTTPException(400, error_msg)
 
