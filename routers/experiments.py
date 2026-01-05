@@ -520,3 +520,171 @@ def get_quick_recommendation(experiment_key: str, admin: dict = Depends(require_
         "experiment_key": experiment_key,
         "recommendation": recommendation
     }
+
+
+# ==========================================
+# Trend Data Endpoints
+# ==========================================
+
+@admin_router.get("/{experiment_key}/trend")
+def get_experiment_trend(
+    experiment_key: str,
+    days: int = 30,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取实验的历史趋势数据（用于图表展示）
+    
+    Args:
+        experiment_key: 实验唯一标识
+        days: 回溯天数（默认30天，最大90天）
+        
+    Returns:
+        每日的曝光和转化数据，按变体分组
+    """
+    from datetime import timedelta
+    from services.db_service import supabase
+    
+    # 限制最大天数
+    days = min(days, 90)
+    
+    # 获取实验信息
+    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+    if not experiment:
+        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+    
+    experiment_id = experiment.get("id")
+    variants = experiment.get("variants", [])
+    variant_keys = [v.get("key") for v in variants]
+    
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+    
+    # 从 experiment_results 获取聚合数据
+    results_data = supabase.table("experiment_results").select("*")\
+        .eq("experiment_id", experiment_id)\
+        .gte("period_start", start_date.isoformat())\
+        .order("period_start").execute()
+    
+    # 按日期聚合
+    daily_data = {}
+    
+    for result in results_data.data or []:
+        period_start = result.get("period_start", "")
+        # 提取日期部分
+        date_str = period_start[:10] if period_start else ""
+        
+        if not date_str:
+            continue
+            
+        if date_str not in daily_data:
+            daily_data[date_str] = {vk: {"exposures": 0, "conversions": 0} for vk in variant_keys}
+        
+        variant_key = result.get("variant_key")
+        if variant_key in daily_data[date_str]:
+            daily_data[date_str][variant_key]["exposures"] += result.get("exposures", 0)
+            daily_data[date_str][variant_key]["conversions"] += result.get("conversions", 0)
+    
+    # 转换为有序列表
+    trend_list = []
+    for date_str in sorted(daily_data.keys()):
+        day_entry = {"date": date_str}
+        for variant_key in variant_keys:
+            vdata = daily_data[date_str].get(variant_key, {"exposures": 0, "conversions": 0})
+            day_entry[f"{variant_key}_exposures"] = vdata["exposures"]
+            day_entry[f"{variant_key}_conversions"] = vdata["conversions"]
+            # 计算转化率
+            rate = (vdata["conversions"] / vdata["exposures"] * 100) if vdata["exposures"] > 0 else 0
+            day_entry[f"{variant_key}_rate"] = round(rate, 2)
+        trend_list.append(day_entry)
+    
+    # 如果没有数据，生成空数据填充
+    if not trend_list:
+        for i in range(days):
+            date = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
+            day_entry = {"date": date}
+            for variant_key in variant_keys:
+                day_entry[f"{variant_key}_exposures"] = 0
+                day_entry[f"{variant_key}_conversions"] = 0
+                day_entry[f"{variant_key}_rate"] = 0
+            trend_list.append(day_entry)
+    
+    return {
+        "experiment_key": experiment_key,
+        "experiment_name": experiment.get("name"),
+        "variants": variant_keys,
+        "days": days,
+        "trend": trend_list,
+    }
+
+
+@admin_router.get("/{experiment_key}/hourly-trend")
+def get_hourly_trend(
+    experiment_key: str,
+    hours: int = 24,
+    admin: dict = Depends(require_admin)
+):
+    """
+    获取实验的小时级趋势数据
+    
+    Args:
+        experiment_key: 实验唯一标识
+        hours: 回溯小时数（默认24小时，最大168小时/7天）
+        
+    Returns:
+        每小时的曝光和转化数据
+    """
+    from datetime import timedelta
+    from services.db_service import supabase
+    
+    # 限制最大小时数
+    hours = min(hours, 168)
+    
+    # 获取实验信息
+    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+    if not experiment:
+        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+    
+    experiment_id = experiment.get("id")
+    variants = experiment.get("variants", [])
+    variant_keys = [v.get("key") for v in variants]
+    
+    now = datetime.now(timezone.utc)
+    start_time = now - timedelta(hours=hours)
+    
+    # 从 experiment_results 获取小时级数据
+    results_data = supabase.table("experiment_results").select("*")\
+        .eq("experiment_id", experiment_id)\
+        .gte("period_start", start_time.isoformat())\
+        .order("period_start").execute()
+    
+    # 构建趋势数据
+    trend_list = []
+    for result in results_data.data or []:
+        period_start = result.get("period_start", "")
+        variant_key = result.get("variant_key")
+        
+        # 查找是否已有该时间点的数据
+        existing = next((t for t in trend_list if t.get("time") == period_start), None)
+        
+        if not existing:
+            existing = {"time": period_start}
+            for vk in variant_keys:
+                existing[f"{vk}_exposures"] = 0
+                existing[f"{vk}_conversions"] = 0
+            trend_list.append(existing)
+        
+        if variant_key in variant_keys:
+            existing[f"{variant_key}_exposures"] = result.get("exposures", 0)
+            existing[f"{variant_key}_conversions"] = result.get("conversions", 0)
+    
+    # 按时间排序
+    trend_list.sort(key=lambda x: x.get("time", ""))
+    
+    return {
+        "experiment_key": experiment_key,
+        "experiment_name": experiment.get("name"),
+        "variants": variant_keys,
+        "hours": hours,
+        "trend": trend_list,
+    }

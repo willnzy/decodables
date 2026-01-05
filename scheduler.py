@@ -55,6 +55,14 @@ def run_hourly_aggregation():
         logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
+    
+    # Run A/B experiment aggregation (v3.20)
+    try:
+        from scheduled_tasks.experiment_aggregator import run_hourly_experiment_tasks
+        run_hourly_experiment_tasks()
+        logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (hourly) complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Experiment aggregation failed: {e}")
 
 def run_daily_aggregation():
     """Run daily aggregation tasks (both legacy and new ETL)"""
@@ -75,6 +83,14 @@ def run_daily_aggregation():
         logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
+    
+    # Run A/B experiment daily tasks (v3.20)
+    try:
+        from scheduled_tasks.experiment_aggregator import run_daily_experiment_tasks
+        run_daily_experiment_tasks()
+        logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (daily) complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Experiment daily tasks failed: {e}")
 
 
 def run_storage_cleanup():
