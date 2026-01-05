@@ -34,32 +34,101 @@ if 'fal_client' not in sys.modules:
     fal_mock.submit_async = AsyncMock()
     sys.modules['fal_client'] = fal_mock
 
-# Mock FastAPI and related modules if not installed
-try:
-    import fastapi
-except ImportError:
+# Mock FastAPI and related modules - Force mock to handle middleware import issue
+def _create_fastapi_mock():
+    """Create comprehensive FastAPI mock with all submodules"""
     fastapi_mock = MagicMock()
     fastapi_mock.Request = MagicMock()
+    fastapi_mock.Response = MagicMock()
     fastapi_mock.HTTPException = type('HTTPException', (Exception,), {
         '__init__': lambda self, status_code=500, detail="": setattr(self, 'status_code', status_code) or setattr(self, 'detail', detail)
     })
-    fastapi_mock.Depends = MagicMock()
-    fastapi_mock.APIRouter = MagicMock()
-    fastapi_mock.FastAPI = MagicMock()
+    fastapi_mock.Depends = MagicMock(return_value=lambda x: x)
+    fastapi_mock.APIRouter = MagicMock(return_value=MagicMock())
+    fastapi_mock.FastAPI = MagicMock(return_value=MagicMock())
+    fastapi_mock.Query = MagicMock()
+    fastapi_mock.Path = MagicMock()
+    fastapi_mock.Body = MagicMock()
+    fastapi_mock.Header = MagicMock()
+    fastapi_mock.Form = MagicMock()
+    fastapi_mock.File = MagicMock()
+    fastapi_mock.UploadFile = MagicMock()
+    fastapi_mock.BackgroundTasks = MagicMock()
+    fastapi_mock.status = MagicMock()
+    return fastapi_mock
+
+try:
+    from fastapi.middleware.cors import CORSMiddleware
+    _fastapi_installed = True
+except (ImportError, ModuleNotFoundError):
+    _fastapi_installed = False
+
+if not _fastapi_installed:
+    fastapi_mock = _create_fastapi_mock()
+    
+    # Main fastapi module
     sys.modules['fastapi'] = fastapi_mock
-    sys.modules['fastapi.testclient'] = MagicMock()
-    sys.modules['fastapi.testclient'].TestClient = MagicMock()
+    
+    # Middleware submodules
+    middleware_mock = MagicMock()
+    middleware_mock.cors = MagicMock()
+    middleware_mock.cors.CORSMiddleware = MagicMock()
+    sys.modules['fastapi.middleware'] = middleware_mock
+    sys.modules['fastapi.middleware.cors'] = middleware_mock.cors
+    
+    # TestClient
+    testclient_mock = MagicMock()
+    testclient_mock.TestClient = MagicMock()
+    sys.modules['fastapi.testclient'] = testclient_mock
+    
+    # Security
+    security_mock = MagicMock()
+    security_mock.OAuth2PasswordBearer = MagicMock()
+    security_mock.OAuth2PasswordRequestForm = MagicMock()
+    sys.modules['fastapi.security'] = security_mock
+    
+    # Responses
+    responses_mock = MagicMock()
+    responses_mock.StreamingResponse = MagicMock()
+    responses_mock.FileResponse = MagicMock()
+    responses_mock.JSONResponse = MagicMock()
+    responses_mock.HTMLResponse = MagicMock()
+    sys.modules['fastapi.responses'] = responses_mock
+    
+    # Encoders
+    encoders_mock = MagicMock()
+    encoders_mock.jsonable_encoder = MagicMock(side_effect=lambda x: x)
+    sys.modules['fastapi.encoders'] = encoders_mock
+    
+    # Exceptions
+    exceptions_mock = MagicMock()
+    exceptions_mock.RequestValidationError = type('RequestValidationError', (Exception,), {})
+    exceptions_mock.HTTPException = type('HTTPException', (Exception,), {
+        '__init__': lambda self, status_code=500, detail="": setattr(self, 'status_code', status_code) or setattr(self, 'detail', detail)
+    })
+    sys.modules['fastapi.exceptions'] = exceptions_mock
 
 # Mock slowapi if not installed
 try:
-    import slowapi
-except ImportError:
+    from slowapi.errors import RateLimitExceeded
+    _slowapi_installed = True
+except (ImportError, ModuleNotFoundError):
+    _slowapi_installed = False
+
+if not _slowapi_installed:
     slowapi_mock = MagicMock()
     slowapi_mock.Limiter = MagicMock(return_value=MagicMock())
     slowapi_mock.util = MagicMock()
     slowapi_mock.util.get_remote_address = MagicMock()
+    
+    # errors submodule
+    errors_mock = MagicMock()
+    errors_mock.RateLimitExceeded = type('RateLimitExceeded', (Exception,), {})
+    slowapi_mock.errors = errors_mock
+    
     sys.modules['slowapi'] = slowapi_mock
     sys.modules['slowapi.util'] = slowapi_mock.util
+    sys.modules['slowapi.errors'] = errors_mock
 
 # Mock supabase if not installed  
 try:
@@ -93,6 +162,56 @@ except ImportError:
     openai_mock = MagicMock()
     openai_mock.OpenAI = MagicMock()
     sys.modules['openai'] = openai_mock
+
+# Mock httpx if not installed
+try:
+    import httpx
+except ImportError:
+    httpx_mock = MagicMock()
+    httpx_mock.AsyncClient = MagicMock()
+    httpx_mock.Client = MagicMock()
+    sys.modules['httpx'] = httpx_mock
+
+# Mock starlette if not installed (FastAPI dependency)
+try:
+    from starlette.middleware.cors import CORSMiddleware
+except (ImportError, ModuleNotFoundError):
+    starlette_mock = MagicMock()
+    starlette_mock.middleware = MagicMock()
+    starlette_mock.middleware.cors = MagicMock()
+    starlette_mock.middleware.cors.CORSMiddleware = MagicMock()
+    starlette_mock.requests = MagicMock()
+    starlette_mock.responses = MagicMock()
+    sys.modules['starlette'] = starlette_mock
+    sys.modules['starlette.middleware'] = starlette_mock.middleware
+    sys.modules['starlette.middleware.cors'] = starlette_mock.middleware.cors
+    sys.modules['starlette.requests'] = starlette_mock.requests
+    sys.modules['starlette.responses'] = starlette_mock.responses
+
+# Mock pydantic if not installed
+try:
+    import pydantic
+except ImportError:
+    pydantic_mock = MagicMock()
+    pydantic_mock.BaseModel = type('BaseModel', (), {'__init__': lambda self, **kwargs: None})
+    pydantic_mock.Field = MagicMock()
+    pydantic_mock.validator = MagicMock()
+    sys.modules['pydantic'] = pydantic_mock
+
+# Mock uvicorn if not installed
+try:
+    import uvicorn
+except ImportError:
+    uvicorn_mock = MagicMock()
+    sys.modules['uvicorn'] = uvicorn_mock
+
+# Mock svix if not installed (used for webhook signature verification)
+try:
+    import svix
+except ImportError:
+    svix_mock = MagicMock()
+    svix_mock.Webhook = MagicMock()
+    sys.modules['svix'] = svix_mock
 
 # Set environment variables BEFORE importing config
 os.environ.setdefault('OPENAI_API_KEY', 'test-key')

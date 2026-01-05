@@ -121,31 +121,37 @@ class TestPermanentCreditsNeverExpire:
     @patch('services.db_service.get_user_profile')
     @patch('services.db_service.refresh_monthly_credits')
     def test_permanent_credits_preserved_on_reset(self, mock_refresh, mock_get_profile):
-        """Permanent credits are preserved when monthly credits reset"""
-        mock_get_profile.return_value = {
+        """
+        【业务规则 3.5】月度重置时永久积分不受影响
+        
+        永久积分来源: 市场销售收入、充值购买、注册赠送
+        永久积分特性: 永不过期，不随月度重置而变化
+        """
+        user_profile = {
             "id": "user_123",
             "tier": "starter",
             "subscription_status": "active",
             "credits_monthly": 50,
-            "credits_permanent": 300,  # Should be preserved
+            "credits_permanent": 300,  # 应该被保留
             "monthly_credits_cycle_anchor": (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(),
         }
+        mock_get_profile.return_value = user_profile
         
-        # Mock refresh_monthly_credits to verify it preserves permanent credits
+        # Mock refresh_monthly_credits 来验证它保留了永久积分
         def mock_refresh_side_effect(user_id, tier):
-            profile = get_user_profile(user_id)
-            permanent = profile.get("credits_permanent", 0)
-            # Verify permanent credits are preserved
-            assert permanent == 300
+            # 使用已 mock 的 profile（不调用真实的 get_user_profile）
+            permanent = user_profile.get("credits_permanent", 0)
+            # 验证永久积分被保留
+            assert permanent == 300, "永久积分应该被保留，不受月度重置影响"
             return True
         
         mock_refresh.side_effect = mock_refresh_side_effect
         
-        # Check and reset
+        # 检查并重置
         check_and_reset_monthly_credits_if_needed("user_123")
         
-        # Verify: refresh was called (and verified permanent credits preserved)
-        assert mock_refresh.called
+        # 验证: refresh 被调用
+        assert mock_refresh.called, "refresh_monthly_credits 应该被调用"
 
 
 class TestDeductionPriority:

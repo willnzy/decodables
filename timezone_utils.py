@@ -54,6 +54,11 @@ def is_valid_timezone(tz: str) -> bool:
     """
     Validate if the timezone string is a valid IANA timezone identifier.
     
+    IANA timezones must be in Area/Location format (e.g., America/New_York).
+    Abbreviations like EST, PST, GMT+8 are NOT valid IANA identifiers.
+    
+    Business Rule: Only accept standard IANA timezone identifiers.
+    
     Args:
         tz: Timezone string to validate
         
@@ -61,6 +66,20 @@ def is_valid_timezone(tz: str) -> bool:
         bool: True if valid IANA timezone
     """
     if not tz or not isinstance(tz, str):
+        return False
+    
+    # Strip whitespace
+    tz = tz.strip()
+    if not tz:
+        return False
+    
+    # IANA timezones must contain "/" (except UTC)
+    # This rejects abbreviations like EST, PST, GMT+8
+    if tz == "UTC":
+        return True
+    
+    # Must be in Area/Location format
+    if "/" not in tz:
         return False
     
     # Quick check against common timezones
@@ -75,19 +94,20 @@ def is_valid_timezone(tz: str) -> bool:
     except (ImportError, KeyError):
         pass
     
-    # Try pytz as fallback
+    # Try pytz as fallback - but only if it's IANA format (contains /)
     try:
         import pytz
-        return tz in pytz.all_timezones
+        # Only accept if it's in the common_timezones set (proper IANA format)
+        # This excludes pytz's legacy abbreviations
+        return tz in pytz.common_timezones
     except ImportError:
         pass
     
     # Fallback: basic format validation
     # IANA format: Area/Location or Area/Sub_area/Location
-    if "/" in tz:
-        parts = tz.split("/")
-        if len(parts) >= 2 and all(part.strip() for part in parts):
-            return True
+    parts = tz.split("/")
+    if len(parts) >= 2 and all(part.strip() for part in parts):
+        return True
     
     return False
 

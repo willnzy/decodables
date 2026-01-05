@@ -98,7 +98,8 @@ class TestGetTimezoneFromCloudflare:
     
     def _create_mock_request(self, headers: dict) -> Mock:
         """Create a mock request with specified headers"""
-        request = Mock(spec=Request)
+        # Don't use spec=Request as Request may be mocked in conftest
+        request = Mock()
         request.headers = headers
         return request
     
@@ -136,7 +137,7 @@ class TestGetTimezoneFromHeader:
     
     def _create_mock_request(self, headers: dict) -> Mock:
         """Create a mock request with specified headers"""
-        request = Mock(spec=Request)
+        request = Mock()
         request.headers = headers
         return request
     
@@ -205,7 +206,7 @@ class TestGetRequestTimezone:
     
     def _create_mock_request(self, headers: dict = None) -> Mock:
         """Create a mock request with specified headers"""
-        request = Mock(spec=Request)
+        request = Mock()
         request.headers = headers or {}
         return request
     
@@ -292,7 +293,7 @@ class TestGetTimezoneInfo:
     
     def _create_mock_request(self, headers: dict = None) -> Mock:
         """Create a mock request with specified headers"""
-        request = Mock(spec=Request)
+        request = Mock()
         request.headers = MagicMock()
         request.headers.get = lambda key, default=None: (headers or {}).get(key, default)
         return request
@@ -334,9 +335,14 @@ class TestGetRequestTimezoneWithCountryFallback:
     
     def _create_mock_request(self, headers: dict = None) -> Mock:
         """Create a mock request with specified headers"""
-        request = Mock(spec=Request)
-        request.headers = headers or {}
-        request.headers.get = lambda key, default=None: (headers or {}).get(key, default)
+        request = Mock()
+        headers_dict = headers or {}
+        # Use MagicMock for headers so we can set the .get method
+        mock_headers = MagicMock()
+        mock_headers.get = lambda key, default=None: headers_dict.get(key, default)
+        mock_headers.__iter__ = lambda self: iter(headers_dict)
+        mock_headers.__getitem__ = lambda self, key: headers_dict[key]
+        request.headers = mock_headers
         return request
     
     def test_country_fallback_used(self):
