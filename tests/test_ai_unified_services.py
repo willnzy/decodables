@@ -201,9 +201,10 @@ class TestUnifiedImageService:
     @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
     @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_successful_image_generation(
-        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
+        self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """成功的图像生成"""
         from services.ai.unified_image_service import unified_image_service
@@ -213,6 +214,7 @@ class TestUnifiedImageService:
             "model": "flux-schnell",
             "fallback": {"provider": "fal", "model": "flux-schnell"}
         }
+        mock_should_canary.return_value = (False, None)  # 不使用灰度
         mock_is_enabled.return_value = True
         
         mock_adapter = MagicMock()
@@ -240,11 +242,12 @@ class TestUnifiedImageService:
     @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
     @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_tier_based_model_selection(
-        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
+        self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
-        """基于等级的模型选择"""
+        """【业务规则 5.1】基于等级的模型选择 - Pro 用户使用 flux-dev"""
         from services.ai.unified_image_service import unified_image_service
         
         # Pro 用户应该使用 flux-dev
@@ -253,6 +256,7 @@ class TestUnifiedImageService:
             "model": "flux-dev",  # Pro 模型
             "fallback": {"provider": "fal", "model": "flux-schnell"}
         }
+        mock_should_canary.return_value = (False, None)
         mock_is_enabled.return_value = True
         
         mock_adapter = MagicMock()
@@ -276,10 +280,10 @@ class TestUnifiedImageService:
     @pytest.mark.asyncio
     @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
     @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image(
-        self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
+        self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
         """图生图功能"""
         from services.ai.unified_image_service import unified_image_service
@@ -289,7 +293,7 @@ class TestUnifiedImageService:
             "model": "flux-dev",
             "fallback": {"provider": "fal", "model": "flux-schnell"}
         }
-        mock_is_enabled.return_value = True
+        mock_should_canary.return_value = (False, None)
         
         mock_adapter = MagicMock()
         mock_adapter.image_to_image = AsyncMock(return_value=AIResponse(
@@ -308,6 +312,272 @@ class TestUnifiedImageService:
         
         assert response.success is True
         mock_adapter.image_to_image.assert_called_once()
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_image_service.get_image_adapter')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_canary_model_used(
+        self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
+    ):
+        """【业务规则 5.3】灰度用户使用灰度模型"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {
+            "provider": "fal",
+            "model": "flux-schnell",
+        }
+        # 灰度命中，使用不同模型
+        mock_should_canary.return_value = (True, {"provider": "fal", "model": "flux-dev"})
+        
+        mock_adapter = MagicMock()
+        mock_adapter.generate_image = AsyncMock(return_value=AIResponse(
+            success=True,
+            content=["https://example.com/canary.png"],
+            model="flux-dev",
+            provider="fal"
+        ))
+        mock_get_adapter.return_value = mock_adapter
+        
+        response = await unified_image_service.generate(
+            prompt="A cat",
+            user_id="canary_user",
+            tier="free"
+        )
+        
+        assert response.success is True
+        # 验证使用了灰度模型
+        call_args = mock_adapter.generate_image.call_args
+        assert call_args[1]["model"] == "flux-dev"
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_image_service.get_image_adapter')
+    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_provider_not_enabled_uses_fallback(
+        self, mock_get_config, mock_should_canary, mock_is_enabled, 
+        mock_get_fallback, mock_get_adapter, mock_track
+    ):
+        """【业务规则 5.5】提供商未启用时使用 fallback"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {
+            "provider": "disabled_provider",
+            "model": "some_model",
+            "fallback": {"provider": "fal", "model": "flux-schnell"}
+        }
+        mock_should_canary.return_value = (False, None)
+        mock_is_enabled.return_value = False  # 主提供商未启用
+        mock_get_fallback.return_value = {"provider": "fal", "model": "flux-schnell"}
+        
+        mock_adapter = MagicMock()
+        mock_adapter.generate_image = AsyncMock(return_value=AIResponse(
+            success=True,
+            content=["https://example.com/fallback.png"],
+            model="flux-schnell",
+            provider="fal"
+        ))
+        mock_get_adapter.return_value = mock_adapter
+        
+        response = await unified_image_service.generate(
+            prompt="A cat",
+            tier="free"
+        )
+        
+        assert response.success is True
+        # 验证使用了 fallback 提供商
+        mock_get_adapter.assert_called_with("fal")
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_provider_not_enabled_no_fallback(
+        self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_fallback
+    ):
+        """【业务规则】提供商未启用且无 fallback 返回错误"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {
+            "provider": "disabled_provider",
+            "model": "some_model",
+        }
+        mock_should_canary.return_value = (False, None)
+        mock_is_enabled.return_value = False
+        mock_get_fallback.return_value = None  # 无 fallback
+        
+        response = await unified_image_service.generate(
+            prompt="A cat",
+            tier="free"
+        )
+        
+        assert response.success is False
+        assert response.error_type == AIErrorType.AUTH_ERROR
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_image_service.get_image_adapter')
+    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_adapter_not_available_tries_fallback(
+        self, mock_get_config, mock_should_canary, mock_is_enabled, 
+        mock_get_fallback, mock_get_adapter, mock_track
+    ):
+        """【业务规则 5.5】适配器不可用时尝试 fallback"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {
+            "provider": "unavailable",
+            "model": "some_model",
+            "fallback": {"provider": "fal", "model": "flux-schnell"}
+        }
+        mock_should_canary.return_value = (False, None)
+        mock_is_enabled.return_value = True
+        mock_get_fallback.return_value = {"provider": "fal", "model": "flux-schnell"}
+        
+        # 第一次返回 None (主适配器不可用)，第二次返回可用适配器
+        mock_fallback_adapter = MagicMock()
+        mock_fallback_adapter.generate_image = AsyncMock(return_value=AIResponse(
+            success=True,
+            content=["https://example.com/fb.png"],
+            model="flux-schnell",
+            provider="fal"
+        ))
+        mock_get_adapter.side_effect = [None, mock_fallback_adapter]
+        
+        response = await unified_image_service.generate(
+            prompt="A cat",
+            tier="free"
+        )
+        
+        assert response.success is True
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_image_service.get_image_adapter')
+    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('services.ai.unified_image_service.is_provider_enabled')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_generation_fails_tries_fallback(
+        self, mock_get_config, mock_should_canary, mock_is_enabled, 
+        mock_get_fallback, mock_get_adapter, mock_track
+    ):
+        """【业务规则 5.5】生成失败时尝试 fallback"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {
+            "provider": "fal",
+            "model": "flux-schnell",
+            "fallback": {"provider": "fal", "model": "flux-dev"}
+        }
+        mock_should_canary.return_value = (False, None)
+        mock_is_enabled.return_value = True
+        mock_get_fallback.return_value = {"provider": "fal", "model": "flux-dev"}
+        
+        # 主适配器失败
+        failed_adapter = MagicMock()
+        failed_adapter.generate_image = AsyncMock(return_value=AIResponse(
+            success=False,
+            content=[],
+            error="Main failed",
+            error_type=AIErrorType.API_ERROR,
+            provider="fal",
+            model="flux-schnell"
+        ))
+        
+        # Fallback 适配器成功
+        fallback_adapter = MagicMock()
+        fallback_adapter.generate_image = AsyncMock(return_value=AIResponse(
+            success=True,
+            content=["https://example.com/fb.png"],
+            model="flux-dev",
+            provider="fal"
+        ))
+        
+        mock_get_adapter.side_effect = [failed_adapter, fallback_adapter]
+        
+        response = await unified_image_service.generate(
+            prompt="A cat",
+            tier="free"
+        )
+        
+        assert response.success is True
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('services.ai.unified_image_service.get_image_adapter')
+    @patch('services.ai.unified_image_service.should_use_canary')
+    @patch('services.ai.unified_image_service.get_image_model_config')
+    async def test_image_to_image_adapter_not_available(
+        self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
+    ):
+        """【业务规则】image_to_image 适配器不可用返回错误"""
+        from services.ai.unified_image_service import unified_image_service
+        
+        mock_get_config.return_value = {"provider": "fal", "model": "flux-dev"}
+        mock_should_canary.return_value = (False, None)
+        mock_get_adapter.return_value = None
+        
+        response = await unified_image_service.image_to_image(
+            prompt="Make it colorful",
+            image_url="https://example.com/ref.png"
+        )
+        
+        assert response.success is False
+        assert response.error_type == AIErrorType.AUTH_ERROR
+
+
+class TestUnifiedImageConvenienceFunctions:
+    """UnifiedImageService 便捷函数测试"""
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.unified_image_service.generate')
+    async def test_generate_image_convenience(self, mock_generate):
+        """【业务规则】generate_image 便捷函数"""
+        from services.ai.unified_image_service import generate_image
+        
+        mock_generate.return_value = AIResponse(
+            success=True,
+            content=["https://example.com/img.png"]
+        )
+        
+        response = await generate_image(
+            prompt="A cat",
+            user_id="user_123",
+            tier="pro"
+        )
+        
+        assert response.success is True
+        mock_generate.assert_called_once()
+    
+    @pytest.mark.asyncio
+    @patch('services.ai.unified_image_service.unified_image_service.image_to_image')
+    async def test_image_to_image_convenience(self, mock_i2i):
+        """【业务规则】image_to_image 便捷函数"""
+        from services.ai.unified_image_service import image_to_image
+        
+        mock_i2i.return_value = AIResponse(
+            success=True,
+            content=["https://example.com/edited.png"]
+        )
+        
+        response = await image_to_image(
+            prompt="Make colorful",
+            image_url="https://example.com/ref.png",
+            user_id="user_123",
+            tier="pro"
+        )
+        
+        assert response.success is True
+        mock_i2i.assert_called_once()
 
 
 # ==========================================
