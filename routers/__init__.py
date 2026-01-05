@@ -26,6 +26,10 @@ from .users import router as users_router
 # New routers (v3.24 refactoring)
 from .webhooks import router as webhooks_router
 from .logs import router as logs_router
+from .generation import router as generation_router
+from .tasks import router as tasks_router
+from .generations import router as generations_router
+from .templates import router as templates_router
 
 __all__ = [
     'admin_router',
@@ -39,4 +43,8 @@ __all__ = [
     'users_router',
     'webhooks_router',
     'logs_router',
+    'generation_router',
+    'tasks_router',
+    'generations_router',
+    'templates_router',
 ]
