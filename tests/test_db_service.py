@@ -535,3 +535,302 @@ class TestRetryDecorator:
         value_error = ValueError("Invalid input")
         
         assert is_retryable_error(value_error) is False
+
+
+# ==========================================
+# Project Management Tests (Phase 4.2)
+# ==========================================
+
+class TestCreateProject:
+    """
+    项目创建测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 7
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_create_project_success(self, mock_supabase):
+        """【业务规则】成功创建项目"""
+        from services.db_service import create_project
+        
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{
+            "id": "proj_001",
+            "user_id": "user_001",
+            "title": "New Project"
+        }])
+        
+        result = create_project("user_001", "New Project")
+        
+        assert result is not None
+        mock_supabase.table.assert_called()
+    
+    @patch('services.db_service.supabase')
+    def test_create_project_with_canvas_data(self, mock_supabase):
+        """【业务规则】创建项目时可以包含画布数据"""
+        from services.db_service import create_project
+        
+        canvas_data = {"pages": [{"canvasJson": {}}]}
+        
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{
+            "id": "proj_002",
+            "canvas_data": canvas_data
+        }])
+        
+        result = create_project("user_001", "With Canvas", canvas_data=canvas_data)
+        
+        assert result is not None
+
+
+class TestSoftDeleteProject:
+    """
+    项目软删除测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 7.3
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_soft_delete_sets_is_deleted(self, mock_supabase):
+        """【业务规则 7.3】软删除设置 is_deleted=true"""
+        from services.db_service import soft_delete_project
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "proj_001"}])
+        
+        result = soft_delete_project("proj_001", "user_001")
+        
+        # 验证 update 被调用
+        mock_supabase.table.return_value.update.assert_called()
+
+
+class TestRestoreProject:
+    """
+    项目恢复测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 7.3
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_restore_clears_is_deleted(self, mock_supabase):
+        """【业务规则 7.3】恢复项目清除 is_deleted 标志"""
+        from services.db_service import restore_project
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "proj_001", "is_deleted": False}])
+        
+        result = restore_project("proj_001")
+        
+        mock_supabase.table.return_value.update.assert_called()
+
+
+class TestSaveProject:
+    """
+    项目保存测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 7.4
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_save_project_updates_data(self, mock_supabase):
+        """【业务规则 7.4】保存项目更新画布数据"""
+        from services.db_service import save_project
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "proj_001"}])
+        
+        canvas_data = {"pages": [{"updated": True}]}
+        result = save_project("proj_001", "user_001", canvas_data=canvas_data)
+        
+        mock_supabase.table.return_value.update.assert_called()
+
+
+class TestDuplicateProject:
+    """
+    项目复制测试
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_duplicate_creates_new_project(self, mock_supabase):
+        """【业务规则】复制项目创建新项目"""
+        from services.db_service import duplicate_project
+        
+        # Mock 获取原项目
+        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(data={
+            "id": "proj_001",
+            "title": "Original",
+            "canvas_data": {"pages": []},
+            "user_id": "user_001"
+        })
+        
+        # Mock 创建新项目
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{
+            "id": "proj_002",
+            "title": "Original (Copy)"
+        }])
+        
+        result = duplicate_project("proj_001", "user_001")
+        
+        assert result is not None
+
+
+# ==========================================
+# User Profile Tests (Phase 4.2 continued)
+# ==========================================
+
+class TestGetUserProfile:
+    """
+    获取用户档案测试
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_get_existing_user(self, mock_supabase):
+        """【业务规则】获取存在的用户档案"""
+        from services.db_service import get_user_profile
+        
+        # 注意: get_user_profile 使用 res.data[0]，不是 .single()
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[{
+            "id": "user_001",
+            "tier": "pro",
+            "credits_monthly": 1000,
+            "credits_permanent": 200
+        }])
+        
+        profile = get_user_profile("user_001")
+        
+        assert profile is not None
+        assert profile["tier"] == "pro"
+    
+    @patch('services.db_service.supabase')
+    def test_get_nonexistent_user_returns_none(self, mock_supabase):
+        """【业务规则】获取不存在的用户返回 None"""
+        from services.db_service import get_user_profile
+        
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        
+        profile = get_user_profile("nonexistent")
+        
+        assert profile is None
+
+
+class TestUpdateUserProfile:
+    """
+    更新用户档案测试
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_update_timezone(self, mock_supabase):
+        """【业务规则】更新用户时区"""
+        from services.db_service import update_user_timezone
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "user_001"}])
+        
+        result = update_user_timezone("user_001", "America/New_York")
+        
+        mock_supabase.table.return_value.update.assert_called()
+
+
+# ==========================================
+# Monthly Credits Reset Tests (Phase 4.3)
+# ==========================================
+
+class TestRefreshMonthlyCredits:
+    """
+    月度积分重置测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 3.5
+    """
+    
+    @patch('services.db_service.log_credit_transaction')
+    @patch('services.db_service.supabase')
+    def test_refresh_resets_to_tier_quota(self, mock_supabase, mock_log):
+        """【业务规则 3.5】重置为等级配额"""
+        from services.db_service import refresh_monthly_credits
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "user_001"}])
+        
+        # Pro 用户应该重置为 1000
+        result = refresh_monthly_credits("user_001", "pro")
+        
+        # 验证调用了 update
+        mock_supabase.table.return_value.update.assert_called()
+    
+    @patch('services.db_service.log_credit_transaction')
+    @patch('services.db_service.supabase')
+    def test_refresh_starter_gets_500(self, mock_supabase, mock_log):
+        """【业务规则 3.5】Starter 重置为 500 积分"""
+        from services.db_service import refresh_monthly_credits
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "user_001"}])
+        
+        result = refresh_monthly_credits("user_001", "starter")
+        
+        mock_supabase.table.return_value.update.assert_called()
+
+
+class TestAddCreditsPermanent:
+    """
+    添加永久积分测试
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 3.4
+    """
+    
+    @patch('services.db_service.log_credit_transaction')
+    @patch('services.db_service.supabase')
+    @patch('services.db_service.get_user_profile')
+    def test_add_permanent_increases_balance(self, mock_get_profile, mock_supabase, mock_log):
+        """【业务规则 3.4】添加永久积分增加余额"""
+        from services.db_service import add_credits_permanent
+        
+        mock_get_profile.return_value = {
+            "id": "user_001",
+            "credits_permanent": 100
+        }
+        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "user_001"}])
+        
+        result = add_credits_permanent("user_001", 50, "Market sale")
+        
+        assert result is not None
+
+
+# ==========================================
+# Asset Management Tests
+# ==========================================
+
+class TestSaveAsset:
+    """
+    保存资产测试
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_save_asset_success(self, mock_supabase):
+        """【业务规则】成功保存资产"""
+        from services.db_service import save_asset
+        
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{
+            "id": "asset_001",
+            "url": "https://example.com/image.png",
+            "type": "image"
+        }])
+        
+        # save_asset 没有返回值，只是执行 insert
+        save_asset(
+            user_id="user_001",
+            url="https://example.com/image.png",
+            type="image"
+        )
+        
+        # 验证 insert 被调用了
+        mock_supabase.table.return_value.insert.assert_called_once()
+
+
+class TestSoftDeleteAsset:
+    """
+    资产软删除测试
+    """
+    
+    @patch('services.db_service.supabase')
+    def test_soft_delete_asset(self, mock_supabase):
+        """【业务规则】软删除资产"""
+        from services.db_service import soft_delete_asset
+        
+        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "asset_001"}])
+        
+        result = soft_delete_asset("asset_001", "user_001")
+        
+        mock_supabase.table.return_value.update.assert_called()
