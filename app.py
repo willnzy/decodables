@@ -3,9 +3,11 @@ import logging
 import jwt # requires pyjwt
 import traceback
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form, Query
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Request, Header, Depends, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+import uuid
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from io import BytesIO
@@ -137,6 +139,9 @@ from services.payment_service import (
     create_refund, get_payment_intent_details
 )
 from services.ai.image_generator import generate_8_images
+# v3.23: Task Queue and WebSocket for async generation
+from services.task_queue import task_queue, progress_tracker
+from services.websocket import ws_manager
 from services.ai.zine_generator import create_foldable_book, create_assets_zip
 from services.ai.story_generator import generate_story_json, client as openai_client # reuse client
 from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
@@ -2098,6 +2103,323 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     )
     
     return response
+
+
+# ==========================================
+# Async Image Generation API (v3.23)
+# 异步图片生成 - 使用任务队列
+# ==========================================
+
+@app.post("/api/generate/images/async")
+@limiter.limit("10/minute")
+async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = Depends(get_current_user)):
+    """
+    Async image generation using task queue (v3.23).
+    
+    Returns immediately with task_id for progress tracking.
+    Use WebSocket (/ws/task/{task_id}) or polling (/api/tasks/{task_id}) for status.
+    
+    Model selection based on tier:
+    - Free/Starter: Standard model (flux-schnell)
+    - Pro: High-quality model (flux-dev)
+    
+    Priority queue based on tier:
+    - Pro: High priority
+    - Starter: Normal priority
+    - Free: Low priority
+    """
+    # Safety check
+    blacklist = ["nsfw", "nude", "sex"]
+    if any(w in p.lower() for p in req.prompts for w in blacklist):
+        raise HTTPException(400, "Safety Violation")
+    
+    # Validate and clamp num_images (1-4)
+    num_images = max(1, min(4, req.num_images or 1))
+    
+    # Reference image costs extra (7 credits vs 5)
+    base_cost = 7 if req.reference_image else 5
+    cost = len(req.prompts) * base_cost * num_images
+    
+    # Deduct credits FIRST (before queueing)
+    try:
+        result = credit_deduct(user["id"], cost, "generation", 
+            f"Async gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""))
+    except Exception as e:
+        if "INSUFFICIENT" in str(e):
+            raise HTTPException(402, "Insufficient credits")
+        raise HTTPException(500, str(e))
+    
+    # Get tier for priority and model selection
+    tier = (user.get("tier") or "free").lower()
+    model = "flux-dev" if tier == "pro" else "flux-schnell"
+    
+    # Get generation parameters
+    generation_mode = req.generation_mode or "guided"
+    if generation_mode not in ["guided", "flexible"]:
+        generation_mode = "guided"
+    
+    creativity_level = req.creativity_level if req.creativity_level is not None else 0.3
+    creativity_level = max(0.0, min(1.0, creativity_level))
+    
+    # Prepare prompts (with optional enhancement)
+    prompts_to_use = req.prompts
+    enhancement_result = None
+    
+    if req.theme:
+        try:
+            enhancement_result = enhance_prompt(
+                theme=req.theme,
+                character=req.character,
+                style=req.style or "cartoon",
+                mode=generation_mode,
+                creativity_level=creativity_level,
+                user_id=user["id"],
+                tier=tier
+            )
+            prompts_to_use = [enhancement_result["enhanced_prompt"]]
+        except Exception as e:
+            logger.warning(f"Prompt enhancement failed, using original: {e}")
+    
+    elif req.who and req.enhance_prompt:
+        try:
+            enhancement_result = enhance_asset_prompt(
+                who=req.who,
+                what=req.what,
+                where=req.where,
+                style=req.style or "cartoon",
+                moods=req.moods,
+                mode=generation_mode,
+                creativity_level=creativity_level,
+                user_id=user["id"],
+                tier=tier
+            )
+            prompts_to_use = [enhancement_result["enhanced_prompt"]]
+        except Exception as e:
+            logger.warning(f"5W1H prompt enhancement failed, using original: {e}")
+    
+    # Generate unique task ID
+    task_id = f"gen_{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4().hex[:8]}"
+    
+    # Build task parameters
+    task_params = {
+        "prompts": prompts_to_use,
+        "model": model,
+        "reference_image": req.reference_image,
+        "reference_strength": req.reference_strength or 0.7,
+        "image_size": req.image_size or "landscape_4_3",
+        "generation_mode": generation_mode,
+        "creativity_level": creativity_level,
+        "negative_prompt": req.negative_prompt,
+        "num_images": num_images,
+        "project_id": req.project_id,
+        "credits_charged": cost,
+    }
+    
+    # Save task to database for tracking
+    tz = get_request_timezone(request, user_id=user.get("id"))
+    try:
+        supabase.rpc("create_generation_task", {
+            "p_task_id": task_id,
+            "p_user_id": user["id"],
+            "p_task_type": "image_generation",
+            "p_params": task_params,
+            "p_priority": 2 if tier == "pro" else (1 if tier == "starter" else 0),
+            "p_total_steps": len(prompts_to_use) * num_images,
+        }).execute()
+    except Exception as e:
+        logger.warning(f"Failed to save task to DB: {e}")
+    
+    # Enqueue task
+    enqueued_task_id = task_queue.enqueue_image_generation(
+        user_id=user["id"],
+        params=task_params,
+        tier=tier,
+        idempotency_key=task_id
+    )
+    
+    if not enqueued_task_id:
+        # Queue failed - refund credits and return error
+        logger.error(f"[AsyncGen] Failed to enqueue task {task_id}")
+        try:
+            add_credits(user["id"], cost, "refund", "Generation task queue failed")
+        except Exception as e:
+            logger.error(f"Failed to refund credits: {e}")
+        raise HTTPException(503, "Generation service temporarily unavailable. Credits refunded.")
+    
+    # Track analytics
+    track_ai_generation(
+        user_id=user["id"],
+        success=True,
+        model=model,
+        cost_credits=base_cost,
+        duration_ms=0,  # Will be updated when task completes
+        extra_properties={
+            "async": True,
+            "task_id": task_id,
+            "num_images": num_images,
+            "generation_mode": generation_mode,
+            "has_reference": bool(req.reference_image),
+        }
+    )
+    
+    # Return immediately with task info
+    response = {
+        "task_id": task_id,
+        "status": "queued",
+        "message": f"Task queued for {len(prompts_to_use) * num_images} images",
+        "credits_charged": cost,
+        "balance": result["total"],
+        "balance_monthly": result["balance_monthly"],
+        "balance_permanent": result["balance_permanent"],
+        "websocket_url": f"/ws/task/{task_id}",
+        "poll_url": f"/api/tasks/{task_id}",
+        "model_used": model,
+        "priority": "high" if tier == "pro" else ("normal" if tier == "starter" else "low"),
+    }
+    
+    if enhancement_result:
+        response["enhanced_prompt"] = enhancement_result.get("enhanced_prompt")
+    
+    return response
+
+
+# ==========================================
+# Task Status API (v3.23)
+# 任务状态查询
+# ==========================================
+
+@app.get("/api/tasks/{task_id}")
+@limiter.limit("60/minute")
+async def get_task_status(request: Request, task_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get task status and progress.
+    
+    Returns:
+        - status: pending, queued, processing, completed, failed, cancelled
+        - progress: 0-100
+        - current_step/total_steps: for progress bar
+        - result: image URLs when completed
+        - error: error message if failed
+    """
+    # Get status from progress tracker (Redis)
+    status = progress_tracker.get_status(task_id)
+    
+    if not status:
+        # Try database as fallback
+        try:
+            result = supabase.rpc("get_task_details", {
+                "p_task_id": task_id,
+                "p_user_id": user["id"]
+            }).execute()
+            
+            if result.data and result.data.get("success"):
+                return result.data
+        except Exception as e:
+            logger.warning(f"Failed to get task from DB: {e}")
+        
+        raise HTTPException(404, "Task not found")
+    
+    return status
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+@limiter.limit("10/minute")
+async def cancel_task(request: Request, task_id: str, user: dict = Depends(get_current_user)):
+    """
+    Cancel a pending or queued task.
+    
+    Only tasks that haven't started processing can be cancelled.
+    Credits will be refunded for cancelled tasks.
+    """
+    # Check task ownership and status
+    status = progress_tracker.get_status(task_id)
+    
+    if not status:
+        raise HTTPException(404, "Task not found")
+    
+    if status.get("status") not in ("pending", "queued"):
+        raise HTTPException(400, f"Cannot cancel task in '{status.get('status')}' status")
+    
+    # Attempt cancellation
+    if task_queue.cancel_task(task_id, user["id"]):
+        # Get task params for refund
+        try:
+            result = supabase.table("generation_tasks").select("params").eq(
+                "task_id", task_id
+            ).eq("user_id", user["id"]).single().execute()
+            
+            if result.data:
+                credits_charged = result.data.get("params", {}).get("credits_charged", 0)
+                if credits_charged > 0:
+                    add_credits(user["id"], credits_charged, "refund", f"Cancelled task {task_id}")
+                    
+                    return {
+                        "status": "cancelled",
+                        "task_id": task_id,
+                        "credits_refunded": credits_charged,
+                        "message": "Task cancelled and credits refunded"
+                    }
+        except Exception as e:
+            logger.warning(f"Failed to refund credits for cancelled task: {e}")
+        
+        return {
+            "status": "cancelled",
+            "task_id": task_id,
+            "message": "Task cancelled"
+        }
+    
+    raise HTTPException(400, "Failed to cancel task")
+
+
+# ==========================================
+# WebSocket for Real-time Task Progress (v3.23)
+# WebSocket 实时进度推送
+# ==========================================
+
+@app.websocket("/ws/task/{task_id}")
+async def task_websocket(websocket: WebSocket, task_id: str):
+    """
+    WebSocket endpoint for real-time task progress updates.
+    
+    Messages sent to client:
+    - {"type": "status", ...}: Current task status
+    - {"type": "progress", ...}: Progress update with percentage
+    - {"type": "completed", ...}: Task completed with result
+    - {"type": "failed", ...}: Task failed with error
+    - {"type": "heartbeat", ...}: Keep-alive ping
+    
+    Messages from client:
+    - {"type": "ping"}: Heartbeat request
+    - {"type": "cancel"}: Request task cancellation
+    """
+    # Note: WebSocket auth can be implemented via query param or initial message
+    # For now, we allow any connection to subscribe to a task_id
+    # The task_id itself serves as a form of authorization (hard to guess)
+    
+    await ws_manager.handle_task_connection(websocket, task_id)
+
+
+# ==========================================
+# Queue Stats API (Admin) (v3.23)
+# 队列统计 (管理员)
+# ==========================================
+
+@app.get("/api/admin/queue/stats")
+@limiter.limit("30/minute")
+async def get_queue_stats(request: Request, user: dict = Depends(get_current_user)):
+    """
+    Get task queue statistics (admin only).
+    """
+    if not user.get("is_admin"):
+        raise HTTPException(403, "Admin access required")
+    
+    queue_stats = task_queue.get_queue_stats()
+    ws_stats = ws_manager.get_stats()
+    
+    return {
+        "queue": queue_stats,
+        "websocket": ws_stats,
+    }
 
 
 # ==========================================
