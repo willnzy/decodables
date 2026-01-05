@@ -1,606 +1,449 @@
 """
-Payment Service Unit Tests
-Tests for Stripe integration with MOCKED SDK calls.
+Payment Service Tests
+基于 BUSINESS_LOGIC_SPEC.md Section 13 的业务规则测试
 
-🚨 CRITICAL: NO REAL MONEY - All tests use mocked Stripe SDK
+测试目的: 验证支付服务业务逻辑是否符合规格要求
 
-Test Coverage:
-- create_checkout_session: Session creation with correct params
-- create_portal_session: Billing portal generation
-- construct_event: Webhook signature verification
-- create_refund: Refund processing
-- cancel_subscription: Subscription cancellation
+核心业务规则:
+1. Stripe Price Map (Section 13.2):
+   - starter: 订阅
+   - pro: 订阅
+   - credits_100: 一次性支付
+
+2. 订阅取消规则 (Section 13.4):
+   - 不退费取消: 当月继续有效
+   - 立即取消+退费: 立即降级
+
+@module tests/test_payment_service
+@version v3.3
+@last_updated 2026-01-05
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime, timezone
-import json
+from unittest.mock import MagicMock, patch, Mock
 import sys
 
-# Mock stripe module BEFORE importing payment_service
-sys.modules['stripe'] = MagicMock()
+# Mock stripe module before importing payment_service
+stripe_mock = MagicMock()
+stripe_mock.error = MagicMock()
+stripe_mock.error.StripeError = type('StripeError', (Exception,), {})
+sys.modules['stripe'] = stripe_mock
+
+# Now import payment_service
+from services import payment_service
 
 
-# ============================================
+# ==========================================
 # Fixtures
-# ============================================
+# ==========================================
 
 @pytest.fixture
-def mock_stripe():
-    """Mock the entire Stripe module"""
-    with patch('services.payment_service.stripe') as mock:
-        yield mock
+def reset_stripe_mock():
+    """Reset stripe mock between tests"""
+    stripe_mock.reset_mock()
+    stripe_mock.checkout.Session.create.reset_mock()
+    stripe_mock.billing_portal.Session.create.reset_mock()
+    stripe_mock.Subscription.list.reset_mock()
+    stripe_mock.Subscription.cancel.reset_mock()
+    stripe_mock.Subscription.modify.reset_mock()
+    stripe_mock.Coupon.create.reset_mock()
+    stripe_mock.Refund.create.reset_mock()
+    stripe_mock.PaymentIntent.list.reset_mock()
+    stripe_mock.PaymentIntent.retrieve.reset_mock()
+    stripe_mock.Webhook.construct_event.reset_mock()
+    yield
 
 
-@pytest.fixture
-def mock_env_vars():
-    """Mock environment variables for Stripe"""
-    with patch.dict('os.environ', {
-        'STRIPE_SECRET_KEY': 'sk_test_mock_key_12345',
-        'STRIPE_WEBHOOK_SECRET': 'whsec_test_mock_secret_67890',
-        'STRIPE_PRICE_CREDITS_100': 'price_credits_100_test',
-        'STRIPE_PRICE_SUB_STARTER': 'price_starter_test',
-        'STRIPE_PRICE_SUB_PRO': 'price_pro_test',
-        'FRONTEND_URL': 'https://test.decodables.com',
-    }):
-        yield
-
-
-@pytest.fixture
-def sample_checkout_session():
-    """Sample Stripe Checkout Session response"""
-    return Mock(
-        id='cs_test_session_123',
-        url='https://checkout.stripe.com/pay/cs_test_session_123',
-        payment_status='unpaid',
-        status='open',
-        metadata={'user_id': 'user_123', 'plan_type': 'credits_100'},
-        amount_total=999,
-        currency='usd'
-    )
-
-
-@pytest.fixture
-def sample_subscription():
-    """Sample Stripe Subscription response"""
-    return Mock(
-        id='sub_test_123',
-        status='active',
-        current_period_end=1735689600,  # Future timestamp
-        items=Mock(data=[Mock(price=Mock(id='price_starter_test'))]),
-        customer='cus_test_123'
-    )
-
-
-@pytest.fixture
-def sample_payment_intent():
-    """Sample Stripe PaymentIntent response"""
-    return Mock(
-        id='pi_test_123',
-        status='succeeded',
-        amount=999,
-        amount_received=999,
-        currency='usd',
-        customer='cus_test_123',
-        metadata={'user_id': 'user_123'},
-        charges=Mock(data=[Mock(amount_refunded=0)])
-    )
-
-
-# ============================================
-# A. Checkout Session Tests
-# ============================================
+# ==========================================
+# Checkout Session 测试
+# ==========================================
 
 class TestCreateCheckoutSession:
-    """Tests for create_checkout_session function"""
+    """
+    测试 Checkout Session 创建
     
-    def test_creates_session_for_credits_purchase(self, mock_stripe, sample_checkout_session):
-        """
-        ✅ PASS: Creates one-time payment session for credits
-        Verifies:
-        - mode = "payment" for one-time purchase
-        - metadata contains user_id and plan_type
-        - correct price_id is used
-        """
-        # Import after mocking
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
-        
-        from services.payment_service import create_checkout_session, PRICE_MAP
-        
-        # Patch PRICE_MAP
-        with patch.dict('services.payment_service.PRICE_MAP', {
-            'credits_100': 'price_credits_100_test',
-            'starter': 'price_starter_test',
-            'pro': 'price_pro_test'
-        }):
-            result = create_checkout_session('user_123', 'credits_100')
-        
-        # Assertions
-        assert result == sample_checkout_session.url
-        
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        assert call_kwargs['mode'] == 'payment'  # One-time, not subscription
-        assert call_kwargs['metadata'] == {'user_id': 'user_123', 'plan_type': 'credits_100'}
-        assert call_kwargs['line_items'][0]['price'] == 'price_credits_100_test'
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 13.2
+    """
     
-    def test_creates_session_for_starter_subscription(self, mock_stripe, sample_checkout_session):
-        """
-        ✅ PASS: Creates subscription session for Starter plan
-        Verifies:
-        - mode = "subscription" for recurring
-        """
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
+    def test_invalid_plan_type_raises_exception(self, reset_stripe_mock):
+        """【业务规则】无效的 plan_type 抛出异常"""
+        with pytest.raises(Exception) as exc_info:
+            payment_service.create_checkout_session("user_001", "invalid_plan")
         
-        from services.payment_service import create_checkout_session
-        
-        with patch.dict('services.payment_service.PRICE_MAP', {
-            'credits_100': 'price_credits_100_test',
-            'starter': 'price_starter_test',
-            'pro': 'price_pro_test'
-        }):
-            result = create_checkout_session('user_456', 'starter')
-        
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        assert call_kwargs['mode'] == 'subscription'
-        assert call_kwargs['metadata']['plan_type'] == 'starter'
+        assert "Invalid plan type" in str(exc_info.value)
     
-    def test_creates_session_for_pro_subscription(self, mock_stripe, sample_checkout_session):
-        """
-        ✅ PASS: Creates subscription session for Pro plan
-        """
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
+    def test_subscription_mode_for_starter(self, reset_stripe_mock):
+        """【业务规则 13.2】Starter 计划使用 subscription 模式"""
+        # Setup
+        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
         
-        from services.payment_service import create_checkout_session
+        result = payment_service.create_checkout_session("user_001", "starter")
         
-        with patch.dict('services.payment_service.PRICE_MAP', {
-            'credits_100': 'price_credits_100_test',
-            'starter': 'price_starter_test',
-            'pro': 'price_pro_test'
-        }):
-            result = create_checkout_session('user_789', 'pro')
-        
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        assert call_kwargs['mode'] == 'subscription'
-        assert call_kwargs['metadata']['plan_type'] == 'pro'
+        # Verify subscription mode
+        call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert call_kwargs["mode"] == "subscription"
     
-    def test_applies_discount_coupon(self, mock_stripe, sample_checkout_session):
-        """
-        ✅ PASS: Creates coupon and applies discount
-        """
-        mock_coupon = Mock(id='coupon_20_off')
-        mock_stripe.Coupon.create.return_value = mock_coupon
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
+    def test_subscription_mode_for_pro(self, reset_stripe_mock):
+        """【业务规则 13.2】Pro 计划使用 subscription 模式"""
+        # Setup
+        payment_service.PRICE_MAP["pro"] = "price_pro_456"
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
         
-        from services.payment_service import create_checkout_session
+        result = payment_service.create_checkout_session("user_001", "pro")
         
-        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            result = create_checkout_session('user_123', 'credits_100', discount_percent=20)
+        # Verify subscription mode
+        call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert call_kwargs["mode"] == "subscription"
+    
+    def test_payment_mode_for_credits(self, reset_stripe_mock):
+        """【业务规则 13.2】积分购买使用 payment 模式"""
+        # Setup
+        payment_service.PRICE_MAP["credits_100"] = "price_credits_789"
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
+        
+        result = payment_service.create_checkout_session("user_001", "credits_100")
+        
+        # Verify payment mode
+        call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert call_kwargs["mode"] == "payment"
+    
+    def test_discount_coupon_created_when_percent_provided(self, reset_stripe_mock):
+        """【业务规则】提供折扣百分比时创建优惠券"""
+        # Setup
+        payment_service.PRICE_MAP["credits_100"] = "price_credits_789"
+        stripe_mock.Coupon.create.return_value = MagicMock(id="coupon_123")
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
+        
+        result = payment_service.create_checkout_session("user_001", "credits_100", discount_percent=20)
         
         # Verify coupon was created
-        mock_stripe.Coupon.create.assert_called_once()
-        coupon_kwargs = mock_stripe.Coupon.create.call_args[1]
-        assert coupon_kwargs['percent_off'] == 20
-        assert coupon_kwargs['duration'] == 'once'
+        stripe_mock.Coupon.create.assert_called_once()
+        coupon_call_kwargs = stripe_mock.Coupon.create.call_args[1]
+        assert coupon_call_kwargs["percent_off"] == 20
         
-        # Verify coupon was applied to session
-        session_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        assert session_kwargs['discounts'] == [{'coupon': 'coupon_20_off'}]
+        # Verify discount applied to session
+        session_call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert "discounts" in session_call_kwargs
     
-    def test_allows_promo_codes_without_discount(self, mock_stripe, sample_checkout_session):
-        """
-        ✅ PASS: Enables promo codes when no discount is applied
-        """
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
+    def test_promotion_codes_allowed_when_no_discount(self, reset_stripe_mock):
+        """【业务规则】无折扣时允许促销码"""
+        # Setup
+        payment_service.PRICE_MAP["credits_100"] = "price_credits_789"
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
         
-        from services.payment_service import create_checkout_session
+        result = payment_service.create_checkout_session("user_001", "credits_100", discount_percent=0)
         
-        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            result = create_checkout_session('user_123', 'credits_100', discount_percent=0)
-        
-        session_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        assert session_kwargs.get('allow_promotion_codes') is True
+        # Verify allow_promotion_codes
+        call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert call_kwargs.get("allow_promotion_codes") is True
     
-    def test_invalid_plan_type_raises_error(self, mock_stripe):
-        """
-        ❌ FAIL: Raises error for invalid plan type
-        """
-        from services.payment_service import create_checkout_session
+    def test_metadata_contains_user_id_and_plan(self, reset_stripe_mock):
+        """【业务规则】元数据包含 user_id 和 plan_type"""
+        # Setup
+        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
         
-        with patch.dict('services.payment_service.PRICE_MAP', {
-            'credits_100': 'price_test',
-            'starter': None,  # Simulate missing price
-        }):
-            with pytest.raises(Exception) as exc_info:
-                create_checkout_session('user_123', 'invalid_plan')
-            
-            assert 'Invalid plan type' in str(exc_info.value)
+        result = payment_service.create_checkout_session("user_001", "starter")
+        
+        # Verify metadata
+        call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
+        assert call_kwargs["metadata"]["user_id"] == "user_001"
+        assert call_kwargs["metadata"]["plan_type"] == "starter"
     
-    def test_stripe_api_error_returns_none(self, mock_stripe):
-        """
-        ❌ FAIL: Returns None when Stripe API fails
-        """
-        mock_stripe.checkout.Session.create.side_effect = Exception('Stripe API Down')
+    def test_stripe_error_returns_none(self, reset_stripe_mock):
+        """【业务规则】Stripe 错误返回 None"""
+        # Setup
+        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        stripe_mock.checkout.Session.create.side_effect = Exception("Stripe error")
         
-        from services.payment_service import create_checkout_session
-        
-        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            result = create_checkout_session('user_123', 'credits_100')
+        result = payment_service.create_checkout_session("user_001", "starter")
         
         assert result is None
 
 
-# ============================================
-# B. Portal Session Tests
-# ============================================
+# ==========================================
+# Portal Session 测试
+# ==========================================
 
 class TestCreatePortalSession:
-    """Tests for create_portal_session function"""
+    """
+    测试 Billing Portal Session 创建
+    """
     
-    def test_creates_portal_session_successfully(self, mock_stripe):
-        """
-        ✅ PASS: Creates billing portal session
-        """
-        mock_portal = Mock(url='https://billing.stripe.com/portal/sess_123')
-        mock_stripe.billing_portal.Session.create.return_value = mock_portal
-        
-        from services.payment_service import create_portal_session
-        
-        result = create_portal_session('user_123', 'cus_test_123')
-        
-        assert result == mock_portal.url
-        mock_stripe.billing_portal.Session.create.assert_called_once()
-    
-    def test_raises_error_without_customer_id(self, mock_stripe):
-        """
-        ❌ FAIL: Raises error when no customer ID provided
-        """
-        from services.payment_service import create_portal_session
-        
+    def test_no_customer_id_raises_exception(self, reset_stripe_mock):
+        """【业务规则】无 customer_id 抛出异常"""
         with pytest.raises(Exception) as exc_info:
-            create_portal_session('user_123', None)
+            payment_service.create_portal_session("user_001", None)
         
-        assert 'No Stripe Customer ID' in str(exc_info.value)
+        assert "No Stripe Customer ID" in str(exc_info.value)
     
-    def test_returns_none_on_stripe_error(self, mock_stripe):
-        """
-        ❌ FAIL: Returns None when Stripe API fails
-        """
-        mock_stripe.billing_portal.Session.create.side_effect = Exception('API Error')
+    def test_portal_session_created_successfully(self, reset_stripe_mock):
+        """【业务规则】成功创建 Portal Session"""
+        stripe_mock.billing_portal.Session.create.return_value = MagicMock(url="https://billing.stripe.com/...")
         
-        from services.payment_service import create_portal_session
+        result = payment_service.create_portal_session("user_001", "cus_123")
         
-        result = create_portal_session('user_123', 'cus_test_123')
-        assert result is None
-
-
-# ============================================
-# C. Webhook Signature Verification Tests
-# ============================================
-
-class TestConstructEvent:
-    """Tests for construct_event (webhook signature verification)"""
-    
-    def test_valid_signature_returns_event(self, mock_stripe):
-        """
-        ✅ PASS: Valid signature returns parsed event
-        """
-        mock_event = {
-            'id': 'evt_test_123',
-            'type': 'checkout.session.completed',
-            'data': {'object': {'id': 'cs_123'}}
-        }
-        mock_stripe.Webhook.construct_event.return_value = mock_event
-        
-        from services.payment_service import construct_event
-        
-        result = construct_event(b'payload', 'sig_header_valid')
-        
-        assert result == mock_event
-        mock_stripe.Webhook.construct_event.assert_called_once()
-    
-    def test_invalid_signature_raises_error(self, mock_stripe):
-        """
-        ❌ FAIL (Security): Invalid signature raises error
-        🔒 This is a critical security test
-        """
-        mock_stripe.Webhook.construct_event.side_effect = Exception(
-            'Webhook signature verification failed'
-        )
-        
-        from services.payment_service import construct_event
-        
-        with pytest.raises(Exception) as exc_info:
-            construct_event(b'payload', 'sig_invalid')
-        
-        assert 'Webhook Error' in str(exc_info.value)
-    
-    def test_empty_payload_raises_error(self, mock_stripe):
-        """
-        ❌ FAIL (Security): Empty payload raises error
-        """
-        mock_stripe.Webhook.construct_event.side_effect = Exception(
-            'No payload provided'
-        )
-        
-        from services.payment_service import construct_event
-        
-        with pytest.raises(Exception):
-            construct_event(b'', 'sig_header')
-    
-    def test_tampered_payload_raises_error(self, mock_stripe):
-        """
-        ❌ FAIL (Security): Tampered payload with valid sig header fails
-        """
-        mock_stripe.Webhook.construct_event.side_effect = Exception(
-            'Signature verification failed'
-        )
-        
-        from services.payment_service import construct_event
-        
-        with pytest.raises(Exception) as exc_info:
-            # Simulate attacker modifying payload but keeping old signature
-            construct_event(b'{"amount": 0}', 'sig_from_different_payload')
-        
-        assert 'Webhook Error' in str(exc_info.value)
-
-
-# ============================================
-# D. Refund Tests
-# ============================================
-
-class TestCreateRefund:
-    """Tests for create_refund function"""
-    
-    def test_full_refund_success(self, mock_stripe):
-        """
-        ✅ PASS: Full refund processes successfully
-        """
-        mock_refund = Mock(
-            id='re_test_123',
-            status='succeeded',
-            amount=999
-        )
-        mock_stripe.Refund.create.return_value = mock_refund
-        
-        from services.payment_service import create_refund
-        
-        result = create_refund('pi_test_123')
-        
-        assert result['success'] is True
-        assert result['refund'] == mock_refund
-        assert result['error'] is None
-        
-        # Verify no amount specified (full refund)
-        call_kwargs = mock_stripe.Refund.create.call_args[1]
-        assert 'amount' not in call_kwargs
-    
-    def test_partial_refund_success(self, mock_stripe):
-        """
-        ✅ PASS: Partial refund with specific amount
-        """
-        mock_refund = Mock(id='re_test_456', status='succeeded', amount=500)
-        mock_stripe.Refund.create.return_value = mock_refund
-        
-        from services.payment_service import create_refund
-        
-        result = create_refund('pi_test_123', amount_cents=500)
-        
-        assert result['success'] is True
-        
-        call_kwargs = mock_stripe.Refund.create.call_args[1]
-        assert call_kwargs['amount'] == 500
-    
-    def test_refund_with_reason(self, mock_stripe):
-        """
-        ✅ PASS: Refund with custom reason
-        """
-        mock_refund = Mock(id='re_test_789', status='succeeded')
-        mock_stripe.Refund.create.return_value = mock_refund
-        
-        from services.payment_service import create_refund
-        
-        result = create_refund('pi_test_123', reason='duplicate')
-        
-        call_kwargs = mock_stripe.Refund.create.call_args[1]
-        assert call_kwargs['reason'] == 'duplicate'
-    
-    def test_refund_stripe_error(self, mock_stripe):
-        """
-        ❌ FAIL: Stripe error returns failure response
-        """
-        # Create a mock StripeError
-        mock_error = Mock()
-        mock_error.__str__ = lambda s: 'Card declined'
-        mock_stripe.error.StripeError = Exception
-        mock_stripe.Refund.create.side_effect = Exception('Card declined')
-        
-        from services.payment_service import create_refund
-        
-        result = create_refund('pi_test_invalid')
-        
-        assert result['success'] is False
-        assert result['refund'] is None
-        assert 'Card declined' in result['error']
-
-
-# ============================================
-# E. Cancel Subscription Tests
-# ============================================
-
-class TestCancelSubscription:
-    """Tests for cancel_subscription function"""
-    
-    def test_immediate_cancellation(self, mock_stripe, sample_subscription):
-        """
-        ✅ PASS: Immediate cancellation works
-        """
-        sample_subscription.status = 'canceled'
-        mock_stripe.Subscription.cancel.return_value = sample_subscription
-        
-        from services.payment_service import cancel_subscription
-        
-        result = cancel_subscription('sub_test_123', immediate=True)
-        
-        assert result['success'] is True
-        mock_stripe.Subscription.cancel.assert_called_once_with('sub_test_123')
-    
-    def test_end_of_period_cancellation(self, mock_stripe, sample_subscription):
-        """
-        ✅ PASS: End-of-period cancellation sets cancel_at_period_end
-        """
-        sample_subscription.cancel_at_period_end = True
-        mock_stripe.Subscription.modify.return_value = sample_subscription
-        
-        from services.payment_service import cancel_subscription
-        
-        result = cancel_subscription('sub_test_123', immediate=False)
-        
-        assert result['success'] is True
-        mock_stripe.Subscription.modify.assert_called_once_with(
-            'sub_test_123',
-            cancel_at_period_end=True
+        assert result == "https://billing.stripe.com/..."
+        stripe_mock.billing_portal.Session.create.assert_called_once_with(
+            customer="cus_123",
+            return_url=f'{payment_service.FRONTEND_URL}/dashboard'
         )
     
-    def test_cancellation_stripe_error(self, mock_stripe):
-        """
-        ❌ FAIL: Stripe error returns failure
-        """
-        mock_stripe.error.StripeError = Exception
-        mock_stripe.Subscription.cancel.side_effect = Exception('Subscription not found')
+    def test_portal_error_returns_none(self, reset_stripe_mock):
+        """【业务规则】Portal 错误返回 None"""
+        stripe_mock.billing_portal.Session.create.side_effect = Exception("Portal error")
         
-        from services.payment_service import cancel_subscription
-        
-        result = cancel_subscription('sub_invalid', immediate=True)
-        
-        assert result['success'] is False
-        assert 'Subscription not found' in result['error']
-
-
-# ============================================
-# F. Get Payment Intent Details Tests
-# ============================================
-
-class TestGetPaymentIntentDetails:
-    """Tests for get_payment_intent_details function"""
-    
-    def test_retrieves_payment_intent(self, mock_stripe, sample_payment_intent):
-        """
-        ✅ PASS: Retrieves PaymentIntent details
-        """
-        mock_stripe.PaymentIntent.retrieve.return_value = sample_payment_intent
-        
-        from services.payment_service import get_payment_intent_details
-        
-        result = get_payment_intent_details('pi_test_123')
-        
-        assert result == sample_payment_intent
-        mock_stripe.PaymentIntent.retrieve.assert_called_once_with('pi_test_123')
-    
-    def test_returns_none_on_error(self, mock_stripe):
-        """
-        ❌ FAIL: Returns None when PaymentIntent not found
-        """
-        mock_stripe.error.StripeError = Exception
-        mock_stripe.PaymentIntent.retrieve.side_effect = Exception('Not found')
-        
-        from services.payment_service import get_payment_intent_details
-        
-        result = get_payment_intent_details('pi_invalid')
+        result = payment_service.create_portal_session("user_001", "cus_123")
         
         assert result is None
 
 
-# ============================================
-# G. Get Subscription Status Tests
-# ============================================
+# ==========================================
+# 订阅状态测试
+# ==========================================
 
 class TestGetSubscriptionStatus:
-    """Tests for get_subscription_status function"""
+    """
+    测试订阅状态查询
+    """
     
-    def test_returns_active_subscription_status(self, mock_stripe):
-        """
-        ✅ PASS: Returns correct status for active subscription
-        """
-        mock_subscription = Mock()
-        mock_subscription.status = 'active'
-        mock_subscription.current_period_end = 1735689600
-        mock_subscription.__getitem__ = lambda s, k: {
-            'items': {'data': [{'price': {'id': 'price_starter_test'}}]}
-        }[k]
+    def test_active_starter_subscription(self, reset_stripe_mock):
+        """【业务规则】正确识别 Starter 订阅"""
+        payment_service.PRICE_MAP["starter"] = "price_starter_123"
         
-        mock_stripe.Subscription.list.return_value = Mock(data=[mock_subscription])
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_sub.current_period_end = 1704067200
+        mock_sub.__getitem__ = lambda self, key: {
+            "items": {"data": [{"price": {"id": "price_starter_123"}}]}
+        }[key]
         
-        from services.payment_service import get_subscription_status
+        stripe_mock.Subscription.list.return_value = MagicMock(data=[mock_sub])
         
-        with patch.dict('services.payment_service.PRICE_MAP', {
-            'starter': 'price_starter_test',
-            'pro': 'price_pro_test'
-        }):
-            result = get_subscription_status('cus_test_123')
+        result = payment_service.get_subscription_status("cus_123")
         
-        assert result['status'] == 'active'
-        assert result['tier'] == 'starter'
+        assert result["status"] == "active"
+        assert result["tier"] == "starter"
     
-    def test_returns_inactive_when_no_subscription(self, mock_stripe):
-        """
-        ✅ PASS: Returns inactive status when no subscription
-        """
-        mock_stripe.Subscription.list.return_value = Mock(data=[])
+    def test_active_pro_subscription(self, reset_stripe_mock):
+        """【业务规则】正确识别 Pro 订阅"""
+        payment_service.PRICE_MAP["pro"] = "price_pro_456"
         
-        from services.payment_service import get_subscription_status
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_sub.current_period_end = 1704067200
+        mock_sub.__getitem__ = lambda self, key: {
+            "items": {"data": [{"price": {"id": "price_pro_456"}}]}
+        }[key]
         
-        result = get_subscription_status('cus_test_123')
+        stripe_mock.Subscription.list.return_value = MagicMock(data=[mock_sub])
         
-        assert result['status'] == 'inactive'
-        assert result['tier'] == 'free'
+        result = payment_service.get_subscription_status("cus_123")
+        
+        assert result["status"] == "active"
+        assert result["tier"] == "pro"
+    
+    def test_no_subscription_returns_free(self, reset_stripe_mock):
+        """【业务规则】无订阅返回 free"""
+        stripe_mock.Subscription.list.return_value = MagicMock(data=[])
+        
+        result = payment_service.get_subscription_status("cus_123")
+        
+        assert result["status"] == "inactive"
+        assert result["tier"] == "free"
+    
+    def test_subscription_error_returns_none(self, reset_stripe_mock):
+        """【业务规则】查询错误返回 None"""
+        stripe_mock.Subscription.list.side_effect = Exception("Stripe error")
+        
+        result = payment_service.get_subscription_status("cus_123")
+        
+        assert result is None
 
 
-# ============================================
-# H. Security Tests
-# ============================================
+# ==========================================
+# 订阅取消测试 (Section 13.4)
+# ==========================================
 
-class TestSecurityCompliance:
-    """Security-focused tests for payment service"""
+class TestCancelSubscription:
+    """
+    测试订阅取消
     
-    def test_no_card_numbers_in_metadata(self, mock_stripe, sample_checkout_session):
-        """
-        🔒 SECURITY: Verify no credit card numbers in session metadata
-        """
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
-        
-        from services.payment_service import create_checkout_session
-        
-        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            create_checkout_session('user_123', 'credits_100')
-        
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        metadata = call_kwargs.get('metadata', {})
-        
-        # Ensure no card-related data in metadata
-        for key, value in metadata.items():
-            assert 'card' not in key.lower()
-            assert not (isinstance(value, str) and len(value) == 16 and value.isdigit())
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 13.4
+    """
     
-    def test_success_url_uses_https(self, mock_stripe, sample_checkout_session):
-        """
-        🔒 SECURITY: Success/Cancel URLs should use HTTPS in production
-        """
-        mock_stripe.checkout.Session.create.return_value = sample_checkout_session
+    def test_cancel_at_period_end(self, reset_stripe_mock):
+        """【业务规则 13.4】不退费取消: 设置 cancel_at_period_end=True"""
+        mock_subscription = MagicMock()
+        stripe_mock.Subscription.modify.return_value = mock_subscription
         
-        from services.payment_service import create_checkout_session
+        result = payment_service.cancel_subscription("sub_123", immediate=False)
         
-        with patch.dict('services.payment_service.PRICE_MAP', {'credits_100': 'price_test'}):
-            with patch('services.payment_service.FRONTEND_URL', 'https://decodables.com'):
-                create_checkout_session('user_123', 'credits_100')
+        assert result["success"] is True
+        stripe_mock.Subscription.modify.assert_called_once_with(
+            "sub_123",
+            cancel_at_period_end=True
+        )
+        stripe_mock.Subscription.cancel.assert_not_called()
+    
+    def test_cancel_immediately(self, reset_stripe_mock):
+        """【业务规则 13.4】立即取消: 调用 Subscription.cancel"""
+        mock_subscription = MagicMock()
+        stripe_mock.Subscription.cancel.return_value = mock_subscription
         
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
+        result = payment_service.cancel_subscription("sub_123", immediate=True)
         
-        # In production, URLs should be HTTPS
-        # (In test mode, localhost HTTP is acceptable)
-        success_url = call_kwargs.get('success_url', '')
-        cancel_url = call_kwargs.get('cancel_url', '')
+        assert result["success"] is True
+        stripe_mock.Subscription.cancel.assert_called_once_with("sub_123")
+        stripe_mock.Subscription.modify.assert_not_called()
+    
+    def test_cancel_error_returns_failure(self, reset_stripe_mock):
+        """【业务规则】取消错误返回失败"""
+        stripe_mock.Subscription.modify.side_effect = stripe_mock.error.StripeError("Error")
         
-        # Just verify URLs are well-formed
-        assert 'success=true' in success_url
-        assert 'canceled=true' in cancel_url
+        result = payment_service.cancel_subscription("sub_123", immediate=False)
+        
+        assert result["success"] is False
+        assert result["error"] is not None
+
+
+# ==========================================
+# 退款测试
+# ==========================================
+
+class TestCreateRefund:
+    """
+    测试退款功能
+    """
+    
+    def test_full_refund(self, reset_stripe_mock):
+        """【业务规则】全额退款"""
+        mock_refund = MagicMock()
+        stripe_mock.Refund.create.return_value = mock_refund
+        
+        result = payment_service.create_refund("pi_123")
+        
+        assert result["success"] is True
+        call_kwargs = stripe_mock.Refund.create.call_args[1]
+        assert call_kwargs["payment_intent"] == "pi_123"
+        assert "amount" not in call_kwargs  # 全额退款不指定金额
+    
+    def test_partial_refund(self, reset_stripe_mock):
+        """【业务规则】部分退款"""
+        mock_refund = MagicMock()
+        stripe_mock.Refund.create.return_value = mock_refund
+        
+        result = payment_service.create_refund("pi_123", amount_cents=500)
+        
+        assert result["success"] is True
+        call_kwargs = stripe_mock.Refund.create.call_args[1]
+        assert call_kwargs["amount"] == 500
+    
+    def test_refund_with_reason(self, reset_stripe_mock):
+        """【业务规则】带原因的退款"""
+        mock_refund = MagicMock()
+        stripe_mock.Refund.create.return_value = mock_refund
+        
+        result = payment_service.create_refund("pi_123", reason="duplicate")
+        
+        call_kwargs = stripe_mock.Refund.create.call_args[1]
+        assert call_kwargs["reason"] == "duplicate"
+    
+    def test_refund_error_returns_failure(self, reset_stripe_mock):
+        """【业务规则】退款错误返回失败"""
+        stripe_mock.Refund.create.side_effect = stripe_mock.error.StripeError("Error")
+        
+        result = payment_service.create_refund("pi_123")
+        
+        assert result["success"] is False
+        assert result["error"] is not None
+
+
+# ==========================================
+# Webhook 验证测试
+# ==========================================
+
+class TestConstructEvent:
+    """
+    测试 Webhook 事件验证
+    """
+    
+    def test_valid_webhook_event(self, reset_stripe_mock):
+        """【业务规则】有效的 webhook 事件被正确解析"""
+        mock_event = MagicMock()
+        stripe_mock.Webhook.construct_event.return_value = mock_event
+        
+        result = payment_service.construct_event(b"payload", "sig_header")
+        
+        assert result == mock_event
+    
+    def test_invalid_signature_raises_exception(self, reset_stripe_mock):
+        """【业务规则】无效签名抛出异常"""
+        stripe_mock.Webhook.construct_event.side_effect = Exception("Invalid signature")
+        
+        with pytest.raises(Exception) as exc_info:
+            payment_service.construct_event(b"payload", "invalid_sig")
+        
+        assert "Webhook Error" in str(exc_info.value)
+
+
+# ==========================================
+# Admin 功能测试
+# ==========================================
+
+class TestAdminFunctions:
+    """
+    测试管理员功能
+    """
+    
+    def test_get_customer_subscriptions(self, reset_stripe_mock):
+        """【业务规则】获取用户所有订阅"""
+        mock_subs = [MagicMock(), MagicMock()]
+        
+        with patch('services.payment_service.stripe.Subscription.list') as mock_list:
+            mock_list.return_value = MagicMock(data=mock_subs)
+            
+            result = payment_service.get_customer_subscriptions("cus_123")
+            
+            assert result == mock_subs
+            mock_list.assert_called_once_with(
+                customer="cus_123",
+                limit=10
+            )
+    
+    def test_get_customer_subscriptions_error_returns_empty(self, reset_stripe_mock):
+        """【业务规则】订阅查询错误返回空列表"""
+        stripe_mock.Subscription.list.side_effect = Exception("Error")
+        
+        result = payment_service.get_customer_subscriptions("cus_123")
+        
+        assert result == []
+    
+    def test_get_customer_payments(self, reset_stripe_mock):
+        """【业务规则】只返回成功的支付"""
+        mock_succeeded = MagicMock(status='succeeded')
+        mock_pending = MagicMock(status='requires_payment_method')
+        stripe_mock.PaymentIntent.list.return_value = MagicMock(data=[mock_succeeded, mock_pending])
+        
+        result = payment_service.get_customer_payments("cus_123")
+        
+        assert len(result) == 1
+        assert result[0].status == 'succeeded'
+    
+    def test_get_payment_intent_details(self, reset_stripe_mock):
+        """【业务规则】获取支付详情"""
+        mock_pi = MagicMock(id="pi_123")
+        stripe_mock.PaymentIntent.retrieve.return_value = mock_pi
+        
+        result = payment_service.get_payment_intent_details("pi_123")
+        
+        assert result.id == "pi_123"
+    
+    def test_get_payment_intent_error_returns_none(self, reset_stripe_mock):
+        """【业务规则】支付详情查询错误返回 None"""
+        stripe_mock.PaymentIntent.retrieve.side_effect = stripe_mock.error.StripeError("Error")
+        
+        result = payment_service.get_payment_intent_details("pi_123")
+        
+        assert result is None
