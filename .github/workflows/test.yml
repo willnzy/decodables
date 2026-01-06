@@ -41,11 +41,11 @@ jobs:
       - name: Run unit tests
         run: |
           pytest tests/test_payment_service.py \
-                 tests/test_tier_logic.py \
                  tests/test_credits_logic.py \
+                 tests/test_credit_service.py \
                  tests/test_config_service.py \
-                 tests/test_edge_cases.py \
-                 tests/test_potential_bugs.py \
+                 tests/edge_cases/ \
+                 tests/business_rules/ \
                  -v --tb=short
         env:
           TESTING: 'true'
@@ -120,13 +120,7 @@ jobs:
       
       - name: Run API tests
         run: |
-          pytest tests/test_generation_api.py \
-                 tests/test_image_generation.py \
-                 tests/test_projects_api.py \
-                 tests/test_upload_api.py \
-                 tests/test_user_api.py \
-                 tests/test_export_api.py \
-                 tests/test_ai_admin_api.py \
+          pytest tests/api/ \
                  -v --tb=short || echo "::warning::Some API tests failed"
         env:
           TESTING: 'true'
@@ -165,11 +159,7 @@ jobs:
       
       - name: Run integration tests
         run: |
-          pytest tests/test_webhook_handler.py \
-                 tests/test_admin_payment.py \
-                 tests/test_ai_integration.py \
-                 tests/test_themes.py \
-                 tests/test_themes_standalone.py \
+          pytest tests/services/ \
                  tests/test_timezone_utils.py \
                  -v --tb=short || true
         env:
