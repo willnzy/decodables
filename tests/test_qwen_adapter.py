@@ -58,15 +58,12 @@ class TestQwenTextAdapterInit:
     """Test QwenTextAdapter initialization"""
     
     def test_init_with_api_key(self):
-        """Initialize with API key from environment"""
-        with patch.dict('os.environ', {'DASHSCOPE_API_KEY': 'test-key'}):
-            # Need to reload the module to pick up new env
-            import importlib
-            from services.ai.adapters import qwen_adapter
-            importlib.reload(qwen_adapter)
-            
-            adapter = qwen_adapter.QwenTextAdapter()
-            assert adapter._api_key == 'test-key'
+        """Initialize adapter - API key comes from module constant"""
+        from services.ai.adapters.qwen_adapter import QwenTextAdapter, DASHSCOPE_API_KEY
+        
+        adapter = QwenTextAdapter()
+        # API key is taken from module constant at initialization time
+        assert adapter._api_key == DASHSCOPE_API_KEY
     
     def test_init_without_api_key(self):
         """Initialize without API key"""

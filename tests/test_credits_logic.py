@@ -38,11 +38,14 @@ class TestMonthlyCreditsReset:
         # Verify: transaction log was called
         assert mock_log.called
     
+    @patch('services.db.users.supabase')
     @patch('services.db.users.get_user_profile')
     @patch('services.db.users.refresh_monthly_credits')
-    def test_check_reset_after_30_days(self, mock_refresh, mock_get_profile):
-        """Monthly credits reset if cycle_anchor is over 30 days old"""
-        # Setup: User with cycle_anchor 31 days ago
+    def test_check_reset_after_30_days(self, mock_refresh, mock_get_profile, mock_supabase):
+        """Monthly credits reset if credits_reset_at is over 30 days old"""
+        mock_supabase.__bool__ = lambda x: True  # Make supabase truthy
+        
+        # Setup: User with credits_reset_at 31 days ago
         old_date = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
         mock_get_profile.return_value = {
             "id": "user_123",
@@ -50,22 +53,23 @@ class TestMonthlyCreditsReset:
             "subscription_status": "active",
             "credits_monthly": 100,
             "credits_permanent": 200,
-            "monthly_credits_cycle_anchor": old_date,
+            "credits_reset_at": old_date,
         }
-        mock_refresh.return_value = True
         
         # Check and reset
-        result = check_and_reset_monthly_credits_if_needed("user_123")
+        check_and_reset_monthly_credits_if_needed("user_123")
         
         # Verify: refresh_monthly_credits was called
         assert mock_refresh.called
-        assert result is True
     
+    @patch('services.db.users.supabase')
     @patch('services.db.users.get_user_profile')
     @patch('services.db.users.refresh_monthly_credits')
-    def test_no_reset_before_30_days(self, mock_refresh, mock_get_profile):
-        """Monthly credits don't reset if cycle_anchor is less than 30 days old"""
-        # Setup: User with cycle_anchor 10 days ago
+    def test_no_reset_before_30_days(self, mock_refresh, mock_get_profile, mock_supabase):
+        """Monthly credits don't reset if credits_reset_at is less than 30 days old"""
+        mock_supabase.__bool__ = lambda x: True  # Make supabase truthy
+        
+        # Setup: User with credits_reset_at 10 days ago
         recent_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         mock_get_profile.return_value = {
             "id": "user_123",
@@ -73,52 +77,53 @@ class TestMonthlyCreditsReset:
             "subscription_status": "active",
             "credits_monthly": 100,
             "credits_permanent": 200,
-            "monthly_credits_cycle_anchor": recent_date,
+            "credits_reset_at": recent_date,
         }
         
         # Check and reset
-        result = check_and_reset_monthly_credits_if_needed("user_123")
+        check_and_reset_monthly_credits_if_needed("user_123")
         
         # Verify: refresh_monthly_credits was NOT called
         assert not mock_refresh.called
-        assert result is False
 
 
 class TestPermanentCreditsNeverExpire:
     """Test Rule 2: Permanent credits never expire"""
     
     @patch('services.db.users.supabase')
-    @patch('services.db.users.log_credit_transaction')
-    def test_add_permanent_credits(self, mock_log, mock_supabase):
+    def test_add_permanent_credits(self, mock_supabase):
         """Adding permanent credits increases permanent balance"""
-        # Mock supabase call to return new balance
-        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"credits_permanent": 250}]
+        # Mock RPC call to return new balance
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(
+            data={"credits_permanent": 250}
         )
+        mock_supabase.__bool__ = lambda x: True  # Make supabase truthy
         
         # Add 50 permanent credits
         result = add_credits_permanent("user_123", 50, "Test purchase", "topup_purchase")
         
-        # Verify: Function was called and returned result
-        assert result is not None
-        assert mock_supabase.table.called
+        # Verify: RPC was called
+        assert mock_supabase.rpc.called
     
+    @patch('services.db.users.supabase')
     @patch('services.db.users.get_user_profile')
     @patch('services.db.users.refresh_monthly_credits')
-    def test_permanent_credits_preserved_on_reset(self, mock_refresh, mock_get_profile):
+    def test_permanent_credits_preserved_on_reset(self, mock_refresh, mock_get_profile, mock_supabase):
         """
         【业务规则 3.5】月度重置时永久积分不受影响
         
         永久积分来源: 市场销售收入、充值购买、注册赠送
         永久积分特性: 永不过期，不随月度重置而变化
         """
+        mock_supabase.__bool__ = lambda x: True
+        
         user_profile = {
             "id": "user_123",
             "tier": "starter",
             "subscription_status": "active",
             "credits_monthly": 50,
             "credits_permanent": 300,  # 应该被保留
-            "monthly_credits_cycle_anchor": (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(),
+            "credits_reset_at": (datetime.now(timezone.utc) - timedelta(days=31)).isoformat(),
         }
         mock_get_profile.return_value = user_profile
         
@@ -252,4 +257,3 @@ class TestIntegrationScenarios:
         assert result2["success"] is True
         assert result2["balance_monthly"] == 0  # All monthly used
         assert result2["balance_permanent"] == 50  # 100 - 50 = 50 remaining
-

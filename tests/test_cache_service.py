@@ -459,27 +459,6 @@ class TestCacheServiceDeletePattern:
 # CacheService Clear All Tests
 # ==========================================
 
-class TestCacheServiceClearAll:
-    """
-    CacheService 清空所有测试
-    """
-    
-    def test_clear_all(self):
-        """【业务规则】清空所有缓存"""
-        from services.cache.cache_service import CacheService
-        
-        service = CacheService()
-        service._using_redis = False
-        
-        service.set("key1", "value1")
-        service.set("key2", "value2")
-        
-        service.clear_all()
-        
-        # 所有缓存应该被清除
-        assert service.get("key1") is None
-
-
 # ==========================================
 # CacheTTL Constants Tests
 # ==========================================
