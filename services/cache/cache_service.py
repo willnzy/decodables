@@ -265,7 +265,10 @@ class CacheService:
         return self.get_json(ai_result_key(hash_key))
     
     def set_ai_result(self, hash_key: str, result: Any, ttl: int = None) -> bool:
-        return self.set_json(ai_result_key(hash_key), result, ttl or CacheTTL.AI_RESULT)
+        """Set AI result cache with default 24h TTL for text results."""
+        if ttl == 0:
+            return False  # Don't cache if TTL is 0
+        return self.set_json(ai_result_key(hash_key), result, ttl or CacheTTL.AI_TEXT)
     
     # ==========================================
     # Utility Methods

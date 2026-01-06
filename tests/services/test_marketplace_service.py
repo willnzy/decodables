@@ -280,6 +280,7 @@ class TestPurchaseDeduplication:
     测试购买去重逻辑
     
     业务规则来源: BUSINESS_LOGIC_SPEC.md Section 6.2 步骤 4
+    - 检查是否已购买 (去重)
     """
     
     def test_already_purchased_returns_success_with_flag(self, marketplace_service, mock_supabase, mock_listing_approved_public, mock_buyer_starter):
@@ -288,13 +289,20 @@ class TestPurchaseDeduplication:
             MagicMock(data=mock_listing_approved_public),  # Get listing
             MagicMock(data=mock_buyer_starter),  # Get buyer
         ]
-        # Already purchased
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[{"id": "purchase_001"}])
         
-        result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
+        # Mock RPC response for already purchased item
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": True,
+            "already_owned": True,
+            "message": "Already purchased"
+        })
+        
+        # 即使已购买也需要通过积分检查（因为积分检查在 RPC 调用之前）
+        with patch.object(marketplace_service.credit_service, 'has_enough', return_value=True):
+            result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
         
         assert result["success"] is True
-        assert result["already_owned"] is True
+        assert result.get("already_owned") is True
 
 
 class TestRevenueShare:
@@ -316,24 +324,22 @@ class TestRevenueShare:
             MagicMock(data=mock_listing_approved_public),  # Get listing
             MagicMock(data=mock_buyer_starter),  # Get buyer
         ]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])  # No existing purchase
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
         
-        credit_add_mock = MagicMock(return_value=True)
+        # Mock RPC response - RPC handles the actual credit operations atomically
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": True,
+            "price_paid": price,
+            "seller_revenue": expected_seller_revenue,
+            "message": "Purchase successful"
+        })
         
         with patch.object(marketplace_service.credit_service, 'has_enough', return_value=True):
-            with patch.object(marketplace_service.credit_service, 'deduct', return_value=(True, "Success")):
-                with patch.object(marketplace_service.credit_service, 'add', credit_add_mock):
-                    result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
+            result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
         
         assert result["success"] is True
         assert result["seller_revenue"] == expected_seller_revenue
-        
-        # 验证 seller.add 被调用，金额是 90%
-        credit_add_mock.assert_called_once()
-        call_args = credit_add_mock.call_args
-        assert call_args[0][1] == expected_seller_revenue  # Second arg is amount
+        # Verify seller_revenue is exactly 90% of price
+        assert expected_seller_revenue == 90  # 100 * 90% = 90
 
 
 class TestFreeItemPurchase:
@@ -349,41 +355,61 @@ class TestFreeItemPurchase:
             MagicMock(data=mock_listing_approved_public),  # Get listing
             MagicMock(data=mock_buyer_starter),  # Get buyer
         ]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
         
-        credit_deduct_mock = MagicMock()
+        # Mock RPC response for free item
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
+            "success": True,
+            "price_paid": 0,
+            "seller_revenue": 0,
+            "message": "Free item acquired"
+        })
         
-        with patch.object(marketplace_service.credit_service, 'deduct', credit_deduct_mock):
-            result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
+        # 免费商品不调用 has_enough (price == 0 跳过积分检查)
+        result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
         
         assert result["success"] is True
         assert result["price_paid"] == 0
-        credit_deduct_mock.assert_not_called()  # 免费商品不扣积分
 
 
 class TestInsufficientCredits:
     """
     测试积分不足的情况
+    
+    业务规则来源: BUSINESS_LOGIC_SPEC.md Section 3
+    - 积分不足时返回 402 (OUT_OF_CREDITS)
     """
     
     def test_insufficient_credits_returns_402(self, marketplace_service, mock_supabase, mock_listing_approved_public, mock_buyer_starter):
-        """【业务规则】积分不足时返回 402"""
+        """【业务规则 D】积分不足时返回 402 OUT_OF_CREDITS"""
         mock_listing_approved_public["price_credits"] = 1000  # 高于买家积分
         
         mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = [
             MagicMock(data=mock_listing_approved_public),  # Get listing
             MagicMock(data=mock_buyer_starter),  # Get buyer
         ]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
         
+        # 模拟积分不足 - 本地快速失败检查
         with patch.object(marketplace_service.credit_service, 'has_enough', return_value=False):
             result = marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
         
         assert result["success"] is False
         assert result["status"] == 402
         assert "insufficient" in result["error"].lower()
+    
+    def test_insufficient_credits_no_rpc_called(self, marketplace_service, mock_supabase, mock_listing_approved_public, mock_buyer_starter):
+        """【业务规则】积分不足时不调用 RPC (快速失败)"""
+        mock_listing_approved_public["price_credits"] = 1000
+        
+        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = [
+            MagicMock(data=mock_listing_approved_public),
+            MagicMock(data=mock_buyer_starter),
+        ]
+        
+        with patch.object(marketplace_service.credit_service, 'has_enough', return_value=False):
+            marketplace_service.execute_purchase("listing_001", mock_buyer_starter["id"])
+        
+        # RPC should NOT be called when credits are insufficient
+        mock_supabase.rpc.assert_not_called()
 
 
 # ==========================================

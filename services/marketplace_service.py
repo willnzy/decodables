@@ -77,6 +77,17 @@ class MarketplaceService:
         
         listing_data = listing.data
         
+        # Pre-validate listing status (Section 6.2: fast-fail before RPC)
+        # These checks ensure we don't make unnecessary RPC calls
+        if listing_data.get("moderation_status") != "approved":
+            return {"success": False, "status": 400, "error": "Listing is not approved for sale"}
+        
+        if not listing_data.get("is_public"):
+            return {"success": False, "status": 400, "error": "Listing is not public"}
+        
+        if listing_data.get("is_deleted"):
+            return {"success": False, "status": 400, "error": "Listing has been deleted"}
+        
         # Get buyer profile for tier check
         buyer = self.supabase.table("profiles").select(
             "*"
@@ -101,6 +112,16 @@ class MarketplaceService:
                 "status": 403, 
                 "error": "Only Pro members can purchase projects. Upgrade to Pro to access projects."
             }
+        
+        # Pre-check credits (fast-fail before RPC) - Section 3.2
+        price = listing_data.get("price_credits", 0)
+        if price > 0:
+            if not self.credit_service.has_enough(buyer_id, price):
+                return {
+                    "success": False,
+                    "status": 402,
+                    "error": "Insufficient credits"
+                }
         
         # Execute atomic purchase via RPC
         try:
