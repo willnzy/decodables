@@ -72,11 +72,11 @@ def get_all_system_configs(group: str = None, include_inactive: bool = False):
     query = supabase.table("system_configs").select("*")
     
     if group:
-        query = query.eq("group", group)
+        query = query.eq("config_group", group)
     if not include_inactive:
         query = query.eq("is_active", True)
     
-    result = query.order("group").order("key").execute()
+    result = query.order("config_group").order("key").execute()
     return result.data or []
 
 
@@ -87,7 +87,7 @@ def get_configs_by_group(group: str):
         return {}
     
     result = supabase.table("system_configs").select("key, value")\
-        .eq("group", group).eq("is_active", True).execute()
+        .eq("config_group", group).eq("is_active", True).execute()
     
     return {row["key"]: row["value"] for row in (result.data or [])}
 
@@ -106,9 +106,9 @@ def admin_get_system_configs(group: str = None, page: int = 1, limit: int = 50):
     query = supabase.table("system_configs").select("*", count="exact")
     
     if group:
-        query = query.eq("group", group)
+        query = query.eq("config_group", group)
     
-    result = query.order("group").order("key").range(offset, offset + limit - 1).execute()
+    result = query.order("config_group").order("key").range(offset, offset + limit - 1).execute()
     
     return {"items": result.data or [], "total": result.count or 0}
 
@@ -119,8 +119,8 @@ def admin_get_config_groups():
     if not supabase:
         return []
     
-    result = supabase.table("system_configs").select("group").execute()
-    groups = set(row.get("group") for row in (result.data or []) if row.get("group"))
+    result = supabase.table("system_configs").select("config_group").execute()
+    groups = set(row.get("config_group") for row in (result.data or []) if row.get("config_group"))
     return sorted(list(groups))
 
 
@@ -134,7 +134,7 @@ def admin_create_system_config(key: str, value: str, group: str, description: st
     result = supabase.table("system_configs").insert({
         "key": key,
         "value": value,
-        "group": group,
+        "config_group": group,
         "description": description,
         "value_type": value_type,
         "is_active": True,
