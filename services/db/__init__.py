@@ -179,6 +179,10 @@ from .config import (
     admin_delete_system_config,
     admin_get_config_audit_logs,
     invalidate_config_cache_api,
+    # Backward-compatible aliases
+    get_public_configs,
+    get_config_by_key,
+    get_config_group,
 )
 
 __all__ = [
@@ -254,4 +258,6 @@ __all__ = [
     'admin_create_system_config', 'admin_update_system_config',
     'admin_delete_system_config', 'admin_get_config_audit_logs',
     'invalidate_config_cache_api',
+    # Backward-compatible aliases
+    'get_public_configs', 'get_config_by_key', 'get_config_group',
 ]

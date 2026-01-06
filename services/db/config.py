@@ -225,3 +225,31 @@ def invalidate_config_cache_api():
     """API endpoint to invalidate config cache."""
     _invalidate_config_cache()
     return {"success": True}
+
+
+# ==========================================
+# Backward-compatible aliases
+# ==========================================
+
+def get_public_configs():
+    """
+    Get all public system configurations.
+    Alias for get_all_system_configs with default parameters.
+    """
+    return get_all_system_configs(group=None, include_inactive=False)
+
+
+def get_config_by_key(key: str, default_value: str = None):
+    """
+    Get a single config by key.
+    Alias for get_system_config.
+    """
+    return get_system_config(key, default_value)
+
+
+def get_config_group(group: str):
+    """
+    Get all configs in a group.
+    Alias for get_configs_by_group.
+    """
+    return get_configs_by_group(group)

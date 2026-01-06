@@ -21,6 +21,30 @@ from unittest.mock import MagicMock, patch, AsyncMock
 # Early Mocking (Before Any Imports)
 # ==========================================
 
+# Mock python-multipart (required by FastAPI for Form/File uploads)
+# This avoids the "Form data requires python-multipart" error in tests
+if 'multipart' not in sys.modules:
+    multipart_mock = MagicMock()
+    multipart_mock.multipart = MagicMock()
+    sys.modules['multipart'] = multipart_mock
+    sys.modules['multipart.multipart'] = multipart_mock.multipart
+
+# Mock apscheduler (required by scheduler.py)
+if 'apscheduler' not in sys.modules:
+    apscheduler_mock = MagicMock()
+    apscheduler_mock.schedulers = MagicMock()
+    apscheduler_mock.schedulers.background = MagicMock()
+    apscheduler_mock.schedulers.background.BackgroundScheduler = MagicMock()
+    apscheduler_mock.triggers = MagicMock()
+    apscheduler_mock.triggers.cron = MagicMock()
+    apscheduler_mock.triggers.interval = MagicMock()
+    sys.modules['apscheduler'] = apscheduler_mock
+    sys.modules['apscheduler.schedulers'] = apscheduler_mock.schedulers
+    sys.modules['apscheduler.schedulers.background'] = apscheduler_mock.schedulers.background
+    sys.modules['apscheduler.triggers'] = apscheduler_mock.triggers
+    sys.modules['apscheduler.triggers.cron'] = apscheduler_mock.triggers.cron
+    sys.modules['apscheduler.triggers.interval'] = apscheduler_mock.triggers.interval
+
 # Mock dashscope before it's imported anywhere
 # This is critical because dashscope may not be installed in CI/local environments
 dashscope_mock = MagicMock()

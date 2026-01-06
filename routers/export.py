@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from services.db_service import get_project_detail, log_activity
 from services.rate_limiter import limiter
-from services.pdf_service import create_foldable_book, create_assets_zip
+from services.ai.zine_generator import create_foldable_book, create_assets_zip
 from dependencies import get_current_user
 
 logger = logging.getLogger(__name__)

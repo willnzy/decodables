@@ -17,7 +17,15 @@ from datetime import datetime, timezone
 import json
 import sys
 
-# Mock stripe module BEFORE importing app or payment_service
+# Mock modules BEFORE importing app or payment_service
+# Mock python-multipart (required for Form/File uploads)
+if 'multipart' not in sys.modules:
+    multipart_mock = MagicMock()
+    multipart_mock.multipart = MagicMock()
+    sys.modules['multipart'] = multipart_mock
+    sys.modules['multipart.multipart'] = multipart_mock.multipart
+
+# Mock stripe module
 sys.modules['stripe'] = MagicMock()
 
 # Check if required dependencies are available
@@ -40,9 +48,11 @@ def client():
     """Create test client with mocked dependencies"""
     if not HAS_DEPS:
         pytest.skip("Missing dependencies")
-    with patch('services.payment_service.stripe'):
-        with patch('app.supabase') as mock_supabase:
-            mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
+    # Mock supabase in the db_service module where it's defined
+    with patch('services.db_service.supabase') as mock_supabase:
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = Mock(data=[])
+        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = Mock(data=None)
+        with patch('services.payment_service.stripe'):
             from app import app
             from fastapi.testclient import TestClient
             return TestClient(app)
@@ -117,8 +127,8 @@ def mock_subscriptions():
 class TestAdminGetUserPayments:
     """Tests for GET /api/admin/user/{uid}/payments"""
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_customer_payments')
     @patch('services.payment_service.get_customer_subscriptions')
     def test_returns_payment_history(
@@ -151,8 +161,8 @@ class TestAdminGetUserPayments:
         assert 'payments' in data
         assert 'subscriptions' in data
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     def test_returns_empty_for_no_stripe_customer(
         self, mock_supabase, mock_require_admin, client, mock_admin_user
     ):
@@ -178,8 +188,8 @@ class TestAdminGetUserPayments:
         assert data['payments'] == []
         assert data['subscriptions'] == []
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     def test_returns_404_for_nonexistent_user(
         self, mock_supabase, mock_require_admin, client, mock_admin_user
     ):
@@ -205,12 +215,12 @@ class TestAdminGetUserPayments:
 class TestAdminCreateRefund:
     """Tests for POST /api/admin/user/{uid}/refund"""
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_payment_intent_details')
     @patch('services.payment_service.create_refund')
     @patch('app.log_payment_record')
-    @patch('app.log_admin_activity')
+    @patch('services.db.admin_users.admin_log_operation')
     def test_full_refund_success(
         self, mock_log_admin, mock_log_payment, mock_create_refund, 
         mock_get_pi, mock_supabase, mock_require_admin,
@@ -263,8 +273,8 @@ class TestAdminCreateRefund:
         # Verify refund was logged
         mock_log_payment.assert_called()
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_payment_intent_details')
     @patch('services.payment_service.create_refund')
     def test_partial_refund_success(
@@ -316,8 +326,8 @@ class TestAdminCreateRefund:
         call_args = mock_create_refund.call_args
         assert call_args[1].get('amount_cents') == 500 or call_args[0][1] == 500
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_payment_intent_details')
     def test_refund_wrong_customer_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
@@ -360,8 +370,8 @@ class TestAdminCreateRefund:
         # Should be rejected - payment doesn't belong to user
         assert response.status_code == 403
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_payment_intent_details')
     def test_refund_already_refunded_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
@@ -402,8 +412,8 @@ class TestAdminCreateRefund:
         assert response.status_code == 400
         assert 'refunded' in response.json().get('detail', '').lower()
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.get_payment_intent_details')
     def test_refund_nonexistent_payment_rejected(
         self, mock_get_pi, mock_supabase, mock_require_admin,
@@ -436,8 +446,8 @@ class TestAdminCreateRefund:
         
         assert response.status_code == 404
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     def test_refund_user_code_mismatch_rejected(
         self, mock_supabase, mock_require_admin, client, mock_admin_user
     ):
@@ -474,11 +484,11 @@ class TestAdminCreateRefund:
 class TestAdminCancelSubscription:
     """Tests for POST /api/admin/user/{uid}/cancel-subscription"""
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.cancel_subscription')
     @patch('app.log_payment_record')
-    @patch('app.log_admin_activity')
+    @patch('services.db.admin_users.admin_log_operation')
     def test_immediate_cancellation_success(
         self, mock_log_admin, mock_log_payment, mock_cancel_sub,
         mock_supabase, mock_require_admin, client, mock_admin_user
@@ -522,8 +532,8 @@ class TestAdminCancelSubscription:
         call_kwargs = mock_cancel_sub.call_args
         assert call_kwargs[1].get('immediate') is True or call_kwargs[0][1] is True
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     @patch('services.payment_service.cancel_subscription')
     def test_end_of_period_cancellation_success(
         self, mock_cancel_sub, mock_supabase, mock_require_admin,
@@ -613,7 +623,7 @@ class TestAdminPaymentSecurity:
         
         assert response.status_code in [401, 403, 422]
     
-    @patch('app.require_admin')
+    @patch('dependencies.require_admin')
     def test_audit_log_created_for_refund(
         self, mock_require_admin, client, mock_admin_user
     ):
@@ -634,8 +644,8 @@ class TestAdminPaymentSecurity:
 class TestAdminPaymentEdgeCases:
     """Edge cases for admin payment management"""
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     def test_refund_exceeds_original_amount(
         self, mock_supabase, mock_require_admin, client, mock_admin_user
     ):
@@ -675,8 +685,8 @@ class TestAdminPaymentEdgeCases:
         # Should be rejected
         assert response.status_code == 400
     
-    @patch('app.require_admin')
-    @patch('app.supabase')
+    @patch('dependencies.require_admin')
+    @patch('services.db_service.supabase')
     def test_cancel_already_canceled_subscription(
         self, mock_supabase, mock_require_admin, client, mock_admin_user
     ):

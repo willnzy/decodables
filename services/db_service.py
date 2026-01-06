@@ -21,6 +21,7 @@ from .db.users import (
 )
 from .db.assets import (
     get_deleted_assets as get_user_deleted_assets,
+    get_deleted_assets,  # Keep original name for backward compatibility
 )
 from .db.payments import (
     admin_get_revenue_stats as admin_get_revenue_stats,

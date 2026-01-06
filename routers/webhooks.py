@@ -23,7 +23,7 @@ from services.db_service import (
     add_credits_monthly,
     log_payment_record,
 )
-from services.activity_log_service import log_activity
+from services.db_service import log_activity
 from services.payment_service import construct_event
 from services.analytics_service import AnalyticsEvents, track_payment
 

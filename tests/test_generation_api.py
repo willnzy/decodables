@@ -65,7 +65,7 @@ def mock_user_no_credits():
 class TestImageGeneration:
     """Tests for POST /api/generate/images"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_generate_single_image(
@@ -92,7 +92,7 @@ class TestImageGeneration:
         data = response.json()
         assert 'images' in data or 'image_urls' in data
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_generate_with_reference_image(
@@ -116,7 +116,7 @@ class TestImageGeneration:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_generate_batch_images(
@@ -146,7 +146,7 @@ class TestImageGeneration:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_generate_with_5w1h_params(
@@ -173,7 +173,7 @@ class TestImageGeneration:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     def test_generate_insufficient_credits(
         self, mock_deduct, mock_get_user, client, mock_user_no_credits
@@ -191,7 +191,7 @@ class TestImageGeneration:
         
         assert response.status_code in [402, 400, 500]
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_generate_empty_prompt(self, mock_get_user, client, mock_user_with_credits):
         """
         ❌ FAIL: Returns 400 for empty prompts
@@ -206,7 +206,7 @@ class TestImageGeneration:
         # Should return 400 or handle with default prompt
         assert response.status_code in [200, 400, 422]
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_generate_with_negative_prompt(
@@ -237,7 +237,7 @@ class TestImageGeneration:
 class TestStoryGeneration:
     """Tests for POST /api/generate/story"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_story_with_openai')
     def test_generate_story(
@@ -271,7 +271,7 @@ class TestStoryGeneration:
 class TestInspiration:
     """Tests for POST /api/generate/inspiration"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_get_inspiration_all(self, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Returns inspiration suggestions (free)
@@ -292,7 +292,7 @@ class TestInspiration:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_get_inspiration_by_category(self, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Returns filtered inspiration
@@ -319,8 +319,8 @@ class TestInspiration:
 class TestGenerationHistory:
     """Tests for /api/generations/* endpoints"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_history(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Returns generation history
@@ -338,8 +338,8 @@ class TestGenerationHistory:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_favorites_only(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Returns only favorited generations
@@ -353,8 +353,8 @@ class TestGenerationHistory:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_toggle_favorite(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Toggles generation favorite status
@@ -371,8 +371,8 @@ class TestGenerationHistory:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_delete_generation(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Deletes generation from history
@@ -386,8 +386,8 @@ class TestGenerationHistory:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_clear_history_keep_favorites(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Clears history but keeps favorites
@@ -409,8 +409,8 @@ class TestGenerationHistory:
 class TestAssetPromptTemplates:
     """Tests for /api/asset-prompt/templates endpoints"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_templates(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Returns user's templates
@@ -428,8 +428,8 @@ class TestAssetPromptTemplates:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_create_template(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Creates new template
@@ -452,8 +452,8 @@ class TestAssetPromptTemplates:
         
         assert response.status_code in [200, 201]
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_delete_template(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Deletes template
@@ -467,8 +467,8 @@ class TestAssetPromptTemplates:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_use_template(self, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
         ✅ PASS: Increments template usage counter
@@ -494,8 +494,8 @@ class TestAssetPromptTemplates:
 class TestExport:
     """Tests for export endpoints (PDF, ZIP)"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     @patch('app.generate_pdf')
     def test_export_pdf(self, mock_gen_pdf, mock_supabase, mock_get_user, client, mock_user_with_credits):
         """
@@ -517,8 +517,8 @@ class TestExport:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     @patch('app.generate_zip')
     def test_export_zip_starter_tier(self, mock_gen_zip, mock_supabase, mock_get_user, client):
         """
@@ -545,8 +545,8 @@ class TestExport:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_export_zip_free_tier_denied(self, mock_supabase, mock_get_user, client, mock_user_no_credits):
         """
         ❌ FAIL: Denies ZIP export for free tier
@@ -572,7 +572,7 @@ class TestExport:
 class TestGenerationRateLimits:
     """Tests for generation rate limiting"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.limiter')
     def test_generation_rate_limited(self, mock_limiter, mock_get_user, client, mock_user_with_credits):
         """
@@ -595,7 +595,7 @@ class TestGenerationRateLimits:
 class TestGenerationErrors:
     """Error handling tests for generation APIs"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_fal_api_timeout(
@@ -616,7 +616,7 @@ class TestGenerationErrors:
         # Should return 504 or 500
         assert response.status_code in [500, 504, 200]
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
     @patch('app.generate_with_fal')
     def test_fal_api_error_credits_refund(

@@ -19,7 +19,7 @@ from .projects import router as projects_router
 from .resources import router as resources_router
 from .system_resources import router as system_resources_router
 from .themes import router as themes_router
-from .users import router as users_router
+# Note: users.py was removed (redundant with user_profile.py), use user_profile_router instead
 
 # Experiment routers (v3.24: split from experiments.py)
 from .experiments_public import router as experiments_public_router
@@ -69,7 +69,6 @@ __all__ = [
     'resources_router',
     'system_resources_router',
     'themes_router',
-    'users_router',
     # Experiments
     'experiments_public_router',
     'experiments_admin_router',

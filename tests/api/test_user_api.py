@@ -68,7 +68,7 @@ def mock_pro_user():
 class TestUserMe:
     """Tests for GET /api/user/me"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_get_user_profile_success(self, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns user profile with all fields
@@ -87,7 +87,7 @@ class TestUserMe:
         assert data['credits_permanent'] == 200
         assert 'email' in data
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_get_user_profile_free_tier(self, mock_get_user, client, mock_free_user):
         """
         ✅ PASS: Returns free tier user profile
@@ -120,8 +120,8 @@ class TestUserMe:
 class TestCreditHistory:
     """Tests for GET /api/user/history"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_credit_history_paginated(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns paginated credit history
@@ -160,8 +160,8 @@ class TestCreditHistory:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_credit_history_empty(self, mock_supabase, mock_get_user, client, mock_free_user):
         """
         ✅ PASS: Returns empty history for new user
@@ -183,8 +183,8 @@ class TestCreditHistory:
 class TestUserAssets:
     """Tests for /api/user/assets endpoints"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_all_assets(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns all user assets
@@ -203,8 +203,8 @@ class TestUserAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_project_assets(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns project-specific assets
@@ -218,8 +218,8 @@ class TestUserAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_delete_asset_soft(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Soft deletes asset (moves to trash)
@@ -237,8 +237,8 @@ class TestUserAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_delete_asset_permanent(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Permanently deletes asset
@@ -255,8 +255,8 @@ class TestUserAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_restore_asset(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Restores deleted asset
@@ -281,8 +281,8 @@ class TestUserAssets:
 class TestNotifications:
     """Tests for /api/user/notifications endpoints"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_all_notifications(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns all notifications
@@ -301,8 +301,8 @@ class TestNotifications:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_unread_notifications(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns only unread notifications
@@ -316,8 +316,8 @@ class TestNotifications:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_mark_notification_read(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Marks single notification as read
@@ -331,8 +331,8 @@ class TestNotifications:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_mark_all_notifications_read(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Marks all notifications as read
@@ -354,8 +354,8 @@ class TestNotifications:
 class TestTimezone:
     """Tests for /api/user/timezone endpoint"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_update_timezone(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Updates user timezone
@@ -372,8 +372,8 @@ class TestTimezone:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_update_timezone_from_header(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Updates timezone from X-Timezone header
@@ -391,7 +391,7 @@ class TestTimezone:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_update_timezone_invalid(self, mock_get_user, client, mock_pro_user):
         """
         ⚠️ EDGE: Handles invalid timezone gracefully
@@ -414,8 +414,8 @@ class TestTimezone:
 class TestDashboardAssets:
     """Tests for /api/user/assets/dashboard endpoint"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_dashboard_all_view(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns all assets in dashboard view
@@ -429,8 +429,8 @@ class TestDashboardAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_dashboard_bought_view(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns purchased assets
@@ -445,8 +445,8 @@ class TestDashboardAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_dashboard_selling_view(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns assets being sold
@@ -461,8 +461,8 @@ class TestDashboardAssets:
         
         assert response.status_code == 200
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_dashboard_search(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Searches assets in dashboard
@@ -485,8 +485,8 @@ class TestDashboardAssets:
 class TestSellerStats:
     """Tests for /api/user/assets/seller-stats endpoint"""
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_get_seller_stats(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ✅ PASS: Returns seller statistics
@@ -509,7 +509,7 @@ class TestSellerStats:
 class TestUserApiErrors:
     """Error handling tests for user APIs"""
     
-    @patch('app.get_current_user')
+    @patch('dependencies.get_current_user')
     def test_asset_not_found(self, mock_get_user, client, mock_pro_user):
         """
         ❌ FAIL: Returns 404 for non-existent asset
@@ -525,8 +525,8 @@ class TestUserApiErrors:
         # Should return 404 or handle gracefully
         assert response.status_code in [200, 404]
     
-    @patch('app.get_current_user')
-    @patch('app.supabase')
+    @patch('dependencies.get_current_user')
+    @patch('services.db_service.supabase')
     def test_database_error_handling(self, mock_supabase, mock_get_user, client, mock_pro_user):
         """
         ❌ FAIL: Handles database errors gracefully

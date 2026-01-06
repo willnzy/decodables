@@ -22,8 +22,8 @@ from services.db_service import (
     admin_get_event_stats,
     get_aggregated_stats,
     get_aggregated_stats_range,
-    run_aggregation_now,
 )
+from scheduler import run_aggregation_now
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)

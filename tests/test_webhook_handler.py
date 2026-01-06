@@ -163,7 +163,7 @@ class TestWebhookSignatureVerification:
     """
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     def test_valid_signature_accepted(self, mock_supabase, mock_construct, client):
         """
         ✅ PASS: Valid signature processes webhook
@@ -278,7 +278,7 @@ class TestWebhookIdempotency:
     """
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.add_credits_permanent')
     @patch('app.log_payment_record')
     @patch('app.log_activity')
@@ -339,7 +339,7 @@ class TestCheckoutSessionCompleted:
     """Tests for checkout.session.completed event handling"""
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.add_credits_permanent')
     @patch('app.log_payment_record')
     @patch('app.log_activity')
@@ -383,7 +383,7 @@ class TestCheckoutSessionCompleted:
         assert call_args[0][3] == 'credits_purchase'  # type
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.add_credits_monthly')
     @patch('app.log_payment_record')
@@ -430,7 +430,7 @@ class TestCheckoutSessionCompleted:
         assert call_args[1] == 500  # Starter gets 500
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.add_credits_monthly')
     @patch('app.log_payment_record')
@@ -506,7 +506,7 @@ class TestInvoicePaymentSucceeded:
     """Tests for invoice.payment_succeeded event (subscription renewals)"""
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.refresh_monthly_credits')
     @patch('app.log_payment_record')
     @patch('app.log_activity')
@@ -544,7 +544,7 @@ class TestInvoicePaymentSucceeded:
         mock_refresh.assert_called_once_with('user_renewal_123', 'starter')
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.refresh_monthly_credits')
     def test_subscription_create_does_not_refresh(
         self, mock_refresh, mock_supabase, mock_construct, client
@@ -582,7 +582,7 @@ class TestSubscriptionStatusChanges:
     """Tests for subscription lifecycle events"""
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.log_activity')
     def test_subscription_canceled_downgrades_to_free(
@@ -616,7 +616,7 @@ class TestSubscriptionStatusChanges:
         )
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     @patch('app.update_subscription_tier')
     @patch('app.log_activity')
     def test_subscription_past_due_downgrades(
@@ -715,7 +715,7 @@ class TestWebhookEdgeCases:
     """Edge cases and error handling"""
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     def test_user_not_found_in_database(
         self, mock_supabase, mock_construct, client
     ):
@@ -771,7 +771,7 @@ class TestWebhookEdgeCases:
         mock_add.assert_called_once()
     
     @patch('services.payment_service.construct_event')
-    @patch('app.supabase')
+    @patch('services.db_service.supabase')
     def test_database_error_during_processing(
         self, mock_supabase, mock_construct, client
     ):

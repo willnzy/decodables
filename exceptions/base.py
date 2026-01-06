@@ -99,13 +99,15 @@ class AppException(Exception):
         code: Optional[ErrorCode] = None,
         message: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
-        details: Optional[Dict[str, Any]] = None
+        details: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None
     ):
         self.status_code = status_code or self.__class__.status_code
         self.code = code or self.__class__.default_code
         self.message = message or self.__class__.default_message
         self.context = context or {}
         self.details = details
+        self.headers = headers or {}  # Compatible with FastAPI HTTPException
         super().__init__(self.message)
     
     def to_response(self, request_id: Optional[str] = None) -> ErrorResponse:

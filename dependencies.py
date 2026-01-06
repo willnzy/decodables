@@ -156,3 +156,7 @@ async def optional_user(authorization: str = Header(None)):
     except Exception:
         return None
 
+
+# Alias for backward compatibility
+get_current_user_optional = optional_user
+
