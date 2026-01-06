@@ -33,6 +33,7 @@ from services.db_service import (
     increment_asset_usage,
     get_deleted_assets,
     restore_asset,
+    log_activity,
 )
 from services.rate_limiter import limiter
 from dependencies import get_current_user
@@ -124,9 +125,13 @@ def delete_asset(
     """Delete a user asset (PRD v3.3)."""
     if permanent:
         result = permanently_hide_asset(asset_id, user["id"])
+        if result:
+            log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
         action = "permanently deleted"
     else:
         result = soft_delete_asset(asset_id, user["id"])
+        if result:
+            log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
         action = "moved to trash"
     
     if not result:
@@ -164,6 +169,9 @@ def add_asset_from_url(
     
     tz = get_request_timezone(request, user_id=user.get("id"))
     asset = save_asset(user["id"], req.url, "external", req.project_id, timezone=tz)
+    
+    if asset:
+        log_activity(user["id"], "create_asset_from_url", {"asset_id": asset.get("id")})
     
     return {"status": "ok", "asset": asset}
 
@@ -259,4 +267,5 @@ def restore(asset_id: str, user: dict = Depends(get_current_user)):
     result = restore_asset(asset_id, user["id"])
     if not result:
         raise HTTPException(404, "Asset not found in trash")
+    log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
     return {"status": "ok", "asset": result}

@@ -384,6 +384,7 @@ def delete_project(project_id: str, permanent: bool = False, user: dict = Depend
             result = permanently_hide_project(project_id, user["id"])
             if not result:
                 raise HTTPException(404, "Project not found or not in trash")
+            log_activity(user["id"], "permanent_delete_project", {"project_id": project_id})
             return {"status": "permanently_hidden", "stage": 2}
         except Exception as e:
             raise HTTPException(404, str(e))
@@ -392,6 +393,7 @@ def delete_project(project_id: str, permanent: bool = False, user: dict = Depend
         result = soft_delete_project(project_id, user["id"])
         if not result:
             raise HTTPException(404, "Project not found")
+        log_activity(user["id"], "delete_project", {"project_id": project_id})
         return {"status": "deleted", "stage": 1}
 
 
