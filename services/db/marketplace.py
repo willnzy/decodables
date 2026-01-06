@@ -14,47 +14,96 @@ logger = logging.getLogger(__name__)
 
 
 @retry_on_network_error()
-def get_marketplace_listings(resource_type: str = None, sort_by: str = "recent",
-                             page: int = 1, limit: int = 20, user_id: str = None):
-    """Get marketplace listings with filters."""
+def get_marketplace_listings(
+    featured: bool = False, 
+    resource_type: str = None, 
+    page: int = 1, 
+    limit: int = 20,
+    sort: str = "latest",  # 'latest' | 'popular' | 'best_selling'
+    tier_filter: str = None,  # 'all' | 'free' | 'starter' | 'pro'
+    price_filter: str = None,  # 'all' | 'free' | 'paid'
+    mine: bool = False,
+    user_id: str = None,
+    user_tier: str = None  # Added for consistency with router calls
+):
+    """
+    Get marketplace listings (PRD Chapter 13) with automatic retry on network errors
+    
+    Public list defaults: moderation_status='approved' AND is_public=true AND is_deleted=false
+    mine=true: Returns all statuses for owner (draft/pending/rejected/approved)
+    """
     if not supabase:
         return []
     
-    offset = (page - 1) * limit
+    start = (page - 1) * limit
+    end = start + limit - 1
     
-    query = supabase.table("marketplace_listings").select("*")\
-        .eq("is_public", True).eq("is_deleted", False)\
-        .eq("moderation_status", "approved")
+    # Explicitly specify seller relationship
+    # using profiles!marketplace_listings_seller_id_fkey
+    query = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")
     
+    if mine and user_id:
+        # Seller views own listings (all statuses)
+        query = query.eq("seller_id", user_id).eq("is_deleted", False)
+    else:
+        # Public list: Must be approved + public + not deleted (PRD rule)
+        query = query.eq("is_public", True)\
+            .eq("is_deleted", False)\
+            .eq("moderation_status", "approved")
+    
+    # Resource type filter
     if resource_type:
         query = query.eq("resource_type", resource_type)
     
+    # Tier filter
+    if tier_filter and tier_filter != "all":
+        # Use contains for allowed_tiers array
+        query = query.contains("allowed_tiers", [tier_filter])
+    
+    # Price filter
+    if price_filter == "free":
+        query = query.eq("price_credits", 0)
+    elif price_filter == "paid":
+        query = query.gt("price_credits", 0)
+    
     # Sorting
-    if sort_by == "popular":
+    if featured or sort == "best_selling":
         query = query.order("sales_count", desc=True)
-    elif sort_by == "price_low":
-        query = query.order("price")
-    elif sort_by == "price_high":
-        query = query.order("price", desc=True)
-    else:
+    elif sort == "popular":
+        query = query.order("usage_count", desc=True)
+    else:  # latest
         query = query.order("created_at", desc=True)
     
-    result = query.range(offset, offset + limit - 1).execute()
+    result = query.range(start, end).execute()
     return result.data or []
 
 
 @retry_on_network_error()
 def get_marketplace_item(listing_id: str, user_id: str = None):
-    """Get single marketplace item."""
+    """
+    Get single listing detail (PRD Chapter 13) with automatic retry on network errors
+    
+    Public access: Only approved + public + not deleted
+    Seller access: Own listing in any status
+    """
     if not supabase:
         return None
     
-    result = supabase.table("marketplace_listings").select("*").eq("id", listing_id).execute()
+    # Explicitly specify seller relationship
+    res = supabase.table("marketplace_listings").select("*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)")\
+        .eq("id", listing_id).single().execute()
     
-    if not result.data:
+    if not res.data:
         return None
     
-    listing = result.data[0]
+    listing = res.data
+    
+    # Check access permission
+    is_seller = user_id and listing.get("seller_id") == user_id
+    is_visible = listing_is_public_visible(listing)
+    
+    if not is_seller and not is_visible:
+        return None
     
     # Check if user has purchased
     if user_id:
@@ -67,14 +116,16 @@ def get_marketplace_item(listing_id: str, user_id: str = None):
 
 @retry_on_network_error()
 def get_seller_listings(seller_id: str, page: int = 1, limit: int = 20):
-    """Get seller's listings."""
+    """Get seller's own listings."""
     if not supabase:
         return []
     
-    offset = (page - 1) * limit
+    start = (page - 1) * limit
+    end = start + limit - 1
+    
     result = supabase.table("marketplace_listings").select("*")\
-        .eq("user_id", seller_id).eq("is_deleted", False)\
-        .order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        .eq("seller_id", seller_id).eq("is_deleted", False)\
+        .order("created_at", desc=True).range(start, end).execute()
     
     return result.data or []
 
@@ -220,13 +271,13 @@ def submit_listing_for_review(listing_id: str, seller_id: str = None):
 
 @retry_on_network_error()
 def unpublish_listing(listing_id: str, seller_id: str):
-    """Unpublish listing."""
+    """Unpublish listing - sets is_public=false while preserving purchases and usage_count."""
     if not supabase:
         return None
     
     result = supabase.table("marketplace_listings").update({
         "is_public": False
-    }).eq("id", listing_id).eq("user_id", seller_id).execute()
+    }).eq("id", listing_id).eq("seller_id", seller_id).execute()
     
     return result.data[0] if result.data else None
 
@@ -238,7 +289,7 @@ def update_listing(listing_id: str, seller_id: str, updates: dict):
         return None
     
     result = supabase.table("marketplace_listings").update(updates)\
-        .eq("id", listing_id).eq("user_id", seller_id).execute()
+        .eq("id", listing_id).eq("seller_id", seller_id).execute()
     
     return result.data[0] if result.data else None
 
@@ -299,17 +350,20 @@ def get_seller_stats(seller_id: str) -> dict:
     if not supabase:
         return {}
     
-    listings = supabase.table("marketplace_listings").select("id, price, sales_count")\
-        .eq("user_id", seller_id).eq("is_deleted", False).execute()
+    listings = supabase.table("marketplace_listings").select("id, price_credits, sales_count, usage_count")\
+        .eq("seller_id", seller_id).eq("is_deleted", False).execute()
     
     data = listings.data or []
     total_sales = sum(l.get("sales_count", 0) for l in data)
-    total_revenue = sum(l.get("price", 0) * l.get("sales_count", 0) for l in data)
+    total_usage = sum(l.get("usage_count", 0) for l in data)
+    total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in data)
     
     return {
         "total_listings": len(data),
         "total_sales": total_sales,
-        "total_revenue": total_revenue
+        "total_usage": total_usage,
+        "total_revenue": total_revenue,
+        "total_earned_credits": int(total_revenue * 0.9)  # 90% seller revenue
     }
 
 
@@ -332,27 +386,31 @@ def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str)
 
 @retry_on_network_error()
 def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int = 10):
-    """Get marketplace leaderboard."""
+    """
+    Get marketplace leaderboard (PRD §9).
+    
+    Returns top 10 listings with usage_count and rank (approved + public + not deleted only).
+    """
     if not supabase:
         return []
     
-    # Get top sellers by sales count
-    result = supabase.table("marketplace_listings").select(
-        "user_id, profiles(username, avatar_url)"
-    ).eq("is_deleted", False).order("sales_count", desc=True).limit(limit * 3).execute()
+    query = supabase.table("marketplace_listings").select(
+        "id, title, thumbnail_url, usage_count, sales_count, resource_type, seller_id, "
+        "profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
+    ).eq("is_public", True).eq("is_deleted", False).eq("moderation_status", "approved")
     
-    # Aggregate by user
-    user_stats = {}
-    for item in (result.data or []):
-        uid = item.get("user_id")
-        if uid not in user_stats:
-            user_stats[uid] = {
-                "user_id": uid,
-                "profile": item.get("profiles"),
-                "total_sales": 0
-            }
-        user_stats[uid]["total_sales"] += 1
+    # Filter by type
+    if board_type and board_type != "all":
+        query = query.eq("resource_type", board_type)
     
-    # Sort and return top
-    sorted_users = sorted(user_stats.values(), key=lambda x: -x["total_sales"])
-    return sorted_users[:limit]
+    # Sort by usage_count
+    query = query.order("usage_count", desc=True).limit(limit)
+    
+    result = query.execute()
+    items = result.data or []
+    
+    # Add rank
+    for i, item in enumerate(items):
+        item["rank"] = i + 1
+    
+    return items

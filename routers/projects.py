@@ -32,6 +32,9 @@ from services.db_service import (
 from services.rate_limiter import limiter
 from timezone_utils import get_request_timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
@@ -50,35 +53,39 @@ class ProjectUpdate(BaseModel):
 
 # Routes
 @router.get("")
-def list_projects(page: int = 1, limit: int = 20, search: str = None, user: dict = Depends(get_current_user)):
+def list_projects(
+    page: int = 1, 
+    limit: int = 6,  # Default 6 for staged loading
+    search: str = None, 
+    include_canvas_data: bool = True,  # Whether to include canvas_data for staged loading
+    user: dict = Depends(get_current_user)
+):
     """
     Get user's projects with pagination (PRD v3.2).
     
+    Staged loading:
+    - include_canvas_data=False: return basic info only (faster)
+    - include_canvas_data=True: include canvas_data for preview rendering
+    
     Args:
         page: Page number (default: 1)
-        limit: Items per page (default: 20)
+        limit: Items per page (default: 6)
         search: Search query to filter projects by title (optional)
+        include_canvas_data: Whether to include canvas_data (default: True)
     
     Returns:
         Projects list with pagination info
         Note: Projects exceeding tier limit may be read-only
     """
-    print(f"[API] list_projects called: page={page}, limit={limit}, search={search}, user_id={user['id']}")
+    logger.info(f"[API] list_projects: page={page}, limit={limit}, search={search}, include_canvas_data={include_canvas_data}, user_id={user['id']}")
     
-    items = get_user_projects(user["id"], page, limit, search)
-    print(f"[API] get_user_projects returned {len(items) if items else 0} items")
+    items = get_user_projects(user["id"], page, limit, search, include_canvas_data)
     
     # Calculate total count using COUNT query (accurate for all cases)
     total_count = count_user_projects(user["id"], search)
-    print(f"[API] count_user_projects returned total: {total_count}")
+    logger.info(f"[API] list_projects: items={len(items) if items else 0}, total={total_count}")
     
-    result = {
-        "items": items, 
-        "total": total_count,  # Return accurate total count
-        "page": page
-    }
-    print(f"[API] Returning result: {len(items) if items else 0} items, total: {total_count}, page: {page}")
-    return result
+    return {"items": items, "total": total_count, "page": page}
 
 
 @router.get("/dashboard")
@@ -162,6 +169,7 @@ def get_project_seller_stats(user: dict = Depends(get_current_user)):
 
 
 @router.post("")
+@limiter.limit("20/minute")  # Project creation rate limit
 def create_project(request: Request, req: ProjectCreate, user: dict = Depends(get_current_user)):
     """
     Create a new project (PRD v3.2).
@@ -199,7 +207,12 @@ def create_project(request: Request, req: ProjectCreate, user: dict = Depends(ge
     
     # v3.9: Get timezone from request for snapshot
     tz = get_request_timezone(request, user_id=user.get("id"))
-    return db_create_project(user["id"], req.title, req.canvas_data, timezone=tz)
+    project = db_create_project(user["id"], req.title, req.canvas_data, timezone=tz)
+    
+    # Log activity
+    log_activity(user["id"], "create_project")
+    
+    return project
 
 
 @router.get("/{project_id}")
@@ -335,7 +348,7 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
     return {
         "status": "saved",
         "locked_elements": locked_elements,
-        "new_usage_recorded": new_usage_recorded
+        "usage_recorded": new_usage_recorded  # Match original API response field name
     }
 
 

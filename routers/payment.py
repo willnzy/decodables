@@ -11,13 +11,15 @@ Endpoints:
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 
 from services.payment_service import (
     create_checkout_session,
-    get_billing_portal_url,
+    create_portal_session,
 )
+from services.db_service import get_user_discount
+from services.rate_limiter import limiter
 from dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -30,12 +32,7 @@ router = APIRouter(prefix="/api/payment", tags=["payment"])
 # ==========================================
 
 class CheckoutRequest(BaseModel):
-    plan: str  # "starter" | "pro"
-    period: str = "monthly"  # "monthly" | "yearly"
-
-
-class PortalRequest(BaseModel):
-    return_url: str
+    plan_type: str  # "starter" | "pro"
 
 
 # ==========================================
@@ -43,31 +40,36 @@ class PortalRequest(BaseModel):
 # ==========================================
 
 @router.post("/checkout")
-def create_checkout(req: CheckoutRequest, user: dict = Depends(get_current_user)):
-    """Create a Stripe checkout session."""
+@limiter.limit("5/minute")  # Strict rate limit for payment APIs
+def create_checkout(request: Request, req: CheckoutRequest, user: dict = Depends(get_current_user)):
+    """
+    Create a Stripe checkout session.
+    
+    Applies any available discount for the user.
+    """
     try:
-        session_url = create_checkout_session(
-            user_id=user["id"],
-            plan=req.plan,
-            period=req.period,
-            email=user.get("email")
-        )
-        return {"checkout_url": session_url}
+        # Apply discount if available
+        discount = get_user_discount(user["id"], req.plan_type)
+        discount_percent = discount.get("discount_percent", 0) if discount else 0
+        
+        url = create_checkout_session(user["id"], req.plan_type, discount_percent)
+        return {"url": url, "discount_applied": discount_percent}
     except Exception as e:
         logger.error(f"Checkout error: {e}")
         raise HTTPException(500, f"Failed to create checkout: {str(e)}")
 
 
 @router.post("/portal")
-def get_portal(req: PortalRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")  # Billing portal rate limit
+def get_portal(request: Request, user: dict = Depends(get_current_user)):
     """Get Stripe billing portal URL."""
     stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id:
-        raise HTTPException(400, "No billing account found")
+        raise HTTPException(400, "No subscription found")
     
     try:
-        portal_url = get_billing_portal_url(stripe_customer_id, req.return_url)
-        return {"portal_url": portal_url}
+        url = create_portal_session(user["id"], stripe_customer_id)
+        return {"url": url}
     except Exception as e:
         logger.error(f"Portal error: {e}")
         raise HTTPException(500, f"Failed to get portal: {str(e)}")

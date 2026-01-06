@@ -106,8 +106,13 @@ class ListingUpdateRequest(BaseModel):
 
 
 class PurchaseRequest(BaseModel):
-    """Purchase request."""
+    """Purchase request with UTM tracking support."""
     listing_id: str
+    idempotency_key: Optional[str] = None  # For deduplication
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+    referral_context: Optional[dict] = None  # Additional referral info
 
 
 class PurchaseResult(BaseModel):

@@ -51,7 +51,9 @@ class UnpublishRequest(BaseModel):
 
 # Routes
 @router.get("/items")
+@limiter.limit("60/minute")  # Listing query rate limit
 def list_items(
+    request: Request,
     featured: bool = False,
     resource_type: Optional[str] = None,
     sort: str = "latest",
@@ -80,7 +82,8 @@ def list_items(
         limit=limit,
         sort=sort,
         tier_filter=tier,
-        price_filter=price
+        price_filter=price,
+        featured=featured  # Pass featured parameter
     )
     return {"items": items, "total": len(items), "page": page}
 
@@ -106,6 +109,7 @@ def get_item(listing_id: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/publish")
+@limiter.limit("10/minute")  # Publish rate limit
 def publish_item(request: Request, req: ListingCreate, user: dict = Depends(require_member)):
     """
     Publish to marketplace (submit for review).
@@ -150,6 +154,13 @@ def publish_item(request: Request, req: ListingCreate, user: dict = Depends(requ
     # Submit for review (sets moderation_status='pending', is_public=true)
     submit_listing_for_review(listing["id"])
     
+    # Log activity
+    log_activity(user["id"], "marketplace_publish", {
+        "listing_id": listing["id"],
+        "resource_type": req.resource_type,
+        "price_credits": req.price_credits
+    })
+    
     return {
         "listing_id": listing["id"],
         "moderation_status": "pending",
@@ -172,10 +183,15 @@ def unpublish_item(req: UnpublishRequest, user: dict = Depends(get_current_user)
     result = db_unpublish(req.listing_id, user["id"])
     if not result:
         raise ListingNotFoundException(req.listing_id)
+    
+    # Log activity
+    log_activity(user["id"], "marketplace_unpublish", {"listing_id": req.listing_id})
+    
     return {"status": "unpublished"}
 
 
 @router.post("/purchase")
+@limiter.limit("10/minute")  # Purchase rate limit (anti-fraud)
 def purchase_item(request: Request, req: PurchaseRequest, user: dict = Depends(get_current_user)):
     """
     Purchase a marketplace item.
@@ -194,7 +210,12 @@ def purchase_item(request: Request, req: PurchaseRequest, user: dict = Depends(g
     tz = get_request_timezone(request, user_id=user.get("id"))
     
     marketplace_service = get_marketplace_service()
-    result = marketplace_service.execute_purchase(req.listing_id, user["id"], timezone=tz)
+    result = marketplace_service.execute_purchase(
+        req.listing_id, 
+        user["id"], 
+        timezone=tz,
+        idempotency_key=req.idempotency_key
+    )
     
     if not result.get("success"):
         error = result.get("error", "Purchase failed")
@@ -209,6 +230,16 @@ def purchase_item(request: Request, req: PurchaseRequest, user: dict = Depends(g
         else:
             from fastapi import HTTPException
             raise HTTPException(status_code=status, detail=error)
+    
+    # Log activity with UTM info (only if not already owned)
+    if not result.get("already_owned"):
+        log_activity(user["id"], "marketplace_purchase", {
+            "listing_id": req.listing_id,
+            "utm_source": req.utm_source,
+            "utm_medium": req.utm_medium,
+            "utm_campaign": req.utm_campaign,
+            "referral_context": req.referral_context
+        })
     
     return result
 
