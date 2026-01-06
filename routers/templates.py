@@ -15,6 +15,7 @@ Asset Prompt Templates (5W1H):
 Page Prompt Templates (AI Design Page):
 - GET /api/page-prompt/templates - List templates
 - POST /api/page-prompt/templates - Create template
+- PUT /api/page-prompt/templates/{id} - Update template
 - DELETE /api/page-prompt/templates/{id} - Delete template
 - POST /api/page-prompt/templates/{id}/use - Mark as used
 """
@@ -87,6 +88,18 @@ class PagePromptTemplateCreate(BaseModel):
     creativity_level: Optional[float] = 0.3
     negative_prompt: Optional[str] = None
     generation_mode: Optional[str] = "guided"
+
+
+class PagePromptTemplateUpdate(BaseModel):
+    """Update request for page prompt template."""
+    name: Optional[str] = None
+    layout: Optional[str] = None
+    story_theme: Optional[str] = None
+    main_character: Optional[str] = None
+    style: Optional[str] = None
+    creativity_level: Optional[float] = None
+    negative_prompt: Optional[str] = None
+    generation_mode: Optional[str] = None
 
 
 # ==========================================
@@ -318,6 +331,39 @@ async def create_page_prompt_template(
     except Exception as e:
         logger.error(f"Failed to create page prompt template: {e}")
         raise HTTPException(500, f"Failed to create template: {str(e)}")
+
+
+@router.put("/api/page-prompt/templates/{template_id}")
+@limiter.limit("30/minute")
+async def update_page_prompt_template(
+    request: Request,
+    template_id: str,
+    req: PagePromptTemplateUpdate,
+    user: dict = Depends(get_current_user)
+):
+    """Update an existing page prompt template."""
+    try:
+        # Build update data, excluding None values
+        update_data = {k: v for k, v in req.dict().items() if v is not None}
+        
+        if not update_data:
+            raise HTTPException(400, "No fields to update")
+        
+        result = supabase.table("page_prompt_templates") \
+            .update(update_data) \
+            .eq("id", template_id) \
+            .eq("user_id", user["id"]) \
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(404, "Template not found")
+        
+        return {"success": True, "template": result.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update page prompt template: {e}")
+        raise HTTPException(500, f"Failed to update template: {str(e)}")
 
 
 @router.delete("/api/page-prompt/templates/{template_id}")
