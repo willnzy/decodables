@@ -67,7 +67,7 @@ class TestImageGeneration:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_generate_single_image(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -94,7 +94,7 @@ class TestImageGeneration:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_generate_with_reference_image(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -118,7 +118,7 @@ class TestImageGeneration:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_generate_batch_images(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -148,7 +148,7 @@ class TestImageGeneration:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_generate_with_5w1h_params(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -208,7 +208,7 @@ class TestImageGeneration:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_generate_with_negative_prompt(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -597,7 +597,7 @@ class TestGenerationErrors:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_fal_api_timeout(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):
@@ -618,7 +618,7 @@ class TestGenerationErrors:
     
     @patch('dependencies.get_current_user')
     @patch('app.credit_deduct')
-    @patch('app.generate_with_fal')
+    @patch('services.ai.image_generator.generate_8_images')
     def test_fal_api_error_credits_refund(
         self, mock_fal, mock_deduct, mock_get_user, client, mock_user_with_credits
     ):

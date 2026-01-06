@@ -291,7 +291,7 @@ def update_listing(
         raise ListingNotFoundException(listing_id)
     
     if listing.get("seller_id") != user["id"]:
-        raise ForbiddenException("Not authorized to edit this listing")
+        raise ForbiddenException(message="Not authorized to edit this listing")
     
     status = listing.get("moderation_status", "draft")
     

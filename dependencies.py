@@ -35,7 +35,7 @@ async def get_current_user(authorization: str = Header(None)):
         dict: User profile from database
     """
     if not authorization or not authorization.startswith("Bearer "):
-        raise UnauthorizedException("Missing authentication token")
+        raise UnauthorizedException(message="Missing authentication token")
     
     token = authorization.split(" ")[1]
     payload = None
@@ -51,19 +51,19 @@ async def get_current_user(authorization: str = Header(None)):
             )
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:
-            raise UnauthorizedException("Token expired")
+            raise UnauthorizedException(message="Token expired")
         except jwt.InvalidTokenError as e:
-            raise UnauthorizedException(f"Invalid token: {str(e)}")
+            raise UnauthorizedException(message=f"Invalid token: {str(e)}")
     else:
         # Development mode: Decode without verification (UNSAFE)
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
             user_id = payload.get("sub")
         except Exception:
-            raise UnauthorizedException("Invalid token format")
+            raise UnauthorizedException(message="Invalid token format")
     
     if not user_id:
-        raise UnauthorizedException("Invalid token: no user_id")
+        raise UnauthorizedException(message="Invalid token: no user_id")
     
     # Get user profile from database
     profile = get_user_profile(user_id)
