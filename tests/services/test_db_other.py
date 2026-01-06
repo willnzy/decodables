@@ -196,13 +196,24 @@ class TestGetAllSystemConfigs:
         """返回所有配置"""
         from services.db.config import get_all_system_configs
         
-        mock_supabase.table.return_value.select.return_value.execute.return_value = MagicMock(
-            data=[{"key": "c1"}, {"key": "c2"}]
-        )
+        mock_result = MagicMock()
+        mock_result.data = [{"key": "c1"}, {"key": "c2"}]
+        
+        # 链式调用: select().eq().order().order().execute()
+        mock_chain = MagicMock()
+        mock_chain.execute.return_value = mock_result
+        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.order.return_value = mock_chain
         
         result = get_all_system_configs()
         
         assert len(result) == 2
+    
+    @patch('services.db.config.supabase', None)
+    def test_returns_empty_when_supabase_not_available(self):
+        """Supabase 不可用时返回空列表"""
+        from services.db.config import get_all_system_configs
+        result = get_all_system_configs()
+        assert result == []
 
 
 class TestGetConfigsByGroup:
@@ -302,11 +313,13 @@ class TestLogPaymentRecord:
         
         mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
         
+        # 正确的参数签名: (user_id, amount, currency, payment_type, stripe_payment_id, metadata, tz)
         result = log_payment_record(
             user_id="user_001",
-            stripe_payment_id="pi_123",
-            amount_cents=1000,
-            plan_type="pro"
+            amount=10.00,
+            currency="USD",
+            payment_type="subscription",
+            stripe_payment_id="pi_123"
         )
         
         mock_supabase.table.return_value.insert.assert_called()
@@ -320,9 +333,12 @@ class TestGetUserPayments:
         """返回用户支付记录"""
         from services.db.payments import get_user_payments
         
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
-            data=[{"id": 1, "amount_cents": 1000}]
-        )
+        mock_result = MagicMock()
+        mock_result.data = [{"id": 1, "amount": 10.00}]
+        
+        mock_chain = MagicMock()
+        mock_chain.execute.return_value = mock_result
+        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
         
         result = get_user_payments("user_001")
         
@@ -379,12 +395,13 @@ class TestCreateSupportTicket:
         from services.db.support import create_support_ticket
         
         mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock(
-            data=[{"id": 1, "subject": "Help!"}]
+            data=[{"id": 1, "email": "test@example.com", "message": "Help!"}]
         )
         
+        # 正确的参数签名: (user_id, email, message)
         result = create_support_ticket(
             user_id="user_001",
-            subject="Help!",
+            email="test@example.com",
             message="I need help"
         )
         
@@ -394,15 +411,15 @@ class TestCreateSupportTicket:
 class TestSendSupportEmail:
     """测试 send_support_email"""
     
-    @patch('services.db.support.resend')
-    def test_sends_email(self, mock_resend):
-        """发送支持邮件"""
+    @patch('services.db.support.RESEND_ENABLED', False)
+    def test_sends_email_disabled(self):
+        """Resend 未启用时跳过发送"""
         from services.db.support import send_support_email
         
-        mock_resend.Emails.send.return_value = {"id": "email_123"}
+        # 当 RESEND_ENABLED=False 时，返回错误
+        result = send_support_email("user_001", "test@example.com", "Hello")
         
-        # 这个函数可能需要特定的mock设置
-        # 验证不抛出异常即可
+        assert result["success"] is False
 
 
 class TestCreateReport:
@@ -434,9 +451,12 @@ class TestGetUserReports:
         """返回用户举报"""
         from services.db.support import get_user_reports
         
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
-            data=[{"id": 1}]
-        )
+        mock_result = MagicMock()
+        mock_result.data = [{"id": 1}]
+        
+        mock_chain = MagicMock()
+        mock_chain.execute.return_value = mock_result
+        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
         
         result = get_user_reports("user_001")
         

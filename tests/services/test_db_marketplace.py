@@ -58,26 +58,49 @@ class TestGetMarketplaceListings:
         
         mock_chain = MagicMock()
         mock_chain.execute.return_value = mock_result
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
         
         result = get_marketplace_listings(featured=True)
         
         assert len(result) >= 0
+    
+    @patch('services.db.marketplace.supabase', None)
+    def test_returns_empty_when_supabase_not_available(self):
+        """Supabase 不可用时返回空列表"""
+        from services.db.marketplace import get_marketplace_listings
+        result = get_marketplace_listings()
+        assert result == []
 
 
 class TestGetMarketplaceItem:
     """测试 get_marketplace_item"""
     
+    @patch('services.db.marketplace.listing_is_public_visible')
     @patch('services.db.marketplace.supabase')
-    def test_returns_item_when_found(self, mock_supabase):
+    def test_returns_item_when_found(self, mock_supabase, mock_visible):
         """返回商品详情"""
         from services.db.marketplace import get_marketplace_item
         
-        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-            data={"id": "listing_001", "title": "Test Listing", "price_credits": 100}
-        )
+        # 商品数据
+        listing_data = {
+            "id": "listing_001", 
+            "title": "Test Listing", 
+            "price_credits": 100,
+            "seller_id": "seller_001",
+            "is_public": True,
+            "moderation_status": "approved",
+            "is_deleted": False
+        }
         
-        result = get_marketplace_item("listing_001")
+        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
+            data=listing_data
+        )
+        mock_visible.return_value = True
+        
+        # Mock 购买检查
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
+        
+        result = get_marketplace_item("listing_001", user_id="user_001")
         
         assert result is not None
         assert result["id"] == "listing_001"
@@ -110,7 +133,7 @@ class TestGetSellerListings:
         
         mock_chain = MagicMock()
         mock_chain.execute.return_value = mock_result
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value = mock_chain
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
         
         result = get_seller_listings("seller_001")
         
@@ -125,7 +148,7 @@ class TestCreateListing:
         """创建新商品"""
         from services.db.marketplace import create_listing
         
-        # Mock 检查现有 listing
+        # Mock 检查现有 listing - 不存在
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
         
         # Mock insert
@@ -239,13 +262,26 @@ class TestExecutePurchase:
             "seller_revenue": 90
         })
         
+        # 正确的参数签名: (buyer_id, listing_id, tz="UTC")
         result = execute_purchase(
-            listing_id="listing_001",
             buyer_id="buyer_001",
-            timezone="UTC"
+            listing_id="listing_001",
+            tz="UTC"
         )
         
         assert result["success"] is True
+    
+    @patch('services.db.marketplace.supabase')
+    def test_handles_insufficient_credits(self, mock_supabase):
+        """积分不足时返回错误"""
+        from services.db.marketplace import execute_purchase
+        
+        mock_supabase.rpc.return_value.execute.side_effect = Exception("INSUFFICIENT_CREDITS")
+        
+        result = execute_purchase("buyer_001", "listing_001")
+        
+        assert result["success"] is False
+        assert "INSUFFICIENT" in result["error"]
 
 
 class TestGetUserPurchases:
@@ -256,12 +292,15 @@ class TestGetUserPurchases:
         """返回用户购买记录"""
         from services.db.marketplace import get_user_purchases
         
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = MagicMock(
-            data=[
-                {"id": "p1", "listing_id": "l1"},
-                {"id": "p2", "listing_id": "l2"}
-            ]
-        )
+        mock_result = MagicMock()
+        mock_result.data = [
+            {"id": "p1", "listing_id": "l1"},
+            {"id": "p2", "listing_id": "l2"}
+        ]
+        
+        mock_chain = MagicMock()
+        mock_chain.execute.return_value = mock_result
+        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.range.return_value = mock_chain
         
         result = get_user_purchases("user_001")
         
@@ -279,19 +318,16 @@ class TestGetSellerStats:
         # Mock listings 查询
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
             data=[
-                {"id": "l1", "sales_count": 10, "usage_count": 50},
-                {"id": "l2", "sales_count": 5, "usage_count": 30}
+                {"id": "l1", "sales_count": 10, "usage_count": 50, "price_credits": 100},
+                {"id": "l2", "sales_count": 5, "usage_count": 30, "price_credits": 50}
             ]
-        )
-        
-        # Mock transactions 查询
-        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
-            data=[{"amount": 90}, {"amount": 45}]
         )
         
         result = get_seller_stats("seller_001")
         
-        assert "total_earned" in result or "listings_count" in result or isinstance(result, dict)
+        assert result["total_listings"] == 2
+        assert result["total_sales"] == 15
+        assert result["total_usage"] == 80
 
 
 class TestRecordListingUsage:
@@ -303,14 +339,21 @@ class TestRecordListingUsage:
         from services.db.marketplace import record_listing_usage
         
         mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = MagicMock(
-            data={"usage_count": 10}
-        )
-        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
         
         result = record_listing_usage("listing_001", "user_001", "project_001")
         
-        assert result is True or result is False  # 可能成功或因去重失败
+        assert result is True
+    
+    @patch('services.db.marketplace.supabase')
+    def test_returns_false_on_error(self, mock_supabase):
+        """错误时返回 False"""
+        from services.db.marketplace import record_listing_usage
+        
+        mock_supabase.table.return_value.insert.side_effect = Exception("DB Error")
+        
+        result = record_listing_usage("listing_001", "user_001", "project_001")
+        
+        assert result is False
 
 
 class TestGetLeaderboard:
@@ -321,11 +364,14 @@ class TestGetLeaderboard:
         """返回排行榜"""
         from services.db.marketplace import get_leaderboard
         
-        mock_chain = MagicMock()
-        mock_chain.execute.return_value = MagicMock(data=[
+        mock_result = MagicMock()
+        mock_result.data = [
             {"id": "l1", "title": "Top 1", "usage_count": 100},
             {"id": "l2", "title": "Top 2", "usage_count": 80}
-        ])
+        ]
+        
+        mock_chain = MagicMock()
+        mock_chain.execute.return_value = mock_result
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value = mock_chain
         
         result = get_leaderboard(limit=10)

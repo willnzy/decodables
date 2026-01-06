@@ -27,7 +27,7 @@ class TestAdminGetDashboardStats:
         result = admin_get_dashboard_stats()
         
         assert result is not None
-        assert "total_users" in result or isinstance(result, dict)
+        assert isinstance(result, dict)
 
 
 class TestAdminGetUserGrowthStats:
@@ -43,7 +43,8 @@ class TestAdminGetUserGrowthStats:
             {"date": "2026-01-02", "count": 15}
         ])
         
-        result = admin_get_user_growth_stats(days=7)
+        # 正确的参数签名: (start_date, end_date, group_by)
+        result = admin_get_user_growth_stats(start_date="2026-01-01", end_date="2026-01-07")
         
         assert result is not None
 
@@ -95,7 +96,8 @@ class TestAdminGetCreditUsageStats:
             {"type": "ocr", "total": -500}
         ])
         
-        result = admin_get_credit_usage_stats(days=30)
+        # 正确的参数签名: (start_date, end_date)
+        result = admin_get_credit_usage_stats(start_date="2026-01-01", end_date="2026-01-31")
         
         assert result is not None
 
@@ -137,19 +139,15 @@ class TestLogUserEvent:
 class TestAdminGetAiInsights:
     """测试 admin_get_ai_insights"""
     
-    @patch('services.db.admin_stats.supabase')
-    def test_returns_ai_insights(self, mock_supabase):
-        """返回 AI 洞察"""
+    @patch('services.db.admin_stats.supabase', None)
+    def test_returns_empty_when_supabase_not_available(self):
+        """Supabase 不可用时返回空列表"""
         from services.db.admin_stats import admin_get_ai_insights
-        
-        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data={
-            "summary": "Key insights",
-            "trends": []
-        })
         
         result = admin_get_ai_insights()
         
-        assert result is not None
+        # Supabase 为 None 时返回空列表
+        assert result == []
 
 
 class TestAdminGetAiRecommendations:
@@ -215,7 +213,8 @@ class TestUpsertAggregatedStats:
         
         mock_supabase.table.return_value.upsert.return_value.execute.return_value = MagicMock()
         
-        result = upsert_aggregated_stats("2026-01-06", {"users": 100})
+        # 正确的参数签名: (date_str, stat_type, data)
+        upsert_aggregated_stats("2026-01-06", "daily", {"users": 100})
         
         mock_supabase.table.return_value.upsert.assert_called()
 
@@ -245,19 +244,22 @@ class TestGetFullUserAudit:
 class TestAdminAdjustCredits:
     """测试 admin_adjust_credits"""
     
-    @patch('services.db.admin_users.log_credit_transaction')
-    @patch('services.db.admin_users.get_user_profile')
     @patch('services.db.admin_users.supabase')
-    def test_adjusts_credits(self, mock_supabase, mock_get_profile, mock_log):
+    def test_adjusts_credits(self, mock_supabase):
         """管理员调整积分"""
         from services.db.admin_users import admin_adjust_credits
         
-        mock_get_profile.return_value = {"id": "user_001", "credits_permanent": 100}
+        # Mock get_user_profile
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "user_001", "credits_permanent": 100}]
+        )
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(
             data=[{"credits_permanent": 150}]
         )
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
         
-        result = admin_adjust_credits("user_001", 50, "permanent", "Admin bonus", "admin_001")
+        # 正确的参数签名: (user_id, amount, bucket, reason)
+        result = admin_adjust_credits("user_001", 50, "permanent", "Admin bonus")
         
         assert result is not None
 
@@ -401,7 +403,8 @@ class TestAdminDeleteListing:
             data=[{"id": "listing_001", "is_deleted": True}]
         )
         
-        result = admin_delete_listing("listing_001", "admin_001")
+        # 正确的参数签名: (listing_id) - 只有 listing_id
+        result = admin_delete_listing("listing_001")
         
         assert result is not None
 

@@ -207,11 +207,14 @@ except ImportError:
 
 # Mock svix if not installed (used for webhook signature verification)
 try:
-    import svix
-except ImportError:
+    from svix.webhooks import Webhook
+except (ImportError, ModuleNotFoundError):
     svix_mock = MagicMock()
     svix_mock.Webhook = MagicMock()
+    svix_mock.webhooks = MagicMock()
+    svix_mock.webhooks.Webhook = MagicMock()
     sys.modules['svix'] = svix_mock
+    sys.modules['svix.webhooks'] = svix_mock.webhooks
 
 # Set environment variables BEFORE importing config
 os.environ.setdefault('OPENAI_API_KEY', 'test-key')
