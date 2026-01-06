@@ -1,0 +1,32 @@
+[run]
+# 覆盖率收集配置
+source = .
+branch = true
+omit = 
+    tests/*
+    venv/*
+    __pycache__/*
+    *.pyc
+    htmlcov/*
+    scripts/*
+    migrations/*
+
+[report]
+# 覆盖率报告配置
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    pass
+    except ImportError
+    if TYPE_CHECKING:
+
+# 覆盖率门槛：95%
+fail_under = 95
+show_missing = true
+precision = 2
+
+[html]
+directory = htmlcov
+title = Decodables Backend Coverage Report
