@@ -139,15 +139,15 @@ def main():
         },
         "unit": {
             "name": "单元测试",
-            "args": ["tests/test_payment_service.py", "tests/test_tier_logic.py", "tests/test_ai_base.py", "-v", "--tb=short"]
+            "args": ["tests/test_payment_service.py", "tests/test_credits_logic.py", "tests/test_ai_base.py", "-v", "--tb=short"]
         },
         "quick": {
             "name": "快速测试",
-            "args": ["tests/", "-v", "--tb=short", "-m", "not slow", "--ignore=tests/test_ai_integration.py"]
+            "args": ["tests/", "-v", "--tb=short", "-m", "not slow"]
         },
         "integration": {
             "name": "集成测试",
-            "args": ["tests/test_webhook_handler.py", "tests/test_admin_payment.py", "-v", "--tb=short"],
+            "args": ["tests/api/", "tests/services/", "-v", "--tb=short"],
             "allow_failure": True
         },
         "coverage": {

@@ -85,17 +85,17 @@ case "$TEST_MODE" in
     
     unit)
         echo -e "${BLUE}运行单元测试...${NC}\n"
-        pytest tests/test_payment_service.py tests/test_tier_logic.py tests/test_ai_base.py -v --tb=short
+        pytest tests/test_payment_service.py tests/test_credits_logic.py tests/test_ai_base.py -v --tb=short
         ;;
     
     quick)
         echo -e "${BLUE}快速测试 (跳过慢速测试)...${NC}\n"
-        pytest tests/ -v --tb=short -m "not slow" --ignore=tests/test_ai_integration.py
+        pytest tests/ -v --tb=short -m "not slow"
         ;;
     
     integration)
         echo -e "${BLUE}运行集成测试...${NC}\n"
-        pytest tests/test_webhook_handler.py tests/test_admin_payment.py tests/test_ai_integration.py -v --tb=short || true
+        pytest tests/api/ tests/services/ -v --tb=short || true
         ;;
     
     coverage)
@@ -108,13 +108,13 @@ case "$TEST_MODE" in
         echo -e "${BLUE}运行所有测试...${NC}\n"
         
         echo -e "\n${YELLOW}>>> 单元测试${NC}"
-        pytest tests/test_payment_service.py tests/test_tier_logic.py -v --tb=short || UNIT_FAILED=1
+        pytest tests/test_payment_service.py tests/test_credits_logic.py -v --tb=short || UNIT_FAILED=1
         
         echo -e "\n${YELLOW}>>> AI 系统测试${NC}"
         pytest tests/test_ai_base.py tests/test_ai_model_config.py tests/test_ai_canary.py -v --tb=short || AI_FAILED=1
         
         echo -e "\n${YELLOW}>>> 集成测试 (允许失败)${NC}"
-        pytest tests/test_webhook_handler.py tests/test_admin_payment.py -v --tb=short || true
+        pytest tests/api/ tests/services/ -v --tb=short || true
         
         # 汇总结果
         echo -e "\n${BLUE}===========================================\n"
