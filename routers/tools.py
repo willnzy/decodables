@@ -111,14 +111,37 @@ async def ocr_tool(
 ):
     """
     Advanced OCR endpoint - detects tables, text, and images.
-    Pro only feature with credits.
+    Pro or trial users only (PRD v3.3).
     """
     from services.db_service import credit_deduct, log_activity, save_asset
     from services.ai.ocr_service import process_ocr
+    from services.access_control import AccessControl
     from timezone_utils import get_request_timezone
+    from config import TRIAL_DAYS
+    from datetime import datetime, timezone as tz
     
-    if user["tier"] != "pro":
-        raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan")
+    # Check if user is in trial period
+    is_trial = False
+    user_tier = (user.get("tier") or "free").lower()
+    if user_tier == "free":
+        created_at = user.get("created_at")
+        if created_at:
+            try:
+                if isinstance(created_at, str):
+                    created_at_str = created_at.replace('Z', '+00:00')
+                    registration_date = datetime.fromisoformat(created_at_str)
+                else:
+                    registration_date = created_at
+                if registration_date.tzinfo is None:
+                    registration_date = registration_date.replace(tzinfo=tz.utc)
+                days_since = (datetime.now(tz.utc) - registration_date).total_seconds() / (24 * 3600)
+                is_trial = days_since <= TRIAL_DAYS
+            except (ValueError, TypeError):
+                pass
+    
+    # Check OCR permission using access control
+    if not AccessControl.can_use_ocr(user, is_trial=is_trial):
+        raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)")
     
     OCR_COST = 5
     result = credit_deduct(user["id"], OCR_COST, "ocr", "OCR processing")

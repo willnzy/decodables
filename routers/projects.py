@@ -249,8 +249,9 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
     Raises:
         HTTPException: 403 if Free user trial expired or project limit exceeded
     """
-    # Check Free user 7-day trial period (PRD v3.2)
+    # Check Free user trial period (PRD v3.3 - 30 days)
     # Normalize tier to lowercase for consistent comparison
+    from config import TRIAL_DAYS
     user_tier = (user.get("tier") or "").lower()
     if user_tier == "free":
         created_at = user.get("created_at")
@@ -271,10 +272,10 @@ def update_project(project_id: str, req: ProjectUpdate, user: dict = Depends(get
                 now = datetime.now(timezone.utc)
                 days_since_registration = (now - registration_date).total_seconds() / (24 * 3600)
                 
-                if days_since_registration > 7:
+                if days_since_registration > TRIAL_DAYS:
                     raise HTTPException(
                         403,
-                        "Your 7-day trial period has expired. Please upgrade to continue editing projects."
+                        f"Your {TRIAL_DAYS}-day trial period has expired. Please upgrade to continue editing projects."
                     )
             except (ValueError, TypeError) as e:
                 # If date parsing fails, log but don't block (graceful degradation)
