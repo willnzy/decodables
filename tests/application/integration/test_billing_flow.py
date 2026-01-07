@@ -8,8 +8,8 @@ Tests complete flow: CommandBus → Handler → BillingService → Repository
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
+from unittest.mock import Mock, AsyncMock
+from datetime import datetime, timezone
 
 from application.handlers import CommandBus, QueryBus
 from application.commands.billing import (
@@ -31,6 +31,7 @@ from domains.billing import (
     UserCredits,
     CreditBucket,
     TransactionType,
+    Credits,
 )
 from domains.billing.aggregates.user_credits import CreditTransaction
 
@@ -43,10 +44,11 @@ from domains.billing.aggregates.user_credits import CreditTransaction
 def mock_billing_repository():
     """Mock billing repository."""
     repo = Mock()
-    repo.get_user_credits = AsyncMock()
-    repo.save_user_credits = AsyncMock()
-    repo.deduct_credits_atomic = AsyncMock()
-    repo.add_credits_atomic = AsyncMock()
+    repo.get_by_user_id = AsyncMock()
+    repo.save = AsyncMock()
+    repo.deduct_atomic = AsyncMock()
+    repo.add_atomic = AsyncMock()
+    repo.get_transaction_history = AsyncMock()
     return repo
 
 
@@ -86,29 +88,29 @@ class TestDeductCreditsFlow:
     async def test_deduct_credits_via_command_bus(self, command_bus, mock_billing_repository):
         """Test deducting credits through command bus."""
         # Arrange
-        user_credits = UserCredits(
+        user_credits = UserCredits.create(
             user_id="user_123",
-            monthly_credits=100,
-            permanent_credits=50,
+            monthly=100,
+            permanent=50,
             tier="pro",
         )
 
         transaction = CreditTransaction(
-            transaction_id="tx_001",
-            user_id="user_123",
             amount=-5,
-            transaction_type=TransactionType.GENERATION,
             bucket=CreditBucket.MONTHLY,
+            tx_type=TransactionType.GENERATION,
             description="AI image generation",
-            created_at=datetime.utcnow(),
+            balance_after=Credits(monthly=95, permanent=50),
+            created_at=datetime.now(timezone.utc),
         )
 
-        mock_billing_repository.deduct_credits_atomic.return_value = transaction
-        mock_billing_repository.get_user_credits.return_value = user_credits
+        mock_billing_repository.deduct_atomic.return_value = transaction
+        mock_billing_repository.get_by_user_id.return_value = user_credits
 
         # Act
         command = DeductCreditsCommand(
             user_id="user_123",
+            amount=5,
             operation="image_generation",
         )
         result = await command_bus.execute(command)
@@ -118,17 +120,18 @@ class TestDeductCreditsFlow:
         assert result.transaction is not None
         assert result.transaction.amount == -5
         assert result.remaining_credits == 150
-        mock_billing_repository.deduct_credits_atomic.assert_called_once()
+        mock_billing_repository.deduct_atomic.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_deduct_credits_insufficient_balance(self, command_bus, mock_billing_repository):
         """Test deduction fails when insufficient balance."""
         # Arrange
-        mock_billing_repository.deduct_credits_atomic.side_effect = Exception("Insufficient credits")
+        mock_billing_repository.deduct_atomic.side_effect = Exception("Insufficient credits")
 
         # Act
         command = DeductCreditsCommand(
             user_id="user_456",
+            amount=100,
             operation="image_generation",
         )
         result = await command_bus.execute(command)
@@ -145,25 +148,24 @@ class TestAddCreditsFlow:
     async def test_add_credits_via_command_bus(self, command_bus, mock_billing_repository):
         """Test adding credits through command bus."""
         # Arrange
-        user_credits = UserCredits(
+        user_credits = UserCredits.create(
             user_id="user_123",
-            monthly_credits=0,
-            permanent_credits=150,  # 50 + 100
+            monthly=0,
+            permanent=150,  # 50 + 100
             tier="pro",
         )
 
         transaction = CreditTransaction(
-            transaction_id="tx_002",
-            user_id="user_123",
             amount=100,
-            transaction_type=TransactionType.TOPUP_PURCHASE,
             bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.TOPUP_PURCHASE,
             description="Credit purchase",
-            created_at=datetime.utcnow(),
+            balance_after=Credits(monthly=0, permanent=150),
+            created_at=datetime.now(timezone.utc),
         )
 
-        mock_billing_repository.add_credits_atomic.return_value = transaction
-        mock_billing_repository.get_user_credits.return_value = user_credits
+        mock_billing_repository.add_atomic.return_value = transaction
+        mock_billing_repository.get_by_user_id.return_value = user_credits
 
         # Act
         command = AddCreditsCommand(
@@ -189,16 +191,15 @@ class TestGrantSignupBonusFlow:
         """Test granting signup bonus through command bus."""
         # Arrange
         transaction = CreditTransaction(
-            transaction_id="tx_003",
-            user_id="new_user_001",
             amount=50,
-            transaction_type=TransactionType.PROMO,
             bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.TOPUP_PURCHASE,  # Use existing enum value
             description="Signup bonus",
-            created_at=datetime.utcnow(),
+            balance_after=Credits(monthly=0, permanent=50),
+            created_at=datetime.now(timezone.utc),
         )
 
-        mock_billing_repository.add_credits_atomic.return_value = transaction
+        mock_billing_repository.add_atomic.return_value = transaction
 
         # Act
         command = GrantSignupBonusCommand(user_id="new_user_001")
@@ -220,14 +221,14 @@ class TestGetUserCreditsFlow:
     async def test_get_user_credits_via_query_bus(self, query_bus, mock_billing_repository):
         """Test getting user credits through query bus."""
         # Arrange
-        user_credits = UserCredits(
+        user_credits = UserCredits.create(
             user_id="user_123",
-            monthly_credits=500,
-            permanent_credits=50,
+            monthly=500,
+            permanent=50,
             tier="starter",
         )
 
-        mock_billing_repository.get_user_credits.return_value = user_credits
+        mock_billing_repository.get_by_user_id.return_value = user_credits
 
         # Act
         query = GetUserCreditsQuery(user_id="user_123")
@@ -244,7 +245,7 @@ class TestGetUserCreditsFlow:
     async def test_get_user_credits_not_found(self, query_bus, mock_billing_repository):
         """Test querying non-existent user returns zero balance."""
         # Arrange
-        mock_billing_repository.get_user_credits.return_value = None
+        mock_billing_repository.get_by_user_id.return_value = None
 
         # Act
         query = GetUserCreditsQuery(user_id="nonexistent")
@@ -265,29 +266,24 @@ class TestGetTransactionHistoryFlow:
         # Arrange
         transactions = [
             CreditTransaction(
-                transaction_id="tx_001",
-                user_id="user_123",
                 amount=-5,
-                transaction_type=TransactionType.GENERATION,
                 bucket=CreditBucket.MONTHLY,
+                tx_type=TransactionType.GENERATION,
                 description="AI generation",
-                created_at=datetime.utcnow(),
+                balance_after=Credits(monthly=95, permanent=0),
+                created_at=datetime.now(timezone.utc),
             ),
             CreditTransaction(
-                transaction_id="tx_002",
-                user_id="user_123",
                 amount=100,
-                transaction_type=TransactionType.TOPUP_PURCHASE,
                 bucket=CreditBucket.PERMANENT,
+                tx_type=TransactionType.TOPUP_PURCHASE,
                 description="Credit purchase",
-                created_at=datetime.utcnow(),
+                balance_after=Credits(monthly=0, permanent=100),
+                created_at=datetime.now(timezone.utc),
             ),
         ]
 
-        async def mock_get_history(*args, **kwargs):
-            return transactions
-
-        mock_billing_repository.get_transaction_history = mock_get_history
+        mock_billing_repository.get_transaction_history.return_value = transactions
 
         # Act
         query = GetTransactionHistoryQuery(user_id="user_123", limit=10)
@@ -319,13 +315,13 @@ class TestBillingE2EFlow:
         5. Check final balance
         """
         # Step 1: Initial balance
-        initial_credits = UserCredits(
+        initial_credits = UserCredits.create(
             user_id="user_123",
-            monthly_credits=0,
-            permanent_credits=0,
+            monthly=0,
+            permanent=0,
             tier="free",
         )
-        mock_billing_repository.get_user_credits.return_value = initial_credits
+        mock_billing_repository.get_by_user_id.return_value = initial_credits
 
         query = GetUserCreditsQuery(user_id="user_123")
         result = await query_bus.execute(query)
@@ -333,23 +329,22 @@ class TestBillingE2EFlow:
 
         # Step 2: Purchase credits
         purchase_tx = CreditTransaction(
-            transaction_id="tx_001",
-            user_id="user_123",
             amount=100,
-            transaction_type=TransactionType.TOPUP_PURCHASE,
             bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.TOPUP_PURCHASE,
             description="Purchase",
-            created_at=datetime.utcnow(),
+            balance_after=Credits(monthly=0, permanent=100),
+            created_at=datetime.now(timezone.utc),
         )
-        mock_billing_repository.add_credits_atomic.return_value = purchase_tx
+        mock_billing_repository.add_atomic.return_value = purchase_tx
 
-        after_purchase = UserCredits(
+        after_purchase = UserCredits.create(
             user_id="user_123",
-            monthly_credits=0,
-            permanent_credits=100,
+            monthly=0,
+            permanent=100,
             tier="free",
         )
-        mock_billing_repository.get_user_credits.return_value = after_purchase
+        mock_billing_repository.get_by_user_id.return_value = after_purchase
 
         purchase_cmd = AddCreditsCommand(
             user_id="user_123",
@@ -362,26 +357,26 @@ class TestBillingE2EFlow:
 
         # Step 3: Use credits
         deduct_tx = CreditTransaction(
-            transaction_id="tx_002",
-            user_id="user_123",
             amount=-5,
-            transaction_type=TransactionType.GENERATION,
             bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.GENERATION,
             description="Generation",
-            created_at=datetime.utcnow(),
+            balance_after=Credits(monthly=0, permanent=95),
+            created_at=datetime.now(timezone.utc),
         )
-        mock_billing_repository.deduct_credits_atomic.return_value = deduct_tx
+        mock_billing_repository.deduct_atomic.return_value = deduct_tx
 
-        after_deduct = UserCredits(
+        after_deduct = UserCredits.create(
             user_id="user_123",
-            monthly_credits=0,
-            permanent_credits=95,
+            monthly=0,
+            permanent=95,
             tier="free",
         )
-        mock_billing_repository.get_user_credits.return_value = after_deduct
+        mock_billing_repository.get_by_user_id.return_value = after_deduct
 
         deduct_cmd = DeductCreditsCommand(
             user_id="user_123",
+            amount=5,
             operation="image_generation",
         )
         deduct_result = await command_bus.execute(deduct_cmd)
