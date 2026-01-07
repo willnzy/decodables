@@ -18,6 +18,9 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends
 
 from dependencies import require_admin
+from core.database import get_supabase_client
+
+supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
 
@@ -120,9 +123,6 @@ async def run_task_manually(task_name: str, admin: dict = Depends(require_admin)
     """Manually trigger a scheduled task."""
     from scheduler import run_aggregation_now
 
-from core.database import get_supabase_client
-supabase = get_supabase_client()
-    
     valid_tasks = ["hourly", "daily", "all", "cleanup", "retention"]
     
     if task_name not in valid_tasks:

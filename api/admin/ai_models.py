@@ -22,10 +22,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from dependencies import require_admin
-from shared.ai.model_config_service import (
-
 from core.database import get_supabase_client
-supabase = get_supabase_client()
+from shared.ai.model_config_service import (
     get_model_configs,
     update_text_model_config,
     update_image_model_config,
@@ -33,6 +31,8 @@ supabase = get_supabase_client()
     get_ai_usage_stats,
     clear_ai_cache
 )
+
+supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
 

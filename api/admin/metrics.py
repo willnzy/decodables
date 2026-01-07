@@ -21,8 +21,10 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends
 
 from dependencies import require_admin
+from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
+supabase = get_supabase_client()
 
 router = APIRouter(prefix="/metrics", tags=["admin-metrics-v2"])
 
@@ -157,9 +159,6 @@ async def refresh_metrics(
 ):
     """Manually refresh metrics aggregation."""
     from scheduler import run_aggregation_now
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
 
     try:
         result = run_aggregation_now(metric_type)

@@ -20,10 +20,8 @@ from typing import List, Optional
 
 from dependencies import require_admin
 from schemas.system_resources import ResourceCreate, ResourceUpdate, ResourceBatchAction
-from domains.content.resource_helpers import (
-
 from core.database import get_supabase_client
-supabase = get_supabase_client()
+from domains.content.resource_helpers import (
     SYSTEM_ASSETS_BUCKET,
     ALLOWED_TYPES,
     ALLOWED_MIME_TYPES,
@@ -31,6 +29,8 @@ supabase = get_supabase_client()
     log_resource_audit,
     get_image_dimensions,
 )
+
+supabase = get_supabase_client()
 
 router = APIRouter(prefix="/system-resources", tags=["system-resources-v2"])
 
