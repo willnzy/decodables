@@ -23,72 +23,41 @@ Endpoints:
 
 from fastapi import APIRouter
 
-from .users_api import router as users_router
-from .stats_api import router as stats_router
-from .config_api import router as config_router
-from .campaigns_api import router as campaigns_router
-from .moderation_api import router as moderation_router
-from .notifications_api import router as notifications_router
-from .system_api import router as system_router
-from .tasks_api import router as tasks_router
-from .ai_api import router as ai_router
-from .logs_api import router as logs_router
-from .metrics_api import router as metrics_router
-from .subscriptions_api import router as subscriptions_router
-from .events_api import router as events_router
-from .experiments_api import router as experiments_router
-
-# New v2 routers (without _api suffix)
-from .users import router as users_v2_router
-from .stats import router as stats_v2_router
-from .campaigns import router as campaigns_v2_router
-from .logs import router as logs_v2_router
-from .metrics import router as metrics_v2_router
-from .experiments import router as experiments_v2_router
-from .ai import router as ai_v2_router
-from .ai_models import router as ai_models_v2_router
-from .config import router as config_v2_router
-from .events import router as events_v2_router
-from .moderation import router as moderation_v2_router
-from .notifications import router as notifications_v2_router
-from .subscriptions import router as subscriptions_v2_router
-from .system import router as system_v2_router
-from .tasks_mgmt import router as tasks_mgmt_v2_router
+# v2 routers (clean module names)
+from .users import router as users_router
+from .stats import router as stats_router
+from .campaigns import router as campaigns_router
+from .logs import router as logs_router
+from .metrics import router as metrics_router
+from .experiments import router as experiments_router
+from .ai import router as ai_router
+from .ai_models import router as ai_models_router
+from .config import router as config_router
+from .events import router as events_router
+from .moderation import router as moderation_router
+from .notifications import router as notifications_router
+from .subscriptions import router as subscriptions_router
+from .system import router as system_router
+from .tasks_mgmt import router as tasks_mgmt_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
 
-# Include all admin sub-routers
+# Include all v2 admin sub-routers
 admin_router.include_router(users_router)
 admin_router.include_router(stats_router)
-admin_router.include_router(config_router)
 admin_router.include_router(campaigns_router)
-admin_router.include_router(moderation_router)
-admin_router.include_router(notifications_router)
-admin_router.include_router(system_router)
-admin_router.include_router(tasks_router)
-admin_router.include_router(ai_router)
 admin_router.include_router(logs_router)
 admin_router.include_router(metrics_router)
-admin_router.include_router(subscriptions_router)
-admin_router.include_router(events_router)
 admin_router.include_router(experiments_router)
-
-# Include new v2 routers
-admin_router.include_router(users_v2_router)
-admin_router.include_router(stats_v2_router)
-admin_router.include_router(campaigns_v2_router)
-admin_router.include_router(logs_v2_router)
-admin_router.include_router(metrics_v2_router)
-admin_router.include_router(experiments_v2_router)
-admin_router.include_router(ai_v2_router)
-admin_router.include_router(ai_models_v2_router)
-admin_router.include_router(config_v2_router)
-admin_router.include_router(events_v2_router)
-admin_router.include_router(moderation_v2_router)
-admin_router.include_router(notifications_v2_router)
-admin_router.include_router(subscriptions_v2_router)
-admin_router.include_router(system_v2_router)
-admin_router.include_router(tasks_mgmt_v2_router)
+admin_router.include_router(ai_router)
+admin_router.include_router(ai_models_router)
+admin_router.include_router(config_router)
+admin_router.include_router(events_router)
+admin_router.include_router(moderation_router)
+admin_router.include_router(notifications_router)
+admin_router.include_router(subscriptions_router)
+admin_router.include_router(system_router)
+admin_router.include_router(tasks_mgmt_router)
 
 __all__ = ['admin_router']
