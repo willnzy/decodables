@@ -39,9 +39,9 @@ class BillingService:
     # Primary source: system_configs table in database
     EMERGENCY_FALLBACK_COSTS = {
         "image_generation": 5,
-        "text_generation": 1,
+        "text_generation": 0,  # Currently free
         "smart_scan": 10,
-        "ocr": 2,
+        "ocr": 10,  # Same as smart_scan (no distinction)
     }
 
     # Monthly allowances by tier (fallback)

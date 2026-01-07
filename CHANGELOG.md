@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.23.1] - 2026-01-07
+
+### Fixed
+- **修正积分消耗配置值**
+  - AI 文本生成设置为 0 积分（当前免费策略）
+  - 统一 OCR 和 Smart Scan 为 10 积分（无区分）
+  - 修改文件：
+    - `ddl.sql`: 更新 system_configs 初始数据
+    - `domains/billing/service.py`: 更新 EMERGENCY_FALLBACK_COSTS
+    - `docs/后台业务逻辑说明.md`: 更新积分消耗表
+
 ## [3.23.0] - 2026-01-07
 
 ### Added
@@ -16,9 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 优雅降级：数据库不可用时使用 Emergency Fallback
   - 配置项：
     - `credits.cost.image_generation` (默认: 5)
-    - `credits.cost.text_generation` (默认: 1)
+    - `credits.cost.text_generation` (默认: 0) ✅ 已修正
     - `credits.cost.smart_scan` (默认: 10)
-    - `credits.cost.ocr` (默认: 2)
+    - `credits.cost.ocr` (默认: 10) ✅ 已修正
 
 - **架构决策记录 (ADR)** 系统
   - 创建 `docs/adr/` 目录记录重要架构决策

@@ -1762,9 +1762,9 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 
 -- Credit costs configuration (v3.23)
 ('credits.cost.image_generation', '5', 'integer', 'credits', 'AI image generation cost per image', true),
-('credits.cost.text_generation', '1', 'integer', 'credits', 'AI text generation cost per operation', true),
+('credits.cost.text_generation', '0', 'integer', 'credits', 'AI text generation cost (currently free)', true),
 ('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan/OCR cost per operation', true),
-('credits.cost.ocr', '2', 'integer', 'credits', 'OCR recognition cost per operation', true)
+('credits.cost.ocr', '10', 'integer', 'credits', 'OCR recognition cost (same as Smart Scan)', true)
 ON CONFLICT (key) DO UPDATE SET
     value = EXCLUDED.value,
     description = EXCLUDED.description,
