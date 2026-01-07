@@ -30,6 +30,7 @@ Endpoints:
 - /api/v2/configs/* - Public configurations
 - /api/v2/logs/* - Error logging
 - /api/v2/experiments/* - A/B testing experiments (public)
+- /api/v2/webhooks/* - Third-party webhooks (Clerk, Stripe)
 - /api/v2/admin/* - Admin management (users, stats, config, etc.)
 - /api/v2/ws/* - WebSocket endpoints
 """
@@ -60,6 +61,7 @@ from .config_api import router as config_router
 from .logs_api import router as logs_router
 from .websocket_api import router as websocket_router
 from .experiments_api import router as experiments_router
+from .webhooks_api import router as webhooks_router
 from .admin import admin_router
 
 # Create main API router
@@ -89,6 +91,7 @@ api_router.include_router(config_router)
 api_router.include_router(logs_router)
 api_router.include_router(websocket_router)
 api_router.include_router(experiments_router)
+api_router.include_router(webhooks_router)
 api_router.include_router(admin_router)
 
 __all__ = [
@@ -116,5 +119,6 @@ __all__ = [
     'logs_router',
     'websocket_router',
     'experiments_router',
+    'webhooks_router',
     'admin_router',
 ]
