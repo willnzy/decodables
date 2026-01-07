@@ -5,74 +5,103 @@ Platform Domain Exceptions.
 @version 1.0.0
 """
 
-from core.exceptions import DomainException
+from core.exceptions import AppException, ErrorCode
 
 
-class PlatformException(DomainException):
+class PlatformException(AppException):
     """Base exception for platform domain."""
-
-    def __init__(self, message: str, code: str = "PLATFORM_ERROR"):
-        super().__init__(message, code)
+    pass
 
 
 class FeatureFlagNotFoundException(PlatformException):
     """Raised when a feature flag is not found."""
+    status_code = 404
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
+    default_message = "Feature flag not found"
 
-    def __init__(self, flag_key: str):
+    def __init__(self, flag_key: str = None, **kwargs):
+        message = "Feature flag not found"
+        if flag_key:
+            message = f"Feature flag not found: {flag_key}"
+
         super().__init__(
-            message=f"Feature flag not found: {flag_key}",
-            code="FEATURE_FLAG_NOT_FOUND"
+            message=message,
+            context={"flag_key": flag_key},
+            **kwargs
         )
-        self.flag_key = flag_key
-        self.status_code = 404
 
 
 class ExperimentNotFoundException(PlatformException):
     """Raised when an experiment is not found."""
+    status_code = 404
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
+    default_message = "Experiment not found"
 
-    def __init__(self, experiment_id: str):
+    def __init__(self, experiment_id: str = None, **kwargs):
+        message = "Experiment not found"
+        if experiment_id:
+            message = f"Experiment not found: {experiment_id}"
+
         super().__init__(
-            message=f"Experiment not found: {experiment_id}",
-            code="EXPERIMENT_NOT_FOUND"
+            message=message,
+            context={"experiment_id": experiment_id},
+            **kwargs
         )
-        self.experiment_id = experiment_id
-        self.status_code = 404
 
 
 class InvalidConfigurationException(PlatformException):
     """Raised when configuration is invalid."""
+    status_code = 400
+    default_code = ErrorCode.VALIDATION_ERROR
+    default_message = "Invalid configuration"
 
-    def __init__(self, config_type: str, reason: str):
+    def __init__(self, config_type: str = None, reason: str = None, **kwargs):
+        message = "Invalid configuration"
+        if config_type and reason:
+            message = f"Invalid {config_type} configuration: {reason}"
+
         super().__init__(
-            message=f"Invalid {config_type} configuration: {reason}",
-            code="INVALID_CONFIGURATION"
+            message=message,
+            context={"config_type": config_type, "reason": reason},
+            **kwargs
         )
-        self.config_type = config_type
-        self.reason = reason
-        self.status_code = 400
 
 
 class FeatureFlagEvaluationException(PlatformException):
     """Raised when feature flag evaluation fails."""
+    status_code = 500
+    default_code = ErrorCode.SERVER_ERROR
+    default_message = "Feature flag evaluation failed"
 
-    def __init__(self, flag_key: str, reason: str):
+    def __init__(self, flag_key: str = None, reason: str = None, **kwargs):
+        message = "Feature flag evaluation failed"
+        if flag_key:
+            message = f"Failed to evaluate feature flag '{flag_key}'"
+            if reason:
+                message += f": {reason}"
+
         super().__init__(
-            message=f"Failed to evaluate feature flag '{flag_key}': {reason}",
-            code="FLAG_EVALUATION_FAILED"
+            message=message,
+            context={"flag_key": flag_key, "reason": reason},
+            **kwargs
         )
-        self.flag_key = flag_key
-        self.reason = reason
-        self.status_code = 500
 
 
 class ExperimentAssignmentException(PlatformException):
     """Raised when experiment assignment fails."""
+    status_code = 500
+    default_code = ErrorCode.SERVER_ERROR
+    default_message = "Experiment assignment failed"
 
-    def __init__(self, experiment_id: str, reason: str):
+    def __init__(self, experiment_id: str = None, reason: str = None, **kwargs):
+        message = "Experiment assignment failed"
+        if experiment_id:
+            message = f"Failed to assign experiment '{experiment_id}'"
+            if reason:
+                message += f": {reason}"
+
         super().__init__(
-            message=f"Failed to assign experiment '{experiment_id}': {reason}",
-            code="EXPERIMENT_ASSIGNMENT_FAILED"
+            message=message,
+            context={"experiment_id": experiment_id, "reason": reason},
+            **kwargs
         )
-        self.experiment_id = experiment_id
-        self.reason = reason
-        self.status_code = 500

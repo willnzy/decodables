@@ -5,88 +5,129 @@ Creation Domain Exceptions.
 @version 1.0.0
 """
 
-from core.exceptions import DomainException
+from core.exceptions import AppException, ErrorCode
 
 
-class CreationException(DomainException):
+class CreationException(AppException):
     """Base exception for creation domain."""
-
-    def __init__(self, message: str, code: str = "CREATION_ERROR"):
-        super().__init__(message, code)
+    pass
 
 
 class ProjectNotFoundException(CreationException):
     """Raised when a project is not found."""
+    status_code = 404
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
+    default_message = "Project not found"
 
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str = None, **kwargs):
+        message = "Project not found"
+        if project_id:
+            message = f"Project not found: {project_id}"
+
         super().__init__(
-            message=f"Project not found: {project_id}",
-            code="PROJECT_NOT_FOUND"
+            message=message,
+            context={"project_id": project_id},
+            **kwargs
         )
-        self.project_id = project_id
-        self.status_code = 404
 
 
 class ProjectAccessDeniedException(CreationException):
     """Raised when user doesn't have access to a project."""
+    status_code = 403
+    default_code = ErrorCode.AUTH_FORBIDDEN
+    default_message = "Project access denied"
 
-    def __init__(self, project_id: str, user_id: str):
+    def __init__(self, project_id: str = None, user_id: str = None, **kwargs):
+        message = "Project access denied"
+        if project_id and user_id:
+            message = f"Access denied to project {project_id} for user {user_id}"
+
         super().__init__(
-            message=f"Access denied to project {project_id} for user {user_id}",
-            code="PROJECT_ACCESS_DENIED"
+            message=message,
+            context={"project_id": project_id, "user_id": user_id},
+            **kwargs
         )
-        self.project_id = project_id
-        self.user_id = user_id
-        self.status_code = 403
 
 
 class InvalidProjectDataException(CreationException):
     """Raised when project data is invalid."""
+    status_code = 400
+    default_code = ErrorCode.VALIDATION_ERROR
+    default_message = "Invalid project data"
 
-    def __init__(self, field: str, reason: str):
+    def __init__(self, field: str = None, reason: str = None, **kwargs):
+        message = "Invalid project data"
+        if field and reason:
+            message = f"Invalid project data for field '{field}': {reason}"
+
         super().__init__(
-            message=f"Invalid project data for field '{field}': {reason}",
-            code="INVALID_PROJECT_DATA"
+            message=message,
+            context={"field": field, "reason": reason},
+            **kwargs
         )
-        self.field = field
-        self.reason = reason
-        self.status_code = 400
 
 
 class AssetNotFoundException(CreationException):
     """Raised when an asset is not found."""
+    status_code = 404
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
+    default_message = "Asset not found"
 
-    def __init__(self, asset_id: str):
+    def __init__(self, asset_id: str = None, **kwargs):
+        message = "Asset not found"
+        if asset_id:
+            message = f"Asset not found: {asset_id}"
+
         super().__init__(
-            message=f"Asset not found: {asset_id}",
-            code="ASSET_NOT_FOUND"
+            message=message,
+            context={"asset_id": asset_id},
+            **kwargs
         )
-        self.asset_id = asset_id
-        self.status_code = 404
 
 
 class ProjectLimitExceededException(CreationException):
     """Raised when user exceeds project limit."""
+    status_code = 403
+    default_code = ErrorCode.AUTH_FORBIDDEN
+    default_message = "Project limit exceeded"
 
-    def __init__(self, user_id: str, limit: int):
+    def __init__(self, user_id: str = None, limit: int = None, **kwargs):
+        message = "Project limit exceeded"
+        if user_id and limit:
+            message = f"User {user_id} has reached the project limit of {limit}"
+
         super().__init__(
-            message=f"User {user_id} has reached the project limit of {limit}",
-            code="PROJECT_LIMIT_EXCEEDED"
+            message=message,
+            context={"user_id": user_id, "limit": limit},
+            **kwargs
         )
-        self.user_id = user_id
-        self.limit = limit
-        self.status_code = 403
 
 
 class CanvasOperationException(CreationException):
     """Raised when a canvas operation fails."""
+    status_code = 400
+    default_code = ErrorCode.BAD_REQUEST
+    default_message = "Canvas operation failed"
 
-    def __init__(self, project_id: str, operation: str, reason: str):
+    def __init__(
+        self,
+        project_id: str = None,
+        operation: str = None,
+        reason: str = None,
+        **kwargs
+    ):
+        message = "Canvas operation failed"
+        if operation and project_id:
+            message = f"Canvas operation '{operation}' failed for project {project_id}"
+            if reason:
+                message += f": {reason}"
+
         super().__init__(
-            message=f"Canvas operation '{operation}' failed for project {project_id}: {reason}",
-            code="CANVAS_OPERATION_FAILED"
+            message=message,
+            context={
+                "project_id": project_id,
+                "operation": operation,
+                "reason": reason,
+            },
+            **kwargs
         )
-        self.project_id = project_id
-        self.operation = operation
-        self.reason = reason
-        self.status_code = 400
