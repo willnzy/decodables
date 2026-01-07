@@ -45,6 +45,15 @@ from .campaigns import router as campaigns_v2_router
 from .logs import router as logs_v2_router
 from .metrics import router as metrics_v2_router
 from .experiments import router as experiments_v2_router
+from .ai import router as ai_v2_router
+from .ai_models import router as ai_models_v2_router
+from .config import router as config_v2_router
+from .events import router as events_v2_router
+from .moderation import router as moderation_v2_router
+from .notifications import router as notifications_v2_router
+from .subscriptions import router as subscriptions_v2_router
+from .system import router as system_v2_router
+from .tasks_mgmt import router as tasks_mgmt_v2_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -72,5 +81,14 @@ admin_router.include_router(campaigns_v2_router)
 admin_router.include_router(logs_v2_router)
 admin_router.include_router(metrics_v2_router)
 admin_router.include_router(experiments_v2_router)
+admin_router.include_router(ai_v2_router)
+admin_router.include_router(ai_models_v2_router)
+admin_router.include_router(config_v2_router)
+admin_router.include_router(events_v2_router)
+admin_router.include_router(moderation_v2_router)
+admin_router.include_router(notifications_v2_router)
+admin_router.include_router(subscriptions_v2_router)
+admin_router.include_router(system_v2_router)
+admin_router.include_router(tasks_mgmt_v2_router)
 
 __all__ = ['admin_router']
