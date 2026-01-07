@@ -319,5 +319,150 @@ python -m py_compile <modified_files>
 
 ---
 
-*文档版本: v1.0*  
-*最后更新: 2026-01-06*
+## 🔗 集成测试指南
+
+### Staging 环境 Webhook 测试
+
+#### 前提条件
+
+- ✅ Staging 环境已部署最新代码
+- ✅ Staging 环境可公网访问
+- ✅ 有 Clerk 和 Stripe 的测试账号访问权限
+- ✅ 环境变量已正确配置:
+  - `CLERK_WEBHOOK_SECRET`
+  - `STRIPE_WEBHOOK_SECRET`
+  - `STRIPE_SECRET_KEY` (test mode)
+
+#### Clerk Webhook 测试清单
+
+**配置步骤**:
+1. 访问 [Clerk Dashboard](https://dashboard.clerk.com) → Webhooks
+2. 添加端点: `https://your-staging-domain.com/api/v2/webhooks/clerk`
+3. 订阅事件: `user.created`, `user.updated`, `session.created`, `session.ended`, `session.removed`, `session.revoked`
+4. 复制 Signing Secret 并更新环境变量
+5. 重启 staging 服务
+
+**测试项**:
+- [ ] `user.created` 事件创建用户记录
+- [ ] `user.updated` 事件同步用户信息
+- [ ] `session.created` 事件记录登录日志
+- [ ] `session.ended` 事件记录登出日志
+- [ ] Webhook 签名验证通过 (无 400 Invalid signature 错误)
+- [ ] Clerk Dashboard 显示 webhook 状态为 "Healthy"
+
+**验证方法**:
+```sql
+-- 验证用户创建
+SELECT * FROM profiles WHERE id = 'user_xxx';
+
+-- 验证用户更新
+SELECT avatar_url, username FROM profiles WHERE id = 'user_xxx';
+
+-- 验证登录日志
+SELECT * FROM user_activities
+WHERE user_id = 'user_xxx' AND activity_type = 'user_login'
+ORDER BY created_at DESC LIMIT 1;
+```
+
+#### Stripe Webhook 测试清单
+
+**配置步骤**:
+1. 访问 [Stripe Dashboard (Test Mode)](https://dashboard.stripe.com/test/webhooks)
+2. 添加端点: `https://your-staging-domain.com/api/v2/webhooks/stripe`
+3. 选择事件: `checkout.session.completed`, `invoice.payment_succeeded`, `customer.subscription.deleted`, `customer.subscription.updated`
+4. 复制 Signing Secret 并更新环境变量
+5. 重启 staging 服务
+
+**测试项**:
+- [ ] `checkout.session.completed` (积分购买) - 增加永久积分
+- [ ] `checkout.session.completed` (订阅开通) - 更新 tier 和月度积分
+- [ ] `invoice.payment_succeeded` (续费) - 刷新月度积分
+- [ ] `customer.subscription.deleted` (取消) - 降级到 free tier
+- [ ] Webhook 幂等性 - 重复事件被忽略
+- [ ] Webhook 签名验证通过 (无 400 错误)
+- [ ] Stripe Dashboard 显示 webhook 状态为成功 (绿色勾号)
+
+**验证方法**:
+```sql
+-- 验证积分购买
+SELECT credits_permanent FROM profiles WHERE id = 'user_xxx';
+SELECT * FROM credits_history
+WHERE user_id = 'user_xxx' AND change_type = 'topup_purchase'
+ORDER BY created_at DESC LIMIT 1;
+
+-- 验证订阅开通
+SELECT tier, credits_monthly, subscription_status FROM profiles
+WHERE id = 'user_xxx';
+
+-- 验证订阅续费
+SELECT credits_monthly FROM profiles WHERE id = 'user_xxx';
+SELECT * FROM credits_history
+WHERE user_id = 'user_xxx' AND change_type = 'monthly_refresh'
+ORDER BY created_at DESC LIMIT 1;
+
+-- 验证订阅取消
+SELECT tier, subscription_status FROM profiles WHERE id = 'user_xxx';
+
+-- 验证幂等性
+SELECT * FROM webhook_events WHERE event_id = 'evt_xxx';
+```
+
+**使用 Stripe 测试卡号**:
+```
+卡号: 4242 4242 4242 4242
+有效期: 任意未来日期 (如 12/34)
+CVC: 任意 3 位数字 (如 123)
+```
+
+#### 性能监控指标
+
+在 staging 测试期间，监控以下指标:
+
+| 指标 | 目标值 | 检查位置 |
+|------|--------|----------|
+| Webhook 响应时间 | < 2s | Clerk/Stripe Dashboard |
+| Webhook 成功率 | > 99% | Clerk/Stripe Dashboard |
+| 数据库写入延迟 | < 500ms | Staging 日志 |
+
+#### 常见问题排查
+
+**问题 1: Webhook 返回 400 Invalid signature**
+- 检查环境变量 `CLERK_WEBHOOK_SECRET` 或 `STRIPE_WEBHOOK_SECRET` 是否正确
+- 重新复制 Signing Secret 并更新
+- 重启服务
+
+**问题 2: Webhook 返回 500 Internal Server Error**
+- 查看 staging 日志定位错误
+- 检查数据库连接
+- 检查依赖服务 (Supabase, Stripe API)
+
+**问题 3: Webhook 成功但数据库无变化**
+- 确认 webhook payload 中的 `user_id` 或 `customer_id` 存在
+- 检查数据库中是否有对应的用户记录
+- 查看日志中的详细错误信息
+
+#### 切换到生产环境
+
+**前提条件**:
+- [x] Staging 环境所有测试通过
+- [x] Webhook 幂等性机制验证通过
+- [x] 无 500 错误或签名验证失败
+- [x] 数据库数据正确更新
+- [x] 性能指标达标
+
+**切换步骤**:
+1. 在 Clerk/Stripe 生产环境添加 v2 端点
+2. 更新生产环境变量 (使用生产环境的 Signing Secret)
+3. **保留旧端点**: 暂时不要删除 v1 端点，观察 7 天
+4. 监控 v2 webhook 成功率和流量
+5. 确认 v2 处理所有事件后，7 天后废弃 v1 端点
+
+**回滚计划**:
+- 在 Clerk/Stripe Dashboard 中禁用 v2 端点
+- 启用 v1 端点
+- 如必要，回滚代码: `git revert <commit_hash>`
+
+---
+
+*文档版本: v1.1*
+*最后更新: 2026-01-07*

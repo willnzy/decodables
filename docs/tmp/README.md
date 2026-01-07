@@ -7,14 +7,7 @@
 
 ---
 
-## 📋 文档清单 (共 4 个)
-
-### 测试指南 (2 个)
-
-| 序号 | 文档 | 说明 | 状态 | 删除条件 |
-|------|------|------|------|---------|
-| 013 | webhook-v2-staging-testing-guide.md | Webhook v2 测试指南 | 🧪 测试 | 流程标准化后删除 |
-| 014 | github-actions-v2-api-testing.md | GitHub Actions 测试指南 | 🧪 测试 | 流程标准化后删除 |
+## 📋 文档清单 (共 2 个)
 
 ### 未来 Phase 计划 (2 个)
 
@@ -52,16 +45,13 @@
 - 012: legacy-code-cleanup-plan.md - 已被 Phase 9-10 计划替代
 - 015: backend-next-steps-summary.md - 步骤已过时
 
+### 测试指南 (013-014) - 已合并
+- 013: webhook-v2-staging-testing-guide.md - 已合并到 TEST_COVERAGE_PLAN.md "集成测试指南"章节
+- 014: github-actions-v2-api-testing.md - 已合并到 CI-TESTING-LIMITATIONS.md "GitHub Actions 配置优化"章节
+
 ---
 
 ## 🗂️ 分类说明
-
-### 🧪 测试指南 (2 个 - 保留中)
-临时性的测试指南，帮助团队完成特定测试任务。
-
-**何时删除**:
-- 测试流程已标准化，集成到 CI/CD 流程
-- 相关内容已合并到 `TEST_COVERAGE_PLAN.md` 或 `CI-TESTING-LIMITATIONS.md`
 
 ### 🔮 未来 Phase 计划 (2 个 - 保留中)
 尚未开始执行的 Phase 计划。
@@ -154,10 +144,11 @@ git mv docs/tmp/002-phase-1-completion-report.md docs/tmp/archive/
 
 #### ✅ 已完成清理 (2026-01-07)
 ```bash
-# 已删除 13 个完成的临时文档:
+# 已删除 15 个完成的临时文档:
 # - Phase 报告: 001-004
 # - 迁移计划: 005-008
 # - 临时分析: 009-012, 015
+# - 测试指南: 013-014 (已合并到主文档)
 ```
 
 #### Phase 9-10 完成后可删除
@@ -170,11 +161,6 @@ git rm docs/tmp/016-phase-9-10-architecture-cleanup-plan.md
 git rm docs/tmp/017-phase-11-async-repository-refactoring.md
 ```
 
-#### 测试标准化后可删除
-```bash
-git rm docs/tmp/013-webhook-v2-staging-testing-guide.md
-git rm docs/tmp/014-github-actions-v2-api-testing.md
-```
 
 ---
 
@@ -187,8 +173,8 @@ git rm docs/tmp/014-github-actions-v2-api-testing.md
 - **Phase 11**: 查看 017-phase-11-async-repository-refactoring.md
 
 ### 我想设置测试流程
-- Webhook v2 测试: 查看 013-webhook-v2-staging-testing-guide.md
-- GitHub Actions 测试: 查看 014-github-actions-v2-api-testing.md
+- Webhook 集成测试: 查看 ../TEST_COVERAGE_PLAN.md "集成测试指南"章节
+- GitHub Actions 配置: 查看 ../CI-TESTING-LIMITATIONS.md "GitHub Actions 配置优化"章节
 
 ### 我想了解已完成的工作
 - 查看本文档"已删除文档记录"章节，包含所有关键结论
@@ -216,5 +202,5 @@ git rm docs/tmp/014-github-actions-v2-api-testing.md
 ---
 
 **管理者**: 开发团队
-**最后更新**: 2026-01-07 (清理完成，删除 13 个文档)
+**最后更新**: 2026-01-07 (第二次清理完成，删除 15 个文档，合并 2 个测试指南到主文档)
 **下次检查**: Phase 9-10 开始前
