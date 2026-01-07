@@ -16,6 +16,7 @@ from .config_repository import SupabaseConfigRepository
 from .payment_repository import SupabasePaymentRepository
 from .user_repository_extended import SupabaseUserRepositoryExtended
 from .credit_repository_extended import SupabaseCreditRepositoryExtended
+from .project_repository_extended import SupabaseProjectRepositoryExtended
 
 __all__ = [
     'SupabaseCreditRepository',
@@ -29,4 +30,5 @@ __all__ = [
     'SupabasePaymentRepository',
     'SupabaseUserRepositoryExtended',
     'SupabaseCreditRepositoryExtended',
+    'SupabaseProjectRepositoryExtended',
 ]

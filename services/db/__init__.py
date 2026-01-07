@@ -19,8 +19,9 @@ from .utils import (
     log_activity,
 )
 
-# Users - Now imported from infrastructure.db_compat
+# Users & Projects - Now imported from infrastructure.db_compat
 from infrastructure.db_compat import (
+    # User functions
     get_user_profile,
     create_user_profile,
     update_subscription_tier,
@@ -40,10 +41,7 @@ from infrastructure.db_compat import (
     get_user_discount,
     create_user_discount,
     generate_user_code,
-)
-
-# Projects
-from .projects import (
+    # Project functions
     get_user_projects,
     count_user_projects,
     get_project_detail,

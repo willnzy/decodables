@@ -38,6 +38,7 @@ from infrastructure.repositories import (
 )
 from infrastructure.repositories.user_repository_extended import SupabaseUserRepositoryExtended
 from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +341,141 @@ async def check_and_reset_monthly_credits_if_needed(user_id: str):
 
 
 # ==========================================
+# Project Functions
+# ==========================================
+
+@async_to_sync
+async def get_user_projects(
+    user_id: str,
+    page: int = 1,
+    limit: int = 20,
+    search: str = None,
+    include_canvas_data: bool = True
+):
+    """Get user's projects with pagination."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_user_projects(user_id, page, limit, search, include_canvas_data)
+
+
+@async_to_sync
+async def count_user_projects(user_id: str, search: str = None):
+    """Count user's projects."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.count_user_projects(user_id, search)
+
+
+@async_to_sync
+async def get_project_detail(project_id: str, user_id: str):
+    """Get project detail (must be owner or purchased)."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_project_detail(project_id, user_id)
+
+
+@async_to_sync
+async def create_project(
+    user_id: str,
+    title: str = None,
+    canvas_data: dict = None,
+    tz: str = "UTC"
+):
+    """Create new project."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.create_project(user_id, title, canvas_data, tz)
+
+
+@async_to_sync
+async def duplicate_project(project_id: str, user_id: str, tz: str = "UTC"):
+    """Duplicate a project."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.duplicate_project(project_id, user_id, tz)
+
+
+@async_to_sync
+async def save_project(
+    project_id: str,
+    user_id: str,
+    canvas_data: dict = None,
+    thumbnail_url: str = None,
+    title: str = None
+):
+    """Save/update project."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.save_project(project_id, user_id, canvas_data, thumbnail_url, title)
+
+
+@async_to_sync
+async def soft_delete_project(project_id: str, user_id: str):
+    """Soft delete project."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.soft_delete_project(project_id, user_id)
+
+
+@async_to_sync
+async def restore_project(project_id: str):
+    """Restore soft-deleted project (admin)."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.restore_project(project_id)
+
+
+@async_to_sync
+async def user_restore_project(project_id: str, user_id: str):
+    """Restore soft-deleted project (user)."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.user_restore_project(project_id, user_id)
+
+
+@async_to_sync
+async def get_user_deleted_projects(user_id: str, page: int = 1, limit: int = 20):
+    """Get user's deleted projects."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_user_deleted_projects(user_id, page, limit)
+
+
+@async_to_sync
+async def permanently_hide_project(project_id: str, user_id: str):
+    """Permanently hide project (stage 2 delete)."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.permanently_hide_project(project_id, user_id)
+
+
+@async_to_sync
+async def update_project_hash(project_id: str, new_hash: str):
+    """Update project content hash."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.update_project_hash(project_id, new_hash)
+
+
+@async_to_sync
+async def get_all_projects_feed(page: int = 1, limit: int = 50):
+    """Get site-wide project feed (admin)."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_all_projects_feed(page, limit)
+
+
+@async_to_sync
+async def get_dashboard_projects(
+    user_id: str,
+    view_type: str = "all",
+    page: int = 1,
+    limit: int = 20,
+    search: str = None,
+    include_canvas_data: bool = True
+):
+    """Get projects for dashboard with view type filtering."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_dashboard_projects(
+        user_id, view_type, page, limit, search, include_canvas_data
+    )
+
+
+@async_to_sync
+async def get_seller_project_stats(user_id: str):
+    """Get seller statistics for projects."""
+    repo = _get_repo(SupabaseProjectRepositoryExtended)
+    return await repo.get_seller_project_stats(user_id)
+
+
+# ==========================================
 # Export All
 # ==========================================
 
@@ -372,4 +508,20 @@ __all__ = [
     'get_credit_history',
     'refresh_monthly_credits',
     'check_and_reset_monthly_credits_if_needed',
+    # Project functions
+    'get_user_projects',
+    'count_user_projects',
+    'get_project_detail',
+    'create_project',
+    'duplicate_project',
+    'save_project',
+    'soft_delete_project',
+    'restore_project',
+    'user_restore_project',
+    'get_user_deleted_projects',
+    'permanently_hide_project',
+    'update_project_hash',
+    'get_all_projects_feed',
+    'get_dashboard_projects',
+    'get_seller_project_stats',
 ]
