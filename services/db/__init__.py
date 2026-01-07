@@ -71,16 +71,14 @@ from infrastructure.db_compat import (
     get_seller_stats,
     record_listing_usage,
     get_leaderboard,
-)
-
-# Assets
-from .assets import (
+    # Asset functions
     save_asset,
     get_assets,
     soft_delete_asset,
     permanently_hide_asset,
     restore_asset,
-    get_deleted_assets as get_user_deleted_assets,
+    get_deleted_assets,
+    get_user_deleted_assets,  # Alias for backward compatibility
     increment_asset_usage,
     get_dashboard_assets,
     get_seller_asset_stats,

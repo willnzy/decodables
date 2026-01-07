@@ -40,6 +40,7 @@ from infrastructure.repositories.user_repository_extended import SupabaseUserRep
 from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
 from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
 from infrastructure.repositories.listing_repository_extended import SupabaseListingRepositoryExtended
+from infrastructure.repositories.asset_repository_extended import SupabaseAssetRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -604,6 +605,88 @@ async def get_leaderboard(period: str = "monthly", board_type: str = "all", limi
 
 
 # ==========================================
+# Asset Functions
+# ==========================================
+
+@async_to_sync
+async def save_asset(user_id: str, url: str, asset_type: str, project_id: str = None,
+                     prompt: str = None, tz: str = "UTC"):
+    """Save new asset."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.save_asset(user_id, url, asset_type, project_id, prompt, tz)
+
+
+@async_to_sync
+async def get_assets(user_id: str, project_id: str = None):
+    """Get user assets."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.get_assets(user_id, project_id)
+
+
+@async_to_sync
+async def soft_delete_asset(asset_id: str, user_id: str):
+    """Soft delete asset."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.soft_delete_asset(asset_id, user_id)
+
+
+@async_to_sync
+async def permanently_hide_asset(asset_id: str, user_id: str):
+    """Permanently hide asset."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.permanently_hide_asset(asset_id, user_id)
+
+
+@async_to_sync
+async def restore_asset(asset_id: str, user_id: str):
+    """Restore soft-deleted asset."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.restore_asset(asset_id, user_id)
+
+
+@async_to_sync
+async def get_deleted_assets(user_id: str, page: int = 1, limit: int = 20):
+    """Get user's deleted assets."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.get_deleted_assets(user_id, page, limit)
+
+
+# Alias for backward compatibility
+get_user_deleted_assets = get_deleted_assets
+
+
+@async_to_sync
+async def increment_asset_usage(asset_id: str, user_id: str):
+    """Increment asset usage count."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.increment_asset_usage(asset_id, user_id)
+
+
+@async_to_sync
+async def get_dashboard_assets(user_id: str, view: str = "all", page: int = 1, limit: int = 20):
+    """Get assets for dashboard."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.get_dashboard_assets(user_id, view, page, limit)
+
+
+@async_to_sync
+async def get_seller_asset_stats(user_id: str):
+    """Get seller statistics for assets."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    return await repo.get_seller_asset_stats(user_id)
+
+
+def get_system_resources(resource_type: str = "sticker", user_tier: str = "free"):
+    """Get system resources by type (synchronous, no async needed)."""
+    repo = _get_repo(SupabaseAssetRepositoryExtended)
+    # This is intentionally synchronous since it's a simple query
+    result = repo.client.table("system_resources").select("*").eq(
+        "resource_type", resource_type
+    ).eq("is_active", True).order("sort_order").execute()
+    return result.data or []
+
+
+# ==========================================
 # Export All
 # ==========================================
 
@@ -666,4 +749,16 @@ __all__ = [
     'get_seller_stats',
     'record_listing_usage',
     'get_leaderboard',
+    # Asset functions
+    'save_asset',
+    'get_assets',
+    'soft_delete_asset',
+    'permanently_hide_asset',
+    'restore_asset',
+    'get_deleted_assets',
+    'get_user_deleted_assets',  # Alias for backward compatibility
+    'increment_asset_usage',
+    'get_dashboard_assets',
+    'get_seller_asset_stats',
+    'get_system_resources',
 ]
