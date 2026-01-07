@@ -1,0 +1,78 @@
+# Railway Configuration for Make Decodables
+# https://docs.railway.app/reference/config-as-code
+
+# ==========================================
+# Web Service (FastAPI)
+# ==========================================
+[build]
+  builder = "NIXPACKS"
+  buildCommand = "pip install -r requirements.txt"
+
+[deploy]
+  startCommand = "uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2"
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
+
+# Health check configuration
+[deploy.healthcheck]
+  path = "/health"
+  timeout = 30
+  interval = 60
+
+# Service replicas (horizontal scaling)
+# Uncomment to scale web service
+# [deploy.replicas]
+#   min = 2
+#   max = 5
+
+# ==========================================
+# Environment Variables
+# ==========================================
+# These are managed via Railway Dashboard for security
+# Listed here for documentation only
+
+# [env]
+#   ENV = "production"
+#
+#   # Redis Configuration (Railway optimized)
+#   REDIS_URL = "${{Redis-Staging.REDIS_URL}}"
+#   REDIS_MAX_CONNECTIONS = "50"
+#   REDIS_SOCKET_TIMEOUT = "5"
+#   REDIS_HEALTH_CHECK_INTERVAL = "30"
+#
+#   # Supabase
+#   SUPABASE_URL = "https://xxx.supabase.co"
+#   SUPABASE_KEY = "eyJxxx..."
+#
+#   # Auth (Clerk)
+#   CLERK_PEM_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----..."
+#   CLERK_WEBHOOK_SECRET = "whsec_xxx"
+#
+#   # Payment (Stripe)
+#   STRIPE_SECRET_KEY = "sk_live_xxx"
+#   STRIPE_WEBHOOK_SECRET = "whsec_xxx"
+#
+#   # AI Services
+#   OPENAI_API_KEY = "sk-xxx"
+#   FAL_KEY = "xxx"
+#
+#   # Optional: Sentry Error Tracking
+#   SENTRY_DSN = "https://xxx@xxx.ingest.sentry.io/xxx"
+#   SENTRY_TRACES_SAMPLE_RATE = "0.1"
+#   SENTRY_PROFILES_SAMPLE_RATE = "0.1"
+
+# ==========================================
+# Resource Limits
+# ==========================================
+# Note: Resource limits are managed via Railway Dashboard
+# Web service recommended: 1GB RAM, 1 vCPU
+# Worker service recommended: 512MB-1GB RAM depending on task load
+
+# ==========================================
+# Notes
+# ==========================================
+# 1. This file configures the main-decodables (web) service
+# 2. worker-staging service is configured separately via Procfile
+# 3. Redis-Staging is a Railway template service (no custom config needed)
+# 4. All sensitive environment variables MUST be set via Railway Dashboard
+# 5. For multi-region deployment, use Railway's region settings in Dashboard

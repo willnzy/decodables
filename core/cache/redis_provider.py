@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 # Environment variable for Redis connection
 REDIS_URL = os.environ.get("REDIS_URL")
 
-# Connection pool configuration
-POOL_MAX_CONNECTIONS = 10
-SOCKET_TIMEOUT = 5  # seconds
-SOCKET_CONNECT_TIMEOUT = 5  # seconds
-HEALTH_CHECK_INTERVAL = 30  # seconds
+# Connection pool configuration (Railway optimized)
+# Can be overridden via environment variables for production scaling
+POOL_MAX_CONNECTIONS = int(os.environ.get("REDIS_MAX_CONNECTIONS", "50"))  # Increased from 10 for multiple web instances
+SOCKET_TIMEOUT = int(os.environ.get("REDIS_SOCKET_TIMEOUT", "5"))  # seconds
+SOCKET_CONNECT_TIMEOUT = int(os.environ.get("REDIS_CONNECT_TIMEOUT", "5"))  # seconds
+HEALTH_CHECK_INTERVAL = int(os.environ.get("REDIS_HEALTH_CHECK_INTERVAL", "30"))  # seconds
 
 # Module-level singleton
 _redis_pool: Optional[redis.ConnectionPool] = None

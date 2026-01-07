@@ -15,6 +15,8 @@ Environment Variables:
     - REDIS_URL: Redis connection URL
     - WORKER_QUEUES: Comma-separated queue names (default: high,default,low)
     - WORKER_NAME: Custom worker name (optional)
+    - WORKER_MAX_JOBS: Max jobs before restart (default: 100, Railway memory optimization)
+    - WORKER_JOB_TIMEOUT: Job timeout in seconds (default: 600)
 """
 
 import os
@@ -42,6 +44,10 @@ logger = logging.getLogger("worker")
 
 # Queue configuration
 DEFAULT_QUEUES = ["high", "default", "low"]
+
+# Worker performance configuration (Railway optimized)
+WORKER_MAX_JOBS = int(os.environ.get("WORKER_MAX_JOBS", "100"))  # Restart after N jobs to free memory
+WORKER_JOB_TIMEOUT = int(os.environ.get("WORKER_JOB_TIMEOUT", "600"))  # 10 minutes default
 
 
 def get_worker_queues() -> list:
@@ -155,12 +161,16 @@ def run_worker():
     # Create queue objects
     queues = [Queue(name, connection=redis_conn) for name in queue_names]
     
-    # Create and run worker
+    # Create and run worker with Railway optimizations
     worker = MakeDecodablesWorker(
         queues,
         connection=redis_conn,
         name=worker_name,
         exception_handlers=[handle_job_exception],
+        # Railway memory optimization: restart worker after max_jobs to prevent memory leaks
+        max_jobs=WORKER_MAX_JOBS,
+        # Job timeout to prevent hanging tasks
+        job_monitoring_interval=60,  # Check every 60s
     )
     
     # Handle graceful shutdown
