@@ -269,7 +269,7 @@ class WebSocketManager:
                     
                     elif msg_type == "cancel":
                         # Client requests cancellation
-                        from services.task_queue import task_queue
+                        from infrastructure.task_queue import task_queue
                         if user_id and task_queue.cancel_task(task_id, user_id):
                             await websocket.send_json({
                                 "type": "cancelled",

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from services.db_service import supabase
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

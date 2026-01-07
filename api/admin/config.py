@@ -26,7 +26,7 @@ from services.config_service import (
     batch_update_configs, apply_rate_limit_preset,
     clear_config_cache, RATE_LIMIT_PRESETS
 )
-from services.rate_limiter import limiter, get_current_limits
+from infrastructure.rate_limiter import limiter, get_current_limits
 from services.db_service import admin_log_operation
 from dependencies import require_admin
 

@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from services.ai.story_generator import generate_story_json, client as openai_client
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from schemas import StoryGenRequest, InspirationRequest
 

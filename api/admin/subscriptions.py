@@ -31,7 +31,7 @@ from services.payment_service import (
     create_refund,
     get_payment_intent_details,
 )
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)

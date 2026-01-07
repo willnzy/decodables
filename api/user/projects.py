@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from container import get_container
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 from application.commands.creation import (
     CreateProjectCommand,

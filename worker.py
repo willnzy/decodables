@@ -74,7 +74,7 @@ def handle_job_exception(job: Job, exc_type, exc_value, traceback):
     
     # Update progress tracker
     try:
-        from services.task_queue.progress_tracker import progress_tracker
+        from infrastructure.task_queue.progress_tracker import progress_tracker
         progress_tracker.mark_failed(
             task_id,
             error=str(exc_value),

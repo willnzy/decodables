@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
 from dependencies import get_current_user
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,7 @@ from services.db_service import (
     admin_get_ai_recommendations,
     admin_get_behavior_analysis,
 )
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)

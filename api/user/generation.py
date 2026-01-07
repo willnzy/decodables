@@ -33,9 +33,9 @@ from services.ai.image_generator import generate_8_images
 from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
 from services.ai.story_generator import generate_story_json, client as openai_client
 from services.ai.zine_generator import create_foldable_book
-from services.task_queue import task_queue
+from infrastructure.task_queue import task_queue
 from services.analytics_service import track_ai_generation
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from timezone_utils import get_request_timezone
 
 logger = logging.getLogger(__name__)

@@ -16,8 +16,8 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from services.db_service import supabase, add_credits
-from services.task_queue import task_queue, progress_tracker
-from services.rate_limiter import limiter
+from infrastructure.task_queue import task_queue, progress_tracker
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

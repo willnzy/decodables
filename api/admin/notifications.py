@@ -27,7 +27,7 @@ from services.db_service import (
     admin_log_operation,
     log_activity,
 )
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)

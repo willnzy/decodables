@@ -8,7 +8,7 @@ Provides:
 - Redis PubSub integration for multi-instance support
 
 Usage:
-    from services.websocket import ws_manager
+    from infrastructure.websocket import ws_manager
     
     # In FastAPI endpoint
     @app.websocket("/ws/task/{task_id}")

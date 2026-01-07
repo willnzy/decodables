@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
 from services.db_service import create_support_ticket, send_feedback_with_images
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 

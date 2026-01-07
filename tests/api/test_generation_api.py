@@ -78,5 +78,5 @@ class TestGenerationRateLimits:
         """
         Document: Image generation should be rate limited
         """
-        from services.rate_limiter import limiter
+        from infrastructure.rate_limiter import limiter
         assert limiter is not None

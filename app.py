@@ -156,8 +156,8 @@ from services.payment_service import (
 )
 from services.ai.image_generator import generate_8_images
 # v3.23: Task Queue and WebSocket for async generation
-from services.task_queue import task_queue, progress_tracker
-from services.websocket import ws_manager
+from infrastructure.task_queue import task_queue, progress_tracker
+from infrastructure.websocket import ws_manager
 from services.ai.zine_generator import create_foldable_book, create_assets_zip
 from services.ai.story_generator import generate_story_json, client as openai_client # reuse client
 from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
@@ -173,7 +173,7 @@ CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY") 
 
 # Import Redis-backed limiter from rate_limiter module
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 app = FastAPI(title="MagicZine AI API v3.27 - Full v2 Migration (Production)")
 app.state.limiter = limiter

@@ -9,7 +9,7 @@ Provides:
 - Priority-based scheduling
 
 Usage:
-    from services.task_queue import task_queue, progress_tracker
+    from infrastructure.task_queue import task_queue, progress_tracker
     
     # Enqueue a task
     task_id = await task_queue.enqueue_image_generation(user_id, params)

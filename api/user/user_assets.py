@@ -35,7 +35,7 @@ from services.db_service import (
     restore_asset,
     log_activity,
 )
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from timezone_utils import get_request_timezone
 

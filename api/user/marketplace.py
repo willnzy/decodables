@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from dependencies import get_current_user, require_member
 from container import get_container
-from services.rate_limiter import limiter
+from infrastructure.rate_limiter import limiter
 
 from application.commands.marketplace import (
     CreateListingCommand,

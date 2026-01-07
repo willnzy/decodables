@@ -17,7 +17,7 @@ class TestCreateLimiterFromUrl:
     @patch.dict('os.environ', {'REDIS_URL': 'redis://localhost:6379/0'})
     def test_creates_limiter_with_redis_url_from_env(self, mock_limiter):
         """Uses Redis URL from environment"""
-        from services.rate_limiter import create_limiter_from_url
+        from infrastructure.rate_limiter import create_limiter_from_url
         
         create_limiter_from_url()
         
@@ -28,7 +28,7 @@ class TestCreateLimiterFromUrl:
     @patch('services.rate_limiter.Limiter')
     def test_creates_limiter_with_explicit_url(self, mock_limiter):
         """Uses explicit Redis URL parameter"""
-        from services.rate_limiter import create_limiter_from_url
+        from infrastructure.rate_limiter import create_limiter_from_url
         
         create_limiter_from_url('redis://custom:6379/1')
         
@@ -40,7 +40,7 @@ class TestCreateLimiterFromUrl:
     @patch.dict('os.environ', {}, clear=True)
     def test_creates_limiter_without_redis(self, mock_limiter):
         """Falls back to memory when no Redis URL"""
-        from services.rate_limiter import create_limiter_from_url
+        from infrastructure.rate_limiter import create_limiter_from_url
         
         # Remove REDIS_URL if present
         import os
@@ -62,7 +62,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.limiter')
     def test_async_function_rate_limited(self, mock_limiter, mock_get_string, mock_enabled):
         """Applies rate limit to async function"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = True
         mock_get_string.return_value = "5/minute"
@@ -87,7 +87,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.is_rate_limit_enabled')
     def test_async_function_bypasses_when_disabled(self, mock_enabled):
         """Bypasses rate limit when disabled"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = False
         
@@ -104,7 +104,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.is_rate_limit_enabled')
     def test_sync_function_bypasses_when_disabled(self, mock_enabled):
         """Bypasses rate limit for sync function when disabled"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = False
         
@@ -122,7 +122,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.limiter')
     def test_sync_function_rate_limited(self, mock_limiter, mock_get_string, mock_enabled):
         """Applies rate limit to sync function"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = True
         mock_get_string.return_value = "10/minute"
@@ -146,7 +146,7 @@ class TestDynamicLimit:
     @pytest.mark.asyncio
     async def test_raises_429_on_rate_limit_exceeded_async(self, mock_limiter, mock_get_string, mock_enabled):
         """Raises 429 HTTPException when rate limit exceeded (async)"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         from fastapi import HTTPException
         
         mock_enabled.return_value = True
@@ -176,7 +176,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.limiter')
     def test_raises_429_on_rate_limit_exceeded_sync(self, mock_limiter, mock_get_string, mock_enabled):
         """Raises 429 HTTPException when rate limit exceeded (sync)"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         from fastapi import HTTPException
         
         mock_enabled.return_value = True
@@ -205,7 +205,7 @@ class TestDynamicLimit:
     @pytest.mark.asyncio
     async def test_reraises_other_exceptions_async(self, mock_limiter, mock_get_string, mock_enabled):
         """Re-raises non-rate-limit exceptions (async)"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = True
         mock_get_string.return_value = "5/minute"
@@ -229,7 +229,7 @@ class TestDynamicLimit:
     @patch('services.rate_limiter.limiter')
     def test_reraises_other_exceptions_sync(self, mock_limiter, mock_get_string, mock_enabled):
         """Re-raises non-rate-limit exceptions (sync)"""
-        from services.rate_limiter import dynamic_limit
+        from infrastructure.rate_limiter import dynamic_limit
         
         mock_enabled.return_value = True
         mock_get_string.return_value = "5/minute"
@@ -254,7 +254,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_returns_limits_with_redis(self, mock_get_configs, mock_redis_avail):
         """Returns limits with Redis storage indicator"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = True
         mock_get_configs.return_value = [
@@ -272,7 +272,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_returns_limits_with_memory(self, mock_get_configs, mock_redis_avail):
         """Returns limits with memory storage indicator"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = False
         mock_get_configs.return_value = [
@@ -287,7 +287,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_returns_defaults_when_no_configs(self, mock_get_configs, mock_redis_avail):
         """Returns default limits when no configs found"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = False
         mock_get_configs.return_value = []
@@ -301,7 +301,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_handles_json_string_values(self, mock_get_configs, mock_redis_avail):
         """Parses JSON string values correctly"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = True
         mock_get_configs.return_value = [
@@ -316,7 +316,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_handles_invalid_json(self, mock_get_configs, mock_redis_avail):
         """Handles invalid JSON gracefully"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = True
         mock_get_configs.return_value = [
@@ -332,7 +332,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_global_enabled_false(self, mock_get_configs, mock_redis_avail):
         """Detects global rate limiting disabled"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = True
         mock_get_configs.return_value = [
@@ -347,7 +347,7 @@ class TestGetCurrentLimits:
     @patch('services.config_service.get_all_configs')
     def test_global_enabled_non_dict_value(self, mock_get_configs, mock_redis_avail):
         """Handles non-dict global enabled value"""
-        from services.rate_limiter import get_current_limits
+        from infrastructure.rate_limiter import get_current_limits
         
         mock_redis_avail.return_value = True
         mock_get_configs.return_value = [
@@ -365,10 +365,10 @@ class TestLimiterInstance:
     
     def test_limiter_exists(self):
         """Global limiter instance exists"""
-        from services.rate_limiter import limiter
+        from infrastructure.rate_limiter import limiter
         assert limiter is not None
     
     def test_limiter_has_limit_method(self):
         """Limiter has limit method"""
-        from services.rate_limiter import limiter
+        from infrastructure.rate_limiter import limiter
         assert hasattr(limiter, 'limit')
