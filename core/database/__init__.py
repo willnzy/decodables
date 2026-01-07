@@ -26,9 +26,13 @@ from .retry import (
     RetryConfig,
 )
 
+# Alias for compatibility with infrastructure layer
+get_supabase_client = get_db_client
+
 __all__ = [
     # Client
     'get_db_client',
+    'get_supabase_client',  # Alias
     'is_db_available',
     'DatabaseConfig',
     # Retry
