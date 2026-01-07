@@ -169,7 +169,7 @@ class TestBillingFlowIntegration:
             user_id=user_id,
             amount=amount,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.PURCHASE,
+            tx_type=TransactionType.TOPUP_PURCHASE,
             description="Credit purchase",
         )
 

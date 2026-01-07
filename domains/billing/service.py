@@ -346,7 +346,7 @@ class BillingService:
         mapping = {
             "image_generation": TransactionType.GENERATION,
             "text_generation": TransactionType.GENERATION,
-            "smart_scan": TransactionType.SMART_SCAN,
+            "smart_scan": TransactionType.OCR,  # Smart scan uses OCR type
             "ocr": TransactionType.OCR,
         }
         return mapping.get(operation, TransactionType.GENERATION)
