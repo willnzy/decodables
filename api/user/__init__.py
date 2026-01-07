@@ -35,6 +35,12 @@ from .config import router as config_router
 from .resources import router as resources_router
 from .payment import router as payment_router
 from .support import router as support_router
+from .export import router as export_router
+from .logs import router as logs_router
+from .tools import router as tools_router
+from .tasks import router as tasks_router
+from .generations import router as generations_router
+from .experiments import router as experiments_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -53,5 +59,11 @@ user_router.include_router(config_router)
 user_router.include_router(resources_router)
 user_router.include_router(payment_router)
 user_router.include_router(support_router)
+user_router.include_router(export_router)
+user_router.include_router(logs_router)
+user_router.include_router(tools_router)
+user_router.include_router(tasks_router)
+user_router.include_router(generations_router)
+user_router.include_router(experiments_router)
 
 __all__ = ["user_router"]
