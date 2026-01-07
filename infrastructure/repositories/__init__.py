@@ -12,6 +12,7 @@ from .listing_repository import SupabaseListingRepository
 from .feature_flag_repository import SupabaseFeatureFlagRepository
 from .experiment_repository import SupabaseExperimentRepository
 from .system_resource_repository import SupabaseSystemResourceRepository
+from .config_repository import SupabaseConfigRepository
 
 __all__ = [
     'SupabaseCreditRepository',
@@ -21,4 +22,5 @@ __all__ = [
     'SupabaseFeatureFlagRepository',
     'SupabaseExperimentRepository',
     'SupabaseSystemResourceRepository',
+    'SupabaseConfigRepository',
 ]
