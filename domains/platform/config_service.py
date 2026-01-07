@@ -90,7 +90,7 @@ def get_config(config_key: str, use_cache: bool = True) -> Optional[Dict[str, An
     """
     # Check cache first
     if use_cache:
-        cached = cache_service.get_config(config_key)
+        cached = cache_service.get_json(f"config:{config_key}")
         if cached is not None:
             return cached
     
@@ -110,9 +110,9 @@ def get_config(config_key: str, use_cache: bool = True) -> Optional[Dict[str, An
                 except (json.JSONDecodeError, TypeError):
                     config_value = raw_value
                 
-                # Cache the result
+                # Cache the result (5 minutes TTL)
                 if config_value is not None:
-                    cache_service.set_config(config_key, config_value)
+                    cache_service.set_json(f"config:{config_key}", config_value, ttl=300)
                 
                 return config_value
         except Exception as e:
@@ -148,7 +148,7 @@ def set_config(config_key: str, config_value: Dict[str, Any], updated_by: str = 
             .execute()
         
         # Invalidate cache
-        cache_service.invalidate_config_cache(config_key)
+        cache_service.delete(f"config:{config_key}")
         
         return True
     except Exception as e:
@@ -238,7 +238,7 @@ def is_rate_limit_enabled(config_key: str = None) -> bool:
 
 def clear_config_cache():
     """Clear all config cache."""
-    cache_service.invalidate_config_cache()
+    cache_service.delete_pattern("config:*")
     logger.info("[ConfigService] Config cache cleared")
 
 
