@@ -1,0 +1,103 @@
+"""
+Memory Cache Provider - In-memory cache implementation.
+
+@module core.cache.memory_provider
+@version 1.0.0
+"""
+
+import threading
+import time
+from typing import Optional, Dict, Any
+
+from .interface import ICacheProvider
+
+
+class MemoryCacheProvider(ICacheProvider):
+    """
+    In-memory cache provider.
+
+    Features:
+    - Thread-safe implementation
+    - TTL support with lazy expiration
+    - Simple FIFO eviction when max size reached
+    - Useful as fallback when Redis unavailable
+    """
+
+    def __init__(self, max_size: int = 1000):
+        """
+        Initialize memory cache.
+
+        Args:
+            max_size: Maximum number of items to store
+        """
+        self._cache: Dict[str, Any] = {}
+        self._expiry: Dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._max_size = max_size
+
+    def get(self, key: str) -> Optional[str]:
+        """Get value from cache."""
+        with self._lock:
+            if key not in self._cache:
+                return None
+
+            expiry_time = self._expiry.get(key, 0)
+            if expiry_time and time.time() > expiry_time:
+                del self._cache[key]
+                del self._expiry[key]
+                return None
+
+            return self._cache[key]
+
+    def set(self, key: str, value: str, ttl: int = 0) -> bool:
+        """Set value in cache with optional TTL."""
+        with self._lock:
+            if len(self._cache) >= self._max_size and key not in self._cache:
+                self._evict_oldest()
+
+            self._cache[key] = value
+            if ttl > 0:
+                self._expiry[key] = time.time() + ttl
+            else:
+                self._expiry.pop(key, None)
+            return True
+
+    def delete(self, key: str) -> bool:
+        """Delete key from cache."""
+        with self._lock:
+            self._cache.pop(key, None)
+            self._expiry.pop(key, None)
+            return True
+
+    def delete_pattern(self, pattern: str) -> bool:
+        """Delete keys matching pattern (simple prefix match)."""
+        prefix = pattern.replace("*", "")
+
+        with self._lock:
+            keys_to_delete = [k for k in self._cache.keys() if k.startswith(prefix)]
+            for key in keys_to_delete:
+                del self._cache[key]
+                self._expiry.pop(key, None)
+            return True
+
+    def exists(self, key: str) -> bool:
+        """Check if key exists and is not expired."""
+        return self.get(key) is not None
+
+    def clear(self) -> bool:
+        """Clear all cache."""
+        with self._lock:
+            self._cache.clear()
+            self._expiry.clear()
+            return True
+
+    def size(self) -> int:
+        """Get current cache size."""
+        return len(self._cache)
+
+    def _evict_oldest(self):
+        """Evict oldest entry (simple FIFO)."""
+        if self._cache:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+            self._expiry.pop(oldest_key, None)
