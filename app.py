@@ -42,8 +42,9 @@ if SENTRY_DSN:
             ],
             # Performance monitoring
             traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
-            # Profiling: Find slow code paths (requires SDK >= 2.24.1)
-            profiles_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+            # Profiling: Find slow code paths (SDK >= 2.24.1)
+            profile_session_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
+            profile_lifecycle="trace",  # Auto-run profiler when there's an active transaction
             environment=os.environ.get("ENV", "development"),
             release=os.environ.get("APP_VERSION", "3.25.0"),
             send_default_pii=False,  # Don't send PII by default
