@@ -10,11 +10,6 @@ Endpoints:
 - GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_project_detail  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from io import BytesIO
 from typing import List, Optional
@@ -26,6 +21,9 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
+from infrastructure.logging.activity_logger import log_activity
+from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +88,8 @@ async def export_project_pdf(
 
     PDF export is always free per PRD v3.0.
     """
-    proj = get_project_detail(project_id, user["id"])
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
 
@@ -121,7 +120,8 @@ async def export_project_preview(
     """Generate a PNG preview of the project PDF."""
     import fitz
 
-    proj = get_project_detail(project_id, user["id"])
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
 
@@ -207,7 +207,8 @@ async def export_project_zip(
     if user_tier != "pro":
         raise HTTPException(403, "ZIP export requires Pro plan.")
 
-    proj = get_project_detail(project_id, user["id"])
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
 

@@ -16,8 +16,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from infrastructure.db_compat import (
-    supabase, credit_deduct, add_credits, save_asset,
+from core.database import get_supabase_client
+from infrastructure.repositories import (
+    SupabaseCreditRepositoryExtended,
+    SupabaseAssetRepositoryExtended,
 )
 from shared.ai.image_generator import generate_8_images
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
@@ -63,14 +65,22 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     # Reference image costs extra (7 credits vs 5)
     base_cost = 7 if req.reference_image else 5
     cost = len(req.prompts) * base_cost * num_images
-    
-    try:
-        result = credit_deduct(user["id"], cost, "generation", 
-            f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""))
-    except Exception as e:
-        if "INSUFFICIENT" in str(e):
+
+    # Deduct credits
+    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    tz = get_request_timezone(request, user_id=user.get("id"))
+
+    result = await credit_repo.deduct_credits(
+        user["id"], cost, "generation",
+        f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""),
+        tz=tz
+    )
+
+    if not result.get("success"):
+        error_msg = result.get("error", "Unknown error")
+        if "INSUFFICIENT" in error_msg:
             raise HTTPException(402, "Insufficient credits")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, error_msg)
     
     # Select model based on tier
     tier = (user.get("tier") or "free").lower()
@@ -147,22 +157,23 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     )
     
     generation_time_ms = int((time.time() - generation_start) * 1000)
-    
+
     # Save assets and generation history
-    tz = get_request_timezone(request, user_id=user.get("id"))
+    asset_repo = SupabaseAssetRepositoryExtended(get_supabase_client())
+    supabase = get_supabase_client()
     enhanced_prompt_text = enhancement_result.get("enhanced_prompt") if enhancement_result else None
-    
+
     for idx, url in enumerate(urls):
         if not url:
             continue
-        
+
         prompt_idx = idx // num_images if num_images > 1 else idx
         prompt_used = prompts_to_use[prompt_idx] if prompt_idx < len(prompts_to_use) else prompts_to_use[0]
         asset_prompt = f"[{req.theme}] {prompt_used}" if req.theme else prompt_used
-        
+
         # Save to assets table
-        save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt, timezone=tz)
-        
+        await asset_repo.save_asset(user["id"], url, "ai_generated", req.project_id, asset_prompt, tz=tz)
+
         # Save to user_generations table
         try:
             generation_record = {
@@ -251,15 +262,22 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     num_images = max(1, min(4, req.num_images or 1))
     base_cost = 7 if req.reference_image else 5
     cost = len(req.prompts) * base_cost * num_images
-    
+
     # Deduct credits FIRST
-    try:
-        result = credit_deduct(user["id"], cost, "generation", 
-            f"Async gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""))
-    except Exception as e:
-        if "INSUFFICIENT" in str(e):
+    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    tz = get_request_timezone(request, user_id=user.get("id"))
+
+    result = await credit_repo.deduct_credits(
+        user["id"], cost, "generation",
+        f"Async gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""),
+        tz=tz
+    )
+
+    if not result.get("success"):
+        error_msg = result.get("error", "Unknown error")
+        if "INSUFFICIENT" in error_msg:
             raise HTTPException(402, "Insufficient credits")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, error_msg)
     
     tier = (user.get("tier") or "free").lower()
     model = "flux-dev" if tier == "pro" else "flux-schnell"
@@ -325,6 +343,7 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     }
     
     # Save task to database
+    supabase = get_supabase_client()
     try:
         supabase.rpc("create_generation_task", {
             "p_task_id": task_id,
@@ -336,7 +355,7 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
         }).execute()
     except Exception as e:
         logger.warning(f"Failed to save task to DB: {e}")
-    
+
     # Enqueue task
     enqueued_task_id = task_queue.enqueue_image_generation(
         user_id=user["id"],
@@ -344,11 +363,11 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
         tier=tier,
         idempotency_key=task_id
     )
-    
+
     if not enqueued_task_id:
         logger.error(f"[AsyncGen] Failed to enqueue task {task_id}")
         try:
-            add_credits(user["id"], cost, "refund", "Generation task queue failed")
+            await credit_repo.add_credits(user["id"], cost, "Generation task queue failed", "refund", tz=tz)
         except Exception as e:
             logger.error(f"Failed to refund credits: {e}")
         raise HTTPException(503, "Generation service temporarily unavailable. Credits refunded.")

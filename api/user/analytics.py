@@ -8,11 +8,6 @@ Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - log_user_event  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -21,8 +16,10 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.admin_stats_repository_extended import SupabaseAdminStatsRepositoryExtended
+from infrastructure.logging.activity_logger import log_activity
+from core.database import get_supabase_client, get_database_client
 
-from core.database import get_supabase_client
 supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
@@ -144,6 +141,8 @@ async def log_analytics_events(
     user_agent = request.headers.get("User-Agent", "unknown")
     accept_language = request.headers.get("Accept-Language", "unknown")
 
+    stats_repo = SupabaseAdminStatsRepositoryExtended(get_database_client())
+
     for event in req.events:
         env_info = event.env
         properties = event.properties
@@ -167,7 +166,7 @@ async def log_analytics_events(
         }
 
         # 1. Store to user_events table
-        log_user_event(
+        await stats_repo.log_user_event(
             user_id=user_id,
             event_type=event.event_type,
             properties=enriched_properties,

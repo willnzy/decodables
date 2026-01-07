@@ -8,10 +8,6 @@ Endpoints:
 - POST /api/v2/user/tasks/{task_id}/cancel - Cancel a task
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - add_credits  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, Dict, Any, List
 
@@ -21,8 +17,9 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from infrastructure.task_queue import task_queue, progress_tracker
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from core.database import get_supabase_client, get_database_client
 
-from core.database import get_supabase_client
 supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
@@ -162,7 +159,8 @@ async def cancel_task(
             if result.data:
                 credits_charged = result.data.get("params", {}).get("credits_charged", 0)
                 if credits_charged > 0:
-                    add_credits(user["id"], credits_charged, "refund", f"Cancelled task {task_id}")
+                    credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+                    await credit_repo.add_credits(user["id"], credits_charged, f"Cancelled task {task_id}", "refund")
                     credits_refunded = credits_charged
 
         except Exception as e:

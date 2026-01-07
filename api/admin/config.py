@@ -15,10 +15,6 @@ Endpoints:
 - POST /api/admin/config/cache/clear - Clear config cache
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - admin_log_operation  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List
 
@@ -31,6 +27,8 @@ from domains.platform.config_service import (
     clear_config_cache, RATE_LIMIT_PRESETS
 )
 from infrastructure.rate_limiter import limiter, get_current_limits
+from infrastructure.repositories.admin_users_repository_extended import SupabaseAdminUsersRepositoryExtended
+from core.database import get_database_client
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)
@@ -92,15 +90,16 @@ async def adm_update_config(
     success = set_config(req.config_key, req.config_value, admin["id"])
     if not success:
         raise HTTPException(500, "Failed to update config")
-    
-    admin_log_operation(
+
+    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_update",
         target_user_id=None,
         details=f"Updated {req.config_key}",
         reason=None
     )
-    
+
     return {"status": "ok", "config_key": req.config_key}
 
 
@@ -113,15 +112,16 @@ async def adm_batch_update_configs(
 ):
     """Batch update multiple config entries."""
     results = batch_update_configs(req.updates, admin["id"])
-    
-    admin_log_operation(
+
+    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_batch_update",
         target_user_id=None,
         details=f"Updated {len(req.updates)} configs",
         reason=None
     )
-    
+
     return {"status": "ok", "results": results}
 
 
@@ -156,19 +156,20 @@ async def adm_apply_rate_limit_preset(
     """Apply a rate-limit preset ("strict" | "normal" | "relaxed" | "disabled")."""
     if req.preset not in RATE_LIMIT_PRESETS:
         raise HTTPException(400, f"Invalid preset. Available: {list(RATE_LIMIT_PRESETS.keys())}")
-    
+
     success = apply_rate_limit_preset(req.preset, admin["id"])
     if not success:
         raise HTTPException(500, "Failed to apply preset")
-    
-    admin_log_operation(
+
+    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="rate_limit_preset",
         target_user_id=None,
         details=f"Applied preset: {req.preset}",
         reason=None
     )
-    
+
     return {
         "status": "ok",
         "preset": req.preset,

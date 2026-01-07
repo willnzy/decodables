@@ -10,10 +10,6 @@ Endpoints:
 - POST /api/v2/user/campaigns/{id}/dismiss - Dismiss notification
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - add_credits_permanent  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -22,8 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from dependencies import optional_user, get_current_user
+from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from core.database import get_supabase_client, get_database_client
 
-from core.database import get_supabase_client
 supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
@@ -218,7 +215,8 @@ async def claim_campaign(
     if campaign["type"] == "credits_gift":
         credits_received = config.get("amount", 0)
         if credits_received > 0:
-            add_credits_permanent(
+            credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+            await credit_repo.add_credits_permanent(
                 user["id"],
                 credits_received,
                 f"Campaign reward: {campaign['name']}",

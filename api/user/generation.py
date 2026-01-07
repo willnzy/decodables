@@ -25,9 +25,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
-from infrastructure.db_compat import (
-    supabase, credit_deduct, add_credits, save_asset,
-    get_project_detail, update_project_hash, log_activity,
+from core.database import get_supabase_client
+from infrastructure.repositories import (
+    SupabaseCreditRepositoryExtended,
+    SupabaseAssetRepositoryExtended,
+    SupabaseProjectRepositoryExtended,
 )
 from shared.ai.image_generator import generate_8_images
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
@@ -171,15 +173,20 @@ async def generate_images(
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits
-    try:
-        result = credit_deduct(
-            user["id"], cost, "generation",
-            f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""),
-        )
-    except Exception as e:
-        if "INSUFFICIENT" in str(e):
+    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    tz = get_request_timezone(request, user_id=user.get("id"))
+
+    result = await credit_repo.deduct_credits(
+        user["id"], cost, "generation",
+        f"Gen {len(req.prompts)} images" + (" with ref" if req.reference_image else ""),
+        tz=tz
+    )
+
+    if not result.get("success"):
+        error_msg = result.get("error", "Unknown error")
+        if "INSUFFICIENT" in error_msg:
             raise HTTPException(402, "Insufficient credits")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, error_msg)
 
     # Select model based on tier
     tier = (user.get("tier") or "free").lower()
@@ -248,12 +255,12 @@ async def generate_images(
     generation_time_ms = int((time.time() - generation_start) * 1000)
 
     # Save assets
-    tz = get_request_timezone(request, user_id=user.get("id"))
+    asset_repo = SupabaseAssetRepositoryExtended(get_supabase_client())
     for idx, url in enumerate(urls):
         if url:
             prompt_idx = idx // num_images if num_images > 1 else idx
             prompt_used = prompts_to_use[prompt_idx] if prompt_idx < len(prompts_to_use) else prompts_to_use[0]
-            save_asset(user["id"], url, "ai_generated", req.project_id, prompt_used, timezone=tz)
+            await asset_repo.save_asset(user["id"], url, "ai_generated", req.project_id, prompt_used, tz=tz)
 
     # Track analytics
     track_ai_generation(
@@ -306,15 +313,20 @@ async def generate_images_async(
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits FIRST
-    try:
-        result = credit_deduct(
-            user["id"], cost, "generation",
-            f"Async gen {len(req.prompts)} images",
-        )
-    except Exception as e:
-        if "INSUFFICIENT" in str(e):
+    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    tz = get_request_timezone(request, user_id=user.get("id"))
+
+    result = await credit_repo.deduct_credits(
+        user["id"], cost, "generation",
+        f"Async gen {len(req.prompts)} images",
+        tz=tz
+    )
+
+    if not result.get("success"):
+        error_msg = result.get("error", "Unknown error")
+        if "INSUFFICIENT" in error_msg:
             raise HTTPException(402, "Insufficient credits")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, error_msg)
 
     tier = (user.get("tier") or "free").lower()
     model = "flux-dev" if tier == "pro" else "flux-schnell"
@@ -384,7 +396,7 @@ async def generate_images_async(
 
     if not enqueued_task_id:
         try:
-            add_credits(user["id"], cost, "refund", "Task queue failed")
+            await credit_repo.add_credits(user["id"], cost, "Task queue failed", "refund", tz=tz)
         except Exception as e:
             logger.error(f"Failed to refund credits: {e}")
         raise HTTPException(503, "Generation service unavailable. Credits refunded.")
@@ -510,15 +522,25 @@ async def generate_pdf(
 
     Creates a foldable 8-page mini-book PDF.
     """
-    proj = get_project_detail(req.project_id, user["id"])
+    project_repo = SupabaseProjectRepositoryExtended(get_supabase_client())
+    proj = await project_repo.get_project_detail(req.project_id, user["id"])
     if proj and req.current_hash != proj.get("last_downloaded_hash"):
-        update_project_hash(req.project_id, req.current_hash)
+        await project_repo.update_project_hash(req.project_id, req.current_hash)
 
     buf = BytesIO()
     create_foldable_book(req.image_urls, req.texts, buf)
     buf.seek(0)
 
-    log_activity(user["id"], "download_pdf", {"project_id": req.project_id})
+    # Log activity using Supabase client directly
+    supabase = get_supabase_client()
+    try:
+        supabase.table("activity_logs").insert({
+            "user_id": user["id"],
+            "activity_type": "download_pdf",
+            "metadata": {"project_id": req.project_id},
+        }).execute()
+    except Exception as e:
+        logger.warning(f"Failed to log activity: {e}")
 
     return StreamingResponse(
         buf,

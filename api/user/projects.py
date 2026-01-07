@@ -17,12 +17,6 @@ Endpoints:
 - POST /api/v2/user/projects/{id}/duplicate - Duplicate project
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_dashboard_projects  (search for usage and migrate to repositories)
-#   - get_user_deleted_projects  (search for usage and migrate to repositories)
-#   - get_seller_project_stats  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -32,6 +26,8 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from container import get_container
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
+from core.database import get_database_client
 
 from application.commands.creation import (
     CreateProjectCommand,
@@ -183,7 +179,8 @@ async def dashboard_projects(
         Projects list with view info
     """
 
-    result = get_dashboard_projects(
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    result = await project_repo.get_dashboard_projects(
         user_id=user["id"],
         view_type=view,
         page=page,
@@ -208,7 +205,8 @@ async def list_deleted_projects(
         List of deleted projects that can be restored
     """
 
-    return get_user_deleted_projects(user["id"], page, limit)
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    return await project_repo.get_user_deleted_projects(user["id"], page, limit)
 
 
 @router.get("/seller-stats")
@@ -222,7 +220,8 @@ async def get_project_seller_stats(
         Dict with total_selling, total_sales, unique_buyers, etc.
     """
 
-    return get_seller_project_stats(user["id"])
+    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    return await project_repo.get_seller_project_stats(user["id"])
 
 
 @router.post("")

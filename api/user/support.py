@@ -11,12 +11,6 @@ Endpoints:
 - POST /api/v2/user/support/feedback - Submit feedback
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - create_support_ticket  (search for usage and migrate to repositories)
-#   - send_feedback_with_images  (search for usage and migrate to repositories)
-#   - save_contact_message  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -25,6 +19,8 @@ from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
+from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +86,8 @@ async def create_ticket(
 ) -> SupportResponse:
     """Create a support ticket."""
     email = req.email or user.get("email", "unknown@user.com")
-    create_support_ticket(user["id"], email, req.message)
+    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    await support_repo.create_support_ticket(user["id"], email, req.message)
     return SupportResponse(status="ok")
 
 
@@ -165,12 +162,11 @@ async def contact(
 ) -> SupportResponse:
     """Submit contact form."""
 
-    save_contact_message(
+    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    support_repo.send_support_email(
         user_id=user["id"],
-        name=req.name,
-        email=req.email,
-        subject=req.subject,
-        message=req.message,
+        user_email=req.email,
+        message=f"Name: {req.name}\nSubject: {req.subject or 'N/A'}\n\n{req.message}",
     )
     return SupportResponse(status="ok", message="Message received")
 
@@ -183,5 +179,7 @@ async def feedback(
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
     """Submit user feedback."""
-    send_feedback_with_images(user["id"], req.email, req.message, req.images)
+    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    email = req.email or user.get("email", "unknown@user.com")
+    support_repo.send_feedback_with_images(user["id"], email, req.message, req.images)
     return SupportResponse(status="ok", message="Feedback submitted successfully")

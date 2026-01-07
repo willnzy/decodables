@@ -31,16 +31,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from dependencies import require_admin
-from infrastructure.db_compat import (
-    supabase,
-    admin_get_dashboard_stats,
-    admin_get_user_growth_stats,
-    admin_get_revenue_stats,
-    admin_get_project_stats,
-    admin_get_credit_usage_stats,
-    admin_get_tier_distribution,
-    admin_get_conversion_funnel,
-)
+from core.database import get_database_client, get_supabase_client
+from infrastructure.repositories import SupabaseAdminStatsRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +43,10 @@ router = APIRouter(prefix="/stats", tags=["admin-stats-v2"])
 # Helper Functions
 # ==========================================
 
-def _get_aggregated_stat(stat_type: str, default: dict):
+async def _get_aggregated_stat(stat_type: str, default: dict):
     """Fetch pre-aggregated stats from database."""
     try:
-        result = supabase.table("aggregated_stats") \
+        result = get_supabase_client().table("aggregated_stats") \
             .select("data") \
             .eq("stat_type", stat_type) \
             .order("date", desc=True) \
@@ -78,7 +70,9 @@ async def get_dashboard_stats(
     admin: dict = Depends(require_admin),
 ):
     """Fetch dashboard KPIs."""
-    return admin_get_dashboard_stats(period)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_dashboard_stats(period)
 
 
 @router.get("/user-growth")
@@ -89,7 +83,9 @@ async def get_user_growth_stats(
     admin: dict = Depends(require_admin),
 ):
     """Fetch user growth stats."""
-    return admin_get_user_growth_stats(start_date, end_date, group_by)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
 
 
 @router.get("/revenue")
@@ -100,7 +96,9 @@ async def get_revenue_stats(
     admin: dict = Depends(require_admin),
 ):
     """Fetch revenue stats."""
-    return admin_get_revenue_stats(start_date, end_date, group_by)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
 
 
 @router.get("/projects")
@@ -110,7 +108,9 @@ async def get_project_stats(
     admin: dict = Depends(require_admin),
 ):
     """Fetch project stats."""
-    return admin_get_project_stats(start_date, end_date)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_project_stats(start_date, end_date)
 
 
 @router.get("/credits")
@@ -120,7 +120,9 @@ async def get_credit_usage_stats(
     admin: dict = Depends(require_admin),
 ):
     """Fetch credit usage stats."""
-    return admin_get_credit_usage_stats(start_date, end_date)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
 
 
 @router.get("/tier-distribution")
@@ -128,7 +130,9 @@ async def get_tier_distribution(
     admin: dict = Depends(require_admin),
 ):
     """Fetch user tier distribution."""
-    return admin_get_tier_distribution()
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_tier_distribution()
 
 
 @router.get("/conversion-funnel")
@@ -137,7 +141,9 @@ async def get_conversion_funnel(
     admin: dict = Depends(require_admin),
 ):
     """Fetch conversion funnel stats."""
-    return admin_get_conversion_funnel(period)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_conversion_funnel(period)
 
 
 # ==========================================
@@ -147,7 +153,7 @@ async def get_conversion_funnel(
 @router.get("/exports")
 async def get_export_stats(admin: dict = Depends(require_admin)):
     """Fetch export operation stats (PDF, ZIP, print, preview)."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "export_stats_30d",
         {"totalPdf": 0, "totalZip": 0, "totalPrint": 0, "totalPreview": 0, "trend": []},
     )
@@ -156,7 +162,7 @@ async def get_export_stats(admin: dict = Depends(require_admin)):
 @router.get("/assets")
 async def get_asset_usage_stats(admin: dict = Depends(require_admin)):
     """Fetch asset usage ranking stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "asset_usage_ranking",
         {"top_assets": [], "by_type": {}, "total_usage": 0, "total_assets_used": 0},
     )
@@ -165,13 +171,13 @@ async def get_asset_usage_stats(admin: dict = Depends(require_admin)):
 @router.get("/tier-activity")
 async def get_tier_activity(admin: dict = Depends(require_admin)):
     """Fetch per-tier activity stats."""
-    return _get_aggregated_stat("tier_activity", {})
+    return await _get_aggregated_stat("tier_activity", {})
 
 
 @router.get("/subscription-events")
 async def get_subscription_events(admin: dict = Depends(require_admin)):
     """Fetch subscription event stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "subscription_events_30d",
         {"totalUpgrades": 0, "totalDowngrades": 0, "totalCancellations": 0, "totalRefunds": 0, "trend": []},
     )
@@ -180,7 +186,7 @@ async def get_subscription_events(admin: dict = Depends(require_admin)):
 @router.get("/page-views")
 async def get_page_views(admin: dict = Depends(require_admin)):
     """Fetch page view stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "page_views_7d",
         {"pages": {}, "total_views": 0, "guest_views": 0},
     )
@@ -189,7 +195,7 @@ async def get_page_views(admin: dict = Depends(require_admin)):
 @router.get("/project-details")
 async def get_project_details(admin: dict = Depends(require_admin)):
     """Fetch detailed project stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "project_details_30d",
         {"deleted_projects": 0, "ocr_usage": 0, "total_pages_sample": 0, "avg_pages_per_project": 0},
     )
@@ -198,25 +204,25 @@ async def get_project_details(admin: dict = Depends(require_admin)):
 @router.get("/returning-users")
 async def get_returning_users(admin: dict = Depends(require_admin)):
     """Fetch returning user stats."""
-    return _get_aggregated_stat("returning_users", {})
+    return await _get_aggregated_stat("returning_users", {})
 
 
 @router.get("/tier-trend")
 async def get_tier_trend(admin: dict = Depends(require_admin)):
     """Fetch tier trend over time."""
-    return _get_aggregated_stat("tier_trend_30d", {"trend": []})
+    return await _get_aggregated_stat("tier_trend_30d", {"trend": []})
 
 
 @router.get("/tier-conversion")
 async def get_tier_conversion(admin: dict = Depends(require_admin)):
     """Fetch tier conversion stats."""
-    return _get_aggregated_stat("tier_conversion_30d", {"conversions": []})
+    return await _get_aggregated_stat("tier_conversion_30d", {"conversions": []})
 
 
 @router.get("/performance")
 async def get_performance_metrics(admin: dict = Depends(require_admin)):
     """Fetch page performance (Core Web Vitals) stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "performance_metrics_7d",
         {"metrics": {}, "by_page": {}, "total_samples": 0},
     )
@@ -225,7 +231,7 @@ async def get_performance_metrics(admin: dict = Depends(require_admin)):
 @router.get("/user-distribution")
 async def get_user_distribution(admin: dict = Depends(require_admin)):
     """Fetch user distribution stats."""
-    return _get_aggregated_stat(
+    return await _get_aggregated_stat(
         "user_distribution_7d",
         {
             "country": [],

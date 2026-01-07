@@ -17,11 +17,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from infrastructure.db_compat import (
-    admin_get_ai_insights,
-    admin_get_ai_recommendations,
-    admin_get_behavior_analysis,
-)
+from core.database import get_database_client
+from infrastructure.repositories import SupabaseAdminStatsRepositoryExtended
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
@@ -35,31 +32,37 @@ router = APIRouter(prefix="/ai", tags=["admin-ai-v2"])
 # ==========================================
 
 @router.get("/insights")
-def adm_get_ai_insights(
+async def adm_get_ai_insights(
     type: str = "all",
     admin: dict = Depends(require_admin)
 ):
     """Fetch AI insights."""
-    return admin_get_ai_insights(type)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_ai_insights(type)
 
 
 @router.get("/recommendations")
-def adm_get_ai_recommendations(
+async def adm_get_ai_recommendations(
     area: str = "all",
     admin: dict = Depends(require_admin)
 ):
     """Fetch AI optimization recommendations."""
-    return admin_get_ai_recommendations(area)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_ai_recommendations(area)
 
 
 @router.get("/behavior-analysis")
-def adm_get_behavior_analysis(
+async def adm_get_behavior_analysis(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
     """Fetch AI-powered user behavior analysis."""
-    return admin_get_behavior_analysis(start_date, end_date)
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    return await stats_repo.admin_get_behavior_analysis(start_date, end_date)
 
 
 @router.post("/generate-report")
@@ -87,14 +90,14 @@ async def adm_generate_ai_report(
 
 
 @router.get("/quick-insights")
-def adm_get_quick_insights(
+async def adm_get_quick_insights(
     admin: dict = Depends(require_admin)
 ):
     """
     Get quick rule-based insights for dashboard preview.
     """
     from application.services.ai_report_service import get_quick_insights
-    
+
     try:
         insights = get_quick_insights()
         return {"insights": insights}

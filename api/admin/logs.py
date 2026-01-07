@@ -21,10 +21,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
 from dependencies import require_admin
-from infrastructure.db_compat import (
-    supabase,
-    admin_get_operation_logs,
-)
+from core.database import get_database_client, get_supabase_client
+from infrastructure.repositories import SupabaseAdminUsersRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ router = APIRouter(prefix="/logs", tags=["admin-logs-v2"])
 # ==========================================
 
 @router.get("/errors")
-def get_error_logs(
+async def get_error_logs(
     page: int = 1,
     limit: int = 50,
     error_type: Optional[str] = None,
@@ -53,7 +51,7 @@ def get_error_logs(
         limit = min(limit, 100)
         offset = (page - 1) * limit
 
-        query = supabase.table("error_logs").select("*", count="exact")
+        query = get_supabase_client().table("error_logs").select("*", count="exact")
 
         if error_type:
             query = query.eq("error_type", error_type)
@@ -83,7 +81,7 @@ def get_error_logs(
         ]
 
         if user_ids_without_code:
-            profiles_result = supabase.table("profiles").select("id, user_code").in_("id", list(set(user_ids_without_code))).execute()
+            profiles_result = get_supabase_client().table("profiles").select("id, user_code").in_("id", list(set(user_ids_without_code))).execute()
             user_code_map = {p["id"]: p.get("user_code") for p in (profiles_result.data or [])}
 
             for log in logs:
@@ -113,7 +111,7 @@ def get_error_logs(
 
 
 @router.get("/errors/stats")
-def get_error_stats(
+async def get_error_stats(
     hours: int = 24,
     admin: dict = Depends(require_admin)
 ):
@@ -121,7 +119,7 @@ def get_error_stats(
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
-        errors = supabase.table("error_logs").select(
+        errors = get_supabase_client().table("error_logs").select(
             "error_type, status_code, endpoint"
         ).gte("created_at", cutoff).execute()
 
@@ -170,7 +168,7 @@ def get_error_stats(
 # ==========================================
 
 @router.get("/operations")
-def get_operation_logs(
+async def get_operation_logs(
     operation_type: Optional[str] = None,
     admin_id: Optional[str] = None,
     target_user_id: Optional[str] = None,
@@ -181,7 +179,9 @@ def get_operation_logs(
     admin: dict = Depends(require_admin)
 ):
     """Fetch administrator operation logs."""
-    return admin_get_operation_logs(
+    db_client = get_database_client()
+    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    return await admin_users_repo.admin_get_operation_logs(
         operation_type=operation_type,
         admin_id=admin_id,
         target_user_id=target_user_id,
@@ -193,14 +193,16 @@ def get_operation_logs(
 
 
 @router.get("/operations/export")
-def export_operation_logs(
+async def export_operation_logs(
     operation_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
     """Export operation logs as CSV."""
-    result = admin_get_operation_logs(
+    db_client = get_database_client()
+    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    result = await admin_users_repo.admin_get_operation_logs(
         operation_type=operation_type,
         start_date=start_date,
         end_date=end_date,

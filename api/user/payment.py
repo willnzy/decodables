@@ -9,10 +9,6 @@ Endpoints:
 - POST /api/v2/user/payment/portal - Get billing portal URL
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_user_discount  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional
 
@@ -21,6 +17,8 @@ from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.user_repository_extended import SupabaseUserRepositoryExtended
+from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +71,8 @@ async def create_checkout(
 
     try:
         # Apply discount if available
-        discount = get_user_discount(user["id"], req.plan_type)
+        user_repo = SupabaseUserRepositoryExtended(get_database_client())
+        discount = await user_repo.get_user_discount(user["id"], req.plan_type)
         discount_percent = discount.get("discount_percent", 0) if discount else 0
 
         url = create_checkout_session(user["id"], req.plan_type, discount_percent)

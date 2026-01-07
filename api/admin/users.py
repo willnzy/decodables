@@ -26,21 +26,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from infrastructure.db_compat import (
-    supabase,
-    search_users,
-    get_full_user_audit,
-    admin_adjust_credits,
-    get_user_profile,
-    update_subscription_tier,
-    create_user_discount,
-    admin_log_operation,
-    admin_get_user_projects,
-    get_users_by_tier,
-    log_activity,
-    restore_project,
-    get_all_projects_feed,
-)
+from core.database import get_supabase_client
+from infrastructure.repositories.admin.supabase_admin_users_repository import SupabaseAdminUsersRepositoryExtended
+from infrastructure.repositories.admin.supabase_admin_billing_repository import SupabaseAdminBillingRepositoryExtended
+from infrastructure.repositories.admin.supabase_admin_logs_repository import SupabaseAdminLogsRepositoryExtended
+from infrastructure.repositories.admin.supabase_admin_projects_repository import SupabaseAdminProjectsRepositoryExtended
 from domains.billing.payment_service import get_customer_payments
 
 logger = logging.getLogger(__name__)
@@ -81,7 +71,8 @@ async def search_users_api(
     admin: dict = Depends(require_admin),
 ):
     """Search users by query."""
-    users = search_users(query)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+    users = await users_repo.search_users(query)
     return {"users": users}
 
 
@@ -91,7 +82,8 @@ async def get_users_by_tier_api(
     admin: dict = Depends(require_admin),
 ):
     """Get users by tier (for bulk notifications)."""
-    users = get_users_by_tier(tier)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+    users = await users_repo.get_users_by_tier(tier)
     return {"users": users, "count": len(users), "tier": tier}
 
 
@@ -101,7 +93,8 @@ async def get_user_audit(
     admin: dict = Depends(require_admin),
 ):
     """Get full user audit data."""
-    return get_full_user_audit(uid)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+    return await users_repo.get_full_user_audit(uid)
 
 
 @router.post("/users/{uid}/credits")
@@ -111,14 +104,17 @@ async def adjust_user_credits(
     admin: dict = Depends(require_admin),
 ):
     """Manually adjust a user's credits."""
-    admin_adjust_credits(uid, req.amount, req.bucket, req.reason)
-    log_activity(admin["id"], "admin_credits_adjust", {
+    billing_repo = SupabaseAdminBillingRepositoryExtended()
+    logs_repo = SupabaseAdminLogsRepositoryExtended()
+
+    await billing_repo.admin_adjust_credits(uid, req.amount, req.bucket, req.reason)
+    await logs_repo.log_activity(admin["id"], "admin_credits_adjust", {
         "target_user": uid,
         "amount": req.amount,
         "bucket": req.bucket,
         "reason": req.reason,
     })
-    admin_log_operation(
+    await logs_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="credit_adjust",
         target_user_id=uid,
@@ -139,18 +135,22 @@ async def update_user(
 
     **Recommended**: Use PATCH for partial resource updates.
     """
-    old_profile = get_user_profile(uid)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+    billing_repo = SupabaseAdminBillingRepositoryExtended()
+    logs_repo = SupabaseAdminLogsRepositoryExtended()
+
+    old_profile = await users_repo.get_user_profile(uid)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
 
     subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
-    update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
+    await billing_repo.update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
 
-    log_activity(admin["id"], "admin_tier_update", {
+    await logs_repo.log_activity(admin["id"], "admin_tier_update", {
         "target_user": uid,
         "new_tier": req.tier,
         "subscription_status": subscription_status,
     })
-    admin_log_operation(
+    await logs_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="tier_change",
         target_user_id=uid,
@@ -172,18 +172,22 @@ async def update_user_tier(
     **DEPRECATED**: Use `PATCH /users/{uid}` instead.
     This endpoint will be removed in v3.0.
     """
-    old_profile = get_user_profile(uid)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+    billing_repo = SupabaseAdminBillingRepositoryExtended()
+    logs_repo = SupabaseAdminLogsRepositoryExtended()
+
+    old_profile = await users_repo.get_user_profile(uid)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
 
     subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
-    update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
+    await billing_repo.update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
 
-    log_activity(admin["id"], "admin_tier_update", {
+    await logs_repo.log_activity(admin["id"], "admin_tier_update", {
         "target_user": uid,
         "new_tier": req.tier,
         "subscription_status": subscription_status,
     })
-    admin_log_operation(
+    await logs_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="tier_change",
         target_user_id=uid,
@@ -200,13 +204,16 @@ async def create_user_discount_api(
     admin: dict = Depends(require_admin),
 ):
     """Create a user-specific discount."""
-    discount = create_user_discount(
+    billing_repo = SupabaseAdminBillingRepositoryExtended()
+    logs_repo = SupabaseAdminLogsRepositoryExtended()
+
+    discount = await billing_repo.create_user_discount(
         uid,
         req.discount_percent,
         req.valid_days,
         req.target_plan,
     )
-    log_activity(admin["id"], "admin_discount_create", {
+    await logs_repo.log_activity(admin["id"], "admin_discount_create", {
         "target_user": uid,
         "discount_percent": req.discount_percent,
     })
@@ -219,7 +226,9 @@ async def get_user_payments(
     admin: dict = Depends(require_admin),
 ):
     """Fetch a user's payment history."""
-    profile = get_user_profile(uid)
+    users_repo = SupabaseAdminUsersRepositoryExtended()
+
+    profile = await users_repo.get_user_profile(uid)
     if not profile:
         raise HTTPException(404, "User not found")
 
@@ -244,7 +253,8 @@ async def get_user_projects(
     admin: dict = Depends(require_admin),
 ):
     """Fetch all projects owned by a specific user."""
-    return admin_get_user_projects(uid, page, limit, include_deleted)
+    projects_repo = SupabaseAdminProjectsRepositoryExtended()
+    return await projects_repo.admin_get_user_projects(uid, page, limit, include_deleted)
 
 
 @router.get("/users/{uid}/asset-usage")
@@ -253,6 +263,8 @@ async def get_user_asset_usage(
     admin: dict = Depends(require_admin),
 ):
     """Get detailed asset usage for a user."""
+    supabase = get_supabase_client()
+
     try:
         assets_result = supabase.table("assets").select("*").eq("user_id", uid).execute()
         assets = assets_result.data if assets_result.data else []
@@ -281,6 +293,8 @@ async def get_user_env_stats(
     admin: dict = Depends(require_admin),
 ):
     """Get detailed user environment statistics."""
+    supabase = get_supabase_client()
+
     try:
         events = supabase.table("analytics_events").select(
             "properties",
@@ -333,10 +347,13 @@ async def restore_project_api(
     admin: dict = Depends(require_admin),
 ):
     """Restore a deleted project."""
-    project = restore_project(project_id)
+    projects_repo = SupabaseAdminProjectsRepositoryExtended()
+    logs_repo = SupabaseAdminLogsRepositoryExtended()
+
+    project = await projects_repo.restore_project(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    log_activity(admin["id"], "admin_project_restore", {"project_id": project_id})
+    await logs_repo.log_activity(admin["id"], "admin_project_restore", {"project_id": project_id})
     return project
 
 
@@ -347,5 +364,6 @@ async def get_projects_feed(
     admin: dict = Depends(require_admin),
 ):
     """Fetch the site-wide project feed."""
-    items = get_all_projects_feed(page, limit)
+    projects_repo = SupabaseAdminProjectsRepositoryExtended()
+    items = await projects_repo.get_all_projects_feed(page, limit)
     return {"items": items, "total": len(items), "page": page}

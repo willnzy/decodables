@@ -28,7 +28,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from services import experiment_service
+from domains.platform import experiment_service
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 
@@ -303,7 +303,7 @@ async def get_ai_analysis(
     admin: dict = Depends(require_admin)
 ):
     """Get AI analysis report for experiment."""
-    from services import experiment_ai_service
+    from domains.platform import experiment_ai_service
 
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
@@ -328,10 +328,7 @@ async def get_quick_recommendation(
     admin: dict = Depends(require_admin)
 ):
     """Get quick decision recommendation (rule-based)."""
-    from services import experiment_ai_service
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
+    from domains.platform import experiment_ai_service
 
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:

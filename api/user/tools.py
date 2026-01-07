@@ -8,12 +8,6 @@ Endpoints:
 - POST /api/v2/user/tools/ocr - OCR processing
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - credit_deduct  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-#   - save_asset  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -24,6 +18,10 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from infrastructure.repositories.asset_repository_extended import SupabaseAssetRepositoryExtended
+from infrastructure.logging.activity_logger import log_activity
+from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +157,7 @@ async def ocr_tool(
     Pro or trial users only. Costs 5 credits.
     """
     from shared.ai.ocr_service import process_ocr
-    from services.access_control import AccessControl
+    from domains.shared.access_control import AccessControl
     from timezone_utils import get_request_timezone
     from config import TRIAL_DAYS
 
@@ -187,9 +185,10 @@ async def ocr_tool(
         raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)")
 
     OCR_COST = 5
-    result = credit_deduct(user["id"], OCR_COST, "ocr", "OCR processing")
-    if not result.get("success", True) is False:
-        if "INSUFFICIENT" in str(result):
+    credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+    result = await credit_repo.deduct_credits(user["id"], OCR_COST, "ocr", "OCR processing")
+    if not result.get("success", True):
+        if "INSUFFICIENT" in str(result.get("error", "")):
             raise HTTPException(402, "Insufficient credits for OCR")
 
     allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]
@@ -211,8 +210,9 @@ async def ocr_tool(
 
         if ocr_result.get("images"):
             tz = get_request_timezone(request, user_id=user.get("id"))
+            asset_repo = SupabaseAssetRepositoryExtended(get_database_client())
             for img_url in ocr_result["images"]:
-                save_asset(user["id"], img_url, "ocr_extracted", project_id, timezone=tz)
+                await asset_repo.save_asset(user["id"], img_url, "ocr_extracted", project_id, timezone=tz)
 
         return OcrResponse(
             success=True,

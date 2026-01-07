@@ -24,17 +24,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
 from pydantic import BaseModel
 
-from infrastructure.db_compat import (
-    supabase,
-    get_assets,
-    save_asset,
-    soft_delete_asset,
-    permanently_hide_asset,
-    increment_asset_usage,
-    get_deleted_assets,
-    restore_asset,
-    log_activity,
-)
+from core.database import get_supabase_client
+from infrastructure.repositories.user.supabase_assets_repository import SupabaseAssetsRepository
+from infrastructure.repositories.user.supabase_logs_repository import SupabaseLogsRepository
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from timezone_utils import get_request_timezone
@@ -58,16 +50,17 @@ class AssetFromUrlRequest(BaseModel):
 # ==========================================
 
 @router.get("")
-def my_assets(
-    project_id: Optional[str] = None, 
-    scope: Optional[str] = None, 
+async def my_assets(
+    project_id: Optional[str] = None,
+    scope: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     """Fetch user assets."""
     if scope == "all" and user["tier"] != "pro":
         raise HTTPException(403, "Pro required for cross-project history")
     target_proj = project_id if scope != "all" else None
-    return get_assets(user["id"], target_proj)
+    assets_repo = SupabaseAssetsRepository()
+    return await assets_repo.get_assets(user["id"], target_proj)
 
 
 @router.post("")
@@ -106,10 +99,11 @@ async def upload_asset(
             file_options={"content-type": file.content_type}
         )
         url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
-        
+
         tz = get_request_timezone(request, user_id=user.get("id"))
-        save_asset(user["id"], url, "uploaded", project_id, timezone=tz)
-        
+        assets_repo = SupabaseAssetsRepository()
+        await assets_repo.save_asset(user["id"], url, "uploaded", project_id, timezone=tz)
+
         return {"url": url, "filename": filename}
     except Exception as e:
         logger.error(f"Failed to upload file: {e}")
@@ -117,67 +111,73 @@ async def upload_asset(
 
 
 @router.delete("/{asset_id}")
-def delete_asset(
-    asset_id: str, 
-    permanent: bool = False, 
+async def delete_asset(
+    asset_id: str,
+    permanent: bool = False,
     user: dict = Depends(get_current_user)
 ):
     """Delete a user asset (PRD v3.3)."""
+    assets_repo = SupabaseAssetsRepository()
+    logs_repo = SupabaseLogsRepository()
+
     if permanent:
-        result = permanently_hide_asset(asset_id, user["id"])
+        result = await assets_repo.permanently_hide_asset(asset_id, user["id"])
         if result:
-            log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
+            await logs_repo.log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
         action = "permanently deleted"
     else:
-        result = soft_delete_asset(asset_id, user["id"])
+        result = await assets_repo.soft_delete_asset(asset_id, user["id"])
         if result:
-            log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
+            await logs_repo.log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
         action = "moved to trash"
-    
+
     if not result:
         raise HTTPException(404, "Asset not found or not owned by user")
-    
+
     return {"status": "ok", "action": action, "asset_id": asset_id}
 
 
 @router.post("/from-url")
 @limiter.limit("30/minute")
-def add_asset_from_url(
+async def add_asset_from_url(
     request: Request,
     req: AssetFromUrlRequest,
     user: dict = Depends(get_current_user)
 ):
     """Add an asset from external URL."""
     import httpx
-    
+
     # Validate URL
     if not req.url.startswith(('http://', 'https://')):
         raise HTTPException(400, "Invalid URL format")
-    
+
     # Check if URL is accessible
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.head(req.url, follow_redirects=True)
             if response.status_code != 200:
                 raise HTTPException(400, f"URL not accessible: {response.status_code}")
-            
+
             content_type = response.headers.get('content-type', '')
             if not content_type.startswith('image/'):
                 raise HTTPException(400, "URL does not point to an image")
     except httpx.RequestError as e:
         raise HTTPException(400, f"Failed to access URL: {str(e)}")
-    
+
     tz = get_request_timezone(request, user_id=user.get("id"))
-    asset = save_asset(user["id"], req.url, "external", req.project_id, timezone=tz)
-    
+    assets_repo = SupabaseAssetsRepository()
+    logs_repo = SupabaseLogsRepository()
+
+    asset = await assets_repo.save_asset(user["id"], req.url, "external", req.project_id, timezone=tz)
+
     if asset:
-        log_activity(user["id"], "create_asset_from_url", {"asset_id": asset.get("id")})
-    
+        await logs_repo.log_activity(user["id"], "create_asset_from_url", {"asset_id": asset.get("id")})
+
     return {"status": "ok", "asset": asset}
 
 
 @router.get("/check-url")
-def check_url(url: str, user: dict = Depends(get_current_user)):
+async def check_url(url: str, user: dict = Depends(get_current_user)):
     """Check if a URL points to a valid image."""
     import httpx
     
@@ -199,17 +199,20 @@ def check_url(url: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/{asset_id}/increment-usage")
-def increment_usage(asset_id: str, user: dict = Depends(get_current_user)):
+async def increment_usage(asset_id: str, user: dict = Depends(get_current_user)):
     """Increment usage count for an asset."""
-    result = increment_asset_usage(asset_id, user["id"])
+    assets_repo = SupabaseAssetsRepository()
+    result = await assets_repo.increment_asset_usage(asset_id, user["id"])
     if not result:
         raise HTTPException(404, "Asset not found")
     return {"status": "ok", "usage_count": result.get("usage_count", 0)}
 
 
 @router.get("/dashboard")
-def get_asset_dashboard(user: dict = Depends(get_current_user)):
+async def get_asset_dashboard(user: dict = Depends(get_current_user)):
     """Get asset usage dashboard data."""
+    supabase = get_supabase_client()
+
     try:
         assets = supabase.table("assets").select("*").eq("user_id", user["id"]).execute()
         assets_data = assets.data or []
@@ -233,8 +236,10 @@ def get_asset_dashboard(user: dict = Depends(get_current_user)):
 
 
 @router.get("/seller-stats")
-def get_seller_stats(user: dict = Depends(get_current_user)):
+async def get_seller_stats(user: dict = Depends(get_current_user)):
     """Get seller statistics for marketplace assets."""
+    supabase = get_supabase_client()
+
     try:
         listings = supabase.table("marketplace_listings").select(
             "id, title, price, sales_count, created_at"
@@ -256,16 +261,20 @@ def get_seller_stats(user: dict = Depends(get_current_user)):
 
 
 @router.get("/deleted")
-def get_deleted(user: dict = Depends(get_current_user)):
+async def get_deleted(user: dict = Depends(get_current_user)):
     """Get soft-deleted assets (trash)."""
-    return get_deleted_assets(user["id"])
+    assets_repo = SupabaseAssetsRepository()
+    return await assets_repo.get_deleted_assets(user["id"])
 
 
 @router.post("/{asset_id}/restore")
-def restore(asset_id: str, user: dict = Depends(get_current_user)):
+async def restore(asset_id: str, user: dict = Depends(get_current_user)):
     """Restore a soft-deleted asset."""
-    result = restore_asset(asset_id, user["id"])
+    assets_repo = SupabaseAssetsRepository()
+    logs_repo = SupabaseLogsRepository()
+
+    result = await assets_repo.restore_asset(asset_id, user["id"])
     if not result:
         raise HTTPException(404, "Asset not found in trash")
-    log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
+    await logs_repo.log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
     return {"status": "ok", "asset": result}

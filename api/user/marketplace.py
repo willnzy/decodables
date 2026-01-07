@@ -15,12 +15,6 @@ Endpoints:
 - GET /api/v2/user/marketplace/seller/stats - Get seller statistics
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - create_report  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-#   - get_user_reports  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -30,6 +24,9 @@ from pydantic import BaseModel, Field
 from dependencies import get_current_user, require_member
 from container import get_container
 from infrastructure.rate_limiter import limiter
+from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
+from infrastructure.logging.activity_logger import log_activity
+from core.database import get_database_client
 
 from application.commands.marketplace import (
     CreateListingCommand,
@@ -575,7 +572,8 @@ async def submit_report(
     """
 
     try:
-        report = create_report(user["id"], req.listing_id, req.reason)
+        support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+        report = await support_repo.create_report(user["id"], req.listing_id, req.reason)
         if report:
             log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
             return ReportResponse(
@@ -609,7 +607,8 @@ async def get_my_reports(
         List of user's reports
     """
 
-    reports = get_user_reports(user["id"], page, limit)
+    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    reports = await support_repo.get_user_reports(user["id"], page, limit)
     return MyReportsResponse(
         items=reports,
         total=len(reports),

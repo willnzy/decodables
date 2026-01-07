@@ -18,14 +18,11 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from infrastructure.db_compat import (
-    create_broadcast,
-    send_notification_to_user,
-    send_notification_to_users,
-    get_all_notification_stats,
-    get_notification_history,
-    admin_log_operation,
-    log_activity,
+from core.database import get_database_client
+from infrastructure.repositories import (
+    SupabaseAdminNotificationRepositoryExtended,
+    SupabaseAdminUsersRepositoryExtended,
+    SupabaseAdminStatsRepositoryExtended,
 )
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
@@ -65,14 +62,19 @@ class AdminBatchNotificationRequest(BaseModel):
 
 @router.post("/broadcast")
 @limiter.limit("5/minute")
-def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
+async def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
     """Send a system-wide broadcast notification."""
-    notification = create_broadcast(req.title, req.content, req.target_group)
-    log_activity(admin["id"], "admin_broadcast", {
+    db_client = get_database_client()
+    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+
+    notification = await notification_repo.create_broadcast(req.title, req.content, req.target_group)
+    await stats_repo.log_user_event(admin["id"], "admin_broadcast", {
         "target_group": req.target_group,
         "title": req.title
     })
-    admin_log_operation(
+    await admin_users_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="broadcast",
         target_user_id=None,
@@ -84,75 +86,89 @@ def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = De
 
 @router.post("/notification/send")
 @limiter.limit("30/minute")
-def adm_send_notification(request: Request, req: AdminSendNotificationRequest, admin: dict = Depends(require_admin)):
+async def adm_send_notification(request: Request, req: AdminSendNotificationRequest, admin: dict = Depends(require_admin)):
     """Send a notification to a single user."""
-    notification = send_notification_to_user(
+    db_client = get_database_client()
+    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+
+    notification = await notification_repo.send_notification_to_user(
         user_id=req.user_id,
         title=req.title,
         content=req.content,
         notification_type=req.notification_type
     )
-    
+
     if not notification:
         raise HTTPException(500, "Failed to send notification")
-    
-    log_activity(admin["id"], "admin_notification_send", {
+
+    await stats_repo.log_user_event(admin["id"], "admin_notification_send", {
         "target_user": req.user_id,
         "title": req.title
     })
-    
-    admin_log_operation(
+
+    await admin_users_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="notification_send",
         target_user_id=req.user_id,
         details=f"Notification: {req.title[:50]}",
         reason=None
     )
-    
+
     return {"status": "sent", "notification": notification}
 
 
 @router.post("/notification/batch")
 @limiter.limit("10/minute")
-def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest, admin: dict = Depends(require_admin)):
+async def adm_batch_notification(request: Request, req: AdminBatchNotificationRequest, admin: dict = Depends(require_admin)):
     """Send notifications to multiple users."""
     if len(req.user_ids) > 100:
         raise HTTPException(400, "Cannot send to more than 100 users at once")
-    
-    notifications = send_notification_to_users(
+
+    db_client = get_database_client()
+    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+
+    notifications = await notification_repo.send_notification_to_users(
         user_ids=req.user_ids,
         title=req.title,
         content=req.content,
         notification_type=req.notification_type
     )
-    
-    log_activity(admin["id"], "admin_notification_batch", {
+
+    await stats_repo.log_user_event(admin["id"], "admin_notification_batch", {
         "user_count": len(req.user_ids),
         "title": req.title
     })
-    
-    admin_log_operation(
+
+    await admin_users_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="notification_batch",
         target_user_id=None,
         details=f"Batch notification to {len(req.user_ids)} users: {req.title[:50]}",
         reason=None
     )
-    
+
     return {"status": "sent", "count": len(notifications)}
 
 
 @router.get("/notification/stats")
-def adm_notification_stats(admin: dict = Depends(require_admin)):
+async def adm_notification_stats(admin: dict = Depends(require_admin)):
     """Fetch notification statistics."""
-    return get_all_notification_stats()
+    db_client = get_database_client()
+    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    return await notification_repo.get_all_notification_stats()
 
 
 @router.get("/notification/history")
-def adm_notification_history(
+async def adm_notification_history(
     page: int = 1,
     limit: int = 50,
     admin: dict = Depends(require_admin)
 ):
     """Fetch notification history."""
-    return get_notification_history(page=page, limit=limit)
+    db_client = get_database_client()
+    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    return await notification_repo.get_notification_history(page=page, limit=limit)
