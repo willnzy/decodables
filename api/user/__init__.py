@@ -31,6 +31,7 @@ from .campaigns import router as campaigns_router
 from .templates import router as templates_router
 from .themes import router as themes_router
 from .analytics import router as analytics_router
+from .config import router as config_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -45,5 +46,6 @@ user_router.include_router(campaigns_router)
 user_router.include_router(templates_router)
 user_router.include_router(themes_router)
 user_router.include_router(analytics_router)
+user_router.include_router(config_router)
 
 __all__ = ["user_router"]
