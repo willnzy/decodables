@@ -11,12 +11,6 @@ Endpoints:
 - POST /api/v2/user/support/feedback - Submit feedback
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - create_support_ticket  (search for usage and migrate to repositories)
-#   - send_feedback_with_images  (search for usage and migrate to repositories)
-#   - save_contact_message  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -24,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
+from infrastructure.db_compat import create_support_ticket, send_feedback_with_images
 from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
@@ -164,6 +159,7 @@ async def contact(
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
     """Submit contact form."""
+    from infrastructure.db_compat import save_contact_message
 
     save_contact_message(
         user_id=user["id"],

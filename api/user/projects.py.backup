@@ -17,12 +17,6 @@ Endpoints:
 - POST /api/v2/user/projects/{id}/duplicate - Duplicate project
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_dashboard_projects  (search for usage and migrate to repositories)
-#   - get_user_deleted_projects  (search for usage and migrate to repositories)
-#   - get_seller_project_stats  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -182,6 +176,7 @@ async def dashboard_projects(
     Returns:
         Projects list with view info
     """
+    from infrastructure.db_compat import get_dashboard_projects
 
     result = get_dashboard_projects(
         user_id=user["id"],
@@ -207,6 +202,7 @@ async def list_deleted_projects(
     Returns:
         List of deleted projects that can be restored
     """
+    from infrastructure.db_compat import get_user_deleted_projects
 
     return get_user_deleted_projects(user["id"], page, limit)
 
@@ -221,6 +217,7 @@ async def get_project_seller_stats(
     Returns:
         Dict with total_selling, total_sales, unique_buyers, etc.
     """
+    from infrastructure.db_compat import get_seller_project_stats
 
     return get_seller_project_stats(user["id"])
 

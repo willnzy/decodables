@@ -15,12 +15,6 @@ Endpoints:
 - GET /api/v2/user/marketplace/seller/stats - Get seller statistics
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - create_report  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-#   - get_user_reports  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -573,6 +567,7 @@ async def submit_report(
     Raises:
         HTTPException: 400 if already reported, 500 if failed
     """
+    from infrastructure.db_compat import create_report, log_activity
 
     try:
         report = create_report(user["id"], req.listing_id, req.reason)
@@ -608,6 +603,7 @@ async def get_my_reports(
     Returns:
         List of user's reports
     """
+    from infrastructure.db_compat import get_user_reports
 
     reports = get_user_reports(user["id"], page, limit)
     return MyReportsResponse(

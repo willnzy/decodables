@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from dependencies import require_admin
 from services import experiment_service
+from infrastructure.db_compat import supabase
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 
@@ -114,7 +115,7 @@ def _enrich_results_with_significance(results: Dict[str, Any]) -> Dict[str, Any]
 # ==========================================
 
 @router.get("")
-async def list_experiments(
+def list_experiments(
     status: Optional[str] = None,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
@@ -127,7 +128,7 @@ async def list_experiments(
 
 
 @router.post("")
-async def create_experiment(
+def create_experiment(
     req: ExperimentCreateRequest,
     admin: dict = Depends(require_admin)
 ):
@@ -160,7 +161,7 @@ async def create_experiment(
 
 
 @router.get("/{experiment_key}")
-async def get_experiment(
+def get_experiment(
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -172,7 +173,7 @@ async def get_experiment(
 
 
 @router.put("/{experiment_key}")
-async def update_experiment(
+def update_experiment(
     experiment_key: str,
     req: ExperimentUpdateRequest,
     admin: dict = Depends(require_admin)
@@ -213,7 +214,7 @@ async def update_experiment(
 
 
 @router.put("/{experiment_key}/status")
-async def update_experiment_status(
+def update_experiment_status(
     experiment_key: str,
     req: StatusUpdateRequest,
     admin: dict = Depends(require_admin)
@@ -230,7 +231,7 @@ async def update_experiment_status(
 
 
 @router.delete("/{experiment_key}")
-async def delete_experiment(
+def delete_experiment(
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -252,7 +253,7 @@ async def delete_experiment(
 # ==========================================
 
 @router.get("/{experiment_key}/results")
-async def get_experiment_results(
+def get_experiment_results(
     experiment_key: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -269,7 +270,7 @@ async def get_experiment_results(
 
 
 @router.post("/{experiment_key}/aggregate")
-async def trigger_aggregation(
+def trigger_aggregation(
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -281,7 +282,7 @@ async def trigger_aggregation(
 
 
 @router.post("/aggregate-all")
-async def trigger_all_aggregation(admin: dict = Depends(require_admin)):
+def trigger_all_aggregation(admin: dict = Depends(require_admin)):
     """Trigger aggregation for all running experiments."""
     success = experiment_service.aggregate_experiment_results()
     if not success:
@@ -290,14 +291,14 @@ async def trigger_all_aggregation(admin: dict = Depends(require_admin)):
 
 
 @router.post("/cache/clear")
-async def clear_cache(admin: dict = Depends(require_admin)):
+def clear_cache(admin: dict = Depends(require_admin)):
     """Clear experiment cache."""
     experiment_service.clear_experiment_cache()
     return {"status": "cache_cleared"}
 
 
 @router.post("/{experiment_key}/ai-analysis")
-async def get_ai_analysis(
+def get_ai_analysis(
     experiment_key: str,
     req: Optional[AIAnalysisRequest] = None,
     admin: dict = Depends(require_admin)
@@ -323,15 +324,12 @@ async def get_ai_analysis(
 
 
 @router.get("/{experiment_key}/quick-recommendation")
-async def get_quick_recommendation(
+def get_quick_recommendation(
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
     """Get quick decision recommendation (rule-based)."""
     from services import experiment_ai_service
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
 
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
@@ -351,7 +349,7 @@ supabase = get_supabase_client()
 # ==========================================
 
 @router.get("/{experiment_key}/trend")
-async def get_experiment_trend(
+def get_experiment_trend(
     experiment_key: str,
     days: int = 30,
     admin: dict = Depends(require_admin)
@@ -401,7 +399,7 @@ async def get_experiment_trend(
 
 
 @router.get("/{experiment_key}/hourly-trend")
-async def get_hourly_trend(
+def get_hourly_trend(
     experiment_key: str,
     hours: int = 24,
     admin: dict = Depends(require_admin)

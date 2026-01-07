@@ -20,16 +20,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from infrastructure.db_compat import (
-    get_credit_history,
-    get_user_purchases,
-    get_user_notifications,
-    mark_notification_read,
-    mark_all_notifications_read,
-    update_user_timezone,
-    get_user_profile,
-    check_and_reset_monthly_credits_if_needed,
+from infrastructure.repositories import (
+    SupabaseUserRepositoryExtended,
+    SupabaseCreditRepositoryExtended,
+    SupabaseListingRepositoryExtended,
+    SupabaseNotificationRepositoryExtended,
 )
+from core.database import get_database_client
 from dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -60,17 +57,21 @@ def is_member(user: dict) -> bool:
 # ==========================================
 
 @router.get("/me")
-def get_me(user: dict = Depends(get_current_user)):
+async def get_me(user: dict = Depends(get_current_user)):
     """Get current user info (PRD v3.2)."""
     user_id = user["id"]
-    
+
+    db = get_database_client()
+    user_repo = SupabaseUserRepositoryExtended(db)
+    credit_repo = SupabaseCreditRepositoryExtended(db)
+
     # Reset monthly credits when needed
-    check_and_reset_monthly_credits_if_needed(user_id)
-    
-    user_profile = get_user_profile(user_id)
+    await credit_repo.check_and_reset_monthly_credits_if_needed(user_id)
+
+    user_profile = await user_repo.get_profile(user_id)
     if not user_profile:
         user_profile = user
-    
+
     return {
         **user_profile,
         "credits_total": user_profile.get("credits_monthly", 0) + user_profile.get("credits_permanent", 0),
@@ -79,61 +80,73 @@ def get_me(user: dict = Depends(get_current_user)):
 
 
 @router.get("/history")
-def get_history(
-    page: int = 1, 
-    limit: int = 20, 
+async def get_history(
+    page: int = 1,
+    limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
     """Get credit history."""
-    result = get_credit_history(user["id"], page, limit)
+    db = get_database_client()
+    credit_repo = SupabaseCreditRepositoryExtended(db)
+    result = await credit_repo.get_credit_history(user["id"], page, limit)
     return {"items": result["items"], "total": result["total"], "page": page}
 
 
 @router.get("/purchases")
-def get_purchases(user: dict = Depends(get_current_user)):
+async def get_purchases(user: dict = Depends(get_current_user)):
     """Get user's marketplace purchases."""
-    return get_user_purchases(user["id"])
+    db = get_database_client()
+    listing_repo = SupabaseListingRepositoryExtended(db)
+    return await listing_repo.get_user_purchases(user["id"])
 
 
 @router.get("/notifications")
-def get_notifications(user: dict = Depends(get_current_user)):
+async def get_notifications(user: dict = Depends(get_current_user)):
     """Get user notifications."""
-    return get_user_notifications(user["id"])
+    db = get_database_client()
+    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    return await notif_repo.get_user_notifications(user["id"])
 
 
 @router.post("/notifications/{id}/read")
-def mark_read(id: str, user: dict = Depends(get_current_user)):
+async def mark_read(id: str, user: dict = Depends(get_current_user)):
     """Mark a notification as read."""
-    result = mark_notification_read(id, user["id"])
+    db = get_database_client()
+    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    result = await notif_repo.mark_notification_read(id, user["id"])
     if not result:
         raise HTTPException(404, "Notification not found")
     return {"status": "ok"}
 
 
 @router.post("/notifications/read-all")
-def mark_all_read(user: dict = Depends(get_current_user)):
+async def mark_all_read(user: dict = Depends(get_current_user)):
     """Mark all notifications as read."""
-    mark_all_notifications_read(user["id"])
+    db = get_database_client()
+    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    await notif_repo.mark_all_notifications_read(user["id"])
     return {"status": "ok"}
 
 
 @router.put("/timezone")
-def update_timezone(
+async def update_timezone(
     request: Request,
-    req: TimezoneUpdateRequest, 
+    req: TimezoneUpdateRequest,
     user: dict = Depends(get_current_user)
 ):
     """Update user's timezone preference."""
     from pytz import timezone as pytz_timezone
     from pytz.exceptions import UnknownTimeZoneError
-    
+
     try:
         pytz_timezone(req.timezone)
     except UnknownTimeZoneError:
         raise HTTPException(400, f"Invalid timezone: {req.timezone}")
-    
-    result = update_user_timezone(user["id"], req.timezone)
+
+    db = get_database_client()
+    user_repo = SupabaseUserRepositoryExtended(db)
+    result = await user_repo.update_timezone(user["id"], req.timezone)
     if not result:
         raise HTTPException(500, "Failed to update timezone")
-    
+
     return {"status": "ok", "timezone": req.timezone}

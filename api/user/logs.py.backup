@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
+from infrastructure.db_compat import supabase
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,6 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
     if authorization and authorization.startswith("Bearer "):
         try:
             import jwt
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
             token = authorization.split(" ")[1]
             decoded = jwt.decode(token, options={"verify_signature": False})
             return decoded.get("sub")

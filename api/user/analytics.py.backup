@@ -8,11 +8,6 @@ Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - log_user_event  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -20,10 +15,8 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
+from infrastructure.db_compat import supabase, log_user_event, log_activity
 from infrastructure.rate_limiter import limiter
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
 

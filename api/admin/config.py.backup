@@ -15,10 +15,6 @@ Endpoints:
 - POST /api/admin/config/cache/clear - Clear config cache
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - admin_log_operation  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, List
 
@@ -31,6 +27,7 @@ from domains.platform.config_service import (
     clear_config_cache, RATE_LIMIT_PRESETS
 )
 from infrastructure.rate_limiter import limiter, get_current_limits
+from infrastructure.db_compat import admin_log_operation
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)
@@ -60,7 +57,7 @@ class RateLimitPresetRequest(BaseModel):
 # ==========================================
 
 @router.get("/config")
-async def adm_get_all_configs(
+def adm_get_all_configs(
     category: Optional[str] = None,
     admin: dict = Depends(require_admin)
 ):
@@ -70,7 +67,7 @@ async def adm_get_all_configs(
 
 
 @router.get("/config/{config_key:path}")
-async def adm_get_config(
+def adm_get_config(
     config_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -83,7 +80,7 @@ async def adm_get_config(
 
 @router.put("/config")
 @limiter.limit("30/minute")
-async def adm_update_config(
+def adm_update_config(
     request: Request,
     req: ConfigUpdateRequest,
     admin: dict = Depends(require_admin)
@@ -106,7 +103,7 @@ async def adm_update_config(
 
 @router.put("/config/batch")
 @limiter.limit("10/minute")
-async def adm_batch_update_configs(
+def adm_batch_update_configs(
     request: Request,
     req: BatchConfigUpdateRequest,
     admin: dict = Depends(require_admin)
@@ -127,7 +124,7 @@ async def adm_batch_update_configs(
 
 @router.post("/config/cache/clear")
 @limiter.limit("10/minute")
-async def adm_clear_config_cache(
+def adm_clear_config_cache(
     request: Request,
     admin: dict = Depends(require_admin)
 ):
@@ -141,14 +138,14 @@ async def adm_clear_config_cache(
 # ==========================================
 
 @router.get("/rate-limits")
-async def adm_get_rate_limits(admin: dict = Depends(require_admin)):
+def adm_get_rate_limits(admin: dict = Depends(require_admin)):
     """Fetch the current formatted rate-limit configuration."""
     return get_current_limits()
 
 
 @router.post("/rate-limits/preset")
 @limiter.limit("5/minute")
-async def adm_apply_rate_limit_preset(
+def adm_apply_rate_limit_preset(
     request: Request,
     req: RateLimitPresetRequest,
     admin: dict = Depends(require_admin)
@@ -177,6 +174,6 @@ async def adm_apply_rate_limit_preset(
 
 
 @router.get("/rate-limits/presets")
-async def adm_get_rate_limit_presets(admin: dict = Depends(require_admin)):
+def adm_get_rate_limit_presets(admin: dict = Depends(require_admin)):
     """Fetch available rate-limit presets."""
     return {"presets": RATE_LIMIT_PRESETS}

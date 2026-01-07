@@ -8,17 +8,12 @@ Endpoints:
 - POST /api/v2/user/generate/pdf - PDF generation
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_project_detail  (search for usage and migrate to repositories)
-#   - update_project_hash  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 from io import BytesIO
 
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 
+from infrastructure.db_compat import get_project_detail, update_project_hash, log_activity
 from shared.ai.zine_generator import create_foldable_book
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
@@ -33,7 +28,7 @@ router = APIRouter(prefix="/generate/pdf", tags=["generation-pdf-v2"])
 
 @router.post("/pdf")
 @limiter.limit("10/minute")
-async def gen_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
+def gen_pdf(request: Request, req: PdfGenRequest, user: dict = Depends(get_current_user)):
     """Generate a PDF (always free per PRD v3.0)."""
     proj = get_project_detail(req.project_id, user["id"])
     if proj and req.current_hash != proj.get("last_downloaded_hash"):

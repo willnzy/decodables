@@ -22,10 +22,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from dependencies import require_admin
+from infrastructure.db_compat import supabase
 from shared.ai.model_config_service import (
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
     get_model_configs,
     update_text_model_config,
     update_image_model_config,
@@ -73,7 +71,7 @@ class ProviderToggleRequest(BaseModel):
 # ==========================================
 
 @router.get("/config")
-async def get_ai_config(admin: dict = Depends(require_admin)):
+def get_ai_config(admin: dict = Depends(require_admin)):
     """Get all AI model configurations."""
     try:
         configs = get_model_configs()
@@ -84,7 +82,7 @@ async def get_ai_config(admin: dict = Depends(require_admin)):
 
 
 @router.put("/config/text")
-async def update_text_config(req: TextModelConfigUpdate, admin: dict = Depends(require_admin)):
+def update_text_config(req: TextModelConfigUpdate, admin: dict = Depends(require_admin)):
     """Update text generation model config."""
     try:
         update_data = {k: v for k, v in req.dict().items() if v is not None}
@@ -95,7 +93,7 @@ async def update_text_config(req: TextModelConfigUpdate, admin: dict = Depends(r
 
 
 @router.put("/config/image")
-async def update_image_config(req: ImageModelConfigUpdate, admin: dict = Depends(require_admin)):
+def update_image_config(req: ImageModelConfigUpdate, admin: dict = Depends(require_admin)):
     """Update image generation model config."""
     try:
         update_data = {k: v for k, v in req.dict().items() if v is not None}
@@ -106,14 +104,14 @@ async def update_image_config(req: ImageModelConfigUpdate, admin: dict = Depends
 
 
 @router.put("/config/admin")
-async def update_admin_config(admin: dict = Depends(require_admin)):
+def update_admin_config(admin: dict = Depends(require_admin)):
     """Update admin-only AI config."""
     # Placeholder for admin-specific AI settings
     return {"status": "ok", "message": "Admin config updated"}
 
 
 @router.put("/config/canary")
-async def update_canary_config(req: CanaryConfigUpdate, admin: dict = Depends(require_admin)):
+def update_canary_config(req: CanaryConfigUpdate, admin: dict = Depends(require_admin)):
     """Update canary release configuration."""
     try:
         result = supabase.table("ai_model_configs").update({
@@ -132,7 +130,7 @@ async def update_canary_config(req: CanaryConfigUpdate, admin: dict = Depends(re
 
 
 @router.put("/providers/toggle")
-async def toggle_provider(req: ProviderToggleRequest, admin: dict = Depends(require_admin)):
+def toggle_provider(req: ProviderToggleRequest, admin: dict = Depends(require_admin)):
     """Enable/disable an AI provider."""
     try:
         result = toggle_ai_provider(req.provider, req.enabled, admin["id"])
@@ -142,7 +140,7 @@ async def toggle_provider(req: ProviderToggleRequest, admin: dict = Depends(requ
 
 
 @router.get("/usage")
-async def get_usage(
+def get_usage(
     days: int = 30,
     admin: dict = Depends(require_admin)
 ):
@@ -155,7 +153,7 @@ async def get_usage(
 
 
 @router.post("/cache/clear")
-async def clear_cache(admin: dict = Depends(require_admin)):
+def clear_cache(admin: dict = Depends(require_admin)):
     """Clear AI-related caches."""
     try:
         clear_ai_cache()

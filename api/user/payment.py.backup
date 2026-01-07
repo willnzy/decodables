@@ -9,10 +9,6 @@ Endpoints:
 - POST /api/v2/user/payment/portal - Get billing portal URL
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_user_discount  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional
 
@@ -70,6 +66,7 @@ async def create_checkout(
         CheckoutResponse with checkout URL and discount info
     """
     from domains.billing.payment_service import create_checkout_session
+    from infrastructure.db_compat import get_user_discount
 
     try:
         # Apply discount if available

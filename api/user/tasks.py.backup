@@ -8,10 +8,6 @@ Endpoints:
 - POST /api/v2/user/tasks/{task_id}/cancel - Cancel a task
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - add_credits  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from typing import Optional, Dict, Any, List
 
@@ -19,11 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from dependencies import get_current_user
+from infrastructure.db_compat import supabase, add_credits
 from infrastructure.task_queue import task_queue, progress_tracker
 from infrastructure.rate_limiter import limiter
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
 

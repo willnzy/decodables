@@ -15,7 +15,8 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from infrastructure.db_compat import get_public_configs, get_config_by_key, get_config_group
+from infrastructure.repositories import SupabaseConfigRepository
+from core.database import get_database_client
 
 router = APIRouter(prefix="/config", tags=["user-config-v2"])
 
@@ -42,22 +43,30 @@ class ConfigGroupResponse(BaseModel):
 # ==========================================
 
 @router.get("")
-def list_configs() -> Dict[str, Any]:
+async def list_configs() -> Dict[str, Any]:
     """Get all public configurations."""
-    return get_public_configs()
+    db = get_database_client()
+    config_repo = SupabaseConfigRepository(db)
+    configs = await config_repo.get_all()
+    # Convert list to dict format
+    return {c["key"]: c for c in configs}
 
 
 @router.get("/group/{group_name}")
-def get_group(group_name: str) -> ConfigGroupResponse:
+async def get_group(group_name: str) -> ConfigGroupResponse:
     """Get all configurations in a group."""
-    configs = get_config_group(group_name)
+    db = get_database_client()
+    config_repo = SupabaseConfigRepository(db)
+    configs = await config_repo.get_all(group=group_name)
     return ConfigGroupResponse(group=group_name, configs=configs)
 
 
 @router.get("/{key}")
-def get_config(key: str) -> Dict[str, Any]:
+async def get_config(key: str) -> Dict[str, Any]:
     """Get a single configuration by key."""
-    config = get_config_by_key(key)
-    if not config:
+    db = get_database_client()
+    config_repo = SupabaseConfigRepository(db)
+    value = await config_repo.get_by_key(key)
+    if not value:
         raise HTTPException(404, f"Config not found: {key}")
-    return config
+    return {"key": key, "value": value}

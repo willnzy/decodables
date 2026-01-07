@@ -10,10 +10,6 @@ Endpoints:
 - POST /api/v2/user/campaigns/{id}/dismiss - Dismiss notification
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - add_credits_permanent  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -22,9 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from dependencies import optional_user, get_current_user
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
+from infrastructure.db_compat import supabase, add_credits_permanent
 
 logger = logging.getLogger(__name__)
 

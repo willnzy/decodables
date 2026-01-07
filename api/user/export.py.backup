@@ -10,11 +10,6 @@ Endpoints:
 - GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP
 """
 
-# TODO: MIGRATION NEEDED - The following db_compat functions need migration:
-#   - get_project_detail  (search for usage and migrate to repositories)
-#   - log_activity  (search for usage and migrate to repositories)
-# See: infrastructure/repositories/ for available repository classes
-
 import logging
 from io import BytesIO
 from typing import List, Optional
@@ -24,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from dependencies import get_current_user
+from infrastructure.db_compat import get_project_detail, log_activity
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 from infrastructure.rate_limiter import limiter
 
@@ -80,7 +76,7 @@ def _extract_project_data(canvas_data) -> tuple[list, list, str]:
 
 @router.get("/projects/{project_id}/pdf")
 @limiter.limit("10/minute")
-async def export_project_pdf(
+def export_project_pdf(
     request: Request,
     project_id: str,
     user: dict = Depends(get_current_user),
@@ -113,7 +109,7 @@ async def export_project_pdf(
 
 @router.get("/projects/{project_id}/preview")
 @limiter.limit("20/minute")
-async def export_project_preview(
+def export_project_preview(
     request: Request,
     project_id: str,
     user: dict = Depends(get_current_user),
@@ -161,7 +157,7 @@ async def export_project_preview(
 
 @router.post("/zip", deprecated=True)
 @limiter.limit("5/minute")
-async def export_zip(
+def export_zip(
     request: Request,
     req: ZipExportRequest,
     user: dict = Depends(get_current_user),
@@ -193,7 +189,7 @@ async def export_zip(
 
 @router.get("/projects/{project_id}/zip")
 @limiter.limit("5/minute")
-async def export_project_zip(
+def export_project_zip(
     request: Request,
     project_id: str,
     user: dict = Depends(get_current_user),
