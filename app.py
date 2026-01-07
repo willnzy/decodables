@@ -106,53 +106,9 @@ logger = setup_logging(
 # v3.9: Import timezone utilities
 from timezone_utils import get_request_timezone
 
-# Import service modules
-from infrastructure.db_compat import (
-    # Access control
-    is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
-    get_total_credits,
-    # System configs (public)
-    get_system_config, get_all_system_configs, get_configs_by_group,
-    # Users
-    get_user_profile, create_user_profile, update_subscription_tier, update_user_profile,
-    refresh_monthly_credits, search_users, get_full_user_audit, admin_adjust_credits,
-    update_user_timezone,
-    # Credits
-    log_credit_transaction, log_payment_record, credit_deduct, add_credits_permanent, add_credits_monthly,
-    deduct_credits_atomic, add_credits, get_credit_history,
-    # Projects
-    get_user_projects, get_project_detail, create_project, save_project,
-    soft_delete_project, restore_project, update_project_hash, get_all_projects_feed,
-    count_user_projects,  # Accurate project total
-    # Assets
-    save_asset, get_assets, get_system_resources,
-    # Marketplace
-    get_marketplace_listings, get_marketplace_item, get_seller_listings, create_listing,
-    submit_listing_for_review, unpublish_listing, update_listing, check_user_purchase,
-    execute_purchase, get_user_purchases, get_seller_stats, record_listing_usage, get_leaderboard,
-    # Admin moderation
-    admin_get_moderation_list, admin_get_moderation_detail, admin_approve_listing,
-    admin_reject_listing, admin_delete_listing, admin_unpublish_listing,
-    # Admin features
-    admin_log_operation, admin_get_operation_logs, admin_get_user_projects,
-    admin_get_dashboard_stats, admin_get_user_growth_stats, admin_get_revenue_stats,
-    admin_get_project_stats, admin_get_credit_usage_stats, admin_get_tier_distribution,
-    admin_get_conversion_funnel, admin_get_ai_insights, admin_get_ai_recommendations,
-    admin_get_behavior_analysis, log_user_event, admin_get_user_events, admin_get_event_stats,
-    # Notifications
-    get_user_notifications, mark_notification_read, mark_all_notifications_read, create_broadcast,
-    send_notification_to_user, send_notification_to_users, get_users_by_tier,
-    get_all_notification_stats, get_notification_history,
-    # Discounts
-    get_user_discount, create_user_discount,
-    # Logs
-    log_activity, create_support_ticket,
-    # Supabase client
-    supabase
-)
 from domains.billing.payment_service import (
     create_checkout_session, create_portal_session, construct_event,
-    get_customer_subscriptions, get_customer_payments, cancel_subscription, 
+    get_customer_subscriptions, get_customer_payments, cancel_subscription,
     create_refund, get_payment_intent_details
 )
 from shared.ai.image_generator import generate_8_images
