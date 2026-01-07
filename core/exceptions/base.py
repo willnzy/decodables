@@ -18,6 +18,7 @@ class ErrorCode(str, Enum):
     VALIDATION_ERROR = "validation_error"
     TOO_MANY_REQUESTS = "too_many_requests"
     BAD_REQUEST = "bad_request"
+    PAYMENT_REQUIRED = "payment_required"  # 402: Insufficient credits/payment
 
     # === Authentication Errors ===
     AUTH_UNAUTHORIZED = "auth_unauthorized"

@@ -89,7 +89,7 @@ class CreditOperationFailedException(BillingException):
 class TransactionNotFoundException(BillingException):
     """Credit transaction not found."""
     status_code = 404
-    default_code = ErrorCode.NOT_FOUND
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
     default_message = "Transaction not found"
 
     def __init__(self, transaction_id: str = None, **kwargs):
