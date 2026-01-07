@@ -1756,11 +1756,17 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('ai_providers.costs', 
  '{"openai": {"gpt-4o-mini": 0.15, "gpt-4o": 2.50, "o1-mini": 3.00, "o1": 15.00, "dall-e-3": 0.04}, "fal": {"flux-schnell": 0.003, "flux-dev": 0.025, "flux-pro": 0.05}, "qwen": {"qwen-turbo": 0.001, "qwen-plus": 0.004, "qwen-max": 0.02}, "wanx": {"wan2.6-t2i": 0.02, "wan2.6-image": 0.03, "wanx-v1": 0.015}, "anthropic": {"claude-3.5-sonnet": 3.00, "claude-3.5-opus": 15.00}}', 
  'json', 'ai_providers', 'Cost reference per 1M tokens or per image (USD)', true),
-('ai_providers.retry', 
- '{"max_retries": 3, "base_delay_ms": 1000, "max_delay_ms": 10000, "retry_on_status": [429, 500, 502, 503, 504]}', 
- 'json', 'ai_providers', 'Retry configuration for AI API calls', true)
-ON CONFLICT (key) DO UPDATE SET 
-    value = EXCLUDED.value, 
+('ai_providers.retry',
+ '{"max_retries": 3, "base_delay_ms": 1000, "max_delay_ms": 10000, "retry_on_status": [429, 500, 502, 503, 504]}',
+ 'json', 'ai_providers', 'Retry configuration for AI API calls', true),
+
+-- Credit costs configuration (v3.23)
+('credits.cost.image_generation', '5', 'integer', 'credits', 'AI image generation cost per image', true),
+('credits.cost.text_generation', '1', 'integer', 'credits', 'AI text generation cost per operation', true),
+('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan/OCR cost per operation', true),
+('credits.cost.ocr', '2', 'integer', 'credits', 'OCR recognition cost per operation', true)
+ON CONFLICT (key) DO UPDATE SET
+    value = EXCLUDED.value,
     description = EXCLUDED.description,
     updated_at = NOW();
 

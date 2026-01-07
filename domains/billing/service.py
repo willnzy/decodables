@@ -10,6 +10,7 @@ It coordinates operations but delegates persistence to the repository.
 
 from typing import Optional, List
 from datetime import datetime
+import logging
 
 from .aggregates.user_credits import UserCredits, CreditTransaction
 from .repository import ICreditRepository
@@ -19,6 +20,8 @@ from .exceptions import (
     InvalidAmountException,
     CreditOperationFailedException,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BillingService:
@@ -31,32 +34,36 @@ class BillingService:
     - Calculates costs for different operations
     """
 
-    # Standard costs for AI operations
-    OPERATION_COSTS = {
+    # Emergency fallback costs (only used if database is completely unavailable)
+    # ⚠️ WARNING: These are EMERGENCY fallbacks only!
+    # Primary source: system_configs table in database
+    EMERGENCY_FALLBACK_COSTS = {
         "image_generation": 5,
         "text_generation": 1,
         "smart_scan": 10,
         "ocr": 2,
     }
 
-    # Monthly allowances by tier
+    # Monthly allowances by tier (fallback)
     TIER_ALLOWANCES = {
         "free": 0,
         "starter": 500,
         "pro": 1000,
     }
 
-    # Signup bonus
+    # Signup bonus (fallback)
     SIGNUP_BONUS = 50
 
-    def __init__(self, repository: ICreditRepository):
+    def __init__(self, repository: ICreditRepository, config_service=None):
         """
-        Initialize billing service with repository.
+        Initialize billing service with repository and config service.
 
         Args:
             repository: Credit repository implementation
+            config_service: Optional config service for dynamic configuration
         """
         self._repository = repository
+        self._config_service = config_service
 
     async def get_user_credits(self, user_id: str) -> Optional[UserCredits]:
         """
@@ -108,6 +115,10 @@ class BillingService:
         """
         Get the cost for a specific operation.
 
+        Priority:
+        1. Database system_configs (primary source)
+        2. Emergency fallback (if database unavailable)
+
         Args:
             operation: Operation name
 
@@ -117,9 +128,39 @@ class BillingService:
         Raises:
             ValueError: If operation is unknown
         """
-        if operation not in self.OPERATION_COSTS:
+        # Try to get from database config first
+        if self._config_service:
+            try:
+                config_key = f"credits.cost.{operation}"
+                config_value = self._config_service.get_config(config_key, use_cache=True)
+
+                if config_value is not None:
+                    # Handle different value formats
+                    if isinstance(config_value, dict):
+                        return int(config_value.get('amount', config_value.get('value', 0)))
+                    return int(config_value)
+                else:
+                    logger.error(
+                        f"[CRITICAL] Credit cost for '{operation}' not found in database!",
+                        extra={"operation": operation, "config_key": config_key}
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[CRITICAL] Failed to load credit cost from database: {e}",
+                    extra={"operation": operation, "error": str(e)}
+                )
+
+        # Use emergency fallback
+        logger.warning(
+            f"Using EMERGENCY fallback cost for '{operation}'. "
+            f"Database config should be added to system_configs table!",
+            extra={"operation": operation}
+        )
+
+        if operation not in self.EMERGENCY_FALLBACK_COSTS:
             raise ValueError(f"Unknown operation: {operation}")
-        return self.OPERATION_COSTS[operation]
+
+        return self.EMERGENCY_FALLBACK_COSTS[operation]
 
     async def deduct_for_operation(
         self,
