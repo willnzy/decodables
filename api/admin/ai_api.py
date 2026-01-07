@@ -75,6 +75,10 @@ class ProviderToggleRequest(BaseModel):
     enabled: bool
 
 
+class ProviderUpdateRequest(BaseModel):
+    enabled: bool
+
+
 # ==========================================
 # AI Insights Endpoints
 # ==========================================
@@ -205,12 +209,36 @@ def update_canary_config(
         raise HTTPException(500, str(e))
 
 
-@router.put("/providers/toggle")
+@router.patch("/providers/{provider}")
+def update_provider(
+    provider: str,
+    req: ProviderUpdateRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Update AI provider settings (enable/disable).
+
+    **Recommended**: Use PATCH for partial resource updates.
+    """
+    enabled = req.enabled
+    try:
+        result = toggle_ai_provider(provider, enabled, admin["id"])
+        return {"status": "updated", "provider": provider, "enabled": enabled}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.put("/providers/toggle", deprecated=True)
 def toggle_provider(
     req: ProviderToggleRequest,
     admin: dict = Depends(require_admin)
 ):
-    """Enable/disable an AI provider."""
+    """
+    Enable/disable an AI provider.
+
+    **DEPRECATED**: Use `PATCH /providers/{provider}` instead.
+    This endpoint will be removed in v3.0.
+    """
     try:
         result = toggle_ai_provider(req.provider, req.enabled, admin["id"])
         return {"status": "updated", "provider": req.provider, "enabled": req.enabled}

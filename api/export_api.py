@@ -156,7 +156,7 @@ def export_project_preview(
 # ZIP Export Endpoints
 # ==========================================
 
-@router.post("/zip")
+@router.post("/zip", deprecated=True)
 @limiter.limit("5/minute")
 def export_zip(
     request: Request,
@@ -165,6 +165,9 @@ def export_zip(
 ):
     """
     Export images as ZIP archive.
+
+    **DEPRECATED**: Use `GET /projects/{project_id}/zip` instead.
+    This endpoint will be removed in v3.0.
 
     Requires Pro plan.
     """

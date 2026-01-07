@@ -106,7 +106,32 @@ async def get_generation_history(
     )
 
 
-@router.post("/{generation_id}/favorite")
+@router.patch("/{generation_id}")
+@limiter.limit("60/minute")
+async def update_generation(
+    request: Request,
+    generation_id: str,
+    req: FavoriteRequest,
+    user: dict = Depends(get_current_user),
+) -> FavoriteResponse:
+    """
+    Update generation properties (favorite status, etc.).
+
+    **Recommended**: Use PATCH for partial resource updates.
+    """
+    result = supabase.table("user_generations") \
+        .update({"is_favorited": req.is_favorited}) \
+        .eq("id", generation_id) \
+        .eq("user_id", user["id"]) \
+        .execute()
+
+    if not result.data:
+        raise HTTPException(404, "Generation not found")
+
+    return FavoriteResponse(success=True, is_favorited=req.is_favorited)
+
+
+@router.post("/{generation_id}/favorite", deprecated=True)
 @limiter.limit("60/minute")
 async def toggle_favorite(
     request: Request,
@@ -114,7 +139,12 @@ async def toggle_favorite(
     req: FavoriteRequest,
     user: dict = Depends(get_current_user),
 ) -> FavoriteResponse:
-    """Toggle favorite status of a generated image."""
+    """
+    Toggle favorite status of a generated image.
+
+    **DEPRECATED**: Use `PATCH /{generation_id}` instead.
+    This endpoint will be removed in v3.0.
+    """
     result = supabase.table("user_generations") \
         .update({"is_favorited": req.is_favorited}) \
         .eq("id", generation_id) \
@@ -144,14 +174,46 @@ async def delete_generation(
     return DeleteResponse(success=True, deleted=generation_id)
 
 
-@router.delete("/batch")
+@router.post("/batch-delete")
+@limiter.limit("10/minute")
+async def batch_delete_generations(
+    request: Request,
+    keep_favorites: bool = True,
+    user: dict = Depends(get_current_user),
+) -> BatchDeleteResponse:
+    """
+    Clear all generation history, optionally keeping favorites.
+
+    **Recommended**: Use POST for batch operations.
+    """
+    query = supabase.table("user_generations") \
+        .delete() \
+        .eq("user_id", user["id"])
+
+    if keep_favorites:
+        query = query.eq("is_favorited", False)
+
+    result = query.execute()
+
+    return BatchDeleteResponse(
+        success=True,
+        deleted_count=len(result.data or []),
+    )
+
+
+@router.delete("/batch", deprecated=True)
 @limiter.limit("10/minute")
 async def clear_generation_history(
     request: Request,
     keep_favorites: bool = True,
     user: dict = Depends(get_current_user),
 ) -> BatchDeleteResponse:
-    """Clear all generation history, optionally keeping favorites."""
+    """
+    Clear all generation history, optionally keeping favorites.
+
+    **DEPRECATED**: Use `POST /batch-delete` instead.
+    This endpoint will be removed in v3.0.
+    """
     query = supabase.table("user_generations") \
         .delete() \
         .eq("user_id", user["id"])

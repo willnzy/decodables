@@ -128,13 +128,50 @@ async def adjust_user_credits(
     return {"status": "ok"}
 
 
-@router.post("/users/{uid}/tier")
+@router.patch("/users/{uid}")
+async def update_user(
+    uid: str,
+    req: TierUpdateRequest,
+    admin: dict = Depends(require_admin),
+):
+    """
+    Update user properties (tier, etc.).
+
+    **Recommended**: Use PATCH for partial resource updates.
+    """
+    old_profile = get_user_profile(uid)
+    old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
+
+    subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
+    update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
+
+    log_activity(admin["id"], "admin_tier_update", {
+        "target_user": uid,
+        "new_tier": req.tier,
+        "subscription_status": subscription_status,
+    })
+    admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="tier_change",
+        target_user_id=uid,
+        details=f"{old_tier} → {req.tier}",
+        reason=None,
+    )
+    return {"status": "ok"}
+
+
+@router.post("/users/{uid}/tier", deprecated=True)
 async def update_user_tier(
     uid: str,
     req: TierUpdateRequest,
     admin: dict = Depends(require_admin),
 ):
-    """Update user tier."""
+    """
+    Update user tier.
+
+    **DEPRECATED**: Use `PATCH /users/{uid}` instead.
+    This endpoint will be removed in v3.0.
+    """
     old_profile = get_user_profile(uid)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
 
