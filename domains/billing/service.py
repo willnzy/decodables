@@ -13,7 +13,7 @@ from datetime import datetime
 
 from .aggregates.user_credits import UserCredits, CreditTransaction
 from .repository import ICreditRepository
-from .value_objects import Credits, CreditBucket, TransactionType, CreditCost
+from .value_objects import Credits, CreditBucket, TransactionType
 from .exceptions import (
     InsufficientCreditsException,
     InvalidAmountException,
@@ -33,10 +33,10 @@ class BillingService:
 
     # Standard costs for AI operations
     OPERATION_COSTS = {
-        "image_generation": CreditCost(amount=5, operation="image_generation"),
-        "text_generation": CreditCost(amount=1, operation="text_generation"),
-        "smart_scan": CreditCost(amount=10, operation="smart_scan"),
-        "ocr": CreditCost(amount=2, operation="ocr"),
+        "image_generation": 5,
+        "text_generation": 1,
+        "smart_scan": 10,
+        "ocr": 2,
     }
 
     # Monthly allowances by tier
@@ -102,9 +102,9 @@ class BillingService:
             True if user has enough credits
         """
         cost = self.get_operation_cost(operation)
-        return await self.check_can_afford(user_id, cost.amount)
+        return await self.check_can_afford(user_id, cost)
 
-    def get_operation_cost(self, operation: str) -> CreditCost:
+    def get_operation_cost(self, operation: str) -> int:
         """
         Get the cost for a specific operation.
 
@@ -112,7 +112,7 @@ class BillingService:
             operation: Operation name
 
         Returns:
-            CreditCost for the operation
+            Credit cost as integer
 
         Raises:
             ValueError: If operation is unknown
@@ -151,7 +151,7 @@ class BillingService:
 
         return await self._repository.deduct_atomic(
             user_id=user_id,
-            amount=cost.amount,
+            amount=cost,
             tx_type=tx_type,
             description=description or f"{operation} operation",
             idempotency_key=idempotency_key,
