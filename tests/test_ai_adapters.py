@@ -281,7 +281,7 @@ class TestAutoRegistrationImportErrors:
         adapters._image_adapters.pop('openai', None)
         
         # Mock the import to fail
-        with patch.dict(sys.modules, {'services.ai.adapters.openai_adapter': None}):
+        with patch.dict(sys.modules, {'shared.ai.adapters.openai_adapter': None}):
             # This should handle the ImportError gracefully
             adapters._auto_register_adapters()
         
@@ -303,7 +303,7 @@ class TestAutoRegistrationImportErrors:
         for key in module_keys:
             original_modules[key] = sys.modules.pop(key, None)
         
-        with patch.dict(sys.modules, {'services.ai.adapters.fal_adapter': None}):
+        with patch.dict(sys.modules, {'shared.ai.adapters.fal_adapter': None}):
             adapters._auto_register_adapters()
         
         for key, mod in original_modules.items():
@@ -323,7 +323,7 @@ class TestAutoRegistrationImportErrors:
         for key in module_keys:
             original_modules[key] = sys.modules.pop(key, None)
         
-        with patch.dict(sys.modules, {'services.ai.adapters.qwen_adapter': None}):
+        with patch.dict(sys.modules, {'shared.ai.adapters.qwen_adapter': None}):
             adapters._auto_register_adapters()
         
         for key, mod in original_modules.items():

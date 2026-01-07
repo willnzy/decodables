@@ -55,35 +55,35 @@ class TestGenerateCacheKey:
 
 
 class TestGetCachedResult:
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_none_for_image(self, mock_cache):
         from shared.ai.ai_cache import get_cached_result
         result = get_cached_result("openai", "dall-e-3", "A cat", "image")
         assert result is None
         mock_cache.get_ai_result.assert_not_called()
 
-    @patch('services.ai.ai_cache.AI_CACHE_TTL', {"text": 0, "image": 0})
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.AI_CACHE_TTL', {"text": 0, "image": 0})
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_none_when_ttl_zero(self, mock_cache):
         from shared.ai.ai_cache import get_cached_result
         result = get_cached_result("openai", "gpt-4o", "Hello", "text")
         assert result is None
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_cached_value_on_hit(self, mock_cache):
         from shared.ai.ai_cache import get_cached_result
         mock_cache.get_ai_result.return_value = "Cached response"
         result = get_cached_result("openai", "gpt-4o", "Hello", "text")
         assert result == "Cached response"
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_none_on_miss(self, mock_cache):
         from shared.ai.ai_cache import get_cached_result
         mock_cache.get_ai_result.return_value = None
         result = get_cached_result("openai", "gpt-4o", "Hello", "text")
         assert result is None
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_handles_exception(self, mock_cache):
         from shared.ai.ai_cache import get_cached_result
         mock_cache.get_ai_result.side_effect = Exception("Cache error")
@@ -92,21 +92,21 @@ class TestGetCachedResult:
 
 
 class TestSetCachedResult:
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_false_for_image(self, mock_cache):
         from shared.ai.ai_cache import set_cached_result
         result = set_cached_result("openai", "dall-e-3", "A cat", "image_url", "image")
         assert result is False
         mock_cache.set_ai_result.assert_not_called()
 
-    @patch('services.ai.ai_cache.AI_CACHE_TTL', {"text": 0, "image": 0})
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.AI_CACHE_TTL', {"text": 0, "image": 0})
+    @patch('shared.ai.ai_cache.cache_service')
     def test_returns_false_when_ttl_zero(self, mock_cache):
         from shared.ai.ai_cache import set_cached_result
         result = set_cached_result("openai", "gpt-4o", "Hello", "Response", "text")
         assert result is False
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_sets_cache_successfully(self, mock_cache):
         from shared.ai.ai_cache import set_cached_result
         mock_cache.set_ai_result.return_value = True
@@ -114,7 +114,7 @@ class TestSetCachedResult:
         assert result is True
         mock_cache.set_ai_result.assert_called_once()
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_handles_exception(self, mock_cache):
         from shared.ai.ai_cache import set_cached_result
         mock_cache.set_ai_result.side_effect = Exception("Cache error")
@@ -123,13 +123,13 @@ class TestSetCachedResult:
 
 
 class TestInvalidateAICache:
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_invalidate_calls_delete_pattern(self, mock_cache):
         from shared.ai.ai_cache import invalidate_ai_cache
         invalidate_ai_cache()
         mock_cache.delete_pattern.assert_called_once()
 
-    @patch('services.ai.ai_cache.cache_service')
+    @patch('shared.ai.ai_cache.cache_service')
     def test_handles_exception(self, mock_cache):
         from shared.ai.ai_cache import invalidate_ai_cache
         mock_cache.delete_pattern.side_effect = Exception("Error")
@@ -139,8 +139,8 @@ class TestInvalidateAICache:
 
 class TestWithCache:
     @pytest.mark.asyncio
-    @patch('services.ai.ai_cache.set_cached_result')
-    @patch('services.ai.ai_cache.get_cached_result')
+    @patch('shared.ai.ai_cache.set_cached_result')
+    @patch('shared.ai.ai_cache.get_cached_result')
     async def test_returns_cached_value_on_hit(self, mock_get, mock_set):
         from shared.ai.ai_cache import with_cache
         mock_get.return_value = "Cached response"
@@ -152,8 +152,8 @@ class TestWithCache:
         mock_fetch.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('services.ai.ai_cache.set_cached_result')
-    @patch('services.ai.ai_cache.get_cached_result')
+    @patch('shared.ai.ai_cache.set_cached_result')
+    @patch('shared.ai.ai_cache.get_cached_result')
     async def test_fetches_and_caches_on_miss(self, mock_get, mock_set):
         from shared.ai.ai_cache import with_cache
         mock_get.return_value = None
@@ -166,8 +166,8 @@ class TestWithCache:
         mock_set.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('services.ai.ai_cache.set_cached_result')
-    @patch('services.ai.ai_cache.get_cached_result')
+    @patch('shared.ai.ai_cache.set_cached_result')
+    @patch('shared.ai.ai_cache.get_cached_result')
     async def test_skips_cache_when_disabled(self, mock_get, mock_set):
         from shared.ai.ai_cache import with_cache
         mock_fetch = AsyncMock(return_value="Fresh response")
@@ -179,8 +179,8 @@ class TestWithCache:
         mock_set.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('services.ai.ai_cache.set_cached_result')
-    @patch('services.ai.ai_cache.get_cached_result')
+    @patch('shared.ai.ai_cache.set_cached_result')
+    @patch('shared.ai.ai_cache.get_cached_result')
     async def test_does_not_cache_empty_result(self, mock_get, mock_set):
         from shared.ai.ai_cache import with_cache
         mock_get.return_value = None

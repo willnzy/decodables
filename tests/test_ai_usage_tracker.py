@@ -14,7 +14,7 @@ from decimal import Decimal
 
 
 class TestEstimateCost:
-    @patch('services.ai.usage_tracker.get_model_cost')
+    @patch('shared.ai.usage_tracker.get_model_cost')
     def test_text_cost_calculation(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 1.0  # $1 per 1M tokens
@@ -30,7 +30,7 @@ class TestEstimateCost:
         # 1000 tokens at $1/1M = $0.001
         assert cost == Decimal("0.0010")
 
-    @patch('services.ai.usage_tracker.get_model_cost')
+    @patch('shared.ai.usage_tracker.get_model_cost')
     def test_image_cost_calculation(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.04  # $0.04 per image
@@ -44,7 +44,7 @@ class TestEstimateCost:
         
         assert cost == Decimal("0.2000")
 
-    @patch('services.ai.usage_tracker.get_model_cost')
+    @patch('shared.ai.usage_tracker.get_model_cost')
     def test_cost_precision(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.50
@@ -64,8 +64,8 @@ class TestEstimateCost:
 
 
 class TestTrackAIUsageSync:
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker._estimate_cost')
     def test_tracks_usage_successfully(self, mock_cost, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
@@ -81,8 +81,8 @@ class TestTrackAIUsageSync:
         
         mock_supabase.rpc.assert_called_once()
 
-    @patch('services.ai.usage_tracker.supabase', None)
-    @patch('services.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker.supabase', None)
+    @patch('shared.ai.usage_tracker._estimate_cost')
     def test_handles_no_supabase(self, mock_cost):
         from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
@@ -95,8 +95,8 @@ class TestTrackAIUsageSync:
             success=True
         )
 
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker._estimate_cost')
     def test_handles_exception(self, mock_cost, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
@@ -113,8 +113,8 @@ class TestTrackAIUsageSync:
 
 class TestTrackAIUsageAsync:
     @pytest.mark.asyncio
-    @patch('services.ai.usage_tracker.supabase')
-    @patch('services.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker._estimate_cost')
     async def test_tracks_usage_async(self, mock_cost, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage
         mock_cost.return_value = Decimal("0.0010")
@@ -134,8 +134,8 @@ class TestTrackAIUsageAsync:
         )
 
     @pytest.mark.asyncio
-    @patch('services.ai.usage_tracker.supabase', None)
-    @patch('services.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker.supabase', None)
+    @patch('shared.ai.usage_tracker._estimate_cost')
     async def test_handles_no_supabase_async(self, mock_cost):
         from shared.ai.usage_tracker import track_ai_usage
         mock_cost.return_value = Decimal("0.0010")
@@ -150,13 +150,13 @@ class TestTrackAIUsageAsync:
 
 
 class TestGetUsageSummary:
-    @patch('services.ai.usage_tracker.supabase', None)
+    @patch('shared.ai.usage_tracker.supabase', None)
     def test_returns_empty_when_no_db(self):
         from shared.ai.usage_tracker import get_usage_summary
         result = get_usage_summary()
         assert result == {}
 
-    @patch('services.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker.supabase')
     def test_returns_summary(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
         
@@ -171,7 +171,7 @@ class TestGetUsageSummary:
         assert result["total_cost_usd"] == 6.0
         assert "openai" in result["by_provider"]
 
-    @patch('services.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker.supabase')
     def test_returns_empty_on_no_data(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
         mock_supabase.from_.return_value.select.return_value.execute.return_value.data = None
@@ -180,7 +180,7 @@ class TestGetUsageSummary:
         
         assert result["total_calls"] == 0
 
-    @patch('services.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
         mock_supabase.from_.side_effect = Exception("DB Error")
@@ -191,13 +191,13 @@ class TestGetUsageSummary:
 
 
 class TestGetDailyTrend:
-    @patch('services.ai.usage_tracker.supabase', None)
+    @patch('shared.ai.usage_tracker.supabase', None)
     def test_returns_empty_when_no_db(self):
         from shared.ai.usage_tracker import get_daily_trend
         result = get_daily_trend()
         assert result == []
 
-    @patch('services.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker.supabase')
     def test_returns_trend_data(self, mock_supabase):
         from shared.ai.usage_tracker import get_daily_trend
         
@@ -211,7 +211,7 @@ class TestGetDailyTrend:
         assert len(result) == 2
         assert result[0]["date"] == "2025-01-01"
 
-    @patch('services.ai.usage_tracker.supabase')
+    @patch('shared.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
         from shared.ai.usage_tracker import get_daily_trend
         mock_supabase.from_.side_effect = Exception("DB Error")

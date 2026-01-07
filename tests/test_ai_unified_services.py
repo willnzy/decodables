@@ -25,11 +25,11 @@ class TestUnifiedTextService:
     """UnifiedTextService 测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_successful_chat(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config
@@ -72,9 +72,9 @@ class TestUnifiedTextService:
         mock_adapter.chat_completion.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
     async def test_provider_not_enabled(
         self, mock_get_adapter, mock_is_enabled, mock_get_config
     ):
@@ -96,11 +96,11 @@ class TestUnifiedTextService:
         assert response.error_type == AIErrorType.AUTH_ERROR
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_adapter_not_available(
         self, mock_cache_get, mock_get_adapter, mock_is_enabled, mock_get_config, mock_fallback
     ):
@@ -124,8 +124,8 @@ class TestUnifiedTextService:
         assert response.success is False
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_cached_result')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_cache_hit(
         self, mock_get_config, mock_cache_get
     ):
@@ -150,11 +150,11 @@ class TestUnifiedTextService:
         mock_cache_get.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_admin_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_admin_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_admin_model_usage(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_admin_config
@@ -198,11 +198,11 @@ class TestUnifiedImageService:
     """UnifiedImageService 测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_successful_image_generation(
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
@@ -239,11 +239,11 @@ class TestUnifiedImageService:
         assert response.content[0].startswith("https://")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_tier_based_model_selection(
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
@@ -278,10 +278,10 @@ class TestUnifiedImageService:
         mock_get_config.assert_called_once_with("pro")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image(
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
@@ -314,10 +314,10 @@ class TestUnifiedImageService:
         mock_adapter.image_to_image.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_canary_model_used(
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
@@ -352,12 +352,12 @@ class TestUnifiedImageService:
         assert call_args[1]["model"] == "flux-dev"
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.get_fallback_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_provider_not_enabled_uses_fallback(
         self, mock_get_config, mock_should_canary, mock_is_enabled, 
         mock_get_fallback, mock_get_adapter, mock_track
@@ -393,10 +393,10 @@ class TestUnifiedImageService:
         mock_get_adapter.assert_called_with("fal")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_fallback_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_provider_not_enabled_no_fallback(
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_fallback
     ):
@@ -420,12 +420,12 @@ class TestUnifiedImageService:
         assert response.error_type == AIErrorType.AUTH_ERROR
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.get_fallback_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_adapter_not_available_tries_fallback(
         self, mock_get_config, mock_should_canary, mock_is_enabled, 
         mock_get_fallback, mock_get_adapter, mock_track
@@ -460,12 +460,12 @@ class TestUnifiedImageService:
         assert response.success is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.get_fallback_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_generation_fails_tries_fallback(
         self, mock_get_config, mock_should_canary, mock_is_enabled, 
         mock_get_fallback, mock_get_adapter, mock_track
@@ -512,10 +512,10 @@ class TestUnifiedImageService:
         assert response.success is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image_adapter_not_available(
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
@@ -539,7 +539,7 @@ class TestUnifiedImageConvenienceFunctions:
     """UnifiedImageService 便捷函数测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.unified_image_service.generate')
+    @patch('shared.ai.unified_image_service.unified_image_service.generate')
     async def test_generate_image_convenience(self, mock_generate):
         """【业务规则】generate_image 便捷函数"""
         from shared.ai.unified_image_service import generate_image
@@ -559,7 +559,7 @@ class TestUnifiedImageConvenienceFunctions:
         mock_generate.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.unified_image_service.image_to_image')
+    @patch('shared.ai.unified_image_service.unified_image_service.image_to_image')
     async def test_image_to_image_convenience(self, mock_i2i):
         """【业务规则】image_to_image 便捷函数"""
         from shared.ai.unified_image_service import image_to_image
@@ -588,12 +588,12 @@ class TestCanaryIntegration:
     """灰度发布集成测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.should_use_canary')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.should_use_canary')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_canary_model_used(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config, mock_canary
@@ -639,11 +639,11 @@ class TestFallbackBehavior:
     """Fallback 行为测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_fallback_on_error(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config
@@ -697,11 +697,11 @@ class TestUnifiedServicesEdgeCases:
     """边界情况测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_empty_messages(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config
@@ -732,10 +732,10 @@ class TestUnifiedServicesEdgeCases:
         assert isinstance(response, AIResponse)
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_very_long_prompt(
         self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
@@ -773,12 +773,12 @@ class TestUnifiedTextServiceAdditionalCoverage:
     """补充覆盖率测试 - UnifiedTextService"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_provider_not_enabled_with_fallback(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config, mock_fallback
@@ -817,11 +817,11 @@ class TestUnifiedTextServiceAdditionalCoverage:
         mock_get_adapter.assert_called_with("openai")
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_adapter_not_available_with_fallback_success(
         self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
         mock_get_config, mock_fallback
@@ -854,7 +854,7 @@ class TestUnifiedTextServiceAdditionalCoverage:
         # 第一次返回 None（主适配器），第二次返回 fallback 适配器
         mock_get_adapter.side_effect = [None, fallback_adapter]
         
-        with patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock):
+        with patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock):
             response = await unified_text_service.chat(
                 messages=[{"role": "user", "content": "Hello"}]
             )
@@ -863,11 +863,11 @@ class TestUnifiedTextServiceAdditionalCoverage:
         assert response.content == "Fallback success"
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_try_fallback_no_config(
         self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
         mock_get_config, mock_fallback
@@ -892,11 +892,11 @@ class TestUnifiedTextServiceAdditionalCoverage:
         assert response.error_type == AIErrorType.API_ERROR
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_try_fallback_adapter_not_available(
         self, mock_cache_get, mock_get_adapter, mock_is_enabled, 
         mock_get_config, mock_fallback
@@ -932,11 +932,11 @@ class TestConvenienceFunctions:
     """便捷函数测试（覆盖 254, 270 行）"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_chat_convenience_function(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_config
@@ -970,11 +970,11 @@ class TestConvenienceFunctions:
         assert response.content == "Response from chat"
     
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_admin_model_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_admin_model_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_admin_chat_convenience_function(
         self, mock_cache_get, mock_track, mock_get_adapter, 
         mock_is_enabled, mock_get_admin_config

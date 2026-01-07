@@ -23,7 +23,7 @@ from unittest.mock import patch, MagicMock
 class TestGetTextModelConfig:
     """get_text_model_config 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_config_from_db(self, mock_get_config):
         """从数据库返回配置"""
         from shared.ai.model_config import get_text_model_config
@@ -41,7 +41,7 @@ class TestGetTextModelConfig:
         assert config["model"] == "qwen-plus"
         mock_get_config.assert_called_once_with("ai_model.user.text_reasoning")
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
         from shared.ai.model_config import get_text_model_config
@@ -61,7 +61,7 @@ class TestGetTextModelConfig:
 class TestGetImageModelConfig:
     """get_image_model_config 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_free_tier_model(self, mock_get_config):
         """Free 用户模型"""
         from shared.ai.model_config import get_image_model_config
@@ -81,7 +81,7 @@ class TestGetImageModelConfig:
         assert config["provider"] == "fal"
         assert config["model"] == "flux-schnell"
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_pro_tier_model(self, mock_get_config):
         """Pro 用户模型"""
         from shared.ai.model_config import get_image_model_config
@@ -100,7 +100,7 @@ class TestGetImageModelConfig:
         
         assert config["model"] == "flux-dev"
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_unknown_tier_falls_back_to_free(self, mock_get_config):
         """未知等级回退到 free"""
         from shared.ai.model_config import get_image_model_config
@@ -118,7 +118,7 @@ class TestGetImageModelConfig:
         
         assert config["model"] == "flux-schnell"  # 回退到 free
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
         from shared.ai.model_config import get_image_model_config
@@ -138,7 +138,7 @@ class TestGetImageModelConfig:
 class TestGetAdminModelConfig:
     """get_admin_model_config 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_admin_config(self, mock_get_config):
         """返回 Admin 配置"""
         from shared.ai.model_config import get_admin_model_config
@@ -155,7 +155,7 @@ class TestGetAdminModelConfig:
         assert config["model"] == "gpt-4o"
         mock_get_config.assert_called_once_with("ai_model.admin.analysis")
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
         from shared.ai.model_config import get_admin_model_config
@@ -175,7 +175,7 @@ class TestGetAdminModelConfig:
 class TestGetEnabledProviders:
     """get_enabled_providers 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_enabled_providers(self, mock_get_config):
         """返回启用的提供商"""
         from shared.ai.model_config import get_enabled_providers
@@ -192,7 +192,7 @@ class TestGetEnabledProviders:
         assert providers["openai"] is True
         assert providers["qwen"] is False
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
         from shared.ai.model_config import get_enabled_providers
@@ -213,7 +213,7 @@ class TestGetEnabledProviders:
 class TestIsProviderEnabled:
     """is_provider_enabled 函数测试"""
     
-    @patch('services.ai.model_config.get_enabled_providers')
+    @patch('shared.ai.model_config.get_enabled_providers')
     def test_enabled_provider(self, mock_get_enabled):
         """启用的提供商"""
         from shared.ai.model_config import is_provider_enabled
@@ -222,7 +222,7 @@ class TestIsProviderEnabled:
         
         assert is_provider_enabled("openai") is True
     
-    @patch('services.ai.model_config.get_enabled_providers')
+    @patch('shared.ai.model_config.get_enabled_providers')
     def test_disabled_provider(self, mock_get_enabled):
         """禁用的提供商"""
         from shared.ai.model_config import is_provider_enabled
@@ -231,7 +231,7 @@ class TestIsProviderEnabled:
         
         assert is_provider_enabled("qwen") is False
     
-    @patch('services.ai.model_config.get_enabled_providers')
+    @patch('shared.ai.model_config.get_enabled_providers')
     def test_unknown_provider(self, mock_get_enabled):
         """未知的提供商返回 False"""
         from shared.ai.model_config import is_provider_enabled
@@ -248,7 +248,7 @@ class TestIsProviderEnabled:
 class TestGetProviderModels:
     """get_provider_models 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_provider_models(self, mock_get_config):
         """返回提供商的模型列表"""
         from shared.ai.model_config import get_provider_models
@@ -263,7 +263,7 @@ class TestGetProviderModels:
         assert "text" in models
         assert "gpt-4o-mini" in models["text"]
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_empty_for_unknown_provider(self, mock_get_config):
         """未知提供商返回空"""
         from shared.ai.model_config import get_provider_models
@@ -282,7 +282,7 @@ class TestGetProviderModels:
 class TestGetAllProviderModels:
     """get_all_provider_models 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_all_models(self, mock_get_config):
         """返回所有提供商的模型"""
         from shared.ai.model_config import get_all_provider_models
@@ -307,7 +307,7 @@ class TestGetAllProviderModels:
 class TestGetModelCost:
     """get_model_cost 函数测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_model_cost(self, mock_get_config):
         """返回模型成本"""
         from shared.ai.model_config import get_model_cost
@@ -321,7 +321,7 @@ class TestGetModelCost:
         
         assert cost == 0.15
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_zero_for_unknown_model(self, mock_get_config):
         """未知模型返回 0"""
         from shared.ai.model_config import get_model_cost
@@ -332,7 +332,7 @@ class TestGetModelCost:
         
         assert cost == 0.0
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_returns_zero_for_unknown_provider(self, mock_get_config):
         """未知提供商返回 0"""
         from shared.ai.model_config import get_model_cost
@@ -384,7 +384,7 @@ class TestGetFallbackConfig:
 class TestModelConfigEdgeCases:
     """边界情况测试"""
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_empty_config_value(self, mock_get_config):
         """空配置值"""
         from shared.ai.model_config import get_text_model_config
@@ -396,7 +396,7 @@ class TestModelConfigEdgeCases:
         # 应该使用默认值
         assert "provider" in config or config == {}
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_partial_config(self, mock_get_config):
         """部分配置"""
         from shared.ai.model_config import get_image_model_config
@@ -408,7 +408,7 @@ class TestModelConfigEdgeCases:
         
         assert config["provider"] == "wanx"
     
-    @patch('services.ai.model_config.get_config')
+    @patch('shared.ai.model_config.get_config')
     def test_case_sensitivity_tier(self, mock_get_config):
         """tier 大小写"""
         from shared.ai.model_config import get_image_model_config
