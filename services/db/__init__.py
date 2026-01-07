@@ -105,24 +105,24 @@ from infrastructure.db_compat import (
     # Payment functions
     log_payment_record,
     get_user_payments,
-    admin_get_all_payments,
-    get_payment_by_stripe_id,
-    update_payment_status,
-    admin_get_revenue_stats,
+    # admin_get_all_payments,  # TODO: Not yet implemented in db_compat
+    # get_payment_by_stripe_id,  # TODO: Not yet implemented in db_compat
+    # update_payment_status,  # TODO: Not yet implemented in db_compat
+    # admin_get_revenue_stats,  # TODO: Not yet implemented in db_compat
     # Config functions
     get_system_config,
     get_all_system_configs,
     get_configs_by_group,
-    admin_get_system_configs,
-    admin_get_config_groups,
-    admin_create_system_config,
-    admin_update_system_config,
-    admin_delete_system_config,
-    admin_get_config_audit_logs,
-    invalidate_config_cache_api,
-    get_public_configs,
-    get_config_by_key,
-    get_config_group,
+    # admin_get_system_configs,  # TODO: Not yet implemented in db_compat
+    # admin_get_config_groups,  # TODO: Not yet implemented in db_compat
+    # admin_create_system_config,  # TODO: Not yet implemented in db_compat
+    # admin_update_system_config,  # TODO: Not yet implemented in db_compat
+    # admin_delete_system_config,  # TODO: Not yet implemented in db_compat
+    # admin_get_config_audit_logs,  # TODO: Not yet implemented in db_compat
+    # invalidate_config_cache_api,  # TODO: Not yet implemented in db_compat
+    # get_public_configs,  # TODO: Not yet implemented in db_compat
+    # get_config_by_key,  # TODO: Not yet implemented in db_compat
+    # get_config_group,  # TODO: Not yet implemented in db_compat
     # Admin Users functions
     get_full_user_audit,
     admin_adjust_credits,
@@ -203,8 +203,8 @@ __all__ = [
     'create_report', 'get_user_reports',
     
     # Payments
-    'log_payment_record', 'get_user_payments', 'admin_get_all_payments',
-    'get_payment_by_stripe_id', 'update_payment_status', 'admin_get_revenue_stats',
+    'log_payment_record', 'get_user_payments',
+    # 'admin_get_all_payments', 'get_payment_by_stripe_id', 'update_payment_status', 'admin_get_revenue_stats',  # TODO: Not yet implemented
     
     # Admin Users
     'get_full_user_audit', 'admin_adjust_credits', 'admin_get_user_projects',
@@ -227,10 +227,10 @@ __all__ = [
     
     # Config
     'get_system_config', 'get_all_system_configs', 'get_configs_by_group',
-    'admin_get_system_configs', 'admin_get_config_groups',
-    'admin_create_system_config', 'admin_update_system_config',
-    'admin_delete_system_config', 'admin_get_config_audit_logs',
-    'invalidate_config_cache_api',
-    # Backward-compatible aliases
-    'get_public_configs', 'get_config_by_key', 'get_config_group',
+    # 'admin_get_system_configs', 'admin_get_config_groups',  # TODO: Not yet implemented
+    # 'admin_create_system_config', 'admin_update_system_config',  # TODO: Not yet implemented
+    # 'admin_delete_system_config', 'admin_get_config_audit_logs',  # TODO: Not yet implemented
+    # 'invalidate_config_cache_api',  # TODO: Not yet implemented
+    # Backward-compatible aliases (TODO: Not yet implemented)
+    # 'get_public_configs', 'get_config_by_key', 'get_config_group',
 ]

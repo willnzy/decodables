@@ -12,8 +12,14 @@ from .access_control import AccessControl
 from . import experiment_service
 from . import experiment_ai_service
 
+# Backward compatibility helper
+def get_access_control():
+    """Return AccessControl class instance (for backward compatibility)."""
+    return AccessControl
+
 __all__ = [
     'AccessControl',
+    'get_access_control',
     'experiment_service',
     'experiment_ai_service',
 ]

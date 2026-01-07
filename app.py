@@ -308,6 +308,13 @@ app.include_router(resources_router)
 from api import api_router as ddd_api_router
 app.include_router(ddd_api_router)
 
+# v3.26: Stage 3 - User/Admin routing structure
+# Reorganized v2 API into user/ and admin/ namespaces
+from api.user import user_router
+from api.admin import admin_router
+app.include_router(user_router)
+app.include_router(admin_router)
+
 
 # ==========================================
 # Global Exception Handlers (v3.12)
