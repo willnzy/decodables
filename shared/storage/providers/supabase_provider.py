@@ -31,7 +31,7 @@ class SupabaseStorageProvider(IStorageService):
     This class wraps the Supabase Storage API to provide a clean interface
     that matches IStorageService.
 
-    Note: Supabase client is imported from services.config_service to avoid
+    Note: Supabase client is imported from domains.platform.config_service to avoid
     duplication of initialization logic.
     """
 
@@ -43,13 +43,13 @@ class SupabaseStorageProvider(IStorageService):
 
         Args:
             supabase_client: Optional Supabase client instance.
-                           If None, will import from services.config_service
+                           If None, will import from domains.platform.config_service
         """
         if supabase_client:
             self._client = supabase_client
         else:
             # Import existing initialized client
-            from services.config_service import supabase
+            from domains.platform.config_service import supabase
             self._client = supabase
 
         if not self._client:

@@ -41,7 +41,7 @@ from services.db_service import (
     restore_project,
     get_all_projects_feed,
 )
-from services.payment_service import get_customer_payments
+from domains.billing.payment_service import get_customer_payments
 
 logger = logging.getLogger(__name__)
 

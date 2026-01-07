@@ -149,7 +149,7 @@ from services.db_service import (
     # Supabase client
     supabase
 )
-from services.payment_service import (
+from domains.billing.payment_service import (
     create_checkout_session, create_portal_session, construct_event,
     get_customer_subscriptions, get_customer_payments, cancel_subscription, 
     create_refund, get_payment_intent_details
@@ -161,7 +161,7 @@ from infrastructure.websocket import ws_manager
 from services.ai.zine_generator import create_foldable_book, create_assets_zip
 from services.ai.story_generator import generate_story_json, client as openai_client # reuse client
 from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
-from services.analytics_service import (
+from domains.platform.analytics_service import (
     track_event, track_ai_generation, track_payment, 
     track_marketplace_action, track_project_action, AnalyticsEvents
 )

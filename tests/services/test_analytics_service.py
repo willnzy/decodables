@@ -15,33 +15,33 @@ class TestAnalyticsEvents:
     
     def test_page_view_event(self):
         """PAGE_VIEW event constant exists"""
-        from services.analytics_service import AnalyticsEvents
+        from domains.platform.analytics_service import AnalyticsEvents
         assert AnalyticsEvents.PAGE_VIEW == "page_view"
     
     def test_ai_events(self):
         """AI event constants exist"""
-        from services.analytics_service import AnalyticsEvents
+        from domains.platform.analytics_service import AnalyticsEvents
         assert AnalyticsEvents.AI_GENERATE_STARTED == "ai_generate_started"
         assert AnalyticsEvents.AI_GENERATE_SUCCESS == "ai_generate_success"
         assert AnalyticsEvents.AI_GENERATE_FAILED == "ai_generate_failed"
     
     def test_payment_events(self):
         """Payment event constants exist"""
-        from services.analytics_service import AnalyticsEvents
+        from domains.platform.analytics_service import AnalyticsEvents
         assert AnalyticsEvents.CHECKOUT_STARTED == "checkout_started"
         assert AnalyticsEvents.CHECKOUT_COMPLETED == "checkout_completed"
         assert AnalyticsEvents.CREDITS_PURCHASED == "credits_purchased"
     
     def test_project_events(self):
         """Project event constants exist"""
-        from services.analytics_service import AnalyticsEvents
+        from domains.platform.analytics_service import AnalyticsEvents
         assert AnalyticsEvents.PROJECT_CREATED == "project_created"
         assert AnalyticsEvents.PROJECT_SAVED == "project_saved"
         assert AnalyticsEvents.PROJECT_EXPORTED == "project_exported"
     
     def test_marketplace_events(self):
         """Marketplace event constants exist"""
-        from services.analytics_service import AnalyticsEvents
+        from domains.platform.analytics_service import AnalyticsEvents
         assert AnalyticsEvents.MARKETPLACE_VIEW == "marketplace_view"
         assert AnalyticsEvents.MARKETPLACE_PURCHASE == "marketplace_purchase"
 
@@ -52,7 +52,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase', None)
     def test_returns_false_when_supabase_unavailable(self):
         """Returns False when Supabase is not available"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         result = _insert_event("test_event", user_id="user_123")
         
@@ -61,7 +61,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase')
     def test_inserts_event_successfully(self, mock_supabase):
         """Successfully inserts event to database"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         mock_result = MagicMock()
         mock_result.data = [{"id": 1}]
@@ -75,7 +75,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase')
     def test_returns_false_on_empty_result(self, mock_supabase):
         """Returns False when insert returns no data"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         mock_result = MagicMock()
         mock_result.data = None
@@ -88,7 +88,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase')
     def test_returns_false_on_exception(self, mock_supabase):
         """Returns False on database exception"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB Error")
         
@@ -99,7 +99,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase')
     def test_includes_event_id_in_data(self, mock_supabase):
         """Includes event_id for CAPI deduplication"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         mock_result = MagicMock()
         mock_result.data = [{"id": 1}]
@@ -115,7 +115,7 @@ class TestInsertEvent:
     @patch('services.analytics_service.supabase')
     def test_auto_generates_event_id_when_not_provided(self, mock_supabase):
         """Auto-generates event_id when not provided"""
-        from services.analytics_service import _insert_event
+        from domains.platform.analytics_service import _insert_event
         
         mock_result = MagicMock()
         mock_result.data = [{"id": 1}]
@@ -135,7 +135,7 @@ class TestTrackEvent:
     @patch('services.analytics_service._insert_event')
     def test_blocking_mode_calls_insert_directly(self, mock_insert):
         """Blocking mode calls _insert_event directly"""
-        from services.analytics_service import track_event
+        from domains.platform.analytics_service import track_event
         
         mock_insert.return_value = True
         
@@ -146,7 +146,7 @@ class TestTrackEvent:
     @patch('services.analytics_service._executor')
     def test_non_blocking_mode_submits_to_executor(self, mock_executor):
         """Non-blocking mode submits to thread pool"""
-        from services.analytics_service import track_event
+        from domains.platform.analytics_service import track_event
         
         track_event("test_event", user_id="user_123", blocking=False)
         
@@ -155,7 +155,7 @@ class TestTrackEvent:
     @patch('services.analytics_service._insert_event')
     def test_passes_all_parameters(self, mock_insert):
         """Passes all parameters to _insert_event"""
-        from services.analytics_service import track_event
+        from domains.platform.analytics_service import track_event
         
         track_event(
             "test_event",
@@ -179,7 +179,7 @@ class TestTrackEventAsync:
     @patch('services.analytics_service._insert_event')
     def test_async_tracking(self, mock_insert):
         """Async tracking works correctly"""
-        from services.analytics_service import track_event_async
+        from domains.platform.analytics_service import track_event_async
         
         mock_insert.return_value = True
         
@@ -196,7 +196,7 @@ class TestTrackEventBatch:
     @patch('services.analytics_service.supabase', None)
     def test_returns_zero_when_supabase_unavailable(self):
         """Returns 0 when Supabase is not available"""
-        from services.analytics_service import track_event_batch
+        from domains.platform.analytics_service import track_event_batch
         
         result = track_event_batch([{"event_name": "test"}])
         
@@ -205,7 +205,7 @@ class TestTrackEventBatch:
     @patch('services.analytics_service.supabase')
     def test_batch_insert_success(self, mock_supabase):
         """Successfully batch inserts events"""
-        from services.analytics_service import track_event_batch
+        from domains.platform.analytics_service import track_event_batch
         
         mock_result = MagicMock()
         mock_result.data = [{"id": 1}, {"id": 2}]
@@ -223,7 +223,7 @@ class TestTrackEventBatch:
     @patch('services.analytics_service.supabase')
     def test_returns_zero_on_exception(self, mock_supabase):
         """Returns 0 on database exception"""
-        from services.analytics_service import track_event_batch
+        from domains.platform.analytics_service import track_event_batch
         
         mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB Error")
         
@@ -234,7 +234,7 @@ class TestTrackEventBatch:
     @patch('services.analytics_service.supabase')
     def test_handles_events_with_all_fields(self, mock_supabase):
         """Handles events with all optional fields"""
-        from services.analytics_service import track_event_batch
+        from domains.platform.analytics_service import track_event_batch
         
         mock_result = MagicMock()
         mock_result.data = [{"id": 1}]
@@ -262,7 +262,7 @@ class TestTrackAiGeneration:
     @patch('services.analytics_service.track_event')
     def test_success_event(self, mock_track):
         """Tracks success event correctly"""
-        from services.analytics_service import track_ai_generation
+        from domains.platform.analytics_service import track_ai_generation
         
         track_ai_generation(
             user_id="user_123",
@@ -279,7 +279,7 @@ class TestTrackAiGeneration:
     @patch('services.analytics_service.track_event')
     def test_failure_event(self, mock_track):
         """Tracks failure event correctly"""
-        from services.analytics_service import track_ai_generation
+        from domains.platform.analytics_service import track_ai_generation
         
         track_ai_generation(
             user_id="user_123",
@@ -296,7 +296,7 @@ class TestTrackAiGeneration:
     @patch('services.analytics_service.track_event')
     def test_with_duration(self, mock_track):
         """Includes duration when provided"""
-        from services.analytics_service import track_ai_generation
+        from domains.platform.analytics_service import track_ai_generation
         
         track_ai_generation(
             user_id="user_123",
@@ -312,7 +312,7 @@ class TestTrackAiGeneration:
     @patch('services.analytics_service.track_event')
     def test_with_extra_properties(self, mock_track):
         """Includes extra properties when provided"""
-        from services.analytics_service import track_ai_generation
+        from domains.platform.analytics_service import track_ai_generation
         
         track_ai_generation(
             user_id="user_123",
@@ -332,7 +332,7 @@ class TestTrackPayment:
     @patch('services.analytics_service.track_event')
     def test_checkout_completed(self, mock_track):
         """Tracks checkout completed event"""
-        from services.analytics_service import track_payment
+        from domains.platform.analytics_service import track_payment
         
         track_payment(
             user_id="user_123",
@@ -350,7 +350,7 @@ class TestTrackPayment:
     @patch('services.analytics_service.track_event')
     def test_with_stripe_payment_id(self, mock_track):
         """Includes Stripe payment ID"""
-        from services.analytics_service import track_payment
+        from domains.platform.analytics_service import track_payment
         
         track_payment(
             user_id="user_123",
@@ -365,7 +365,7 @@ class TestTrackPayment:
     @patch('services.analytics_service.track_event')
     def test_with_extra_properties(self, mock_track):
         """Includes extra properties"""
-        from services.analytics_service import track_payment
+        from domains.platform.analytics_service import track_payment
         
         track_payment(
             user_id="user_123",
@@ -384,7 +384,7 @@ class TestTrackMarketplaceAction:
     @patch('services.analytics_service.track_event')
     def test_view_action(self, mock_track):
         """Tracks marketplace view"""
-        from services.analytics_service import track_marketplace_action
+        from domains.platform.analytics_service import track_marketplace_action
         
         track_marketplace_action(
             user_id="user_123",
@@ -399,7 +399,7 @@ class TestTrackMarketplaceAction:
     @patch('services.analytics_service.track_event')
     def test_purchase_action(self, mock_track):
         """Tracks marketplace purchase"""
-        from services.analytics_service import track_marketplace_action
+        from domains.platform.analytics_service import track_marketplace_action
         
         track_marketplace_action(
             user_id="user_123",
@@ -416,7 +416,7 @@ class TestTrackMarketplaceAction:
     @patch('services.analytics_service.track_event')
     def test_unknown_action(self, mock_track):
         """Handles unknown action gracefully"""
-        from services.analytics_service import track_marketplace_action
+        from domains.platform.analytics_service import track_marketplace_action
         
         track_marketplace_action(
             user_id="user_123",
@@ -431,7 +431,7 @@ class TestTrackMarketplaceAction:
     @patch('services.analytics_service.track_event')
     def test_with_extra_properties(self, mock_track):
         """Includes extra properties"""
-        from services.analytics_service import track_marketplace_action
+        from domains.platform.analytics_service import track_marketplace_action
         
         track_marketplace_action(
             user_id="user_123",
@@ -451,7 +451,7 @@ class TestTrackProjectAction:
     @patch('services.analytics_service.track_event')
     def test_created_action(self, mock_track):
         """Tracks project created"""
-        from services.analytics_service import track_project_action
+        from domains.platform.analytics_service import track_project_action
         
         track_project_action(
             user_id="user_123",
@@ -466,7 +466,7 @@ class TestTrackProjectAction:
     @patch('services.analytics_service.track_event')
     def test_exported_action(self, mock_track):
         """Tracks project exported"""
-        from services.analytics_service import track_project_action
+        from domains.platform.analytics_service import track_project_action
         
         track_project_action(
             user_id="user_123",
@@ -482,7 +482,7 @@ class TestTrackProjectAction:
     @patch('services.analytics_service.track_event')
     def test_unknown_action(self, mock_track):
         """Handles unknown action gracefully"""
-        from services.analytics_service import track_project_action
+        from domains.platform.analytics_service import track_project_action
         
         track_project_action(
             user_id="user_123",
@@ -500,7 +500,7 @@ class TestShutdownAnalytics:
     @patch('services.analytics_service._executor')
     def test_calls_executor_shutdown(self, mock_executor):
         """Calls executor shutdown with correct parameters"""
-        from services.analytics_service import shutdown_analytics
+        from domains.platform.analytics_service import shutdown_analytics
         
         shutdown_analytics()
         
@@ -512,13 +512,13 @@ class TestModuleLevel:
     
     def test_executor_exists(self):
         """Thread pool executor exists"""
-        from services.analytics_service import _executor
+        from domains.platform.analytics_service import _executor
         assert _executor is not None
     
     def test_atexit_registered(self):
         """Shutdown handler is registered with atexit"""
         import atexit
-        from services.analytics_service import shutdown_analytics
+        from domains.platform.analytics_service import shutdown_analytics
         # The function should be in the atexit registry
         # We can't easily verify this, but we can verify the function exists
         assert callable(shutdown_analytics)

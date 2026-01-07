@@ -20,7 +20,7 @@ class TestDefaultRateLimits:
     
     def test_payment_limits_defined(self):
         """Payment rate limits are defined"""
-        from services.config_service import DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import DEFAULT_RATE_LIMITS
         
         assert "rate_limit.payment.checkout" in DEFAULT_RATE_LIMITS
         assert "rate_limit.payment.portal" in DEFAULT_RATE_LIMITS
@@ -28,7 +28,7 @@ class TestDefaultRateLimits:
     
     def test_ai_limits_defined(self):
         """AI operation rate limits are defined"""
-        from services.config_service import DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import DEFAULT_RATE_LIMITS
         
         assert "rate_limit.generate.story" in DEFAULT_RATE_LIMITS
         assert "rate_limit.generate.images" in DEFAULT_RATE_LIMITS
@@ -36,21 +36,21 @@ class TestDefaultRateLimits:
     
     def test_export_limits_defined(self):
         """Export rate limits are defined"""
-        from services.config_service import DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import DEFAULT_RATE_LIMITS
         
         assert "rate_limit.export.pdf" in DEFAULT_RATE_LIMITS
         assert "rate_limit.export.zip" in DEFAULT_RATE_LIMITS
     
     def test_admin_limits_defined(self):
         """Admin rate limits are defined"""
-        from services.config_service import DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import DEFAULT_RATE_LIMITS
         
         assert "rate_limit.admin.credits" in DEFAULT_RATE_LIMITS
         assert "rate_limit.admin.tier" in DEFAULT_RATE_LIMITS
     
     def test_default_values_structure(self):
         """Default values have correct structure"""
-        from services.config_service import DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import DEFAULT_RATE_LIMITS
         
         config = DEFAULT_RATE_LIMITS["rate_limit.payment.checkout"]
         
@@ -66,7 +66,7 @@ class TestGetConfig:
     @patch('services.config_service.cache_service')
     def test_get_config_from_cache(self, mock_cache):
         """Returns config from cache when available"""
-        from services.config_service import get_config
+        from domains.platform.config_service import get_config
         
         mock_cache.get_config.return_value = {"limit": 10, "window": "minute"}
         
@@ -79,7 +79,7 @@ class TestGetConfig:
     @patch('services.config_service.supabase')
     def test_get_config_from_database(self, mock_supabase, mock_cache):
         """Fetches config from database when not in cache"""
-        from services.config_service import get_config
+        from domains.platform.config_service import get_config
         
         mock_cache.get_config.return_value = None
         
@@ -100,7 +100,7 @@ class TestGetConfig:
     @patch('services.config_service.supabase')
     def test_get_config_inactive_returns_default(self, mock_supabase, mock_cache):
         """Returns default when config is inactive"""
-        from services.config_service import get_config, DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
         
         mock_cache.get_config.return_value = None
         
@@ -119,7 +119,7 @@ class TestGetConfig:
     @patch('services.config_service.supabase')
     def test_get_config_handles_exception(self, mock_supabase, mock_cache):
         """Handles database exceptions gracefully"""
-        from services.config_service import get_config, DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
         
         mock_cache.get_config.return_value = None
         mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("DB error")
@@ -132,7 +132,7 @@ class TestGetConfig:
     @patch('services.config_service.cache_service')
     def test_get_config_skip_cache(self, mock_cache):
         """Can skip cache when requested"""
-        from services.config_service import get_config
+        from domains.platform.config_service import get_config
         
         with patch('services.config_service.supabase') as mock_supabase:
             mock_result = MagicMock()
@@ -147,7 +147,7 @@ class TestGetConfig:
     @patch('services.config_service.supabase')
     def test_get_config_handles_non_json_value(self, mock_supabase, mock_cache):
         """Handles non-JSON string values"""
-        from services.config_service import get_config
+        from domains.platform.config_service import get_config
         
         mock_cache.get_config.return_value = None
         
@@ -164,7 +164,7 @@ class TestGetConfig:
     
     def test_get_config_returns_default_for_unknown(self):
         """Returns default for unknown config key"""
-        from services.config_service import get_config
+        from domains.platform.config_service import get_config
         
         with patch('services.config_service.cache_service') as mock_cache:
             mock_cache.get_config.return_value = None
@@ -181,7 +181,7 @@ class TestSetConfig:
     @patch('services.config_service.supabase')
     def test_set_config_success(self, mock_supabase, mock_cache):
         """Successfully sets config"""
-        from services.config_service import set_config
+        from domains.platform.config_service import set_config
         
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock()
         
@@ -192,7 +192,7 @@ class TestSetConfig:
     
     def test_set_config_no_supabase(self):
         """Returns False when supabase not configured"""
-        from services.config_service import set_config
+        from domains.platform.config_service import set_config
         
         with patch('services.config_service.supabase', None):
             result = set_config("rate_limit.test", {"limit": 10})
@@ -203,7 +203,7 @@ class TestSetConfig:
     @patch('services.config_service.supabase')
     def test_set_config_handles_exception(self, mock_supabase, mock_cache):
         """Handles database exceptions"""
-        from services.config_service import set_config
+        from domains.platform.config_service import set_config
         
         mock_supabase.table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("DB error")
         
@@ -218,7 +218,7 @@ class TestGetAllConfigs:
     @patch('services.config_service.supabase')
     def test_get_all_configs_success(self, mock_supabase):
         """Returns all configs"""
-        from services.config_service import get_all_configs
+        from domains.platform.config_service import get_all_configs
         
         mock_result = MagicMock()
         mock_result.data = [
@@ -234,7 +234,7 @@ class TestGetAllConfigs:
     @patch('services.config_service.supabase')
     def test_get_all_configs_with_category(self, mock_supabase):
         """Filters configs by category"""
-        from services.config_service import get_all_configs
+        from domains.platform.config_service import get_all_configs
         
         mock_result = MagicMock()
         mock_result.data = [{"key": "rate_limit.payment.checkout", "value": '{"limit": 5}'}]
@@ -246,7 +246,7 @@ class TestGetAllConfigs:
     
     def test_get_all_configs_no_supabase(self):
         """Returns defaults when no supabase"""
-        from services.config_service import get_all_configs, DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import get_all_configs, DEFAULT_RATE_LIMITS
         
         with patch('services.config_service.supabase', None):
             result = get_all_configs()
@@ -255,7 +255,7 @@ class TestGetAllConfigs:
     
     def test_get_all_configs_no_supabase_with_filter(self):
         """Returns filtered defaults when no supabase"""
-        from services.config_service import get_all_configs
+        from domains.platform.config_service import get_all_configs
         
         with patch('services.config_service.supabase', None):
             result = get_all_configs(category="rate_limit.payment")
@@ -267,7 +267,7 @@ class TestGetAllConfigs:
     @patch('services.config_service.supabase')
     def test_get_all_configs_handles_exception(self, mock_supabase):
         """Handles database exceptions"""
-        from services.config_service import get_all_configs
+        from domains.platform.config_service import get_all_configs
         
         mock_supabase.table.return_value.select.return_value.order.return_value.execute.side_effect = Exception("DB error")
         
@@ -282,7 +282,7 @@ class TestGetRateLimitString:
     @patch('services.config_service.get_config')
     def test_get_rate_limit_string_normal(self, mock_get_config):
         """Returns formatted rate limit string"""
-        from services.config_service import get_rate_limit_string
+        from domains.platform.config_service import get_rate_limit_string
         
         mock_get_config.return_value = {"limit": 10, "window": "minute", "enabled": True}
         
@@ -293,7 +293,7 @@ class TestGetRateLimitString:
     @patch('services.config_service.get_config')
     def test_get_rate_limit_string_disabled(self, mock_get_config):
         """Returns high limit when disabled"""
-        from services.config_service import get_rate_limit_string
+        from domains.platform.config_service import get_rate_limit_string
         
         mock_get_config.return_value = {"limit": 10, "window": "minute", "enabled": False}
         
@@ -304,7 +304,7 @@ class TestGetRateLimitString:
     @patch('services.config_service.get_config')
     def test_get_rate_limit_string_no_config(self, mock_get_config):
         """Returns high limit when no config"""
-        from services.config_service import get_rate_limit_string
+        from domains.platform.config_service import get_rate_limit_string
         
         mock_get_config.return_value = None
         
@@ -319,7 +319,7 @@ class TestIsRateLimitEnabled:
     @patch('services.config_service.get_config')
     def test_rate_limit_enabled_by_default(self, mock_get_config):
         """Rate limit is enabled by default"""
-        from services.config_service import is_rate_limit_enabled
+        from domains.platform.config_service import is_rate_limit_enabled
         
         mock_get_config.return_value = {"enabled": True}
         
@@ -330,7 +330,7 @@ class TestIsRateLimitEnabled:
     @patch('services.config_service.get_config')
     def test_rate_limit_globally_disabled(self, mock_get_config):
         """Global disable overrides specific config"""
-        from services.config_service import is_rate_limit_enabled
+        from domains.platform.config_service import is_rate_limit_enabled
         
         mock_get_config.return_value = {"enabled": False}
         
@@ -341,7 +341,7 @@ class TestIsRateLimitEnabled:
     @patch('services.config_service.get_config')
     def test_rate_limit_specific_key_disabled(self, mock_get_config):
         """Specific key can be disabled"""
-        from services.config_service import is_rate_limit_enabled
+        from domains.platform.config_service import is_rate_limit_enabled
         
         def mock_config(key):
             if key == "rate_limit.global.enabled":
@@ -361,7 +361,7 @@ class TestClearConfigCache:
     @patch('services.config_service.cache_service')
     def test_clear_config_cache(self, mock_cache):
         """Clears config cache"""
-        from services.config_service import clear_config_cache
+        from domains.platform.config_service import clear_config_cache
         
         clear_config_cache()
         
@@ -374,7 +374,7 @@ class TestBatchUpdateConfigs:
     @patch('services.config_service.set_config')
     def test_batch_update_success(self, mock_set_config):
         """Successfully batch updates configs"""
-        from services.config_service import batch_update_configs
+        from domains.platform.config_service import batch_update_configs
         
         mock_set_config.return_value = True
         
@@ -392,7 +392,7 @@ class TestBatchUpdateConfigs:
     @patch('services.config_service.set_config')
     def test_batch_update_partial_failure(self, mock_set_config):
         """Handles partial failures in batch update"""
-        from services.config_service import batch_update_configs
+        from domains.platform.config_service import batch_update_configs
         
         mock_set_config.side_effect = [True, False]
         
@@ -408,7 +408,7 @@ class TestBatchUpdateConfigs:
     
     def test_batch_update_skips_invalid(self):
         """Skips invalid update entries"""
-        from services.config_service import batch_update_configs
+        from domains.platform.config_service import batch_update_configs
         
         with patch('services.config_service.set_config') as mock_set:
             mock_set.return_value = True
@@ -429,7 +429,7 @@ class TestRateLimitPresets:
     
     def test_presets_defined(self):
         """Presets are properly defined"""
-        from services.config_service import RATE_LIMIT_PRESETS
+        from domains.platform.config_service import RATE_LIMIT_PRESETS
         
         assert "strict" in RATE_LIMIT_PRESETS
         assert "normal" in RATE_LIMIT_PRESETS
@@ -438,7 +438,7 @@ class TestRateLimitPresets:
     
     def test_preset_structure(self):
         """Presets have correct structure"""
-        from services.config_service import RATE_LIMIT_PRESETS
+        from domains.platform.config_service import RATE_LIMIT_PRESETS
         
         assert "multiplier" in RATE_LIMIT_PRESETS["strict"]
         assert RATE_LIMIT_PRESETS["strict"]["multiplier"] == 0.5
@@ -451,7 +451,7 @@ class TestApplyRateLimitPreset:
     
     def test_apply_invalid_preset(self):
         """Returns False for invalid preset"""
-        from services.config_service import apply_rate_limit_preset
+        from domains.platform.config_service import apply_rate_limit_preset
         
         result = apply_rate_limit_preset("nonexistent_preset")
         
@@ -460,7 +460,7 @@ class TestApplyRateLimitPreset:
     @patch('services.config_service.set_config')
     def test_apply_disabled_preset(self, mock_set_config):
         """Applies disabled preset correctly"""
-        from services.config_service import apply_rate_limit_preset
+        from domains.platform.config_service import apply_rate_limit_preset
         
         mock_set_config.return_value = True
         
@@ -477,7 +477,7 @@ class TestApplyRateLimitPreset:
     @patch('services.config_service.set_config')
     def test_apply_normal_preset(self, mock_set_config, mock_clear_cache):
         """Applies normal preset (resets to defaults)"""
-        from services.config_service import apply_rate_limit_preset, DEFAULT_RATE_LIMITS
+        from domains.platform.config_service import apply_rate_limit_preset, DEFAULT_RATE_LIMITS
         
         mock_set_config.return_value = True
         
@@ -493,7 +493,7 @@ class TestApplyRateLimitPreset:
     @patch('services.config_service.set_config')
     def test_apply_strict_preset(self, mock_set_config, mock_get_all, mock_clear_cache):
         """Applies strict preset (halves limits)"""
-        from services.config_service import apply_rate_limit_preset
+        from domains.platform.config_service import apply_rate_limit_preset
         
         mock_set_config.return_value = True
         mock_get_all.return_value = [

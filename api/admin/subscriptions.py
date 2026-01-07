@@ -25,7 +25,7 @@ from services.db_service import (
     log_activity,
     log_payment_record,
 )
-from services.payment_service import (
+from domains.billing.payment_service import (
     get_customer_subscriptions,
     cancel_subscription,
     create_refund,

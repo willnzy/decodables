@@ -24,7 +24,7 @@ class TestAnalyzeExperimentResults:
     @patch('services.experiment_ai_service.openai_client')
     def test_analyze_success(self, mock_openai):
         """成功分析实验结果"""
-        from services.experiment_ai_service import analyze_experiment_results
+        from domains.platform.experiment_ai_service import analyze_experiment_results
         
         experiment = {
             "id": "exp_001",
@@ -75,7 +75,7 @@ class TestAnalyzeExperimentResults:
     @patch('services.experiment_ai_service.openai_client', None)
     def test_analyze_no_openai_client(self):
         """OpenAI 客户端未配置"""
-        from services.experiment_ai_service import analyze_experiment_results
+        from domains.platform.experiment_ai_service import analyze_experiment_results
         
         experiment = {"id": "exp_001"}
         results = {"variants": {}}
@@ -88,7 +88,7 @@ class TestAnalyzeExperimentResults:
     @patch('services.experiment_ai_service.openai_client')
     def test_analyze_openai_error(self, mock_openai):
         """OpenAI API 调用失败"""
-        from services.experiment_ai_service import analyze_experiment_results
+        from domains.platform.experiment_ai_service import analyze_experiment_results
         
         experiment = {
             "id": "exp_001",
@@ -111,7 +111,7 @@ class TestAnalyzeExperimentResults:
     @patch('services.experiment_ai_service.openai_client')
     def test_analyze_with_additional_context(self, mock_openai):
         """带额外上下文的分析"""
-        from services.experiment_ai_service import analyze_experiment_results
+        from domains.platform.experiment_ai_service import analyze_experiment_results
         
         experiment = {"id": "exp_001", "name": "Test", "experiment_key": "test"}
         results = {"variants": {}}
@@ -138,7 +138,7 @@ class TestBuildDataContext:
     
     def test_build_context_basic(self):
         """基本上下文构建"""
-        from services.experiment_ai_service import _build_data_context
+        from domains.platform.experiment_ai_service import _build_data_context
         
         experiment = {
             "id": "exp_001",
@@ -181,7 +181,7 @@ class TestBuildDataContext:
     
     def test_build_context_empty_results(self):
         """空结果上下文"""
-        from services.experiment_ai_service import _build_data_context
+        from domains.platform.experiment_ai_service import _build_data_context
         
         experiment = {
             "id": "exp_001",
@@ -199,7 +199,7 @@ class TestBuildDataContext:
     
     def test_build_context_with_significance_data(self):
         """带显著性数据的上下文"""
-        from services.experiment_ai_service import _build_data_context
+        from domains.platform.experiment_ai_service import _build_data_context
         
         experiment = {
             "id": "exp_001",
@@ -243,7 +243,7 @@ class TestBuildDataContext:
     
     def test_build_context_with_targeting_tiers(self):
         """带目标等级的上下文"""
-        from services.experiment_ai_service import _build_data_context
+        from domains.platform.experiment_ai_service import _build_data_context
         
         experiment = {
             "id": "exp_001",
@@ -275,7 +275,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_significant_winner(self):
         """有显著赢家"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -305,7 +305,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_not_significant(self):
         """无显著差异"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -332,7 +332,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_insufficient_data(self):
         """数据不足"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -353,7 +353,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_empty_results(self):
         """空结果"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {"variants": {}}
         
@@ -363,7 +363,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_with_significant_winner_over_5_percent(self):
         """有显著赢家且提升超过 5%"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -394,7 +394,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_control_wins_variant_significantly_worse(self):
         """对照组赢，变体显著差于对照组"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -424,7 +424,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_with_multiple_significant_winners(self):
         """多个变体都显著优于对照组，选择最佳"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -465,7 +465,7 @@ class TestGetQuickRecommendation:
     
     def test_recommendation_significant_but_low_uplift(self):
         """显著但提升不到 5%，视为不显著"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -503,7 +503,7 @@ class TestGenerateExperimentSummary:
     
     def test_summary_basic(self):
         """基本摘要生成"""
-        from services.experiment_ai_service import generate_experiment_summary
+        from domains.platform.experiment_ai_service import generate_experiment_summary
         
         experiment = {
             "id": "exp_001",
@@ -538,7 +538,7 @@ class TestGenerateExperimentSummary:
     
     def test_summary_empty_results(self):
         """空结果"""
-        from services.experiment_ai_service import generate_experiment_summary
+        from domains.platform.experiment_ai_service import generate_experiment_summary
         
         experiment = {"name": "Test", "status": "draft"}
         results = {"variants": {}}
@@ -550,7 +550,7 @@ class TestGenerateExperimentSummary:
     
     def test_summary_with_all_data(self):
         """包含所有数据的摘要"""
-        from services.experiment_ai_service import generate_experiment_summary
+        from domains.platform.experiment_ai_service import generate_experiment_summary
         
         experiment = {
             "id": "exp_001",
@@ -593,7 +593,7 @@ class TestEdgeCases:
     
     def test_recommendation_missing_significance(self):
         """缺少显著性数据"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {
@@ -608,7 +608,7 @@ class TestEdgeCases:
     
     def test_recommendation_negative_conversion_rate(self):
         """对照组更好"""
-        from services.experiment_ai_service import get_quick_recommendation
+        from domains.platform.experiment_ai_service import get_quick_recommendation
         
         results = {
             "variants": {

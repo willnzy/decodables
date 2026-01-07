@@ -21,7 +21,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from services.config_service import (
+from domains.platform.config_service import (
     get_config, set_config, get_all_configs,
     batch_update_configs, apply_rate_limit_preset,
     clear_config_cache, RATE_LIMIT_PRESETS

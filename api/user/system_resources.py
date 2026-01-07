@@ -21,7 +21,7 @@ from typing import List, Optional
 from dependencies import require_admin
 from services.db_service import supabase
 from schemas.system_resources import ResourceCreate, ResourceUpdate, ResourceBatchAction
-from services.system_resource_helpers import (
+from domains.content.resource_helpers import (
     SYSTEM_ASSETS_BUCKET,
     ALLOWED_TYPES,
     ALLOWED_MIME_TYPES,

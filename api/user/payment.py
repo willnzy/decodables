@@ -65,7 +65,7 @@ async def create_checkout(
     Returns:
         CheckoutResponse with checkout URL and discount info
     """
-    from services.payment_service import create_checkout_session
+    from domains.billing.payment_service import create_checkout_session
     from services.db_service import get_user_discount
 
     try:
@@ -99,7 +99,7 @@ async def get_portal(
     Returns:
         PortalResponse with portal URL
     """
-    from services.payment_service import create_portal_session
+    from domains.billing.payment_service import create_portal_session
 
     stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id:

@@ -17,7 +17,7 @@ from fastapi import Request, HTTPException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from services.config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
+from domains.platform.config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
 from core.cache import is_redis_available
 from core.cache.redis_provider import get_redis_client
 
@@ -132,7 +132,7 @@ def get_current_limits() -> dict:
             "storage": "redis" or "memory"
         }
     """
-    from services.config_service import get_all_configs, DEFAULT_RATE_LIMITS
+    from domains.platform.config_service import get_all_configs, DEFAULT_RATE_LIMITS
     
     configs = get_all_configs("rate_limit")
     

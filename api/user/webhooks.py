@@ -31,8 +31,8 @@ from services.db_service import (
     log_payment_record,
     log_activity,
 )
-from services.payment_service import construct_event
-from services.analytics_service import AnalyticsEvents, track_payment
+from domains.billing.payment_service import construct_event
+from domains.platform.analytics_service import AnalyticsEvents, track_payment
 
 logger = logging.getLogger(__name__)
 
