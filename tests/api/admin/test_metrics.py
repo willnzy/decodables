@@ -43,7 +43,7 @@ class TestAdminMetricsAPI:
         # 在 mock 环境下可能返回 403 或 404
         assert response.status_code in [403, 404, 401]
 
-    @patch('services.db_service.supabase')
+    @patch('infrastructure.repositories.supabase')
     def test_admin_metrics_success(self, mock_supabase, admin_headers):
         """管理员请求成功"""
         # Mock 数据库响应

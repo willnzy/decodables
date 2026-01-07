@@ -404,7 +404,7 @@ class TestDashboardProjects:
     """Tests for GET /api/v2/user/projects/dashboard endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_dashboard_projects')
+    @patch('infrastructure.repositories.project_repository.get_dashboard_projects')
     def test_dashboard_all_view(
         self,
         mock_get_dashboard,
@@ -444,7 +444,7 @@ class TestDashboardProjects:
         assert call_kwargs["view_type"] == "all"
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_dashboard_projects')
+    @patch('infrastructure.repositories.project_repository.get_dashboard_projects')
     def test_dashboard_bought_view(
         self,
         mock_get_dashboard,
@@ -478,7 +478,7 @@ class TestDashboardProjects:
         assert call_kwargs["view_type"] == "bought"
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_dashboard_projects')
+    @patch('infrastructure.repositories.project_repository.get_dashboard_projects')
     def test_dashboard_selling_view(
         self,
         mock_get_dashboard,
@@ -520,7 +520,7 @@ class TestListDeletedProjects:
     """Tests for GET /api/v2/user/projects/deleted endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_user_deleted_projects')
+    @patch('infrastructure.repositories.project_repository.get_user_deleted_projects')
     def test_list_deleted_projects_success(
         self,
         mock_get_deleted,
@@ -572,7 +572,7 @@ class TestGetSellerStats:
     """Tests for GET /api/v2/user/projects/seller-stats endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_seller_project_stats')
+    @patch('infrastructure.repositories.project_repository.get_seller_project_stats')
     def test_get_seller_stats_success(
         self,
         mock_get_stats,

@@ -1202,8 +1202,8 @@ class TestSubmitReport:
     """Tests for POST /api/v2/user/marketplace/report endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.create_report')
-    @patch('services.db_service.log_activity')
+    @patch('infrastructure.repositories.create_report')
+    @patch('infrastructure.repositories.log_activity')
     def test_submit_report_success(
         self,
         mock_log_activity,
@@ -1253,7 +1253,7 @@ class TestSubmitReport:
         mock_log_activity.assert_called_once()
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.create_report')
+    @patch('infrastructure.repositories.create_report')
     def test_submit_report_already_reported(
         self,
         mock_create_report,
@@ -1296,7 +1296,7 @@ class TestGetMyReports:
     """Tests for GET /api/v2/user/marketplace/my-reports endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_user_reports')
+    @patch('infrastructure.repositories.get_user_reports')
     def test_get_my_reports_success(
         self,
         mock_get_user_reports,

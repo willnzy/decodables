@@ -82,7 +82,7 @@ class TestCreateTicket:
     """Tests for POST /api/v2/user/support/ticket endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.create_support_ticket')
+    @patch('infrastructure.repositories.create_support_ticket')
     def test_create_ticket_success(
         self,
         mock_create_ticket,
@@ -124,7 +124,7 @@ class TestCreateTicket:
         )
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.create_support_ticket')
+    @patch('infrastructure.repositories.create_support_ticket')
     def test_create_ticket_default_email(
         self,
         mock_create_ticket,
@@ -271,7 +271,7 @@ class TestChatSupport:
     """Tests for POST /api/v2/user/support/chat endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai_chat_service.chat_with_assistant')
+    @patch('application.services.ai_chat_service.chat_with_assistant')
     @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
     def test_chat_with_assistant_api(
         self,
@@ -313,7 +313,7 @@ class TestChatSupport:
         mock_chat_with_assistant.assert_called_once()
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai_chat_service.chat_with_vision')
+    @patch('application.services.ai_chat_service.chat_with_vision')
     def test_chat_with_vision_api(
         self,
         mock_chat_with_vision,
@@ -353,7 +353,7 @@ class TestChatSupport:
         mock_chat_with_vision.assert_called_once()
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai.story_generator.client')
+    @patch('shared.ai.story_generator.client')
     @patch('config.OPENAI_ASSISTANT_ID', None)
     def test_chat_fallback_chat_completions(
         self,
@@ -398,7 +398,7 @@ class TestChatSupport:
         mock_openai_client.chat.completions.create.assert_called_once()
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai_chat_service.chat_with_assistant')
+    @patch('application.services.ai_chat_service.chat_with_assistant')
     @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
     def test_chat_with_conversation_history(
         self,
@@ -441,7 +441,7 @@ class TestChatSupport:
         assert call_args[0][1] == history  # Second argument is conversation_history
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai_chat_service.chat_with_assistant')
+    @patch('application.services.ai_chat_service.chat_with_assistant')
     @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
     def test_chat_ai_error_handling(
         self,
@@ -569,7 +569,7 @@ class TestContact:
     """Tests for POST /api/v2/user/support/contact endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.save_contact_message')
+    @patch('infrastructure.repositories.save_contact_message')
     def test_contact_success(
         self,
         mock_save_contact,
@@ -616,7 +616,7 @@ class TestContact:
         )
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.save_contact_message')
+    @patch('infrastructure.repositories.save_contact_message')
     def test_contact_without_subject(
         self,
         mock_save_contact,
@@ -742,7 +742,7 @@ class TestFeedback:
     """Tests for POST /api/v2/user/support/feedback endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.send_feedback_with_images')
+    @patch('infrastructure.repositories.send_feedback_with_images')
     def test_feedback_success(
         self,
         mock_send_feedback,
@@ -786,7 +786,7 @@ class TestFeedback:
         )
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.send_feedback_with_images')
+    @patch('infrastructure.repositories.send_feedback_with_images')
     def test_feedback_with_images(
         self,
         mock_send_feedback,
@@ -831,7 +831,7 @@ class TestFeedback:
         )
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.send_feedback_with_images')
+    @patch('infrastructure.repositories.send_feedback_with_images')
     def test_feedback_without_email(
         self,
         mock_send_feedback,

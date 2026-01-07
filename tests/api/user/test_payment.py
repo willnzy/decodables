@@ -73,8 +73,8 @@ class TestCreateCheckout:
     """Tests for POST /api/v2/user/payment/checkout endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.payment_service.create_checkout_session')
-    @patch('services.db_service.get_user_discount')
+    @patch('domains.billing.payment_service.create_checkout_session')
+    @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
     def test_create_checkout_starter_no_discount(
         self,
         mock_get_discount,
@@ -116,8 +116,8 @@ class TestCreateCheckout:
         )
 
     @patch('dependencies.get_current_user')
-    @patch('services.payment_service.create_checkout_session')
-    @patch('services.db_service.get_user_discount')
+    @patch('domains.billing.payment_service.create_checkout_session')
+    @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
     def test_create_checkout_pro_with_discount(
         self,
         mock_get_discount,
@@ -231,8 +231,8 @@ class TestCreateCheckout:
         assert response.status_code == 401
 
     @patch('dependencies.get_current_user')
-    @patch('services.payment_service.create_checkout_session')
-    @patch('services.db_service.get_user_discount')
+    @patch('domains.billing.payment_service.create_checkout_session')
+    @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
     def test_create_checkout_stripe_error(
         self,
         mock_get_discount,
@@ -304,7 +304,7 @@ class TestGetPortal:
     """Tests for POST /api/v2/user/payment/portal endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.payment_service.create_portal_session')
+    @patch('domains.billing.payment_service.create_portal_session')
     def test_get_portal_success(
         self,
         mock_create_portal,
@@ -384,7 +384,7 @@ class TestGetPortal:
         assert response.status_code == 401
 
     @patch('dependencies.get_current_user')
-    @patch('services.payment_service.create_portal_session')
+    @patch('domains.billing.payment_service.create_portal_session')
     def test_get_portal_stripe_error(
         self,
         mock_create_portal,

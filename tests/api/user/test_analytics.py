@@ -47,7 +47,7 @@ class TestAnalyticsAPI:
         # 应该需要认证
         assert response.status_code in [401, 404]
 
-    @patch('services.db_service.supabase')
+    @patch('infrastructure.repositories.supabase')
     def test_analytics_with_mock(self, mock_supabase, auth_headers):
         """使用 mock 测试 Analytics"""
         # Mock Supabase 响应

@@ -159,10 +159,10 @@ class TestClerkWebhook:
         assert "Invalid signature" in data["detail"]
 
     @patch('api.user.webhooks.Webhook')
-    @patch('services.db_service.get_user_profile')
-    @patch('services.db_service.search_users')
-    @patch('services.db_service.create_user_profile')
-    @patch('services.db_service.log_activity')
+    @patch('infrastructure.repositories.get_user_profile')
+    @patch('infrastructure.repositories.search_users')
+    @patch('infrastructure.repositories.create_user_profile')
+    @patch('infrastructure.repositories.log_activity')
     def test_clerk_user_created_success(
         self,
         mock_log_activity,
@@ -211,9 +211,9 @@ class TestClerkWebhook:
         assert activity_call[1] == "user_signup"
 
     @patch('api.user.webhooks.Webhook')
-    @patch('services.db_service.get_user_profile')
-    @patch('services.db_service.update_user_profile')
-    @patch('services.db_service.supabase')
+    @patch('infrastructure.repositories.get_user_profile')
+    @patch('infrastructure.repositories.update_user_profile')
+    @patch('infrastructure.repositories.supabase')
     def test_clerk_user_created_jit_exists(
         self,
         mock_supabase,
@@ -255,8 +255,8 @@ class TestClerkWebhook:
         mock_update_profile.assert_called_once()
 
     @patch('api.user.webhooks.Webhook')
-    @patch('services.db_service.get_user_profile')
-    @patch('services.db_service.search_users')
+    @patch('infrastructure.repositories.get_user_profile')
+    @patch('infrastructure.repositories.search_users')
     def test_clerk_user_created_email_exists(
         self,
         mock_search_users,
@@ -292,8 +292,8 @@ class TestClerkWebhook:
         assert data["reason"] == "email_exists"
 
     @patch('api.user.webhooks.Webhook')
-    @patch('services.db_service.update_user_profile')
-    @patch('services.db_service.log_activity')
+    @patch('infrastructure.repositories.update_user_profile')
+    @patch('infrastructure.repositories.log_activity')
     def test_clerk_user_updated(
         self,
         mock_log_activity,
@@ -342,7 +342,7 @@ class TestClerkWebhook:
 class TestStripeWebhook:
     """Tests for POST /api/v2/user/webhooks/stripe endpoint."""
 
-    @patch('services.payment_service.construct_event')
+    @patch('domains.billing.payment_service.construct_event')
     def test_stripe_webhook_invalid_signature(self, mock_construct_event):
         """
         Test: Invalid Stripe signature (400)
@@ -364,13 +364,13 @@ class TestStripeWebhook:
         # Assert
         assert response.status_code == 400
 
-    @patch('services.payment_service.construct_event')
-    @patch('services.db_service.supabase')
-    @patch('services.db_service.update_subscription_tier')
-    @patch('services.db_service.add_credits_monthly')
-    @patch('services.db_service.log_payment_record')
-    @patch('services.db_service.log_activity')
-    @patch('services.analytics_service.track_payment')
+    @patch('domains.billing.payment_service.construct_event')
+    @patch('infrastructure.repositories.supabase')
+    @patch('infrastructure.repositories.update_subscription_tier')
+    @patch('infrastructure.repositories.add_credits_monthly')
+    @patch('infrastructure.repositories.log_payment_record')
+    @patch('infrastructure.repositories.log_activity')
+    @patch('domains.platform.analytics_service.track_payment')
     def test_stripe_checkout_subscription_success(
         self,
         mock_track_payment,
@@ -429,12 +429,12 @@ class TestStripeWebhook:
         # Verify analytics tracked
         mock_track_payment.assert_called_once()
 
-    @patch('services.payment_service.construct_event')
-    @patch('services.db_service.supabase')
-    @patch('services.db_service.add_credits_permanent')
-    @patch('services.db_service.log_payment_record')
-    @patch('services.db_service.log_activity')
-    @patch('services.analytics_service.track_payment')
+    @patch('domains.billing.payment_service.construct_event')
+    @patch('infrastructure.repositories.supabase')
+    @patch('infrastructure.repositories.add_credits_permanent')
+    @patch('infrastructure.repositories.log_payment_record')
+    @patch('infrastructure.repositories.log_activity')
+    @patch('domains.platform.analytics_service.track_payment')
     def test_stripe_checkout_credits_purchase(
         self,
         mock_track_payment,
@@ -482,8 +482,8 @@ class TestStripeWebhook:
         # Verify payment logged
         mock_log_payment.assert_called_once()
 
-    @patch('services.payment_service.construct_event')
-    @patch('services.db_service.supabase')
+    @patch('domains.billing.payment_service.construct_event')
+    @patch('infrastructure.repositories.supabase')
     def test_stripe_webhook_idempotency_duplicate(
         self,
         mock_supabase,
@@ -518,11 +518,11 @@ class TestStripeWebhook:
         assert data["status"] == "already_processed"
         assert "event_id" in data
 
-    @patch('services.payment_service.construct_event')
-    @patch('services.db_service.supabase')
-    @patch('services.db_service.refresh_monthly_credits')
-    @patch('services.db_service.log_payment_record')
-    @patch('services.db_service.log_activity')
+    @patch('domains.billing.payment_service.construct_event')
+    @patch('infrastructure.repositories.supabase')
+    @patch('infrastructure.repositories.refresh_monthly_credits')
+    @patch('infrastructure.repositories.log_payment_record')
+    @patch('infrastructure.repositories.log_activity')
     def test_stripe_invoice_payment_renewal(
         self,
         mock_log_activity,
@@ -583,10 +583,10 @@ class TestStripeWebhook:
         assert refresh_call[0] == "user_renewal_123"
         assert refresh_call[1] == "pro"
 
-    @patch('services.payment_service.construct_event')
-    @patch('services.db_service.supabase')
-    @patch('services.db_service.update_subscription_tier')
-    @patch('services.db_service.log_activity')
+    @patch('domains.billing.payment_service.construct_event')
+    @patch('infrastructure.repositories.supabase')
+    @patch('infrastructure.repositories.update_subscription_tier')
+    @patch('infrastructure.repositories.log_activity')
     def test_stripe_subscription_canceled(
         self,
         mock_log_activity,

@@ -61,7 +61,7 @@ def mock_transaction():
         id="tx_123",
         amount=-10,
         balance_after=540,
-        tx_type=TransactionType.DEDUCTION,
+        tx_type=TransactionType.GENERATION,
         description="AI image generation",
         created_at=datetime(2026, 1, 8, 12, 0, 0),
     )
@@ -232,7 +232,7 @@ class TestGetTransactions:
         assert tx["id"] == "tx_123"
         assert tx["amount"] == -10
         assert tx["balance_after"] == 540
-        assert tx["tx_type"] == "deduction"
+        assert tx["tx_type"] == "generation"
 
     @patch('dependencies.get_current_user')
     @patch('container.get_container')
@@ -261,7 +261,7 @@ class TestGetTransactions:
 
         # Act
         response = client.get(
-            "/api/v2/user/billing/transactions?tx_type=deduction",
+            "/api/v2/user/billing/transactions?tx_type=generation",
             headers=auth_headers,
         )
 
@@ -269,7 +269,7 @@ class TestGetTransactions:
         assert response.status_code == 200
         # Verify filter was passed to handler
         call_args = mock_handler.handle.call_args[0][0]
-        assert call_args.tx_type == "deduction"
+        assert call_args.tx_type == "generation"
 
 
 # ==========================================

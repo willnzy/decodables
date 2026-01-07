@@ -69,10 +69,10 @@ class TestGenerateImages:
     """Tests for POST /api/v2/user/generate/images endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.ai.image_generator.generate_8_images')
-    @patch('services.db_service.save_asset')
-    @patch('services.analytics_service.track_ai_generation')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('shared.ai.image_generator.generate_8_images')
+    @patch('infrastructure.repositories.save_asset')
+    @patch('domains.platform.analytics_service.track_ai_generation')
     @patch('timezone_utils.get_request_timezone')
     def test_generate_images_success(
         self,
@@ -129,10 +129,10 @@ class TestGenerateImages:
         assert call_args[1] == 5  # 1 prompt * 5 credits * 1 image
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.ai.image_generator.generate_8_images')
-    @patch('services.db_service.save_asset')
-    @patch('services.analytics_service.track_ai_generation')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('shared.ai.image_generator.generate_8_images')
+    @patch('infrastructure.repositories.save_asset')
+    @patch('domains.platform.analytics_service.track_ai_generation')
     @patch('timezone_utils.get_request_timezone')
     def test_generate_images_pro_user(
         self,
@@ -172,7 +172,7 @@ class TestGenerateImages:
         assert data["model_used"] == "flux-dev"  # Pro user gets premium model
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
+    @patch('infrastructure.repositories.credit_deduct')
     def test_generate_images_insufficient_credits(
         self,
         mock_credit_deduct,
@@ -233,10 +233,10 @@ class TestGenerateImages:
         assert "Safety" in data["detail"]
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.ai.image_generator.generate_8_images')
-    @patch('services.db_service.save_asset')
-    @patch('services.analytics_service.track_ai_generation')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('shared.ai.image_generator.generate_8_images')
+    @patch('infrastructure.repositories.save_asset')
+    @patch('domains.platform.analytics_service.track_ai_generation')
     @patch('timezone_utils.get_request_timezone')
     def test_generate_images_with_reference(
         self,
@@ -293,8 +293,8 @@ class TestGenerateImagesAsync:
     """Tests for POST /api/v2/user/generate/images/async endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.task_queue.task_queue.enqueue_image_generation')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('infrastructure.task_queue.task_queue.enqueue_image_generation')
     def test_generate_images_async_success(
         self,
         mock_enqueue,
@@ -335,8 +335,8 @@ class TestGenerateImagesAsync:
         assert data["poll_url"].startswith("/api/v2/tasks/")
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.task_queue.task_queue.enqueue_image_generation')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('infrastructure.task_queue.task_queue.enqueue_image_generation')
     def test_generate_images_async_pro_priority(
         self,
         mock_enqueue,
@@ -371,9 +371,9 @@ class TestGenerateImagesAsync:
         assert data["priority"] == "high"
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.credit_deduct')
-    @patch('services.task_queue.task_queue.enqueue_image_generation')
-    @patch('services.db_service.add_credits')
+    @patch('infrastructure.repositories.credit_deduct')
+    @patch('infrastructure.task_queue.task_queue.enqueue_image_generation')
+    @patch('infrastructure.repositories.add_credits')
     def test_generate_images_async_queue_failure(
         self,
         mock_add_credits,
@@ -421,7 +421,7 @@ class TestGenerateStory:
     """Tests for POST /api/v2/user/generate/story endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai.story_generator.generate_story_json')
+    @patch('shared.ai.story_generator.generate_story_json')
     def test_generate_story_success(
         self,
         mock_generate_story,
@@ -458,7 +458,7 @@ class TestGenerateStory:
         assert len(data["pages"]) == 8
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai.story_generator.generate_story_json')
+    @patch('shared.ai.story_generator.generate_story_json')
     def test_generate_story_failure(
         self,
         mock_generate_story,
@@ -496,7 +496,7 @@ class TestGenerateInspiration:
     """Tests for POST /api/v2/user/generate/inspiration endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai.story_generator.client')
+    @patch('shared.ai.story_generator.client')
     def test_generate_inspiration_success(
         self,
         mock_openai_client,
@@ -533,7 +533,7 @@ class TestGenerateInspiration:
         assert data["fallback"] is False
 
     @patch('dependencies.get_current_user')
-    @patch('services.ai.story_generator.client')
+    @patch('shared.ai.story_generator.client')
     def test_generate_inspiration_fallback(
         self,
         mock_openai_client,
@@ -575,10 +575,10 @@ class TestGeneratePdf:
     """Tests for POST /api/v2/user/generate/pdf endpoint."""
 
     @patch('dependencies.get_current_user')
-    @patch('services.db_service.get_project_detail')
-    @patch('services.db_service.update_project_hash')
-    @patch('services.ai.zine_generator.create_foldable_book')
-    @patch('services.db_service.log_activity')
+    @patch('infrastructure.repositories.get_project_detail')
+    @patch('infrastructure.repositories.update_project_hash')
+    @patch('shared.ai.zine_generator.create_foldable_book')
+    @patch('infrastructure.repositories.log_activity')
     def test_generate_pdf_success(
         self,
         mock_log_activity,
