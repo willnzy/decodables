@@ -23,11 +23,13 @@ All endpoints follow the pattern: /api/v2/user/{domain}/{endpoint}
 from fastapi import APIRouter
 
 from .billing import router as billing_router
+from .generation import router as generation_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
 
 # Include all user sub-routers
 user_router.include_router(billing_router)
+user_router.include_router(generation_router)
 
 __all__ = ["user_router"]
