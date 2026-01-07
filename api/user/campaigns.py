@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from dependencies import optional_user, get_current_user
-from services.db_service import supabase, add_credits_permanent
+from infrastructure.db_compat import supabase, add_credits_permanent
 
 logger = logging.getLogger(__name__)
 

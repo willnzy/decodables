@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 
 from dependencies import require_admin
 from services import experiment_service
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 

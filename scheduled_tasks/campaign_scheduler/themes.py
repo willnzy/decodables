@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional, Dict, List
 
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 from .date_utils import is_theme_active
 from .utils import log
 

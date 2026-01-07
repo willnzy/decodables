@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase, credit_deduct, add_credits, save_asset,
 )
 from services.ai.image_generator import generate_8_images

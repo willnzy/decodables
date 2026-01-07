@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
 from dependencies import require_admin
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase,
     admin_get_operation_logs,
 )

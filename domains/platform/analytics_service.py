@@ -56,7 +56,7 @@ try:
 except ImportError:
     try:
         # Fallback for direct script execution
-        from services.db_service import supabase
+        from infrastructure.db_compat import supabase
     except ImportError:
         supabase = None
         _logger.warning("Supabase client not available for analytics")

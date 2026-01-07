@@ -567,7 +567,7 @@ async def submit_report(
     Raises:
         HTTPException: 400 if already reported, 500 if failed
     """
-    from services.db_service import create_report, log_activity
+    from infrastructure.db_compat import create_report, log_activity
 
     try:
         report = create_report(user["id"], req.listing_id, req.reason)
@@ -603,7 +603,7 @@ async def get_my_reports(
     Returns:
         List of user's reports
     """
-    from services.db_service import get_user_reports
+    from infrastructure.db_compat import get_user_reports
 
     reports = get_user_reports(user["id"], page, limit)
     return MyReportsResponse(

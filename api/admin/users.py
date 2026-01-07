@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase,
     search_users,
     get_full_user_audit,

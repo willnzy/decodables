@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Q
 from typing import List, Optional
 
 from dependencies import require_admin
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 from schemas.system_resources import ResourceCreate, ResourceUpdate, ResourceBatchAction
 from domains.content.resource_helpers import (
     SYSTEM_ASSETS_BUCKET,

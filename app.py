@@ -106,7 +106,7 @@ logger = setup_logging(
 from timezone_utils import get_request_timezone
 
 # Import service modules
-from services.db_service import (
+from infrastructure.db_compat import (
     # Access control
     is_member, can_access_resource, publish_permission, validate_allowed_tiers, listing_is_public_visible,
     get_total_credits,

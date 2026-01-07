@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 
 router = APIRouter(prefix="/themes", tags=["user-themes-v2"])
 

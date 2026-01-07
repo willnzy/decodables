@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from dependencies import require_admin
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 from services.ai.model_config_service import (
     get_model_configs,
     update_text_model_config,

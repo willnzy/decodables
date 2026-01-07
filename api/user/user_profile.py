@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from services.db_service import (
+from infrastructure.db_compat import (
     get_credit_history,
     get_user_purchases,
     get_user_notifications,

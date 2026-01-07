@@ -15,7 +15,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from services.db_service import get_public_configs, get_config_by_key, get_config_group
+from infrastructure.db_compat import get_public_configs, get_config_by_key, get_config_group
 
 router = APIRouter(prefix="/config", tags=["user-config-v2"])
 

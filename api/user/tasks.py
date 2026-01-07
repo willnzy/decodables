@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from dependencies import get_current_user
-from services.db_service import supabase, add_credits
+from infrastructure.db_compat import supabase, add_credits
 from infrastructure.task_queue import task_queue, progress_tracker
 from infrastructure.rate_limiter import limiter
 

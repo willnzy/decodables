@@ -13,7 +13,7 @@ from io import BytesIO
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 
-from services.db_service import get_project_detail, update_project_hash, log_activity
+from infrastructure.db_compat import get_project_detail, update_project_hash, log_activity
 from services.ai.zine_generator import create_foldable_book
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user

@@ -23,7 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
-from services.db_service import (
+from infrastructure.db_compat import (
     admin_get_moderation_list,
     admin_get_moderation_detail,
     admin_approve_listing,

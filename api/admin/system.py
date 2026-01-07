@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from dependencies import require_admin
-from services.db_service import (
+from infrastructure.db_compat import (
     admin_get_system_configs, admin_get_config_groups,
     admin_create_system_config, admin_update_system_config,
     admin_delete_system_config, admin_get_config_audit_logs,

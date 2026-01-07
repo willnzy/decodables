@@ -176,7 +176,7 @@ async def dashboard_projects(
     Returns:
         Projects list with view info
     """
-    from services.db_service import get_dashboard_projects
+    from infrastructure.db_compat import get_dashboard_projects
 
     result = get_dashboard_projects(
         user_id=user["id"],
@@ -202,7 +202,7 @@ async def list_deleted_projects(
     Returns:
         List of deleted projects that can be restored
     """
-    from services.db_service import get_user_deleted_projects
+    from infrastructure.db_compat import get_user_deleted_projects
 
     return get_user_deleted_projects(user["id"], page, limit)
 
@@ -217,7 +217,7 @@ async def get_project_seller_stats(
     Returns:
         Dict with total_selling, total_sales, unique_buyers, etc.
     """
-    from services.db_service import get_seller_project_stats
+    from infrastructure.db_compat import get_seller_project_stats
 
     return get_seller_project_stats(user["id"])
 

@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase, credit_deduct, add_credits, save_asset,
     get_project_detail, update_project_hash, log_activity,
 )

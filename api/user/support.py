@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
-from services.db_service import create_support_ticket, send_feedback_with_images
+from infrastructure.db_compat import create_support_ticket, send_feedback_with_images
 from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ async def contact(
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
     """Submit contact form."""
-    from services.db_service import save_contact_message
+    from infrastructure.db_compat import save_contact_message
 
     save_contact_message(
         user_id=user["id"],

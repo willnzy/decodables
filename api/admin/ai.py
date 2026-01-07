@@ -17,7 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from services.db_service import (
+from infrastructure.db_compat import (
     admin_get_ai_insights,
     admin_get_ai_recommendations,
     admin_get_behavior_analysis,

@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends
 
 from dependencies import require_admin
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 
 logger = logging.getLogger(__name__)
 

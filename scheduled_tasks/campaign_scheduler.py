@@ -35,7 +35,7 @@ try:
 except ImportError:
     pass
 
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 
 if supabase is None:
     print("❌ Error: Supabase client not initialized")

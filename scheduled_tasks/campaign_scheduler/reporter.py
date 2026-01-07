@@ -7,7 +7,7 @@
 from datetime import datetime, timezone, date
 from typing import Dict, Any
 
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 from .date_utils import is_theme_active
 from .themes import get_upcoming_themes
 from .utils import log

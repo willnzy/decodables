@@ -152,7 +152,7 @@ async def ocr_tool(
 
     Pro or trial users only. Costs 5 credits.
     """
-    from services.db_service import credit_deduct, log_activity, save_asset
+    from infrastructure.db_compat import credit_deduct, log_activity, save_asset
     from services.ai.ocr_service import process_ocr
     from services.access_control import AccessControl
     from timezone_utils import get_request_timezone

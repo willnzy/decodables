@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase,
     get_user_profile,
     update_subscription_tier,

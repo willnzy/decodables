@@ -18,7 +18,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from services.db_service import (
+from infrastructure.db_compat import (
     create_broadcast,
     send_notification_to_user,
     send_notification_to_users,

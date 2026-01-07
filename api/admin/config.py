@@ -27,7 +27,7 @@ from domains.platform.config_service import (
     clear_config_cache, RATE_LIMIT_PRESETS
 )
 from infrastructure.rate_limiter import limiter, get_current_limits
-from services.db_service import admin_log_operation
+from infrastructure.db_compat import admin_log_operation
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)

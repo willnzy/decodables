@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
-from services.db_service import supabase, log_user_event, log_activity
+from infrastructure.db_compat import supabase, log_user_event, log_activity
 from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)

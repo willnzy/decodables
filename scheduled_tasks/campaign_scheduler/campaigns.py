@@ -7,7 +7,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 from .utils import log
 
 

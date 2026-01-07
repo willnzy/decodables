@@ -31,7 +31,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from dependencies import require_admin
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase,
     admin_get_dashboard_stats,
     admin_get_user_growth_stats,

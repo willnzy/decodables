@@ -18,7 +18,7 @@ from fastapi import APIRouter, Request, Header, HTTPException
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from config import CLERK_WEBHOOK_SECRET
-from services.db_service import (
+from infrastructure.db_compat import (
     supabase,
     get_user_profile,
     update_user_profile,

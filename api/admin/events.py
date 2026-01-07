@@ -17,7 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
-from services.db_service import (
+from infrastructure.db_compat import (
     admin_get_user_events,
     admin_get_event_stats,
     get_aggregated_stats,

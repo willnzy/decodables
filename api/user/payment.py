@@ -66,7 +66,7 @@ async def create_checkout(
         CheckoutResponse with checkout URL and discount info
     """
     from domains.billing.payment_service import create_checkout_session
-    from services.db_service import get_user_discount
+    from infrastructure.db_compat import get_user_discount
 
     try:
         # Apply discount if available

@@ -7,7 +7,7 @@ Helper functions for system resource management
 """
 
 from typing import Optional
-from services.db_service import supabase
+from infrastructure.db_compat import supabase
 
 
 # =====================================================
