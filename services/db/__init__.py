@@ -19,7 +19,7 @@ from .utils import (
     log_activity,
 )
 
-# Users & Projects - Now imported from infrastructure.db_compat
+# Users, Projects & Marketplace - Now imported from infrastructure.db_compat
 from infrastructure.db_compat import (
     # User functions
     get_user_profile,
@@ -57,6 +57,20 @@ from infrastructure.db_compat import (
     get_all_projects_feed,
     get_dashboard_projects,
     get_seller_project_stats,
+    # Marketplace functions
+    get_marketplace_listings,
+    get_marketplace_item,
+    get_seller_listings,
+    create_listing,
+    submit_listing_for_review,
+    unpublish_listing,
+    update_listing,
+    check_user_purchase,
+    execute_purchase,
+    get_user_purchases,
+    get_seller_stats,
+    record_listing_usage,
+    get_leaderboard,
 )
 
 # Assets
@@ -71,23 +85,6 @@ from .assets import (
     get_dashboard_assets,
     get_seller_asset_stats,
     get_system_resources,
-)
-
-# Marketplace
-from .marketplace import (
-    get_marketplace_listings,
-    get_marketplace_item,
-    get_seller_listings,
-    create_listing,
-    submit_listing_for_review,
-    unpublish_listing,
-    update_listing,
-    check_user_purchase,
-    execute_purchase,
-    get_user_purchases,
-    get_seller_stats,
-    record_listing_usage,
-    get_leaderboard,
 )
 
 # Notifications

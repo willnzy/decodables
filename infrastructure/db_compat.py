@@ -39,6 +39,7 @@ from infrastructure.repositories import (
 from infrastructure.repositories.user_repository_extended import SupabaseUserRepositoryExtended
 from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
 from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
+from infrastructure.repositories.listing_repository_extended import SupabaseListingRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +477,133 @@ async def get_seller_project_stats(user_id: str):
 
 
 # ==========================================
+# Marketplace/Listing Functions
+# ==========================================
+
+@async_to_sync
+async def get_marketplace_listings(
+    featured: bool = False,
+    resource_type: str = None,
+    page: int = 1,
+    limit: int = 20,
+    sort: str = "latest",
+    tier_filter: str = None,
+    price_filter: str = None,
+    mine: bool = False,
+    user_id: str = None,
+    user_tier: str = None
+):
+    """Get marketplace listings with filtering and sorting."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_marketplace_listings(
+        featured, resource_type, page, limit, sort,
+        tier_filter, price_filter, mine, user_id, user_tier
+    )
+
+
+@async_to_sync
+async def get_marketplace_item(listing_id: str, user_id: str = None):
+    """Get single listing detail."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_marketplace_item(listing_id, user_id)
+
+
+@async_to_sync
+async def get_seller_listings(seller_id: str, page: int = 1, limit: int = 20):
+    """Get seller's own listings."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_seller_listings(seller_id, page, limit)
+
+
+@async_to_sync
+async def create_listing(
+    seller_id: str,
+    title: str,
+    description: str,
+    thumbnail_url: str,
+    resource_url: str,
+    resource_type: str,
+    price_credits: int,
+    allowed_tiers: list = None,
+    submit_for_review: bool = True,
+    resource_id: str = None,
+    version: str = "1.0",
+    changelog: str = "",
+    timezone: str = "UTC"
+):
+    """Create or update listing."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.create_listing(
+        seller_id, title, description, thumbnail_url, resource_url,
+        resource_type, price_credits, allowed_tiers, submit_for_review,
+        resource_id, version, changelog, timezone
+    )
+
+
+@async_to_sync
+async def submit_listing_for_review(listing_id: str, seller_id: str = None):
+    """Submit listing for review."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.submit_listing_for_review(listing_id, seller_id)
+
+
+@async_to_sync
+async def unpublish_listing(listing_id: str, seller_id: str):
+    """Unpublish listing."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.unpublish_listing(listing_id, seller_id)
+
+
+@async_to_sync
+async def update_listing(listing_id: str, seller_id: str, updates: dict):
+    """Update listing."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.update_listing(listing_id, seller_id, updates)
+
+
+@async_to_sync
+async def check_user_purchase(user_id: str, listing_id: str) -> bool:
+    """Check if user has purchased listing."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.check_user_purchase(user_id, listing_id)
+
+
+@async_to_sync
+async def execute_purchase(buyer_id: str, listing_id: str, tz: str = "UTC"):
+    """Execute marketplace purchase using atomic RPC."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.execute_purchase(buyer_id, listing_id, tz)
+
+
+@async_to_sync
+async def get_user_purchases(user_id: str, page: int = 1, limit: int = 50):
+    """Get user's purchases."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_user_purchases(user_id, page, limit)
+
+
+@async_to_sync
+async def get_seller_stats(seller_id: str) -> dict:
+    """Get seller statistics."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_seller_stats(seller_id)
+
+
+@async_to_sync
+async def record_listing_usage(listing_id: str, used_by_user_id: str, project_id: str) -> bool:
+    """Record listing usage."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.record_listing_usage(listing_id, used_by_user_id, project_id)
+
+
+@async_to_sync
+async def get_leaderboard(period: str = "monthly", board_type: str = "all", limit: int = 10):
+    """Get marketplace leaderboard."""
+    repo = _get_repo(SupabaseListingRepositoryExtended)
+    return await repo.get_leaderboard(period, board_type, limit)
+
+
+# ==========================================
 # Export All
 # ==========================================
 
@@ -524,4 +652,18 @@ __all__ = [
     'get_all_projects_feed',
     'get_dashboard_projects',
     'get_seller_project_stats',
+    # Marketplace/Listing functions
+    'get_marketplace_listings',
+    'get_marketplace_item',
+    'get_seller_listings',
+    'create_listing',
+    'submit_listing_for_review',
+    'unpublish_listing',
+    'update_listing',
+    'check_user_purchase',
+    'execute_purchase',
+    'get_user_purchases',
+    'get_seller_stats',
+    'record_listing_usage',
+    'get_leaderboard',
 ]
