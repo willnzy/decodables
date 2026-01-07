@@ -145,10 +145,11 @@ def invalidate_cache(key: Optional[str] = None, admin: dict = Depends(require_ad
 @router.get("/system/cache/status")
 def get_cache_status(admin: dict = Depends(require_admin)):
     """Get Redis cache status and statistics."""
-    from services.cache import get_redis_client
-    
+    from core.cache import get_cache_provider
+
     try:
-        redis = get_redis_client()
+        cache_provider = get_cache_provider()
+        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
         if not redis:
             return {"status": "disconnected", "error": "Redis not connected"}
         
@@ -171,10 +172,11 @@ def list_cache_keys(
     admin: dict = Depends(require_admin)
 ):
     """List cache keys matching pattern."""
-    from services.cache import get_redis_client
-    
+    from core.cache import get_cache_provider
+
     try:
-        redis = get_redis_client()
+        cache_provider = get_cache_provider()
+        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
         if not redis:
             return {"keys": [], "error": "Redis not connected"}
         
@@ -194,10 +196,11 @@ def list_cache_keys(
 @router.delete("/system/cache/key/{key:path}")
 def delete_cache_key(key: str, admin: dict = Depends(require_admin)):
     """Delete a specific cache key."""
-    from services.cache import get_redis_client
-    
+    from core.cache import get_cache_provider
+
     try:
-        redis = get_redis_client()
+        cache_provider = get_cache_provider()
+        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
         if not redis:
             raise HTTPException(503, "Redis not connected")
         
@@ -210,10 +213,11 @@ def delete_cache_key(key: str, admin: dict = Depends(require_admin)):
 @router.post("/system/cache/clear-all")
 def clear_all_cache(admin: dict = Depends(require_admin)):
     """Clear all cache (use with caution)."""
-    from services.cache import get_redis_client
-    
+    from core.cache import get_cache_provider
+
     try:
-        redis = get_redis_client()
+        cache_provider = get_cache_provider()
+        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
         if not redis:
             raise HTTPException(503, "Redis not connected")
         

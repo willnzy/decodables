@@ -29,10 +29,14 @@ from .retry import (
 # Alias for compatibility with infrastructure layer
 get_supabase_client = get_db_client
 
+# Backward compatibility: Export singleton client instance
+supabase = get_db_client()
+
 __all__ = [
     # Client
     'get_db_client',
     'get_supabase_client',  # Alias
+    'supabase',  # Singleton instance for backward compatibility
     'is_db_available',
     'DatabaseConfig',
     # Retry

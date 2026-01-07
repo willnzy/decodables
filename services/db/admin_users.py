@@ -8,7 +8,7 @@ Database Admin Users - Admin user management operations
 import logging
 from datetime import datetime, timezone
 
-from .core import supabase, retry_on_network_error
+from core.database import supabase, retry_on_network_error
 from .users import log_credit_transaction
 
 logger = logging.getLogger(__name__)

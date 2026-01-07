@@ -8,7 +8,7 @@ Database Assets - Asset CRUD operations
 import logging
 from datetime import datetime, timezone
 
-from .core import supabase, retry_on_network_error
+from core.database import supabase, retry_on_network_error
 
 logger = logging.getLogger(__name__)
 

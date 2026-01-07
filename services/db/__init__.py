@@ -8,10 +8,8 @@ Modular database operations organized by domain.
 """
 
 # Core - Client and utilities
-from .core import (
-    supabase,
-    retry_on_network_error,
-    is_retryable_error,
+from core.database import supabase, retry_on_network_error, is_retryable_error
+from .utils import (
     is_member,
     can_access_resource,
     get_total_credits,

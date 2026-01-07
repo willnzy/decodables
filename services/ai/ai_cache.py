@@ -13,7 +13,8 @@ import json
 import logging
 from typing import Optional, Any, Dict
 
-from ..cache import cache_service, CacheTTL
+from core.cache import cache_service
+from shared.cache_keys import CacheTTL
 
 logger = logging.getLogger(__name__)
 

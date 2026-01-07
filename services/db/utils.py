@@ -1,94 +1,14 @@
 """
-Database Core - Supabase client and common utilities
+Database Utilities - Business logic helpers.
 
-@module services.db.core
+@module services.db.utils
 @version 3.24
 """
 
-import os
-import time
 import logging
-from functools import wraps
-from supabase import create_client, Client
-from datetime import datetime, timezone
+from core.database import supabase
 
 logger = logging.getLogger(__name__)
-
-# ==========================================
-# Supabase Configuration
-# ==========================================
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
-    SUPABASE_URL = SUPABASE_URL + '/'
-
-# ==========================================
-# Network Retry Configuration
-# ==========================================
-
-MAX_RETRIES = 3
-RETRY_DELAY = 0.5
-RETRY_BACKOFF = 2
-
-RETRYABLE_ERRORS = [
-    'resource temporarily unavailable',
-    'connection reset',
-    'connection refused',
-    'timeout',
-    'timed out',
-    'network is unreachable',
-    'name or service not known',
-    'temporary failure in name resolution',
-    'ssl: certificate_verify_failed',
-    'readtimeout',
-    'connecttimeout',
-]
-
-
-def is_retryable_error(error: Exception) -> bool:
-    """Check if error is retryable (network-related)"""
-    error_str = str(error).lower()
-    return any(keyword in error_str for keyword in RETRYABLE_ERRORS)
-
-
-def retry_on_network_error(max_retries: int = MAX_RETRIES, delay: float = RETRY_DELAY, backoff: float = RETRY_BACKOFF):
-    """Decorator for automatic retry on network errors."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_error = None
-            current_delay = delay
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_error = e
-                    if not is_retryable_error(e):
-                        raise e
-                    if attempt >= max_retries:
-                        logger.error(f"[DB] {func.__name__} failed after {max_retries + 1} attempts: {e}")
-                        raise e
-                    logger.warning(f"[DB] {func.__name__} retry {attempt + 1}/{max_retries + 1}: {e}")
-                    time.sleep(current_delay)
-                    current_delay *= backoff
-            raise last_error
-        return wrapper
-    return decorator
-
-
-# ==========================================
-# Supabase Client
-# ==========================================
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
-
-if supabase:
-    logger.info("[DB] Supabase client initialized")
-else:
-    logger.warning("[DB] Supabase not initialized - missing URL or KEY")
 
 
 # ==========================================

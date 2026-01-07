@@ -10,7 +10,7 @@ import random
 import string
 from datetime import datetime, timezone, timedelta
 
-from .core import supabase, retry_on_network_error
+from core.database import supabase, retry_on_network_error
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,8 @@ Database Marketplace - Listing and purchase operations
 import logging
 from datetime import datetime, timezone as timezone_module
 
-from .core import supabase, retry_on_network_error, listing_is_public_visible
+from core.database import supabase, retry_on_network_error
+from .utils import listing_is_public_visible
 
 logger = logging.getLogger(__name__)
 

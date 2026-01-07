@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 from domains.billing import (
     UserCredits,
     CreditTransaction,
-    CreditType,
+    Credits,
+    CreditBucket,
     TransactionType,
     BillingService,
 )

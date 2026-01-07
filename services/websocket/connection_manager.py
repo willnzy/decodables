@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from services.cache.redis_client import get_redis_client
+from core.cache.redis_provider import get_redis_client
 
 logger = logging.getLogger(__name__)
 

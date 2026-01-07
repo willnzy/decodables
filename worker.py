@@ -30,7 +30,7 @@ from redis import Redis
 from rq import Worker, Queue
 from rq.job import Job
 
-from services.cache.redis_client import get_redis_client, REDIS_URL
+from core.cache.redis_provider import get_redis_client, REDIS_URL
 
 # Configure logging
 logging.basicConfig(

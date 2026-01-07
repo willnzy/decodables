@@ -12,7 +12,7 @@ import logging
 from typing import Optional, Dict, Any, Callable, List
 from datetime import datetime, timezone
 
-from services.cache.redis_client import get_redis_client
+from core.cache.redis_provider import get_redis_client
 
 logger = logging.getLogger(__name__)
 

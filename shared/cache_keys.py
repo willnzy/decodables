@@ -1,6 +1,5 @@
 """
-Cache Keys Module
-缓存键命名规范
+Cache Keys Module - Domain-specific cache key definitions.
 
 Naming Convention:
 - All keys start with "md:" prefix (Make Decodables)
@@ -11,6 +10,9 @@ Examples:
 - md:config:rate_limit.payment.checkout
 - md:experiment:hero_button_test
 - md:rl:ip:192.168.1.1
+
+@module shared.cache_keys
+@version 1.0.0
 """
 
 # Global prefix for all keys
@@ -29,7 +31,7 @@ class CacheNamespace:
 class CacheTTL:
     """
     Default TTL values (in seconds).
-    
+
     Note:
     - These are defaults, can be overridden per-call
     - 0 means no caching (useful for images)
@@ -49,10 +51,10 @@ class CacheTTL:
 def config_key(key: str) -> str:
     """
     Build config cache key.
-    
+
     Args:
         key: Config key (e.g., "rate_limit.payment.checkout")
-        
+
     Returns:
         Full cache key (e.g., "md:config:rate_limit.payment.checkout")
     """
@@ -62,10 +64,10 @@ def config_key(key: str) -> str:
 def config_all_key(group: str = None) -> str:
     """
     Build key for all configs cache.
-    
+
     Args:
         group: Optional group filter
-        
+
     Returns:
         Full cache key (e.g., "md:config:__all__" or "md:config:__all__:rate_limit")
     """
@@ -77,69 +79,53 @@ def config_all_key(group: str = None) -> str:
 def experiment_key(experiment_key_str: str) -> str:
     """
     Build experiment cache key.
-    
+
     Args:
-        experiment_key_str: Experiment identifier
-        
+        experiment_key_str: Experiment key (e.g., "hero_button_test")
+
     Returns:
         Full cache key (e.g., "md:experiment:hero_button_test")
     """
     return f"{CacheNamespace.EXPERIMENT}{experiment_key_str}"
 
 
-def experiment_list_key(status: str = None) -> str:
-    """
-    Build key for experiment list cache.
-    
-    Args:
-        status: Optional status filter
-        
-    Returns:
-        Full cache key
-    """
-    if status:
-        return f"{CacheNamespace.EXPERIMENT}__list__:{status}"
-    return f"{CacheNamespace.EXPERIMENT}__list__"
-
-
-def ai_result_key(hash_key: str) -> str:
+def ai_cache_key(prompt_hash: str, ai_type: str = "text") -> str:
     """
     Build AI result cache key.
-    
+
     Args:
-        hash_key: Hash of prompt + model + params
-        
+        prompt_hash: Hash of the prompt
+        ai_type: Type of AI (text/image)
+
     Returns:
-        Full cache key
+        Full cache key (e.g., "md:ai:text:abc123def")
     """
-    return f"{CacheNamespace.AI}{hash_key}"
+    return f"{CacheNamespace.AI}{ai_type}:{prompt_hash}"
 
 
-def stats_key(stat_type: str, date: str = None) -> str:
-    """
-    Build stats cache key.
-    
-    Args:
-        stat_type: Type of stats
-        date: Optional date string
-        
-    Returns:
-        Full cache key
-    """
-    if date:
-        return f"{CacheNamespace.STATS}{stat_type}:{date}"
-    return f"{CacheNamespace.STATS}{stat_type}"
-
-
-def rate_limit_key(identifier: str, endpoint: str) -> str:
+def rate_limit_key(identifier: str, limit_type: str = "ip") -> str:
     """
     Build rate limit cache key.
-    
+
     Args:
-        identifier: User/IP identifier
-        endpoint: Endpoint name
-        
+        identifier: IP address, user ID, or API key
+        limit_type: Type of rate limit (ip/user/api)
+
     Returns:
-        Full cache key
+        Full cache key (e.g., "md:rl:ip:192.168.1.1")
     """
-    return f"{CacheNamespace.RATE_LIMIT}{endpoint}:{identifier}"
+    return f"{CacheNamespace.RATE_LIMIT}{limit_type}:{identifier}"
+
+
+def stats_key(stat_type: str, period: str = "daily") -> str:
+    """
+    Build aggregated stats cache key.
+
+    Args:
+        stat_type: Type of stat (users/projects/revenue)
+        period: Time period (hourly/daily/weekly/monthly)
+
+    Returns:
+        Full cache key (e.g., "md:stats:users:daily")
+    """
+    return f"{CacheNamespace.STATS}{stat_type}:{period}"

@@ -501,10 +501,12 @@ async def shutdown_event():
     """Stop scheduled jobs and close connections when FastAPI shuts down."""
     logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
     shutdown_scheduler()
-    
+
     # Gracefully close Redis connection
-    from services.cache import close_redis
-    close_redis()
+    from core.cache import get_cache_provider
+    cache_provider = get_cache_provider()
+    if hasattr(cache_provider, 'close'):
+        cache_provider.close()
 
 # ==========================================
 # 3. Routes

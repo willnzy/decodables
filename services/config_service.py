@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 
 from supabase import create_client, Client
 
-from .cache import cache_service
+from core.cache import cache_service
 
 logger = logging.getLogger(__name__)
 

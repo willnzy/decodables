@@ -140,11 +140,11 @@ def get_ai_usage_stats(
 def clear_ai_cache(cache_type: str = "all") -> Dict[str, Any]:
     """
     Clear AI response cache.
-    
+
     Args:
         cache_type: Type of cache to clear ('text', 'image', 'all')
     """
-    from services.cache import cache_service
+    from core.cache import cache_service
     
     try:
         if cache_type in ["text", "all"]:

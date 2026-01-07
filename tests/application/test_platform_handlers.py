@@ -11,13 +11,15 @@ from datetime import datetime
 
 from application.commands.platform import (
     CreateFeatureFlagCommand,
+    ActivateFeatureFlagCommand,
     CreateExperimentCommand,
-    UpdateFeatureFlagCommand,
+    StartExperimentCommand,
 )
 from application.queries.platform import (
-    GetFeatureFlagQuery,
-    ListFeatureFlagsQuery,
     EvaluateFeatureFlagQuery,
+    GetExperimentVariantQuery,
+    GetUserFeaturesQuery,
+    GetUserExperimentsQuery,
 )
 from domains.platform import (
     FeatureFlag,

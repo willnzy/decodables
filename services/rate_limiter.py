@@ -18,7 +18,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from .config_service import get_rate_limit_string, is_rate_limit_enabled, get_config
-from .cache import get_redis_client, is_redis_available
+from core.cache import is_redis_available
+from core.cache.redis_provider import get_redis_client
 
 logger = logging.getLogger(__name__)
 

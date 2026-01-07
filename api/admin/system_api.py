@@ -168,10 +168,11 @@ async def get_cache_status(
     admin: dict = Depends(require_admin),
 ):
     """Get Redis cache status and statistics."""
-    from services.cache import get_redis_client
+    from core.cache import get_cache_provider
 
     try:
-        redis_client = get_redis_client()
+        cache_provider = get_cache_provider()
+        redis_client = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
         if not redis_client:
             return {"status": "unavailable", "message": "Redis not configured"}
 
