@@ -33,6 +33,7 @@ from .themes import router as themes_router
 from .analytics import router as analytics_router
 from .config import router as config_router
 from .resources import router as resources_router
+from .payment import router as payment_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -49,5 +50,6 @@ user_router.include_router(themes_router)
 user_router.include_router(analytics_router)
 user_router.include_router(config_router)
 user_router.include_router(resources_router)
+user_router.include_router(payment_router)
 
 __all__ = ["user_router"]
