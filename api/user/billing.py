@@ -285,11 +285,17 @@ async def add_credits(
     container = get_container()
     handler = container.add_credits_handler
 
+    # Map credit_type to CreditBucket and TransactionType
+    from domains.billing.value_objects import CreditBucket, TransactionType
+    bucket = CreditBucket.MONTHLY if req.credit_type == "monthly" else CreditBucket.PERMANENT
+    tx_type = TransactionType.SUB_GRANT if req.credit_type == "monthly" else TransactionType.TOPUP_PURCHASE
+
     command = AddCreditsCommand(
         user_id=user["id"],
         amount=req.amount,
-        credit_type=req.credit_type,
-        reason=req.reason,
+        bucket=bucket,
+        tx_type=tx_type,
+        description=req.reason,
     )
     result = await handler.handle(command)
 
