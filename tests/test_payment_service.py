@@ -400,12 +400,12 @@ class TestAdminFunctions:
     def test_get_customer_subscriptions(self, reset_stripe_mock):
         """【业务规则】获取用户所有订阅"""
         mock_subs = [MagicMock(), MagicMock()]
-        
-        with patch('services.payment_service.stripe.Subscription.list') as mock_list:
+
+        with patch('domains.billing.payment_service.stripe.Subscription.list') as mock_list:
             mock_list.return_value = MagicMock(data=mock_subs)
-            
+
             result = payment_service.get_customer_subscriptions("cus_123")
-            
+
             assert result == mock_subs
             mock_list.assert_called_once_with(
                 customer="cus_123",

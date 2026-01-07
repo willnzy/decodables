@@ -63,7 +63,7 @@ class TestDefaultRateLimits:
 class TestGetConfig:
     """Test get_config function"""
     
-    @patch('services.config_service.cache_service')
+    @patch('domains.platform.config_service.cache_service')
     def test_get_config_from_cache(self, mock_cache):
         """Returns config from cache when available"""
         from domains.platform.config_service import get_config
@@ -75,8 +75,8 @@ class TestGetConfig:
         assert result == {"limit": 10, "window": "minute"}
         mock_cache.get_config.assert_called_once_with("rate_limit.test")
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_get_config_from_database(self, mock_supabase, mock_cache):
         """Fetches config from database when not in cache"""
         from domains.platform.config_service import get_config
@@ -96,8 +96,8 @@ class TestGetConfig:
         # Should cache the result
         mock_cache.set_config.assert_called_once()
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_get_config_inactive_returns_default(self, mock_supabase, mock_cache):
         """Returns default when config is inactive"""
         from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
@@ -115,8 +115,8 @@ class TestGetConfig:
         
         assert result == DEFAULT_RATE_LIMITS["rate_limit.payment.checkout"]
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_get_config_handles_exception(self, mock_supabase, mock_cache):
         """Handles database exceptions gracefully"""
         from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
@@ -129,12 +129,12 @@ class TestGetConfig:
         # Should return default
         assert result == DEFAULT_RATE_LIMITS["rate_limit.payment.checkout"]
     
-    @patch('services.config_service.cache_service')
+    @patch('domains.platform.config_service.cache_service')
     def test_get_config_skip_cache(self, mock_cache):
         """Can skip cache when requested"""
         from domains.platform.config_service import get_config
         
-        with patch('services.config_service.supabase') as mock_supabase:
+        with patch('domains.platform.config_service.supabase') as mock_supabase:
             mock_result = MagicMock()
             mock_result.data = {"value": '{"limit": 5}', "is_active": True}
             mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_result
@@ -143,8 +143,8 @@ class TestGetConfig:
             
             mock_cache.get_config.assert_not_called()
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_get_config_handles_non_json_value(self, mock_supabase, mock_cache):
         """Handles non-JSON string values"""
         from domains.platform.config_service import get_config
@@ -166,9 +166,9 @@ class TestGetConfig:
         """Returns default for unknown config key"""
         from domains.platform.config_service import get_config
         
-        with patch('services.config_service.cache_service') as mock_cache:
+        with patch('domains.platform.config_service.cache_service') as mock_cache:
             mock_cache.get_config.return_value = None
-            with patch('services.config_service.supabase', None):
+            with patch('domains.platform.config_service.supabase', None):
                 result = get_config("unknown.config.key")
                 
                 assert result is None
@@ -177,8 +177,8 @@ class TestGetConfig:
 class TestSetConfig:
     """Test set_config function"""
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_set_config_success(self, mock_supabase, mock_cache):
         """Successfully sets config"""
         from domains.platform.config_service import set_config
@@ -194,13 +194,13 @@ class TestSetConfig:
         """Returns False when supabase not configured"""
         from domains.platform.config_service import set_config
         
-        with patch('services.config_service.supabase', None):
+        with patch('domains.platform.config_service.supabase', None):
             result = set_config("rate_limit.test", {"limit": 10})
             
             assert result is False
     
-    @patch('services.config_service.cache_service')
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.cache_service')
+    @patch('domains.platform.config_service.supabase')
     def test_set_config_handles_exception(self, mock_supabase, mock_cache):
         """Handles database exceptions"""
         from domains.platform.config_service import set_config
@@ -215,7 +215,7 @@ class TestSetConfig:
 class TestGetAllConfigs:
     """Test get_all_configs function"""
     
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.supabase')
     def test_get_all_configs_success(self, mock_supabase):
         """Returns all configs"""
         from domains.platform.config_service import get_all_configs
@@ -231,7 +231,7 @@ class TestGetAllConfigs:
         
         assert len(result) == 2
     
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.supabase')
     def test_get_all_configs_with_category(self, mock_supabase):
         """Filters configs by category"""
         from domains.platform.config_service import get_all_configs
@@ -248,7 +248,7 @@ class TestGetAllConfigs:
         """Returns defaults when no supabase"""
         from domains.platform.config_service import get_all_configs, DEFAULT_RATE_LIMITS
         
-        with patch('services.config_service.supabase', None):
+        with patch('domains.platform.config_service.supabase', None):
             result = get_all_configs()
             
             assert len(result) == len(DEFAULT_RATE_LIMITS)
@@ -257,14 +257,14 @@ class TestGetAllConfigs:
         """Returns filtered defaults when no supabase"""
         from domains.platform.config_service import get_all_configs
         
-        with patch('services.config_service.supabase', None):
+        with patch('domains.platform.config_service.supabase', None):
             result = get_all_configs(category="rate_limit.payment")
             
             # Should only return payment-related configs
             for config in result:
                 assert "payment" in config["key"]
     
-    @patch('services.config_service.supabase')
+    @patch('domains.platform.config_service.supabase')
     def test_get_all_configs_handles_exception(self, mock_supabase):
         """Handles database exceptions"""
         from domains.platform.config_service import get_all_configs
@@ -279,7 +279,7 @@ class TestGetAllConfigs:
 class TestGetRateLimitString:
     """Test get_rate_limit_string function"""
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_get_rate_limit_string_normal(self, mock_get_config):
         """Returns formatted rate limit string"""
         from domains.platform.config_service import get_rate_limit_string
@@ -290,7 +290,7 @@ class TestGetRateLimitString:
         
         assert result == "10/minute"
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_get_rate_limit_string_disabled(self, mock_get_config):
         """Returns high limit when disabled"""
         from domains.platform.config_service import get_rate_limit_string
@@ -301,7 +301,7 @@ class TestGetRateLimitString:
         
         assert result == "10000/minute"
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_get_rate_limit_string_no_config(self, mock_get_config):
         """Returns high limit when no config"""
         from domains.platform.config_service import get_rate_limit_string
@@ -316,7 +316,7 @@ class TestGetRateLimitString:
 class TestIsRateLimitEnabled:
     """Test is_rate_limit_enabled function"""
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_rate_limit_enabled_by_default(self, mock_get_config):
         """Rate limit is enabled by default"""
         from domains.platform.config_service import is_rate_limit_enabled
@@ -327,7 +327,7 @@ class TestIsRateLimitEnabled:
         
         assert result is True
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_rate_limit_globally_disabled(self, mock_get_config):
         """Global disable overrides specific config"""
         from domains.platform.config_service import is_rate_limit_enabled
@@ -338,7 +338,7 @@ class TestIsRateLimitEnabled:
         
         assert result is False
     
-    @patch('services.config_service.get_config')
+    @patch('domains.platform.config_service.get_config')
     def test_rate_limit_specific_key_disabled(self, mock_get_config):
         """Specific key can be disabled"""
         from domains.platform.config_service import is_rate_limit_enabled
@@ -358,7 +358,7 @@ class TestIsRateLimitEnabled:
 class TestClearConfigCache:
     """Test clear_config_cache function"""
     
-    @patch('services.config_service.cache_service')
+    @patch('domains.platform.config_service.cache_service')
     def test_clear_config_cache(self, mock_cache):
         """Clears config cache"""
         from domains.platform.config_service import clear_config_cache
@@ -371,7 +371,7 @@ class TestClearConfigCache:
 class TestBatchUpdateConfigs:
     """Test batch_update_configs function"""
     
-    @patch('services.config_service.set_config')
+    @patch('domains.platform.config_service.set_config')
     def test_batch_update_success(self, mock_set_config):
         """Successfully batch updates configs"""
         from domains.platform.config_service import batch_update_configs
@@ -389,7 +389,7 @@ class TestBatchUpdateConfigs:
         assert result["rate_limit.b"] is True
         assert mock_set_config.call_count == 2
     
-    @patch('services.config_service.set_config')
+    @patch('domains.platform.config_service.set_config')
     def test_batch_update_partial_failure(self, mock_set_config):
         """Handles partial failures in batch update"""
         from domains.platform.config_service import batch_update_configs
@@ -410,7 +410,7 @@ class TestBatchUpdateConfigs:
         """Skips invalid update entries"""
         from domains.platform.config_service import batch_update_configs
         
-        with patch('services.config_service.set_config') as mock_set:
+        with patch('domains.platform.config_service.set_config') as mock_set:
             mock_set.return_value = True
             
             updates = [
@@ -457,7 +457,7 @@ class TestApplyRateLimitPreset:
         
         assert result is False
     
-    @patch('services.config_service.set_config')
+    @patch('domains.platform.config_service.set_config')
     def test_apply_disabled_preset(self, mock_set_config):
         """Applies disabled preset correctly"""
         from domains.platform.config_service import apply_rate_limit_preset
@@ -473,8 +473,8 @@ class TestApplyRateLimitPreset:
             "admin"
         )
     
-    @patch('services.config_service.clear_config_cache')
-    @patch('services.config_service.set_config')
+    @patch('domains.platform.config_service.clear_config_cache')
+    @patch('domains.platform.config_service.set_config')
     def test_apply_normal_preset(self, mock_set_config, mock_clear_cache):
         """Applies normal preset (resets to defaults)"""
         from domains.platform.config_service import apply_rate_limit_preset, DEFAULT_RATE_LIMITS
@@ -488,9 +488,9 @@ class TestApplyRateLimitPreset:
         mock_set_config.assert_any_call("rate_limit.global.enabled", {"enabled": True}, None)
         mock_clear_cache.assert_called_once()
     
-    @patch('services.config_service.clear_config_cache')
-    @patch('services.config_service.get_all_configs')
-    @patch('services.config_service.set_config')
+    @patch('domains.platform.config_service.clear_config_cache')
+    @patch('domains.platform.config_service.get_all_configs')
+    @patch('domains.platform.config_service.set_config')
     def test_apply_strict_preset(self, mock_set_config, mock_get_all, mock_clear_cache):
         """Applies strict preset (halves limits)"""
         from domains.platform.config_service import apply_rate_limit_preset
@@ -518,7 +518,7 @@ class TestSupabaseConfiguration:
         """Supabase URL gets trailing slash if missing"""
         # This is tested at module load time
         # Just verify the logic is present
-        from services import config_service
-        
+        from domains.platform import config_service
+
         # Module should be importable without errors
         assert config_service is not None
