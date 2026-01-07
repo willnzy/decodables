@@ -7,7 +7,7 @@
 
 ---
 
-## 📋 文档清单 (共 4 个)
+## 📋 文档清单 (共 5 个)
 
 ### 未来 Phase 计划 (2 个)
 
@@ -16,12 +16,13 @@
 | 016 | phase-9-10-architecture-cleanup-plan.md | Phase 9-10: 架构清理 (routers → api) | 🔮 未来 | Phase 9-10 完成后删除 |
 | 017 | phase-11-async-repository-refactoring.md | Phase 11: Repository 异步改造 | 🔮 未来 | Phase 11 完成后删除 |
 
-### 执行计划与分析 (2 个)
+### 执行计划与分析 (3 个)
 
 | 序号 | 文档 | 说明 | 状态 | 删除条件 |
 |------|------|------|------|---------|
 | 018 | phase-9-10-execution-plan.md | Phase 9-10 详细执行计划 (9 个 Stage) | 🔄 进行中 | Phase 9-10 完成后删除 |
-| 019 | v1-v2-api-comparison.md | v1/v2 API 功能差异对比报告 (Stage 1 产物) | ✅ 已完成 | Stage 2 补全完成后删除 |
+| 019 | v1-v2-api-comparison.md | v1/v2 API 功能差异对比报告 (AST 脚本) | ⚠️ 有误 | 被 020 替代后删除 |
+| 020 | v1-v2-api-comparison-corrected.md | v1/v2 API 对比修正版 (v2 已95%完整!) | ✅ 最新 | Phase 9-10 完成后删除 |
 
 ---
 
