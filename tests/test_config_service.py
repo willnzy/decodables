@@ -68,12 +68,12 @@ class TestGetConfig:
         """Returns config from cache when available"""
         from domains.platform.config_service import get_config
         
-        mock_cache.get_config.return_value = {"limit": 10, "window": "minute"}
+        mock_cache.get_json.return_value = {"limit": 10, "window": "minute"}
         
         result = get_config("rate_limit.test", use_cache=True)
         
         assert result == {"limit": 10, "window": "minute"}
-        mock_cache.get_config.assert_called_once_with("rate_limit.test")
+        mock_cache.get_json.assert_called_once_with("config:rate_limit.test")
     
     @patch('domains.platform.config_service.cache_service')
     @patch('domains.platform.config_service.supabase')
@@ -81,7 +81,7 @@ class TestGetConfig:
         """Fetches config from database when not in cache"""
         from domains.platform.config_service import get_config
         
-        mock_cache.get_config.return_value = None
+        mock_cache.get_json.return_value = None
         
         mock_result = MagicMock()
         mock_result.data = {
@@ -94,7 +94,7 @@ class TestGetConfig:
         
         assert result == {"limit": 20, "window": "minute"}
         # Should cache the result
-        mock_cache.set_config.assert_called_once()
+        mock_cache.set_json.assert_called_once()
     
     @patch('domains.platform.config_service.cache_service')
     @patch('domains.platform.config_service.supabase')
@@ -102,7 +102,7 @@ class TestGetConfig:
         """Returns default when config is inactive"""
         from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
         
-        mock_cache.get_config.return_value = None
+        mock_cache.get_json.return_value = None
         
         mock_result = MagicMock()
         mock_result.data = {
@@ -121,7 +121,7 @@ class TestGetConfig:
         """Handles database exceptions gracefully"""
         from domains.platform.config_service import get_config, DEFAULT_RATE_LIMITS
         
-        mock_cache.get_config.return_value = None
+        mock_cache.get_json.return_value = None
         mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("DB error")
         
         result = get_config("rate_limit.payment.checkout")
@@ -141,7 +141,7 @@ class TestGetConfig:
             
             get_config("rate_limit.test", use_cache=False)
             
-            mock_cache.get_config.assert_not_called()
+            mock_cache.get_json.assert_not_called()
     
     @patch('domains.platform.config_service.cache_service')
     @patch('domains.platform.config_service.supabase')
@@ -149,7 +149,7 @@ class TestGetConfig:
         """Handles non-JSON string values"""
         from domains.platform.config_service import get_config
         
-        mock_cache.get_config.return_value = None
+        mock_cache.get_json.return_value = None
         
         mock_result = MagicMock()
         mock_result.data = {
@@ -167,7 +167,7 @@ class TestGetConfig:
         from domains.platform.config_service import get_config
         
         with patch('domains.platform.config_service.cache_service') as mock_cache:
-            mock_cache.get_config.return_value = None
+            mock_cache.get_json.return_value = None
             with patch('domains.platform.config_service.supabase', None):
                 result = get_config("unknown.config.key")
                 
@@ -188,7 +188,7 @@ class TestSetConfig:
         result = set_config("rate_limit.test", {"limit": 15}, updated_by="admin_123")
         
         assert result is True
-        mock_cache.invalidate_config_cache.assert_called_once_with("rate_limit.test")
+        mock_cache.delete.assert_called_once_with("config:rate_limit.test")
     
     def test_set_config_no_supabase(self):
         """Returns False when supabase not configured"""
@@ -365,7 +365,7 @@ class TestClearConfigCache:
         
         clear_config_cache()
         
-        mock_cache.invalidate_config_cache.assert_called_once()
+        mock_cache.delete_pattern.assert_called_once_with("config:*")
 
 
 class TestBatchUpdateConfigs:
