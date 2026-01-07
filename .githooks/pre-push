@@ -1,0 +1,38 @@
+#!/bin/bash
+# Pre-push hook to prevent deployment-breaking changes
+# Install: ln -sf ../../.githooks/pre-push .git/hooks/pre-push
+
+set -e
+
+echo "🔍 Running pre-push checks..."
+
+# Check 1: Application startup smoke test
+echo "  ✓ Testing application imports..."
+if ! pytest tests/test_app_startup.py -q --tb=short 2>&1; then
+    echo ""
+    echo "❌ Application startup test FAILED!"
+    echo "   ImportError detected that would break Railway deployment."
+    echo ""
+    echo "💡 Fix suggestions:"
+    echo "   1. Check all imports in application/commands/*.py"
+    echo "   2. Verify all domain __init__.py exports"
+    echo "   3. Run: pytest tests/test_app_startup.py -v"
+    echo ""
+    exit 1
+fi
+
+# Check 2: Core tests pass
+echo "  ✓ Running core domain tests..."
+if ! pytest tests/domains/ -q --tb=short 2>&1; then
+    echo ""
+    echo "❌ Domain tests FAILED!"
+    echo "   Core business logic may be broken."
+    echo ""
+    exit 1
+fi
+
+echo ""
+echo "✅ All pre-push checks passed! Safe to push."
+echo ""
+
+exit 0
