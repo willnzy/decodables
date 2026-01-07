@@ -7,34 +7,16 @@
 
 ---
 
-## 📋 文档清单 (共 17 个)
+## 📋 文档清单 (共 4 个)
 
-### 001-009: 管理和报告
-
-| 序号 | 文档 | 说明 | 状态 | 删除条件 |
-|------|------|------|------|---------|
-| 001 | docs-organization-plan.md | 文档整理计划 | ✅ 已完成 | 整理完成后可删除 |
-| 002 | phase-1-completion-report.md | Phase 1 完成报告 (API 层) | ✅ 已完成 | 所有 Phase 完成后删除 |
-| 003 | phase-2-completion-report.md | Phase 2 完成报告 (测试覆盖) | ✅ 已完成 | 所有 Phase 完成后删除 |
-| 004 | phase-2-execution-plan.md | Phase 2 执行计划 | ✅ 已完成 | Phase 2 完成后可删除 |
-| 005 | migration-plan.md | 总体迁移计划 | ✅ 已完成 | 迁移完成后可删除 |
-| 006 | services-migration-plan.md | Services 层迁移计划 | ✅ 已完成 | Phase 8 完成后可删除 |
-| 007 | phase-8-migration-plan.md | Phase 8 迁移计划 (db → repositories) | ✅ 已完成 | Phase 8 完成后可删除 |
-| 008 | credit-service-migration-analysis.md | 积分服务迁移分析 | ✅ 已完成 | Phase 8 完成后可删除 |
-| 009 | api-endpoints-inventory.md | API 端点清单 | 📊 参考 | API 稳定后可删除 |
-
-### 010-015: 临时分析和指南
+### 测试指南 (2 个)
 
 | 序号 | 文档 | 说明 | 状态 | 删除条件 |
 |------|------|------|------|---------|
-| 010 | api-methods-audit.md | API 方法审计 | 📊 参考 | 审计完成后可删除 |
-| 011 | api-optimization-plan.md | API 优化计划 | 📝 规划 | 优化完成后可删除 |
-| 012 | legacy-code-cleanup-plan.md | 遗留代码清理计划 | 📝 规划 | 清理完成后可删除 |
 | 013 | webhook-v2-staging-testing-guide.md | Webhook v2 测试指南 | 🧪 测试 | 流程标准化后删除 |
 | 014 | github-actions-v2-api-testing.md | GitHub Actions 测试指南 | 🧪 测试 | 流程标准化后删除 |
-| 015 | backend-next-steps-summary.md | 后端后续步骤总结 | 📝 规划 | 步骤完成后可删除 |
 
-### 016-017: 未来 Phase 计划
+### 未来 Phase 计划 (2 个)
 
 | 序号 | 文档 | 说明 | 状态 | 删除条件 |
 |------|------|------|------|---------|
@@ -43,39 +25,45 @@
 
 ---
 
+## 📝 已删除文档记录 (2026-01-07)
+
+以下文档已删除,关键结论已记录在核心文档中:
+
+### Phase 报告 (001-004)
+- 001: docs-organization-plan.md - 文档整理计划已执行完成
+- 002: phase-1-completion-report.md - 38 个 API 文件创建完成
+- 003: phase-2-completion-report.md - 测试覆盖率达到 80%+
+- 004: phase-2-execution-plan.md - Phase 2 执行计划已完成
+
+**关键结论**: api/ (v2 DDD) 与 routers/ (v1) 并行运行，URL 前缀分别为 /api/v2/* 和 /api/*
+
+### 迁移计划 (005-008)
+- 005: migration-plan.md - 采用 Strangler Fig Pattern 渐进式迁移
+- 006: services-migration-plan.md - Services 层迁移策略
+- 007: phase-8-migration-plan.md - Phase 8 迁移 (db → repositories)
+- 008: credit-service-migration-analysis.md - 积分服务迁移分析
+
+**关键结论**: Phase 8 完成 - services/db/ (3088 行) 完全迁移到 infrastructure/repositories/, 创建 14 个新 Repository, db_compat.py 提供向后兼容
+
+### 临时分析 (009-012, 015)
+- 009: api-endpoints-inventory.md - API 端点静态快照 (已过时)
+- 010: api-methods-audit.md - API 方法审计 (结论已合并到 API-HTTP-METHODS-GUIDELINES.md)
+- 011: api-optimization-plan.md - API 优化已应用
+- 012: legacy-code-cleanup-plan.md - 已被 Phase 9-10 计划替代
+- 015: backend-next-steps-summary.md - 步骤已过时
+
+---
+
 ## 🗂️ 分类说明
 
-### ✅ 已完成 (9 个)
-这些文档记录了已完成的工作，主要用于历史回顾和审计。
-
-**何时删除**:
-- Phase 报告 (002-004): 所有 Phase 完成，项目稳定后
-- 迁移计划 (005-008): 迁移完成且稳定运行 2 周后
-- 整理计划 (001): 本次整理完成后
-
-### 📊 参考文档 (2 个)
-这些文档提供了临时的分析数据，可作为参考。
-
-**何时删除**:
-- API 清单 (009): API 稳定，不再频繁变更时
-- API 审计 (010): 审计结论已应用到代码时
-
-### 📝 规划文档 (3 个)
-这些文档描述了待执行的优化和清理计划。
-
-**何时删除**:
-- 优化计划 (011): 优化完成并验证效果后
-- 清理计划 (012): 清理完成并提交代码后
-- 后续步骤 (015): 步骤全部完成后
-
-### 🧪 测试指南 (2 个)
+### 🧪 测试指南 (2 个 - 保留中)
 临时性的测试指南，帮助团队完成特定测试任务。
 
 **何时删除**:
 - 测试流程已标准化，集成到 CI/CD 流程
 - 相关内容已合并到 `TEST_COVERAGE_PLAN.md` 或 `CI-TESTING-LIMITATIONS.md`
 
-### 🔮 未来计划 (2 个)
+### 🔮 未来 Phase 计划 (2 个 - 保留中)
 尚未开始执行的 Phase 计划。
 
 **何时删除**:
@@ -157,36 +145,19 @@ git mv docs/tmp/002-phase-1-completion-report.md docs/tmp/archive/
 
 | Phase | 状态 | 相关文档 | 清理状态 |
 |-------|------|---------|---------|
-| Phase 1 | ✅ 已完成 | 002 | 🔒 保留 (历史记录) |
-| Phase 2 | ✅ 已完成 | 003, 004 | 🔒 保留 (历史记录) |
-| Phase 8 | ✅ 已完成 | 005-008 | ⏳ 可清理 |
+| Phase 1-2 | ✅ 已完成 | 002-004 | ✅ 已删除 (2026-01-07) |
+| Phase 8 | ✅ 已完成 | 005-008 | ✅ 已删除 (2026-01-07) |
 | Phase 9-10 | 📝 规划中 | 016 | 🔮 未来执行 |
 | Phase 11 | 📝 规划中 | 017 | 🔮 未来执行 |
 
 ### 清理建议
 
-#### 立即可删除 (Phase 8 已完成)
+#### ✅ 已完成清理 (2026-01-07)
 ```bash
-# Phase 8 迁移计划已完成，可以删除
-git rm docs/tmp/005-migration-plan.md
-git rm docs/tmp/006-services-migration-plan.md
-git rm docs/tmp/007-phase-8-migration-plan.md
-git rm docs/tmp/008-credit-service-migration-analysis.md
-
-# 提交
-git commit -m "docs: remove completed Phase 8 migration plans
-
-Phase 8 migration completed successfully:
-- services/db/ → infrastructure/repositories/ ✅
-- db_compat.py兼容层创建 ✅
-- 所有 Repository 测试通过 ✅
-
-Removed temporary documents:
-- 005-migration-plan.md
-- 006-services-migration-plan.md
-- 007-phase-8-migration-plan.md
-- 008-credit-service-migration-analysis.md
-"
+# 已删除 13 个完成的临时文档:
+# - Phase 报告: 001-004
+# - 迁移计划: 005-008
+# - 临时分析: 009-012, 015
 ```
 
 #### Phase 9-10 完成后可删除
@@ -199,28 +170,28 @@ git rm docs/tmp/016-phase-9-10-architecture-cleanup-plan.md
 git rm docs/tmp/017-phase-11-async-repository-refactoring.md
 ```
 
+#### 测试标准化后可删除
+```bash
+git rm docs/tmp/013-webhook-v2-staging-testing-guide.md
+git rm docs/tmp/014-github-actions-v2-api-testing.md
+```
+
 ---
 
 ## 🔍 快速查找
 
 ### 我想了解某个 Phase 的执行情况
-- **Phase 1-2**: 查看 002-004
-- **Phase 8**: 查看 005-008
-- **Phase 9-11**: 查看 016-017
-
-### 我想优化 API 性能
-- 查看 011-api-optimization-plan.md
-
-### 我想清理遗留代码
-- 查看 012-legacy-code-cleanup-plan.md
-
-### 我想了解 API 现状
-- 查看 009-api-endpoints-inventory.md
-- 查看 010-api-methods-audit.md
+- **Phase 1-2**: 已完成并删除，关键结论见上方"已删除文档记录"
+- **Phase 8**: 已完成并删除，关键结论见上方"已删除文档记录"
+- **Phase 9-10**: 查看 016-phase-9-10-architecture-cleanup-plan.md
+- **Phase 11**: 查看 017-phase-11-async-repository-refactoring.md
 
 ### 我想设置测试流程
-- 查看 013-webhook-v2-staging-testing-guide.md
-- 查看 014-github-actions-v2-api-testing.md
+- Webhook v2 测试: 查看 013-webhook-v2-staging-testing-guide.md
+- GitHub Actions 测试: 查看 014-github-actions-v2-api-testing.md
+
+### 我想了解已完成的工作
+- 查看本文档"已删除文档记录"章节，包含所有关键结论
 
 ---
 
@@ -245,5 +216,5 @@ git rm docs/tmp/017-phase-11-async-repository-refactoring.md
 ---
 
 **管理者**: 开发团队
-**最后检查**: 2026-01-07
+**最后更新**: 2026-01-07 (清理完成，删除 13 个文档)
 **下次检查**: Phase 9-10 开始前
