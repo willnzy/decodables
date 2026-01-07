@@ -41,6 +41,12 @@ from .tools import router as tools_router
 from .tasks import router as tasks_router
 from .generations import router as generations_router
 from .experiments import router as experiments_router
+from .user_profile import router as user_profile_router
+from .user_assets import router as user_assets_router
+from .generation_images import router as generation_images_router
+from .generation_pdf import router as generation_pdf_router
+from .generation_story import router as generation_story_router
+from .system_resources import router as system_resources_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -65,5 +71,11 @@ user_router.include_router(tools_router)
 user_router.include_router(tasks_router)
 user_router.include_router(generations_router)
 user_router.include_router(experiments_router)
+user_router.include_router(user_profile_router)
+user_router.include_router(user_assets_router)
+user_router.include_router(generation_images_router)
+user_router.include_router(generation_pdf_router)
+user_router.include_router(generation_story_router)
+user_router.include_router(system_resources_router)
 
 __all__ = ["user_router"]
