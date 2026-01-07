@@ -36,7 +36,7 @@ if SENTRY_DSN:
                 ),
                 # AI Agents: Monitor OpenAI/LLM calls (token usage, costs, latency)
                 OpenAIIntegration(
-                    include_prompts=False,  # Don't capture prompts for privacy
+                    include_prompts=True,  # Capture prompts for debugging
                     tiktoken_encoding_name="cl100k_base",
                 ),
             ],
