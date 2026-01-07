@@ -7,6 +7,7 @@ This layer contains:
 - creation/: Projects and assets
 - marketplace/: Asset listings and purchases
 - platform/: Feature flags, experiments, configs
+- content/: System resources and content library
 
 @package domains
 @version 1.0.0
@@ -24,4 +25,5 @@ __all__ = [
     'creation',
     'marketplace',
     'platform',
+    'content',
 ]

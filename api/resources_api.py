@@ -2,7 +2,7 @@
 Resources API - System resources (stickers, backgrounds, templates).
 
 @module api.resources_api
-@version 1.0.0
+@version 2.0.0
 
 Endpoints:
 - GET /api/v2/resources - List system resources
@@ -20,7 +20,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from dependencies import get_current_user, optional_user
-from services import get_resource_service, ResourceType
+from domains.content import ResourceType, ContentService
+from infrastructure.repositories import SupabaseSystemResourceRepository
+from application.queries.content import (
+    GetResourcesQuery,
+    GetResourcesHandler,
+    GetResourceByIdQuery,
+    GetResourceByIdHandler,
+    GetStickersQuery,
+    GetStickersHandler,
+    GetBackgroundsQuery,
+    GetBackgroundsHandler,
+    GetProjectTemplatesQuery,
+    GetProjectTemplatesHandler,
+    GetCategoriesQuery,
+    GetCategoriesHandler,
+)
+from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +94,17 @@ class ResourcesListResponse(BaseModel):
 
 
 # ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_content_service() -> ContentService:
+    """Get content service instance."""
+    db_client = get_database_client()
+    repository = SupabaseSystemResourceRepository(db_client)
+    return ContentService(repository)
+
+
+# ==========================================
 # Endpoints
 # ==========================================
 
@@ -91,33 +118,33 @@ async def list_resources(
     limit: int = Query(50, ge=1, le=200),
     include_locked: bool = Query(True, description="Include locked resources"),
     user: dict = Depends(optional_user),
+    content_service: ContentService = Depends(get_content_service),
 ) -> ResourcesListResponse:
     """
     List system resources with optional filtering.
 
     Returns resources with access status based on user's tier.
     """
-    resource_service = get_resource_service()
+    user_tier = user.get("tier", "free") if user else "free"
 
-    result = resource_service.get_resources(
-        user=user,
+    query = GetResourcesQuery(
+        user_tier=user_tier,
         resource_type=type,
         category=category,
         allowed_tiers_filter=tier,
-        search=search,
         page=page,
         limit=limit,
         include_locked=include_locked,
     )
 
-    items = result.get("items", [])
-    total = result.get("total", len(items))
+    handler = GetResourcesHandler(content_service)
+    result = await handler.handle(query)
 
     return ResourcesListResponse(
-        items=items,
-        total=total,
-        page=page,
-        has_more=total > page * limit,
+        items=result.items,
+        total=result.total,
+        page=result.page,
+        has_more=result.total > page * limit,
     )
 
 
@@ -138,14 +165,18 @@ async def get_resource_types() -> ResourceTypesResponse:
 
 
 @router.get("/categories/{resource_type}", response_model=CategoriesResponse)
-async def get_categories(resource_type: str) -> CategoriesResponse:
+async def get_categories(
+    resource_type: str,
+    content_service: ContentService = Depends(get_content_service),
+) -> CategoriesResponse:
     """
     Get available categories for a resource type.
     """
-    resource_service = get_resource_service()
-    categories = resource_service.get_categories(resource_type)
+    query = GetCategoriesQuery(resource_type=resource_type)
+    handler = GetCategoriesHandler(content_service)
+    result = await handler.handle(query)
 
-    return CategoriesResponse(categories=categories)
+    return CategoriesResponse(categories=result.categories)
 
 
 @router.get("/stickers")
@@ -154,20 +185,24 @@ async def get_stickers(
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(optional_user),
+    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get stickers for the editor.
 
     Convenience endpoint that filters by sticker type.
     """
-    resource_service = get_resource_service()
+    user_tier = user.get("tier", "free") if user else "free"
 
-    return resource_service.get_stickers(
-        user=user,
+    query = GetStickersQuery(
+        user_tier=user_tier,
         category=category,
         page=page,
         limit=limit,
     )
+
+    handler = GetStickersHandler(content_service)
+    return await handler.handle(query)
 
 
 @router.get("/backgrounds")
@@ -176,20 +211,24 @@ async def get_backgrounds(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     user: dict = Depends(optional_user),
+    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get background images.
 
     Convenience endpoint that filters by background type.
     """
-    resource_service = get_resource_service()
+    user_tier = user.get("tier", "free") if user else "free"
 
-    return resource_service.get_backgrounds(
-        user=user,
+    query = GetBackgroundsQuery(
+        user_tier=user_tier,
         category=category,
         page=page,
         limit=limit,
     )
+
+    handler = GetBackgroundsHandler(content_service)
+    return await handler.handle(query)
 
 
 @router.get("/templates")
@@ -198,34 +237,46 @@ async def get_templates(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(optional_user),
+    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get project templates.
 
     Convenience endpoint that filters by template/project type.
     """
-    resource_service = get_resource_service()
+    user_tier = user.get("tier", "free") if user else "free"
 
-    return resource_service.get_projects(
-        user=user,
+    query = GetProjectTemplatesQuery(
+        user_tier=user_tier,
         category=category,
         page=page,
         limit=limit,
     )
+
+    handler = GetProjectTemplatesHandler(content_service)
+    return await handler.handle(query)
 
 
 @router.get("/{resource_id}")
 async def get_resource(
     resource_id: str,
     user: dict = Depends(optional_user),
+    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get a single resource by ID.
     """
-    resource_service = get_resource_service()
-    resource = resource_service.get_resource_by_id(resource_id, user)
+    user_tier = user.get("tier", "free") if user else "free"
 
-    if not resource:
+    query = GetResourceByIdQuery(
+        resource_id=resource_id,
+        user_tier=user_tier,
+    )
+
+    handler = GetResourceByIdHandler(content_service)
+    result = await handler.handle(query)
+
+    if not result.resource:
         raise HTTPException(404, "Resource not found")
 
-    return resource
+    return result.resource
