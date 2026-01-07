@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 class TestGetGenerationParams:
     def test_guided_mode_flux_dev(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("flux-dev", "guided")
         
@@ -17,7 +17,7 @@ class TestGetGenerationParams:
         assert params["guidance_scale"] == 4.5
 
     def test_guided_mode_flux_schnell(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("flux-schnell", "guided")
         
@@ -25,7 +25,7 @@ class TestGetGenerationParams:
         assert params["guidance_scale"] == 3.5
 
     def test_guided_mode_unknown_model(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("unknown-model", "guided")
         
@@ -33,21 +33,21 @@ class TestGetGenerationParams:
         assert params["guidance_scale"] == 4.0
 
     def test_flexible_mode_zero_creativity(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("flux-dev", "flexible", creativity_level=0.0)
         
         assert params["guidance_scale"] == 4.0
 
     def test_flexible_mode_max_creativity(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("flux-dev", "flexible", creativity_level=1.0)
         
         assert params["guidance_scale"] == 1.5
 
     def test_flexible_mode_mid_creativity(self):
-        from services.ai.image_generator import get_generation_params
+        from shared.ai.image_generator import get_generation_params
         
         params = get_generation_params("flux-dev", "flexible", creativity_level=0.5)
         
@@ -57,7 +57,7 @@ class TestGetGenerationParams:
 class TestUploadReferenceImage:
     @pytest.mark.asyncio
     async def test_returns_url_if_already_url(self):
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         
         session = MagicMock()
         result = await upload_reference_image(session, "https://example.com/image.png", "task123")
@@ -66,7 +66,7 @@ class TestUploadReferenceImage:
     
     @pytest.mark.asyncio
     async def test_returns_url_if_http(self):
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         
         session = MagicMock()
         result = await upload_reference_image(session, "http://example.com/image.png", "task123")
@@ -76,7 +76,7 @@ class TestUploadReferenceImage:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.supabase', None)
     async def test_returns_none_when_no_supabase(self):
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         
         session = MagicMock()
         result = await upload_reference_image(session, "base64data", "task123")
@@ -86,7 +86,7 @@ class TestUploadReferenceImage:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.supabase')
     async def test_uploads_base64_image(self, mock_supabase):
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         import base64
         
         mock_storage = MagicMock()
@@ -106,7 +106,7 @@ class TestUploadReferenceImage:
     @patch('services.ai.image_generator.supabase')
     async def test_uploads_base64_with_data_uri_prefix(self, mock_supabase):
         """测试带 data URI 前缀的 base64 图片"""
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         import base64
         
         mock_storage = MagicMock()
@@ -127,7 +127,7 @@ class TestUploadReferenceImage:
     @patch('services.ai.image_generator.supabase')
     async def test_uploads_anonymous_user(self, mock_supabase):
         """测试匿名用户上传 (无 user_id)"""
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         import base64
         
         mock_storage = MagicMock()
@@ -149,7 +149,7 @@ class TestUploadReferenceImage:
     @patch('services.ai.image_generator.supabase')
     async def test_upload_exception_returns_none(self, mock_supabase):
         """测试上传异常时返回 None"""
-        from services.ai.image_generator import upload_reference_image
+        from shared.ai.image_generator import upload_reference_image
         import base64
         
         mock_storage = MagicMock()
@@ -168,7 +168,7 @@ class TestDownloadAndUploadImage:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.supabase', None)
     async def test_returns_none_when_no_supabase(self):
-        from services.ai.image_generator import download_and_upload_image
+        from shared.ai.image_generator import download_and_upload_image
         
         session = MagicMock()
         result = await download_and_upload_image(session, "http://example.com/img.png", "task123", 0)
@@ -178,7 +178,7 @@ class TestDownloadAndUploadImage:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.supabase')
     async def test_downloads_and_uploads(self, mock_supabase):
-        from services.ai.image_generator import download_and_upload_image
+        from shared.ai.image_generator import download_and_upload_image
         
         mock_storage = MagicMock()
         mock_supabase.storage.from_.return_value = mock_storage
@@ -201,7 +201,7 @@ class TestDownloadAndUploadImage:
     @patch('services.ai.image_generator.supabase')
     async def test_downloads_and_uploads_anonymous_user(self, mock_supabase):
         """测试匿名用户下载上传"""
-        from services.ai.image_generator import download_and_upload_image
+        from shared.ai.image_generator import download_and_upload_image
         
         mock_storage = MagicMock()
         mock_supabase.storage.from_.return_value = mock_storage
@@ -226,7 +226,7 @@ class TestDownloadAndUploadImage:
     @patch('services.ai.image_generator.supabase')
     async def test_returns_none_on_non_200_status(self, mock_supabase):
         """测试下载失败 (非 200 状态码)"""
-        from services.ai.image_generator import download_and_upload_image
+        from shared.ai.image_generator import download_and_upload_image
         
         mock_storage = MagicMock()
         mock_supabase.storage.from_.return_value = mock_storage
@@ -245,7 +245,7 @@ class TestDownloadAndUploadImage:
     @patch('services.ai.image_generator.supabase')
     async def test_returns_none_on_exception(self, mock_supabase):
         """测试下载异常"""
-        from services.ai.image_generator import download_and_upload_image
+        from shared.ai.image_generator import download_and_upload_image
         
         mock_storage = MagicMock()
         mock_supabase.storage.from_.return_value = mock_storage
@@ -263,8 +263,8 @@ class TestGenerateAndUploadSingle:
     @patch('services.ai.image_generator.download_and_upload_image')
     @patch('services.ai.image_generator.unified_image_service')
     async def test_text_to_image_generation(self, mock_service, mock_download):
-        from services.ai.image_generator import generate_and_upload_single
-        from services.ai.base import AIResponse
+        from shared.ai.image_generator import generate_and_upload_single
+        from shared.ai.base import AIResponse
         
         mock_service.generate = AsyncMock(return_value=AIResponse(
             success=True,
@@ -285,8 +285,8 @@ class TestGenerateAndUploadSingle:
     @patch('services.ai.image_generator.download_and_upload_image')
     @patch('services.ai.image_generator.unified_image_service')
     async def test_image_to_image_generation(self, mock_service, mock_download):
-        from services.ai.image_generator import generate_and_upload_single
-        from services.ai.base import AIResponse
+        from shared.ai.image_generator import generate_and_upload_single
+        from shared.ai.base import AIResponse
         
         mock_service.image_to_image = AsyncMock(return_value=AIResponse(
             success=True,
@@ -307,8 +307,8 @@ class TestGenerateAndUploadSingle:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.unified_image_service')
     async def test_generation_failure(self, mock_service):
-        from services.ai.image_generator import generate_and_upload_single
-        from services.ai.base import AIResponse
+        from shared.ai.image_generator import generate_and_upload_single
+        from shared.ai.base import AIResponse
         
         mock_service.generate = AsyncMock(return_value=AIResponse(
             success=False,
@@ -325,8 +325,8 @@ class TestGenerateAndUploadSingle:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.unified_image_service')
     async def test_empty_content_response(self, mock_service):
-        from services.ai.image_generator import generate_and_upload_single
-        from services.ai.base import AIResponse
+        from shared.ai.image_generator import generate_and_upload_single
+        from shared.ai.base import AIResponse
         
         mock_service.generate = AsyncMock(return_value=AIResponse(
             success=True,
@@ -345,8 +345,8 @@ class TestGenerateAndUploadSingle:
     @patch('services.ai.image_generator.unified_image_service')
     async def test_with_custom_negative_prompt(self, mock_service, mock_download):
         """测试自定义 negative prompt"""
-        from services.ai.image_generator import generate_and_upload_single
-        from services.ai.base import AIResponse
+        from shared.ai.image_generator import generate_and_upload_single
+        from shared.ai.base import AIResponse
         
         mock_service.generate = AsyncMock(return_value=AIResponse(
             success=True,
@@ -370,7 +370,7 @@ class TestGenerateAndUploadSingle:
     @patch('services.ai.image_generator.unified_image_service')
     async def test_exception_during_generation(self, mock_service):
         """测试生成过程中的异常"""
-        from services.ai.image_generator import generate_and_upload_single
+        from shared.ai.image_generator import generate_and_upload_single
         
         mock_service.generate = AsyncMock(side_effect=Exception("Unexpected error"))
         
@@ -387,7 +387,7 @@ class TestGenerate8Images:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_generates_multiple_images(self, mock_gen_single):
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "https://storage.supabase.co/image.png"
         
@@ -404,7 +404,7 @@ class TestGenerate8Images:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_validates_generation_mode(self, mock_gen_single):
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "url"
         
@@ -419,7 +419,7 @@ class TestGenerate8Images:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_clamps_creativity_level(self, mock_gen_single):
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "url"
         
@@ -434,7 +434,7 @@ class TestGenerate8Images:
     @patch('services.ai.image_generator.upload_reference_image')
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_with_reference_image(self, mock_gen_single, mock_upload_ref):
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_upload_ref.return_value = "https://storage.supabase.co/ref.png"
         mock_gen_single.return_value = "https://storage.supabase.co/gen.png"
@@ -453,7 +453,7 @@ class TestGenerate8Images:
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_failed_reference_image_falls_back_to_text(self, mock_gen_single, mock_upload_ref):
         """测试 reference image 上传失败时降级为纯文本生成"""
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_upload_ref.return_value = None  # Upload failed
         mock_gen_single.return_value = "https://storage.supabase.co/gen.png"
@@ -473,7 +473,7 @@ class TestGenerate8Images:
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_with_multiple_variations(self, mock_gen_single):
         """测试生成多个变体"""
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "https://storage.supabase.co/image.png"
         
@@ -490,7 +490,7 @@ class TestGenerate8Images:
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_clamps_num_images(self, mock_gen_single):
         """测试 num_images 范围限制"""
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "url"
         
@@ -506,7 +506,7 @@ class TestGenerate8Images:
     @patch('services.ai.image_generator.generate_and_upload_single')
     async def test_with_negative_prompt(self, mock_gen_single):
         """测试带 negative prompt 的生成"""
-        from services.ai.image_generator import generate_8_images
+        from shared.ai.image_generator import generate_8_images
         
         mock_gen_single.return_value = "https://storage.supabase.co/image.png"
         
@@ -526,7 +526,7 @@ class TestGenerateImagesAsync:
     @pytest.mark.asyncio
     @patch('services.ai.image_generator.generate_8_images')
     async def test_convenience_function(self, mock_gen_8):
-        from services.ai.image_generator import generate_images_async
+        from shared.ai.image_generator import generate_images_async
         
         mock_gen_8.return_value = (["url1", "url2"], "task123")
         
@@ -542,13 +542,13 @@ class TestGenerateImagesAsync:
 
 class TestGenerationModeParams:
     def test_guided_params_exist(self):
-        from services.ai.image_generator import GENERATION_MODE_PARAMS
+        from shared.ai.image_generator import GENERATION_MODE_PARAMS
         
         assert "guided" in GENERATION_MODE_PARAMS
         assert "flux-dev" in GENERATION_MODE_PARAMS["guided"]
 
     def test_flexible_params_exist(self):
-        from services.ai.image_generator import GENERATION_MODE_PARAMS
+        from shared.ai.image_generator import GENERATION_MODE_PARAMS
         
         assert "flexible" in GENERATION_MODE_PARAMS
         assert "default" in GENERATION_MODE_PARAMS["flexible"]

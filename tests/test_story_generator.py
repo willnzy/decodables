@@ -40,7 +40,7 @@ class TestGetOpenAIClient:
 class TestOpenAIClientProxy:
     @patch('services.ai.story_generator.get_openai_client')
     def test_proxies_attribute_access(self, mock_get_client):
-        from services.ai.story_generator import _OpenAIClientProxy
+        from shared.ai.story_generator import _OpenAIClientProxy
         
         mock_client = MagicMock()
         mock_client.chat = MagicMock()
@@ -55,8 +55,8 @@ class TestOpenAIClientProxy:
 class TestGenerateStoryJson:
     @patch('services.ai.story_generator.unified_text_service')
     def test_successful_generation(self, mock_service):
-        from services.ai.story_generator import generate_story_json
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json
+        from shared.ai.base import AIResponse
         
         story_json = json.dumps({
             "title": "Test Story",
@@ -79,8 +79,8 @@ class TestGenerateStoryJson:
 
     @patch('services.ai.story_generator.unified_text_service')
     def test_failed_response(self, mock_service):
-        from services.ai.story_generator import generate_story_json
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json
+        from shared.ai.base import AIResponse
         
         mock_service.chat = AsyncMock(return_value=AIResponse(
             success=False,
@@ -93,8 +93,8 @@ class TestGenerateStoryJson:
 
     @patch('services.ai.story_generator.unified_text_service')
     def test_invalid_json_response(self, mock_service):
-        from services.ai.story_generator import generate_story_json
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json
+        from shared.ai.base import AIResponse
         
         mock_service.chat = AsyncMock(return_value=AIResponse(
             success=True,
@@ -107,7 +107,7 @@ class TestGenerateStoryJson:
 
     @patch('services.ai.story_generator.unified_text_service')
     def test_exception_handling(self, mock_service):
-        from services.ai.story_generator import generate_story_json
+        from shared.ai.story_generator import generate_story_json
         
         mock_service.chat = AsyncMock(side_effect=Exception("Unexpected error"))
         
@@ -120,8 +120,8 @@ class TestGenerateStoryJsonAsync:
     @pytest.mark.asyncio
     @patch('services.ai.story_generator.unified_text_service')
     async def test_successful_async_generation(self, mock_service):
-        from services.ai.story_generator import generate_story_json_async
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json_async
+        from shared.ai.base import AIResponse
         
         story_json = json.dumps({
             "title": "Async Story",
@@ -145,8 +145,8 @@ class TestGenerateStoryJsonAsync:
     @pytest.mark.asyncio
     @patch('services.ai.story_generator.unified_text_service')
     async def test_failed_async_response(self, mock_service):
-        from services.ai.story_generator import generate_story_json_async
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json_async
+        from shared.ai.base import AIResponse
         
         mock_service.chat = AsyncMock(return_value=AIResponse(
             success=False,
@@ -160,8 +160,8 @@ class TestGenerateStoryJsonAsync:
     @pytest.mark.asyncio
     @patch('services.ai.story_generator.unified_text_service')
     async def test_invalid_json_async(self, mock_service):
-        from services.ai.story_generator import generate_story_json_async
-        from services.ai.base import AIResponse
+        from shared.ai.story_generator import generate_story_json_async
+        from shared.ai.base import AIResponse
         
         mock_service.chat = AsyncMock(return_value=AIResponse(
             success=True,
@@ -175,7 +175,7 @@ class TestGenerateStoryJsonAsync:
     @pytest.mark.asyncio
     @patch('services.ai.story_generator.unified_text_service')
     async def test_exception_async(self, mock_service):
-        from services.ai.story_generator import generate_story_json_async
+        from shared.ai.story_generator import generate_story_json_async
         
         mock_service.chat = AsyncMock(side_effect=Exception("Error"))
         
@@ -186,7 +186,7 @@ class TestGenerateStoryJsonAsync:
 
 class TestStorySystemPrompt:
     def test_prompt_exists(self):
-        from services.ai.story_generator import STORY_SYSTEM_PROMPT
+        from shared.ai.story_generator import STORY_SYSTEM_PROMPT
         
         assert "8-page" in STORY_SYSTEM_PROMPT
         assert "JSON" in STORY_SYSTEM_PROMPT

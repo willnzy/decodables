@@ -23,7 +23,7 @@ class TestQwenAdapterConfiguration:
     
     def test_text_models_defined(self):
         """Qwen text models are properly defined"""
-        from services.ai.adapters.qwen_adapter import QWEN_TEXT_MODELS
+        from shared.ai.adapters.qwen_adapter import QWEN_TEXT_MODELS
         
         assert "qwen-turbo" in QWEN_TEXT_MODELS
         assert "qwen-plus" in QWEN_TEXT_MODELS
@@ -32,7 +32,7 @@ class TestQwenAdapterConfiguration:
     
     def test_image_models_defined(self):
         """Wanx image models are properly defined"""
-        from services.ai.adapters.qwen_adapter import WANX_IMAGE_MODELS
+        from shared.ai.adapters.qwen_adapter import WANX_IMAGE_MODELS
         
         assert "wanx-v1" in WANX_IMAGE_MODELS
         assert "wan2.6-t2i" in WANX_IMAGE_MODELS
@@ -40,7 +40,7 @@ class TestQwenAdapterConfiguration:
     
     def test_size_mapping(self):
         """Size mapping covers common formats"""
-        from services.ai.adapters.qwen_adapter import SIZE_MAPPING
+        from shared.ai.adapters.qwen_adapter import SIZE_MAPPING
         
         assert SIZE_MAPPING["square"] == "1024*1024"
         assert SIZE_MAPPING["1:1"] == "1024*1024"
@@ -59,7 +59,7 @@ class TestQwenTextAdapterInit:
     
     def test_init_with_api_key(self):
         """Initialize adapter - API key comes from module constant"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter, DASHSCOPE_API_KEY
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter, DASHSCOPE_API_KEY
         
         adapter = QwenTextAdapter()
         # API key is taken from module constant at initialization time
@@ -69,7 +69,7 @@ class TestQwenTextAdapterInit:
         """Initialize without API key"""
         with patch.dict('os.environ', {}, clear=True):
             import importlib
-            from services.ai.adapters import qwen_adapter
+            from shared.ai.adapters import qwen_adapter
             # Clear the module level variable
             original_key = qwen_adapter.DASHSCOPE_API_KEY
             qwen_adapter.DASHSCOPE_API_KEY = None
@@ -82,7 +82,7 @@ class TestQwenTextAdapterInit:
     
     def test_provider_name(self):
         """Provider name is correct"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         assert adapter.provider_name == "qwen"
@@ -93,7 +93,7 @@ class TestQwenTextAdapterAvailability:
     
     def test_is_available_with_key(self):
         """Available when API key is set"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -102,7 +102,7 @@ class TestQwenTextAdapterAvailability:
     
     def test_is_available_without_key(self):
         """Not available when API key is missing"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = None
@@ -111,7 +111,7 @@ class TestQwenTextAdapterAvailability:
     
     def test_get_available_models(self):
         """Returns copy of available models"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter, QWEN_TEXT_MODELS
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter, QWEN_TEXT_MODELS
         
         adapter = QwenTextAdapter()
         models = adapter.get_available_models()
@@ -128,8 +128,8 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_without_api_key(self):
         """Returns error when API key not configured"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = QwenTextAdapter()
         adapter._api_key = None
@@ -146,7 +146,7 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_success(self):
         """Successful chat completion"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -190,7 +190,7 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_with_max_tokens(self):
         """Chat completion with max_tokens parameter"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -224,7 +224,7 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_with_json_response_format(self):
         """Chat completion with JSON response format"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -254,8 +254,8 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_api_error(self):
         """Handles API error response"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -286,7 +286,7 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_network_error(self):
         """Handles network exception"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -308,7 +308,7 @@ class TestQwenTextAdapterChatCompletion:
     @pytest.mark.asyncio
     async def test_chat_completion_empty_choices(self):
         """Handles empty choices in response"""
-        from services.ai.adapters.qwen_adapter import QwenTextAdapter
+        from shared.ai.adapters.qwen_adapter import QwenTextAdapter
         
         adapter = QwenTextAdapter()
         adapter._api_key = "test-key"
@@ -345,7 +345,7 @@ class TestWanxImageAdapterInit:
     
     def test_init_with_api_key(self):
         """Initialize with API key"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         # Provider name should be 'wanx' not 'qwen'
@@ -353,7 +353,7 @@ class TestWanxImageAdapterInit:
     
     def test_is_available_with_key(self):
         """Available when API key is set"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -362,7 +362,7 @@ class TestWanxImageAdapterInit:
     
     def test_is_available_without_key(self):
         """Not available when API key is missing"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = None
@@ -371,7 +371,7 @@ class TestWanxImageAdapterInit:
     
     def test_get_available_models(self):
         """Returns Wanx image models"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter, WANX_IMAGE_MODELS
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter, WANX_IMAGE_MODELS
         
         adapter = WanxImageAdapter()
         models = adapter.get_available_models()
@@ -385,8 +385,8 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_without_api_key(self):
         """Returns error when API key not configured"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = WanxImageAdapter()
         adapter._api_key = None
@@ -403,7 +403,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_success(self):
         """Successful image generation"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -440,7 +440,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_with_size_mapping(self):
         """Size mapping converts formats correctly"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -472,7 +472,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_with_x_size_format(self):
         """Handles 'x' size format (e.g., 1024x1024)"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -504,7 +504,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_with_negative_prompt(self):
         """Image generation with negative prompt"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -536,7 +536,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_with_seed(self):
         """Image generation with seed for reproducibility"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -568,7 +568,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_num_images_clamped(self):
         """Number of images is clamped to 1-4 range"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -608,7 +608,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_multiple_images(self):
         """Multiple image generation"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -645,8 +645,8 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_api_error(self):
         """Handles API error response"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -677,7 +677,7 @@ class TestWanxImageGeneration:
     @pytest.mark.asyncio
     async def test_generate_image_network_error(self):
         """Handles network exception"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -703,8 +703,8 @@ class TestWanxImageToImage:
     @pytest.mark.asyncio
     async def test_image_to_image_without_api_key(self):
         """Returns error when API key not configured"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = WanxImageAdapter()
         adapter._api_key = None
@@ -720,7 +720,7 @@ class TestWanxImageToImage:
     @pytest.mark.asyncio
     async def test_image_to_image_success(self):
         """Successful image-to-image editing"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -761,8 +761,8 @@ class TestWanxImageToImage:
     @pytest.mark.asyncio
     async def test_image_to_image_api_error(self):
         """Handles API error in image-to-image"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
-        from services.ai.base import AIErrorType
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.base import AIErrorType
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"
@@ -793,7 +793,7 @@ class TestWanxImageToImage:
     @pytest.mark.asyncio
     async def test_image_to_image_network_error(self):
         """Handles network error in image-to-image"""
-        from services.ai.adapters.qwen_adapter import WanxImageAdapter
+        from shared.ai.adapters.qwen_adapter import WanxImageAdapter
         
         adapter = WanxImageAdapter()
         adapter._api_key = "test-key"

@@ -15,24 +15,24 @@ from unittest.mock import patch
 
 class TestDefaultConfigs:
     def test_default_text_config(self):
-        from services.ai.model_config import DEFAULT_TEXT_CONFIG
+        from shared.ai.model_config import DEFAULT_TEXT_CONFIG
         assert DEFAULT_TEXT_CONFIG["provider"] == "openai"
         assert DEFAULT_TEXT_CONFIG["model"] == "gpt-4o-mini"
         assert "fallback" in DEFAULT_TEXT_CONFIG
 
     def test_default_image_config(self):
-        from services.ai.model_config import DEFAULT_IMAGE_CONFIG
+        from shared.ai.model_config import DEFAULT_IMAGE_CONFIG
         assert DEFAULT_IMAGE_CONFIG["provider"] == "fal"
         assert "models" in DEFAULT_IMAGE_CONFIG
         assert "free" in DEFAULT_IMAGE_CONFIG["models"]
 
     def test_default_admin_config(self):
-        from services.ai.model_config import DEFAULT_ADMIN_CONFIG
+        from shared.ai.model_config import DEFAULT_ADMIN_CONFIG
         assert DEFAULT_ADMIN_CONFIG["provider"] == "openai"
         assert DEFAULT_ADMIN_CONFIG["model"] == "gpt-4o"
 
     def test_default_enabled_providers(self):
-        from services.ai.model_config import DEFAULT_ENABLED_PROVIDERS
+        from shared.ai.model_config import DEFAULT_ENABLED_PROVIDERS
         assert DEFAULT_ENABLED_PROVIDERS["openai"] is True
         assert DEFAULT_ENABLED_PROVIDERS["fal"] is True
 
@@ -40,7 +40,7 @@ class TestDefaultConfigs:
 class TestGetTextModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_config_from_db(self, mock_get_config):
-        from services.ai.model_config import get_text_model_config
+        from shared.ai.model_config import get_text_model_config
         mock_get_config.return_value = {"provider": "qwen", "model": "qwen-plus"}
         
         result = get_text_model_config()
@@ -50,7 +50,7 @@ class TestGetTextModelConfig:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_no_config(self, mock_get_config):
-        from services.ai.model_config import get_text_model_config
+        from shared.ai.model_config import get_text_model_config
         mock_get_config.return_value = None
         
         result = get_text_model_config()
@@ -62,7 +62,7 @@ class TestGetTextModelConfig:
 class TestGetImageModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_config_with_tier_model(self, mock_get_config):
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         mock_get_config.return_value = {
             "provider": "fal",
             "models": {"free": "flux-schnell", "pro": "flux-dev"},
@@ -76,7 +76,7 @@ class TestGetImageModelConfig:
 
     @patch('services.ai.model_config.get_config')
     def test_uses_free_model_by_default(self, mock_get_config):
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         mock_get_config.return_value = None
         
         result = get_image_model_config()
@@ -85,7 +85,7 @@ class TestGetImageModelConfig:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_no_config(self, mock_get_config):
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         mock_get_config.return_value = None
         
         result = get_image_model_config("free")
@@ -96,7 +96,7 @@ class TestGetImageModelConfig:
 class TestGetAdminModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_config_from_db(self, mock_get_config):
-        from services.ai.model_config import get_admin_model_config
+        from shared.ai.model_config import get_admin_model_config
         mock_get_config.return_value = {"provider": "openai", "model": "gpt-4-turbo"}
         
         result = get_admin_model_config()
@@ -105,7 +105,7 @@ class TestGetAdminModelConfig:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_no_config(self, mock_get_config):
-        from services.ai.model_config import get_admin_model_config
+        from shared.ai.model_config import get_admin_model_config
         mock_get_config.return_value = None
         
         result = get_admin_model_config()
@@ -117,7 +117,7 @@ class TestGetAdminModelConfig:
 class TestGetEnabledProviders:
     @patch('services.ai.model_config.get_config')
     def test_returns_config_from_db(self, mock_get_config):
-        from services.ai.model_config import get_enabled_providers
+        from shared.ai.model_config import get_enabled_providers
         mock_get_config.return_value = {"openai": True, "qwen": True}
         
         result = get_enabled_providers()
@@ -127,7 +127,7 @@ class TestGetEnabledProviders:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_no_config(self, mock_get_config):
-        from services.ai.model_config import get_enabled_providers
+        from shared.ai.model_config import get_enabled_providers
         mock_get_config.return_value = None
         
         result = get_enabled_providers()
@@ -139,7 +139,7 @@ class TestGetEnabledProviders:
 class TestGetProviderModels:
     @patch('services.ai.model_config.get_config')
     def test_returns_provider_models(self, mock_get_config):
-        from services.ai.model_config import get_provider_models
+        from shared.ai.model_config import get_provider_models
         mock_get_config.return_value = {
             "openai": {"text": ["gpt-4o", "gpt-4o-mini"], "image": ["dall-e-3"]}
         }
@@ -150,7 +150,7 @@ class TestGetProviderModels:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_empty_for_unknown_provider(self, mock_get_config):
-        from services.ai.model_config import get_provider_models
+        from shared.ai.model_config import get_provider_models
         mock_get_config.return_value = {"openai": {}}
         
         result = get_provider_models("unknown")
@@ -161,7 +161,7 @@ class TestGetProviderModels:
 class TestGetProviderTimeout:
     @patch('services.ai.model_config.get_config')
     def test_returns_configured_timeout(self, mock_get_config):
-        from services.ai.model_config import get_provider_timeout
+        from shared.ai.model_config import get_provider_timeout
         mock_get_config.return_value = {"openai": {"text": 30, "image": 120}}
         
         result = get_provider_timeout("openai", "text")
@@ -170,7 +170,7 @@ class TestGetProviderTimeout:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_text_timeout(self, mock_get_config):
-        from services.ai.model_config import get_provider_timeout
+        from shared.ai.model_config import get_provider_timeout
         mock_get_config.return_value = None
         
         result = get_provider_timeout("openai", "text")
@@ -179,7 +179,7 @@ class TestGetProviderTimeout:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_image_timeout(self, mock_get_config):
-        from services.ai.model_config import get_provider_timeout
+        from shared.ai.model_config import get_provider_timeout
         mock_get_config.return_value = None
         
         result = get_provider_timeout("fal", "image")
@@ -190,7 +190,7 @@ class TestGetProviderTimeout:
 class TestGetModelCost:
     @patch('services.ai.model_config.get_config')
     def test_returns_configured_cost(self, mock_get_config):
-        from services.ai.model_config import get_model_cost
+        from shared.ai.model_config import get_model_cost
         mock_get_config.return_value = {"openai": {"gpt-4o": 2.50, "gpt-4o-mini": 0.15}}
         
         result = get_model_cost("openai", "gpt-4o")
@@ -199,7 +199,7 @@ class TestGetModelCost:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_zero_for_unknown_model(self, mock_get_config):
-        from services.ai.model_config import get_model_cost
+        from shared.ai.model_config import get_model_cost
         mock_get_config.return_value = {}
         
         result = get_model_cost("unknown", "unknown-model")
@@ -210,7 +210,7 @@ class TestGetModelCost:
 class TestGetRetryConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_configured_retry(self, mock_get_config):
-        from services.ai.model_config import get_retry_config
+        from shared.ai.model_config import get_retry_config
         mock_get_config.return_value = {"max_retries": 5, "base_delay_ms": 2000}
         
         result = get_retry_config()
@@ -219,7 +219,7 @@ class TestGetRetryConfig:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_default_retry(self, mock_get_config):
-        from services.ai.model_config import get_retry_config
+        from shared.ai.model_config import get_retry_config
         mock_get_config.return_value = None
         
         result = get_retry_config()
@@ -231,7 +231,7 @@ class TestGetRetryConfig:
 class TestIsProviderEnabled:
     @patch('services.ai.model_config.get_enabled_providers')
     def test_returns_true_when_enabled(self, mock_get_providers):
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         mock_get_providers.return_value = {"openai": True}
         
         result = is_provider_enabled("openai")
@@ -240,7 +240,7 @@ class TestIsProviderEnabled:
 
     @patch('services.ai.model_config.get_enabled_providers')
     def test_returns_false_when_disabled(self, mock_get_providers):
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         mock_get_providers.return_value = {"openai": False}
         
         result = is_provider_enabled("openai")
@@ -249,7 +249,7 @@ class TestIsProviderEnabled:
 
     @patch('services.ai.model_config.get_enabled_providers')
     def test_returns_false_for_unknown(self, mock_get_providers):
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         mock_get_providers.return_value = {}
         
         result = is_provider_enabled("unknown")
@@ -259,7 +259,7 @@ class TestIsProviderEnabled:
 
 class TestUtilityFunctions:
     def test_get_fallback_config(self):
-        from services.ai.model_config import get_fallback_config
+        from shared.ai.model_config import get_fallback_config
         config = {"provider": "openai", "fallback": {"provider": "qwen", "model": "qwen-plus"}}
         
         result = get_fallback_config(config)
@@ -267,7 +267,7 @@ class TestUtilityFunctions:
         assert result["provider"] == "qwen"
 
     def test_get_fallback_config_returns_none(self):
-        from services.ai.model_config import get_fallback_config
+        from shared.ai.model_config import get_fallback_config
         config = {"provider": "openai"}
         
         result = get_fallback_config(config)
@@ -275,7 +275,7 @@ class TestUtilityFunctions:
         assert result is None
 
     def test_should_show_provider_true(self):
-        from services.ai.model_config import should_show_provider
+        from shared.ai.model_config import should_show_provider
         config = {"provider": "openai", "show_provider": True}
         
         result = should_show_provider(config)
@@ -283,7 +283,7 @@ class TestUtilityFunctions:
         assert result is True
 
     def test_should_show_provider_false_by_default(self):
-        from services.ai.model_config import should_show_provider
+        from shared.ai.model_config import should_show_provider
         config = {"provider": "openai"}
         
         result = should_show_provider(config)
@@ -294,7 +294,7 @@ class TestUtilityFunctions:
 class TestGetAllProviderModels:
     @patch('services.ai.model_config.get_config')
     def test_returns_all_models(self, mock_get_config):
-        from services.ai.model_config import get_all_provider_models
+        from shared.ai.model_config import get_all_provider_models
         mock_get_config.return_value = {
             "openai": {"text": ["gpt-4o"]},
             "fal": {"image": ["flux-schnell"]}
@@ -307,7 +307,7 @@ class TestGetAllProviderModels:
 
     @patch('services.ai.model_config.get_config')
     def test_returns_empty_when_no_config(self, mock_get_config):
-        from services.ai.model_config import get_all_provider_models
+        from shared.ai.model_config import get_all_provider_models
         mock_get_config.return_value = None
         
         result = get_all_provider_models()

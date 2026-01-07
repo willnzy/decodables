@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 class TestRegisterAdapters:
     def test_register_text_adapter(self):
-        from services.ai.adapters import register_text_adapter, _text_adapters
+        from shared.ai.adapters import register_text_adapter, _text_adapters
         
         mock_adapter = MagicMock()
         register_text_adapter("test_provider", mock_adapter)
@@ -20,7 +20,7 @@ class TestRegisterAdapters:
         del _text_adapters["test_provider"]
 
     def test_register_image_adapter(self):
-        from services.ai.adapters import register_image_adapter, _image_adapters
+        from shared.ai.adapters import register_image_adapter, _image_adapters
         
         mock_adapter = MagicMock()
         register_image_adapter("test_provider", mock_adapter)
@@ -33,14 +33,14 @@ class TestRegisterAdapters:
 
 class TestGetTextAdapter:
     def test_returns_none_for_unknown_provider(self):
-        from services.ai.adapters import get_text_adapter
+        from shared.ai.adapters import get_text_adapter
         
         result = get_text_adapter("unknown_provider_xyz")
         
         assert result is None
 
     def test_returns_cached_instance(self):
-        from services.ai.adapters import get_text_adapter, _text_adapters, _text_adapter_instances, clear_adapter_cache
+        from shared.ai.adapters import get_text_adapter, _text_adapters, _text_adapter_instances, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -62,7 +62,7 @@ class TestGetTextAdapter:
         clear_adapter_cache()
 
     def test_returns_none_when_not_available(self):
-        from services.ai.adapters import get_text_adapter, _text_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_text_adapter, _text_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -81,7 +81,7 @@ class TestGetTextAdapter:
         del _text_adapters["unavailable"]
 
     def test_handles_init_exception(self):
-        from services.ai.adapters import get_text_adapter, _text_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_text_adapter, _text_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -98,14 +98,14 @@ class TestGetTextAdapter:
 
 class TestGetImageAdapter:
     def test_returns_none_for_unknown_provider(self):
-        from services.ai.adapters import get_image_adapter
+        from shared.ai.adapters import get_image_adapter
         
         result = get_image_adapter("unknown_provider_xyz")
         
         assert result is None
 
     def test_returns_cached_instance(self):
-        from services.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -126,7 +126,7 @@ class TestGetImageAdapter:
         clear_adapter_cache()
 
     def test_returns_none_when_not_available(self):
-        from services.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -145,7 +145,7 @@ class TestGetImageAdapter:
         del _image_adapters["unavailable_img"]
 
     def test_handles_init_exception(self):
-        from services.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_image_adapter, _image_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -162,7 +162,7 @@ class TestGetImageAdapter:
 
 class TestClearAdapterCache:
     def test_clears_all_caches(self):
-        from services.ai.adapters import (
+        from shared.ai.adapters import (
             clear_adapter_cache, 
             _text_adapter_instances, 
             _image_adapter_instances,
@@ -195,7 +195,7 @@ class TestClearAdapterCache:
 
 class TestGetAvailableProviders:
     def test_get_available_text_providers(self):
-        from services.ai.adapters import get_available_text_providers, _text_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_available_text_providers, _text_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -215,7 +215,7 @@ class TestGetAvailableProviders:
         clear_adapter_cache()
 
     def test_get_available_image_providers(self):
-        from services.ai.adapters import get_available_image_providers, _image_adapters, clear_adapter_cache
+        from shared.ai.adapters import get_available_image_providers, _image_adapters, clear_adapter_cache
         
         clear_adapter_cache()
         
@@ -237,26 +237,26 @@ class TestGetAvailableProviders:
 
 class TestAutoRegistration:
     def test_openai_registered(self):
-        from services.ai.adapters import _text_adapters, _image_adapters
+        from shared.ai.adapters import _text_adapters, _image_adapters
         
         # OpenAI should be auto-registered
         assert "openai" in _text_adapters
 
     def test_fal_registered(self):
-        from services.ai.adapters import _image_adapters
+        from shared.ai.adapters import _image_adapters
         
         # FAL should be auto-registered
         assert "fal" in _image_adapters
     
     def test_qwen_text_registered(self):
         """Qwen 文本适配器应已注册"""
-        from services.ai.adapters import _text_adapters
+        from shared.ai.adapters import _text_adapters
         
         assert "qwen" in _text_adapters
     
     def test_wanx_image_registered(self):
         """Wanx 图像适配器应已注册"""
-        from services.ai.adapters import _image_adapters
+        from shared.ai.adapters import _image_adapters
         
         assert "wanx" in _image_adapters
 
@@ -276,7 +276,7 @@ class TestAutoRegistrationImportErrors:
             original_modules[key] = sys.modules.pop(key, None)
         
         # Clear adapters
-        from services.ai import adapters
+        from shared.ai import adapters
         adapters._text_adapters.pop('openai', None)
         adapters._image_adapters.pop('openai', None)
         
@@ -294,7 +294,7 @@ class TestAutoRegistrationImportErrors:
         """测试 FAL 导入失败时的处理"""
         import sys
         
-        from services.ai import adapters
+        from shared.ai import adapters
         adapters._image_adapters.pop('fal', None)
         
         # Mock the import to fail
@@ -314,7 +314,7 @@ class TestAutoRegistrationImportErrors:
         """测试 Qwen 导入失败时的处理"""
         import sys
         
-        from services.ai import adapters
+        from shared.ai import adapters
         adapters._text_adapters.pop('qwen', None)
         adapters._image_adapters.pop('wanx', None)
         
@@ -332,7 +332,7 @@ class TestAutoRegistrationImportErrors:
     
     def test_auto_register_handles_gemini_import_error(self):
         """测试 Gemini 导入失败时的处理 (通常失败因为未安装)"""
-        from services.ai import adapters
+        from shared.ai import adapters
         
         # Gemini adapter probably isn't installed, so this path is hit anyway
         # Just verify the registration function can be called without error
@@ -340,20 +340,20 @@ class TestAutoRegistrationImportErrors:
     
     def test_auto_register_handles_anthropic_import_error(self):
         """测试 Anthropic 导入失败时的处理"""
-        from services.ai import adapters
+        from shared.ai import adapters
         
         # Similar to Gemini
         adapters._auto_register_adapters()
     
     def test_auto_register_handles_grok_import_error(self):
         """测试 Grok 导入失败时的处理"""
-        from services.ai import adapters
+        from shared.ai import adapters
         
         adapters._auto_register_adapters()
     
     def test_auto_register_handles_jimeng_import_error(self):
         """测试 Jimeng 导入失败时的处理"""
-        from services.ai import adapters
+        from shared.ai import adapters
         
         adapters._auto_register_adapters()
 
@@ -363,7 +363,7 @@ class TestExports:
     
     def test_all_exports(self):
         """测试 __all__ 导出"""
-        from services.ai import adapters
+        from shared.ai import adapters
         
         assert "get_text_adapter" in adapters.__all__
         assert "get_image_adapter" in adapters.__all__

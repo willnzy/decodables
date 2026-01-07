@@ -23,7 +23,7 @@ class TestGetCanaryConfig:
     @patch('services.ai.canary.get_config')
     def test_returns_canary_config(self, mock_get_config):
         """返回灰度配置"""
-        from services.ai.canary import get_canary_config
+        from shared.ai.canary import get_canary_config
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -43,7 +43,7 @@ class TestGetCanaryConfig:
     @patch('services.ai.canary.get_config')
     def test_returns_disabled_when_not_configured(self, mock_get_config):
         """未配置时返回禁用状态"""
-        from services.ai.canary import get_canary_config
+        from shared.ai.canary import get_canary_config
         
         mock_get_config.return_value = None
         
@@ -62,7 +62,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_returns_false_when_disabled(self, mock_get_config):
         """灰度禁用时返回 False"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {"enabled": False}
         
@@ -74,7 +74,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_returns_false_when_tier_not_targeted(self, mock_get_config):
         """用户等级不在目标列表时返回 False"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -93,7 +93,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_returns_true_when_in_canary_group(self, mock_get_config):
         """用户在灰度组内时返回 True"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -114,7 +114,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_deterministic_hashing(self, mock_get_config):
         """确定性哈希 - 相同用户始终得到相同结果"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -138,7 +138,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_different_users_different_results(self, mock_get_config):
         """不同用户可能得到不同结果（统计测试）"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -166,7 +166,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_no_model_type_config(self, mock_get_config):
         """没有对应模型类型的配置"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -187,7 +187,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_zero_traffic_percent(self, mock_get_config):
         """0% 流量"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -206,7 +206,7 @@ class TestShouldUseCanary:
     @patch('services.ai.canary.get_canary_config')
     def test_all_tiers_targeted(self, mock_get_config):
         """所有等级都在目标列表"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -233,7 +233,7 @@ class TestGetCanaryStatus:
     @patch('services.ai.canary.get_canary_config')
     def test_returns_status_summary(self, mock_get_config):
         """返回灰度状态摘要"""
-        from services.ai.canary import get_canary_status
+        from shared.ai.canary import get_canary_status
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -268,7 +268,7 @@ class TestCanaryEdgeCases:
     @patch('services.ai.canary.get_canary_config')
     def test_empty_target_tiers(self, mock_get_config):
         """空目标等级列表"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -289,7 +289,7 @@ class TestCanaryEdgeCases:
     @patch('services.ai.canary.get_canary_config')
     def test_visitor_id(self, mock_get_config):
         """访客 ID (visitor_xxx)"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,
@@ -309,7 +309,7 @@ class TestCanaryEdgeCases:
     @patch('services.ai.canary.get_canary_config')
     def test_traffic_percent_boundary(self, mock_get_config):
         """流量百分比边界值"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         # 测试 100%
         mock_get_config.return_value = {
@@ -333,7 +333,7 @@ class TestCanaryEdgeCases:
     @patch('services.ai.canary.get_canary_config')
     def test_special_characters_in_user_id(self, mock_get_config):
         """用户 ID 中的特殊字符"""
-        from services.ai.canary import should_use_canary
+        from shared.ai.canary import should_use_canary
         
         mock_get_config.return_value = {
             "enabled": True,

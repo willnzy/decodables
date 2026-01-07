@@ -15,8 +15,8 @@ class TestUnifiedImageServiceGenerate:
     @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_successful_generation(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
-        from services.ai.unified_image_service import unified_image_service
-        from services.ai.base import AIResponse, AIUsage
+        from shared.ai.unified_image_service import unified_image_service
+        from shared.ai.base import AIResponse, AIUsage
         
         mock_config.return_value = {"provider": "fal", "model": "flux-schnell", "fallback": {}}
         mock_canary.return_value = (False, None)
@@ -48,8 +48,8 @@ class TestUnifiedImageServiceGenerate:
     @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_canary_model(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
-        from services.ai.unified_image_service import unified_image_service
-        from services.ai.base import AIResponse, AIUsage
+        from shared.ai.unified_image_service import unified_image_service
+        from shared.ai.base import AIResponse, AIUsage
         
         mock_config.return_value = {"provider": "fal", "model": "flux-schnell", "fallback": {}}
         mock_canary.return_value = (True, {"provider": "jimeng", "model": "jimeng-2.1"})
@@ -80,7 +80,7 @@ class TestUnifiedImageServiceGenerate:
     @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_provider_disabled(self, mock_config, mock_canary, mock_enabled, mock_fallback):
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_config.return_value = {"provider": "disabled", "model": "model", "fallback": None}
         mock_canary.return_value = (False, None)
@@ -100,7 +100,7 @@ class TestUnifiedImageServiceGenerate:
     @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_adapter_not_available(self, mock_config, mock_canary, mock_enabled, mock_adapter):
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_config.return_value = {"provider": "fal", "model": "flux-schnell", "fallback": None}
         mock_canary.return_value = (False, None)
@@ -123,8 +123,8 @@ class TestUnifiedImageServiceImageToImage:
     @patch('services.ai.unified_image_service.should_use_canary')
     @patch('services.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image_success(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
-        from services.ai.unified_image_service import unified_image_service
-        from services.ai.base import AIResponse, AIUsage
+        from shared.ai.unified_image_service import unified_image_service
+        from shared.ai.base import AIResponse, AIUsage
         
         mock_config.return_value = {"provider": "fal", "model": "flux-schnell", "fallback": {}}
         mock_canary.return_value = (False, None)
@@ -153,7 +153,7 @@ class TestTryFallback:
     @pytest.mark.asyncio
     @patch('services.ai.unified_image_service.get_fallback_config')
     async def test_no_fallback_configured(self, mock_fallback):
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_fallback.return_value = None
         
@@ -170,8 +170,8 @@ class TestTryFallback:
     @patch('services.ai.unified_image_service.get_image_adapter')
     @patch('services.ai.unified_image_service.get_fallback_config')
     async def test_fallback_success(self, mock_fallback, mock_adapter, mock_track):
-        from services.ai.unified_image_service import unified_image_service
-        from services.ai.base import AIResponse, AIUsage
+        from shared.ai.unified_image_service import unified_image_service
+        from shared.ai.base import AIResponse, AIUsage
         
         mock_fallback.return_value = {"provider": "openai", "model": "dall-e-3"}
         
@@ -197,8 +197,8 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     @patch('services.ai.unified_image_service.unified_image_service.generate')
     async def test_generate_image_function(self, mock_generate):
-        from services.ai.unified_image_service import generate_image
-        from services.ai.base import AIResponse
+        from shared.ai.unified_image_service import generate_image
+        from shared.ai.base import AIResponse
         
         mock_generate.return_value = AIResponse(success=True, content=["url"])
         
@@ -213,8 +213,8 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     @patch('services.ai.unified_image_service.unified_image_service.image_to_image')
     async def test_image_to_image_function(self, mock_i2i):
-        from services.ai.unified_image_service import image_to_image
-        from services.ai.base import AIResponse
+        from shared.ai.unified_image_service import image_to_image
+        from shared.ai.base import AIResponse
         
         mock_i2i.return_value = AIResponse(success=True, content=["url"])
         
@@ -229,5 +229,5 @@ class TestConvenienceFunctions:
 
 class TestSingleton:
     def test_singleton_exists(self):
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         assert unified_image_service is not None

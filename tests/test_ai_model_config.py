@@ -26,7 +26,7 @@ class TestGetTextModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_config_from_db(self, mock_get_config):
         """从数据库返回配置"""
-        from services.ai.model_config import get_text_model_config
+        from shared.ai.model_config import get_text_model_config
         
         mock_get_config.return_value = {
             "provider": "qwen",
@@ -44,7 +44,7 @@ class TestGetTextModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
-        from services.ai.model_config import get_text_model_config
+        from shared.ai.model_config import get_text_model_config
         
         mock_get_config.return_value = None
         
@@ -64,7 +64,7 @@ class TestGetImageModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_free_tier_model(self, mock_get_config):
         """Free 用户模型"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -84,7 +84,7 @@ class TestGetImageModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_pro_tier_model(self, mock_get_config):
         """Pro 用户模型"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -103,7 +103,7 @@ class TestGetImageModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_unknown_tier_falls_back_to_free(self, mock_get_config):
         """未知等级回退到 free"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -121,7 +121,7 @@ class TestGetImageModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         mock_get_config.return_value = None
         
@@ -141,7 +141,7 @@ class TestGetAdminModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_admin_config(self, mock_get_config):
         """返回 Admin 配置"""
-        from services.ai.model_config import get_admin_model_config
+        from shared.ai.model_config import get_admin_model_config
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -158,7 +158,7 @@ class TestGetAdminModelConfig:
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
-        from services.ai.model_config import get_admin_model_config
+        from shared.ai.model_config import get_admin_model_config
         
         mock_get_config.return_value = None
         
@@ -178,7 +178,7 @@ class TestGetEnabledProviders:
     @patch('services.ai.model_config.get_config')
     def test_returns_enabled_providers(self, mock_get_config):
         """返回启用的提供商"""
-        from services.ai.model_config import get_enabled_providers
+        from shared.ai.model_config import get_enabled_providers
         
         mock_get_config.return_value = {
             "openai": True,
@@ -195,7 +195,7 @@ class TestGetEnabledProviders:
     @patch('services.ai.model_config.get_config')
     def test_returns_default_when_not_configured(self, mock_get_config):
         """未配置时返回默认值"""
-        from services.ai.model_config import get_enabled_providers
+        from shared.ai.model_config import get_enabled_providers
         
         mock_get_config.return_value = None
         
@@ -216,7 +216,7 @@ class TestIsProviderEnabled:
     @patch('services.ai.model_config.get_enabled_providers')
     def test_enabled_provider(self, mock_get_enabled):
         """启用的提供商"""
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         
         mock_get_enabled.return_value = {"openai": True, "qwen": False}
         
@@ -225,7 +225,7 @@ class TestIsProviderEnabled:
     @patch('services.ai.model_config.get_enabled_providers')
     def test_disabled_provider(self, mock_get_enabled):
         """禁用的提供商"""
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         
         mock_get_enabled.return_value = {"openai": True, "qwen": False}
         
@@ -234,7 +234,7 @@ class TestIsProviderEnabled:
     @patch('services.ai.model_config.get_enabled_providers')
     def test_unknown_provider(self, mock_get_enabled):
         """未知的提供商返回 False"""
-        from services.ai.model_config import is_provider_enabled
+        from shared.ai.model_config import is_provider_enabled
         
         mock_get_enabled.return_value = {"openai": True}
         
@@ -251,7 +251,7 @@ class TestGetProviderModels:
     @patch('services.ai.model_config.get_config')
     def test_returns_provider_models(self, mock_get_config):
         """返回提供商的模型列表"""
-        from services.ai.model_config import get_provider_models
+        from shared.ai.model_config import get_provider_models
         
         mock_get_config.return_value = {
             "openai": {"text": ["gpt-4o-mini", "gpt-4o"], "image": ["dall-e-3"]},
@@ -266,7 +266,7 @@ class TestGetProviderModels:
     @patch('services.ai.model_config.get_config')
     def test_returns_empty_for_unknown_provider(self, mock_get_config):
         """未知提供商返回空"""
-        from services.ai.model_config import get_provider_models
+        from shared.ai.model_config import get_provider_models
         
         mock_get_config.return_value = {"openai": {"text": ["gpt-4o"]}}
         
@@ -285,7 +285,7 @@ class TestGetAllProviderModels:
     @patch('services.ai.model_config.get_config')
     def test_returns_all_models(self, mock_get_config):
         """返回所有提供商的模型"""
-        from services.ai.model_config import get_all_provider_models
+        from shared.ai.model_config import get_all_provider_models
         
         mock_get_config.return_value = {
             "openai": {"text": ["gpt-4o-mini"], "image": ["dall-e-3"]},
@@ -310,7 +310,7 @@ class TestGetModelCost:
     @patch('services.ai.model_config.get_config')
     def test_returns_model_cost(self, mock_get_config):
         """返回模型成本"""
-        from services.ai.model_config import get_model_cost
+        from shared.ai.model_config import get_model_cost
         
         mock_get_config.return_value = {
             "openai": {"gpt-4o-mini": 0.15, "gpt-4o": 2.50},
@@ -324,7 +324,7 @@ class TestGetModelCost:
     @patch('services.ai.model_config.get_config')
     def test_returns_zero_for_unknown_model(self, mock_get_config):
         """未知模型返回 0"""
-        from services.ai.model_config import get_model_cost
+        from shared.ai.model_config import get_model_cost
         
         mock_get_config.return_value = {"openai": {"gpt-4o": 2.50}}
         
@@ -335,7 +335,7 @@ class TestGetModelCost:
     @patch('services.ai.model_config.get_config')
     def test_returns_zero_for_unknown_provider(self, mock_get_config):
         """未知提供商返回 0"""
-        from services.ai.model_config import get_model_cost
+        from shared.ai.model_config import get_model_cost
         
         mock_get_config.return_value = {"openai": {"gpt-4o": 2.50}}
         
@@ -353,7 +353,7 @@ class TestGetFallbackConfig:
     
     def test_extracts_fallback(self):
         """提取 fallback 配置"""
-        from services.ai.model_config import get_fallback_config
+        from shared.ai.model_config import get_fallback_config
         
         config = {
             "provider": "qwen",
@@ -368,7 +368,7 @@ class TestGetFallbackConfig:
     
     def test_returns_none_when_no_fallback(self):
         """无 fallback 时返回 None"""
-        from services.ai.model_config import get_fallback_config
+        from shared.ai.model_config import get_fallback_config
         
         config = {"provider": "qwen", "model": "qwen-plus"}
         
@@ -387,7 +387,7 @@ class TestModelConfigEdgeCases:
     @patch('services.ai.model_config.get_config')
     def test_empty_config_value(self, mock_get_config):
         """空配置值"""
-        from services.ai.model_config import get_text_model_config
+        from shared.ai.model_config import get_text_model_config
         
         mock_get_config.return_value = {}
         
@@ -399,7 +399,7 @@ class TestModelConfigEdgeCases:
     @patch('services.ai.model_config.get_config')
     def test_partial_config(self, mock_get_config):
         """部分配置"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         # 只有 provider，没有 models
         mock_get_config.return_value = {"provider": "wanx"}
@@ -411,7 +411,7 @@ class TestModelConfigEdgeCases:
     @patch('services.ai.model_config.get_config')
     def test_case_sensitivity_tier(self, mock_get_config):
         """tier 大小写"""
-        from services.ai.model_config import get_image_model_config
+        from shared.ai.model_config import get_image_model_config
         
         mock_get_config.return_value = {
             "provider": "fal",

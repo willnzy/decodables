@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from dependencies import require_admin
 from infrastructure.db_compat import supabase
-from services.ai.model_config_service import (
+from shared.ai.model_config_service import (
     get_model_configs,
     update_text_model_config,
     update_image_model_config,

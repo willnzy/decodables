@@ -29,10 +29,10 @@ from infrastructure.db_compat import (
     supabase, credit_deduct, add_credits, save_asset,
     get_project_detail, update_project_hash, log_activity,
 )
-from services.ai.image_generator import generate_8_images
-from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
-from services.ai.story_generator import generate_story_json, client as openai_client
-from services.ai.zine_generator import create_foldable_book
+from shared.ai.image_generator import generate_8_images
+from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
+from shared.ai.story_generator import generate_story_json, client as openai_client
+from shared.ai.zine_generator import create_foldable_book
 from infrastructure.task_queue import task_queue
 from domains.platform.analytics_service import track_ai_generation
 from infrastructure.rate_limiter import limiter

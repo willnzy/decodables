@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from infrastructure.db_compat import get_project_detail, log_activity
-from services.ai.zine_generator import create_foldable_book, create_assets_zip
+from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)

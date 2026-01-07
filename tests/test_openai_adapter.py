@@ -12,7 +12,7 @@ class TestOpenAITextAdapter:
     @patch.dict(os.environ, {'OPENAI_API_KEY': ''}, clear=True)
     @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
     def test_not_available_without_key(self):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         adapter = OpenAITextAdapter()
         assert adapter.is_available() is False
 
@@ -20,12 +20,12 @@ class TestOpenAITextAdapter:
     @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     def test_available_with_key(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         adapter = OpenAITextAdapter()
         assert adapter.is_available() is True
 
     def test_get_available_models(self):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         adapter = OpenAITextAdapter()
         models = adapter.get_available_models()
         assert 'gpt-4o-mini' in models
@@ -36,7 +36,7 @@ class TestOpenAITextAdapter:
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_success(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -58,7 +58,7 @@ class TestOpenAITextAdapter:
 
     @pytest.mark.asyncio
     async def test_chat_completion_no_client(self):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         adapter = OpenAITextAdapter()
         adapter._client = None
@@ -76,7 +76,7 @@ class TestOpenAITextAdapter:
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_o1_model(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -104,7 +104,7 @@ class TestOpenAITextAdapter:
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_error(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
@@ -121,7 +121,7 @@ class TestOpenAITextAdapter:
 
 class TestOpenAITextAdapterConvertSystem:
     def test_convert_system_to_user(self):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         adapter = OpenAITextAdapter()
         messages = [
@@ -137,7 +137,7 @@ class TestOpenAITextAdapterConvertSystem:
         assert "Hello" in result[0]["content"]
 
     def test_convert_no_system(self):
-        from services.ai.adapters.openai_adapter import OpenAITextAdapter
+        from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         
         adapter = OpenAITextAdapter()
         messages = [{"role": "user", "content": "Hello"}]
@@ -151,12 +151,12 @@ class TestOpenAIImageAdapter:
     @patch.dict(os.environ, {'OPENAI_API_KEY': ''})
     @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
     def test_not_available_without_key(self):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         adapter = OpenAIImageAdapter()
         assert adapter.is_available() is False
 
     def test_get_available_models(self):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         adapter = OpenAIImageAdapter()
         models = adapter.get_available_models()
         assert 'dall-e-3' in models
@@ -166,7 +166,7 @@ class TestOpenAIImageAdapter:
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_generate_image_success(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -186,7 +186,7 @@ class TestOpenAIImageAdapter:
 
     @pytest.mark.asyncio
     async def test_generate_image_no_client(self):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         
         adapter = OpenAIImageAdapter()
         adapter._client = None
@@ -203,7 +203,7 @@ class TestOpenAIImageAdapter:
     @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_generate_image_with_negative_prompt(self, mock_client_class):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -226,7 +226,7 @@ class TestOpenAIImageAdapter:
 
     @pytest.mark.asyncio
     async def test_image_to_image_not_supported(self):
-        from services.ai.adapters.openai_adapter import OpenAIImageAdapter
+        from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         
         adapter = OpenAIImageAdapter()
         

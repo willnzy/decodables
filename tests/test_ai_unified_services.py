@@ -14,7 +14,7 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 import asyncio
 
-from services.ai.base import AIResponse, AIUsage, AIErrorType
+from shared.ai.base import AIResponse, AIUsage, AIErrorType
 
 
 # ==========================================
@@ -35,7 +35,7 @@ class TestUnifiedTextService:
         mock_is_enabled, mock_get_config
     ):
         """成功的聊天请求"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         # Setup mocks
         mock_get_config.return_value = {
@@ -79,7 +79,7 @@ class TestUnifiedTextService:
         self, mock_get_adapter, mock_is_enabled, mock_get_config
     ):
         """提供商未启用时返回错误"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "qwen",
@@ -105,7 +105,7 @@ class TestUnifiedTextService:
         self, mock_cache_get, mock_get_adapter, mock_is_enabled, mock_get_config, mock_fallback
     ):
         """适配器不可用时返回错误"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -130,7 +130,7 @@ class TestUnifiedTextService:
         self, mock_get_config, mock_cache_get
     ):
         """缓存命中时直接返回"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -160,7 +160,7 @@ class TestUnifiedTextService:
         mock_is_enabled, mock_get_admin_config
     ):
         """Admin 模型使用"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_admin_config.return_value = {
             "provider": "openai",
@@ -207,7 +207,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """成功的图像生成"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -248,7 +248,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """【业务规则 5.1】基于等级的模型选择 - Pro 用户使用 flux-dev"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         # Pro 用户应该使用 flux-dev
         mock_get_config.return_value = {
@@ -286,7 +286,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
         """图生图功能"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -322,7 +322,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
         """【业务规则 5.3】灰度用户使用灰度模型"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -363,7 +363,7 @@ class TestUnifiedImageService:
         mock_get_fallback, mock_get_adapter, mock_track
     ):
         """【业务规则 5.5】提供商未启用时使用 fallback"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "disabled_provider",
@@ -401,7 +401,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_is_enabled, mock_get_fallback
     ):
         """【业务规则】提供商未启用且无 fallback 返回错误"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "disabled_provider",
@@ -431,7 +431,7 @@ class TestUnifiedImageService:
         mock_get_fallback, mock_get_adapter, mock_track
     ):
         """【业务规则 5.5】适配器不可用时尝试 fallback"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "unavailable",
@@ -471,7 +471,7 @@ class TestUnifiedImageService:
         mock_get_fallback, mock_get_adapter, mock_track
     ):
         """【业务规则 5.5】生成失败时尝试 fallback"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -520,7 +520,7 @@ class TestUnifiedImageService:
         self, mock_get_config, mock_should_canary, mock_get_adapter, mock_track
     ):
         """【业务规则】image_to_image 适配器不可用返回错误"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {"provider": "fal", "model": "flux-dev"}
         mock_should_canary.return_value = (False, None)
@@ -542,7 +542,7 @@ class TestUnifiedImageConvenienceFunctions:
     @patch('services.ai.unified_image_service.unified_image_service.generate')
     async def test_generate_image_convenience(self, mock_generate):
         """【业务规则】generate_image 便捷函数"""
-        from services.ai.unified_image_service import generate_image
+        from shared.ai.unified_image_service import generate_image
         
         mock_generate.return_value = AIResponse(
             success=True,
@@ -562,7 +562,7 @@ class TestUnifiedImageConvenienceFunctions:
     @patch('services.ai.unified_image_service.unified_image_service.image_to_image')
     async def test_image_to_image_convenience(self, mock_i2i):
         """【业务规则】image_to_image 便捷函数"""
-        from services.ai.unified_image_service import image_to_image
+        from shared.ai.unified_image_service import image_to_image
         
         mock_i2i.return_value = AIResponse(
             success=True,
@@ -599,7 +599,7 @@ class TestCanaryIntegration:
         mock_is_enabled, mock_get_config, mock_canary
     ):
         """灰度模型被使用"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -649,7 +649,7 @@ class TestFallbackBehavior:
         mock_is_enabled, mock_get_config
     ):
         """主模型失败时使用 fallback"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "qwen",
@@ -707,7 +707,7 @@ class TestUnifiedServicesEdgeCases:
         mock_is_enabled, mock_get_config
     ):
         """空消息列表"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -740,7 +740,7 @@ class TestUnifiedServicesEdgeCases:
         self, mock_get_config, mock_is_enabled, mock_get_adapter, mock_track
     ):
         """超长提示词"""
-        from services.ai.unified_image_service import unified_image_service
+        from shared.ai.unified_image_service import unified_image_service
         
         mock_get_config.return_value = {
             "provider": "fal",
@@ -784,7 +784,7 @@ class TestUnifiedTextServiceAdditionalCoverage:
         mock_is_enabled, mock_get_config, mock_fallback
     ):
         """提供商未启用时使用 fallback（覆盖 117-118 行）"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "disabled_provider",
@@ -827,7 +827,7 @@ class TestUnifiedTextServiceAdditionalCoverage:
         mock_get_config, mock_fallback
     ):
         """主适配器不可用，fallback 成功（覆盖 130-132 行）"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "qwen",
@@ -873,7 +873,7 @@ class TestUnifiedTextServiceAdditionalCoverage:
         mock_get_config, mock_fallback
     ):
         """_try_fallback 没有配置时返回错误（覆盖 192 行）"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -902,7 +902,7 @@ class TestUnifiedTextServiceAdditionalCoverage:
         mock_get_config, mock_fallback
     ):
         """fallback adapter 不可用时返回错误（覆盖 206 行）"""
-        from services.ai.unified_text_service import unified_text_service
+        from shared.ai.unified_text_service import unified_text_service
         
         mock_get_config.return_value = {
             "provider": "qwen",
@@ -942,7 +942,7 @@ class TestConvenienceFunctions:
         mock_is_enabled, mock_get_config
     ):
         """测试 chat 便捷函数（覆盖 254 行）"""
-        from services.ai.unified_text_service import chat
+        from shared.ai.unified_text_service import chat
         
         mock_get_config.return_value = {
             "provider": "openai",
@@ -980,7 +980,7 @@ class TestConvenienceFunctions:
         mock_is_enabled, mock_get_admin_config
     ):
         """测试 admin_chat 便捷函数（覆盖 270 行）"""
-        from services.ai.unified_text_service import admin_chat
+        from shared.ai.unified_text_service import admin_chat
         
         mock_get_admin_config.return_value = {
             "provider": "openai",

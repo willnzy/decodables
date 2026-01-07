@@ -71,7 +71,7 @@ async def pdf_preview(
     Pro only feature. Returns thumbnail URLs for each page.
     """
     import fitz
-    from services.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
+    from shared.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
 
     if user.get("tier", "free").lower() != "pro":
         raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan")
@@ -153,7 +153,7 @@ async def ocr_tool(
     Pro or trial users only. Costs 5 credits.
     """
     from infrastructure.db_compat import credit_deduct, log_activity, save_asset
-    from services.ai.ocr_service import process_ocr
+    from shared.ai.ocr_service import process_ocr
     from services.access_control import AccessControl
     from timezone_utils import get_request_timezone
     from config import TRIAL_DAYS

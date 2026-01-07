@@ -12,12 +12,12 @@ class TestFALImageAdapter:
     @patch.dict(os.environ, {'FAL_KEY': ''}, clear=True)
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', '')
     def test_not_available_without_key(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         adapter = FALImageAdapter()
         assert adapter.is_available() is False
 
     def test_get_available_models(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         adapter = FALImageAdapter()
         models = adapter.get_available_models()
         assert 'flux-schnell' in models
@@ -25,7 +25,7 @@ class TestFALImageAdapter:
 
     @pytest.mark.asyncio
     async def test_generate_image_no_client(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = None
@@ -40,7 +40,7 @@ class TestFALImageAdapter:
 
     @pytest.mark.asyncio
     async def test_generate_image_unknown_model(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -57,7 +57,7 @@ class TestFALImageAdapter:
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_success(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -81,7 +81,7 @@ class TestFALImageAdapter:
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_with_negative_prompt(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -107,7 +107,7 @@ class TestFALImageAdapter:
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_error(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -125,7 +125,7 @@ class TestFALImageAdapter:
 
     @pytest.mark.asyncio
     async def test_image_to_image_no_client(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = None
@@ -141,7 +141,7 @@ class TestFALImageAdapter:
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_image_to_image_success(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -167,7 +167,7 @@ class TestFALImageAdapter:
     @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_image_to_image_error(self):
-        from services.ai.adapters.fal_adapter import FALImageAdapter
+        from shared.ai.adapters.fal_adapter import FALImageAdapter
         
         adapter = FALImageAdapter()
         adapter._client = True
@@ -187,14 +187,14 @@ class TestFALImageAdapter:
 
 class TestFALModelConfig:
     def test_model_endpoints(self):
-        from services.ai.adapters.fal_adapter import FAL_MODEL_ENDPOINTS
+        from shared.ai.adapters.fal_adapter import FAL_MODEL_ENDPOINTS
         
         assert "flux-schnell" in FAL_MODEL_ENDPOINTS
         assert "flux-dev" in FAL_MODEL_ENDPOINTS
         assert "flux-pro" in FAL_MODEL_ENDPOINTS
 
     def test_model_defaults(self):
-        from services.ai.adapters.fal_adapter import FAL_MODEL_DEFAULTS
+        from shared.ai.adapters.fal_adapter import FAL_MODEL_DEFAULTS
         
         assert FAL_MODEL_DEFAULTS["flux-schnell"]["num_inference_steps"] == 4
         assert FAL_MODEL_DEFAULTS["flux-dev"]["num_inference_steps"] == 28

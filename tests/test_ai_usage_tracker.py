@@ -16,7 +16,7 @@ from decimal import Decimal
 class TestEstimateCost:
     @patch('services.ai.usage_tracker.get_model_cost')
     def test_text_cost_calculation(self, mock_get_cost):
-        from services.ai.usage_tracker import _estimate_cost
+        from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 1.0  # $1 per 1M tokens
         
         cost = _estimate_cost(
@@ -32,7 +32,7 @@ class TestEstimateCost:
 
     @patch('services.ai.usage_tracker.get_model_cost')
     def test_image_cost_calculation(self, mock_get_cost):
-        from services.ai.usage_tracker import _estimate_cost
+        from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.04  # $0.04 per image
         
         cost = _estimate_cost(
@@ -46,7 +46,7 @@ class TestEstimateCost:
 
     @patch('services.ai.usage_tracker.get_model_cost')
     def test_cost_precision(self, mock_get_cost):
-        from services.ai.usage_tracker import _estimate_cost
+        from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.50
         
         cost = _estimate_cost(
@@ -67,7 +67,7 @@ class TestTrackAIUsageSync:
     @patch('services.ai.usage_tracker.supabase')
     @patch('services.ai.usage_tracker._estimate_cost')
     def test_tracks_usage_successfully(self, mock_cost, mock_supabase):
-        from services.ai.usage_tracker import track_ai_usage_sync
+        from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
         
         track_ai_usage_sync(
@@ -84,7 +84,7 @@ class TestTrackAIUsageSync:
     @patch('services.ai.usage_tracker.supabase', None)
     @patch('services.ai.usage_tracker._estimate_cost')
     def test_handles_no_supabase(self, mock_cost):
-        from services.ai.usage_tracker import track_ai_usage_sync
+        from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
         
         # Should not raise
@@ -98,7 +98,7 @@ class TestTrackAIUsageSync:
     @patch('services.ai.usage_tracker.supabase')
     @patch('services.ai.usage_tracker._estimate_cost')
     def test_handles_exception(self, mock_cost, mock_supabase):
-        from services.ai.usage_tracker import track_ai_usage_sync
+        from shared.ai.usage_tracker import track_ai_usage_sync
         mock_cost.return_value = Decimal("0.0010")
         mock_supabase.rpc.side_effect = Exception("DB Error")
         
@@ -116,7 +116,7 @@ class TestTrackAIUsageAsync:
     @patch('services.ai.usage_tracker.supabase')
     @patch('services.ai.usage_tracker._estimate_cost')
     async def test_tracks_usage_async(self, mock_cost, mock_supabase):
-        from services.ai.usage_tracker import track_ai_usage
+        from shared.ai.usage_tracker import track_ai_usage
         mock_cost.return_value = Decimal("0.0010")
         
         # Mock the RPC call
@@ -137,7 +137,7 @@ class TestTrackAIUsageAsync:
     @patch('services.ai.usage_tracker.supabase', None)
     @patch('services.ai.usage_tracker._estimate_cost')
     async def test_handles_no_supabase_async(self, mock_cost):
-        from services.ai.usage_tracker import track_ai_usage
+        from shared.ai.usage_tracker import track_ai_usage
         mock_cost.return_value = Decimal("0.0010")
         
         # Should not raise
@@ -152,13 +152,13 @@ class TestTrackAIUsageAsync:
 class TestGetUsageSummary:
     @patch('services.ai.usage_tracker.supabase', None)
     def test_returns_empty_when_no_db(self):
-        from services.ai.usage_tracker import get_usage_summary
+        from shared.ai.usage_tracker import get_usage_summary
         result = get_usage_summary()
         assert result == {}
 
     @patch('services.ai.usage_tracker.supabase')
     def test_returns_summary(self, mock_supabase):
-        from services.ai.usage_tracker import get_usage_summary
+        from shared.ai.usage_tracker import get_usage_summary
         
         mock_supabase.from_.return_value.select.return_value.execute.return_value.data = [
             {"provider": "openai", "model": "gpt-4o", "total_calls": 100, "total_cost_usd": 5.0},
@@ -173,7 +173,7 @@ class TestGetUsageSummary:
 
     @patch('services.ai.usage_tracker.supabase')
     def test_returns_empty_on_no_data(self, mock_supabase):
-        from services.ai.usage_tracker import get_usage_summary
+        from shared.ai.usage_tracker import get_usage_summary
         mock_supabase.from_.return_value.select.return_value.execute.return_value.data = None
         
         result = get_usage_summary()
@@ -182,7 +182,7 @@ class TestGetUsageSummary:
 
     @patch('services.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
-        from services.ai.usage_tracker import get_usage_summary
+        from shared.ai.usage_tracker import get_usage_summary
         mock_supabase.from_.side_effect = Exception("DB Error")
         
         result = get_usage_summary()
@@ -193,13 +193,13 @@ class TestGetUsageSummary:
 class TestGetDailyTrend:
     @patch('services.ai.usage_tracker.supabase', None)
     def test_returns_empty_when_no_db(self):
-        from services.ai.usage_tracker import get_daily_trend
+        from shared.ai.usage_tracker import get_daily_trend
         result = get_daily_trend()
         assert result == []
 
     @patch('services.ai.usage_tracker.supabase')
     def test_returns_trend_data(self, mock_supabase):
-        from services.ai.usage_tracker import get_daily_trend
+        from shared.ai.usage_tracker import get_daily_trend
         
         mock_supabase.from_.return_value.select.return_value.execute.return_value.data = [
             {"date": "2025-01-01", "cost_usd": 5.23, "calls": 456},
@@ -213,7 +213,7 @@ class TestGetDailyTrend:
 
     @patch('services.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
-        from services.ai.usage_tracker import get_daily_trend
+        from shared.ai.usage_tracker import get_daily_trend
         mock_supabase.from_.side_effect = Exception("DB Error")
         
         result = get_daily_trend()

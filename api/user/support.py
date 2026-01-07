@@ -99,7 +99,7 @@ async def chat_support(
     """AI-powered support chat."""
     from application.services.ai_chat_service import chat_with_assistant, chat_with_vision, SUPPORT_SYSTEM_PROMPT_FALLBACK
     from config import OPENAI_ASSISTANT_ID
-    from services.ai.story_generator import client as openai_client
+    from shared.ai.story_generator import client as openai_client
 
     try:
         # Use vision API if images provided

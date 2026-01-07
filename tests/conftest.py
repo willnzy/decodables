@@ -537,7 +537,7 @@ def mock_user_with_credits():
 @pytest.fixture
 def successful_text_response():
     """成功的文本 AI 响应"""
-    from services.ai.base import AIResponse, AIUsage
+    from shared.ai.base import AIResponse, AIUsage
     return AIResponse(
         success=True,
         content="Test response content",
@@ -551,7 +551,7 @@ def successful_text_response():
 @pytest.fixture
 def successful_image_response():
     """成功的图像 AI 响应"""
-    from services.ai.base import AIResponse, AIUsage
+    from shared.ai.base import AIResponse, AIUsage
     return AIResponse(
         success=True,
         content=["https://example.com/image1.png", "https://example.com/image2.png"],
@@ -565,7 +565,7 @@ def successful_image_response():
 @pytest.fixture
 def failed_response():
     """失败的 AI 响应"""
-    from services.ai.base import AIResponse, AIErrorType
+    from shared.ai.base import AIResponse, AIErrorType
     return AIResponse(
         success=False,
         error="Rate limit exceeded",
@@ -673,7 +673,7 @@ def mock_aiohttp_session():
 
 def assert_ai_response_success(response, expected_provider=None, expected_model=None):
     """Helper to assert AI response is successful"""
-    from services.ai.base import AIResponse
+    from shared.ai.base import AIResponse
     assert isinstance(response, AIResponse)
     assert response.success is True
     assert response.error is None
@@ -685,7 +685,7 @@ def assert_ai_response_success(response, expected_provider=None, expected_model=
 
 def assert_ai_response_failure(response, expected_error_type=None):
     """Helper to assert AI response is failure"""
-    from services.ai.base import AIResponse
+    from shared.ai.base import AIResponse
     assert isinstance(response, AIResponse)
     assert response.success is False
     assert response.error is not None

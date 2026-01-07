@@ -9,23 +9,23 @@ from unittest.mock import MagicMock
 
 class TestAICallType:
     def test_text_value(self):
-        from services.ai.base import AICallType
+        from shared.ai.base import AICallType
         assert AICallType.TEXT == "text"
 
     def test_image_value(self):
-        from services.ai.base import AICallType
+        from shared.ai.base import AICallType
         assert AICallType.IMAGE == "image"
 
 
 class TestAIMessage:
     def test_creation(self):
-        from services.ai.base import AIMessage
+        from shared.ai.base import AIMessage
         msg = AIMessage(role="user", content="Hello")
         assert msg.role == "user"
         assert msg.content == "Hello"
 
     def test_to_dict(self):
-        from services.ai.base import AIMessage
+        from shared.ai.base import AIMessage
         msg = AIMessage(role="assistant", content="Hi there")
         d = msg.to_dict()
         assert d == {"role": "assistant", "content": "Hi there"}
@@ -33,31 +33,31 @@ class TestAIMessage:
 
 class TestAIUsage:
     def test_default_values(self):
-        from services.ai.base import AIUsage
+        from shared.ai.base import AIUsage
         usage = AIUsage()
         assert usage.input_tokens == 0
         assert usage.output_tokens == 0
         assert usage.total_tokens == 0
 
     def test_total_property_uses_total_tokens(self):
-        from services.ai.base import AIUsage
+        from shared.ai.base import AIUsage
         usage = AIUsage(total_tokens=100)
         assert usage.total == 100
 
     def test_total_property_calculates_sum(self):
-        from services.ai.base import AIUsage
+        from shared.ai.base import AIUsage
         usage = AIUsage(input_tokens=50, output_tokens=30, total_tokens=0)
         assert usage.total == 80
 
     def test_images_generated(self):
-        from services.ai.base import AIUsage
+        from shared.ai.base import AIUsage
         usage = AIUsage(images_generated=5)
         assert usage.images_generated == 5
 
 
 class TestAIResponse:
     def test_success_response(self):
-        from services.ai.base import AIResponse
+        from shared.ai.base import AIResponse
         response = AIResponse(
             success=True,
             content="Hello!",
@@ -68,14 +68,14 @@ class TestAIResponse:
         assert response.content == "Hello!"
 
     def test_default_values(self):
-        from services.ai.base import AIResponse, AIUsage
+        from shared.ai.base import AIResponse, AIUsage
         response = AIResponse(success=True)
         assert response.content == ""
         assert response.model == ""
         assert response.error is None
 
     def test_from_error_classmethod(self):
-        from services.ai.base import AIResponse
+        from shared.ai.base import AIResponse
         response = AIResponse.from_error(
             error="Something went wrong",
             error_type="api_error",
@@ -87,7 +87,7 @@ class TestAIResponse:
         assert response.error_type == "api_error"
 
     def test_image_content(self):
-        from services.ai.base import AIResponse
+        from shared.ai.base import AIResponse
         response = AIResponse(
             success=True,
             content=["url1.png", "url2.png"]
@@ -97,7 +97,7 @@ class TestAIResponse:
 
 class TestAIErrorType:
     def test_error_type_constants(self):
-        from services.ai.base import AIErrorType
+        from shared.ai.base import AIErrorType
         
         assert AIErrorType.RATE_LIMIT == "rate_limit"
         assert AIErrorType.TIMEOUT == "timeout"
@@ -113,82 +113,82 @@ class TestAIErrorType:
 
 class TestClassifyError:
     def test_rate_limit(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Rate limit exceeded")
         assert classify_error(error) == AIErrorType.RATE_LIMIT
 
     def test_rate_limit_429(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Error 429: Too many requests")
         assert classify_error(error) == AIErrorType.RATE_LIMIT
 
     def test_timeout(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Request timed out")
         assert classify_error(error) == AIErrorType.TIMEOUT
 
     def test_timeout_exception_type(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         class TimeoutException(Exception):
             pass
         error = TimeoutException("Operation failed")
         assert classify_error(error) == AIErrorType.TIMEOUT
 
     def test_auth_error(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Invalid API key")
         assert classify_error(error) == AIErrorType.AUTH_ERROR
 
     def test_auth_error_401(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Error 401: Unauthorized")
         assert classify_error(error) == AIErrorType.AUTH_ERROR
 
     def test_content_filter(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Content blocked by safety filter")
         assert classify_error(error) == AIErrorType.CONTENT_FILTER
 
     def test_quota_exceeded(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Quota exceeded for this month")
         assert classify_error(error) == AIErrorType.QUOTA_EXCEEDED
 
     def test_model_not_found(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Model not found: gpt-5")
         assert classify_error(error) == AIErrorType.MODEL_NOT_FOUND
 
     def test_invalid_request(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Bad request: invalid parameter")
         assert classify_error(error) == AIErrorType.INVALID_REQUEST
 
     def test_network_error(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Connection refused")
         assert classify_error(error) == AIErrorType.NETWORK_ERROR
 
     def test_api_error_500(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Internal server error 500")
         assert classify_error(error) == AIErrorType.API_ERROR
 
     def test_unknown_error(self):
-        from services.ai.base import classify_error, AIErrorType
+        from shared.ai.base import classify_error, AIErrorType
         error = Exception("Something completely unknown happened")
         assert classify_error(error) == AIErrorType.UNKNOWN
 
 
 class TestBaseTextAdapter:
     def test_is_abstract(self):
-        from services.ai.base import BaseTextAdapter
+        from shared.ai.base import BaseTextAdapter
         
         with pytest.raises(TypeError):
             BaseTextAdapter()
 
     def test_default_is_available(self):
-        from services.ai.base import BaseTextAdapter
+        from shared.ai.base import BaseTextAdapter
         
         class TestAdapter(BaseTextAdapter):
             async def chat_completion(self, messages, model, **kwargs):
@@ -200,7 +200,7 @@ class TestBaseTextAdapter:
         assert adapter.is_available() is True
 
     def test_provider_name(self):
-        from services.ai.base import BaseTextAdapter
+        from shared.ai.base import BaseTextAdapter
         
         class TestAdapter(BaseTextAdapter):
             provider_name = "test_provider"
@@ -215,13 +215,13 @@ class TestBaseTextAdapter:
 
 class TestBaseImageAdapter:
     def test_is_abstract(self):
-        from services.ai.base import BaseImageAdapter
+        from shared.ai.base import BaseImageAdapter
         
         with pytest.raises(TypeError):
             BaseImageAdapter()
 
     def test_default_is_available(self):
-        from services.ai.base import BaseImageAdapter
+        from shared.ai.base import BaseImageAdapter
         
         class TestAdapter(BaseImageAdapter):
             async def generate_image(self, prompt, model, **kwargs):
@@ -235,7 +235,7 @@ class TestBaseImageAdapter:
         assert adapter.is_available() is True
 
     def test_provider_name(self):
-        from services.ai.base import BaseImageAdapter
+        from shared.ai.base import BaseImageAdapter
         
         class TestAdapter(BaseImageAdapter):
             provider_name = "test_img_provider"

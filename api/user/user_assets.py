@@ -79,7 +79,7 @@ async def upload_asset(
     user: dict = Depends(get_current_user)
 ):
     """Upload personal assets (Pro only, PRD v3.2)."""
-    from services.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
+    from shared.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
     
     user_tier = (user.get("tier") or "").lower()
     if user_tier != "pro":

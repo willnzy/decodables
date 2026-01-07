@@ -10,7 +10,7 @@ import logging
 from typing import List, Optional
 
 from config import OPENAI_ASSISTANT_ID
-from services.ai.story_generator import client as openai_client
+from shared.ai.story_generator import client as openai_client
 
 logger = logging.getLogger(__name__)
 

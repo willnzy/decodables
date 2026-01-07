@@ -8,7 +8,7 @@ Generation Helpers - Shared utilities for AI generation endpoints
 import logging
 from typing import Optional, List, Dict, Any
 
-from services.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
+from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
 
 logger = logging.getLogger(__name__)
 

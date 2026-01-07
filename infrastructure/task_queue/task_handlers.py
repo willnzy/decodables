@@ -64,7 +64,7 @@ class ImageGenerationHandler:
         
         try:
             # Import image generator (avoid circular import at module level)
-            from services.ai.image_generator import generate_and_upload_single
+            from shared.ai.image_generator import generate_and_upload_single
             import aiohttp
             
             # Extract parameters
@@ -89,7 +89,7 @@ class ImageGenerationHandler:
             # Process reference image if provided
             reference_image_url = None
             if reference_image:
-                from services.ai.image_generator import upload_reference_image
+                from shared.ai.image_generator import upload_reference_image
                 async with aiohttp.ClientSession() as session:
                     reference_image_url = await upload_reference_image(
                         session, reference_image, self.task_id, self.user_id

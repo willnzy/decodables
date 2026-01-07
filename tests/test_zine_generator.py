@@ -10,15 +10,15 @@ from io import BytesIO
 
 class TestDecodeBase64Image:
     def test_returns_none_for_none_input(self):
-        from services.ai.zine_generator import decode_base64_image
+        from shared.ai.zine_generator import decode_base64_image
         assert decode_base64_image(None) is None
 
     def test_returns_none_for_invalid_url(self):
-        from services.ai.zine_generator import decode_base64_image
+        from shared.ai.zine_generator import decode_base64_image
         assert decode_base64_image("http://example.com/image.png") is None
 
     def test_decodes_valid_base64(self):
-        from services.ai.zine_generator import decode_base64_image
+        from shared.ai.zine_generator import decode_base64_image
         import base64
         
         # Create a valid base64 data URL
@@ -31,7 +31,7 @@ class TestDecodeBase64Image:
         assert isinstance(result, BytesIO)
 
     def test_returns_none_for_invalid_base64(self):
-        from services.ai.zine_generator import decode_base64_image
+        from shared.ai.zine_generator import decode_base64_image
         # Invalid base64 that will fail to decode
         result = decode_base64_image("data:image/png;base64,!!invalid!!")
         assert result is None
@@ -40,7 +40,7 @@ class TestDecodeBase64Image:
 class TestDrawSmartImage:
     @patch('services.ai.zine_generator.ImageReader')
     def test_handles_none_source(self, mock_reader):
-        from services.ai.zine_generator import draw_smart_image
+        from shared.ai.zine_generator import draw_smart_image
         
         mock_canvas = MagicMock()
         draw_smart_image(mock_canvas, None, 0, 0, 100, 100)
@@ -50,7 +50,7 @@ class TestDrawSmartImage:
     @patch('services.ai.zine_generator.decode_base64_image')
     @patch('services.ai.zine_generator.ImageReader')
     def test_handles_base64_source(self, mock_reader, mock_decode):
-        from services.ai.zine_generator import draw_smart_image
+        from shared.ai.zine_generator import draw_smart_image
         
         mock_canvas = MagicMock()
         mock_img = MagicMock()
@@ -64,7 +64,7 @@ class TestDrawSmartImage:
 
     @patch('services.ai.zine_generator.ImageReader')
     def test_handles_url_source(self, mock_reader):
-        from services.ai.zine_generator import draw_smart_image
+        from shared.ai.zine_generator import draw_smart_image
         
         mock_canvas = MagicMock()
         mock_img = MagicMock()
@@ -79,7 +79,7 @@ class TestDrawSmartImage:
     @patch('services.ai.zine_generator.ImageReader')
     def test_returns_early_when_base64_decode_fails(self, mock_reader, mock_decode):
         """测试 base64 解码失败时提前返回"""
-        from services.ai.zine_generator import draw_smart_image
+        from shared.ai.zine_generator import draw_smart_image
         
         mock_canvas = MagicMock()
         mock_decode.return_value = None  # Decode failed
@@ -92,7 +92,7 @@ class TestDrawSmartImage:
     @patch('services.ai.zine_generator.ImageReader')
     def test_exception_draws_error_rect(self, mock_reader):
         """测试图片读取异常时绘制错误边框"""
-        from services.ai.zine_generator import draw_smart_image
+        from shared.ai.zine_generator import draw_smart_image
         
         mock_canvas = MagicMock()
         mock_reader.side_effect = Exception("Image read error")
@@ -107,7 +107,7 @@ class TestDrawSmartImage:
 class TestDrawWrappedText:
     @patch('services.ai.zine_generator.simpleSplit')
     def test_handles_none_text(self, mock_split):
-        from services.ai.zine_generator import draw_wrapped_text
+        from shared.ai.zine_generator import draw_wrapped_text
         
         mock_canvas = MagicMock()
         draw_wrapped_text(mock_canvas, None, 0, 0, 100)
@@ -116,7 +116,7 @@ class TestDrawWrappedText:
 
     @patch('services.ai.zine_generator.simpleSplit')
     def test_wraps_text(self, mock_split):
-        from services.ai.zine_generator import draw_wrapped_text
+        from shared.ai.zine_generator import draw_wrapped_text
         
         mock_canvas = MagicMock()
         mock_split.return_value = ["Line 1", "Line 2"]
@@ -129,13 +129,13 @@ class TestDrawWrappedText:
 
 class TestPaperConfig:
     def test_us_letter_config(self):
-        from services.ai.zine_generator import PAPER_CONFIG
+        from shared.ai.zine_generator import PAPER_CONFIG
         
         assert "US_LETTER" in PAPER_CONFIG
         assert PAPER_CONFIG["US_LETTER"]["name"] == "US Letter"
 
     def test_a4_config(self):
-        from services.ai.zine_generator import PAPER_CONFIG
+        from shared.ai.zine_generator import PAPER_CONFIG
         
         assert "A4" in PAPER_CONFIG
         assert PAPER_CONFIG["A4"]["name"] == "International A4"
@@ -145,7 +145,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_smart_image')
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_creates_pdf(self, mock_draw_text, mock_draw_image):
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -162,7 +162,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_smart_image')
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_creates_pdf_with_a4(self, mock_draw_text, mock_draw_image):
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -179,7 +179,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_creates_pdf_with_outer_border(self, mock_draw_text, mock_draw_image):
         """测试绘制外边框"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -196,7 +196,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_pads_short_image_list(self, mock_draw_text, mock_draw_image):
         """测试图片列表不足8个时自动补齐"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -211,7 +211,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_pads_short_text_list(self, mock_draw_text, mock_draw_image):
         """测试文本列表不足8个时自动补齐"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -227,7 +227,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_image_only_mode_no_text(self, mock_draw_text, mock_draw_image):
         """测试仅图片模式（无文本）"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -245,7 +245,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_mixed_content_and_image_only(self, mock_draw_text, mock_draw_image):
         """测试混合模式：部分页有文本，部分页仅图片"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -261,7 +261,7 @@ class TestCreateFoldableBook:
     @patch('services.ai.zine_generator.draw_wrapped_text')
     def test_unknown_paper_type_defaults_to_us_letter(self, mock_draw_text, mock_draw_image):
         """测试未知纸张类型时默认使用 US_LETTER"""
-        from services.ai.zine_generator import create_foldable_book
+        from shared.ai.zine_generator import create_foldable_book
         
         buffer = BytesIO()
         create_foldable_book(
@@ -277,7 +277,7 @@ class TestCreateFoldableBook:
 class TestCreateAssetsZip:
     @patch('services.ai.zine_generator.requests.get')
     def test_creates_zip_from_urls(self, mock_get):
-        from services.ai.zine_generator import create_assets_zip
+        from shared.ai.zine_generator import create_assets_zip
         
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -299,7 +299,7 @@ class TestCreateAssetsZip:
 
     @patch('services.ai.zine_generator.requests.get')
     def test_handles_failed_download(self, mock_get):
-        from services.ai.zine_generator import create_assets_zip
+        from shared.ai.zine_generator import create_assets_zip
         
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -314,7 +314,7 @@ class TestCreateAssetsZip:
 
     @patch('services.ai.zine_generator.requests.get')
     def test_skips_invalid_urls(self, mock_get):
-        from services.ai.zine_generator import create_assets_zip
+        from shared.ai.zine_generator import create_assets_zip
         
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -334,7 +334,7 @@ class TestCreateAssetsZip:
     @patch('services.ai.zine_generator.requests.get')
     def test_handles_request_exception(self, mock_get):
         """测试请求异常时继续处理其他图片"""
-        from services.ai.zine_generator import create_assets_zip
+        from shared.ai.zine_generator import create_assets_zip
         
         mock_get.side_effect = Exception("Network error")
         
@@ -355,7 +355,7 @@ class TestCreateAssetsZip:
     @patch('services.ai.zine_generator.requests.get')
     def test_mixed_success_and_failure(self, mock_get):
         """测试部分成功部分失败"""
-        from services.ai.zine_generator import create_assets_zip
+        from shared.ai.zine_generator import create_assets_zip
         
         def side_effect(url, timeout=None):
             if "fail" in url:
