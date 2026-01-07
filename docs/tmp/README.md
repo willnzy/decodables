@@ -7,7 +7,7 @@
 
 ---
 
-## 📋 文档清单 (共 2 个)
+## 📋 文档清单 (共 3 个)
 
 ### 未来 Phase 计划 (2 个)
 
@@ -15,6 +15,12 @@
 |------|------|------|------|---------|
 | 016 | phase-9-10-architecture-cleanup-plan.md | Phase 9-10: 架构清理 (routers → api) | 🔮 未来 | Phase 9-10 完成后删除 |
 | 017 | phase-11-async-repository-refactoring.md | Phase 11: Repository 异步改造 | 🔮 未来 | Phase 11 完成后删除 |
+
+### 执行计划 (1 个)
+
+| 序号 | 文档 | 说明 | 状态 | 删除条件 |
+|------|------|------|------|---------|
+| 018 | phase-9-10-execution-plan.md | Phase 9-10 详细执行计划 (9 个 Stage) | 🔄 进行中 | Phase 9-10 完成后删除 |
 
 ---
 
@@ -169,7 +175,9 @@ git rm docs/tmp/017-phase-11-async-repository-refactoring.md
 ### 我想了解某个 Phase 的执行情况
 - **Phase 1-2**: 已完成并删除，关键结论见上方"已删除文档记录"
 - **Phase 8**: 已完成并删除，关键结论见上方"已删除文档记录"
-- **Phase 9-10**: 查看 016-phase-9-10-architecture-cleanup-plan.md
+- **Phase 9-10**:
+  - 总体计划: 016-phase-9-10-architecture-cleanup-plan.md
+  - 详细执行: 018-phase-9-10-execution-plan.md
 - **Phase 11**: 查看 017-phase-11-async-repository-refactoring.md
 
 ### 我想设置测试流程
@@ -202,5 +210,5 @@ git rm docs/tmp/017-phase-11-async-repository-refactoring.md
 ---
 
 **管理者**: 开发团队
-**最后更新**: 2026-01-07 (第二次清理完成，删除 15 个文档，合并 2 个测试指南到主文档)
+**最后更新**: 2026-01-08 (创建 018-phase-9-10-execution-plan.md)
 **下次检查**: Phase 9-10 开始前
