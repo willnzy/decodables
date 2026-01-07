@@ -18,6 +18,7 @@ from datetime import datetime
 
 from app import app
 from domains.billing.value_objects import TransactionType
+from dependencies import get_current_user
 
 client = TestClient(app)
 
@@ -27,12 +28,6 @@ client = TestClient(app)
 # ==========================================
 
 @pytest.fixture
-def auth_headers():
-    """Valid auth headers."""
-    return {"Authorization": "Bearer test_token_user_123"}
-
-
-@pytest.fixture
 def mock_user():
     """Mock authenticated user."""
     return {
@@ -40,6 +35,23 @@ def mock_user():
         "email": "user@example.com",
         "tier": "pro",
     }
+
+
+@pytest.fixture
+def override_get_current_user(mock_user):
+    """Override FastAPI dependency to return mock user."""
+    async def _get_current_user():
+        return mock_user
+
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_headers():
+    """Valid auth headers (for documentation, not actually used with dependency override)."""
+    return {"Authorization": "Bearer test_token_user_123"}
 
 
 @pytest.fixture
@@ -104,15 +116,12 @@ def mock_add_result():
 class TestGetCredits:
     """Tests for GET /api/v2/user/billing/credits endpoint."""
 
-    @patch('dependencies.get_current_user')
     @patch('container.get_container')
     def test_get_credits_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
         mock_credits_result,
-        auth_headers,
+        override_get_current_user,
     ):
         """
         Test: Get credits successfully
@@ -122,18 +131,14 @@ class TestGetCredits:
         Then: Returns 200 with credits info
         """
         # Arrange
-        mock_get_user.return_value = mock_user
-        mock_handler = AsyncMock()
-        mock_handler.handle.return_value = mock_credits_result
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_credits_result)
         mock_container = MagicMock()
         mock_container.get_user_credits_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
-        response = client.get(
-            "/api/v2/user/billing/credits",
-            headers=auth_headers,
-        )
+        response = client.get("/api/v2/user/billing/credits")
 
         # Assert
         assert response.status_code == 200
