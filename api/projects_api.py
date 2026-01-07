@@ -4,10 +4,11 @@ Projects API - Project management endpoints.
 @module api.projects_api
 @version 1.0.0
 
-Endpoints compatible with legacy /api/projects/* for migration.
-
 Endpoints:
 - GET /api/v2/projects - List user projects
+- GET /api/v2/projects/dashboard - Dashboard view
+- GET /api/v2/projects/deleted - List deleted projects
+- GET /api/v2/projects/seller-stats - Seller statistics
 - POST /api/v2/projects - Create project
 - GET /api/v2/projects/{id} - Get project details
 - PUT /api/v2/projects/{id} - Update project
@@ -151,6 +152,74 @@ async def list_projects(
         total=result.total_count,
         page=page,
     )
+
+
+@router.get("/dashboard")
+async def dashboard_projects(
+    view: str = Query("all", pattern="^(all|bought|selling)$"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    include_canvas: bool = True,
+    user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Get projects for dashboard with view type filtering.
+
+    Args:
+        view: View type - "all" (default), "bought", or "selling"
+        page: Page number
+        limit: Items per page
+        search: Search query
+        include_canvas: Whether to include canvas_data
+
+    Returns:
+        Projects list with view info
+    """
+    from services.db_service import get_dashboard_projects
+
+    result = get_dashboard_projects(
+        user_id=user["id"],
+        view_type=view,
+        page=page,
+        limit=limit,
+        search=search,
+        include_canvas_data=include_canvas,
+    )
+
+    return result
+
+
+@router.get("/deleted")
+async def list_deleted_projects(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Retrieve the user's deleted projects.
+
+    Returns:
+        List of deleted projects that can be restored
+    """
+    from services.db_service import get_user_deleted_projects
+
+    return get_user_deleted_projects(user["id"], page, limit)
+
+
+@router.get("/seller-stats")
+async def get_project_seller_stats(
+    user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Get seller statistics for projects.
+
+    Returns:
+        Dict with total_selling, total_sales, unique_buyers, etc.
+    """
+    from services.db_service import get_seller_project_stats
+
+    return get_seller_project_stats(user["id"])
 
 
 @router.post("")

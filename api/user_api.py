@@ -4,12 +4,14 @@ User API - User profile and account endpoints.
 @module api.user_api
 @version 1.0.0
 
-Endpoints compatible with legacy /api/user/* for migration.
-
 Endpoints:
-- GET /api/v2/user/me - Get current user (compatible with /api/user/me)
+- GET /api/v2/user/me - Get current user
 - GET /api/v2/user/profile - Get user profile
 - PUT /api/v2/user/timezone - Update timezone
+- GET /api/v2/user/purchases - Get user's purchases
+- GET /api/v2/user/notifications - Get notifications
+- POST /api/v2/user/notifications/{id}/read - Mark notification read
+- POST /api/v2/user/notifications/read-all - Mark all read
 """
 
 import logging
@@ -173,8 +175,6 @@ async def update_timezone(
 ):
     """
     Update user's timezone preference.
-
-    Compatible with legacy /api/user/timezone.
     """
     from pytz import timezone as pytz_timezone
     from pytz.exceptions import UnknownTimeZoneError
@@ -202,3 +202,75 @@ async def update_timezone(
     except Exception as e:
         logger.error(f"Failed to update timezone for user {user['id']}: {e}")
         raise HTTPException(500, "Failed to update timezone")
+
+
+# ==========================================
+# Purchases Endpoints
+# ==========================================
+
+@router.get("/purchases")
+async def get_purchases(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Get user's marketplace purchases.
+
+    Returns:
+        List of purchased items
+    """
+    from services.db_service import get_user_purchases
+
+    purchases = get_user_purchases(user["id"])
+    return purchases
+
+
+# ==========================================
+# Notifications Endpoints
+# ==========================================
+
+@router.get("/notifications")
+async def get_notifications(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Get user notifications.
+
+    Returns:
+        List of notifications
+    """
+    from services.db_service import get_user_notifications
+
+    notifications = get_user_notifications(user["id"])
+    return notifications
+
+
+@router.post("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    user: dict = Depends(get_current_user),
+) -> Dict[str, str]:
+    """
+    Mark a notification as read.
+
+    Returns:
+        Status
+    """
+    from services.db_service import mark_notification_read as db_mark_read
+
+    result = db_mark_read(notification_id, user["id"])
+    if not result:
+        raise HTTPException(404, "Notification not found")
+
+    return {"status": "ok"}
+
+
+@router.post("/notifications/read-all")
+async def mark_all_notifications_read(
+    user: dict = Depends(get_current_user),
+) -> Dict[str, str]:
+    """
+    Mark all notifications as read.
+
+    Returns:
+        Status
+    """
+    from services.db_service import mark_all_notifications_read as db_mark_all_read
+
+    db_mark_all_read(user["id"])
+    return {"status": "ok"}

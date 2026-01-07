@@ -457,3 +457,156 @@ async def get_seller_stats(
     except Exception as e:
         logger.error(f"Failed to get seller stats: {e}")
         raise HTTPException(500, "Failed to get stats")
+
+
+# ==========================================
+# Leaderboard Endpoint
+# ==========================================
+
+class LeaderboardItem(BaseModel):
+    """Leaderboard item."""
+    listing_id: str
+    title: str
+    seller_id: str
+    usage_count: int
+    resource_type: str
+
+
+class LeaderboardResponse(BaseModel):
+    """Leaderboard response."""
+    items: List[Dict[str, Any]]
+    period: str
+    type: str
+
+
+@router.get("/leaderboard")
+async def get_leaderboard(
+    period: str = Query("monthly", pattern="^(monthly|all_time)$"),
+    type: str = Query("all", pattern="^(all|project|asset)$"),
+    user: dict = Depends(get_current_user),
+) -> LeaderboardResponse:
+    """
+    Get marketplace leaderboard.
+
+    Only includes approved + public + not deleted listings.
+
+    Args:
+        period: 'monthly' | 'all_time'
+        type: 'all' | 'project' | 'asset'
+
+    Returns:
+        Top listings by usage_count
+    """
+    container = get_container()
+    marketplace_service = container.marketplace_service
+
+    try:
+        items = await marketplace_service.get_leaderboard(period, type)
+
+        return LeaderboardResponse(
+            items=items,
+            period=period,
+            type=type,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get leaderboard: {e}")
+        raise HTTPException(500, "Failed to get leaderboard")
+
+
+# ==========================================
+# Report Endpoints
+# ==========================================
+
+class ReportRequest(BaseModel):
+    """Report request."""
+    listing_id: str
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class ReportResponse(BaseModel):
+    """Report response."""
+    success: bool
+    report_id: Optional[str] = None
+    message: str
+
+
+class ReportItem(BaseModel):
+    """Report item."""
+    id: str
+    listing_id: str
+    reason: str
+    status: str
+    created_at: Optional[str] = None
+
+
+class MyReportsResponse(BaseModel):
+    """My reports response."""
+    items: List[Dict[str, Any]]
+    total: int
+
+
+@router.post("/report")
+@limiter.limit("10/minute")
+async def submit_report(
+    request: Request,
+    req: ReportRequest,
+    user: dict = Depends(get_current_user),
+) -> ReportResponse:
+    """
+    Submit a content report for a marketplace listing.
+
+    Users can report listings for copyright violations, inappropriate content, etc.
+
+    Args:
+        req: Report request with listing_id and reason
+
+    Returns:
+        Report confirmation with report_id
+
+    Raises:
+        HTTPException: 400 if already reported, 500 if failed
+    """
+    from services.db_service import create_report, log_activity
+
+    try:
+        report = create_report(user["id"], req.listing_id, req.reason)
+        if report:
+            log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
+            return ReportResponse(
+                success=True,
+                report_id=report["id"],
+                message="Report submitted successfully",
+            )
+        raise HTTPException(500, "Failed to submit report")
+
+    except Exception as e:
+        error_msg = str(e)
+        if "already reported" in error_msg.lower():
+            raise HTTPException(400, error_msg)
+        raise HTTPException(500, error_msg)
+
+
+@router.get("/my-reports")
+async def get_my_reports(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+) -> MyReportsResponse:
+    """
+    Get reports submitted by the current user.
+
+    Args:
+        page: Page number (default: 1)
+        limit: Items per page (default: 20)
+
+    Returns:
+        List of user's reports
+    """
+    from services.db_service import get_user_reports
+
+    reports = get_user_reports(user["id"], page, limit)
+    return MyReportsResponse(
+        items=reports,
+        total=len(reports),
+    )
