@@ -43,6 +43,9 @@ from infrastructure.repositories.listing_repository_extended import SupabaseList
 from infrastructure.repositories.asset_repository_extended import SupabaseAssetRepositoryExtended
 from infrastructure.repositories.notification_repository_extended import SupabaseNotificationRepositoryExtended
 from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
+from infrastructure.repositories.admin_users_repository_extended import SupabaseAdminUsersRepositoryExtended
+from infrastructure.repositories.admin_moderation_repository_extended import SupabaseAdminModerationRepositoryExtended
+from infrastructure.repositories.admin_stats_repository_extended import SupabaseAdminStatsRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -778,7 +781,41 @@ __all__ = [
     'send_feedback_with_images',
     'create_report',
     'get_user_reports',
+    # Admin Users
+    'get_full_user_audit',
+    'admin_adjust_credits',
+    'admin_get_user_projects',
+    'admin_log_operation',
+    'admin_get_operation_logs',
+    # Admin Moderation
+    'admin_get_moderation_list',
+    'admin_get_moderation_detail',
+    'admin_approve_listing',
+    'admin_reject_listing',
+    'admin_delete_listing',
+    'admin_unpublish_listing',
+    'admin_get_reports',
+    'admin_get_reports_count',
+    'admin_respond_to_report',
+    'admin_get_report_detail',
+    # Admin Stats
+    'admin_get_dashboard_stats',
+    'admin_get_user_growth_stats',
+    'admin_get_tier_distribution',
+    'admin_get_project_stats',
+    'admin_get_credit_usage_stats',
+    'admin_get_conversion_funnel',
+    'log_user_event',
+    'admin_get_user_events',
+    'admin_get_event_stats',
+    'get_aggregated_stats',
+    'get_aggregated_stats_range',
+    'upsert_aggregated_stats',
+    'admin_get_ai_insights',
+    'admin_get_ai_recommendations',
+    'admin_get_behavior_analysis',
 ]
+
 
 # ==========================================
 # Notification Functions
@@ -864,3 +901,152 @@ async def get_user_reports(user_id: str, page: int = 1, limit: int = 20):
     """Get user's reports."""
     repo = _get_repo(SupabaseSupportRepositoryExtended)
     return await repo.get_user_reports(user_id, page, limit)
+
+# ==========================================
+# Admin Functions
+# ==========================================
+
+# Admin Users
+@async_to_sync
+async def get_full_user_audit(user_id: str):
+    repo = _get_repo(SupabaseAdminUsersRepositoryExtended)
+    return await repo.get_full_user_audit(user_id)
+
+@async_to_sync
+async def admin_adjust_credits(user_id: str, amount: int, bucket: str, reason: str):
+    repo = _get_repo(SupabaseAdminUsersRepositoryExtended)
+    return await repo.admin_adjust_credits(user_id, amount, bucket, reason)
+
+@async_to_sync
+async def admin_get_user_projects(user_id: str, page: int = 1, limit: int = 20, include_deleted: bool = True):
+    repo = _get_repo(SupabaseAdminUsersRepositoryExtended)
+    return await repo.admin_get_user_projects(user_id, page, limit, include_deleted)
+
+@async_to_sync
+async def admin_log_operation(admin_id: str, operation_type: str, target_user_id: str = None, details: str = None, reason: str = None):
+    repo = _get_repo(SupabaseAdminUsersRepositoryExtended)
+    return await repo.admin_log_operation(admin_id, operation_type, target_user_id, details, reason)
+
+@async_to_sync
+async def admin_get_operation_logs(page: int = 1, limit: int = 50, operation_type: str = None, admin_id: str = None, target_user_id: str = None):
+    repo = _get_repo(SupabaseAdminUsersRepositoryExtended)
+    return await repo.admin_get_operation_logs(page, limit, operation_type, admin_id, target_user_id)
+
+# Admin Moderation
+@async_to_sync
+async def admin_get_moderation_list(status: str = "pending", page: int = 1, limit: int = 20):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_get_moderation_list(status, page, limit)
+
+@async_to_sync
+async def admin_get_moderation_detail(listing_id: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_get_moderation_detail(listing_id)
+
+@async_to_sync
+async def admin_approve_listing(listing_id: str, admin_id: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_approve_listing(listing_id, admin_id)
+
+@async_to_sync
+async def admin_reject_listing(listing_id: str, admin_id: str, reason: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_reject_listing(listing_id, admin_id, reason)
+
+@async_to_sync
+async def admin_delete_listing(listing_id: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_delete_listing(listing_id)
+
+@async_to_sync
+async def admin_unpublish_listing(listing_id: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_unpublish_listing(listing_id)
+
+@async_to_sync
+async def admin_get_reports(status: str = None, page: int = 1, limit: int = 20):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_get_reports(status, page, limit)
+
+@async_to_sync
+async def admin_get_reports_count(status: str = None):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_get_reports_count(status)
+
+@async_to_sync
+async def admin_respond_to_report(report_id: str, admin_id: str, action: str, response: str = None):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_respond_to_report(report_id, admin_id, action, response)
+
+@async_to_sync
+async def admin_get_report_detail(report_id: str):
+    repo = _get_repo(SupabaseAdminModerationRepositoryExtended)
+    return await repo.admin_get_report_detail(report_id)
+
+# Admin Stats
+@async_to_sync
+async def admin_get_dashboard_stats(period: str = "month"):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_dashboard_stats(period)
+
+@async_to_sync
+async def admin_get_user_growth_stats(start_date: str = None, end_date: str = None, group_by: str = "day"):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_user_growth_stats(start_date, end_date, group_by)
+
+@async_to_sync
+async def admin_get_tier_distribution():
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_tier_distribution()
+
+@async_to_sync
+async def admin_get_project_stats(start_date: str = None, end_date: str = None):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_project_stats(start_date, end_date)
+
+@async_to_sync
+async def admin_get_credit_usage_stats(start_date: str = None, end_date: str = None):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_credit_usage_stats(start_date, end_date)
+
+@async_to_sync
+async def admin_get_conversion_funnel(period: str = "month"):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_conversion_funnel(period)
+
+@async_to_sync
+async def log_user_event(user_id: str, event_type: str, properties: dict = None, session_id: str = None, event_id: str = None):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.log_user_event(user_id, event_type, properties, session_id, event_id)
+
+@async_to_sync
+async def admin_get_user_events(user_id: str = None, event_type: str = None, page: int = 1, limit: int = 50):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_user_events(user_id, event_type, page, limit)
+
+@async_to_sync
+async def admin_get_event_stats(start_date: str = None, end_date: str = None, group_by: str = "event_type"):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.admin_get_event_stats(start_date, end_date, group_by)
+
+@async_to_sync
+async def get_aggregated_stats(stat_type: str, use_cache: bool = True):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.get_aggregated_stats(stat_type, use_cache)
+
+@async_to_sync
+async def get_aggregated_stats_range(stat_type: str, days: int = 30):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.get_aggregated_stats_range(stat_type, days)
+
+@async_to_sync
+async def upsert_aggregated_stats(date_str: str, stat_type: str, data: dict):
+    repo = _get_repo(SupabaseAdminStatsRepositoryExtended)
+    return await repo.upsert_aggregated_stats(date_str, stat_type, data)
+
+# AI functions kept in services/db/admin_stats.py for now
+from services.db.admin_stats import (
+    admin_get_ai_insights,
+    admin_get_ai_recommendations,
+    admin_get_behavior_analysis,
+)
