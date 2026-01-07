@@ -102,8 +102,8 @@ def test_all_api_routers_import():
     """Test that all API router modules import successfully."""
     routers = [
         'api.billing_api',
-        'api.identity_api',
-        'api.creation_api',
+        'api.user_api',
+        'api.projects_api',
         'api.marketplace_api',
         'api.platform_api',
     ]
