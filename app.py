@@ -503,10 +503,8 @@ async def shutdown_event():
     shutdown_scheduler()
 
     # Gracefully close Redis connection
-    from core.cache import get_cache_provider
-    cache_provider = get_cache_provider()
-    if hasattr(cache_provider, 'close'):
-        cache_provider.close()
+    from core.cache import close_redis
+    close_redis()
 
 # ==========================================
 # 3. Routes
