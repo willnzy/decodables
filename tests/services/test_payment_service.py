@@ -30,7 +30,7 @@ stripe_mock.error.StripeError = type('StripeError', (Exception,), {})
 sys.modules['stripe'] = stripe_mock
 
 # Now import payment_service
-from services import payment_service
+from domains.billing import payment_service
 
 
 # ==========================================

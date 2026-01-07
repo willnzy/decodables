@@ -9,7 +9,7 @@ Tests the three key rules:
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
-from services.db_service import (
+from infrastructure.repositories import (
     refresh_monthly_credits,
     check_and_reset_monthly_credits_if_needed,
     credit_deduct,
