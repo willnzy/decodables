@@ -42,8 +42,8 @@ class SupabaseUserRepository(IUserRepository):
     async def get_by_id(self, user_id: str) -> Optional[UserProfile]:
         """Get user profile by user ID."""
         try:
-            result = self.client.table("users").select("*").eq(
-                "user_id", user_id
+            result = self.client.table("profiles").select("*").eq(
+                "id", user_id
             ).single().execute()
 
             if not result.data:

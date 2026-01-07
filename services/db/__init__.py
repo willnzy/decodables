@@ -19,15 +19,14 @@ from .utils import (
     log_activity,
 )
 
-# Users
-from .users import (
+# Users - Now imported from infrastructure.db_compat
+from infrastructure.db_compat import (
     get_user_profile,
     create_user_profile,
     update_subscription_tier,
     update_user_profile,
     update_user_timezone,
     get_user_timezone,
-    generate_user_code,
     refresh_monthly_credits,
     check_and_reset_monthly_credits_if_needed,
     log_credit_transaction,
@@ -40,6 +39,7 @@ from .users import (
     get_users_by_tier,
     get_user_discount,
     create_user_discount,
+    generate_user_code,
 )
 
 # Projects

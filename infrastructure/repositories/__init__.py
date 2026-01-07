@@ -13,6 +13,9 @@ from .feature_flag_repository import SupabaseFeatureFlagRepository
 from .experiment_repository import SupabaseExperimentRepository
 from .system_resource_repository import SupabaseSystemResourceRepository
 from .config_repository import SupabaseConfigRepository
+from .payment_repository import SupabasePaymentRepository
+from .user_repository_extended import SupabaseUserRepositoryExtended
+from .credit_repository_extended import SupabaseCreditRepositoryExtended
 
 __all__ = [
     'SupabaseCreditRepository',
@@ -23,4 +26,7 @@ __all__ = [
     'SupabaseExperimentRepository',
     'SupabaseSystemResourceRepository',
     'SupabaseConfigRepository',
+    'SupabasePaymentRepository',
+    'SupabaseUserRepositoryExtended',
+    'SupabaseCreditRepositoryExtended',
 ]
