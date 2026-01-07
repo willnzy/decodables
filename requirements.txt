@@ -24,4 +24,4 @@ apscheduler
 redis>=5.0.0
 rq>=1.15.0
 tenacity>=8.0.0
-sentry-sdk[fastapi]>=1.0.0
+sentry-sdk[fastapi]>=2.35.0

@@ -38,6 +38,10 @@ if SENTRY_DSN:
             release=os.environ.get("APP_VERSION", "3.22.0"),
             send_default_pii=False,  # Don't send PII by default
             before_send=lambda event, hint: _sanitize_sentry_event(event),
+            # v3.25: Enable Sentry Logs feature (requires SDK >= 2.35.0)
+            _experiments={
+                "enable_logs": True,
+            },
         )
         logging.info("[Sentry] Error tracking initialized")
     except ImportError:
