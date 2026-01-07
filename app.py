@@ -17,12 +17,14 @@ from slowapi.errors import RateLimitExceeded
 from svix.webhooks import Webhook, WebhookVerificationError
 
 # v3.22: Sentry Error Tracking (optional, enabled via SENTRY_DSN env var)
+# v3.25: Added Logs, Metrics, Profiling and AI Agents monitoring (SDK >= 2.44.0)
 SENTRY_DSN = os.environ.get("SENTRY_DSN")
 if SENTRY_DSN:
     try:
         import sentry_sdk
         from sentry_sdk.integrations.fastapi import FastApiIntegration
         from sentry_sdk.integrations.logging import LoggingIntegration
+        from sentry_sdk.integrations.openai import OpenAIIntegration
         
         sentry_sdk.init(
             dsn=SENTRY_DSN,
@@ -32,20 +34,29 @@ if SENTRY_DSN:
                     level=logging.INFO,
                     event_level=logging.ERROR
                 ),
+                # AI Agents: Monitor OpenAI/LLM calls (token usage, costs, latency)
+                OpenAIIntegration(
+                    include_prompts=False,  # Don't capture prompts for privacy
+                    tiktoken_encoding_name="cl100k_base",
+                ),
             ],
+            # Performance monitoring
             traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            # Profiling: Find slow code paths (requires SDK >= 2.24.1)
+            profiles_sample_rate=float(os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
             environment=os.environ.get("ENV", "development"),
-            release=os.environ.get("APP_VERSION", "3.22.0"),
+            release=os.environ.get("APP_VERSION", "3.25.0"),
             send_default_pii=False,  # Don't send PII by default
             before_send=lambda event, hint: _sanitize_sentry_event(event),
-            # v3.25: Enable Sentry Logs feature (requires SDK >= 2.35.0)
+            # Experimental features (SDK >= 2.44.0)
             _experiments={
-                "enable_logs": True,
+                "enable_logs": True,      # Logs feature
+                "enable_metrics": True,   # Metrics feature
             },
         )
-        logging.info("[Sentry] Error tracking initialized")
-    except ImportError:
-        logging.warning("[Sentry] sentry-sdk not installed, skipping initialization")
+        logging.info("[Sentry] Full observability initialized (errors, traces, profiles, logs, metrics, AI)")
+    except ImportError as e:
+        logging.warning(f"[Sentry] sentry-sdk or integration not installed: {e}")
     except Exception as e:
         logging.error(f"[Sentry] Initialization failed: {e}")
 
