@@ -18,8 +18,10 @@ from .value_objects import (
     FlagStatus,
     ExperimentId,
     ExperimentStatus,
+    TargetType,
     TargetingRule,
     ThemeConfig,
+    ExperimentVariant,
 )
 from .aggregates.feature_flag import FeatureFlag
 from .aggregates.experiment import Experiment
@@ -37,8 +39,10 @@ __all__ = [
     'FlagStatus',
     'ExperimentId',
     'ExperimentStatus',
+    'TargetType',
     'TargetingRule',
     'ThemeConfig',
+    'ExperimentVariant',
     # Aggregates
     'FeatureFlag',
     'Experiment',
