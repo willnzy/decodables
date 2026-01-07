@@ -17,10 +17,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from core.database import get_supabase_client
-from infrastructure.repositories.admin.supabase_admin_users_repository import SupabaseAdminUsersRepositoryExtended
-from infrastructure.repositories.admin.supabase_admin_billing_repository import SupabaseAdminBillingRepositoryExtended
-from infrastructure.repositories.admin.supabase_admin_logs_repository import SupabaseAdminLogsRepositoryExtended
+from core.database import get_supabase_client, get_database_client
+from infrastructure.repositories import (
+    SupabaseAdminUsersRepository,
+    SupabasePaymentRepository,
+    SupabaseUserRepository,
+)
 from domains.billing.payment_service import (
     get_customer_subscriptions,
     cancel_subscription,
@@ -74,11 +76,12 @@ async def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = De
     """
     Admin refund operation (full or partial) with safety checks.
     """
-    users_repo = SupabaseAdminUsersRepositoryExtended()
-    billing_repo = SupabaseAdminBillingRepositoryExtended()
-    logs_repo = SupabaseAdminLogsRepositoryExtended()
+    db = get_database_client()
+    users_repo = SupabaseUserRepository(db)
+    payment_repo = SupabasePaymentRepository(db)
+    admin_repo = SupabaseAdminUsersRepository(db)
 
-    user = await users_repo.get_user_profile(req.user_id)
+    user = await users_repo.get_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
     
@@ -128,25 +131,22 @@ async def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = De
     refund_amount = refund.amount
     currency = refund.currency.upper()
 
-    await billing_repo.log_payment_record(
-        req.user_id,
-        -refund_amount,
-        currency,
-        "refund",
-        f"Refund - ${refund_amount/100:.2f} | Reason: {req.reason}"
+    await payment_repo.create(
+        user_id=req.user_id,
+        amount=-refund_amount / 100,  # Convert cents to dollars, negative for refund
+        currency=currency,
+        payment_type="refund",
+        stripe_payment_id=refund.id,
+        metadata={
+            "payment_intent_id": req.payment_intent_id,
+            "original_amount": pi.amount,
+            "refundable_amount": refundable_amount,
+            "reason": req.reason,
+            "admin_id": admin["id"]
+        }
     )
 
-    await logs_repo.log_activity(admin["id"], "admin_refund", {
-        "target_user": req.user_id,
-        "payment_intent_id": req.payment_intent_id,
-        "refund_id": refund.id,
-        "amount_cents": refund_amount,
-        "original_amount": pi.amount,
-        "refundable_amount": refundable_amount,
-        "reason": req.reason
-    })
-
-    await logs_repo.admin_log_operation(
+    await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="refund",
         target_user_id=req.user_id,
@@ -170,11 +170,12 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
     """
     import stripe
 
-    users_repo = SupabaseAdminUsersRepositoryExtended()
-    billing_repo = SupabaseAdminBillingRepositoryExtended()
-    logs_repo = SupabaseAdminLogsRepositoryExtended()
+    db = get_database_client()
+    users_repo = SupabaseUserRepository(db)
+    payment_repo = SupabasePaymentRepository(db)
+    admin_repo = SupabaseAdminUsersRepository(db)
 
-    user = await users_repo.get_user_profile(req.user_id)
+    user = await users_repo.get_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
     
@@ -218,26 +219,35 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
             plan_name = "Pro"
     
     if req.immediate:
-        await billing_repo.update_subscription_tier(req.user_id, "free", subscription_status="canceled")
-        await billing_repo.log_payment_record(
-            req.user_id, 0, "USD", "sub_canceled",
-            f"{plan_name} Subscription Canceled (Immediate) | Reason: {req.reason}"
+        await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="canceled")
+        await payment_repo.create(
+            user_id=req.user_id,
+            amount=0,
+            currency="USD",
+            payment_type="sub_canceled",
+            metadata={
+                "plan_name": plan_name,
+                "subscription_id": req.subscription_id,
+                "reason": req.reason,
+                "admin_id": admin["id"]
+            }
         )
     else:
-        await billing_repo.log_payment_record(
-            req.user_id, 0, "USD", "sub_cancel_scheduled",
-            f"{plan_name} Subscription Cancel Scheduled | Ends: {subscription.current_period_end} | Reason: {req.reason}"
+        await payment_repo.create(
+            user_id=req.user_id,
+            amount=0,
+            currency="USD",
+            payment_type="sub_cancel_scheduled",
+            metadata={
+                "plan_name": plan_name,
+                "subscription_id": req.subscription_id,
+                "period_end": str(subscription.current_period_end),
+                "reason": req.reason,
+                "admin_id": admin["id"]
+            }
         )
 
-    await logs_repo.log_activity(admin["id"], "admin_cancel_subscription", {
-        "target_user": req.user_id,
-        "subscription_id": req.subscription_id,
-        "plan": plan_name,
-        "immediate": req.immediate,
-        "reason": req.reason
-    })
-
-    await logs_repo.admin_log_operation(
+    await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="subscription_cancel",
         target_user_id=req.user_id,
@@ -261,12 +271,13 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
     """
     import stripe
 
-    users_repo = SupabaseAdminUsersRepositoryExtended()
-    billing_repo = SupabaseAdminBillingRepositoryExtended()
-    logs_repo = SupabaseAdminLogsRepositoryExtended()
+    db = get_database_client()
     supabase = get_supabase_client()
+    users_repo = SupabaseUserRepository(db)
+    payment_repo = SupabasePaymentRepository(db)
+    admin_repo = SupabaseAdminUsersRepository(db)
 
-    user = await users_repo.get_user_profile(req.user_id)
+    user = await users_repo.get_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
     
@@ -294,39 +305,43 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
     # Case 1: downgrading to Free
     if target_tier == "free":
         if not customer_id:
-            await billing_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
+            await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
             supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
 
-            await billing_repo.log_payment_record(
-                req.user_id, 0, "USD", "tier_downgrade",
-                f"Downgrade from {current_tier.title()} to Free (No subscription) | Reason: {req.reason}"
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade",
+                metadata={
+                    "from_tier": current_tier,
+                    "to_tier": "free",
+                    "immediate": req.immediate,
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
             )
-            await logs_repo.log_activity(admin["id"], "admin_downgrade", {
-                "target_user": req.user_id,
-                "from_tier": current_tier,
-                "to_tier": "free",
-                "immediate": req.immediate,
-                "reason": req.reason
-            })
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
         
         subscriptions = get_customer_subscriptions(customer_id)
         active_sub = next((sub for sub in subscriptions if sub.status in ['active', 'trialing']), None)
 
         if not active_sub:
-            await billing_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
+            await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
             supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
 
-            await billing_repo.log_payment_record(
-                req.user_id, 0, "USD", "tier_downgrade",
-                f"Downgrade from {current_tier.title()} to Free | Reason: {req.reason}"
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade",
+                metadata={
+                    "from_tier": current_tier,
+                    "to_tier": "free",
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
             )
-            await logs_repo.log_activity(admin["id"], "admin_downgrade", {
-                "target_user": req.user_id,
-                "from_tier": current_tier,
-                "to_tier": "free",
-                "reason": req.reason
-            })
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
 
         if req.immediate:
@@ -334,31 +349,42 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
             if not result["success"]:
                 raise HTTPException(400, f"Failed to cancel subscription: {result['error']}")
 
-            await billing_repo.update_subscription_tier(req.user_id, "free", subscription_status="canceled")
+            await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="canceled")
             supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
 
-            await billing_repo.log_payment_record(
-                req.user_id, 0, "USD", "tier_downgrade",
-                f"Downgrade from {current_tier.title()} to Free (Immediate) | Reason: {req.reason}"
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade",
+                metadata={
+                    "from_tier": current_tier,
+                    "to_tier": "free",
+                    "immediate": True,
+                    "subscription_id": active_sub.id,
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
             )
         else:
             result = cancel_subscription(active_sub.id, immediate=False)
             if not result["success"]:
                 raise HTTPException(400, f"Failed to schedule cancellation: {result['error']}")
 
-            await billing_repo.log_payment_record(
-                req.user_id, 0, "USD", "tier_downgrade_scheduled",
-                f"Downgrade scheduled: {current_tier.title()} to Free | Effective: {result['subscription'].current_period_end} | Reason: {req.reason}"
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade_scheduled",
+                metadata={
+                    "from_tier": current_tier,
+                    "to_tier": "free",
+                    "period_end": str(result['subscription'].current_period_end),
+                    "subscription_id": active_sub.id,
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
             )
-
-        await logs_repo.log_activity(admin["id"], "admin_downgrade", {
-            "target_user": req.user_id,
-            "from_tier": current_tier,
-            "to_tier": "free",
-            "immediate": req.immediate,
-            "subscription_id": active_sub.id,
-            "reason": req.reason
-        })
         
         return {
             "status": "downgraded" if req.immediate else "downgrade_scheduled",
@@ -394,29 +420,40 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
             )
 
             if req.immediate:
-                await billing_repo.update_subscription_tier(req.user_id, "starter", subscription_status="active")
+                await users_repo.update_subscription_tier(req.user_id, "starter", subscription_status="active")
                 supabase.table("profiles").update({"credits_monthly": 500}).eq("id", req.user_id).execute()
 
-                await billing_repo.log_payment_record(
-                    req.user_id, 0, "USD", "tier_downgrade",
-                    f"Downgrade from Pro to Starter (Immediate) | Reason: {req.reason}"
+                await payment_repo.create(
+                    user_id=req.user_id,
+                    amount=0,
+                    currency="USD",
+                    payment_type="tier_downgrade",
+                    metadata={
+                        "from_tier": "pro",
+                        "to_tier": "starter",
+                        "immediate": True,
+                        "subscription_id": active_sub.id,
+                        "reason": req.reason,
+                        "admin_id": admin["id"]
+                    }
                 )
             else:
-                await billing_repo.log_payment_record(
-                    req.user_id, 0, "USD", "tier_downgrade_scheduled",
-                    f"Downgrade scheduled: Pro to Starter | Next billing: {updated_sub.current_period_end} | Reason: {req.reason}"
+                await payment_repo.create(
+                    user_id=req.user_id,
+                    amount=0,
+                    currency="USD",
+                    payment_type="tier_downgrade_scheduled",
+                    metadata={
+                        "from_tier": "pro",
+                        "to_tier": "starter",
+                        "next_billing": str(updated_sub.current_period_end),
+                        "subscription_id": active_sub.id,
+                        "reason": req.reason,
+                        "admin_id": admin["id"]
+                    }
                 )
 
-            await logs_repo.log_activity(admin["id"], "admin_downgrade", {
-                "target_user": req.user_id,
-                "from_tier": "pro",
-                "to_tier": "starter",
-                "immediate": req.immediate,
-                "subscription_id": active_sub.id,
-                "reason": req.reason
-            })
-
-            await logs_repo.admin_log_operation(
+            await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="subscription_downgrade",
                 target_user_id=req.user_id,

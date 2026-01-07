@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from dependencies import get_current_user, require_member
 from container import get_container
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
+from infrastructure.repositories.support_repository import SupabaseSupportRepository
 from infrastructure.logging.activity_logger import log_activity
 from core.database import get_database_client
 
@@ -572,7 +572,7 @@ async def submit_report(
     """
 
     try:
-        support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+        support_repo = SupabaseSupportRepository(get_database_client())
         report = await support_repo.create_report(user["id"], req.listing_id, req.reason)
         if report:
             log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
@@ -607,7 +607,7 @@ async def get_my_reports(
         List of user's reports
     """
 
-    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    support_repo = SupabaseSupportRepository(get_database_client())
     reports = await support_repo.get_user_reports(user["id"], page, limit)
     return MyReportsResponse(
         items=reports,

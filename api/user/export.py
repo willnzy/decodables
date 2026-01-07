@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
+from infrastructure.repositories.project_repository import SupabaseProjectRepository
 from infrastructure.logging.activity_logger import log_activity
 from core.database import get_database_client
 
@@ -88,7 +88,7 @@ async def export_project_pdf(
 
     PDF export is always free per PRD v3.0.
     """
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
@@ -120,7 +120,7 @@ async def export_project_preview(
     """Generate a PNG preview of the project PDF."""
     import fitz
 
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")
@@ -207,7 +207,7 @@ async def export_project_zip(
     if user_tier != "pro":
         raise HTTPException(403, "ZIP export requires Pro plan.")
 
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     proj = await project_repo.get_project_detail(project_id, user["id"])
     if not proj:
         raise HTTPException(404, "Project not found")

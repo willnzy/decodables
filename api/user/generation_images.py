@@ -18,8 +18,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 
 from core.database import get_supabase_client
 from infrastructure.repositories import (
-    SupabaseCreditRepositoryExtended,
-    SupabaseAssetRepositoryExtended,
+    SupabaseCreditRepository,
+    SupabaseAssetRepository,
 )
 from shared.ai.image_generator import generate_8_images
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
@@ -67,7 +67,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits
-    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    credit_repo = SupabaseCreditRepository(get_supabase_client())
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     result = await credit_repo.deduct_credits(
@@ -159,7 +159,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     generation_time_ms = int((time.time() - generation_start) * 1000)
 
     # Save assets and generation history
-    asset_repo = SupabaseAssetRepositoryExtended(get_supabase_client())
+    asset_repo = SupabaseAssetRepository(get_supabase_client())
     supabase = get_supabase_client()
     enhanced_prompt_text = enhancement_result.get("enhanced_prompt") if enhancement_result else None
 
@@ -264,7 +264,7 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits FIRST
-    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    credit_repo = SupabaseCreditRepository(get_supabase_client())
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     result = await credit_repo.deduct_credits(

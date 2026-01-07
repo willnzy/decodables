@@ -25,9 +25,9 @@ from pydantic import BaseModel
 
 from core.database import get_database_client
 from infrastructure.repositories import (
-    SupabaseAdminModerationRepositoryExtended,
-    SupabaseAdminUsersRepositoryExtended,
-    SupabaseAdminStatsRepositoryExtended,
+    SupabaseAdminModerationRepository,
+    SupabaseAdminUsersRepository,
+    SupabaseAdminStatsRepository,
 )
 from dependencies import require_admin
 
@@ -63,7 +63,7 @@ async def adm_moderation_list(
 ):
     """Retrieve moderation list (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
     items = await moderation_repo.admin_get_moderation_list(
         status=status,
         resource_type=type,
@@ -77,7 +77,7 @@ async def adm_moderation_list(
 async def adm_moderation_detail(listing_id: str, admin: dict = Depends(require_admin)):
     """Retrieve moderation detail (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
     item = await moderation_repo.admin_get_moderation_detail(listing_id)
     if not item:
         raise HTTPException(404, "Listing not found")
@@ -88,9 +88,9 @@ async def adm_moderation_detail(listing_id: str, admin: dict = Depends(require_a
 async def adm_moderation_approve(listing_id: str, admin: dict = Depends(require_admin)):
     """Approve listing (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     result = await moderation_repo.admin_approve_listing(listing_id, admin["id"])
     if not result:
@@ -116,9 +116,9 @@ async def adm_moderation_reject(
 ):
     """Reject listing (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     try:
         result = await moderation_repo.admin_reject_listing(listing_id, admin["id"], req.reason)
@@ -147,8 +147,8 @@ async def adm_moderation_reject(
 async def adm_moderation_delete(listing_id: str, admin: dict = Depends(require_admin)):
     """Soft-delete listing (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
 
     result = await moderation_repo.admin_delete_listing(listing_id)
     if not result:
@@ -162,8 +162,8 @@ async def adm_moderation_delete(listing_id: str, admin: dict = Depends(require_a
 async def adm_moderation_unpublish(listing_id: str, admin: dict = Depends(require_admin)):
     """Force-unpublish a listing (PRD §16)."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
 
     result = await moderation_repo.admin_unpublish_listing(listing_id)
     if not result:
@@ -186,7 +186,7 @@ async def adm_get_reports(
 ):
     """Get all content reports with optional status filtering."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
     reports = await moderation_repo.admin_get_reports(status=status, page=page, limit=limit)
     total = await moderation_repo.admin_get_reports_count(status=status)
     return {"items": reports, "total": total, "page": page}
@@ -196,7 +196,7 @@ async def adm_get_reports(
 async def adm_get_reports_stats(admin: dict = Depends(require_admin)):
     """Get reports statistics by status."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
     return {
         "pending": await moderation_repo.admin_get_reports_count("pending"),
         "reviewed": await moderation_repo.admin_get_reports_count("reviewed"),
@@ -210,7 +210,7 @@ async def adm_get_reports_stats(admin: dict = Depends(require_admin)):
 async def adm_get_report_detail(report_id: str, admin: dict = Depends(require_admin)):
     """Get detailed information about a specific report."""
     db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
+    moderation_repo = SupabaseAdminModerationRepository(db_client)
     report = await moderation_repo.admin_get_report_detail(report_id)
     if not report:
         raise HTTPException(404, "Report not found")
@@ -229,9 +229,9 @@ async def adm_respond_to_report(
 
     try:
         db_client = get_database_client()
-        moderation_repo = SupabaseAdminModerationRepositoryExtended(db_client)
-        stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-        admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+        moderation_repo = SupabaseAdminModerationRepository(db_client)
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
         result = await moderation_repo.admin_respond_to_report(
             report_id=report_id,

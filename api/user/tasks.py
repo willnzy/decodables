@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from infrastructure.task_queue import task_queue, progress_tracker
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from infrastructure.repositories.credit_repository import SupabaseCreditRepository
 from core.database import get_supabase_client, get_database_client
 
 supabase = get_supabase_client()
@@ -159,7 +159,7 @@ async def cancel_task(
             if result.data:
                 credits_charged = result.data.get("params", {}).get("credits_charged", 0)
                 if credits_charged > 0:
-                    credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+                    credit_repo = SupabaseCreditRepository(get_database_client())
                     await credit_repo.add_credits(user["id"], credits_charged, f"Cancelled task {task_id}", "refund")
                     credits_refunded = credits_charged
 

@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 
 from core.database import get_database_client
-from infrastructure.repositories import SupabaseAdminStatsRepositoryExtended
+from infrastructure.repositories import SupabaseAdminStatsRepository
 from scheduler import run_aggregation_now
 from dependencies import require_admin
 
@@ -43,7 +43,7 @@ async def adm_get_user_events(
 ):
     """Fetch user events (with optional filters)."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_user_events(
         event_type=event_type,
         user_id=user_id,
@@ -63,7 +63,7 @@ async def adm_get_event_stats(
 ):
     """Fetch event statistics (grouped by event_type by default)."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_event_stats(start_date, end_date, group_by)
 
 
@@ -83,7 +83,7 @@ async def adm_get_aggregated_stats(
     tier_distribution, conversion_funnel_30d, event_stats_7d, etc.
     """
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     data = await stats_repo.get_aggregated_stats(stat_type, use_cache)
 
     if data is None:
@@ -100,7 +100,7 @@ async def adm_get_aggregated_stats_range(
 ):
     """Fetch aggregated stats over a specific number of days."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.get_aggregated_stats_range(stat_type, days)
 
 

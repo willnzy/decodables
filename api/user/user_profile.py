@@ -21,10 +21,10 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
 from infrastructure.repositories import (
-    SupabaseUserRepositoryExtended,
-    SupabaseCreditRepositoryExtended,
+    SupabaseUserRepository,
+    SupabaseCreditRepository,
     SupabaseListingRepository,
-    SupabaseNotificationRepositoryExtended,
+    SupabaseNotificationRepository,
 )
 from core.database import get_database_client
 from dependencies import get_current_user
@@ -62,8 +62,8 @@ async def get_me(user: dict = Depends(get_current_user)):
     user_id = user["id"]
 
     db = get_database_client()
-    user_repo = SupabaseUserRepositoryExtended(db)
-    credit_repo = SupabaseCreditRepositoryExtended(db)
+    user_repo = SupabaseUserRepository(db)
+    credit_repo = SupabaseCreditRepository(db)
 
     # Reset monthly credits when needed
     await credit_repo.check_and_reset_monthly_credits_if_needed(user_id)
@@ -87,7 +87,7 @@ async def get_history(
 ):
     """Get credit history."""
     db = get_database_client()
-    credit_repo = SupabaseCreditRepositoryExtended(db)
+    credit_repo = SupabaseCreditRepository(db)
     result = await credit_repo.get_credit_history(user["id"], page, limit)
     return {"items": result["items"], "total": result["total"], "page": page}
 
@@ -104,7 +104,7 @@ async def get_purchases(user: dict = Depends(get_current_user)):
 async def get_notifications(user: dict = Depends(get_current_user)):
     """Get user notifications."""
     db = get_database_client()
-    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    notif_repo = SupabaseNotificationRepository(db)
     return await notif_repo.get_user_notifications(user["id"])
 
 
@@ -112,7 +112,7 @@ async def get_notifications(user: dict = Depends(get_current_user)):
 async def mark_read(id: str, user: dict = Depends(get_current_user)):
     """Mark a notification as read."""
     db = get_database_client()
-    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    notif_repo = SupabaseNotificationRepository(db)
     result = await notif_repo.mark_notification_read(id, user["id"])
     if not result:
         raise HTTPException(404, "Notification not found")
@@ -123,7 +123,7 @@ async def mark_read(id: str, user: dict = Depends(get_current_user)):
 async def mark_all_read(user: dict = Depends(get_current_user)):
     """Mark all notifications as read."""
     db = get_database_client()
-    notif_repo = SupabaseNotificationRepositoryExtended(db)
+    notif_repo = SupabaseNotificationRepository(db)
     await notif_repo.mark_all_notifications_read(user["id"])
     return {"status": "ok"}
 
@@ -144,7 +144,7 @@ async def update_timezone(
         raise HTTPException(400, f"Invalid timezone: {req.timezone}")
 
     db = get_database_client()
-    user_repo = SupabaseUserRepositoryExtended(db)
+    user_repo = SupabaseUserRepository(db)
     result = await user_repo.update_timezone(user["id"], req.timezone)
     if not result:
         raise HTTPException(500, "Failed to update timezone")

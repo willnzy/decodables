@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from dependencies import optional_user, get_current_user
-from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
+from infrastructure.repositories.credit_repository import SupabaseCreditRepository
 from core.database import get_supabase_client, get_database_client
 
 supabase = get_supabase_client()
@@ -215,7 +215,7 @@ async def claim_campaign(
     if campaign["type"] == "credits_gift":
         credits_received = config.get("amount", 0)
         if credits_received > 0:
-            credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+            credit_repo = SupabaseCreditRepository(get_database_client())
             await credit_repo.add_credits_permanent(
                 user["id"],
                 credits_received,

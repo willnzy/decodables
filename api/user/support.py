@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
+from infrastructure.repositories.support_repository import SupabaseSupportRepository
 from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ async def create_ticket(
 ) -> SupportResponse:
     """Create a support ticket."""
     email = req.email or user.get("email", "unknown@user.com")
-    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    support_repo = SupabaseSupportRepository(get_database_client())
     await support_repo.create_support_ticket(user["id"], email, req.message)
     return SupportResponse(status="ok")
 
@@ -162,7 +162,7 @@ async def contact(
 ) -> SupportResponse:
     """Submit contact form."""
 
-    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    support_repo = SupabaseSupportRepository(get_database_client())
     support_repo.send_support_email(
         user_id=user["id"],
         user_email=req.email,
@@ -179,7 +179,7 @@ async def feedback(
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
     """Submit user feedback."""
-    support_repo = SupabaseSupportRepositoryExtended(get_database_client())
+    support_repo = SupabaseSupportRepository(get_database_client())
     email = req.email or user.get("email", "unknown@user.com")
     support_repo.send_feedback_with_images(user["id"], email, req.message, req.images)
     return SupportResponse(status="ok", message="Feedback submitted successfully")

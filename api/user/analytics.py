@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.admin_stats_repository_extended import SupabaseAdminStatsRepositoryExtended
+from infrastructure.repositories.admin_repository import SupabaseAdminStatsRepository
 from infrastructure.logging.activity_logger import log_activity
 from core.database import get_supabase_client, get_database_client
 
@@ -141,7 +141,7 @@ async def log_analytics_events(
     user_agent = request.headers.get("User-Agent", "unknown")
     accept_language = request.headers.get("Accept-Language", "unknown")
 
-    stats_repo = SupabaseAdminStatsRepositoryExtended(get_database_client())
+    stats_repo = SupabaseAdminStatsRepository(get_database_client())
 
     for event in req.events:
         env_info = event.env

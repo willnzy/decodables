@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, Query
 
 from dependencies import require_admin
 from core.database import get_database_client, get_supabase_client
-from infrastructure.repositories import SupabaseAdminStatsRepositoryExtended
+from infrastructure.repositories import SupabaseAdminStatsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ async def get_dashboard_stats(
 ):
     """Fetch dashboard KPIs."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_dashboard_stats(period)
 
 
@@ -84,7 +84,7 @@ async def get_user_growth_stats(
 ):
     """Fetch user growth stats."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
 
 
@@ -97,7 +97,7 @@ async def get_revenue_stats(
 ):
     """Fetch revenue stats."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
 
 
@@ -109,7 +109,7 @@ async def get_project_stats(
 ):
     """Fetch project stats."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_project_stats(start_date, end_date)
 
 
@@ -121,7 +121,7 @@ async def get_credit_usage_stats(
 ):
     """Fetch credit usage stats."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
 
 
@@ -131,7 +131,7 @@ async def get_tier_distribution(
 ):
     """Fetch user tier distribution."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_tier_distribution()
 
 
@@ -142,7 +142,7 @@ async def get_conversion_funnel(
 ):
     """Fetch conversion funnel stats."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_conversion_funnel(period)
 
 

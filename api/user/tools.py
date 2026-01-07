@@ -18,8 +18,8 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.credit_repository_extended import SupabaseCreditRepositoryExtended
-from infrastructure.repositories.asset_repository_extended import SupabaseAssetRepositoryExtended
+from infrastructure.repositories.credit_repository import SupabaseCreditRepository
+from infrastructure.repositories.asset_repository import SupabaseAssetRepository
 from infrastructure.logging.activity_logger import log_activity
 from core.database import get_database_client
 
@@ -185,7 +185,7 @@ async def ocr_tool(
         raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)")
 
     OCR_COST = 5
-    credit_repo = SupabaseCreditRepositoryExtended(get_database_client())
+    credit_repo = SupabaseCreditRepository(get_database_client())
     result = await credit_repo.deduct_credits(user["id"], OCR_COST, "ocr", "OCR processing")
     if not result.get("success", True):
         if "INSUFFICIENT" in str(result.get("error", "")):
@@ -210,7 +210,7 @@ async def ocr_tool(
 
         if ocr_result.get("images"):
             tz = get_request_timezone(request, user_id=user.get("id"))
-            asset_repo = SupabaseAssetRepositoryExtended(get_database_client())
+            asset_repo = SupabaseAssetRepository(get_database_client())
             for img_url in ocr_result["images"]:
                 await asset_repo.save_asset(user["id"], img_url, "ocr_extracted", project_id, timezone=tz)
 

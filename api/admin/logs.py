@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 
 from dependencies import require_admin
 from core.database import get_database_client, get_supabase_client
-from infrastructure.repositories import SupabaseAdminUsersRepositoryExtended
+from infrastructure.repositories import SupabaseAdminUsersRepository
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ async def get_operation_logs(
 ):
     """Fetch administrator operation logs."""
     db_client = get_database_client()
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
     return await admin_users_repo.admin_get_operation_logs(
         operation_type=operation_type,
         admin_id=admin_id,
@@ -201,7 +201,7 @@ async def export_operation_logs(
 ):
     """Export operation logs as CSV."""
     db_client = get_database_client()
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
     result = await admin_users_repo.admin_get_operation_logs(
         operation_type=operation_type,
         start_date=start_date,

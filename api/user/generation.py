@@ -27,9 +27,9 @@ from pydantic import BaseModel, Field
 from dependencies import get_current_user
 from core.database import get_supabase_client
 from infrastructure.repositories import (
-    SupabaseCreditRepositoryExtended,
-    SupabaseAssetRepositoryExtended,
-    SupabaseProjectRepositoryExtended,
+    SupabaseCreditRepository,
+    SupabaseAssetRepository,
+    SupabaseProjectRepository,
 )
 from shared.ai.image_generator import generate_8_images
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
@@ -173,7 +173,7 @@ async def generate_images(
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits
-    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    credit_repo = SupabaseCreditRepository(get_supabase_client())
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     result = await credit_repo.deduct_credits(
@@ -255,7 +255,7 @@ async def generate_images(
     generation_time_ms = int((time.time() - generation_start) * 1000)
 
     # Save assets
-    asset_repo = SupabaseAssetRepositoryExtended(get_supabase_client())
+    asset_repo = SupabaseAssetRepository(get_supabase_client())
     for idx, url in enumerate(urls):
         if url:
             prompt_idx = idx // num_images if num_images > 1 else idx
@@ -313,7 +313,7 @@ async def generate_images_async(
     cost = len(req.prompts) * base_cost * num_images
 
     # Deduct credits FIRST
-    credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+    credit_repo = SupabaseCreditRepository(get_supabase_client())
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     result = await credit_repo.deduct_credits(
@@ -522,7 +522,7 @@ async def generate_pdf(
 
     Creates a foldable 8-page mini-book PDF.
     """
-    project_repo = SupabaseProjectRepositoryExtended(get_supabase_client())
+    project_repo = SupabaseProjectRepository(get_supabase_client())
     proj = await project_repo.get_project_detail(req.project_id, user["id"])
     if proj and req.current_hash != proj.get("last_downloaded_hash"):
         await project_repo.update_project_hash(req.project_id, req.current_hash)

@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from container import get_container
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
+from infrastructure.repositories.project_repository import SupabaseProjectRepository
 from core.database import get_database_client
 
 from application.commands.creation import (
@@ -179,7 +179,7 @@ async def dashboard_projects(
         Projects list with view info
     """
 
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     result = await project_repo.get_dashboard_projects(
         user_id=user["id"],
         view_type=view,
@@ -205,7 +205,7 @@ async def list_deleted_projects(
         List of deleted projects that can be restored
     """
 
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     return await project_repo.get_user_deleted_projects(user["id"], page, limit)
 
 
@@ -220,7 +220,7 @@ async def get_project_seller_stats(
         Dict with total_selling, total_sales, unique_buyers, etc.
     """
 
-    project_repo = SupabaseProjectRepositoryExtended(get_database_client())
+    project_repo = SupabaseProjectRepository(get_database_client())
     return await project_repo.get_seller_project_stats(user["id"])
 
 

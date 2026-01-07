@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from core.database import get_database_client
-from infrastructure.repositories import SupabaseAdminStatsRepositoryExtended
+from infrastructure.repositories import SupabaseAdminStatsRepository
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
@@ -38,7 +38,7 @@ async def adm_get_ai_insights(
 ):
     """Fetch AI insights."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_ai_insights(type)
 
 
@@ -49,7 +49,7 @@ async def adm_get_ai_recommendations(
 ):
     """Fetch AI optimization recommendations."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_ai_recommendations(area)
 
 
@@ -61,7 +61,7 @@ async def adm_get_behavior_analysis(
 ):
     """Fetch AI-powered user behavior analysis."""
     db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
     return await stats_repo.admin_get_behavior_analysis(start_date, end_date)
 
 

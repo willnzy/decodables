@@ -20,8 +20,8 @@ from svix.webhooks import Webhook, WebhookVerificationError
 from config import CLERK_WEBHOOK_SECRET
 from core.database import get_supabase_client
 from infrastructure.repositories import (
-    SupabaseUserRepositoryExtended,
-    SupabaseCreditRepositoryExtended,
+    SupabaseUserRepository,
+    SupabaseCreditRepository,
     SupabasePaymentRepository,
 )
 from domains.billing.payment_service import construct_event
@@ -68,7 +68,7 @@ async def clerk_webhook(request: Request):
     event_type = evt["type"]
     data = evt["data"]
 
-    user_repo = SupabaseUserRepositoryExtended(get_supabase_client())
+    user_repo = SupabaseUserRepository(get_supabase_client())
     supabase = get_supabase_client()
 
     if event_type == "user.created":
@@ -267,8 +267,8 @@ async def _handle_checkout_completed(event: dict) -> dict:
     currency = session.get('currency', 'usd').upper()
 
     if uid and plan:
-        user_repo = SupabaseUserRepositoryExtended(get_supabase_client())
-        credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+        user_repo = SupabaseUserRepository(get_supabase_client())
+        credit_repo = SupabaseCreditRepository(get_supabase_client())
         payment_repo = SupabasePaymentRepository(get_supabase_client())
         supabase = get_supabase_client()
 
@@ -335,7 +335,7 @@ async def _handle_invoice_payment(event: dict) -> dict:
 
             # Refresh monthly credits (reset, no rollover) on renewal
             if tier in ['starter', 'pro'] and billing_reason == 'subscription_cycle':
-                credit_repo = SupabaseCreditRepositoryExtended(get_supabase_client())
+                credit_repo = SupabaseCreditRepository(get_supabase_client())
                 payment_repo = SupabasePaymentRepository(get_supabase_client())
 
                 await credit_repo.refresh_monthly_credits(uid, tier)
@@ -368,7 +368,7 @@ async def _handle_subscription_change(event: dict) -> dict:
 
         if user_res.data:
             uid = user_res.data[0]['id']
-            user_repo = SupabaseUserRepositoryExtended(get_supabase_client())
+            user_repo = SupabaseUserRepository(get_supabase_client())
 
             if status in ['canceled', 'unpaid', 'past_due']:
                 # Downgrade to free

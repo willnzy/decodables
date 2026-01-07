@@ -14,15 +14,14 @@ from .experiment_repository import SupabaseExperimentRepository
 from .system_resource_repository import SupabaseSystemResourceRepository
 from .config_repository import SupabaseConfigRepository
 from .payment_repository import SupabasePaymentRepository
-from .user_repository_extended import SupabaseUserRepositoryExtended
-from .credit_repository_extended import SupabaseCreditRepositoryExtended
-from .project_repository_extended import SupabaseProjectRepositoryExtended
-from .asset_repository_extended import SupabaseAssetRepositoryExtended
-from .notification_repository_extended import SupabaseNotificationRepositoryExtended
-from .support_repository_extended import SupabaseSupportRepositoryExtended
-from .admin_users_repository_extended import SupabaseAdminUsersRepositoryExtended
-from .admin_moderation_repository_extended import SupabaseAdminModerationRepositoryExtended
-from .admin_stats_repository_extended import SupabaseAdminStatsRepositoryExtended
+from .asset_repository import SupabaseAssetRepository
+from .notification_repository import SupabaseNotificationRepository
+from .support_repository import SupabaseSupportRepository
+from .admin_repository import (
+    SupabaseAdminUsersRepository,
+    SupabaseAdminModerationRepository,
+    SupabaseAdminStatsRepository,
+)
 
 __all__ = [
     'SupabaseCreditRepository',
@@ -34,13 +33,10 @@ __all__ = [
     'SupabaseSystemResourceRepository',
     'SupabaseConfigRepository',
     'SupabasePaymentRepository',
-    'SupabaseUserRepositoryExtended',
-    'SupabaseCreditRepositoryExtended',
-    'SupabaseProjectRepositoryExtended',
-    'SupabaseAssetRepositoryExtended',
-    'SupabaseNotificationRepositoryExtended',
-    'SupabaseSupportRepositoryExtended',
-    'SupabaseAdminUsersRepositoryExtended',
-    'SupabaseAdminModerationRepositoryExtended',
-    'SupabaseAdminStatsRepositoryExtended',
+    'SupabaseAssetRepository',
+    'SupabaseNotificationRepository',
+    'SupabaseSupportRepository',
+    'SupabaseAdminUsersRepository',
+    'SupabaseAdminModerationRepository',
+    'SupabaseAdminStatsRepository',
 ]

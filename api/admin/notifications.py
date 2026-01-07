@@ -20,9 +20,9 @@ from pydantic import BaseModel
 
 from core.database import get_database_client
 from infrastructure.repositories import (
-    SupabaseAdminNotificationRepositoryExtended,
-    SupabaseAdminUsersRepositoryExtended,
-    SupabaseAdminStatsRepositoryExtended,
+    SupabaseNotificationRepository,
+    SupabaseAdminUsersRepository,
+    SupabaseAdminStatsRepository,
 )
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
@@ -65,9 +65,9 @@ class AdminBatchNotificationRequest(BaseModel):
 async def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dict = Depends(require_admin)):
     """Send a system-wide broadcast notification."""
     db_client = get_database_client()
-    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    notification_repo = SupabaseNotificationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     notification = await notification_repo.create_broadcast(req.title, req.content, req.target_group)
     await stats_repo.log_user_event(admin["id"], "admin_broadcast", {
@@ -89,9 +89,9 @@ async def adm_broadcast(request: Request, req: AdminBroadcastRequest, admin: dic
 async def adm_send_notification(request: Request, req: AdminSendNotificationRequest, admin: dict = Depends(require_admin)):
     """Send a notification to a single user."""
     db_client = get_database_client()
-    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    notification_repo = SupabaseNotificationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     notification = await notification_repo.send_notification_to_user(
         user_id=req.user_id,
@@ -127,9 +127,9 @@ async def adm_batch_notification(request: Request, req: AdminBatchNotificationRe
         raise HTTPException(400, "Cannot send to more than 100 users at once")
 
     db_client = get_database_client()
-    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
-    stats_repo = SupabaseAdminStatsRepositoryExtended(db_client)
-    admin_users_repo = SupabaseAdminUsersRepositoryExtended(db_client)
+    notification_repo = SupabaseNotificationRepository(db_client)
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     notifications = await notification_repo.send_notification_to_users(
         user_ids=req.user_ids,
@@ -158,7 +158,7 @@ async def adm_batch_notification(request: Request, req: AdminBatchNotificationRe
 async def adm_notification_stats(admin: dict = Depends(require_admin)):
     """Fetch notification statistics."""
     db_client = get_database_client()
-    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    notification_repo = SupabaseNotificationRepository(db_client)
     return await notification_repo.get_all_notification_stats()
 
 
@@ -170,5 +170,5 @@ async def adm_notification_history(
 ):
     """Fetch notification history."""
     db_client = get_database_client()
-    notification_repo = SupabaseAdminNotificationRepositoryExtended(db_client)
+    notification_repo = SupabaseNotificationRepository(db_client)
     return await notification_repo.get_notification_history(page=page, limit=limit)

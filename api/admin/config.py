@@ -27,7 +27,7 @@ from domains.platform.config_service import (
     clear_config_cache, RATE_LIMIT_PRESETS
 )
 from infrastructure.rate_limiter import limiter, get_current_limits
-from infrastructure.repositories.admin_users_repository_extended import SupabaseAdminUsersRepositoryExtended
+from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 from core.database import get_database_client
 from dependencies import require_admin
 
@@ -91,7 +91,7 @@ async def adm_update_config(
     if not success:
         raise HTTPException(500, "Failed to update config")
 
-    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    admin_repo = SupabaseAdminUsersRepository(get_database_client())
     await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_update",
@@ -113,7 +113,7 @@ async def adm_batch_update_configs(
     """Batch update multiple config entries."""
     results = batch_update_configs(req.updates, admin["id"])
 
-    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    admin_repo = SupabaseAdminUsersRepository(get_database_client())
     await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="config_batch_update",
@@ -161,7 +161,7 @@ async def adm_apply_rate_limit_preset(
     if not success:
         raise HTTPException(500, "Failed to apply preset")
 
-    admin_repo = SupabaseAdminUsersRepositoryExtended(get_database_client())
+    admin_repo = SupabaseAdminUsersRepository(get_database_client())
     await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="rate_limit_preset",
