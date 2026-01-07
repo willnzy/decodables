@@ -85,8 +85,7 @@ from infrastructure.db_compat import (
     get_system_resources,
 )
 
-# Notifications
-from .notifications import (
+    # Notification functions
     get_user_notifications,
     mark_notification_read,
     mark_all_notifications_read,
@@ -95,16 +94,15 @@ from .notifications import (
     send_notification_to_users,
     get_all_notification_stats,
     get_notification_history,
-)
-
-# Support
-from .support import (
+    # Support functions
     create_support_ticket,
     send_support_email,
     send_feedback_with_images,
     create_report,
     get_user_reports,
 )
+
+# Admin - Users - Still from local files
 
 # Payments
 from .payments import (

@@ -41,6 +41,8 @@ from infrastructure.repositories.credit_repository_extended import SupabaseCredi
 from infrastructure.repositories.project_repository_extended import SupabaseProjectRepositoryExtended
 from infrastructure.repositories.listing_repository_extended import SupabaseListingRepositoryExtended
 from infrastructure.repositories.asset_repository_extended import SupabaseAssetRepositoryExtended
+from infrastructure.repositories.notification_repository_extended import SupabaseNotificationRepositoryExtended
+from infrastructure.repositories.support_repository_extended import SupabaseSupportRepositoryExtended
 
 logger = logging.getLogger(__name__)
 
@@ -761,4 +763,104 @@ __all__ = [
     'get_dashboard_assets',
     'get_seller_asset_stats',
     'get_system_resources',
+    # Notification functions
+    'get_user_notifications',
+    'mark_notification_read',
+    'mark_all_notifications_read',
+    'create_broadcast',
+    'send_notification_to_user',
+    'send_notification_to_users',
+    'get_all_notification_stats',
+    'get_notification_history',
+    # Support functions
+    'create_support_ticket',
+    'send_support_email',
+    'send_feedback_with_images',
+    'create_report',
+    'get_user_reports',
 ]
+
+# ==========================================
+# Notification Functions
+# ==========================================
+
+
+@async_to_sync
+async def get_user_notifications(user_id: str, unread_only: bool = False, limit: int = 20):
+    """Get user notifications."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.get_user_notifications(user_id, unread_only, limit)
+
+@async_to_sync
+async def mark_notification_read(notification_id: str, user_id: str):
+    """Mark notification as read."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.mark_notification_read(notification_id, user_id)
+
+@async_to_sync
+async def mark_all_notifications_read(user_id: str):
+    """Mark all notifications as read."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.mark_all_notifications_read(user_id)
+
+@async_to_sync
+async def create_broadcast(title: str, content: str, target_group: str = "all"):
+    """Create broadcast notification."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.create_broadcast(title, content, target_group)
+
+@async_to_sync
+async def send_notification_to_user(user_id: str, title: str, content: str, notification_type: str = "system"):
+    """Send notification to single user."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.send_notification_to_user(user_id, title, content, notification_type)
+
+@async_to_sync
+async def send_notification_to_users(user_ids: list, title: str, content: str, notification_type: str = "system"):
+    """Send notification to multiple users."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.send_notification_to_users(user_ids, title, content, notification_type)
+
+@async_to_sync
+async def get_all_notification_stats():
+    """Get notification statistics."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.get_all_notification_stats()
+
+@async_to_sync
+async def get_notification_history(page: int = 1, limit: int = 50, notification_type: str = None):
+    """Get notification history (admin)."""
+    repo = _get_repo(SupabaseNotificationRepositoryExtended)
+    return await repo.get_notification_history(page, limit, notification_type)
+
+# ==========================================
+# Support Functions
+# ==========================================
+
+@async_to_sync
+async def create_support_ticket(user_id: str, email: str, message: str):
+    """Create support ticket."""
+    repo = _get_repo(SupabaseSupportRepositoryExtended)
+    return await repo.create_support_ticket(user_id, email, message)
+
+def send_support_email(user_id: str, user_email: str, message: str, images: list = None):
+    """Send support email (synchronous)."""
+    repo = _get_repo(SupabaseSupportRepositoryExtended)
+    return repo.send_support_email(user_id, user_email, message, images)
+
+def send_feedback_with_images(user_id: str, user_email: str, message: str, images: list = None):
+    """Send feedback with images (synchronous)."""
+    repo = _get_repo(SupabaseSupportRepositoryExtended)
+    return repo.send_feedback_with_images(user_id, user_email, message, images)
+
+@async_to_sync
+async def create_report(reporter_id: str, listing_id: str, reason: str):
+    """Create content report."""
+    repo = _get_repo(SupabaseSupportRepositoryExtended)
+    return await repo.create_report(reporter_id, listing_id, reason)
+
+@async_to_sync
+async def get_user_reports(user_id: str, page: int = 1, limit: int = 20):
+    """Get user's reports."""
+    repo = _get_repo(SupabaseSupportRepositoryExtended)
+    return await repo.get_user_reports(user_id, page, limit)
