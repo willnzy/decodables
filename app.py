@@ -303,6 +303,11 @@ app.include_router(projects_router)
 app.include_router(marketplace_router)
 app.include_router(resources_router)
 
+# v3.25: New DDD-based API routers (Phase 6 - gradual migration)
+# These use the new container + handler architecture
+from api import api_router as ddd_api_router
+app.include_router(ddd_api_router)
+
 
 # ==========================================
 # Global Exception Handlers (v3.12)
