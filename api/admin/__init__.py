@@ -38,6 +38,14 @@ from .subscriptions_api import router as subscriptions_router
 from .events_api import router as events_router
 from .experiments_api import router as experiments_router
 
+# New v2 routers (without _api suffix)
+from .users import router as users_v2_router
+from .stats import router as stats_v2_router
+from .campaigns import router as campaigns_v2_router
+from .logs import router as logs_v2_router
+from .metrics import router as metrics_v2_router
+from .experiments import router as experiments_v2_router
+
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
 
@@ -56,5 +64,13 @@ admin_router.include_router(metrics_router)
 admin_router.include_router(subscriptions_router)
 admin_router.include_router(events_router)
 admin_router.include_router(experiments_router)
+
+# Include new v2 routers
+admin_router.include_router(users_v2_router)
+admin_router.include_router(stats_v2_router)
+admin_router.include_router(campaigns_v2_router)
+admin_router.include_router(logs_v2_router)
+admin_router.include_router(metrics_v2_router)
+admin_router.include_router(experiments_v2_router)
 
 __all__ = ['admin_router']
