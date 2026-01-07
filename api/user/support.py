@@ -97,7 +97,7 @@ async def chat_support(
     user: dict = Depends(get_current_user),
 ) -> ChatResponse:
     """AI-powered support chat."""
-    from services.ai_chat_service import chat_with_assistant, chat_with_vision, SUPPORT_SYSTEM_PROMPT_FALLBACK
+    from application.services.ai_chat_service import chat_with_assistant, chat_with_vision, SUPPORT_SYSTEM_PROMPT_FALLBACK
     from config import OPENAI_ASSISTANT_ID
     from services.ai.story_generator import client as openai_client
 

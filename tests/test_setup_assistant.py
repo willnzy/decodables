@@ -15,23 +15,23 @@ class TestSetupAssistantConfig:
     
     def test_assistant_name_defined(self):
         """Assistant name is defined"""
-        from services.setup_assistant import ASSISTANT_NAME
+        from application.services.setup_assistant import ASSISTANT_NAME
         assert ASSISTANT_NAME == "Make Decodables Support Assistant"
     
     def test_vector_store_name_defined(self):
         """Vector store name is defined"""
-        from services.setup_assistant import VECTOR_STORE_NAME
+        from application.services.setup_assistant import VECTOR_STORE_NAME
         assert VECTOR_STORE_NAME == "Make Decodables Knowledge Base"
     
     def test_assistant_instructions_defined(self):
         """Assistant instructions are defined"""
-        from services.setup_assistant import ASSISTANT_INSTRUCTIONS
+        from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
         assert "Make Decodables" in ASSISTANT_INSTRUCTIONS
         assert "customer support" in ASSISTANT_INSTRUCTIONS.lower()
     
     def test_knowledge_base_path_defined(self):
         """Knowledge base path is defined"""
-        from services.setup_assistant import KNOWLEDGE_BASE_PATH
+        from application.services.setup_assistant import KNOWLEDGE_BASE_PATH
         assert "knowledge_base.md" in KNOWLEDGE_BASE_PATH
 
 
@@ -41,7 +41,7 @@ class TestMain:
     @patch('services.setup_assistant.os.environ.get')
     def test_exits_when_no_api_key(self, mock_get):
         """Exits with error when no API key"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         mock_get.return_value = None
         
@@ -55,7 +55,7 @@ class TestMain:
     @patch('services.setup_assistant.os.path.exists')
     def test_exits_when_knowledge_base_not_found(self, mock_exists, mock_get, mock_openai):
         """Exits when knowledge base file not found"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         mock_get.return_value = "sk-test-key"
         mock_exists.return_value = False
@@ -73,7 +73,7 @@ class TestMain:
     @patch('builtins.open', new_callable=mock_open, read_data=b"# Knowledge Base")
     def test_successful_setup(self, mock_file, mock_exists, mock_get, mock_openai, mock_httpx_post, mock_httpx_get):
         """Complete successful setup"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         # Setup mocks
         mock_get.return_value = "sk-test-key"
@@ -121,7 +121,7 @@ class TestMain:
     @patch('builtins.open', new_callable=mock_open, read_data=b"# Knowledge Base")
     def test_exits_on_vector_store_creation_error(self, mock_file, mock_exists, mock_get, mock_openai, mock_httpx_post):
         """Exits when vector store creation fails"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         mock_get.return_value = "sk-test-key"
         mock_exists.return_value = True
@@ -153,7 +153,7 @@ class TestMain:
     @patch('builtins.open', new_callable=mock_open, read_data=b"# Knowledge Base")
     def test_waits_for_file_processing(self, mock_file, mock_exists, mock_get, mock_openai, mock_httpx_post, mock_httpx_get, mock_sleep):
         """Waits for file to be processed in vector store"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         mock_get.return_value = "sk-test-key"
         mock_exists.return_value = True
@@ -200,7 +200,7 @@ class TestMain:
     @patch('builtins.open', new_callable=mock_open, read_data=b"# Knowledge Base")
     def test_saves_env_file(self, mock_file, mock_exists, mock_get, mock_openai, mock_httpx_post, mock_httpx_get):
         """Saves assistant ID to .env.assistant file"""
-        from services.setup_assistant import main
+        from application.services.setup_assistant import main
         
         mock_get.return_value = "sk-test-key"
         mock_exists.return_value = True
@@ -241,23 +241,23 @@ class TestAssistantInstructions:
     
     def test_instructions_include_product_name(self):
         """Instructions mention product name"""
-        from services.setup_assistant import ASSISTANT_INSTRUCTIONS
+        from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
         assert "Make Decodables" in ASSISTANT_INSTRUCTIONS
     
     def test_instructions_include_support_channels(self):
         """Instructions include support channels"""
-        from services.setup_assistant import ASSISTANT_INSTRUCTIONS
+        from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
         # Should mention WhatsApp or email
         assert "WhatsApp" in ASSISTANT_INSTRUCTIONS or "email" in ASSISTANT_INSTRUCTIONS.lower()
     
     def test_instructions_set_tone(self):
         """Instructions set friendly tone"""
-        from services.setup_assistant import ASSISTANT_INSTRUCTIONS
+        from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
         assert "friendly" in ASSISTANT_INSTRUCTIONS.lower()
     
     def test_instructions_provide_guidelines(self):
         """Instructions provide response guidelines"""
-        from services.setup_assistant import ASSISTANT_INSTRUCTIONS
+        from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
         assert "guidelines" in ASSISTANT_INSTRUCTIONS.lower() or "Important" in ASSISTANT_INSTRUCTIONS
 
 

@@ -73,7 +73,7 @@ async def adm_generate_ai_report(
     """
     Generate a comprehensive AI-powered business intelligence report.
     """
-    from services.ai_report_service import generate_ai_business_report
+    from application.services.ai_report_service import generate_ai_business_report
     
     try:
         report = generate_ai_business_report(
@@ -93,7 +93,7 @@ def adm_get_quick_insights(
     """
     Get quick rule-based insights for dashboard preview.
     """
-    from services.ai_report_service import get_quick_insights
+    from application.services.ai_report_service import get_quick_insights
     
     try:
         insights = get_quick_insights()
