@@ -18,11 +18,11 @@ from unittest.mock import MagicMock, AsyncMock
 from domains.billing import (
     UserCredits,
     CreditTransaction,
-    CreditType,
+    Credits,
+    CreditBucket,
     TransactionType,
-    OperationCost,
-    InsufficientCreditsError,
-    InvalidCreditOperationError,
+    InsufficientCreditsException,
+    InvalidAmountException,
 )
 
 

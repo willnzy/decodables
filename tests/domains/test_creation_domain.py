@@ -18,9 +18,9 @@ from unittest.mock import MagicMock, AsyncMock
 from domains.creation import (
     Project,
     ProjectStatus,
-    ProjectLimitExceededError,
-    ProjectNotFoundError,
-    ProjectAccessDeniedError,
+    ProjectLimitExceededException,
+    ProjectNotFoundException,
+    ProjectAccessDeniedException,
 )
 
 

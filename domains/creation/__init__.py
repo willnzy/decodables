@@ -25,6 +25,7 @@ from .aggregates.project import Project
 from .exceptions import (
     ProjectNotFoundException,
     ProjectAccessDeniedException,
+    ProjectLimitExceededException,
     InvalidProjectDataException,
     AssetNotFoundException,
 )
@@ -44,6 +45,7 @@ __all__ = [
     # Exceptions
     'ProjectNotFoundException',
     'ProjectAccessDeniedException',
+    'ProjectLimitExceededException',
     'InvalidProjectDataException',
     'AssetNotFoundException',
     # Repository

@@ -17,9 +17,10 @@ from unittest.mock import MagicMock, AsyncMock
 from domains.identity import (
     UserProfile,
     UserTier,
-    FeatureAccess,
-    TierFeatureNotAllowedError,
-    UserNotFoundError,
+    OnboardingStep,
+    UserPreferences,
+    UserNotFoundException,
+    InvalidUserDataException,
 )
 
 

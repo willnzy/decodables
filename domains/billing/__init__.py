@@ -18,7 +18,7 @@ Business Rules:
 """
 
 from .value_objects import Credits, CreditBucket, TransactionType
-from .aggregates.user_credits import UserCredits
+from .aggregates.user_credits import UserCredits, CreditTransaction
 from .exceptions import (
     InsufficientCreditsException,
     InvalidAmountException,
@@ -34,6 +34,7 @@ __all__ = [
     'TransactionType',
     # Aggregates
     'UserCredits',
+    'CreditTransaction',
     # Exceptions
     'InsufficientCreditsException',
     'InvalidAmountException',
