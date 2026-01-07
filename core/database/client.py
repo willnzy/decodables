@@ -8,7 +8,14 @@ Database Client - Supabase client initialization and management.
 import os
 import logging
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, TYPE_CHECKING
+
+# Type alias for Supabase client (for type hints in repositories)
+if TYPE_CHECKING:
+    from supabase import Client as SupabaseClient
+    DatabaseClient = SupabaseClient
+else:
+    DatabaseClient = Any
 
 logger = logging.getLogger(__name__)
 

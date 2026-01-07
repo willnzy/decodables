@@ -19,6 +19,7 @@ from .client import (
     get_db_client,
     is_db_available,
     DatabaseConfig,
+    DatabaseClient,
 )
 from .retry import (
     retry_on_network_error,
@@ -39,6 +40,7 @@ __all__ = [
     'supabase',  # Singleton instance for backward compatibility
     'is_db_available',
     'DatabaseConfig',
+    'DatabaseClient',  # Type alias for type hints
     # Retry
     'retry_on_network_error',
     'is_retryable_error',
