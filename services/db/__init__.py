@@ -9,15 +9,19 @@ Modular database operations organized by domain.
 
 # Core - Client and utilities
 from core.database import supabase, retry_on_network_error, is_retryable_error
-from .utils import (
+
+# Business rules - Access control (now from domains layer)
+from domains.shared.access_control import (
     is_member,
     can_access_resource,
     get_total_credits,
     publish_permission,
     validate_allowed_tiers,
     listing_is_public_visible,
-    log_activity,
 )
+
+# Infrastructure - Activity logging
+from infrastructure.logging import log_activity
 
 # Users, Projects & Marketplace - Now imported from infrastructure.db_compat
 from infrastructure.db_compat import (
@@ -83,8 +87,6 @@ from infrastructure.db_compat import (
     get_dashboard_assets,
     get_seller_asset_stats,
     get_system_resources,
-)
-
     # Notification functions
     get_user_notifications,
     mark_notification_read,
@@ -100,23 +102,34 @@ from infrastructure.db_compat import (
     send_feedback_with_images,
     create_report,
     get_user_reports,
-)
-
-# Admin - Users - Still from local files
-
-    # Payment functions (already in db_compat)
-
-# Admin - Users
-from .admin_users import (
+    # Payment functions
+    log_payment_record,
+    get_user_payments,
+    admin_get_all_payments,
+    get_payment_by_stripe_id,
+    update_payment_status,
+    admin_get_revenue_stats,
+    # Config functions
+    get_system_config,
+    get_all_system_configs,
+    get_configs_by_group,
+    admin_get_system_configs,
+    admin_get_config_groups,
+    admin_create_system_config,
+    admin_update_system_config,
+    admin_delete_system_config,
+    admin_get_config_audit_logs,
+    invalidate_config_cache_api,
+    get_public_configs,
+    get_config_by_key,
+    get_config_group,
+    # Admin Users functions
     get_full_user_audit,
     admin_adjust_credits,
     admin_get_user_projects,
     admin_log_operation,
     admin_get_operation_logs,
-)
-
-# Admin - Moderation
-from .admin_moderation import (
+    # Admin Moderation functions
     admin_get_moderation_list,
     admin_get_moderation_detail,
     admin_approve_listing,
@@ -127,10 +140,7 @@ from .admin_moderation import (
     admin_get_reports_count,
     admin_respond_to_report,
     admin_get_report_detail,
-)
-
-# Admin - Stats
-from .admin_stats import (
+    # Admin Stats functions
     admin_get_dashboard_stats,
     admin_get_user_growth_stats,
     admin_get_tier_distribution,
@@ -147,8 +157,6 @@ from .admin_stats import (
     admin_get_ai_recommendations,
     admin_get_behavior_analysis,
 )
-
-    # Config functions (already in db_compat)
 
 __all__ = [
     # Core

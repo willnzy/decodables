@@ -1,0 +1,159 @@
+"""
+Shared Domain - Access Control Rules.
+
+Business rules for user permissions, tier-based access, and marketplace visibility.
+
+@module domains.shared.access_control
+@version 1.0.0
+"""
+
+from typing import Dict, List, Any, Optional
+
+
+def is_member(user: Dict[str, Any]) -> bool:
+    """
+    Check if user is an active member (Starter/Pro).
+
+    Business Rule: User must have starter/pro tier AND active/trialing subscription status.
+
+    Args:
+        user: User profile dict with tier and subscription_status
+
+    Returns:
+        True if user is active member
+    """
+    if not user:
+        return False
+
+    tier = user.get("tier", "free")
+    subscription_status = user.get("subscription_status", "inactive")
+
+    if tier in ["starter", "pro"]:
+        return subscription_status in ["active", "trialing"]
+
+    return False
+
+
+def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
+    """
+    Check if user can access a resource based on tier.
+
+    Business Rule:
+    - "all" in allowed_tiers → everyone can access
+    - User tier must be in allowed_tiers OR higher in hierarchy
+    - Hierarchy: free(0) < starter(1) < pro(2)
+
+    Args:
+        user: User profile dict with tier
+        allowed_tiers: List of allowed tiers (e.g., ["starter", "pro"])
+
+    Returns:
+        True if user can access resource
+    """
+    if not user or not allowed_tiers:
+        return False
+
+    user_tier = user.get("tier", "free")
+
+    # Check exact match or "all"
+    if "all" in allowed_tiers or user_tier in allowed_tiers:
+        return True
+
+    # Check tier hierarchy
+    tier_hierarchy = {"free": 0, "starter": 1, "pro": 2}
+    user_level = tier_hierarchy.get(user_tier, 0)
+
+    for allowed in allowed_tiers:
+        if tier_hierarchy.get(allowed, 99) <= user_level:
+            return True
+
+    return False
+
+
+def get_total_credits(user: Dict[str, Any]) -> int:
+    """
+    Get total credits (monthly + permanent).
+
+    Args:
+        user: User profile dict with credits_monthly and credits_permanent
+
+    Returns:
+        Total credits available
+    """
+    if not user:
+        return 0
+
+    return user.get("credits_monthly", 0) + user.get("credits_permanent", 0)
+
+
+def publish_permission(user: Dict[str, Any], resource_type: str, price_credits: int) -> Dict[str, Any]:
+    """
+    Check if user can publish to marketplace.
+
+    Business Rule:
+    - User must be active member (Starter/Pro)
+    - Price must be non-negative
+
+    Args:
+        user: User profile dict
+        resource_type: Type of resource (project/asset)
+        price_credits: Price in credits
+
+    Returns:
+        Dict with allowed (bool) and optional reason (str)
+    """
+    if not is_member(user):
+        return {"allowed": False, "reason": "Membership required"}
+
+    if price_credits < 0:
+        return {"allowed": False, "reason": "Invalid price"}
+
+    return {"allowed": True}
+
+
+def validate_allowed_tiers(allowed_tiers: List[str]) -> Dict[str, Any]:
+    """
+    Validate tier list.
+
+    Args:
+        allowed_tiers: List of tier names
+
+    Returns:
+        Dict with valid (bool), tiers (list), and optional reason (str)
+    """
+    valid_tiers = ["free", "starter", "pro", "all"]
+
+    if not allowed_tiers:
+        return {"valid": True, "tiers": ["all"]}
+
+    invalid = [t for t in allowed_tiers if t not in valid_tiers]
+
+    if invalid:
+        return {"valid": False, "reason": f"Invalid tiers: {invalid}"}
+
+    return {"valid": True, "tiers": allowed_tiers}
+
+
+def listing_is_public_visible(listing: Dict[str, Any]) -> bool:
+    """
+    Check if marketplace listing is publicly visible.
+
+    Business Rule: Listing must be:
+    - is_public = True
+    - is_deleted = False
+    - moderation_status = "approved"
+
+    Args:
+        listing: Marketplace listing dict
+
+    Returns:
+        True if listing is publicly visible
+    """
+    if not listing:
+        return False
+
+    return (
+        listing.get("is_public", False)
+        and not listing.get("is_deleted", False)
+        and listing.get("moderation_status") == "approved"
+    )
