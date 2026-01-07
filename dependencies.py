@@ -9,13 +9,13 @@ import jwt
 from fastapi import Header, Depends
 from infrastructure.db_compat import get_user_profile, create_user_profile
 from config import CLERK_PEM_PUBLIC_KEY
-from exceptions import (
-    UnauthorizedException,
-    AdminRequiredException,
-    MembershipRequiredException,
-    UserNotFoundException,
-)
+from core.exceptions import UnauthorizedException, ForbiddenException
+from domains.identity.exceptions import UserNotFoundException
 from services import get_access_control
+
+# Aliases for clarity in dependencies
+AdminRequiredException = ForbiddenException
+MembershipRequiredException = ForbiddenException
 
 
 async def get_current_user(authorization: str = Header(None)):

@@ -19,7 +19,7 @@ from infrastructure.repositories.project_repository import SupabaseProjectReposi
 from infrastructure.logging.activity_logger import log_activity
 from core.database import get_database_client
 from dependencies import get_current_user
-from schemas import PdfGenRequest
+from schemas.generation import PdfGenRequest
 
 router = APIRouter(prefix="/generate/pdf", tags=["generation-pdf-v2"])
 

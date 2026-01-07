@@ -28,7 +28,7 @@ from domains.platform.analytics_service import track_ai_generation
 from infrastructure.rate_limiter import limiter
 from timezone_utils import get_request_timezone
 from dependencies import get_current_user
-from schemas import ImageGenRequest
+from schemas.generation import ImageGenRequest
 
 logger = logging.getLogger(__name__)
 

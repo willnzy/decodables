@@ -85,14 +85,15 @@ def _sanitize_sentry_event(event):
     return event
 
 # v3.12: Unified error handling
-from exceptions import (
+from core.exceptions import (
     AppException, ErrorCode, ErrorResponse,
-    UnauthorizedException, ForbiddenException, AdminRequiredException,
-    NotFoundException, ProjectNotFoundException, InsufficientCreditsException,
-    ValidationException, RateLimitException, InternalServerException
+    UnauthorizedException, ForbiddenException,
+    NotFoundException, ValidationException, RateLimitException, InternalServerException
 )
-from middleware import (
-    RequestIDMiddleware, setup_logging, 
+from domains.billing.exceptions import InsufficientCreditsException
+from domains.creation.exceptions import ProjectNotFoundException
+from core.middleware import (
+    RequestIDMiddleware, setup_logging,
     get_request_id, set_user_id
 )
 
