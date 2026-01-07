@@ -12,7 +12,7 @@ import hashlib
 import logging
 from typing import Tuple, Optional, Dict, Any
 
-from ..config_service import get_config
+from domains.platform.config_service import get_config
 
 logger = logging.getLogger(__name__)
 

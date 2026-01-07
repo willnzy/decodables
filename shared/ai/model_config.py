@@ -12,7 +12,7 @@ Provides:
 import logging
 from typing import Dict, Any, Optional, List
 
-from ..config_service import get_config
+from domains.platform.config_service import get_config
 
 logger = logging.getLogger(__name__)
 
