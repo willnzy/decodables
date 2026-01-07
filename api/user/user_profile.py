@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from infrastructure.repositories import (
     SupabaseUserRepositoryExtended,
     SupabaseCreditRepositoryExtended,
-    SupabaseListingRepositoryExtended,
+    SupabaseListingRepository,
     SupabaseNotificationRepositoryExtended,
 )
 from core.database import get_database_client
@@ -96,7 +96,7 @@ async def get_history(
 async def get_purchases(user: dict = Depends(get_current_user)):
     """Get user's marketplace purchases."""
     db = get_database_client()
-    listing_repo = SupabaseListingRepositoryExtended(db)
+    listing_repo = SupabaseListingRepository(db)
     return await listing_repo.get_user_purchases(user["id"])
 
 

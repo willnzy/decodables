@@ -17,7 +17,6 @@ from .payment_repository import SupabasePaymentRepository
 from .user_repository_extended import SupabaseUserRepositoryExtended
 from .credit_repository_extended import SupabaseCreditRepositoryExtended
 from .project_repository_extended import SupabaseProjectRepositoryExtended
-from .listing_repository_extended import SupabaseListingRepositoryExtended
 from .asset_repository_extended import SupabaseAssetRepositoryExtended
 from .notification_repository_extended import SupabaseNotificationRepositoryExtended
 from .support_repository_extended import SupabaseSupportRepositoryExtended
@@ -38,7 +37,6 @@ __all__ = [
     'SupabaseUserRepositoryExtended',
     'SupabaseCreditRepositoryExtended',
     'SupabaseProjectRepositoryExtended',
-    'SupabaseListingRepositoryExtended',
     'SupabaseAssetRepositoryExtended',
     'SupabaseNotificationRepositoryExtended',
     'SupabaseSupportRepositoryExtended',

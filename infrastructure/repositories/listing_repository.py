@@ -400,3 +400,345 @@ class SupabaseListingRepository(IListingRepository):
             "purchase_count": listing.stats.purchase_count,
             "published_at": listing.published_at.isoformat() if listing.published_at else None,
         }
+
+    # ==========================================
+    # Extended Methods (from listing_repository_extended)
+    # ==========================================
+
+    async def get_marketplace_listings(
+        self,
+        featured: bool = False,
+        resource_type: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+        sort: str = "latest",
+        tier_filter: Optional[str] = None,
+        price_filter: Optional[str] = None,
+        mine: bool = False,
+        user_id: Optional[str] = None,
+        user_tier: Optional[str] = None
+    ) -> List[dict]:
+        """
+        Get marketplace listings with filtering and sorting.
+
+        Business Rules:
+        - Public list: moderation_status='approved' AND is_public=true AND is_deleted=false
+        - mine=true: Returns all statuses for owner
+        """
+        start = (page - 1) * limit
+        end = start + limit - 1
+
+        query = self.client.table("marketplace_listings").select(
+            "*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
+        )
+
+        if mine and user_id:
+            query = query.eq("seller_id", user_id).eq("is_deleted", False)
+        else:
+            query = query.eq("is_public", True).eq("is_deleted", False).eq(
+                "moderation_status", "approved"
+            )
+
+        if resource_type:
+            query = query.eq("resource_type", resource_type)
+
+        if tier_filter and tier_filter != "all":
+            query = query.contains("allowed_tiers", [tier_filter])
+
+        if price_filter == "free":
+            query = query.eq("price_credits", 0)
+        elif price_filter == "paid":
+            query = query.gt("price_credits", 0)
+
+        if featured or sort == "best_selling":
+            query = query.order("sales_count", desc=True)
+        elif sort == "popular":
+            query = query.order("usage_count", desc=True)
+        else:
+            query = query.order("created_at", desc=True)
+
+        result = query.range(start, end).execute()
+        return result.data or []
+
+    async def get_marketplace_item(
+        self,
+        listing_id: str,
+        user_id: Optional[str] = None
+    ) -> Optional[dict]:
+        """Get single listing detail with access control."""
+        res = self.client.table("marketplace_listings").select(
+            "*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
+        ).eq("id", listing_id).single().execute()
+
+        if not res.data:
+            return None
+
+        listing = res.data
+        is_seller = user_id and listing.get("seller_id") == user_id
+        is_visible = (
+            listing.get("is_public", False)
+            and not listing.get("is_deleted", False)
+            and listing.get("moderation_status") == "approved"
+        )
+
+        if not is_seller and not is_visible:
+            return None
+
+        if user_id:
+            purchase = self.client.table("marketplace_purchases").select("id").eq(
+                "buyer_id", user_id
+            ).eq("listing_id", listing_id).execute()
+            listing["is_purchased"] = bool(purchase.data)
+
+        return listing
+
+    async def get_seller_listings(
+        self,
+        seller_id: str,
+        page: int = 1,
+        limit: int = 20
+    ) -> List[dict]:
+        """Get seller's own listings."""
+        start = (page - 1) * limit
+        end = start + limit - 1
+
+        result = self.client.table("marketplace_listings").select("*").eq(
+            "seller_id", seller_id
+        ).eq("is_deleted", False).order("created_at", desc=True).range(start, end).execute()
+
+        return result.data or []
+
+    async def create_listing(
+        self,
+        seller_id: str,
+        title: str,
+        description: str,
+        thumbnail_url: str,
+        resource_url: str,
+        resource_type: str,
+        price_credits: int,
+        allowed_tiers: Optional[list] = None,
+        submit_for_review: bool = True,
+        resource_id: Optional[str] = None,
+        version: str = "1.0",
+        changelog: str = "",
+        timezone_str: str = "UTC"
+    ) -> Optional[dict]:
+        """Create or update listing."""
+        existing_query = self.client.table("marketplace_listings").select("*").eq(
+            "seller_id", seller_id
+        ).eq("is_deleted", False)
+
+        if resource_id:
+            existing_query = existing_query.eq("resource_id", resource_id)
+        else:
+            existing_query = existing_query.eq("resource_url", resource_url)
+
+        existing_res = existing_query.execute()
+        existing_listing = existing_res.data[0] if existing_res.data else None
+
+        if existing_listing:
+            current_history = existing_listing.get("version_history") or []
+            new_entry = {
+                "version": version,
+                "changelog": changelog,
+                "published_at": datetime.utcnow().isoformat(),
+            }
+            current_history.append(new_entry)
+
+            update_data = {
+                "title": title,
+                "description": description,
+                "thumbnail_url": thumbnail_url,
+                "price_credits": price_credits,
+                "allowed_tiers": allowed_tiers or ["free"],
+                "version": version,
+                "changelog": changelog,
+                "version_history": current_history,
+                "moderation_status": "pending" if submit_for_review else "draft",
+                "moderation_note": None,
+                "is_public": True,
+            }
+
+            res = self.client.table("marketplace_listings").update(update_data).eq(
+                "id", existing_listing["id"]
+            ).execute()
+            return res.data[0] if res.data else None
+
+        version_history = [
+            {
+                "version": version,
+                "changelog": changelog,
+                "published_at": datetime.utcnow().isoformat(),
+            }
+        ]
+
+        data = {
+            "seller_id": seller_id,
+            "title": title,
+            "description": description,
+            "thumbnail_url": thumbnail_url,
+            "resource_url": resource_url,
+            "resource_id": resource_id,
+            "resource_type": resource_type,
+            "price_credits": price_credits,
+            "allowed_tiers": allowed_tiers or ["free"],
+            "is_public": True,
+            "is_deleted": False,
+            "sales_count": 0,
+            "usage_count": 0,
+            "moderation_status": "pending" if submit_for_review else "draft",
+            "moderation_note": None,
+            "moderated_by": None,
+            "moderated_at": None,
+            "version": version,
+            "changelog": changelog,
+            "version_history": version_history,
+            "timezone": timezone_str,
+        }
+        res = self.client.table("marketplace_listings").insert(data).execute()
+        return res.data[0] if res.data else None
+
+    async def submit_listing_for_review(
+        self,
+        listing_id: str,
+        seller_id: Optional[str] = None
+    ) -> Optional[dict]:
+        """Submit listing for review."""
+        query = self.client.table("marketplace_listings").update({
+            "moderation_status": "pending",
+            "is_public": True,
+            "submitted_at": datetime.utcnow().isoformat()
+        }).eq("id", listing_id)
+
+        if seller_id:
+            query = query.eq("seller_id", seller_id)
+
+        result = query.execute()
+        return result.data[0] if result.data else None
+
+    async def unpublish_listing(
+        self,
+        listing_id: str,
+        seller_id: str
+    ) -> Optional[dict]:
+        """Unpublish listing."""
+        result = self.client.table("marketplace_listings").update({
+            "is_public": False
+        }).eq("id", listing_id).eq("seller_id", seller_id).execute()
+
+        return result.data[0] if result.data else None
+
+    async def update_listing(
+        self,
+        listing_id: str,
+        seller_id: str,
+        updates: dict
+    ) -> Optional[dict]:
+        """Update listing."""
+        result = self.client.table("marketplace_listings").update(updates).eq(
+            "id", listing_id
+        ).eq("seller_id", seller_id).execute()
+
+        return result.data[0] if result.data else None
+
+    async def check_user_purchase(
+        self,
+        user_id: str,
+        listing_id: str
+    ) -> bool:
+        """Check if user has purchased listing."""
+        result = self.client.table("marketplace_purchases").select("id").eq(
+            "buyer_id", user_id
+        ).eq("listing_id", listing_id).execute()
+        return bool(result.data)
+
+    async def execute_purchase(
+        self,
+        buyer_id: str,
+        listing_id: str,
+        tz: str = "UTC"
+    ) -> dict:
+        """Execute marketplace purchase using atomic RPC."""
+        try:
+            result = self.client.rpc("execute_marketplace_purchase", {
+                "p_buyer_id": buyer_id,
+                "p_listing_id": listing_id,
+                "p_timezone": tz
+            }).execute()
+
+            if result.data:
+                return {"success": True, "data": result.data}
+            return {"success": False, "error": "RPC returned no data"}
+        except Exception as e:
+            error_str = str(e)
+            if "INSUFFICIENT" in error_str:
+                return {"success": False, "error": "INSUFFICIENT_CREDITS"}
+            if "ALREADY_PURCHASED" in error_str:
+                return {"success": False, "error": "ALREADY_PURCHASED"}
+            logger.error(f"execute_purchase failed: {e}")
+            return {"success": False, "error": error_str}
+
+    async def get_seller_stats(
+        self,
+        seller_id: str
+    ) -> dict:
+        """Get seller statistics."""
+        listings = self.client.table("marketplace_listings").select(
+            "id, price_credits, sales_count, usage_count"
+        ).eq("seller_id", seller_id).eq("is_deleted", False).execute()
+
+        data = listings.data or []
+        total_sales = sum(l.get("sales_count", 0) for l in data)
+        total_usage = sum(l.get("usage_count", 0) for l in data)
+        total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in data)
+
+        return {
+            "total_listings": len(data),
+            "total_sales": total_sales,
+            "total_usage": total_usage,
+            "total_revenue": total_revenue,
+            "total_earned_credits": int(total_revenue * 0.9),
+        }
+
+    async def record_listing_usage(
+        self,
+        listing_id: str,
+        used_by_user_id: str,
+        project_id: str
+    ) -> bool:
+        """Record listing usage."""
+        try:
+            self.client.table("listing_usages").insert({
+                "listing_id": listing_id,
+                "used_by_user_id": used_by_user_id,
+                "project_id": project_id,
+            }).execute()
+            return True
+        except:
+            return False
+
+    async def get_leaderboard(
+        self,
+        period: str = "monthly",
+        board_type: str = "all",
+        limit: int = 10
+    ) -> List[dict]:
+        """Get marketplace leaderboard."""
+        query = self.client.table("marketplace_listings").select(
+            "id, title, thumbnail_url, usage_count, sales_count, resource_type, seller_id, "
+            "profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
+        ).eq("is_public", True).eq("is_deleted", False).eq("moderation_status", "approved")
+
+        if board_type and board_type != "all":
+            query = query.eq("resource_type", board_type)
+
+        query = query.order("usage_count", desc=True).limit(limit)
+
+        result = query.execute()
+        items = result.data or []
+
+        for i, item in enumerate(items):
+            item["rank"] = i + 1
+
+        return items
