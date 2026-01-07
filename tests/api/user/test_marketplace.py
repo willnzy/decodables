@@ -25,7 +25,14 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 from typing import Dict, Any, List
 
+# CRITICAL: Mock rate limiter BEFORE importing app to avoid Redis connection
+# The limiter decorator is applied at module load time, so we must patch first
+from unittest.mock import patch
+_rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
+_rate_limiter_patcher.start()
+
 from app import app
+from dependencies import get_current_user
 
 client = TestClient(app)
 
@@ -71,6 +78,36 @@ def mock_pro_user() -> Dict[str, Any]:
 def auth_headers() -> Dict[str, str]:
     """Mock authentication headers."""
     return {"Authorization": "Bearer test_token_user_123"}
+
+
+@pytest.fixture
+def override_get_current_user_free(mock_user):
+    """Override dependency to return free user."""
+    async def _get_current_user():
+        return mock_user
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def override_get_current_user_starter(mock_starter_user):
+    """Override dependency to return starter user."""
+    async def _get_current_user():
+        return mock_starter_user
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def override_get_current_user_pro(mock_pro_user):
+    """Override dependency to return pro user."""
+    async def _get_current_user():
+        return mock_pro_user
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -160,15 +197,12 @@ def mock_purchase_result():
 class TestListListings:
     """Tests for GET /api/v2/user/marketplace/listings endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_list_listings_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
+        override_get_current_user_free,
         mock_search_result,
-        auth_headers,
     ):
         """
         Test: List marketplace listings successfully
@@ -178,7 +212,6 @@ class TestListListings:
         Then: Returns paginated listings
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_search_result
         mock_container = MagicMock()
@@ -188,7 +221,6 @@ class TestListListings:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings",
-            headers=auth_headers,
         )
 
         # Assert
@@ -201,15 +233,12 @@ class TestListListings:
         assert data["total"] == 2
         assert data["page"] == 1
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_list_listings_with_filters(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
+        override_get_current_user_free,
         mock_search_result,
-        auth_headers,
     ):
         """
         Test: List listings with filters (resource_type, sort, featured)
@@ -219,7 +248,6 @@ class TestListListings:
         Then: Returns filtered listings
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_search_result
         mock_container = MagicMock()
@@ -229,7 +257,6 @@ class TestListListings:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings?resource_type=asset&sort=popular&featured=true",
-            headers=auth_headers,
         )
 
         # Assert
@@ -243,15 +270,12 @@ class TestListListings:
         assert call_args.sort == "popular"
         assert call_args.featured is True
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_list_listings_pagination(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
+        override_get_current_user_free,
         mock_search_result,
-        auth_headers,
     ):
         """
         Test: Pagination parameters (page, limit)
@@ -261,7 +285,6 @@ class TestListListings:
         Then: Returns page 2 with 10 items per page
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_search_result
         mock_container = MagicMock()
@@ -271,7 +294,6 @@ class TestListListings:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings?page=2&limit=10",
-            headers=auth_headers,
         )
 
         # Assert
@@ -284,14 +306,9 @@ class TestListListings:
         assert call_args.page == 2
         assert call_args.limit == 10
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
     def test_list_listings_invalid_sort(
         self,
-        mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Invalid sort parameter should return 422
@@ -300,13 +317,9 @@ class TestListListings:
         When: GET with sort=invalid_sort
         Then: Returns 422 Validation Error
         """
-        # Arrange
-        mock_get_user.return_value = mock_user
-
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings?sort=invalid_sort",
-            headers=auth_headers,
         )
 
         # Assert
@@ -326,14 +339,11 @@ class TestListListings:
         # Assert
         assert response.status_code == 401
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_list_listings_handler_error(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Handler error should return 500
@@ -343,7 +353,6 @@ class TestListListings:
         Then: Returns 500 with error message
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = MagicMock(
             success=False,
@@ -356,7 +365,6 @@ class TestListListings:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings",
-            headers=auth_headers,
         )
 
         # Assert
@@ -372,15 +380,12 @@ class TestListListings:
 class TestGetListing:
     """Tests for GET /api/v2/user/marketplace/listings/{id} endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_listing_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
+        override_get_current_user_free,
         mock_get_listing_result,
-        auth_headers,
     ):
         """
         Test: Get single listing successfully
@@ -390,7 +395,6 @@ class TestGetListing:
         Then: Returns listing details
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_get_listing_result
         mock_container = MagicMock()
@@ -400,7 +404,6 @@ class TestGetListing:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings/listing_123",
-            headers=auth_headers,
         )
 
         # Assert
@@ -409,14 +412,11 @@ class TestGetListing:
         assert data["id"] == "listing_123"
         assert data["title"] == "Test Asset"
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_listing_not_found(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Non-existent listing should return 404
@@ -426,7 +426,6 @@ class TestGetListing:
         Then: Returns 404 Not Found
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = MagicMock(
             success=False,
@@ -439,7 +438,6 @@ class TestGetListing:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/listings/invalid_id",
-            headers=auth_headers,
         )
 
         # Assert
@@ -455,15 +453,12 @@ class TestGetListing:
 class TestCreateListing:
     """Tests for POST /api/v2/user/marketplace/listings endpoint."""
 
-    @patch('dependencies.require_member')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_create_listing_pro_user_paid(
         self,
         mock_get_container,
-        mock_require_member,
-        mock_pro_user,
+        override_get_current_user_pro,
         mock_create_listing_result,
-        auth_headers,
     ):
         """
         Test: Pro user can create paid listing
@@ -473,7 +468,6 @@ class TestCreateListing:
         Then: Returns listing_id and status=pending
         """
         # Arrange
-        mock_require_member.return_value = mock_pro_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_create_listing_result
         mock_container = MagicMock()
@@ -489,7 +483,6 @@ class TestCreateListing:
                 "resource_type": "project",
                 "price_credits": 50,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -498,15 +491,12 @@ class TestCreateListing:
         assert data["listing_id"] == "listing_new_123"
         assert data["moderation_status"] == "pending"
 
-    @patch('dependencies.require_member')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_create_listing_starter_free_asset(
         self,
         mock_get_container,
-        mock_require_member,
-        mock_starter_user,
+        override_get_current_user_starter,
         mock_create_listing_result,
-        auth_headers,
     ):
         """
         Test: Starter user can create free asset
@@ -516,7 +506,6 @@ class TestCreateListing:
         Then: Returns listing_id and status=pending
         """
         # Arrange
-        mock_require_member.return_value = mock_starter_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_create_listing_result
         mock_container = MagicMock()
@@ -531,7 +520,6 @@ class TestCreateListing:
                 "resource_type": "asset",
                 "price_credits": 0,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -539,12 +527,9 @@ class TestCreateListing:
         data = response.json()
         assert data["moderation_status"] == "pending"
 
-    @patch('dependencies.require_member')
     def test_create_listing_starter_paid_forbidden(
         self,
-        mock_require_member,
-        mock_starter_user,
-        auth_headers,
+        override_get_current_user_starter,
     ):
         """
         Test: Starter user cannot create paid asset (403)
@@ -553,9 +538,6 @@ class TestCreateListing:
         When: POST with price_credits=10
         Then: Returns 403 Forbidden
         """
-        # Arrange
-        mock_require_member.return_value = mock_starter_user
-
         # Act
         response = client.post(
             "/api/v2/user/marketplace/listings",
@@ -564,7 +546,6 @@ class TestCreateListing:
                 "resource_type": "asset",
                 "price_credits": 10,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -572,12 +553,9 @@ class TestCreateListing:
         data = response.json()
         assert "Starter users can only publish free assets" in data["detail"]
 
-    @patch('dependencies.require_member')
     def test_create_listing_starter_project_forbidden(
         self,
-        mock_require_member,
-        mock_starter_user,
-        auth_headers,
+        override_get_current_user_starter,
     ):
         """
         Test: Starter user cannot publish projects (403)
@@ -586,9 +564,6 @@ class TestCreateListing:
         When: POST with resource_type=project
         Then: Returns 403 Forbidden
         """
-        # Arrange
-        mock_require_member.return_value = mock_starter_user
-
         # Act
         response = client.post(
             "/api/v2/user/marketplace/listings",
@@ -597,7 +572,6 @@ class TestCreateListing:
                 "resource_type": "project",
                 "price_credits": 0,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -605,12 +579,9 @@ class TestCreateListing:
         data = response.json()
         assert "Starter users can only publish assets" in data["detail"]
 
-    @patch('dependencies.require_member')
     def test_create_listing_validation_error(
         self,
-        mock_require_member,
-        mock_pro_user,
-        auth_headers,
+        override_get_current_user_pro,
     ):
         """
         Test: Invalid request should return 422
@@ -619,9 +590,6 @@ class TestCreateListing:
         When: POST with invalid resource_type='invalid'
         Then: Returns 422 Validation Error
         """
-        # Arrange
-        mock_require_member.return_value = mock_pro_user
-
         # Act
         response = client.post(
             "/api/v2/user/marketplace/listings",
@@ -630,7 +598,6 @@ class TestCreateListing:
                 "resource_type": "invalid",  # Should be 'asset' or 'project'
                 "price_credits": 0,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -644,14 +611,11 @@ class TestCreateListing:
 class TestUpdateListing:
     """Tests for PUT /api/v2/user/marketplace/listings/{id} endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_update_listing_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Update listing successfully
@@ -661,7 +625,6 @@ class TestUpdateListing:
         Then: Returns updated status
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.update_listing.return_value = MagicMock(
             success=True,
@@ -678,7 +641,6 @@ class TestUpdateListing:
                 "title": "Updated Title",
                 "price_credits": 20,
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -687,14 +649,11 @@ class TestUpdateListing:
         assert data["status"] == "updated"
         assert data["listing_id"] == "listing_123"
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_update_listing_not_found(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Update non-existent listing should return 404
@@ -704,7 +663,6 @@ class TestUpdateListing:
         Then: Returns 404 Not Found
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.update_listing.return_value = MagicMock(
             success=False,
@@ -718,20 +676,16 @@ class TestUpdateListing:
         response = client.put(
             "/api/v2/user/marketplace/listings/invalid_id",
             json={"title": "Updated Title"},
-            headers=auth_headers,
         )
 
         # Assert
         assert response.status_code == 404
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_update_listing_pending_forbidden(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Cannot update pending listing (400)
@@ -741,7 +695,6 @@ class TestUpdateListing:
         Then: Returns 400 Bad Request
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.update_listing.return_value = MagicMock(
             success=False,
@@ -755,7 +708,6 @@ class TestUpdateListing:
         response = client.put(
             "/api/v2/user/marketplace/listings/listing_123",
             json={"title": "Updated Title"},
-            headers=auth_headers,
         )
 
         # Assert
@@ -771,14 +723,11 @@ class TestUpdateListing:
 class TestUnpublishListing:
     """Tests for DELETE /api/v2/user/marketplace/listings/{id} endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_unpublish_listing_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Unpublish listing successfully
@@ -788,7 +737,6 @@ class TestUnpublishListing:
         Then: Returns status=unpublished
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.unpublish_listing.return_value = MagicMock(success=True)
         mock_container = MagicMock()
@@ -798,7 +746,6 @@ class TestUnpublishListing:
         # Act
         response = client.delete(
             "/api/v2/user/marketplace/listings/listing_123",
-            headers=auth_headers,
         )
 
         # Assert
@@ -806,14 +753,11 @@ class TestUnpublishListing:
         data = response.json()
         assert data["status"] == "unpublished"
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_unpublish_listing_not_found(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Unpublish non-existent listing should return 404
@@ -823,7 +767,6 @@ class TestUnpublishListing:
         Then: Returns 404 Not Found
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.unpublish_listing.return_value = MagicMock(
             success=False,
@@ -836,7 +779,6 @@ class TestUnpublishListing:
         # Act
         response = client.delete(
             "/api/v2/user/marketplace/listings/invalid_id",
-            headers=auth_headers,
         )
 
         # Assert
@@ -850,15 +792,12 @@ class TestUnpublishListing:
 class TestPurchaseListing:
     """Tests for POST /api/v2/user/marketplace/purchase endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_purchase_listing_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
+        override_get_current_user_free,
         mock_purchase_result,
-        auth_headers,
     ):
         """
         Test: Purchase listing successfully
@@ -868,7 +807,6 @@ class TestPurchaseListing:
         Then: Returns purchase confirmation with project_id
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = mock_purchase_result
         mock_container = MagicMock()
@@ -879,7 +817,6 @@ class TestPurchaseListing:
         response = client.post(
             "/api/v2/user/marketplace/purchase",
             json={"listing_id": "listing_123"},
-            headers=auth_headers,
         )
 
         # Assert
@@ -891,14 +828,11 @@ class TestPurchaseListing:
         assert data["already_owned"] is False
         assert data["credits_deducted"] == 10
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_purchase_listing_insufficient_credits(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Purchase with insufficient credits should return 402
@@ -908,7 +842,6 @@ class TestPurchaseListing:
         Then: Returns 402 Payment Required
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = MagicMock(
             success=False,
@@ -922,7 +855,6 @@ class TestPurchaseListing:
         response = client.post(
             "/api/v2/user/marketplace/purchase",
             json={"listing_id": "listing_123"},
-            headers=auth_headers,
         )
 
         # Assert
@@ -930,14 +862,11 @@ class TestPurchaseListing:
         data = response.json()
         assert "insufficient" in data["detail"].lower()
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_purchase_listing_not_found(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Purchase non-existent listing should return 404
@@ -947,7 +876,6 @@ class TestPurchaseListing:
         Then: Returns 404 Not Found
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = MagicMock(
             success=False,
@@ -961,20 +889,16 @@ class TestPurchaseListing:
         response = client.post(
             "/api/v2/user/marketplace/purchase",
             json={"listing_id": "invalid_id"},
-            headers=auth_headers,
         )
 
         # Assert
         assert response.status_code == 404
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_purchase_listing_tier_access_denied(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Purchase with insufficient tier should return 403
@@ -984,7 +908,6 @@ class TestPurchaseListing:
         Then: Returns 403 Forbidden
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_handler = AsyncMock()
         mock_handler.handle.return_value = MagicMock(
             success=False,
@@ -998,7 +921,6 @@ class TestPurchaseListing:
         response = client.post(
             "/api/v2/user/marketplace/purchase",
             json={"listing_id": "listing_pro_only"},
-            headers=auth_headers,
         )
 
         # Assert
@@ -1012,14 +934,11 @@ class TestPurchaseListing:
 class TestGetMyListings:
     """Tests for GET /api/v2/user/marketplace/my-listings endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_my_listings_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Get user's own listings successfully
@@ -1029,7 +948,6 @@ class TestGetMyListings:
         Then: Returns user's listings with moderation status
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_listing_obj = MagicMock()
         mock_listing_obj.to_dict.return_value = {
             "id": "listing_mine_1",
@@ -1045,7 +963,6 @@ class TestGetMyListings:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/my-listings",
-            headers=auth_headers,
         )
 
         # Assert
@@ -1064,14 +981,11 @@ class TestGetMyListings:
 class TestGetSellerStats:
     """Tests for GET /api/v2/user/marketplace/seller/stats endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_seller_stats_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Get seller statistics successfully
@@ -1081,7 +995,6 @@ class TestGetSellerStats:
         Then: Returns total_earned_credits, listings_count, total_sales, total_usage
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.get_seller_stats.return_value = {
             "total_earned_credits": 450,
@@ -1096,7 +1009,6 @@ class TestGetSellerStats:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/seller/stats",
-            headers=auth_headers,
         )
 
         # Assert
@@ -1115,14 +1027,11 @@ class TestGetSellerStats:
 class TestGetLeaderboard:
     """Tests for GET /api/v2/user/marketplace/leaderboard endpoint."""
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_leaderboard_success(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Get leaderboard successfully
@@ -1132,7 +1041,6 @@ class TestGetLeaderboard:
         Then: Returns top listings by usage_count
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.get_leaderboard.return_value = [
             {"listing_id": "listing_1", "title": "Top Asset", "usage_count": 500},
@@ -1145,7 +1053,6 @@ class TestGetLeaderboard:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/leaderboard",
-            headers=auth_headers,
         )
 
         # Assert
@@ -1157,14 +1064,11 @@ class TestGetLeaderboard:
         assert len(data["items"]) == 2
         assert data["items"][0]["usage_count"] == 500
 
-    @patch('dependencies.get_current_user')
-    @patch('container.get_container')
+    @patch('api.user.marketplace.get_container')
     def test_get_leaderboard_with_filters(
         self,
         mock_get_container,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Get leaderboard with period and type filters
@@ -1174,7 +1078,6 @@ class TestGetLeaderboard:
         Then: Returns filtered leaderboard
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_service = AsyncMock()
         mock_service.get_leaderboard.return_value = []
         mock_container = MagicMock()
@@ -1184,7 +1087,6 @@ class TestGetLeaderboard:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/leaderboard?period=all_time&type=project",
-            headers=auth_headers,
         )
 
         # Assert
@@ -1201,16 +1103,14 @@ class TestGetLeaderboard:
 class TestSubmitReport:
     """Tests for POST /api/v2/user/marketplace/report endpoint."""
 
-    @patch('dependencies.get_current_user')
     @patch('infrastructure.repositories.create_report')
     @patch('infrastructure.repositories.log_activity')
     def test_submit_report_success(
         self,
         mock_log_activity,
         mock_create_report,
-        mock_get_user,
+        override_get_current_user_free,
         mock_user,
-        auth_headers,
     ):
         """
         Test: Submit report successfully
@@ -1220,7 +1120,6 @@ class TestSubmitReport:
         Then: Returns report_id and success message
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_create_report.return_value = {
             "id": "report_123",
             "listing_id": "listing_bad",
@@ -1234,7 +1133,6 @@ class TestSubmitReport:
                 "listing_id": "listing_bad",
                 "reason": "Inappropriate content",
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -1252,14 +1150,11 @@ class TestSubmitReport:
         )
         mock_log_activity.assert_called_once()
 
-    @patch('dependencies.get_current_user')
     @patch('infrastructure.repositories.create_report')
     def test_submit_report_already_reported(
         self,
         mock_create_report,
-        mock_get_user,
-        mock_user,
-        auth_headers,
+        override_get_current_user_free,
     ):
         """
         Test: Duplicate report should return 400
@@ -1269,7 +1164,6 @@ class TestSubmitReport:
         Then: Returns 400 Bad Request
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_create_report.side_effect = Exception("Already reported this listing")
 
         # Act
@@ -1279,7 +1173,6 @@ class TestSubmitReport:
                 "listing_id": "listing_bad",
                 "reason": "Inappropriate content",
             },
-            headers=auth_headers,
         )
 
         # Assert
@@ -1295,14 +1188,12 @@ class TestSubmitReport:
 class TestGetMyReports:
     """Tests for GET /api/v2/user/marketplace/my-reports endpoint."""
 
-    @patch('dependencies.get_current_user')
     @patch('infrastructure.repositories.get_user_reports')
     def test_get_my_reports_success(
         self,
         mock_get_user_reports,
-        mock_get_user,
+        override_get_current_user_free,
         mock_user,
-        auth_headers,
     ):
         """
         Test: Get user's reports successfully
@@ -1312,7 +1203,6 @@ class TestGetMyReports:
         Then: Returns list of reports
         """
         # Arrange
-        mock_get_user.return_value = mock_user
         mock_get_user_reports.return_value = [
             {
                 "id": "report_1",
@@ -1331,7 +1221,6 @@ class TestGetMyReports:
         # Act
         response = client.get(
             "/api/v2/user/marketplace/my-reports",
-            headers=auth_headers,
         )
 
         # Assert
