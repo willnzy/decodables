@@ -1,5 +1,5 @@
 """
-Cache Keys Module - Domain-specific cache key definitions.
+Cache Keys Module - Business-specific cache key definitions.
 
 Naming Convention:
 - All keys start with "md:" prefix (Make Decodables)
@@ -11,7 +11,12 @@ Examples:
 - md:experiment:hero_button_test
 - md:rl:ip:192.168.1.1
 
-@module shared.cache_keys
+Note:
+- This module is in infrastructure/ because it contains business-specific cache keys
+- core/cache/ provides the caching abstraction (ICacheProvider, Redis/Memory implementations)
+- infrastructure/cache/ defines business-specific cache key naming and TTL configurations
+
+@module infrastructure.cache.keys
 @version 1.0.0
 """
 

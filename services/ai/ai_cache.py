@@ -14,7 +14,7 @@ import logging
 from typing import Optional, Any, Dict
 
 from core.cache import cache_service
-from shared.cache_keys import CacheTTL
+from infrastructure.cache import CacheTTL
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ def invalidate_ai_cache():
     用于配置变更后强制刷新。
     """
     try:
-        from ..cache.cache_keys import CacheNamespace
+        from infrastructure.cache import CacheNamespace
         cache_service.delete_pattern(f"{CacheNamespace.AI}*")
         logger.info("[AICache] All AI cache invalidated")
     except Exception as e:

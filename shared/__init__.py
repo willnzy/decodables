@@ -2,13 +2,14 @@
 Shared Layer - Cross-cutting concerns and service abstractions.
 
 This layer provides:
-- Abstract interfaces for external services (AI, Payment, Storage)
-- Standardized types and responses
-- Provider-agnostic implementations
-- Shared utilities (cache keys, etc.)
+- Abstract interfaces for external services (AI, Payment, Storage, Analytics)
+- Standardized types and responses for service interactions
+- Provider-agnostic implementations enabling dependency inversion
 
-The shared layer sits between core/domains and infrastructure,
-enabling dependency inversion and testability.
+Note:
+- This is the "service abstraction" layer in v2 architecture
+- Business-specific cache keys have been moved to infrastructure/cache/
+- For cache abstractions (ICacheProvider), see core/cache/
 
 @module shared
 @version 1.0.0
@@ -18,11 +19,9 @@ enabling dependency inversion and testability.
 from . import ai
 from . import payment
 from . import storage
-from . import cache_keys
 
 __all__ = [
     "ai",
     "payment",
     "storage",
-    "cache_keys",
 ]
