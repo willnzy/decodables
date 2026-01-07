@@ -104,15 +104,7 @@ from infrastructure.db_compat import (
 
 # Admin - Users - Still from local files
 
-# Payments
-from .payments import (
-    log_payment_record,
-    get_user_payments,
-    admin_get_all_payments,
-    get_payment_by_stripe_id,
-    update_payment_status,
-    admin_get_revenue_stats,
-)
+    # Payment functions (already in db_compat)
 
 # Admin - Users
 from .admin_users import (
@@ -156,23 +148,7 @@ from .admin_stats import (
     admin_get_behavior_analysis,
 )
 
-# Config
-from .config import (
-    get_system_config,
-    get_all_system_configs,
-    get_configs_by_group,
-    admin_get_system_configs,
-    admin_get_config_groups,
-    admin_create_system_config,
-    admin_update_system_config,
-    admin_delete_system_config,
-    admin_get_config_audit_logs,
-    invalidate_config_cache_api,
-    # Backward-compatible aliases
-    get_public_configs,
-    get_config_by_key,
-    get_config_group,
-)
+    # Config functions (already in db_compat)
 
 __all__ = [
     # Core
