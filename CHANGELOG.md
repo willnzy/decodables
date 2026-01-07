@@ -10,7 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.23.1] - 2026-01-07
 
 ### Fixed
-- **修正积分消耗配置值**
+- **修复 DomainException 导入错误** (commit: b01ae31)
+  - 问题：`domains/*/exceptions.py` 试图导入不存在的 `DomainException` 类
+  - 解决：所有域异常基类改为继承 `AppException`（与 billing 域一致）
+  - 影响域：identity, creation, marketplace, platform
+  - 异常类现在正确使用 `status_code`, `default_code`, `default_message` 模式
+
+- **修正积分消耗配置值** (commit: 0672827)
   - AI 文本生成设置为 0 积分（当前免费策略）
   - 统一 OCR 和 Smart Scan 为 10 积分（无区分）
   - 修改文件：
