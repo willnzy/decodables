@@ -14,7 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 from decimal import Decimal
 
-from ..db_service import supabase
+from core.database import supabase
 from .model_config import get_model_cost
 
 logger = logging.getLogger(__name__)

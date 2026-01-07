@@ -12,7 +12,7 @@ from typing import Optional, List, Dict, Any
 import logging
 
 # Import existing payment service functions
-import services.payment_service as stripe_service
+import domains.billing.payment_service as stripe_service
 
 # Import shared layer types
 from shared.payment.interfaces import IPaymentService

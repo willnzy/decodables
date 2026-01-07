@@ -7,11 +7,11 @@ FastAPI dependency injection functions
 
 import jwt
 from fastapi import Header, Depends
-from infrastructure.db_compat import get_user_profile, create_user_profile
+from infrastructure.repositories import SupabaseUserRepository
 from config import CLERK_PEM_PUBLIC_KEY
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
-from services import get_access_control
+from domains.shared import access_control
 
 # Aliases for clarity in dependencies
 AdminRequiredException = ForbiddenException
@@ -64,10 +64,11 @@ async def get_current_user(authorization: str = Header(None)):
     
     if not user_id:
         raise UnauthorizedException(message="Invalid token: no user_id")
-    
-    # Get user profile from database
-    profile = get_user_profile(user_id)
-    
+
+    # Get user profile from database using repository
+    user_repo = SupabaseUserRepository()
+    profile = await user_repo.get_by_id(user_id)
+
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
     # This ensures new users get their 50 signup bonus credits instantly,
     # without waiting for the Clerk webhook to be processed
@@ -79,16 +80,27 @@ async def get_current_user(authorization: str = Header(None)):
         avatar_url = payload.get("image_url") or payload.get("picture") or ""
         first_name = payload.get("first_name") or ""
         last_name = payload.get("last_name") or ""
-        
-        # Create user profile with 50 signup bonus credits (including name info)
-        create_user_profile(user_id, email, username, avatar_url, first_name=first_name, last_name=last_name)
-        
+
+        # Create user profile with 50 signup bonus credits
+        from domains.identity.aggregates import UserProfile
+        user_profile = UserProfile(
+            id=user_id,
+            email=email,
+            username=username,
+            avatar_url=avatar_url,
+            first_name=first_name,
+            last_name=last_name,
+            tier="free",
+            role="user"
+        )
+        await user_repo.create(user_profile)
+
         # Fetch the newly created profile
-        profile = get_user_profile(user_id)
-        
+        profile = await user_repo.get_by_id(user_id)
+
         if not profile:
             raise UserNotFoundException(user_id)
-    
+
     return profile
 
 
@@ -110,14 +122,13 @@ async def require_admin(user: dict = Depends(get_current_user)):
 async def require_member(user: dict = Depends(get_current_user)):
     """
     Member permission guard (Starter/Pro only).
-    
+
     Raises:
         MembershipRequiredException: If user is not a member
-    
+
     Returns:
         dict: User profile (confirmed member)
     """
-    access_control = get_access_control()
     if not access_control.is_member(user):
         raise MembershipRequiredException()
     return user
@@ -126,14 +137,13 @@ async def require_member(user: dict = Depends(get_current_user)):
 async def require_pro(user: dict = Depends(get_current_user)):
     """
     Pro tier permission guard.
-    
+
     Raises:
         MembershipRequiredException: If user is not Pro
-    
+
     Returns:
         dict: User profile (confirmed Pro)
     """
-    access_control = get_access_control()
     if not access_control.is_member(user) or user.get("tier") != "pro":
         raise MembershipRequiredException("Pro features")
     return user

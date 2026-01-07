@@ -28,7 +28,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from domains.platform import experiment_service
+from domains.platform import experiments as experiment_service
+from core.database import supabase
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 

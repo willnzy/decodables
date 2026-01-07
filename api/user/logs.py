@@ -12,13 +12,15 @@ can be logged even for unauthenticated users.
 """
 
 import logging
+import jwt
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
-
+from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
+supabase = get_supabase_client()
 
 router = APIRouter(prefix="/api/v2/user/logs", tags=["user-logs-v2"])
 
@@ -65,10 +67,6 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
     """Extract user_id from JWT token without verification (for logging)."""
     if authorization and authorization.startswith("Bearer "):
         try:
-            import jwt
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
             token = authorization.split(" ")[1]
             decoded = jwt.decode(token, options={"verify_signature": False})
             return decoded.get("sub")

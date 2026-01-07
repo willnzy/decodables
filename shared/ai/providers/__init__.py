@@ -14,11 +14,11 @@ our new IImageAIService and ITextAIService interfaces.
 """
 
 # Re-export existing adapters as providers
-from services.ai.adapters.fal_adapter import FALImageAdapter as FalImageProvider
-from services.ai.adapters.openai_adapter import OpenAITextAdapter as OpenAITextProvider
-from services.ai.adapters.openai_adapter import OpenAIImageAdapter as OpenAIImageProvider
-from services.ai.adapters.qwen_adapter import QwenTextAdapter as QwenTextProvider
-from services.ai.adapters.qwen_adapter import WanxImageAdapter as WanxImageProvider
+from shared.ai.adapters.fal_adapter import FALImageAdapter as FalImageProvider
+from shared.ai.adapters.openai_adapter import OpenAITextAdapter as OpenAITextProvider
+from shared.ai.adapters.openai_adapter import OpenAIImageAdapter as OpenAIImageProvider
+from shared.ai.adapters.qwen_adapter import QwenTextAdapter as QwenTextProvider
+from shared.ai.adapters.qwen_adapter import WanxImageAdapter as WanxImageProvider
 
 __all__ = [
     # Image AI Providers

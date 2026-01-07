@@ -25,8 +25,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
 from pydantic import BaseModel
 
 from core.database import get_supabase_client
-from infrastructure.repositories.user.supabase_assets_repository import SupabaseAssetsRepository
-from infrastructure.repositories.user.supabase_logs_repository import SupabaseLogsRepository
+from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from timezone_utils import get_request_timezone
@@ -59,7 +59,7 @@ async def my_assets(
     if scope == "all" and user["tier"] != "pro":
         raise HTTPException(403, "Pro required for cross-project history")
     target_proj = project_id if scope != "all" else None
-    assets_repo = SupabaseAssetsRepository()
+    assets_repo = SupabaseAssetRepository()
     return await assets_repo.get_assets(user["id"], target_proj)
 
 
@@ -101,7 +101,7 @@ async def upload_asset(
         url = storage_supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
 
         tz = get_request_timezone(request, user_id=user.get("id"))
-        assets_repo = SupabaseAssetsRepository()
+        assets_repo = SupabaseAssetRepository()
         await assets_repo.save_asset(user["id"], url, "uploaded", project_id, timezone=tz)
 
         return {"url": url, "filename": filename}
@@ -117,18 +117,17 @@ async def delete_asset(
     user: dict = Depends(get_current_user)
 ):
     """Delete a user asset (PRD v3.3)."""
-    assets_repo = SupabaseAssetsRepository()
-    logs_repo = SupabaseLogsRepository()
+    assets_repo = SupabaseAssetRepository()
 
     if permanent:
         result = await assets_repo.permanently_hide_asset(asset_id, user["id"])
         if result:
-            await logs_repo.log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
+            log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
         action = "permanently deleted"
     else:
         result = await assets_repo.soft_delete_asset(asset_id, user["id"])
         if result:
-            await logs_repo.log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
+            log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
         action = "moved to trash"
 
     if not result:
@@ -165,13 +164,12 @@ async def add_asset_from_url(
         raise HTTPException(400, f"Failed to access URL: {str(e)}")
 
     tz = get_request_timezone(request, user_id=user.get("id"))
-    assets_repo = SupabaseAssetsRepository()
-    logs_repo = SupabaseLogsRepository()
+    assets_repo = SupabaseAssetRepository()
 
     asset = await assets_repo.save_asset(user["id"], req.url, "external", req.project_id, timezone=tz)
 
     if asset:
-        await logs_repo.log_activity(user["id"], "create_asset_from_url", {"asset_id": asset.get("id")})
+        log_activity(user["id"], "create_asset_from_url", {"asset_id": asset.get("id")})
 
     return {"status": "ok", "asset": asset}
 
@@ -201,7 +199,7 @@ async def check_url(url: str, user: dict = Depends(get_current_user)):
 @router.post("/{asset_id}/increment-usage")
 async def increment_usage(asset_id: str, user: dict = Depends(get_current_user)):
     """Increment usage count for an asset."""
-    assets_repo = SupabaseAssetsRepository()
+    assets_repo = SupabaseAssetRepository()
     result = await assets_repo.increment_asset_usage(asset_id, user["id"])
     if not result:
         raise HTTPException(404, "Asset not found")
@@ -263,18 +261,17 @@ async def get_seller_stats(user: dict = Depends(get_current_user)):
 @router.get("/deleted")
 async def get_deleted(user: dict = Depends(get_current_user)):
     """Get soft-deleted assets (trash)."""
-    assets_repo = SupabaseAssetsRepository()
+    assets_repo = SupabaseAssetRepository()
     return await assets_repo.get_deleted_assets(user["id"])
 
 
 @router.post("/{asset_id}/restore")
 async def restore(asset_id: str, user: dict = Depends(get_current_user)):
     """Restore a soft-deleted asset."""
-    assets_repo = SupabaseAssetsRepository()
-    logs_repo = SupabaseLogsRepository()
+    assets_repo = SupabaseAssetRepository()
 
     result = await assets_repo.restore_asset(asset_id, user["id"])
     if not result:
         raise HTTPException(404, "Asset not found in trash")
-    await logs_repo.log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
+    log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
     return {"status": "ok", "asset": result}

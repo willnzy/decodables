@@ -157,3 +157,43 @@ def listing_is_public_visible(listing: Dict[str, Any]) -> bool:
         and not listing.get("is_deleted", False)
         and listing.get("moderation_status") == "approved"
     )
+
+
+class AccessControl:
+    """
+    Access control utility class for permission checks.
+
+    This class provides static methods for checking user permissions
+    based on tier and trial status.
+    """
+
+    @staticmethod
+    def can_use_ocr(user: Dict[str, Any], is_trial: bool = False) -> bool:
+        """
+        Check if user can use OCR/Smart Scan feature.
+
+        Business Rule: OCR is available to:
+        - Pro tier users
+        - Free tier users during trial period
+
+        Args:
+            user: User profile dict with tier information
+            is_trial: Whether user is in trial period
+
+        Returns:
+            True if user can use OCR
+        """
+        if not user:
+            return False
+
+        tier = (user.get("tier") or "free").lower()
+
+        # Pro users always have access
+        if tier == "pro":
+            return True
+
+        # Free users can use during trial
+        if tier == "free" and is_trial:
+            return True
+
+        return False

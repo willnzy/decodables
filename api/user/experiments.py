@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from domains.platform import experiment_service
+from domains.platform import experiments as experiment_service
 
 router = APIRouter(prefix="/api/v2/user/experiments", tags=["experiments"])
 
