@@ -71,7 +71,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Experiments | 14 | 14 | ✅ 已完成 |
 | Logs | 4 | 4 | ✅ 已完成 |
 | Metrics | 7 | 7 | ✅ 已完成 |
-| Moderation | 10 | 0 | 未开始 |
+| Moderation | 10 | 10 | ✅ 已完成 |
 | Notifications | 5 | 0 | 未开始 |
 | Stats | 18 | 0 | 未开始 |
 | Subscriptions | 3 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **59** | 47% |
+| **总计** | **125** | **69** | 55% |
 
 ---
 
@@ -420,34 +420,52 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Moderation 审核管理 (10个)
+## Moderation 审核管理 (10个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 60 | adm_moderation_list | GET | /marketplace/moderation/list | api/admin/moderation.py | 56 |
-| 61 | adm_moderation_detail | GET | /marketplace/moderation/{listing_id} | api/admin/moderation.py | 76 |
-| 62 | adm_moderation_approve | POST | /marketplace/moderation/{listing_id}/approve | api/admin/moderation.py | 87 |
-| 63 | adm_moderation_reject | POST | /marketplace/moderation/{listing_id}/reject | api/admin/moderation.py | 111 |
-| 64 | adm_moderation_delete | POST | /marketplace/moderation/{listing_id}/delete | api/admin/moderation.py | 146 |
-| 65 | adm_moderation_unpublish | POST | /marketplace/moderation/{listing_id}/unpublish | api/admin/moderation.py | 161 |
-| 66 | adm_get_reports | GET | /reports | api/admin/moderation.py | 180 |
-| 67 | adm_get_reports_stats | GET | /reports/stats | api/admin/moderation.py | 195 |
-| 68 | adm_get_report_detail | GET | /reports/{report_id} | api/admin/moderation.py | 209 |
-| 69 | adm_respond_to_report | POST | /reports/{report_id}/respond | api/admin/moderation.py | 220 |
+| 60 | adm_moderation_list | GET | /marketplace/moderation/list | api/admin/moderation.py | 92 |
+| 61 | adm_moderation_detail | GET | /marketplace/moderation/{listing_id} | api/admin/moderation.py | 126 |
+| 62 | adm_moderation_approve | POST | /marketplace/moderation/{listing_id}/approve | api/admin/moderation.py | 142 |
+| 63 | adm_moderation_reject | POST | /marketplace/moderation/{listing_id}/reject | api/admin/moderation.py | 171 |
+| 64 | adm_moderation_delete | POST | /marketplace/moderation/{listing_id}/delete | api/admin/moderation.py | 210 |
+| 65 | adm_moderation_unpublish | POST | /marketplace/moderation/{listing_id}/unpublish | api/admin/moderation.py | 230 |
+| 66 | adm_get_reports | GET | /reports | api/admin/moderation.py | 254 |
+| 67 | adm_get_reports_stats | GET | /reports/stats | api/admin/moderation.py | 272 |
+| 68 | adm_get_report_detail | GET | /reports/{report_id} | api/admin/moderation.py | 290 |
+| 69 | adm_respond_to_report | POST | /reports/{report_id}/respond | api/admin/moderation.py | 306 |
 
 **测试用例 Checklist**
-- [ ] #60 获取待审核列表
-- [ ] #61 获取审核详情
-- [ ] #62 通过审核
-- [ ] #63 拒绝审核
-- [ ] #64 删除内容
-- [ ] #65 下架内容
-- [ ] #66 获取举报列表
-- [ ] #67 获取举报统计
-- [ ] #68 获取举报详情
-- [ ] #69 响应举报
+- [x] #60 获取待审核列表
+- [x] #61 获取审核详情
+- [x] #62 通过审核
+- [x] #63 拒绝审核
+- [x] #64 删除内容
+- [x] #65 下架内容
+- [x] #66 获取举报列表
+- [x] #67 获取举报统计
+- [x] #68 获取举报详情
+- [x] #69 响应举报
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | MOD-MEDIUM-1 | 10个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | MOD-MEDIUM-2 | 使用 page 分页而非 offset | ✅ 已迁移 |
+| 🟡 MEDIUM | MOD-MEDIUM-3 | `status` (moderation) 无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | MOD-MEDIUM-4 | `type` (resource) 无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | MOD-MEDIUM-5 | `limit` 无范围验证 | ✅ 已添加 (1-100) |
+| 🟡 MEDIUM | MOD-MEDIUM-6 | `status` (report) 使用 field_validator | ✅ 已添加 |
+| 🟢 LOW | MOD-LOW-1 | `reason`/`response` 字段无长度限制 | ✅ 已添加 |
+| 🟢 LOW | MOD-LOW-2 | 异常暴露详细错误信息 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/moderation.py` - v3.24 → v3.25
+- `infrastructure/repositories/admin_repository.py` - 更新 admin_get_moderation_list, admin_get_reports 参数
+- `tests/api/admin/test_moderation.py` - 35 个测试用例
 
 ---
 

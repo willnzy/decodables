@@ -559,16 +559,23 @@ class SupabaseAdminModerationRepository:
         self.client = client
 
     @retry_on_network_error()
-    async def admin_get_moderation_list(self, status: str = "pending", page: int = 1, limit: int = 20) -> List[Dict[str, Any]]:
-        """Get moderation queue."""
-        offset = (page - 1) * limit
+    async def admin_get_moderation_list(
+        self,
+        status: Optional[str] = "pending",
+        resource_type: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Get moderation queue with offset-based pagination."""
         query = self.client.table("marketplace_listings").select(
             "*, profiles(username, email)"
         ).eq("is_deleted", False)
-        
+
         if status:
             query = query.eq("moderation_status", status)
-        
+        if resource_type and resource_type != "all":
+            query = query.eq("resource_type", resource_type)
+
         result = query.order("submitted_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
 
@@ -626,16 +633,20 @@ class SupabaseAdminModerationRepository:
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
-    async def admin_get_reports(self, status: Optional[str] = None, page: int = 1, limit: int = 20) -> List[Dict[str, Any]]:
-        """Get content reports."""
-        offset = (page - 1) * limit
+    async def admin_get_reports(
+        self,
+        status: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Get content reports with offset-based pagination."""
         query = self.client.table("reports").select(
             "*, profiles!reporter_id(username), marketplace_listings(title)"
         )
-        
+
         if status:
             query = query.eq("status", status)
-        
+
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
 
