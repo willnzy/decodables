@@ -1855,7 +1855,169 @@ analysis.aggregate_experiment_results()
 
 ---
 
+## 第四轮深度调用链审查 (2026-01-08)
+
+对已审查模块进行更深层次的调用链分析，发现以下问题：
+
+### 问题汇总表
+
+| 模块 | P0 | HIGH | MEDIUM | 总计 |
+|------|-----|------|--------|------|
+| Billing | 2 | 5 | 1 | 8 |
+| Generation Images | 3 | 3 | 9 | 15 |
+| Payment | 3 | 5 | 7 | 15 |
+| User Profile | 3 | 4 | 7 | 14 |
+| Generation Story | 3 | 3 | 4 | 10 |
+| Config | 3 | 3 | 4 | 10 |
+| **总计** | **17** | **23** | **32** | **72** |
+
+---
+
+### Billing 模块深度审查 (8 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 行号 | 描述 |
+|------|------|------|------|------|
+| B-P0-1 | /credits/add 无权限验证 | api/user/billing.py | 266-308 | 任何用户可调用添加积分接口，缺少 admin/internal 授权 |
+| B-P0-2 | CreditTransaction 缺失 id 字段 | domains/billing/aggregates/user_credits.py | - | API 返回 tx.id 但领域对象未定义该属性 |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| B-H1 | Bucket 选择退化 | 退款固定使用 PERMANENT，违反"先月度后永久" |
+| B-H2 | 事务隔离级别不明确 | deduct_atomic RPC 未指定隔离级别 |
+| B-H3 | 并发扣费竞态 | 多请求同时检查余额可能超扣 |
+| B-H4 | 错误消息暴露余额 | "Insufficient credits: need X, have Y" |
+| B-H5 | idempotency_key 截断 | UUID 只取前 8 字符，碰撞风险 |
+
+---
+
+### Generation Images 模块深度审查 (15 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 描述 |
+|------|------|------|------|
+| GI-P0-1 | 空 prompts 数组绕过计费 | api/user/generation_images.py | `prompts=[]` 时 cost=0 但仍调用 AI |
+| GI-P0-2 | 异步任务失败无退款 | shared/ai/image_generator.py | 后台生成失败后无积分退还机制 |
+| GI-P0-3 | 参考图上传失败仍扣高价 | api/user/generation_images.py | reference_image 解析失败仍按 premium 费率扣费 |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| GI-H1 | 安全检查位置靠后 | 先扣费后检查 prompt 安全性 |
+| GI-H2 | FAL 回调无签名验证 | 外部可伪造回调注入结果 |
+| GI-H3 | 生成超时无清理 | 长时间挂起的任务占用资源 |
+
+---
+
+### Payment 模块深度审查 (15 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 描述 |
+|------|------|------|------|
+| P-P0-1 | 异步/同步混用阻塞 | api/user/payment.py:70 | 同步调用 `create_checkout_session` 阻塞事件循环 |
+| P-P0-2 | 敏感信息泄露 | api/user/payment.py:92 | 错误消息包含 Stripe 内部错误详情 |
+| P-P0-3 | customer_id 管理缺失 | domains/billing/payment_service.py | 新用户无 Stripe Customer，portal 失败 |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| P-H1 | 折扣获取无缓存 | 每次 checkout 都查询数据库 |
+| P-H2 | Portal URL 无过期检查 | 返回的 URL 可能已过期 |
+| P-H3 | Stripe API Key 环境变量无验证 | 缺失时静默失败 |
+| P-H4 | Rate Limit 配置不一致 | checkout 5/min vs portal 10/min |
+| P-H5 | 幂等性窗口太短 | 1 分钟窗口可能导致重复会话 |
+
+---
+
+### User Profile 模块深度审查 (14 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 描述 |
+|------|------|------|------|
+| UP-P0-1 | Repository 方法名不匹配 | api/user/profile.py:200 | 调用 `mark_notification_read` 但 repo 定义 `mark_as_read` |
+| UP-P0-2 | is_member() 实现不一致 | infrastructure/repositories/ | User Repo 和 Profile 逻辑不同 |
+| UP-P0-3 | 分页实现不匹配 | api/user/profile.py | API 用 page/limit，DDD 规范要求 offset/limit |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| UP-H1 | Email 更新无验证 | 可直接更新为任意 email |
+| UP-H2 | Avatar URL 无校验 | 可注入任意 URL |
+| UP-H3 | 通知标记缺失权限检查 | 可标记他人通知为已读 |
+| UP-H4 | 头像上传无大小限制 | API 层无文件大小验证 |
+
+---
+
+### Generation Story 模块深度审查 (10 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 行号 | 描述 |
+|------|------|------|------|------|
+| GS-P0-1 | 退款 Bucket 硬编码错误 | api/user/generation_story.py | 93 | `bucket=CreditBucket.PERMANENT` 应根据原扣费 bucket 决定 |
+| GS-P0-2 | Topic 无长度限制 | api/schemas/user/generation.py | 11-14 | 可发送超长 topic 触发 OpenAI 超时 |
+| GS-P0-3 | Inspiration fallback 掩盖错误 | api/user/generation_story.py | 184-213 | 所有异常返回 200 + fallback，监控无法告警 |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| GS-H1 | Idempotency Key 碰撞风险 | 毫秒时间戳 + 8字符 UUID |
+| GS-H2 | 退款失败无恢复机制 | 退款异常只记日志，无后续处理 |
+| GS-H3 | Story 生成无内容审核 | 不像 Image 有 `check_prompt_safety` |
+
+---
+
+### Config 模块深度审查 (10 问题)
+
+#### P0 (Critical)
+
+| 序号 | 问题 | 文件 | 描述 |
+|------|------|------|------|
+| C-P0-1 | 敏感配置无访问控制 | api/user/config.py:45-72 | 任何用户可读取所有 system_configs |
+| C-P0-2 | 缓存中毒风险 | infrastructure/repositories/config_repository.py:32-54 | 过期检查逻辑有缺陷 |
+| C-P0-3 | 批量更新无原子性 | api/admin/config.py:106-125 | 部分失败导致不一致状态 |
+
+#### HIGH
+
+| 序号 | 问题 | 描述 |
+|------|------|------|
+| C-H1 | Rate Limit 可被全局禁用 | 单 API 调用即可关闭所有限流 |
+| C-H2 | 配置值类型混乱 | JSON 解析失败降级为字符串 |
+| C-H3 | 双重缓存不一致 | Repository 缓存 + cache_service 缓存 |
+
+---
+
+### 修复优先级
+
+#### 本周必须修复 (P0)
+
+1. **B-P0-1**: `/credits/add` 添加 admin 权限验证
+2. **C-P0-1**: Config API 添加白名单机制
+3. **GI-P0-1**: 验证 prompts 非空后再计费
+4. **GS-P0-1**: 退款时追踪原始扣费 bucket
+5. **UP-P0-1**: 修复 Repository 方法名不匹配
+
+#### 下周修复 (HIGH)
+
+1. **P-P0-1**: Payment 改为完全异步
+2. **GI-H1**: 安全检查移到扣费前
+3. **UP-H3**: 通知标记添加用户校验
+4. **C-H1**: Rate Limit 禁用需要 super_admin
+
+---
+
 *创建日期: 2026-01-08*
 *总接口数: 110 个*
 *第二轮深入审查完成: 2026-01-08*
 *第三轮全面修复完成: 2026-01-08*
+*第四轮深度调用链审查完成: 2026-01-08*
