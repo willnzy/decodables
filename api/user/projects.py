@@ -395,25 +395,23 @@ async def restore_project(
     creation_service = container.creation_service
 
     try:
-        result = await creation_service.restore_project(
+        # Service returns Project directly, not a Result object
+        project = await creation_service.restore_project(
             project_id=project_id,
             user_id=user["id"],
         )
 
-        if not result.success:
-            if "not found" in (result.error or "").lower():
-                raise HTTPException(404, "Project not found")
-            raise HTTPException(400, result.error or "Failed to restore project")
-
         return ProjectRestoreResponse(
             status="ok",
-            project=result.project.to_dict() if result.project else None,
+            project=project.to_dict() if project else None,
         )
 
-    except HTTPException:
-        # Re-raise HTTP exceptions with their original status codes
-        raise
     except Exception as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(404, "Project not found")
+        if "access" in error_msg:
+            raise HTTPException(403, "Access denied")
         logger.error(f"Failed to restore project {project_id}: {e}")
         raise HTTPException(400, str(e))
 
@@ -439,23 +437,22 @@ async def duplicate_project(
     tier = (user.get("tier") or "free").lower()
 
     try:
-        result = await creation_service.duplicate_project(
+        # Service returns Project directly, not a Result object
+        project = await creation_service.duplicate_project(
             project_id=project_id,
             user_id=user["id"],
             tier=tier,
         )
 
-        if not result.success:
-            if "limit" in (result.error or "").lower():
-                raise HTTPException(403, result.error)
-            if "not found" in (result.error or "").lower():
-                raise HTTPException(404, "Project not found")
-            raise HTTPException(400, result.error or "Failed to duplicate project")
+        return project.to_dict()
 
-        return result.project.to_dict()
-
-    except HTTPException:
-        raise
     except Exception as e:
+        error_msg = str(e).lower()
+        if "limit" in error_msg:
+            raise HTTPException(403, str(e))
+        if "not found" in error_msg:
+            raise HTTPException(404, "Project not found")
+        if "access" in error_msg:
+            raise HTTPException(403, "Access denied")
         logger.error(f"Failed to duplicate project {project_id}: {e}")
         raise HTTPException(500, "Failed to duplicate project")

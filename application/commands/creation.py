@@ -19,13 +19,17 @@ from domains.creation import (
 class CreateProjectCommand:
     """
     Command to create a new project.
+
+    Params aligned with API layer (api/user/projects.py):
+    - user_id: Owner's user ID
+    - title: Project title
+    - canvas_data: Optional canvas JSON data
+    - tier: User's subscription tier for limit checking
     """
-    owner_id: str
-    title: str
-    canvas_width: int = 1080
-    canvas_height: int = 1080
-    description: Optional[str] = None
-    user_tier: str = "free"
+    user_id: str
+    title: str = "Untitled"
+    canvas_data: Optional[Dict[str, Any]] = None
+    tier: str = "free"
 
 
 @dataclass
@@ -33,6 +37,7 @@ class CreateProjectResult:
     """Result of project creation."""
     success: bool
     project: Optional[Project] = None
+    project_dict: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
@@ -45,19 +50,24 @@ class CreateProjectHandler:
     async def handle(self, command: CreateProjectCommand) -> CreateProjectResult:
         """Execute project creation."""
         try:
-            canvas_size = CanvasSize(command.canvas_width, command.canvas_height)
+            # Extract canvas size from canvas_data if provided
+            canvas_size = None
+            if command.canvas_data:
+                width = command.canvas_data.get("width", 1080)
+                height = command.canvas_data.get("height", 1080)
+                canvas_size = CanvasSize(width, height)
 
             project = await self._creation_service.create_project(
-                owner_id=command.owner_id,
+                owner_id=command.user_id,
                 title=command.title,
                 canvas_size=canvas_size,
-                description=command.description,
-                user_tier=command.user_tier,
+                user_tier=command.tier,
             )
 
             return CreateProjectResult(
                 success=True,
                 project=project,
+                project_dict=project.to_dict() if project else None,
             )
 
         except Exception as e:
@@ -70,14 +80,20 @@ class CreateProjectHandler:
 @dataclass
 class UpdateProjectCommand:
     """
-    Command to update project metadata.
+    Command to update project.
+
+    Params aligned with API layer (api/user/projects.py):
+    - project_id: Project ID
+    - user_id: User making update (for ownership check)
+    - title: New title
+    - canvas_data: Canvas JSON data (editor state)
+    - thumbnail_url: Thumbnail URL
     """
     project_id: str
     user_id: str
     title: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
-    is_public: Optional[bool] = None
+    canvas_data: Optional[Dict[str, Any]] = None
+    thumbnail_url: Optional[str] = None
 
 
 @dataclass
@@ -97,13 +113,20 @@ class UpdateProjectHandler:
     async def handle(self, command: UpdateProjectCommand) -> UpdateProjectResult:
         """Execute project update."""
         try:
-            project = await self._creation_service.update_project(
+            # First verify access
+            project = await self._creation_service.get_project_with_access(
                 project_id=command.project_id,
                 user_id=command.user_id,
+                require_edit=True,
+            )
+
+            # Update via repository's quick save method
+            await self._creation_service._repository.save_project_quick(
+                project_id=command.project_id,
+                user_id=command.user_id,
+                canvas_data=command.canvas_data,
+                thumbnail_url=command.thumbnail_url,
                 title=command.title,
-                description=command.description,
-                tags=command.tags,
-                is_public=command.is_public,
             )
 
             return UpdateProjectResult(
@@ -122,10 +145,15 @@ class UpdateProjectHandler:
 class DeleteProjectCommand:
     """
     Command to delete a project.
+
+    Params aligned with API layer (api/user/projects.py):
+    - project_id: Project ID
+    - user_id: User requesting delete
+    - permanent: If true, permanently hide (stage 2); if false, soft delete (stage 1)
     """
     project_id: str
     user_id: str
-    hard_delete: bool = False
+    permanent: bool = False
 
 
 @dataclass
@@ -144,10 +172,11 @@ class DeleteProjectHandler:
     async def handle(self, command: DeleteProjectCommand) -> DeleteProjectResult:
         """Execute project deletion."""
         try:
+            # Map 'permanent' to service's 'hard_delete' param
             success = await self._creation_service.delete_project(
                 project_id=command.project_id,
                 user_id=command.user_id,
-                hard_delete=command.hard_delete,
+                hard_delete=command.permanent,
             )
 
             return DeleteProjectResult(success=success)

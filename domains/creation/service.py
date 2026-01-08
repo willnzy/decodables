@@ -246,6 +246,52 @@ class CreationService:
         project.restore()
         return await self._repository.update(project)
 
+    async def duplicate_project(
+        self,
+        project_id: str,
+        user_id: str,
+        tier: str = "free"
+    ) -> Project:
+        """
+        Duplicate a project.
+
+        Args:
+            project_id: Source project ID
+            user_id: User requesting duplication
+            tier: User's subscription tier for limit checking
+
+        Returns:
+            New duplicated Project
+
+        Raises:
+            ProjectNotFoundException: If source project not found
+            ProjectAccessDeniedException: If user doesn't own project
+            ProjectLimitExceededException: If user at project limit
+        """
+        # Verify access to source project
+        source = await self.get_project_with_access(project_id, user_id)
+
+        # Check project limit before creating
+        limit = self.PROJECT_LIMITS.get(tier, 5)
+        current_count = await self._repository.count_by_owner(user_id)
+        if current_count >= limit:
+            raise ProjectLimitExceededException(user_id, limit)
+
+        # Create new project with copied data
+        new_title = f"{source.metadata.title} (Copy)"
+        new_project = Project.create_new(
+            owner_id=user_id,
+            title=new_title,
+            canvas_size=source.canvas_size,
+            description=source.metadata.description,
+        )
+
+        # Copy pages from source
+        for page in source.pages:
+            new_project.add_page(page.canvas_data)
+
+        return await self._repository.create(new_project)
+
     async def add_page(
         self,
         project_id: str,
@@ -317,6 +363,18 @@ class CreationService:
             limit=limit,
             offset=offset,
         )
+
+    async def count_user_projects(self, user_id: str) -> int:
+        """
+        Count projects owned by user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Total project count
+        """
+        return await self._repository.count_by_owner(user_id)
 
     async def add_collaborator(
         self,

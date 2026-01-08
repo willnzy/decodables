@@ -192,18 +192,14 @@ def mock_delete_project_result():
 
 
 @pytest.fixture
-def mock_restore_result():
-    """Mock restore project result."""
+def mock_restored_project():
+    """Mock restored project object (service returns Project directly)."""
     mock_project_obj = MagicMock()
     mock_project_obj.to_dict.return_value = {
         "id": "project_123",
         "title": "Restored Project",
     }
-    return MagicMock(
-        success=True,
-        project=mock_project_obj,
-        error=None,
-    )
+    return mock_project_obj
 
 
 # ==========================================
@@ -1164,7 +1160,7 @@ class TestRestoreProject:
         self,
         mock_get_container,
         override_get_current_user_free,
-        mock_restore_result,
+        mock_restored_project,
     ):
         """
         Test: Restore deleted project successfully
@@ -1180,7 +1176,8 @@ class TestRestoreProject:
         """
         # Arrange
         mock_service = AsyncMock()
-        mock_service.restore_project.return_value = mock_restore_result
+        # Service returns Project directly, not a Result object
+        mock_service.restore_project.return_value = mock_restored_project
         mock_container = MagicMock()
         mock_container.creation_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1212,10 +1209,8 @@ class TestRestoreProject:
         """
         # Arrange
         mock_service = AsyncMock()
-        mock_service.restore_project.return_value = MagicMock(
-            success=False,
-            error="Project not found in deleted projects",
-        )
+        # Service raises exception for not found, API catches and returns 404
+        mock_service.restore_project.side_effect = Exception("Project not found in deleted projects")
         mock_container = MagicMock()
         mock_container.creation_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1224,7 +1219,6 @@ class TestRestoreProject:
         response = client.post("/api/v2/user/projects/invalid_id/restore")
 
         # Assert
-        # FIXED: API now correctly returns 404 for project not found
         assert response.status_code == 404
 
 
@@ -1260,10 +1254,8 @@ class TestDuplicateProject:
             "title": "My Project (Copy)",
         }
         mock_service = AsyncMock()
-        mock_service.duplicate_project.return_value = MagicMock(
-            success=True,
-            project=mock_project_obj,
-        )
+        # Service returns Project directly, not a Result object
+        mock_service.duplicate_project.return_value = mock_project_obj
         mock_container = MagicMock()
         mock_container.creation_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1296,10 +1288,8 @@ class TestDuplicateProject:
         """
         # Arrange
         mock_service = AsyncMock()
-        mock_service.duplicate_project.return_value = MagicMock(
-            success=False,
-            error="Project limit exceeded for free tier",
-        )
+        # Service raises exception for limit exceeded, API catches and returns 403
+        mock_service.duplicate_project.side_effect = Exception("Project limit exceeded for free tier")
         mock_container = MagicMock()
         mock_container.creation_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1309,7 +1299,6 @@ class TestDuplicateProject:
 
         # Assert
         assert response.status_code == 403
-        # HTTPException format may vary, just verify status code
 
     @patch('api.user.projects.get_container')
     def test_duplicate_project_not_found(
@@ -1329,10 +1318,8 @@ class TestDuplicateProject:
         """
         # Arrange
         mock_service = AsyncMock()
-        mock_service.duplicate_project.return_value = MagicMock(
-            success=False,
-            error="Project not found",
-        )
+        # Service raises exception for not found, API catches and returns 404
+        mock_service.duplicate_project.side_effect = Exception("Project not found")
         mock_container = MagicMock()
         mock_container.creation_service = mock_service
         mock_get_container.return_value = mock_container

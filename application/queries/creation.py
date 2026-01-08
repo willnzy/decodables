@@ -97,11 +97,14 @@ class GetUserProjectsHandler:
                 offset=query.offset,
             )
 
+            # Get actual total count for pagination (not just current page count)
+            total_count = await self._creation_service.count_user_projects(query.user_id)
+
             return GetUserProjectsResult(
                 success=True,
                 projects=projects,
                 projects_list=[p.to_dict() for p in projects],
-                total_count=len(projects),
+                total_count=total_count,
             )
 
         except Exception as e:
