@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from domains.platform import experiments as experiment_service
 
-router = APIRouter(prefix="/api/v2/user/experiments", tags=["experiments"])
+router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 
 # ==========================================

@@ -1,68 +1,267 @@
 """
-测试 api/experiments_api.py
+Tests for Experiments API (v2)
 
-端点: POST /experiments/{key}/assign
+Endpoints tested:
+- POST /api/v2/user/experiments/{key}/assign
+- POST /api/v2/user/experiments/{key}/exposure
+- POST /api/v2/user/experiments/{key}/conversion
+- GET /api/v2/user/experiments/user/{identifier}
 
-创建时间: 2026-01-07
+@module tests.api.user.test_experiments
+@version 2.0.0
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
-# 假设 app.py 已配置所有路由
+# Module-level rate limiter bypass BEFORE app import
+_rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
+_rate_limiter_patcher.start()
+
+from fastapi.testclient import TestClient
 from app import app
+from dependencies import get_current_user
 
 client = TestClient(app)
 
 
-@pytest.fixture
-def auth_headers():
-    """认证 headers (mock token)"""
-    return {"Authorization": "Bearer test_token_user_123"}
-
+# ==========================================
+# Fixtures
+# ==========================================
 
 @pytest.fixture
-def admin_headers():
-    """管理员 headers (mock token)"""
-    return {"Authorization": "Bearer test_admin_token"}
+def mock_free_user():
+    """Mock free tier user."""
+    return {
+        "id": "user_123",
+        "email": "user@example.com",
+        "tier": "free",
+    }
 
 
-class TestExperimentsAPI:
-    """Experiments API 测试"""
+@pytest.fixture
+def override_get_current_user(mock_free_user):
+    """Override get_current_user dependency."""
+    async def _get_current_user():
+        return mock_free_user
 
-    def test_get_experiments_success(self, auth_headers):
-        """获取 Experiments 成功"""
-        # TODO: 根据实际端点调整
-        response = client.get("/api/v2/user/experiments", headers=auth_headers)
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
 
-        # Mock 环境下可能返回 404 或其他状态码
-        # 在 CI 环境中会使用 mock fixtures
-        assert response.status_code in [200, 404, 401]
 
-    def test_get_experiments_unauthorized(self):
-        """未认证应返回 401"""
-        response = client.get("/api/v2/user/experiments")
+# ==========================================
+# Test Cases
+# ==========================================
 
-        # 应该需要认证
-        assert response.status_code in [401, 404]
+class TestAssignVariant:
+    """Test POST /experiments/{key}/assign endpoint."""
 
-    @patch('infrastructure.repositories.supabase')
-    def test_experiments_with_mock(self, mock_supabase, auth_headers):
-        """使用 mock 测试 Experiments"""
-        # Mock Supabase 响应
-        mock_supabase.table.return_value.select.return_value.execute.return_value = MagicMock(
-            data=[{"id": "1", "name": "test"}]
+    @patch('domains.platform.experiments.assign_variant')
+    def test_assign_variant_success(self, mock_assign):
+        """Should assign variant successfully."""
+        mock_assign.return_value = "variant_a"
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/assign",
+            json={
+                "user_identifier": "user_123",
+                "identifier_type": "user",
+            }
         )
 
-        response = client.get("/api/v2/user/experiments", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["assigned"] is True
+        assert data["variant"] == "variant_a"
+        assert data["experiment_key"] == "test_experiment"
 
-        # 验证响应
-        assert response.status_code in [200, 404, 401]
+        mock_assign.assert_called_once_with(
+            experiment_key="test_experiment",
+            user_identifier="user_123",
+            identifier_type="user",
+            context=None,
+        )
+
+    @patch('domains.platform.experiments.assign_variant')
+    def test_assign_variant_not_eligible(self, mock_assign):
+        """Should return not assigned when not eligible."""
+        mock_assign.return_value = None
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/assign",
+            json={
+                "user_identifier": "user_123",
+                "identifier_type": "user",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["assigned"] is False
+        assert data["variant"] is None
+        assert "Not eligible" in data["reason"]
+
+    @patch('domains.platform.experiments.assign_variant')
+    def test_assign_variant_with_context(self, mock_assign):
+        """Should pass context to assignment."""
+        mock_assign.return_value = "variant_b"
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/assign",
+            json={
+                "user_identifier": "user_123",
+                "identifier_type": "visitor",
+                "context": {"page": "home", "device": "mobile"}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["assigned"] is True
+        assert data["variant"] == "variant_b"
+
+        mock_assign.assert_called_once()
+        call_kwargs = mock_assign.call_args.kwargs
+        assert call_kwargs["context"] == {"page": "home", "device": "mobile"}
+
+    def test_assign_variant_invalid_payload(self):
+        """Should return 422 for invalid payload."""
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/assign",
+            json={}  # Missing required fields
+        )
+
+        assert response.status_code == 422
 
 
-# TODO: 添加更多测试用例
-# - POST/PUT/PATCH/DELETE 端点测试
-# - 参数验证测试 (422)
-# - 业务逻辑测试
-# - 错误处理测试
+class TestTrackExposure:
+    """Test POST /experiments/{key}/exposure endpoint."""
+
+    @patch('domains.platform.experiments.track_exposure')
+    def test_track_exposure_success(self, mock_track):
+        """Should track exposure successfully."""
+        mock_track.return_value = True
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/exposure",
+            json={
+                "user_identifier": "user_123",
+                "variant_key": "variant_a",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+        mock_track.assert_called_once_with(
+            experiment_key="test_experiment",
+            user_identifier="user_123",
+            variant_key="variant_a",
+        )
+
+    @patch('domains.platform.experiments.track_exposure')
+    def test_track_exposure_failure(self, mock_track):
+        """Should return false when tracking fails."""
+        mock_track.return_value = False
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/exposure",
+            json={
+                "user_identifier": "user_123",
+                "variant_key": "variant_a",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+
+
+class TestTrackConversion:
+    """Test POST /experiments/{key}/conversion endpoint."""
+
+    @patch('domains.platform.experiments.track_conversion')
+    def test_track_conversion_success(self, mock_track):
+        """Should track conversion successfully."""
+        mock_track.return_value = True
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/conversion",
+            json={
+                "user_identifier": "user_123",
+                "variant_key": "variant_a",
+                "conversion_type": "primary",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+        mock_track.assert_called_once_with(
+            experiment_key="test_experiment",
+            user_identifier="user_123",
+            variant_key="variant_a",
+            conversion_type="primary",
+            value=None,
+            metadata=None,
+        )
+
+    @patch('domains.platform.experiments.track_conversion')
+    def test_track_conversion_with_value(self, mock_track):
+        """Should track conversion with value."""
+        mock_track.return_value = True
+
+        response = client.post(
+            "/api/v2/user/experiments/test_experiment/conversion",
+            json={
+                "user_identifier": "user_123",
+                "variant_key": "variant_a",
+                "conversion_type": "revenue",
+                "value": 29.99,
+                "metadata": {"order_id": "ord_123"}
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+        call_kwargs = mock_track.call_args.kwargs
+        assert call_kwargs["value"] == 29.99
+        assert call_kwargs["metadata"]["order_id"] == "ord_123"
+
+
+class TestGetUserExperiments:
+    """Test GET /experiments/user/{identifier} endpoint."""
+
+    @patch('domains.platform.experiments.get_user_experiments')
+    def test_get_user_experiments_success(self, mock_get):
+        """Should get user experiments."""
+        mock_get.return_value = [
+            {"experiment_key": "exp1", "variant": "variant_a"},
+            {"experiment_key": "exp2", "variant": "control"},
+        ]
+
+        response = client.get("/api/v2/user/experiments/user/user_123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["experiments"]) == 2
+        assert data["experiments"][0]["experiment_key"] == "exp1"
+        assert data["experiments"][1]["variant"] == "control"
+
+        mock_get.assert_called_once_with("user_123")
+
+    @patch('domains.platform.experiments.get_user_experiments')
+    def test_get_user_experiments_empty(self, mock_get):
+        """Should return empty list for user with no experiments."""
+        mock_get.return_value = []
+
+        response = client.get("/api/v2/user/experiments/user/user_123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["experiments"] == []

@@ -27,7 +27,7 @@ from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v2/user/export", tags=["user-export-v2"])
+router = APIRouter(prefix="/export", tags=["user-export-v2"])
 
 
 # ==========================================
