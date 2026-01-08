@@ -1661,5 +1661,135 @@ analysis.aggregate_experiment_results()
 
 ---
 
+## 第二轮深入调用链审查 (2026-01-08)
+
+> **目的**: 对已完成模块进行深度调用链分析，确保所有问题都被发现和修复
+
+### 审查范围
+
+| 模块 | 第一轮审查深度 | 第二轮需要 | 状态 |
+|------|---------------|-----------|------|
+| Analytics | ✅ 深 | ❌ | - |
+| Billing | 🔶 中 | ✅ P0 | ✅ 已完成 |
+| Campaigns | ✅ 深 | ❌ | - |
+| Experiments | ✅ 深 | ❌ | - |
+| Generation Images | 🔶 浅 | 🟡 P1 | 待办 |
+| Generation Story | 🔶 浅 | 🟡 P1 | 待办 |
+| Marketplace | ✅ 深 | ❌ | - |
+| Payment | 🔶 浅 | ✅ P0 | ✅ 已完成 |
+| Projects | ✅ 深 | ❌ | - |
+| User Profile | 🔶 浅 | 🟡 P1 | 待办 |
+| Webhooks | 🔶 中 | ✅ P0 | ✅ 已完成 |
+
+### Billing 模块 - 第二轮深入审查
+
+**审查文件** (14 files):
+- `api/user/billing.py`
+- `domains/billing/service.py`
+- `domains/billing/aggregates/user_credits.py`
+- `domains/billing/repository.py`
+- `domains/billing/value_objects.py`
+- `domains/billing/exceptions.py`
+- `domains/billing/payment_service.py`
+- `infrastructure/repositories/credit_repository.py`
+- `application/commands/billing.py`
+- `application/queries/billing.py`
+- `container.py`
+- `migrations/v3.22_atomic_transactions.sql`
+- `migrations/ddl.sql`
+- `tests/api/user/test_billing.py`
+
+**发现并修复的问题**:
+
+| 序号 | 严重性 | 问题 | 文件 | 状态 |
+|------|--------|------|------|------|
+| B1 | 🔴 P0 | bucket 检测使用不存在的 `from_monthly` 字段 | credit_repository.py:138 | ✅ 修复 |
+| B2 | 🔴 P0 | balance 字段使用错误名称 `monthly_after` | credit_repository.py:147-148 | ✅ 修复 |
+
+**修复详情**:
+
+1. **B1/B2: RPC 返回字段映射错误** (`credit_repository.py` v1.0.0 → v1.0.1)
+   - 问题: 代码读取 `data.get("from_monthly")` 但 RPC 返回 `bucket` 字段
+   - 问题: 代码读取 `monthly_after/permanent_after` 但 RPC 返回 `balance_monthly/balance_permanent`
+   - 影响: bucket 总是被标记为 PERMANENT，即使实际从 MONTHLY 扣除
+   - 修复: 使用正确的 RPC 返回字段名
+
+### Webhooks 模块 - 第二轮深入审查
+
+**审查文件** (9 files):
+- `api/user/webhooks.py`
+- `domains/billing/payment_service.py`
+- `infrastructure/repositories/user_repository.py`
+- `infrastructure/repositories/credit_repository.py`
+- `infrastructure/repositories/payment_repository.py`
+- `config.py`
+- `migrations/v3.22_atomic_transactions.sql`
+- `domains/platform/analytics_service.py`
+- `tests/api/user/test_webhooks.py`
+
+**发现并修复的问题**:
+
+| 序号 | 严重性 | 问题 | 文件 | 状态 |
+|------|--------|------|------|------|
+| W1 | 🔴 P0 | Clerk signup bonus 无幂等性检查 | webhooks.py:102-114 | ✅ 修复 |
+| W2 | 🔴 P0 | checkout 中 customer_id 可能为 None | webhooks.py:308 | ✅ 修复 |
+| W3 | 🟠 HIGH | tier 映射使用脆弱的字符串匹配 | webhooks.py:401-403 | ✅ 修复 |
+
+**修复详情**:
+
+1. **W1: Clerk signup bonus 幂等性** (`webhooks.py` v2.0.0 → v2.1.0)
+   - 问题: Clerk 可能重发 `user.created` 事件，导致重复授予 50 积分
+   - 修复: 添加 `check_idempotency()` 检查，使用 `signup_bonus_{user_id}` 作为幂等键
+
+2. **W2: customer_id 验证** (`webhooks.py` v2.0.0 → v2.1.0)
+   - 问题: `session.get('customer')` 可能返回 None，导致 stripe_customer_id 被设为空
+   - 影响: 用户无法访问 billing portal
+   - 修复: 添加 null 检查，缺失时返回错误并记录日志
+
+3. **W3: tier 映射逻辑** (`payment_service.py` v3.22 → v3.23)
+   - 问题: 使用 `'starter' in plan_id.lower()` 进行匹配，不可靠
+   - 修复: 新增 `get_tier_from_price_id()` 函数，使用 PRICE_MAP 配置进行精确匹配
+
+### Payment 模块 - 第二轮深入审查
+
+**审查文件** (12 files):
+- `api/user/payment.py`
+- `api/user/webhooks.py`
+- `domains/billing/payment_service.py`
+- `domains/billing/service.py`
+- `domains/billing/repository.py`
+- `domains/billing/exceptions.py`
+- `domains/billing/aggregates/user_credits.py`
+- `shared/payment/interfaces.py`
+- `shared/payment/types.py`
+- `shared/payment/providers/stripe_provider.py`
+- `infrastructure/repositories/payment_repository.py`
+- `infrastructure/repositories/credit_repository.py`
+
+**已知问题 (待修复)**:
+
+| 序号 | 严重性 | 问题 | 文件 | 状态 |
+|------|--------|------|------|------|
+| P1 | 🔴 P0 | 价格ID配置无启动验证 | payment_service.py:18-22 | 🔶 待办 |
+| P2 | 🟠 HIGH | 每次 checkout 创建新 Coupon 对象 | payment_service.py:50-58 | 🔶 待办 |
+| P3 | 🟠 HIGH | checkout 无 idempotency_key | payment_service.py:24-68 | 🔶 待办 |
+| P4 | 🟠 HIGH | Stripe API 无重试逻辑 | payment_service.py | 🔶 待办 |
+
+### 测试更新
+
+- `tests/api/user/test_webhooks.py` - 更新 mock 支持 `check_idempotency` 调用
+- 所有测试通过: billing (30/30), webhooks (12/12)
+
+### 修复文件汇总
+
+| 文件 | 版本变更 | 改动内容 |
+|------|---------|---------|
+| `infrastructure/repositories/credit_repository.py` | v1.0.0 → v1.0.1 | 修复 RPC 字段映射 |
+| `api/user/webhooks.py` | v2.0.0 → v2.1.0 | 幂等性检查 + customer_id 验证 + tier 映射 |
+| `domains/billing/payment_service.py` | v3.22 → v3.23 | 新增 `get_tier_from_price_id()` |
+| `tests/api/user/test_webhooks.py` | - | 更新 mock |
+
+---
+
 *创建日期: 2026-01-08*
 *总接口数: 110 个*

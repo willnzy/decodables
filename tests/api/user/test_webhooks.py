@@ -203,14 +203,19 @@ class TestClerkWebhook:
 
         # Mock CreditRepository for signup bonus
         mock_credit_repo = MagicMock()
+        mock_credit_repo.check_idempotency = AsyncMock(return_value=None)  # No existing bonus
         mock_credit_repo.add_credits_permanent = AsyncMock()
         mock_credit_repo_class.return_value = mock_credit_repo
 
-        # Mock Supabase for activity logging
+        # Mock Supabase for activity logging and idempotency key update
         mock_supabase = MagicMock()
         mock_table_insert = MagicMock()
         mock_table_insert.execute = MagicMock()
         mock_supabase.table.return_value.insert.return_value = mock_table_insert
+        # Also mock update chain for idempotency key saving
+        mock_table_update = MagicMock()
+        mock_table_update.eq.return_value.eq.return_value.execute = MagicMock()
+        mock_supabase.table.return_value.update.return_value = mock_table_update
         mock_get_supabase.return_value = mock_supabase
 
         # Act

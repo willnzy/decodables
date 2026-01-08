@@ -2,6 +2,11 @@
 Payment Service
 Stripe 支付服务
 
+@version 3.23
+
+Changes in v3.23:
+- Added get_tier_from_price_id() for config-based tier mapping
+
 v3.22: Replaced print statements with structured logging
 """
 
@@ -20,6 +25,31 @@ PRICE_MAP = {
     "starter": os.environ.get("STRIPE_PRICE_SUB_STARTER"),
     "pro": os.environ.get("STRIPE_PRICE_SUB_PRO")
 }
+
+# Reverse mapping: price_id -> tier (built at runtime)
+def get_tier_from_price_id(price_id: str) -> str:
+    """
+    Get tier name from Stripe price ID.
+
+    Uses PRICE_MAP for config-based lookup instead of fragile string matching.
+
+    Args:
+        price_id: Stripe price ID
+
+    Returns:
+        Tier name ('starter', 'pro') or 'free' if not found
+    """
+    if not price_id:
+        return 'free'
+
+    # Build reverse map and lookup
+    for tier, configured_price_id in PRICE_MAP.items():
+        if configured_price_id and price_id == configured_price_id:
+            return tier if tier != 'credits_100' else 'free'
+
+    # Fallback: log warning and return free
+    logger.warning(f"[Payment] Unknown price_id: {price_id}, defaulting to 'free'")
+    return 'free'
 
 def create_checkout_session(user_id: str, plan_type: str, discount_percent: int = 0):
     """

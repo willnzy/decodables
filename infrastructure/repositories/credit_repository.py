@@ -2,7 +2,11 @@
 Credit Repository Implementation - Supabase data access for billing domain.
 
 @module infrastructure.repositories.credit_repository
-@version 1.0.0
+@version 1.0.1
+
+Changes in v1.0.1:
+- Fixed bucket detection to use RPC 'bucket' field instead of non-existent 'from_monthly'
+- Fixed balance fields to use 'balance_monthly'/'balance_permanent' (RPC return fields)
 
 Implements ICreditRepository using Supabase PostgreSQL.
 Uses atomic RPC functions for credit operations.
@@ -134,18 +138,20 @@ class SupabaseCreditRepository(ICreditRepository):
                     available=data.get("available", 0)
                 )
 
-            # Determine bucket used
-            bucket = CreditBucket.MONTHLY if data.get("from_monthly", 0) > 0 else CreditBucket.PERMANENT
+            # Determine bucket used - RPC returns 'bucket' field
+            bucket_str = data.get("bucket", "permanent")
+            bucket = CreditBucket.MONTHLY if bucket_str == "monthly" else CreditBucket.PERMANENT
 
             # Create transaction record
+            # RPC returns: balance_monthly, balance_permanent (not monthly_after/permanent_after)
             tx = CreditTransaction(
                 amount=-amount,
                 bucket=bucket,
                 tx_type=tx_type,
                 description=description,
                 balance_after=Credits(
-                    monthly=data.get("monthly_after", 0),
-                    permanent=data.get("permanent_after", 0)
+                    monthly=data.get("balance_monthly", 0),
+                    permanent=data.get("balance_permanent", 0)
                 ),
                 idempotency_key=idempotency_key,
             )
@@ -204,14 +210,15 @@ class SupabaseCreditRepository(ICreditRepository):
                 data = data[0]
 
             # Create transaction record
+            # RPC returns: balance_monthly, balance_permanent (not monthly_after/permanent_after)
             tx = CreditTransaction(
                 amount=amount,
                 bucket=bucket,
                 tx_type=tx_type,
                 description=description,
                 balance_after=Credits(
-                    monthly=data.get("monthly_after", 0),
-                    permanent=data.get("permanent_after", 0)
+                    monthly=data.get("balance_monthly", 0),
+                    permanent=data.get("balance_permanent", 0)
                 ),
                 idempotency_key=idempotency_key,
             )

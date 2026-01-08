@@ -2,7 +2,12 @@
 Webhooks API - Third-party webhook handlers (v2).
 
 @module api.user.webhooks
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- Added idempotency check for Clerk signup bonus (prevent duplicate credits)
+- Added customer_id null validation in checkout handler
+- Replaced fragile string-based tier mapping with config-based get_tier_from_price_id()
 
 Endpoints:
 - POST /api/v2/user/webhooks/clerk - Clerk user events
@@ -24,7 +29,7 @@ from infrastructure.repositories import (
     SupabaseCreditRepository,
     SupabasePaymentRepository,
 )
-from domains.billing.payment_service import construct_event
+from domains.billing.payment_service import construct_event, get_tier_from_price_id
 from domains.platform.analytics_service import AnalyticsEvents, track_payment
 
 logger = logging.getLogger(__name__)
@@ -99,16 +104,29 @@ async def clerk_webhook(request: Request):
         # Create a full profile (including names)
         await user_repo.create_profile(user_id, email, username, image_url, first_name=first_name, last_name=last_name)
 
-        # Grant signup bonus (50 permanent credits)
+        # Grant signup bonus (50 permanent credits) with idempotency check
         credit_repo = SupabaseCreditRepository(supabase)
         try:
-            await credit_repo.add_credits_permanent(
-                user_id,
-                50,
-                "Welcome bonus for new users",
-                "signup_bonus"
-            )
-            logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
+            # Use user_id as idempotency key to prevent duplicate signup bonus
+            idempotency_key = f"signup_bonus_{user_id}"
+            existing = await credit_repo.check_idempotency(idempotency_key)
+            if existing:
+                logger.info(f"✅ Signup bonus already granted to user {user_id}, skipping")
+            else:
+                await credit_repo.add_credits_permanent(
+                    user_id,
+                    50,
+                    "Welcome bonus for new users",
+                    "signup_bonus"
+                )
+                # Log with idempotency key for future checks
+                try:
+                    supabase.table("credit_transactions").update({
+                        "idempotency_key": idempotency_key
+                    }).eq("user_id", user_id).eq("tx_type", "signup_bonus").execute()
+                except Exception:
+                    pass  # Best effort to update idempotency key
+                logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
         except Exception as e:
             logger.error(f"Failed to grant signup bonus to user {user_id}: {e}")
 
@@ -305,7 +323,12 @@ async def _handle_checkout_completed(event: dict) -> dict:
 
         elif plan in ['starter', 'pro']:
             # New subscription: update tier and grant monthly credits
-            await user_repo.update_subscription_tier(uid, plan, session.get('customer'), "active")
+            # Validate customer_id exists before updating
+            stripe_customer_id = session.get('customer')
+            if not stripe_customer_id:
+                logger.error(f"[Webhook] Missing customer_id in checkout session for user {uid}")
+                return {"status": "error", "error": "missing_customer_id", "user_id": uid}
+            await user_repo.update_subscription_tier(uid, plan, stripe_customer_id, "active")
             amt = 500 if plan == 'starter' else 1000
             await credit_repo.add_credits_monthly(uid, amt, f"{plan.capitalize()} Monthly Credits", "sub_grant")
             # Log subscription payment
@@ -398,10 +421,13 @@ async def _handle_subscription_change(event: dict) -> dict:
                 return {"status": "ok", "action": "subscription_ended", "user_id": uid}
             elif status == 'active':
                 # Subscription reactivated
-                plan_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
-                # Map price_id to tier
-                new_tier = 'starter' if 'starter' in plan_id.lower() else 'pro'
+                price_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
+                # Use config-based mapping instead of fragile string matching
+                new_tier = get_tier_from_price_id(price_id)
+                if new_tier == 'free':
+                    # Unknown price_id, log warning but keep user on free tier
+                    logger.warning(f"[Webhook] Unknown price_id {price_id} for user {uid}, setting tier to free")
                 await user_repo.update_subscription_tier(uid, new_tier, subscription_status='active')
-                return {"status": "ok", "action": "subscription_reactivated", "user_id": uid}
+                return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
 
     return {"status": "ok"}
