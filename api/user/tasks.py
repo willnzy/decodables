@@ -1,7 +1,12 @@
 """Tasks API - Background tasks endpoints (v2).
 
 @module api.user.tasks
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - T-MEDIUM-1: Added task_id format validation (3-64 chars, alphanumeric/hyphen/underscore)
+  - T-LOW-1: Added "scheduled" to cancellable status list
 
 Endpoints:
 - GET /api/v2/user/tasks/{task_id} - Get task status
@@ -9,6 +14,7 @@ Endpoints:
 """
 
 import logging
+import re
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,6 +31,24 @@ supabase = get_supabase_client()
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["user-tasks-v2"])
+
+
+# ==========================================
+# Constants (v2.1.0)
+# ==========================================
+
+# v2.1.0: T-MEDIUM-1 - Task ID format validation
+# Allowed: alphanumeric, hyphens, underscores, 3-64 characters
+TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,64}$")
+
+# v2.1.0: T-LOW-1 - Cancellable task statuses (including scheduled from RQ)
+CANCELLABLE_STATUSES = ("pending", "queued", "scheduled")
+
+
+def validate_task_id(task_id: str) -> None:
+    """v2.1.0: T-MEDIUM-1 - Validate task_id format."""
+    if not TASK_ID_PATTERN.match(task_id):
+        raise HTTPException(400, "Invalid task ID format")
 
 
 # ==========================================
@@ -77,6 +101,9 @@ async def get_task_status(
         - result: image URLs when completed
         - error: error message if failed
     """
+    # v2.1.0: T-MEDIUM-1 - Validate task_id format
+    validate_task_id(task_id)
+
     # Get status from progress tracker (Redis)
     status = progress_tracker.get_status(task_id)
 
@@ -134,13 +161,17 @@ async def cancel_task(
     Only tasks that haven't started processing can be cancelled.
     Credits will be refunded for cancelled tasks.
     """
+    # v2.1.0: T-MEDIUM-1 - Validate task_id format
+    validate_task_id(task_id)
+
     # Check task status
     status = progress_tracker.get_status(task_id)
 
     if not status:
         raise HTTPException(404, "Task not found")
 
-    if status.get("status") not in ("pending", "queued"):
+    # v2.1.0: T-LOW-1 - Use constant for cancellable statuses
+    if status.get("status") not in CANCELLABLE_STATUSES:
         raise HTTPException(
             400,
             f"Cannot cancel task in '{status.get('status')}' status",

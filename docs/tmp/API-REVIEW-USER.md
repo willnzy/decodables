@@ -95,14 +95,14 @@
 | Resources | 7 | 7 | ✅ 已完成 |
 | Support | 4 | 4 | ✅ 已完成 |
 | System Resources | 9 | 9 | ✅ 已完成 |
-| Tasks | 2 | 0 | 未开始 |
+| Tasks | 2 | 2 | ✅ 已完成 |
 | Templates | 10 | 0 | 未开始 |
 | Themes | 1 | 0 | 未开始 |
 | Tools | 2 | 0 | 未开始 |
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **85** | 77.3% |
+| **总计** | **110** | **87** | 79.1% |
 
 ---
 
@@ -1923,18 +1923,47 @@ API resources.py
 
 ---
 
-## Tasks 任务模块 (2个)
+## Tasks 任务模块 (2个) ✅ 已完成
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 77 | get_task_status | GET | /{task_id} | api/user/tasks.py | 63 |
-| 78 | cancel_task | POST | /{task_id}/cancel | api/user/tasks.py | 124 |
+| 77 | get_task_status | GET | /{task_id} | api/user/tasks.py | 87 |
+| 78 | cancel_task | POST | /{task_id}/cancel | api/user/tasks.py | 151 |
 
 **测试用例 Checklist**
-- [ ] #77 查询任务状态
-- [ ] #78 取消任务
+- [x] #77 查询任务状态 (8 tests)
+- [x] #78 取消任务 (7 tests)
+- [x] Security validations (5 tests)
 
-**完成状态**: 未开始
+### Review 结果 (v2.1.0)
+
+**已有安全措施** ✅:
+- Rate limiting 已实现 (60/minute, 10/minute)
+- 用户认证 (get_current_user)
+- Task 所有权验证在 queue_service 层
+- 状态检查 (只能取消 pending/queued 状态)
+- 数据库 RPC 正确验证 user_id
+
+**安全问题发现与修复**:
+
+| ID | 级别 | 问题描述 | 修复方案 |
+|---|---|---|---|
+| T-MEDIUM-1 | MEDIUM | task_id 无格式验证，可注入任意字符串 | 正则验证 (3-64 chars, alphanumeric/hyphen/underscore) |
+| T-LOW-1 | LOW | 取消状态检查不完整 | 添加 "scheduled" 到可取消状态列表 |
+
+**代码改动**:
+- `api/user/tasks.py` v2.0.0 → v2.1.0
+  - 添加 TASK_ID_PATTERN 正则验证
+  - 添加 CANCELLABLE_STATUSES 常量
+  - 添加 validate_task_id() 函数
+  - 两个端点都添加 task_id 格式验证
+
+**测试覆盖**: 20 tests passed
+- GET endpoint: 8 tests
+- POST cancel: 8 tests (新增 scheduled 状态测试)
+- Security validations: 5 tests (新增格式验证测试)
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 

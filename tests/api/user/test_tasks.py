@@ -8,6 +8,12 @@ Endpoints:
 - POST /api/v2/user/tasks/{task_id}/cancel - Cancel a task
 
 Created: 2026-01-08
+Updated: 2026-01-09
+
+Changes in v2.1.0:
+- Added tests for task_id format validation (T-MEDIUM-1)
+- Added tests for scheduled status cancellation (T-LOW-1)
+
 Coverage Target: 100% (2/2 endpoints)
 """
 
@@ -533,6 +539,106 @@ class TestCancelTask:
         # Assert
         assert response.status_code == 401
 
+    @patch('api.user.tasks.supabase')
+    @patch('api.user.tasks.task_queue')
+    @patch('api.user.tasks.progress_tracker')
+    def test_cancel_task_scheduled_success(
+        self,
+        mock_progress_tracker,
+        mock_task_queue,
+        mock_supabase,
+        override_get_current_user,
+    ):
+        """
+        v2.1.0: T-LOW-1 - Test cancel scheduled task
+
+        Given: Task is in scheduled status (RQ scheduled jobs)
+        When: POST /api/v2/user/tasks/{task_id}/cancel
+        Then: Cancels task successfully
+        """
+        # Arrange
+        mock_progress_tracker.get_status.return_value = {"status": "scheduled"}
+        mock_task_queue.cancel_task.return_value = True
+
+        # Mock database query
+        mock_db_response = MagicMock()
+        mock_db_response.data = {"params": {}}
+        mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = mock_db_response
+
+        # Act
+        response = client.post("/api/v2/user/tasks/task_scheduled/cancel")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "cancelled"
+
+
+# ==========================================
+# Tests: Security Validations (v2.1.0)
+# ==========================================
+
+class TestSecurityValidations:
+    """Tests for security validations added in v2.1.0."""
+
+    def test_get_task_invalid_id_too_short(self, override_get_current_user):
+        """
+        v2.1.0: T-MEDIUM-1 - Reject task_id that is too short.
+        """
+        response = client.get("/api/v2/user/tasks/ab")  # Less than 3 chars
+
+        assert response.status_code == 400
+        assert "Invalid task ID format" in response.text
+
+    def test_get_task_invalid_id_too_long(self, override_get_current_user):
+        """
+        v2.1.0: T-MEDIUM-1 - Reject task_id that is too long.
+        """
+        long_id = "a" * 65  # More than 64 chars
+        response = client.get(f"/api/v2/user/tasks/{long_id}")
+
+        assert response.status_code == 400
+        assert "Invalid task ID format" in response.text
+
+    def test_get_task_invalid_id_special_chars(self, override_get_current_user):
+        """
+        v2.1.0: T-MEDIUM-1 - Reject task_id with invalid characters.
+        """
+        response = client.get("/api/v2/user/tasks/task!@#$%")
+
+        assert response.status_code == 400
+        assert "Invalid task ID format" in response.text
+
+    def test_cancel_task_invalid_id(self, override_get_current_user):
+        """
+        v2.1.0: T-MEDIUM-1 - Cancel endpoint also validates task_id.
+        """
+        response = client.post("/api/v2/user/tasks/ab/cancel")  # Too short
+
+        assert response.status_code == 400
+        assert "Invalid task ID format" in response.text
+
+    @patch('api.user.tasks.progress_tracker')
+    def test_valid_task_id_formats(self, mock_progress_tracker, override_get_current_user):
+        """
+        v2.1.0: T-MEDIUM-1 - Valid task_id formats should pass validation.
+        """
+        mock_progress_tracker.get_status.return_value = None
+
+        # Valid formats
+        valid_ids = [
+            "abc",  # Minimum 3 chars
+            "task_123",  # Underscore
+            "task-456",  # Hyphen
+            "TASK123",  # Uppercase
+            "a" * 64,  # Maximum 64 chars
+        ]
+
+        for task_id in valid_ids:
+            response = client.get(f"/api/v2/user/tasks/{task_id}")
+            # Should get 404 (not found) not 400 (invalid format)
+            assert response.status_code == 404, f"Task ID {task_id} should be valid"
+
 
 # ==========================================
 # Coverage Summary
@@ -554,23 +660,32 @@ GET /api/v2/user/tasks/{task_id}:
 POST /api/v2/user/tasks/{task_id}/cancel:
 ✅ Success - Cancel with credit refund
 ✅ Success - Cancel without refund
+✅ Success - Cancel scheduled task (v2.1.0 T-LOW-1)
 ✅ Error - Task not found (404)
 ✅ Error - Cannot cancel processing task (400)
 ✅ Error - Cannot cancel completed task (400)
 ✅ Error - Cancellation failed at queue level (400)
 ✅ Unauthorized (401)
 
-Total Tests: 15
+Security Validations (v2.1.0):
+✅ Invalid task_id - too short (400)
+✅ Invalid task_id - too long (400)
+✅ Invalid task_id - special characters (400)
+✅ Invalid task_id on cancel endpoint (400)
+✅ Valid task_id formats accepted
+
+Total Tests: 21
 Coverage: 100% (2/2 endpoints)
 
 Business Logic Tested:
 - ✅ Task status retrieval from Redis (primary)
 - ✅ Database fallback when Redis unavailable
-- ✅ Task lifecycle states (pending/queued/processing/completed/failed/cancelled)
+- ✅ Task lifecycle states (pending/queued/scheduled/processing/completed/failed/cancelled)
 - ✅ Progress tracking (progress %, current_step, total_steps)
 - ✅ Credit refund on cancellation
-- ✅ Cancellation restrictions (only pending/queued tasks)
+- ✅ Cancellation restrictions (pending/queued/scheduled only)
 - ✅ Error handling for missing tasks
+- ✅ Task ID format validation (v2.1.0)
 
 Not Tested (Requires Integration/E2E):
 - Actual Redis connection
