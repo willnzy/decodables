@@ -172,6 +172,102 @@ async def log_analytics_events(...):
     )
 ```
 
+#### 2.1.2 批量数据库操作优化
+
+**问题背景**: 循环内逐条 INSERT 会产生 N 次网络往返，严重影响性能。
+
+**行业最佳实践**: 使用批量 INSERT，将 N 次调用合并为 1 次。
+
+**参考来源**:
+- [Supabase Python: Insert data](https://supabase.com/docs/reference/python/insert) - 传入 list 即可批量插入
+- [PostgreSQL Performance: Multi-Row Insert](https://json.codes/posts/databases/postgres-multi-row-insert/) - 批量插入可提升 10-20x 性能
+- [Supabase Discussion #11349](https://github.com/orgs/supabase/discussions/11349) - 最佳批量大小为 500 行
+
+**优化方案对比**:
+
+| 方案 | 性能提升 | 复杂度 | 适用场景 |
+|------|----------|--------|----------|
+| **A. 批量 INSERT** | 10-20x | 低 | 同表多行插入 ✅ 当前采用 |
+| **B. asyncio.gather 并发** | 5-10x | 中 | 不同表/不同操作 |
+| **C. PostgreSQL COPY** | 100x+ | 高 | 大规模数据导入 (>10000 行) |
+
+**当前实现 (方案 A)**:
+
+```python
+# ❌ 旧方式: N 次 DB 调用
+for event in events:
+    supabase.table("user_events").insert({...}).execute()
+    supabase.table("analytics_events").insert({...}).execute()
+    supabase.table("activity_logs").insert({...}).execute()
+
+# ✅ 新方式: 3 次 DB 调用 (无论 N 是多少)
+# Phase 1: 构建批量数据
+user_event_rows = [build_row(e) for e in events]
+analytics_rows = [build_analytics_row(e) for e in events]
+activity_rows = [build_activity_row(e) for e in events if should_log(e)]
+
+# Phase 2: 批量插入
+await run_in_threadpool(
+    lambda: supabase.table("user_events").insert(user_event_rows).execute()
+)
+await run_in_threadpool(
+    lambda: supabase.table("analytics_events").insert(analytics_rows).execute()
+)
+await run_in_threadpool(
+    lambda: supabase.table("activity_logs").insert(activity_rows).execute()
+)
+```
+
+**后续优化预案 (方案 B - asyncio.gather)**:
+
+当需要进一步优化时，可将三个批量插入并发执行：
+
+```python
+import asyncio
+
+async def batch_insert_user_events():
+    if user_event_rows:
+        await run_in_threadpool(
+            lambda: supabase.table("user_events").insert(user_event_rows).execute()
+        )
+
+async def batch_insert_analytics():
+    if analytics_rows:
+        await run_in_threadpool(
+            lambda: supabase.table("analytics_events").insert(analytics_rows).execute()
+        )
+
+async def batch_insert_activities():
+    if activity_rows:
+        await run_in_threadpool(
+            lambda: supabase.table("activity_logs").insert(activity_rows).execute()
+        )
+
+# 三个批量插入并发执行
+results = await asyncio.gather(
+    batch_insert_user_events(),
+    batch_insert_analytics(),
+    batch_insert_activities(),
+    return_exceptions=True  # 单表失败不影响其他
+)
+
+# 检查并记录失败
+for i, result in enumerate(results):
+    if isinstance(result, Exception):
+        logger.warning(f"Batch insert {i} failed: {result}")
+```
+
+**触发条件**: 当单次请求 events 数量经常 >50 或 QPS >100 时考虑升级到方案 B。
+
+**大规模数据导入 (方案 C - COPY)**:
+
+对于一次性导入 >10000 行的场景，应使用 PostgreSQL COPY 命令：
+
+```python
+# 通过 Supabase Dashboard 或 psql 执行
+# 或使用 supabase CLI: supabase db dump / restore
+```
+
 ---
 
 ### 2.2 shared/ - 共享层 (服务抽象)

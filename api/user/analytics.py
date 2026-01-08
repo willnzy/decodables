@@ -2,10 +2,15 @@
 Analytics API - Analytics events endpoint (v2).
 
 @module api.user.analytics
-@version 2.0.0
+@version 2.1.0
 
 Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
+
+Performance Optimization (v2.1.0):
+- Batch INSERT: N events → 3 DB calls (instead of 3N)
+- run_in_threadpool: Prevents event loop blocking
+- Reference: https://supabase.com/docs/reference/python/insert
 """
 
 import logging
@@ -17,9 +22,7 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.admin_repository import SupabaseAdminStatsRepository
-from infrastructure.logging.activity_logger import log_activity
-from core.database import get_supabase_client, get_database_client
+from core.database import get_supabase_client
 
 supabase = get_supabase_client()
 
@@ -142,7 +145,12 @@ async def log_analytics_events(
     user_agent = request.headers.get("User-Agent", "unknown")
     accept_language = request.headers.get("Accept-Language", "unknown")
 
-    stats_repo = SupabaseAdminStatsRepository(get_database_client())
+    # ========================================
+    # Phase 1: Build batch data (no DB calls)
+    # ========================================
+    user_event_rows = []
+    analytics_event_rows = []
+    activity_rows = []
 
     for event in req.events:
         env_info = event.env
@@ -166,50 +174,73 @@ async def log_analytics_events(
             "client_connection_type": env_info.get("connection_type"),
         }
 
-        # 1. Store to user_events table (primary storage)
-        # Use try-catch to prevent single event failure from breaking entire batch
-        try:
-            await stats_repo.log_user_event(
-                user_id=user_id,
-                event_type=event.event_type,
-                properties=enriched_properties,
-                session_id=event.session_id,
-                event_id=event.event_id,
-            )
-        except Exception as e:
-            logger.warning(f"[Analytics] Failed to log user_event: {e}")
+        # Build user_events row
+        user_event_rows.append({
+            "user_id": user_id,
+            "event_type": event.event_type,
+            "properties": enriched_properties,
+            "session_id": event.session_id,
+            "event_id": event.event_id,
+        })
 
-        # 2. Store to analytics_events table (redundant storage)
-        # Use run_in_threadpool to avoid blocking event loop (FastAPI best practice)
-        try:
-            event_data = {
-                "event_type": event.event_type,
-                "event_level": event.event_level,
-                "timestamp": event.timestamp,
-                "properties": enriched_properties,
-                "session_id": event.session_id,
-                "env": env_info,
-                "user_properties": event.user_properties,
-            }
-            await run_in_threadpool(
-                lambda: supabase.table("analytics_events").insert({
-                    "user_id": user_id or event.user_properties.get("user_id"),
-                    "event_type": event.event_type,
-                    "event_id": event.event_id,
-                    "event_level": event.event_level,
-                    "event_data": event_data,
-                    "session_id": event.session_id,
-                }).execute()
-            )
-        except Exception as e:
-            logger.warning(f"[Analytics] Failed to insert to analytics_events: {e}")
+        # Build analytics_events row
+        event_data = {
+            "event_type": event.event_type,
+            "event_level": event.event_level,
+            "timestamp": event.timestamp,
+            "properties": enriched_properties,
+            "session_id": event.session_id,
+            "env": env_info,
+            "user_properties": event.user_properties,
+        }
+        analytics_event_rows.append({
+            "user_id": user_id or event.user_properties.get("user_id"),
+            "event_type": event.event_type,
+            "event_id": event.event_id,
+            "event_level": event.event_level,
+            "event_data": event_data,
+            "session_id": event.session_id,
+        })
 
-        # 3. Mirror key events to activity_logs
-        # Use run_in_threadpool for sync function call
+        # Build activity_logs row (only for key events with user_id)
         if user_id and event.event_type in ACTIVITY_LOG_EVENTS:
+            activity_rows.append({
+                "user_id": user_id,
+                "action": ACTIVITY_LOG_EVENTS[event.event_type],
+                "metadata": enriched_properties,
+            })
+
+    # ========================================
+    # Phase 2: Batch INSERT (3 DB calls max)
+    # ========================================
+    # Performance: N events → 3 DB calls (instead of 3N)
+
+    # 1. Batch insert to user_events table
+    if user_event_rows:
+        try:
             await run_in_threadpool(
-                log_activity, user_id, ACTIVITY_LOG_EVENTS[event.event_type], enriched_properties
+                lambda: supabase.table("user_events").insert(user_event_rows).execute()
             )
+        except Exception as e:
+            logger.warning(f"[Analytics] Failed to batch insert user_events: {e}")
+
+    # 2. Batch insert to analytics_events table
+    if analytics_event_rows:
+        try:
+            await run_in_threadpool(
+                lambda: supabase.table("analytics_events").insert(analytics_event_rows).execute()
+            )
+        except Exception as e:
+            logger.warning(f"[Analytics] Failed to batch insert analytics_events: {e}")
+
+    # 3. Batch insert to activity_logs table
+    if activity_rows:
+        try:
+            await run_in_threadpool(
+                lambda: supabase.table("activity_logs").insert(activity_rows).execute()
+            )
+        except Exception as e:
+            logger.warning(f"[Analytics] Failed to batch insert activity_logs: {e}")
 
     return AnalyticsEventsResponse(
         status="ok",

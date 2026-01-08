@@ -142,7 +142,7 @@ API log_analytics_events (L113-208)
 | 1 | 🟠 HIGH | L169 `log_user_event` 无 try-catch | 失败时整个请求 500 | ✅ 已修复 |
 | 2 | 🟡 MEDIUM | L188 同步 supabase 阻塞事件循环 | 并发性能问题 | ✅ 已修复 |
 | 3 | 🟡 MEDIUM | L201 `log_activity` 同步调用 | 阻塞事件循环 | ✅ 已修复 |
-| 4 | 🟢 LOW | L146 循环内多次 DB 调用 | 大批量性能问题 | 保留 (可后续优化) |
+| 4 | 🟢 LOW | L146 循环内多次 DB 调用 | 大批量性能问题 | ✅ 已修复 (批量INSERT) |
 
 **修复内容 (2026-01-08)**:
 
@@ -156,21 +156,31 @@ API log_analytics_events (L113-208)
    - `log_activity` 使用 `run_in_threadpool` 包装
    - 参考: [FastAPI Async 文档](https://fastapi.tiangolo.com/async/)
 
-3. **新增基础设施**:
+3. **#4 LOW: 批量 INSERT 优化** (v2.1.0)
+   - 将循环内逐条 INSERT 改为批量 INSERT
+   - N 个 events → 3 次 DB 调用 (而非 3N 次)
+   - 性能提升: 10-20x (批量越大效果越明显)
+   - 参考: [Supabase Batch Insert](https://supabase.com/docs/reference/python/insert)
+
+4. **新增基础设施**:
    - `core/database/async_utils.py` - 提供 `run_sync`, `run_sync_safe` 工具
    - `infrastructure/logging/activity_logger.py` - 添加 `log_activity_async`
    - `docs/BACKEND_ARCHITECTURE_GUIDE.md` - 新增 2.1.1 Async/Sync 最佳实践章节
+   - `docs/BACKEND_ARCHITECTURE_GUIDE.md` - 新增 2.1.2 批量数据库操作优化章节
 
 **架构说明**:
-- 简单日志记录接口，直接使用 Repository 合理 (无需 DDD Service)
+- 简单日志记录接口，直接使用 supabase 批量插入 (无需 Repository)
 - 支持匿名/登录用户 (`get_current_user_optional`)
 - 限流 60/minute
-- 双表存储: `user_events` + `analytics_events`
-- 关键事件 (`project_*`) 镜像到 `activity_logs`
-- 容错设计: 所有 DB 操作都有 try-catch
+- 双表存储: `user_events` + `analytics_events` (批量插入)
+- 关键事件 (`project_*`) 镜像到 `activity_logs` (批量插入)
+- 容错设计: 每个批量操作都有独立 try-catch，单表失败不影响其他
 
 **测试文件**:
-- `tests/api/user/test_analytics.py` - 8 个测试用例 (已存在)
+- `tests/api/user/test_analytics.py` - 10 个测试用例 (更新于 v2.1.0)
+  - 新增: `TestBatchInsertOptimization` 测试类
+  - 验证批量插入减少 DB 调用
+  - 验证部分失败隔离
 
 **完成状态**: ✅ 已修复 (2026-01-08)
 

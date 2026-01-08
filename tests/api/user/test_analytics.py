@@ -6,7 +6,11 @@ Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
 
 @module tests.api.user.test_analytics
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- Updated tests for batch INSERT optimization
+- Removed SupabaseAdminStatsRepository mock (now uses direct supabase batch insert)
 """
 
 import pytest
@@ -84,241 +88,213 @@ def override_get_current_user_optional_none():
 class TestLogAnalyticsEvents:
     """Test POST /api/v2/user/analytics/events"""
 
-    @patch('api.user.analytics.get_database_client')
     @patch('api.user.analytics.supabase')
     def test_log_single_event_success(
         self,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_free,
     ):
-        """Should successfully log a single analytics event"""
-        # Mock database client
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        """Should successfully log a single analytics event via batch insert"""
+        # Mock batch insert for all tables
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
 
-        # Mock SupabaseAdminStatsRepository.log_user_event
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        payload = {
+            "events": [
+                {
+                    "event_type": "page_view",
+                    "event_id": "evt_123",
+                    "event_level": "info",
+                    "timestamp": "2026-01-08T10:00:00Z",
+                    "session_id": "sess_abc",
+                    "properties": {"page": "/editor"},
+                    "env": {"browser": "Chrome", "os": "macOS"},
+                    "user_properties": {"user_tier": "free"},
+                }
+            ]
+        }
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            # Mock supabase.table().insert().execute()
-            mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            payload = {
-                "events": [
-                    {
-                        "event_type": "page_view",
-                        "event_id": "evt_123",
-                        "event_level": "info",
-                        "timestamp": "2026-01-08T10:00:00Z",
-                        "session_id": "sess_abc",
-                        "properties": {"page": "/editor"},
-                        "env": {"browser": "Chrome", "os": "macOS"},
-                        "user_properties": {"user_tier": "free"},
-                    }
-                ]
-            }
+        assert response.status_code == 200
+        data = response.json()
 
-            response = client.post("/api/v2/user/analytics/events", json=payload)
+        assert data["status"] == "ok"
+        assert data["count"] == 1
+        assert data["ip"] is not None
+        assert data["country"] is not None
 
-            assert response.status_code == 200
-            data = response.json()
+        # Verify batch insert was called for user_events and analytics_events
+        assert mock_supabase.table.call_count >= 2
 
-            assert data["status"] == "ok"
-            assert data["count"] == 1
-            assert data["ip"] is not None
-            assert data["country"] is not None
-
-            # Verify log_user_event was called
-            mock_repo.log_user_event.assert_called_once()
-
-    @patch('api.user.analytics.get_database_client')
     @patch('api.user.analytics.supabase')
     def test_log_batch_events_success(
         self,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_free,
     ):
-        """Should successfully log multiple analytics events"""
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        """Should successfully log multiple analytics events via batch insert"""
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
 
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        payload = {
+            "events": [
+                {
+                    "event_type": "page_view",
+                    "properties": {},
+                    "env": {},
+                    "user_properties": {},
+                },
+                {
+                    "event_type": "button_click",
+                    "properties": {"button_id": "submit"},
+                    "env": {},
+                    "user_properties": {},
+                },
+                {
+                    "event_type": "form_submit",
+                    "properties": {"form_id": "contact"},
+                    "env": {},
+                    "user_properties": {},
+                },
+            ]
+        }
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            payload = {
-                "events": [
-                    {
-                        "event_type": "page_view",
-                        "properties": {},
-                        "env": {},
-                        "user_properties": {},
-                    },
-                    {
-                        "event_type": "button_click",
-                        "properties": {"button_id": "submit"},
-                        "env": {},
-                        "user_properties": {},
-                    },
-                    {
-                        "event_type": "form_submit",
-                        "properties": {"form_id": "contact"},
-                        "env": {},
-                        "user_properties": {},
-                    },
-                ]
-            }
+        assert response.status_code == 200
+        data = response.json()
 
-            response = client.post("/api/v2/user/analytics/events", json=payload)
+        assert data["status"] == "ok"
+        assert data["count"] == 3
 
-            assert response.status_code == 200
-            data = response.json()
+        # Verify batch insert was called (not individual inserts)
+        # Should be 2 calls: user_events and analytics_events (no activity_logs for these events)
+        insert_calls = mock_supabase.table.return_value.insert.call_args_list
+        assert len(insert_calls) == 2
 
-            assert data["status"] == "ok"
-            assert data["count"] == 3
+        # Verify each insert received a list of 3 rows
+        for call in insert_calls:
+            rows = call[0][0]  # First positional argument
+            assert isinstance(rows, list)
+            assert len(rows) == 3
 
-            # Verify log_user_event was called 3 times
-            assert mock_repo.log_user_event.call_count == 3
-
-    @patch('api.user.analytics.get_database_client')
     @patch('api.user.analytics.supabase')
     def test_log_event_as_anonymous_user(
         self,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_none,
     ):
         """Should log events for anonymous users (no authentication required)"""
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
 
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        payload = {
+            "events": [
+                {
+                    "event_type": "page_view",
+                    "properties": {"page": "/landing"},
+                    "env": {},
+                    "user_properties": {},
+                }
+            ]
+        }
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            payload = {
-                "events": [
-                    {
-                        "event_type": "page_view",
-                        "properties": {"page": "/landing"},
-                        "env": {},
-                        "user_properties": {},
-                    }
-                ]
-            }
+        assert response.status_code == 200
+        data = response.json()
 
-            response = client.post("/api/v2/user/analytics/events", json=payload)
+        assert data["status"] == "ok"
+        assert data["count"] == 1
 
-            assert response.status_code == 200
-            data = response.json()
+        # Verify user_id is None in the inserted rows
+        insert_calls = mock_supabase.table.return_value.insert.call_args_list
+        for call in insert_calls:
+            rows = call[0][0]
+            assert rows[0]["user_id"] is None
 
-            assert data["status"] == "ok"
-            assert data["count"] == 1
-
-            # Verify log_user_event was called with user_id=None
-            call_args = mock_repo.log_user_event.call_args
-            assert call_args.kwargs["user_id"] is None
-
-    @patch('api.user.analytics.get_database_client')
     @patch('api.user.analytics.supabase')
-    @patch('api.user.analytics.log_activity')
     def test_log_activity_mirroring_for_project_events(
         self,
-        mock_log_activity,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_free,
     ):
-        """Should mirror certain events to activity_logs"""
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        """Should mirror certain events to activity_logs via batch insert"""
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
 
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        # Test events that should be mirrored to activity_logs
+        mirrored_events = [
+            "project_print",
+            "project_export_pdf",
+            "project_export_zip",
+            "project_preview",
+            "project_delete",
+            "project_create_complete",
+        ]
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
-
-            # Test events that should be mirrored to activity_logs
-            mirrored_events = [
-                "project_print",
-                "project_export_pdf",
-                "project_export_zip",
-                "project_preview",
-                "project_delete",
-                "project_create_complete",
-            ]
-
-            for event_type in mirrored_events:
-                payload = {
-                    "events": [
-                        {
-                            "event_type": event_type,
-                            "properties": {"project_id": "proj_123"},
-                            "env": {},
-                            "user_properties": {},
-                        }
-                    ]
+        payload = {
+            "events": [
+                {
+                    "event_type": event_type,
+                    "properties": {"project_id": "proj_123"},
+                    "env": {},
+                    "user_properties": {},
                 }
+                for event_type in mirrored_events
+            ]
+        }
 
-                response = client.post("/api/v2/user/analytics/events", json=payload)
-                assert response.status_code == 200
+        response = client.post("/api/v2/user/analytics/events", json=payload)
+        assert response.status_code == 200
 
-            # Verify log_activity was called for each mirrored event
-            assert mock_log_activity.call_count == len(mirrored_events)
+        # Verify activity_logs batch insert was called
+        table_calls = [call[0][0] for call in mock_supabase.table.call_args_list]
+        assert "activity_logs" in table_calls
 
-    @patch('api.user.analytics.get_database_client')
+        # Find the activity_logs insert call
+        for i, table_name in enumerate(table_calls):
+            if table_name == "activity_logs":
+                insert_call = mock_supabase.table.return_value.insert.call_args_list[i]
+                activity_rows = insert_call[0][0]
+                assert len(activity_rows) == len(mirrored_events)
+                break
+
     @patch('api.user.analytics.supabase')
     def test_enriches_with_server_side_info(
         self,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_free,
     ):
         """Should enrich events with server-side IP, geo, and device info"""
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
 
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        payload = {
+            "events": [
+                {
+                    "event_type": "page_view",
+                    "properties": {},
+                    "env": {"browser": "Chrome", "os": "macOS"},
+                    "user_properties": {},
+                }
+            ]
+        }
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            payload = {
-                "events": [
-                    {
-                        "event_type": "page_view",
-                        "properties": {},
-                        "env": {"browser": "Chrome", "os": "macOS"},
-                        "user_properties": {},
-                    }
-                ]
-            }
+        assert response.status_code == 200
 
-            response = client.post("/api/v2/user/analytics/events", json=payload)
+        # Find user_events insert and verify enriched properties
+        insert_calls = mock_supabase.table.return_value.insert.call_args_list
+        user_events_rows = insert_calls[0][0][0]  # First table insert, first arg, first row
 
-            assert response.status_code == 200
+        enriched_props = user_events_rows[0]["properties"]
 
-            # Verify enriched properties were passed to log_user_event
-            call_args = mock_repo.log_user_event.call_args
-            enriched_props = call_args.kwargs["properties"]
+        # Should have server-side info
+        assert "server_ip" in enriched_props
+        assert "server_country" in enriched_props
+        assert "server_user_agent" in enriched_props
 
-            # Should have server-side info
-            assert "server_ip" in enriched_props
-            assert "server_country" in enriched_props
-            assert "server_user_agent" in enriched_props
-
-            # Should have client-side info
-            assert enriched_props["client_browser"] == "Chrome"
-            assert enriched_props["client_os"] == "macOS"
+        # Should have client-side info
+        assert enriched_props["client_browser"] == "Chrome"
+        assert enriched_props["client_os"] == "macOS"
 
     def test_invalid_payload_returns_422(self):
         """Should return 422 for invalid request payload"""
@@ -344,43 +320,111 @@ class TestLogAnalyticsEvents:
         assert data["status"] == "ok"
         assert data["count"] == 0
 
-    @patch('api.user.analytics.get_database_client')
     @patch('api.user.analytics.supabase')
-    def test_handles_analytics_events_insert_failure(
+    def test_handles_batch_insert_failure(
         self,
         mock_supabase,
-        mock_get_db_client,
         override_get_current_user_optional_free,
     ):
-        """Should gracefully handle analytics_events table insert failures"""
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        """Should gracefully handle batch insert failures"""
+        # Simulate batch insert failure for all tables
+        mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
 
-        mock_repo = MagicMock()
-        mock_repo.log_user_event = AsyncMock()
+        payload = {
+            "events": [
+                {
+                    "event_type": "page_view",
+                    "properties": {},
+                    "env": {},
+                    "user_properties": {},
+                }
+            ]
+        }
 
-        with patch('api.user.analytics.SupabaseAdminStatsRepository', return_value=mock_repo):
-            # Simulate analytics_events insert failure
-            mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+        # Should still return 200 (fire-and-forget logging)
+        response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            payload = {
-                "events": [
-                    {
-                        "event_type": "page_view",
-                        "properties": {},
-                        "env": {},
-                        "user_properties": {},
-                    }
-                ]
-            }
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
 
-            # Should still return 200 (fire-and-forget logging)
-            response = client.post("/api/v2/user/analytics/events", json=payload)
 
-            assert response.status_code == 200
+class TestBatchInsertOptimization:
+    """Test batch INSERT optimization (v2.1.0)"""
 
-            # user_events should still be logged
-            mock_repo.log_user_event.assert_called_once()
+    @patch('api.user.analytics.supabase')
+    def test_batch_insert_reduces_db_calls(
+        self,
+        mock_supabase,
+        override_get_current_user_optional_free,
+    ):
+        """
+        Should use batch INSERT to reduce DB calls.
+        10 events → 2-3 DB calls (instead of 30)
+        """
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+        # Send 10 events
+        payload = {
+            "events": [
+                {
+                    "event_type": f"event_{i}",
+                    "properties": {"index": i},
+                    "env": {},
+                    "user_properties": {},
+                }
+                for i in range(10)
+            ]
+        }
+
+        response = client.post("/api/v2/user/analytics/events", json=payload)
+
+        assert response.status_code == 200
+        assert response.json()["count"] == 10
+
+        # Verify only 2 batch inserts (user_events + analytics_events)
+        # Not 20+ individual inserts
+        insert_calls = mock_supabase.table.return_value.insert.call_args_list
+        assert len(insert_calls) == 2
+
+        # Each batch should contain 10 rows
+        for call in insert_calls:
+            rows = call[0][0]
+            assert len(rows) == 10
+
+    @patch('api.user.analytics.supabase')
+    def test_partial_batch_failure_isolation(
+        self,
+        mock_supabase,
+        override_get_current_user_optional_free,
+    ):
+        """
+        Should isolate failures between different table batches.
+        If user_events batch fails, analytics_events should still be attempted.
+        """
+        call_count = [0]
+
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("user_events batch failed")
+            return MagicMock()
+
+        mock_supabase.table.return_value.insert.return_value.execute.side_effect = side_effect
+
+        payload = {
+            "events": [
+                {"event_type": "test", "properties": {}, "env": {}, "user_properties": {}}
+            ]
+        }
+
+        response = client.post("/api/v2/user/analytics/events", json=payload)
+
+        # Should still return 200
+        assert response.status_code == 200
+
+        # Should have attempted both batches
+        assert call_count[0] >= 2
 
 
 # ==========================================
@@ -390,8 +434,8 @@ class TestLogAnalyticsEvents:
 # Coverage:
 # - POST /api/v2/user/analytics/events (all scenarios)
 # - Authentication (authenticated + anonymous)
-# - Batch processing
+# - Batch INSERT optimization (v2.1.0)
 # - Activity mirroring
 # - Server-side enrichment
-# - Error handling
+# - Error handling (partial failure isolation)
 # ==========================================

@@ -235,8 +235,29 @@ class SupabaseAdminStatsRepository:
             "session_id": session_id,
             "event_id": event_id,
         }).execute()
-        
+
         return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def log_user_events_batch(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Batch insert user events (optimized for multiple events).
+
+        Args:
+            events: List of event dicts with keys: user_id, event_type, properties, session_id, event_id
+
+        Returns:
+            List of inserted event records
+
+        Performance:
+            - 10 events: 1 DB call instead of 10 (10x improvement)
+            - Reference: https://supabase.com/docs/reference/python/insert
+        """
+        if not events:
+            return []
+
+        result = self.client.table("user_events").insert(events).execute()
+        return result.data or []
 
     @retry_on_network_error()
     async def admin_get_user_events(self, user_id: Optional[str] = None, event_type: Optional[str] = None,
