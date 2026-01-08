@@ -16,7 +16,7 @@
 ```
 1. Review 接口逻辑
    - 检查 API 层代码
-   - 追踪完整调用链 (API → Handler → Service → Repository)
+   - 追踪完整调用链 (API → Handler → Service → Repository)并全面仔细深入的分析
    - 验证参数传递是否正确
    - 确认返回值类型是否匹配
    - 请仔细深入的review, 不要偷懒,不要跳过, 不要省略
@@ -39,7 +39,7 @@
    - 更新 API-REVIEW-ADMIN.md
    - 记录发现的问题和修复内容
    - 更新进度统计
-   - 如果设计数据库,记得更新ddl.sql
+   - 如果涉及数据库的改动,记得更新ddl.sql
 
 5. 提交代码
    - git add + commit + push
@@ -440,9 +440,9 @@ API log_analytics_events (L113-208)
 - [x] #16.1 获取用户实验列表
 - [x] #16.2 无实验返回空数组
 
-### Review 结果 (2026-01-08)
+### Review 结果 (2026-01-08) - 第一轮
 
-**发现的问题**:
+**发现的问题 (API层)**:
 
 | 序号 | 严重性 | 问题 | 影响 | 状态 |
 |------|--------|------|------|------|
@@ -451,7 +451,7 @@ API log_analytics_events (L113-208)
 | 3 | 🟡 MEDIUM | 4个 endpoint 都是同步函数 | 阻塞事件循环 | ⚠️ 设计如此 |
 | 4 | 🟢 LOW | 无认证保护 | 任何人可调用 | ⚠️ 设计如此 |
 
-**修复内容 (2026-01-08)**:
+**第一轮修复内容 (2026-01-08)**:
 
 1. **#1 CRITICAL: assign_variant 参数修复**
    ```python
@@ -478,15 +478,102 @@ API log_analytics_events (L113-208)
    - `ExposureRequest`: 新增 `context` 字段
    - `ConversionRequest`: `variant_key/conversion_type` → `metric_key`
 
+---
+
+### Review 结果 (2026-01-08) - 第二轮 (深入调用链审查)
+
+**完整调用链审查** (8个文件):
+
+| 文件 | 层级 | 行数 | 状态 |
+|------|------|------|------|
+| api/user/experiments.py | API | 149 | ✅ 已修复 |
+| domains/platform/experiments/__init__.py | Domain | 56 | ✅ 正常 |
+| domains/platform/experiments/core.py | Domain | 107 | ✅ 已修复 |
+| domains/platform/experiments/crud.py | Domain | 259 | ✅ 已修复 |
+| domains/platform/experiments/assignment.py | Domain | 144 | ✅ 已修复 |
+| domains/platform/experiments/tracking.py | Domain | 127 | ✅ 正常 |
+| domains/platform/experiments/analysis.py | Domain | 227 | ✅ 已修复 |
+| domains/platform/experiments/utils.py | Domain | 16 | ✅ 正常 |
+
+**发现的问题 (Service层)**:
+
+| 序号 | 严重性 | 问题 | 位置 | 状态 |
+|------|--------|------|------|------|
+| 5 | 🟠 MEDIUM | 独立的 Supabase 客户端 | core.py:19-28 | ✅ 已修复 |
+| 6 | 🟠 MEDIUM | 裸 except 吞没异常 | assignment.py:56-57 | ✅ 已修复 |
+| 7 | 🟢 LOW | JSON 解析异常静默吞没 | core.py:66-71 | ✅ 已修复 |
+| 8 | 🟠 MEDIUM | list_experiments 使用旧式分页 | crud.py:116-121 | ✅ 已修复 |
+| 9 | 🟢 LOW | 竞态条件风险 | assignment.py:49-77 | ✅ 已修复 |
+| 10 | 🟠 MEDIUM | analysis.py 大量数据无分页 | analysis.py:55-65 | ✅ 已修复 |
+
+**第二轮修复内容 (2026-01-08)**:
+
+1. **#5 MEDIUM: 迁移到共享 Supabase 客户端**
+   - 修改 `core.py` 使用 `from core.database import get_db_client`
+   - 移除独立的 `create_client()` 调用
+   - 版本升级: v3.24 → v3.25
+
+2. **#6 MEDIUM: 裸 except 添加日志**
+   ```python
+   # 修复前
+   except:
+       pass
+
+   # 修复后
+   except Exception as e:
+       logger.debug(f"[Assignment] Failed to check existing assignment: {e}")
+   ```
+
+3. **#7 LOW: JSON 解析添加警告日志**
+   ```python
+   except json.JSONDecodeError as e:
+       logger.warning(f"[Experiment] Failed to parse {field} for experiment {exp.get('experiment_key')}: {e}")
+   ```
+
+4. **#8 MEDIUM: list_experiments 改为 offset 分页**
+   ```python
+   # 修复前 (旧式)
+   def list_experiments(status, experiment_type, page=1, limit=20):
+       offset = (page - 1) * limit
+
+   # 修复后 (DDD标准)
+   def list_experiments(status, experiment_type, offset=0, limit=20):
+   ```
+
+5. **#9 LOW: 竞态条件改用 UPSERT**
+   ```python
+   # 修复前 (INSERT可能因竞态失败)
+   supabase.table("experiment_assignments").insert({...}).execute()
+
+   # 修复后 (UPSERT原子操作)
+   supabase.table("experiment_assignments").upsert(
+       {...},
+       on_conflict="experiment_id,user_identifier"
+   ).execute()
+   ```
+
+6. **#10 MEDIUM: analysis.py 改用 SQL 聚合**
+   - 新增 `_get_exposure_counts()` 和 `_get_conversion_aggregates()` 函数
+   - 优先使用 RPC 服务端聚合 (需要 migration)
+   - 降级方案: 分页获取 (batch_size=1000)
+   - 性能提升: O(n) → O(1) (使用 RPC 时)
+
+**新增迁移文件**:
+- `scripts/migrations/004_add_experiment_aggregation_functions.sql`
+  - `aggregate_experiment_exposures()` RPC 函数
+  - `aggregate_experiment_conversions()` RPC 函数
+  - 索引优化
+  - UNIQUE 约束 (支持 UPSERT)
+
 **调用链追踪**:
 ```
 API assign_variant (L74-100)
 └── experiment_service.assign_variant()
-    ├── get_experiment() 获取实验配置
+    ├── get_experiment() 获取实验配置 (使用共享客户端✅)
     ├── _check_targeting() 定向检查
-    ├── 查询 experiment_assignments 是否已分配
+    ├── 查询 experiment_assignments 是否已分配 (有异常日志✅)
     ├── calculate_variant() 确定性哈希分配
-    └── 写入 experiment_assignments 表
+    └── UPSERT experiment_assignments (原子操作✅)
 
 API track_exposure (L103-118)
 └── experiment_service.track_exposure()
@@ -499,6 +586,11 @@ API track_conversion (L121-137)
     ├── get_experiment() 获取实验配置
     ├── 查询 experiment_assignments 获取用户 variant
     └── 写入 experiment_conversions 表
+
+analysis.aggregate_experiment_results()
+├── _get_exposure_counts() (SQL聚合✅)
+├── _get_conversion_aggregates() (SQL聚合✅)
+└── UPSERT experiment_results
 ```
 
 **架构说明**:
@@ -506,11 +598,12 @@ API track_conversion (L121-137)
 - 确定性哈希保证相同用户始终分配到相同 variant
 - 曝光去重 1 小时窗口
 - 转化追踪自动关联用户 variant
+- 使用共享数据库客户端 (core/database)
 
 **测试文件**:
-- `tests/api/user/test_experiments.py` - 12 个测试用例
+- `tests/api/user/test_experiments.py` - 12 个测试用例 ✅ 全部通过
 
-**完成状态**: ✅ 已修复 (2026-01-08)
+**完成状态**: ✅ 深入审查完成 + 全部修复 (2026-01-08)
 
 ---
 

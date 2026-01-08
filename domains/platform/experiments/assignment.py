@@ -2,7 +2,11 @@
 Experiments Assignment - Variant assignment logic
 
 @module services.experiments.assignment
-@version 3.24
+@version 3.25
+
+Changes in v3.25:
+- Changed insert to upsert to handle race conditions properly
+- Added proper exception logging
 """
 
 from typing import Optional, Dict, List
@@ -50,29 +54,32 @@ def assign_variant(
         existing = supabase.table("experiment_assignments").select("variant_key")\
             .eq("experiment_id", experiment.get('id'))\
             .eq("user_identifier", user_identifier).execute()
-        
+
         if existing.data:
             return existing.data[0].get('variant_key')
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"[Assignment] Failed to check existing assignment: {e}")
     
     # Calculate variant
     variant_key = calculate_variant(experiment, user_identifier)
     if not variant_key:
         return None
     
-    # Save assignment
+    # Save assignment using upsert to handle race conditions
+    # on_conflict requires unique constraint on (experiment_id, user_identifier)
     try:
-        supabase.table("experiment_assignments").insert({
-            "experiment_id": experiment.get('id'),
-            "experiment_key": experiment_key,
-            "user_identifier": user_identifier,
-            "variant_key": variant_key,
-            "user_properties": user_properties or {},
-        }).execute()
+        supabase.table("experiment_assignments").upsert(
+            {
+                "experiment_id": experiment.get('id'),
+                "experiment_key": experiment_key,
+                "user_identifier": user_identifier,
+                "variant_key": variant_key,
+                "user_properties": user_properties or {},
+            },
+            on_conflict="experiment_id,user_identifier"
+        ).execute()
     except Exception as e:
-        # Assignment might already exist (race condition)
-        logger.debug(f"[Assignment] Insert failed (may be duplicate): {e}")
+        logger.warning(f"[Assignment] Upsert failed for {experiment_key}/{user_identifier}: {e}")
     
     return variant_key
 

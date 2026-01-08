@@ -2,30 +2,25 @@
 Experiments Core - Client and shared utilities
 
 @module services.experiments.core
-@version 3.24
+@version 3.25
+
+Changes in v3.25:
+- Migrated to shared Supabase client from core/database
+- Added warning logs for JSON parse failures
 """
 
-import os
 import json
 import hashlib
 import logging
 from typing import Dict, Optional
 from datetime import datetime, timezone
 
-from supabase import create_client, Client
+from core.database import get_db_client
 
 logger = logging.getLogger(__name__)
 
-# Supabase client
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if SUPABASE_URL and not SUPABASE_URL.endswith('/'):
-    SUPABASE_URL = SUPABASE_URL + '/'
-
-supabase: Client = None
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Use shared Supabase client (singleton)
+supabase = get_db_client()
 
 # Cache config
 CACHE_TTL = 300  # 5 minutes
@@ -67,7 +62,11 @@ def parse_experiment(data: Dict) -> Dict:
         if field in exp and isinstance(exp[field], str):
             try:
                 exp[field] = json.loads(exp[field])
-            except:
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    f"[Experiment] Failed to parse {field} for experiment "
+                    f"{exp.get('experiment_key', 'unknown')}: {e}"
+                )
                 exp[field] = [] if field in ['variants', 'metrics'] else {}
     
     return exp

@@ -2,7 +2,10 @@
 Experiments CRUD - Create, Read, Update, Delete operations
 
 @module services.experiments.crud
-@version 3.24
+@version 3.25
+
+Changes in v3.25:
+- Changed list_experiments to use offset instead of page (DDD standard)
 """
 
 import json
@@ -116,15 +119,24 @@ def get_experiment_by_id(experiment_id: str) -> Optional[Dict]:
 def list_experiments(
     status: str = None,
     experiment_type: str = None,
-    page: int = 1,
+    offset: int = 0,
     limit: int = 20
 ) -> Dict:
-    """List experiments with filters."""
+    """List experiments with filters.
+
+    Args:
+        status: Filter by experiment status
+        experiment_type: Filter by experiment type
+        offset: Number of items to skip (DDD standard pagination)
+        limit: Maximum number of items to return
+
+    Returns:
+        Dict with items and total count
+    """
     if not supabase:
         return {"items": [], "total": 0}
-    
+
     try:
-        offset = (page - 1) * limit
         query = supabase.table("experiments").select("*", count="exact")
         
         if status:
