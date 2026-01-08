@@ -2,7 +2,15 @@
 Payment API - Payment and checkout endpoints (v2).
 
 @module api.user.payment
-@version 2.1.0
+@version 2.2.0
+
+Changes in v2.2.0:
+- P-P0-1: Mark discount as used after checkout session created
+- P-P0-2: Validate discount_percent range (1-100)
+- P-HIGH-1: Extended plan_type validation (subscription + credits packages)
+- P-HIGH-2: Verify discount target_plan matches requested plan
+- P-MEDIUM-1: Added success logging for checkout
+- P-MEDIUM-2: Validate stripe_customer_id format (cus_*)
 
 Changes in v2.1.0:
 - P-P0-2: Fixed sensitive info leakage in error messages
@@ -14,6 +22,7 @@ Endpoints:
 """
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payment", tags=["user-payment-v2"])
 
+# v2.2.0: Valid plan types - subscriptions and credit packages
+VALID_PLAN_TYPES = {"starter", "pro", "credits_100", "credits_500", "credits_2000"}
+PLAN_TYPE_PATTERN = "^(starter|pro|credits_100|credits_500|credits_2000)$"
+
 
 # ==========================================
 # Request/Response Models
@@ -35,7 +48,8 @@ router = APIRouter(prefix="/payment", tags=["user-payment-v2"])
 
 class CheckoutRequest(BaseModel):
     """Checkout request."""
-    plan_type: str = Field(..., pattern="^(starter|pro)$")
+    # v2.2.0: P-HIGH-1 - Extended plan_type validation
+    plan_type: str = Field(..., pattern=PLAN_TYPE_PATTERN)
 
 
 class CheckoutResponse(BaseModel):
@@ -74,15 +88,54 @@ async def create_checkout(
     from domains.billing.payment_service import create_checkout_session
 
     try:
-        # Apply discount if available
         user_repo = SupabaseUserRepository(get_database_client())
+
+        # v2.2.0: Get and validate discount
         discount = await user_repo.get_user_discount(user["id"], req.plan_type)
-        discount_percent = discount.get("discount_percent", 0) if discount else 0
+        discount_percent = 0
+        discount_id = None
+
+        if discount:
+            discount_percent = discount.get("discount_percent", 0)
+            discount_id = discount.get("id")
+
+            # v2.2.0: P-P0-2 - Validate discount_percent range
+            if not (1 <= discount_percent <= 100):
+                logger.warning(
+                    f"Invalid discount_percent {discount_percent} for user {user['id']}, "
+                    f"discount_id={discount_id}. Ignoring discount."
+                )
+                discount_percent = 0
+                discount_id = None
+
+            # v2.2.0: P-HIGH-2 - Verify discount target_plan matches requested plan
+            target_plan = discount.get("target_plan")
+            if target_plan and target_plan != req.plan_type:
+                logger.warning(
+                    f"Discount target_plan mismatch: discount for '{target_plan}' "
+                    f"but requested '{req.plan_type}'. Ignoring discount."
+                )
+                discount_percent = 0
+                discount_id = None
 
         url = create_checkout_session(user["id"], req.plan_type, discount_percent)
 
         if not url:
             raise HTTPException(500, "Failed to create checkout session")
+
+        # v2.2.0: P-P0-1 - Mark discount as used AFTER successful checkout creation
+        if discount_id and discount_percent > 0:
+            await user_repo.mark_discount_used(discount_id)
+            logger.info(
+                f"Discount {discount_id} ({discount_percent}%) applied and marked used "
+                f"for user {user['id']} on plan {req.plan_type}"
+            )
+
+        # v2.2.0: P-MEDIUM-1 - Log successful checkout
+        logger.info(
+            f"Checkout session created for user {user['id']}, "
+            f"plan={req.plan_type}, discount={discount_percent}%"
+        )
 
         return CheckoutResponse(
             url=url,
@@ -116,6 +169,14 @@ async def get_portal(
     stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id:
         raise HTTPException(400, "No subscription found")
+
+    # v2.2.0: P-MEDIUM-2 - Validate stripe_customer_id format
+    # Stripe customer IDs: cus_ followed by alphanumeric (including underscores in test mode)
+    if not re.match(r"^cus_[a-zA-Z0-9_]+$", stripe_customer_id):
+        logger.error(
+            f"Invalid stripe_customer_id format for user {user['id']}: {stripe_customer_id}"
+        )
+        raise HTTPException(400, "Invalid customer data")
 
     try:
         url = create_portal_session(user["id"], stripe_customer_id)

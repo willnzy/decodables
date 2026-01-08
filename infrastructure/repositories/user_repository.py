@@ -537,3 +537,20 @@ class SupabaseUserRepository(IUserRepository):
         }).execute()
 
         return result.data[0] if result.data else None
+
+    async def mark_discount_used(self, discount_id: str) -> bool:
+        """
+        Mark a discount as used.
+
+        Args:
+            discount_id: Discount record ID
+
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        result = self.client.table("user_discounts").update({
+            "is_used": True,
+            "used_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", discount_id).execute()
+
+        return len(result.data) > 0 if result.data else False
