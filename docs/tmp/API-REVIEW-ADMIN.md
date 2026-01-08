@@ -2,8 +2,9 @@
 
 > **创建日期**: 2026-01-08
 > **总接口数**: 125 个 (Admin 123 + Health 2)
-> **当前阶段**: 未开始
-> **最后更新**: 2026-01-08
+> **当前阶段**: 进行中
+> **最后更新**: 2026-01-09
+> **当前进度**: 5/125 (4%)
 
 ---
 
@@ -62,7 +63,7 @@ Admin API 作为内部管理工具，有以下特点：
 
 | 模块 | 接口数 | 已完成 | 状态 |
 |------|--------|--------|------|
-| AI Insights | 5 | 0 | 未开始 |
+| AI Insights | 5 | 5 | ✅ 已完成 |
 | AI Models Config | 8 | 0 | 未开始 |
 | Campaigns | 8 | 0 | 未开始 |
 | Config | 8 | 0 | 未开始 |
@@ -78,28 +79,46 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **0** | - |
+| **总计** | **125** | **5** | 4% |
 
 ---
 
-## AI Insights 模块 (5个)
+## AI Insights 模块 (5个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 1 | adm_get_ai_insights | GET | /insights | api/admin/ai.py | 34 |
-| 2 | adm_get_ai_recommendations | GET | /recommendations | api/admin/ai.py | 45 |
-| 3 | adm_get_behavior_analysis | GET | /behavior-analysis | api/admin/ai.py | 56 |
-| 4 | adm_generate_ai_report | POST | /generate-report | api/admin/ai.py | 68 |
-| 5 | adm_get_quick_insights | GET | /quick-insights | api/admin/ai.py | 92 |
+| 1 | adm_get_ai_insights | GET | /insights | api/admin/ai.py | 73 |
+| 2 | adm_get_ai_recommendations | GET | /recommendations | api/admin/ai.py | 90 |
+| 3 | adm_get_behavior_analysis | GET | /behavior-analysis | api/admin/ai.py | 107 |
+| 4 | adm_generate_ai_report | POST | /generate-report | api/admin/ai.py | 125 |
+| 5 | adm_get_quick_insights | GET | /quick-insights | api/admin/ai.py | 158 |
 
 **测试用例 Checklist**
-- [ ] #1 获取AI洞察数据
-- [ ] #2 获取AI推荐
-- [ ] #3 用户行为分析
-- [ ] #4 生成AI报告
-- [ ] #5 快速洞察
+- [x] #1 获取AI洞察数据
+- [x] #2 获取AI推荐
+- [x] #3 用户行为分析
+- [x] #4 生成AI报告
+- [x] #5 快速洞察
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 HIGH | AI-BROKEN-1 | 3个端点调用不存在的 Repository 方法 | ✅ 已实现方法 |
+| 🟡 MEDIUM | AI-MEDIUM-1 | 4个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | AI-MEDIUM-2 | `type` 参数无验证 | ✅ 已添加枚举验证 |
+| 🟡 MEDIUM | AI-MEDIUM-3 | `area` 参数无验证 | ✅ 已添加枚举验证 |
+| 🟡 MEDIUM | AI-MEDIUM-4 | `start_date`/`end_date` 无格式验证 | ✅ 已添加日期验证 |
+| 🟡 MEDIUM | AI-MEDIUM-5 | `report_type` 参数无验证 | ✅ 已添加枚举验证 |
+| 🟡 MEDIUM | AI-MEDIUM-6 | `time_range` 参数无验证 | ✅ 已添加枚举验证 |
+| 🟢 LOW | AI-LOW-1 | `generate-report` 异常暴露详细错误 | ✅ 已限制错误信息 |
+
+**修改文件**:
+- `api/admin/ai.py` - v3.24 → v3.25
+- `infrastructure/repositories/admin_repository.py` - 新增 3 个方法
+- `tests/api/admin/test_ai.py` - 17 个测试用例
 
 ---
 

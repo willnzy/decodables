@@ -317,9 +317,220 @@ class SupabaseAdminStatsRepository:
         
         return result.data[0] if result.data else None
 
-    # Note: AI functions (admin_get_ai_insights, admin_get_ai_recommendations, admin_get_behavior_analysis)
-    # are complex business logic functions that will be kept in services/db/admin_stats.py for now
-    # They can be migrated later if needed
+    @retry_on_network_error()
+    async def admin_get_ai_insights(self, insight_type: str = "all") -> List[Dict[str, Any]]:
+        """
+        Get AI-generated insights for the platform.
+
+        v3.25: Implemented method (previously missing, caused AttributeError).
+
+        Args:
+            insight_type: Type of insights - "all", "growth", "engagement", "revenue"
+
+        Returns:
+            List of insight objects with category, title, description, metrics
+        """
+        # Get aggregated data for insights generation
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+
+        insights = []
+
+        # Get user growth insight
+        if insight_type in ("all", "growth"):
+            user_stats = self.client.table("profiles").select("id", count="exact").gte(
+                "created_at", week_ago
+            ).execute()
+            new_users = user_stats.count or 0
+
+            insights.append({
+                "category": "growth",
+                "title": "User Growth",
+                "description": f"{new_users} new users in the last 7 days",
+                "metric_value": new_users,
+                "trend": "up" if new_users > 0 else "stable"
+            })
+
+        # Get engagement insight
+        if insight_type in ("all", "engagement"):
+            project_stats = self.client.table("projects").select("id", count="exact").gte(
+                "created_at", week_ago
+            ).eq("is_deleted", False).execute()
+            new_projects = project_stats.count or 0
+
+            insights.append({
+                "category": "engagement",
+                "title": "Project Creation",
+                "description": f"{new_projects} projects created in the last 7 days",
+                "metric_value": new_projects,
+                "trend": "up" if new_projects > 0 else "stable"
+            })
+
+        # Get revenue insight
+        if insight_type in ("all", "revenue"):
+            paying_stats = self.client.table("profiles").select("id", count="exact").neq(
+                "tier", "free"
+            ).eq("subscription_status", "active").execute()
+            paying_users = paying_stats.count or 0
+
+            insights.append({
+                "category": "revenue",
+                "title": "Paying Users",
+                "description": f"{paying_users} active paying subscribers",
+                "metric_value": paying_users,
+                "trend": "stable"
+            })
+
+        return insights
+
+    @retry_on_network_error()
+    async def admin_get_ai_recommendations(self, area: str = "all") -> List[Dict[str, Any]]:
+        """
+        Get AI-generated recommendations for platform optimization.
+
+        v3.25: Implemented method (previously missing, caused AttributeError).
+
+        Args:
+            area: Recommendation area - "all", "growth", "retention", "monetization"
+
+        Returns:
+            List of recommendation objects with priority, area, title, action
+        """
+        recommendations = []
+        today = datetime.now(timezone.utc)
+        week_ago = (today - timedelta(days=7)).isoformat()
+        month_ago = (today - timedelta(days=30)).isoformat()
+
+        # Growth recommendations
+        if area in ("all", "growth"):
+            new_users_week = self.client.table("profiles").select("id", count="exact").gte(
+                "created_at", week_ago
+            ).execute()
+            new_users_month = self.client.table("profiles").select("id", count="exact").gte(
+                "created_at", month_ago
+            ).execute()
+
+            weekly = new_users_week.count or 0
+            monthly = new_users_month.count or 0
+            avg_weekly = monthly / 4 if monthly > 0 else 0
+
+            if weekly < avg_weekly * 0.8:
+                recommendations.append({
+                    "priority": "high",
+                    "area": "growth",
+                    "title": "User acquisition below average",
+                    "description": f"This week's signups ({weekly}) are below the monthly average ({avg_weekly:.0f}/week)",
+                    "action": "Consider running a marketing campaign or promotion"
+                })
+
+        # Retention recommendations
+        if area in ("all", "retention"):
+            # Check users who haven't created projects
+            total_users = self.client.table("profiles").select("id", count="exact").execute()
+            users_with_projects = self.client.table("projects").select("user_id").execute()
+            unique_creators = len(set(p["user_id"] for p in (users_with_projects.data or [])))
+
+            total = total_users.count or 0
+            if total > 0:
+                creation_rate = (unique_creators / total) * 100
+                if creation_rate < 50:
+                    recommendations.append({
+                        "priority": "medium",
+                        "area": "retention",
+                        "title": "Low project creation rate",
+                        "description": f"Only {creation_rate:.1f}% of users have created projects",
+                        "action": "Improve onboarding flow or add project templates"
+                    })
+
+        # Monetization recommendations
+        if area in ("all", "monetization"):
+            total_users = self.client.table("profiles").select("id", count="exact").execute()
+            paying_users = self.client.table("profiles").select("id", count="exact").neq(
+                "tier", "free"
+            ).execute()
+
+            total = total_users.count or 0
+            paying = paying_users.count or 0
+            if total > 0:
+                conversion_rate = (paying / total) * 100
+                if conversion_rate < 5:
+                    recommendations.append({
+                        "priority": "high",
+                        "area": "monetization",
+                        "title": "Low conversion rate",
+                        "description": f"Only {conversion_rate:.1f}% of users are paying",
+                        "action": "Review pricing or add more Pro features"
+                    })
+
+        return recommendations
+
+    @retry_on_network_error()
+    async def admin_get_behavior_analysis(
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get AI-powered user behavior analysis.
+
+        v3.25: Implemented method (previously missing, caused AttributeError).
+
+        Args:
+            start_date: Start date for analysis (ISO format)
+            end_date: End date for analysis (ISO format)
+
+        Returns:
+            Dict with patterns, segments, and activity data
+        """
+        if not start_date:
+            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        if not end_date:
+            end_date = datetime.now(timezone.utc).isoformat()
+
+        # Get user activity patterns
+        events = self.client.table("user_events").select(
+            "event_type, created_at"
+        ).gte("created_at", start_date).lte("created_at", end_date).execute()
+
+        event_counts = {}
+        hourly_activity = {i: 0 for i in range(24)}
+
+        for event in (events.data or []):
+            et = event.get("event_type", "unknown")
+            event_counts[et] = event_counts.get(et, 0) + 1
+
+            created_at = event.get("created_at", "")
+            if created_at:
+                try:
+                    hour = int(created_at[11:13])
+                    hourly_activity[hour] += 1
+                except (ValueError, IndexError):
+                    pass
+
+        # Calculate peak hours
+        peak_hour = max(hourly_activity, key=hourly_activity.get) if hourly_activity else 12
+
+        # Get user segments
+        tier_dist = self.client.table("profiles").select("tier").execute()
+        segments = {"free": 0, "starter": 0, "pro": 0}
+        for profile in (tier_dist.data or []):
+            tier = profile.get("tier", "free")
+            if tier in segments:
+                segments[tier] += 1
+
+        return {
+            "patterns": {
+                "event_distribution": event_counts,
+                "peak_activity_hour": peak_hour,
+                "hourly_activity": hourly_activity
+            },
+            "segments": {
+                "by_tier": segments,
+                "total_users": sum(segments.values())
+            },
+            "period": {
+                "start": start_date,
+                "end": end_date
+            }
+        }
 
 
 class SupabaseAdminModerationRepository:
