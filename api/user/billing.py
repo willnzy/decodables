@@ -2,11 +2,16 @@
 Billing API - Credit management endpoints using DDD handlers.
 
 @module api.user.billing
-@version 1.2.0
+@version 1.2.1
+
+Changes in v1.2.1:
+- B-HIGH-1-FIX: Fixed user_id validation - Clerk IDs are NOT UUID format
+  - Clerk user IDs are text format like "user_2abc..." (prefix + 24-27 chars)
+  - Changed from UUID regex to Clerk ID format validation
 
 Changes in v1.2.0:
 - B-P0-3: Removed /credits/deduct public endpoint (security risk)
-- B-HIGH-1: Added UUID validation for user_id in AddCreditsRequest
+- B-HIGH-1: Added UUID validation for user_id in AddCreditsRequest (WRONG - fixed in v1.2.1)
 - B-HIGH-2: Removed balance exposure from /can-afford response
 - B-HIGH-3: Sanitized error messages to prevent info leakage
 - B-MEDIUM-1: Added rate limiting to all endpoints
@@ -55,8 +60,10 @@ router = APIRouter(prefix="/billing", tags=["user-billing-v2"])
 # Constants
 # ==========================================
 
-# v1.2.0: B-HIGH-1 - UUID validation pattern
-UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+# v1.2.1: B-HIGH-1-FIX - Clerk user ID validation pattern
+# Clerk user IDs are format: user_{base58_chars} where base58_chars is typically 24-27 chars
+# Example: user_2NNEqL2nrIRdJ194ndJqAHwEfxC
+CLERK_USER_ID_PATTERN = re.compile(r"^user_[a-zA-Z0-9]{20,30}$")
 
 # v1.2.0: B-MEDIUM-3 - Valid operation names for cost lookup
 VALID_OPERATIONS = {
@@ -113,8 +120,9 @@ class AffordabilityResponse(BaseModel):
 
 class AddCreditsRequest(BaseModel):
     """Request to add credits (admin only)."""
-    # v1.2.0: B-HIGH-1 - Added UUID validation
-    user_id: str = Field(..., description="Target user ID to add credits to", min_length=36, max_length=36)
+    # v1.2.1: B-HIGH-1-FIX - Changed to Clerk user ID format validation
+    # Clerk IDs are like "user_2NNEqL2nrIRdJ194ndJqAHwEfxC" (25-35 chars total)
+    user_id: str = Field(..., description="Target user ID to add credits to", min_length=25, max_length=35)
     amount: int = Field(..., gt=0, le=10000)
     credit_type: str = Field(..., pattern="^(monthly|permanent)$")
     reason: str = Field(..., min_length=1, max_length=200)  # v1.2.0: B-LOW-1 - Increased max_length
@@ -122,9 +130,9 @@ class AddCreditsRequest(BaseModel):
     @field_validator("user_id")
     @classmethod
     def validate_user_id_format(cls, v: str) -> str:
-        """Validate user_id is a valid UUID format."""
-        if not UUID_PATTERN.match(v):
-            raise ValueError("user_id must be a valid UUID format")
+        """Validate user_id is a valid Clerk user ID format."""
+        if not CLERK_USER_ID_PATTERN.match(v):
+            raise ValueError("user_id must be a valid Clerk user ID format (e.g., user_2abc...)")
         return v
 
 
