@@ -98,22 +98,40 @@ class SupabaseAdminUsersRepository:
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
-    async def admin_get_operation_logs(self, page: int = 1, limit: int = 50, operation_type: Optional[str] = None,
-                                 admin_id: Optional[str] = None, target_user_id: Optional[str] = None) -> Dict[str, Any]:
-        """Get admin operation logs."""
-        offset = (page - 1) * limit
+    async def admin_get_operation_logs(
+        self,
+        offset: int = 0,
+        limit: int = 50,
+        operation_type: Optional[str] = None,
+        admin_id: Optional[str] = None,
+        target_user_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get admin operation logs with offset-based pagination."""
         query = self.client.table("admin_operations").select("*", count="exact")
-        
+
         if operation_type:
             query = query.eq("operation_type", operation_type)
         if admin_id:
             query = query.eq("admin_id", admin_id)
         if target_user_id:
             query = query.eq("target_user_id", target_user_id)
-        
+        if start_date:
+            query = query.gte("created_at", start_date)
+        if end_date:
+            query = query.lte("created_at", end_date)
+
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-        
-        return {"items": result.data or [], "total": result.count or 0}
+        total = result.count or 0
+
+        return {
+            "logs": result.data or [],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + limit < total
+        }
 
 
 class SupabaseAdminStatsRepository:

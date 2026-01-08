@@ -69,7 +69,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Config | 8 | 8 | ✅ 已完成 |
 | Events | 5 | 5 | ✅ 已完成 |
 | Experiments | 14 | 14 | ✅ 已完成 |
-| Logs | 4 | 0 | 未开始 |
+| Logs | 4 | 4 | ✅ 已完成 |
 | Metrics | 7 | 0 | 未开始 |
 | Moderation | 10 | 0 | 未开始 |
 | Notifications | 5 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **48** | 38% |
+| **总计** | **125** | **52** | 42% |
 
 ---
 
@@ -343,22 +343,38 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Logs 日志管理 (4个)
+## Logs 日志管理 (4个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 49 | get_error_logs | GET | /errors | api/admin/logs.py | 36 |
-| 50 | get_error_stats | GET | /errors/stats | api/admin/logs.py | 113 |
-| 51 | get_operation_logs | GET | /operations | api/admin/logs.py | 170 |
-| 52 | export_operation_logs | GET | /operations/export | api/admin/logs.py | 195 |
+| 49 | get_error_logs | GET | /errors | api/admin/logs.py | 65 |
+| 50 | get_error_stats | GET | /errors/stats | api/admin/logs.py | 147 |
+| 51 | get_operation_logs | GET | /operations | api/admin/logs.py | 208 |
+| 52 | export_operation_logs | GET | /operations/export | api/admin/logs.py | 240 |
 
 **测试用例 Checklist**
-- [ ] #49 获取错误日志列表
-- [ ] #50 获取错误统计
-- [ ] #51 获取操作日志
-- [ ] #52 导出操作日志
+- [x] #49 获取错误日志列表
+- [x] #50 获取错误统计
+- [x] #51 获取操作日志
+- [x] #52 导出操作日志
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | LOG-MEDIUM-1 | 4个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | LOG-MEDIUM-2 | 使用 page 分页而非 offset | ✅ 已迁移 |
+| 🟡 MEDIUM | LOG-MEDIUM-3 | `hours` 无范围验证 | ✅ 已添加 (1-168) |
+| 🟡 MEDIUM | LOG-MEDIUM-4 | `start_date`/`end_date` 无格式验证 | ✅ 已添加 DATE_PATTERN |
+| 🟡 MEDIUM | LOG-MEDIUM-5 | `limit` 无范围验证 | ✅ 已添加 (1-100) |
+| 🟢 LOW | LOG-LOW-1 | 异常暴露详细错误信息 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/logs.py` - v2.0.0 → v3.25
+- `infrastructure/repositories/admin_repository.py` - 更新 admin_get_operation_logs 参数
+- `tests/api/admin/test_logs.py` - 22 个测试用例
 
 ---
 
