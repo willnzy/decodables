@@ -2,9 +2,12 @@
 Campaigns API - Marketing campaigns endpoints (v2).
 
 @module api.user.campaigns
-@version 2.1.0
+@version 2.1.1
 
 Changes:
+- v2.1.1: Code quality improvements
+  - CP-LOW-3: Unified datetime parsing using _parse_iso_datetime()
+
 - v2.1.0: Security fixes
   - CP-P0-1: Fix time range query logic (gte → gt for end_at)
   - CP-P0-3: Add UUID validation for campaign_id
@@ -36,6 +39,12 @@ from infrastructure.repositories.credit_repository import SupabaseCreditReposito
 from infrastructure.rate_limiter import limiter
 from core.database import get_supabase_client, get_database_client
 
+# TODO: CP-MEDIUM-3 - Migrate to DDD architecture
+# This module directly accesses supabase, violating DDD layering.
+# Should migrate to use:
+#   - domains.marketing.CampaignService
+#   - infrastructure.repositories.SupabaseCampaignRepository
+# See: domains/marketing/service.py for the new service implementation
 supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
@@ -392,24 +401,24 @@ def _check_target_eligibility(campaign: dict, user: Optional[dict]) -> bool:
         created_at = user.get("created_at")
         if not created_at:
             return False
-        try:
-            signup_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            return (now - signup_date).days <= days
-        except Exception:
+        # v2.1.1: CP-LOW-3 - Use centralized datetime parsing
+        signup_date = _parse_iso_datetime(created_at)
+        if not signup_date:
             return False
+        now = datetime.now(timezone.utc)
+        return (now - signup_date).days <= days
 
     elif target_type == "inactive_users":
         days = target_config.get("days_inactive", 30)
         last_login = user.get("last_login_at")
         if not last_login:
             return True  # Never logged in = inactive
-        try:
-            login_date = datetime.fromisoformat(last_login.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            return (now - login_date).days >= days
-        except Exception:
+        # v2.1.1: CP-LOW-3 - Use centralized datetime parsing
+        login_date = _parse_iso_datetime(last_login)
+        if not login_date:
             return False
+        now = datetime.now(timezone.utc)
+        return (now - login_date).days >= days
 
     return False
 

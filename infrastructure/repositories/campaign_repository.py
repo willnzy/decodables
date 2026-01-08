@@ -2,7 +2,10 @@
 Campaign Repository Implementation - Supabase implementation of campaign data access.
 
 @module infrastructure.repositories.campaign_repository
-@version 1.0.0
+@version 1.0.1
+
+Changes:
+- v1.0.1: Fix time range query logic (gte → gt for end_at)
 """
 
 import logging
@@ -30,12 +33,13 @@ class SupabaseCampaignRepository(ICampaignRepository):
         """Get all currently active campaigns within valid time range."""
         now = datetime.now(timezone.utc)
 
+        # v1.0.1: Use gt (strictly greater) for end_at to exclude expired campaigns
         result = self.client.table("campaigns").select("*").eq(
             "status", "active",
         ).eq("is_active", True).lte(
-            "start_at", now.isoformat(),
-        ).gte(
-            "end_at", now.isoformat(),
+            "start_at", now.isoformat(),  # Campaign has started
+        ).gt(
+            "end_at", now.isoformat(),    # Campaign has NOT ended (strict >)
         ).execute()
 
         return [self._to_campaign_data(c) for c in result.data] if result.data else []
