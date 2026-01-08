@@ -26,8 +26,6 @@ from pydantic import BaseModel
 from dependencies import get_current_user
 from container import get_container
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.project_repository import SupabaseProjectRepository
-from core.database import get_database_client
 
 from application.commands.creation import (
     CreateProjectCommand,
@@ -39,6 +37,17 @@ from application.queries.creation import (
     GetProjectQuery,
     GetUserProjectsQuery,
     GetDashboardProjectsQuery,
+)
+from domains.creation.exceptions import (
+    ProjectNotFoundException,
+    ProjectAccessDeniedException,
+    ProjectLimitExceededException,
+    InvalidProjectDataException,
+)
+from core.utils.validation import (
+    validate_canvas_data,
+    validate_thumbnail_url,
+    validate_title,
 )
 
 logger = logging.getLogger(__name__)
@@ -213,9 +222,17 @@ async def list_deleted_projects(
     Returns:
         List of deleted projects that can be restored
     """
+    container = get_container()
+    creation_service = container.creation_service
 
-    project_repo = SupabaseProjectRepository(get_database_client())
-    return await project_repo.get_user_deleted_projects(user["id"], page, limit)
+    offset = (page - 1) * limit
+    items = await creation_service.get_user_deleted_projects(
+        user_id=user["id"],
+        limit=limit,
+        offset=offset,
+    )
+
+    return {"items": items, "total": len(items), "page": page}
 
 
 @router.get("/seller-stats")
@@ -228,9 +245,10 @@ async def get_project_seller_stats(
     Returns:
         Dict with total_selling, total_sales, unique_buyers, etc.
     """
+    container = get_container()
+    creation_service = container.creation_service
 
-    project_repo = SupabaseProjectRepository(get_database_client())
-    return await project_repo.get_seller_project_stats(user["id"])
+    return await creation_service.get_seller_project_stats(user["id"])
 
 
 @router.post("")
@@ -251,6 +269,16 @@ async def create_project(
     Returns:
         Created project
     """
+    # Validate title
+    is_valid, error = validate_title(req.title)
+    if not is_valid:
+        raise HTTPException(400, f"Invalid title: {error}")
+
+    # Validate canvas_data for XSS/injection
+    is_valid, error = validate_canvas_data(req.canvas_data)
+    if not is_valid:
+        raise HTTPException(400, f"Invalid canvas data: {error}")
+
     container = get_container()
     handler = container.create_project_handler
 
@@ -266,8 +294,10 @@ async def create_project(
     result = await handler.handle(command)
 
     if not result.success:
-        if "limit" in (result.error or "").lower():
+        if isinstance(result.exception, ProjectLimitExceededException):
             raise HTTPException(403, result.error)
+        if isinstance(result.exception, InvalidProjectDataException):
+            raise HTTPException(400, result.error)
         raise HTTPException(400, result.error or "Failed to create project")
 
     return result.project_dict
@@ -297,9 +327,9 @@ async def get_project(
     result = await handler.handle(query)
 
     if not result.success:
-        if "not found" in (result.error or "").lower():
+        if isinstance(result.exception, ProjectNotFoundException):
             raise HTTPException(404, "Project not found")
-        if "access" in (result.error or "").lower():
+        if isinstance(result.exception, ProjectAccessDeniedException):
             raise HTTPException(403, "Access denied")
         raise HTTPException(400, result.error or "Failed to get project")
 
@@ -323,6 +353,21 @@ async def update_project(
     Returns:
         Update status with locked_elements info
     """
+    # Validate title if provided
+    is_valid, error = validate_title(req.title)
+    if not is_valid:
+        raise HTTPException(400, f"Invalid title: {error}")
+
+    # Validate canvas_data for XSS/injection
+    is_valid, error = validate_canvas_data(req.canvas_data)
+    if not is_valid:
+        raise HTTPException(400, f"Invalid canvas data: {error}")
+
+    # Validate thumbnail_url to prevent SSRF
+    is_valid, error = validate_thumbnail_url(req.thumbnail_url)
+    if not is_valid:
+        raise HTTPException(400, f"Invalid thumbnail URL: {error}")
+
     container = get_container()
     handler = container.update_project_handler
 
@@ -337,9 +382,9 @@ async def update_project(
     result = await handler.handle(command)
 
     if not result.success:
-        if "not found" in (result.error or "").lower():
+        if isinstance(result.exception, ProjectNotFoundException):
             raise HTTPException(404, "Project not found")
-        if "access" in (result.error or "").lower() or "limit" in (result.error or "").lower():
+        if isinstance(result.exception, (ProjectAccessDeniedException, ProjectLimitExceededException)):
             raise HTTPException(403, result.error)
         raise HTTPException(400, result.error or "Failed to update project")
 
@@ -379,8 +424,10 @@ async def delete_project(
     result = await handler.handle(command)
 
     if not result.success:
-        if "not found" in (result.error or "").lower():
+        if isinstance(result.exception, ProjectNotFoundException):
             raise HTTPException(404, "Project not found")
+        if isinstance(result.exception, ProjectAccessDeniedException):
+            raise HTTPException(403, "Access denied")
         raise HTTPException(400, result.error or "Failed to delete project")
 
     status = "permanently_hidden" if permanent else "deleted"
@@ -411,10 +458,9 @@ async def restore_project(
     result = await handler.handle(command)
 
     if not result.success:
-        error_msg = (result.error or "").lower()
-        if "not found" in error_msg:
+        if isinstance(result.exception, ProjectNotFoundException):
             raise HTTPException(404, "Project not found")
-        if "access" in error_msg:
+        if isinstance(result.exception, ProjectAccessDeniedException):
             raise HTTPException(403, "Access denied")
         logger.error(f"Failed to restore project {project_id}: {result.error}")
         raise HTTPException(400, result.error or "Failed to restore project")
@@ -455,13 +501,12 @@ async def duplicate_project(
 
         return project.to_dict()
 
+    except ProjectLimitExceededException as e:
+        raise HTTPException(403, str(e))
+    except ProjectNotFoundException:
+        raise HTTPException(404, "Project not found")
+    except ProjectAccessDeniedException:
+        raise HTTPException(403, "Access denied")
     except Exception as e:
-        error_msg = str(e).lower()
-        if "limit" in error_msg:
-            raise HTTPException(403, str(e))
-        if "not found" in error_msg:
-            raise HTTPException(404, "Project not found")
-        if "access" in error_msg:
-            raise HTTPException(403, "Access denied")
         logger.error(f"Failed to duplicate project {project_id}: {e}")
         raise HTTPException(500, "Failed to duplicate project")

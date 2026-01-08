@@ -26,6 +26,7 @@ class GetProjectResult:
     project: Optional[Project] = None
     project_dict: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    exception: Optional[Exception] = None  # Original exception for type checking
 
 
 class GetProjectHandler:
@@ -52,6 +53,7 @@ class GetProjectHandler:
             return GetProjectResult(
                 success=False,
                 error=str(e),
+                exception=e,
             )
 
 

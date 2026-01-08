@@ -118,7 +118,13 @@ class CreationService:
         user_tier: str = "free"
     ) -> Project:
         """
-        Create a new project.
+        Create a new project with atomic limit check.
+
+        Uses optimistic concurrency control:
+        1. Check limit before create
+        2. Create project
+        3. Verify count after create didn't exceed limit
+        4. If exceeded, rollback (delete) and raise error
 
         Args:
             owner_id: User ID of owner
@@ -137,20 +143,30 @@ class CreationService:
         if not title or not title.strip():
             raise InvalidProjectDataException("title", "Title is required")
 
-        # Check project limit
         limit = self.PROJECT_LIMITS.get(user_tier, 5)
+
+        # Pre-check (optimistic, may have race condition)
         current_count = await self._repository.count_by_owner(owner_id)
         if current_count >= limit:
             raise ProjectLimitExceededException(owner_id, limit)
 
+        # Create project
         project = Project.create_new(
             owner_id=owner_id,
             title=title.strip(),
             canvas_size=canvas_size,
             description=description,
         )
+        created = await self._repository.create(project)
 
-        return await self._repository.create(project)
+        # Post-check (catches race condition)
+        final_count = await self._repository.count_by_owner(owner_id)
+        if final_count > limit:
+            # Race condition detected - rollback by deleting
+            await self._repository.delete(created.project_id)
+            raise ProjectLimitExceededException(owner_id, limit)
+
+        return created
 
     async def update_project(
         self,
@@ -253,7 +269,7 @@ class CreationService:
         tier: str = "free"
     ) -> Project:
         """
-        Duplicate a project.
+        Duplicate a project with atomic limit check.
 
         Args:
             project_id: Source project ID
@@ -271,8 +287,9 @@ class CreationService:
         # Verify access to source project
         source = await self.get_project_with_access(project_id, user_id)
 
-        # Check project limit before creating
         limit = self.PROJECT_LIMITS.get(tier, 5)
+
+        # Pre-check (optimistic)
         current_count = await self._repository.count_by_owner(user_id)
         if current_count >= limit:
             raise ProjectLimitExceededException(user_id, limit)
@@ -290,7 +307,15 @@ class CreationService:
         for page in source.pages:
             new_project.add_page(page.canvas_data)
 
-        return await self._repository.create(new_project)
+        created = await self._repository.create(new_project)
+
+        # Post-check (catches race condition)
+        final_count = await self._repository.count_by_owner(user_id)
+        if final_count > limit:
+            await self._repository.delete(created.project_id)
+            raise ProjectLimitExceededException(user_id, limit)
+
+        return created
 
     async def add_page(
         self,
@@ -429,3 +454,38 @@ class CreationService:
             limit=limit,
             offset=offset,
         )
+
+    async def get_user_deleted_projects(
+        self,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Get user's deleted projects (trash).
+
+        Args:
+            user_id: User ID
+            limit: Max results
+            offset: Results to skip
+
+        Returns:
+            List of deleted project dicts
+        """
+        return await self._repository.get_user_deleted_projects(
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_seller_project_stats(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get seller statistics for projects.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Dict with total_listings, total_sales, total_revenue
+        """
+        return await self._repository.get_seller_project_stats(user_id)

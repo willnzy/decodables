@@ -460,32 +460,38 @@ class SupabaseProjectRepository(IProjectRepository):
         Get project detail (must be owner or purchased).
 
         Business Rule: Owner can access own projects, buyers can access purchased projects.
+        Security: Query-level access control to prevent IDOR - we only return data
+        if the user has valid access rights.
 
         Args:
             project_id: Project ID
             user_id: User ID
 
         Returns:
-            Project dict or None
+            Project dict or None (returns None for both not-found and access-denied
+            to prevent information disclosure about project existence)
         """
-        result = self.client.table("projects").select("*").eq("id", project_id).execute()
-        if not result.data:
-            return None
+        # First try: Owner access (query-level filtering)
+        owner_result = self.client.table("projects").select("*").eq(
+            "id", project_id
+        ).eq("user_id", user_id).execute()
 
-        project = result.data[0]
+        if owner_result.data:
+            return owner_result.data[0]
 
-        # Owner access
-        if project.get("user_id") == user_id:
-            return project
+        # Second try: Check if user has purchased this project
+        # Use a single query with join to verify both project existence AND purchase
+        purchase_result = self.client.table("marketplace_purchases").select(
+            "id, projects!inner(id, user_id, title, canvas_data, thumbnail_url, created_at, updated_at, is_deleted)"
+        ).eq("buyer_id", user_id).eq("project_id", project_id).execute()
 
-        # Check if purchased
-        purchase = self.client.table("marketplace_purchases").select("id").eq(
-            "buyer_id", user_id
-        ).eq("project_id", project_id).execute()
+        if purchase_result.data and purchase_result.data[0].get("projects"):
+            project_data = purchase_result.data[0]["projects"]
+            # Don't return deleted projects even to purchasers
+            if not project_data.get("is_deleted", False):
+                return project_data
 
-        if purchase.data:
-            return project
-
+        # No access - return None (same response for not-found and access-denied)
         return None
 
     @retry_on_network_error()
@@ -658,21 +664,20 @@ class SupabaseProjectRepository(IProjectRepository):
     async def get_user_deleted_projects(
         self,
         user_id: str,
-        page: int = 1,
-        limit: int = 20
+        limit: int = 20,
+        offset: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Get user's deleted projects.
 
         Args:
             user_id: User ID
-            page: Page number
-            limit: Items per page
+            limit: Max results
+            offset: Results to skip
 
         Returns:
             List of deleted project dicts
         """
-        offset = (page - 1) * limit
         result = self.client.table("projects").select(
             "id, title, thumbnail_url, deleted_at"
         ).eq("user_id", user_id).eq("is_deleted", True).order(

@@ -39,6 +39,7 @@ class CreateProjectResult:
     project: Optional[Project] = None
     project_dict: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    exception: Optional[Exception] = None  # Original exception for type checking
 
 
 class CreateProjectHandler:
@@ -74,6 +75,7 @@ class CreateProjectHandler:
             return CreateProjectResult(
                 success=False,
                 error=str(e),
+                exception=e,
             )
 
 
@@ -102,6 +104,7 @@ class UpdateProjectResult:
     success: bool
     project: Optional[Project] = None
     error: Optional[str] = None
+    exception: Optional[Exception] = None  # Original exception for type checking
 
 
 class UpdateProjectHandler:
@@ -113,21 +116,25 @@ class UpdateProjectHandler:
     async def handle(self, command: UpdateProjectCommand) -> UpdateProjectResult:
         """Execute project update."""
         try:
-            # First verify access
+            # First verify access - this also confirms ownership
             project = await self._creation_service.get_project_with_access(
                 project_id=command.project_id,
                 user_id=command.user_id,
                 require_edit=True,
             )
 
-            # Update via repository's quick save method
-            await self._creation_service._repository.save_project_quick(
-                project_id=command.project_id,
-                user_id=command.user_id,
-                canvas_data=command.canvas_data,
-                thumbnail_url=command.thumbnail_url,
-                title=command.title,
-            )
+            # Update project metadata through domain aggregate
+            if command.title is not None:
+                project.update_metadata(title=command.title)
+
+            if command.canvas_data is not None:
+                project.canvas_data = command.canvas_data
+
+            if command.thumbnail_url is not None:
+                project.metadata.thumbnail_url = command.thumbnail_url
+
+            # Persist changes through repository
+            await self._creation_service._repository.update(project)
 
             return UpdateProjectResult(
                 success=True,
@@ -138,6 +145,7 @@ class UpdateProjectHandler:
             return UpdateProjectResult(
                 success=False,
                 error=str(e),
+                exception=e,
             )
 
 
@@ -161,6 +169,7 @@ class DeleteProjectResult:
     """Result of project deletion."""
     success: bool
     error: Optional[str] = None
+    exception: Optional[Exception] = None  # Original exception for type checking
 
 
 class DeleteProjectHandler:
@@ -185,6 +194,7 @@ class DeleteProjectHandler:
             return DeleteProjectResult(
                 success=False,
                 error=str(e),
+                exception=e,
             )
 
 
@@ -251,6 +261,7 @@ class RestoreProjectResult:
     project: Optional[Project] = None
     project_dict: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    exception: Optional[Exception] = None  # Original exception for type checking
 
 
 class RestoreProjectHandler:
@@ -277,4 +288,5 @@ class RestoreProjectHandler:
             return RestoreProjectResult(
                 success=False,
                 error=str(e),
+                exception=e,
             )
