@@ -7,7 +7,12 @@ Endpoints tested:
 - POST /api/v2/user/campaigns/{id}/dismiss
 
 @module tests.api.user.test_campaigns
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- Updated tests to use valid UUID format for campaign_id (v2.1.0 validation)
+- Updated mock chain to use .gt() instead of .gte() for end_at query
+- Added tests for new validation helpers
 """
 
 import pytest
@@ -27,6 +32,20 @@ from app import app
 from dependencies import get_current_user, optional_user
 
 client = TestClient(app)
+
+
+# ==========================================
+# Constants for Testing
+# ==========================================
+
+# Valid UUIDs for testing (v2.1.0 requires UUID format)
+VALID_CAMPAIGN_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+VALID_CAMPAIGN_ID_2 = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+VALID_CAMPAIGN_ID_3 = "c3d4e5f6-a7b8-9012-cdef-123456789012"
+
+# Invalid ID for testing (not UUID format)
+INVALID_CAMPAIGN_ID = "camp_1"
+INVALID_CAMPAIGN_ID_LONG = "not-a-valid-uuid-format"
 
 
 # ==========================================
@@ -107,7 +126,7 @@ class TestGetActiveCampaigns:
         mock_select.eq.return_value = mock_eq1
         mock_eq1.eq.return_value = mock_eq2
         mock_eq2.lte.return_value = mock_lte
-        mock_lte.gte.return_value = mock_gte
+        mock_lte.gt.return_value = mock_gte
         mock_gte.execute.return_value = mock_result
 
         # Mock campaign_claims and campaign_dismissals queries
@@ -139,7 +158,7 @@ class TestGetActiveCampaigns:
         mock_select.eq.return_value = mock_eq1
         mock_eq1.eq.return_value = mock_eq2
         mock_eq2.lte.return_value = mock_lte
-        mock_lte.gte.return_value = mock_gte
+        mock_lte.gt.return_value = mock_gte
         mock_gte.execute.return_value = mock_result
 
         response = client.get("/api/v2/user/campaigns/active")
@@ -167,7 +186,7 @@ class TestGetActiveCampaigns:
             mock_select.eq.return_value = mock_eq1
             mock_eq1.eq.return_value = mock_eq2
             mock_eq2.lte.return_value = mock_lte
-            mock_lte.gte.return_value = mock_gte
+            mock_lte.gt.return_value = mock_gte
             mock_gte.execute.return_value = mock_result
 
             response = client.get("/api/v2/user/campaigns/active")
@@ -248,9 +267,18 @@ class TestClaimCampaign:
         mock_select.eq.return_value = mock_eq
         mock_eq.execute.return_value = mock_result
 
-        response = client.post("/api/v2/user/campaigns/camp_nonexistent/claim")
+        # Use valid UUID format (v2.1.0 validates UUID)
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         assert response.status_code == 404
+
+    def test_claim_campaign_invalid_id_format(self, override_get_current_user):
+        """Should return 400 for invalid campaign ID format (v2.1.0)."""
+        response = client.post("/api/v2/user/campaigns/invalid_id/claim")
+
+        assert response.status_code == 400
+        # Response uses "message" field (standard error format)
+        assert "Invalid campaign ID format" in response.json()["message"]
 
     @pytest.mark.skip(reason="Complex mock setup - supabase chain mocking needs refinement")
     @patch('api.user.campaigns.supabase')
@@ -308,8 +336,9 @@ class TestDismissNotification:
         mock_table.upsert.return_value = mock_upsert
         mock_upsert.execute.return_value = mock_result
 
+        # Use valid UUID format (v2.1.0 validates UUID)
         response = client.post(
-            "/api/v2/user/campaigns/camp_1/dismiss",
+            f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/dismiss",
             json={"channel": "modal"}
         )
 
@@ -320,16 +349,27 @@ class TestDismissNotification:
     def test_dismiss_notification_invalid_channel(self, override_get_current_user):
         """Should return 422 for invalid channel."""
         response = client.post(
-            "/api/v2/user/campaigns/camp_1/dismiss",
+            f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/dismiss",
             json={"channel": "invalid_channel"}
         )
 
         assert response.status_code == 422
 
+    def test_dismiss_notification_invalid_id_format(self, override_get_current_user):
+        """Should return 400 for invalid campaign ID format (v2.1.0)."""
+        response = client.post(
+            "/api/v2/user/campaigns/invalid_id/dismiss",
+            json={"channel": "modal"}
+        )
+
+        assert response.status_code == 400
+        # Response uses "message" field (standard error format)
+        assert "Invalid campaign ID format" in response.json()["message"]
+
     def test_dismiss_notification_requires_auth(self):
         """Should require authentication."""
         response = client.post(
-            "/api/v2/user/campaigns/camp_1/dismiss",
+            f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/dismiss",
             json={"channel": "modal"}
         )
 
@@ -405,7 +445,7 @@ class TestRaceConditionPrevention:
         """Should handle duplicate claim gracefully (race condition prevention)."""
         now = datetime.now(timezone.utc)
         mock_campaign = {
-            "id": "camp_1",
+            "id": VALID_CAMPAIGN_ID,
             "name": "Test Campaign",
             "type": "credits_gift",
             "status": "active",
@@ -440,10 +480,12 @@ class TestRaceConditionPrevention:
         # Simulate duplicate key error on insert (race condition)
         mock_table.insert.return_value.execute.side_effect = Exception("duplicate key value violates unique constraint")
 
-        response = client.post("/api/v2/user/campaigns/camp_1/claim")
+        # Use valid UUID format (v2.1.0 validates UUID)
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         # Should return 400 with "already claimed" message
         assert response.status_code == 400
+        # Response uses "message" field (standard error format)
         assert "already claimed" in response.json()["message"].lower()
 
     @patch('api.user.campaigns.supabase')
@@ -451,7 +493,7 @@ class TestRaceConditionPrevention:
         """Should use RPC for atomic usage increment."""
         now = datetime.now(timezone.utc)
         mock_campaign = {
-            "id": "camp_1",
+            "id": VALID_CAMPAIGN_ID,
             "name": "Test Campaign",
             "type": "credits_gift",
             "status": "active",
@@ -492,19 +534,134 @@ class TestRaceConditionPrevention:
         # Mock RPC call for atomic increment
         mock_supabase.rpc.return_value.execute.return_value = mock_rpc_result
 
-        response = client.post("/api/v2/user/campaigns/camp_1/claim")
+        # Use valid UUID format (v2.1.0 validates UUID)
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         # Verify RPC was called for atomic increment
-        mock_supabase.rpc.assert_called_with("increment_campaign_usage", {"p_campaign_id": "camp_1"})
+        mock_supabase.rpc.assert_called_with("increment_campaign_usage", {"p_campaign_id": VALID_CAMPAIGN_ID})
+
+
+class TestHelperFunctions:
+    """Tests for helper functions added in v2.1.0."""
+
+    def test_parse_iso_datetime_valid_z_suffix(self):
+        """Should parse ISO datetime with Z suffix."""
+        from api.user.campaigns import _parse_iso_datetime
+
+        result = _parse_iso_datetime("2025-01-01T00:00:00Z")
+        assert result is not None
+        assert result.year == 2025
+        assert result.month == 1
+        assert result.day == 1
+
+    def test_parse_iso_datetime_valid_offset(self):
+        """Should parse ISO datetime with +00:00 offset."""
+        from api.user.campaigns import _parse_iso_datetime
+
+        result = _parse_iso_datetime("2025-06-15T12:30:00+00:00")
+        assert result is not None
+        assert result.hour == 12
+        assert result.minute == 30
+
+    def test_parse_iso_datetime_none_input(self):
+        """Should return None for None input."""
+        from api.user.campaigns import _parse_iso_datetime
+
+        result = _parse_iso_datetime(None)
+        assert result is None
+
+    def test_parse_iso_datetime_invalid_format(self):
+        """Should return None for invalid format."""
+        from api.user.campaigns import _parse_iso_datetime
+
+        result = _parse_iso_datetime("not-a-date")
+        assert result is None
+
+    def test_validate_credit_amount_valid(self):
+        """Should return valid credit amount."""
+        from api.user.campaigns import _validate_credit_amount
+
+        result = _validate_credit_amount(100)
+        assert result == 100
+
+    def test_validate_credit_amount_string(self):
+        """Should convert string to int."""
+        from api.user.campaigns import _validate_credit_amount
+
+        result = _validate_credit_amount("50")
+        assert result == 50
+
+    def test_validate_credit_amount_negative(self):
+        """Should return None for negative amount."""
+        from api.user.campaigns import _validate_credit_amount
+
+        result = _validate_credit_amount(-10)
+        assert result is None
+
+    def test_validate_credit_amount_too_large(self):
+        """Should return None for amount exceeding max."""
+        from api.user.campaigns import _validate_credit_amount
+
+        result = _validate_credit_amount(99999)
+        assert result is None
+
+    def test_validate_credit_amount_invalid_type(self):
+        """Should return None for invalid type."""
+        from api.user.campaigns import _validate_credit_amount
+
+        result = _validate_credit_amount("not-a-number")
+        assert result is None
+
+
+class TestUUIDValidation:
+    """Tests for UUID validation added in v2.1.0."""
+
+    def test_valid_uuid_lowercase(self):
+        """Should accept valid lowercase UUID."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("a1b2c3d4-e5f6-7890-abcd-ef1234567890") is not None
+
+    def test_valid_uuid_uppercase(self):
+        """Should accept valid uppercase UUID."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("A1B2C3D4-E5F6-7890-ABCD-EF1234567890") is not None
+
+    def test_valid_uuid_mixed_case(self):
+        """Should accept valid mixed case UUID."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("A1b2C3d4-E5f6-7890-AbCd-Ef1234567890") is not None
+
+    def test_invalid_uuid_too_short(self):
+        """Should reject too short UUID."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("a1b2c3d4-e5f6-7890-abcd") is None
+
+    def test_invalid_uuid_wrong_format(self):
+        """Should reject wrong format."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("not-a-valid-uuid") is None
+
+    def test_invalid_uuid_no_dashes(self):
+        """Should reject UUID without dashes."""
+        from api.user.campaigns import UUID_PATTERN
+
+        assert UUID_PATTERN.match("a1b2c3d4e5f67890abcdef1234567890") is None
 
 
 # ==========================================
 # Summary
 # ==========================================
-# Total tests: 14
+# Total tests: 26
 # - GET /campaigns/active: 3 tests
-# - POST /campaigns/{id}/claim: 4 tests (2 skipped)
-# - POST /campaigns/{id}/dismiss: 3 tests
+# - POST /campaigns/{id}/claim: 5 tests (2 skipped)
+# - POST /campaigns/{id}/dismiss: 4 tests
 # - Batch query optimization: 2 tests
 # - Race condition prevention: 2 tests
+# - Helper functions (v2.1.0): 9 tests
+# - UUID validation (v2.1.0): 6 tests
 # ==========================================
