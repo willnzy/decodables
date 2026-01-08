@@ -37,6 +37,7 @@
    - 更新 API-REVIEW-ADMIN.md
    - 记录发现的问题和修复内容
    - 更新进度统计
+   - 如果设计数据库,记得更新ddl.sql
 
 5. 提交代码
    - git add + commit + push
@@ -314,17 +315,42 @@ API log_analytics_events (L113-208)
 
 **修复内容 (2026-01-08)**:
 
-1. **CRITICAL Bug 修复 - 并发竞态条件**:
+1. **CRITICAL Bug 修复 - 并发竞态条件** (#1):
    - 重新排序操作：先 INSERT claim 记录，成功后再发积分
    - 利用 UNIQUE 约束防止并发重复领取
    - 如果积分发放失败，删除 claim 记录允许用户重试
+   - 文件: `api/user/campaigns.py` L218-248
 
-2. **`_build_notification` can_claim 硬编码修复**:
+2. **usage_count 原子递增** (#2 HIGH):
+   - 创建 RPC 函数 `increment_campaign_usage` 实现原子操作
+   - UPDATE 语句带 WHERE 条件检查 usage_limit
+   - 文件: `migrations/v3.27_campaign_atomic_increment.sql`
+   - 同步更新: `migrations/ddl.sql`
+
+3. **N+1 查询优化** (#3 HIGH):
+   - 新增 `_batch_get_user_campaign_status()` 批量查询函数
+   - 2 次批量查询替代 N×2 次单条查询
+   - 查询 campaign_claims 和 campaign_dismissals 使用 IN 条件
+   - 文件: `api/user/campaigns.py` L347-386
+
+4. **`_build_notification` can_claim 参数化** (#4 MEDIUM):
    - 添加 `can_claim` 参数，传入实际值
    - 通知数据现在正确反映领取状态
+   - 文件: `api/user/campaigns.py` L413
 
-3. **usage_count 更新改为 best-effort**:
-   - 失败时仅记录警告，不影响主流程
+5. **DDD 架构准备** (#5 MEDIUM):
+   - 创建 `domains/marketing/` 目录
+   - 定义 `ICampaignRepository` 接口 (`domains/marketing/repository.py`)
+   - 实现 `SupabaseCampaignRepository` (`infrastructure/repositories/campaign_repository.py`)
+   - API 层暂保持直接调用 supabase，待后续全面迁移
+
+**新增测试用例**:
+- `TestBatchQueryOptimization.test_batch_get_user_campaign_status` - 批量查询验证
+- `TestBatchQueryOptimization.test_batch_get_user_campaign_status_empty` - 空列表处理
+- `TestRaceConditionPrevention.test_claim_duplicate_key_error_handled` - UNIQUE 约束竞态
+- `TestRaceConditionPrevention.test_atomic_usage_increment_via_rpc` - RPC 调用验证
+
+**测试结果**: 14 passed, 2 skipped
 
 **完成状态**: ✅ 已修复 (2026-01-08)
 

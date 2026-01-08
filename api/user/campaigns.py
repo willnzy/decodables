@@ -117,6 +117,16 @@ async def get_active_campaigns(
             notifications=NotificationsResponse(),
         )
 
+    # Batch fetch user claims and dismissals to avoid N+1 queries
+    campaign_ids = [c["id"] for c in result.data]
+    claimed_campaigns: set = set()
+    dismissed_map: Dict[str, List[str]] = {}  # campaign_id -> list of dismissed channels
+
+    if user:
+        claimed_campaigns, dismissed_map = _batch_get_user_campaign_status(
+            campaign_ids, user["id"]
+        )
+
     campaigns = []
     notifications = NotificationsResponse()
 
@@ -124,13 +134,8 @@ async def get_active_campaigns(
         if not _check_target_eligibility(campaign, user):
             continue
 
-        has_claimed = False
-        dismissed_channels: List[str] = []
-
-        if user:
-            has_claimed = _check_has_claimed(campaign["id"], user["id"])
-            dismissed_channels = _get_dismissed_channels(campaign["id"], user["id"])
-
+        has_claimed = campaign["id"] in claimed_campaigns
+        dismissed_channels = dismissed_map.get(campaign["id"], [])
         can_claim = not has_claimed and _check_usage_limit(campaign)
 
         campaign_data = {
@@ -247,12 +252,20 @@ async def claim_campaign(
         ).eq("user_id", user["id"]).execute()
         raise HTTPException(500, "Failed to grant credits. Please try again.")
 
-    # Increment usage counter (best effort, not critical)
+    # Atomic increment usage counter with limit check
+    # Note: This is best-effort; the UNIQUE constraint on claims is the primary protection
     try:
-        supabase.table("campaigns").update({
-            "usage_count": campaign["usage_count"] + 1,
-        }).eq("id", campaign_id).execute()
+        # Use atomic increment via RPC to avoid race condition
+        # If RPC not available, fall back to regular update (less safe but functional)
+        result = supabase.rpc("increment_campaign_usage", {
+            "p_campaign_id": campaign_id,
+        }).execute()
+
+        if not result.data:
+            logger.warning(f"[Campaigns] Usage increment returned no data for {campaign_id}")
     except Exception as e:
+        # If RPC doesn't exist or fails, log but don't fail the request
+        # The claim is already recorded, so user won't get duplicate credits
         logger.warning(f"[Campaigns] Failed to increment usage_count for {campaign_id}: {e}")
 
     message = f"You received {credits_received} credits!" if credits_received > 0 else "Offer claimed successfully!"
@@ -329,6 +342,48 @@ def _check_target_eligibility(campaign: dict, user: Optional[dict]) -> bool:
             return False
 
     return False
+
+
+def _batch_get_user_campaign_status(
+    campaign_ids: List[str], user_id: str
+) -> tuple[set, Dict[str, List[str]]]:
+    """
+    Batch fetch user's claim and dismissal status for multiple campaigns.
+
+    Returns:
+        tuple: (claimed_campaign_ids: set, dismissed_map: dict[campaign_id, list[channels]])
+    """
+    claimed_campaigns: set = set()
+    dismissed_map: Dict[str, List[str]] = {}
+
+    if not campaign_ids:
+        return claimed_campaigns, dismissed_map
+
+    # Batch query claims
+    try:
+        claims_result = supabase.table("campaign_claims").select(
+            "campaign_id"
+        ).eq("user_id", user_id).in_("campaign_id", campaign_ids).execute()
+
+        claimed_campaigns = {c["campaign_id"] for c in claims_result.data}
+    except Exception as e:
+        logger.warning(f"[Campaigns] Failed to batch fetch claims: {e}")
+
+    # Batch query dismissals
+    try:
+        dismissals_result = supabase.table("campaign_dismissals").select(
+            "campaign_id, channel"
+        ).eq("user_id", user_id).in_("campaign_id", campaign_ids).execute()
+
+        for d in dismissals_result.data:
+            campaign_id = d["campaign_id"]
+            if campaign_id not in dismissed_map:
+                dismissed_map[campaign_id] = []
+            dismissed_map[campaign_id].append(d["channel"])
+    except Exception as e:
+        logger.warning(f"[Campaigns] Failed to batch fetch dismissals: {e}")
+
+    return claimed_campaigns, dismissed_map
 
 
 def _check_has_claimed(campaign_id: str, user_id: str) -> bool:

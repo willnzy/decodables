@@ -1419,6 +1419,39 @@ DROP POLICY IF EXISTS "Users can manage own dismissals" ON campaign_dismissals;
 CREATE POLICY "Users can manage own dismissals" ON campaign_dismissals
     FOR ALL USING (user_id = auth.uid()::text);
 
+-- Campaign atomic usage increment function (v3.27)
+CREATE OR REPLACE FUNCTION increment_campaign_usage(p_campaign_id UUID)
+RETURNS TABLE(
+    success BOOLEAN,
+    new_usage_count INTEGER,
+    usage_limit INTEGER
+) AS $$
+DECLARE
+    v_result RECORD;
+BEGIN
+    UPDATE campaigns
+    SET usage_count = usage_count + 1,
+        updated_at = NOW()
+    WHERE id = p_campaign_id
+      AND is_active = true
+      AND (usage_limit IS NULL OR usage_count < usage_limit)
+    RETURNING
+        true AS success,
+        campaigns.usage_count AS new_usage_count,
+        campaigns.usage_limit
+    INTO v_result;
+
+    IF v_result IS NULL THEN
+        RETURN QUERY SELECT false, NULL::INTEGER, NULL::INTEGER;
+    ELSE
+        RETURN QUERY SELECT v_result.success, v_result.new_usage_count, v_result.usage_limit;
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION increment_campaign_usage(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION increment_campaign_usage(UUID) TO service_role;
+
 -- ==========================================
 -- Part 10: Holiday Themes Data (v3.13 + v3.14)
 -- ==========================================
