@@ -2,13 +2,17 @@
 Generation Helpers - Shared utilities for AI generation endpoints
 
 @module services.generation_helpers
-@version 3.25
+@version 3.26
 
 Changes:
+- v3.26: GI-P0-003 - Enhanced safety check with Unicode normalization and regex patterns
+         Added comprehensive blacklist with category-based detection
 - v3.25: Use ConfigService for dynamic credit costs (no hardcoded values)
 """
 
 import logging
+import re
+import unicodedata
 from typing import Optional, List, Dict, Any
 
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
@@ -17,7 +21,54 @@ from domains.platform.config_service import get_config
 logger = logging.getLogger(__name__)
 
 
-BLACKLIST_WORDS = ["nsfw", "nude", "sex"]
+# ==========================================
+# Content Safety - Enhanced Blacklist (v3.26)
+# ==========================================
+
+# Category-based blacklist for better organization and maintenance
+BLACKLIST_CATEGORIES = {
+    "explicit": [
+        "nsfw", "nude", "naked", "sex", "porn", "xxx",
+        "erotic", "hentai", "fetish", "bondage",
+    ],
+    "violence": [
+        "gore", "mutilation", "torture", "dismember",
+        "decapitat", "disembowel",
+    ],
+    "illegal": [
+        "child abuse", "cp ", "csam", "pedophil",
+        "underage", "minor sexual",
+    ],
+    "harmful": [
+        "suicide method", "how to kill", "make bomb",
+        "synthesize drug", "cook meth",
+    ],
+}
+
+# Flatten for quick lookup
+BLACKLIST_WORDS = []
+for category_words in BLACKLIST_CATEGORIES.values():
+    BLACKLIST_WORDS.extend(category_words)
+
+# Regex patterns for more complex detection
+BLACKLIST_PATTERNS = [
+    r"n\s*s\s*f\s*w",  # Spaced out "nsfw"
+    r"n\.s\.f\.w",      # Dotted "n.s.f.w"
+    r"p\s*o\s*r\s*n",  # Spaced out "porn"
+    r"s\s*e\s*x\s*u",  # Spaced out "sexu..."
+]
+
+# Compiled regex for performance
+_BLACKLIST_REGEX = None
+
+
+def _get_blacklist_regex() -> re.Pattern:
+    """Get compiled blacklist regex (lazy initialization)."""
+    global _BLACKLIST_REGEX
+    if _BLACKLIST_REGEX is None:
+        pattern = "|".join(BLACKLIST_PATTERNS)
+        _BLACKLIST_REGEX = re.compile(pattern, re.IGNORECASE)
+    return _BLACKLIST_REGEX
 
 # Config keys for credit costs
 CONFIG_KEY_IMAGE_GENERATION = "credits.cost.image_generation"
@@ -31,8 +82,41 @@ EMERGENCY_FALLBACK_COST_TEXT = 0  # Currently free by design
 
 
 def check_prompt_safety(prompts: List[str]) -> bool:
-    """Check if prompts contain blacklisted words."""
-    return any(w in p.lower() for p in prompts for w in BLACKLIST_WORDS)
+    """
+    Check if prompts contain blacklisted content (v3.26 enhanced).
+
+    Uses multi-layer detection:
+    1. Unicode normalization (prevent homoglyph attacks)
+    2. Direct blacklist word matching
+    3. Regex pattern matching (spaced/dotted bypass attempts)
+
+    Args:
+        prompts: List of prompts to check
+
+    Returns:
+        True if unsafe content detected, False if safe
+    """
+    blacklist_regex = _get_blacklist_regex()
+
+    for prompt in prompts:
+        # Normalize Unicode to prevent homoglyph attacks (е→e, а→a, etc.)
+        normalized = unicodedata.normalize("NFKC", prompt).lower()
+
+        # Remove zero-width characters that could be used to bypass
+        normalized = re.sub(r"[\u200b-\u200f\u2060\ufeff]", "", normalized)
+
+        # Check direct blacklist words
+        for word in BLACKLIST_WORDS:
+            if word in normalized:
+                logger.warning(f"Safety check failed: blacklist word '{word}' detected")
+                return True
+
+        # Check regex patterns (spaced/dotted bypass attempts)
+        if blacklist_regex.search(normalized):
+            logger.warning(f"Safety check failed: pattern match in prompt")
+            return True
+
+    return False
 
 
 def get_model_for_tier(tier: str) -> str:

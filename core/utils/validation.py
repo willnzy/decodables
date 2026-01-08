@@ -259,6 +259,252 @@ def _contains_dangerous_pattern(value: str) -> bool:
     return False
 
 
+# ==========================================
+# Prompt Validation (for AI generation)
+# ==========================================
+
+# Maximum prompt length (characters)
+MAX_PROMPT_LENGTH = 2000
+
+# Maximum total prompts in a batch
+MAX_PROMPTS_PER_REQUEST = 10
+
+
+def validate_prompt(prompt: str, max_length: int = MAX_PROMPT_LENGTH) -> tuple[bool, Optional[str]]:
+    """
+    Validate a single prompt for AI generation.
+
+    Checks:
+    - Length limits
+    - No dangerous injection patterns
+    - No null bytes or control characters
+
+    Args:
+        prompt: Prompt string to validate
+        max_length: Maximum allowed length
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not isinstance(prompt, str):
+        return False, "Prompt must be a string"
+
+    if not prompt.strip():
+        return False, "Prompt cannot be empty"
+
+    if len(prompt) > max_length:
+        return False, f"Prompt too long (max {max_length} characters)"
+
+    # Check for null bytes and control characters (except newline/tab)
+    if any(ord(c) < 32 and c not in '\n\t\r' for c in prompt):
+        return False, "Prompt contains invalid control characters"
+
+    # Check for potential injection patterns
+    if _contains_injection_pattern(prompt):
+        return False, "Prompt contains invalid patterns"
+
+    return True, None
+
+
+def validate_prompts(
+    prompts: List[str],
+    max_prompts: int = MAX_PROMPTS_PER_REQUEST,
+    max_prompt_length: int = MAX_PROMPT_LENGTH
+) -> tuple[bool, Optional[str]]:
+    """
+    Validate a list of prompts for AI generation.
+
+    Args:
+        prompts: List of prompt strings
+        max_prompts: Maximum number of prompts allowed
+        max_prompt_length: Maximum length per prompt
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not prompts:
+        return False, "At least one prompt is required"
+
+    if not isinstance(prompts, list):
+        return False, "Prompts must be a list"
+
+    if len(prompts) > max_prompts:
+        return False, f"Maximum {max_prompts} prompts allowed per request"
+
+    for i, prompt in enumerate(prompts):
+        is_valid, error = validate_prompt(prompt, max_prompt_length)
+        if not is_valid:
+            return False, f"Prompt {i + 1}: {error}"
+
+    return True, None
+
+
+def _contains_injection_pattern(value: str) -> bool:
+    """
+    Check for prompt injection patterns.
+
+    Args:
+        value: String to check
+
+    Returns:
+        True if injection pattern found
+    """
+    if not value:
+        return False
+
+    lower_value = value.lower()
+
+    # System prompt injection patterns
+    injection_patterns = [
+        "ignore previous",
+        "ignore all previous",
+        "disregard previous",
+        "forget previous",
+        "new instructions:",
+        "system prompt:",
+        "you are now",
+        "act as if",
+        "pretend you are",
+        "jailbreak",
+        "dan mode",
+        "developer mode",
+    ]
+
+    for pattern in injection_patterns:
+        if pattern in lower_value:
+            return True
+
+    return False
+
+
+# ==========================================
+# Reference Image URL Validation (SSRF Prevention)
+# ==========================================
+
+# Allowed hosts for reference images (AI generation)
+ALLOWED_REFERENCE_IMAGE_HOSTS = {
+    # Supabase storage
+    "supabase.co",
+    # Common CDNs
+    "cdn.makedecodables.com",
+    "storage.googleapis.com",
+    "cloudflare-ipfs.com",
+    # FAL.ai CDN (for generated images as reference)
+    "fal.media",
+    "v3.fal.media",
+    # User may paste from common image hosts
+    "imgur.com",
+    "i.imgur.com",
+}
+
+# Maximum URL length
+MAX_REFERENCE_URL_LENGTH = 2048
+
+
+def validate_reference_image_url(url: Optional[str]) -> tuple[bool, Optional[str]]:
+    """
+    Validate reference image URL to prevent SSRF attacks.
+
+    Args:
+        url: URL to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if url is None:
+        return True, None
+
+    if not isinstance(url, str):
+        return False, "Reference image URL must be a string"
+
+    # Empty string is OK (no reference)
+    if not url.strip():
+        return True, None
+
+    # Check for base64 encoded image (allowed)
+    if url.startswith("data:image/"):
+        # Validate base64 image format
+        if not _is_valid_base64_image(url):
+            return False, "Invalid base64 image format"
+        return True, None
+
+    # URL validation
+    if len(url) > MAX_REFERENCE_URL_LENGTH:
+        return False, f"URL too long (max {MAX_REFERENCE_URL_LENGTH} characters)"
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Invalid URL format"
+
+    # Check scheme
+    if parsed.scheme not in ALLOWED_URL_SCHEMES:
+        return False, f"URL scheme must be one of: {', '.join(ALLOWED_URL_SCHEMES)}"
+
+    # Check for empty host
+    if not parsed.netloc:
+        return False, "URL must have a valid host"
+
+    # Extract host
+    host = parsed.netloc.lower()
+
+    # Remove port if present
+    if ":" in host:
+        host = host.split(":")[0]
+
+    # Block localhost and private IPs
+    if _is_private_host(host):
+        return False, "URL host not allowed"
+
+    # Check if host matches allowed list (including subdomains)
+    host_allowed = False
+    for allowed_host in ALLOWED_REFERENCE_IMAGE_HOSTS:
+        if host == allowed_host or host.endswith("." + allowed_host):
+            host_allowed = True
+            break
+
+    if not host_allowed:
+        return False, f"Reference image host not in allowed list. Allowed: {', '.join(sorted(ALLOWED_REFERENCE_IMAGE_HOSTS))}"
+
+    return True, None
+
+
+def _is_valid_base64_image(data_url: str) -> bool:
+    """
+    Validate base64 image data URL format.
+
+    Args:
+        data_url: Data URL to validate
+
+    Returns:
+        True if valid base64 image
+    """
+    import base64
+
+    # Expected format: data:image/png;base64,xxxxx
+    allowed_types = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]
+
+    try:
+        # Extract mime type and data
+        if not data_url.startswith("data:"):
+            return False
+
+        header, data = data_url.split(",", 1)
+
+        # Check mime type
+        mime_part = header.replace("data:", "").replace(";base64", "")
+        if mime_part not in allowed_types:
+            return False
+
+        # Validate base64 (just check it's valid, don't decode full image)
+        # Limit check to first 100 chars to avoid DoS
+        base64.b64decode(data[:100] + "==")  # Add padding for partial decode
+        return True
+
+    except Exception:
+        return False
+
+
 def validate_title(title: Optional[str], max_length: int = 500) -> tuple[bool, Optional[str]]:
     """
     Validate project title.

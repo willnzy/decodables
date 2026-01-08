@@ -2,9 +2,16 @@
 Image Generation Router - AI image generation endpoints
 
 @module api.user.generation_images
-@version 3.26
+@version 3.27
 
 Changes:
+- v3.27: GI-P0-001~004 fixes - Comprehensive input validation
+         - Prompt validation with length limits and injection detection
+         - Reference image URL SSRF prevention
+         - Enhanced safety check integration
+         GI-H2 fix - Generation timeout protection (asyncio.wait_for)
+         GI-H4 fix - Sanitized error messages
+         GI-M4 fix - Correct cost calculation in generation history
 - v3.26: GI-P0-1 fix - validate prompts non-empty before billing
          GI-H4 fix - don't expose balance in error messages
 - v3.25: Migrate to DDD BillingService with atomic operations
@@ -19,6 +26,7 @@ Endpoints:
 import logging
 import uuid
 import time
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -33,6 +41,7 @@ from domains.billing.value_objects import TransactionType, CreditBucket
 from domains.billing.exceptions import InsufficientCreditsException
 from infrastructure.rate_limiter import limiter
 from core.utils.timezone import get_request_timezone
+from core.utils.validation import validate_prompts, validate_reference_image_url
 from dependencies import get_current_user
 from api.schemas.user.generation import ImageGenRequest
 from application.services.generation_helpers import (
@@ -45,6 +54,9 @@ from application.services.generation_helpers import (
     enhance_prompts,
     build_generation_record,
 )
+
+# Generation timeout in seconds (prevent DoS)
+GENERATION_TIMEOUT_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +82,19 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     - AI Design Page mode with prompt enhancement (when theme is provided)
     - Generation modes: "guided" (accurate) or "flexible" (creative)
     """
-    # v3.26: GI-P0-1 fix - validate prompts before any processing
-    if not req.prompts or len(req.prompts) == 0:
-        raise HTTPException(400, "At least one prompt is required")
+    # v3.27: GI-P0-001 - Comprehensive prompt validation
+    is_valid, error = validate_prompts(req.prompts)
+    if not is_valid:
+        raise HTTPException(400, error)
 
-    if len(req.prompts) > 10:
-        raise HTTPException(400, "Maximum 10 prompts allowed per request")
+    # v3.27: GI-P0-002 - Reference image URL SSRF prevention
+    is_valid, error = validate_reference_image_url(req.reference_image)
+    if not is_valid:
+        raise HTTPException(400, error)
 
-    # Safety check
+    # v3.27: GI-P0-003 - Enhanced safety check (with Unicode normalization)
     if check_prompt_safety(req.prompts):
-        raise HTTPException(400, "Safety Violation")
+        raise HTTPException(400, "Content policy violation")
 
     # Validate parameters
     num_images = max(1, min(4, req.num_images or 1))
@@ -145,23 +160,43 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     generation_start = time.time()
     tz = get_request_timezone(request, user_id=user.get("id"))
 
-    # Generate images with automatic refund on failure
+    # v3.27: GI-H2 - Generate images with timeout protection
     try:
-        urls, task_id = await generate_8_images(
-            prompts_to_use,
-            model=model,
-            reference_image=req.reference_image,
-            reference_strength=req.reference_strength or 0.7,
-            image_size=req.image_size or "landscape_4_3",
-            generation_mode=generation_mode,
-            creativity_level=creativity_level,
-            negative_prompt=req.negative_prompt,
-            num_images=num_images,
-            user_id=user["id"],
-            tier=tier
+        urls, task_id = await asyncio.wait_for(
+            generate_8_images(
+                prompts_to_use,
+                model=model,
+                reference_image=req.reference_image,
+                reference_strength=req.reference_strength or 0.7,
+                image_size=req.image_size or "landscape_4_3",
+                generation_mode=generation_mode,
+                creativity_level=creativity_level,
+                negative_prompt=req.negative_prompt,
+                num_images=num_images,
+                user_id=user["id"],
+                tier=tier
+            ),
+            timeout=GENERATION_TIMEOUT_SECONDS
         )
+    except asyncio.TimeoutError:
+        # Generation timed out - refund credits
+        logger.error(f"Image generation timed out after {GENERATION_TIMEOUT_SECONDS}s, refunding {cost} credits")
+        try:
+            await billing_service.add_credits(
+                user_id=user["id"],
+                amount=cost,
+                bucket=CreditBucket.PERMANENT,
+                tx_type=TransactionType.REFUND,
+                description="Refund: generation timed out",
+                idempotency_key=f"refund_timeout_{idempotency_key}",
+            )
+            logger.info(f"Refunded {cost} credits to user {user['id']} after timeout")
+        except Exception as refund_error:
+            logger.error(f"CRITICAL: Failed to refund credits after timeout: {refund_error}")
+        raise HTTPException(504, "Image generation timed out. Credits have been refunded.")
     except Exception as e:
         # Generation failed - refund credits atomically
+        # v3.27: GI-H4 - Don't expose internal error details
         logger.error(f"Image generation failed, refunding {cost} credits: {e}")
         try:
             await billing_service.add_credits(
@@ -169,7 +204,7 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
                 amount=cost,
                 bucket=CreditBucket.PERMANENT,  # Refund to permanent as conservative choice
                 tx_type=TransactionType.REFUND,
-                description=f"Refund: generation failed - {str(e)[:50]}",
+                description=f"Refund: generation failed",
                 idempotency_key=f"refund_{idempotency_key}",
             )
             logger.info(f"Refunded {cost} credits to user {user['id']}")
@@ -199,9 +234,17 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
         raise HTTPException(500, "No images were generated. Credits have been refunded.")
 
     # Save assets and generation history
+    # TODO: GI-M1 - Migrate to domain service layer (currently DDD violation)
+    # This should go through AssetService and GenerationHistoryService
     asset_repo = SupabaseAssetRepository(get_supabase_client())
     supabase = get_supabase_client()
     enhanced_prompt_text = enhancement_result.get("enhanced_prompt") if enhancement_result else None
+
+    # v3.27: GI-M4 - Calculate per-image cost correctly
+    # Total cost = prompts * base_cost * num_images
+    # Per-image cost = total_cost / total_images
+    total_images_expected = len(prompts_to_use) * num_images
+    per_image_cost = cost / total_images_expected if total_images_expected > 0 else base_cost
 
     for idx, url in enumerate(urls):
         if not url:
@@ -234,9 +277,9 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
                 reference_strength=req.reference_strength if has_reference else None,
                 batch_id=batch_id,
                 batch_index=idx,
-                credits_used=base_cost,
+                credits_used=per_image_cost,  # v3.27: GI-M4 fix - correct per-image cost
                 model_used=model,
-                generation_time_ms=generation_time_ms // num_images if num_images > 1 else generation_time_ms,
+                generation_time_ms=generation_time_ms // len(successful_urls) if len(successful_urls) > 1 else generation_time_ms,
                 timezone=tz,
             )
             supabase.table("user_generations").insert(generation_record).execute()
@@ -294,16 +337,19 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     Returns immediately with task_id for progress tracking.
     Use WebSocket (/ws/task/{task_id}) or polling (/api/tasks/{task_id}) for status.
     """
-    # v3.26: GI-P0-1 fix - validate prompts before any processing
-    if not req.prompts or len(req.prompts) == 0:
-        raise HTTPException(400, "At least one prompt is required")
+    # v3.27: GI-P0-001 - Comprehensive prompt validation
+    is_valid, error = validate_prompts(req.prompts)
+    if not is_valid:
+        raise HTTPException(400, error)
 
-    if len(req.prompts) > 10:
-        raise HTTPException(400, "Maximum 10 prompts allowed per request")
+    # v3.27: GI-P0-002 - Reference image URL SSRF prevention
+    is_valid, error = validate_reference_image_url(req.reference_image)
+    if not is_valid:
+        raise HTTPException(400, error)
 
-    # Safety check
+    # v3.27: GI-P0-003 - Enhanced safety check (with Unicode normalization)
     if check_prompt_safety(req.prompts):
-        raise HTTPException(400, "Safety Violation")
+        raise HTTPException(400, "Content policy violation")
 
     # Validate parameters
     num_images = max(1, min(4, req.num_images or 1))

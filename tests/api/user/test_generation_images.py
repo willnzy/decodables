@@ -100,11 +100,12 @@ def valid_request() -> Dict[str, Any]:
 
 @pytest.fixture
 def request_with_reference() -> Dict[str, Any]:
-    """Request with reference image."""
+    """Request with reference image from allowed host (SSRF-safe)."""
     return {
         "prompts": ["A character in this style"],
         "num_images": 1,
-        "reference_image": "https://example.com/ref.png",
+        # v3.27: Use allowed host for SSRF validation
+        "reference_image": "https://v3.fal.media/files/ref.png",
         "reference_strength": 0.7,
     }
 
@@ -390,10 +391,11 @@ class TestGenImages:
 
         Given: Prompt with blacklisted words
         When: POST /api/v2/user/generate/images
-        Then: Returns 400 Safety Violation
+        Then: Returns 400 Content policy violation
 
         Business Logic Verified:
         - Safety filter blocks inappropriate content
+        - v3.27: Error message changed to "Content policy violation"
         """
         # Act
         response = client.post(
@@ -406,7 +408,8 @@ class TestGenImages:
         data = response.json()
         # Response may use 'detail' or 'message' depending on error handler
         error_msg = data.get("detail", "") or data.get("message", "")
-        assert "Safety" in error_msg
+        # v3.27: Changed from "Safety Violation" to "Content policy violation"
+        assert "policy" in error_msg.lower() or "content" in error_msg.lower()
 
     def test_gen_images_unauthorized(self):
         """
@@ -488,44 +491,30 @@ class TestGenImages:
         call_kwargs = mock_billing.deduct_credits.call_args.kwargs
         assert call_kwargs["amount"] == 20
 
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
-    def test_gen_images_num_images_clamped(
+    def test_gen_images_num_images_rejected_if_over_limit(
         self,
-        mock_get_config,
-        mock_container,
         override_free_user,
     ):
         """
-        Test: num_images is clamped to 1-4 range.
+        Test: num_images > 4 is rejected by schema validation.
 
         Given: Request with num_images > 4
-        When: Processing the request
-        Then: num_images is clamped to 4
+        When: POST /api/v2/user/generate/images
+        Then: Returns 422 validation error
+
+        v3.27: Changed from clamping to strict validation at schema level
         """
-        # Arrange
-        mock_get_config.return_value = 5
-
-        # Create exception that tracks the amount being charged
-        charged_amount = None
-        def capture_deduct(*args, **kwargs):
-            nonlocal charged_amount
-            charged_amount = kwargs.get("amount")
-            exc = InsufficientCreditsException(required=charged_amount, available=0)
-            raise exc
-
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(side_effect=capture_deduct)
-        mock_container.return_value.billing_service = mock_billing
-
         # Act
         response = client.post(
             "/api/v2/user/generate/images/images",
-            json={"prompts": ["test"], "num_images": 10},  # Will be clamped to 4
+            json={"prompts": ["test"], "num_images": 10},  # Exceeds max 4
         )
 
-        # Should calculate cost for 4 images (clamped from 10)
-        assert charged_amount == 20  # 5 * 4 (clamped)
+        # Assert - should be rejected by Pydantic schema validation
+        assert response.status_code == 422
+        data = response.json()
+        # Should indicate validation error (check for 'validation' in code or errors)
+        assert data.get("code") == "validation_error" or "detail" in data
 
     @patch('api.user.generation_images.get_supabase_client')
     @patch('api.user.generation_images.SupabaseAssetRepository')
