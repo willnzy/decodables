@@ -1436,6 +1436,89 @@ class TestGetMyListings:
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "My Listing"
 
+    @patch('api.user.marketplace.get_container')
+    def test_get_my_listings_pagination_offset_calculation(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        Test: Pagination offset is calculated correctly
+
+        Given: User requests page 3 with limit 20
+        When: GET /api/v2/user/marketplace/my-listings?page=3&limit=20
+        Then: Service called with offset=40 (page-1)*limit
+        """
+        # Arrange
+        mock_service = AsyncMock()
+        mock_service.get_seller_listings.return_value = []
+        mock_container = MagicMock()
+        mock_container.marketplace_service = mock_service
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/my-listings?page=3&limit=20",
+        )
+
+        # Assert
+        assert response.status_code == 200
+        # Verify service was called with correct offset
+        call_args = mock_service.get_seller_listings.call_args
+        assert call_args.kwargs['offset'] == 40  # (3-1)*20 = 40
+        assert call_args.kwargs['limit'] == 20
+
+    @patch('api.user.marketplace.get_container')
+    def test_get_my_listings_with_status_filter(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        Test: Filter listings by status
+
+        Given: User filters by status=draft
+        When: GET /api/v2/user/marketplace/my-listings?status=draft
+        Then: Service called with ListingStatus.DRAFT
+        """
+        from domains.marketplace.value_objects import ListingStatus
+
+        # Arrange
+        mock_service = AsyncMock()
+        mock_service.get_seller_listings.return_value = []
+        mock_container = MagicMock()
+        mock_container.marketplace_service = mock_service
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/my-listings?status=draft",
+        )
+
+        # Assert
+        assert response.status_code == 200
+        call_args = mock_service.get_seller_listings.call_args
+        assert call_args.kwargs['status'] == ListingStatus.DRAFT
+
+    def test_get_my_listings_invalid_status_validation(
+        self,
+        override_get_current_user_free,
+    ):
+        """
+        Test: Invalid status returns 422
+
+        Given: User sends invalid status
+        When: GET /api/v2/user/marketplace/my-listings?status=invalid
+        Then: Returns 422 validation error
+        """
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/my-listings?status=invalid",
+        )
+
+        # Assert
+        assert response.status_code == 422
+
 
 # ==========================================
 # GET /api/v2/user/marketplace/seller/stats Tests

@@ -106,3 +106,69 @@ class SupabaseSupportRepository:
         }).execute()
 
         return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def create_report(
+        self,
+        user_id: str,
+        listing_id: str,
+        reason: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create a content report for a marketplace listing.
+
+        Args:
+            user_id: Reporter user ID
+            listing_id: Listing being reported
+            reason: Report reason
+
+        Returns:
+            Created report or None
+
+        Raises:
+            Exception: If user already reported this listing
+        """
+        # Check if user already reported this listing
+        existing = self.client.table("marketplace_reports").select("id").eq(
+            "reporter_id", user_id
+        ).eq("listing_id", listing_id).execute()
+
+        if existing.data:
+            raise Exception("You have already reported this listing")
+
+        result = self.client.table("marketplace_reports").insert({
+            "reporter_id": user_id,
+            "listing_id": listing_id,
+            "reason": reason,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def get_user_reports(
+        self,
+        user_id: str,
+        page: int = 1,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Get reports submitted by a user.
+
+        Args:
+            user_id: User ID
+            page: Page number (1-indexed)
+            limit: Items per page
+
+        Returns:
+            List of reports
+        """
+        start = (page - 1) * limit
+        end = start + limit - 1
+
+        result = self.client.table("marketplace_reports").select("*").eq(
+            "reporter_id", user_id
+        ).order("created_at", desc=True).range(start, end).execute()
+
+        return result.data or []

@@ -22,7 +22,7 @@
 | Generation Story 🔴 | 2 | 2 | ✅ 已完成 |
 | Generations | 6 | 0 | 未开始 |
 | Logs | 2 | 0 | 未开始 |
-| Marketplace 🟡 | 11 | 3 | 🔄 审查中 |
+| Marketplace 🟡 | 11 | 11 | ✅ 已完成 |
 | Payment 🔴 | 2 | 2 | ✅ 已完成 |
 | Projects 🟡 | 10 | 0 | 未开始 |
 | Resources | 7 | 0 | 未开始 |
@@ -35,7 +35,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **23** | 20.9% |
+| **总计** | **110** | **31** | 28.2% |
 
 ---
 
@@ -354,11 +354,11 @@
 | 37 | update_listing | PUT | /listings/{listing_id} | api/user/marketplace.py | 280 | ✅ 🔧 |
 | 38 | unpublish_listing | DELETE | /listings/{listing_id} | api/user/marketplace.py | 331 | ✅ 🔧 |
 | 39 | purchase_listing | POST | /purchase | api/user/marketplace.py | 367 | ✅ 🔧 |
-| 40 | get_my_listings | GET | /my-listings | api/user/marketplace.py | 424 | |
-| 41 | get_seller_stats | GET | /seller/stats | api/user/marketplace.py | 457 | |
-| 42 | get_leaderboard | GET | /leaderboard | api/user/marketplace.py | 505 | |
-| 43 | submit_report | POST | /report | api/user/marketplace.py | 572 | |
-| 44 | get_my_reports | GET | /my-reports | api/user/marketplace.py | 613 | |
+| 40 | get_my_listings | GET | /my-listings | api/user/marketplace.py | 438 | ✅ 🔧 |
+| 41 | get_seller_stats | GET | /seller/stats | api/user/marketplace.py | 493 | ✅ 🔧 |
+| 42 | get_leaderboard | GET | /leaderboard | api/user/marketplace.py | 541 | ✅ 🔧 |
+| 43 | submit_report | POST | /report | api/user/marketplace.py | 608 | ✅ 🔧 |
+| 44 | get_my_reports | GET | /my-reports | api/user/marketplace.py | 649 | ✅ 🔧 |
 
 **测试用例 Checklist**
 
@@ -589,21 +589,111 @@
 - [x] #39.4 tier 权限不足返回 403
 
 **#40 get_my_listings**
-- [ ] #40.1 获取我的商品列表
+- [x] #40.1 获取我的商品列表
+- [x] #40.2 分页 offset 计算正确
+- [x] #40.3 status 过滤参数
+- [x] #40.4 无效 status 返回 422
 
 **#41 get_seller_stats**
-- [ ] #41.1 获取卖家统计
+- [x] #41.1 获取卖家统计
 
 **#42 get_leaderboard**
-- [ ] #42.1 获取排行榜
-- [ ] #42.2 period/type 过滤
+- [x] #42.1 获取排行榜
+- [x] #42.2 period/type 过滤
 
 **#43 submit_report**
-- [ ] #43.1 提交举报成功
-- [ ] #43.2 重复举报返回 400
+- [x] #43.1 提交举报成功
+- [x] #43.2 重复举报返回 400
 
 **#44 get_my_reports**
-- [ ] #44.1 获取我的举报列表
+- [x] #44.1 获取我的举报列表
+
+### Review 结果 - #40 get_my_listings (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **参数名称不匹配导致严重 Bug** (已修复)
+   - 问题: API 传递 `page` 参数，但 Service 方法签名是 `(seller_id, status, limit, offset)`
+   - 影响: `page=1` 被当作 `status=1` 传入，导致查询行为完全错误
+   - 修复: API 层将 `page` 转换为 `offset = (page - 1) * limit`
+
+2. **缺少 status 过滤功能** (已修复)
+   - 问题: 用户无法按状态筛选自己的 listings (draft/pending/published 等)
+   - 修复: 添加 `status` 查询参数，支持 6 种状态过滤
+
+**修复涉及的文件**:
+
+1. `api/user/marketplace.py`
+   - 添加 `status` 参数 (可选)
+   - 计算 `offset = (page - 1) * limit`
+   - 解析 `ListingStatus` 枚举
+   - 正确传递参数给 Service
+
+**测试文件更新**:
+- `tests/api/user/test_marketplace.py` - 新增 3 个测试用例:
+  - `test_get_my_listings_pagination_offset_calculation` (#40.2)
+  - `test_get_my_listings_with_status_filter` (#40.3)
+  - `test_get_my_listings_invalid_status_validation` (#40.4)
+
+### Review 结果 - #41 get_seller_stats (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **Service 方法不存在** (已修复)
+   - 问题: API 调用 `marketplace_service.get_seller_stats()` 但该方法不存在
+   - 影响: 所有请求都会抛出 `AttributeError`
+   - 修复: 在 `MarketplaceService` 添加代理方法到 Repository
+
+**修复涉及的文件**:
+
+1. `domains/marketplace/service.py`
+   - 新增 `get_seller_stats()` 方法
+
+### Review 结果 - #42 get_leaderboard (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **Service 方法不存在** (已修复)
+   - 问题: API 调用 `marketplace_service.get_leaderboard()` 但该方法不存在
+   - 影响: 所有请求都会抛出 `AttributeError`
+   - 修复: 在 `MarketplaceService` 添加代理方法到 Repository
+
+**修复涉及的文件**:
+
+1. `domains/marketplace/service.py`
+   - 新增 `get_leaderboard()` 方法
+
+### Review 结果 - #43 submit_report (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **Repository 方法不存在** (已修复)
+   - 问题: API 调用 `support_repo.create_report()` 但该方法不存在
+   - 影响: 所有举报请求都会抛出 `AttributeError`
+   - 修复: 在 `SupabaseSupportRepository` 实现 `create_report()` 方法
+
+**修复涉及的文件**:
+
+1. `infrastructure/repositories/support_repository.py`
+   - 新增 `create_report()` 方法
+   - 检查重复举报
+   - 插入 `marketplace_reports` 表
+
+### Review 结果 - #44 get_my_reports (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **Repository 方法不存在** (已修复)
+   - 问题: API 调用 `support_repo.get_user_reports()` 但该方法不存在
+   - 影响: 所有请求都会抛出 `AttributeError`
+   - 修复: 在 `SupabaseSupportRepository` 实现 `get_user_reports()` 方法
+
+**修复涉及的文件**:
+
+1. `infrastructure/repositories/support_repository.py`
+   - 新增 `get_user_reports()` 方法
+   - 查询 `marketplace_reports` 表
+   - 支持分页
 
 ### Review 结果 - #34 list_listings (2026-01-08)
 
@@ -695,7 +785,7 @@
   - 新增 `test_get_listing_unpublished_not_visible_to_others` (#35.4)
   - 新增 `test_get_listing_with_purchase_status` (#35.5)
 
-**完成状态**: 🔄 审查中 (6/11)
+**完成状态**: ✅ 已完成 (11/11)
 
 ---
 

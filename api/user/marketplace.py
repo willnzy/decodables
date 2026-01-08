@@ -439,24 +439,46 @@ async def purchase_listing(
 async def get_my_listings(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(draft|pending_review|published|rejected|suspended|archived)$"),
     user: dict = Depends(get_current_user),
 ) -> ListingsResponse:
     """
     Get user's own listings (all moderation states).
 
+    Args:
+        page: Page number (1-indexed)
+        limit: Items per page
+        status: Filter by status (draft/pending_review/published/rejected/suspended/archived)
+
     Returns:
         Own listings with moderation info
     """
+    from domains.marketplace.value_objects import ListingStatus
+
     container = get_container()
     marketplace_service = container.marketplace_service
 
     try:
+        # Convert page to offset
+        offset = (page - 1) * limit
+
+        # Parse status filter
+        status_filter = None
+        if status:
+            try:
+                status_filter = ListingStatus(status)
+            except ValueError:
+                pass
+
         listings = await marketplace_service.get_seller_listings(
             seller_id=user["id"],
-            page=page,
+            status=status_filter,
             limit=limit,
+            offset=offset,
         )
 
+        # Note: total is approximate (current page count) since we don't have count query
+        # TODO: Add count query to repository for accurate pagination
         return ListingsResponse(
             items=[l.to_dict() for l in listings],
             total=len(listings),

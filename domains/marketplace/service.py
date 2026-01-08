@@ -507,3 +507,34 @@ class MarketplaceService:
 
         listing.archive()
         return await self._repository.update(listing)
+
+    async def get_seller_stats(self, seller_id: str) -> dict:
+        """
+        Get seller statistics.
+
+        Args:
+            seller_id: Seller user ID
+
+        Returns:
+            Dict with total_earned_credits, listings_count, total_sales, total_usage
+        """
+        return await self._repository.get_seller_stats(seller_id)
+
+    async def get_leaderboard(
+        self,
+        period: str = "monthly",
+        board_type: str = "all",
+        limit: int = 10
+    ) -> list:
+        """
+        Get marketplace leaderboard.
+
+        Args:
+            period: 'monthly' or 'all_time'
+            board_type: 'all', 'project', or 'asset'
+            limit: Max results
+
+        Returns:
+            List of top listings
+        """
+        return await self._repository.get_leaderboard(period, board_type, limit)
