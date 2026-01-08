@@ -2,7 +2,16 @@
 User Assets Router - User asset management endpoints
 
 @module api.user.user_assets
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - UA-HIGH-1: Added SSRF protection (private IP filtering)
+  - UA-MEDIUM-1: Added asset_id UUID format validation
+  - UA-MEDIUM-2: Added project_id UUID format validation
+  - UA-MEDIUM-3: Added rate limiting to all endpoints
+  - UA-LOW-1: Limited error detail exposure in check-url
+  - UA-LOW-2: Added URL length limit (2048 chars)
 
 Endpoints:
 - GET /api/v2/user/assets - Get user assets
@@ -19,10 +28,13 @@ Endpoints:
 
 import uuid
 import logging
+import re
+import ipaddress
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.database import get_supabase_client
 from infrastructure.repositories.asset_repository import SupabaseAssetRepository
@@ -37,12 +49,91 @@ router = APIRouter(prefix="/assets", tags=["user-assets-v2"])
 
 
 # ==========================================
+# Constants (v3.25)
+# ==========================================
+
+# v3.25: UA-MEDIUM-1/2 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+# v3.25: UA-LOW-2 - Maximum URL length
+MAX_URL_LENGTH = 2048
+
+
+def validate_uuid_id(value: str, field_name: str = "ID") -> None:
+    """v3.25: Validate that a value is a valid UUID format."""
+    if not UUID_PATTERN.match(value):
+        raise HTTPException(400, f"Invalid {field_name} format")
+
+
+def validate_optional_uuid(value: Optional[str], field_name: str = "ID") -> None:
+    """v3.25: Validate optional UUID field."""
+    if value is not None and not UUID_PATTERN.match(value):
+        raise HTTPException(400, f"Invalid {field_name} format")
+
+
+def is_private_ip(hostname: str) -> bool:
+    """v3.25: UA-HIGH-1 - Check if hostname resolves to private/internal IP."""
+    import socket
+    try:
+        # Resolve hostname to IP
+        ip = socket.gethostbyname(hostname)
+        ip_obj = ipaddress.ip_address(ip)
+
+        # Check if it's a private, loopback, link-local, or reserved address
+        return (
+            ip_obj.is_private or
+            ip_obj.is_loopback or
+            ip_obj.is_link_local or
+            ip_obj.is_reserved or
+            ip_obj.is_multicast
+        )
+    except (socket.gaierror, ValueError):
+        # If we can't resolve, err on the side of caution
+        return True
+
+
+def validate_url_safe(url: str) -> None:
+    """v3.25: UA-HIGH-1 - Validate URL is safe (no SSRF)."""
+    # Check URL length
+    if len(url) > MAX_URL_LENGTH:
+        raise HTTPException(400, f"URL too long. Maximum {MAX_URL_LENGTH} characters")
+
+    # Check URL format
+    if not url.startswith(('http://', 'https://')):
+        raise HTTPException(400, "Invalid URL format")
+
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        if not hostname:
+            raise HTTPException(400, "Invalid URL: no hostname")
+
+        # Block private IPs to prevent SSRF
+        if is_private_ip(hostname):
+            raise HTTPException(400, "URL points to internal network")
+
+        # Block common internal hostnames
+        blocked_hostnames = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
+        if hostname.lower() in blocked_hostnames:
+            raise HTTPException(400, "URL points to internal network")
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "Invalid URL format")
+
+
+# ==========================================
 # Request Models
 # ==========================================
 
 class AssetFromUrlRequest(BaseModel):
-    url: str
-    project_id: Optional[str] = None
+    url: str = Field(..., max_length=MAX_URL_LENGTH)
+    project_id: Optional[str] = Field(None, pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 # ==========================================
@@ -50,12 +141,17 @@ class AssetFromUrlRequest(BaseModel):
 # ==========================================
 
 @router.get("")
+@limiter.limit("60/minute")
 async def my_assets(
+    request: Request,
     project_id: Optional[str] = None,
     scope: Optional[str] = None,
     user: dict = Depends(get_current_user)
 ):
     """Fetch user assets."""
+    # v3.25: UA-MEDIUM-2 - Validate project_id format
+    validate_optional_uuid(project_id, "project ID")
+
     if scope == "all" and user["tier"] != "pro":
         raise HTTPException(403, "Pro required for cross-project history")
     target_proj = project_id if scope != "all" else None
@@ -73,7 +169,10 @@ async def upload_asset(
 ):
     """Upload personal assets (Pro only, PRD v3.2)."""
     from shared.ai.image_generator import supabase as storage_supabase, BUCKET_NAME
-    
+
+    # v3.25: UA-MEDIUM-2 - Validate project_id format
+    validate_optional_uuid(project_id, "project ID")
+
     user_tier = (user.get("tier") or "").lower()
     if user_tier != "pro":
         raise HTTPException(403, "Personal asset upload requires Pro plan.")
@@ -111,12 +210,17 @@ async def upload_asset(
 
 
 @router.delete("/{asset_id}")
+@limiter.limit("30/minute")
 async def delete_asset(
+    request: Request,
     asset_id: str,
     permanent: bool = False,
     user: dict = Depends(get_current_user)
 ):
     """Delete a user asset (PRD v3.3)."""
+    # v3.25: UA-MEDIUM-1 - Validate asset_id format
+    validate_uuid_id(asset_id, "asset ID")
+
     assets_repo = SupabaseAssetRepository()
 
     if permanent:
@@ -146,9 +250,8 @@ async def add_asset_from_url(
     """Add an asset from external URL."""
     import httpx
 
-    # Validate URL
-    if not req.url.startswith(('http://', 'https://')):
-        raise HTTPException(400, "Invalid URL format")
+    # v3.25: UA-HIGH-1 - Validate URL safety (SSRF protection)
+    validate_url_safe(req.url)
 
     # Check if URL is accessible
     try:
@@ -160,8 +263,8 @@ async def add_asset_from_url(
             content_type = response.headers.get('content-type', '')
             if not content_type.startswith('image/'):
                 raise HTTPException(400, "URL does not point to an image")
-    except httpx.RequestError as e:
-        raise HTTPException(400, f"Failed to access URL: {str(e)}")
+    except httpx.RequestError:
+        raise HTTPException(400, "Failed to access URL")
 
     tz = get_request_timezone(request, user_id=user.get("id"))
     assets_repo = SupabaseAssetRepository()
@@ -175,30 +278,49 @@ async def add_asset_from_url(
 
 
 @router.get("/check-url")
-async def check_url(url: str, user: dict = Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def check_url(request: Request, url: str, user: dict = Depends(get_current_user)):
     """Check if a URL points to a valid image."""
     import httpx
-    
+
+    # v3.25: UA-LOW-2 - Check URL length
+    if len(url) > MAX_URL_LENGTH:
+        return {"valid": False, "error": "URL too long"}
+
     if not url.startswith(('http://', 'https://')):
         return {"valid": False, "error": "Invalid URL format"}
-    
+
+    # v3.25: UA-HIGH-1 - Check for SSRF
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname or is_private_ip(hostname):
+            return {"valid": False, "error": "Invalid URL"}
+    except Exception:
+        return {"valid": False, "error": "Invalid URL"}
+
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.head(url, follow_redirects=True)
             content_type = response.headers.get('content-type', '')
-            
+
             return {
                 "valid": response.status_code == 200 and content_type.startswith('image/'),
                 "content_type": content_type,
                 "status_code": response.status_code
             }
-    except Exception as e:
-        return {"valid": False, "error": str(e)}
+    except Exception:
+        # v3.25: UA-LOW-1 - Don't expose detailed error messages
+        return {"valid": False, "error": "Failed to access URL"}
 
 
 @router.post("/{asset_id}/increment-usage")
-async def increment_usage(asset_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("120/minute")
+async def increment_usage(request: Request, asset_id: str, user: dict = Depends(get_current_user)):
     """Increment usage count for an asset."""
+    # v3.25: UA-MEDIUM-1 - Validate asset_id format
+    validate_uuid_id(asset_id, "asset ID")
+
     assets_repo = SupabaseAssetRepository()
     result = await assets_repo.increment_asset_usage(asset_id, user["id"])
     if not result:
@@ -207,7 +329,8 @@ async def increment_usage(asset_id: str, user: dict = Depends(get_current_user))
 
 
 @router.get("/dashboard")
-async def get_asset_dashboard(user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def get_asset_dashboard(request: Request, user: dict = Depends(get_current_user)):
     """Get asset usage dashboard data."""
     supabase = get_supabase_client()
 
@@ -234,7 +357,8 @@ async def get_asset_dashboard(user: dict = Depends(get_current_user)):
 
 
 @router.get("/seller-stats")
-async def get_seller_stats(user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def get_seller_stats(request: Request, user: dict = Depends(get_current_user)):
     """Get seller statistics for marketplace assets."""
     supabase = get_supabase_client()
 
@@ -259,15 +383,20 @@ async def get_seller_stats(user: dict = Depends(get_current_user)):
 
 
 @router.get("/deleted")
-async def get_deleted(user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def get_deleted(request: Request, user: dict = Depends(get_current_user)):
     """Get soft-deleted assets (trash)."""
     assets_repo = SupabaseAssetRepository()
     return await assets_repo.get_deleted_assets(user["id"])
 
 
 @router.post("/{asset_id}/restore")
-async def restore(asset_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def restore(request: Request, asset_id: str, user: dict = Depends(get_current_user)):
     """Restore a soft-deleted asset."""
+    # v3.25: UA-MEDIUM-1 - Validate asset_id format
+    validate_uuid_id(asset_id, "asset ID")
+
     assets_repo = SupabaseAssetRepository()
 
     result = await assets_repo.restore_asset(asset_id, user["id"])
