@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 
 from domains.creation import CreationService, Project, ProjectStatus
+from domains.creation.repository import IProjectRepository
 
 
 @dataclass
@@ -166,6 +167,64 @@ class SearchProjectsHandler:
 
         except Exception as e:
             return SearchProjectsResult(
+                success=False,
+                error=str(e),
+            )
+
+
+@dataclass
+class GetDashboardProjectsQuery:
+    """
+    Query to get dashboard projects with view type filtering.
+
+    Supports cross-domain data (marketplace listings).
+    """
+    user_id: str
+    view_type: str = "all"  # "all", "bought", "selling"
+    page: int = 1
+    limit: int = 20
+    search: Optional[str] = None
+    include_canvas_data: bool = True
+
+
+@dataclass
+class GetDashboardProjectsResult:
+    """Result of dashboard projects query."""
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class GetDashboardProjectsHandler:
+    """
+    Handler for GetDashboardProjectsQuery.
+
+    Uses repository directly for cross-domain queries.
+    """
+
+    def __init__(self, repository: IProjectRepository):
+        self._repository = repository
+
+    async def handle(self, query: GetDashboardProjectsQuery) -> GetDashboardProjectsResult:
+        """Execute dashboard projects query."""
+        try:
+            # Repository method handles cross-domain data (marketplace enrichment)
+            result = await self._repository.get_dashboard_projects(
+                user_id=query.user_id,
+                view_type=query.view_type,
+                page=query.page,
+                limit=query.limit,
+                search=query.search,
+                include_canvas_data=query.include_canvas_data,
+            )
+
+            return GetDashboardProjectsResult(
+                success=True,
+                data=result,
+            )
+
+        except Exception as e:
+            return GetDashboardProjectsResult(
                 success=False,
                 error=str(e),
             )

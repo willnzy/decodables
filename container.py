@@ -50,6 +50,7 @@ from application.commands.creation import (
     CreateProjectHandler,
     UpdateProjectHandler,
     DeleteProjectHandler,
+    RestoreProjectHandler,
 )
 from application.commands.marketplace import (
     CreateListingHandler,
@@ -71,6 +72,7 @@ from application.queries.identity import GetUserProfileHandler
 from application.queries.creation import (
     GetProjectHandler,
     GetUserProjectsHandler,
+    GetDashboardProjectsHandler,
 )
 from application.queries.marketplace import (
     GetListingHandler,
@@ -266,6 +268,13 @@ class Container:
         return self._handlers['delete_project']
 
     @property
+    def restore_project_handler(self) -> RestoreProjectHandler:
+        """Get restore project handler."""
+        if 'restore_project' not in self._handlers:
+            self._handlers['restore_project'] = RestoreProjectHandler(self.creation_service)
+        return self._handlers['restore_project']
+
+    @property
     def create_listing_handler(self) -> CreateListingHandler:
         """Get create listing handler."""
         if 'create_listing' not in self._handlers:
@@ -346,6 +355,13 @@ class Container:
         if 'get_user_projects' not in self._handlers:
             self._handlers['get_user_projects'] = GetUserProjectsHandler(self.creation_service)
         return self._handlers['get_user_projects']
+
+    @property
+    def get_dashboard_projects_handler(self) -> GetDashboardProjectsHandler:
+        """Get dashboard projects query handler."""
+        if 'get_dashboard_projects' not in self._handlers:
+            self._handlers['get_dashboard_projects'] = GetDashboardProjectsHandler(self.project_repository)
+        return self._handlers['get_dashboard_projects']
 
     @property
     def get_listing_handler(self) -> GetListingHandler:

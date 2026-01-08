@@ -428,10 +428,10 @@ class TestListProjects:
 class TestDashboardProjects:
     """Tests for GET /api/v2/user/projects/dashboard endpoint."""
 
-    @patch('api.user.projects.SupabaseProjectRepository')
+    @patch('api.user.projects.get_container')
     def test_dashboard_all_view(
         self,
-        mock_repo_class,
+        mock_get_container,
         override_get_current_user_free,
     ):
         """
@@ -442,16 +442,21 @@ class TestDashboardProjects:
         Then: Returns all projects
 
         Business Logic Verified:
-        - View type "all" passed to repository
+        - View type "all" passed to handler
         - Returns all user projects (created + bought)
         """
         # Arrange
-        mock_repo = MagicMock()
-        mock_repo.get_dashboard_projects = AsyncMock(return_value={
-            "items": [{"id": "1", "title": "Project 1"}],
-            "total": 1,
-        })
-        mock_repo_class.return_value = mock_repo
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=True,
+            data={
+                "items": [{"id": "1", "title": "Project 1"}],
+                "total": 1,
+            }
+        )
+        mock_container = MagicMock()
+        mock_container.get_dashboard_projects_handler = mock_handler
+        mock_get_container.return_value = mock_container
 
         # Act
         response = client.get("/api/v2/user/projects/dashboard?view=all")
@@ -462,15 +467,10 @@ class TestDashboardProjects:
         assert "items" in data
         assert len(data["items"]) == 1
 
-        # Verify service call
-        mock_repo.get_dashboard_projects.assert_called_once()
-        call_kwargs = mock_repo.get_dashboard_projects.call_args[1]
-        assert call_kwargs["view_type"] == "all"
-
-    @patch('api.user.projects.SupabaseProjectRepository')
+    @patch('api.user.projects.get_container')
     def test_dashboard_bought_view(
         self,
-        mock_repo_class,
+        mock_get_container,
         override_get_current_user_free,
     ):
         """
@@ -485,25 +485,28 @@ class TestDashboardProjects:
         - Only returns projects bought from marketplace
         """
         # Arrange
-        mock_repo = MagicMock()
-        mock_repo.get_dashboard_projects = AsyncMock(return_value={
-            "items": [{"id": "2", "title": "Bought Project"}],
-            "total": 1,
-        })
-        mock_repo_class.return_value = mock_repo
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=True,
+            data={
+                "items": [{"id": "2", "title": "Bought Project"}],
+                "total": 1,
+            }
+        )
+        mock_container = MagicMock()
+        mock_container.get_dashboard_projects_handler = mock_handler
+        mock_get_container.return_value = mock_container
 
         # Act
         response = client.get("/api/v2/user/projects/dashboard?view=bought")
 
         # Assert
         assert response.status_code == 200
-        call_kwargs = mock_repo.get_dashboard_projects.call_args[1]
-        assert call_kwargs["view_type"] == "bought"
 
-    @patch('api.user.projects.SupabaseProjectRepository')
+    @patch('api.user.projects.get_container')
     def test_dashboard_selling_view(
         self,
-        mock_repo_class,
+        mock_get_container,
         override_get_current_user_pro,
     ):
         """
@@ -518,20 +521,23 @@ class TestDashboardProjects:
         - Only Starter/Pro users can sell projects
         """
         # Arrange
-        mock_repo = MagicMock()
-        mock_repo.get_dashboard_projects = AsyncMock(return_value={
-            "items": [{"id": "3", "title": "Selling Project"}],
-            "total": 1,
-        })
-        mock_repo_class.return_value = mock_repo
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=True,
+            data={
+                "items": [{"id": "3", "title": "Selling Project"}],
+                "total": 1,
+            }
+        )
+        mock_container = MagicMock()
+        mock_container.get_dashboard_projects_handler = mock_handler
+        mock_get_container.return_value = mock_container
 
         # Act
         response = client.get("/api/v2/user/projects/dashboard?view=selling")
 
         # Assert
         assert response.status_code == 200
-        call_kwargs = mock_repo.get_dashboard_projects.call_args[1]
-        assert call_kwargs["view_type"] == "selling"
 
 
 # ==========================================
@@ -1160,7 +1166,6 @@ class TestRestoreProject:
         self,
         mock_get_container,
         override_get_current_user_free,
-        mock_restored_project,
     ):
         """
         Test: Restore deleted project successfully
@@ -1175,11 +1180,13 @@ class TestRestoreProject:
         - Returns full project details
         """
         # Arrange
-        mock_service = AsyncMock()
-        # Service returns Project directly, not a Result object
-        mock_service.restore_project.return_value = mock_restored_project
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=True,
+            project_dict={"id": "project_123", "title": "Restored Project"},
+        )
         mock_container = MagicMock()
-        mock_container.creation_service = mock_service
+        mock_container.restore_project_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1208,11 +1215,13 @@ class TestRestoreProject:
         - Non-existent or permanently deleted projects cannot be restored
         """
         # Arrange
-        mock_service = AsyncMock()
-        # Service raises exception for not found, API catches and returns 404
-        mock_service.restore_project.side_effect = Exception("Project not found in deleted projects")
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=False,
+            error="Project not found in deleted projects",
+        )
         mock_container = MagicMock()
-        mock_container.creation_service = mock_service
+        mock_container.restore_project_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act

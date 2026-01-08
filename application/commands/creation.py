@@ -229,3 +229,52 @@ class SaveCanvasHandler:
                 success=False,
                 error=str(e),
             )
+
+
+@dataclass
+class RestoreProjectCommand:
+    """
+    Command to restore a deleted project from trash.
+
+    Params aligned with API layer (api/user/projects.py):
+    - project_id: Project ID to restore
+    - user_id: User requesting restore (must be owner)
+    """
+    project_id: str
+    user_id: str
+
+
+@dataclass
+class RestoreProjectResult:
+    """Result of project restoration."""
+    success: bool
+    project: Optional[Project] = None
+    project_dict: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class RestoreProjectHandler:
+    """Handler for RestoreProjectCommand."""
+
+    def __init__(self, creation_service: CreationService):
+        self._creation_service = creation_service
+
+    async def handle(self, command: RestoreProjectCommand) -> RestoreProjectResult:
+        """Execute project restoration."""
+        try:
+            project = await self._creation_service.restore_project(
+                project_id=command.project_id,
+                user_id=command.user_id,
+            )
+
+            return RestoreProjectResult(
+                success=True,
+                project=project,
+                project_dict=project.to_dict() if project else None,
+            )
+
+        except Exception as e:
+            return RestoreProjectResult(
+                success=False,
+                error=str(e),
+            )

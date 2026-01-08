@@ -33,10 +33,12 @@ from application.commands.creation import (
     CreateProjectCommand,
     UpdateProjectCommand,
     DeleteProjectCommand,
+    RestoreProjectCommand,
 )
 from application.queries.creation import (
     GetProjectQuery,
     GetUserProjectsQuery,
+    GetDashboardProjectsQuery,
 )
 
 logger = logging.getLogger(__name__)
@@ -178,9 +180,10 @@ async def dashboard_projects(
     Returns:
         Projects list with view info
     """
+    container = get_container()
+    handler = container.get_dashboard_projects_handler
 
-    project_repo = SupabaseProjectRepository(get_database_client())
-    result = await project_repo.get_dashboard_projects(
+    query = GetDashboardProjectsQuery(
         user_id=user["id"],
         view_type=view,
         page=page,
@@ -189,7 +192,13 @@ async def dashboard_projects(
         include_canvas_data=include_canvas,
     )
 
-    return result
+    result = await handler.handle(query)
+
+    if not result.success:
+        logger.error(f"Failed to get dashboard projects for user {user['id']}: {result.error}")
+        raise HTTPException(500, "Failed to get dashboard projects")
+
+    return result.data
 
 
 @router.get("/deleted")
@@ -392,28 +401,28 @@ async def restore_project(
         Restored project details
     """
     container = get_container()
-    creation_service = container.creation_service
+    handler = container.restore_project_handler
 
-    try:
-        # Service returns Project directly, not a Result object
-        project = await creation_service.restore_project(
-            project_id=project_id,
-            user_id=user["id"],
-        )
+    command = RestoreProjectCommand(
+        project_id=project_id,
+        user_id=user["id"],
+    )
 
-        return ProjectRestoreResponse(
-            status="ok",
-            project=project.to_dict() if project else None,
-        )
+    result = await handler.handle(command)
 
-    except Exception as e:
-        error_msg = str(e).lower()
+    if not result.success:
+        error_msg = (result.error or "").lower()
         if "not found" in error_msg:
             raise HTTPException(404, "Project not found")
         if "access" in error_msg:
             raise HTTPException(403, "Access denied")
-        logger.error(f"Failed to restore project {project_id}: {e}")
-        raise HTTPException(400, str(e))
+        logger.error(f"Failed to restore project {project_id}: {result.error}")
+        raise HTTPException(400, result.error or "Failed to restore project")
+
+    return ProjectRestoreResponse(
+        status="ok",
+        project=result.project_dict,
+    )
 
 
 @router.post("/{project_id}/duplicate")

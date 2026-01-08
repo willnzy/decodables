@@ -333,14 +333,20 @@ class SupabaseProjectRepository(IProjectRepository):
 
         canvas_size = CanvasSize.from_string(row.get("canvas_size", "1080x1080"))
 
+        # Parse canvas_data from JSON string if needed
+        canvas_data = row.get("canvas_data")
+        if isinstance(canvas_data, str):
+            canvas_data = json.loads(canvas_data)
+
         return Project(
             project_id=row["project_id"],
             owner_id=row["owner_id"],
             metadata=metadata,
             canvas_size=canvas_size,
             status=ProjectStatus(row.get("status", "draft")),
-            pages=[],  # Loaded separately
+            pages=[],  # Loaded separately if needed
             collaborators=row.get("collaborators", []),
+            canvas_data=canvas_data,
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
                 if row.get("created_at") else datetime.utcnow(),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))

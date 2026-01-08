@@ -49,6 +49,7 @@ class Project:
     status: ProjectStatus = ProjectStatus.DRAFT
     pages: List[Page] = field(default_factory=list)
     collaborators: List[str] = field(default_factory=list)
+    canvas_data: Optional[Dict[str, Any]] = None  # Direct canvas data from DB
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -257,6 +258,7 @@ class Project:
             "is_public": self.metadata.is_public,
             "thumbnail_url": self.metadata.thumbnail_url,
             "canvas_size": self.canvas_size.to_string(),
+            "canvas_data": self.canvas_data,
             "status": self.status.value,
             "page_count": self.page_count,
             "collaborators": self.collaborators,
