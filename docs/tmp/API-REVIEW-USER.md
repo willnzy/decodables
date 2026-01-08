@@ -7,6 +7,34 @@
 
 ---
 
+## 执行规范
+
+### DDD 架构一致性规则
+
+在 Review 过程中发现的旧式代码，必须统一迁移到 DDD 风格：
+
+| 特征 | 旧式 (Legacy) | DDD 风格 |
+|------|---------------|----------|
+| 分页参数 | `page` + `limit` | `offset` + `limit` |
+| 返回类型 | `List[dict]` (原始数据) | `List[Entity]` (领域对象) |
+| 方法位置 | Repository 直接暴露给 API | Service → Repository |
+| 接口定义 | 无 Interface | 定义在 `domains/*/repository.py` |
+
+**清理原则**:
+1. API 层只调用 Domain Service，不直接调用 Repository
+2. Repository 实现必须符合 Interface 定义
+3. 发现 Legacy 方法后：
+   - 检查是否有调用方
+   - 无调用则直接删除
+   - 有调用则迁移到 DDD 风格后删除
+4. 废弃的测试文件（引用不存在的模块）应同步删除
+
+**已执行的清理** (2026-01-08):
+- `listing_repository.py`: 删除 ~280 行 Legacy Extended Methods
+- `tests/services/test_db_marketplace.py`: 删除废弃测试文件 (引用不存在的 `services.db.marketplace`)
+
+---
+
 ## 执行进度
 
 | 模块 | 接口数 | 已完成 | 状态 |
