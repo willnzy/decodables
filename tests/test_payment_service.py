@@ -26,7 +26,13 @@ import sys
 # Mock stripe module before importing payment_service
 stripe_mock = MagicMock()
 stripe_mock.error = MagicMock()
+# Create proper exception classes that inherit from BaseException
 stripe_mock.error.StripeError = type('StripeError', (Exception,), {})
+stripe_mock.error.APIConnectionError = type('APIConnectionError', (Exception,), {})
+stripe_mock.error.RateLimitError = type('RateLimitError', (Exception,), {})
+stripe_mock.error.IdempotencyError = type('IdempotencyError', (Exception,), {})
+stripe_mock.error.InvalidRequestError = type('InvalidRequestError', (Exception,), {})
+stripe_mock.error.SignatureVerificationError = type('SignatureVerificationError', (Exception,), {})
 sys.modules['stripe'] = stripe_mock
 
 # Now import payment_service
@@ -112,16 +118,20 @@ class TestCreateCheckoutSession:
         """【业务规则】提供折扣百分比时创建优惠券"""
         # Setup
         payment_service.PRICE_MAP["credits_100"] = "price_credits_789"
-        stripe_mock.Coupon.create.return_value = MagicMock(id="coupon_123")
+        # Clear coupon cache to ensure fresh state
+        payment_service._coupon_cache.clear()
+        # Mock Coupon.retrieve to raise InvalidRequestError (coupon doesn't exist)
+        stripe_mock.Coupon.retrieve.side_effect = stripe_mock.error.InvalidRequestError("No such coupon")
+        stripe_mock.Coupon.create.return_value = MagicMock(id="DISCOUNT_20_PERCENT")
         stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
-        
+
         result = payment_service.create_checkout_session("user_001", "credits_100", discount_percent=20)
-        
+
         # Verify coupon was created
         stripe_mock.Coupon.create.assert_called_once()
         coupon_call_kwargs = stripe_mock.Coupon.create.call_args[1]
         assert coupon_call_kwargs["percent_off"] == 20
-        
+
         # Verify discount applied to session
         session_call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
         assert "discounts" in session_call_kwargs
@@ -155,10 +165,11 @@ class TestCreateCheckoutSession:
         """【业务规则】Stripe 错误返回 None"""
         # Setup
         payment_service.PRICE_MAP["starter"] = "price_starter_123"
-        stripe_mock.checkout.Session.create.side_effect = Exception("Stripe error")
-        
+        # Use actual StripeError exception to be caught by except stripe.error.StripeError
+        stripe_mock.checkout.Session.create.side_effect = stripe_mock.error.StripeError("Stripe error")
+
         result = payment_service.create_checkout_session("user_001", "starter")
-        
+
         assert result is None
 
 
@@ -192,10 +203,11 @@ class TestCreatePortalSession:
     
     def test_portal_error_returns_none(self, reset_stripe_mock):
         """【业务规则】Portal 错误返回 None"""
-        stripe_mock.billing_portal.Session.create.side_effect = Exception("Portal error")
-        
+        # Use StripeError to be caught by except stripe.error.StripeError
+        stripe_mock.billing_portal.Session.create.side_effect = stripe_mock.error.StripeError("Portal error")
+
         result = payment_service.create_portal_session("user_001", "cus_123")
-        
+
         assert result is None
 
 
@@ -255,10 +267,11 @@ class TestGetSubscriptionStatus:
     
     def test_subscription_error_returns_none(self, reset_stripe_mock):
         """【业务规则】查询错误返回 None"""
-        stripe_mock.Subscription.list.side_effect = Exception("Stripe error")
-        
+        # Use StripeError to be caught by except stripe.error.StripeError
+        stripe_mock.Subscription.list.side_effect = stripe_mock.error.StripeError("Stripe error")
+
         result = payment_service.get_subscription_status("cus_123")
-        
+
         assert result is None
 
 
@@ -414,10 +427,11 @@ class TestAdminFunctions:
     
     def test_get_customer_subscriptions_error_returns_empty(self, reset_stripe_mock):
         """【业务规则】订阅查询错误返回空列表"""
-        stripe_mock.Subscription.list.side_effect = Exception("Error")
-        
+        # Use StripeError to be caught by except stripe.error.StripeError
+        stripe_mock.Subscription.list.side_effect = stripe_mock.error.StripeError("Error")
+
         result = payment_service.get_customer_subscriptions("cus_123")
-        
+
         assert result == []
     
     def test_get_customer_payments(self, reset_stripe_mock):

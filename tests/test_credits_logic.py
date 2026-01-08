@@ -133,11 +133,11 @@ class TestPermanentCreditsNeverExpire:
         # Arrange
         user_id = "user_abc"
 
-        # Mock RPC response
+        # Mock RPC response - use correct field names matching repository
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
-                "monthly_after": 100,
-                "permanent_after": 350,  # 300 + 50
+                "balance_monthly": 100,
+                "balance_permanent": 350,  # 300 + 50
             }
         )
 
@@ -194,13 +194,12 @@ class TestDeductionPriority:
         user_id = "user_001"
 
         # Mock RPC response showing deduction from monthly
+        # Repository uses 'bucket' field to determine deduction source
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
-                "from_monthly": 50,  # Deducted from monthly
-                "from_permanent": 0,  # None from permanent
-                "monthly_after": 450,
-                "permanent_after": 200,
-                "total_balance": 650
+                "bucket": "monthly",  # Indicates deducted from monthly
+                "balance_monthly": 450,
+                "balance_permanent": 200,
             }
         )
 
@@ -223,14 +222,13 @@ class TestDeductionPriority:
         # Arrange: User has 30 monthly + 200 permanent, needs 50
         user_id = "user_002"
 
-        # Mock RPC response showing deduction from both
+        # Mock RPC response showing deduction from both (monthly exhausted)
+        # When monthly is exhausted, bucket shows 'monthly' since deduction started there
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
-                "from_monthly": 30,  # All monthly used
-                "from_permanent": 20,  # Remaining from permanent
-                "monthly_after": 0,
-                "permanent_after": 180,
-                "total_balance": 180
+                "bucket": "monthly",  # Started from monthly
+                "balance_monthly": 0,
+                "balance_permanent": 180,
             }
         )
 
@@ -255,11 +253,9 @@ class TestDeductionPriority:
         # Mock RPC response showing deduction from permanent only
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
-                "from_monthly": 0,
-                "from_permanent": 50,
-                "monthly_after": 0,
-                "permanent_after": 150,
-                "total_balance": 150
+                "bucket": "permanent",  # Deducted from permanent
+                "balance_monthly": 0,
+                "balance_permanent": 150,
             }
         )
 
