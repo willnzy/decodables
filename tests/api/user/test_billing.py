@@ -5,8 +5,16 @@ Endpoints:
 - GET /api/v2/user/billing/credits
 - GET /api/v2/user/billing/transactions
 - GET /api/v2/user/billing/can-afford
-- POST /api/v2/user/billing/credits/deduct
 - POST /api/v2/user/billing/credits/add
+
+@version 1.2.0
+
+Changes in v1.2.0:
+- Removed tests for /credits/deduct endpoint (removed in billing.py v1.2.0)
+- Updated tests for AffordabilityResponse (removed current_balance field)
+- Added rate limiter bypass for testing
+- Added tests for UUID validation in AddCreditsRequest
+- Added tests for operation whitelist in /can-afford
 
 Created: 2026-01-08 (Stage 3: User/Admin routing migration)
 """
@@ -15,6 +23,10 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from datetime import datetime
+
+# v1.2.0: Rate limiter bypass BEFORE app import
+_rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
+_rate_limiter_patcher.start()
 
 from app import app
 from domains.billing.value_objects import TransactionType
@@ -115,16 +127,7 @@ def mock_transaction_history_result(mock_transaction):
     )
 
 
-@pytest.fixture
-def mock_deduct_result():
-    """Mock DeductCreditsCommand result."""
-    mock_transaction = MagicMock()
-    mock_transaction.amount = -10  # Negative for deduction
-    return MagicMock(
-        success=True,
-        transaction=mock_transaction,
-        remaining_credits=540,
-    )
+# v1.2.0: Removed mock_deduct_result fixture (endpoint removed)
 
 
 @pytest.fixture
@@ -578,7 +581,8 @@ class TestCanAfford:
         assert response.status_code == 200
         data = response.json()
         assert data["can_afford"] is True
-        assert data["current_balance"] == 550
+        # v1.2.0: current_balance removed from response for security
+        assert "current_balance" not in data
         assert data["required_amount"] == 100
 
     @patch('api.user.billing.get_container')
@@ -612,7 +616,8 @@ class TestCanAfford:
         assert response.status_code == 200
         data = response.json()
         assert data["can_afford"] is False
-        assert data["current_balance"] == 550
+        # v1.2.0: current_balance removed from response for security
+        assert "current_balance" not in data
         assert data["required_amount"] == 1000
 
     @patch('api.user.billing.get_container')
@@ -739,230 +744,68 @@ class TestCanAfford:
         assert response.status_code == 200
         data = response.json()
         assert data["can_afford"] is True
-        assert data["current_balance"] == 550
+        # v1.2.0: current_balance removed from response for security
+        assert "current_balance" not in data
         assert data["required_amount"] == 550
 
-    @patch('api.user.billing.get_container')
-    def test_can_afford_unknown_operation(
-        self,
-        mock_get_container,
-        mock_credits_result,
-        override_get_current_user,
-    ):
+    def test_can_afford_unknown_operation(self, override_get_current_user):
         """
         Test: Check affordability for unknown operation
 
         Given: User checks an unknown operation
         When: GET /can-afford?operation=unknown_op
-        Then: Billing service handles fallback cost
+        Then: Returns 400 error (v1.2.0: operation whitelist validation)
 
         Business Logic Verified:
-        - Unknown operations use fallback cost from billing service
+        - Unknown operations are rejected with 400 error
         """
-        # Arrange
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_credits_result)
-        mock_billing_service = MagicMock()
-        # get_operation_cost returns int directly (not an object with .amount)
-        mock_billing_service.get_operation_cost.return_value = 5
-        mock_container = MagicMock()
-        mock_container.get_user_credits_handler = mock_handler
-        mock_container.billing_service = mock_billing_service
-        mock_get_container.return_value = mock_container
-
         # Act
         response = client.get("/api/v2/user/billing/can-afford?operation=unknown_op")
 
-        # Assert
-        assert response.status_code == 200
-        mock_billing_service.get_operation_cost.assert_called_once_with("unknown_op")
+        # Assert - v1.2.0: Now returns 400 for invalid operation
+        assert response.status_code == 400
+        assert "Invalid operation" in response.json()["message"]
+
+    def test_can_afford_valid_operation(self, override_get_current_user):
+        """
+        Test: Check affordability for valid operation
+
+        Given: User checks a valid operation (image_generation)
+        When: GET /can-afford?operation=image_generation
+        Then: Returns success (operation in whitelist)
+        """
+        with patch('api.user.billing.get_container') as mock_get_container:
+            # Arrange
+            mock_credits_result = MagicMock(
+                success=True,
+                total_credits=550,
+            )
+            mock_handler = MagicMock()
+            mock_handler.handle = AsyncMock(return_value=mock_credits_result)
+            mock_billing_service = MagicMock()
+            mock_billing_service.get_operation_cost.return_value = 5
+            mock_container = MagicMock()
+            mock_container.get_user_credits_handler = mock_handler
+            mock_container.billing_service = mock_billing_service
+            mock_get_container.return_value = mock_container
+
+            # Act
+            response = client.get("/api/v2/user/billing/can-afford?operation=image_generation")
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["can_afford"] is True
+            assert data["required_amount"] == 5
 
 
 # ==========================================
-# POST /api/v2/user/billing/credits/deduct
+# POST /api/v2/user/billing/credits/deduct (REMOVED in v1.2.0)
 # ==========================================
 
-class TestDeductCredits:
-    """Tests for POST /api/v2/user/billing/credits/deduct endpoint."""
-
-    @patch('api.user.billing.get_container')
-    def test_deduct_credits_success(
-        self,
-        mock_get_container,
-        mock_deduct_result,
-        override_get_current_user,
-    ):
-        """
-        Test: Deduct credits successfully
-
-        Given: User has sufficient credits
-        When: POST to deduct 10 credits
-        Then: Returns 200 with new balance
-
-        Business Logic Verified:
-        - Handler called with correct user_id and amount
-        - Returns updated balance after deduction
-        """
-        # Arrange
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_deduct_result)
-        mock_container = MagicMock()
-        mock_container.deduct_credits_handler = mock_handler
-        mock_get_container.return_value = mock_container
-
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": 10,
-                "operation": "image_generation",
-                "description": "AI image created",
-            },
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["amount_deducted"] == 10
-        assert data["new_balance"] == 540
-
-        # Verify handler was called with correct command
-        mock_handler.handle.assert_called_once()
-        call_args = mock_handler.handle.call_args[0][0]
-        assert call_args.user_id == "user_123"
-        assert call_args.amount == 10
-
-    @patch('api.user.billing.get_container')
-    def test_deduct_credits_insufficient(
-        self,
-        mock_get_container,
-        override_get_current_user,
-    ):
-        """
-        Test: Insufficient credits (402 Payment Required)
-
-        Given: User has insufficient credits
-        When: POST to deduct credits
-        Then: Returns 402 Payment Required
-
-        Business Logic Verified:
-        - Correctly rejects deduction when insufficient credits
-        - Returns 402 status code for payment required
-        """
-        # Arrange
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=MagicMock(
-            success=False,
-            error="Insufficient credits",
-        ))
-        mock_container = MagicMock()
-        mock_container.deduct_credits_handler = mock_handler
-        mock_get_container.return_value = mock_container
-
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": 1000,
-                "operation": "image_generation",
-            },
-        )
-
-        # Assert
-        assert response.status_code == 402
-        # HTTPException returns plain text for 402
-
-    def test_deduct_credits_validation_negative_amount(self, override_get_current_user):
-        """
-        Test: Negative amount validation (422)
-
-        Given: Negative amount provided
-        When: POST with amount=-10
-        Then: Returns 422 Validation Error
-
-        Business Logic Verified:
-        - Amount must be greater than 0
-        """
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": -10,
-                "operation": "image_generation",
-            },
-        )
-
-        # Assert
-        assert response.status_code == 422
-
-    def test_deduct_credits_validation_zero_amount(self, override_get_current_user):
-        """
-        Test: Zero amount validation (422)
-
-        Given: Zero amount provided
-        When: POST with amount=0
-        Then: Returns 422 Validation Error
-
-        Business Logic Verified:
-        - Amount must be greater than 0 (gt=0)
-        """
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": 0,
-                "operation": "image_generation",
-            },
-        )
-
-        # Assert
-        assert response.status_code == 422
-
-    def test_deduct_credits_validation_exceeds_max(self, override_get_current_user):
-        """
-        Test: Amount exceeds max validation (422)
-
-        Given: Amount > 1000
-        When: POST with amount=1001
-        Then: Returns 422 Validation Error
-
-        Business Logic Verified:
-        - Single deduction max is 1000 credits
-        """
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": 1001,
-                "operation": "image_generation",
-            },
-        )
-
-        # Assert
-        assert response.status_code == 422
-
-    def test_deduct_credits_missing_operation(self, override_get_current_user):
-        """
-        Test: Missing operation field (422)
-
-        Given: No operation field
-        When: POST without operation
-        Then: Returns 422 Validation Error
-
-        Business Logic Verified:
-        - Operation is required for audit trail
-        """
-        # Act
-        response = client.post(
-            "/api/v2/user/billing/credits/deduct",
-            json={
-                "amount": 10,
-            },
-        )
-
-        # Assert
-        assert response.status_code == 422
+# v1.2.0: B-P0-3 - /credits/deduct endpoint was removed for security
+# Credit deductions should ONLY happen through domain services internally,
+# not through a public API endpoint. All TestDeductCredits tests have been removed.
 
 
 # ==========================================
@@ -990,7 +833,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1030,7 +873,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Promotion reward",
@@ -1043,12 +886,12 @@ class TestAddCredits:
         assert data["success"] is True
         assert data["amount_added"] == 100
         assert data["new_balance"] == 650
-        assert data["target_user_id"] == "target_user_123"
+        assert data["target_user_id"] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
         # Verify handler was called with correct command (target user, not admin)
         mock_handler.handle.assert_called_once()
         call_args = mock_handler.handle.call_args[0][0]
-        assert call_args.user_id == "target_user_123"  # Target user, not admin
+        assert call_args.user_id == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"  # Target user, not admin
         assert call_args.amount == 100
         # API converts credit_type to bucket enum
         from domains.billing.value_objects import CreditBucket
@@ -1069,7 +912,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 100,
                 "credit_type": "invalid",
                 "reason": "Test",
@@ -1113,7 +956,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 500,
                 "credit_type": "monthly",
                 "reason": "Subscription renewal",
@@ -1148,7 +991,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 10001,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1173,7 +1016,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "amount": 100,
                 "credit_type": "permanent",
             },
@@ -1236,7 +1079,35 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "target_user_123",
+                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "amount": 100,
+                "credit_type": "permanent",
+                "reason": "Test",
+            },
+        )
+
+        # Assert - v1.2.0: Error message is sanitized
+        assert response.status_code == 400
+        assert "Failed to add credits" in response.json()["message"]
+
+    def test_add_credits_invalid_user_id_format(self, override_require_admin):
+        """
+        Test: Invalid user_id format (422 Validation Error)
+
+        v1.2.0: B-HIGH-1 - Added UUID validation for user_id
+
+        Given: Invalid user_id format (not UUID)
+        When: POST with user_id="invalid_user"
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - user_id must be a valid UUID format
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "user_id": "invalid_user_id",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1244,4 +1115,28 @@ class TestAddCredits:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
+
+    def test_add_credits_user_id_too_short(self, override_require_admin):
+        """
+        Test: user_id too short (422 Validation Error)
+
+        v1.2.0: B-HIGH-1 - user_id must be exactly 36 characters
+
+        Given: user_id shorter than 36 characters
+        When: POST with short user_id
+        Then: Returns 422 Validation Error
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "user_id": "short-id",
+                "amount": 100,
+                "credit_type": "permanent",
+                "reason": "Test",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422

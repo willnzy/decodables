@@ -2,7 +2,17 @@
 Billing API - Credit management endpoints using DDD handlers.
 
 @module api.user.billing
-@version 1.1.0
+@version 1.2.0
+
+Changes in v1.2.0:
+- B-P0-3: Removed /credits/deduct public endpoint (security risk)
+- B-HIGH-1: Added UUID validation for user_id in AddCreditsRequest
+- B-HIGH-2: Removed balance exposure from /can-afford response
+- B-HIGH-3: Sanitized error messages to prevent info leakage
+- B-MEDIUM-1: Added rate limiting to all endpoints
+- B-MEDIUM-2: Added audit logging for sensitive operations
+- B-MEDIUM-3: Added operation whitelist validation
+- B-LOW-2: Fixed TransactionHistoryResponse type annotation
 
 Changes in v1.1.0:
 - B-P0-1: /credits/add now requires admin permission
@@ -13,18 +23,19 @@ Endpoints:
 - GET /api/v2/user/billing/credits - Get user credits
 - GET /api/v2/user/billing/transactions - Get transaction history
 - GET /api/v2/user/billing/can-afford - Check if user can afford operation
-- POST /api/v2/user/billing/credits/deduct - Deduct credits (internal)
 - POST /api/v2/user/billing/credits/add - Add credits (admin only)
 """
 
 import logging
-from typing import Optional
+import re
+from typing import Optional, List
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user, require_admin
+from infrastructure.rate_limiter import limiter
 from container import get_container
 
 from application.queries.billing import (
@@ -33,13 +44,28 @@ from application.queries.billing import (
     CheckCanAffordQuery,
 )
 from application.commands.billing import (
-    DeductCreditsCommand,
     AddCreditsCommand,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["user-billing-v2"])
+
+# ==========================================
+# Constants
+# ==========================================
+
+# v1.2.0: B-HIGH-1 - UUID validation pattern
+UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+# v1.2.0: B-MEDIUM-3 - Valid operation names for cost lookup
+VALID_OPERATIONS = {
+    "image_generation",
+    "image_generation_reference",
+    "text_generation",
+    "smart_scan",
+    "pdf_export",
+}
 
 
 # ==========================================
@@ -66,14 +92,15 @@ class TransactionResponse(BaseModel):
 
 class TransactionHistoryResponse(BaseModel):
     """Transaction history response."""
-    transactions: list
+    # v1.2.0: B-LOW-2 - Fixed type annotation
+    transactions: List[dict]
     total_count: int
 
 
 class AffordabilityResponse(BaseModel):
     """Affordability check response."""
     can_afford: bool
-    current_balance: int
+    # v1.2.0: B-HIGH-2 - Removed current_balance to reduce info exposure
     required_amount: int
 
 
@@ -81,19 +108,24 @@ class AffordabilityResponse(BaseModel):
 # Request Models
 # ==========================================
 
-class DeductCreditsRequest(BaseModel):
-    """Request to deduct credits."""
-    amount: int = Field(..., gt=0, le=1000)
-    operation: str = Field(..., min_length=1, max_length=50)
-    description: Optional[str] = None
+# v1.2.0: B-P0-3 - Removed DeductCreditsRequest (endpoint removed for security)
 
 
 class AddCreditsRequest(BaseModel):
     """Request to add credits (admin only)."""
-    user_id: str = Field(..., description="Target user ID to add credits to")
+    # v1.2.0: B-HIGH-1 - Added UUID validation
+    user_id: str = Field(..., description="Target user ID to add credits to", min_length=36, max_length=36)
     amount: int = Field(..., gt=0, le=10000)
     credit_type: str = Field(..., pattern="^(monthly|permanent)$")
-    reason: str = Field(..., min_length=1, max_length=100)
+    reason: str = Field(..., min_length=1, max_length=200)  # v1.2.0: B-LOW-1 - Increased max_length
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id_format(cls, v: str) -> str:
+        """Validate user_id is a valid UUID format."""
+        if not UUID_PATTERN.match(v):
+            raise ValueError("user_id must be a valid UUID format")
+        return v
 
 
 # ==========================================
@@ -101,7 +133,8 @@ class AddCreditsRequest(BaseModel):
 # ==========================================
 
 @router.get("/credits", response_model=CreditsResponse)
-async def get_credits(user: dict = Depends(get_current_user)):
+@limiter.limit("60/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
+async def get_credits(request: Request, user: dict = Depends(get_current_user)):
     """
     Get current user's credit balance.
 
@@ -115,7 +148,9 @@ async def get_credits(user: dict = Depends(get_current_user)):
     result = await handler.handle(query)
 
     if not result.success:
-        raise HTTPException(500, result.error or "Failed to get credits")
+        # v1.2.0: B-HIGH-3 - Sanitized error message
+        logger.error(f"[Billing] Failed to get credits for user {user['id']}: {result.error}")
+        raise HTTPException(500, "Failed to retrieve credit balance")
 
     return CreditsResponse(
         monthly_credits=result.monthly_credits,
@@ -126,7 +161,9 @@ async def get_credits(user: dict = Depends(get_current_user)):
 
 
 @router.get("/transactions", response_model=TransactionHistoryResponse)
+@limiter.limit("30/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
 async def get_transactions(
+    request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     tx_type: Optional[str] = None,
@@ -161,7 +198,9 @@ async def get_transactions(
     result = await handler.handle(query)
 
     if not result.success:
-        raise HTTPException(500, result.error or "Failed to get transactions")
+        # v1.2.0: B-HIGH-3 - Sanitized error message
+        logger.error(f"[Billing] Failed to get transactions for user {user['id']}: {result.error}")
+        raise HTTPException(500, "Failed to retrieve transaction history")
 
     # v1.1.0: B-P0-2 fix - use idempotency_key or created_at as fallback for id
     return TransactionHistoryResponse(
@@ -181,16 +220,18 @@ async def get_transactions(
 
 
 @router.get("/can-afford", response_model=AffordabilityResponse)
+@limiter.limit("60/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
 async def check_can_afford(
-    amount: Optional[int] = Query(None, ge=0),
-    operation: Optional[str] = None,
+    request: Request,
+    amount: Optional[int] = Query(None, ge=0, le=100000),  # v1.2.0: Added max limit
+    operation: Optional[str] = Query(None, max_length=50),  # v1.2.0: Added max_length
     user: dict = Depends(get_current_user),
 ):
     """
     Check if user can afford an operation or amount.
 
     Args:
-        amount: Credit amount to check
+        amount: Credit amount to check (max: 100000)
         operation: Operation name (e.g., "image_generation")
 
     Returns:
@@ -199,15 +240,21 @@ async def check_can_afford(
     if amount is None and operation is None:
         raise HTTPException(400, "Either amount or operation must be specified")
 
+    # v1.2.0: B-MEDIUM-3 - Validate operation against whitelist
+    if operation and operation not in VALID_OPERATIONS:
+        raise HTTPException(400, "Invalid operation name")
+
     container = get_container()
-    handler = container.get_user_credits_handler  # Use credits handler for now
+    handler = container.get_user_credits_handler
 
     # Get current credits
     credits_query = GetUserCreditsQuery(user_id=user["id"])
     credits_result = await handler.handle(credits_query)
 
     if not credits_result.success:
-        raise HTTPException(500, "Failed to check credits")
+        # v1.2.0: B-HIGH-3 - Sanitized error message
+        logger.error(f"[Billing] Failed to check affordability for user {user['id']}: {credits_result.error}")
+        raise HTTPException(500, "Failed to check affordability")
 
     # Calculate required amount
     if operation:
@@ -219,59 +266,26 @@ async def check_can_afford(
 
     can_afford = credits_result.total_credits >= required
 
+    # v1.2.0: B-HIGH-2 - Removed current_balance from response
     return AffordabilityResponse(
         can_afford=can_afford,
-        current_balance=credits_result.total_credits,
         required_amount=required,
     )
 
 
 # ==========================================
-# Internal Endpoints (for service-to-service)
+# Admin Endpoints
 # ==========================================
 
-@router.post("/credits/deduct")
-async def deduct_credits(
-    req: DeductCreditsRequest,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Deduct credits for an operation.
-
-    Note: This endpoint is primarily for internal use.
-    Most credit deductions happen automatically via domain services.
-
-    Args:
-        req: Deduction request with amount and operation
-
-    Returns:
-        Updated credit balance
-    """
-    container = get_container()
-    handler = container.deduct_credits_handler
-
-    command = DeductCreditsCommand(
-        user_id=user["id"],
-        amount=req.amount,
-        operation=req.operation,
-        description=req.description,
-    )
-    result = await handler.handle(command)
-
-    if not result.success:
-        if "insufficient" in (result.error or "").lower():
-            raise HTTPException(402, result.error)
-        raise HTTPException(400, result.error or "Failed to deduct credits")
-
-    return {
-        "success": True,
-        "amount_deducted": abs(result.transaction.amount) if result.transaction else 0,
-        "new_balance": result.remaining_credits,
-    }
+# v1.2.0: B-P0-3 - Removed /credits/deduct endpoint
+# Credit deductions should ONLY happen through domain services internally,
+# not through a public API endpoint. This prevents potential abuse scenarios.
 
 
 @router.post("/credits/add")
+@limiter.limit("10/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting (admin)
 async def add_credits(
+    request: Request,
     req: AddCreditsRequest,
     admin: dict = Depends(require_admin),  # v1.1.0: B-P0-1 fix - require admin
 ):
@@ -305,9 +319,15 @@ async def add_credits(
     result = await handler.handle(command)
 
     if not result.success:
-        raise HTTPException(400, result.error or "Failed to add credits")
+        # v1.2.0: B-HIGH-3 - Sanitized error message + audit log
+        logger.error(f"[Admin] Failed to add credits: admin={admin['id']} target={req.user_id} error={result.error}")
+        raise HTTPException(400, "Failed to add credits")
 
-    logger.info(f"[Admin] {admin['id']} added {req.amount} {req.credit_type} credits to {req.user_id}: {req.reason}")
+    # v1.2.0: B-MEDIUM-2 - Enhanced audit logging
+    logger.info(
+        f"[Admin] CREDITS_ADDED admin={admin['id']} target={req.user_id} "
+        f"amount={req.amount} type={req.credit_type} reason={req.reason}"
+    )
 
     return {
         "success": True,
