@@ -2,7 +2,11 @@
 Webhooks API - Third-party webhook handlers (v2).
 
 @module api.user.webhooks
-@version 2.1.0
+@version 2.2.0
+
+Changes in v2.2.0:
+- Added support for credits_500 and credits_2000 purchase plans
+- Use get_credits_amount() for dynamic credits handling
 
 Changes in v2.1.0:
 - Added idempotency check for Clerk signup bonus (prevent duplicate credits)
@@ -29,7 +33,7 @@ from infrastructure.repositories import (
     SupabaseCreditRepository,
     SupabasePaymentRepository,
 )
-from domains.billing.payment_service import construct_event, get_tier_from_price_id
+from domains.billing.payment_service import construct_event, get_tier_from_price_id, get_credits_amount
 from domains.platform.analytics_service import AnalyticsEvents, track_payment
 
 logger = logging.getLogger(__name__)
@@ -303,23 +307,25 @@ async def _handle_checkout_completed(event: dict) -> dict:
         payment_repo = SupabasePaymentRepository(get_supabase_client())
         supabase = get_supabase_client()
 
-        if plan == 'credits_100':
+        # Handle credits purchase (credits_100, credits_500, credits_2000)
+        credits_amount = get_credits_amount(plan)
+        if credits_amount > 0:
             # Purchase credits -> add to permanent bucket
-            await credit_repo.add_credits_permanent(uid, 100, "Purchase 100 Credits", "topup_purchase")
+            await credit_repo.add_credits_permanent(uid, credits_amount, f"Purchase {credits_amount} Credits", "topup_purchase")
             # Log payment
-            await payment_repo.create(uid, amount_total, currency, "credits_purchase", metadata={"description": f"Purchase 100 Credits - ${amount_total/100:.2f}"})
+            await payment_repo.create(uid, amount_total, currency, "credits_purchase", metadata={"description": f"Purchase {credits_amount} Credits - ${amount_total/100:.2f}"})
             # Log activity
             try:
                 supabase.table("activity_logs").insert({
                     "user_id": uid,
                     "activity_type": "credits_purchase",
-                    "metadata": {"amount": 100, "payment": amount_total},
+                    "metadata": {"amount": credits_amount, "payment": amount_total},
                 }).execute()
             except Exception as e:
                 logger.warning(f"Failed to log activity: {e}")
             # Analytics: Track credits purchase
-            track_payment(uid, AnalyticsEvents.CREDITS_PURCHASED, amount_total, currency, extra_properties={"credits_amount": 100})
-            return {"status": "ok", "action": "credits_added", "user_id": uid}
+            track_payment(uid, AnalyticsEvents.CREDITS_PURCHASED, amount_total, currency, extra_properties={"credits_amount": credits_amount})
+            return {"status": "ok", "action": "credits_added", "user_id": uid, "credits": credits_amount}
 
         elif plan in ['starter', 'pro']:
             # New subscription: update tier and grant monthly credits

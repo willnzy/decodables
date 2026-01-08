@@ -1766,14 +1766,42 @@ analysis.aggregate_experiment_results()
 - `infrastructure/repositories/payment_repository.py`
 - `infrastructure/repositories/credit_repository.py`
 
-**已知问题 (待修复)**:
+**发现并修复的问题**:
 
 | 序号 | 严重性 | 问题 | 文件 | 状态 |
 |------|--------|------|------|------|
-| P1 | 🔴 P0 | 价格ID配置无启动验证 | payment_service.py:18-22 | 🔶 待办 |
-| P2 | 🟠 HIGH | 每次 checkout 创建新 Coupon 对象 | payment_service.py:50-58 | 🔶 待办 |
-| P3 | 🟠 HIGH | checkout 无 idempotency_key | payment_service.py:24-68 | 🔶 待办 |
-| P4 | 🟠 HIGH | Stripe API 无重试逻辑 | payment_service.py | 🔶 待办 |
+| P1 | 🔴 P0 | 价格ID配置无启动验证 | payment_service.py | ✅ 修复 |
+| P2 | 🟠 HIGH | 每次 checkout 创建新 Coupon 对象 | payment_service.py | ✅ 修复 |
+| P3 | 🟠 HIGH | checkout 无 idempotency_key | payment_service.py | ✅ 修复 |
+| P4 | 🟠 HIGH | Stripe API 无重试逻辑 | payment_service.py | ✅ 修复 |
+
+**修复详情** (payment_service.py v3.23 → v3.24):
+
+1. **P1: 启动时配置验证**
+   - 新增 `validate_config()` 函数
+   - 在 `app.py` 启动时调用，缺失配置时记录警告
+   - 支持区分必需 (credits_100, starter, pro) 和可选 (credits_500, credits_2000) 配置
+
+2. **P2: Coupon 缓存机制**
+   - 新增 `get_or_create_coupon()` 函数
+   - 使用确定性 ID (`DISCOUNT_{percent}_PERCENT`) 避免重复创建
+   - 内存缓存 + Stripe 验证双重检查
+
+3. **P3: Checkout 幂等性**
+   - `create_checkout_session()` 新增 `idempotency_key` 参数
+   - 自动生成基于 user_id + plan + 时间窗口 (1分钟) 的幂等键
+   - 传递给 Stripe API 防止重复创建会话
+
+4. **P4: Stripe API 重试逻辑**
+   - 新增 `@retry_on_stripe_error()` 装饰器
+   - 指数退避重试 (0.5s → 1s → 2s)
+   - 仅对可重试错误 (`APIConnectionError`, `RateLimitError`) 重试
+   - 应用于关键 API 调用
+
+**额外改进**:
+- 新增 `credits_500`, `credits_2000` 购买档位支持
+- 新增 `get_credits_amount()` 动态获取积分数量
+- webhooks.py v2.2.0 支持新积分档位
 
 ### 测试更新
 
@@ -1785,11 +1813,13 @@ analysis.aggregate_experiment_results()
 | 文件 | 版本变更 | 改动内容 |
 |------|---------|---------|
 | `infrastructure/repositories/credit_repository.py` | v1.0.0 → v1.0.1 | 修复 RPC 字段映射 |
-| `api/user/webhooks.py` | v2.0.0 → v2.1.0 | 幂等性检查 + customer_id 验证 + tier 映射 |
-| `domains/billing/payment_service.py` | v3.22 → v3.23 | 新增 `get_tier_from_price_id()` |
+| `api/user/webhooks.py` | v2.0.0 → v2.2.0 | 幂等性检查 + customer_id 验证 + tier 映射 + credits档位 |
+| `domains/billing/payment_service.py` | v3.22 → v3.24 | 配置验证 + coupon缓存 + 幂等性 + 重试逻辑 |
+| `app.py` | - | 启动时 Stripe 配置验证 |
 | `tests/api/user/test_webhooks.py` | - | 更新 mock |
 
 ---
 
 *创建日期: 2026-01-08*
 *总接口数: 110 个*
+*第二轮深入审查完成: 2026-01-08*

@@ -487,7 +487,7 @@ logger.info(f"🚀 Starting instance: {INSTANCE_ID}")
 async def startup_event():
     """
     Initialize scheduled jobs when FastAPI starts.
-    
+
     MULTI-INSTANCE NOTE:
     - Scheduler is controlled by ENABLE_SCHEDULER env var (default: true)
     - When deploying multiple instances, set ENABLE_SCHEDULER=false for all
@@ -496,6 +496,14 @@ async def startup_event():
     """
     logger.info(f"📅 Instance {INSTANCE_ID} starting scheduler check...")
     init_scheduler()
+
+    # v3.24: Validate Stripe configuration at startup
+    from domains.billing.payment_service import validate_config as validate_stripe_config
+    stripe_status = validate_stripe_config()
+    if not stripe_status["valid"]:
+        logger.warning(f"⚠️ Stripe configuration incomplete. Payment features may not work.")
+    else:
+        logger.info("✅ Stripe configuration validated")
 
 @app.on_event("shutdown")
 async def shutdown_event():
