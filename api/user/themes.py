@@ -2,7 +2,11 @@
 Themes API - Holiday themes endpoint (v2).
 
 @module api.user.themes
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - THM-LOW-1: Added rate limiting (60/minute)
 
 Endpoints:
 - GET /api/v2/user/themes/current - Get current active theme
@@ -11,10 +15,11 @@ Endpoints:
 from datetime import date, timedelta
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from core.database import get_supabase_client
+from infrastructure.rate_limiter import limiter
 supabase = get_supabase_client()
 
 
@@ -45,7 +50,8 @@ class CurrentThemeResponse(BaseModel):
 # ==========================================
 
 @router.get("/current")
-async def get_current_theme() -> CurrentThemeResponse:
+@limiter.limit("60/minute")
+async def get_current_theme(request: Request) -> CurrentThemeResponse:
     """
     Get the currently active holiday theme based on today's date.
 

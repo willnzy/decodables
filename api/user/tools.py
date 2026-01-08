@@ -1,7 +1,13 @@
 """Tools API - Utility tools endpoints (v2).
 
 @module api.user.tools
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - TL-MEDIUM-1: Added project_id UUID format validation
+  - TL-LOW-1: Moved credit deduction after all validations
+  - TL-LOW-2: Added credit refund on OCR processing failure
 
 Endpoints:
 - POST /api/v2/user/tools/pdf-preview - Convert PDF to preview images
@@ -9,6 +15,7 @@ Endpoints:
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
@@ -26,6 +33,26 @@ from core.database import get_database_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools", tags=["user-tools-v2"])
+
+
+# ==========================================
+# Constants (v2.1.0)
+# ==========================================
+
+# v2.1.0: TL-MEDIUM-1 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+# OCR cost in credits
+OCR_COST = 5
+
+
+def validate_project_id(project_id: Optional[str]) -> None:
+    """v2.1.0: TL-MEDIUM-1 - Validate optional project_id is UUID format."""
+    if project_id is not None and not UUID_PATTERN.match(project_id):
+        raise HTTPException(400, "Invalid project ID format")
 
 
 # ==========================================
@@ -161,6 +188,9 @@ async def ocr_tool(
     from core.utils.timezone import get_request_timezone
     from config import TRIAL_DAYS
 
+    # v2.1.0: TL-MEDIUM-1 - Validate project_id format
+    validate_project_id(project_id)
+
     # Check if user is in trial period
     is_trial = False
     user_tier = (user.get("tier") or "free").lower()
@@ -184,13 +214,7 @@ async def ocr_tool(
     if not AccessControl.can_use_ocr(user, is_trial=is_trial):
         raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)")
 
-    OCR_COST = 5
-    credit_repo = SupabaseCreditRepository(get_database_client())
-    result = await credit_repo.deduct_credits(user["id"], OCR_COST, "ocr", "OCR processing")
-    if not result.get("success", True):
-        if "INSUFFICIENT" in str(result.get("error", "")):
-            raise HTTPException(402, "Insufficient credits for OCR")
-
+    # v2.1.0: TL-LOW-1 - Validate file BEFORE charging credits
     allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]
     if file.content_type not in allowed_types:
         raise HTTPException(400, f"Unsupported file type: {file.content_type}")
@@ -199,6 +223,13 @@ async def ocr_tool(
 
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(400, "File too large. Maximum size is 10MB")
+
+    # Now deduct credits after all validations pass
+    credit_repo = SupabaseCreditRepository(get_database_client())
+    result = await credit_repo.deduct_credits(user["id"], OCR_COST, "ocr", "OCR processing")
+    if not result.get("success", True):
+        if "INSUFFICIENT" in str(result.get("error", "")):
+            raise HTTPException(402, "Insufficient credits for OCR")
 
     try:
         ocr_result = await process_ocr(contents, file.content_type, file.filename)
@@ -224,5 +255,14 @@ async def ocr_tool(
         )
 
     except Exception as e:
+        # v2.1.0: TL-LOW-2 - Refund credits on OCR processing failure
+        try:
+            await credit_repo.add_credits(
+                user["id"], OCR_COST, f"OCR failed: {str(e)[:50]}", "refund"
+            )
+            logger.info(f"Refunded {OCR_COST} credits for failed OCR: {user['id']}")
+        except Exception as refund_error:
+            logger.error(f"Failed to refund credits: {refund_error}")
+
         logger.error(f"OCR Error: {e}")
         raise HTTPException(500, f"OCR processing failed: {str(e)}")
