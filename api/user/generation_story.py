@@ -2,9 +2,13 @@
 Story Generation Router - AI story and inspiration endpoints
 
 @module api.user.generation_story
-@version 3.26
+@version 3.27
 
 Changes:
+- v3.27: Security improvements
+         GS-MEDIUM-1: Added validation to InspirationRequest (in schemas/generation.py)
+         GS-LOW-1: Sanitized user_id in logs (only first 8 chars)
+         GS-LOW-2: Removed internal implementation details from fallback response
 - v3.26: GS-P0-1 fix - refund to same bucket that was deducted (not hardcoded PERMANENT)
          GS-P0-3 fix - inspiration errors now properly logged, fallback includes warning
          GS-H4 fix - don't expose balance in error messages
@@ -103,7 +107,8 @@ async def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends
                     description=f"Refund: story generation failed - {str(e)[:50]}",
                     idempotency_key=f"refund_{idempotency_key}",
                 )
-                logger.info(f"Refunded {cost} credits to user {user_id}")
+                # v3.27: GS-LOW-1 - Sanitize user_id in logs
+                logger.info(f"Refunded {cost} credits to user {user_id[:8]}...")
             except Exception as refund_error:
                 logger.error(f"CRITICAL: Failed to refund credits: {refund_error}")
 
@@ -191,19 +196,19 @@ Return JSON:
         return {"suggestions": result.get("suggestions", []), "category": category}
 
     except Exception as e:
-        # v3.26: GS-P0-3 fix - log error details for monitoring, but still provide fallback
-        # This allows monitoring systems to alert on errors while maintaining UX
+        # v3.27: GS-LOW-1 - Sanitize user_id in logs (only first 8 chars)
+        user_id_short = user.get("id", "unknown")[:8] if user.get("id") else "unknown"
         logger.error(
             f"Inspiration generation failed: {e}",
             extra={
                 "error_type": type(e).__name__,
                 "category": category,
-                "user_id": user.get("id"),
+                "user_id_prefix": user_id_short,  # v3.27: Only log prefix for privacy
             },
             exc_info=True  # Include stack trace in logs
         )
 
-        # Return fallback suggestions with clear indicator
+        # v3.27: GS-LOW-2 - Return fallback without internal implementation details
         return {
             "suggestions": [
                 {
@@ -230,5 +235,5 @@ Return JSON:
             ],
             "category": category,
             "fallback": True,
-            "fallback_reason": "ai_service_unavailable"  # v3.26: Add reason for debugging
+            # v3.27: Removed fallback_reason to avoid exposing internal details
         }

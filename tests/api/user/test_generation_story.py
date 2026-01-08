@@ -1,5 +1,5 @@
 """
-Generation Story API Tests - v2 DDD Architecture (v3.25)
+Generation Story API Tests - v2 DDD Architecture (v3.27)
 
 Tests for api/user/generation_story.py
 
@@ -7,7 +7,9 @@ Endpoints:
 - POST /api/v2/user/generate/story - Generate story JSON
 - POST /api/v2/user/generate/inspiration - AI inspiration suggestions (Free)
 
-Updated: 2026-01-08
+Updated: 2026-01-09
+- v3.27: Added tests for InspirationRequest validation (category, style)
+         Added test to verify fallback_reason not exposed
 - v3.25: Updated to test config-driven credit deduction
          Story generation now uses BillingService when cost > 0
          Added tests for credit deduction and refund scenarios
@@ -585,6 +587,7 @@ class TestGenInspiration:
         Business Logic Verified:
         - Graceful degradation with fallback content
         - No error returned to user
+        - v3.27: No internal details exposed (fallback_reason removed)
         """
         # Arrange
         mock_openai.chat.completions.create.side_effect = Exception("API Error")
@@ -601,6 +604,8 @@ class TestGenInspiration:
         assert "suggestions" in data
         assert data.get("fallback") == True  # Indicates fallback was used
         assert len(data["suggestions"]) == 3  # 3 hardcoded fallback suggestions
+        # v3.27: GS-LOW-2 - Verify internal details not exposed
+        assert "fallback_reason" not in data  # Internal details removed
 
     def test_gen_inspiration_unauthorized(self):
         """
@@ -618,6 +623,44 @@ class TestGenInspiration:
 
         # Assert
         assert response.status_code == 401
+
+    def test_gen_inspiration_invalid_category(self, override_free_user):
+        """
+        Test: Invalid category returns 422.
+
+        v3.27: GS-MEDIUM-1 - Added category validation
+
+        Given: Invalid category value
+        When: POST /api/v2/user/generate/inspiration with invalid category
+        Then: Returns 422 Validation Error
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/generate/story/inspiration",
+            json={"category": "invalid_category"},
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_gen_inspiration_style_too_long(self, override_free_user):
+        """
+        Test: Style too long returns 422.
+
+        v3.27: GS-MEDIUM-1 - Added style max_length validation
+
+        Given: Style exceeds max_length (100)
+        When: POST /api/v2/user/generate/inspiration
+        Then: Returns 422 Validation Error
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/generate/story/inspiration",
+            json={"style": "x" * 150},  # Exceeds 100 char limit
+        )
+
+        # Assert
+        assert response.status_code == 422
 
 
 # ==========================================

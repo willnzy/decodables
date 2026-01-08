@@ -2,7 +2,10 @@
 Generation Schemas - AI generation related models
 
 @module schemas.generation
-@version 1.2.0
+@version 1.3.0
+
+Changes in v1.3.0:
+- GS-MEDIUM-1: Added validation to InspirationRequest (category whitelist, style max_length)
 
 Changes in v1.2.0:
 - GI-P0-001: Added Field constraints to ImageGenRequest for security
@@ -87,8 +90,9 @@ class PdfGenRequest(BaseModel):
 
 class InspirationRequest(BaseModel):
     """AI inspiration generation request."""
-    category: Optional[str] = None  # 'character', 'scene', 'story', 'all'
-    style: Optional[str] = None  # Art style preference
+    # v1.3.0: GS-MEDIUM-1 - Added input validation
+    category: Optional[str] = Field(None, pattern="^(character|scene|story|all)?$", max_length=20)
+    style: Optional[str] = Field(None, max_length=100)  # Art style preference
 
 
 class GenerationHistoryQuery(BaseModel):
