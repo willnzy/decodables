@@ -172,3 +172,37 @@ class SupabaseSupportRepository:
         ).order("created_at", desc=True).range(start, end).execute()
 
         return result.data or []
+
+    @retry_on_network_error()
+    async def get_user_reports_with_count(
+        self,
+        user_id: str,
+        page: int = 1,
+        limit: int = 20
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get reports submitted by a user with total count.
+
+        M-HIGH-002 fix: Returns accurate total for pagination.
+
+        Args:
+            user_id: User ID
+            page: Page number (1-indexed)
+            limit: Items per page
+
+        Returns:
+            Tuple of (List of reports, total_count)
+        """
+        start = (page - 1) * limit
+        end = start + limit - 1
+
+        result = self.client.table("marketplace_reports").select(
+            "*", count="exact"
+        ).eq("reporter_id", user_id).order(
+            "created_at", desc=True
+        ).range(start, end).execute()
+
+        reports = result.data or []
+        total_count = result.count if result.count is not None else len(reports)
+
+        return reports, total_count

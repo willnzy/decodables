@@ -146,6 +146,37 @@ class SupabaseListingRepository(IListingRepository):
             logger.error(f"Failed to get listings for seller {seller_id}: {e}")
             return []
 
+    async def get_by_seller_with_count(
+        self,
+        seller_id: str,
+        status: Optional[ListingStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Get listings by seller with total count.
+
+        M-HIGH-001 fix: Returns accurate total for pagination.
+        """
+        try:
+            query = self.client.table("marketplace_listings").select(
+                "*", count="exact"
+            ).eq("seller_id", seller_id).order("updated_at", desc=True)
+
+            if status:
+                query = query.eq("status", status.value)
+
+            result = query.range(offset, offset + limit - 1).execute()
+
+            listings = [self._map_to_listing(row) for row in result.data]
+            total_count = result.count if result.count is not None else len(listings)
+
+            return listings, total_count
+
+        except Exception as e:
+            logger.error(f"Failed to get listings for seller {seller_id}: {e}")
+            return [], 0
+
     async def get_published(
         self,
         category: Optional[AssetCategory] = None,
@@ -339,44 +370,76 @@ class SupabaseListingRepository(IListingRepository):
         listing_id: str,
         buyer_id: str,
         credit_amount: int = 0
-    ) -> bool:
-        """Record a purchase."""
+    ) -> tuple[bool, bool]:
+        """
+        Record a purchase atomically.
+
+        Uses upsert with ON CONFLICT to prevent race condition where
+        concurrent requests both pass has_purchased() check.
+
+        Returns:
+            tuple[bool, bool]: (success, already_existed)
+            - (True, False): New purchase recorded successfully
+            - (True, True): Purchase already existed (idempotent)
+            - (False, False): Failed to record purchase
+        """
         try:
-            # Insert purchase record
-            self.client.table("marketplace_purchases").insert({
-                "listing_id": listing_id,
-                "buyer_id": buyer_id,
-                "credit_amount": credit_amount,
-                "purchased_at": datetime.utcnow().isoformat(),
-            }).execute()
+            # Use upsert with ON CONFLICT DO NOTHING to handle race condition
+            # The unique constraint on (listing_id, buyer_id) prevents duplicates
+            result = self.client.table("marketplace_purchases").upsert(
+                {
+                    "listing_id": listing_id,
+                    "buyer_id": buyer_id,
+                    "credit_amount": credit_amount,
+                    "purchased_at": datetime.utcnow().isoformat(),
+                },
+                on_conflict="listing_id,buyer_id",
+                ignore_duplicates=True,  # Don't update if exists
+            ).execute()
 
-            # Increment purchase count
-            self.client.rpc("increment_listing_stat", {
-                "p_listing_id": listing_id,
-                "p_stat": "purchase_count",
-            }).execute()
+            # Check if this was a new insert or existing record
+            # If no data returned with ignore_duplicates, it was a duplicate
+            is_new_purchase = bool(result.data)
 
-            return True
+            if is_new_purchase:
+                # Only increment stats for new purchases
+                try:
+                    self.client.rpc("increment_listing_stat", {
+                        "p_listing_id": listing_id,
+                        "p_stat": "purchase_count",
+                    }).execute()
+                except Exception as stat_err:
+                    # Log but don't fail - purchase record is the source of truth
+                    logger.warning(f"Failed to increment purchase count for {listing_id}: {stat_err}")
+
+            return (True, not is_new_purchase)
 
         except Exception as e:
             logger.error(f"Failed to record purchase for listing {listing_id}: {e}")
-            return False
+            return (False, False)
 
     async def has_purchased(
         self,
         listing_id: str,
         user_id: str
     ) -> bool:
-        """Check if user has purchased listing."""
+        """
+        Check if user has purchased listing.
+
+        Raises exception on database errors instead of silently returning False,
+        which could lead to double-charging in purchase flow.
+        """
         try:
             result = self.client.table("marketplace_purchases").select(
                 "id"
-            ).eq("listing_id", listing_id).eq("buyer_id", user_id).single().execute()
+            ).eq("listing_id", listing_id).eq("buyer_id", user_id).maybe_single().execute()
 
             return result.data is not None
 
-        except Exception:
-            return False
+        except Exception as e:
+            # Don't silently return False - this could lead to double-charging
+            logger.error(f"Failed to check purchase status for listing {listing_id}, user {user_id}: {e}")
+            raise
 
     async def get_user_purchases(
         self,
@@ -520,23 +583,43 @@ class SupabaseListingRepository(IListingRepository):
         self,
         seller_id: str
     ) -> dict:
-        """Get seller statistics."""
-        listings = self.client.table("marketplace_listings").select(
-            "id, price_credits, sales_count, usage_count"
-        ).eq("seller_id", seller_id).eq("is_deleted", False).execute()
+        """
+        Get seller statistics.
 
-        data = listings.data or []
-        total_sales = sum(l.get("sales_count", 0) for l in data)
-        total_usage = sum(l.get("usage_count", 0) for l in data)
-        total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in data)
+        M-MEDIUM-005 fix: Use integer arithmetic to avoid floating point precision issues.
+        Seller earns 90% of revenue (platform takes 10% fee).
+        """
+        try:
+            listings = self.client.table("marketplace_listings").select(
+                "id, price_credits, sales_count, usage_count"
+            ).eq("seller_id", seller_id).eq("is_deleted", False).execute()
 
-        return {
-            "total_listings": len(data),
-            "total_sales": total_sales,
-            "total_usage": total_usage,
-            "total_revenue": total_revenue,
-            "total_earned_credits": int(total_revenue * 0.9),
-        }
+            data = listings.data or []
+            total_sales = sum(l.get("sales_count", 0) for l in data)
+            total_usage = sum(l.get("usage_count", 0) for l in data)
+            total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in data)
+
+            # M-MEDIUM-005 fix: Use integer arithmetic (multiply first, then divide)
+            # This avoids floating point precision issues
+            # Formula: earned = revenue * 90 / 100 (integer division)
+            total_earned_credits = (total_revenue * 90) // 100
+
+            return {
+                "total_listings": len(data),
+                "total_sales": total_sales,
+                "total_usage": total_usage,
+                "total_revenue": total_revenue,
+                "total_earned_credits": total_earned_credits,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get seller stats for {seller_id}: {e}")
+            return {
+                "total_listings": 0,
+                "total_sales": 0,
+                "total_usage": 0,
+                "total_revenue": 0,
+                "total_earned_credits": 0,
+            }
 
     async def record_listing_usage(
         self,

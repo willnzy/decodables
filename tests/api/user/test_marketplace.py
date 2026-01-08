@@ -1408,7 +1408,7 @@ class TestGetMyListings:
 
         Given: User has created listings
         When: GET /api/v2/user/marketplace/my-listings
-        Then: Returns user's listings with moderation status
+        Then: Returns user's listings with moderation status and accurate total count
         """
         # Arrange
         mock_listing_obj = MagicMock()
@@ -1418,7 +1418,8 @@ class TestGetMyListings:
             "moderation_status": "pending",
         }
         mock_service = AsyncMock()
-        mock_service.get_seller_listings.return_value = [mock_listing_obj]
+        # v2.1.0: Now uses get_seller_listings_with_count for accurate pagination
+        mock_service.get_seller_listings_with_count.return_value = ([mock_listing_obj], 10)
         mock_container = MagicMock()
         mock_container.marketplace_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1435,6 +1436,8 @@ class TestGetMyListings:
         assert "total" in data
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "My Listing"
+        # v2.1.0: Verify accurate total count (M-HIGH-001 fix)
+        assert data["total"] == 10
 
     @patch('api.user.marketplace.get_container')
     def test_get_my_listings_pagination_offset_calculation(
@@ -1451,7 +1454,8 @@ class TestGetMyListings:
         """
         # Arrange
         mock_service = AsyncMock()
-        mock_service.get_seller_listings.return_value = []
+        # v2.1.0: Now uses get_seller_listings_with_count
+        mock_service.get_seller_listings_with_count.return_value = ([], 0)
         mock_container = MagicMock()
         mock_container.marketplace_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1464,7 +1468,7 @@ class TestGetMyListings:
         # Assert
         assert response.status_code == 200
         # Verify service was called with correct offset
-        call_args = mock_service.get_seller_listings.call_args
+        call_args = mock_service.get_seller_listings_with_count.call_args
         assert call_args.kwargs['offset'] == 40  # (3-1)*20 = 40
         assert call_args.kwargs['limit'] == 20
 
@@ -1485,7 +1489,8 @@ class TestGetMyListings:
 
         # Arrange
         mock_service = AsyncMock()
-        mock_service.get_seller_listings.return_value = []
+        # v2.1.0: Now uses get_seller_listings_with_count
+        mock_service.get_seller_listings_with_count.return_value = ([], 0)
         mock_container = MagicMock()
         mock_container.marketplace_service = mock_service
         mock_get_container.return_value = mock_container
@@ -1497,7 +1502,7 @@ class TestGetMyListings:
 
         # Assert
         assert response.status_code == 200
-        call_args = mock_service.get_seller_listings.call_args
+        call_args = mock_service.get_seller_listings_with_count.call_args
         assert call_args.kwargs['status'] == ListingStatus.DRAFT
 
     def test_get_my_listings_invalid_status_validation(
@@ -1764,7 +1769,8 @@ class TestGetMyReports:
         mock_get_db_client.return_value = mock_db
 
         mock_repo = MagicMock()
-        mock_repo.get_user_reports = AsyncMock(return_value=[
+        # v2.1.0: Now uses get_user_reports_with_count for accurate pagination
+        reports_data = [
             {
                 "id": "report_1",
                 "listing_id": "listing_bad_1",
@@ -1777,7 +1783,8 @@ class TestGetMyReports:
                 "reason": "Inappropriate",
                 "status": "resolved",
             },
-        ])
+        ]
+        mock_repo.get_user_reports_with_count = AsyncMock(return_value=(reports_data, 15))
 
         with patch('api.user.marketplace.SupabaseSupportRepository', return_value=mock_repo):
             # Act
@@ -1792,6 +1799,8 @@ class TestGetMyReports:
             assert "total" in data
             assert len(data["items"]) == 2
             assert data["items"][0]["reason"] == "Spam"
+            # v2.1.0: Verify accurate total count (M-HIGH-002 fix)
+            assert data["total"] == 15
 
 
 # ==========================================

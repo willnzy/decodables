@@ -113,6 +113,28 @@ class IListingRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_seller_with_count(
+        self,
+        seller_id: str,
+        status: Optional[ListingStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Get listings by seller with total count.
+
+        Args:
+            seller_id: User ID of seller
+            status: Filter by status
+            limit: Maximum results
+            offset: Results to skip
+
+        Returns:
+            Tuple of (List of Listings, total_count)
+        """
+        pass
+
+    @abstractmethod
     async def get_published(
         self,
         category: Optional[AssetCategory] = None,
@@ -242,9 +264,12 @@ class IListingRepository(ABC):
         listing_id: str,
         buyer_id: str,
         credit_amount: int = 0
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """
-        Record a purchase.
+        Record a purchase atomically.
+
+        Uses ON CONFLICT to prevent race conditions where concurrent
+        requests both pass has_purchased() check before either records.
 
         Args:
             listing_id: Listing ID
@@ -252,7 +277,10 @@ class IListingRepository(ABC):
             credit_amount: Credits spent
 
         Returns:
-            True if recorded
+            tuple[bool, bool]: (success, already_existed)
+            - (True, False): New purchase recorded successfully
+            - (True, True): Purchase already existed (idempotent)
+            - (False, False): Failed to record purchase
         """
         pass
 

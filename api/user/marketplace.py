@@ -2,7 +2,7 @@
 Marketplace API - Marketplace listings and purchases.
 
 @module api.user.marketplace
-@version 1.0.0
+@version 2.1.0
 
 Endpoints:
 - GET /api/v2/user/marketplace/listings - List marketplace items
@@ -13,6 +13,15 @@ Endpoints:
 - POST /api/v2/user/marketplace/purchase - Purchase an item
 - GET /api/v2/user/marketplace/my-listings - Get user's listings
 - GET /api/v2/user/marketplace/seller/stats - Get seller statistics
+
+Security Fixes in v2.1.0:
+- M-P0-001: Purchase race condition - atomic record_purchase with ON CONFLICT
+- M-P0-002: Credit rollback on purchase failure - compensating transactions
+- M-P0-003: Listing status re-validation before completing purchase
+- M-HIGH-001/002: Accurate pagination total counts
+- M-HIGH-003: Exception message sanitization (no internal details exposed)
+- M-HIGH-004: Tier validation against database record
+- M-MEDIUM-005: Integer arithmetic for revenue calculations
 """
 
 import logging
@@ -470,18 +479,17 @@ async def get_my_listings(
             except ValueError:
                 pass
 
-        listings = await marketplace_service.get_seller_listings(
+        # M-HIGH-001 fix: Use method that returns total count
+        listings, total_count = await marketplace_service.get_seller_listings_with_count(
             seller_id=user["id"],
             status=status_filter,
             limit=limit,
             offset=offset,
         )
 
-        # Note: total is approximate (current page count) since we don't have count query
-        # TODO: Add count query to repository for accurate pagination
         return ListingsResponse(
             items=[l.to_dict() for l in listings],
-            total=len(listings),
+            total=total_count,
             page=page,
         )
 
@@ -626,7 +634,6 @@ async def submit_report(
     Raises:
         HTTPException: 400 if already reported, 500 if failed
     """
-
     try:
         support_repo = SupabaseSupportRepository(get_database_client())
         report = await support_repo.create_report(user["id"], req.listing_id, req.reason)
@@ -639,11 +646,16 @@ async def submit_report(
             )
         raise HTTPException(500, "Failed to submit report")
 
+    except HTTPException:
+        raise
     except Exception as e:
         error_msg = str(e)
+        # M-HIGH-003 fix: Only expose safe error messages
         if "already reported" in error_msg.lower():
-            raise HTTPException(400, error_msg)
-        raise HTTPException(500, error_msg)
+            raise HTTPException(400, "You have already reported this listing")
+        # Don't expose internal error details
+        logger.error(f"Failed to submit report: {e}")
+        raise HTTPException(500, "Failed to submit report")
 
 
 @router.get("/my-reports")
@@ -662,10 +674,16 @@ async def get_my_reports(
     Returns:
         List of user's reports
     """
-
-    support_repo = SupabaseSupportRepository(get_database_client())
-    reports = await support_repo.get_user_reports(user["id"], page, limit)
-    return MyReportsResponse(
-        items=reports,
-        total=len(reports),
-    )
+    try:
+        support_repo = SupabaseSupportRepository(get_database_client())
+        # M-HIGH-002 fix: Use method that returns total count
+        reports, total_count = await support_repo.get_user_reports_with_count(
+            user["id"], page, limit
+        )
+        return MyReportsResponse(
+            items=reports,
+            total=total_count,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get my reports: {e}")
+        raise HTTPException(500, "Failed to get reports")

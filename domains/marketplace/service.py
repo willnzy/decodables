@@ -248,6 +248,11 @@ class MarketplaceService:
         """
         Purchase a listing.
 
+        Note: For credit-based purchases, the PurchaseListingHandler in
+        application layer handles the full flow including credit deduction
+        and atomic purchase recording. This method is primarily used for
+        free/premium assets that don't involve credit transactions.
+
         Args:
             listing_id: Listing ID
             buyer_id: Buyer user ID
@@ -272,7 +277,11 @@ class MarketplaceService:
 
         # Free assets don't need payment
         if listing.is_free:
-            await self._repository.record_purchase(listing_id, buyer_id, 0)
+            success, already_existed = await self._repository.record_purchase(listing_id, buyer_id, 0)
+            if not success:
+                raise PurchaseFailedException(listing_id, buyer_id, "Failed to record purchase")
+            if already_existed:
+                raise AlreadyPurchasedException(listing_id, buyer_id)
             listing.record_download()
             return await self._repository.update(listing)
 
@@ -283,7 +292,11 @@ class MarketplaceService:
                     listing_id, buyer_id,
                     "Premium subscription required"
                 )
-            await self._repository.record_purchase(listing_id, buyer_id, 0)
+            success, already_existed = await self._repository.record_purchase(listing_id, buyer_id, 0)
+            if not success:
+                raise PurchaseFailedException(listing_id, buyer_id, "Failed to record purchase")
+            if already_existed:
+                raise AlreadyPurchasedException(listing_id, buyer_id)
             listing.record_download()
             return await self._repository.update(listing)
 
@@ -419,6 +432,32 @@ class MarketplaceService:
             List of Listings
         """
         return await self._repository.get_by_seller(
+            seller_id=seller_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_seller_listings_with_count(
+        self,
+        seller_id: str,
+        status: Optional[ListingStatus] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Get listings by seller with total count.
+
+        Args:
+            seller_id: Seller user ID
+            status: Filter by status
+            limit: Max results
+            offset: Results to skip
+
+        Returns:
+            Tuple of (List of Listings, total_count)
+        """
+        return await self._repository.get_by_seller_with_count(
             seller_id=seller_id,
             status=status,
             limit=limit,

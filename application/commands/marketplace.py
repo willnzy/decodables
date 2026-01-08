@@ -214,6 +214,11 @@ class PurchaseListingHandler:
     Handler for PurchaseListingCommand.
 
     This handler coordinates between marketplace and billing domains.
+
+    Security improvements (v2.1.0):
+    - M-P0-001: Uses atomic record_purchase with ON CONFLICT to prevent race conditions
+    - M-P0-002: Refunds credits if purchase recording fails after deduction
+    - M-P0-003: Re-validates listing status before completing purchase
     """
 
     def __init__(
@@ -225,16 +230,33 @@ class PurchaseListingHandler:
         self._billing_service = billing_service
 
     async def handle(self, command: PurchaseListingCommand) -> PurchaseListingResult:
-        """Execute listing purchase."""
+        """
+        Execute listing purchase with atomic guarantees.
+
+        Flow:
+        1. Validate listing exists and is published
+        2. Check tier access
+        3. Check if already purchased (early exit)
+        4. Deduct credits (if required)
+        5. Record purchase atomically (handles race condition)
+        6. If recording fails after deduction, refund credits
+        """
         from domains.marketplace.exceptions import (
             ListingNotFoundException,
             AlreadyPurchasedException,
             PurchaseFailedException,
             ListingNotPublishedException,
         )
+        from domains.marketplace.value_objects import ListingStatus
+        import logging
+
+        logger = logging.getLogger(__name__)
+        credits_deducted = False
+        credits_to_deduct = 0
+        listing = None
 
         try:
-            # Get listing details
+            # Step 1: Get and validate listing
             listing = await self._marketplace_service.get_listing(command.listing_id)
             if not listing:
                 return PurchaseListingResult(
@@ -242,26 +264,40 @@ class PurchaseListingHandler:
                     error="Listing not found",
                 )
 
-            # Check tier access (allowed_tiers)
-            if command.buyer_tier not in listing.allowed_tiers:
+            # M-P0-003: Validate listing is still published
+            if listing.status != ListingStatus.PUBLISHED:
+                return PurchaseListingResult(
+                    success=False,
+                    error="Listing is not available for purchase",
+                )
+
+            # Step 2: Check tier access (M-HIGH-004: verified against listing data)
+            if command.buyer_tier.lower() not in [t.lower() for t in listing.allowed_tiers]:
                 return PurchaseListingResult(
                     success=False,
                     error=f"Tier access denied. This listing requires: {', '.join(listing.allowed_tiers)}",
                 )
 
-            # Check if already purchased
-            if await self._marketplace_service._repository.has_purchased(
-                command.listing_id, command.buyer_id
-            ):
+            # Step 3: Check if already purchased (early exit, not authoritative)
+            try:
+                if await self._marketplace_service._repository.has_purchased(
+                    command.listing_id, command.buyer_id
+                ):
+                    return PurchaseListingResult(
+                        success=True,
+                        listing=listing,
+                        credits_spent=0,
+                        already_owned=True,
+                    )
+            except Exception as e:
+                # has_purchased now raises on DB errors - fail safely
+                logger.error(f"Failed to check purchase status: {e}")
                 return PurchaseListingResult(
-                    success=True,
-                    listing=listing,
-                    credits_spent=0,
-                    already_owned=True,
+                    success=False,
+                    error="Unable to verify purchase status. Please try again.",
                 )
 
-            # Handle credit-based purchase
-            credits_to_deduct = 0
+            # Step 4: Handle credit-based purchase
             if listing.requires_credits and listing.credit_price > 0:
                 credits_to_deduct = listing.credit_price
 
@@ -276,36 +312,88 @@ class PurchaseListingHandler:
                         error="Insufficient credits",
                     )
 
-                # Deduct credits
+                # Deduct credits with idempotency key
+                idempotency_key = f"purchase_{command.listing_id}_{command.buyer_id}"
                 await self._billing_service.deduct_credits(
                     user_id=command.buyer_id,
                     amount=credits_to_deduct,
                     tx_type=TransactionType.PURCHASE,
-                    description=f"Purchase: {listing.title}",
-                    idempotency_key=f"purchase_{command.listing_id}_{command.buyer_id}",
+                    description=f"Purchase: {listing.metadata.title}",
+                    idempotency_key=idempotency_key,
                 )
+                credits_deducted = True
 
-            # Complete purchase in marketplace
-            listing = await self._marketplace_service.purchase_listing(
+            # Step 5: Record purchase atomically (M-P0-001 fix)
+            # This handles race condition where concurrent requests both pass has_purchased()
+            success, already_existed = await self._marketplace_service._repository.record_purchase(
                 listing_id=command.listing_id,
                 buyer_id=command.buyer_id,
-                buyer_tier=command.buyer_tier,
+                credit_amount=credits_to_deduct,
             )
 
+            if not success:
+                # M-P0-002: Refund credits if purchase recording failed
+                if credits_deducted and credits_to_deduct > 0:
+                    try:
+                        await self._billing_service.add_credits(
+                            user_id=command.buyer_id,
+                            amount=credits_to_deduct,
+                            tx_type=TransactionType.REFUND,
+                            description=f"Refund: Failed purchase of {listing.metadata.title}",
+                            idempotency_key=f"refund_{command.listing_id}_{command.buyer_id}",
+                        )
+                        logger.info(f"Refunded {credits_to_deduct} credits to user {command.buyer_id} after failed purchase")
+                    except Exception as refund_err:
+                        # Critical: Log for manual intervention
+                        logger.critical(
+                            f"CRITICAL: Failed to refund {credits_to_deduct} credits to user {command.buyer_id} "
+                            f"for listing {command.listing_id}. Manual intervention required. Error: {refund_err}"
+                        )
+
+                return PurchaseListingResult(
+                    success=False,
+                    error="Failed to complete purchase. Please try again.",
+                )
+
+            # Handle race condition: another request completed the purchase first
+            if already_existed:
+                # M-P0-002: Refund credits since purchase was already recorded
+                if credits_deducted and credits_to_deduct > 0:
+                    try:
+                        await self._billing_service.add_credits(
+                            user_id=command.buyer_id,
+                            amount=credits_to_deduct,
+                            tx_type=TransactionType.REFUND,
+                            description=f"Refund: Duplicate purchase attempt for {listing.metadata.title}",
+                            idempotency_key=f"refund_dup_{command.listing_id}_{command.buyer_id}",
+                        )
+                        logger.info(f"Refunded {credits_to_deduct} credits for duplicate purchase attempt")
+                    except Exception as refund_err:
+                        logger.critical(
+                            f"CRITICAL: Failed to refund duplicate charge of {credits_to_deduct} credits "
+                            f"to user {command.buyer_id}. Error: {refund_err}"
+                        )
+
+                return PurchaseListingResult(
+                    success=True,
+                    listing=listing,
+                    credits_spent=0,
+                    already_owned=True,
+                )
+
+            # Success: new purchase recorded
             return PurchaseListingResult(
                 success=True,
                 listing=listing,
                 credits_spent=credits_to_deduct,
                 already_owned=False,
-                # project_id would be set if we create a copy - for now None
                 project_id=None,
             )
 
         except AlreadyPurchasedException:
-            # This shouldn't happen since we check above, but handle gracefully
             return PurchaseListingResult(
                 success=True,
-                listing=listing if 'listing' in dir() else None,
+                listing=listing,
                 credits_spent=0,
                 already_owned=True,
             )
@@ -320,14 +408,46 @@ class PurchaseListingHandler:
                 error="Listing is not published",
             )
         except PurchaseFailedException as e:
+            # M-P0-002: Refund on purchase failure
+            if credits_deducted and credits_to_deduct > 0:
+                try:
+                    await self._billing_service.add_credits(
+                        user_id=command.buyer_id,
+                        amount=credits_to_deduct,
+                        tx_type=TransactionType.REFUND,
+                        description=f"Refund: Purchase failed",
+                        idempotency_key=f"refund_fail_{command.listing_id}_{command.buyer_id}",
+                    )
+                except Exception as refund_err:
+                    logger.critical(
+                        f"CRITICAL: Failed to refund {credits_to_deduct} credits after PurchaseFailedException. "
+                        f"User: {command.buyer_id}, Listing: {command.listing_id}. Error: {refund_err}"
+                    )
             return PurchaseListingResult(
                 success=False,
                 error=str(e),
             )
         except Exception as e:
+            # M-P0-002: Refund on any unexpected failure
+            if credits_deducted and credits_to_deduct > 0:
+                try:
+                    await self._billing_service.add_credits(
+                        user_id=command.buyer_id,
+                        amount=credits_to_deduct,
+                        tx_type=TransactionType.REFUND,
+                        description=f"Refund: Unexpected error during purchase",
+                        idempotency_key=f"refund_err_{command.listing_id}_{command.buyer_id}",
+                    )
+                except Exception as refund_err:
+                    logger.critical(
+                        f"CRITICAL: Failed to refund {credits_to_deduct} credits after unexpected error. "
+                        f"User: {command.buyer_id}, Listing: {command.listing_id}. Error: {refund_err}"
+                    )
+            # Don't expose internal error details
+            logger.error(f"Unexpected error during purchase: {e}")
             return PurchaseListingResult(
                 success=False,
-                error=str(e),
+                error="An unexpected error occurred. Please try again.",
             )
 
 
