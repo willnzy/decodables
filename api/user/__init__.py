@@ -23,7 +23,8 @@ All endpoints follow the pattern: /api/v2/user/{domain}/{endpoint}
 from fastapi import APIRouter
 
 from .billing import router as billing_router
-from .generation import router as generation_router
+# REMOVED: generation.py was redundant - endpoints now in generation_images/pdf/story.py
+# from .generation import router as generation_router
 from .webhooks import router as webhooks_router
 from .projects import router as projects_router
 from .marketplace import router as marketplace_router
@@ -53,7 +54,7 @@ user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
 
 # Include all user sub-routers
 user_router.include_router(billing_router)
-user_router.include_router(generation_router)
+# REMOVED: user_router.include_router(generation_router)
 user_router.include_router(webhooks_router)
 user_router.include_router(projects_router)
 user_router.include_router(marketplace_router)
