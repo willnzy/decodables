@@ -104,7 +104,7 @@ logger = setup_logging(
 )
 
 # v3.9: Import timezone utilities
-from timezone_utils import get_request_timezone
+from core.utils.timezone import get_request_timezone
 
 from domains.billing.payment_service import (
     create_checkout_session, create_portal_session, construct_event,

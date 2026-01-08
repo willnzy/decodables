@@ -29,7 +29,7 @@ from infrastructure.repositories.asset_repository import SupabaseAssetRepository
 from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
-from timezone_utils import get_request_timezone
+from core.utils.timezone import get_request_timezone
 
 logger = logging.getLogger(__name__)
 

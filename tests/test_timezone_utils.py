@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from fastapi import Request
 
-from timezone_utils import (
+from core.utils.timezone import (
     is_valid_timezone,
     sanitize_timezone,
     get_timezone_from_cloudflare,

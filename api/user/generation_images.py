@@ -26,7 +26,7 @@ from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
 from infrastructure.task_queue import task_queue
 from domains.platform.analytics_service import track_ai_generation
 from infrastructure.rate_limiter import limiter
-from timezone_utils import get_request_timezone
+from core.utils.timezone import get_request_timezone
 from dependencies import get_current_user
 from api.schemas.user.generation import ImageGenRequest
 

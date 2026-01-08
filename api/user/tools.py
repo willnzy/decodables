@@ -158,7 +158,7 @@ async def ocr_tool(
     """
     from shared.ai.ocr_service import process_ocr
     from domains.shared.access_control import AccessControl
-    from timezone_utils import get_request_timezone
+    from core.utils.timezone import get_request_timezone
     from config import TRIAL_DAYS
 
     # Check if user is in trial period
