@@ -2,7 +2,16 @@
 Admin System Router - System configs, cache, and metrics
 
 @module api.admin.system
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - SYS-MEDIUM-1: Added rate limiting to all 11 endpoints
+  - SYS-MEDIUM-2: Migrated from page to offset pagination
+  - SYS-MEDIUM-3: Added value_type and config_group enum validation
+  - SYS-MEDIUM-4: Added pattern validation for cache keys
+  - SYS-LOW-1: Added field length limits to request models
+  - SYS-LOW-2: Limited error exposure
 
 Includes:
 - System configuration management
@@ -11,15 +20,17 @@ Includes:
 """
 
 import logging
+import re
 from typing import Optional
 from datetime import date, timedelta
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import require_admin
 from core.database import get_database_client
 from infrastructure.repositories import SupabaseConfigRepository
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -27,47 +38,99 @@ router = APIRouter(prefix="/system", tags=["admin-system-v2"])
 
 
 # ==========================================
-# Request Models
+# Constants (v3.25)
+# ==========================================
+
+# v3.25: SYS-MEDIUM-3 - Valid config value types
+VALID_VALUE_TYPES = {"text", "json", "number", "boolean", "encrypted"}
+
+# v3.25: SYS-MEDIUM-3 - Valid config groups
+VALID_CONFIG_GROUPS = {"general", "feature_flags", "payment", "ai", "notification", "security", "cache"}
+
+# v3.25: SYS-MEDIUM-4 - Cache key pattern validation
+CACHE_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_:*\-\.]+$")
+
+
+# ==========================================
+# Request Models (v3.25: Added field validation)
 # ==========================================
 
 class ConfigCreateRequest(BaseModel):
-    key: str
-    value: str
-    value_type: str = "text"
-    config_group: str = "general"
-    description: Optional[str] = None
+    # v3.25: SYS-LOW-1 - Field length limits
+    key: str = Field(..., min_length=1, max_length=200)
+    value: str = Field(..., min_length=0, max_length=10000)
+    value_type: str = Field("text", max_length=20)
+    config_group: str = Field("general", max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+
+    # v3.25: SYS-MEDIUM-3 - value_type enum validation
+    @field_validator("value_type")
+    @classmethod
+    def validate_value_type(cls, v: str) -> str:
+        if v not in VALID_VALUE_TYPES:
+            raise ValueError(f"Invalid value_type. Must be one of: {', '.join(VALID_VALUE_TYPES)}")
+        return v
+
+    # v3.25: SYS-MEDIUM-3 - config_group enum validation
+    @field_validator("config_group")
+    @classmethod
+    def validate_config_group(cls, v: str) -> str:
+        if v not in VALID_CONFIG_GROUPS:
+            raise ValueError(f"Invalid config_group. Must be one of: {', '.join(VALID_CONFIG_GROUPS)}")
+        return v
 
 
 class ConfigUpdateRequest(BaseModel):
-    value: Optional[str] = None
-    value_type: Optional[str] = None
-    config_group: Optional[str] = None
-    description: Optional[str] = None
+    # v3.25: SYS-LOW-1 - Field length limits
+    value: Optional[str] = Field(None, max_length=10000)
+    value_type: Optional[str] = Field(None, max_length=20)
+    config_group: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
     is_active: Optional[bool] = None
+
+    # v3.25: SYS-MEDIUM-3 - value_type enum validation
+    @field_validator("value_type")
+    @classmethod
+    def validate_value_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_VALUE_TYPES:
+            raise ValueError(f"Invalid value_type. Must be one of: {', '.join(VALID_VALUE_TYPES)}")
+        return v
+
+    # v3.25: SYS-MEDIUM-3 - config_group enum validation
+    @field_validator("config_group")
+    @classmethod
+    def validate_config_group(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_CONFIG_GROUPS:
+            raise ValueError(f"Invalid config_group. Must be one of: {', '.join(VALID_CONFIG_GROUPS)}")
+        return v
 
 
 # ==========================================
-# System Configuration Routes
+# System Configuration Routes (v3.25: Added rate limiting and validation)
 # ==========================================
 
 @router.get("/configs")
+@limiter.limit("30/minute")
 async def get_configs(
-    group: Optional[str] = None,
-    search: Optional[str] = None,
-    page: int = 1,
-    limit: int = 50,
+    request: Request,
+    group: Optional[str] = Query(None, max_length=50),
+    search: Optional[str] = Query(None, max_length=100),
+    # v3.25: SYS-MEDIUM-2 - Migrated to offset pagination
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return (1-100)"),
     admin: dict = Depends(require_admin)
 ):
     """Get all system configs with filtering."""
     db_client = get_database_client()
     config_repo = SupabaseConfigRepository(db_client)
 
-    result = await config_repo.get_paginated(group=group, page=page, limit=limit)
-    return {"items": result["items"], "total": result["total"]}
+    result = await config_repo.get_paginated(group=group, offset=offset, limit=limit)
+    return {"items": result["items"], "total": result["total"], "offset": offset, "limit": limit}
 
 
 @router.get("/configs/groups")
-async def get_config_groups(admin: dict = Depends(require_admin)):
+@limiter.limit("30/minute")
+async def get_config_groups(request: Request, admin: dict = Depends(require_admin)):
     """Get available config groups."""
     db_client = get_database_client()
     config_repo = SupabaseConfigRepository(db_client)
@@ -77,7 +140,8 @@ async def get_config_groups(admin: dict = Depends(require_admin)):
 
 
 @router.post("/configs")
-async def create_config(req: ConfigCreateRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")
+async def create_config(request: Request, req: ConfigCreateRequest, admin: dict = Depends(require_admin)):
     """Create a new system config."""
     try:
         db_client = get_database_client()
@@ -93,12 +157,19 @@ async def create_config(req: ConfigCreateRequest, admin: dict = Depends(require_
         )
         return {"status": "created", "config": result}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Config create failed: {e}")
+        raise HTTPException(400, "Failed to create config")
 
 
 @router.put("/configs/{key:path}")
-async def update_config(key: str, req: ConfigUpdateRequest, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")
+async def update_config(request: Request, key: str, req: ConfigUpdateRequest, admin: dict = Depends(require_admin)):
     """Update an existing config."""
+    # v3.25: SYS-LOW-1 - Validate key length
+    if len(key) > 200:
+        raise HTTPException(400, "Config key too long (max 200 characters)")
+
     try:
         db_client = get_database_client()
         config_repo = SupabaseConfigRepository(db_client)
@@ -112,12 +183,19 @@ async def update_config(key: str, req: ConfigUpdateRequest, admin: dict = Depend
         )
         return {"status": "updated", "config": result}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Config update failed: {e}")
+        raise HTTPException(400, "Failed to update config")
 
 
 @router.delete("/configs/{key:path}")
-async def delete_config(key: str, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")
+async def delete_config(request: Request, key: str, admin: dict = Depends(require_admin)):
     """Soft delete a config."""
+    # v3.25: SYS-LOW-1 - Validate key length
+    if len(key) > 200:
+        raise HTTPException(400, "Config key too long (max 200 characters)")
+
     try:
         db_client = get_database_client()
         config_repo = SupabaseConfigRepository(db_client)
@@ -125,26 +203,36 @@ async def delete_config(key: str, admin: dict = Depends(require_admin)):
         await config_repo.delete(key, admin["id"])
         return {"status": "deleted", "key": key}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Config delete failed: {e}")
+        raise HTTPException(400, "Failed to delete config")
 
 
 @router.get("/configs/audit")
+@limiter.limit("30/minute")
 async def get_config_audit(
-    config_key: Optional[str] = None,
-    page: int = 1,
-    limit: int = 50,
+    request: Request,
+    config_key: Optional[str] = Query(None, max_length=200),
+    # v3.25: SYS-MEDIUM-2 - Migrated to offset pagination
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return (1-100)"),
     admin: dict = Depends(require_admin)
 ):
     """Get config change history."""
     db_client = get_database_client()
     config_repo = SupabaseConfigRepository(db_client)
 
-    logs = await config_repo.get_audit_logs(config_key=config_key, page=page, limit=limit)
-    return {"logs": logs, "total": len(logs)}
+    logs = await config_repo.get_audit_logs(config_key=config_key, offset=offset, limit=limit)
+    return {"logs": logs, "total": len(logs), "offset": offset, "limit": limit}
 
 
 @router.post("/configs/cache/invalidate")
-async def invalidate_cache(key: Optional[str] = None, admin: dict = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def invalidate_cache(
+    request: Request,
+    key: Optional[str] = Query(None, max_length=200),
+    admin: dict = Depends(require_admin)
+):
     """Invalidate config cache."""
     try:
         db_client = get_database_client()
@@ -153,15 +241,18 @@ async def invalidate_cache(key: Optional[str] = None, admin: dict = Depends(requ
         config_repo.invalidate_cache(key)
         return {"status": "invalidated", "key": key or "all"}
     except Exception as e:
-        raise HTTPException(500, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Cache invalidate failed: {e}")
+        raise HTTPException(500, "Failed to invalidate cache")
 
 
 # ==========================================
-# Cache Management Routes
+# Cache Management Routes (v3.25: Added rate limiting and validation)
 # ==========================================
 
 @router.get("/system/cache/status")
-async def get_cache_status(admin: dict = Depends(require_admin)):
+@limiter.limit("30/minute")
+async def get_cache_status(request: Request, admin: dict = Depends(require_admin)):
     """Get Redis cache status and statistics."""
     from core.cache import get_cache_provider
 
@@ -180,17 +271,26 @@ async def get_cache_status(admin: dict = Depends(require_admin)):
             "uptime_seconds": info.get("uptime_in_seconds"),
         }
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Cache status check failed: {e}")
+        return {"status": "error", "error": "Failed to get cache status"}
 
 
 @router.get("/system/cache/keys")
+@limiter.limit("30/minute")
 async def list_cache_keys(
-    pattern: str = "*",
-    limit: int = 100,
+    request: Request,
+    # v3.25: SYS-MEDIUM-4 - Pattern validation
+    pattern: str = Query("*", max_length=100),
+    limit: int = Query(100, ge=1, le=1000, description="Max keys to return (1-1000)"),
     admin: dict = Depends(require_admin)
 ):
     """List cache keys matching pattern."""
     from core.cache import get_cache_provider
+
+    # v3.25: SYS-MEDIUM-4 - Validate pattern to prevent injection
+    if not CACHE_KEY_PATTERN.match(pattern):
+        raise HTTPException(400, "Invalid pattern. Only alphanumeric, underscore, colon, asterisk, hyphen, and dot allowed")
 
     try:
         cache_provider = get_cache_provider()
@@ -208,13 +308,20 @@ async def list_cache_keys(
 
         return {"keys": keys[:limit], "total": len(keys), "pattern": pattern}
     except Exception as e:
-        return {"keys": [], "error": str(e)}
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Cache keys list failed: {e}")
+        return {"keys": [], "error": "Failed to list cache keys"}
 
 
 @router.delete("/system/cache/key/{key:path}")
-async def delete_cache_key(key: str, admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")
+async def delete_cache_key(request: Request, key: str, admin: dict = Depends(require_admin)):
     """Delete a specific cache key."""
     from core.cache import get_cache_provider
+
+    # v3.25: SYS-MEDIUM-4 - Validate key pattern
+    if len(key) > 200:
+        raise HTTPException(400, "Cache key too long (max 200 characters)")
 
     try:
         cache_provider = get_cache_provider()
@@ -224,12 +331,17 @@ async def delete_cache_key(key: str, admin: dict = Depends(require_admin)):
 
         deleted = redis.delete(key)
         return {"status": "deleted" if deleted else "not_found", "key": key}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Cache key delete failed: {e}")
+        raise HTTPException(500, "Failed to delete cache key")
 
 
 @router.post("/system/cache/clear-all")
-async def clear_all_cache(admin: dict = Depends(require_admin)):
+@limiter.limit("2/minute")
+async def clear_all_cache(request: Request, admin: dict = Depends(require_admin)):
     """Clear all cache (use with caution)."""
     from core.cache import get_cache_provider
 
@@ -241,5 +353,9 @@ async def clear_all_cache(admin: dict = Depends(require_admin)):
 
         redis.flushdb()
         return {"status": "cleared"}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, str(e))
+        # v3.25: SYS-LOW-2 - Limit error exposure
+        logger.error(f"[Admin] Cache clear failed: {e}")
+        raise HTTPException(500, "Failed to clear cache")

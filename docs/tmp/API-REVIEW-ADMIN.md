@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 95/125 (76%)
+> **当前进度**: 106/125 (85%)
 
 ---
 
@@ -75,11 +75,11 @@ Admin API 作为内部管理工具，有以下特点：
 | Notifications | 5 | 5 | ✅ 已完成 |
 | Stats | 18 | 18 | ✅ 已完成 |
 | Subscriptions | 3 | 3 | ✅ 已完成 |
-| System | 11 | 0 | 未开始 |
+| System | 11 | 11 | ✅ 已完成 |
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **95** | 76% |
+| **总计** | **125** | **106** | 85% |
 
 ---
 
@@ -595,36 +595,52 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## System 系统管理 (11个)
+## System 系统管理 (11个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 96 | get_configs | GET | /configs | api/admin/system.py | 53 |
-| 97 | get_config_groups | GET | /configs/groups | api/admin/system.py | 69 |
-| 98 | create_config | POST | /configs | api/admin/system.py | 79 |
-| 99 | update_config | PUT | /configs/{key:path} | api/admin/system.py | 99 |
-| 100 | delete_config | DELETE | /configs/{key:path} | api/admin/system.py | 118 |
-| 101 | get_config_audit | GET | /configs/audit | api/admin/system.py | 131 |
-| 102 | invalidate_cache | POST | /configs/cache/invalidate | api/admin/system.py | 146 |
-| 103 | get_cache_status | GET | /system/cache/status | api/admin/system.py | 163 |
-| 104 | list_cache_keys | GET | /system/cache/keys | api/admin/system.py | 186 |
-| 105 | delete_cache_key | DELETE | /system/cache/key/{key:path} | api/admin/system.py | 214 |
-| 106 | clear_all_cache | POST | /system/cache/clear-all | api/admin/system.py | 231 |
+| 96 | get_configs | GET | /configs | api/admin/system.py | 112 |
+| 97 | get_config_groups | GET | /configs/groups | api/admin/system.py | 131 |
+| 98 | create_config | POST | /configs | api/admin/system.py | 142 |
+| 99 | update_config | PUT | /configs/{key:path} | api/admin/system.py | 165 |
+| 100 | delete_config | DELETE | /configs/{key:path} | api/admin/system.py | 191 |
+| 101 | get_config_audit | GET | /configs/audit | api/admin/system.py | 211 |
+| 102 | invalidate_cache | POST | /configs/cache/invalidate | api/admin/system.py | 229 |
+| 103 | get_cache_status | GET | /system/cache/status | api/admin/system.py | 253 |
+| 104 | list_cache_keys | GET | /system/cache/keys | api/admin/system.py | 279 |
+| 105 | delete_cache_key | DELETE | /system/cache/key/{key:path} | api/admin/system.py | 316 |
+| 106 | clear_all_cache | POST | /system/cache/clear-all | api/admin/system.py | 342 |
 
 **测试用例 Checklist**
-- [ ] #96 获取系统配置列表
-- [ ] #97 获取配置分组
-- [ ] #98 创建系统配置
-- [ ] #99 更新系统配置
-- [ ] #100 删除系统配置
-- [ ] #101 获取配置审计日志
-- [ ] #102 使缓存失效
-- [ ] #103 获取缓存状态
-- [ ] #104 列出缓存键
-- [ ] #105 删除缓存键
-- [ ] #106 清除所有缓存
+- [x] #96 获取系统配置列表
+- [x] #97 获取配置分组
+- [x] #98 创建系统配置
+- [x] #99 更新系统配置
+- [x] #100 删除系统配置
+- [x] #101 获取配置审计日志
+- [x] #102 使缓存失效
+- [x] #103 获取缓存状态
+- [x] #104 列出缓存键
+- [x] #105 删除缓存键
+- [x] #106 清除所有缓存
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | SYS-MEDIUM-1 | 11个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | SYS-MEDIUM-2 | 使用 page 分页而非 offset | ✅ 已迁移 |
+| 🟡 MEDIUM | SYS-MEDIUM-3 | `value_type`/`config_group` 无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | SYS-MEDIUM-4 | `pattern` 参数无验证 (注入风险) | ✅ 已添加 CACHE_KEY_PATTERN |
+| 🟢 LOW | SYS-LOW-1 | Request Model 缺少字段长度限制 | ✅ 已添加 |
+| 🟢 LOW | SYS-LOW-2 | 异常暴露详细错误信息 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/system.py` - v3.24 → v3.25
+- `infrastructure/repositories/config_repository.py` - 更新 get_paginated, get_audit_logs 参数
+- `tests/api/admin/test_system.py` - 49 个测试用例
 
 ---
 

@@ -127,7 +127,7 @@ class SupabaseConfigRepository:
     async def get_paginated(
         self,
         group: Optional[str] = None,
-        page: int = 1,
+        offset: int = 0,
         limit: int = 50
     ) -> Dict[str, Any]:
         """
@@ -135,13 +135,12 @@ class SupabaseConfigRepository:
 
         Args:
             group: Filter by group
-            page: Page number
+            offset: Number of records to skip
             limit: Items per page
 
         Returns:
             Dict with items and total count
         """
-        offset = (page - 1) * limit
         query = self.client.table("system_configs").select("*", count="exact")
 
         if group:
@@ -277,7 +276,7 @@ class SupabaseConfigRepository:
     async def get_audit_logs(
         self,
         config_key: Optional[str] = None,
-        page: int = 1,
+        offset: int = 0,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
@@ -285,13 +284,12 @@ class SupabaseConfigRepository:
 
         Args:
             config_key: Filter by config key
-            page: Page number
+            offset: Number of records to skip
             limit: Items per page
 
         Returns:
             List of audit log records
         """
-        offset = (page - 1) * limit
         query = self.client.table("config_audit_logs").select("*")
 
         if config_key:
