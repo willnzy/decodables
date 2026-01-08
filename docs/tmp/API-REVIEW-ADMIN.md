@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 13/125 (10%)
+> **当前进度**: 21/125 (17%)
 
 ---
 
@@ -65,7 +65,7 @@ Admin API 作为内部管理工具，有以下特点：
 |------|--------|--------|------|
 | AI Insights | 5 | 5 | ✅ 已完成 |
 | AI Models Config | 8 | 8 | ✅ 已完成 |
-| Campaigns | 8 | 0 | 未开始 |
+| Campaigns | 8 | 8 | ✅ 已完成 |
 | Config | 8 | 0 | 未开始 |
 | Events | 5 | 0 | 未开始 |
 | Experiments | 14 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **13** | 10% |
+| **总计** | **125** | **21** | 17% |
 
 ---
 
@@ -167,30 +167,45 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Campaigns 活动管理 (8个)
+## Campaigns 活动管理 (8个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 14 | list_campaigns | GET | / | api/admin/campaigns.py | 74 |
-| 15 | get_campaign | GET | /{campaign_id} | api/admin/campaigns.py | 93 |
-| 16 | create_campaign | POST | / | api/admin/campaigns.py | 107 |
-| 17 | update_campaign | PUT | /{campaign_id} | api/admin/campaigns.py | 140 |
-| 18 | delete_campaign | DELETE | /{campaign_id} | api/admin/campaigns.py | 162 |
-| 19 | activate_campaign | POST | /{campaign_id}/activate | api/admin/campaigns.py | 180 |
-| 20 | pause_campaign | POST | /{campaign_id}/pause | api/admin/campaigns.py | 198 |
-| 21 | get_campaign_stats | GET | /{campaign_id}/stats | api/admin/campaigns.py | 216 |
+| 14 | list_campaigns | GET | / | api/admin/campaigns.py | 108 |
+| 15 | get_campaign | GET | /{campaign_id} | api/admin/campaigns.py | 132 |
+| 16 | create_campaign | POST | / | api/admin/campaigns.py | 148 |
+| 17 | update_campaign | PUT | /{campaign_id} | api/admin/campaigns.py | 187 |
+| 18 | delete_campaign | DELETE | /{campaign_id} | api/admin/campaigns.py | 217 |
+| 19 | activate_campaign | POST | /{campaign_id}/activate | api/admin/campaigns.py | 243 |
+| 20 | pause_campaign | POST | /{campaign_id}/pause | api/admin/campaigns.py | 269 |
+| 21 | get_campaign_stats | GET | /{campaign_id}/stats | api/admin/campaigns.py | 295 |
 
 **测试用例 Checklist**
-- [ ] #14 获取活动列表
-- [ ] #15 获取活动详情
-- [ ] #16 创建活动
-- [ ] #17 更新活动配置
-- [ ] #18 删除活动
-- [ ] #19 激活活动
-- [ ] #20 暂停活动
-- [ ] #21 获取活动统计
+- [x] #14 获取活动列表
+- [x] #15 获取活动详情
+- [x] #16 创建活动
+- [x] #17 更新活动配置
+- [x] #18 删除活动
+- [x] #19 激活活动
+- [x] #20 暂停活动
+- [x] #21 获取活动统计
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | CAM-MEDIUM-1 | 8个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | CAM-MEDIUM-2 | `status` 参数无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | CAM-MEDIUM-4 | `target_type` 无枚举验证 (UpdateRequest) | ✅ 已添加 |
+| 🟡 MEDIUM | CAM-MEDIUM-5 | `name` 无长度限制 | ✅ 已添加 (1-200) |
+| 🟢 LOW | CAM-LOW-1 | 分页改用 offset 参数 | ✅ 已迁移 |
+| 🟢 LOW | CAM-LOW-2 | 字段长度限制 | ✅ 已添加 |
+
+**修改文件**:
+- `api/admin/campaigns.py` - v2.0.0 → v3.25
+- `tests/api/admin/test_campaigns.py` - 35 个测试用例
 
 ---
 
