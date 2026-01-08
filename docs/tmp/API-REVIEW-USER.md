@@ -52,7 +52,7 @@
 | Logs | 2 | 0 | 未开始 |
 | Marketplace 🟡 | 11 | 11 | ✅ 已完成 |
 | Payment 🔴 | 2 | 2 | ✅ 已完成 |
-| Projects 🟡 | 10 | 0 | 未开始 |
+| Projects 🟡 | 10 | 10 | ✅ 已完成 |
 | Resources | 7 | 0 | 未开始 |
 | Support | 4 | 0 | 未开始 |
 | System Resources | 9 | 0 | 未开始 |
@@ -63,7 +63,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **31** | 28.2% |
+| **总计** | **110** | **41** | 37.3% |
 
 ---
 
@@ -860,34 +860,131 @@
 
 ---
 
-## Projects 项目模块 (10个) 🟡 P1
+## Projects 项目模块 (10个) 🟡 P1 ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 47 | list_projects | GET | / | api/user/projects.py | 103 |
-| 48 | dashboard_projects | GET | /dashboard | api/user/projects.py | 159 |
-| 49 | list_deleted_projects | GET | /deleted | api/user/projects.py | 195 |
-| 50 | get_project_seller_stats | GET | /seller-stats | api/user/projects.py | 212 |
-| 51 | create_project | POST | / | api/user/projects.py | 227 |
-| 52 | get_project | GET | /{project_id} | api/user/projects.py | 267 |
-| 53 | update_project | PUT | /{project_id} | api/user/projects.py | 300 |
-| 54 | delete_project | DELETE | /{project_id} | api/user/projects.py | 344 |
-| 55 | restore_project | POST | /{project_id}/restore | api/user/projects.py | 383 |
-| 56 | duplicate_project | POST | /{project_id}/duplicate | api/user/projects.py | 421 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 47 | list_projects | GET | / | api/user/projects.py | 103 | ✅ 🔧 |
+| 48 | dashboard_projects | GET | /dashboard | api/user/projects.py | 159 | ✅ 🔧 |
+| 49 | list_deleted_projects | GET | /deleted | api/user/projects.py | 195 | ✅ |
+| 50 | get_project_seller_stats | GET | /seller-stats | api/user/projects.py | 212 | ✅ |
+| 51 | create_project | POST | / | api/user/projects.py | 227 | ✅ 🔧 |
+| 52 | get_project | GET | /{project_id} | api/user/projects.py | 267 | ✅ |
+| 53 | update_project | PUT | /{project_id} | api/user/projects.py | 300 | ✅ 🔧 |
+| 54 | delete_project | DELETE | /{project_id} | api/user/projects.py | 344 | ✅ 🔧 |
+| 55 | restore_project | POST | /{project_id}/restore | api/user/projects.py | 383 | ✅ 🔧 |
+| 56 | duplicate_project | POST | /{project_id}/duplicate | api/user/projects.py | 421 | ✅ 🔧 |
 
 **测试用例 Checklist**
-- [ ] #47 项目列表分页
-- [ ] #48 Dashboard视图
-- [ ] #49 已删除项目
-- [ ] #50 卖家统计
-- [ ] #51 创建项目
-- [ ] #52 获取项目详情
-- [ ] #53 更新项目
-- [ ] #54 软删除项目
-- [ ] #55 恢复项目
-- [ ] #56 复制项目
+- [x] #47 项目列表分页 (total_count 修复)
+- [x] #48 Dashboard视图 (DDD Query Handler)
+- [x] #49 已删除项目
+- [x] #50 卖家统计
+- [x] #51 创建项目 (参数对齐)
+- [x] #52 获取项目详情
+- [x] #53 更新项目 (canvas_data/thumbnail_url)
+- [x] #54 软删除项目 (permanent 参数)
+- [x] #55 恢复项目 (CQRS Command Handler)
+- [x] #56 复制项目 (Service 方法新增)
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-08)
+
+**发现并修复的 Bug** 🔧:
+
+#### 🔴 CRITICAL (运行时崩溃)
+
+1. **#51 create_project - 参数不匹配**
+   - 问题: API 使用 `user_id/canvas_data/tier` 但 Command 期望 `owner_id/canvas_width/canvas_height/user_tier`
+   - 影响: `TypeError` 崩溃
+   - 修复: 重新对齐 `CreateProjectCommand` 参数为 `user_id/title/canvas_data/tier`
+
+2. **#51 create_project - Result 缺少字段**
+   - 问题: `CreateProjectResult` 没有 `project_dict` 字段
+   - 影响: `AttributeError` 崩溃
+   - 修复: 添加 `project_dict: Optional[Dict[str, Any]]` 字段
+
+3. **#56 duplicate_project - 方法不存在**
+   - 问题: `creation_service.duplicate_project()` 方法不存在
+   - 影响: `AttributeError` 崩溃
+   - 修复: 在 `CreationService` 新增 `duplicate_project()` 方法，含 tier 限制检查
+
+#### 🟠 HIGH (功能失效)
+
+4. **#53 update_project - Command 缺少字段**
+   - 问题: `UpdateProjectCommand` 不支持 `canvas_data` 和 `thumbnail_url`
+   - 影响: 更新画布/缩略图静默失败
+   - 修复: 添加这两个字段，Handler 使用 `save_project_quick`
+
+5. **#54 delete_project - 参数名不匹配**
+   - 问题: API 使用 `permanent`，Command 使用 `hard_delete`
+   - 影响: 永久删除选项失效
+   - 修复: Command 改用 `permanent`，Handler 内部映射
+
+6. **#56 duplicate_project - 绕过 Tier 限制**
+   - 问题: 原直接调用 Repository 绕过限制检查
+   - 影响: 用户可超出项目数量限制
+   - 修复: Service 方法包含限制检查 (`PROJECT_LIMITS`)
+
+#### 🟡 MEDIUM (架构/分页问题)
+
+7. **#47 list_projects - total_count 错误**
+   - 问题: `total_count=len(projects)` 返回当前页数量
+   - 影响: 分页 UI 显示错误
+   - 修复: 新增 `count_user_projects()` 方法返回实际总数
+
+8. **#47 list_projects - canvas_data 缺失**
+   - 问题: `Project.to_dict()` 不含 `canvas_data`
+   - 影响: 列表 API 不返回画布数据
+   - 修复:
+     - `Project` 添加 `canvas_data` 字段
+     - `_map_to_project` 解析 DB 的 canvas_data
+     - `to_dict()` 输出 canvas_data
+
+9. **#48 dashboard_projects - 违反 DDD**
+   - 问题: 直接调用 Repository 而非 Query Handler
+   - 修复: 创建 `GetDashboardProjectsQuery` + `GetDashboardProjectsHandler`
+
+10. **#55 restore_project - 违反 CQRS**
+    - 问题: 直接调用 Service 而非 Command Handler
+    - 修复: 创建 `RestoreProjectCommand` + `RestoreProjectHandler`
+
+**修复涉及的文件**:
+
+1. `domains/creation/aggregates/project.py`
+   - 添加 `canvas_data` 字段
+   - 更新 `to_dict()` 输出
+
+2. `infrastructure/repositories/project_repository.py`
+   - `_map_to_project()` 解析 canvas_data
+
+3. `application/commands/creation.py`
+   - 修复 `CreateProjectCommand` 参数
+   - 添加 `CreateProjectResult.project_dict`
+   - 修复 `UpdateProjectCommand` 支持 canvas_data/thumbnail_url
+   - 修复 `DeleteProjectCommand` 使用 permanent
+   - 新增 `RestoreProjectCommand` + Handler
+
+4. `application/queries/creation.py`
+   - 修复 `GetUserProjectsHandler` 使用 count_user_projects
+   - 新增 `GetDashboardProjectsQuery` + Handler
+
+5. `domains/creation/service.py`
+   - 新增 `duplicate_project()` 方法
+   - 新增 `count_user_projects()` 方法
+
+6. `container.py`
+   - 注册 `GetDashboardProjectsHandler`
+   - 注册 `RestoreProjectHandler`
+
+7. `api/user/projects.py`
+   - 更新 dashboard_projects 使用 Handler
+   - 更新 restore_project 使用 Handler
+   - 修复 duplicate_project 异常处理
+
+**测试文件更新**:
+- `tests/api/user/test_projects.py` - 更新 mock 适配新架构
+
+**完成状态**: ✅ 已完成 (2026-01-08)
 
 ---
 
