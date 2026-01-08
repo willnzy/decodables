@@ -10,7 +10,12 @@ Endpoints tested:
 - DELETE /api/v2/user/generations/batch (deprecated)
 
 @module tests.api.user.test_generations
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- Added tests for UUID validation (GEN-P0-1)
+- Added tests for delete 404 response (GEN-MEDIUM-1)
+- Updated test constants to use valid UUID format
 """
 
 import pytest
@@ -29,6 +34,15 @@ from app import app
 from dependencies import get_current_user
 
 client = TestClient(app)
+
+
+# ==========================================
+# Test Constants
+# ==========================================
+
+# v2.1.0: Valid UUID format for generation_id
+VALID_GENERATION_ID = "12345678-1234-1234-1234-123456789abc"
+INVALID_GENERATION_ID = "not-a-valid-uuid"
 
 
 # ==========================================
@@ -172,7 +186,7 @@ class TestUpdateGeneration:
     def test_update_generation_success(self, mock_supabase, override_get_current_user):
         """Should update generation favorite status."""
         mock_result = MagicMock()
-        mock_result.data = [{"id": "gen1", "is_favorited": True}]
+        mock_result.data = [{"id": VALID_GENERATION_ID, "is_favorited": True}]
 
         mock_table = MagicMock()
         mock_update = MagicMock()
@@ -186,7 +200,7 @@ class TestUpdateGeneration:
         mock_eq2.execute.return_value = mock_result
 
         response = client.patch(
-            "/api/v2/user/generations/gen1",
+            f"/api/v2/user/generations/{VALID_GENERATION_ID}",
             json={"is_favorited": True}
         )
 
@@ -213,11 +227,26 @@ class TestUpdateGeneration:
         mock_eq2.execute.return_value = mock_result
 
         response = client.patch(
-            "/api/v2/user/generations/gen_nonexistent",
+            f"/api/v2/user/generations/{VALID_GENERATION_ID}",
             json={"is_favorited": True}
         )
 
         assert response.status_code == 404
+
+    def test_update_generation_invalid_id(self, override_get_current_user):
+        """
+        v2.1.0: GEN-P0-1 - Should reject invalid generation_id format.
+
+        Given: Invalid generation_id (not UUID format)
+        When: PATCH /generations/{invalid_id}
+        Then: Returns 400 Bad Request
+        """
+        response = client.patch(
+            f"/api/v2/user/generations/{INVALID_GENERATION_ID}",
+            json={"is_favorited": True}
+        )
+
+        assert response.status_code == 400
 
 
 class TestToggleFavoriteDeprecated:
@@ -227,7 +256,7 @@ class TestToggleFavoriteDeprecated:
     def test_toggle_favorite_deprecated(self, mock_supabase, override_get_current_user):
         """Should still work but is deprecated."""
         mock_result = MagicMock()
-        mock_result.data = [{"id": "gen1", "is_favorited": True}]
+        mock_result.data = [{"id": VALID_GENERATION_ID, "is_favorited": True}]
 
         mock_table = MagicMock()
         mock_update = MagicMock()
@@ -241,7 +270,7 @@ class TestToggleFavoriteDeprecated:
         mock_eq2.execute.return_value = mock_result
 
         response = client.post(
-            "/api/v2/user/generations/gen1/favorite",
+            f"/api/v2/user/generations/{VALID_GENERATION_ID}/favorite",
             json={"is_favorited": True}
         )
 
@@ -249,14 +278,27 @@ class TestToggleFavoriteDeprecated:
         data = response.json()
         assert data["success"] is True
 
+    def test_toggle_favorite_invalid_id(self, override_get_current_user):
+        """
+        v2.1.0: GEN-P0-1 - Should reject invalid generation_id format.
+        """
+        response = client.post(
+            f"/api/v2/user/generations/{INVALID_GENERATION_ID}/favorite",
+            json={"is_favorited": True}
+        )
+
+        assert response.status_code == 400
+
 
 class TestDeleteGeneration:
     """Test DELETE /generations/{id} endpoint."""
 
+    @patch('api.user.generations.log_activity')
     @patch('api.user.generations.supabase')
-    def test_delete_generation_success(self, mock_supabase, override_get_current_user):
+    def test_delete_generation_success(self, mock_supabase, mock_log, override_get_current_user):
         """Should delete generation."""
         mock_result = MagicMock()
+        mock_result.data = [{"id": VALID_GENERATION_ID}]  # v2.1.0: Return data to indicate deletion
 
         mock_table = MagicMock()
         mock_delete = MagicMock()
@@ -269,19 +311,51 @@ class TestDeleteGeneration:
         mock_eq1.eq.return_value = mock_eq2
         mock_eq2.execute.return_value = mock_result
 
-        response = client.delete("/api/v2/user/generations/gen1")
+        response = client.delete(f"/api/v2/user/generations/{VALID_GENERATION_ID}")
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["deleted"] == "gen1"
+        assert data["deleted"] == VALID_GENERATION_ID
+
+    def test_delete_generation_invalid_id(self, override_get_current_user):
+        """
+        v2.1.0: GEN-P0-1 - Should reject invalid generation_id format.
+        """
+        response = client.delete(f"/api/v2/user/generations/{INVALID_GENERATION_ID}")
+
+        assert response.status_code == 400
+
+    @patch('api.user.generations.supabase')
+    def test_delete_generation_not_found(self, mock_supabase, override_get_current_user):
+        """
+        v2.1.0: GEN-MEDIUM-1 - Should return 404 if generation not found.
+        """
+        mock_result = MagicMock()
+        mock_result.data = []  # No data = not found
+
+        mock_table = MagicMock()
+        mock_delete = MagicMock()
+        mock_eq1 = MagicMock()
+        mock_eq2 = MagicMock()
+
+        mock_supabase.table.return_value = mock_table
+        mock_table.delete.return_value = mock_delete
+        mock_delete.eq.return_value = mock_eq1
+        mock_eq1.eq.return_value = mock_eq2
+        mock_eq2.execute.return_value = mock_result
+
+        response = client.delete(f"/api/v2/user/generations/{VALID_GENERATION_ID}")
+
+        assert response.status_code == 404
 
 
 class TestBatchDelete:
     """Test POST /generations/batch-delete endpoint."""
 
+    @patch('api.user.generations.log_activity')
     @patch('api.user.generations.supabase')
-    def test_batch_delete_keep_favorites(self, mock_supabase, override_get_current_user):
+    def test_batch_delete_keep_favorites(self, mock_supabase, mock_log, override_get_current_user):
         """Should delete all except favorites."""
         mock_result = MagicMock()
         mock_result.data = [{"id": "gen1"}, {"id": "gen2"}]
@@ -304,8 +378,9 @@ class TestBatchDelete:
         assert data["success"] is True
         assert data["deleted_count"] == 2
 
+    @patch('api.user.generations.log_activity')
     @patch('api.user.generations.supabase')
-    def test_batch_delete_all(self, mock_supabase, override_get_current_user):
+    def test_batch_delete_all(self, mock_supabase, mock_log, override_get_current_user):
         """Should delete all generations."""
         mock_result = MagicMock()
         mock_result.data = [{"id": "gen1"}, {"id": "gen2"}, {"id": "gen3"}]
@@ -334,8 +409,9 @@ class TestBatchDeleteDeprecated:
     DELETE /batch now comes BEFORE DELETE /{generation_id}, so it correctly matches.
     """
 
+    @patch('api.user.generations.log_activity')
     @patch('api.user.generations.supabase')
-    def test_batch_delete_deprecated_now_fixed(self, mock_supabase, override_get_current_user):
+    def test_batch_delete_deprecated_now_fixed(self, mock_supabase, mock_log, override_get_current_user):
         """BUG FIXED: DELETE /batch now correctly matches and returns BatchDeleteResponse."""
         mock_result = MagicMock()
         mock_result.data = [{"id": "gen_1"}, {"id": "gen_2"}]

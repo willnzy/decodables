@@ -1,7 +1,16 @@
 """Logs API - Error logs endpoint (v2).
 
 @module api.user.logs
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - LOG-P0-1: Added rate limiting (30/minute for single, 10/minute for batch)
+  - LOG-P0-2: Added batch size limit (max 50 errors per request)
+  - LOG-HIGH-1: Added error_id format validation (max 100 chars, alphanumeric)
+  - LOG-HIGH-2: Added context size limit (max 10KB serialized)
+  - LOG-MEDIUM-1: Added error_type max_length
+  - LOG-MEDIUM-2: Added method whitelist validation
 
 Endpoints:
 - POST /api/v2/user/logs/error - Log single error
@@ -11,18 +20,30 @@ Note: These endpoints don't require authentication so errors
 can be logged even for unauthenticated users.
 """
 
+import json
 import logging
 import jwt
+import re
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Header
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Header, Request
+from pydantic import BaseModel, Field, field_validator
 from core.database import get_supabase_client
+from infrastructure.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 supabase = get_supabase_client()
 
 router = APIRouter(prefix="/logs", tags=["user-logs-v2"])
+
+# v2.1.0: LOG-HIGH-1 - Error ID validation pattern (alphanumeric, underscore, hyphen)
+ERROR_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{1,100}$")
+
+# v2.1.0: LOG-MEDIUM-2 - Valid HTTP methods
+VALID_HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+
+# v2.1.0: LOG-HIGH-2 - Max context size (10KB)
+MAX_CONTEXT_SIZE = 10 * 1024
 
 
 # ==========================================
@@ -30,26 +51,67 @@ router = APIRouter(prefix="/logs", tags=["user-logs-v2"])
 # ==========================================
 
 class ErrorLogRequest(BaseModel):
-    """Single error log request."""
-    error_id: str
-    error_type: str
-    error_code: Optional[str] = None
-    message: Optional[str] = None
-    status_code: Optional[int] = None
-    endpoint: Optional[str] = None
-    method: Optional[str] = None
-    user_code: Optional[str] = None
-    session_id: Optional[str] = None
-    page_url: Optional[str] = None
-    user_agent: Optional[str] = None
-    stack_trace: Optional[str] = None
-    context: Dict[str, Any] = {}
-    client_timestamp: Optional[str] = None
+    """
+    Single error log request.
+
+    v2.1.0: Added validation for security:
+    - LOG-HIGH-1: error_id format validation
+    - LOG-MEDIUM-1: error_type max_length
+    - LOG-MEDIUM-2: method whitelist
+    - LOG-HIGH-2: context size limit
+    """
+    # v2.1.0: LOG-HIGH-1 - Validate error_id format
+    error_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_\-]+$")
+    # v2.1.0: LOG-MEDIUM-1 - Limit error_type length
+    error_type: str = Field(..., min_length=1, max_length=50)
+    error_code: Optional[str] = Field(None, max_length=50)
+    message: Optional[str] = Field(None, max_length=5000)
+    status_code: Optional[int] = Field(None, ge=100, le=599)
+    endpoint: Optional[str] = Field(None, max_length=1000)
+    method: Optional[str] = Field(None, max_length=10)
+    user_code: Optional[str] = Field(None, max_length=50)
+    session_id: Optional[str] = Field(None, max_length=100)
+    page_url: Optional[str] = Field(None, max_length=2000)
+    user_agent: Optional[str] = Field(None, max_length=500)
+    stack_trace: Optional[str] = Field(None, max_length=10000)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    client_timestamp: Optional[str] = Field(None, max_length=50)
+
+    @field_validator("method")
+    @classmethod
+    def validate_method(cls, v: Optional[str]) -> Optional[str]:
+        """Validate HTTP method is valid."""
+        if v is None:
+            return v
+        v_upper = v.upper()
+        if v_upper not in VALID_HTTP_METHODS:
+            return None  # Silently ignore invalid methods
+        return v_upper
+
+    @field_validator("context")
+    @classmethod
+    def validate_context_size(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate context size is within limits."""
+        if not v:
+            return {}
+        try:
+            serialized = json.dumps(v)
+            if len(serialized) > MAX_CONTEXT_SIZE:
+                # Truncate by returning only error info
+                return {"_truncated": True, "_original_size": len(serialized)}
+        except Exception:
+            return {"_error": "context_serialization_failed"}
+        return v
 
 
 class ErrorLogBatchRequest(BaseModel):
-    """Batch error logs request."""
-    errors: List[ErrorLogRequest]
+    """
+    Batch error logs request.
+
+    v2.1.0: LOG-P0-2 - Added batch size limit (max 50 errors).
+    """
+    # v2.1.0: LOG-P0-2 - Limit batch size to prevent DoS
+    errors: List[ErrorLogRequest] = Field(..., max_length=50)
 
 
 class ErrorLogResponse(BaseModel):
@@ -80,7 +142,9 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
 # ==========================================
 
 @router.post("/error")
+@limiter.limit("30/minute")
 async def log_error(
+    request: Request,  # v2.1.0: Required for rate limiter
     req: ErrorLogRequest,
     authorization: Optional[str] = Header(None),
 ) -> ErrorLogResponse:
@@ -89,6 +153,8 @@ async def log_error(
 
     Does not require authentication - errors should be logged
     even for unauthenticated users.
+
+    v2.1.0: Added rate limiting (30/minute) to prevent abuse.
     """
     try:
         user_id = _extract_user_id_from_token(authorization)
@@ -122,11 +188,17 @@ async def log_error(
 
 
 @router.post("/errors")
+@limiter.limit("10/minute")
 async def log_errors_batch(
+    request: Request,  # v2.1.0: Required for rate limiter
     req: ErrorLogBatchRequest,
     authorization: Optional[str] = Header(None),
 ) -> ErrorLogResponse:
-    """Receive and store batch error logs from frontend."""
+    """
+    Receive and store batch error logs from frontend.
+
+    v2.1.0: Added rate limiting (10/minute) and batch size limit (50).
+    """
     try:
         user_id = _extract_user_id_from_token(authorization)
 

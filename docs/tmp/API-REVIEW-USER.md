@@ -3,7 +3,7 @@
 > **创建日期**: 2026-01-08
 > **总接口数**: 110 个
 > **当前阶段**: 进行中
-> **最后更新**: 2026-01-08
+> **最后更新**: 2026-01-09
 
 ---
 
@@ -83,12 +83,12 @@
 | Campaigns | 3 | 3 | ✅ 已修复 |
 | Config | 3 | 3 | ✅ 已完成 |
 | Experiments | 4 | 4 | ✅ 已修复 |
-| Export | 4 | 0 | 未开始 |
+| Export | 4 | 4 | ✅ 已完成 |
 | Generation Images 🔴 | 2 | 2 | ✅ 已完成 |
-| Generation PDF | 1 | 0 | 未开始 |
+| Generation PDF | 1 | 1 | ✅ 已完成 |
 | Generation Story 🔴 | 2 | 2 | ✅ 已完成 |
-| Generations | 6 | 0 | 未开始 |
-| Logs | 2 | 0 | 未开始 |
+| Generations | 6 | 6 | ✅ 已完成 |
+| Logs | 2 | 2 | ✅ 已完成 |
 | Marketplace 🟡 | 11 | 11 | ✅ 已完成 |
 | Payment 🔴 | 2 | 2 | ✅ 已完成 |
 | Projects 🟡 | 10 | 10 | ✅ 已完成 |
@@ -102,7 +102,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **52** | 47.3% |
+| **总计** | **110** | **65** | 59.1% |
 
 ---
 
@@ -245,6 +245,70 @@ API log_analytics_events (L113-208)
    - 边界值验证
 
 **完成状态**: ✅ 已完成 (2026-01-08)
+
+---
+
+### 安全审查 v1.2.0 (2026-01-09)
+
+**发现的安全问题** (共 9 项):
+
+| 序号 | 严重性 | 问题 | 影响 | 状态 |
+|------|--------|------|------|------|
+| B-P0-3 | 🔴 CRITICAL | `/credits/deduct` 公开端点 | 任何人可扣除用户积分 | ✅ 移除 |
+| B-HIGH-1 | 🟠 HIGH | `user_id` 无格式验证 | 可注入任意字符串 | ✅ 已修复 |
+| B-HIGH-2 | 🟠 HIGH | `/can-afford` 暴露余额 | 信息泄露 | ✅ 已修复 |
+| B-HIGH-3 | 🟠 HIGH | 错误信息暴露内部细节 | 信息泄露 | ✅ 已修复 |
+| B-MEDIUM-1 | 🟡 MEDIUM | 无速率限制 | 暴力枚举风险 | ✅ 已修复 |
+| B-MEDIUM-2 | 🟡 MEDIUM | 无审计日志 | 无法追溯操作 | ✅ 已修复 |
+| B-MEDIUM-3 | 🟡 MEDIUM | operation 无白名单 | 可探测系统配置 | ✅ 已修复 |
+| B-LOW-1 | 🟢 LOW | reason 长度限制不合理 | UX 问题 | ✅ 已修复 |
+| B-LOW-2 | 🟢 LOW | 类型注解不准确 | 代码质量 | ✅ 已修复 |
+
+**修复详情**:
+
+1. **B-P0-3**: 移除 `/credits/deduct` 端点，积分扣除只通过内部服务调用
+2. **B-HIGH-1**: 添加 UUID 格式验证 → v1.2.1 改为 Clerk ID 格式验证
+3. **B-HIGH-2**: 移除 `current_balance` 字段
+4. **B-HIGH-3**: 错误消息统一返回 "Failed to xxx"
+5. **B-MEDIUM-1**: 添加 `@limiter.limit()` 装饰器
+6. **B-MEDIUM-2**: 添加 `logger.info()` 记录管理员操作
+7. **B-MEDIUM-3**: 添加 `VALID_OPERATIONS` 白名单
+
+---
+
+### 安全审查 v1.2.1 (2026-01-09) 🆕
+
+**关键修复**: Clerk 用户 ID 格式验证
+
+- **问题**: v1.2.0 错误地添加了 UUID 格式验证，但 Clerk 用户 ID 不是 UUID 格式
+- **Clerk ID 格式**: `user_` 前缀 + 20-30 个 Base58 字符 (如 `user_2NNEqL2nrIRdJ194ndJqAHwEfxC`)
+- **UUID 格式**: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (用于数据库内部 ID)
+
+**修复内容**:
+
+```python
+# v1.2.1: B-HIGH-1-FIX - Clerk user ID validation pattern
+CLERK_USER_ID_PATTERN = re.compile(r"^user_[a-zA-Z0-9]{20,30}$")
+
+class AddCreditsRequest(BaseModel):
+    user_id: str = Field(..., min_length=25, max_length=35)
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id_format(cls, v: str) -> str:
+        if not CLERK_USER_ID_PATTERN.match(v):
+            raise ValueError("user_id must be a valid Clerk user ID format")
+        return v
+```
+
+**测试更新**:
+- 所有测试用例的 user_id 从 UUID 格式改为 Clerk ID 格式
+- 新增测试: `test_add_credits_user_id_wrong_prefix` 验证 UUID 被拒绝
+
+**文档同步**:
+- `docs/后台业务逻辑说明.md` v3.2.0 新增 4.5 节 "认证系统 (Clerk)"
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 
@@ -607,22 +671,70 @@ analysis.aggregate_experiment_results()
 
 ---
 
-## Export 导出模块 (4个)
+## Export 导出模块 (4个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 17 | export_project_pdf | GET | /projects/{project_id}/pdf | api/user/export.py | 79 |
-| 18 | export_project_preview | GET | /projects/{project_id}/preview | api/user/export.py | 113 |
-| 19 | export_zip | POST | /zip | api/user/export.py | 162 |
-| 20 | export_project_zip | GET | /projects/{project_id}/zip | api/user/export.py | 194 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 17 | export_project_pdf | GET | /projects/{project_id}/pdf | api/user/export.py | 174 | ✅ |
+| 18 | export_project_preview | GET | /projects/{project_id}/preview | api/user/export.py | 214 | ✅ |
+| 19 | export_zip | POST | /zip | api/user/export.py | 268 | ✅ (deprecated) |
+| 20 | export_project_zip | GET | /projects/{project_id}/zip | api/user/export.py | 303 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #17 PDF导出
-- [ ] #18 预览图生成
-- [ ] #19 ZIP打包 (废弃)
-- [ ] #20 项目ZIP导出
+- [x] #17 PDF导出成功
+- [x] #17 项目不存在 (404)
+- [x] #17 需要认证 (401)
+- [x] #17 project_id UUID 验证 (400) - v2.1.0
+- [x] #17 文件名脱敏 - v2.1.0
+- [x] #18 预览图生成 (skipped - requires fitz)
+- [x] #19 ZIP打包需要 Pro (403)
+- [x] #19 ZIP打包成功
+- [x] #19 SSRF 防护 (422) - v2.1.0
+- [x] #19 URL 数量限制 (422) - v2.1.0
+- [x] #20 项目ZIP导出
+- [x] #20 SSRF 防护 - v2.1.0
 
-**完成状态**: 未开始
+### 安全审查 v2.1.0 (2026-01-09) 🆕
+
+**发现的安全问题** (共 7 项):
+
+| 序号 | 严重性 | 问题 | 影响 | 状态 |
+|------|--------|------|------|------|
+| EX-P0-1 | 🔴 CRITICAL | SSRF 漏洞 - `create_assets_zip` 直接请求用户 URL | 攻击者可访问内网服务 | ✅ 已修复 |
+| EX-P0-2 | 🔴 CRITICAL | SSRF 漏洞 - POST /zip 接收任意 URL | 同上 | ✅ 已修复 |
+| EX-HIGH-1 | 🟠 HIGH | project_id 无格式验证 | 可能注入攻击 | ✅ 已修复 |
+| EX-HIGH-2 | 🟠 HIGH | 文件名注入 - title 用于 Content-Disposition | Header 注入 | ✅ 已修复 |
+| EX-MEDIUM-1 | 🟡 MEDIUM | ZipExportRequest 无 URL 验证 | SSRF 辅助 | ✅ 已修复 |
+| EX-MEDIUM-2 | 🟡 MEDIUM | image_urls 无数量限制 | DoS 风险 | ✅ 已修复 |
+| EX-LOW-1 | 🟢 LOW | 日志暴露内部错误细节 | 信息泄露 | ✅ 已修复 |
+
+**修复详情**:
+
+1. **EX-P0-1/2**: SSRF 防护 - 添加 URL 域名白名单
+   ```python
+   ALLOWED_URL_DOMAINS = {
+       "supabase.co", "supabase.com",  # Supabase storage
+       "fal.media", "fal.ai",           # Fal.ai
+       "r2.cloudflarestorage.com",      # Cloudflare R2
+       "s3.amazonaws.com",              # AWS S3
+   }
+   ```
+
+2. **EX-HIGH-1**: project_id UUID 验证
+3. **EX-HIGH-2**: 文件名脱敏 `_sanitize_filename()`
+4. **EX-MEDIUM-2**: URL 数量限制 (max 20)
+
+**测试更新**:
+- 新增 SSRF 防护测试 (4 个)
+- 新增 UUID 验证测试 (3 个)
+- 新增文件名脱敏测试 (4 个)
+- 新增辅助函数测试 (9 个)
+- 测试结果: 25 passed, 3 skipped
+
+**版本更新**:
+- `api/user/export.py` v2.0.0 → v2.1.0
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 
@@ -695,17 +807,54 @@ analysis.aggregate_experiment_results()
 
 ---
 
-## Generation PDF PDF生成模块 (1个)
+## Generation PDF PDF生成模块 (1个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 23 | gen_pdf | POST | /pdf | api/user/generation_pdf.py | 31 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 23 | gen_pdf | POST | /pdf | api/user/generation_pdf.py | 31 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #23 PDF生成
-- [ ] #23 tier权限验证
+- [x] #23 PDF生成
+- [x] #23 SSRF保护 (URL白名单)
+- [x] #23 UUID验证 (project_id)
+- [x] #23 文本长度限制
+- [x] #23 Hash格式验证
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-09)
+
+**发现的安全问题**:
+
+| ID | 级别 | 问题 | 状态 |
+|----|------|------|------|
+| GP-P0-1 | P0 | SSRF漏洞 - image_urls无域名验证 | ✅ 已修复 |
+| GP-P0-2 | P0 | URL数量无限制 (DoS风险) | ✅ 已修复 |
+| GP-HIGH-1 | HIGH | project_id无UUID格式验证 | ✅ 已修复 |
+| GP-HIGH-2 | HIGH | texts无长度限制 (内存耗尽) | ✅ 已修复 |
+| GP-MEDIUM-1 | MEDIUM | current_hash无格式验证 | ✅ 已修复 |
+
+**修复详情** (v3.25 + schemas v1.4.0):
+
+1. **GP-P0-1/2: SSRF防护**
+   - 在 `api/schemas/user/generation.py` 添加 `ALLOWED_URL_DOMAINS` 白名单
+   - 添加 `is_allowed_url()` 辅助函数
+   - `PdfGenRequest.image_urls` 添加 `@field_validator` 验证
+   - URL数量限制: `max_length=20`
+
+2. **GP-HIGH-1: UUID验证**
+   - `project_id` 添加 `pattern=r"^[0-9a-f]{8}-..."`
+
+3. **GP-HIGH-2: 文本长度**
+   - `texts` 添加 `max_length=20` (数量限制)
+   - 每条文本截断至2000字符
+
+4. **GP-MEDIUM-1: Hash格式**
+   - `current_hash` 添加 `pattern=r"^[a-zA-Z0-9_\-]+$"` + `max_length=128`
+
+**测试覆盖**:
+- `tests/api/user/test_generation_pdf.py` - 27 个测试用例 ✅
+- 覆盖: SSRF防护、UUID验证、文本长度、Hash格式
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 
@@ -745,41 +894,208 @@ analysis.aggregate_experiment_results()
 
 ---
 
-## Generations 生成历史模块 (6个)
+### 安全审查 v3.27 (2026-01-09) 🆕
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 26 | get_generation_history | GET | /history | api/user/generations.py | 69 |
-| 27 | update_generation | PATCH | /{generation_id} | api/user/generations.py | 110 |
-| 28 | toggle_favorite | POST | /{generation_id}/favorite | api/user/generations.py | 135 |
-| 29 | clear_generation_history | DELETE | /batch | api/user/generations.py | 161 |
-| 30 | delete_generation | DELETE | /{generation_id} | api/user/generations.py | 192 |
-| 31 | batch_delete_generations | POST | /batch-delete | api/user/generations.py | 209 |
+**发现的安全问题** (共 3 项):
 
-**测试用例 Checklist**
-- [ ] #26 获取生成历史
-- [ ] #27 更新生成记录
-- [ ] #28 收藏切换
-- [ ] #29 清空历史 (废弃)
-- [ ] #30 删除单条
-- [ ] #31 批量删除
+| 序号 | 严重性 | 问题 | 文件 | 影响 | 状态 |
+|------|--------|------|------|------|------|
+| GS-MEDIUM-1 | 🟡 MEDIUM | InspirationRequest 无输入验证 | api/schemas/user/generation.py | 可注入任意 category/style | ✅ 已修复 |
+| GS-LOW-1 | 🟢 LOW | 日志暴露完整 user_id | api/user/generation_story.py:111,200 | 用户隐私泄露 | ✅ 已修复 |
+| GS-LOW-2 | 🟢 LOW | fallback_reason 暴露内部细节 | api/user/generation_story.py:239 | 信息泄露 | ✅ 已修复 |
 
-**完成状态**: 未开始
+**修复详情**:
+
+1. **GS-MEDIUM-1**: InspirationRequest 输入验证
+   ```python
+   # api/schemas/user/generation.py v1.3.0
+   class InspirationRequest(BaseModel):
+       category: Optional[str] = Field(None, pattern="^(character|scene|story|all)?$", max_length=20)
+       style: Optional[str] = Field(None, max_length=100)
+   ```
+
+2. **GS-LOW-1**: 日志脱敏 - 只记录 user_id 前 8 个字符
+   ```python
+   # api/user/generation_story.py v3.27
+   user_id_short = user.get("id", "unknown")[:8] if user.get("id") else "unknown"
+   logger.info(f"Refunded {cost} credits to user {user_id[:8]}...")
+   ```
+
+3. **GS-LOW-2**: 移除 fallback_reason 字段
+   - 原: `"fallback_reason": "AI service temporarily unavailable"`
+   - 新: 只保留 `"fallback": True`，不暴露内部实现细节
+
+**测试更新**:
+- 新增 `test_inspiration_category_validation` - 验证 category 白名单
+- 新增 `test_inspiration_invalid_category_rejected` - 验证非法 category 被拒绝
+- 更新 `test_inspiration_fallback_on_error` - 验证 fallback_reason 已移除
+- 测试结果: 16 passed
+
+**版本更新**:
+- `api/user/generation_story.py` v3.26 → v3.27
+- `api/schemas/user/generation.py` v1.2.0 → v1.3.0
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 
-## Logs 日志模块 (2个)
+## Generations 生成历史模块 (6个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 32 | log_error | POST | /error | api/user/logs.py | 82 |
-| 33 | log_errors_batch | POST | /errors | api/user/logs.py | 124 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 26 | get_generation_history | GET | /history | api/user/generations.py | 69 | ✅ |
+| 27 | update_generation | PATCH | /{generation_id} | api/user/generations.py | 127 | ✅ |
+| 28 | toggle_favorite | POST | /{generation_id}/favorite | api/user/generations.py | 156 | ✅ |
+| 29 | clear_generation_history | DELETE | /batch | api/user/generations.py | 186 | ✅ |
+| 30 | delete_generation | DELETE | /{generation_id} | api/user/generations.py | 224 | ✅ |
+| 31 | batch_delete_generations | POST | /batch-delete | api/user/generations.py | 252 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #32 单条错误上报
-- [ ] #33 批量错误上报
+- [x] #26 获取生成历史
+- [x] #27 更新生成记录 + UUID验证
+- [x] #28 收藏切换 + UUID验证
+- [x] #29 清空历史 (废弃) + 审计日志
+- [x] #30 删除单条 + UUID验证 + 404检查
+- [x] #31 批量删除 + 审计日志
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-09)
+
+**发现的安全问题**:
+
+| ID | 级别 | 问题 | 状态 |
+|----|------|------|------|
+| GEN-P0-1 | P0 | generation_id无UUID格式验证 | ✅ 已修复 |
+| GEN-MEDIUM-1 | MEDIUM | 删除操作不检查结果即返回成功 | ✅ 已修复 |
+| GEN-MEDIUM-2 | MEDIUM | 关键操作缺少审计日志 | ✅ 已修复 |
+
+**修复详情** (v2.1.0):
+
+1. **GEN-P0-1: UUID验证**
+   - 添加 `UUID_PATTERN` 正则验证
+   - `update_generation`, `toggle_favorite`, `delete_generation` 都检查格式
+   - 无效格式返回 400 Bad Request
+
+2. **GEN-MEDIUM-1: 删除确认**
+   - `delete_generation` 检查 `result.data` 是否为空
+   - 无记录删除时返回 404 Not Found
+
+3. **GEN-MEDIUM-2: 审计日志**
+   - 添加 `log_activity` 记录删除操作
+   - `delete_generation` → `"delete_generation"`
+   - `batch_delete_generations` / `clear_generation_history` → `"batch_delete_generations"`
+
+**测试覆盖**:
+- `tests/api/user/test_generations.py` - 15 个测试用例 ✅
+- 新增: UUID验证测试、404返回测试
+
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+---
+
+## Logs 日志模块 (2个) ✅ 已完成
+
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 32 | log_error | POST | /error | api/user/logs.py | 144 | ✅ |
+| 33 | log_errors_batch | POST | /errors | api/user/logs.py | 190 | ✅ |
+
+**测试用例 Checklist**
+- [x] #32.1 单条错误上报成功 (无认证)
+- [x] #32.2 带认证 Token 上报
+- [x] #32.3 消息过长拒绝 (>5000)
+- [x] #32.4 堆栈过长拒绝 (>10000)
+- [x] #32.5 数据库失败优雅处理
+- [x] #32.6 无效 payload 返回 422
+- [x] #32.7 完整 context 上报
+- [x] #33.1 批量错误上报成功
+- [x] #33.2 批量带认证上报
+- [x] #33.3 空数组处理
+- [x] #33.4 批量数据库失败处理
+- [x] #33.5 无效 payload 返回 422
+- [x] #33.6 消息过长拒绝
+- [x] #SEC.1 error_id 格式验证 (特殊字符拒绝)
+- [x] #SEC.2 error_id 长度验证 (>100 拒绝)
+- [x] #SEC.3 error_type 长度验证 (>50 拒绝)
+- [x] #SEC.4 无效 HTTP method 归一化为 null
+- [x] #SEC.5 有效 HTTP method 转大写
+- [x] #SEC.6 大型 context 截断 (>10KB)
+- [x] #SEC.7 批量超过 50 条拒绝
+- [x] #SEC.8 status_code 范围验证 (100-599)
+
+### Review 结果 (2026-01-09) - 安全审查
+
+**调用链追踪**:
+```
+API log_error (L144-187)
+├── @limiter.limit("30/minute")  # v2.1.0: 速率限制
+├── Pydantic 验证 ErrorLogRequest
+│   ├── error_id: ^[a-zA-Z0-9_\-]{1,100}$
+│   ├── error_type: max_length=50
+│   ├── context: 10KB 限制
+│   └── method: HTTP 方法白名单
+├── _extract_user_id_from_token() → 可选用户 ID
+├── 字段截断 (message→2000, endpoint→500, etc.)
+└── supabase.table("error_logs").insert() → error_logs 表
+
+API log_errors_batch (L190-231)
+├── @limiter.limit("10/minute")  # v2.1.0: 更严格速率限制
+├── Pydantic 验证 ErrorLogBatchRequest
+│   └── errors: max_length=50  # DoS 防护
+├── for each error: 构建记录
+└── supabase.table("error_logs").insert(batch) → 批量插入
+```
+
+**发现的问题** (v2.0.0):
+
+| 序号 | 严重性 | 代号 | 问题 | 影响 | 状态 |
+|------|--------|------|------|------|------|
+| 1 | 🔴 P0 | LOG-P0-1 | 无速率限制 | DoS 攻击风险 (无需认证) | ✅ 已修复 |
+| 2 | 🔴 P0 | LOG-P0-2 | 批量无大小限制 | 单请求可发送无限错误 | ✅ 已修复 |
+| 3 | 🟠 HIGH | LOG-HIGH-1 | error_id 无格式验证 | 注入/XSS 风险 | ✅ 已修复 |
+| 4 | 🟠 HIGH | LOG-HIGH-2 | context 无大小限制 | 内存/存储耗尽风险 | ✅ 已修复 |
+| 5 | 🟡 MEDIUM | LOG-MEDIUM-1 | error_type 无长度限制 | 存储问题 | ✅ 已修复 |
+| 6 | 🟡 MEDIUM | LOG-MEDIUM-2 | method 无白名单验证 | 脏数据 | ✅ 已修复 |
+
+**修复内容 (v2.1.0)**:
+
+1. **LOG-P0-1: 速率限制**
+   - 单条: 30/minute
+   - 批量: 10/minute (更严格)
+   - 使用 `@limiter.limit()` 装饰器
+
+2. **LOG-P0-2: 批量大小限制**
+   - `errors: List[ErrorLogRequest] = Field(..., max_length=50)`
+   - 超过 50 条返回 422
+
+3. **LOG-HIGH-1: error_id 格式验证**
+   - Pattern: `^[a-zA-Z0-9_\-]+$`
+   - Max length: 100
+   - 拒绝特殊字符和过长 ID
+
+4. **LOG-HIGH-2: context 大小限制**
+   - 最大 10KB (10 * 1024 bytes)
+   - 超过时截断为 `{"_truncated": True, "_original_size": N}`
+   - 序列化失败时返回 `{"_error": "context_serialization_failed"}`
+
+5. **LOG-MEDIUM-1: error_type 长度限制**
+   - `Field(..., min_length=1, max_length=50)`
+
+6. **LOG-MEDIUM-2: method 白名单验证**
+   - 有效: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+   - 无效 method 静默归一化为 null (不报错，避免影响日志收集)
+   - 有效 method 自动转大写
+
+**安全设计说明**:
+- ⚠️ 此接口无需认证 (为了收集未认证用户的错误)
+- 速率限制是主要防护手段
+- 所有输入都有严格验证
+- method 验证采用宽松策略 (无效值归一化而非拒绝)
+
+**测试文件**:
+- `tests/api/user/test_logs.py` - 21 个测试用例 (v2.1.0)
+- 覆盖: 正常流程、边界条件、安全验证
+
+**完成状态**: ✅ 已修复 (2026-01-09)
 
 ---
 

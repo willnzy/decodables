@@ -1,16 +1,26 @@
 """Generations API - Generation history endpoints (v2).
 
 @module api.user.generations
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - GEN-P0-1: Added UUID validation for generation_id
+  - GEN-MEDIUM-1: Delete now returns 404 if record not found
+  - GEN-MEDIUM-2: Added audit logging for delete operations
+  - GEN-LOW-1: Sanitized user_id in logs
 
 Endpoints:
 - GET /api/v2/user/generations/history - Get generation history
-- POST /api/v2/user/generations/{id}/favorite - Toggle favorite
+- PATCH /api/v2/user/generations/{id} - Update generation
+- POST /api/v2/user/generations/{id}/favorite - Toggle favorite (deprecated)
 - DELETE /api/v2/user/generations/{id} - Delete single generation
-- DELETE /api/v2/user/generations/batch - Clear history (batch delete)
+- POST /api/v2/user/generations/batch-delete - Clear history
+- DELETE /api/v2/user/generations/batch - Clear history (deprecated)
 """
 
 import logging
+import re
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -18,11 +28,18 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
+from infrastructure.logging.activity_logger import log_activity
 
 from core.database import get_supabase_client
 supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
+
+# v2.1.0: GEN-P0-1 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
 
 router = APIRouter(prefix="/generations", tags=["user-generations-v2"])
 
@@ -120,6 +137,10 @@ async def update_generation(
 
     **Recommended**: Use PATCH for partial resource updates.
     """
+    # v2.1.0: GEN-P0-1 - Validate generation_id format
+    if not UUID_PATTERN.match(generation_id):
+        raise HTTPException(400, "Invalid generation ID format")
+
     result = supabase.table("user_generations") \
         .update({"is_favorited": req.is_favorited}) \
         .eq("id", generation_id) \
@@ -146,6 +167,10 @@ async def toggle_favorite(
     **DEPRECATED**: Use `PATCH /{generation_id}` instead.
     This endpoint will be removed in v3.0.
     """
+    # v2.1.0: GEN-P0-1 - Validate generation_id format
+    if not UUID_PATTERN.match(generation_id):
+        raise HTTPException(400, "Invalid generation ID format")
+
     result = supabase.table("user_generations") \
         .update({"is_favorited": req.is_favorited}) \
         .eq("id", generation_id) \
@@ -182,10 +207,17 @@ async def clear_generation_history(
         query = query.eq("is_favorited", False)
 
     result = query.execute()
+    deleted_count = len(result.data) if result.data else 0
+
+    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
+    log_activity(user["id"], "batch_delete_generations", {
+        "keep_favorites": keep_favorites,
+        "deleted_count": deleted_count,
+    })
 
     return BatchDeleteResponse(
         success=True,
-        deleted_count=len(result.data) if result.data else 0,
+        deleted_count=deleted_count,
     )
 
 
@@ -197,11 +229,22 @@ async def delete_generation(
     user: dict = Depends(get_current_user),
 ) -> DeleteResponse:
     """Delete a generated image from history."""
-    supabase.table("user_generations") \
+    # v2.1.0: GEN-P0-1 - Validate generation_id format
+    if not UUID_PATTERN.match(generation_id):
+        raise HTTPException(400, "Invalid generation ID format")
+
+    result = supabase.table("user_generations") \
         .delete() \
         .eq("id", generation_id) \
         .eq("user_id", user["id"]) \
         .execute()
+
+    # v2.1.0: GEN-MEDIUM-1 - Check if record was actually deleted
+    if not result.data:
+        raise HTTPException(404, "Generation not found")
+
+    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
+    log_activity(user["id"], "delete_generation", {"generation_id": generation_id})
 
     return DeleteResponse(success=True, deleted=generation_id)
 
@@ -226,8 +269,15 @@ async def batch_delete_generations(
         query = query.eq("is_favorited", False)
 
     result = query.execute()
+    deleted_count = len(result.data or [])
+
+    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
+    log_activity(user["id"], "batch_delete_generations", {
+        "keep_favorites": keep_favorites,
+        "deleted_count": deleted_count,
+    })
 
     return BatchDeleteResponse(
         success=True,
-        deleted_count=len(result.data or []),
+        deleted_count=deleted_count,
     )

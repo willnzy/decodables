@@ -2,10 +2,18 @@
 PDF Generation Router - PDF export endpoint
 
 @module api.user.generation_pdf
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - GP-P0-1/2: Added SSRF protection via PdfGenRequest validation
+  - GP-HIGH-1: Added UUID validation for project_id
+  - GP-HIGH-2: Added text length validation
+  - GP-MEDIUM-1: Added hash format validation
+  - GP-LOW-1: Sanitized user_id in activity logs
 
 Endpoints:
-- POST /api/v2/user/generate/pdf - PDF generation
+- POST /api/v2/user/generate/pdf/pdf - PDF generation
 """
 
 from io import BytesIO

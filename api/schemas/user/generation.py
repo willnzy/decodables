@@ -2,7 +2,13 @@
 Generation Schemas - AI generation related models
 
 @module schemas.generation
-@version 1.3.0
+@version 1.4.0
+
+Changes in v1.4.0:
+- GP-P0-1/2: Added SSRF protection and URL limits to PdfGenRequest
+- GP-HIGH-1: Added UUID validation to PdfGenRequest.project_id
+- GP-HIGH-2: Added length validation to PdfGenRequest.texts
+- GP-MEDIUM-1: Added hash format validation to PdfGenRequest.current_hash
 
 Changes in v1.3.0:
 - GS-MEDIUM-1: Added validation to InspirationRequest (category whitelist, style max_length)
@@ -17,8 +23,44 @@ Changes in v1.1.0:
 - GI-P0-1: Added min_length validation to ImageGenRequest prompts
 """
 
+import re
 from typing import Optional, List
+from urllib.parse import urlparse
+
 from pydantic import BaseModel, Field, field_validator
+
+
+# v1.4.0: GP-P0-1 - SSRF Protection: Allowed URL domains whitelist
+# Shared with api/user/export.py
+ALLOWED_URL_DOMAINS = {
+    "supabase.co",
+    "supabase.com",
+    "fal.media",
+    "fal.ai",
+    "r2.cloudflarestorage.com",
+    "s3.amazonaws.com",
+}
+
+# v1.4.0: GP-HIGH-1 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+
+def is_allowed_url(url: str) -> bool:
+    """Check if URL is from an allowed domain (SSRF protection)."""
+    if not url or not url.startswith("http"):
+        return False
+    try:
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+        for allowed in ALLOWED_URL_DOMAINS:
+            if host == allowed or host.endswith(f".{allowed}"):
+                return True
+        return False
+    except Exception:
+        return False
 
 
 class StoryGenRequest(BaseModel):
@@ -81,11 +123,54 @@ class ImageGenRequest(BaseModel):
 
 
 class PdfGenRequest(BaseModel):
-    """PDF generation request."""
-    project_id: str
-    current_hash: str
-    image_urls: List[str]
-    texts: List[str]
+    """
+    PDF generation request.
+
+    v1.4.0: Added comprehensive validation for security:
+    - GP-P0-1/2: SSRF protection and URL count limits
+    - GP-HIGH-1: UUID validation for project_id
+    - GP-HIGH-2: Length limits for texts
+    - GP-MEDIUM-1: Hash format validation
+    """
+    # v1.4.0: GP-HIGH-1 - UUID validation via pattern
+    project_id: str = Field(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    # v1.4.0: GP-MEDIUM-1 - Hash format validation (alphanumeric, common hash chars)
+    current_hash: str = Field(..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_\-]+$")
+    # v1.4.0: GP-P0-2 - Limit to max 20 URLs (8 pages + reasonable extra)
+    image_urls: List[str] = Field(..., max_length=20)
+    # v1.4.0: GP-HIGH-2 - Limit texts count and length
+    texts: List[str] = Field(..., max_length=20)
+
+    @field_validator("image_urls")
+    @classmethod
+    def validate_image_urls(cls, v: List[str]) -> List[str]:
+        """Validate URLs are from allowed domains (SSRF protection)."""
+        validated = []
+        for url in v:
+            # Allow empty strings (blank pages)
+            if not url or not url.strip():
+                validated.append("")
+                continue
+            # v1.4.0: GP-P0-1 - SSRF protection
+            if not is_allowed_url(url):
+                raise ValueError(f"URL domain not allowed: {url[:50]}...")
+            validated.append(url)
+        return validated
+
+    @field_validator("texts")
+    @classmethod
+    def validate_texts(cls, v: List[str]) -> List[str]:
+        """Validate text entries have reasonable length."""
+        validated = []
+        for text in v:
+            if text is None:
+                validated.append("")
+            elif len(text) > 2000:
+                # v1.4.0: GP-HIGH-2 - Truncate overly long texts
+                validated.append(text[:2000])
+            else:
+                validated.append(text)
+        return validated
 
 
 class InspirationRequest(BaseModel):

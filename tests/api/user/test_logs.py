@@ -9,7 +9,13 @@ Endpoints:
 Note: These endpoints don't require authentication
 
 @module tests.api.user.test_logs
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- Added tests for error_id format validation (LOG-HIGH-1)
+- Added tests for batch size limit (LOG-P0-2)
+- Added tests for context size limit (LOG-HIGH-2)
+- Added tests for method validation (LOG-MEDIUM-2)
 """
 
 import pytest
@@ -82,35 +88,42 @@ class TestLogSingleError:
 
         assert data["status"] == "ok"
 
-    @patch('api.user.logs.supabase')
-    def test_log_error_truncates_long_strings(self, mock_supabase):
-        """Should truncate very long strings to prevent DB issues"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    def test_log_error_message_too_long_rejected(self):
+        """
+        v2.1.0: Messages over max_length (5000) should be rejected.
 
-        # Create a very long message (> 2000 chars)
-        long_message = "Error: " + ("x" * 3000)
-        long_stack = "Stack trace: " + ("y" * 6000)
+        Note: In v2.1.0, we now validate at Pydantic layer with max_length.
+        """
+        # Create a very long message (> 5000 chars)
+        long_message = "Error: " + ("x" * 6000)
 
         payload = {
             "error_id": "err_789",
             "error_type": "runtime_error",
             "message": long_message,
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        # v2.1.0: Now rejects at validation layer
+        assert response.status_code == 422
+
+    def test_log_error_stack_trace_too_long_rejected(self):
+        """
+        v2.1.0: Stack trace over max_length (10000) should be rejected.
+        """
+        long_stack = "Stack trace: " + ("y" * 11000)
+
+        payload = {
+            "error_id": "err_789",
+            "error_type": "runtime_error",
             "stack_trace": long_stack,
         }
 
         response = client.post("/api/v2/user/logs/error", json=payload)
 
-        assert response.status_code == 200
-
-        # Verify that truncation happened in the insert call
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_data = call_args[0][0]
-
-        # Message should be truncated to 2000 chars
-        assert len(inserted_data["message"]) <= 2000
-
-        # Stack trace should be truncated to 5000 chars
-        assert len(inserted_data["stack_trace"]) <= 5000
+        # v2.1.0: Now rejects at validation layer
+        assert response.status_code == 422
 
     @patch('api.user.logs.supabase')
     def test_log_error_handles_db_failure_gracefully(self, mock_supabase):
@@ -304,13 +317,14 @@ class TestLogBatchErrors:
 
         assert response.status_code == 422
 
-    @patch('api.user.logs.supabase')
-    def test_log_batch_errors_truncates_fields(self, mock_supabase):
-        """Should truncate long fields in all batch records"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    def test_log_batch_errors_message_too_long_rejected(self):
+        """
+        v2.1.0: Messages over max_length (5000) should be rejected.
 
-        long_message = "x" * 3000
-        long_url = "https://example.com/" + ("y" * 3000)
+        Note: In v2.1.0, we now reject at Pydantic validation layer
+        instead of truncating.
+        """
+        long_message = "x" * 6000  # Over 5000 char limit
 
         payload = {
             "errors": [
@@ -318,37 +332,168 @@ class TestLogBatchErrors:
                     "error_id": "err_1",
                     "error_type": "type1",
                     "message": long_message,
-                    "page_url": long_url,
-                },
-                {
-                    "error_id": "err_2",
-                    "error_type": "type2",
-                    "message": long_message,
                 },
             ]
         }
 
         response = client.post("/api/v2/user/logs/errors", json=payload)
 
+        # v2.1.0: Now rejects at validation layer
+        assert response.status_code == 422
+
+
+# ==========================================
+# Tests: Security Validations (v2.1.0)
+# ==========================================
+
+class TestSecurityValidations:
+    """Test security validations added in v2.1.0."""
+
+    def test_error_id_invalid_format_rejected(self):
+        """
+        v2.1.0: LOG-HIGH-1 - Invalid error_id format should be rejected.
+        """
+        payload = {
+            "error_id": "err<script>alert(1)</script>",  # Contains invalid chars
+            "error_type": "test_error",
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 422
+
+    def test_error_id_too_long_rejected(self):
+        """
+        v2.1.0: LOG-HIGH-1 - error_id over 100 chars should be rejected.
+        """
+        payload = {
+            "error_id": "x" * 150,  # Too long
+            "error_type": "test_error",
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 422
+
+    def test_error_type_too_long_rejected(self):
+        """
+        v2.1.0: LOG-MEDIUM-1 - error_type over 50 chars should be rejected.
+        """
+        payload = {
+            "error_id": "err_123",
+            "error_type": "x" * 100,  # Too long
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 422
+
+    @patch('api.user.logs.supabase')
+    def test_invalid_method_normalized(self, mock_supabase):
+        """
+        v2.1.0: LOG-MEDIUM-2 - Invalid HTTP method should be normalized to None.
+        """
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+        payload = {
+            "error_id": "err_123",
+            "error_type": "api_error",
+            "method": "INVALID",  # Not a valid HTTP method (short enough to pass max_length)
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
         assert response.status_code == 200
 
-        # Verify truncation
+        # Check that method was set to None
         call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_records = call_args[0][0]
+        inserted_data = call_args[0][0]
+        assert inserted_data["method"] is None
 
-        for record in inserted_records:
-            assert len(record["message"]) <= 2000
-            if record.get("page_url"):
-                assert len(record["page_url"]) <= 2000
+    @patch('api.user.logs.supabase')
+    def test_valid_method_uppercased(self, mock_supabase):
+        """
+        v2.1.0: LOG-MEDIUM-2 - Valid HTTP method should be uppercased.
+        """
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+        payload = {
+            "error_id": "err_123",
+            "error_type": "api_error",
+            "method": "post",  # Lowercase
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 200
+
+        call_args = mock_supabase.table.return_value.insert.call_args
+        inserted_data = call_args[0][0]
+        assert inserted_data["method"] == "POST"
+
+    @patch('api.user.logs.supabase')
+    def test_large_context_truncated(self, mock_supabase):
+        """
+        v2.1.0: LOG-HIGH-2 - Context over 10KB should be truncated.
+        """
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+
+        # Create a large context (> 10KB)
+        large_context = {"data": "x" * 15000}
+
+        payload = {
+            "error_id": "err_123",
+            "error_type": "api_error",
+            "context": large_context,
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 200
+
+        # Check that context was truncated
+        call_args = mock_supabase.table.return_value.insert.call_args
+        inserted_data = call_args[0][0]
+        assert inserted_data["context"].get("_truncated") is True
+
+    def test_batch_over_50_rejected(self):
+        """
+        v2.1.0: LOG-P0-2 - Batch with more than 50 errors should be rejected.
+        """
+        errors = [
+            {"error_id": f"err_{i}", "error_type": "test"}
+            for i in range(60)
+        ]
+
+        payload = {"errors": errors}
+
+        response = client.post("/api/v2/user/logs/errors", json=payload)
+
+        assert response.status_code == 422
+
+    def test_status_code_out_of_range_rejected(self):
+        """
+        v2.1.0: Status code outside 100-599 should be rejected.
+        """
+        payload = {
+            "error_id": "err_123",
+            "error_type": "api_error",
+            "status_code": 999,  # Invalid HTTP status code
+        }
+
+        response = client.post("/api/v2/user/logs/error", json=payload)
+
+        assert response.status_code == 422
 
 
 # ==========================================
 # Summary
 # ==========================================
-# Total tests: 14
+# Total tests: 22
 # Coverage:
 # - POST /api/v2/user/logs/error (7 tests)
 # - POST /api/v2/user/logs/errors (7 tests)
+# - Security validations (8 tests)
 # - Authentication (with/without token)
 # - JWT decoding
 # - String truncation
@@ -356,4 +501,5 @@ class TestLogBatchErrors:
 # - Validation errors
 # - Empty arrays
 # - Full context logging
+# - v2.1.0: error_id format, batch limit, context size, method validation
 # ==========================================
