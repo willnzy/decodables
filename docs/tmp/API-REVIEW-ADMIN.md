@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 21/125 (17%)
+> **当前进度**: 29/125 (23%)
 
 ---
 
@@ -66,7 +66,7 @@ Admin API 作为内部管理工具，有以下特点：
 | AI Insights | 5 | 5 | ✅ 已完成 |
 | AI Models Config | 8 | 8 | ✅ 已完成 |
 | Campaigns | 8 | 8 | ✅ 已完成 |
-| Config | 8 | 0 | 未开始 |
+| Config | 8 | 8 | ✅ 已完成 |
 | Events | 5 | 0 | 未开始 |
 | Experiments | 14 | 0 | 未开始 |
 | Logs | 4 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **21** | 17% |
+| **总计** | **125** | **29** | 23% |
 
 ---
 
@@ -209,30 +209,44 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Config 配置管理 (8个)
+## Config 配置管理 (8个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 22 | adm_get_all_configs | GET | /config | api/admin/config.py | 60 |
-| 23 | adm_get_config | GET | /config/{config_key:path} | api/admin/config.py | 70 |
-| 24 | adm_update_config | PUT | /config | api/admin/config.py | 82 |
-| 25 | adm_batch_update_configs | PUT | /config/batch | api/admin/config.py | 106 |
-| 26 | adm_clear_config_cache | POST | /config/cache/clear | api/admin/config.py | 128 |
-| 27 | adm_get_rate_limits | GET | /rate-limits | api/admin/config.py | 143 |
-| 28 | adm_apply_rate_limit_preset | POST | /rate-limits/preset | api/admin/config.py | 149 |
-| 29 | adm_get_rate_limit_presets | GET | /rate-limits/presets | api/admin/config.py | 180 |
+| 22 | adm_get_all_configs | GET | /config | api/admin/config.py | 88 |
+| 23 | adm_get_config | GET | /config/{config_key:path} | api/admin/config.py | 104 |
+| 24 | adm_update_config | PUT | /config | api/admin/config.py | 122 |
+| 25 | adm_batch_update_configs | PUT | /config/batch | api/admin/config.py | 146 |
+| 26 | adm_clear_config_cache | POST | /config/cache/clear | api/admin/config.py | 168 |
+| 27 | adm_get_rate_limits | GET | /rate-limits | api/admin/config.py | 183 |
+| 28 | adm_apply_rate_limit_preset | POST | /rate-limits/preset | api/admin/config.py | 193 |
+| 29 | adm_get_rate_limit_presets | GET | /rate-limits/presets | api/admin/config.py | 228 |
 
 **测试用例 Checklist**
-- [ ] #22 获取所有配置
-- [ ] #23 获取单个配置
-- [ ] #24 更新配置
-- [ ] #25 批量更新配置
-- [ ] #26 清除配置缓存
-- [ ] #27 获取限流配置
-- [ ] #28 应用限流预设
-- [ ] #29 获取限流预设列表
+- [x] #22 获取所有配置
+- [x] #23 获取单个配置
+- [x] #24 更新配置
+- [x] #25 批量更新配置
+- [x] #26 清除配置缓存
+- [x] #27 获取限流配置
+- [x] #28 应用限流预设
+- [x] #29 获取限流预设列表
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | CFG-MEDIUM-1 | 3个 GET 端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | CFG-MEDIUM-2 | `config_key` 无长度限制 | ✅ 已添加 (1-200) |
+| 🟡 MEDIUM | CFG-MEDIUM-3 | `category` 参数无验证 | ✅ 已添加枚举验证 |
+| 🟡 MEDIUM | CFG-MEDIUM-4 | `preset` 改用 field_validator | ✅ 已迁移 |
+| 🟢 LOW | CFG-LOW-1 | 字段长度限制 | ✅ 已添加 |
+
+**修改文件**:
+- `api/admin/config.py` - v3.24 → v3.25
+- `tests/api/admin/test_config.py` - 27 个测试用例
 
 ---
 
