@@ -1,26 +1,33 @@
 # 后台测试覆盖率提升计划
 
-**目标**: 所有后台代码覆盖率达到 95%+  
-**当前状态**: 测试通过 1,476 / 总计 2,036 (约 72.5% 通过率)  
-**预计总工时**: 12-15 个工作日
+> **版本**: 2.0 (DDD 架构)
+> **更新日期**: 2026-01-08
+> **架构版本**: v3.1.0
+
+**目标**: 所有后台代码覆盖率达到 80%+ (关键模块 95%+)
+**当前状态**: 135 个测试文件, 约 36,975 行测试代码
 
 ---
 
-## 📊 模块统计
+## 📊 模块统计 (v3.1 DDD 架构)
 
-| 目录 | 文件数 | 测试优先级 | 预计工时 |
-|------|--------|------------|----------|
-| services/db/ | 13 | P0 - 核心 | 2 天 |
-| services/ai/ | 19 | P1 - 高 | 3 天 |
-| services/ (根目录) | 19 | P1 - 高 | 2 天 |
-| routers/ | 40 | P0 - 核心 | 3 天 |
-| services/cache/ | 5 | P2 - 中 | 0.5 天 |
-| services/experiments/ | 7 | P2 - 中 | 0.5 天 |
-| services/task_queue/ | 4 | P2 - 中 | 0.5 天 |
-| services/websocket/ | 2 | P2 - 中 | 0.5 天 |
-| services/capi/ | 4 | P3 - 低 | 0.5 天 |
-| services/ai_reports/ | 4 | P3 - 低 | 0.5 天 |
-| scheduled_tasks/ | 24 | P3 - 低 | 1 天 |
+| 目录 | 文件数 | 代码行数 | 测试优先级 | 说明 |
+|------|--------|----------|------------|------|
+| domains/billing/ | ~10 | ~2,000 | P0 - 核心 | 积分、支付 |
+| domains/identity/ | ~8 | ~1,500 | P0 - 核心 | 用户身份 |
+| domains/creation/ | ~12 | ~2,500 | P1 - 高 | 项目创作 |
+| domains/marketplace/ | ~10 | ~2,000 | P1 - 高 | 市场交易 |
+| domains/platform/ | ~8 | ~1,000 | P2 - 中 | Feature Flags |
+| domains/content/ | ~6 | ~700 | P2 - 中 | 系统资源 |
+| application/commands/ | ~15 | ~2,000 | P1 - 高 | 写操作 |
+| application/queries/ | ~15 | ~2,000 | P1 - 高 | 读操作 |
+| application/services/ | ~20 | ~2,500 | P2 - 中 | 定时任务 |
+| infrastructure/repositories/ | ~15 | ~4,000 | P1 - 高 | 数据访问 |
+| api/user/ | ~27 | ~6,000 | P0 - 核心 | 用户 API |
+| api/admin/ | ~16 | ~4,000 | P2 - 中 | 管理 API |
+| shared/ai/ | ~15 | ~4,000 | P1 - 高 | AI 服务 |
+| shared/payment/ | ~5 | ~1,500 | P0 - 核心 | Stripe |
+| core/ | ~29 | ~3,300 | P2 - 中 | 框架组件 |
 
 ---
 
@@ -147,52 +154,28 @@
 
 ---
 
-### 阶段 4: 路由层测试 (3 天)
+### 阶段 4: API 层测试
 
-**目标**: `routers/` 所有端点 95%+ 覆盖率
+**目标**: `api/` 所有端点 80%+ 覆盖率
 
-#### 4.1 用户相关 (0.5 天)
+#### 4.1 用户 API (api/user/)
 
-| 模块 | 测试文件 | 状态 |
+| 模块 | 测试目录 | 状态 |
 |------|----------|------|
-| user_profile.py | test_user_api.py | ⚠️ 部分 |
-| user_assets.py | tests/api/test_user_assets_api.py | 🆕 新建 |
-| user_notifications.py | tests/api/test_user_notifications_api.py | 🆕 新建 |
+| profile.py | tests/api/user/ | ✅ 存在 |
+| credits.py | tests/api/user/ | ✅ 存在 |
+| projects.py | tests/api/user/ | ✅ 存在 |
+| assets.py | tests/api/user/ | ✅ 存在 |
+| marketplace.py | tests/api/user/ | ✅ 存在 |
+| generation.py | tests/api/user/ | ✅ 存在 |
 
-#### 4.2 项目相关 (0.5 天)
+#### 4.2 管理 API (api/admin/)
 
-| 模块 | 测试文件 | 状态 |
+| 模块 | 测试目录 | 状态 |
 |------|----------|------|
-| projects.py | test_projects_api.py | ⚠️ 部分 |
+| admin/*.py | tests/api/admin/ | ✅ 存在 |
 
-#### 4.3 市场相关 (0.5 天)
-
-| 模块 | 测试文件 | 状态 |
-|------|----------|------|
-| marketplace.py | tests/api/test_marketplace_api.py | 🆕 新建 |
-
-#### 4.4 AI 生成相关 (0.5 天)
-
-| 模块 | 测试文件 | 状态 |
-|------|----------|------|
-| generation.py | test_generation_api.py | ⚠️ 部分 |
-| templates.py | tests/api/test_templates_api.py | 🆕 新建 |
-
-#### 4.5 导出与工具 (0.5 天)
-
-| 模块 | 测试文件 | 状态 |
-|------|----------|------|
-| export.py | test_export_api.py | ⚠️ 部分 |
-| upload.py | test_upload_api.py | ⚠️ 部分 |
-| tools.py | tests/api/test_tools_api.py | 🆕 新建 |
-
-#### 4.6 管理员相关 (0.5 天)
-
-| 模块 | 测试文件 | 状态 |
-|------|----------|------|
-| admin/*.py | tests/api/test_admin_api.py | 🆕 新建 |
-
-**验收标准**: `pytest --cov=routers --cov-fail-under=95`
+**验收标准**: `pytest --cov=api --cov-fail-under=80`
 
 ---
 
@@ -233,16 +216,16 @@
 
 ---
 
-### 阶段 6: 计划任务测试 (1 天)
+### 阶段 6: 应用服务测试
 
-**目标**: `scheduled_tasks/` 所有模块 95%+ 覆盖率
+**目标**: `application/services/` 所有模块 80%+ 覆盖率
 
-| 模块目录 | 测试文件 | 状态 |
+| 模块目录 | 测试位置 | 状态 |
 |----------|----------|------|
-| aggregators/ | tests/scheduled/test_aggregators.py | 🆕 新建 |
-| campaign_scheduler/ | tests/scheduled/test_campaign_scheduler.py | 🆕 新建 |
-| metrics_etl/ | tests/scheduled/test_metrics_etl.py | 🆕 新建 |
-| storage_cleanup.py | tests/scheduled/test_storage_cleanup.py | 🆕 新建 |
+| application/services/aggregators/ | tests/application/ | ⚠️ 待补充 |
+| application/services/campaigns/ | tests/application/ | ⚠️ 待补充 |
+| application/services/experiments/ | tests/application/ | ⚠️ 待补充 |
+| application/services/metrics/ | tests/application/ | ⚠️ 待补充 |
 
 ---
 
@@ -252,22 +235,23 @@
 
 - [ ] **7.1** 运行完整覆盖率报告
   ```bash
-  pytest --cov=services --cov=routers --cov=scheduled_tasks \
-         --cov-report=html --cov-fail-under=95
+  pytest --cov=domains --cov=application --cov=api --cov=infrastructure \
+         --cov-report=html --cov-fail-under=80
   ```
 
 - [ ] **7.2** 更新 pytest.ini 启用覆盖率门槛
   ```ini
-  addopts = 
-      --cov=services
-      --cov=routers
-      --cov-fail-under=95
+  addopts =
+      --cov=domains
+      --cov=application
+      --cov=api
+      --cov-fail-under=80
   ```
 
 - [ ] **7.3** 配置 GitHub Actions CI
   ```yaml
   - name: Run tests with coverage
-    run: pytest --cov --cov-fail-under=95
+    run: pytest --cov --cov-fail-under=80
   ```
 
 - [ ] **7.4** 更新 README.md 添加覆盖率徽章
@@ -296,16 +280,16 @@ python -m py_compile <modified_files>
 
 ## 🎯 里程碑
 
-| 阶段 | 预计完成日 | 验收标准 |
-|------|------------|----------|
-| 阶段 0 | Day 2 | 0 失败测试 |
-| 阶段 1 | Day 4 | services/db/ 95%+ |
-| 阶段 2 | Day 7 | services/ai/ 95%+ |
-| 阶段 3 | Day 9 | services/ 95%+ |
-| 阶段 4 | Day 12 | routers/ 95%+ |
-| 阶段 5 | Day 14 | 辅助服务 95%+ |
-| 阶段 6 | Day 15 | scheduled_tasks/ 95%+ |
-| 阶段 7 | Day 15.5 | CI 配置完成，全局 95%+ |
+| 阶段 | 验收标准 |
+|------|----------|
+| 阶段 0 | 0 失败测试 |
+| 阶段 1 | domains/billing/ 95%+, domains/identity/ 90%+ |
+| 阶段 2 | shared/ai/ 80%+ |
+| 阶段 3 | domains/creation/, domains/marketplace/ 80%+ |
+| 阶段 4 | api/ 80%+ |
+| 阶段 5 | infrastructure/ 80%+ |
+| 阶段 6 | application/services/ 80%+ |
+| 阶段 7 | CI 配置完成，全局 80%+ |
 
 ---
 
@@ -464,5 +448,6 @@ CVC: 任意 3 位数字 (如 123)
 
 ---
 
-*文档版本: v1.1*
-*最后更新: 2026-01-07*
+*文档版本: v2.0*
+*最后更新: 2026-01-08*
+*架构版本: v3.1.0 (DDD)*
