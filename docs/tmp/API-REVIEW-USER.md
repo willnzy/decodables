@@ -32,6 +32,8 @@
    - DDD 模式合规 (CQRS, Handler 模式)
    - 项目规范 (CLAUDE.md 规则)
    - 代码规范 (参数命名, 返回类型)
+   - 业界最佳实践
+   - 我们真实的业务逻辑
 
 4. 同步文档
    - 更新 API-REVIEW-ADMIN.md
@@ -80,7 +82,7 @@
 | Billing 🔴 | 5 | 5 | ✅ 已完成 |
 | Campaigns | 3 | 3 | ✅ 已修复 |
 | Config | 3 | 3 | ✅ 已完成 |
-| Experiments | 4 | 0 | 未开始 |
+| Experiments | 4 | 4 | ✅ 已修复 |
 | Export | 4 | 0 | 未开始 |
 | Generation Images 🔴 | 2 | 2 | ✅ 已完成 |
 | Generation PDF | 1 | 0 | 未开始 |
@@ -100,7 +102,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **48** | 43.6% |
+| **总计** | **110** | **52** | 47.3% |
 
 ---
 
@@ -415,22 +417,100 @@ API log_analytics_events (L113-208)
 
 ---
 
-## Experiments 实验模块 (4个)
+## Experiments 实验模块 (4个) ✅ 已修复
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 13 | assign_variant | POST | /{experiment_key}/assign | api/user/experiments.py | 50 |
-| 14 | track_exposure | POST | /{experiment_key}/exposure | api/user/experiments.py | 75 |
-| 15 | track_conversion | POST | /{experiment_key}/conversion | api/user/experiments.py | 87 |
-| 16 | get_user_experiments | GET | /user/{user_identifier} | api/user/experiments.py | 102 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 13 | assign_variant | POST | /{experiment_key}/assign | api/user/experiments.py | 74 | ✅ 🔧 |
+| 14 | track_exposure | POST | /{experiment_key}/exposure | api/user/experiments.py | 103 | ✅ 🔧 |
+| 15 | track_conversion | POST | /{experiment_key}/conversion | api/user/experiments.py | 121 | ✅ 🔧 |
+| 16 | get_user_experiments | GET | /user/{user_identifier} | api/user/experiments.py | 140 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #13 分配实验组
-- [ ] #14 曝光追踪
-- [ ] #15 转化追踪
-- [ ] #16 用户实验查询
+- [x] #13.1 分配实验组成功
+- [x] #13.2 不符合条件返回未分配
+- [x] #13.3 带 user_properties 定向
+- [x] #13.4 无效 payload 返回 422
+- [x] #14.1 曝光追踪成功
+- [x] #14.2 带 context 追踪
+- [x] #14.3 追踪失败返回 false
+- [x] #15.1 转化追踪成功
+- [x] #15.2 带 metric_key 和 value
+- [x] #15.3 无分配返回 false
+- [x] #16.1 获取用户实验列表
+- [x] #16.2 无实验返回空数组
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-08)
+
+**发现的问题**:
+
+| 序号 | 严重性 | 问题 | 影响 | 状态 |
+|------|--------|------|------|------|
+| 1 | 🔴 CRITICAL | `assign_variant` API 参数与 Service 不匹配 | 运行时 TypeError | ✅ 已修复 |
+| 2 | 🔴 CRITICAL | `track_conversion` API 参数与 Service 不匹配 | 运行时 TypeError | ✅ 已修复 |
+| 3 | 🟡 MEDIUM | 4个 endpoint 都是同步函数 | 阻塞事件循环 | ⚠️ 设计如此 |
+| 4 | 🟢 LOW | 无认证保护 | 任何人可调用 | ⚠️ 设计如此 |
+
+**修复内容 (2026-01-08)**:
+
+1. **#1 CRITICAL: assign_variant 参数修复**
+   ```python
+   # 修复前 (API 传参)
+   identifier_type=req.identifier_type,  # ❌ Service 无此参数
+   context=req.context                    # ❌ Service 无此参数
+
+   # 修复后
+   user_properties=req.user_properties    # ✅ 匹配 Service 签名
+   ```
+
+2. **#2 CRITICAL: track_conversion 参数修复**
+   ```python
+   # 修复前 (API 传参)
+   variant_key=req.variant_key,        # ❌ Service 无此参数
+   conversion_type=req.conversion_type  # ❌ Service 用 metric_key
+
+   # 修复后
+   metric_key=req.metric_key           # ✅ 匹配 Service 签名
+   ```
+
+3. **Request Models 更新**:
+   - `AssignmentRequest`: `identifier_type/context` → `user_properties`
+   - `ExposureRequest`: 新增 `context` 字段
+   - `ConversionRequest`: `variant_key/conversion_type` → `metric_key`
+
+**调用链追踪**:
+```
+API assign_variant (L74-100)
+└── experiment_service.assign_variant()
+    ├── get_experiment() 获取实验配置
+    ├── _check_targeting() 定向检查
+    ├── 查询 experiment_assignments 是否已分配
+    ├── calculate_variant() 确定性哈希分配
+    └── 写入 experiment_assignments 表
+
+API track_exposure (L103-118)
+└── experiment_service.track_exposure()
+    ├── get_experiment() 获取实验配置
+    ├── 去重检查 (1小时内)
+    └── 写入 experiment_exposures 表
+
+API track_conversion (L121-137)
+└── experiment_service.track_conversion()
+    ├── get_experiment() 获取实验配置
+    ├── 查询 experiment_assignments 获取用户 variant
+    └── 写入 experiment_conversions 表
+```
+
+**架构说明**:
+- A/B 测试 API，无需认证 (支持匿名用户实验)
+- 确定性哈希保证相同用户始终分配到相同 variant
+- 曝光去重 1 小时窗口
+- 转化追踪自动关联用户 variant
+
+**测试文件**:
+- `tests/api/user/test_experiments.py` - 12 个测试用例
+
+**完成状态**: ✅ 已修复 (2026-01-08)
 
 ---
 
