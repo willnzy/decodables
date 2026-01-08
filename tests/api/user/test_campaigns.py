@@ -7,7 +7,12 @@ Endpoints tested:
 - POST /api/v2/user/campaigns/{id}/dismiss
 
 @module tests.api.user.test_campaigns
-@version 2.1.0
+@version 2.2.0
+
+Changes in v2.2.0:
+- Refactored tests for DDD architecture (CampaignService dependency injection)
+- Removed direct supabase mocking, now mock CampaignService methods
+- Updated to test service integration through API layer
 
 Changes in v2.1.0:
 - Updated tests to use valid UUID format for campaign_id (v2.1.0 validation)
@@ -23,13 +28,12 @@ from datetime import datetime, timezone, timedelta
 _rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
 _rate_limiter_patcher.start()
 
-# Mock supabase at module level
-_supabase_patcher = patch('api.user.campaigns.supabase', MagicMock())
-_supabase_patcher.start()
-
 from fastapi.testclient import TestClient
 from app import app
 from dependencies import get_current_user, optional_user
+from api.user.campaigns import get_campaign_service
+from domains.marketing import CampaignService, ClaimResult, CampaignWithStatus
+from domains.marketing.repository import CampaignData
 
 client = TestClient(app)
 
@@ -46,6 +50,43 @@ VALID_CAMPAIGN_ID_3 = "c3d4e5f6-a7b8-9012-cdef-123456789012"
 # Invalid ID for testing (not UUID format)
 INVALID_CAMPAIGN_ID = "camp_1"
 INVALID_CAMPAIGN_ID_LONG = "not-a-valid-uuid-format"
+
+
+# ==========================================
+# Helper Functions
+# ==========================================
+
+def create_mock_campaign_data(
+    campaign_id: str = VALID_CAMPAIGN_ID,
+    name: str = "Test Campaign",
+    campaign_type: str = "credits_gift",
+    status: str = "active",
+    is_active: bool = True,
+    target_type: str = "all",
+    usage_count: int = 0,
+    usage_limit: int = 100,
+    config: dict = None,
+    days_offset: tuple = (-1, 7),  # (start_offset, end_offset) in days from now
+) -> CampaignData:
+    """Create a mock CampaignData for testing."""
+    now = datetime.now(timezone.utc)
+    return CampaignData(
+        id=campaign_id,
+        name=name,
+        description="Test campaign description",
+        type=campaign_type,
+        config=config or {"amount": 50},
+        target_type=target_type,
+        target_config={},
+        notification_channels=["modal", "banner"],
+        notification_config={"title": "Welcome!", "message": "Get free credits"},
+        start_at=now + timedelta(days=days_offset[0]),
+        end_at=now + timedelta(days=days_offset[1]),
+        usage_limit=usage_limit,
+        usage_count=usage_count,
+        status=status,
+        is_active=is_active,
+    )
 
 
 # ==========================================
@@ -85,6 +126,28 @@ def override_optional_user(mock_free_user):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def mock_campaign_service():
+    """Create a mock CampaignService."""
+    mock_service = MagicMock(spec=CampaignService)
+    mock_service.get_active_campaigns_for_user = AsyncMock()
+    mock_service.claim_campaign = AsyncMock()
+    mock_service.dismiss_notification = AsyncMock()
+    mock_service.is_valid_notification_channel = MagicMock(return_value=True)
+    return mock_service
+
+
+@pytest.fixture
+def override_campaign_service(mock_campaign_service):
+    """Override get_campaign_service dependency."""
+    def _get_campaign_service():
+        return mock_campaign_service
+
+    app.dependency_overrides[get_campaign_service] = _get_campaign_service
+    yield mock_campaign_service
+    app.dependency_overrides.clear()
+
+
 # ==========================================
 # Test Cases
 # ==========================================
@@ -92,74 +155,29 @@ def override_optional_user(mock_free_user):
 class TestGetActiveCampaigns:
     """Test GET /campaigns/active endpoint."""
 
-    @patch('api.user.campaigns.supabase')
-    def test_get_active_campaigns_success(self, mock_supabase, override_optional_user):
+    def test_get_active_campaigns_success(self, override_optional_user, override_campaign_service):
         """Should get active campaigns."""
-        now = datetime.now(timezone.utc)
-        mock_campaign = {
-            "id": "camp_1",
-            "name": "Welcome Campaign",
-            "type": "credits_gift",
-            "status": "active",
-            "is_active": True,
-            "start_at": (now - timedelta(days=1)).isoformat(),
-            "end_at": (now + timedelta(days=7)).isoformat(),
-            "target_type": "all",
-            "usage_count": 0,
-            "usage_limit": 100,
-            "notification_channels": ["modal"],
-            "notification_config": {"title": "Welcome!", "message": "Get free credits"},
-        }
+        mock_service = override_campaign_service
+        mock_campaign = create_mock_campaign_data()
 
-        mock_result = MagicMock()
-        mock_result.data = [mock_campaign]
-
-        mock_table = MagicMock()
-        mock_select = MagicMock()
-        mock_eq1 = MagicMock()
-        mock_eq2 = MagicMock()
-        mock_lte = MagicMock()
-        mock_gte = MagicMock()
-
-        mock_supabase.table.return_value = mock_table
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq1
-        mock_eq1.eq.return_value = mock_eq2
-        mock_eq2.lte.return_value = mock_lte
-        mock_lte.gt.return_value = mock_gte
-        mock_gte.execute.return_value = mock_result
-
-        # Mock campaign_claims and campaign_dismissals queries
-        empty_result = MagicMock()
-        empty_result.data = []
-        mock_table.select.return_value.eq.return_value.execute.return_value = empty_result
+        mock_service.get_active_campaigns_for_user.return_value = (
+            [CampaignWithStatus(campaign=mock_campaign, has_claimed=False, can_claim=True)],
+            {}
+        )
 
         response = client.get("/api/v2/user/campaigns/active")
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["campaigns"]) >= 0  # May filter based on eligibility
+        assert len(data["campaigns"]) == 1
+        assert data["campaigns"][0]["id"] == VALID_CAMPAIGN_ID
+        assert data["campaigns"][0]["has_claimed"] is False
+        assert data["campaigns"][0]["can_claim"] is True
 
-    @patch('api.user.campaigns.supabase')
-    def test_get_active_campaigns_empty(self, mock_supabase, override_optional_user):
+    def test_get_active_campaigns_empty(self, override_optional_user, override_campaign_service):
         """Should return empty list when no campaigns."""
-        mock_result = MagicMock()
-        mock_result.data = []
-
-        mock_table = MagicMock()
-        mock_select = MagicMock()
-        mock_eq1 = MagicMock()
-        mock_eq2 = MagicMock()
-        mock_lte = MagicMock()
-        mock_gte = MagicMock()
-
-        mock_supabase.table.return_value = mock_table
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq1
-        mock_eq1.eq.return_value = mock_eq2
-        mock_eq2.lte.return_value = mock_lte
-        mock_lte.gt.return_value = mock_gte
-        mock_gte.execute.return_value = mock_result
+        mock_service = override_campaign_service
+        mock_service.get_active_campaigns_for_user.return_value = ([], {})
 
         response = client.get("/api/v2/user/campaigns/active")
 
@@ -168,106 +186,83 @@ class TestGetActiveCampaigns:
         assert data["campaigns"] == []
         assert data["notifications"] is not None
 
-    def test_get_active_campaigns_as_anonymous(self):
+    def test_get_active_campaigns_with_notifications(self, override_optional_user, override_campaign_service):
+        """Should build notifications from campaign channels."""
+        mock_service = override_campaign_service
+        mock_campaign = create_mock_campaign_data()
+
+        mock_service.get_active_campaigns_for_user.return_value = (
+            [CampaignWithStatus(campaign=mock_campaign, has_claimed=False, can_claim=True)],
+            {}
+        )
+
+        response = client.get("/api/v2/user/campaigns/active")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should have modal notification
+        assert data["notifications"]["modal"] is not None
+        assert data["notifications"]["modal"]["campaign_id"] == VALID_CAMPAIGN_ID
+
+    def test_get_active_campaigns_respects_dismissals(self, override_optional_user, override_campaign_service):
+        """Should not show notifications for dismissed channels."""
+        mock_service = override_campaign_service
+        mock_campaign = create_mock_campaign_data()
+
+        # User dismissed modal for this campaign
+        mock_service.get_active_campaigns_for_user.return_value = (
+            [CampaignWithStatus(campaign=mock_campaign, has_claimed=False, can_claim=True)],
+            {VALID_CAMPAIGN_ID: ["modal"]}
+        )
+
+        response = client.get("/api/v2/user/campaigns/active")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Modal should be None because it's dismissed
+        assert data["notifications"]["modal"] is None
+        # Banner should still be present
+        assert len(data["notifications"]["banner"]) == 1
+
+    def test_get_active_campaigns_as_anonymous(self, override_campaign_service):
         """Should work for anonymous users."""
-        with patch('api.user.campaigns.supabase') as mock_supabase:
-            mock_result = MagicMock()
-            mock_result.data = []
+        mock_service = override_campaign_service
+        mock_service.get_active_campaigns_for_user.return_value = ([], {})
 
-            mock_table = MagicMock()
-            mock_select = MagicMock()
-            mock_eq1 = MagicMock()
-            mock_eq2 = MagicMock()
-            mock_lte = MagicMock()
-            mock_gte = MagicMock()
+        response = client.get("/api/v2/user/campaigns/active")
 
-            mock_supabase.table.return_value = mock_table
-            mock_table.select.return_value = mock_select
-            mock_select.eq.return_value = mock_eq1
-            mock_eq1.eq.return_value = mock_eq2
-            mock_eq2.lte.return_value = mock_lte
-            mock_lte.gt.return_value = mock_gte
-            mock_gte.execute.return_value = mock_result
-
-            response = client.get("/api/v2/user/campaigns/active")
-
-            assert response.status_code == 200
+        assert response.status_code == 200
 
 
 class TestClaimCampaign:
     """Test POST /campaigns/{id}/claim endpoint."""
 
-    @pytest.mark.skip(reason="Complex mock setup - supabase chain mocking needs refinement")
-    @patch('api.user.campaigns.SupabaseCreditRepository')
-    @patch('api.user.campaigns.supabase')
-    def test_claim_campaign_success(self, mock_supabase, mock_credit_repo, override_get_current_user):
+    def test_claim_campaign_success(self, override_get_current_user, override_campaign_service):
         """Should claim campaign and receive credits."""
-        now = datetime.now(timezone.utc)
-        mock_campaign = {
-            "id": "camp_1",
-            "name": "Welcome Campaign",
-            "type": "credits_gift",
-            "status": "active",
-            "is_active": True,
-            "start_at": (now - timedelta(days=1)).isoformat(),
-            "end_at": (now + timedelta(days=7)).isoformat(),
-            "target_type": "all",
-            "usage_count": 0,
-            "usage_limit": 100,
-            "config": {"amount": 50},
-        }
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=True,
+            credits_received=50,
+            message="You received 50 credits!"
+        )
 
-        mock_campaign_result = MagicMock()
-        mock_campaign_result.data = [mock_campaign]
-
-        mock_claims_result = MagicMock()
-        mock_claims_result.data = []  # Not claimed yet
-
-        mock_insert_result = MagicMock()
-        mock_update_result = MagicMock()
-
-        mock_table = MagicMock()
-        mock_supabase.table.return_value = mock_table
-
-        # Mock campaign query
-        mock_select = MagicMock()
-        mock_eq = MagicMock()
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq
-        mock_eq.execute.side_effect = [mock_campaign_result, mock_claims_result]
-
-        # Mock insert and update
-        mock_table.insert.return_value.execute.return_value = mock_insert_result
-        mock_table.update.return_value.eq.return_value.execute.return_value = mock_update_result
-
-        # Mock credit repository
-        mock_repo_instance = MagicMock()
-        mock_repo_instance.add_credits_permanent = AsyncMock()
-        mock_credit_repo.return_value = mock_repo_instance
-
-        response = client.post("/api/v2/user/campaigns/camp_1/claim")
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["credits_received"] == 50
+        assert "50 credits" in data["message"]
 
-    @patch('api.user.campaigns.supabase')
-    def test_claim_campaign_not_found(self, mock_supabase, override_get_current_user):
+    def test_claim_campaign_not_found(self, override_get_current_user, override_campaign_service):
         """Should return 404 for non-existent campaign."""
-        mock_result = MagicMock()
-        mock_result.data = []
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="NOT_FOUND",
+            message="Campaign not found"
+        )
 
-        mock_table = MagicMock()
-        mock_select = MagicMock()
-        mock_eq = MagicMock()
-
-        mock_supabase.table.return_value = mock_table
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq
-        mock_eq.execute.return_value = mock_result
-
-        # Use valid UUID format (v2.1.0 validates UUID)
         response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         assert response.status_code == 404
@@ -277,46 +272,90 @@ class TestClaimCampaign:
         response = client.post("/api/v2/user/campaigns/invalid_id/claim")
 
         assert response.status_code == 400
-        # Response uses "message" field (standard error format)
         assert "Invalid campaign ID format" in response.json()["message"]
 
-    @pytest.mark.skip(reason="Complex mock setup - supabase chain mocking needs refinement")
-    @patch('api.user.campaigns.supabase')
-    def test_claim_campaign_already_claimed(self, mock_supabase, override_get_current_user):
+    def test_claim_campaign_already_claimed(self, override_get_current_user, override_campaign_service):
         """Should return 400 if already claimed."""
-        now = datetime.now(timezone.utc)
-        mock_campaign = {
-            "id": "camp_1",
-            "status": "active",
-            "is_active": True,
-            "start_at": (now - timedelta(days=1)).isoformat(),
-            "end_at": (now + timedelta(days=7)).isoformat(),
-            "target_type": "all",
-        }
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="ALREADY_CLAIMED",
+            message="You have already claimed this campaign"
+        )
 
-        mock_campaign_result = MagicMock()
-        mock_campaign_result.data = [mock_campaign]
-
-        mock_claims_result = MagicMock()
-        mock_claims_result.data = [{"id": "claim_1"}]  # Already claimed
-
-        mock_table = MagicMock()
-        mock_supabase.table.return_value = mock_table
-
-        mock_select = MagicMock()
-        mock_eq = MagicMock()
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq
-        mock_eq.execute.side_effect = [mock_campaign_result, mock_claims_result]
-
-        response = client.post("/api/v2/user/campaigns/camp_1/claim")
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         assert response.status_code == 400
-        assert "already claimed" in response.json()["detail"].lower()
+        assert "already claimed" in response.json()["message"].lower()
+
+    def test_claim_campaign_not_eligible(self, override_get_current_user, override_campaign_service):
+        """Should return 403 if user not eligible."""
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="NOT_ELIGIBLE",
+            message="You are not eligible for this campaign"
+        )
+
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
+
+        assert response.status_code == 403
+
+    def test_claim_campaign_inactive(self, override_get_current_user, override_campaign_service):
+        """Should return 400 if campaign is inactive."""
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="INACTIVE",
+            message="Campaign is not active"
+        )
+
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
+
+        assert response.status_code == 400
+
+    def test_claim_campaign_ended(self, override_get_current_user, override_campaign_service):
+        """Should return 400 if campaign has ended."""
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="ENDED",
+            message="Campaign has ended"
+        )
+
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
+
+        assert response.status_code == 400
+
+    def test_claim_campaign_limit_reached(self, override_get_current_user, override_campaign_service):
+        """Should return 400 if usage limit reached."""
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="LIMIT_REACHED",
+            message="Campaign usage limit reached"
+        )
+
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
+
+        assert response.status_code == 400
+
+    def test_claim_campaign_credit_failed(self, override_get_current_user, override_campaign_service):
+        """Should return 500 if credit grant fails."""
+        mock_service = override_campaign_service
+        mock_service.claim_campaign.return_value = ClaimResult(
+            success=False,
+            error_code="CREDIT_FAILED",
+            message="Failed to grant credits. Please try again."
+        )
+
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
+
+        assert response.status_code == 500
 
     def test_claim_campaign_requires_auth(self):
         """Should require authentication."""
-        response = client.post("/api/v2/user/campaigns/camp_1/claim")
+        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
 
         assert response.status_code == 401
 
@@ -324,19 +363,11 @@ class TestClaimCampaign:
 class TestDismissNotification:
     """Test POST /campaigns/{id}/dismiss endpoint."""
 
-    @patch('api.user.campaigns.supabase')
-    def test_dismiss_notification_success(self, mock_supabase, override_get_current_user):
+    def test_dismiss_notification_success(self, override_get_current_user, override_campaign_service):
         """Should dismiss notification."""
-        mock_result = MagicMock()
+        mock_service = override_campaign_service
+        mock_service.dismiss_notification.return_value = True
 
-        mock_table = MagicMock()
-        mock_upsert = MagicMock()
-
-        mock_supabase.table.return_value = mock_table
-        mock_table.upsert.return_value = mock_upsert
-        mock_upsert.execute.return_value = mock_result
-
-        # Use valid UUID format (v2.1.0 validates UUID)
         response = client.post(
             f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/dismiss",
             json={"channel": "modal"}
@@ -345,6 +376,7 @@ class TestDismissNotification:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+        mock_service.dismiss_notification.assert_called_once()
 
     def test_dismiss_notification_invalid_channel(self, override_get_current_user):
         """Should return 422 for invalid channel."""
@@ -363,7 +395,6 @@ class TestDismissNotification:
         )
 
         assert response.status_code == 400
-        # Response uses "message" field (standard error format)
         assert "Invalid campaign ID format" in response.json()["message"]
 
     def test_dismiss_notification_requires_auth(self):
@@ -374,243 +405,6 @@ class TestDismissNotification:
         )
 
         assert response.status_code == 401
-
-
-class TestBatchQueryOptimization:
-    """Test batch query optimization for N+1 fix."""
-
-    @patch('api.user.campaigns.supabase')
-    def test_batch_get_user_campaign_status(self, mock_supabase, override_optional_user):
-        """Should batch fetch claims and dismissals in 2 queries instead of N+1."""
-        from api.user.campaigns import _batch_get_user_campaign_status
-
-        campaign_ids = ["camp_1", "camp_2", "camp_3"]
-        user_id = "user_123"
-
-        # Mock claims query
-        mock_claims_result = MagicMock()
-        mock_claims_result.data = [
-            {"campaign_id": "camp_1"},
-            {"campaign_id": "camp_3"},
-        ]
-
-        # Mock dismissals query
-        mock_dismissals_result = MagicMock()
-        mock_dismissals_result.data = [
-            {"campaign_id": "camp_1", "channel": "modal"},
-            {"campaign_id": "camp_2", "channel": "banner"},
-            {"campaign_id": "camp_2", "channel": "toast"},
-        ]
-
-        mock_table = MagicMock()
-        mock_select = MagicMock()
-        mock_eq = MagicMock()
-        mock_in = MagicMock()
-
-        mock_supabase.table.return_value = mock_table
-        mock_table.select.return_value = mock_select
-        mock_select.eq.return_value = mock_eq
-        mock_eq.in_.side_effect = [
-            MagicMock(execute=MagicMock(return_value=mock_claims_result)),
-            MagicMock(execute=MagicMock(return_value=mock_dismissals_result)),
-        ]
-
-        claimed, dismissed_map = _batch_get_user_campaign_status(campaign_ids, user_id)
-
-        # Verify claimed campaigns
-        assert "camp_1" in claimed
-        assert "camp_2" not in claimed
-        assert "camp_3" in claimed
-
-        # Verify dismissed channels
-        assert dismissed_map.get("camp_1") == ["modal"]
-        assert sorted(dismissed_map.get("camp_2", [])) == ["banner", "toast"]
-        assert dismissed_map.get("camp_3") is None or dismissed_map.get("camp_3") == []
-
-    def test_batch_get_user_campaign_status_empty(self):
-        """Should handle empty campaign list."""
-        from api.user.campaigns import _batch_get_user_campaign_status
-
-        claimed, dismissed_map = _batch_get_user_campaign_status([], "user_123")
-
-        assert claimed == set()
-        assert dismissed_map == {}
-
-
-class TestRaceConditionPrevention:
-    """Test race condition prevention in claim flow."""
-
-    @patch('api.user.campaigns.supabase')
-    def test_claim_duplicate_key_error_handled(self, mock_supabase, override_get_current_user):
-        """Should handle duplicate claim gracefully (race condition prevention)."""
-        now = datetime.now(timezone.utc)
-        mock_campaign = {
-            "id": VALID_CAMPAIGN_ID,
-            "name": "Test Campaign",
-            "type": "credits_gift",
-            "status": "active",
-            "is_active": True,
-            "start_at": (now - timedelta(days=1)).isoformat(),
-            "end_at": (now + timedelta(days=7)).isoformat(),
-            "target_type": "all",
-            "usage_count": 0,
-            "usage_limit": 100,
-            "config": {"amount": 50},
-        }
-
-        mock_campaign_result = MagicMock()
-        mock_campaign_result.data = [mock_campaign]
-
-        mock_claims_result = MagicMock()
-        mock_claims_result.data = []  # Not claimed initially
-
-        # Create mock that simulates duplicate key error on insert
-        mock_table = MagicMock()
-        mock_supabase.table.return_value = mock_table
-
-        # First call returns campaign, second returns empty claims
-        mock_select = MagicMock()
-        mock_eq = MagicMock()
-        mock_table.select.return_value = mock_select
-        mock_select.eq.side_effect = [
-            MagicMock(execute=MagicMock(return_value=mock_campaign_result)),
-            MagicMock(eq=MagicMock(return_value=MagicMock(execute=MagicMock(return_value=mock_claims_result)))),
-        ]
-
-        # Simulate duplicate key error on insert (race condition)
-        mock_table.insert.return_value.execute.side_effect = Exception("duplicate key value violates unique constraint")
-
-        # Use valid UUID format (v2.1.0 validates UUID)
-        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
-
-        # Should return 400 with "already claimed" message
-        assert response.status_code == 400
-        # Response uses "message" field (standard error format)
-        assert "already claimed" in response.json()["message"].lower()
-
-    @patch('api.user.campaigns.supabase')
-    def test_atomic_usage_increment_via_rpc(self, mock_supabase, override_get_current_user):
-        """Should use RPC for atomic usage increment."""
-        now = datetime.now(timezone.utc)
-        mock_campaign = {
-            "id": VALID_CAMPAIGN_ID,
-            "name": "Test Campaign",
-            "type": "credits_gift",
-            "status": "active",
-            "is_active": True,
-            "start_at": (now - timedelta(days=1)).isoformat(),
-            "end_at": (now + timedelta(days=7)).isoformat(),
-            "target_type": "all",
-            "usage_count": 0,
-            "usage_limit": 100,
-            "config": {"amount": 0},  # No credits to avoid credit repo mock
-        }
-
-        mock_campaign_result = MagicMock()
-        mock_campaign_result.data = [mock_campaign]
-
-        mock_claims_result = MagicMock()
-        mock_claims_result.data = []
-
-        mock_insert_result = MagicMock()
-        mock_rpc_result = MagicMock()
-        mock_rpc_result.data = [{"success": True, "new_usage_count": 1}]
-
-        mock_table = MagicMock()
-        mock_supabase.table.return_value = mock_table
-
-        # Mock select chain
-        def select_side_effect(*args, **kwargs):
-            mock_select = MagicMock()
-            mock_eq = MagicMock()
-            mock_select.eq.return_value = mock_eq
-            mock_eq.eq.return_value = MagicMock(execute=MagicMock(return_value=mock_claims_result))
-            mock_eq.execute.return_value = mock_campaign_result
-            return mock_select
-
-        mock_table.select.side_effect = select_side_effect
-        mock_table.insert.return_value.execute.return_value = mock_insert_result
-
-        # Mock RPC call for atomic increment
-        mock_supabase.rpc.return_value.execute.return_value = mock_rpc_result
-
-        # Use valid UUID format (v2.1.0 validates UUID)
-        response = client.post(f"/api/v2/user/campaigns/{VALID_CAMPAIGN_ID}/claim")
-
-        # Verify RPC was called for atomic increment
-        mock_supabase.rpc.assert_called_with("increment_campaign_usage", {"p_campaign_id": VALID_CAMPAIGN_ID})
-
-
-class TestHelperFunctions:
-    """Tests for helper functions added in v2.1.0."""
-
-    def test_parse_iso_datetime_valid_z_suffix(self):
-        """Should parse ISO datetime with Z suffix."""
-        from api.user.campaigns import _parse_iso_datetime
-
-        result = _parse_iso_datetime("2025-01-01T00:00:00Z")
-        assert result is not None
-        assert result.year == 2025
-        assert result.month == 1
-        assert result.day == 1
-
-    def test_parse_iso_datetime_valid_offset(self):
-        """Should parse ISO datetime with +00:00 offset."""
-        from api.user.campaigns import _parse_iso_datetime
-
-        result = _parse_iso_datetime("2025-06-15T12:30:00+00:00")
-        assert result is not None
-        assert result.hour == 12
-        assert result.minute == 30
-
-    def test_parse_iso_datetime_none_input(self):
-        """Should return None for None input."""
-        from api.user.campaigns import _parse_iso_datetime
-
-        result = _parse_iso_datetime(None)
-        assert result is None
-
-    def test_parse_iso_datetime_invalid_format(self):
-        """Should return None for invalid format."""
-        from api.user.campaigns import _parse_iso_datetime
-
-        result = _parse_iso_datetime("not-a-date")
-        assert result is None
-
-    def test_validate_credit_amount_valid(self):
-        """Should return valid credit amount."""
-        from api.user.campaigns import _validate_credit_amount
-
-        result = _validate_credit_amount(100)
-        assert result == 100
-
-    def test_validate_credit_amount_string(self):
-        """Should convert string to int."""
-        from api.user.campaigns import _validate_credit_amount
-
-        result = _validate_credit_amount("50")
-        assert result == 50
-
-    def test_validate_credit_amount_negative(self):
-        """Should return None for negative amount."""
-        from api.user.campaigns import _validate_credit_amount
-
-        result = _validate_credit_amount(-10)
-        assert result is None
-
-    def test_validate_credit_amount_too_large(self):
-        """Should return None for amount exceeding max."""
-        from api.user.campaigns import _validate_credit_amount
-
-        result = _validate_credit_amount(99999)
-        assert result is None
-
-    def test_validate_credit_amount_invalid_type(self):
-        """Should return None for invalid type."""
-        from api.user.campaigns import _validate_credit_amount
-
-        result = _validate_credit_amount("not-a-number")
-        assert result is None
 
 
 class TestUUIDValidation:
@@ -653,15 +447,60 @@ class TestUUIDValidation:
         assert UUID_PATTERN.match("a1b2c3d4e5f67890abcdef1234567890") is None
 
 
+class TestNotificationBuilding:
+    """Tests for notification building from CampaignData."""
+
+    def test_build_notification_from_data(self):
+        """Should build notification data from CampaignData."""
+        from api.user.campaigns import _build_notification_from_data, NotificationData
+
+        campaign = create_mock_campaign_data()
+        notification = _build_notification_from_data(campaign, "modal", can_claim=True)
+
+        assert isinstance(notification, NotificationData)
+        assert notification.campaign_id == VALID_CAMPAIGN_ID
+        assert notification.channel == "modal"
+        assert notification.can_claim is True
+        assert notification.title == "Welcome!"
+
+    def test_build_notification_default_values(self):
+        """Should use default values when config is empty."""
+        from api.user.campaigns import _build_notification_from_data
+
+        campaign = create_mock_campaign_data()
+        campaign = CampaignData(
+            id=campaign.id,
+            name="Test",
+            description=None,
+            type=campaign.type,
+            config=campaign.config,
+            target_type=campaign.target_type,
+            target_config={},
+            notification_channels=["modal"],
+            notification_config={},  # Empty config
+            start_at=campaign.start_at,
+            end_at=campaign.end_at,
+            usage_limit=campaign.usage_limit,
+            usage_count=campaign.usage_count,
+            status=campaign.status,
+            is_active=campaign.is_active,
+        )
+
+        notification = _build_notification_from_data(campaign, "modal")
+
+        assert notification.title == "Test"  # Falls back to campaign name
+        assert notification.message == ""  # Falls back to empty string
+        assert notification.cta_text == "Learn More"  # Default
+        assert notification.cta_url == "/pricing"  # Default
+
+
 # ==========================================
 # Summary
 # ==========================================
-# Total tests: 26
-# - GET /campaigns/active: 3 tests
-# - POST /campaigns/{id}/claim: 5 tests (2 skipped)
+# Total tests: 28
+# - GET /campaigns/active: 5 tests
+# - POST /campaigns/{id}/claim: 10 tests
 # - POST /campaigns/{id}/dismiss: 4 tests
-# - Batch query optimization: 2 tests
-# - Race condition prevention: 2 tests
-# - Helper functions (v2.1.0): 9 tests
 # - UUID validation (v2.1.0): 6 tests
+# - Notification building (v2.2.0): 3 tests
 # ==========================================
