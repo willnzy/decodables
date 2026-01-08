@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 92/125 (74%)
+> **当前进度**: 95/125 (76%)
 
 ---
 
@@ -74,12 +74,12 @@ Admin API 作为内部管理工具，有以下特点：
 | Moderation | 10 | 10 | ✅ 已完成 |
 | Notifications | 5 | 5 | ✅ 已完成 |
 | Stats | 18 | 18 | ✅ 已完成 |
-| Subscriptions | 3 | 0 | 未开始 |
+| Subscriptions | 3 | 3 | ✅ 已完成 |
 | System | 11 | 0 | 未开始 |
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **92** | 74% |
+| **总计** | **125** | **95** | 76% |
 
 ---
 
@@ -566,20 +566,32 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Subscriptions 订阅管理 (3个)
+## Subscriptions 订阅管理 (3个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 93 | adm_refund | POST | /refund | api/admin/subscriptions.py | 73 |
-| 94 | adm_cancel_subscription | POST | /subscription/cancel | api/admin/subscriptions.py | 165 |
-| 95 | adm_downgrade_subscription | POST | /subscription/downgrade | api/admin/subscriptions.py | 266 |
+| 93 | adm_refund | POST | /refund | api/admin/subscriptions.py | 98 |
+| 94 | adm_cancel_subscription | POST | /subscription/cancel | api/admin/subscriptions.py | 191 |
+| 95 | adm_downgrade_subscription | POST | /subscription/downgrade | api/admin/subscriptions.py | 292 |
 
 **测试用例 Checklist**
-- [ ] #93 退款处理
-- [ ] #94 取消订阅
-- [ ] #95 降级订阅
+- [x] #93 退款处理
+- [x] #94 取消订阅
+- [x] #95 降级订阅
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | SUB-MEDIUM-1 | Request Model 缺少字段长度限制 | ✅ 已添加 Field constraints |
+| 🟡 MEDIUM | SUB-MEDIUM-2 | `target_tier` 无枚举验证 | ✅ 已添加 VALID_TARGET_TIERS |
+| 🟢 LOW | SUB-LOW-1 | 异常暴露 Stripe 错误详情 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/subscriptions.py` - v3.24 → v3.25
+- `tests/api/admin/test_subscriptions.py` - 22 个测试用例
 
 ---
 

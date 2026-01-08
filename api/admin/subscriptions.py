@@ -2,7 +2,13 @@
 Admin Subscriptions Router - Subscription management endpoints for admins
 
 @module api.admin.subscriptions
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - SUB-MEDIUM-1: Added field length limits to request models
+  - SUB-MEDIUM-2: Added target_tier enum validation
+  - SUB-LOW-1: Limited Stripe error exposure
 
 Endpoints:
 - POST /api/admin/refund - Process refund
@@ -15,7 +21,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from core.database import get_supabase_client, get_database_client
 from infrastructure.repositories import (
@@ -38,32 +44,52 @@ router = APIRouter(prefix="/subscriptions", tags=["admin-subscriptions-v2"])
 
 
 # ==========================================
-# Request Models
+# Constants (v3.25)
+# ==========================================
+
+# v3.25: SUB-MEDIUM-2 - Valid target tiers for downgrade
+VALID_TARGET_TIERS = {"free", "starter"}
+
+
+# ==========================================
+# Request Models (v3.25: Added field validation)
 # ==========================================
 
 class AdminRefundRequest(BaseModel):
-    user_id: str
-    user_code: str  # Must match for verification
-    payment_intent_id: str
-    amount_cents: Optional[int] = None  # None = full refund
-    reason: str
+    # v3.25: SUB-MEDIUM-1 - Field length limits
+    user_id: str = Field(..., min_length=1, max_length=100)
+    user_code: str = Field(..., min_length=1, max_length=50)  # Must match for verification
+    payment_intent_id: str = Field(..., min_length=1, max_length=100)
+    amount_cents: Optional[int] = Field(None, ge=1, le=100000000)  # None = full refund, max $1M
+    reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class AdminCancelSubscriptionRequest(BaseModel):
-    user_id: str
-    user_code: str  # Must match for verification
-    subscription_id: str
+    # v3.25: SUB-MEDIUM-1 - Field length limits
+    user_id: str = Field(..., min_length=1, max_length=100)
+    user_code: str = Field(..., min_length=1, max_length=50)  # Must match for verification
+    subscription_id: str = Field(..., min_length=1, max_length=100)
     immediate: bool = False  # True = cancel now, False = cancel at period end
-    reason: str
+    reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class AdminDowngradeRequest(BaseModel):
-    user_id: str
-    user_code: str  # For verification
-    user_email: str  # For verification
-    target_tier: str  # 'starter' | 'free'
+    # v3.25: SUB-MEDIUM-1 - Field length limits
+    user_id: str = Field(..., min_length=1, max_length=100)
+    user_code: str = Field(..., min_length=1, max_length=50)  # For verification
+    user_email: str = Field(..., min_length=1, max_length=255)  # For verification
+    target_tier: str = Field(..., max_length=20)  # 'starter' | 'free'
     immediate: bool = False  # True = immediate, False = apply at period end
-    reason: str
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+    # v3.25: SUB-MEDIUM-2 - target_tier enum validation
+    @field_validator("target_tier")
+    @classmethod
+    def validate_target_tier(cls, v: str) -> str:
+        v_lower = v.lower()
+        if v_lower not in VALID_TARGET_TIERS:
+            raise ValueError(f"Invalid target_tier. Must be one of: {', '.join(VALID_TARGET_TIERS)}")
+        return v_lower
 
 
 # ==========================================
@@ -192,7 +218,9 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
     try:
         subscription_detail = stripe.Subscription.retrieve(req.subscription_id)
     except stripe.error.StripeError as e:
-        raise HTTPException(404, f"Subscription not found: {str(e)}")
+        # v3.25: SUB-LOW-1 - Limit Stripe error exposure
+        logger.error(f"[Admin] Subscription retrieve failed: {e}")
+        raise HTTPException(404, "Subscription not found or access denied")
     
     if subscription_detail.customer != customer_id:
         raise HTTPException(403, "Subscription does not belong to this user")
@@ -469,6 +497,8 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
             }
             
         except stripe.error.StripeError as e:
-            raise HTTPException(400, f"Stripe error: {str(e)}")
+            # v3.25: SUB-LOW-1 - Limit Stripe error exposure
+            logger.error(f"[Admin] Subscription downgrade failed: {e}")
+            raise HTTPException(400, "Subscription modification failed")
     
     raise HTTPException(400, "Invalid downgrade path")
