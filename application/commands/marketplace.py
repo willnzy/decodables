@@ -204,6 +204,8 @@ class PurchaseListingResult:
     success: bool
     listing: Optional[Listing] = None
     credits_spent: int = 0
+    already_owned: bool = False
+    project_id: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -224,6 +226,13 @@ class PurchaseListingHandler:
 
     async def handle(self, command: PurchaseListingCommand) -> PurchaseListingResult:
         """Execute listing purchase."""
+        from domains.marketplace.exceptions import (
+            ListingNotFoundException,
+            AlreadyPurchasedException,
+            PurchaseFailedException,
+            ListingNotPublishedException,
+        )
+
         try:
             # Get listing details
             listing = await self._marketplace_service.get_listing(command.listing_id)
@@ -233,12 +242,33 @@ class PurchaseListingHandler:
                     error="Listing not found",
                 )
 
+            # Check tier access (allowed_tiers)
+            if command.buyer_tier not in listing.allowed_tiers:
+                return PurchaseListingResult(
+                    success=False,
+                    error=f"Tier access denied. This listing requires: {', '.join(listing.allowed_tiers)}",
+                )
+
+            # Check if already purchased
+            if await self._marketplace_service._repository.has_purchased(
+                command.listing_id, command.buyer_id
+            ):
+                return PurchaseListingResult(
+                    success=True,
+                    listing=listing,
+                    credits_spent=0,
+                    already_owned=True,
+                )
+
             # Handle credit-based purchase
+            credits_to_deduct = 0
             if listing.requires_credits and listing.credit_price > 0:
+                credits_to_deduct = listing.credit_price
+
                 # Check if user can afford
                 can_afford = await self._billing_service.check_can_afford(
                     command.buyer_id,
-                    listing.credit_price
+                    credits_to_deduct
                 )
                 if not can_afford:
                     return PurchaseListingResult(
@@ -249,7 +279,7 @@ class PurchaseListingHandler:
                 # Deduct credits
                 await self._billing_service.deduct_credits(
                     user_id=command.buyer_id,
-                    amount=listing.credit_price,
+                    amount=credits_to_deduct,
                     tx_type=TransactionType.PURCHASE,
                     description=f"Purchase: {listing.title}",
                     idempotency_key=f"purchase_{command.listing_id}_{command.buyer_id}",
@@ -265,9 +295,35 @@ class PurchaseListingHandler:
             return PurchaseListingResult(
                 success=True,
                 listing=listing,
-                credits_spent=listing.credit_price if listing.requires_credits else 0,
+                credits_spent=credits_to_deduct,
+                already_owned=False,
+                # project_id would be set if we create a copy - for now None
+                project_id=None,
             )
 
+        except AlreadyPurchasedException:
+            # This shouldn't happen since we check above, but handle gracefully
+            return PurchaseListingResult(
+                success=True,
+                listing=listing if 'listing' in dir() else None,
+                credits_spent=0,
+                already_owned=True,
+            )
+        except ListingNotFoundException:
+            return PurchaseListingResult(
+                success=False,
+                error="Listing not found",
+            )
+        except ListingNotPublishedException:
+            return PurchaseListingResult(
+                success=False,
+                error="Listing is not published",
+            )
+        except PurchaseFailedException as e:
+            return PurchaseListingResult(
+                success=False,
+                error=str(e),
+            )
         except Exception as e:
             return PurchaseListingResult(
                 success=False,

@@ -426,16 +426,12 @@ async def purchase_listing(
 
         raise HTTPException(400, error)
 
-    # PurchaseListingResult has: success, listing, credits_spent, error
-    # PurchaseResponse expects: success, listing_id, project_id, already_owned, credits_deducted
-    # The handler might add project_id and already_owned as additional attributes
-
     return PurchaseResponse(
         success=True,
         listing_id=req.listing_id,
-        project_id=getattr(result, 'project_id', None),  # Get from result if available
-        already_owned=getattr(result, 'already_owned', False),  # Get from result if available
-        credits_deducted=result.credits_spent,  # Map credits_spent to credits_deducted
+        project_id=result.project_id,
+        already_owned=result.already_owned,
+        credits_deducted=result.credits_spent,
     )
 
 

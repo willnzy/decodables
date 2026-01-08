@@ -353,7 +353,7 @@
 | 36 | create_listing | POST | /listings | api/user/marketplace.py | 213 | ✅ 🔧 |
 | 37 | update_listing | PUT | /listings/{listing_id} | api/user/marketplace.py | 280 | ✅ 🔧 |
 | 38 | unpublish_listing | DELETE | /listings/{listing_id} | api/user/marketplace.py | 331 | ✅ 🔧 |
-| 39 | purchase_listing | POST | /purchase | api/user/marketplace.py | 367 | |
+| 39 | purchase_listing | POST | /purchase | api/user/marketplace.py | 367 | ✅ 🔧 |
 | 40 | get_my_listings | GET | /my-listings | api/user/marketplace.py | 424 | |
 | 41 | get_seller_stats | GET | /seller/stats | api/user/marketplace.py | 457 | |
 | 42 | get_leaderboard | GET | /leaderboard | api/user/marketplace.py | 505 | |
@@ -545,11 +545,48 @@
 - [x] #38.2 商品不存在返回 404
 - [x] #38.3 非发布状态不能下架返回 400
 
+### Review 结果 - #39 purchase_listing (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **PurchaseListingResult 缺少必要字段** (已修复)
+   - 问题: Result 缺少 `project_id` 和 `already_owned` 字段
+   - 影响: API 使用 getattr 回退，响应字段不稳定
+   - 修复: 添加 `project_id` 和 `already_owned` 字段到 Result
+
+2. **缺少 allowed_tiers 权限检查** (已修复)
+   - 问题: Handler 未检查 `buyer_tier` 是否在 `listing.allowed_tiers` 中
+   - 影响: 用户可以购买不允许其等级访问的商品
+   - 修复: 在 Handler 中添加 tier 权限检查
+
+3. **重复购买处理不完善** (已修复)
+   - 问题: Service 抛出 `AlreadyPurchasedException` 但 Handler 未优雅处理
+   - 修复: 在 Handler 中提前检查购买状态，返回 `already_owned=True`
+
+4. **异常处理不完整** (已修复)
+   - 问题: Handler 只有通用 Exception 处理
+   - 修复: 添加专门的异常捕获 (AlreadyPurchased, NotPublished, PurchaseFailed)
+
+**修复涉及的文件**:
+
+1. `application/commands/marketplace.py`
+   - 扩展 `PurchaseListingResult` 添加 `already_owned`, `project_id` 字段
+   - 重写 `PurchaseListingHandler.handle()` 方法:
+     - 添加 tier 权限检查
+     - 提前检查购买状态
+     - 完善异常处理
+
+2. `api/user/marketplace.py`
+   - 简化响应映射 (直接使用 result 字段)
+
+**测试文件**:
+- `tests/api/user/test_marketplace.py` - 已有 4 个测试用例覆盖所有场景
+
 **#39 purchase_listing**
-- [ ] #39.1 购买成功 (扣费+返回 project_id)
-- [ ] #39.2 余额不足返回 402
-- [ ] #39.3 商品不存在返回 404
-- [ ] #39.4 tier 权限不足返回 403
+- [x] #39.1 购买成功 (扣费+返回 project_id)
+- [x] #39.2 余额不足返回 402
+- [x] #39.3 商品不存在返回 404
+- [x] #39.4 tier 权限不足返回 403
 
 **#40 get_my_listings**
 - [ ] #40.1 获取我的商品列表
@@ -658,7 +695,7 @@
   - 新增 `test_get_listing_unpublished_not_visible_to_others` (#35.4)
   - 新增 `test_get_listing_with_purchase_status` (#35.5)
 
-**完成状态**: 🔄 审查中 (5/11)
+**完成状态**: 🔄 审查中 (6/11)
 
 ---
 
