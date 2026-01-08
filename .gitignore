@@ -17,3 +17,10 @@ Thumbs.db
 *.svg
 *.eps
 *.zip
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
