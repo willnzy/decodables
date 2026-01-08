@@ -1967,34 +1967,62 @@ API resources.py
 
 ---
 
-## Templates 模板模块 (10个)
+## Templates 模板模块 (10个) ✅ 已完成
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 79 | list_asset_templates | GET | /asset | api/user/templates.py | 126 |
-| 80 | create_asset_template | POST | /asset | api/user/templates.py | 142 |
-| 81 | update_asset_template | PUT | /asset/{template_id} | api/user/templates.py | 189 |
-| 82 | delete_asset_template | DELETE | /asset/{template_id} | api/user/templates.py | 215 |
-| 83 | use_asset_template | POST | /asset/{template_id}/use | api/user/templates.py | 232 |
-| 84 | list_page_templates | GET | /page | api/user/templates.py | 268 |
-| 85 | create_page_template | POST | /page | api/user/templates.py | 284 |
-| 86 | update_page_template | PUT | /page/{template_id} | api/user/templates.py | 325 |
-| 87 | delete_page_template | DELETE | /page/{template_id} | api/user/templates.py | 351 |
-| 88 | use_page_template | POST | /page/{template_id}/use | api/user/templates.py | 368 |
+| 79 | list_asset_templates | GET | /asset | api/user/templates.py | 186 |
+| 80 | create_asset_template | POST | /asset | api/user/templates.py | 202 |
+| 81 | update_asset_template | PUT | /asset/{template_id} | api/user/templates.py | 249 |
+| 82 | delete_asset_template | DELETE | /asset/{template_id} | api/user/templates.py | 278 |
+| 83 | use_asset_template | POST | /asset/{template_id}/use | api/user/templates.py | 298 |
+| 84 | list_page_templates | GET | /page | api/user/templates.py | 337 |
+| 85 | create_page_template | POST | /page | api/user/templates.py | 353 |
+| 86 | update_page_template | PUT | /page/{template_id} | api/user/templates.py | 394 |
+| 87 | delete_page_template | DELETE | /page/{template_id} | api/user/templates.py | 423 |
+| 88 | use_page_template | POST | /page/{template_id}/use | api/user/templates.py | 443 |
 
 **测试用例 Checklist**
-- [ ] #79 资产模板列表
-- [ ] #80 创建资产模板
-- [ ] #81 更新资产模板
-- [ ] #82 删除资产模板
-- [ ] #83 使用资产模板
-- [ ] #84 页面模板列表
-- [ ] #85 创建页面模板
-- [ ] #86 更新页面模板
-- [ ] #87 删除页面模板
-- [ ] #88 使用页面模板
+- [x] #79-83 资产模板 CRUD + Use (10 tests)
+- [x] #84-88 页面模板 CRUD + Use (10 tests)
+- [x] Authentication tests (2 tests)
+- [x] Security validation tests (9 tests)
 
-**完成状态**: 未开始
+### Review 结果 (v2.1.0)
+
+**已有安全措施** ✅:
+- Rate limiting 已实现 (60/minute, 30/minute)
+- 用户认证 (get_current_user)
+- 用户隔离 (user_id 过滤)
+- 模板数量限制 (MAX_TEMPLATES_PER_USER = 20)
+- name/description 有 max_length
+
+**安全问题发现与修复**:
+
+| ID | 级别 | 问题描述 | 修复方案 |
+|---|---|---|---|
+| TPL-MEDIUM-1 | MEDIUM | template_id 无格式验证 | 添加 UUID 格式验证 |
+| TPL-MEDIUM-2 | MEDIUM | 自定义文本字段无长度限制 | max_length=500 |
+| TPL-MEDIUM-3 | MEDIUM | moods 列表无大小限制 | max_length=10 |
+| TPL-LOW-1 | LOW | style 字段无长度限制 | max_length=50 |
+| TPL-LOW-2 | LOW | layout 字段无长度限制 | max_length=50 |
+| TPL-LOW-3 | LOW | negative_prompt 无长度限制 | max_length=1000 |
+
+**代码改动**:
+- `api/user/templates.py` v2.0.0 → v2.1.0
+  - 添加 UUID_PATTERN 和 validate_template_id() 函数
+  - 添加常量: MAX_MOODS, MAX_CUSTOM_TEXT_LENGTH, MAX_NEGATIVE_PROMPT_LENGTH
+  - 所有 Pydantic 模型添加字段长度约束
+  - 所有使用 template_id 的端点添加 UUID 验证
+  - 添加 moods 列表项长度验证
+
+**测试覆盖**: 29 tests passed
+- Asset Templates: 10 tests
+- Page Templates: 8 tests
+- Authentication: 2 tests
+- Security validations: 9 tests (新增)
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 

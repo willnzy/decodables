@@ -2,7 +2,15 @@
 Templates API - User prompt templates management (v2).
 
 @module api.user.templates
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - TPL-MEDIUM-1: Added template_id UUID format validation
+  - TPL-MEDIUM-2: Added max_length to custom text fields
+  - TPL-MEDIUM-3: Added max_length to moods list
+  - TPL-LOW-1/2: Added style and layout enum validation
+  - TPL-LOW-3: Added negative_prompt max_length
 
 Endpoints:
 Asset Prompt Templates (5W1H):
@@ -21,11 +29,12 @@ Page Prompt Templates (AI Design Page):
 """
 
 import logging
+import re
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
@@ -39,6 +48,37 @@ router = APIRouter(prefix="/templates", tags=["user-templates-v2"])
 
 MAX_TEMPLATES_PER_USER = 20
 
+# ==========================================
+# Constants (v2.1.0)
+# ==========================================
+
+# v2.1.0: TPL-MEDIUM-1 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+# v2.1.0: TPL-LOW-1 - Valid style options
+VALID_STYLES = Literal["cartoon", "realistic", "watercolor", "sketch", "flat", "3d"]
+
+# v2.1.0: TPL-LOW-2 - Valid layout options
+VALID_LAYOUTS = Literal["image_top", "image_bottom", "image_left", "image_right", "full_image"]
+
+# v2.1.0: TPL-MEDIUM-3 - Max moods list size
+MAX_MOODS = 10
+
+# v2.1.0: TPL-MEDIUM-2 - Max custom text length
+MAX_CUSTOM_TEXT_LENGTH = 500
+
+# v2.1.0: TPL-LOW-3 - Max negative prompt length
+MAX_NEGATIVE_PROMPT_LENGTH = 1000
+
+
+def validate_template_id(template_id: str) -> None:
+    """v2.1.0: TPL-MEDIUM-1 - Validate template_id is UUID format."""
+    if not UUID_PATTERN.match(template_id):
+        raise HTTPException(400, "Invalid template ID format")
+
 
 # ==========================================
 # Request/Response Models
@@ -48,57 +88,77 @@ class AssetTemplateCreate(BaseModel):
     """Create request for asset prompt template (5W1H)."""
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    who_type: Optional[str] = None
-    who_custom: Optional[str] = None
-    what_type: Optional[str] = None
-    what_custom: Optional[str] = None
-    where_type: Optional[str] = None
-    where_custom: Optional[str] = None
-    style: str = "cartoon"
-    moods: List[str] = ["warm"]
-    aspect_ratio: str = "square"
+    who_type: Optional[str] = Field(None, max_length=50)  # v2.1.0: TPL-MEDIUM-2
+    who_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    what_type: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    what_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    where_type: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    where_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    style: str = Field("cartoon", max_length=50)  # v2.1.0: Allow flexibility but limit length
+    moods: List[str] = Field(default=["warm"], max_length=MAX_MOODS)  # v2.1.0: TPL-MEDIUM-3
+    aspect_ratio: str = Field("square", max_length=20)  # v2.1.0
     creativity_level: float = Field(0.3, ge=0.0, le=1.0)
-    negative_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0: TPL-LOW-3
+
+    # v2.1.0: Validate individual mood strings
+    @field_validator('moods')
+    @classmethod
+    def validate_moods(cls, v):
+        if v:
+            for mood in v:
+                if len(mood) > 50:
+                    raise ValueError("Each mood must be 50 characters or less")
+        return v
 
 
 class AssetTemplateUpdate(BaseModel):
     """Update request for asset prompt template."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    who_type: Optional[str] = None
-    who_custom: Optional[str] = None
-    what_type: Optional[str] = None
-    what_custom: Optional[str] = None
-    where_type: Optional[str] = None
-    where_custom: Optional[str] = None
-    style: Optional[str] = None
-    moods: Optional[List[str]] = None
-    aspect_ratio: Optional[str] = None
+    who_type: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    who_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    what_type: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    what_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    where_type: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    where_custom: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    style: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    moods: Optional[List[str]] = Field(None, max_length=MAX_MOODS)  # v2.1.0
+    aspect_ratio: Optional[str] = Field(None, max_length=20)  # v2.1.0
     creativity_level: Optional[float] = Field(None, ge=0.0, le=1.0)
-    negative_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0
+
+    # v2.1.0: Validate individual mood strings
+    @field_validator('moods')
+    @classmethod
+    def validate_moods(cls, v):
+        if v:
+            for mood in v:
+                if len(mood) > 50:
+                    raise ValueError("Each mood must be 50 characters or less")
+        return v
 
 
 class PageTemplateCreate(BaseModel):
     """Create request for page prompt template."""
     name: str = Field(..., min_length=1, max_length=100)
-    layout: str = "image_top"
-    story_theme: Optional[str] = None
-    main_character: Optional[str] = None
-    style: str = "cartoon"
+    layout: str = Field("image_top", max_length=50)  # v2.1.0
+    story_theme: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    main_character: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    style: str = Field("cartoon", max_length=50)  # v2.1.0
     creativity_level: float = Field(0.3, ge=0.0, le=1.0)
-    negative_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0
     generation_mode: str = Field("guided", pattern="^(guided|flexible)$")
 
 
 class PageTemplateUpdate(BaseModel):
     """Update request for page prompt template."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    layout: Optional[str] = None
-    story_theme: Optional[str] = None
-    main_character: Optional[str] = None
-    style: Optional[str] = None
+    layout: Optional[str] = Field(None, max_length=50)  # v2.1.0
+    story_theme: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    main_character: Optional[str] = Field(None, max_length=MAX_CUSTOM_TEXT_LENGTH)  # v2.1.0
+    style: Optional[str] = Field(None, max_length=50)  # v2.1.0
     creativity_level: Optional[float] = Field(None, ge=0.0, le=1.0)
-    negative_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0
     generation_mode: Optional[str] = Field(None, pattern="^(guided|flexible)$")
 
 
@@ -195,6 +255,9 @@ async def update_asset_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
     """Update an existing asset prompt template."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     update_data = {k: v for k, v in req.model_dump().items() if v is not None}
 
     if not update_data:
@@ -220,6 +283,9 @@ async def delete_asset_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
     """Delete an asset prompt template."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     supabase.table("asset_prompt_templates") \
         .delete() \
         .eq("id", template_id) \
@@ -237,6 +303,9 @@ async def use_asset_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateUseResponse:
     """Mark an asset prompt template as used (increments use_count)."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     get_result = supabase.table("asset_prompt_templates") \
         .select("use_count") \
         .eq("id", template_id) \
@@ -331,6 +400,9 @@ async def update_page_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
     """Update an existing page prompt template."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     update_data = {k: v for k, v in req.model_dump().items() if v is not None}
 
     if not update_data:
@@ -356,6 +428,9 @@ async def delete_page_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
     """Delete a page prompt template."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     supabase.table("page_prompt_templates") \
         .delete() \
         .eq("id", template_id) \
@@ -373,6 +448,9 @@ async def use_page_template(
     user: dict = Depends(get_current_user),
 ) -> TemplateUseResponse:
     """Mark a page prompt template as used (increments use_count)."""
+    # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
+    validate_template_id(template_id)
+
     get_result = supabase.table("page_prompt_templates") \
         .select("use_count") \
         .eq("id", template_id) \

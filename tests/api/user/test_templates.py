@@ -17,7 +17,9 @@ Page Templates (AI Design):
 - POST /api/v2/user/templates/page/{id}/use - Mark as used
 
 Created: 2026-01-07
-Updated: 2026-01-08 (Complete rewrite with 20 comprehensive tests)
+Updated: 2026-01-09
+- v2.1.0: Updated tests for UUID template_id validation
+- Added security validation tests
 """
 
 import pytest
@@ -33,6 +35,17 @@ from app import app
 from dependencies import get_current_user
 
 client = TestClient(app)
+
+
+# ==========================================
+# Test Constants (v2.1.0)
+# ==========================================
+
+# v2.1.0: Use valid UUID format for template_id
+VALID_ASSET_TEMPLATE_ID = "12345678-1234-1234-1234-123456789abc"
+VALID_PAGE_TEMPLATE_ID = "87654321-4321-4321-4321-cba987654321"
+NONEXISTENT_TEMPLATE_ID = "00000000-0000-0000-0000-000000000000"  # Valid UUID but doesn't exist
+INVALID_TEMPLATE_ID = "not-a-valid-uuid"
 
 
 # ==========================================
@@ -63,7 +76,7 @@ def override_get_current_user(mock_user):
 def mock_asset_template():
     """Mock asset prompt template."""
     return {
-        "id": "template_asset_1",
+        "id": VALID_ASSET_TEMPLATE_ID,  # v2.1.0: Use valid UUID
         "user_id": "user_123",
         "name": "My 5W1H Template",
         "description": "Test template",
@@ -88,7 +101,7 @@ def mock_asset_template():
 def mock_page_template():
     """Mock page prompt template."""
     return {
-        "id": "template_page_1",
+        "id": VALID_PAGE_TEMPLATE_ID,  # v2.1.0: Use valid UUID
         "user_id": "user_123",
         "name": "Story Page Layout",
         "layout": "image_top",
@@ -123,7 +136,7 @@ class TestAssetTemplates:
         assert response.status_code == 200
         data = response.json()
         assert len(data["templates"]) == 1
-        assert data["templates"][0]["id"] == "template_asset_1"
+        assert data["templates"][0]["id"] == VALID_ASSET_TEMPLATE_ID
         assert data["templates"][0]["name"] == "My 5W1H Template"
 
     @patch('api.user.templates.supabase')
@@ -174,7 +187,7 @@ class TestAssetTemplates:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["template"]["id"] == "template_asset_1"
+        assert data["template"]["id"] == VALID_ASSET_TEMPLATE_ID
 
     @patch('api.user.templates.supabase')
     def test_create_asset_template_limit_exceeded(self, mock_supabase, override_get_current_user):
@@ -207,7 +220,7 @@ class TestAssetTemplates:
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = mock_result
 
         payload = {"name": "Updated Template Name"}
-        response = client.put("/api/v2/user/templates/asset/template_asset_1", json=payload)
+        response = client.put(f"/api/v2/user/templates/asset/{VALID_ASSET_TEMPLATE_ID}", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -222,7 +235,7 @@ class TestAssetTemplates:
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = mock_result
 
         payload = {"name": "Updated Name"}
-        response = client.put("/api/v2/user/templates/asset/nonexistent", json=payload)
+        response = client.put(f"/api/v2/user/templates/asset/{NONEXISTENT_TEMPLATE_ID}", json=payload)
 
         assert response.status_code == 404
         assert "Template not found" in response.json()["message"]
@@ -230,7 +243,7 @@ class TestAssetTemplates:
     @patch('api.user.templates.supabase')
     def test_update_asset_template_no_fields(self, mock_supabase, override_get_current_user):
         """Test updating with no fields provided."""
-        response = client.put("/api/v2/user/templates/asset/template_asset_1", json={})
+        response = client.put(f"/api/v2/user/templates/asset/{VALID_ASSET_TEMPLATE_ID}", json={})
 
         assert response.status_code == 400
         assert "No fields to update" in response.json()["message"]
@@ -240,7 +253,7 @@ class TestAssetTemplates:
         """Test deleting an asset template."""
         mock_supabase.table.return_value.delete.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock()
 
-        response = client.delete("/api/v2/user/templates/asset/template_asset_1")
+        response = client.delete(f"/api/v2/user/templates/asset/{VALID_ASSET_TEMPLATE_ID}")
 
         assert response.status_code == 200
         data = response.json()
@@ -256,7 +269,7 @@ class TestAssetTemplates:
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = mock_get_result
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock()
 
-        response = client.post("/api/v2/user/templates/asset/template_asset_1/use")
+        response = client.post(f"/api/v2/user/templates/asset/{VALID_ASSET_TEMPLATE_ID}/use")
 
         assert response.status_code == 200
         data = response.json()
@@ -270,7 +283,7 @@ class TestAssetTemplates:
         mock_get_result.data = None
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = mock_get_result
 
-        response = client.post("/api/v2/user/templates/asset/nonexistent/use")
+        response = client.post(f"/api/v2/user/templates/asset/{NONEXISTENT_TEMPLATE_ID}/use")
 
         assert response.status_code == 404
         assert "Template not found" in response.json()["message"]
@@ -295,7 +308,7 @@ class TestPageTemplates:
         assert response.status_code == 200
         data = response.json()
         assert len(data["templates"]) == 1
-        assert data["templates"][0]["id"] == "template_page_1"
+        assert data["templates"][0]["id"] == VALID_PAGE_TEMPLATE_ID
         assert data["templates"][0]["layout"] == "image_top"
 
     @patch('api.user.templates.supabase')
@@ -325,7 +338,7 @@ class TestPageTemplates:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["template"]["id"] == "template_page_1"
+        assert data["template"]["id"] == VALID_PAGE_TEMPLATE_ID
 
     @patch('api.user.templates.supabase')
     def test_create_page_template_limit_exceeded(self, mock_supabase, override_get_current_user):
@@ -356,7 +369,7 @@ class TestPageTemplates:
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = mock_result
 
         payload = {"layout": "image_bottom"}
-        response = client.put("/api/v2/user/templates/page/template_page_1", json=payload)
+        response = client.put(f"/api/v2/user/templates/page/{VALID_PAGE_TEMPLATE_ID}", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -371,7 +384,7 @@ class TestPageTemplates:
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = mock_result
 
         payload = {"layout": "image_left"}
-        response = client.put("/api/v2/user/templates/page/nonexistent", json=payload)
+        response = client.put(f"/api/v2/user/templates/page/{NONEXISTENT_TEMPLATE_ID}", json=payload)
 
         assert response.status_code == 404
         assert "Template not found" in response.json()["message"]
@@ -381,7 +394,7 @@ class TestPageTemplates:
         """Test deleting a page template."""
         mock_supabase.table.return_value.delete.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock()
 
-        response = client.delete("/api/v2/user/templates/page/template_page_1")
+        response = client.delete(f"/api/v2/user/templates/page/{VALID_PAGE_TEMPLATE_ID}")
 
         assert response.status_code == 200
         data = response.json()
@@ -396,7 +409,7 @@ class TestPageTemplates:
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = mock_get_result
         mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock()
 
-        response = client.post("/api/v2/user/templates/page/template_page_1/use")
+        response = client.post(f"/api/v2/user/templates/page/{VALID_PAGE_TEMPLATE_ID}/use")
 
         assert response.status_code == 200
         data = response.json()
@@ -410,7 +423,7 @@ class TestPageTemplates:
         mock_get_result.data = None
         mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.single.return_value.execute.return_value = mock_get_result
 
-        response = client.post("/api/v2/user/templates/page/nonexistent/use")
+        response = client.post(f"/api/v2/user/templates/page/{NONEXISTENT_TEMPLATE_ID}/use")
 
         assert response.status_code == 404
         assert "Template not found" in response.json()["message"]
@@ -432,3 +445,80 @@ class TestTemplateAuthentication:
         """Test listing page templates requires authentication."""
         response = client.get("/api/v2/user/templates/page")
         assert response.status_code == 401
+
+
+# ==========================================
+# Tests - Security Validations (v2.1.0)
+# ==========================================
+
+class TestSecurityValidations:
+    """Test security validations added in v2.1.0."""
+
+    def test_update_asset_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format."""
+        response = client.put(
+            f"/api/v2/user/templates/asset/{INVALID_TEMPLATE_ID}",
+            json={"name": "Test"}
+        )
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_delete_asset_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format on delete."""
+        response = client.delete(f"/api/v2/user/templates/asset/{INVALID_TEMPLATE_ID}")
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_use_asset_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format on use."""
+        response = client.post(f"/api/v2/user/templates/asset/{INVALID_TEMPLATE_ID}/use")
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_update_page_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format."""
+        response = client.put(
+            f"/api/v2/user/templates/page/{INVALID_TEMPLATE_ID}",
+            json={"layout": "image_top"}
+        )
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_delete_page_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format on delete."""
+        response = client.delete(f"/api/v2/user/templates/page/{INVALID_TEMPLATE_ID}")
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_use_page_template_invalid_id(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-1 - Reject invalid template_id format on use."""
+        response = client.post(f"/api/v2/user/templates/page/{INVALID_TEMPLATE_ID}/use")
+        assert response.status_code == 400
+        assert "Invalid template ID format" in response.text
+
+    def test_create_asset_template_moods_too_many(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-3 - Reject too many moods."""
+        payload = {
+            "name": "Test Template",
+            "moods": ["mood" + str(i) for i in range(15)],  # More than MAX_MOODS (10)
+        }
+        response = client.post("/api/v2/user/templates/asset", json=payload)
+        assert response.status_code == 422  # Pydantic validation
+
+    def test_create_asset_template_custom_text_too_long(self, override_get_current_user):
+        """v2.1.0: TPL-MEDIUM-2 - Reject too long custom text."""
+        payload = {
+            "name": "Test Template",
+            "who_custom": "x" * 600,  # More than MAX_CUSTOM_TEXT_LENGTH (500)
+        }
+        response = client.post("/api/v2/user/templates/asset", json=payload)
+        assert response.status_code == 422  # Pydantic validation
+
+    def test_create_asset_template_negative_prompt_too_long(self, override_get_current_user):
+        """v2.1.0: TPL-LOW-3 - Reject too long negative prompt."""
+        payload = {
+            "name": "Test Template",
+            "negative_prompt": "x" * 1100,  # More than MAX_NEGATIVE_PROMPT_LENGTH (1000)
+        }
+        response = client.post("/api/v2/user/templates/asset", json=payload)
+        assert response.status_code == 422  # Pydantic validation
