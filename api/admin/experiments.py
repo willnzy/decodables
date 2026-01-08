@@ -2,7 +2,17 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 2.0.0
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - EXP-MEDIUM-1: Added rate limiting to all endpoints
+  - EXP-MEDIUM-2: Added status parameter validation (list)
+  - EXP-MEDIUM-3: Added experiment_type validation
+  - EXP-MEDIUM-4: Added date format validation (results)
+  - EXP-MEDIUM-5: Added days range validation (1-90)
+  - EXP-MEDIUM-6: Added hours range validation (1-168)
+  - EXP-LOW-1: Migrated page to offset pagination
 
 Endpoints:
 - GET /experiments - List experiments
@@ -21,17 +31,42 @@ Endpoints:
 - GET /experiments/{key}/hourly-trend - Hourly trend
 """
 
+import logging
+import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import require_admin
 from domains.platform import experiments as experiment_service
+from infrastructure.rate_limiter import limiter
 from core.database import supabase
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
+
+
+# ==========================================
+# Constants (v3.25)
+# ==========================================
+
+# v3.25: EXP-MEDIUM-2 - Valid experiment statuses
+VALID_EXPERIMENT_STATUSES = {"draft", "running", "paused", "completed"}
+
+# v3.25: EXP-MEDIUM-3 - Valid experiment types
+VALID_EXPERIMENT_TYPES = {"ab", "multivariate", "feature_flag"}
+
+# v3.25: EXP-MEDIUM-4 - Date format validation pattern
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
+
+
+def validate_date_format(date_str: Optional[str], field_name: str) -> None:
+    """v3.25: EXP-MEDIUM-4 - Validate date format (YYYY-MM-DD or ISO)."""
+    if date_str is not None and not DATE_PATTERN.match(date_str):
+        raise HTTPException(400, f"Invalid {field_name} format. Use YYYY-MM-DD or ISO format")
 
 
 # ==========================================
@@ -58,8 +93,8 @@ class MetricConfig(BaseModel):
 class ExperimentCreateRequest(BaseModel):
     experiment_key: str = Field(min_length=2, max_length=100)
     name: str = Field(min_length=1, max_length=255)
-    description: Optional[str] = None
-    experiment_type: str = "ab"
+    description: Optional[str] = Field(None, max_length=1000)
+    experiment_type: str = Field(default="ab", max_length=50)
     variants: List[VariantConfig]
     targeting: Optional[TargetingConfig] = None
     traffic_allocation: int = Field(default=100, ge=0, le=100)
@@ -67,26 +102,42 @@ class ExperimentCreateRequest(BaseModel):
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
 
+    # v3.25: EXP-MEDIUM-3 - Validate experiment_type
+    @field_validator("experiment_type")
+    @classmethod
+    def validate_experiment_type(cls, v):
+        if v not in VALID_EXPERIMENT_TYPES:
+            raise ValueError(f"Invalid experiment_type. Must be one of: {', '.join(VALID_EXPERIMENT_TYPES)}")
+        return v
+
 
 class ExperimentUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
     variants: Optional[List[VariantConfig]] = None
     targeting: Optional[TargetingConfig] = None
     traffic_allocation: Optional[int] = Field(default=None, ge=0, le=100)
     metrics: Optional[List[MetricConfig]] = None
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
-    fallback_variant: Optional[str] = None
-    winning_variant: Optional[str] = None
+    fallback_variant: Optional[str] = Field(None, max_length=100)
+    winning_variant: Optional[str] = Field(None, max_length=100)
 
 
 class StatusUpdateRequest(BaseModel):
-    status: str
+    status: str = Field(..., max_length=50)
+
+    # v3.25: EXP-MEDIUM-2 - Validate status
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        if v not in VALID_EXPERIMENT_STATUSES:
+            raise ValueError(f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
+        return v
 
 
 class AIAnalysisRequest(BaseModel):
-    additional_context: Optional[str] = None
+    additional_context: Optional[str] = Field(None, max_length=2000)
 
 
 # ==========================================
@@ -111,24 +162,31 @@ def _enrich_results_with_significance(results: Dict[str, Any]) -> Dict[str, Any]
 
 
 # ==========================================
-# CRUD Endpoints
+# CRUD Endpoints (v3.25: Added rate limiting and validation)
 # ==========================================
 
 @router.get("")
+@limiter.limit("30/minute")
 async def list_experiments(
-    status: Optional[str] = None,
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
+    request: Request,
+    status: Optional[str] = Query(None, max_length=50, description="Filter by status"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(20, ge=1, le=100, description="Page size (1-100)"),
     admin: dict = Depends(require_admin)
 ):
     """List all experiments."""
-    offset = (page - 1) * limit
+    # v3.25: EXP-MEDIUM-2 - Validate status parameter
+    if status is not None and status not in VALID_EXPERIMENT_STATUSES:
+        raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
+
     experiments, total = experiment_service.list_experiments(status=status, limit=limit, offset=offset)
-    return {"experiments": experiments, "total": total, "page": page, "limit": limit}
+    return {"experiments": experiments, "total": total, "offset": offset, "limit": limit}
 
 
 @router.post("")
+@limiter.limit("20/minute")
 async def create_experiment(
+    request: Request,
     req: ExperimentCreateRequest,
     admin: dict = Depends(require_admin)
 ):
@@ -161,19 +219,23 @@ async def create_experiment(
 
 
 @router.get("/{experiment_key}")
+@limiter.limit("30/minute")
 async def get_experiment(
+    request: Request,
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
     """Get experiment details."""
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
     return {"experiment": experiment}
 
 
 @router.put("/{experiment_key}")
+@limiter.limit("20/minute")
 async def update_experiment(
+    request: Request,
     experiment_key: str,
     req: ExperimentUpdateRequest,
     admin: dict = Depends(require_admin)
@@ -209,36 +271,37 @@ async def update_experiment(
 
     experiment = experiment_service.update_experiment(experiment_key, updates, admin.get("id"))
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
     return {"status": "updated", "experiment": experiment}
 
 
 @router.put("/{experiment_key}/status")
+@limiter.limit("20/minute")
 async def update_experiment_status(
+    request: Request,
     experiment_key: str,
     req: StatusUpdateRequest,
     admin: dict = Depends(require_admin)
 ):
     """Update experiment status."""
-    valid_statuses = ["draft", "running", "paused", "completed"]
-    if req.status not in valid_statuses:
-        raise HTTPException(400, f"Invalid status. Must be one of: {valid_statuses}")
-
+    # Note: Status validation is now done in StatusUpdateRequest via field_validator
     success = experiment_service.update_experiment_status(experiment_key, req.status, admin.get("id"))
     if not success:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
     return {"status": "updated", "new_status": req.status}
 
 
 @router.delete("/{experiment_key}")
+@limiter.limit("10/minute")
 async def delete_experiment(
+    request: Request,
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
     """Delete experiment."""
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
     if experiment.get("status") == "running":
         raise HTTPException(400, "Cannot delete running experiment")
 
@@ -249,28 +312,36 @@ async def delete_experiment(
 
 
 # ==========================================
-# Results & Analysis Endpoints
+# Results & Analysis Endpoints (v3.25: Added rate limiting)
 # ==========================================
 
 @router.get("/{experiment_key}/results")
+@limiter.limit("30/minute")
 async def get_experiment_results(
+    request: Request,
     experiment_key: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD or ISO format)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD or ISO format)"),
     admin: dict = Depends(require_admin)
 ):
     """Get experiment results."""
+    # v3.25: EXP-MEDIUM-4 - Validate date formats
+    validate_date_format(start_date, "start_date")
+    validate_date_format(end_date, "end_date")
+
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
 
     results = experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
     if not results:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
     return _enrich_results_with_significance(results)
 
 
 @router.post("/{experiment_key}/aggregate")
+@limiter.limit("10/minute")
 async def trigger_aggregation(
+    request: Request,
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -282,7 +353,11 @@ async def trigger_aggregation(
 
 
 @router.post("/aggregate-all")
-async def trigger_all_aggregation(admin: dict = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def trigger_all_aggregation(
+    request: Request,
+    admin: dict = Depends(require_admin)
+):
     """Trigger aggregation for all running experiments."""
     success = experiment_service.aggregate_experiment_results()
     if not success:
@@ -291,14 +366,20 @@ async def trigger_all_aggregation(admin: dict = Depends(require_admin)):
 
 
 @router.post("/cache/clear")
-async def clear_cache(admin: dict = Depends(require_admin)):
+@limiter.limit("10/minute")
+async def clear_cache(
+    request: Request,
+    admin: dict = Depends(require_admin)
+):
     """Clear experiment cache."""
     experiment_service.clear_experiment_cache()
     return {"status": "cache_cleared"}
 
 
 @router.post("/{experiment_key}/ai-analysis")
+@limiter.limit("10/minute")
 async def get_ai_analysis(
+    request: Request,
     experiment_key: str,
     req: Optional[AIAnalysisRequest] = None,
     admin: dict = Depends(require_admin)
@@ -308,7 +389,7 @@ async def get_ai_analysis(
 
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
 
     results = experiment_service.get_experiment_results(experiment_key)
     if not results:
@@ -319,12 +400,14 @@ async def get_ai_analysis(
     analysis = experiment_ai_service.analyze_experiment_results(experiment, results, additional_context)
 
     if not analysis.get("success"):
-        raise HTTPException(500, analysis.get("error", "AI analysis failed"))
+        raise HTTPException(500, "AI analysis failed")
     return analysis
 
 
 @router.get("/{experiment_key}/quick-recommendation")
+@limiter.limit("30/minute")
 async def get_quick_recommendation(
+    request: Request,
     experiment_key: str,
     admin: dict = Depends(require_admin)
 ):
@@ -333,7 +416,7 @@ async def get_quick_recommendation(
 
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
 
     results = experiment_service.get_experiment_results(experiment_key)
     if not results:
@@ -345,21 +428,22 @@ async def get_quick_recommendation(
 
 
 # ==========================================
-# Trend Endpoints
+# Trend Endpoints (v3.25: Added rate limiting and validation)
 # ==========================================
 
 @router.get("/{experiment_key}/trend")
+@limiter.limit("30/minute")
 async def get_experiment_trend(
+    request: Request,
     experiment_key: str,
-    days: int = 30,
+    # v3.25: EXP-MEDIUM-5 - Days range validation
+    days: int = Query(30, ge=1, le=90, description="Number of days (1-90)"),
     admin: dict = Depends(require_admin)
 ):
     """Get daily trend data for charts."""
-    days = min(days, 90)
-
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
 
     experiment_id = experiment.get("id")
     variants = experiment.get("variants", [])
@@ -399,17 +483,18 @@ async def get_experiment_trend(
 
 
 @router.get("/{experiment_key}/hourly-trend")
+@limiter.limit("30/minute")
 async def get_hourly_trend(
+    request: Request,
     experiment_key: str,
-    hours: int = 24,
+    # v3.25: EXP-MEDIUM-6 - Hours range validation
+    hours: int = Query(24, ge=1, le=168, description="Number of hours (1-168)"),
     admin: dict = Depends(require_admin)
 ):
     """Get hourly trend data."""
-    hours = min(hours, 168)
-
     experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
     if not experiment:
-        raise HTTPException(404, f"Experiment '{experiment_key}' not found")
+        raise HTTPException(404, "Experiment not found")
 
     experiment_id = experiment.get("id")
     variants = experiment.get("variants", [])
