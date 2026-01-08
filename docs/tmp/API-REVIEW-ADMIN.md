@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 5/125 (4%)
+> **当前进度**: 13/125 (10%)
 
 ---
 
@@ -64,7 +64,7 @@ Admin API 作为内部管理工具，有以下特点：
 | 模块 | 接口数 | 已完成 | 状态 |
 |------|--------|--------|------|
 | AI Insights | 5 | 5 | ✅ 已完成 |
-| AI Models Config | 8 | 0 | 未开始 |
+| AI Models Config | 8 | 8 | ✅ 已完成 |
 | Campaigns | 8 | 0 | 未开始 |
 | Config | 8 | 0 | 未开始 |
 | Events | 5 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **5** | 4% |
+| **总计** | **125** | **13** | 10% |
 
 ---
 
@@ -122,30 +122,48 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## AI Models Config 模块 (8个)
+## AI Models Config 模块 (8个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 6 | get_ai_config | GET | /config | api/admin/ai_models.py | 75 |
-| 7 | update_text_config | PUT | /config/text | api/admin/ai_models.py | 86 |
-| 8 | update_image_config | PUT | /config/image | api/admin/ai_models.py | 97 |
-| 9 | update_admin_config | PUT | /config/admin | api/admin/ai_models.py | 108 |
-| 10 | update_canary_config | PUT | /config/canary | api/admin/ai_models.py | 115 |
-| 11 | toggle_provider | PUT | /providers/toggle | api/admin/ai_models.py | 134 |
-| 12 | get_usage | GET | /usage | api/admin/ai_models.py | 144 |
-| 13 | clear_cache | POST | /cache/clear | api/admin/ai_models.py | 157 |
+| 6 | get_ai_config | GET | /config | api/admin/ai_models.py | 106 |
+| 7 | update_text_config | PUT | /config/text | api/admin/ai_models.py | 119 |
+| 8 | update_image_config | PUT | /config/image | api/admin/ai_models.py | 141 |
+| 9 | update_admin_config | PUT | /config/admin | api/admin/ai_models.py | 162 |
+| 10 | update_canary_config | PUT | /config/canary | api/admin/ai_models.py | 170 |
+| 11 | toggle_provider | PUT | /providers/toggle | api/admin/ai_models.py | 195 |
+| 12 | get_usage | GET | /usage | api/admin/ai_models.py | 211 |
+| 13 | clear_cache | POST | /cache/clear | api/admin/ai_models.py | 228 |
 
 **测试用例 Checklist**
-- [ ] #6 获取AI配置
-- [ ] #7 更新文本AI配置
-- [ ] #8 更新图片AI配置
-- [ ] #9 更新管理员AI配置
-- [ ] #10 更新金丝雀配置
-- [ ] #11 切换AI提供商
-- [ ] #12 获取AI使用量统计
-- [ ] #13 清除AI缓存
+- [x] #6 获取AI配置
+- [x] #7 更新文本AI配置
+- [x] #8 更新图片AI配置
+- [x] #9 更新管理员AI配置
+- [x] #10 更新金丝雀配置
+- [x] #11 切换AI提供商
+- [x] #12 获取AI使用量统计
+- [x] #13 清除AI缓存
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | AIM-MEDIUM-1 | 8个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | AIM-MEDIUM-2 | `temperature` 无范围验证 | ✅ 已添加 (0-2) |
+| 🟡 MEDIUM | AIM-MEDIUM-3 | `max_tokens` 无范围验证 | ✅ 已添加 (1-32000) |
+| 🟡 MEDIUM | AIM-MEDIUM-4 | `percentage` 无范围验证 | ✅ 已添加 (0-100) |
+| 🟡 MEDIUM | AIM-MEDIUM-5 | `provider` 无枚举验证 | ✅ 已添加 VALID_PROVIDERS |
+| 🟡 MEDIUM | AIM-MEDIUM-6 | `days` 无范围验证 | ✅ 已添加 (1-365) |
+| 🟢 LOW | AIM-LOW-1 | 异常暴露详细错误 | ✅ 已限制错误信息 |
+| 🟢 LOW | AIM-LOW-2 | update_text_model_config 调用签名错误 | ✅ 已修复 |
+| 🟢 LOW | AIM-LOW-3 | update_image_model_config 调用签名错误 | ✅ 已修复 |
+
+**修改文件**:
+- `api/admin/ai_models.py` - v3.24 → v3.25
+- `tests/api/admin/test_ai_models.py` - 39 个测试用例
 
 ---
 
