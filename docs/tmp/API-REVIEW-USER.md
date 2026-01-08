@@ -1813,13 +1813,49 @@ analysis.aggregate_experiment_results()
 | 文件 | 版本变更 | 改动内容 |
 |------|---------|---------|
 | `infrastructure/repositories/credit_repository.py` | v1.0.0 → v1.0.1 | 修复 RPC 字段映射 |
-| `api/user/webhooks.py` | v2.0.0 → v2.2.0 | 幂等性检查 + customer_id 验证 + tier 映射 + credits档位 |
+| `api/user/webhooks.py` | v2.0.0 → v2.3.0 | 全面重构，见下方详细清单 |
 | `domains/billing/payment_service.py` | v3.22 → v3.24 | 配置验证 + coupon缓存 + 幂等性 + 重试逻辑 |
 | `app.py` | - | 启动时 Stripe 配置验证 |
-| `tests/api/user/test_webhooks.py` | - | 更新 mock |
+| `tests/api/user/test_webhooks.py` | - | 更新 mock + action 字段修复 |
+
+---
+
+### Webhooks v2.3.0 完整修复清单 (2026-01-08)
+
+**P0/CRITICAL 修复**:
+
+| 序号 | 问题 | 修复 |
+|------|------|------|
+| W1 | activity_logs 字段名不匹配 | `activity_type` → `action` (9处) |
+| W2 | credit_transactions tx_type 字段名错误 | `tx_type` → `type` |
+| W3 | Stripe checkout metadata 未验证 | 添加 metadata 存在性和必需字段验证 |
+| W4 | Stripe event_id/event_type 未验证 | 添加 null 检查，缺失时返回 400 |
+
+**HIGH 修复**:
+
+| 序号 | 问题 | 修复 |
+|------|------|------|
+| W5 | invoice payment 缺失 customer_id 验证 | 添加 customer_id null 检查和用户查找失败处理 |
+| W6 | subscription tier 更新缺失 customer_id | 添加 stripe_customer_id 参数传递 |
+| W7 | Idempotency RPC 失败未中断 | 关键事件 (checkout, invoice) 失败时返回 503 |
+| W8 | 签名验证错误暴露内部细节 | 改为通用 "Invalid signature" 错误消息 |
+
+**MEDIUM 修复**:
+
+| 序号 | 问题 | 修复 |
+|------|------|------|
+| W9 | 支付金额未验证 | 添加 amount_total <= 0 检查 |
+| W10 | tier 可能为 None | 添加 `.get('tier', 'free')` 安全访问 |
+| W11 | subscription change 缺失 customer_id 验证 | 添加 null 检查和错误日志 |
+| W12 | 错误响应格式不一致 | 统一添加相关 ID (session_id, invoice_id, subscription_id) |
+
+**测试更新**:
+- `test_webhooks.py`: `activity_type` → `action` (2处)
+- 所有测试通过: billing (30/30), webhooks (12/12)
 
 ---
 
 *创建日期: 2026-01-08*
 *总接口数: 110 个*
 *第二轮深入审查完成: 2026-01-08*
+*第三轮全面修复完成: 2026-01-08*

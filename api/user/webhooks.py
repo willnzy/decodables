@@ -2,23 +2,26 @@
 Webhooks API - Third-party webhook handlers (v2).
 
 @module api.user.webhooks
-@version 2.2.0
+@version 2.3.0
 
-Changes in v2.2.0:
-- Added support for credits_500 and credits_2000 purchase plans
-- Use get_credits_amount() for dynamic credits handling
+Changes in v2.3.0:
+- Fixed activity_logs field name (activity_type → action)
+- Fixed credit_transactions tx_type field name (tx_type → type)
+- Added Stripe metadata validation with proper error logging
+- Added event_id null check
+- Added amount validation for payments
+- Improved idempotency RPC fail-safe handling
+- Added tier null safety checks
+- Added subscription tier update with customer_id
+- Improved error logging and response consistency
+- Fixed signature error message not exposing internals
 
-Changes in v2.1.0:
-- Added idempotency check for Clerk signup bonus (prevent duplicate credits)
-- Added customer_id null validation in checkout handler
-- Replaced fragile string-based tier mapping with config-based get_tier_from_price_id()
+v2.2.0: Support for credits_500, credits_2000, get_credits_amount()
+v2.1.0: Idempotency, customer_id validation, get_tier_from_price_id()
 
 Endpoints:
 - POST /api/v2/user/webhooks/clerk - Clerk user events
 - POST /api/v2/user/webhooks/stripe - Stripe payment events
-
-Note: Both v1 (/api/webhooks/*) and v2 (/api/v2/user/webhooks/*) URLs are supported.
-Update webhook URLs in third-party dashboards to use v2 when ready.
 """
 
 import logging
@@ -127,7 +130,7 @@ async def clerk_webhook(request: Request):
                 try:
                     supabase.table("credit_transactions").update({
                         "idempotency_key": idempotency_key
-                    }).eq("user_id", user_id).eq("tx_type", "signup_bonus").execute()
+                    }).eq("user_id", user_id).eq("type", "signup_bonus").execute()
                 except Exception:
                     pass  # Best effort to update idempotency key
                 logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
@@ -138,7 +141,7 @@ async def clerk_webhook(request: Request):
         try:
             supabase.table("activity_logs").insert({
                 "user_id": user_id,
-                "activity_type": "user_signup",
+                "action": "user_signup",
                 "metadata": {
                     "email": email,
                     "first_name": first_name,
@@ -164,7 +167,7 @@ async def clerk_webhook(request: Request):
         try:
             supabase.table("activity_logs").insert({
                 "user_id": user_id,
-                "activity_type": "profile_updated",
+                "action": "profile_updated",
                 "metadata": {
                     "avatar_changed": new_avatar is not None,
                     "username_changed": new_username is not None,
@@ -182,7 +185,7 @@ async def clerk_webhook(request: Request):
             try:
                 supabase.table("activity_logs").insert({
                     "user_id": user_id,
-                    "activity_type": "user_login",
+                    "action": "user_login",
                     "metadata": {
                         "client_ip": evt.get("event_attributes", {}).get("http_request", {}).get("client_ip"),
                         "user_agent": evt.get("event_attributes", {}).get("http_request", {}).get("user_agent")
@@ -198,7 +201,7 @@ async def clerk_webhook(request: Request):
             try:
                 supabase.table("activity_logs").insert({
                     "user_id": user_id,
-                    "activity_type": "user_logout",
+                    "action": "user_logout",
                     "metadata": {"reason": event_type},
                 }).execute()
             except Exception as e:
@@ -240,10 +243,20 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     try:
         event = construct_event(payload, stripe_signature)
     except Exception as e:
-        raise HTTPException(400, str(e))
+        # Don't expose internal error details
+        logger.error(f"[Webhook] Stripe signature verification failed: {e}")
+        raise HTTPException(400, "Invalid signature")
 
     event_id = event.get('id')
-    event_type = event['type']
+    event_type = event.get('type')
+
+    # v2.3.0: Validate event_id and event_type
+    if not event_id:
+        logger.error(f"[Webhook] Received Stripe event without id")
+        raise HTTPException(400, "Invalid event: missing id")
+    if not event_type:
+        logger.error(f"[Webhook] Received Stripe event without type: {event_id}")
+        raise HTTPException(400, "Invalid event: missing type")
 
     # v3.22: Idempotency check - prevent duplicate event processing
     try:
@@ -259,9 +272,14 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
             logger.info(f"[Webhook] Duplicate event ignored: {event_id} ({event_type})")
             return {"status": "already_processed", "event_id": event_id}
     except Exception as e:
-        # If idempotency check fails, log but continue processing
-        # (better to risk double-processing than to miss events entirely)
-        logger.warning(f"[Webhook] Idempotency check failed for {event_id}: {e}")
+        # v2.3.0: Fail-safe - if idempotency check fails for critical events, reject
+        # For non-critical events, log and continue
+        critical_events = ['checkout.session.completed', 'invoice.payment_succeeded']
+        if event_type in critical_events:
+            logger.error(f"[Webhook] CRITICAL: Idempotency check failed for {event_type}, rejecting: {e}")
+            raise HTTPException(503, "Webhook processing temporarily unavailable")
+        else:
+            logger.warning(f"[Webhook] Idempotency check failed for {event_id}: {e}")
 
     process_result = {"status": "ok"}
 
@@ -296,10 +314,29 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
 async def _handle_checkout_completed(event: dict) -> dict:
     """Handle checkout.session.completed event."""
     session = event['data']['object']
-    uid = session['metadata'].get('user_id')
-    plan = session['metadata'].get('plan_type')
+    session_id = session.get('id', 'unknown')
+
+    # v2.3.0: Validate metadata exists
+    metadata = session.get('metadata', {})
+    if not metadata:
+        logger.error(f"[Webhook] checkout.session.completed missing metadata: session={session_id}")
+        return {"status": "error", "error": "missing_metadata", "session_id": session_id}
+
+    uid = metadata.get('user_id')
+    plan = metadata.get('plan_type')
+
+    # v2.3.0: Validate required fields
+    if not uid or not plan:
+        logger.error(f"[Webhook] checkout.session.completed incomplete metadata: uid={uid}, plan={plan}, session={session_id}")
+        return {"status": "error", "error": "incomplete_metadata", "session_id": session_id}
+
     amount_total = session.get('amount_total', 0)  # Amount in cents
     currency = session.get('currency', 'usd').upper()
+
+    # v2.3.0: Validate amount
+    if amount_total <= 0:
+        logger.error(f"[Webhook] Invalid amount for checkout {session_id}: {amount_total}")
+        return {"status": "error", "error": "invalid_amount", "session_id": session_id}
 
     if uid and plan:
         user_repo = SupabaseUserRepository(get_supabase_client())
@@ -318,7 +355,7 @@ async def _handle_checkout_completed(event: dict) -> dict:
             try:
                 supabase.table("activity_logs").insert({
                     "user_id": uid,
-                    "activity_type": "credits_purchase",
+                    "action": "credits_purchase",
                     "metadata": {"amount": credits_amount, "payment": amount_total},
                 }).execute()
             except Exception as e:
@@ -343,7 +380,7 @@ async def _handle_checkout_completed(event: dict) -> dict:
             try:
                 supabase.table("activity_logs").insert({
                     "user_id": uid,
-                    "activity_type": "subscription_started",
+                    "action": "subscription_started",
                     "metadata": {"plan": plan, "payment": amount_total},
                 }).execute()
             except Exception as e:
@@ -358,41 +395,50 @@ async def _handle_checkout_completed(event: dict) -> dict:
 async def _handle_invoice_payment(event: dict) -> dict:
     """Handle invoice.payment_succeeded event."""
     invoice = event['data']['object']
+    invoice_id = invoice.get('id', 'unknown')
     customer_id = invoice.get('customer')
     amount_paid = invoice.get('amount_paid', 0)  # Amount in cents
     currency = invoice.get('currency', 'usd').upper()
     billing_reason = invoice.get('billing_reason', '')  # subscription_create, subscription_cycle, etc.
 
-    # Look up user
-    if customer_id:
-        supabase = get_supabase_client()
-        # Match via stripe_customer_id
-        user_res = supabase.table("profiles").select("id, tier")\
-            .eq("stripe_customer_id", customer_id).execute()
+    # v2.3.0: Validate customer_id
+    if not customer_id:
+        logger.error(f"[Webhook] invoice.payment_succeeded missing customer_id: invoice={invoice_id}")
+        return {"status": "error", "error": "missing_customer_id", "invoice_id": invoice_id}
 
-        if user_res.data:
-            user = user_res.data[0]
-            uid = user['id']
-            tier = user['tier']
+    supabase = get_supabase_client()
+    # Match via stripe_customer_id
+    user_res = supabase.table("profiles").select("id, tier")\
+        .eq("stripe_customer_id", customer_id).execute()
 
-            # Refresh monthly credits (reset, no rollover) on renewal
-            if tier in ['starter', 'pro'] and billing_reason == 'subscription_cycle':
-                credit_repo = SupabaseCreditRepository(get_supabase_client())
-                payment_repo = SupabasePaymentRepository(get_supabase_client())
+    if not user_res.data:
+        # v2.3.0: Log warning when user not found
+        logger.warning(f"[Webhook] No user found for customer {customer_id}: invoice={invoice_id}")
+        return {"status": "error", "error": "user_not_found", "customer_id": customer_id}
 
-                await credit_repo.refresh_monthly_credits(uid, tier)
-                # Log renewal payment
-                await payment_repo.create(uid, amount_paid, currency, "sub_renewal", metadata={"description": f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}"})
-                # Log activity
-                try:
-                    supabase.table("activity_logs").insert({
-                        "user_id": uid,
-                        "activity_type": "monthly_credits_refreshed",
-                        "metadata": {"tier": tier, "payment": amount_paid},
-                    }).execute()
-                except Exception as e:
-                    logger.warning(f"Failed to log activity: {e}")
-                return {"status": "ok", "action": "credits_refreshed", "user_id": uid}
+    user = user_res.data[0]
+    uid = user['id']
+    # v2.3.0: Safe tier access with default
+    tier = user.get('tier', 'free')
+
+    # Refresh monthly credits (reset, no rollover) on renewal
+    if tier in ['starter', 'pro'] and billing_reason == 'subscription_cycle':
+        credit_repo = SupabaseCreditRepository(get_supabase_client())
+        payment_repo = SupabasePaymentRepository(get_supabase_client())
+
+        await credit_repo.refresh_monthly_credits(uid, tier)
+        # Log renewal payment
+        await payment_repo.create(uid, amount_paid, currency, "sub_renewal", metadata={"description": f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}"})
+        # Log activity
+        try:
+            supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "monthly_credits_refreshed",
+                "metadata": {"tier": tier, "payment": amount_paid},
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+        return {"status": "ok", "action": "credits_refreshed", "user_id": uid}
 
     return {"status": "ok"}
 
@@ -400,40 +446,49 @@ async def _handle_invoice_payment(event: dict) -> dict:
 async def _handle_subscription_change(event: dict) -> dict:
     """Handle customer.subscription.deleted/updated events."""
     subscription = event['data']['object']
+    subscription_id = subscription.get('id', 'unknown')
     customer_id = subscription.get('customer')
     status = subscription.get('status')
 
-    if customer_id:
-        supabase = get_supabase_client()
-        user_res = supabase.table("profiles").select("id")\
-            .eq("stripe_customer_id", customer_id).execute()
+    # v2.3.0: Validate customer_id
+    if not customer_id:
+        logger.warning(f"[Webhook] subscription change missing customer_id: sub={subscription_id}")
+        return {"status": "error", "error": "missing_customer_id", "subscription_id": subscription_id}
 
-        if user_res.data:
-            uid = user_res.data[0]['id']
-            user_repo = SupabaseUserRepository(get_supabase_client())
+    supabase = get_supabase_client()
+    user_res = supabase.table("profiles").select("id")\
+        .eq("stripe_customer_id", customer_id).execute()
 
-            if status in ['canceled', 'unpaid', 'past_due']:
-                # Downgrade to free
-                await user_repo.update_subscription_tier(uid, 'free', subscription_status='inactive')
-                # Log activity
-                try:
-                    supabase.table("activity_logs").insert({
-                        "user_id": uid,
-                        "activity_type": "subscription_ended",
-                        "metadata": {"reason": status},
-                    }).execute()
-                except Exception as e:
-                    logger.warning(f"Failed to log activity: {e}")
-                return {"status": "ok", "action": "subscription_ended", "user_id": uid}
-            elif status == 'active':
-                # Subscription reactivated
-                price_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
-                # Use config-based mapping instead of fragile string matching
-                new_tier = get_tier_from_price_id(price_id)
-                if new_tier == 'free':
-                    # Unknown price_id, log warning but keep user on free tier
-                    logger.warning(f"[Webhook] Unknown price_id {price_id} for user {uid}, setting tier to free")
-                await user_repo.update_subscription_tier(uid, new_tier, subscription_status='active')
-                return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
+    if not user_res.data:
+        logger.warning(f"[Webhook] No user found for customer {customer_id}: sub={subscription_id}")
+        return {"status": "error", "error": "user_not_found", "customer_id": customer_id}
+
+    uid = user_res.data[0]['id']
+    user_repo = SupabaseUserRepository(get_supabase_client())
+
+    if status in ['canceled', 'unpaid', 'past_due']:
+        # Downgrade to free
+        await user_repo.update_subscription_tier(uid, 'free', subscription_status='inactive')
+        # Log activity
+        try:
+            supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "subscription_ended",
+                "metadata": {"reason": status},
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+        return {"status": "ok", "action": "subscription_ended", "user_id": uid}
+    elif status == 'active':
+        # Subscription reactivated
+        price_id = subscription.get('items', {}).get('data', [{}])[0].get('price', {}).get('id', '')
+        # Use config-based mapping instead of fragile string matching
+        new_tier = get_tier_from_price_id(price_id)
+        if new_tier == 'free':
+            # Unknown price_id, log warning but keep user on free tier
+            logger.warning(f"[Webhook] Unknown price_id {price_id} for user {uid}, setting tier to free")
+        # v2.3.0: Pass customer_id to ensure mapping is maintained
+        await user_repo.update_subscription_tier(uid, new_tier, stripe_customer_id=customer_id, subscription_status='active')
+        return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
 
     return {"status": "ok"}

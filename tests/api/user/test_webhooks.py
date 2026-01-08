@@ -249,7 +249,7 @@ class TestClerkWebhook:
         assert len(insert_calls) > 0
         activity_data = insert_calls[0][0][0]
         assert activity_data["user_id"] == "user_clerk_123"
-        assert activity_data["activity_type"] == "user_signup"
+        assert activity_data["action"] == "user_signup"
 
     @patch('api.user.webhooks.Webhook')
     @patch('api.user.webhooks.SupabaseUserRepository')
@@ -420,7 +420,7 @@ class TestClerkWebhook:
         assert len(insert_calls) > 0
         activity_data = insert_calls[0][0][0]
         assert activity_data["user_id"] == "user_clerk_456"
-        assert activity_data["activity_type"] == "profile_updated"
+        assert activity_data["action"] == "profile_updated"
 
 
 # ==========================================
