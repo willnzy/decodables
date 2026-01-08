@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 74/125 (59%)
+> **当前进度**: 92/125 (74%)
 
 ---
 
@@ -73,13 +73,13 @@ Admin API 作为内部管理工具，有以下特点：
 | Metrics | 7 | 7 | ✅ 已完成 |
 | Moderation | 10 | 10 | ✅ 已完成 |
 | Notifications | 5 | 5 | ✅ 已完成 |
-| Stats | 18 | 0 | 未开始 |
+| Stats | 18 | 18 | ✅ 已完成 |
 | Subscriptions | 3 | 0 | 未开始 |
 | System | 11 | 0 | 未开始 |
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **74** | 59% |
+| **总计** | **125** | **92** | 74% |
 
 ---
 
@@ -506,50 +506,63 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Stats 统计管理 (18个)
+## Stats 统计管理 (18个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 75 | get_dashboard_stats | GET | /dashboard | api/admin/stats.py | 67 |
-| 76 | get_user_growth_stats | GET | /user-growth | api/admin/stats.py | 78 |
-| 77 | get_revenue_stats | GET | /revenue | api/admin/stats.py | 91 |
-| 78 | get_project_stats | GET | /projects | api/admin/stats.py | 104 |
-| 79 | get_credit_usage_stats | GET | /credits | api/admin/stats.py | 116 |
-| 80 | get_tier_distribution | GET | /tier-distribution | api/admin/stats.py | 128 |
-| 81 | get_conversion_funnel | GET | /conversion-funnel | api/admin/stats.py | 138 |
-| 82 | get_export_stats | GET | /exports | api/admin/stats.py | 153 |
-| 83 | get_asset_usage_stats | GET | /assets | api/admin/stats.py | 162 |
-| 84 | get_tier_activity | GET | /tier-activity | api/admin/stats.py | 171 |
-| 85 | get_subscription_events | GET | /subscription-events | api/admin/stats.py | 177 |
-| 86 | get_page_views | GET | /page-views | api/admin/stats.py | 186 |
-| 87 | get_project_details | GET | /project-details | api/admin/stats.py | 195 |
-| 88 | get_returning_users | GET | /returning-users | api/admin/stats.py | 204 |
-| 89 | get_tier_trend | GET | /tier-trend | api/admin/stats.py | 210 |
-| 90 | get_tier_conversion | GET | /tier-conversion | api/admin/stats.py | 216 |
-| 91 | get_performance_metrics | GET | /performance | api/admin/stats.py | 222 |
-| 92 | get_user_distribution | GET | /user-distribution | api/admin/stats.py | 231 |
+| 75 | get_dashboard_stats | GET | /dashboard | api/admin/stats.py | 99 |
+| 76 | get_user_growth_stats | GET | /user-growth | api/admin/stats.py | 116 |
+| 77 | get_revenue_stats | GET | /revenue | api/admin/stats.py | 139 |
+| 78 | get_project_stats | GET | /projects | api/admin/stats.py | 162 |
+| 79 | get_credit_usage_stats | GET | /credits | api/admin/stats.py | 180 |
+| 80 | get_tier_distribution | GET | /tier-distribution | api/admin/stats.py | 198 |
+| 81 | get_conversion_funnel | GET | /conversion-funnel | api/admin/stats.py | 210 |
+| 82 | get_export_stats | GET | /exports | api/admin/stats.py | 231 |
+| 83 | get_asset_usage_stats | GET | /assets | api/admin/stats.py | 241 |
+| 84 | get_tier_activity | GET | /tier-activity | api/admin/stats.py | 251 |
+| 85 | get_subscription_events | GET | /subscription-events | api/admin/stats.py | 258 |
+| 86 | get_page_views | GET | /page-views | api/admin/stats.py | 268 |
+| 87 | get_project_details | GET | /project-details | api/admin/stats.py | 278 |
+| 88 | get_returning_users | GET | /returning-users | api/admin/stats.py | 288 |
+| 89 | get_tier_trend | GET | /tier-trend | api/admin/stats.py | 295 |
+| 90 | get_tier_conversion | GET | /tier-conversion | api/admin/stats.py | 302 |
+| 91 | get_performance_metrics | GET | /performance | api/admin/stats.py | 309 |
+| 92 | get_user_distribution | GET | /user-distribution | api/admin/stats.py | 319 |
 
 **测试用例 Checklist**
-- [ ] #75 仪表盘概览
-- [ ] #76 用户增长统计
-- [ ] #77 收入统计
-- [ ] #78 项目统计
-- [ ] #79 积分使用统计
-- [ ] #80 用户等级分布
-- [ ] #81 转化漏斗
-- [ ] #82 导出统计
-- [ ] #83 素材使用统计
-- [ ] #84 等级活跃度
-- [ ] #85 订阅事件
-- [ ] #86 页面访问
-- [ ] #87 项目详情
-- [ ] #88 回访用户
-- [ ] #89 等级趋势
-- [ ] #90 等级转化
-- [ ] #91 性能指标
-- [ ] #92 用户分布
+- [x] #75 仪表盘概览
+- [x] #76 用户增长统计
+- [x] #77 收入统计
+- [x] #78 项目统计
+- [x] #79 积分使用统计
+- [x] #80 用户等级分布
+- [x] #81 转化漏斗
+- [x] #82 导出统计
+- [x] #83 素材使用统计
+- [x] #84 等级活跃度
+- [x] #85 订阅事件
+- [x] #86 页面访问
+- [x] #87 项目详情
+- [x] #88 回访用户
+- [x] #89 等级趋势
+- [x] #90 等级转化
+- [x] #91 性能指标
+- [x] #92 用户分布
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | STAT-MEDIUM-1 | 18个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | STAT-MEDIUM-2 | `start_date`/`end_date` 无格式验证 | ✅ 已添加 DATE_PATTERN |
+| 🟡 MEDIUM | STAT-MEDIUM-3 | `period`/`group_by` 无枚举验证 | ✅ 已添加 |
+| 🟢 LOW | STAT-LOW-1 | `_get_aggregated_stat` 错误日志不完整 | ✅ 已增强 |
+
+**修改文件**:
+- `api/admin/stats.py` - v2.0.0 → v3.25
+- `tests/api/admin/test_stats.py` - 42 个测试用例
 
 ---
 
