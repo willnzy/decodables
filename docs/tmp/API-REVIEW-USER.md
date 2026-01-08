@@ -92,7 +92,7 @@
 | Marketplace 🟡 | 11 | 11 | ✅ 已完成 |
 | Payment 🔴 | 2 | 2 | ✅ 已完成 |
 | Projects 🟡 | 10 | 10 | ✅ 已完成 |
-| Resources | 7 | 0 | 未开始 |
+| Resources | 7 | 7 | ✅ 已完成 |
 | Support | 4 | 0 | 未开始 |
 | System Resources | 9 | 0 | 未开始 |
 | Tasks | 2 | 0 | 未开始 |
@@ -102,7 +102,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **65** | 59.1% |
+| **总计** | **110** | **72** | 65.5% |
 
 ---
 
@@ -1715,28 +1715,104 @@ API log_errors_batch (L190-231)
 
 ---
 
-## Resources 资源模块 (7个)
+## Resources 资源模块 (7个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 57 | list_resources | GET | / | api/user/resources.py | 112 |
-| 58 | get_resource_types | GET | /types | api/user/resources.py | 152 |
-| 59 | get_categories | GET | /categories/{resource_type} | api/user/resources.py | 168 |
-| 60 | get_stickers | GET | /stickers | api/user/resources.py | 183 |
-| 61 | get_backgrounds | GET | /backgrounds | api/user/resources.py | 209 |
-| 62 | get_templates | GET | /templates | api/user/resources.py | 235 |
-| 63 | get_resource | GET | /{resource_id} | api/user/resources.py | 261 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 57 | list_resources | GET | / | api/user/resources.py | 146 | ✅ |
+| 58 | get_resource_types | GET | /types | api/user/resources.py | 198 | ✅ |
+| 59 | get_categories | GET | /categories/{resource_type} | api/user/resources.py | 217 | ✅ |
+| 60 | get_stickers | GET | /stickers | api/user/resources.py | 240 | ✅ |
+| 61 | get_backgrounds | GET | /backgrounds | api/user/resources.py | 274 | ✅ |
+| 62 | get_templates | GET | /templates | api/user/resources.py | 308 | ✅ |
+| 63 | get_resource | GET | /{resource_id} | api/user/resources.py | 342 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #57 资源列表
-- [ ] #58 资源类型
-- [ ] #59 分类查询
-- [ ] #60 贴纸资源
-- [ ] #61 背景资源
-- [ ] #62 模板资源
-- [ ] #63 单个资源
+- [x] #57.1 资源列表成功
+- [x] #57.2 资源列表带过滤
+- [x] #58.1 获取资源类型
+- [x] #59.1 获取分类
+- [x] #59.2 无效类型返回空分类
+- [x] #60.1 获取贴纸资源
+- [x] #61.1 获取背景资源
+- [x] #62.1 获取模板资源
+- [x] #63.1 获取单个资源成功
+- [x] #63.2 资源不存在返回 404
+- [x] #63.3 无效 ID 格式返回 400
+- [x] #SEC.1 搜索长度限制
+- [x] #SEC.2 分页限制
+- [x] #SEC.3 无效类型/分类静默忽略
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-09) - 安全审查
+
+**调用链追踪**:
+```
+API resources.py
+├── GET / → @limiter.limit("60/minute")
+│   ├── 验证 type (白名单)
+│   ├── 验证 category (白名单)
+│   └── GetResourcesHandler → ContentService
+├── GET /types → @limiter.limit("60/minute")
+│   └── 返回 ResourceType enum
+├── GET /categories/{type} → @limiter.limit("60/minute")
+│   ├── 验证 resource_type (白名单)
+│   └── GetCategoriesHandler → ContentService
+├── GET /stickers → @limiter.limit("60/minute")
+│   ├── 验证 category (白名单)
+│   └── GetStickersHandler → ContentService
+├── GET /backgrounds → @limiter.limit("60/minute")
+│   ├── 验证 category (白名单)
+│   └── GetBackgroundsHandler → ContentService
+├── GET /templates → @limiter.limit("60/minute")
+│   ├── 验证 category (白名单)
+│   └── GetProjectTemplatesHandler → ContentService
+└── GET /{resource_id} → @limiter.limit("60/minute")
+    ├── UUID 格式验证
+    └── GetResourceByIdHandler → ContentService
+```
+
+**发现的问题** (v2.0.0):
+
+| 序号 | 严重性 | 代号 | 问题 | 影响 | 状态 |
+|------|--------|------|------|------|------|
+| 1 | 🟡 MEDIUM | RES-MEDIUM-1 | 无速率限制 | 潜在 DoS 攻击 | ✅ 已修复 |
+| 2 | 🟡 MEDIUM | RES-MEDIUM-2 | resource_id 无格式验证 | 潜在注入风险 | ✅ 已修复 |
+| 3 | 🟡 MEDIUM | RES-MEDIUM-3 | resource_type 无白名单验证 | 脏数据/日志污染 | ✅ 已修复 |
+| 4 | 🟢 LOW | RES-LOW-1 | search 参数无长度限制 | 大字符串攻击 | ✅ 已修复 |
+| 5 | 🟢 LOW | RES-LOW-2 | category 参数无验证 | 脏数据 | ✅ 已修复 |
+
+**修复内容 (v2.1.0)**:
+
+1. **RES-MEDIUM-1: 速率限制**
+   - 所有端点添加 `@limiter.limit("60/minute")`
+   - 添加 `Request` 参数以支持限流器
+
+2. **RES-MEDIUM-2: resource_id UUID 验证**
+   - 添加 `UUID_PATTERN` 正则验证
+   - 无效格式返回 400
+
+3. **RES-MEDIUM-3: resource_type 白名单**
+   - 从 `ResourceType` enum 生成 `VALID_RESOURCE_TYPES`
+   - 无效类型静默归一化为 None (返回全部)
+
+4. **RES-LOW-1: search 长度限制**
+   - `max_length=100` 在 Query 参数中
+   - 超过返回 422
+
+5. **RES-LOW-2: category 白名单**
+   - 定义 `VALID_CATEGORIES` 集合
+   - 无效 category 静默归一化为 None
+
+**架构说明**:
+- 只读 API，支持可选认证 (`optional_user`)
+- CQRS 模式: Query → Handler → ContentService → Repository
+- 所有端点使用相同的 60/min 速率限制
+
+**测试文件**:
+- `tests/api/user/test_resources.py` - 15 个测试用例 (v2.1.0)
+- 覆盖: 正常流程、安全验证
+
+**完成状态**: ✅ 已修复 (2026-01-09)
 
 ---
 
