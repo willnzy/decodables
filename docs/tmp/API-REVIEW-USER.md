@@ -352,7 +352,7 @@
 | 35 | get_listing | GET | /listings/{listing_id} | api/user/marketplace.py | 184 | ✅ 🔧 |
 | 36 | create_listing | POST | /listings | api/user/marketplace.py | 213 | ✅ 🔧 |
 | 37 | update_listing | PUT | /listings/{listing_id} | api/user/marketplace.py | 280 | ✅ 🔧 |
-| 38 | unpublish_listing | DELETE | /listings/{listing_id} | api/user/marketplace.py | 331 | |
+| 38 | unpublish_listing | DELETE | /listings/{listing_id} | api/user/marketplace.py | 331 | ✅ 🔧 |
 | 39 | purchase_listing | POST | /purchase | api/user/marketplace.py | 367 | |
 | 40 | get_my_listings | GET | /my-listings | api/user/marketplace.py | 424 | |
 | 41 | get_seller_stats | GET | /seller/stats | api/user/marketplace.py | 457 | |
@@ -501,9 +501,49 @@
 - [x] #37.3 pending 状态不能编辑返回 400
 - [x] #37.4 更新 allowed_tiers 成功
 
+### Review 结果 - #38 unpublish_listing (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **Service 方法不存在** (已修复)
+   - 问题: API 调用 `marketplace_service.unpublish_listing()` 但该方法不存在
+   - 影响: 所有下架请求都会抛出 `AttributeError`
+   - 修复: 在 Service 层添加 `unpublish_listing` 方法
+
+2. **未使用 Handler 模式** (已修复)
+   - 问题: 原代码直接调用 Service，不符合 CQRS 架构
+   - 修复: 创建 Command/Result/Handler 统一模式
+
+**修复涉及的文件**:
+
+1. `domains/marketplace/service.py`
+   - 新增 `unpublish_listing()` 方法
+   - 验证用户权限和状态 (只有 PUBLISHED 可下架)
+   - 调用 aggregate 的 `archive()` 方法
+
+2. `application/commands/marketplace.py`
+   - 新增 `UnpublishListingCommand` 数据类
+   - 新增 `UnpublishListingResult` 数据类
+   - 新增 `UnpublishListingHandler` 类
+
+3. `container.py`
+   - 添加 `UnpublishListingHandler` 导入
+   - 添加 `unpublish_listing_handler` 属性
+
+4. `api/user/marketplace.py`
+   - 更新导入添加 `UnpublishListingCommand`
+   - 重写 `unpublish_listing` 端点使用 Handler 模式
+
+**测试文件更新**:
+- `tests/api/user/test_marketplace.py` - 更新 3 个测试用例使用 Handler mock:
+  - `test_unpublish_listing_success` (#38.1)
+  - `test_unpublish_listing_not_found` (#38.2)
+  - `test_unpublish_listing_not_published` (#38.3)
+
 **#38 unpublish_listing**
-- [ ] #38.1 下架商品成功
-- [ ] #38.2 商品不存在返回 404
+- [x] #38.1 下架商品成功
+- [x] #38.2 商品不存在返回 404
+- [x] #38.3 非发布状态不能下架返回 400
 
 **#39 purchase_listing**
 - [ ] #39.1 购买成功 (扣费+返回 project_id)
@@ -618,7 +658,7 @@
   - 新增 `test_get_listing_unpublished_not_visible_to_others` (#35.4)
   - 新增 `test_get_listing_with_purchase_status` (#35.5)
 
-**完成状态**: 🔄 审查中 (4/11)
+**完成状态**: 🔄 审查中 (5/11)
 
 ---
 

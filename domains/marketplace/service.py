@@ -473,3 +473,37 @@ class MarketplaceService:
             return None, False, None
 
         return result
+
+    async def unpublish_listing(
+        self,
+        listing_id: str,
+        user_id: str
+    ) -> Listing:
+        """
+        Unpublish (archive) a listing.
+
+        Only the seller can unpublish their own listing.
+        Only published listings can be unpublished.
+
+        Args:
+            listing_id: Listing ID
+            user_id: User making the request
+
+        Returns:
+            Archived Listing
+
+        Raises:
+            ListingNotFoundException: If listing not found
+            ListingAccessDeniedException: If user is not the seller
+            ValueError: If listing is not published
+        """
+        listing = await self.get_listing_or_raise(listing_id)
+
+        if listing.seller_id != user_id:
+            raise ListingAccessDeniedException(listing_id, user_id, "unpublish")
+
+        if listing.status != ListingStatus.PUBLISHED:
+            raise ValueError(f"Cannot unpublish listing in {listing.status.value} status")
+
+        listing.archive()
+        return await self._repository.update(listing)

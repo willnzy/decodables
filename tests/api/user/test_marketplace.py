@@ -1155,17 +1155,17 @@ class TestUnpublishListing:
         override_get_current_user_free,
     ):
         """
-        Test: Unpublish listing successfully
+        Test: #38.1 Unpublish listing successfully
 
-        Given: Listing owner
+        Given: Listing owner with published listing
         When: DELETE /api/v2/user/marketplace/listings/{id}
         Then: Returns status=unpublished
         """
-        # Arrange
-        mock_service = AsyncMock()
-        mock_service.unpublish_listing.return_value = MagicMock(success=True)
+        # Arrange - Mock handler
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(success=True)
         mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
+        mock_container.unpublish_listing_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1178,6 +1178,12 @@ class TestUnpublishListing:
         data = response.json()
         assert data["status"] == "unpublished"
 
+        # Verify handler was called with correct command
+        mock_handler.handle.assert_called_once()
+        command = mock_handler.handle.call_args[0][0]
+        assert command.listing_id == "listing_123"
+        assert command.user_id == "user_free_123"
+
     @patch('api.user.marketplace.get_container')
     def test_unpublish_listing_not_found(
         self,
@@ -1185,20 +1191,20 @@ class TestUnpublishListing:
         override_get_current_user_free,
     ):
         """
-        Test: Unpublish non-existent listing should return 404
+        Test: #38.2 Unpublish non-existent listing should return 404
 
         Given: Invalid listing ID
         When: DELETE /api/v2/user/marketplace/listings/{id}
         Then: Returns 404 Not Found
         """
-        # Arrange
-        mock_service = AsyncMock()
-        mock_service.unpublish_listing.return_value = MagicMock(
+        # Arrange - Mock handler
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
             success=False,
             error="Listing not found",
         )
         mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
+        mock_container.unpublish_listing_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1208,6 +1214,37 @@ class TestUnpublishListing:
 
         # Assert
         assert response.status_code == 404
+
+    @patch('api.user.marketplace.get_container')
+    def test_unpublish_listing_not_published(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        Test: #38.3 Cannot unpublish listing not in published status
+
+        Given: Draft listing
+        When: DELETE /api/v2/user/marketplace/listings/{id}
+        Then: Returns 400 Bad Request
+        """
+        # Arrange - Mock handler
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=False,
+            error="Cannot unpublish listing in draft status",
+        )
+        mock_container = MagicMock()
+        mock_container.unpublish_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.delete(
+            "/api/v2/user/marketplace/listings/draft_listing",
+        )
+
+        # Assert
+        assert response.status_code == 400
 
 
 # ==========================================

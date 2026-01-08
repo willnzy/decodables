@@ -314,3 +314,44 @@ class SubmitListingForReviewHandler:
                 success=False,
                 error=str(e),
             )
+
+
+@dataclass
+class UnpublishListingCommand:
+    """Command to unpublish (archive) a listing."""
+    listing_id: str
+    user_id: str
+
+
+@dataclass
+class UnpublishListingResult:
+    """Result of unpublish operation."""
+    success: bool
+    listing: Optional[Listing] = None
+    error: Optional[str] = None
+
+
+class UnpublishListingHandler:
+    """Handler for UnpublishListingCommand."""
+
+    def __init__(self, marketplace_service: MarketplaceService):
+        self._marketplace_service = marketplace_service
+
+    async def handle(self, command: UnpublishListingCommand) -> UnpublishListingResult:
+        """Execute listing unpublish (archive)."""
+        try:
+            listing = await self._marketplace_service.unpublish_listing(
+                listing_id=command.listing_id,
+                user_id=command.user_id,
+            )
+
+            return UnpublishListingResult(
+                success=True,
+                listing=listing,
+            )
+
+        except Exception as e:
+            return UnpublishListingResult(
+                success=False,
+                error=str(e),
+            )

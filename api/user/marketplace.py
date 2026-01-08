@@ -31,6 +31,7 @@ from core.database import get_database_client
 from application.commands.marketplace import (
     CreateListingCommand,
     UpdateListingCommand,
+    UnpublishListingCommand,
     PurchaseListingCommand,
 )
 from application.queries.marketplace import (
@@ -350,34 +351,35 @@ async def unpublish_listing(
     user: dict = Depends(get_current_user),
 ) -> Dict[str, str]:
     """
-    Unpublish a listing (set is_public=false).
+    Unpublish a listing (archive it).
 
     Only listing owner can unpublish.
+    Only published listings can be unpublished.
 
     Returns:
         Status
     """
     container = get_container()
-    marketplace_service = container.marketplace_service
+    handler = container.unpublish_listing_handler
 
-    try:
-        result = await marketplace_service.unpublish_listing(
-            listing_id=listing_id,
-            seller_id=user["id"],
-        )
+    command = UnpublishListingCommand(
+        listing_id=listing_id,
+        user_id=user["id"],
+    )
 
-        if not result.success:
-            if "not found" in (result.error or "").lower():
-                raise HTTPException(404, "Listing not found")
-            raise HTTPException(400, result.error)
+    result = await handler.handle(command)
 
-        return {"status": "unpublished"}
+    if not result.success:
+        error_msg = result.error or "Failed to unpublish listing"
+        if "not found" in error_msg.lower():
+            raise HTTPException(404, "Listing not found")
+        if "access denied" in error_msg.lower():
+            raise HTTPException(403, "Not authorized to unpublish this listing")
+        if "cannot unpublish" in error_msg.lower():
+            raise HTTPException(400, "Listing cannot be unpublished in current status")
+        raise HTTPException(400, error_msg)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to unpublish listing {listing_id}: {e}")
-        raise HTTPException(400, str(e))
+    return {"status": "unpublished"}
 
 
 @router.post("/purchase")

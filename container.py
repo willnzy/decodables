@@ -54,6 +54,7 @@ from application.commands.creation import (
 from application.commands.marketplace import (
     CreateListingHandler,
     UpdateListingHandler,
+    UnpublishListingHandler,
     PurchaseListingHandler,
 )
 from application.commands.platform import (
@@ -277,6 +278,13 @@ class Container:
         if 'update_listing' not in self._handlers:
             self._handlers['update_listing'] = UpdateListingHandler(self.marketplace_service)
         return self._handlers['update_listing']
+
+    @property
+    def unpublish_listing_handler(self) -> UnpublishListingHandler:
+        """Get unpublish listing handler."""
+        if 'unpublish_listing' not in self._handlers:
+            self._handlers['unpublish_listing'] = UnpublishListingHandler(self.marketplace_service)
+        return self._handlers['unpublish_listing']
 
     @property
     def purchase_listing_handler(self) -> PurchaseListingHandler:
