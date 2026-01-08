@@ -16,7 +16,7 @@
 ```
 1. Review 接口逻辑
    - 检查 API 层代码
-   - 追踪完整调用链 (API → Handler → Service → Repository)
+   - 追踪完整调用链 (API → Handler → Service → Repository)并全面仔细深入的分析
    - 验证参数传递是否正确
    - 确认返回值类型是否匹配
    - 请仔细深入的review, 不要偷懒,不要跳过, 不要省略
@@ -32,13 +32,14 @@
    - DDD 模式合规 (CQRS, Handler 模式)
    - 项目规范 (CLAUDE.md 规则)
    - 代码规范 (参数命名, 返回类型)
+   - 业界最佳实践
+   - 我们真实的业务逻辑
 
 4. 同步文档
    - 更新 API-REVIEW-ADMIN.md
    - 记录发现的问题和修复内容
    - 更新进度统计
-   - 如果设计数据库,记得更新ddl.sql
-
+   - 如果涉及数据库的改动,记得更新ddl.sql
 5. 提交代码
    - git add + commit + push
    - Commit message 包含模块名和修复数量
