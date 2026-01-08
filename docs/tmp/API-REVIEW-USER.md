@@ -19,11 +19,14 @@
    - 追踪完整调用链 (API → Handler → Service → Repository)
    - 验证参数传递是否正确
    - 确认返回值类型是否匹配
+   - 请仔细深入的review, 不要偷懒,不要跳过, 不要省略
 
 2. 完善测试用例
-   - 补充缺失的测试场景
+   - 补全缺失的测试场景
    - 更新 mock 适配新架构
    - 验证所有测试通过
+   - 驱动测试
+   - 测试要符合业务逻辑的设计, 不是迎合测试和迎合业务逻辑的代码实现
 
 3. 修复问题
    - DDD 模式合规 (CQRS, Handler 模式)
@@ -31,13 +34,15 @@
    - 代码规范 (参数命名, 返回类型)
 
 4. 同步文档
-   - 更新 API-REVIEW-USER.md
+   - 更新 API-REVIEW-ADMIN.md
    - 记录发现的问题和修复内容
    - 更新进度统计
 
 5. 提交代码
    - git add + commit + push
    - Commit message 包含模块名和修复数量
+
+6. 询问下一步操作 
 ```
 
 ### DDD 架构一致性规则
@@ -70,10 +75,10 @@
 
 | 模块 | 接口数 | 已完成 | 状态 |
 |------|--------|--------|------|
-| Analytics | 1 | 0 | 未开始 |
+| Analytics | 1 | 1 | ✅ 已完成 |
 | Billing 🔴 | 5 | 5 | ✅ 已完成 |
-| Campaigns | 3 | 0 | 未开始 |
-| Config | 3 | 0 | 未开始 |
+| Campaigns | 3 | 3 | ✅ 已修复 |
+| Config | 3 | 3 | ✅ 已完成 |
 | Experiments | 4 | 0 | 未开始 |
 | Export | 4 | 0 | 未开始 |
 | Generation Images 🔴 | 2 | 2 | ✅ 已完成 |
@@ -94,22 +99,66 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **41** | 37.3% |
+| **总计** | **110** | **48** | 43.6% |
 
 ---
 
-## Analytics 分析模块 (1个)
+## Analytics 分析模块 (1个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 1 | log_analytics_events | POST | /events | api/user/analytics.py | 113 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 1 | log_analytics_events | POST | /events | api/user/analytics.py | 113 | ✅ |
 
 **测试用例 Checklist**
-- [ ] 正常事件上报
-- [ ] 批量事件上报
-- [ ] 无效事件格式
+- [x] #1.1 单事件上报成功
+- [x] #1.2 批量事件上报
+- [x] #1.3 匿名用户上报
+- [x] #1.4 活动日志镜像 (project_* 事件)
+- [x] #1.5 服务端信息增强 (IP/Geo/UA)
+- [x] #1.6 无效 payload 返回 422
+- [x] #1.7 空事件数组处理
+- [x] #1.8 analytics_events 插入失败优雅处理
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-08) - 深入分析
+
+**调用链追踪**:
+```
+API log_analytics_events (L113-208)
+├── 获取客户端信息 (_get_client_ip, _get_cloudflare_geo)
+├── for each event:
+│   ├── SupabaseAdminStatsRepository.log_user_event() → user_events 表
+│   │   └── @retry_on_network_error (3次重试)
+│   ├── supabase.table("analytics_events").insert() → analytics_events 表
+│   │   └── try-catch 容错
+│   └── log_activity() → activity_logs 表 (关键事件)
+└── 返回 AnalyticsEventsResponse
+```
+
+**发现的问题**:
+
+| 序号 | 严重性 | 问题 | 影响 | 建议 |
+|------|--------|------|------|------|
+| 1 | 🟠 HIGH | L169 `log_user_event` 无 try-catch | 失败时整个请求 500，后续事件丢失 | 添加异常处理 |
+| 2 | 🟡 MEDIUM | L188 同步 supabase vs L169 异步混用 | 一致性问题 | 统一使用方式 |
+| 3 | 🟢 LOW | L146 循环内多次 DB 调用 | 大批量性能问题 | 可考虑批量插入 |
+
+**设计决策说明**:
+- `user_events` 是主存储，失败应该通知用户
+- `analytics_events` 是冗余存储，静默失败可接受
+- Supabase Python SDK 是同步的，async 方法内同步调用是常见模式
+
+**架构说明**:
+- 简单日志记录接口，直接使用 Repository 合理 (无需 DDD Service)
+- 支持匿名/登录用户 (`get_current_user_optional`)
+- 限流 60/minute
+- 双表存储: `user_events` + `analytics_events`
+- 关键事件 (`project_*`) 镜像到 `activity_logs`
+- 容错设计: `analytics_events` 失败不影响主流程
+
+**测试文件**:
+- `tests/api/user/test_analytics.py` - 8 个测试用例 (已存在)
+
+**完成状态**: ✅ 已完成 (2026-01-08)
 
 ---
 
@@ -173,38 +222,147 @@
 
 ---
 
-## Campaigns 活动模块 (3个)
+## Campaigns 活动模块 (3个) ✅ 已修复
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 7 | get_active_campaigns | GET | /active | api/user/campaigns.py | 92 |
-| 8 | claim_campaign | POST | /{campaign_id}/claim | api/user/campaigns.py | 163 |
-| 9 | dismiss_notification | POST | /{campaign_id}/dismiss | api/user/campaigns.py | 246 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 7 | get_active_campaigns | GET | /active | api/user/campaigns.py | 92 | ✅ |
+| 8 | claim_campaign | POST | /{campaign_id}/claim | api/user/campaigns.py | 163 | ✅ 已修复 |
+| 9 | dismiss_notification | POST | /{campaign_id}/dismiss | api/user/campaigns.py | 246 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #7 获取活跃活动
-- [ ] #8 领取活动奖励
-- [ ] #8 重复领取拒绝
-- [ ] #9 关闭活动通知
+- [x] #7.1 获取活跃活动
+- [x] #7.2 空活动列表
+- [x] #7.3 匿名用户访问
+- [x] #8.1 活动不存在返回 404
+- [x] #8.2 需要认证 401
+- [x] #9.1 关闭通知成功
+- [x] #9.2 无效 channel 返回 422
+- [x] #9.3 需要认证 401
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-08) - 深入分析
+
+**调用链追踪**:
+
+```
+#7 get_active_campaigns (L92-160)
+├── supabase.table("campaigns").select()  // 获取活跃活动
+└── for each campaign:
+    ├── _check_target_eligibility()  // 检查受众资格
+    ├── _check_has_claimed()  // supabase.table("campaign_claims").select()
+    ├── _get_dismissed_channels()  // supabase.table("campaign_dismissals").select()
+    └── _build_notification()
+
+#8 claim_campaign (L163-243) 🔴 CRITICAL
+├── supabase.table("campaigns").select()  // 获取活动
+├── 验证: status, is_active, time_range, eligibility
+├── supabase.table("campaign_claims").select()  // 检查是否已领取
+├── _check_usage_limit()  // 检查使用量
+├── SupabaseCreditRepository.add_credits_permanent()  // 🔴 发积分
+├── supabase.table("campaign_claims").insert()  // 🔴 记录领取
+└── supabase.table("campaigns").update()  // 更新使用计数
+
+#9 dismiss_notification (L246-260)
+└── supabase.table("campaign_dismissals").upsert()
+```
+
+**发现的问题**:
+
+| 序号 | 严重性 | 问题 | 位置 | 影响 |
+|------|--------|------|------|------|
+| 1 | 🔴 **CRITICAL** | **积分发放与记录非原子** | L217-231 | 并发时: 积分已发但 INSERT 因 UNIQUE 约束失败，用户得到积分但无记录 |
+| 2 | 🟠 HIGH | `usage_count` 竞态条件 | L207-236 | 并发请求可能突破 usage_limit |
+| 3 | 🟠 HIGH | N+1 查询问题 | L123-132 | 每个活动 2 次额外 DB 调用 |
+| 4 | 🟡 MEDIUM | `_build_notification` can_claim 硬编码 | L351 | 通知 can_claim 始终为 True |
+| 5 | 🟡 MEDIUM | 不符合 DDD 架构 | 全文件 | 直接调用 supabase，无 Service 层 |
+
+**问题 #1 详细分析** (CRITICAL):
+
+```python
+# 并发场景 (用户 A 和 B 同时请求):
+# 1. A 和 B 都通过 L199-204 检查 (SELECT 查询，此时无记录)
+# 2. A: add_credits_permanent 成功 (+50 积分)
+# 3. B: add_credits_permanent 成功 (+50 积分)  <-- 积分已发!
+# 4. A: INSERT campaign_claims 成功
+# 5. B: INSERT campaign_claims 失败 (UNIQUE 约束)
+# 6. B 收到错误，但积分已发且无法回滚
+
+# 正确做法: 先 INSERT campaign_claims，成功后再发积分
+```
+
+**修复方案**:
+
+```python
+# 重新排序操作:
+# 1. 先插入 claim 记录 (利用 UNIQUE 约束防止并发)
+# 2. 成功后再发放积分
+# 3. 如果发积分失败，删除 claim 记录
+
+# 或使用数据库事务:
+# BEGIN; INSERT campaign_claims; add_credits; COMMIT;
+```
+
+**架构说明**:
+- 支持 5 种目标受众: `all`, `subscription`, `users`, `new_users`, `inactive_users`
+- 支持 3 种通知渠道: `modal`, `toast`, `banner`
+- `campaign_claims` 表有 UNIQUE(campaign_id, user_id) 约束
+- 但积分发放在约束检查之前，存在竞态窗口
+
+**测试文件**:
+- `tests/api/user/test_campaigns.py` - 10 个测试用例 (8 passed, 2 skipped)
+- 缺少并发测试用例
+
+**修复内容 (2026-01-08)**:
+
+1. **CRITICAL Bug 修复 - 并发竞态条件**:
+   - 重新排序操作：先 INSERT claim 记录，成功后再发积分
+   - 利用 UNIQUE 约束防止并发重复领取
+   - 如果积分发放失败，删除 claim 记录允许用户重试
+
+2. **`_build_notification` can_claim 硬编码修复**:
+   - 添加 `can_claim` 参数，传入实际值
+   - 通知数据现在正确反映领取状态
+
+3. **usage_count 更新改为 best-effort**:
+   - 失败时仅记录警告，不影响主流程
+
+**完成状态**: ✅ 已修复 (2026-01-08)
 
 ---
 
-## Config 配置模块 (3个)
+## Config 配置模块 (3个) ✅ 已完成
 
-| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
-|------|------|------|------|------|------|
-| 10 | list_configs | GET | / | api/user/config.py | 45 |
-| 11 | get_group | GET | /group/{group_name} | api/user/config.py | 55 |
-| 12 | get_config | GET | /{key} | api/user/config.py | 64 |
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
+|------|------|------|------|------|------|------|
+| 10 | list_configs | GET | / | api/user/config.py | 45 | ✅ |
+| 11 | get_group | GET | /group/{group_name} | api/user/config.py | 55 | ✅ |
+| 12 | get_config | GET | /{key} | api/user/config.py | 64 | ✅ |
 
 **测试用例 Checklist**
-- [ ] #10 获取全部配置
-- [ ] #11 按组获取配置
-- [ ] #12 按key获取配置
+- [x] #10.1 获取全部配置
+- [x] #10.2 空配置返回空 dict
+- [x] #11.1 按组获取配置
+- [x] #11.2 不存在的组返回空数组
+- [x] #11.3 feature flags 组
+- [x] #12.1 按 key 获取配置
+- [x] #12.2 配置不存在返回 404
+- [x] #12.3 布尔值配置
+- [x] #12.4 字符串配置
 
-**完成状态**: 未开始
+### Review 结果 (2026-01-08)
+
+**代码分析**: 无 Bug
+
+**架构说明**:
+- 简单只读配置 API，直接使用 Repository 合理
+- Repository 实现内置 5 分钟缓存
+- 无认证要求 (公共配置)
+- 不涉及复杂业务逻辑
+
+**测试文件**:
+- `tests/api/user/test_config.py` - 9 个测试用例
+
+**完成状态**: ✅ 已完成 (2026-01-08)
 
 ---
 

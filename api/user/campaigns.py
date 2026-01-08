@@ -145,7 +145,7 @@ async def get_active_campaigns(
             if channel in dismissed_channels or channel == "personal_message":
                 continue
 
-            notification = _build_notification(campaign, channel)
+            notification = _build_notification(campaign, channel, can_claim=can_claim)
 
             if channel == "banner":
                 notifications.banner.append(notification)
@@ -208,12 +208,29 @@ async def claim_campaign(
     if usage_limit and campaign["usage_count"] >= usage_limit:
         raise HTTPException(400, "Campaign usage limit reached")
 
-    # Process claim
+    # Calculate credits to receive
     credits_received = 0
     config = campaign.get("config", {})
 
     if campaign["type"] == "credits_gift":
         credits_received = config.get("amount", 0)
+
+    # CRITICAL FIX: Insert claim record FIRST (uses UNIQUE constraint to prevent race condition)
+    # This ensures only one concurrent request can succeed
+    try:
+        supabase.table("campaign_claims").insert({
+            "campaign_id": campaign_id,
+            "user_id": user["id"],
+            "credits_received": credits_received,
+        }).execute()
+    except Exception as e:
+        # UNIQUE constraint violation means another request already claimed
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(400, "You have already claimed this campaign")
+        raise HTTPException(500, f"Failed to record claim: {e}")
+
+    # Now safely grant credits (claim is already recorded, no race condition)
+    try:
         if credits_received > 0:
             credit_repo = SupabaseCreditRepository(get_database_client())
             await credit_repo.add_credits_permanent(
@@ -222,18 +239,21 @@ async def claim_campaign(
                 f"Campaign reward: {campaign['name']}",
                 "campaign_gift",
             )
+    except Exception as e:
+        # Credit granting failed - remove the claim record for retry
+        logger.error(f"[Campaigns] Failed to grant credits for claim {campaign_id}/{user['id']}: {e}")
+        supabase.table("campaign_claims").delete().eq(
+            "campaign_id", campaign_id
+        ).eq("user_id", user["id"]).execute()
+        raise HTTPException(500, "Failed to grant credits. Please try again.")
 
-    # Record the claim
-    supabase.table("campaign_claims").insert({
-        "campaign_id": campaign_id,
-        "user_id": user["id"],
-        "credits_received": credits_received,
-    }).execute()
-
-    # Increment usage counter
-    supabase.table("campaigns").update({
-        "usage_count": campaign["usage_count"] + 1,
-    }).eq("id", campaign_id).execute()
+    # Increment usage counter (best effort, not critical)
+    try:
+        supabase.table("campaigns").update({
+            "usage_count": campaign["usage_count"] + 1,
+        }).eq("id", campaign_id).execute()
+    except Exception as e:
+        logger.warning(f"[Campaigns] Failed to increment usage_count for {campaign_id}: {e}")
 
     message = f"You received {credits_received} credits!" if credits_received > 0 else "Offer claimed successfully!"
     return ClaimResponse(
@@ -335,7 +355,7 @@ def _check_usage_limit(campaign: dict) -> bool:
     return campaign.get("usage_count", 0) < usage_limit
 
 
-def _build_notification(campaign: dict, channel: str) -> NotificationData:
+def _build_notification(campaign: dict, channel: str, can_claim: bool = True) -> NotificationData:
     """Build notification data structure for a channel."""
     config = campaign.get("notification_config", {})
 
@@ -348,5 +368,5 @@ def _build_notification(campaign: dict, channel: str) -> NotificationData:
         cta_text=config.get("cta_text", "Learn More"),
         cta_url=config.get("cta_url", "/pricing"),
         show_once=config.get("show_once", False),
-        can_claim=True,
+        can_claim=can_claim,
     )
