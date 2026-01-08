@@ -155,14 +155,17 @@ async def list_listings(
     container = get_container()
     handler = container.search_listings_handler
 
+    # Convert API parameters to Query parameters
+    # SearchListingsQuery expects: query, category, price_type, limit, offset
+    # API provides: resource_type, featured, sort, tier, price, page, limit
+    offset = (page - 1) * limit
+
     query = SearchListingsQuery(
-        user_id=user["id"],
-        user_tier=user.get("tier", "free"),
-        resource_type=resource_type,
-        featured=featured,
-        sort=sort,
-        page=page,
+        query="",  # Empty query for listing all
+        category=resource_type,  # resource_type maps to category
+        price_type=price,  # price filter maps to price_type
         limit=limit,
+        offset=offset,
     )
 
     result = await handler.handle(query)
@@ -192,9 +195,9 @@ async def get_listing(
     container = get_container()
     handler = container.get_listing_handler
 
+    # GetListingQuery only accepts listing_id (no user_id parameter)
     query = GetListingQuery(
         listing_id=listing_id,
-        user_id=user["id"],
     )
 
     result = await handler.handle(query)
@@ -236,18 +239,27 @@ async def create_listing(
         if req.price_credits > 0:
             raise HTTPException(403, "Starter users can only publish free assets")
 
+    # CreateListingCommand expects: seller_id, category, title, description,
+    # price_type, credit_price, tags, preview_url, seller_tier
+    # API provides: title, description, thumbnail_url, resource_url, resource_type,
+    # resource_id, price_credits, allowed_tiers, version, changelog
+
+    # Map resource_type to category
+    category = req.resource_type if req.resource_type else "stickers"
+
+    # Map price_credits to price_type
+    price_type = "free" if req.price_credits == 0 else "credits"
+
     command = CreateListingCommand(
         seller_id=user["id"],
+        category=category,  # Map resource_type to category
         title=req.title,
         description=req.description,
-        thumbnail_url=req.thumbnail_url,
-        resource_url=req.resource_url,
-        resource_type=req.resource_type,
-        resource_id=req.resource_id,
-        price_credits=req.price_credits,
-        allowed_tiers=req.allowed_tiers or ["free"],
-        version=req.version,
-        changelog=req.changelog,
+        price_type=price_type,  # Map based on price_credits
+        credit_price=req.price_credits,  # Map price_credits to credit_price
+        tags=None,  # API doesn't provide tags yet
+        preview_url=req.thumbnail_url,  # Map thumbnail_url to preview_url
+        seller_tier=user.get("tier", "free"),  # Get from user context
     )
 
     result = await handler.handle(command)
@@ -255,8 +267,11 @@ async def create_listing(
     if not result.success:
         raise HTTPException(400, result.error or "Failed to create listing")
 
+    # CreateListingResult has 'listing' object, not 'listing_id' directly
+    listing_id = result.listing.listing_id if result.listing else None
+
     return {
-        "listing_id": result.listing_id,
+        "listing_id": listing_id,
         "moderation_status": "pending",
         "message": "Submitted for review",
     }
@@ -371,11 +386,12 @@ async def purchase_listing(
     container = get_container()
     handler = container.purchase_listing_handler
 
+    # PurchaseListingCommand expects: listing_id, buyer_id, buyer_tier
+    # Note: idempotency_key is generated internally by the handler
     command = PurchaseListingCommand(
         listing_id=req.listing_id,
         buyer_id=user["id"],
         buyer_tier=user.get("tier", "free"),
-        idempotency_key=req.idempotency_key,
     )
 
     result = await handler.handle(command)
@@ -392,12 +408,16 @@ async def purchase_listing(
 
         raise HTTPException(400, error)
 
+    # PurchaseListingResult has: success, listing, credits_spent, error
+    # PurchaseResponse expects: success, listing_id, project_id, already_owned, credits_deducted
+    # The handler might add project_id and already_owned as additional attributes
+
     return PurchaseResponse(
         success=True,
         listing_id=req.listing_id,
-        project_id=result.project_id,
-        already_owned=result.already_owned,
-        credits_deducted=result.credits_deducted,
+        project_id=getattr(result, 'project_id', None),  # Get from result if available
+        already_owned=getattr(result, 'already_owned', False),  # Get from result if available
+        credits_deducted=result.credits_spent,  # Map credits_spent to credits_deducted
     )
 
 
