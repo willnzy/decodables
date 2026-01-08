@@ -1224,9 +1224,8 @@ class TestRestoreProject:
         response = client.post("/api/v2/user/projects/invalid_id/restore")
 
         # Assert
-        # NOTE: API has a bug - generic exception handler catches HTTPException(404)
-        # and re-raises as 400. Should be 404, but API returns 400.
-        assert response.status_code == 400
+        # FIXED: API now correctly returns 404 for project not found
+        assert response.status_code == 404
 
 
 # ==========================================

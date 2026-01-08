@@ -3,17 +3,10 @@ Tests for Logs API endpoints (v2)
 
 API Module: api/user/logs.py
 Endpoints:
-- POST /api/v2/user/api/v2/user/logs/error - Log single error
-- POST /api/v2/user/api/v2/user/logs/errors - Log batch errors
+- POST /api/v2/user/logs/error - Log single error
+- POST /api/v2/user/logs/errors - Log batch errors
 
 Note: These endpoints don't require authentication
-
-**API BUG DISCOVERED**: Router has duplicate prefix!
-- logs.py router prefix: /api/v2/user/logs
-- user_router prefix: /api/v2/user
-- Combined (buggy): /api/v2/user + /api/v2/user/logs = /api/v2/user/api/v2/user/logs
-
-**FIX**: Change logs.py router prefix from "/api/v2/user/logs" to "/logs"
 
 @module tests.api.user.test_logs
 @version 2.0.0
@@ -57,7 +50,7 @@ class TestLogSingleError:
             "user_agent": "Mozilla/5.0",
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload)
+        response = client.post("/api/v2/user/logs/error", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -82,7 +75,7 @@ class TestLogSingleError:
         # Include a mock JWT token (will be decoded without verification)
         headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJUZXN0In0.abc123"}
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload, headers=headers)
+        response = client.post("/api/v2/user/logs/error", json=payload, headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -105,7 +98,7 @@ class TestLogSingleError:
             "stack_trace": long_stack,
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload)
+        response = client.post("/api/v2/user/logs/error", json=payload)
 
         assert response.status_code == 200
 
@@ -131,7 +124,7 @@ class TestLogSingleError:
             "message": "Connection timeout",
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload)
+        response = client.post("/api/v2/user/logs/error", json=payload)
 
         # Should still return 200 with warning
         assert response.status_code == 200
@@ -146,7 +139,7 @@ class TestLogSingleError:
         # Missing required fields
         payload = {}
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload)
+        response = client.post("/api/v2/user/logs/error", json=payload)
 
         assert response.status_code == 422
 
@@ -176,7 +169,7 @@ class TestLogSingleError:
             "client_timestamp": "2026-01-08T10:00:00Z",
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/error", json=payload)
+        response = client.post("/api/v2/user/logs/error", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -224,7 +217,7 @@ class TestLogBatchErrors:
             ]
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload)
+        response = client.post("/api/v2/user/logs/errors", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -253,7 +246,7 @@ class TestLogBatchErrors:
 
         headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyJ9.abc"}
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload, headers=headers)
+        response = client.post("/api/v2/user/logs/errors", json=payload, headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -271,7 +264,7 @@ class TestLogBatchErrors:
         """Should handle empty errors array"""
         payload = {"errors": []}
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload)
+        response = client.post("/api/v2/user/logs/errors", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -293,7 +286,7 @@ class TestLogBatchErrors:
             ]
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload)
+        response = client.post("/api/v2/user/logs/errors", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -307,7 +300,7 @@ class TestLogBatchErrors:
         # Missing required 'errors' field
         payload = {}
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload)
+        response = client.post("/api/v2/user/logs/errors", json=payload)
 
         assert response.status_code == 422
 
@@ -335,7 +328,7 @@ class TestLogBatchErrors:
             ]
         }
 
-        response = client.post("/api/v2/user/api/v2/user/logs/errors", json=payload)
+        response = client.post("/api/v2/user/logs/errors", json=payload)
 
         assert response.status_code == 200
 

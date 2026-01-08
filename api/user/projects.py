@@ -410,6 +410,9 @@ async def restore_project(
             project=result.project.to_dict() if result.project else None,
         )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions with their original status codes
+        raise
     except Exception as e:
         logger.error(f"Failed to restore project {project_id}: {e}")
         raise HTTPException(400, str(e))

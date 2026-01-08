@@ -1,4 +1,4 @@
-"""Logs API - Activity logs endpoint (v2).
+"""Logs API - Error logs endpoint (v2).
 
 @module api.user.logs
 @version 2.0.0
@@ -22,7 +22,7 @@ from core.database import get_supabase_client
 logger = logging.getLogger(__name__)
 supabase = get_supabase_client()
 
-router = APIRouter(prefix="/api/v2/user/logs", tags=["user-logs-v2"])
+router = APIRouter(prefix="/logs", tags=["user-logs-v2"])
 
 
 # ==========================================

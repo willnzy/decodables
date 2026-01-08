@@ -158,6 +158,37 @@ async def toggle_favorite(
     return FavoriteResponse(success=True, is_favorited=req.is_favorited)
 
 
+@router.delete("/batch", deprecated=True)
+@limiter.limit("10/minute")
+async def clear_generation_history(
+    request: Request,
+    keep_favorites: bool = True,
+    user: dict = Depends(get_current_user),
+) -> BatchDeleteResponse:
+    """
+    Clear all generation history, optionally keeping favorites.
+
+    **DEPRECATED**: Use `POST /batch-delete` instead.
+    This endpoint will be removed in v3.0.
+
+    **IMPORTANT**: This route must come BEFORE /{generation_id}
+    otherwise "batch" will be matched as a generation_id.
+    """
+    query = supabase.table("user_generations") \
+        .delete() \
+        .eq("user_id", user["id"])
+
+    if keep_favorites:
+        query = query.eq("is_favorited", False)
+
+    result = query.execute()
+
+    return BatchDeleteResponse(
+        success=True,
+        deleted_count=len(result.data) if result.data else 0,
+    )
+
+
 @router.delete("/{generation_id}")
 @limiter.limit("30/minute")
 async def delete_generation(
@@ -199,32 +230,4 @@ async def batch_delete_generations(
     return BatchDeleteResponse(
         success=True,
         deleted_count=len(result.data or []),
-    )
-
-
-@router.delete("/batch", deprecated=True)
-@limiter.limit("10/minute")
-async def clear_generation_history(
-    request: Request,
-    keep_favorites: bool = True,
-    user: dict = Depends(get_current_user),
-) -> BatchDeleteResponse:
-    """
-    Clear all generation history, optionally keeping favorites.
-
-    **DEPRECATED**: Use `POST /batch-delete` instead.
-    This endpoint will be removed in v3.0.
-    """
-    query = supabase.table("user_generations") \
-        .delete() \
-        .eq("user_id", user["id"])
-
-    if keep_favorites:
-        query = query.eq("is_favorited", False)
-
-    result = query.execute()
-
-    return BatchDeleteResponse(
-        success=True,
-        deleted_count=len(result.data) if result.data else 0,
     )

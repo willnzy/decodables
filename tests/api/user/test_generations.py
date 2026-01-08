@@ -330,15 +330,15 @@ class TestBatchDelete:
 class TestBatchDeleteDeprecated:
     """Test DELETE /generations/batch endpoint (deprecated).
 
-    **KNOWN API BUG #6**: Route ordering issue!
-    DELETE /batch comes AFTER DELETE /{generation_id}, so FastAPI matches "batch" as generation_id.
-    This endpoint is currently broken and returns DeleteResponse instead of BatchDeleteResponse.
+    **BUG FIXED**: Route ordering issue fixed!
+    DELETE /batch now comes BEFORE DELETE /{generation_id}, so it correctly matches.
     """
 
     @patch('api.user.generations.supabase')
-    def test_batch_delete_deprecated_broken(self, mock_supabase, override_get_current_user):
-        """KNOWN BUG: DELETE /batch is being matched as DELETE /{generation_id}."""
+    def test_batch_delete_deprecated_now_fixed(self, mock_supabase, override_get_current_user):
+        """BUG FIXED: DELETE /batch now correctly matches and returns BatchDeleteResponse."""
         mock_result = MagicMock()
+        mock_result.data = [{"id": "gen_1"}, {"id": "gen_2"}]
 
         mock_table = MagicMock()
         mock_delete = MagicMock()
@@ -356,5 +356,5 @@ class TestBatchDeleteDeprecated:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        # BUG: Returns DeleteResponse (deleted="batch") instead of BatchDeleteResponse
-        assert data["deleted"] == "batch"  # Wrong response model!
+        # FIXED: Now returns correct BatchDeleteResponse with deleted_count
+        assert data["deleted_count"] == 2
