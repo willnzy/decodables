@@ -9,6 +9,15 @@ Endpoints:
 - POST /api/v2/user/support/contact - Contact form submission
 - POST /api/v2/user/support/feedback - Submit user feedback
 
+@module tests.api.user.test_support
+@version 2.1.0
+
+Changes in v2.1.0:
+- Added tests for images list size limit (SUP-MEDIUM-1)
+- Added tests for conversation_history size limit (SUP-MEDIUM-2)
+- Added tests for feedback images limit (SUP-LOW-1)
+- Added tests for email format validation (SUP-LOW-2, SUP-LOW-3)
+
 Created: 2026-01-08
 Coverage Target: 100% (4/4 endpoints)
 """
@@ -830,6 +839,129 @@ class TestFeedback:
 
 
 # ==========================================
+# Tests: Security Validations (v2.1.0)
+# ==========================================
+
+class TestSecurityValidations:
+    """Test security validations added in v2.1.0."""
+
+    def test_ticket_invalid_email_format(self, override_get_current_user):
+        """
+        v2.1.0: SUP-LOW-3 - Invalid email format should be rejected.
+
+        Given: Invalid email format
+        When: POST /api/v2/user/support/ticket
+        Then: Returns 422 Validation Error
+        """
+        response = client.post(
+            "/api/v2/user/support/ticket",
+            json={
+                "message": "Need help",
+                "email": "not-an-email",  # Invalid format
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_contact_invalid_email_format(self, override_get_current_user):
+        """
+        v2.1.0: SUP-LOW-2 - Contact email must be valid format.
+
+        Given: Invalid email format
+        When: POST /api/v2/user/support/contact
+        Then: Returns 422 Validation Error
+        """
+        response = client.post(
+            "/api/v2/user/support/contact",
+            json={
+                "name": "John",
+                "email": "invalid-email",  # Invalid format
+                "message": "Hello",
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_chat_too_many_images(self, override_get_current_user):
+        """
+        v2.1.0: SUP-MEDIUM-1 - Chat images limited to 4.
+
+        Given: More than 4 images
+        When: POST /api/v2/user/support/chat
+        Then: Returns 422 Validation Error
+        """
+        response = client.post(
+            "/api/v2/user/support/chat",
+            json={
+                "message": "Help with images",
+                "images": ["img1", "img2", "img3", "img4", "img5"],  # 5 > 4
+                "conversation_history": [],
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_chat_too_long_history(self, override_get_current_user):
+        """
+        v2.1.0: SUP-MEDIUM-2 - Conversation history limited to 20.
+
+        Given: More than 20 history items
+        When: POST /api/v2/user/support/chat
+        Then: Returns 422 Validation Error
+        """
+        long_history = [
+            {"role": "user", "content": f"Message {i}"}
+            for i in range(25)  # 25 > 20
+        ]
+
+        response = client.post(
+            "/api/v2/user/support/chat",
+            json={
+                "message": "New message",
+                "conversation_history": long_history,
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_feedback_too_many_images(self, override_get_current_user):
+        """
+        v2.1.0: SUP-LOW-1 - Feedback images limited to 5.
+
+        Given: More than 5 images
+        When: POST /api/v2/user/support/feedback
+        Then: Returns 422 Validation Error
+        """
+        response = client.post(
+            "/api/v2/user/support/feedback",
+            json={
+                "message": "Great product",
+                "images": ["img1", "img2", "img3", "img4", "img5", "img6"],  # 6 > 5
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_feedback_invalid_email_format(self, override_get_current_user):
+        """
+        v2.1.0: SUP-LOW-3 - Feedback email must be valid format.
+
+        Given: Invalid email format
+        When: POST /api/v2/user/support/feedback
+        Then: Returns 422 Validation Error
+        """
+        response = client.post(
+            "/api/v2/user/support/feedback",
+            json={
+                "message": "Nice app",
+                "email": "bad@email",  # Invalid format (missing TLD)
+            },
+        )
+
+        assert response.status_code == 422
+
+
+# ==========================================
 # Coverage Summary
 # ==========================================
 
@@ -868,8 +1000,16 @@ POST /api/v2/user/support/feedback:
 ✅ Validation error: message too long (422)
 ✅ Unauthorized (401)
 
-Total Tests: 23 (removed rate limit test)
-Coverage: 100% (4/4 endpoints)
+Security Validations (v2.1.0):
+✅ Ticket: invalid email format (422)
+✅ Contact: invalid email format (422)
+✅ Chat: too many images (422)
+✅ Chat: too long history (422)
+✅ Feedback: too many images (422)
+✅ Feedback: invalid email format (422)
+
+Total Tests: 29
+Coverage: 100% (4/4 endpoints + security validations)
 
 Business Logic Tested:
 - ✅ Email fallback (custom email → user email → unknown@user.com)

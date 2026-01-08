@@ -2,7 +2,15 @@
 Support API - Customer support and feedback endpoints (v2).
 
 @module api.user.support
-@version 2.0.0
+@version 2.1.0
+
+Changes:
+- v2.1.0: Security improvements
+  - SUP-MEDIUM-1: Added images list size limit (max 4)
+  - SUP-MEDIUM-2: Added conversation_history size limit (max 20)
+  - SUP-LOW-1: Added feedback images limit (max 5)
+  - SUP-LOW-2: Added email format validation
+  - SUP-LOW-3: Added email format validation for optional emails
 
 Endpoints:
 - POST /api/v2/user/support/ticket - Create support ticket
@@ -12,10 +20,11 @@ Endpoints:
 """
 
 import logging
+import re
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
@@ -28,6 +37,32 @@ router = APIRouter(prefix="/support", tags=["user-support-v2"])
 
 
 # ==========================================
+# Constants (v2.1.0)
+# ==========================================
+
+# v2.1.0: SUP-MEDIUM-1 - Max images in chat request
+MAX_CHAT_IMAGES = 4
+
+# v2.1.0: SUP-MEDIUM-2 - Max conversation history items
+MAX_CONVERSATION_HISTORY = 20
+
+# v2.1.0: SUP-LOW-1 - Max images in feedback
+MAX_FEEDBACK_IMAGES = 5
+
+# v2.1.0: SUP-LOW-2/3 - Email validation pattern
+EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+
+def validate_email_format(email: Optional[str]) -> Optional[str]:
+    """Validate email format if provided."""
+    if email is None:
+        return None
+    if not EMAIL_PATTERN.match(email):
+        raise ValueError("Invalid email format")
+    return email
+
+
+# ==========================================
 # Request/Response Models
 # ==========================================
 
@@ -36,12 +71,18 @@ class SupportTicketRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000)
     email: Optional[str] = None
 
+    # v2.1.0: SUP-LOW-3 - Email validation
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        return validate_email_format(v)
+
 
 class ChatSupportRequest(BaseModel):
     """AI chat support request."""
     message: str = Field(..., min_length=1, max_length=2000)
-    images: List[str] = []  # Base64 or URLs
-    conversation_history: List[Dict[str, Any]] = []
+    images: List[str] = Field(default=[], max_length=MAX_CHAT_IMAGES)  # v2.1.0: SUP-MEDIUM-1
+    conversation_history: List[Dict[str, Any]] = Field(default=[], max_length=MAX_CONVERSATION_HISTORY)  # v2.1.0: SUP-MEDIUM-2
 
 
 class ContactRequest(BaseModel):
@@ -51,12 +92,26 @@ class ContactRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000)
     subject: Optional[str] = Field(None, max_length=200)
 
+    # v2.1.0: SUP-LOW-2 - Email format validation
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if not EMAIL_PATTERN.match(v):
+            raise ValueError("Invalid email format")
+        return v
+
 
 class FeedbackRequest(BaseModel):
     """Feedback request."""
     message: str = Field(..., min_length=1, max_length=5000)
     email: Optional[str] = None
-    images: List[str] = []
+    images: List[str] = Field(default=[], max_length=MAX_FEEDBACK_IMAGES)  # v2.1.0: SUP-LOW-1
+
+    # v2.1.0: SUP-LOW-3 - Email validation
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        return validate_email_format(v)
 
 
 class SupportResponse(BaseModel):
