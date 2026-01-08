@@ -13,13 +13,16 @@ from domains.marketplace import (
     Listing,
     AssetCategory,
     PriceType,
+    ListingSortOrder,
+    PriceFilter,
 )
 
 
 @dataclass
 class GetListingQuery:
-    """Query to get a listing by ID."""
+    """Query to get a listing by ID with optional access control."""
     listing_id: str
+    user_id: Optional[str] = None  # For access control and is_purchased check
 
 
 @dataclass
@@ -28,6 +31,8 @@ class GetListingResult:
     success: bool
     listing: Optional[Listing] = None
     listing_dict: Optional[Dict[str, Any]] = None
+    is_purchased: bool = False
+    seller_info: Optional[Dict[str, Any]] = None  # username, avatar_url
     error: Optional[str] = None
 
 
@@ -38,9 +43,13 @@ class GetListingHandler:
         self._marketplace_service = marketplace_service
 
     async def handle(self, query: GetListingQuery) -> GetListingResult:
-        """Execute listing query."""
+        """Execute listing query with access control."""
         try:
-            listing = await self._marketplace_service.get_listing(query.listing_id)
+            # Use get_listing_detail for access control, purchase status, and seller info
+            listing, is_purchased, seller_info = await self._marketplace_service.get_listing_detail(
+                listing_id=query.listing_id,
+                user_id=query.user_id,
+            )
 
             if not listing:
                 return GetListingResult(
@@ -48,10 +57,19 @@ class GetListingHandler:
                     error="Listing not found",
                 )
 
+            # Build listing dict with additional fields
+            listing_dict = listing.to_dict()
+            listing_dict["is_purchased"] = is_purchased
+            if seller_info:
+                listing_dict["seller_username"] = seller_info.get("username")
+                listing_dict["seller_avatar_url"] = seller_info.get("avatar_url")
+
             return GetListingResult(
                 success=True,
                 listing=listing,
-                listing_dict=listing.to_dict(),
+                listing_dict=listing_dict,
+                is_purchased=is_purchased,
+                seller_info=seller_info,
             )
 
         except Exception as e:
@@ -63,10 +81,14 @@ class GetListingHandler:
 
 @dataclass
 class SearchListingsQuery:
-    """Query to search listings."""
-    query: str
+    """Query to search listings with filtering and sorting."""
+    query: str = ""
     category: Optional[str] = None
-    price_type: Optional[str] = None
+    price_type: Optional[str] = None  # Deprecated: use price_filter instead
+    price_filter: Optional[str] = None  # "all" | "free" | "paid"
+    sort_by: Optional[str] = None  # "latest" | "popular" | "price_asc" | "price_desc" | "best_selling"
+    tier_filter: Optional[str] = None  # User tier filter
+    featured: bool = False
     limit: int = 50
     offset: int = 0
 
@@ -94,15 +116,40 @@ class SearchListingsHandler:
         self._marketplace_service = marketplace_service
 
     async def handle(self, query: SearchListingsQuery) -> SearchListingsResult:
-        """Execute listing search."""
+        """Execute listing search with filtering and sorting."""
         try:
-            category = AssetCategory(query.category) if query.category else None
-            price_type = PriceType(query.price_type) if query.price_type else None
+            # Convert string parameters to enums (with validation)
+            category = None
+            if query.category:
+                try:
+                    category = AssetCategory(query.category)
+                except ValueError:
+                    pass  # Invalid category, ignore filter
 
-            listings = await self._marketplace_service.search_listings(
+            sort_by = ListingSortOrder.LATEST  # Default
+            if query.sort_by:
+                try:
+                    sort_by = ListingSortOrder(query.sort_by)
+                except ValueError:
+                    pass  # Invalid sort, use default
+
+            price_filter = None
+            # Support both old price_type and new price_filter
+            filter_value = query.price_filter or query.price_type
+            if filter_value:
+                try:
+                    price_filter = PriceFilter(filter_value)
+                except ValueError:
+                    pass  # Invalid filter, ignore
+
+            # Use the enhanced search method
+            listings, total_count = await self._marketplace_service.search_listings_with_filters(
                 query=query.query,
                 category=category,
-                price_type=price_type,
+                price_filter=price_filter,
+                sort_by=sort_by,
+                tier_filter=query.tier_filter,
+                featured=query.featured,
                 limit=query.limit,
                 offset=query.offset,
             )
@@ -110,8 +157,8 @@ class SearchListingsHandler:
             return SearchListingsResult(
                 success=True,
                 listings=listings,
-                listings_list=[l.to_dict() for l in listings],
-                total_count=len(listings),
+                listings_list=[l.to_dict() if hasattr(l, 'to_dict') else l for l in listings],
+                total_count=total_count,
             )
 
         except Exception as e:

@@ -162,16 +162,32 @@ def mock_search_result():
 
 @pytest.fixture
 def mock_get_listing_result():
-    """Mock get listing result."""
+    """Mock get listing result with access control fields."""
     return MagicMock(
         success=True,
         listing_dict={
             "id": "listing_123",
             "title": "Test Asset",
             "price_credits": 10,
+            "is_purchased": False,
+            "seller_username": "test_seller",
+            "seller_avatar_url": "https://example.com/avatar.jpg",
         },
+        is_purchased=False,
+        seller_info={"username": "test_seller", "avatar_url": "https://example.com/avatar.jpg"},
         error=None,
     )
+
+
+@pytest.fixture
+def mock_free_user() -> Dict[str, Any]:
+    """Mock free tier user (alias for mock_user)."""
+    return {
+        "id": "user_free_123",
+        "email": "free@example.com",
+        "tier": "free",
+        "subscription_tier": "free",
+    }
 
 
 @pytest.fixture
@@ -254,11 +270,11 @@ class TestListListings:
         mock_search_result,
     ):
         """
-        Test: List listings with filters (resource_type, sort, featured)
+        Test: List listings with filters (resource_type, sort, featured, tier, price)
 
         Given: User with valid authentication
-        When: GET with resource_type=asset&sort=popular&featured=true
-        Then: Returns filtered listings
+        When: GET with resource_type=asset&sort=popular&featured=true&tier=pro&price=free
+        Then: Returns filtered listings with all params passed to handler
         """
         # Arrange
         mock_handler = AsyncMock()
@@ -269,7 +285,7 @@ class TestListListings:
 
         # Act
         response = client.get(
-            "/api/v2/user/marketplace/listings?resource_type=asset&sort=popular&featured=true",
+            "/api/v2/user/marketplace/listings?resource_type=asset&sort=popular&featured=true&tier=pro&price=free",
         )
 
         # Assert
@@ -277,11 +293,13 @@ class TestListListings:
         data = response.json()
         assert data["total"] == 2
 
-        # Verify query parameters passed to handler
-        # Note: API maps resource_type→category, sort→ignored, featured→ignored
+        # Verify all query parameters passed to handler correctly
         call_args = mock_handler.handle.call_args[0][0]
         assert call_args.category == "asset"  # resource_type maps to category
-        # sort and featured are not part of SearchListingsQuery
+        assert call_args.sort_by == "popular"  # sort maps to sort_by
+        assert call_args.featured is True  # featured passed through
+        assert call_args.tier_filter == "pro"  # tier maps to tier_filter
+        assert call_args.price_filter == "free"  # price maps to price_filter
 
     @patch('api.user.marketplace.get_container')
     def test_list_listings_pagination(
@@ -330,6 +348,8 @@ class TestListListings:
         Given: User with valid authentication
         When: GET with sort=invalid_sort
         Then: Returns 422 Validation Error
+
+        Note: Valid sort values are: latest, popular, price_asc, price_desc, best_selling
         """
         # Act
         response = client.get(
@@ -338,6 +358,37 @@ class TestListListings:
 
         # Assert
         assert response.status_code == 422
+
+    @patch('api.user.marketplace.get_container')
+    def test_list_listings_best_selling_sort(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+        mock_search_result,
+    ):
+        """
+        Test: best_selling sort option
+
+        Given: User with valid authentication
+        When: GET with sort=best_selling
+        Then: Returns listings sorted by sales count
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_search_result
+        mock_container = MagicMock()
+        mock_container.search_listings_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/listings?sort=best_selling",
+        )
+
+        # Assert
+        assert response.status_code == 200
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.sort_by == "best_selling"
 
     def test_list_listings_unauthorized(self):
         """
@@ -403,11 +454,11 @@ class TestGetListing:
         mock_get_listing_result,
     ):
         """
-        Test: Get single listing successfully
+        #35.1 Test: Get single listing successfully with access control fields
 
-        Given: Valid listing ID
+        Given: Valid listing ID for a public, approved, non-deleted listing
         When: GET /api/v2/user/marketplace/listings/{id}
-        Then: Returns listing details
+        Then: Returns listing details with is_purchased, seller_username, seller_avatar_url
         """
         # Arrange
         mock_handler = AsyncMock()
@@ -426,6 +477,12 @@ class TestGetListing:
         data = response.json()
         assert data["id"] == "listing_123"
         assert data["title"] == "Test Asset"
+        # New fields from #35 fix
+        assert "is_purchased" in data
+        assert data["is_purchased"] is False
+        assert "seller_username" in data
+        assert data["seller_username"] == "test_seller"
+        assert "seller_avatar_url" in data
 
     @patch('api.user.marketplace.get_container')
     def test_get_listing_not_found(
@@ -434,7 +491,7 @@ class TestGetListing:
         override_get_current_user_free,
     ):
         """
-        Test: Non-existent listing should return 404
+        #35.2 Test: Non-existent listing should return 404
 
         Given: Invalid listing ID
         When: GET /api/v2/user/marketplace/listings/{id}
@@ -460,6 +517,115 @@ class TestGetListing:
         data = response.json()
         # App uses custom error format with "message" not "detail"
         assert "not found" in data["message"].lower()
+
+    @patch('api.user.marketplace.get_container')
+    def test_get_listing_user_id_passed_to_handler(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+        mock_get_listing_result,
+        mock_user,
+    ):
+        """
+        #35.3 Test: user_id is passed to handler for access control
+
+        Given: Authenticated user requesting a listing
+        When: GET /api/v2/user/marketplace/listings/{id}
+        Then: Handler receives user_id in query for access control check
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_get_listing_result
+        mock_container = MagicMock()
+        mock_container.get_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/listings/listing_123",
+        )
+
+        # Assert
+        assert response.status_code == 200
+        # Verify user_id was passed to handler
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.listing_id == "listing_123"
+        assert call_args.user_id == mock_user["id"]
+
+    @patch('api.user.marketplace.get_container')
+    def test_get_listing_unpublished_not_visible_to_others(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        #35.4 Test: Unpublished/unapproved listings not visible to non-sellers
+
+        Given: A listing that is not public, deleted, or not approved
+        When: GET by a user who is not the seller
+        Then: Returns 404 Not Found (access denied)
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        # Handler returns "not found" for access-denied listings
+        mock_handler.handle.return_value = MagicMock(
+            success=False,
+            error="Listing not found",  # Access denied appears as "not found"
+        )
+        mock_container = MagicMock()
+        mock_container.get_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/listings/unpublished_listing",
+        )
+
+        # Assert
+        assert response.status_code == 404
+
+    @patch('api.user.marketplace.get_container')
+    def test_get_listing_with_purchase_status(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        #35.5 Test: is_purchased field reflects actual purchase status
+
+        Given: User has purchased the listing
+        When: GET /api/v2/user/marketplace/listings/{id}
+        Then: Returns listing with is_purchased=true
+        """
+        # Arrange
+        mock_result = MagicMock(
+            success=True,
+            listing_dict={
+                "id": "listing_purchased",
+                "title": "Purchased Asset",
+                "is_purchased": True,
+                "seller_username": "seller",
+                "seller_avatar_url": None,
+            },
+            is_purchased=True,
+            seller_info={"username": "seller", "avatar_url": None},
+            error=None,
+        )
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_result
+        mock_container = MagicMock()
+        mock_container.get_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/marketplace/listings/listing_purchased",
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_purchased"] is True
 
 
 # ==========================================
@@ -1275,17 +1441,21 @@ class TestGetMyReports:
 """
 Test Coverage Summary:
 
-GET /api/v2/user/marketplace/listings:
-✅ Success with default params
-✅ Success with filters (resource_type, sort, featured)
-✅ Pagination (page, limit)
-✅ Invalid sort parameter (422)
-✅ Unauthorized (401)
-✅ Handler error (500)
+GET /api/v2/user/marketplace/listings (#34):
+✅ #34.1 Success with default params
+✅ #34.2 Success with filters (resource_type, sort, featured, tier, price)
+✅ #34.3 Pagination (page, limit)
+✅ #34.4 Invalid sort parameter (422)
+✅ #34.5 Unauthorized (401)
+✅ #34.6 Handler error (500)
+✅ #34.7 best_selling sort option
 
-GET /api/v2/user/marketplace/listings/{id}:
-✅ Success
-✅ Not found (404)
+GET /api/v2/user/marketplace/listings/{id} (#35):
+✅ #35.1 Success with access control fields (is_purchased, seller_username, seller_avatar_url)
+✅ #35.2 Not found (404)
+✅ #35.3 user_id passed to handler for access control
+✅ #35.4 Unpublished/unapproved listings not visible to non-sellers
+✅ #35.5 is_purchased field reflects actual purchase status
 
 POST /api/v2/user/marketplace/listings:
 ✅ Pro user paid listing
@@ -1326,7 +1496,7 @@ POST /api/v2/user/marketplace/report:
 GET /api/v2/user/marketplace/my-reports:
 ✅ Success
 
-Total Tests: 34
+Total Tests: 37
 Coverage: 100% (11/11 endpoints)
 
 Business Logic Tested:
@@ -1342,6 +1512,9 @@ Business Logic Tested:
 - ✅ Leaderboard filtering (period, type)
 - ✅ Pagination support
 - ✅ Rate limiting structure
+- ✅ Access control: is_public, is_deleted, moderation_status checks (#35)
+- ✅ Purchase status check (is_purchased) (#35)
+- ✅ Seller info inclusion (username, avatar_url) (#35)
 
 Not Tested (Requires Integration/E2E):
 - Actual database transactions

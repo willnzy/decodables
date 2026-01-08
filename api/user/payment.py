@@ -77,11 +77,16 @@ async def create_checkout(
 
         url = create_checkout_session(user["id"], req.plan_type, discount_percent)
 
+        if not url:
+            raise HTTPException(500, "Failed to create checkout session")
+
         return CheckoutResponse(
             url=url,
             discount_applied=discount_percent,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Checkout error for user {user['id']}: {e}")
         raise HTTPException(500, f"Failed to create checkout: {str(e)}")
@@ -110,8 +115,13 @@ async def get_portal(
     try:
         url = create_portal_session(user["id"], stripe_customer_id)
 
+        if not url:
+            raise HTTPException(500, "Failed to create portal session")
+
         return PortalResponse(url=url)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Portal error for user {user['id']}: {e}")
         raise HTTPException(500, f"Failed to get portal: {str(e)}")

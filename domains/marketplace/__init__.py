@@ -20,6 +20,8 @@ from .value_objects import (
     AssetCategory,
     PriceType,
     ListingMetadata,
+    ListingSortOrder,
+    PriceFilter,
 )
 from .aggregates.listing import Listing
 from .exceptions import (
@@ -38,6 +40,8 @@ __all__ = [
     'AssetCategory',
     'PriceType',
     'ListingMetadata',
+    'ListingSortOrder',
+    'PriceFilter',
     # Aggregates
     'Listing',
     # Exceptions

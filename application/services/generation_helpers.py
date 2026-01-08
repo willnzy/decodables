@@ -2,18 +2,32 @@
 Generation Helpers - Shared utilities for AI generation endpoints
 
 @module services.generation_helpers
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Use ConfigService for dynamic credit costs (no hardcoded values)
 """
 
 import logging
 from typing import Optional, List, Dict, Any
 
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
+from domains.platform.config_service import get_config
 
 logger = logging.getLogger(__name__)
 
 
 BLACKLIST_WORDS = ["nsfw", "nude", "sex"]
+
+# Config keys for credit costs
+CONFIG_KEY_IMAGE_GENERATION = "credits.cost.image_generation"
+CONFIG_KEY_IMAGE_GENERATION_REF = "credits.cost.image_generation_reference"
+CONFIG_KEY_TEXT_GENERATION = "credits.cost.text_generation"
+
+# Emergency fallbacks (only used if database completely unavailable)
+EMERGENCY_FALLBACK_COST = 5
+EMERGENCY_FALLBACK_COST_REF = 7
+EMERGENCY_FALLBACK_COST_TEXT = 0  # Currently free by design
 
 
 def check_prompt_safety(prompts: List[str]) -> bool:
@@ -40,10 +54,57 @@ def validate_creativity_level(level: Optional[float]) -> float:
     return max(0.0, min(1.0, level))
 
 
+def get_base_cost(has_reference: bool) -> int:
+    """
+    Get base cost for image generation from config.
+
+    Priority:
+    1. Database system_configs (primary)
+    2. Emergency fallback (if database unavailable)
+    """
+    config_key = CONFIG_KEY_IMAGE_GENERATION_REF if has_reference else CONFIG_KEY_IMAGE_GENERATION
+    fallback = EMERGENCY_FALLBACK_COST_REF if has_reference else EMERGENCY_FALLBACK_COST
+
+    try:
+        config_value = get_config(config_key, use_cache=True)
+        if config_value is not None:
+            # Handle different value formats
+            if isinstance(config_value, dict):
+                return int(config_value.get('amount', config_value.get('value', fallback)))
+            return int(config_value)
+    except Exception as e:
+        logger.warning(f"Failed to get cost config '{config_key}': {e}")
+
+    logger.warning(f"Using EMERGENCY fallback cost for '{config_key}': {fallback}")
+    return fallback
+
+
 def calculate_cost(num_prompts: int, has_reference: bool, num_images: int = 1) -> int:
-    """Calculate credit cost for generation."""
-    base_cost = 7 if has_reference else 5
+    """Calculate credit cost for generation using config-driven costs."""
+    base_cost = get_base_cost(has_reference)
     return num_prompts * base_cost * num_images
+
+
+def get_text_generation_cost() -> int:
+    """
+    Get cost for text generation from config.
+
+    Priority:
+    1. Database system_configs (primary)
+    2. Emergency fallback (if database unavailable)
+
+    Note: Currently configured as 0 (free), but can be changed via config.
+    """
+    try:
+        config_value = get_config(CONFIG_KEY_TEXT_GENERATION, use_cache=True)
+        if config_value is not None:
+            if isinstance(config_value, dict):
+                return int(config_value.get('amount', config_value.get('value', EMERGENCY_FALLBACK_COST_TEXT)))
+            return int(config_value)
+    except Exception as e:
+        logger.warning(f"Failed to get text generation cost config: {e}")
+
+    return EMERGENCY_FALLBACK_COST_TEXT
 
 
 def enhance_prompts(

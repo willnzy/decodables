@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 
 from .aggregates.listing import Listing
-from .value_objects import ListingStatus, AssetCategory, PriceType
+from .value_objects import ListingStatus, AssetCategory, PriceType, ListingSortOrder, PriceFilter
 
 
 class IListingRepository(ABC):
@@ -187,6 +187,36 @@ class IListingRepository(ABC):
         pass
 
     @abstractmethod
+    async def search_with_filters(
+        self,
+        query: str = "",
+        category: Optional[AssetCategory] = None,
+        price_filter: Optional[PriceFilter] = None,
+        sort_by: ListingSortOrder = ListingSortOrder.LATEST,
+        tier_filter: Optional[str] = None,
+        featured: bool = False,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Search listings with advanced filtering and sorting.
+
+        Args:
+            query: Search query (optional)
+            category: Filter by category
+            price_filter: Price filter (all/free/paid)
+            sort_by: Sort order
+            tier_filter: Filter by allowed tier
+            featured: Prioritize featured listings
+            limit: Maximum results
+            offset: Results to skip
+
+        Returns:
+            Tuple of (List of Listings, total_count)
+        """
+        pass
+
+    @abstractmethod
     async def get_popular(
         self,
         category: Optional[AssetCategory] = None,
@@ -261,5 +291,40 @@ class IListingRepository(ABC):
 
         Returns:
             List of purchased Listings
+        """
+        pass
+
+    @abstractmethod
+    async def get_seller_info(self, seller_id: str) -> Optional[dict]:
+        """
+        Get seller profile info.
+
+        Args:
+            seller_id: Seller user ID
+
+        Returns:
+            Dict with username, avatar_url or None if not found
+        """
+        pass
+
+    @abstractmethod
+    async def get_listing_detail(
+        self,
+        listing_id: str,
+        user_id: Optional[str] = None
+    ) -> Optional[tuple[Listing, bool, Optional[dict]]]:
+        """
+        Get listing detail with access control, purchase status and seller info.
+
+        Access rules:
+        - Seller can always see their own listing
+        - Others can only see: is_public=True AND is_deleted=False AND moderation_status='approved'
+
+        Args:
+            listing_id: Listing ID
+            user_id: Optional user ID for access control and purchase check
+
+        Returns:
+            Tuple of (Listing, is_purchased, seller_info) or None if not accessible
         """
         pass

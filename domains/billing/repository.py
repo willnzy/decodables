@@ -142,6 +142,28 @@ class ICreditRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_transaction_count(
+        self,
+        user_id: str,
+        tx_type: Optional[TransactionType] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> int:
+        """
+        Get total count of transactions for a user (for pagination).
+
+        Args:
+            user_id: User ID
+            tx_type: Filter by transaction type
+            start_date: Filter by start date
+            end_date: Filter by end date
+
+        Returns:
+            Total count of matching transactions
+        """
+        pass
+
+    @abstractmethod
     async def check_idempotency(
         self,
         idempotency_key: str

@@ -100,6 +100,7 @@ class GetTransactionHistoryHandler:
         try:
             tx_type = TransactionType(query.tx_type) if query.tx_type else None
 
+            # Execute list and count queries
             transactions = await self._billing_service.get_transaction_history(
                 user_id=query.user_id,
                 limit=query.limit,
@@ -109,10 +110,18 @@ class GetTransactionHistoryHandler:
                 end_date=query.end_date,
             )
 
+            # Get total count for pagination (with same filters, without limit/offset)
+            total_count = await self._billing_service.get_transaction_count(
+                user_id=query.user_id,
+                tx_type=tx_type,
+                start_date=query.start_date,
+                end_date=query.end_date,
+            )
+
             return GetTransactionHistoryResult(
                 success=True,
                 transactions=transactions,
-                total_count=len(transactions),
+                total_count=total_count,
             )
 
         except Exception as e:

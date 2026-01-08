@@ -74,6 +74,22 @@ class PriceType(str, Enum):
     CREDITS = "credits"  # Pay with credits
 
 
+class ListingSortOrder(str, Enum):
+    """Listing sort options."""
+    LATEST = "latest"
+    POPULAR = "popular"
+    PRICE_ASC = "price_asc"
+    PRICE_DESC = "price_desc"
+    BEST_SELLING = "best_selling"
+
+
+class PriceFilter(str, Enum):
+    """Price filter options."""
+    ALL = "all"
+    FREE = "free"
+    PAID = "paid"
+
+
 @dataclass(frozen=True)
 class ListingId:
     """

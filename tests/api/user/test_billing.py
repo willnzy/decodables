@@ -92,19 +92,23 @@ def mock_transaction_history_result(mock_transaction):
 @pytest.fixture
 def mock_deduct_result():
     """Mock DeductCreditsCommand result."""
+    mock_transaction = MagicMock()
+    mock_transaction.amount = -10  # Negative for deduction
     return MagicMock(
         success=True,
-        amount_deducted=10,
-        new_balance=540,
+        transaction=mock_transaction,
+        remaining_credits=540,
     )
 
 
 @pytest.fixture
 def mock_add_result():
     """Mock AddCreditsCommand result."""
+    mock_transaction = MagicMock()
+    mock_transaction.amount = 100  # Positive for addition
     return MagicMock(
         success=True,
-        amount_added=100,
+        transaction=mock_transaction,
         new_balance=650,
     )
 
@@ -115,6 +119,50 @@ def mock_add_result():
 
 class TestGetCredits:
     """Tests for GET /api/v2/user/billing/credits endpoint."""
+
+    def test_get_credits_unauthenticated(self):
+        """
+        Test: Unauthenticated access returns 401
+
+        Given: No authentication header
+        When: GET /api/v2/user/billing/credits
+        Then: Returns 401 Unauthorized
+
+        Business Logic Verified:
+        - Billing endpoints require authentication
+        - UnauthorizedException is raised for missing token
+        """
+        # Ensure no override is active
+        app.dependency_overrides.clear()
+
+        # Act
+        response = client.get("/api/v2/user/billing/credits")
+
+        # Assert
+        assert response.status_code == 401
+
+    def test_get_credits_invalid_token(self):
+        """
+        Test: Invalid token returns 401
+
+        Given: Invalid Bearer token
+        When: GET /api/v2/user/billing/credits with bad token
+        Then: Returns 401 Unauthorized
+
+        Business Logic Verified:
+        - Invalid JWT tokens are rejected
+        """
+        # Ensure no override is active
+        app.dependency_overrides.clear()
+
+        # Act
+        response = client.get(
+            "/api/v2/user/billing/credits",
+            headers={"Authorization": "Bearer invalid_token_xyz"},
+        )
+
+        # Assert
+        assert response.status_code == 401
 
     @patch('api.user.billing.get_container')
     def test_get_credits_success(
@@ -156,6 +204,48 @@ class TestGetCredits:
         mock_handler.handle.assert_called_once()
         call_args = mock_handler.handle.call_args[0][0]
         assert call_args.user_id == "user_123"
+
+    @patch('api.user.billing.get_container')
+    def test_get_credits_new_user_zero_credits(
+        self,
+        mock_get_container,
+        override_get_current_user,
+    ):
+        """
+        Test: New user returns zero credits
+
+        Given: User has no credits record (new user defaults)
+        When: GET /api/v2/user/billing/credits
+        Then: Returns 200 with 0 credits
+
+        Business Logic Verified:
+        - New users start with 0 monthly credits
+        - New free users should have 50 permanent (signup bonus) - but this tests handler returning 0
+        - Total is sum of monthly + permanent
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=MagicMock(
+            success=True,
+            monthly_credits=0,
+            permanent_credits=0,  # In reality, new users get 50 signup bonus
+            total_credits=0,
+            tier="free",
+        ))
+        mock_container = MagicMock()
+        mock_container.get_user_credits_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/credits")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["monthly_credits"] == 0
+        assert data["permanent_credits"] == 0
+        assert data["total_credits"] == 0
+        assert data["tier"] == "free"
 
     @patch('api.user.billing.get_container')
     def test_get_credits_handler_failure(
@@ -274,6 +364,155 @@ class TestGetTransactions:
         call_args = mock_handler.handle.call_args[0][0]
         assert call_args.tx_type == "generation"
 
+    @patch('api.user.billing.get_container')
+    def test_get_transactions_with_date_range(
+        self,
+        mock_get_container,
+        mock_transaction_history_result,
+        override_get_current_user,
+    ):
+        """
+        Test: Get transactions with date range filter
+
+        Given: User has transactions
+        When: GET with start_date and end_date
+        Then: Returns filtered transactions
+
+        Business Logic Verified:
+        - Date range parameters correctly passed to handler
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_transaction_history_result)
+        mock_container = MagicMock()
+        mock_container.get_transaction_history_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get(
+            "/api/v2/user/billing/transactions"
+            "?start_date=2026-01-01T00:00:00"
+            "&end_date=2026-01-31T23:59:59"
+        )
+
+        # Assert
+        assert response.status_code == 200
+        # Verify date params were passed to handler
+        mock_handler.handle.assert_called_once()
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.start_date is not None
+        assert call_args.end_date is not None
+
+    @patch('api.user.billing.get_container')
+    def test_get_transactions_empty_history(
+        self,
+        mock_get_container,
+        override_get_current_user,
+    ):
+        """
+        Test: Get transactions for user with no history
+
+        Given: User has no transactions
+        When: GET /api/v2/user/billing/transactions
+        Then: Returns empty list with total_count=0
+
+        Business Logic Verified:
+        - New users have no transaction history
+        - Response structure is correct for empty results
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=MagicMock(
+            success=True,
+            transactions=[],
+            total_count=0,
+        ))
+        mock_container = MagicMock()
+        mock_container.get_transaction_history_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/transactions")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["transactions"] == []
+        assert data["total_count"] == 0
+
+    @patch('api.user.billing.get_container')
+    def test_get_transactions_pagination(
+        self,
+        mock_get_container,
+        mock_transaction_history_result,
+        override_get_current_user,
+    ):
+        """
+        Test: Get transactions with pagination
+
+        Given: User has many transactions
+        When: GET with limit=10, offset=20
+        Then: Query parameters correctly passed
+
+        Business Logic Verified:
+        - Pagination parameters are correctly handled
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_transaction_history_result)
+        mock_container = MagicMock()
+        mock_container.get_transaction_history_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/transactions?limit=10&offset=20")
+
+        # Assert
+        assert response.status_code == 200
+        mock_handler.handle.assert_called_once()
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.limit == 10
+        assert call_args.offset == 20
+
+    @patch('api.user.billing.get_container')
+    def test_get_transactions_total_count_is_total_not_page_count(
+        self,
+        mock_get_container,
+        mock_transaction,
+        override_get_current_user,
+    ):
+        """
+        Test: total_count returns TOTAL records, not current page count
+
+        Given: User has 150 total transactions
+        When: GET with limit=50&offset=0
+        Then: Returns 50 transactions but total_count=150
+
+        Business Logic Verified:
+        - total_count is the total number of matching records
+        - This is essential for pagination UI
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        # Simulate: current page has 50 items, but total is 150
+        mock_handler.handle = AsyncMock(return_value=MagicMock(
+            success=True,
+            transactions=[mock_transaction] * 50,  # 50 items on this page
+            total_count=150,  # But total is 150
+        ))
+        mock_container = MagicMock()
+        mock_container.get_transaction_history_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/transactions?limit=50&offset=0")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["transactions"]) == 50  # Current page count
+        assert data["total_count"] == 150  # TOTAL count, not len(transactions)
+
 
 # ==========================================
 # GET /api/v2/user/billing/can-afford
@@ -372,7 +611,8 @@ class TestCanAfford:
         mock_handler = MagicMock()
         mock_handler.handle = AsyncMock(return_value=mock_credits_result)
         mock_billing_service = MagicMock()
-        mock_billing_service.get_operation_cost.return_value = MagicMock(amount=5)
+        # get_operation_cost returns int directly (not an object with .amount)
+        mock_billing_service.get_operation_cost.return_value = 5
         mock_container = MagicMock()
         mock_container.get_user_credits_handler = mock_handler
         mock_container.billing_service = mock_billing_service
@@ -408,6 +648,108 @@ class TestCanAfford:
         assert response.status_code == 400
         # HTTPException(400, message) format varies by FastAPI version
         # Just verify it's a 400 error
+
+    @patch('api.user.billing.get_container')
+    def test_can_afford_zero_amount(
+        self,
+        mock_get_container,
+        mock_credits_result,
+        override_get_current_user,
+    ):
+        """
+        Test: Check affordability for zero amount
+
+        Given: User has credits
+        When: Check if can afford 0 credits
+        Then: Returns can_afford=true
+
+        Business Logic Verified:
+        - Zero amount is always affordable
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_credits_result)
+        mock_container = MagicMock()
+        mock_container.get_user_credits_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/can-afford?amount=0")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["can_afford"] is True
+        assert data["required_amount"] == 0
+
+    @patch('api.user.billing.get_container')
+    def test_can_afford_exact_balance(
+        self,
+        mock_get_container,
+        mock_credits_result,
+        override_get_current_user,
+    ):
+        """
+        Test: Check affordability when amount equals balance
+
+        Given: User has exactly 550 credits
+        When: Check if can afford 550 credits
+        Then: Returns can_afford=true
+
+        Business Logic Verified:
+        - Exact match is affordable (>=, not >)
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_credits_result)  # 550 total
+        mock_container = MagicMock()
+        mock_container.get_user_credits_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/can-afford?amount=550")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["can_afford"] is True
+        assert data["current_balance"] == 550
+        assert data["required_amount"] == 550
+
+    @patch('api.user.billing.get_container')
+    def test_can_afford_unknown_operation(
+        self,
+        mock_get_container,
+        mock_credits_result,
+        override_get_current_user,
+    ):
+        """
+        Test: Check affordability for unknown operation
+
+        Given: User checks an unknown operation
+        When: GET /can-afford?operation=unknown_op
+        Then: Billing service handles fallback cost
+
+        Business Logic Verified:
+        - Unknown operations use fallback cost from billing service
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=mock_credits_result)
+        mock_billing_service = MagicMock()
+        # get_operation_cost returns int directly (not an object with .amount)
+        mock_billing_service.get_operation_cost.return_value = 5
+        mock_container = MagicMock()
+        mock_container.get_user_credits_handler = mock_handler
+        mock_container.billing_service = mock_billing_service
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.get("/api/v2/user/billing/can-afford?operation=unknown_op")
+
+        # Assert
+        assert response.status_code == 200
+        mock_billing_service.get_operation_cost.assert_called_once_with("unknown_op")
 
 
 # ==========================================
@@ -505,6 +847,97 @@ class TestDeductCredits:
         assert response.status_code == 402
         # HTTPException returns plain text for 402
 
+    def test_deduct_credits_validation_negative_amount(self, override_get_current_user):
+        """
+        Test: Negative amount validation (422)
+
+        Given: Negative amount provided
+        When: POST with amount=-10
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Amount must be greater than 0
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/deduct",
+            json={
+                "amount": -10,
+                "operation": "image_generation",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_deduct_credits_validation_zero_amount(self, override_get_current_user):
+        """
+        Test: Zero amount validation (422)
+
+        Given: Zero amount provided
+        When: POST with amount=0
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Amount must be greater than 0 (gt=0)
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/deduct",
+            json={
+                "amount": 0,
+                "operation": "image_generation",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_deduct_credits_validation_exceeds_max(self, override_get_current_user):
+        """
+        Test: Amount exceeds max validation (422)
+
+        Given: Amount > 1000
+        When: POST with amount=1001
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Single deduction max is 1000 credits
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/deduct",
+            json={
+                "amount": 1001,
+                "operation": "image_generation",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_deduct_credits_missing_operation(self, override_get_current_user):
+        """
+        Test: Missing operation field (422)
+
+        Given: No operation field
+        When: POST without operation
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Operation is required for audit trail
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/deduct",
+            json={
+                "amount": 10,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
 
 # ==========================================
 # POST /api/v2/user/billing/credits/add
@@ -587,3 +1020,142 @@ class TestAddCredits:
 
         # Assert
         assert response.status_code == 422
+
+    @patch('api.user.billing.get_container')
+    def test_add_credits_monthly(
+        self,
+        mock_get_container,
+        override_get_current_user,
+    ):
+        """
+        Test: Add monthly credits
+
+        Given: Request to add monthly credits
+        When: POST with credit_type="monthly"
+        Then: Handler receives CreditBucket.MONTHLY and SUB_GRANT tx_type
+
+        Business Logic Verified:
+        - Monthly credits use MONTHLY bucket
+        - Monthly credits from subscription use SUB_GRANT transaction type
+        """
+        # Arrange
+        mock_transaction = MagicMock()
+        mock_transaction.amount = 500
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=MagicMock(
+            success=True,
+            transaction=mock_transaction,
+            new_balance=550,
+        ))
+        mock_container = MagicMock()
+        mock_container.add_credits_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "amount": 500,
+                "credit_type": "monthly",
+                "reason": "Subscription renewal",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["amount_added"] == 500
+
+        # Verify bucket and tx_type
+        mock_handler.handle.assert_called_once()
+        call_args = mock_handler.handle.call_args[0][0]
+        from domains.billing.value_objects import CreditBucket, TransactionType
+        assert call_args.bucket == CreditBucket.MONTHLY
+        assert call_args.tx_type == TransactionType.SUB_GRANT
+
+    def test_add_credits_exceeds_max(self, override_get_current_user):
+        """
+        Test: Amount exceeds max validation (422)
+
+        Given: Amount > 10000
+        When: POST with amount=10001
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Single addition max is 10000 credits
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "amount": 10001,
+                "credit_type": "permanent",
+                "reason": "Test",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_add_credits_missing_reason(self, override_get_current_user):
+        """
+        Test: Missing reason field (422)
+
+        Given: No reason field
+        When: POST without reason
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Reason is required for audit trail
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "amount": 100,
+                "credit_type": "permanent",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    @patch('api.user.billing.get_container')
+    def test_add_credits_handler_failure(
+        self,
+        mock_get_container,
+        override_get_current_user,
+    ):
+        """
+        Test: Add credits handler fails (400)
+
+        Given: Handler returns error
+        When: POST to add credits
+        Then: Returns 400 Bad Request
+
+        Business Logic Verified:
+        - Handler errors are properly propagated
+        """
+        # Arrange
+        mock_handler = MagicMock()
+        mock_handler.handle = AsyncMock(return_value=MagicMock(
+            success=False,
+            error="Database error",
+        ))
+        mock_container = MagicMock()
+        mock_container.add_credits_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "amount": 100,
+                "credit_type": "permanent",
+                "reason": "Test",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 400

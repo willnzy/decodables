@@ -12,7 +12,7 @@ from typing import Optional, List
 
 from .aggregates.listing import Listing
 from .repository import IListingRepository
-from .value_objects import ListingStatus, AssetCategory, PriceType, ListingMetadata
+from .value_objects import ListingStatus, AssetCategory, PriceType, ListingMetadata, ListingSortOrder, PriceFilter
 from .exceptions import (
     ListingNotFoundException,
     ListingAccessDeniedException,
@@ -338,6 +338,44 @@ class MarketplaceService:
             offset=offset,
         )
 
+    async def search_listings_with_filters(
+        self,
+        query: str = "",
+        category: Optional[AssetCategory] = None,
+        price_filter: Optional[PriceFilter] = None,
+        sort_by: ListingSortOrder = ListingSortOrder.LATEST,
+        tier_filter: Optional[str] = None,
+        featured: bool = False,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Search listings with advanced filtering and sorting.
+
+        Args:
+            query: Search query (optional)
+            category: Filter by category
+            price_filter: Price filter (all/free/paid)
+            sort_by: Sort order (latest/popular/price_asc/price_desc/best_selling)
+            tier_filter: Filter by allowed tier
+            featured: If True, prioritize featured listings
+            limit: Max results
+            offset: Results to skip
+
+        Returns:
+            Tuple of (List of Listings, total_count)
+        """
+        return await self._repository.search_with_filters(
+            query=query,
+            category=category,
+            price_filter=price_filter,
+            sort_by=sort_by,
+            tier_filter=tier_filter,
+            featured=featured,
+            limit=limit,
+            offset=offset,
+        )
+
     async def get_seller_listings(
         self,
         seller_id: str,
@@ -386,3 +424,29 @@ class MarketplaceService:
             limit=limit,
             offset=offset,
         )
+
+    async def get_listing_detail(
+        self,
+        listing_id: str,
+        user_id: Optional[str] = None
+    ) -> tuple[Optional[Listing], bool, Optional[dict]]:
+        """
+        Get listing detail with access control.
+
+        Access rules:
+        - Seller can always see their own listing
+        - Others can only see: is_public=True AND is_deleted=False AND moderation_status='approved'
+
+        Args:
+            listing_id: Listing ID
+            user_id: Optional user ID for access control and purchase check
+
+        Returns:
+            Tuple of (Listing or None, is_purchased, seller_info)
+        """
+        result = await self._repository.get_listing_detail(listing_id, user_id)
+
+        if not result:
+            return None, False, None
+
+        return result

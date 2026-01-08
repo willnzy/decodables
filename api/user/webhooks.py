@@ -99,6 +99,19 @@ async def clerk_webhook(request: Request):
         # Create a full profile (including names)
         await user_repo.create_profile(user_id, email, username, image_url, first_name=first_name, last_name=last_name)
 
+        # Grant signup bonus (50 permanent credits)
+        credit_repo = SupabaseCreditRepository(supabase)
+        try:
+            await credit_repo.add_credits_permanent(
+                user_id,
+                50,
+                "Welcome bonus for new users",
+                "signup_bonus"
+            )
+            logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to grant signup bonus to user {user_id}: {e}")
+
         # Log signup event
         try:
             supabase.table("activity_logs").insert({

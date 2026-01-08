@@ -4,6 +4,7 @@ Thumbs.db
 
 # files
 .env
+.env.assistant
 
 *.pdf
 *.png

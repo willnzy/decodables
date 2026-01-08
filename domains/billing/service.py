@@ -341,6 +341,32 @@ class BillingService:
             end_date=end_date,
         )
 
+    async def get_transaction_count(
+        self,
+        user_id: str,
+        tx_type: Optional[TransactionType] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> int:
+        """
+        Get total count of transactions for pagination.
+
+        Args:
+            user_id: User ID
+            tx_type: Filter by type
+            start_date: Filter start
+            end_date: Filter end
+
+        Returns:
+            Total count of matching transactions
+        """
+        return await self._repository.get_transaction_count(
+            user_id=user_id,
+            tx_type=tx_type,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def _operation_to_tx_type(self, operation: str) -> TransactionType:
         """Map operation name to transaction type."""
         mapping = {

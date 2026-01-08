@@ -130,7 +130,7 @@ async def list_listings(
     request: Request,
     featured: bool = False,
     resource_type: Optional[str] = None,
-    sort: str = Query("latest", pattern="^(latest|popular|price_asc|price_desc)$"),
+    sort: str = Query("latest", pattern="^(latest|popular|price_asc|price_desc|best_selling)$"),
     tier: Optional[str] = None,
     price: Optional[str] = None,
     page: int = Query(1, ge=1),
@@ -141,11 +141,11 @@ async def list_listings(
     Get marketplace listings with filters.
 
     Args:
-        featured: Only show featured listings
+        featured: Only show featured listings (sorted by sales)
         resource_type: Filter by 'asset' or 'project'
-        sort: Sort order (latest, popular, price_asc, price_desc)
-        tier: Filter by tier requirement
-        price: Price filter (e.g., 'free', '1-100')
+        sort: Sort order (latest, popular, price_asc, price_desc, best_selling)
+        tier: Filter by tier requirement ('free', 'starter', 'pro')
+        price: Price filter ('free', 'paid', 'all')
         page: Page number
         limit: Items per page
 
@@ -155,15 +155,15 @@ async def list_listings(
     container = get_container()
     handler = container.search_listings_handler
 
-    # Convert API parameters to Query parameters
-    # SearchListingsQuery expects: query, category, price_type, limit, offset
-    # API provides: resource_type, featured, sort, tier, price, page, limit
     offset = (page - 1) * limit
 
     query = SearchListingsQuery(
-        query="",  # Empty query for listing all
-        category=resource_type,  # resource_type maps to category
-        price_type=price,  # price filter maps to price_type
+        query="",
+        category=resource_type,
+        price_filter=price,
+        sort_by=sort,
+        tier_filter=tier,
+        featured=featured,
         limit=limit,
         offset=offset,
     )
@@ -189,15 +189,19 @@ async def get_listing(
     """
     Get single listing details.
 
+    Access control:
+    - Seller can always see their own listing
+    - Others can only see approved, public, non-deleted listings
+
     Returns:
-        Listing details
+        Listing details with is_purchased, seller_username, seller_avatar_url
     """
     container = get_container()
     handler = container.get_listing_handler
 
-    # GetListingQuery only accepts listing_id (no user_id parameter)
     query = GetListingQuery(
         listing_id=listing_id,
+        user_id=user["id"],
     )
 
     result = await handler.handle(query)

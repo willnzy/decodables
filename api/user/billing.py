@@ -206,8 +206,7 @@ async def check_can_afford(
     if operation:
         # Use billing service to get operation cost
         billing_service = get_container().billing_service
-        cost = billing_service.get_operation_cost(operation)
-        required = cost.amount
+        required = billing_service.get_operation_cost(operation)
     else:
         required = amount
 
@@ -259,8 +258,8 @@ async def deduct_credits(
 
     return {
         "success": True,
-        "amount_deducted": result.amount_deducted,
-        "new_balance": result.new_balance,
+        "amount_deducted": abs(result.transaction.amount) if result.transaction else 0,
+        "new_balance": result.remaining_credits,
     }
 
 
@@ -304,6 +303,6 @@ async def add_credits(
 
     return {
         "success": True,
-        "amount_added": result.amount_added,
+        "amount_added": result.transaction.amount if result.transaction else 0,
         "new_balance": result.new_balance,
     }

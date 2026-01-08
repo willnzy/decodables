@@ -19,6 +19,8 @@ from domains.marketplace.value_objects import (
     PriceType,
     ListingMetadata,
     ListingStats,
+    ListingSortOrder,
+    PriceFilter,
 )
 from domains.marketplace.exceptions import ListingNotFoundException
 from core.database import get_supabase_client
@@ -227,6 +229,81 @@ class SupabaseListingRepository(IListingRepository):
         except Exception as e:
             logger.error(f"Failed to search listings: {e}")
             return []
+
+    async def search_with_filters(
+        self,
+        query: str = "",
+        category: Optional[AssetCategory] = None,
+        price_filter: Optional[PriceFilter] = None,
+        sort_by: ListingSortOrder = ListingSortOrder.LATEST,
+        tier_filter: Optional[str] = None,
+        featured: bool = False,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[List[Listing], int]:
+        """
+        Search listings with advanced filtering and sorting.
+
+        Reuses logic from get_marketplace_listings but returns Listing objects.
+        """
+        try:
+            # Build base query for published, public, non-deleted listings
+            db_query = self.client.table("marketplace_listings").select(
+                "*", count="exact"
+            ).eq("is_public", True).eq("is_deleted", False).eq(
+                "moderation_status", "approved"
+            )
+
+            # Text search filter
+            if query:
+                db_query = db_query.or_(
+                    f"title.ilike.%{query}%,description.ilike.%{query}%"
+                )
+
+            # Category filter (resource_type in DB)
+            if category:
+                db_query = db_query.eq("resource_type", category.value)
+
+            # Tier filter
+            if tier_filter and tier_filter != "all":
+                db_query = db_query.contains("allowed_tiers", [tier_filter])
+
+            # Price filter
+            if price_filter:
+                if price_filter == PriceFilter.FREE:
+                    db_query = db_query.eq("price_credits", 0)
+                elif price_filter == PriceFilter.PAID:
+                    db_query = db_query.gt("price_credits", 0)
+                # PriceFilter.ALL - no filter needed
+
+            # Sorting
+            if featured or sort_by == ListingSortOrder.BEST_SELLING:
+                db_query = db_query.order("sales_count", desc=True)
+            elif sort_by == ListingSortOrder.POPULAR:
+                db_query = db_query.order("usage_count", desc=True)
+            elif sort_by == ListingSortOrder.PRICE_ASC:
+                db_query = db_query.order("price_credits", desc=False)
+            elif sort_by == ListingSortOrder.PRICE_DESC:
+                db_query = db_query.order("price_credits", desc=True)
+            else:  # LATEST (default)
+                db_query = db_query.order("created_at", desc=True)
+
+            # Pagination
+            db_query = db_query.range(offset, offset + limit - 1)
+
+            result = db_query.execute()
+
+            # Get total count from response
+            total_count = result.count if result.count is not None else len(result.data)
+
+            # Map to Listing objects
+            listings = [self._map_to_listing(row) for row in result.data]
+
+            return listings, total_count
+
+        except Exception as e:
+            logger.error(f"Failed to search listings with filters: {e}")
+            return [], 0
 
     async def get_popular(
         self,
@@ -742,3 +819,76 @@ class SupabaseListingRepository(IListingRepository):
             item["rank"] = i + 1
 
         return items
+
+    async def get_seller_info(self, seller_id: str) -> Optional[dict]:
+        """Get seller profile info."""
+        try:
+            result = self.client.table("profiles").select(
+                "username, avatar_url"
+            ).eq("id", seller_id).single().execute()
+
+            if not result.data:
+                return None
+
+            return {
+                "username": result.data.get("username"),
+                "avatar_url": result.data.get("avatar_url"),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get seller info for {seller_id}: {e}")
+            return None
+
+    async def get_listing_detail(
+        self,
+        listing_id: str,
+        user_id: Optional[str] = None
+    ) -> Optional[tuple[Listing, bool, Optional[dict]]]:
+        """
+        Get listing detail with access control, purchase status and seller info.
+
+        Combines access control logic from get_marketplace_item with DDD mapping.
+        """
+        try:
+            # Query listing with seller profile join
+            result = self.client.table("marketplace_listings").select(
+                "*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
+            ).eq("listing_id", listing_id).single().execute()
+
+            if not result.data:
+                return None
+
+            row = result.data
+
+            # Access control check
+            is_seller = user_id and row.get("seller_id") == user_id
+            is_visible = (
+                row.get("is_public", False)
+                and not row.get("is_deleted", False)
+                and row.get("moderation_status") == "approved"
+            )
+
+            # Seller can always see; others need visibility
+            if not is_seller and not is_visible:
+                return None
+
+            # Map to Listing aggregate
+            listing = self._map_to_listing(row)
+
+            # Check purchase status
+            is_purchased = False
+            if user_id:
+                is_purchased = await self.has_purchased(listing_id, user_id)
+
+            # Extract seller info from joined profile
+            profile_data = row.get("profiles") or {}
+            seller_info = {
+                "username": profile_data.get("username"),
+                "avatar_url": profile_data.get("avatar_url"),
+            } if profile_data else None
+
+            return listing, is_purchased, seller_info
+
+        except Exception as e:
+            logger.error(f"Failed to get listing detail {listing_id}: {e}")
+            return None

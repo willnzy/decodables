@@ -1760,8 +1760,9 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
  '{"max_retries": 3, "base_delay_ms": 1000, "max_delay_ms": 10000, "retry_on_status": [429, 500, 502, 503, 504]}',
  'json', 'ai_providers', 'Retry configuration for AI API calls', true),
 
--- Credit costs configuration (v3.23)
+-- Credit costs configuration (v3.23, updated v3.25)
 ('credits.cost.image_generation', '5', 'integer', 'credits', 'AI image generation cost per image', true),
+('credits.cost.image_generation_reference', '7', 'integer', 'credits', 'AI image generation with reference image cost per image', true),
 ('credits.cost.text_generation', '0', 'integer', 'credits', 'AI text generation cost (currently free)', true),
 ('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan/OCR cost per operation', true),
 ('credits.cost.ocr', '10', 'integer', 'credits', 'OCR recognition cost (same as Smart Scan)', true)

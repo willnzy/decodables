@@ -164,26 +164,29 @@ class TestClerkWebhook:
 
     @patch('api.user.webhooks.Webhook')
     @patch('api.user.webhooks.SupabaseUserRepository')
+    @patch('api.user.webhooks.SupabaseCreditRepository')
     @patch('api.user.webhooks.get_supabase_client')
     def test_clerk_user_created_success(
         self,
         mock_get_supabase,
+        mock_credit_repo_class,
         mock_user_repo_class,
         mock_webhook_class,
         mock_clerk_webhook_secret,
         clerk_user_created_payload,
     ):
         """
-        Test: User created successfully
+        Test: User created successfully with 50 signup bonus
 
         Given: New user signup via Clerk
         When: user.created event received
-        Then: Creates profile with 50 signup credits
+        Then: Creates profile and grants 50 permanent signup credits
 
         Business Logic Verified:
         - Verifies user doesn't exist before creating
         - Verifies email is unique
         - Creates user profile with Clerk data
+        - Grants 50 permanent signup credits
         - Logs user_signup activity
         """
         # Arrange
@@ -197,6 +200,11 @@ class TestClerkWebhook:
         mock_user_repo.search_users = AsyncMock(return_value=None)  # Email not taken
         mock_user_repo.create_profile = AsyncMock()
         mock_user_repo_class.return_value = mock_user_repo
+
+        # Mock CreditRepository for signup bonus
+        mock_credit_repo = MagicMock()
+        mock_credit_repo.add_credits_permanent = AsyncMock()
+        mock_credit_repo_class.return_value = mock_credit_repo
 
         # Mock Supabase for activity logging
         mock_supabase = MagicMock()
@@ -222,6 +230,13 @@ class TestClerkWebhook:
         assert call_args[0] == "user_clerk_123"
         assert call_args[1] == "newuser@example.com"
         assert call_args[2] == "newuser"
+
+        # Verify 50 signup bonus credits granted
+        mock_credit_repo.add_credits_permanent.assert_called_once()
+        credits_call = mock_credit_repo.add_credits_permanent.call_args[0]
+        assert credits_call[0] == "user_clerk_123"
+        assert credits_call[1] == 50
+        assert "Welcome bonus" in credits_call[2] or "signup" in credits_call[3]
 
         # Verify signup logged
         mock_supabase.table.assert_called_with("activity_logs")

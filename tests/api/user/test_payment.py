@@ -281,6 +281,37 @@ class TestCreateCheckout:
         # Assert
         assert response.status_code == 500
 
+    @patch('domains.billing.payment_service.create_checkout_session')
+    @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
+    def test_create_checkout_returns_none_url(
+        self,
+        mock_get_discount,
+        mock_create_session,
+        override_get_current_user,
+    ):
+        """
+        Test: create_checkout_session returns None should return 500
+
+        Given: Stripe session creation returns None (internal failure)
+        When: POST /api/v2/user/payment/checkout
+        Then: Returns 500 with error message
+
+        Business Logic Verified:
+        - None URL properly handled and returns 500
+        """
+        # Arrange
+        mock_get_discount.return_value = None
+        mock_create_session.return_value = None  # Simulates internal Stripe failure
+
+        # Act
+        response = client.post(
+            "/api/v2/user/payment/checkout",
+            json={"plan_type": "starter"},
+        )
+
+        # Assert
+        assert response.status_code == 500
+
 
 
 # ==========================================
@@ -384,6 +415,31 @@ class TestGetPortal:
         # Assert
         assert response.status_code == 500
 
+    @patch('domains.billing.payment_service.create_portal_session')
+    def test_get_portal_returns_none_url(
+        self,
+        mock_create_portal,
+        override_get_current_user,
+    ):
+        """
+        Test: create_portal_session returns None should return 500
+
+        Given: Stripe portal creation returns None (internal failure)
+        When: POST /api/v2/user/payment/portal
+        Then: Returns 500 with error message
+
+        Business Logic Verified:
+        - None URL properly handled and returns 500
+        """
+        # Arrange
+        mock_create_portal.return_value = None  # Simulates internal Stripe failure
+
+        # Act
+        response = client.post("/api/v2/user/payment/portal")
+
+        # Assert
+        assert response.status_code == 500
+
 
 # ==========================================
 # Coverage Summary
@@ -399,6 +455,7 @@ POST /api/v2/user/payment/checkout:
 ✅ Missing plan_type (422)
 ✅ Unauthorized (401)
 ✅ Stripe error (500)
+✅ Returns None URL (500)
 ✅ Rate limit verification
 
 POST /api/v2/user/payment/portal:
@@ -406,8 +463,9 @@ POST /api/v2/user/payment/portal:
 ✅ No subscription (400)
 ✅ Unauthorized (401)
 ✅ Stripe error (500)
+✅ Returns None URL (500)
 
-Total Tests: 11
+Total Tests: 13
 Coverage: 100% (2/2 endpoints)
 
 Business Logic Tested:
@@ -416,6 +474,7 @@ Business Logic Tested:
 - ✅ Subscription requirement check
 - ✅ Stripe customer ID validation
 - ✅ Error handling (Stripe API failures)
+- ✅ Error handling (None URL from service)
 - ✅ Authentication requirement
 - ✅ Rate limiting structure
 

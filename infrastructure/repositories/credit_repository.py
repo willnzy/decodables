@@ -259,6 +259,36 @@ class SupabaseCreditRepository(ICreditRepository):
             logger.error(f"Failed to get transaction history for user {user_id}: {e}")
             return []
 
+    async def get_transaction_count(
+        self,
+        user_id: str,
+        tx_type: Optional[TransactionType] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> int:
+        """Get total count of transactions for a user (for pagination)."""
+        try:
+            # Use count query with same filters as get_transaction_history
+            query = self.client.table("credit_transactions").select(
+                "*", count="exact"
+            ).eq("user_id", user_id)
+
+            if tx_type:
+                query = query.eq("tx_type", tx_type.value)
+            if start_date:
+                query = query.gte("created_at", start_date.isoformat())
+            if end_date:
+                query = query.lte("created_at", end_date.isoformat())
+
+            result = query.execute()
+
+            # Supabase returns count in result.count when count="exact"
+            return result.count if result.count is not None else 0
+
+        except Exception as e:
+            logger.error(f"Failed to get transaction count for user {user_id}: {e}")
+            return 0
+
     async def check_idempotency(
         self,
         idempotency_key: str
