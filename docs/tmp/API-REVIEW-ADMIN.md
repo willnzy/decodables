@@ -70,7 +70,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Events | 5 | 5 | ✅ 已完成 |
 | Experiments | 14 | 14 | ✅ 已完成 |
 | Logs | 4 | 4 | ✅ 已完成 |
-| Metrics | 7 | 0 | 未开始 |
+| Metrics | 7 | 7 | ✅ 已完成 |
 | Moderation | 10 | 0 | 未开始 |
 | Notifications | 5 | 0 | 未开始 |
 | Stats | 18 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **52** | 42% |
+| **总计** | **125** | **59** | 47% |
 
 ---
 
@@ -378,28 +378,45 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Metrics 指标管理 (7个)
+## Metrics 指标管理 (7个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 53 | get_daily_metrics | GET | /daily | api/admin/metrics.py | 36 |
-| 54 | get_monthly_metrics | GET | /monthly | api/admin/metrics.py | 55 |
-| 55 | get_retention_metrics | GET | /retention | api/admin/metrics.py | 68 |
-| 56 | get_funnel_metrics | GET | /funnel | api/admin/metrics.py | 80 |
-| 57 | get_error_metrics | GET | /errors | api/admin/metrics.py | 110 |
-| 58 | get_dau_trend | GET | /dau-trend | api/admin/metrics.py | 142 |
-| 59 | refresh_metrics | POST | /refresh | api/admin/metrics.py | 155 |
+| 53 | get_daily_metrics | GET | /daily | api/admin/metrics.py | 73 |
+| 54 | get_monthly_metrics | GET | /monthly | api/admin/metrics.py | 100 |
+| 55 | get_retention_metrics | GET | /retention | api/admin/metrics.py | 117 |
+| 56 | get_funnel_metrics | GET | /funnel | api/admin/metrics.py | 134 |
+| 57 | get_error_metrics | GET | /errors | api/admin/metrics.py | 172 |
+| 58 | get_dau_trend | GET | /dau-trend | api/admin/metrics.py | 208 |
+| 59 | refresh_metrics | POST | /refresh | api/admin/metrics.py | 225 |
 
 **测试用例 Checklist**
-- [ ] #53 获取日指标
-- [ ] #54 获取月指标
-- [ ] #55 获取留存指标
-- [ ] #56 获取漏斗指标
-- [ ] #57 获取错误指标
-- [ ] #58 获取DAU趋势
-- [ ] #59 刷新指标数据
+- [x] #53 获取日指标
+- [x] #54 获取月指标
+- [x] #55 获取留存指标
+- [x] #56 获取漏斗指标
+- [x] #57 获取错误指标
+- [x] #58 获取DAU趋势
+- [x] #59 刷新指标数据
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | MET-MEDIUM-1 | 7个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | MET-MEDIUM-2 | `start_date`/`end_date` 无格式验证 | ✅ 已添加 DATE_PATTERN |
+| 🟡 MEDIUM | MET-MEDIUM-3 | `months` 无范围验证 | ✅ 已添加 (1-24) |
+| 🟡 MEDIUM | MET-MEDIUM-4 | `period` 无枚举验证 | ✅ 已添加 VALID_PERIODS |
+| 🟡 MEDIUM | MET-MEDIUM-5 | `hours` 无范围验证 | ✅ 已添加 (1-168) |
+| 🟡 MEDIUM | MET-MEDIUM-6 | `days` 无范围验证 | ✅ 已添加 (1-365) |
+| 🟡 MEDIUM | MET-MEDIUM-7 | `metric_type` 无枚举验证 | ✅ 已添加 VALID_METRIC_TYPES |
+| 🟢 LOW | MET-LOW-1 | 异常返回错误详情 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/metrics.py` - v2.0.0 → v3.25
+- `tests/api/admin/test_metrics.py` - 38 个测试用例
 
 ---
 
