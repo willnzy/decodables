@@ -1,6 +1,6 @@
 # Make Decodables - Backend API
 
-> **Version**: 3.0.0 (DDD Architecture)
+> **Version**: 3.1.0 (DDD Architecture - Fully Migrated)
 > **Python**: 3.12+
 > **Framework**: FastAPI + Uvicorn
 > **Architecture**: Domain-Driven Design (DDD) 三层架构
@@ -10,29 +10,128 @@
 ## 🏗️ 架构概览
 
 ```
-api/ → application/ → domains/ + infrastructure/
+api/ → application/ → domains/ ← infrastructure/
                          ↓
                    core/ + shared/
 ```
 
 ### 核心层级
 
-| 层级 | 目录 | 职责 |
-|------|------|------|
-| **API 层** | `api/` | HTTP 请求处理、DTO 转换 |
-| **应用层** | `application/` | 用例编排、Command/Query |
-| **领域层** | `domains/` | 业务规则、聚合根、领域服务 |
-| **基础设施层** | `infrastructure/` | Repository 实现、第三方集成 |
-| **核心层** | `core/` | 框架组件 (auth/cache/db/exceptions) |
-| **共享层** | `shared/` | 跨 domain 服务 (ai/payment/storage) |
+| 层级 | 目录 | 文件数 | 代码行数 | 职责 |
+|------|------|--------|----------|------|
+| **API 层** | `api/` | 58 | 11,242 | HTTP 请求处理、路由、DTO |
+| **应用层** | `application/` | 55 | 6,961 | 用例编排、Command/Query、定时任务 |
+| **领域层** | `domains/` | 58 | 9,691 | 业务规则、聚合根、领域服务 |
+| **基础设施层** | `infrastructure/` | 29 | 7,018 | Repository 实现、日志、任务队列 |
+| **核心层** | `core/` | 29 | 3,328 | 框架组件 (auth/cache/db/exceptions) |
+| **共享层** | `shared/` | 34 | 7,137 | 跨 domain 服务 (ai/payment/storage) |
+| **测试** | `tests/` | 135 | 36,975 | 单元测试、集成测试 |
+| **总计** | - | **404** | **~85,000** | - |
 
-### 5 个业务领域
+### 6 个业务领域
 
-- 💰 **billing**: 积分管理、交易记录
+- 💰 **billing**: 积分管理、交易记录、支付服务
 - 👤 **identity**: 用户身份、订阅等级
 - 📝 **creation**: 项目创作、资产管理
 - 🛒 **marketplace**: 市场交易、素材发布
-- ⚙️ **platform**: Feature Flags、A/B 实验
+- ⚙️ **platform**: Feature Flags、A/B 实验、配置管理
+- 📦 **content**: 系统资源、模板管理
+
+---
+
+## 📁 目录结构
+
+```
+decodables/
+├── 入口文件
+│   ├── app.py              # FastAPI 应用入口
+│   ├── config.py           # 环境配置
+│   ├── container.py        # 依赖注入容器
+│   ├── dependencies.py     # FastAPI 依赖
+│   ├── scheduler.py        # APScheduler 定时任务
+│   └── worker.py           # RQ Worker 后台任务
+│
+├── DDD 核心层
+│   ├── api/                # API 层 - HTTP 路由
+│   │   ├── user/           # 用户端 API (27 个路由)
+│   │   ├── admin/          # 管理端 API (16 个路由)
+│   │   └── schemas/        # Pydantic 请求/响应模型
+│   │
+│   ├── application/        # 应用层 - 用例编排
+│   │   ├── commands/       # 写操作命令
+│   │   ├── queries/        # 读操作查询
+│   │   ├── handlers/       # Command/Query 处理器
+│   │   └── services/       # 应用服务
+│   │       ├── aggregators/    # 统计聚合任务
+│   │       ├── campaigns/      # 营销活动调度
+│   │       ├── experiments/    # A/B 实验服务
+│   │       └── metrics/        # 指标 ETL
+│   │
+│   ├── domains/            # 领域层 - 业务核心
+│   │   ├── billing/        # 积分、支付
+│   │   ├── identity/       # 用户身份
+│   │   ├── creation/       # 项目创作
+│   │   ├── marketplace/    # 素材市场
+│   │   ├── platform/       # 平台功能
+│   │   ├── content/        # 系统资源
+│   │   └── shared/         # 共享领域逻辑
+│   │
+│   ├── infrastructure/     # 基础设施层
+│   │   ├── repositories/   # Supabase 仓储实现
+│   │   ├── logging/        # 日志服务
+│   │   ├── tasks/          # 后台任务
+│   │   ├── task_queue/     # RQ 任务队列
+│   │   ├── websocket/      # WebSocket 管理
+│   │   └── cache/          # 缓存 key 定义
+│   │
+│   ├── core/               # 框架层 - 通用组件
+│   │   ├── auth/           # JWT 认证
+│   │   ├── cache/          # Redis/Memory 缓存
+│   │   ├── database/       # Supabase 客户端
+│   │   ├── exceptions/     # 异常定义
+│   │   ├── middleware/     # CORS、日志中间件
+│   │   └── utils/          # 工具函数 (datetime, timezone)
+│   │
+│   └── shared/             # 共享层 - 跨域服务
+│       ├── ai/             # AI 服务 (FAL, OpenAI, Qwen)
+│       ├── payment/        # Stripe 支付
+│       └── storage/        # Supabase Storage
+│
+├── 测试和脚本
+│   ├── tests/              # 测试文件 (135 个)
+│   │   ├── api/            # API 测试
+│   │   ├── domains/        # 领域测试
+│   │   └── integration/    # 集成测试
+│   └── scripts/            # 工具脚本
+│       ├── migrations/     # 迁移脚本
+│       ├── fixes/          # 修复脚本
+│       └── tools/          # 开发工具
+│
+├── 数据库
+│   ├── migrations/         # SQL 迁移文件
+│   │   ├── ddl.sql         # 完整数据库 DDL
+│   │   └── *.sql           # 增量迁移脚本
+│   └── supabase/           # Supabase CLI 配置
+│
+├── 文档
+│   ├── docs/
+│   │   ├── 后台业务逻辑说明.md      # 业务规则文档
+│   │   ├── BACKEND_ARCHITECTURE_GUIDE.md  # 架构指南
+│   │   ├── API_REFERENCE.md        # API 参考
+│   │   ├── TEST_COVERAGE_PLAN.md   # 测试计划
+│   │   ├── shared/                 # 前后端共用文档
+│   │   └── adr/                    # 架构决策记录
+│   ├── README.md           # 本文件
+│   └── CHANGELOG.md        # 变更日志
+│
+└── 配置文件
+    ├── .env.example        # 环境变量模板
+    ├── requirements.txt    # Python 依赖
+    ├── pytest.ini          # pytest 配置
+    ├── .coveragerc         # 覆盖率配置
+    ├── railway.toml        # Railway 部署配置
+    └── Procfile            # 进程定义
+```
 
 ---
 
@@ -58,14 +157,11 @@ open http://localhost:8000/docs
 ### 运行测试
 
 ```bash
-# 启动烟雾测试 (8 tests)
+# 启动烟雾测试
 pytest tests/test_app_startup.py -v
 
 # 集成测试 (billing flow)
 pytest tests/integration/test_billing_flow.py -v
-
-# Domain 层测试
-pytest tests/domains/ -v
 
 # 完整测试套件
 pytest tests/ -v --cov=. --cov-report=html
@@ -77,44 +173,29 @@ pytest tests/ -v --cov=. --cov-report=html
 
 | 文档 | 用途 |
 |------|------|
-| [后台业务逻辑说明.md](docs/后台业务逻辑说明.md) | 完整架构文档、业务规则 |
-| [DDD-Migration-Guide.md](docs/DDD-Migration-Guide.md) | DDD 迁移指南、代码对比 |
-| [LEGACY_CODE_CLEANUP_PLAN.md](docs/LEGACY_CODE_CLEANUP_PLAN.md) | 旧代码清理计划 |
+| [后台业务逻辑说明.md](docs/后台业务逻辑说明.md) | 完整架构文档、业务规则、数据库设计 |
+| [BACKEND_ARCHITECTURE_GUIDE.md](docs/BACKEND_ARCHITECTURE_GUIDE.md) | DDD 架构设计指南 |
+| [API_REFERENCE.md](docs/API_REFERENCE.md) | API 端点参考 |
 | [TEST_COVERAGE_PLAN.md](docs/TEST_COVERAGE_PLAN.md) | 测试覆盖计划 |
+| [DDD-Migration-Guide.md](docs/DDD-Migration-Guide.md) | DDD 迁移指南 |
 
 ---
 
-## ✅ v3.0 迁移完成状态
+## ✅ DDD 迁移状态
 
-### Phase 1-2: 新架构创建 ✅
+### 已完成 ✅
+
 - ✅ Core 框架层 (auth/cache/database/exceptions/middleware/utils)
-- ✅ 5 个 Domain (billing/identity/creation/marketplace/platform)
-- ✅ Application 层 (commands + queries)
-- ✅ Infrastructure 层 (repositories)
+- ✅ 6 个 Domain (billing/identity/creation/marketplace/platform/content)
+- ✅ Application 层 (commands + queries + services)
+- ✅ Infrastructure 层 (repositories + logging + tasks)
+- ✅ API 层重构 (api/user/ + api/admin/)
+- ✅ Schemas 迁移 (api/schemas/)
+- ✅ 定时任务迁移 (application/services/)
+- ✅ 测试覆盖 (135 个测试文件)
+- ✅ 旧代码清理 (schemas/, scheduled_tasks/, routers/)
 
-### Phase 3: 清理与验证 ✅
-- ✅ 删除废弃目录 (`repositories/`, `exceptions/`)
-- ✅ 向后兼容层 (`exceptions.py`)
-- ✅ 测试覆盖 (34/34 核心测试通过)
-- ✅ 文档更新 (3 份完整文档)
-- ✅ 旧代码审计 (详细清理计划)
-
-### Phase 4: 旧代码清理 (待执行)
-- ⏳ 迁移 `services/ai/` → `shared/ai/`
-- ⏳ 迁移 `routers/` → `api/`
-- ⏳ 更新引用并删除旧文件
-
----
-
-## 🧪 测试覆盖
-
-| 测试类型 | 通过 | 总计 | 覆盖率 |
-|---------|------|------|--------|
-| **启动烟雾** | 8 | 8 | 100% ✅ |
-| **集成测试** (billing) | 8 | 8 | 100% ✅ |
-| **Domain 层** (marketplace) | 8 | 8 | 100% ✅ |
-| **Domain 层** (platform) | 10 | 10 | 100% ✅ |
-| **总核心测试** | **34** | **34** | **100%** ✅ |
+### DDD 合规性: ~98%
 
 ---
 
@@ -127,30 +208,10 @@ pytest tests/ -v --cov=. --cov-report=html
 | 缓存 | Redis (主), Memory (降级) |
 | 认证 | Clerk JWT |
 | 支付 | Stripe |
-| AI 服务 | FAL.ai (图像), OpenAI (文本) |
+| AI 服务 | FAL.ai (图像), OpenAI (文本), Qwen |
 | 任务队列 | Redis Queue (RQ) |
-| 测试 | pytest, pytest-asyncio |
-
----
-
-## 📊 代码统计
-
-```
-核心代码结构:
-├── core/           ~2,500 lines  (框架层)
-├── shared/         ~1,000 lines  (共享服务)
-├── domains/        ~3,500 lines  (业务核心)
-├── application/    ~1,500 lines  (用例编排)
-├── infrastructure/ ~2,000 lines  (技术实现)
-├── api/              ~800 lines  (新API层)
-└── tests/          ~2,000 lines  (测试覆盖)
-─────────────────────────────────
-Total:             ~13,300 lines
-
-旧代码 (待清理):
-├── services/       ~5,000 lines
-└── routers/        ~3,000 lines
-```
+| 定时任务 | APScheduler |
+| 测试 | pytest, pytest-asyncio, pytest-cov |
 
 ---
 
@@ -162,9 +223,6 @@ Total:             ~13,300 lines
 # 推送到 develop 分支会自动触发部署
 git push origin develop
 
-# 监控部署日志
-railway logs
-
 # 健康检查
 curl https://your-app.railway.app/health
 ```
@@ -172,78 +230,11 @@ curl https://your-app.railway.app/health
 ### 环境变量
 
 必需的环境变量:
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
-- `CLERK_SECRET_KEY`
-- `STRIPE_SECRET_KEY`
-- `REDIS_URL` (可选，不填则用内存缓存)
-
----
-
-## 👥 团队协作
-
-### Git 工作流
-
-```bash
-# 主分支
-main     - 生产环境 (Railway production)
-develop  - 开发环境 (Railway staging)
-
-# 功能分支
-feature/xxx  - 新功能开发
-fix/xxx      - Bug 修复
-refactor/xxx - 代码重构
-```
-
-### Commit 规范
-
-```
-feat(billing): add credit refund functionality
-fix(auth): resolve JWT token expiration issue
-refactor(domains): migrate services to DDD structure
-docs(api): update API documentation
-test(integration): add billing flow tests
-chore(deps): update dependencies
-```
-
----
-
-## 📖 学习资源
-
-- **DDD 入门**: 阅读 [DDD-Migration-Guide.md](docs/DDD-Migration-Guide.md)
-- **业务规则**: 阅读 [后台业务逻辑说明.md](docs/后台业务逻辑说明.md)
-- **代码示例**: 查看 `domains/billing/` 完整实现
-- **测试示例**: 查看 `tests/integration/test_billing_flow.py`
-
----
-
-## 🆘 故障排查
-
-### 应用无法启动
-
-```bash
-# 检查依赖
-pip list | grep fastapi
-
-# 检查环境变量
-python3 -c "from config import settings; print(settings)"
-
-# 检查数据库连接
-python3 -c "from core.database import get_supabase_client; print(get_supabase_client())"
-```
-
-### 测试失败
-
-```bash
-# 清理缓存
-pytest --cache-clear
-
-# 详细错误信息
-pytest tests/xxx.py -vv --tb=long
-
-# 单个测试
-pytest tests/xxx.py::test_function_name -v
-```
+- `SUPABASE_URL` - Supabase 项目 URL
+- `SUPABASE_KEY` - Supabase service role key
+- `CLERK_SECRET_KEY` - Clerk 密钥
+- `STRIPE_SECRET_KEY` - Stripe 密钥
+- `REDIS_URL` - Redis 连接 (可选，不填则用内存缓存)
 
 ---
 
@@ -256,4 +247,4 @@ pytest tests/xxx.py::test_function_name -v
 
 **License**: Proprietary
 **Maintained by**: Make Decodables Team
-**Last Updated**: 2026-01-07
+**Last Updated**: 2026-01-08
