@@ -173,7 +173,7 @@ Stripe-Signature: <signature>
 
 | 事件 | 处理动作 |
 |------|----------|
-| `checkout.session.completed` | 积分购买: +100 永久积分<br>订阅启动: Starter +500 / Pro +1000 月度积分 |
+| `checkout.session.completed` | 积分购买: +100/500/2000 永久积分<br>订阅启动: Starter +200 / Pro +500 月度积分 |
 | `invoice.payment_succeeded` | 订阅续费: 重置月度积分（不累积） |
 | `customer.subscription.deleted` | 降级为 Free 等级 |
 | `customer.subscription.updated` | 更新订阅状态 |
@@ -2039,13 +2039,23 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ### 6.1 用户等级
 
-| 等级 | 月费 | 月度积分 | 项目限制 | AI 模型 |
-|------|------|----------|----------|---------|
-| Free | $0 | 0 | 1 | flux-schnell |
-| Starter | $14.9 | 500 | 20 | flux-schnell |
-| Pro | $29.9 | 1000 | 200 | flux-dev |
+| 等级 | 原价 | 现价 | 月度积分 | 项目限制 | AI 模型 |
+|------|------|------|----------|----------|---------|
+| Free | $0 | $0 | 0 | 1 | flux-schnell |
+| Starter | $14.9 | $9.9 | 200 | 20 | flux-schnell |
+| Pro | $29.9 | $19.9 | 500 | 200 | flux-dev |
 
-### 6.2 积分消耗
+> 所有价格通过 Stripe Price ID 配置，不硬编码在代码中
+
+### 6.2 积分购买档位
+
+| 档位 | 积分 | 原价 | 现价 | 折扣 |
+|------|------|------|------|------|
+| 小包 | 100 | $2.99 | $2.99 | - |
+| 中包 | 500 | $14.99 | $13.49 | 9折 |
+| 大包 | 2000 | $60.00 | $48.00 | 8折 |
+
+### 6.3 积分消耗
 
 | 操作 | 积分 |
 |------|------|
@@ -2056,18 +2066,18 @@ Content-Disposition: attachment; filename="minibook.pdf"
 | PDF 导出 | 免费 |
 | 灵感生成 | 免费 |
 
-### 6.3 积分扣费顺序
+### 6.4 积分扣费顺序
 
 ```
 月度积分 (credits_monthly) → 永久积分 (credits_permanent)
 ```
 
-### 6.4 市场收益分配
+### 6.5 市场收益分配
 
 - 卖家: 90%
 - 平台: 10%
 
-### 6.5 发布权限
+### 6.6 发布权限
 
 | 等级 | 可发布资源 |
 |------|------------|
@@ -2075,7 +2085,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
 | Starter | 仅免费资源 |
 | Pro | 任意价格资源 |
 
-### 6.6 删除流程
+### 6.7 删除流程
 
 | 阶段 | 操作 | 可恢复 |
 |------|------|--------|
