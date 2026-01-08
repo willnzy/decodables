@@ -212,7 +212,7 @@ async def ocr_tool(
             tz = get_request_timezone(request, user_id=user.get("id"))
             asset_repo = SupabaseAssetRepository(get_database_client())
             for img_url in ocr_result["images"]:
-                await asset_repo.save_asset(user["id"], img_url, "ocr_extracted", project_id, timezone=tz)
+                await asset_repo.save_asset(user["id"], img_url, "ocr_extracted", project_id, tz=tz)
 
         return OcrResponse(
             success=True,

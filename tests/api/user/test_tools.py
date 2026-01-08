@@ -1,68 +1,427 @@
 """
-测试 api/tools_api.py
+Test api/user/tools.py - Utility Tools API
 
-端点: POST /tools/pdf/preview
+Endpoints:
+- POST /api/v2/user/tools/pdf-preview - Convert PDF to preview images
+- POST /api/v2/user/tools/ocr - OCR processing
 
-创建时间: 2026-01-07
+Created: 2026-01-07
+Updated: 2026-01-08 (Complete rewrite with proper mocking of external dependencies)
 """
 
 import pytest
+import io
+from datetime import datetime, timezone, timedelta
+from unittest.mock import patch, MagicMock, AsyncMock, Mock
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
-# 假设 app.py 已配置所有路由
+# Critical: Mock external dependencies BEFORE any imports
+# 1. Rate limiter bypass
+_rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
+_rate_limiter_patcher.start()
+
+# 2. Mock fitz (PyMuPDF) - must be done before api.user.tools import
+import sys
+
+# Create fitz mock with FileDataError exception class
+_fitz_mock = Mock()
+# FileDataError must inherit from Exception to be catchable
+_fitz_mock.FileDataError = type('FileDataError', (Exception,), {})
+sys.modules['fitz'] = _fitz_mock
+
+# 3. Mock OCR service - must be done before api.user.tools import
+mock_ocr_module = Mock()
+mock_ocr_module.process_ocr = AsyncMock()
+sys.modules['shared.ai.ocr_service'] = mock_ocr_module
+
 from app import app
+from dependencies import get_current_user
 
 client = TestClient(app)
 
 
-@pytest.fixture
-def auth_headers():
-    """认证 headers (mock token)"""
-    return {"Authorization": "Bearer test_token_user_123"}
-
+# ==========================================
+# Fixtures
+# ==========================================
 
 @pytest.fixture
-def admin_headers():
-    """管理员 headers (mock token)"""
-    return {"Authorization": "Bearer test_admin_token"}
+def mock_user_pro():
+    """Mock Pro user."""
+    return {
+        "id": "user_123",
+        "email": "test@example.com",
+        "tier": "pro",
+        "created_at": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+    }
 
 
-class TestToolsAPI:
-    """Tools API 测试"""
+@pytest.fixture
+def mock_user_free():
+    """Mock Free user."""
+    return {
+        "id": "user_456",
+        "email": "free@example.com",
+        "tier": "free",
+        "created_at": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+    }
 
-    def test_get_tools_success(self, auth_headers):
-        """获取 Tools 成功"""
-        # TODO: 根据实际端点调整
-        response = client.get("/api/v2/user/tools", headers=auth_headers)
 
-        # Mock 环境下可能返回 404 或其他状态码
-        # 在 CI 环境中会使用 mock fixtures
-        assert response.status_code in [200, 404, 401]
+@pytest.fixture
+def mock_user_trial():
+    """Mock Free user in trial period."""
+    return {
+        "id": "user_789",
+        "email": "trial@example.com",
+        "tier": "free",
+        "created_at": (datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),  # Within 7-day trial
+    }
 
-    def test_get_tools_unauthorized(self):
-        """未认证应返回 401"""
-        response = client.get("/api/v2/user/tools")
 
-        # 应该需要认证
-        assert response.status_code in [401, 404]
+@pytest.fixture
+def override_get_current_user(mock_user_pro):
+    """Override authentication dependency."""
+    async def _get_current_user():
+        return mock_user_pro
+    app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
 
-    @patch('infrastructure.repositories.supabase')
-    def test_tools_with_mock(self, mock_supabase, auth_headers):
-        """使用 mock 测试 Tools"""
-        # Mock Supabase 响应
-        mock_supabase.table.return_value.select.return_value.execute.return_value = MagicMock(
-            data=[{"id": "1", "name": "test"}]
+
+@pytest.fixture
+def mock_pdf_file():
+    """Create a mock PDF file."""
+    pdf_content = b"%PDF-1.4\ntest content\n%%EOF"
+    return ("test.pdf", io.BytesIO(pdf_content), "application/pdf")
+
+
+@pytest.fixture
+def mock_image_file():
+    """Create a mock image file for OCR."""
+    # 1x1 PNG image
+    png_content = (
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+        b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\x00\x01'
+        b'\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    )
+    return ("test.png", io.BytesIO(png_content), "image/png")
+
+
+# ==========================================
+# Tests - POST /api/v2/user/tools/pdf-preview
+# ==========================================
+
+class TestPdfPreview:
+    """Test POST /api/v2/user/tools/pdf-preview endpoint."""
+
+    @patch('shared.ai.image_generator.supabase')
+    def test_pdf_preview_success(self, mock_storage, override_get_current_user, mock_pdf_file):
+        """Test successful PDF preview generation."""
+        # Get the mocked fitz module from sys.modules
+        import sys
+        fitz_module = sys.modules['fitz']
+
+        # Mock PyMuPDF document
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 2
+        mock_doc.close = MagicMock()
+        mock_page = MagicMock()
+        mock_pix = MagicMock()
+        mock_pix.width = 800
+        mock_pix.height = 600
+        mock_pix.tobytes.return_value = b'fake_png_data'
+        mock_page.get_pixmap.return_value = mock_pix
+        mock_doc.__getitem__.return_value = mock_page
+        fitz_module.open.return_value = mock_doc
+
+        # Mock storage
+        mock_storage.storage.from_.return_value.upload.return_value = None
+        mock_storage.storage.from_.return_value.get_public_url.return_value = "https://cdn.example.com/preview.png"
+
+        filename, content, content_type = mock_pdf_file
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": (filename, content, content_type)},
         )
 
-        response = client.get("/api/v2/user/tools", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["total_pages"] == 2
+        assert len(data["pages"]) == 2
+        assert data["pages"][0]["page_number"] == 1
+        assert data["pages"][0]["width"] == 800
+        assert data["pages"][0]["height"] == 600
 
-        # 验证响应
-        assert response.status_code in [200, 404, 401]
+    def test_pdf_preview_free_user_forbidden(self, mock_user_free):
+        """Test PDF preview requires Pro tier."""
+        async def _get_free_user():
+            return mock_user_free
+        app.dependency_overrides[get_current_user] = _get_free_user
+
+        pdf_content = b"%PDF-1.4\ntest"
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Upgrade to Teacher Pro" in data["message"]
+
+    def test_pdf_preview_invalid_file_type(self, override_get_current_user):
+        """Test PDF preview rejects non-PDF files."""
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": ("test.txt", io.BytesIO(b"not a pdf"), "text/plain")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Only PDF files" in data["message"]
+
+    def test_pdf_preview_file_too_large(self, override_get_current_user):
+        """Test PDF preview rejects files over 5MB."""
+        # Create content over 5MB
+        large_content = b"x" * (6 * 1024 * 1024)
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": ("large.pdf", io.BytesIO(large_content), "application/pdf")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "too large" in data["message"].lower()
+
+    def test_pdf_preview_too_many_pages(self, override_get_current_user):
+        """Test PDF preview rejects files with over 20 pages."""
+        import sys
+        fitz_module = sys.modules['fitz']
+
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 25  # 25 pages
+        fitz_module.open.return_value = mock_doc
+
+        pdf_content = b"%PDF-1.4\ntest"
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": ("test.pdf", io.BytesIO(pdf_content), "application/pdf")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "too many pages" in data["message"].lower()
+        assert "25" in data["message"]
+
+    def test_pdf_preview_corrupted_pdf(self, override_get_current_user):
+        """Test PDF preview handles corrupted PDF files."""
+        import sys
+        fitz_module = sys.modules['fitz']
+
+        # Use the FileDataError already defined in fitz_module
+        fitz_module.open.side_effect = fitz_module.FileDataError("Invalid PDF")
+
+        pdf_content = b"corrupted pdf data"
+        response = client.post(
+            "/api/v2/user/tools/pdf-preview",
+            files={"file": ("bad.pdf", io.BytesIO(pdf_content), "application/pdf")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Invalid or corrupted PDF" in data["message"]
 
 
-# TODO: 添加更多测试用例
-# - POST/PUT/PATCH/DELETE 端点测试
-# - 参数验证测试 (422)
-# - 业务逻辑测试
-# - 错误处理测试
+# ==========================================
+# Tests - POST /api/v2/user/tools/ocr
+# ==========================================
+
+class TestOcrTool:
+    """Test POST /api/v2/user/tools/ocr endpoint."""
+
+    @patch('api.user.tools.SupabaseAssetRepository')
+    @patch('api.user.tools.SupabaseCreditRepository')
+    def test_ocr_success_pro_user(
+        self,
+        mock_credit_repo_class,
+        mock_asset_repo_class,
+        override_get_current_user,
+        mock_image_file,
+    ):
+        """Test successful OCR processing for Pro user."""
+        # Get mocked OCR service from sys.modules
+        import sys
+        ocr_module = sys.modules['shared.ai.ocr_service']
+
+        # Mock credit deduction
+        mock_credit_repo = AsyncMock()
+        mock_credit_repo.deduct_credits.return_value = {"success": True, "total": 95}
+        mock_credit_repo_class.return_value = mock_credit_repo
+
+        # Mock OCR result
+        ocr_module.process_ocr.return_value = {
+            "text": "Extracted text from image",
+            "tables": [{"row": 1, "col": 1, "text": "Cell 1"}],
+            "images": ["https://cdn.example.com/extracted1.png"],
+        }
+
+        # Mock asset repository
+        mock_asset_repo = AsyncMock()
+        mock_asset_repo.save_asset.return_value = None
+        mock_asset_repo_class.return_value = mock_asset_repo
+
+        filename, content, content_type = mock_image_file
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": (filename, content, content_type)},
+            data={"project_id": "proj_123"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["text"] == "Extracted text from image"
+        assert data["credits_used"] == 5
+        assert data["balance"] == 95
+        assert len(data["tables"]) == 1
+        assert len(data["images"]) == 1
+
+        # Verify credit deduction
+        mock_credit_repo.deduct_credits.assert_called_once_with(
+            "user_123", 5, "ocr", "OCR processing"
+        )
+
+    @patch('config.TRIAL_DAYS', 7)
+    @patch('api.user.tools.SupabaseAssetRepository')
+    @patch('api.user.tools.SupabaseCreditRepository')
+    def test_ocr_success_trial_user(
+        self,
+        mock_credit_repo_class,
+        mock_asset_repo_class,
+        mock_user_trial,
+        mock_image_file,
+    ):
+        """Test successful OCR processing for trial user."""
+        # Get mocked OCR service
+        import sys
+        ocr_module = sys.modules['shared.ai.ocr_service']
+
+        async def _get_trial_user():
+            return mock_user_trial
+        app.dependency_overrides[get_current_user] = _get_trial_user
+
+        # Mock credit deduction
+        mock_credit_repo = AsyncMock()
+        mock_credit_repo.deduct_credits.return_value = {"success": True, "total": 45}
+        mock_credit_repo_class.return_value = mock_credit_repo
+
+        # Mock OCR result
+        ocr_module.process_ocr.return_value = {
+            "text": "Trial OCR text",
+            "tables": [],
+            "images": [],
+        }
+
+        # Mock asset repository
+        mock_asset_repo = AsyncMock()
+        mock_asset_repo_class.return_value = mock_asset_repo
+
+        filename, content, content_type = mock_image_file
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": (filename, content, content_type)},
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["credits_used"] == 5
+
+    def test_ocr_free_user_forbidden(self, mock_user_free):
+        """Test OCR requires Pro tier or trial period."""
+        async def _get_free_user():
+            return mock_user_free
+        app.dependency_overrides[get_current_user] = _get_free_user
+
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": ("test.png", io.BytesIO(b"fake"), "image/png")},
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 403
+        data = response.json()
+        assert "Upgrade to Teacher Pro" in data["message"]
+
+    @patch('api.user.tools.SupabaseCreditRepository')
+    def test_ocr_insufficient_credits(self, mock_credit_repo_class, override_get_current_user):
+        """Test OCR handles insufficient credits."""
+        mock_credit_repo = AsyncMock()
+        mock_credit_repo.deduct_credits.return_value = {
+            "success": False,
+            "error": "INSUFFICIENT CREDITS"
+        }
+        mock_credit_repo_class.return_value = mock_credit_repo
+
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": ("test.png", io.BytesIO(b"fake"), "image/png")},
+        )
+
+        assert response.status_code == 402
+        data = response.json()
+        assert "Insufficient credits" in data["message"]
+
+    def test_ocr_invalid_file_type(self, override_get_current_user):
+        """Test OCR rejects unsupported file types."""
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": ("test.txt", io.BytesIO(b"text file"), "text/plain")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Unsupported file type" in data["message"]
+
+    def test_ocr_file_too_large(self, override_get_current_user):
+        """Test OCR rejects files over 10MB."""
+        large_content = b"x" * (11 * 1024 * 1024)  # 11MB
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": ("large.png", io.BytesIO(large_content), "image/png")},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "too large" in data["message"].lower()
+
+    @patch('api.user.tools.SupabaseCreditRepository')
+    def test_ocr_processing_error(
+        self,
+        mock_credit_repo_class,
+        override_get_current_user,
+        mock_image_file,
+    ):
+        """Test OCR handles processing errors."""
+        # Get mocked OCR service
+        import sys
+        ocr_module = sys.modules['shared.ai.ocr_service']
+
+        # Mock credit deduction success
+        mock_credit_repo = AsyncMock()
+        mock_credit_repo.deduct_credits.return_value = {"success": True, "total": 95}
+        mock_credit_repo_class.return_value = mock_credit_repo
+
+        # Mock OCR failure
+        ocr_module.process_ocr.side_effect = Exception("OCR service unavailable")
+
+        filename, content, content_type = mock_image_file
+        response = client.post(
+            "/api/v2/user/tools/ocr",
+            files={"file": (filename, content, content_type)},
+        )
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "OCR processing failed" in data["message"]
