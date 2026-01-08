@@ -15,7 +15,9 @@ from domains.marketplace.repository import IListingRepository
 from domains.marketplace.aggregates.listing import Listing
 from domains.marketplace.value_objects import (
     ListingStatus,
+    ResourceType,
     AssetCategory,
+    ListingSource,
     PriceType,
     ListingMetadata,
     ListingStats,
@@ -431,13 +433,42 @@ class SupabaseListingRepository(IListingRepository):
             rating_count=row.get("rating_count", 0),
         )
 
+        # Parse resource_type with fallback
+        resource_type_str = row.get("resource_type", "asset")
+        try:
+            resource_type = ResourceType(resource_type_str)
+        except ValueError:
+            resource_type = ResourceType.ASSET
+
+        # Parse category with fallback
+        category_str = row.get("category", "element")
+        try:
+            category = AssetCategory(category_str)
+        except ValueError:
+            category = AssetCategory.ELEMENT
+
+        # Parse source with fallback
+        source_str = row.get("source", "user")
+        try:
+            source = ListingSource(source_str)
+        except ValueError:
+            source = ListingSource.USER
+
+        # Parse allowed_tiers
+        allowed_tiers = row.get("allowed_tiers", ["free", "starter", "pro"])
+        if isinstance(allowed_tiers, str):
+            allowed_tiers = [allowed_tiers]
+
         return Listing(
             listing_id=row["listing_id"],
             seller_id=row["seller_id"],
-            category=AssetCategory(row.get("category", "element")),
+            resource_type=resource_type,
+            category=category,
             metadata=metadata,
+            source=source,
             price_type=PriceType(row.get("price_type", "free")),
             credit_price=row.get("credit_price", 0),
+            allowed_tiers=allowed_tiers,
             status=ListingStatus(row.get("status", "draft")),
             stats=stats,
             is_featured=row.get("is_featured", False),
@@ -455,7 +486,9 @@ class SupabaseListingRepository(IListingRepository):
         return {
             "listing_id": listing.listing_id,
             "seller_id": listing.seller_id,
+            "resource_type": listing.resource_type.value,
             "category": listing.category.value,
+            "source": listing.source.value,
             "title": listing.metadata.title,
             "description": listing.metadata.description,
             "tags": listing.metadata.tags,
@@ -468,6 +501,7 @@ class SupabaseListingRepository(IListingRepository):
             "license_type": listing.metadata.license_type,
             "price_type": listing.price_type.value,
             "credit_price": listing.credit_price,
+            "allowed_tiers": listing.allowed_tiers,
             "status": listing.status.value,
             "is_featured": listing.is_featured,
             "rejection_reason": listing.rejection_reason,

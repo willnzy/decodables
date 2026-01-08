@@ -787,6 +787,204 @@ class TestCreateListing:
         # Assert
         assert response.status_code == 422
 
+    @patch('api.user.marketplace.get_container')
+    def test_create_listing_with_category(
+        self,
+        mock_get_container,
+        override_get_current_user_pro,
+        mock_create_listing_result,
+    ):
+        """
+        Test: Create listing with two-level classification (resource_type + category)
+
+        Given: Pro tier user
+        When: POST with resource_type=asset and category=sticker
+        Then: Returns listing with correct category passed to handler
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_create_listing_result
+        mock_container = MagicMock()
+        mock_container.create_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/marketplace/listings",
+            json={
+                "title": "My Sticker",
+                "resource_type": "asset",
+                "category": "sticker",
+                "price_credits": 10,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["listing_id"] == "listing_new_123"
+
+        # Verify category passed correctly to handler
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.resource_type == "asset"
+        assert call_args.category == "sticker"
+
+    @patch('api.user.marketplace.get_container')
+    def test_create_listing_category_defaults_for_asset(
+        self,
+        mock_get_container,
+        override_get_current_user_pro,
+        mock_create_listing_result,
+    ):
+        """
+        Test: Category defaults to 'element' for asset if not provided
+
+        Given: Pro tier user
+        When: POST with resource_type=asset without category
+        Then: Category defaults to 'element'
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_create_listing_result
+        mock_container = MagicMock()
+        mock_container.create_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/marketplace/listings",
+            json={
+                "title": "My Asset",
+                "resource_type": "asset",
+                "price_credits": 0,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+
+        # Verify default category
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.category == "element"
+
+    @patch('api.user.marketplace.get_container')
+    def test_create_listing_category_defaults_for_project(
+        self,
+        mock_get_container,
+        override_get_current_user_pro,
+        mock_create_listing_result,
+    ):
+        """
+        Test: Category defaults to 'template' for project if not provided
+
+        Given: Pro tier user
+        When: POST with resource_type=project without category
+        Then: Category defaults to 'template'
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_create_listing_result
+        mock_container = MagicMock()
+        mock_container.create_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/marketplace/listings",
+            json={
+                "title": "My Project Template",
+                "resource_type": "project",
+                "price_credits": 50,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+
+        # Verify default category for project
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.category == "template"
+
+    @patch('api.user.marketplace.get_container')
+    def test_create_listing_with_source(
+        self,
+        mock_get_container,
+        override_get_current_user_pro,
+        mock_create_listing_result,
+    ):
+        """
+        Test: Create listing with source field (system, user, ai, community)
+
+        Given: Pro tier user
+        When: POST with source=ai
+        Then: Source passed correctly to handler
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_create_listing_result
+        mock_container = MagicMock()
+        mock_container.create_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/marketplace/listings",
+            json={
+                "title": "AI Generated Sticker",
+                "resource_type": "asset",
+                "category": "sticker",
+                "source": "ai",
+                "price_credits": 0,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+
+        # Verify source passed correctly
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.source == "ai"
+
+    @patch('api.user.marketplace.get_container')
+    def test_create_listing_with_allowed_tiers(
+        self,
+        mock_get_container,
+        override_get_current_user_pro,
+        mock_create_listing_result,
+    ):
+        """
+        Test: Create listing with allowed_tiers restriction
+
+        Given: Pro tier user
+        When: POST with allowed_tiers=["starter", "pro"]
+        Then: allowed_tiers passed correctly to handler
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = mock_create_listing_result
+        mock_container = MagicMock()
+        mock_container.create_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.post(
+            "/api/v2/user/marketplace/listings",
+            json={
+                "title": "Premium Asset",
+                "resource_type": "asset",
+                "category": "background",
+                "allowed_tiers": ["starter", "pro"],
+                "price_credits": 25,
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+
+        # Verify allowed_tiers passed correctly
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.allowed_tiers == ["starter", "pro"]
+
 
 # ==========================================
 # PUT /api/v2/user/marketplace/listings/{id} Tests

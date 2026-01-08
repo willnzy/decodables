@@ -12,7 +12,16 @@ from typing import Optional, List
 
 from .aggregates.listing import Listing
 from .repository import IListingRepository
-from .value_objects import ListingStatus, AssetCategory, PriceType, ListingMetadata, ListingSortOrder, PriceFilter
+from .value_objects import (
+    ListingStatus,
+    ResourceType,
+    AssetCategory,
+    ListingSource,
+    PriceType,
+    ListingMetadata,
+    ListingSortOrder,
+    PriceFilter,
+)
 from .exceptions import (
     ListingNotFoundException,
     ListingAccessDeniedException,
@@ -75,11 +84,14 @@ class MarketplaceService:
     async def create_listing(
         self,
         seller_id: str,
+        resource_type: ResourceType,
         category: AssetCategory,
         title: str,
         description: Optional[str] = None,
+        source: ListingSource = ListingSource.USER,
         price_type: PriceType = PriceType.FREE,
         credit_price: int = 0,
+        allowed_tiers: Optional[List[str]] = None,
         seller_tier: str = "free"
     ) -> Listing:
         """
@@ -87,11 +99,14 @@ class MarketplaceService:
 
         Args:
             seller_id: User ID of seller
-            category: Asset category
+            resource_type: Resource type (asset or project)
+            category: Asset category (specific content type)
             title: Listing title
             description: Optional description
+            source: Asset source (system, user, ai, community)
             price_type: Pricing model
             credit_price: Price in credits
+            allowed_tiers: List of tiers that can access this listing
             seller_tier: Seller's subscription tier
 
         Returns:
@@ -112,13 +127,21 @@ class MarketplaceService:
         if not title or not title.strip():
             raise InvalidListingDataException("title", "Title is required")
 
+        # Validate category matches resource_type
+        if resource_type == ResourceType.PROJECT and not category.is_project_category:
+            # For projects, default to TEMPLATE if invalid category provided
+            category = AssetCategory.TEMPLATE
+
         listing = Listing.create_new(
             seller_id=seller_id,
+            resource_type=resource_type,
             category=category,
             title=title.strip(),
             description=description,
+            source=source,
             price_type=price_type,
             credit_price=credit_price,
+            allowed_tiers=allowed_tiers,
         )
 
         return await self._repository.create(listing)

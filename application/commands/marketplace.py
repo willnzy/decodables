@@ -11,7 +11,9 @@ from typing import Optional, List
 from domains.marketplace import (
     MarketplaceService,
     Listing,
+    ResourceType,
     AssetCategory,
+    ListingSource,
     PriceType,
 )
 from domains.billing import BillingService, TransactionType
@@ -21,13 +23,20 @@ from domains.billing import BillingService, TransactionType
 class CreateListingCommand:
     """
     Command to create a new marketplace listing.
+
+    Supports two-level classification:
+    - resource_type: "asset" or "project" (top-level)
+    - category: specific content type (second-level)
     """
     seller_id: str
-    category: str  # AssetCategory value
-    title: str
+    resource_type: str = "asset"  # ResourceType value: "asset" or "project"
+    category: str = "element"  # AssetCategory value
+    title: str = ""
     description: Optional[str] = None
+    source: str = "user"  # ListingSource value: "system", "user", "ai", "community"
     price_type: str = "free"  # "free", "premium", "credits"
     credit_price: int = 0
+    allowed_tiers: Optional[List[str]] = None  # ["free", "starter", "pro"]
     tags: Optional[List[str]] = None
     preview_url: Optional[str] = None
     seller_tier: str = "free"
@@ -50,16 +59,35 @@ class CreateListingHandler:
     async def handle(self, command: CreateListingCommand) -> CreateListingResult:
         """Execute listing creation."""
         try:
-            category = AssetCategory(command.category)
+            # Parse enums with validation
+            try:
+                resource_type = ResourceType(command.resource_type)
+            except ValueError:
+                resource_type = ResourceType.ASSET
+
+            try:
+                category = AssetCategory(command.category)
+            except ValueError:
+                # Default based on resource_type
+                category = AssetCategory.TEMPLATE if resource_type == ResourceType.PROJECT else AssetCategory.ELEMENT
+
+            try:
+                source = ListingSource(command.source)
+            except ValueError:
+                source = ListingSource.USER
+
             price_type = PriceType(command.price_type)
 
             listing = await self._marketplace_service.create_listing(
                 seller_id=command.seller_id,
+                resource_type=resource_type,
                 category=category,
                 title=command.title,
                 description=command.description,
+                source=source,
                 price_type=price_type,
                 credit_price=command.credit_price,
+                allowed_tiers=command.allowed_tiers,
                 seller_tier=command.seller_tier,
             )
 

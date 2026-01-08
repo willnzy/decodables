@@ -32,22 +32,47 @@ class ListingStatus(str, Enum):
         return self in (ListingStatus.DRAFT, ListingStatus.REJECTED)
 
 
+class ResourceType(str, Enum):
+    """
+    Resource type - top-level classification.
+
+    Distinguishes between single assets and project templates.
+    """
+    ASSET = "asset"      # Single asset (sticker, clipart, background, etc.)
+    PROJECT = "project"  # Project template (mini-book, worksheet, etc.)
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable type name."""
+        return "Asset" if self == ResourceType.ASSET else "Project"
+
+
 class AssetCategory(str, Enum):
     """
-    Asset category types.
+    Asset category types - second-level classification.
 
-    Based on the 10-category system from design docs.
+    Based on the category system from Asset-Category-System-Design.md.
     """
+    # Graphics categories
     CLIPART = "clipart"
     ILLUSTRATION = "illustration"
     PHOTO = "photo"
     BACKGROUND = "background"
-    TEMPLATE = "template"
-    FONT = "font"
     STICKER = "sticker"
     ICON = "icon"
     PATTERN = "pattern"
     ELEMENT = "element"
+    EMOJI = "emoji"
+    FRAME = "frame"
+    CHARACTER = "character"
+    SCENE = "scene"
+    # Text/Font categories
+    FONT = "font"
+    # Project categories (for resource_type=project)
+    TEMPLATE = "template"
+    MINI_BOOK = "mini_book"
+    WORKSHEET = "worksheet"
+    FLASHCARD = "flashcard"
 
     @property
     def display_name(self) -> str:
@@ -57,14 +82,52 @@ class AssetCategory(str, Enum):
             AssetCategory.ILLUSTRATION: "Illustration",
             AssetCategory.PHOTO: "Photo",
             AssetCategory.BACKGROUND: "Background",
-            AssetCategory.TEMPLATE: "Template",
-            AssetCategory.FONT: "Font",
             AssetCategory.STICKER: "Sticker",
             AssetCategory.ICON: "Icon",
             AssetCategory.PATTERN: "Pattern",
             AssetCategory.ELEMENT: "Element",
+            AssetCategory.EMOJI: "Emoji",
+            AssetCategory.FRAME: "Frame",
+            AssetCategory.CHARACTER: "Character",
+            AssetCategory.SCENE: "Scene",
+            AssetCategory.FONT: "Font",
+            AssetCategory.TEMPLATE: "Template",
+            AssetCategory.MINI_BOOK: "Mini Book",
+            AssetCategory.WORKSHEET: "Worksheet",
+            AssetCategory.FLASHCARD: "Flashcard",
         }
-        return names.get(self, self.value)
+        return names.get(self, self.value.replace("_", " ").title())
+
+    @property
+    def is_project_category(self) -> bool:
+        """Check if this category is for projects."""
+        return self in (
+            AssetCategory.TEMPLATE,
+            AssetCategory.MINI_BOOK,
+            AssetCategory.WORKSHEET,
+            AssetCategory.FLASHCARD,
+        )
+
+
+class ListingSource(str, Enum):
+    """
+    Listing source - where the asset comes from.
+    """
+    SYSTEM = "system"      # Built-in system assets
+    USER = "user"          # User-uploaded assets
+    AI = "ai"              # AI-generated assets
+    COMMUNITY = "community"  # Community-shared assets
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable source name."""
+        names = {
+            ListingSource.SYSTEM: "System",
+            ListingSource.USER: "User Upload",
+            ListingSource.AI: "AI Generated",
+            ListingSource.COMMUNITY: "Community",
+        }
+        return names.get(self, self.value.title())
 
 
 class PriceType(str, Enum):

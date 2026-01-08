@@ -17,7 +17,9 @@ share and sell their creations.
 from .value_objects import (
     ListingId,
     ListingStatus,
+    ResourceType,
     AssetCategory,
+    ListingSource,
     PriceType,
     ListingMetadata,
     ListingSortOrder,
@@ -37,7 +39,9 @@ __all__ = [
     # Value Objects
     'ListingId',
     'ListingStatus',
+    'ResourceType',
     'AssetCategory',
+    'ListingSource',
     'PriceType',
     'ListingMetadata',
     'ListingSortOrder',

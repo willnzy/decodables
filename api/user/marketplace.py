@@ -47,12 +47,23 @@ router = APIRouter(prefix="/marketplace", tags=["user-marketplace-v2"])
 # ==========================================
 
 class ListingCreateRequest(BaseModel):
-    """Request to create a listing."""
+    """
+    Request to create a listing.
+
+    Two-level classification:
+    - resource_type: "asset" or "project" (top-level)
+    - category: specific content type (second-level, optional)
+      - For assets: clipart, sticker, background, icon, etc.
+      - For projects: template, mini_book, worksheet, flashcard
+    - source: where the asset comes from (system, user, ai, community)
+    """
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     thumbnail_url: Optional[str] = None
     resource_url: Optional[str] = None
     resource_type: str = Field(..., pattern="^(asset|project)$")
+    category: Optional[str] = None  # If not provided, defaults based on resource_type
+    source: str = Field("user", pattern="^(system|user|ai|community)$")
     resource_id: Optional[str] = None
     price_credits: int = Field(0, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
@@ -86,6 +97,8 @@ class ListingResponse(BaseModel):
     description: Optional[str] = None
     thumbnail_url: Optional[str] = None
     resource_type: str
+    category: Optional[str] = None  # Specific content type
+    source: str = "user"  # system, user, ai, community
     price_credits: int = 0
     allowed_tiers: List[str] = ["free"]
     moderation_status: str = "draft"
@@ -243,27 +256,29 @@ async def create_listing(
         if req.price_credits > 0:
             raise HTTPException(403, "Starter users can only publish free assets")
 
-    # CreateListingCommand expects: seller_id, category, title, description,
-    # price_type, credit_price, tags, preview_url, seller_tier
-    # API provides: title, description, thumbnail_url, resource_url, resource_type,
-    # resource_id, price_credits, allowed_tiers, version, changelog
-
-    # Map resource_type to category
-    category = req.resource_type if req.resource_type else "stickers"
+    # Determine category:
+    # - If provided, use it
+    # - Otherwise, default based on resource_type
+    category = req.category
+    if not category:
+        category = "template" if req.resource_type == "project" else "element"
 
     # Map price_credits to price_type
     price_type = "free" if req.price_credits == 0 else "credits"
 
     command = CreateListingCommand(
         seller_id=user["id"],
-        category=category,  # Map resource_type to category
+        resource_type=req.resource_type,  # "asset" or "project"
+        category=category,  # Specific content type
         title=req.title,
         description=req.description,
-        price_type=price_type,  # Map based on price_credits
-        credit_price=req.price_credits,  # Map price_credits to credit_price
+        source=req.source,  # "system", "user", "ai", "community"
+        price_type=price_type,
+        credit_price=req.price_credits,
+        allowed_tiers=req.allowed_tiers,
         tags=None,  # API doesn't provide tags yet
-        preview_url=req.thumbnail_url,  # Map thumbnail_url to preview_url
-        seller_tier=user.get("tier", "free"),  # Get from user context
+        preview_url=req.thumbnail_url,
+        seller_tier=user_tier,
     )
 
     result = await handler.handle(command)

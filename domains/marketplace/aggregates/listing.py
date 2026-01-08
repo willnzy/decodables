@@ -15,7 +15,9 @@ from typing import Optional, Dict, Any, List
 from ..value_objects import (
     ListingId,
     ListingStatus,
+    ResourceType,
     AssetCategory,
+    ListingSource,
     PriceType,
     ListingMetadata,
     ListingStats,
@@ -32,13 +34,18 @@ class Listing:
     - Pricing and availability
     - Statistics and engagement
     - Review status
+    - Two-level classification (resource_type + category)
+    - Access control (allowed_tiers)
     """
     listing_id: str
     seller_id: str
-    category: AssetCategory
+    resource_type: ResourceType  # Top-level: asset or project
+    category: AssetCategory  # Second-level: specific content type
     metadata: ListingMetadata
+    source: ListingSource = ListingSource.USER
     price_type: PriceType = PriceType.FREE
     credit_price: int = 0
+    allowed_tiers: List[str] = field(default_factory=lambda: ["free", "starter", "pro"])
     status: ListingStatus = ListingStatus.DRAFT
     stats: ListingStats = field(default_factory=ListingStats)
     is_featured: bool = False
@@ -51,22 +58,28 @@ class Listing:
     def create_new(
         cls,
         seller_id: str,
+        resource_type: ResourceType,
         category: AssetCategory,
         title: str,
         description: Optional[str] = None,
+        source: ListingSource = ListingSource.USER,
         price_type: PriceType = PriceType.FREE,
-        credit_price: int = 0
+        credit_price: int = 0,
+        allowed_tiers: Optional[List[str]] = None,
     ) -> "Listing":
         """
         Factory method to create a new listing.
 
         Args:
             seller_id: User ID of seller
-            category: Asset category
+            resource_type: Resource type (asset or project)
+            category: Asset category (specific content type)
             title: Listing title
             description: Optional description
+            source: Asset source (system, user, ai, community)
             price_type: Pricing model
             credit_price: Price in credits (if applicable)
+            allowed_tiers: List of tiers that can access this listing
 
         Returns:
             New Listing instance
@@ -76,10 +89,13 @@ class Listing:
         return cls(
             listing_id=str(listing_id),
             seller_id=seller_id,
+            resource_type=resource_type,
             category=category,
             metadata=ListingMetadata(title=title, description=description),
+            source=source,
             price_type=price_type,
             credit_price=credit_price if price_type == PriceType.CREDITS else 0,
+            allowed_tiers=allowed_tiers or ["free", "starter", "pro"],
             status=ListingStatus.DRAFT,
         )
 
@@ -124,12 +140,19 @@ class Listing:
         Returns:
             True if user can access
         """
+        # Seller can always access
         if self.seller_id == user_id:
             return True
+        # Must be published
         if not self.is_published:
             return False
+        # Check tier restriction
+        if user_tier not in self.allowed_tiers:
+            return False
+        # Free listings are accessible to allowed tiers
         if self.is_free:
             return True
+        # Premium requires paid subscription
         if self.requires_premium and user_tier in ("starter", "pro"):
             return True
         return False
@@ -232,8 +255,12 @@ class Listing:
         return {
             "listing_id": self.listing_id,
             "seller_id": self.seller_id,
+            "resource_type": self.resource_type.value,
+            "resource_type_display": self.resource_type.display_name,
             "category": self.category.value,
             "category_display": self.category.display_name,
+            "source": self.source.value,
+            "source_display": self.source.display_name,
             "title": self.metadata.title,
             "description": self.metadata.description,
             "tags": self.metadata.tags,
@@ -242,6 +269,7 @@ class Listing:
             "price_type": self.price_type.value,
             "credit_price": self.credit_price,
             "is_free": self.is_free,
+            "allowed_tiers": self.allowed_tiers,
             "status": self.status.value,
             "is_featured": self.is_featured,
             "stats": self.stats.to_dict(),

@@ -121,6 +121,9 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
   thumbnail_url TEXT NOT NULL,
   resource_url TEXT NOT NULL,
   resource_type TEXT NOT NULL,
+  -- v3.26: Two-level classification
+  category TEXT DEFAULT 'element',
+  source TEXT DEFAULT 'user',
   resource_id UUID,
   price_credits INT NOT NULL DEFAULT 0,
   allowed_tiers TEXT[] NOT NULL DEFAULT '{free, starter, pro}',
