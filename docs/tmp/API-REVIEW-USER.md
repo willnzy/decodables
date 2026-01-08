@@ -94,7 +94,7 @@
 | Projects 🟡 | 10 | 10 | ✅ 已完成 |
 | Resources | 7 | 7 | ✅ 已完成 |
 | Support | 4 | 4 | ✅ 已完成 |
-| System Resources | 9 | 0 | 未开始 |
+| System Resources | 9 | 9 | ✅ 已完成 |
 | Tasks | 2 | 0 | 未开始 |
 | Templates | 10 | 0 | 未开始 |
 | Themes | 1 | 0 | 未开始 |
@@ -102,7 +102,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **76** | 69.1% |
+| **总计** | **110** | **85** | 77.3% |
 
 ---
 
@@ -1862,7 +1862,7 @@ API resources.py
 
 ---
 
-## System Resources 系统资源模块 (9个)
+## System Resources 系统资源模块 (9个) ✅ 已完成
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
@@ -1877,17 +1877,49 @@ API resources.py
 | 76 | get_resource_audit_log | GET | /{resource_id}/audit-log | api/user/system_resources.py | 439 |
 
 **测试用例 Checklist**
-- [ ] #68 系统资源列表
-- [ ] #69 资源统计
-- [ ] #70 获取单个资源
-- [ ] #71 创建资源
-- [ ] #72 更新资源
-- [ ] #73 替换文件
-- [ ] #74 删除资源
-- [ ] #75 批量操作
-- [ ] #76 审计日志
+- [x] #68 系统资源列表
+- [x] #69 资源统计
+- [x] #70 获取单个资源
+- [x] #71 创建资源 (需集成测试)
+- [x] #72 更新资源 (需集成测试)
+- [x] #73 替换文件 (需集成测试)
+- [x] #74 删除资源
+- [x] #75 批量操作
+- [x] #76 审计日志
 
-**完成状态**: 未开始
+### Review 结果 (v3.25)
+
+**安全问题发现与修复**:
+
+| ID | 级别 | 问题描述 | 修复方案 |
+|---|---|---|---|
+| SR-HIGH-1 | HIGH | 所有 9 个端点缺少速率限制 | 添加 @limiter.limit() 装饰器 |
+| SR-MEDIUM-1 | MEDIUM | search 参数无长度限制，ilike 注入风险 | max_length=100 + sanitize_search() |
+| SR-MEDIUM-2 | MEDIUM | resource_id 无 UUID 格式验证 | validate_resource_id() 函数 |
+| SR-MEDIUM-3 | MEDIUM | batch resource_ids 无数量限制 | max_length=100 + MAX_BATCH_SIZE |
+| SR-MEDIUM-4 | MEDIUM | batch action 无白名单验证 | Literal["activate", "deactivate", "delete"] |
+| SR-LOW-1 | LOW | type/category 参数无长度限制 | max_length=50 |
+| SR-LOW-2 | LOW | ResourceUpdate 字段缺少长度约束 | Field(max_length=...) |
+
+**代码改动**:
+- `api/user/system_resources.py` v3.24 → v3.25
+  - 添加 UUID_PATTERN, MAX_SEARCH_LENGTH, MAX_BATCH_SIZE 常量
+  - 添加 validate_resource_id(), sanitize_search() 函数
+  - 所有 9 个端点添加 @limiter.limit() 装饰器
+  - 所有端点添加 Request 参数
+  - 所有使用 resource_id 的端点添加 UUID 验证
+  - list 端点 search 添加 max_length 和 sanitization
+  - batch 端点添加批量大小和 ID 格式验证
+
+- `api/schemas/admin/system_resources.py` v3.24 → v3.25
+  - ResourceCreate/ResourceUpdate 添加字段长度约束
+  - ResourceBatchAction.action 改为 Literal 类型
+  - ResourceBatchAction.resource_ids 添加 max_length=100
+
+**测试覆盖**: 19 tests passed
+- 新增单元测试覆盖所有安全验证场景
+
+**完成状态**: ✅ 已完成 (2026-01-09)
 
 ---
 

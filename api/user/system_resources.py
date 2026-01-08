@@ -3,7 +3,16 @@ System Resources Management Router
 Admin API for managing system assets (stickers, templates, etc.)
 
 @module api.user.system_resources
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - SR-HIGH-1: Added rate limiting to all endpoints
+  - SR-MEDIUM-1: Added search parameter length limit and sanitization
+  - SR-MEDIUM-2: Added UUID validation for resource_id
+  - SR-MEDIUM-3: Added resource_ids batch limit (max 100)
+  - SR-LOW-1: Added type/category length limits
+  - SR-LOW-2: Added page number limit
 
 Features:
 - CRUD operations for system resources
@@ -13,14 +22,16 @@ Features:
 """
 
 from datetime import datetime, timezone
+import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from typing import List, Optional
 
 from dependencies import require_admin
 from api.schemas.admin.system_resources import ResourceCreate, ResourceUpdate, ResourceBatchAction
 from core.database import get_supabase_client
+from infrastructure.rate_limiter import limiter
 from domains.content.resource_helpers import (
     SYSTEM_ASSETS_BUCKET,
     ALLOWED_TYPES,
@@ -36,26 +47,59 @@ router = APIRouter(prefix="/system-resources", tags=["system-resources-v2"])
 
 
 # =====================================================
+# Constants (v3.25)
+# =====================================================
+
+# v3.25: SR-MEDIUM-2 - UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+# v3.25: SR-MEDIUM-1 - Max search query length
+MAX_SEARCH_LENGTH = 100
+
+# v3.25: SR-MEDIUM-3 - Max batch size
+MAX_BATCH_SIZE = 100
+
+
+def validate_resource_id(resource_id: str) -> None:
+    """v3.25: SR-MEDIUM-2 - Validate resource_id is UUID format."""
+    if not UUID_PATTERN.match(resource_id):
+        raise HTTPException(400, "Invalid resource ID format")
+
+
+def sanitize_search(search: str) -> str:
+    """v3.25: SR-MEDIUM-1 - Sanitize search query to prevent injection."""
+    # Remove special PostgreSQL pattern characters
+    return search.replace("%", "").replace("_", "").replace("\\", "")
+
+
+# =====================================================
 # API Endpoints
 # =====================================================
 
 @router.get("")
+@limiter.limit("60/minute")  # v3.25: SR-HIGH-1
 async def list_system_resources(
-    type: Optional[str] = None,
-    category: Optional[str] = None,
+    request: Request,  # v3.25: Required for rate limiter
+    type: Optional[str] = Query(None, max_length=50),  # v3.25: SR-LOW-1
+    category: Optional[str] = Query(None, max_length=50),  # v3.25: SR-LOW-1
     is_active: Optional[bool] = None,
-    search: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    search: Optional[str] = Query(None, max_length=MAX_SEARCH_LENGTH),  # v3.25: SR-MEDIUM-1
+    page: int = Query(1, ge=1, le=1000),  # v3.25: SR-LOW-2
     limit: int = Query(50, ge=1, le=200),
     admin: dict = Depends(require_admin)
 ):
     """
     List all system resources (Admin view - includes inactive)
+
+    v3.25: Added rate limiting and parameter validation.
     """
     offset = (page - 1) * limit
-    
+
     query = supabase.table("system_resources").select("*", count="exact")
-    
+
     if type:
         query = query.eq("type", type)
     if category:
@@ -63,13 +107,16 @@ async def list_system_resources(
     if is_active is not None:
         query = query.eq("is_active", is_active)
     if search:
-        query = query.or_(f"name.ilike.%{search}%,description.ilike.%{search}%")
-    
+        # v3.25: SR-MEDIUM-1 - Sanitize search to prevent injection
+        safe_search = sanitize_search(search)
+        if safe_search:
+            query = query.or_(f"name.ilike.%{safe_search}%,description.ilike.%{safe_search}%")
+
     query = query.order("sort_order", desc=False).order("created_at", desc=True)
     query = query.range(offset, offset + limit - 1)
-    
+
     result = query.execute()
-    
+
     return {
         "items": result.data or [],
         "total": result.count or 0,
@@ -80,9 +127,12 @@ async def list_system_resources(
 
 
 @router.get("/stats")
-async def get_resource_stats(admin: dict = Depends(require_admin)):
+@limiter.limit("30/minute")  # v3.25: SR-HIGH-1
+async def get_resource_stats(request: Request, admin: dict = Depends(require_admin)):
     """
     Get statistics about system resources
+
+    v3.25: Added rate limiting.
     """
     # Count active vs inactive
     active_count = supabase.table("system_resources")\
@@ -120,10 +170,16 @@ async def get_resource_stats(admin: dict = Depends(require_admin)):
 
 
 @router.get("/{resource_id}")
-async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
+@limiter.limit("60/minute")  # v3.25: SR-HIGH-1
+async def get_resource(request: Request, resource_id: str, admin: dict = Depends(require_admin)):
     """
     Get a single system resource by ID
+
+    v3.25: Added rate limiting and UUID validation.
     """
+    # v3.25: SR-MEDIUM-2 - Validate resource_id format
+    validate_resource_id(resource_id)
+
     result = supabase.table("system_resources")\
         .select("*")\
         .eq("id", resource_id)\
@@ -137,7 +193,9 @@ async def get_resource(resource_id: str, admin: dict = Depends(require_admin)):
 
 
 @router.post("")
+@limiter.limit("30/minute")  # v3.25: SR-HIGH-1
 async def create_resource(
+    request: Request,  # v3.25: Required for rate limiter
     file: UploadFile = File(...),
     type: str = Form(...),
     category: Optional[str] = Form(None),
@@ -150,6 +208,8 @@ async def create_resource(
 ):
     """
     Create a new system resource with file upload
+
+    v3.25: Added rate limiting.
     """
     # Validate type
     if type not in ALLOWED_TYPES:
@@ -226,14 +286,21 @@ async def create_resource(
 
 
 @router.patch("/{resource_id}")
+@limiter.limit("30/minute")  # v3.25: SR-HIGH-1
 async def update_resource(
+    request: Request,  # v3.25: Required for rate limiter
     resource_id: str,
     updates: ResourceUpdate,
     admin: dict = Depends(require_admin)
 ):
     """
     Update a system resource metadata (not the file)
+
+    v3.25: Added rate limiting and UUID validation.
     """
+    # v3.25: SR-MEDIUM-2 - Validate resource_id format
+    validate_resource_id(resource_id)
+
     # Get current data for audit
     current = supabase.table("system_resources")\
         .select("*")\
@@ -269,14 +336,21 @@ async def update_resource(
 
 
 @router.post("/{resource_id}/replace")
+@limiter.limit("10/minute")  # v3.25: SR-HIGH-1 (stricter for file uploads)
 async def replace_resource_file(
+    request: Request,  # v3.25: Required for rate limiter
     resource_id: str,
     file: UploadFile = File(...),
     admin: dict = Depends(require_admin)
 ):
     """
     Replace the file for an existing resource (keeps metadata)
+
+    v3.25: Added rate limiting and UUID validation.
     """
+    # v3.25: SR-MEDIUM-2 - Validate resource_id format
+    validate_resource_id(resource_id)
+
     # Get current resource
     current = supabase.table("system_resources")\
         .select("*")\
@@ -366,17 +440,24 @@ async def replace_resource_file(
 
 
 @router.delete("/{resource_id}")
+@limiter.limit("30/minute")  # v3.25: SR-HIGH-1
 async def delete_resource(
+    request: Request,  # v3.25: Required for rate limiter
     resource_id: str,
     admin: dict = Depends(require_admin)
 ):
     """
     Delete a system resource (soft delete only)
-    
+
     v3.18: Permanent delete is disabled for security.
     Files are only deactivated, not removed from storage.
     Use scheduled cleanup tasks for actual file removal.
+
+    v3.25: Added rate limiting and UUID validation.
     """
+    # v3.25: SR-MEDIUM-2 - Validate resource_id format
+    validate_resource_id(resource_id)
+
     # Get current data
     current = supabase.table("system_resources")\
         .select("*")\
@@ -403,13 +484,26 @@ async def delete_resource(
 
 
 @router.post("/batch")
+@limiter.limit("10/minute")  # v3.25: SR-HIGH-1 (stricter for batch ops)
 async def batch_action(
+    request: Request,  # v3.25: Required for rate limiter
     action: ResourceBatchAction,
     admin: dict = Depends(require_admin)
 ):
     """
     Perform batch actions on multiple resources
+
+    v3.25: Added rate limiting and batch size validation.
     """
+    # v3.25: SR-MEDIUM-3 - Validate batch size
+    if len(action.resource_ids) > MAX_BATCH_SIZE:
+        raise HTTPException(400, f"Batch size exceeds maximum of {MAX_BATCH_SIZE}")
+
+    # v3.25: Validate all resource_ids are UUID format
+    for rid in action.resource_ids:
+        if not UUID_PATTERN.match(rid):
+            raise HTTPException(400, f"Invalid resource ID format: {rid}")
+
     if action.action == "activate":
         supabase.table("system_resources")\
             .update({"is_active": True, "updated_by": admin.get("id")})\
@@ -437,14 +531,21 @@ async def batch_action(
 
 
 @router.get("/{resource_id}/audit-log")
+@limiter.limit("30/minute")  # v3.25: SR-HIGH-1
 async def get_resource_audit_log(
+    request: Request,  # v3.25: Required for rate limiter
     resource_id: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=100),  # v3.25: Reduced max to 100
     admin: dict = Depends(require_admin)
 ):
     """
     Get audit log for a specific resource
+
+    v3.25: Added rate limiting and UUID validation.
     """
+    # v3.25: SR-MEDIUM-2 - Validate resource_id format
+    validate_resource_id(resource_id)
+
     result = supabase.table("system_resource_audit_logs")\
         .select("*")\
         .eq("resource_id", resource_id)\
