@@ -42,23 +42,23 @@ def run_hourly_aggregation():
     
     # Run new metrics ETL (v3.12)
     try:
-        from scheduled_tasks.metrics_etl import run_hourly_etl
+        from application.services.metrics import run_hourly_etl
         run_hourly_etl()
         logger.info(f"[{datetime.now()}] ✅ Metrics ETL (hourly) complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
-    
+
     # Run legacy aggregation for backwards compatibility
     try:
-        from scheduled_tasks.aggregate_stats import run_hourly_tasks
+        from application.services.aggregators import run_hourly_tasks
         run_hourly_tasks()
         logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
-    
+
     # Run A/B experiment aggregation (v3.20)
     try:
-        from scheduled_tasks.experiment_aggregator import run_hourly_experiment_tasks
+        from application.services.experiments import run_hourly_experiment_tasks
         run_hourly_experiment_tasks()
         logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (hourly) complete")
     except Exception as e:
@@ -70,23 +70,23 @@ def run_daily_aggregation():
     
     # Run new metrics ETL (v3.12) - industry-standard SaaS metrics
     try:
-        from scheduled_tasks.metrics_etl import run_daily_etl
+        from application.services.metrics import run_daily_etl
         run_daily_etl()
         logger.info(f"[{datetime.now()}] ✅ Metrics ETL (daily) complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
-    
+
     # Run legacy aggregation for backwards compatibility
     try:
-        from scheduled_tasks.aggregate_stats import run_daily_tasks
+        from application.services.aggregators import run_daily_tasks
         run_daily_tasks()
         logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
-    
+
     # Run A/B experiment daily tasks (v3.20)
     try:
-        from scheduled_tasks.experiment_aggregator import run_daily_experiment_tasks
+        from application.services.experiments import run_daily_experiment_tasks
         run_daily_experiment_tasks()
         logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (daily) complete")
     except Exception as e:
@@ -98,7 +98,7 @@ def run_storage_cleanup():
     logger.info(f"[{datetime.now()}] 🧹 Starting storage cleanup...")
     
     try:
-        from scheduled_tasks.storage_cleanup import run_storage_cleanup as do_cleanup
+        from infrastructure.tasks.storage_cleanup import run_storage_cleanup as do_cleanup
         result = do_cleanup()
         logger.info(f"[{datetime.now()}] ✅ Storage cleanup complete: {result.get('files_deleted', 0)} files deleted, {result.get('space_freed_mb', 0)} MB freed")
     except Exception as e:
