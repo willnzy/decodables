@@ -9,6 +9,37 @@
 
 ## 执行规范
 
+### API Review 标准流程
+
+每个模块 Review 必须按以下步骤执行：
+
+```
+1. Review 接口逻辑
+   - 检查 API 层代码
+   - 追踪完整调用链 (API → Handler → Service → Repository)
+   - 验证参数传递是否正确
+   - 确认返回值类型是否匹配
+
+2. 完善测试用例
+   - 补充缺失的测试场景
+   - 更新 mock 适配新架构
+   - 验证所有测试通过
+
+3. 修复问题
+   - DDD 模式合规 (CQRS, Handler 模式)
+   - 项目规范 (CLAUDE.md 规则)
+   - 代码规范 (参数命名, 返回类型)
+
+4. 同步文档
+   - 更新 API-REVIEW-USER.md
+   - 记录发现的问题和修复内容
+   - 更新进度统计
+
+5. 提交代码
+   - git add + commit + push
+   - Commit message 包含模块名和修复数量
+```
+
 ### DDD 架构一致性规则
 
 在 Review 过程中发现的旧式代码，必须统一迁移到 DDD 风格：
