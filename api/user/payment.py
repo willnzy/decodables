@@ -2,7 +2,11 @@
 Payment API - Payment and checkout endpoints (v2).
 
 @module api.user.payment
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- P-P0-2: Fixed sensitive info leakage in error messages
+- Improved error handling to not expose Stripe internal errors
 
 Endpoints:
 - POST /api/v2/user/payment/checkout - Create checkout session
@@ -88,8 +92,9 @@ async def create_checkout(
     except HTTPException:
         raise
     except Exception as e:
+        # v2.1.0: P-P0-2 fix - don't expose internal error details
         logger.error(f"Checkout error for user {user['id']}: {e}")
-        raise HTTPException(500, f"Failed to create checkout: {str(e)}")
+        raise HTTPException(500, "Failed to create checkout session. Please try again.")
 
 
 @router.post("/portal", response_model=PortalResponse)
@@ -123,5 +128,6 @@ async def get_portal(
     except HTTPException:
         raise
     except Exception as e:
+        # v2.1.0: P-P0-2 fix - don't expose internal error details
         logger.error(f"Portal error for user {user['id']}: {e}")
-        raise HTTPException(500, f"Failed to get portal: {str(e)}")
+        raise HTTPException(500, "Failed to access billing portal. Please try again.")

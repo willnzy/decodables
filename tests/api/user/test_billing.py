@@ -18,7 +18,7 @@ from datetime import datetime
 
 from app import app
 from domains.billing.value_objects import TransactionType
-from dependencies import get_current_user
+from dependencies import get_current_user, require_admin
 
 client = TestClient(app)
 
@@ -38,12 +38,34 @@ def mock_user():
 
 
 @pytest.fixture
+def mock_admin():
+    """Mock authenticated admin user."""
+    return {
+        "id": "admin_123",
+        "email": "admin@example.com",
+        "tier": "pro",
+        "is_admin": True,
+    }
+
+
+@pytest.fixture
 def override_get_current_user(mock_user):
     """Override FastAPI dependency to return mock user."""
     async def _get_current_user():
         return mock_user
 
     app.dependency_overrides[get_current_user] = _get_current_user
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def override_require_admin(mock_admin):
+    """Override FastAPI dependency to return mock admin."""
+    async def _require_admin():
+        return mock_admin
+
+    app.dependency_overrides[require_admin] = _require_admin
     yield
     app.dependency_overrides.clear()
 
@@ -69,14 +91,18 @@ def mock_credits_result():
 @pytest.fixture
 def mock_transaction():
     """Mock transaction entity."""
-    return MagicMock(
+    mock_balance = MagicMock()
+    mock_balance.total = 540
+    tx = MagicMock(
         id="tx_123",
         amount=-10,
-        balance_after=540,
+        balance_after=mock_balance,
         tx_type=TransactionType.GENERATION,
         description="AI image generation",
         created_at=datetime(2026, 1, 8, 12, 0, 0),
+        idempotency_key="idem_123",
     )
+    return tx
 
 
 @pytest.fixture
@@ -944,24 +970,53 @@ class TestDeductCredits:
 # ==========================================
 
 class TestAddCredits:
-    """Tests for POST /api/v2/user/billing/credits/add endpoint."""
+    """Tests for POST /api/v2/user/billing/credits/add endpoint.
+
+    v1.1.0: This endpoint now requires ADMIN permission.
+    """
+
+    def test_add_credits_requires_admin(self, override_get_current_user):
+        """
+        Test: Non-admin user cannot add credits (403/401)
+
+        Given: Regular authenticated user (not admin)
+        When: POST to add credits
+        Then: Returns 401/403 (depending on require_admin impl)
+
+        Business Logic Verified:
+        - /credits/add endpoint requires admin permission
+        """
+        # Act - regular user tries to add credits
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "user_id": "target_user_123",
+                "amount": 100,
+                "credit_type": "permanent",
+                "reason": "Test",
+            },
+        )
+
+        # Assert - should be rejected (401 or 403)
+        assert response.status_code in [401, 403]
 
     @patch('api.user.billing.get_container')
-    def test_add_credits_success(
+    def test_add_credits_success_admin(
         self,
         mock_get_container,
         mock_add_result,
-        override_get_current_user,
+        override_require_admin,
     ):
         """
-        Test: Add credits successfully
+        Test: Admin can add credits successfully
 
-        Given: Admin/internal request
-        When: POST to add 100 permanent credits
+        Given: Admin user
+        When: POST to add 100 permanent credits to target user
         Then: Returns 200 with new balance
 
         Business Logic Verified:
-        - Handler called with correct user_id, amount, and credit_type
+        - Admin can add credits to any user
+        - Handler called with target user_id from request
         - Returns updated balance after addition
         """
         # Arrange
@@ -975,6 +1030,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Promotion reward",
@@ -987,17 +1043,18 @@ class TestAddCredits:
         assert data["success"] is True
         assert data["amount_added"] == 100
         assert data["new_balance"] == 650
+        assert data["target_user_id"] == "target_user_123"
 
-        # Verify handler was called with correct command
+        # Verify handler was called with correct command (target user, not admin)
         mock_handler.handle.assert_called_once()
         call_args = mock_handler.handle.call_args[0][0]
-        assert call_args.user_id == "user_123"
+        assert call_args.user_id == "target_user_123"  # Target user, not admin
         assert call_args.amount == 100
         # API converts credit_type to bucket enum
         from domains.billing.value_objects import CreditBucket
         assert call_args.bucket == CreditBucket.PERMANENT
 
-    def test_add_credits_invalid_type(self, override_get_current_user):
+    def test_add_credits_invalid_type(self, override_require_admin):
         """
         Test: Invalid credit type (422 Validation Error)
 
@@ -1012,6 +1069,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 100,
                 "credit_type": "invalid",
                 "reason": "Test",
@@ -1025,12 +1083,12 @@ class TestAddCredits:
     def test_add_credits_monthly(
         self,
         mock_get_container,
-        override_get_current_user,
+        override_require_admin,
     ):
         """
         Test: Add monthly credits
 
-        Given: Request to add monthly credits
+        Given: Admin request to add monthly credits
         When: POST with credit_type="monthly"
         Then: Handler receives CreditBucket.MONTHLY and SUB_GRANT tx_type
 
@@ -1055,6 +1113,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 500,
                 "credit_type": "monthly",
                 "reason": "Subscription renewal",
@@ -1074,7 +1133,7 @@ class TestAddCredits:
         assert call_args.bucket == CreditBucket.MONTHLY
         assert call_args.tx_type == TransactionType.SUB_GRANT
 
-    def test_add_credits_exceeds_max(self, override_get_current_user):
+    def test_add_credits_exceeds_max(self, override_require_admin):
         """
         Test: Amount exceeds max validation (422)
 
@@ -1089,6 +1148,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 10001,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1098,7 +1158,7 @@ class TestAddCredits:
         # Assert
         assert response.status_code == 422
 
-    def test_add_credits_missing_reason(self, override_get_current_user):
+    def test_add_credits_missing_reason(self, override_require_admin):
         """
         Test: Missing reason field (422)
 
@@ -1113,8 +1173,33 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 100,
                 "credit_type": "permanent",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 422
+
+    def test_add_credits_missing_user_id(self, override_require_admin):
+        """
+        Test: Missing user_id field (422)
+
+        Given: No user_id field
+        When: POST without user_id
+        Then: Returns 422 Validation Error
+
+        Business Logic Verified:
+        - Target user_id is required for admin to add credits
+        """
+        # Act
+        response = client.post(
+            "/api/v2/user/billing/credits/add",
+            json={
+                "amount": 100,
+                "credit_type": "permanent",
+                "reason": "Test",
             },
         )
 
@@ -1125,7 +1210,7 @@ class TestAddCredits:
     def test_add_credits_handler_failure(
         self,
         mock_get_container,
-        override_get_current_user,
+        override_require_admin,
     ):
         """
         Test: Add credits handler fails (400)
@@ -1151,6 +1236,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
+                "user_id": "target_user_123",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",

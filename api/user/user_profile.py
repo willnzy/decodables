@@ -2,7 +2,11 @@
 User Profile API - User profile and account endpoints (v2).
 
 @module api.user.user_profile
-@version 2.0.0
+@version 2.1.0
+
+Changes in v2.1.0:
+- UP-P0-1: Fixed repository method name mismatch (mark_notification_read → mark_as_read)
+- UP-P0-3: Changed history endpoint from page/limit to offset/limit (DDD compliance)
 
 Endpoints:
 - GET /api/v2/user/profile/me - Get current user
@@ -81,15 +85,17 @@ async def get_me(user: dict = Depends(get_current_user)):
 
 @router.get("/history")
 async def get_history(
-    page: int = 1,
+    offset: int = 0,  # v2.1.0: UP-P0-3 fix - use offset/limit per DDD standards
     limit: int = 20,
     user: dict = Depends(get_current_user)
 ):
     """Get credit history."""
     db = get_database_client()
     credit_repo = SupabaseCreditRepository(db)
+    # Convert offset/limit to page format for existing repository method
+    page = (offset // limit) + 1
     result = await credit_repo.get_credit_history(user["id"], page, limit)
-    return {"items": result["items"], "total": result["total"], "page": page}
+    return {"items": result["items"], "total": result["total"], "offset": offset, "limit": limit}
 
 
 @router.get("/purchases")
@@ -113,7 +119,8 @@ async def mark_read(id: str, user: dict = Depends(get_current_user)):
     """Mark a notification as read."""
     db = get_database_client()
     notif_repo = SupabaseNotificationRepository(db)
-    result = await notif_repo.mark_notification_read(id, user["id"])
+    # v2.1.0: UP-P0-1 fix - use correct method name from repository
+    result = await notif_repo.mark_as_read(id, user["id"])
     if not result:
         raise HTTPException(404, "Notification not found")
     return {"status": "ok"}
@@ -124,7 +131,8 @@ async def mark_all_read(user: dict = Depends(get_current_user)):
     """Mark all notifications as read."""
     db = get_database_client()
     notif_repo = SupabaseNotificationRepository(db)
-    await notif_repo.mark_all_notifications_read(user["id"])
+    # v2.1.0: UP-P0-1 fix - use correct method name from repository
+    await notif_repo.mark_all_as_read(user["id"])
     return {"status": "ok"}
 
 

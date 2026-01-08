@@ -315,7 +315,9 @@ class TestGenImages:
 
         # Assert
         assert response.status_code == 402
-        assert "Insufficient" in response.json().get("detail", "")
+        data = response.json()
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "Insufficient" in error_msg or "insufficient" in error_msg.lower()
 
     @patch('api.user.generation_images.track_ai_generation')
     @patch('api.user.generation_images.get_supabase_client')
@@ -401,7 +403,10 @@ class TestGenImages:
 
         # Assert
         assert response.status_code == 400
-        assert "Safety" in response.json().get("detail", "")
+        data = response.json()
+        # Response may use 'detail' or 'message' depending on error handler
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "Safety" in error_msg
 
     def test_gen_images_unauthorized(self):
         """
@@ -501,10 +506,16 @@ class TestGenImages:
         # Arrange
         mock_get_config.return_value = 5
 
+        # Create exception that tracks the amount being charged
+        charged_amount = None
+        def capture_deduct(*args, **kwargs):
+            nonlocal charged_amount
+            charged_amount = kwargs.get("amount")
+            exc = InsufficientCreditsException(required=charged_amount, available=0)
+            raise exc
+
         mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(
-            side_effect=InsufficientCreditsException(required=20, available=0)
-        )
+        mock_billing.deduct_credits = AsyncMock(side_effect=capture_deduct)
         mock_container.return_value.billing_service = mock_billing
 
         # Act
@@ -514,8 +525,7 @@ class TestGenImages:
         )
 
         # Should calculate cost for 4 images (clamped from 10)
-        call_kwargs = mock_billing.deduct_credits.call_args.kwargs
-        assert call_kwargs["amount"] == 20  # 5 * 4 (clamped)
+        assert charged_amount == 20  # 5 * 4 (clamped)
 
     @patch('api.user.generation_images.get_supabase_client')
     @patch('api.user.generation_images.SupabaseAssetRepository')
@@ -566,7 +576,9 @@ class TestGenImages:
 
         # Assert
         assert response.status_code == 500
-        assert "refunded" in response.json().get("detail", "").lower()
+        data = response.json()
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "refunded" in error_msg.lower()
 
         # Verify refund was called via BillingService
         mock_billing.add_credits.assert_called_once()
@@ -622,7 +634,9 @@ class TestGenImages:
 
         # Assert
         assert response.status_code == 500
-        assert "refunded" in response.json().get("detail", "").lower()
+        data = response.json()
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "refunded" in error_msg.lower()
 
         # Verify refund was called
         mock_billing.add_credits.assert_called_once()
@@ -783,7 +797,9 @@ class TestGenImagesAsync:
 
         # Assert
         assert response.status_code == 503
-        assert "refunded" in response.json().get("detail", "").lower()
+        data = response.json()
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "refunded" in error_msg.lower()
 
         # Verify refund via BillingService
         mock_billing.add_credits.assert_called_once()

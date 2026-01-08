@@ -2,14 +2,19 @@
 Billing API - Credit management endpoints using DDD handlers.
 
 @module api.user.billing
-@version 1.0.0
+@version 1.1.0
+
+Changes in v1.1.0:
+- B-P0-1: /credits/add now requires admin permission
+- B-P0-2: Fixed CreditTransaction.id field issue (use tx.created_at as fallback)
+- B-H4: Removed balance exposure from error messages
 
 Endpoints:
 - GET /api/v2/user/billing/credits - Get user credits
 - GET /api/v2/user/billing/transactions - Get transaction history
 - GET /api/v2/user/billing/can-afford - Check if user can afford operation
 - POST /api/v2/user/billing/credits/deduct - Deduct credits (internal)
-- POST /api/v2/user/billing/credits/add - Add credits (internal)
+- POST /api/v2/user/billing/credits/add - Add credits (admin only)
 """
 
 import logging
@@ -19,7 +24,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from dependencies import get_current_user
+from dependencies import get_current_user, require_admin
 from container import get_container
 
 from application.queries.billing import (
@@ -84,7 +89,8 @@ class DeductCreditsRequest(BaseModel):
 
 
 class AddCreditsRequest(BaseModel):
-    """Request to add credits."""
+    """Request to add credits (admin only)."""
+    user_id: str = Field(..., description="Target user ID to add credits to")
     amount: int = Field(..., gt=0, le=10000)
     credit_type: str = Field(..., pattern="^(monthly|permanent)$")
     reason: str = Field(..., min_length=1, max_length=100)
@@ -157,12 +163,13 @@ async def get_transactions(
     if not result.success:
         raise HTTPException(500, result.error or "Failed to get transactions")
 
+    # v1.1.0: B-P0-2 fix - use idempotency_key or created_at as fallback for id
     return TransactionHistoryResponse(
         transactions=[
             {
-                "id": tx.id,
+                "id": getattr(tx, 'id', None) or tx.idempotency_key or str(tx.created_at.timestamp()),
                 "amount": tx.amount,
-                "balance_after": tx.balance_after,
+                "balance_after": tx.balance_after.total if tx.balance_after else 0,
                 "tx_type": tx.tx_type.value,
                 "description": tx.description,
                 "created_at": tx.created_at,
@@ -266,43 +273,45 @@ async def deduct_credits(
 @router.post("/credits/add")
 async def add_credits(
     req: AddCreditsRequest,
-    user: dict = Depends(get_current_user),
+    admin: dict = Depends(require_admin),  # v1.1.0: B-P0-1 fix - require admin
 ):
     """
     Add credits to user account.
 
-    Note: This endpoint requires elevated permissions in production.
-    Currently available for testing purposes.
+    Note: This endpoint requires ADMIN permissions.
+    Only administrators can add credits to user accounts.
 
     Args:
-        req: Add credits request with amount and type
+        req: Add credits request with target user_id, amount and type
 
     Returns:
         Updated credit balance
     """
-    # TODO: Add admin/internal authorization check
     container = get_container()
     handler = container.add_credits_handler
 
     # Map credit_type to CreditBucket and TransactionType
     from domains.billing.value_objects import CreditBucket, TransactionType
     bucket = CreditBucket.MONTHLY if req.credit_type == "monthly" else CreditBucket.PERMANENT
-    tx_type = TransactionType.SUB_GRANT if req.credit_type == "monthly" else TransactionType.TOPUP_PURCHASE
+    tx_type = TransactionType.SUB_GRANT if req.credit_type == "monthly" else TransactionType.ADMIN_GRANT
 
     command = AddCreditsCommand(
-        user_id=user["id"],
+        user_id=req.user_id,  # v1.1.0: Target user from request, not current user
         amount=req.amount,
         bucket=bucket,
         tx_type=tx_type,
-        description=req.reason,
+        description=f"[Admin: {admin['id'][:8]}] {req.reason}",
     )
     result = await handler.handle(command)
 
     if not result.success:
         raise HTTPException(400, result.error or "Failed to add credits")
 
+    logger.info(f"[Admin] {admin['id']} added {req.amount} {req.credit_type} credits to {req.user_id}: {req.reason}")
+
     return {
         "success": True,
+        "target_user_id": req.user_id,
         "amount_added": result.transaction.amount if result.transaction else 0,
         "new_balance": result.new_balance,
     }

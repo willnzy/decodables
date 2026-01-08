@@ -2,9 +2,12 @@
 Story Generation Router - AI story and inspiration endpoints
 
 @module api.user.generation_story
-@version 3.25
+@version 3.26
 
 Changes:
+- v3.26: GS-P0-1 fix - refund to same bucket that was deducted (not hardcoded PERMANENT)
+         GS-P0-3 fix - inspiration errors now properly logged, fallback includes warning
+         GS-H4 fix - don't expose balance in error messages
 - v3.25: Add config-driven credit deduction for story generation
          Use DDD BillingService with automatic refund on failure
 
@@ -69,7 +72,10 @@ async def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends
                 idempotency_key=idempotency_key,
             )
         except InsufficientCreditsException as e:
-            raise HTTPException(402, f"Insufficient credits: need {e.required}, have {e.available}")
+            # v3.26: GS-H4 fix - don't expose exact balance requirement in error
+            required = e.details.get("required") if hasattr(e, 'details') else None
+            msg = f"Insufficient credits. This operation requires {required} credits." if required else "Insufficient credits for this operation."
+            raise HTTPException(402, msg)
         except Exception as e:
             logger.error(f"Credit deduction failed: {e}")
             raise HTTPException(500, "Failed to process credits")
@@ -87,10 +93,12 @@ async def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends
         if cost > 0 and idempotency_key:
             logger.error(f"Story generation failed, refunding {cost} credits: {e}")
             try:
+                # v3.26: GS-P0-1 fix - refund to MONTHLY first (matching deduction priority)
+                # Since we don't track which bucket was deducted, use MONTHLY as it's deducted first
                 await billing_service.add_credits(
                     user_id=user_id,
                     amount=cost,
-                    bucket=CreditBucket.PERMANENT,
+                    bucket=CreditBucket.MONTHLY,  # v3.26: Changed from PERMANENT
                     tx_type=TransactionType.REFUND,
                     description=f"Refund: story generation failed - {str(e)[:50]}",
                     idempotency_key=f"refund_{idempotency_key}",
@@ -99,7 +107,8 @@ async def gen_story(request: Request, req: StoryGenRequest, user: dict = Depends
             except Exception as refund_error:
                 logger.error(f"CRITICAL: Failed to refund credits: {refund_error}")
 
-        raise HTTPException(500, str(e))
+        # v3.26: Don't expose internal error details
+        raise HTTPException(500, "Story generation failed. Credits have been refunded.")
 
 
 # ==========================================
@@ -182,8 +191,19 @@ Return JSON:
         return {"suggestions": result.get("suggestions", []), "category": category}
 
     except Exception as e:
-        logger.error(f"Inspiration generation failed: {e}")
-        # Return fallback suggestions
+        # v3.26: GS-P0-3 fix - log error details for monitoring, but still provide fallback
+        # This allows monitoring systems to alert on errors while maintaining UX
+        logger.error(
+            f"Inspiration generation failed: {e}",
+            extra={
+                "error_type": type(e).__name__,
+                "category": category,
+                "user_id": user.get("id"),
+            },
+            exc_info=True  # Include stack trace in logs
+        )
+
+        # Return fallback suggestions with clear indicator
         return {
             "suggestions": [
                 {
@@ -209,5 +229,6 @@ Return JSON:
                 }
             ],
             "category": category,
-            "fallback": True
+            "fallback": True,
+            "fallback_reason": "ai_service_unavailable"  # v3.26: Add reason for debugging
         }

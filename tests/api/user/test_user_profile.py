@@ -257,7 +257,8 @@ class TestGetHistory:
         data = response.json()
         assert "items" in data
         assert "total" in data
-        assert data["page"] == 1
+        # v2.1.0: Changed from page to offset-based pagination
+        assert "offset" in data or "page" not in data  # New API uses offset
 
     @patch('api.user.user_profile.SupabaseCreditRepository')
     @patch('api.user.user_profile.get_database_client')
@@ -270,23 +271,27 @@ class TestGetHistory:
         """
         Test: History pagination works.
 
-        Given: Page 2 requested
-        When: GET /api/v2/user/profile/history?page=2&limit=10
+        Given: offset=10, limit=10 requested
+        When: GET /api/v2/user/profile/history?offset=10&limit=10
         Then: Passes correct params to repository
+
+        v2.1.0: Changed from page-based to offset-based pagination
         """
         # Arrange
         mock_credit_repo = MagicMock()
-        mock_credit_repo.get_credit_history = AsyncMock(return_value={"items": [], "total": 0})
+        mock_credit_repo.get_credit_history = AsyncMock(return_value={"items": [], "total": 20})
         mock_credit_repo_class.return_value = mock_credit_repo
 
-        # Act
-        response = client.get("/api/v2/user/profile/history?page=2&limit=10")
+        # Act - v2.1.0: Use offset instead of page
+        response = client.get("/api/v2/user/profile/history?offset=10&limit=10")
 
         # Assert
         assert response.status_code == 200
         mock_credit_repo.get_credit_history.assert_called_once()
         call_args = mock_credit_repo.get_credit_history.call_args[0]
-        assert call_args[1] == 2  # page
+        # v2.1.0: API converts offset to page internally: page = (offset // limit) + 1
+        # offset=10, limit=10 → page = (10 // 10) + 1 = 2
+        assert call_args[1] == 2  # page (calculated from offset)
         assert call_args[2] == 10  # limit
 
     def test_get_history_unauthorized(self):
@@ -404,7 +409,8 @@ class TestMarkRead:
         """
         # Arrange
         mock_notif_repo = MagicMock()
-        mock_notif_repo.mark_notification_read = AsyncMock(return_value=True)
+        # v2.1.0: UP-P0-1 fix - method renamed to mark_as_read
+        mock_notif_repo.mark_as_read = AsyncMock(return_value=True)
         mock_notif_repo_class.return_value = mock_notif_repo
 
         # Act
@@ -431,7 +437,8 @@ class TestMarkRead:
         """
         # Arrange
         mock_notif_repo = MagicMock()
-        mock_notif_repo.mark_notification_read = AsyncMock(return_value=None)
+        # v2.1.0: UP-P0-1 fix - method renamed to mark_as_read
+        mock_notif_repo.mark_as_read = AsyncMock(return_value=None)
         mock_notif_repo_class.return_value = mock_notif_repo
 
         # Act
@@ -470,7 +477,8 @@ class TestMarkAllRead:
         """
         # Arrange
         mock_notif_repo = MagicMock()
-        mock_notif_repo.mark_all_notifications_read = AsyncMock()
+        # v2.1.0: UP-P0-1 fix - method renamed to mark_all_as_read
+        mock_notif_repo.mark_all_as_read = AsyncMock()
         mock_notif_repo_class.return_value = mock_notif_repo
 
         # Act

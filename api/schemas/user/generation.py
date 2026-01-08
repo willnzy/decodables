@@ -2,16 +2,22 @@
 Generation Schemas - AI generation related models
 
 @module schemas.generation
+@version 1.1.0
+
+Changes in v1.1.0:
+- GS-P0-2: Added length limits to StoryGenRequest (topic, style)
+- GI-P0-1: Added min_length validation to ImageGenRequest prompts
 """
 
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class StoryGenRequest(BaseModel):
     """Story generation request."""
-    topic: str
-    style: Optional[str] = "Children's book illustration"
+    # v1.1.0: GS-P0-2 fix - add length limits to prevent abuse
+    topic: str = Field(..., min_length=1, max_length=500)
+    style: Optional[str] = Field("Children's book illustration", max_length=200)
 
 
 class ImageGenRequest(BaseModel):

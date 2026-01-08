@@ -261,7 +261,9 @@ class TestGenStory:
 
         # Assert
         assert response.status_code == 402
-        assert "Insufficient" in response.json().get("detail", "")
+        data = response.json()
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "Insufficient" in error_msg
 
     @patch('api.user.generation_story.generate_story_json')
     @patch('api.user.generation_story.get_text_generation_cost')
@@ -309,7 +311,8 @@ class TestGenStory:
         refund_kwargs = mock_billing.add_credits.call_args.kwargs
         assert refund_kwargs["amount"] == 1
         assert refund_kwargs["tx_type"] == TransactionType.REFUND
-        assert refund_kwargs["bucket"] == CreditBucket.PERMANENT
+        # v3.26: Refund to MONTHLY bucket (matching deduction priority)
+        assert refund_kwargs["bucket"] == CreditBucket.MONTHLY
 
     @patch('api.user.generation_story.generate_story_json')
     @patch('api.user.generation_story.get_text_generation_cost')

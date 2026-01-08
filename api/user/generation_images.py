@@ -2,9 +2,11 @@
 Image Generation Router - AI image generation endpoints
 
 @module api.user.generation_images
-@version 3.25
+@version 3.26
 
 Changes:
+- v3.26: GI-P0-1 fix - validate prompts non-empty before billing
+         GI-H4 fix - don't expose balance in error messages
 - v3.25: Migrate to DDD BillingService with atomic operations
          Use config-driven costs from generation_helpers
          Add transaction-based refund on generation failure
@@ -68,6 +70,13 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
     - AI Design Page mode with prompt enhancement (when theme is provided)
     - Generation modes: "guided" (accurate) or "flexible" (creative)
     """
+    # v3.26: GI-P0-1 fix - validate prompts before any processing
+    if not req.prompts or len(req.prompts) == 0:
+        raise HTTPException(400, "At least one prompt is required")
+
+    if len(req.prompts) > 10:
+        raise HTTPException(400, "Maximum 10 prompts allowed per request")
+
     # Safety check
     if check_prompt_safety(req.prompts):
         raise HTTPException(400, "Safety Violation")
@@ -97,7 +106,10 @@ async def gen_images(request: Request, req: ImageGenRequest, user: dict = Depend
             idempotency_key=idempotency_key,
         )
     except InsufficientCreditsException as e:
-        raise HTTPException(402, f"Insufficient credits: need {e.required}, have {e.available}")
+        # v3.26: GI-H4 fix - don't expose exact balance requirement in error
+        required = e.details.get("required") if hasattr(e, 'details') else None
+        msg = f"Insufficient credits. This operation requires {required} credits." if required else "Insufficient credits for this operation."
+        raise HTTPException(402, msg)
     except Exception as e:
         logger.error(f"Credit deduction failed: {e}")
         raise HTTPException(500, "Failed to process credits")
@@ -282,6 +294,13 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
     Returns immediately with task_id for progress tracking.
     Use WebSocket (/ws/task/{task_id}) or polling (/api/tasks/{task_id}) for status.
     """
+    # v3.26: GI-P0-1 fix - validate prompts before any processing
+    if not req.prompts or len(req.prompts) == 0:
+        raise HTTPException(400, "At least one prompt is required")
+
+    if len(req.prompts) > 10:
+        raise HTTPException(400, "Maximum 10 prompts allowed per request")
+
     # Safety check
     if check_prompt_safety(req.prompts):
         raise HTTPException(400, "Safety Violation")
@@ -312,7 +331,10 @@ async def gen_images_async(request: Request, req: ImageGenRequest, user: dict = 
             idempotency_key=f"gen_async_{task_id}",
         )
     except InsufficientCreditsException as e:
-        raise HTTPException(402, f"Insufficient credits: need {e.required}, have {e.available}")
+        # v3.26: GI-H4 fix - don't expose exact balance requirement in error
+        required = e.details.get("required") if hasattr(e, 'details') else None
+        msg = f"Insufficient credits. This operation requires {required} credits." if required else "Insufficient credits for this operation."
+        raise HTTPException(402, msg)
     except Exception as e:
         logger.error(f"Credit deduction failed: {e}")
         raise HTTPException(500, "Failed to process credits")
