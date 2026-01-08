@@ -220,12 +220,10 @@ class SupabaseNotificationRepository:
     @retry_on_network_error()
     async def get_notification_history(
         self,
-        page: int = 1,
+        offset: int = 0,
         limit: int = 50
     ) -> Dict[str, Any]:
-        """Get paginated notification history."""
-        offset = (page - 1) * limit
-
+        """Get paginated notification history using offset pagination."""
         result = self.client.table("notifications").select(
             "*, profiles(email, username)", count="exact"
         ).order("created_at", desc=True).range(
@@ -235,6 +233,6 @@ class SupabaseNotificationRepository:
         return {
             "items": result.data or [],
             "total": result.count or 0,
-            "page": page,
+            "offset": offset,
             "limit": limit
         }

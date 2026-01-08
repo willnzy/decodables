@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 34/125 (27%)
+> **当前进度**: 74/125 (59%)
 
 ---
 
@@ -72,14 +72,14 @@ Admin API 作为内部管理工具，有以下特点：
 | Logs | 4 | 4 | ✅ 已完成 |
 | Metrics | 7 | 7 | ✅ 已完成 |
 | Moderation | 10 | 10 | ✅ 已完成 |
-| Notifications | 5 | 0 | 未开始 |
+| Notifications | 5 | 5 | ✅ 已完成 |
 | Stats | 18 | 0 | 未开始 |
 | Subscriptions | 3 | 0 | 未开始 |
 | System | 11 | 0 | 未开始 |
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **69** | 55% |
+| **总计** | **125** | **74** | 59% |
 
 ---
 
@@ -469,24 +469,40 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Notifications 通知管理 (5个)
+## Notifications 通知管理 (5个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 70 | adm_broadcast | POST | /broadcast | api/admin/notifications.py | 63 |
-| 71 | adm_send_notification | POST | /notification/send | api/admin/notifications.py | 87 |
-| 72 | adm_batch_notification | POST | /notification/batch | api/admin/notifications.py | 122 |
-| 73 | adm_notification_stats | GET | /notification/stats | api/admin/notifications.py | 157 |
-| 74 | adm_notification_history | GET | /notification/history | api/admin/notifications.py | 165 |
+| 70 | adm_broadcast | POST | /broadcast | api/admin/notifications.py | 110 |
+| 71 | adm_send_notification | POST | /notification/send | api/admin/notifications.py | 134 |
+| 72 | adm_batch_notification | POST | /notification/batch | api/admin/notifications.py | 169 |
+| 73 | adm_notification_stats | GET | /notification/stats | api/admin/notifications.py | 205 |
+| 74 | adm_notification_history | GET | /notification/history | api/admin/notifications.py | 217 |
 
 **测试用例 Checklist**
-- [ ] #70 全员广播
-- [ ] #71 发送单个通知
-- [ ] #72 批量发送通知
-- [ ] #73 通知统计
-- [ ] #74 通知历史
+- [x] #70 全员广播
+- [x] #71 发送单个通知
+- [x] #72 批量发送通知
+- [x] #73 通知统计
+- [x] #74 通知历史
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | NTF-MEDIUM-1 | 2个 GET 端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | NTF-MEDIUM-2 | history 使用 page 分页而非 offset | ✅ 已迁移 |
+| 🟡 MEDIUM | NTF-MEDIUM-3 | `target_group` 无枚举验证 | ✅ 已添加 VALID_TARGET_GROUPS |
+| 🟡 MEDIUM | NTF-MEDIUM-4 | `notification_type` 无枚举验证 | ✅ 已添加 VALID_NOTIFICATION_TYPES |
+| 🟢 LOW | NTF-LOW-1 | `title`/`content`/`user_id` 无长度限制 | ✅ 已添加 Field constraints |
+| 🟢 LOW | NTF-LOW-2 | `user_ids` 列表无最大长度验证 | ✅ 已添加 max_length=100 |
+
+**修改文件**:
+- `api/admin/notifications.py` - v2.0.0 → v3.25
+- `infrastructure/repositories/notification_repository.py` - 更新 get_notification_history 参数
+- `tests/api/admin/test_notifications.py` - 39 个测试用例
 
 ---
 
