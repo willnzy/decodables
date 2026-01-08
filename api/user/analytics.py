@@ -12,6 +12,7 @@ import logging
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from dependencies import get_current_user_optional
@@ -165,16 +166,21 @@ async def log_analytics_events(
             "client_connection_type": env_info.get("connection_type"),
         }
 
-        # 1. Store to user_events table
-        await stats_repo.log_user_event(
-            user_id=user_id,
-            event_type=event.event_type,
-            properties=enriched_properties,
-            session_id=event.session_id,
-            event_id=event.event_id,
-        )
+        # 1. Store to user_events table (primary storage)
+        # Use try-catch to prevent single event failure from breaking entire batch
+        try:
+            await stats_repo.log_user_event(
+                user_id=user_id,
+                event_type=event.event_type,
+                properties=enriched_properties,
+                session_id=event.session_id,
+                event_id=event.event_id,
+            )
+        except Exception as e:
+            logger.warning(f"[Analytics] Failed to log user_event: {e}")
 
-        # 2. Store to analytics_events table
+        # 2. Store to analytics_events table (redundant storage)
+        # Use run_in_threadpool to avoid blocking event loop (FastAPI best practice)
         try:
             event_data = {
                 "event_type": event.event_type,
@@ -185,20 +191,25 @@ async def log_analytics_events(
                 "env": env_info,
                 "user_properties": event.user_properties,
             }
-            supabase.table("analytics_events").insert({
-                "user_id": user_id or event.user_properties.get("user_id"),
-                "event_type": event.event_type,
-                "event_id": event.event_id,
-                "event_level": event.event_level,
-                "event_data": event_data,
-                "session_id": event.session_id,
-            }).execute()
+            await run_in_threadpool(
+                lambda: supabase.table("analytics_events").insert({
+                    "user_id": user_id or event.user_properties.get("user_id"),
+                    "event_type": event.event_type,
+                    "event_id": event.event_id,
+                    "event_level": event.event_level,
+                    "event_data": event_data,
+                    "session_id": event.session_id,
+                }).execute()
+            )
         except Exception as e:
             logger.warning(f"[Analytics] Failed to insert to analytics_events: {e}")
 
         # 3. Mirror key events to activity_logs
+        # Use run_in_threadpool for sync function call
         if user_id and event.event_type in ACTIVITY_LOG_EVENTS:
-            log_activity(user_id, ACTIVITY_LOG_EVENTS[event.event_type], enriched_properties)
+            await run_in_threadpool(
+                log_activity, user_id, ACTIVITY_LOG_EVENTS[event.event_type], enriched_properties
+            )
 
     return AnalyticsEventsResponse(
         status="ok",

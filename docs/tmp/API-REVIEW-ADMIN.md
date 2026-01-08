@@ -37,6 +37,7 @@
    - 更新 API-REVIEW-ADMIN.md
    - 记录发现的问题和修复内容
    - 更新进度统计
+   - 如果设计数据库,记得更新ddl.sql
 
 5. 提交代码
    - git add + commit + push

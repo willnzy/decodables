@@ -121,6 +121,57 @@ def get_monthly_reset_time() -> datetime:
     """获取月度积分重置时间 (业务相关，应在 domains/billing/)"""
 ```
 
+#### 2.1.1 Async/Sync 最佳实践
+
+**问题背景**: Supabase Python SDK 是同步的，但 FastAPI 是异步框架。在 `async def` 函数中直接调用同步 SDK 会阻塞事件循环。
+
+**行业最佳实践**: 使用 `run_in_threadpool` 将同步调用移到线程池执行。
+
+**参考来源**:
+- [FastAPI 官方文档: Concurrency and async/await](https://fastapi.tiangolo.com/async/)
+- [FastAPI GitHub Discussion #7623](https://github.com/fastapi/fastapi/discussions/7623)
+- [Sentry: run_in_executor vs run_in_threadpool](https://sentry.io/answers/fastapi-difference-between-run-in-executor-and-run-in-threadpool/)
+
+**工具函数** (`core/database/async_utils.py`):
+
+```python
+from fastapi.concurrency import run_in_threadpool
+from core.database import run_sync, run_sync_safe
+
+# 方式 1: 使用 run_in_threadpool (FastAPI 官方推荐)
+result = await run_in_threadpool(
+    lambda: supabase.table("users").select("*").execute()
+)
+
+# 方式 2: 使用 run_sync (项目封装)
+result = await run_sync(
+    lambda: supabase.table("users").select("*").execute()
+)
+
+# 方式 3: 使用 run_sync_safe (非关键操作，自动捕获异常)
+await run_sync_safe(log_activity, user_id, "action", metadata, default=None)
+```
+
+**迁移策略**:
+1. **新代码**: 必须使用 `run_in_threadpool` 或 `run_sync`
+2. **现有代码**: 按模块优先级逐步迁移
+3. **非关键操作**: 使用 `run_sync_safe` 并添加 try-catch
+
+**示例 - Analytics API**:
+```python
+from fastapi.concurrency import run_in_threadpool
+
+@router.post("/events")
+async def log_analytics_events(...):
+    # ❌ 旧方式 (阻塞事件循环)
+    supabase.table("analytics_events").insert(data).execute()
+
+    # ✅ 新方式 (非阻塞)
+    await run_in_threadpool(
+        lambda: supabase.table("analytics_events").insert(data).execute()
+    )
+```
+
 ---
 
 ### 2.2 shared/ - 共享层 (服务抽象)

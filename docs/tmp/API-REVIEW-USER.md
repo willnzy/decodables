@@ -137,16 +137,29 @@ API log_analytics_events (L113-208)
 
 **发现的问题**:
 
-| 序号 | 严重性 | 问题 | 影响 | 建议 |
+| 序号 | 严重性 | 问题 | 影响 | 状态 |
 |------|--------|------|------|------|
-| 1 | 🟠 HIGH | L169 `log_user_event` 无 try-catch | 失败时整个请求 500，后续事件丢失 | 添加异常处理 |
-| 2 | 🟡 MEDIUM | L188 同步 supabase vs L169 异步混用 | 一致性问题 | 统一使用方式 |
-| 3 | 🟢 LOW | L146 循环内多次 DB 调用 | 大批量性能问题 | 可考虑批量插入 |
+| 1 | 🟠 HIGH | L169 `log_user_event` 无 try-catch | 失败时整个请求 500 | ✅ 已修复 |
+| 2 | 🟡 MEDIUM | L188 同步 supabase 阻塞事件循环 | 并发性能问题 | ✅ 已修复 |
+| 3 | 🟡 MEDIUM | L201 `log_activity` 同步调用 | 阻塞事件循环 | ✅ 已修复 |
+| 4 | 🟢 LOW | L146 循环内多次 DB 调用 | 大批量性能问题 | 保留 (可后续优化) |
 
-**设计决策说明**:
-- `user_events` 是主存储，失败应该通知用户
-- `analytics_events` 是冗余存储，静默失败可接受
-- Supabase Python SDK 是同步的，async 方法内同步调用是常见模式
+**修复内容 (2026-01-08)**:
+
+1. **#1 HIGH: `log_user_event` 异常处理**
+   - 添加 try-catch，失败时记录 warning 而非 500
+   - 单个事件失败不影响后续事件处理
+
+2. **#2/#3 MEDIUM: 使用 `run_in_threadpool` 避免阻塞**
+   - 采用 FastAPI 官方推荐的行业最佳实践
+   - `analytics_events` 插入使用 `run_in_threadpool` 包装
+   - `log_activity` 使用 `run_in_threadpool` 包装
+   - 参考: [FastAPI Async 文档](https://fastapi.tiangolo.com/async/)
+
+3. **新增基础设施**:
+   - `core/database/async_utils.py` - 提供 `run_sync`, `run_sync_safe` 工具
+   - `infrastructure/logging/activity_logger.py` - 添加 `log_activity_async`
+   - `docs/BACKEND_ARCHITECTURE_GUIDE.md` - 新增 2.1.1 Async/Sync 最佳实践章节
 
 **架构说明**:
 - 简单日志记录接口，直接使用 Repository 合理 (无需 DDD Service)
@@ -154,12 +167,12 @@ API log_analytics_events (L113-208)
 - 限流 60/minute
 - 双表存储: `user_events` + `analytics_events`
 - 关键事件 (`project_*`) 镜像到 `activity_logs`
-- 容错设计: `analytics_events` 失败不影响主流程
+- 容错设计: 所有 DB 操作都有 try-catch
 
 **测试文件**:
 - `tests/api/user/test_analytics.py` - 8 个测试用例 (已存在)
 
-**完成状态**: ✅ 已完成 (2026-01-08)
+**完成状态**: ✅ 已修复 (2026-01-08)
 
 ---
 
