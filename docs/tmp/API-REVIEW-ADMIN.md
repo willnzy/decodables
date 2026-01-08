@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 29/125 (23%)
+> **当前进度**: 34/125 (27%)
 
 ---
 
@@ -67,7 +67,7 @@ Admin API 作为内部管理工具，有以下特点：
 | AI Models Config | 8 | 8 | ✅ 已完成 |
 | Campaigns | 8 | 8 | ✅ 已完成 |
 | Config | 8 | 8 | ✅ 已完成 |
-| Events | 5 | 0 | 未开始 |
+| Events | 5 | 5 | ✅ 已完成 |
 | Experiments | 14 | 0 | 未开始 |
 | Logs | 4 | 0 | 未开始 |
 | Metrics | 7 | 0 | 未开始 |
@@ -79,7 +79,7 @@ Admin API 作为内部管理工具，有以下特点：
 | Tasks Management | 4 | 0 | 未开始 |
 | Users | 13 | 0 | 未开始 |
 | Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **29** | 23% |
+| **总计** | **125** | **34** | 27% |
 
 ---
 
@@ -250,24 +250,40 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Events 事件管理 (5个)
+## Events 事件管理 (5个) ✅
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 30 | adm_get_user_events | GET | /events | api/admin/events.py | 34 |
-| 31 | adm_get_event_stats | GET | /events/stats | api/admin/events.py | 57 |
-| 32 | adm_get_aggregated_stats | GET | /aggregated/{stat_type} | api/admin/events.py | 74 |
-| 33 | adm_get_aggregated_stats_range | GET | /aggregated/{stat_type}/range | api/admin/events.py | 95 |
-| 34 | adm_run_aggregation | POST | /aggregation/run | api/admin/events.py | 107 |
+| 30 | adm_get_user_events | GET | /events | api/admin/events.py | 74 |
+| 31 | adm_get_event_stats | GET | /events/stats | api/admin/events.py | 105 |
+| 32 | adm_get_aggregated_stats | GET | /aggregated/{stat_type} | api/admin/events.py | 132 |
+| 33 | adm_get_aggregated_stats_range | GET | /aggregated/{stat_type}/range | api/admin/events.py | 159 |
+| 34 | adm_run_aggregation | POST | /aggregation/run | api/admin/events.py | 178 |
 
 **测试用例 Checklist**
-- [ ] #30 获取用户事件列表
-- [ ] #31 获取事件统计
-- [ ] #32 获取聚合统计
-- [ ] #33 获取时间范围聚合统计
-- [ ] #34 手动运行聚合任务
+- [x] #30 获取用户事件列表
+- [x] #31 获取事件统计
+- [x] #32 获取聚合统计
+- [x] #33 获取时间范围聚合统计
+- [x] #34 手动运行聚合任务
 
-**完成状态**: 未开始
+**完成状态**: ✅ 已完成 (2026-01-09)
+
+### v3.25 安全改进
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | EVT-MEDIUM-1 | 5个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | EVT-MEDIUM-3 | `start_date`/`end_date` 无格式验证 | ✅ 已添加 |
+| 🟡 MEDIUM | EVT-MEDIUM-4 | `group_by` 无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | EVT-MEDIUM-5 | `stat_type` 无枚举验证 | ✅ 已添加 |
+| 🟡 MEDIUM | EVT-MEDIUM-6 | `days` 无范围验证 | ✅ 已添加 (1-365) |
+| 🟡 MEDIUM | EVT-MEDIUM-7 | `task_type` 无枚举验证 | ✅ 已添加 |
+| 🟢 LOW | EVT-LOW-1 | 分页改用 offset 参数 | ✅ 已迁移 |
+
+**修改文件**:
+- `api/admin/events.py` - v3.24 → v3.25
+- `tests/api/admin/test_events.py` - 27 个测试用例
 
 ---
 
