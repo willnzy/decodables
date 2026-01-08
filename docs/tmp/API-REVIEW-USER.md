@@ -22,7 +22,7 @@
 | Generation Story 🔴 | 2 | 2 | ✅ 已完成 |
 | Generations | 6 | 0 | 未开始 |
 | Logs | 2 | 0 | 未开始 |
-| Marketplace 🟡 | 11 | 2 | 🔄 审查中 |
+| Marketplace 🟡 | 11 | 3 | 🔄 审查中 |
 | Payment 🔴 | 2 | 2 | ✅ 已完成 |
 | Projects 🟡 | 10 | 0 | 未开始 |
 | Resources | 7 | 0 | 未开始 |
@@ -35,7 +35,7 @@
 | User Assets | 10 | 0 | 未开始 |
 | User Profile 🔴 | 7 | 7 | ✅ 已完成 |
 | Webhooks 🔴 | 2 | 2 | ✅ 已完成 |
-| **总计** | **110** | **22** | 20.0% |
+| **总计** | **110** | **23** | 20.9% |
 
 ---
 
@@ -350,8 +350,8 @@
 |------|------|------|------|------|------|------|
 | 34 | list_listings | GET | /listings | api/user/marketplace.py | 127 | ✅ 🔧 |
 | 35 | get_listing | GET | /listings/{listing_id} | api/user/marketplace.py | 184 | ✅ 🔧 |
-| 36 | create_listing | POST | /listings | api/user/marketplace.py | 213 | |
-| 37 | update_listing | PUT | /listings/{listing_id} | api/user/marketplace.py | 280 | |
+| 36 | create_listing | POST | /listings | api/user/marketplace.py | 213 | ✅ 🔧 |
+| 37 | update_listing | PUT | /listings/{listing_id} | api/user/marketplace.py | 280 | ✅ 🔧 |
 | 38 | unpublish_listing | DELETE | /listings/{listing_id} | api/user/marketplace.py | 331 | |
 | 39 | purchase_listing | POST | /purchase | api/user/marketplace.py | 367 | |
 | 40 | get_my_listings | GET | /my-listings | api/user/marketplace.py | 424 | |
@@ -377,17 +377,129 @@
 - [x] #35.4 访问控制 (未公开/已删除/未审核 listing 非卖家不可见)
 - [x] #35.5 is_purchased 字段反映真实购买状态
 
-**#36 create_listing**
-- [ ] #36.1 Pro 用户创建付费商品
-- [ ] #36.2 Starter 用户创建免费 asset
-- [ ] #36.3 Starter 用户创建付费商品返回 403
-- [ ] #36.4 Starter 用户创建 project 返回 403
-- [ ] #36.5 无效 resource_type 返回 422
+**#36 create_listing** ✅
+- [x] #36.1 Pro 用户创建付费商品
+- [x] #36.2 Starter 用户创建免费 asset
+- [x] #36.3 Starter 用户创建付费商品返回 403
+- [x] #36.4 Starter 用户创建 project 返回 403
+- [x] #36.5 无效 resource_type 返回 422
+- [x] #36.6 两级分类: resource_type + category
+- [x] #36.7 category 默认值 (asset→element, project→template)
+- [x] #36.8 source 字段 (system/user/ai/community)
+- [x] #36.9 allowed_tiers 字段传递
+
+### Review 结果 - #36 create_listing (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **resource_type 与 AssetCategory 枚举不匹配** (已修复)
+   - 问题: `resource_type` 参数值 ("asset"/"project") 直接传递给 `AssetCategory` 枚举
+   - 影响: 任何 create_listing 调用都会抛出 `ValueError` (因为 "asset" 不是有效的 AssetCategory 值)
+   - 修复: 实现两级分类系统
+
+**两级分类方案**:
+
+| 字段 | 说明 | 值 |
+|------|------|-----|
+| `resource_type` | 顶级分类 | `asset` (单个素材) / `project` (项目模板) |
+| `category` | 具体类型 | `clipart`, `sticker`, `background`, `element`, `template`, `mini_book`, `worksheet`, `flashcard` 等 |
+| `source` | 来源标识 | `system` (系统), `user` (用户上传), `ai` (AI生成), `community` (社区) |
+| `allowed_tiers` | 开放等级 | `["free", "starter", "pro"]` |
+
+**默认值逻辑**:
+- `resource_type=asset` → `category` 默认为 `element`
+- `resource_type=project` → `category` 默认为 `template`
+
+**修复涉及的文件**:
+
+1. `migrations/v3.26_marketplace_two_level_category.sql` (新增)
+   - 添加 `category` 和 `source` 字段到 `marketplace_listings` 表
+   - 创建索引优化查询
+
+2. `migrations/ddl.sql`
+   - 同步新字段定义
+
+3. `domains/marketplace/value_objects.py`
+   - 新增 `ResourceType` 枚举 (asset/project)
+   - 新增 `ListingSource` 枚举 (system/user/ai/community)
+   - 扩展 `AssetCategory` 添加更多类型及 `is_project_category` 属性
+
+4. `domains/marketplace/__init__.py`
+   - 导出新枚举
+
+5. `domains/marketplace/aggregates/listing.py`
+   - 添加 `resource_type`, `source`, `allowed_tiers` 字段
+   - 更新 `create_new()` 工厂方法
+   - 更新 `to_dict()` 输出
+
+6. `domains/marketplace/service.py`
+   - 更新 `create_listing()` 方法签名
+
+7. `infrastructure/repositories/listing_repository.py`
+   - 更新 `_map_to_listing()` 和 `_map_to_row()` 字段映射
+
+8. `application/commands/marketplace.py`
+   - 更新 `CreateListingCommand` 支持新字段
+   - 更新 Handler 解析逻辑 (带 ValueError 容错)
+
+9. `api/user/marketplace.py`
+   - 更新 `ListingCreateRequest` 支持新字段
+   - 更新 API 映射逻辑
+
+**测试文件更新**:
+- `tests/api/user/test_marketplace.py` - 新增 5 个测试用例:
+  - `test_create_listing_with_category` (#36.6)
+  - `test_create_listing_category_defaults_for_asset` (#36.7a)
+  - `test_create_listing_category_defaults_for_project` (#36.7b)
+  - `test_create_listing_with_source` (#36.8)
+  - `test_create_listing_with_allowed_tiers` (#36.9)
+
+### Review 结果 - #37 update_listing (2026-01-08)
+
+**发现的问题** 🔧:
+
+1. **参数名称不匹配** (已修复)
+   - 问题: API 传递 `seller_id` 参数，但 `MarketplaceService.update_listing()` 期望 `user_id`
+   - 影响: 所有更新调用都会失败 (`TypeError`)
+   - 修复: 通过 Command Handler 模式统一参数命名
+
+2. **缺少 price_credits 和 allowed_tiers 支持** (已修复)
+   - 问题: API 接受 `price_credits` 和 `allowed_tiers` 参数，但未传递到 Service
+   - 影响: 这两个字段的更新完全不生效
+   - 修复: 在 Handler 中处理定价和权限更新
+
+3. **返回类型不匹配** (已修复)
+   - 问题: API 期望 `.success` 属性的 Result 对象，但 Service 直接返回 `Listing` 实体
+   - 影响: API 运行时错误 (`AttributeError`)
+   - 修复: 创建 `UpdateListingResult` 数据类
+
+**修复涉及的文件**:
+
+1. `application/commands/marketplace.py`
+   - 新增 `UpdateListingCommand` 数据类
+   - 新增 `UpdateListingResult` 数据类 (含 `success`, `listing`, `requires_resubmit`, `error`)
+   - 新增 `UpdateListingHandler` 类处理更新逻辑
+
+2. `container.py`
+   - 添加 `UpdateListingHandler` 导入
+   - 添加 `update_listing_handler` 属性
+
+3. `api/user/marketplace.py`
+   - 更新导入添加 `UpdateListingCommand`
+   - 重写 `update_listing` 端点使用 Handler 模式
+
+**测试文件更新**:
+- `tests/api/user/test_marketplace.py` - 更新 4 个测试用例使用 Handler mock:
+  - `test_update_listing_success` (#37.1)
+  - `test_update_listing_not_found` (#37.2)
+  - `test_update_listing_pending_forbidden` (#37.3)
+  - `test_update_listing_with_allowed_tiers` (#37.4)
 
 **#37 update_listing**
-- [ ] #37.1 更新商品成功
-- [ ] #37.2 商品不存在返回 404
-- [ ] #37.3 pending 状态不能编辑返回 400
+- [x] #37.1 更新商品成功
+- [x] #37.2 商品不存在返回 404
+- [x] #37.3 pending 状态不能编辑返回 400
+- [x] #37.4 更新 allowed_tiers 成功
 
 **#38 unpublish_listing**
 - [ ] #38.1 下架商品成功
@@ -506,7 +618,7 @@
   - 新增 `test_get_listing_unpublished_not_visible_to_others` (#35.4)
   - 新增 `test_get_listing_with_purchase_status` (#35.5)
 
-**完成状态**: 🔄 审查中 (2/11)
+**完成状态**: 🔄 审查中 (4/11)
 
 ---
 
@@ -514,8 +626,10 @@
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 | 状态 |
 |------|------|------|------|------|------|------|
-| 45 | create_checkout | POST | /checkout | api/user/payment.py | 52 | ✅ 🔧 |
+| 45 | create_checkout | POST | /checkout | api/user/payment.py | 52 | ✅ 🔧 ⏳ |
 | 46 | get_portal | POST | /portal | api/user/payment.py | 95 | ✅ 🔧 |
+
+> ⏳ **待定变更**: #45 create_checkout 需要在积分购买档位确定后支持新 plan_type
 
 **测试用例 Checklist**
 - [x] #45 创建Checkout Session (Starter/Pro)

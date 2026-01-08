@@ -30,6 +30,7 @@ from core.database import get_database_client
 
 from application.commands.marketplace import (
     CreateListingCommand,
+    UpdateListingCommand,
     PurchaseListingCommand,
 )
 from application.queries.marketplace import (
@@ -315,36 +316,32 @@ async def update_listing(
         Update status
     """
     container = get_container()
-    marketplace_service = container.marketplace_service
+    handler = container.update_listing_handler
 
-    try:
-        result = await marketplace_service.update_listing(
-            listing_id=listing_id,
-            seller_id=user["id"],
-            title=req.title,
-            description=req.description,
-            price_credits=req.price_credits,
-            allowed_tiers=req.allowed_tiers,
-        )
+    command = UpdateListingCommand(
+        listing_id=listing_id,
+        user_id=user["id"],
+        title=req.title,
+        description=req.description,
+        price_credits=req.price_credits,
+        allowed_tiers=req.allowed_tiers,
+    )
 
-        if not result.success:
-            if "not found" in (result.error or "").lower():
-                raise HTTPException(404, "Listing not found")
-            if "pending" in (result.error or "").lower():
-                raise HTTPException(400, "Cannot edit pending listing")
-            raise HTTPException(400, result.error)
+    result = await handler.handle(command)
 
-        return {
-            "status": "updated",
-            "listing_id": listing_id,
-            "requires_resubmit": result.requires_resubmit,
-        }
+    if not result.success:
+        error_msg = result.error or "Failed to update listing"
+        if "not found" in error_msg.lower():
+            raise HTTPException(404, "Listing not found")
+        if "pending" in error_msg.lower() or "cannot edit" in error_msg.lower():
+            raise HTTPException(400, "Cannot edit listing in current status")
+        raise HTTPException(400, error_msg)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update listing {listing_id}: {e}")
-        raise HTTPException(400, str(e))
+    return {
+        "status": "updated",
+        "listing_id": listing_id,
+        "requires_resubmit": result.requires_resubmit,
+    }
 
 
 @router.delete("/listings/{listing_id}")

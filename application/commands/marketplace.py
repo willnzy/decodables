@@ -113,6 +113,80 @@ class CreateListingHandler:
 
 
 @dataclass
+class UpdateListingCommand:
+    """
+    Command to update a marketplace listing.
+
+    Only editable in draft/rejected status.
+    """
+    listing_id: str
+    user_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price_credits: Optional[int] = None
+    allowed_tiers: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    preview_url: Optional[str] = None
+
+
+@dataclass
+class UpdateListingResult:
+    """Result of listing update."""
+    success: bool
+    listing: Optional[Listing] = None
+    requires_resubmit: bool = False
+    error: Optional[str] = None
+
+
+class UpdateListingHandler:
+    """Handler for UpdateListingCommand."""
+
+    def __init__(self, marketplace_service: MarketplaceService):
+        self._marketplace_service = marketplace_service
+
+    async def handle(self, command: UpdateListingCommand) -> UpdateListingResult:
+        """Execute listing update."""
+        try:
+            listing = await self._marketplace_service.update_listing(
+                listing_id=command.listing_id,
+                user_id=command.user_id,
+                title=command.title,
+                description=command.description,
+                tags=command.tags,
+                preview_url=command.preview_url,
+            )
+
+            # Handle pricing update if provided
+            if command.price_credits is not None:
+                price_type = PriceType.FREE if command.price_credits == 0 else PriceType.CREDITS
+                listing.set_pricing(price_type, command.price_credits)
+                listing = await self._marketplace_service._repository.update(listing)
+
+            # Handle allowed_tiers update if provided
+            if command.allowed_tiers is not None:
+                listing.allowed_tiers = command.allowed_tiers
+                listing = await self._marketplace_service._repository.update(listing)
+
+            return UpdateListingResult(
+                success=True,
+                listing=listing,
+                requires_resubmit=False,
+            )
+
+        except ValueError as e:
+            # Catch "Cannot edit" errors from aggregate
+            return UpdateListingResult(
+                success=False,
+                error=str(e),
+            )
+        except Exception as e:
+            return UpdateListingResult(
+                success=False,
+                error=str(e),
+            )
+
+
+@dataclass
 class PurchaseListingCommand:
     """
     Command to purchase a marketplace listing.

@@ -1000,20 +1000,20 @@ class TestUpdateListing:
         override_get_current_user_free,
     ):
         """
-        Test: Update listing successfully
+        Test: Update listing successfully (#37.1)
 
         Given: Listing owner
         When: PUT /api/v2/user/marketplace/listings/{id}
         Then: Returns updated status
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.update_listing.return_value = MagicMock(
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
             success=True,
             requires_resubmit=False,
         )
         mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
+        mock_container.update_listing_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1030,6 +1030,13 @@ class TestUpdateListing:
         data = response.json()
         assert data["status"] == "updated"
         assert data["listing_id"] == "listing_123"
+        assert data["requires_resubmit"] is False
+
+        # Verify command was built correctly
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.listing_id == "listing_123"
+        assert call_args.title == "Updated Title"
+        assert call_args.price_credits == 20
 
     @patch('api.user.marketplace.get_container')
     def test_update_listing_not_found(
@@ -1038,20 +1045,20 @@ class TestUpdateListing:
         override_get_current_user_free,
     ):
         """
-        Test: Update non-existent listing should return 404
+        Test: Update non-existent listing should return 404 (#37.2)
 
         Given: Invalid listing ID
         When: PUT /api/v2/user/marketplace/listings/{id}
         Then: Returns 404 Not Found
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.update_listing.return_value = MagicMock(
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
             success=False,
             error="Listing not found",
         )
         mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
+        mock_container.update_listing_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1070,20 +1077,20 @@ class TestUpdateListing:
         override_get_current_user_free,
     ):
         """
-        Test: Cannot update pending listing (400)
+        Test: Cannot update pending listing (400) (#37.3)
 
         Given: Listing in pending moderation status
         When: PUT /api/v2/user/marketplace/listings/{id}
         Then: Returns 400 Bad Request
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.update_listing.return_value = MagicMock(
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
             success=False,
-            error="Cannot edit pending listing",
+            error="Cannot edit published listing",
         )
         mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
+        mock_container.update_listing_handler = mock_handler
         mock_get_container.return_value = mock_container
 
         # Act
@@ -1094,9 +1101,44 @@ class TestUpdateListing:
 
         # Assert
         assert response.status_code == 400
-        data = response.json()
-        # App uses custom error format with "message" not "detail"
-        assert "pending" in data["message"].lower()
+
+    @patch('api.user.marketplace.get_container')
+    def test_update_listing_with_allowed_tiers(
+        self,
+        mock_get_container,
+        override_get_current_user_free,
+    ):
+        """
+        Test: Update listing with allowed_tiers (#37.4)
+
+        Given: Listing owner
+        When: PUT with allowed_tiers
+        Then: allowed_tiers passed to handler
+        """
+        # Arrange
+        mock_handler = AsyncMock()
+        mock_handler.handle.return_value = MagicMock(
+            success=True,
+            requires_resubmit=False,
+        )
+        mock_container = MagicMock()
+        mock_container.update_listing_handler = mock_handler
+        mock_get_container.return_value = mock_container
+
+        # Act
+        response = client.put(
+            "/api/v2/user/marketplace/listings/listing_123",
+            json={
+                "allowed_tiers": ["starter", "pro"],
+            },
+        )
+
+        # Assert
+        assert response.status_code == 200
+
+        # Verify allowed_tiers passed correctly
+        call_args = mock_handler.handle.call_args[0][0]
+        assert call_args.allowed_tiers == ["starter", "pro"]
 
 
 # ==========================================
