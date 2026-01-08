@@ -24,7 +24,7 @@ supabase = get_supabase_client()
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v2/user/tasks", tags=["user-tasks-v2"])
+router = APIRouter(prefix="/tasks", tags=["user-tasks-v2"])
 
 
 # ==========================================
