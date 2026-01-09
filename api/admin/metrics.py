@@ -2,9 +2,18 @@
 Admin Metrics API - System metrics and analytics.
 
 @module api.admin.metrics
-@version 3.25
+@version 3.28
 
 Changes:
+- v3.28: P0/P1/P2 Architecture refactoring
+  - MET-CRITICAL-1: Extracted all database access to MetricsRepository
+  - MET-HIGH-1: Added query limits to prevent OOM (daily, errors)
+  - MET-HIGH-2: Added Pydantic Response Models
+  - MET-HIGH-3: Optimized Funnel queries (6 queries → time-filtered queries)
+  - MET-HIGH-4: Fixed Funnel period parameter usage (now applies time filter)
+  - MET-HIGH-5: Fixed refresh metric_type validation (all/hourly/daily)
+  - MET-MEDIUM-1: Added @retry_on_network_error via Repository layer
+  - All endpoints now use DDD pattern (API → Repository → Database)
 - v3.25: Security improvements
   - MET-MEDIUM-1: Added rate limiting to all endpoints
   - MET-MEDIUM-2: Added date format validation
@@ -33,17 +42,31 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 
 from dependencies import require_admin
-from core.database import get_supabase_client
+from core.database import get_database_client
+from infrastructure.repositories import SupabaseMetricsRepository
 from infrastructure.rate_limiter import limiter
+from api.admin.metrics_models import (
+    DailyMetricsResponse,
+    DailyMetricItem,
+    MonthlyMetricsResponse,
+    MonthlyMetricItem,
+    RetentionMetricsResponse,
+    FunnelMetricsResponse,
+    FunnelStepData,
+    ErrorMetricsResponse,
+    DAUTrendResponse,
+    DAUTrendItem,
+    RefreshMetricsResponse,
+)
+from scheduler import run_aggregation_now
 
 logger = logging.getLogger(__name__)
-supabase = get_supabase_client()
 
 router = APIRouter(prefix="/metrics", tags=["admin-metrics-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
+# Constants (v3.28: Updated for v3.28 fixes)
 # ==========================================
 
 # v3.25: MET-MEDIUM-2 - Date format pattern
@@ -52,8 +75,17 @@ DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 # v3.25: MET-MEDIUM-4 - Valid period values
 VALID_PERIODS = {"7d", "14d", "30d", "60d", "90d"}
 
-# v3.25: MET-MEDIUM-7 - Valid metric types
-VALID_METRIC_TYPES = {"all", "daily", "monthly", "retention", "funnel"}
+# v3.28: MET-HIGH-5 - Fixed metric types to match scheduler.py
+VALID_METRIC_TYPES = {"all", "hourly", "daily"}
+
+# v3.28: MET-HIGH-4 - Period to days mapping
+PERIOD_TO_DAYS = {
+    "7d": 7,
+    "14d": 14,
+    "30d": 30,
+    "60d": 60,
+    "90d": 90,
+}
 
 
 # ==========================================
@@ -67,18 +99,24 @@ def validate_date_format(date_str: Optional[str], field_name: str) -> None:
 
 
 # ==========================================
-# Metrics Routes (v3.25: Added rate limiting and validation)
+# Metrics Routes (v3.28: DDD refactored)
 # ==========================================
 
-@router.get("/daily")
+@router.get("/daily", response_model=DailyMetricsResponse)
 @limiter.limit("30/minute")
 async def get_daily_metrics(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
     admin: dict = Depends(require_admin)
-):
-    """Get daily metrics for dashboard."""
+) -> DailyMetricsResponse:
+    """
+    Get daily metrics for dashboard.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    v3.28: Added query limit via Repository (MET-HIGH-1).
+    """
     # v3.25: MET-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
@@ -88,158 +126,211 @@ async def get_daily_metrics(
     if not end_date:
         end_date = date.today().isoformat()
 
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        result = supabase.table("daily_metrics").select("*").gte("date", start_date).lte("date", end_date).order("date").execute()
-        return {"metrics": result.data or [], "start_date": start_date, "end_date": end_date}
+        metrics_data = await metrics_repo.get_daily_metrics(start_date, end_date)
+        metrics = [DailyMetricItem(**item) for item in metrics_data]
+        return DailyMetricsResponse(metrics=metrics, start_date=start_date, end_date=end_date)
     except Exception as e:
         # v3.25: MET-LOW-1 - Limit error exposure
         logger.error(f"[Admin] Error fetching daily metrics: {e}")
-        return {"metrics": [], "error": "Failed to fetch daily metrics"}
+        return DailyMetricsResponse(metrics=[], start_date=start_date, end_date=end_date)
 
 
-@router.get("/monthly")
+@router.get("/monthly", response_model=MonthlyMetricsResponse)
 @limiter.limit("30/minute")
 async def get_monthly_metrics(
     request: Request,
     # v3.25: MET-MEDIUM-3 - Added months range validation
     months: int = Query(6, ge=1, le=24, description="Number of months (1-24)"),
     admin: dict = Depends(require_admin)
-):
-    """Get monthly aggregated metrics."""
+) -> MonthlyMetricsResponse:
+    """
+    Get monthly aggregated metrics.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    """
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        result = supabase.table("monthly_metrics").select("*").order("month", desc=True).limit(months).execute()
-        return {"metrics": result.data or [], "months": months}
+        metrics_data = await metrics_repo.get_monthly_metrics(months)
+        metrics = [MonthlyMetricItem(**item) for item in metrics_data]
+        return MonthlyMetricsResponse(metrics=metrics, months=months)
     except Exception as e:
         logger.error(f"[Admin] Error fetching monthly metrics: {e}")
-        return {"metrics": [], "error": "Failed to fetch monthly metrics"}
+        return MonthlyMetricsResponse(metrics=[], months=months)
 
 
-@router.get("/retention")
+@router.get("/retention", response_model=RetentionMetricsResponse)
 @limiter.limit("30/minute")
 async def get_retention_metrics(
     request: Request,
     admin: dict = Depends(require_admin)
-):
-    """Get user retention metrics."""
+) -> RetentionMetricsResponse:
+    """
+    Get user retention metrics.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    """
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        result = supabase.table("aggregated_stats").select("data").eq("stat_type", "user_retention_30d").order("date", desc=True).limit(1).execute()
-        if result.data:
-            return result.data[0].get("data", {})
-        return {}
+        data = await metrics_repo.get_retention_metrics()
+        if data:
+            return RetentionMetricsResponse(**data)
+        return RetentionMetricsResponse()
     except Exception as e:
         logger.error(f"[Admin] Error fetching retention metrics: {e}")
-        return {"error": "Failed to fetch retention metrics"}
+        return RetentionMetricsResponse()
 
 
-@router.get("/funnel")
+@router.get("/funnel", response_model=FunnelMetricsResponse)
 @limiter.limit("30/minute")
 async def get_funnel_metrics(
     request: Request,
     # v3.25: MET-MEDIUM-4 - Added period enum validation
     period: str = Query("30d", max_length=10),
     admin: dict = Depends(require_admin)
-):
-    """Get conversion funnel metrics."""
+) -> FunnelMetricsResponse:
+    """
+    Get conversion funnel metrics.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    v3.28: Fixed period parameter usage - now applies time filter (MET-HIGH-4).
+    v3.28: Optimized queries with time range filter (MET-HIGH-3).
+    """
     # v3.25: MET-MEDIUM-4 - Validate period
     if period not in VALID_PERIODS:
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_PERIODS)}")
 
+    # v3.28: MET-HIGH-4 - Calculate time range based on period
+    days = PERIOD_TO_DAYS.get(period, 30)
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Define funnel steps
+    event_types = [
+        "page_view",
+        "user_created",
+        "project_create",
+        "ai_generate",
+        "download_pdf",
+        "payment_success",
+    ]
+
+    step_names = [
+        "visitors",
+        "signups",
+        "first_project",
+        "first_generation",
+        "first_export",
+        "payment",
+    ]
+
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        # Define funnel steps
-        steps = [
-            {"name": "visitors", "query": "page_view"},
-            {"name": "signups", "query": "user_created"},
-            {"name": "first_project", "query": "project_create"},
-            {"name": "first_generation", "query": "ai_generate"},
-            {"name": "first_export", "query": "download_pdf"},
-            {"name": "payment", "query": "payment_success"},
-        ]
+        # v3.28: Get counts with time range filter
+        counts = await metrics_repo.get_funnel_counts(event_types, cutoff_date)
 
         funnel_data = []
-        for step in steps:
-            count_result = supabase.table("user_events").select("id", count="exact").eq("event_type", step["query"]).execute()
-            funnel_data.append({
-                "step": step["name"],
-                "count": count_result.count or 0
-            })
+        for event_type, step_name in zip(event_types, step_names):
+            funnel_data.append(FunnelStepData(
+                step=step_name,
+                count=counts.get(event_type, 0)
+            ))
 
-        return {"funnel": funnel_data, "period": period}
+        return FunnelMetricsResponse(funnel=funnel_data, period=period)
     except Exception as e:
         logger.error(f"[Admin] Error fetching funnel metrics: {e}")
-        return {"funnel": [], "error": "Failed to fetch funnel metrics"}
+        return FunnelMetricsResponse(funnel=[], period=period)
 
 
-@router.get("/errors")
+@router.get("/errors", response_model=ErrorMetricsResponse)
 @limiter.limit("30/minute")
 async def get_error_metrics(
     request: Request,
     # v3.25: MET-MEDIUM-5 - Added hours range validation
     hours: int = Query(24, ge=1, le=168, description="Time range in hours (1-168)"),
     admin: dict = Depends(require_admin)
-):
-    """Get error metrics summary."""
+) -> ErrorMetricsResponse:
+    """
+    Get error metrics summary.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    v3.28: Added query limit via Repository (MET-HIGH-1).
+    """
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-
-        result = supabase.table("error_logs").select("error_type, status_code").gte("created_at", cutoff).execute()
-
-        errors = result.data or []
-        by_type = {}
-        by_status = {}
-
-        for err in errors:
-            t = err.get("error_type", "UNKNOWN")
-            by_type[t] = by_type.get(t, 0) + 1
-
-            s = err.get("status_code", 0)
-            by_status[s] = by_status.get(s, 0) + 1
-
-        return {
-            "total": len(errors),
-            "hours": hours,
-            "by_type": by_type,
-            "by_status": by_status
-        }
+        stats = await metrics_repo.get_error_stats(hours)
+        return ErrorMetricsResponse(
+            total=stats["total"],
+            hours=hours,
+            by_type=stats["by_type"],
+            by_status=stats["by_status"]
+        )
     except Exception as e:
         logger.error(f"[Admin] Error fetching error metrics: {e}")
-        return {"total": 0, "error": "Failed to fetch error metrics"}
+        return ErrorMetricsResponse(total=0, hours=hours, by_type={}, by_status={})
 
 
-@router.get("/dau-trend")
+@router.get("/dau-trend", response_model=DAUTrendResponse)
 @limiter.limit("30/minute")
 async def get_dau_trend(
     request: Request,
     # v3.25: MET-MEDIUM-6 - Added days range validation
     days: int = Query(30, ge=1, le=365, description="Number of days (1-365)"),
     admin: dict = Depends(require_admin)
-):
-    """Get DAU trend."""
+) -> DAUTrendResponse:
+    """
+    Get DAU trend.
+
+    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
+    v3.28: Added Response Model (MET-HIGH-2).
+    """
+    db = get_database_client()
+    metrics_repo = SupabaseMetricsRepository(db)
+
     try:
-        result = supabase.table("daily_metrics").select("date, dau").order("date", desc=True).limit(days).execute()
-        return {"trend": result.data or [], "days": days}
+        trend_data = await metrics_repo.get_dau_trend(days)
+        trend = [DAUTrendItem(**item) for item in trend_data]
+        return DAUTrendResponse(trend=trend, days=days)
     except Exception as e:
         logger.error(f"[Admin] Error fetching DAU trend: {e}")
-        return {"trend": [], "error": "Failed to fetch DAU trend"}
+        return DAUTrendResponse(trend=[], days=days)
 
 
-@router.post("/refresh")
+@router.post("/refresh", response_model=RefreshMetricsResponse)
 @limiter.limit("5/minute")
 async def refresh_metrics(
     request: Request,
-    # v3.25: MET-MEDIUM-7 - Added metric_type enum validation
+    # v3.28: MET-HIGH-5 - Fixed metric_type validation to match scheduler.py
     metric_type: str = Query("all", max_length=50),
     admin: dict = Depends(require_admin)
-):
-    """Manually refresh metrics aggregation."""
-    # v3.25: MET-MEDIUM-7 - Validate metric_type
+) -> RefreshMetricsResponse:
+    """
+    Manually refresh metrics aggregation.
+
+    v3.28: Fixed metric_type validation (MET-HIGH-5).
+    v3.28: Added Response Model (MET-MEDIUM-4).
+    """
+    # v3.28: MET-HIGH-5 - Validate metric_type (updated to match scheduler.py)
     if metric_type not in VALID_METRIC_TYPES:
         raise HTTPException(400, f"Invalid metric_type. Must be one of: {', '.join(VALID_METRIC_TYPES)}")
 
-    from scheduler import run_aggregation_now
-
     try:
         result = run_aggregation_now(metric_type)
-        return {"status": "refreshed", "type": metric_type, "result": result}
+        return RefreshMetricsResponse(status="refreshed", type=metric_type, result=result)
     except Exception as e:
         logger.error(f"[Admin] Error refreshing metrics: {e}")
         raise HTTPException(500, "Failed to refresh metrics")
