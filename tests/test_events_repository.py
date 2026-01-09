@@ -164,7 +164,10 @@ class TestSupabaseEventsRepository:
 
     @pytest.mark.asyncio
     async def test_get_event_stats_basic_query(self, repository, mock_client):
-        """get_event_stats builds correct query for event_type grouping"""
+        """get_event_stats builds correct query for event_type grouping (fallback mode)"""
+        # Mock RPC failure to trigger fallback
+        mock_client.rpc.side_effect = Exception("RPC not available")
+
         mock_result = MagicMock()
         mock_result.data = [
             {"event_type": "page_view"},
@@ -172,13 +175,14 @@ class TestSupabaseEventsRepository:
             {"event_type": "button_click"},
         ]
 
+        # Setup fallback query chain
         mock_query = mock_client.table.return_value.select.return_value
         mock_query.gte.return_value = mock_query
         mock_query.limit.return_value.execute.return_value = mock_result
 
         result = await repository.get_event_stats(group_by="event_type")
 
-        # Verify query
+        # Verify fallback query was used
         mock_client.table.assert_called_with("user_events")
 
         # Verify aggregation
@@ -187,10 +191,14 @@ class TestSupabaseEventsRepository:
 
     @pytest.mark.asyncio
     async def test_get_event_stats_with_date_filter(self, repository, mock_client):
-        """get_event_stats applies date filters"""
+        """get_event_stats applies date filters (fallback mode)"""
+        # Mock RPC failure to trigger fallback
+        mock_client.rpc.side_effect = Exception("RPC not available")
+
         mock_result = MagicMock()
         mock_result.data = []
 
+        # Setup fallback query chain
         mock_query = mock_client.table.return_value.select.return_value
         mock_query.gte.return_value = mock_query
         mock_query.lte.return_value = mock_query
@@ -203,13 +211,15 @@ class TestSupabaseEventsRepository:
             group_by="event_type"
         )
 
-        # Verify date filters (note: gte is called on query chain)
-        # Since the query chain is built dynamically, just verify end_date filter
+        # Verify date filters
         mock_query.lte.assert_called_once_with("created_at", "2026-01-09")
 
     @pytest.mark.asyncio
     async def test_get_event_stats_group_by_user_id(self, repository, mock_client):
-        """get_event_stats groups by user_id correctly"""
+        """get_event_stats groups by user_id correctly (fallback mode)"""
+        # Mock RPC failure to trigger fallback
+        mock_client.rpc.side_effect = Exception("RPC not available")
+
         mock_result = MagicMock()
         mock_result.data = [
             {"user_id": "user_1"},
@@ -217,6 +227,7 @@ class TestSupabaseEventsRepository:
             {"user_id": "user_2"},
         ]
 
+        # Setup fallback query chain
         mock_query = mock_client.table.return_value.select.return_value
         mock_query.gte.return_value = mock_query
         mock_query.limit.return_value.execute.return_value = mock_result
@@ -228,7 +239,10 @@ class TestSupabaseEventsRepository:
 
     @pytest.mark.asyncio
     async def test_get_event_stats_group_by_date(self, repository, mock_client):
-        """get_event_stats groups by date correctly"""
+        """get_event_stats groups by date correctly (fallback mode)"""
+        # Mock RPC failure to trigger fallback
+        mock_client.rpc.side_effect = Exception("RPC not available")
+
         mock_result = MagicMock()
         mock_result.data = [
             {"created_at": "2026-01-09T10:00:00Z"},
@@ -236,6 +250,7 @@ class TestSupabaseEventsRepository:
             {"created_at": "2026-01-08T10:00:00Z"},
         ]
 
+        # Setup fallback query chain
         mock_query = mock_client.table.return_value.select.return_value
         mock_query.gte.return_value = mock_query
         mock_query.limit.return_value.execute.return_value = mock_result
@@ -247,7 +262,10 @@ class TestSupabaseEventsRepository:
 
     @pytest.mark.asyncio
     async def test_get_event_stats_group_by_hour(self, repository, mock_client):
-        """get_event_stats groups by hour correctly"""
+        """get_event_stats groups by hour correctly (fallback mode)"""
+        # Mock RPC failure to trigger fallback
+        mock_client.rpc.side_effect = Exception("RPC not available")
+
         mock_result = MagicMock()
         mock_result.data = [
             {"created_at": "2026-01-09T10:00:00Z"},
@@ -255,6 +273,7 @@ class TestSupabaseEventsRepository:
             {"created_at": "2026-01-09T11:00:00Z"},
         ]
 
+        # Setup fallback query chain
         mock_query = mock_client.table.return_value.select.return_value
         mock_query.gte.return_value = mock_query
         mock_query.limit.return_value.execute.return_value = mock_result
