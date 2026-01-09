@@ -1805,7 +1805,9 @@ COMMENT ON TABLE user_discounts IS '用户折扣表: 个性化折扣优惠';
 
 -- 索引
 CREATE INDEX idx_user_discounts_user ON user_discounts(user_id);
-CREATE INDEX idx_user_discounts_valid ON user_discounts(valid_until) WHERE valid_until > CURRENT_TIMESTAMP;
+CREATE INDEX idx_user_discounts_valid ON user_discounts(valid_until);
+-- Note: 不使用 WHERE valid_until > CURRENT_TIMESTAMP 因为 CURRENT_TIMESTAMP 是 VOLATILE 函数
+-- 查询时会在 SQL 中过滤: WHERE valid_until > CURRENT_TIMESTAMP
 
 -- ============================================================================
 -- 第十九部分: 核心业务函数
