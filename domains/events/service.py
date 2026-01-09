@@ -5,6 +5,7 @@ Core business logic for Events domain.
 
 @module domains.events.service
 @version 1.0.0 (created for v3.27 refactor)
+@version 1.1.0 (2026-01-09: Added security validation)
 """
 
 from typing import Optional, Dict, Any
@@ -14,6 +15,12 @@ from .constants import (
     DATE_PATTERN,
 )
 from .entities import UserEvent
+from .security import (
+    validate_user_id,
+    validate_event_type,
+    sanitize_event_data,
+    sanitize_sql_input,
+)
 
 
 class EventsDomainService:
@@ -105,11 +112,13 @@ class EventsDomainService:
         """
         Validate user event before creation.
 
+        ✅ Enhanced: Now includes security validation (SQL injection, format check)
+
         Args:
             event: UserEvent to validate
 
         Raises:
-            ValueError: If event is invalid
+            ValueError: If event is invalid or contains malicious input
         """
         if not event.user_id:
             raise ValueError("user_id is required")
@@ -117,23 +126,28 @@ class EventsDomainService:
         if not event.event_type:
             raise ValueError("event_type is required")
 
-        if len(event.event_type) > 100:
-            raise ValueError("event_type must be <= 100 characters")
+        # Security validation
+        try:
+            event.user_id = validate_user_id(event.user_id)
+            event.event_type = validate_event_type(event.event_type)
+        except ValueError as e:
+            raise ValueError(f"Security validation failed: {e}")
 
     @staticmethod
     def sanitize_event_data(event_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         Sanitize event data to prevent XSS and injection attacks.
 
+        ✅ Implemented: Now uses security module for comprehensive sanitization
+
         Args:
             event_data: Event data dictionary
 
         Returns:
-            Sanitized event data
+            Sanitized event data (sensitive fields masked)
         """
         if event_data is None:
             return None
 
-        # TODO: Implement sanitization logic
-        # For now, just return as-is
-        return event_data
+        # Use security module for sanitization
+        return sanitize_event_data(event_data)
