@@ -126,7 +126,7 @@ class TestStatsConstants:
 
     def test_valid_dashboard_periods(self):
         """Valid dashboard periods are defined."""
-        from api.admin.stats import VALID_DASHBOARD_PERIODS
+        from domains.stats.constants import VALID_DASHBOARD_PERIODS
 
         assert "day" in VALID_DASHBOARD_PERIODS
         assert "week" in VALID_DASHBOARD_PERIODS
@@ -136,7 +136,7 @@ class TestStatsConstants:
 
     def test_valid_group_by(self):
         """Valid group_by values are defined."""
-        from api.admin.stats import VALID_GROUP_BY
+        from domains.stats.constants import VALID_GROUP_BY
 
         assert "day" in VALID_GROUP_BY
         assert "week" in VALID_GROUP_BY
@@ -146,7 +146,7 @@ class TestStatsConstants:
 
     def test_date_pattern(self):
         """Date pattern matches expected formats."""
-        from api.admin.stats import DATE_PATTERN
+        from domains.stats.constants import DATE_PATTERN
 
         # Valid formats
         assert DATE_PATTERN.match("2024-01-15")
@@ -200,14 +200,14 @@ class TestStatsParameterValidation:
     @pytest.mark.parametrize("period", ["day", "week", "month", "year"])
     def test_valid_dashboard_period_values(self, period):
         """Valid dashboard period values are accepted."""
-        from api.admin.stats import VALID_DASHBOARD_PERIODS
+        from domains.stats.constants import VALID_DASHBOARD_PERIODS
 
         assert period in VALID_DASHBOARD_PERIODS
 
     @pytest.mark.parametrize("group_by", ["day", "week", "month"])
     def test_valid_group_by_values(self, group_by):
         """Valid group_by values are accepted."""
-        from api.admin.stats import VALID_GROUP_BY
+        from domains.stats.constants import VALID_GROUP_BY
 
         assert group_by in VALID_GROUP_BY
 
@@ -220,7 +220,7 @@ class TestStatsParameterValidation:
     ])
     def test_valid_date_formats(self, date_str):
         """Valid date formats pass validation."""
-        from api.admin.stats import DATE_PATTERN
+        from domains.stats.constants import DATE_PATTERN
 
         assert DATE_PATTERN.match(date_str)
 
@@ -233,7 +233,7 @@ class TestStatsParameterValidation:
     ])
     def test_invalid_date_formats(self, date_str):
         """Invalid date formats fail validation."""
-        from api.admin.stats import DATE_PATTERN
+        from domains.stats.constants import DATE_PATTERN
 
         assert not DATE_PATTERN.match(date_str)
 

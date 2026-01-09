@@ -211,15 +211,22 @@ class SupabaseAdminStatsRepository:
         Get user tier distribution (optimized).
 
         STAT-MEDIUM-4: Changed from 3 separate queries to 1 query + in-memory aggregation.
+        STAT-MEDIUM-9: Added .limit(100000) for OOM protection.
         Performance: 3x faster (1 DB roundtrip instead of 3).
         """
-        result = self.client.table("profiles").select("tier").execute()
+        result = self.client.table("profiles").select("tier").limit(100000).execute()
 
         distribution = {"free": 0, "starter": 0, "pro": 0}
+        total_fetched = len(result.data or [])
+
         for row in (result.data or []):
             tier = row.get("tier", "free")
             if tier in distribution:
                 distribution[tier] += 1
+
+        # Add metadata about data completeness
+        distribution["_total_fetched"] = total_fetched
+        distribution["_is_truncated"] = total_fetched >= 100000
 
         return distribution
 

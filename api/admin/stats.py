@@ -2,9 +2,16 @@
 Admin Stats API - Dashboard and analytics endpoints for admins.
 
 @module api.admin.stats
-@version 3.26
+@version 3.29 (DDD Compliant)
 
 Changes:
+- v3.29: Complete DDD architecture migration (STAT-CRITICAL-1)
+  - API layer now calls Service layer instead of Repository
+  - Moved constants to domains/stats/constants.py (STAT-MEDIUM-2)
+  - Unified repository access pattern (STAT-MEDIUM-1)
+  - Removed _get_aggregated_stat helper (moved to Service layer)
+  - All 18 endpoints now follow API → Service → Repository pattern
+
 - v3.26: Critical fixes and error handling improvements
   - STAT-CRITICAL-1: Fixed revenue endpoint (was calling non-existent method)
   - STAT-HIGH-1: Added try-except error handling to all 7 core endpoints
@@ -39,15 +46,41 @@ Endpoints:
 """
 
 import logging
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
 from dependencies import require_admin
-from core.database import get_database_client, get_supabase_client, retry_on_network_error_async
-from infrastructure.repositories import SupabaseAdminStatsRepository
 from infrastructure.rate_limiter import limiter
+
+# v3.29: Import from Domain layer (DDD Migration)
+from domains.stats import (
+    # Core statistics (7)
+    get_dashboard_stats,
+    get_user_growth_stats,
+    get_revenue_stats,
+    get_project_stats,
+    get_credit_usage_stats,
+    get_tier_distribution,
+    get_conversion_funnel,
+    # Aggregated statistics (11)
+    get_export_stats,
+    get_asset_usage_stats,
+    get_tier_activity_stats,
+    get_subscription_events_stats,
+    get_page_views_stats,
+    get_project_details_stats,
+    get_returning_users_stats,
+    get_tier_trend_stats,
+    get_tier_conversion_stats,
+    get_performance_metrics_stats,
+    get_user_distribution_stats,
+)
+from domains.stats.constants import (
+    VALID_DASHBOARD_PERIODS,
+    VALID_GROUP_BY,
+    DATE_PATTERN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,19 +88,7 @@ router = APIRouter(prefix="/stats", tags=["admin-stats-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
-# ==========================================
-
-# v3.25: STAT-MEDIUM-2 - Date format pattern
-DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
-
-# v3.25: STAT-MEDIUM-3 - Valid period values
-VALID_DASHBOARD_PERIODS = {"day", "week", "month", "year"}
-VALID_GROUP_BY = {"day", "week", "month"}
-
-
-# ==========================================
-# Validation Functions (v3.25)
+# Validation Functions
 # ==========================================
 
 def validate_date_format(date_str: Optional[str], field_name: str) -> None:
@@ -77,35 +98,12 @@ def validate_date_format(date_str: Optional[str], field_name: str) -> None:
 
 
 # ==========================================
-# Helper Functions (v3.25: Enhanced logging)
-# ==========================================
-
-@retry_on_network_error_async()
-async def _get_aggregated_stat(stat_type: str, default: dict):
-    """Fetch pre-aggregated stats from database."""
-    try:
-        result = get_supabase_client().table("aggregated_stats") \
-            .select("data") \
-            .eq("stat_type", stat_type) \
-            .order("date", desc=True) \
-            .limit(1).execute()
-
-        if result.data:
-            return result.data[0].get("data", default)
-        return default
-    except Exception as e:
-        # v3.26: STAT-HIGH-3 + STAT-LOW-2 - Enhanced error logging with details
-        logger.error(f"[Admin Stats] Failed to get {stat_type}: {type(e).__name__} - {e}")
-        return default
-
-
-# ==========================================
 # Core Dashboard Stats (v3.25: Added rate limiting and validation)
 # ==========================================
 
 @router.get("/dashboard")
 @limiter.limit("30/minute")
-async def get_dashboard_stats(
+async def get_dashboard_stats_endpoint(
     request: Request,
     period: str = Query("month", max_length=10),
     admin: dict = Depends(require_admin),
@@ -116,9 +114,8 @@ async def get_dashboard_stats(
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_DASHBOARD_PERIODS)}")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_dashboard_stats(period)
+        result = await get_dashboard_stats(period)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch dashboard stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch dashboard statistics")
@@ -126,7 +123,7 @@ async def get_dashboard_stats(
 
 @router.get("/user-growth")
 @limiter.limit("30/minute")
-async def get_user_growth_stats(
+async def get_user_growth_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
@@ -143,9 +140,8 @@ async def get_user_growth_stats(
         raise HTTPException(400, f"Invalid group_by. Must be one of: {', '.join(VALID_GROUP_BY)}")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
+        result = await get_user_growth_stats(start_date, end_date, group_by)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch user growth stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch user growth statistics")
@@ -153,7 +149,7 @@ async def get_user_growth_stats(
 
 @router.get("/revenue")
 @limiter.limit("30/minute")
-async def get_revenue_stats(
+async def get_revenue_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
@@ -170,9 +166,8 @@ async def get_revenue_stats(
         raise HTTPException(400, f"Invalid group_by. Must be one of: {', '.join(VALID_GROUP_BY)}")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
+        result = await get_revenue_stats(start_date, end_date, group_by)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch revenue stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch revenue statistics")
@@ -180,7 +175,7 @@ async def get_revenue_stats(
 
 @router.get("/projects")
 @limiter.limit("30/minute")
-async def get_project_stats(
+async def get_project_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
@@ -192,9 +187,8 @@ async def get_project_stats(
     validate_date_format(end_date, "end_date")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_project_stats(start_date, end_date)
+        result = await get_project_stats(start_date, end_date)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch project stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch project statistics")
@@ -202,7 +196,7 @@ async def get_project_stats(
 
 @router.get("/credits")
 @limiter.limit("30/minute")
-async def get_credit_usage_stats(
+async def get_credit_usage_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
@@ -214,9 +208,8 @@ async def get_credit_usage_stats(
     validate_date_format(end_date, "end_date")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
+        result = await get_credit_usage_stats(start_date, end_date)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch credit usage stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch credit usage statistics")
@@ -224,15 +217,14 @@ async def get_credit_usage_stats(
 
 @router.get("/tier-distribution")
 @limiter.limit("30/minute")
-async def get_tier_distribution(
+async def get_tier_distribution_endpoint(
     request: Request,
     admin: dict = Depends(require_admin),
 ):
     """Fetch user tier distribution."""
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_tier_distribution()
+        result = await get_tier_distribution()
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch tier distribution: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch tier distribution")
@@ -240,7 +232,7 @@ async def get_tier_distribution(
 
 @router.get("/conversion-funnel")
 @limiter.limit("30/minute")
-async def get_conversion_funnel(
+async def get_conversion_funnel_endpoint(
     request: Request,
     period: str = Query("month", max_length=10),
     admin: dict = Depends(require_admin),
@@ -251,9 +243,8 @@ async def get_conversion_funnel(
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_DASHBOARD_PERIODS)}")
 
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_conversion_funnel(period)
+        result = await get_conversion_funnel(period)
+        return result
     except Exception as e:
         logger.error(f"Failed to fetch conversion funnel: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch conversion funnel")
@@ -287,7 +278,7 @@ async def get_asset_usage_stats(request: Request, admin: dict = Depends(require_
 @limiter.limit("30/minute")
 async def get_tier_activity(request: Request, admin: dict = Depends(require_admin)):
     """Fetch per-tier activity stats."""
-    return await _get_aggregated_stat("tier_activity", {})
+    return await get_tier_activity_stats()
 
 
 @router.get("/subscription-events")
@@ -324,21 +315,21 @@ async def get_project_details(request: Request, admin: dict = Depends(require_ad
 @limiter.limit("30/minute")
 async def get_returning_users(request: Request, admin: dict = Depends(require_admin)):
     """Fetch returning user stats."""
-    return await _get_aggregated_stat("returning_users", {})
+    return await get_returning_users_stats()
 
 
 @router.get("/tier-trend")
 @limiter.limit("30/minute")
 async def get_tier_trend(request: Request, admin: dict = Depends(require_admin)):
     """Fetch tier trend over time."""
-    return await _get_aggregated_stat("tier_trend_30d", {"trend": []})
+    return await get_tier_trend_stats()
 
 
 @router.get("/tier-conversion")
 @limiter.limit("30/minute")
 async def get_tier_conversion(request: Request, admin: dict = Depends(require_admin)):
     """Fetch tier conversion stats."""
-    return await _get_aggregated_stat("tier_conversion_30d", {"conversions": []})
+    return await get_tier_conversion_stats()
 
 
 @router.get("/performance")
