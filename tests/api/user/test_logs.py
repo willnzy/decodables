@@ -1,5 +1,5 @@
 """
-Tests for Logs API endpoints (v2)
+Tests for Logs API endpoints (v3)
 
 API Module: api/user/logs.py
 Endpoints:
@@ -9,7 +9,12 @@ Endpoints:
 Note: These endpoints don't require authentication
 
 @module tests.api.user.test_logs
-@version 2.1.0
+@version 3.0.0
+
+Changes in v3.0.0:
+- Updated tests to mock Handlers instead of Supabase (CQRS pattern)
+- Tests now verify Handler.handle() is called correctly
+- Maintain all existing test coverage (22 tests)
 
 Changes in v2.1.0:
 - Added tests for error_id format validation (LOG-HIGH-1)
@@ -19,7 +24,7 @@ Changes in v2.1.0:
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 # IMPORTANT: Bypass rate limiter BEFORE importing app
@@ -38,55 +43,98 @@ client = TestClient(app)
 class TestLogSingleError:
     """Test POST /api/v2/user/logs/error"""
 
-    @patch('api.user.logs.supabase')
-    def test_log_error_success_without_auth(self, mock_supabase):
-        """Should log error without authentication"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    def test_log_error_success_without_auth(self):
+        """
+        v3.0.0: Should log error without authentication using Handler.
 
-        payload = {
-            "error_id": "err_123",
-            "error_type": "api_error",
-            "error_code": "E500",
-            "message": "Internal server error",
-            "status_code": 500,
-            "endpoint": "/api/v2/user/projects",
-            "method": "POST",
-            "session_id": "sess_abc",
-            "page_url": "https://example.com/editor",
-            "user_agent": "Mozilla/5.0",
-        }
+        Tests: CreateErrorLogHandler is called correctly.
+        """
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_123",
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        assert data["status"] == "ok"
-        assert "warning" not in data or data["warning"] is None
+        try:
+            payload = {
+                "error_id": "err_123",
+                "error_type": "api_error",
+                "error_code": "E500",
+                "message": "Internal server error",
+                "status_code": 500,
+                "endpoint": "/api/v2/user/projects",
+                "method": "POST",
+                "session_id": "sess_abc",
+                "page_url": "https://example.com/editor",
+                "user_agent": "Mozilla/5.0",
+            }
 
-        # Verify insert was called
-        mock_supabase.table.assert_called_with("error_logs")
+            response = client.post("/api/v2/user/logs/error", json=payload)
 
-    @patch('api.user.logs.supabase')
-    def test_log_error_with_auth_token(self, mock_supabase):
-        """Should extract user_id from auth token if provided"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+            assert response.status_code == 200
+            data = response.json()
 
-        payload = {
-            "error_id": "err_456",
-            "error_type": "validation_error",
-            "message": "Invalid input",
-        }
+            assert data["status"] == "ok"
+            assert "warning" not in data or data["warning"] is None
 
-        # Include a mock JWT token (will be decoded without verification)
-        headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJUZXN0In0.abc123"}
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
 
-        response = client.post("/api/v2/user/logs/error", json=payload, headers=headers)
+    def test_log_error_with_auth_token(self):
+        """
+        v3.0.0: Should extract user_id from auth token if provided.
 
-        assert response.status_code == 200
-        data = response.json()
+        Tests: JWT token is decoded and user_id passed to handler.
+        """
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        assert data["status"] == "ok"
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_456",
+        ))
+
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
+
+        try:
+            payload = {
+                "error_id": "err_456",
+                "error_type": "validation_error",
+                "message": "Invalid input",
+            }
+
+            # Include a mock JWT token (will be decoded without verification)
+            headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsIm5hbWUiOiJUZXN0In0.abc123"}
+
+            response = client.post("/api/v2/user/logs/error", json=payload, headers=headers)
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["status"] == "ok"
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
 
     def test_log_error_message_too_long_rejected(self):
         """
@@ -125,27 +173,47 @@ class TestLogSingleError:
         # v2.1.0: Now rejects at validation layer
         assert response.status_code == 422
 
-    @patch('api.user.logs.supabase')
-    def test_log_error_handles_db_failure_gracefully(self, mock_supabase):
-        """Should return 200 even if DB insert fails (fire-and-forget)"""
-        # Simulate DB failure
-        mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+    def test_log_error_handles_db_failure_gracefully(self):
+        """
+        v3.0.0: Should return 200 even if Handler fails (fire-and-forget).
 
-        payload = {
-            "error_id": "err_999",
-            "error_type": "network_error",
-            "message": "Connection timeout",
-        }
+        Tests: Handler failure returns success with warning.
+        """
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        # Simulate handler failure
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=False,
+            error="DB error",
+        ))
 
-        # Should still return 200 with warning
-        assert response.status_code == 200
-        data = response.json()
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        assert data["status"] == "ok"
-        assert data["warning"] is not None
-        assert "not have been stored" in data["warning"]
+        try:
+            payload = {
+                "error_id": "err_999",
+                "error_type": "network_error",
+                "message": "Connection timeout",
+            }
+
+            response = client.post("/api/v2/user/logs/error", json=payload)
+
+            # Should still return 200 with warning
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["status"] == "ok"
+            assert data["warning"] is not None
+            assert "not have been stored" in data["warning"]
+        finally:
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
 
     def test_log_error_invalid_payload_returns_422(self):
         """Should return 422 for invalid payload"""
@@ -156,46 +224,66 @@ class TestLogSingleError:
 
         assert response.status_code == 422
 
-    @patch('api.user.logs.supabase')
-    def test_log_error_with_full_context(self, mock_supabase):
-        """Should log error with full context including custom fields"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    def test_log_error_with_full_context(self):
+        """
+        v3.0.0: Should log error with full context including custom fields.
 
-        payload = {
-            "error_id": "err_full",
-            "error_type": "business_logic_error",
-            "error_code": "CREDITS_INSUFFICIENT",
-            "message": "Not enough credits",
-            "status_code": 402,
-            "endpoint": "/api/v2/user/generation/image",
-            "method": "POST",
-            "user_code": "UC123",
-            "session_id": "sess_xyz",
-            "page_url": "https://example.com/editor",
-            "user_agent": "Mozilla/5.0 Chrome/120.0",
-            "stack_trace": "Error at line 42...",
-            "context": {
-                "credits_required": 5,
-                "credits_available": 2,
-                "feature": "ai_image_generation",
-            },
-            "client_timestamp": "2026-01-08T10:00:00Z",
-        }
+        Tests: Handler receives all fields correctly.
+        """
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult, CreateErrorLogCommand
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_full",
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        assert data["status"] == "ok"
+        try:
+            payload = {
+                "error_id": "err_full",
+                "error_type": "business_logic_error",
+                "error_code": "CREDITS_INSUFFICIENT",
+                "message": "Not enough credits",
+                "status_code": 402,
+                "endpoint": "/api/v2/user/generation/image",
+                "method": "POST",
+                "user_code": "UC123",
+                "session_id": "sess_xyz",
+                "page_url": "https://example.com/editor",
+                "user_agent": "Mozilla/5.0 Chrome/120.0",
+                "stack_trace": "Error at line 42...",
+                "context": {
+                    "credits_required": 5,
+                    "credits_available": 2,
+                    "feature": "ai_image_generation",
+                },
+                "client_timestamp": "2026-01-08T10:00:00Z",
+            }
 
-        # Verify all fields were included in insert
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_data = call_args[0][0]
+            response = client.post("/api/v2/user/logs/error", json=payload)
 
-        assert inserted_data["error_id"] == "err_full"
-        assert inserted_data["error_code"] == "CREDITS_INSUFFICIENT"
-        assert inserted_data["context"]["feature"] == "ai_image_generation"
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["status"] == "ok"
+
+            # Verify handler was called with command
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert isinstance(call_args, CreateErrorLogCommand)
+            assert call_args.error_data["error_id"] == "err_full"
+            assert call_args.error_data["error_code"] == "CREDITS_INSUFFICIENT"
+            assert call_args.error_data["context"]["feature"] == "ai_image_generation"
+        finally:
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
 
 
 # ==========================================
@@ -205,108 +293,189 @@ class TestLogSingleError:
 class TestLogBatchErrors:
     """Test POST /api/v2/user/logs/errors (batch)"""
 
-    @patch('api.user.logs.supabase')
-    def test_log_batch_errors_success(self, mock_supabase):
-        """Should log multiple errors in batch"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+    def test_log_batch_errors_success(self):
+        """
+        v3.0.0: Should log multiple errors in batch using Handler.
 
-        payload = {
-            "errors": [
-                {
-                    "error_id": "err_1",
-                    "error_type": "api_error",
-                    "message": "Error 1",
-                },
-                {
-                    "error_id": "err_2",
-                    "error_type": "validation_error",
-                    "message": "Error 2",
-                },
-                {
-                    "error_id": "err_3",
-                    "error_type": "network_error",
-                    "message": "Error 3",
-                },
-            ]
-        }
+        Tests: CreateErrorLogBatchHandler is called correctly.
+        """
+        from application.commands.logging import CreateErrorLogBatchHandler, CreateErrorLogBatchResult
 
-        response = client.post("/api/v2/user/logs/errors", json=payload)
+        mock_handler = MagicMock(spec=CreateErrorLogBatchHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogBatchResult(
+            success=True,
+            count=3,
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log_batch')
+        container._handlers['create_error_log_batch'] = mock_handler
 
-        assert data["status"] == "ok"
-        assert data["errors_received"] == 3
+        try:
+            payload = {
+                "errors": [
+                    {
+                        "error_id": "err_1",
+                        "error_type": "api_error",
+                        "message": "Error 1",
+                    },
+                    {
+                        "error_id": "err_2",
+                        "error_type": "validation_error",
+                        "message": "Error 2",
+                    },
+                    {
+                        "error_id": "err_3",
+                        "error_type": "network_error",
+                        "message": "Error 3",
+                    },
+                ]
+            }
 
-        # Verify batch insert was called
-        mock_supabase.table.assert_called_with("error_logs")
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_records = call_args[0][0]
+            response = client.post("/api/v2/user/logs/errors", json=payload)
 
-        assert len(inserted_records) == 3
+            assert response.status_code == 200
+            data = response.json()
 
-    @patch('api.user.logs.supabase')
-    def test_log_batch_errors_with_auth(self, mock_supabase):
-        """Should extract user_id for all errors in batch"""
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+            assert data["status"] == "ok"
+            assert data["errors_received"] == 3
 
-        payload = {
-            "errors": [
-                {"error_id": "err_1", "error_type": "type1", "message": "msg1"},
-                {"error_id": "err_2", "error_type": "type2", "message": "msg2"},
-            ]
-        }
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['create_error_log_batch'] = original_handler
+            else:
+                container._handlers.pop('create_error_log_batch', None)
 
-        headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyJ9.abc"}
+    def test_log_batch_errors_with_auth(self):
+        """v3.0.0: Should extract user_id for all errors in batch using Handler."""
+        from application.commands.logging import CreateErrorLogBatchHandler, CreateErrorLogBatchResult
 
-        response = client.post("/api/v2/user/logs/errors", json=payload, headers=headers)
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateErrorLogBatchHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogBatchResult(
+            success=True,
+            count=2,
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log_batch')
+        container._handlers['create_error_log_batch'] = mock_handler
 
-        assert data["errors_received"] == 2
+        try:
+            payload = {
+                "errors": [
+                    {"error_id": "err_1", "error_type": "type1", "message": "msg1"},
+                    {"error_id": "err_2", "error_type": "type2", "message": "msg2"},
+                ]
+            }
 
-        # All records should have the same user_id
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_records = call_args[0][0]
+            headers = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyJ9.abc"}
 
-        assert all(record.get("user_id") == "user_123" for record in inserted_records)
+            response = client.post("/api/v2/user/logs/errors", json=payload, headers=headers)
 
-    @patch('api.user.logs.supabase')
-    def test_log_batch_errors_empty_array(self, mock_supabase):
-        """Should handle empty errors array"""
-        payload = {"errors": []}
+            assert response.status_code == 200
+            data = response.json()
 
-        response = client.post("/api/v2/user/logs/errors", json=payload)
+            assert data["errors_received"] == 2
 
-        assert response.status_code == 200
-        data = response.json()
+            # Verify handler was called with Command
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args
+            command = call_args[0][0]
 
-        assert data["status"] == "ok"
-        assert data["errors_received"] == 0
+            # All records should have the same user_id extracted from JWT
+            assert all(record.get("user_id") == "user_123" for record in command.errors)
 
-        # Should not call insert for empty array
-        mock_supabase.table.return_value.insert.assert_not_called()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log_batch'] = original_handler
+            else:
+                container._handlers.pop('create_error_log_batch', None)
 
-    @patch('api.user.logs.supabase')
-    def test_log_batch_errors_handles_db_failure(self, mock_supabase):
-        """Should return 200 with warning on DB failure"""
-        mock_supabase.table.return_value.insert.return_value.execute.side_effect = Exception("DB error")
+    def test_log_batch_errors_empty_array(self):
+        """v3.0.0: Should handle empty errors array using Handler."""
+        from application.commands.logging import CreateErrorLogBatchHandler, CreateErrorLogBatchResult
 
-        payload = {
-            "errors": [
-                {"error_id": "err_1", "error_type": "type1", "message": "msg1"},
-            ]
-        }
+        # Mock handler - should return count=0 for empty array
+        mock_handler = MagicMock(spec=CreateErrorLogBatchHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogBatchResult(
+            success=True,
+            count=0,
+        ))
 
-        response = client.post("/api/v2/user/logs/errors", json=payload)
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log_batch')
+        container._handlers['create_error_log_batch'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
+        try:
+            payload = {"errors": []}
 
-        assert data["status"] == "ok"
-        assert data["warning"] is not None
-        assert "may not have been stored" in data["warning"]
+            response = client.post("/api/v2/user/logs/errors", json=payload)
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["status"] == "ok"
+            assert data["errors_received"] == 0
+
+            # Handler should be called even with empty array
+            mock_handler.handle.assert_called_once()
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log_batch'] = original_handler
+            else:
+                container._handlers.pop('create_error_log_batch', None)
+
+    def test_log_batch_errors_handles_db_failure(self):
+        """v3.0.0: Should return 200 with warning on Handler failure."""
+        from application.commands.logging import CreateErrorLogBatchHandler, CreateErrorLogBatchResult
+
+        # Mock handler - simulate failure
+        mock_handler = MagicMock(spec=CreateErrorLogBatchHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogBatchResult(
+            success=False,
+            count=0,
+            error="DB error",
+        ))
+
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log_batch')
+        container._handlers['create_error_log_batch'] = mock_handler
+
+        try:
+            payload = {
+                "errors": [
+                    {"error_id": "err_1", "error_type": "type1", "message": "msg1"},
+                ]
+            }
+
+            response = client.post("/api/v2/user/logs/errors", json=payload)
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["status"] == "ok"
+            assert data["warning"] is not None
+            assert "may not have been stored" in data["warning"]
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log_batch'] = original_handler
+            else:
+                container._handlers.pop('create_error_log_batch', None)
 
     def test_log_batch_errors_invalid_payload_returns_422(self):
         """Should return 422 for invalid payload"""
@@ -388,73 +557,137 @@ class TestSecurityValidations:
 
         assert response.status_code == 422
 
-    @patch('api.user.logs.supabase')
-    def test_invalid_method_normalized(self, mock_supabase):
+    def test_invalid_method_normalized(self):
         """
-        v2.1.0: LOG-MEDIUM-2 - Invalid HTTP method should be normalized to None.
+        v3.0.0: LOG-MEDIUM-2 - Invalid HTTP method should be normalized to None.
         """
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        payload = {
-            "error_id": "err_123",
-            "error_type": "api_error",
-            "method": "INVALID",  # Not a valid HTTP method (short enough to pass max_length)
-        }
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_123",
+        ))
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        assert response.status_code == 200
+        try:
+            payload = {
+                "error_id": "err_123",
+                "error_type": "api_error",
+                "method": "INVALID",  # Not a valid HTTP method (short enough to pass max_length)
+            }
 
-        # Check that method was set to None
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_data = call_args[0][0]
-        assert inserted_data["method"] is None
+            response = client.post("/api/v2/user/logs/error", json=payload)
 
-    @patch('api.user.logs.supabase')
-    def test_valid_method_uppercased(self, mock_supabase):
+            assert response.status_code == 200
+
+            # Check that method was normalized to None by validator
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args
+            command = call_args[0][0]
+            assert command.error_data["method"] is None
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
+
+    def test_valid_method_uppercased(self):
         """
-        v2.1.0: LOG-MEDIUM-2 - Valid HTTP method should be uppercased.
+        v3.0.0: LOG-MEDIUM-2 - Valid HTTP method should be uppercased.
         """
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        payload = {
-            "error_id": "err_123",
-            "error_type": "api_error",
-            "method": "post",  # Lowercase
-        }
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_123",
+        ))
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        assert response.status_code == 200
+        try:
+            payload = {
+                "error_id": "err_123",
+                "error_type": "api_error",
+                "method": "post",  # Lowercase
+            }
 
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_data = call_args[0][0]
-        assert inserted_data["method"] == "POST"
+            response = client.post("/api/v2/user/logs/error", json=payload)
 
-    @patch('api.user.logs.supabase')
-    def test_large_context_truncated(self, mock_supabase):
+            assert response.status_code == 200
+
+            # Check that method was uppercased by validator
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args
+            command = call_args[0][0]
+            assert command.error_data["method"] == "POST"
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
+
+    def test_large_context_truncated(self):
         """
-        v2.1.0: LOG-HIGH-2 - Context over 10KB should be truncated.
+        v3.0.0: LOG-HIGH-2 - Context over 10KB should be truncated.
         """
-        mock_supabase.table.return_value.insert.return_value.execute.return_value = MagicMock()
+        from application.commands.logging import CreateErrorLogHandler, CreateErrorLogResult
 
-        # Create a large context (> 10KB)
-        large_context = {"data": "x" * 15000}
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateErrorLogHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateErrorLogResult(
+            success=True,
+            error_log_id="log_123",
+        ))
 
-        payload = {
-            "error_id": "err_123",
-            "error_type": "api_error",
-            "context": large_context,
-        }
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_error_log')
+        container._handlers['create_error_log'] = mock_handler
 
-        response = client.post("/api/v2/user/logs/error", json=payload)
+        try:
+            # Create a large context (> 10KB)
+            large_context = {"data": "x" * 15000}
 
-        assert response.status_code == 200
+            payload = {
+                "error_id": "err_123",
+                "error_type": "api_error",
+                "context": large_context,
+            }
 
-        # Check that context was truncated
-        call_args = mock_supabase.table.return_value.insert.call_args
-        inserted_data = call_args[0][0]
-        assert inserted_data["context"].get("_truncated") is True
+            response = client.post("/api/v2/user/logs/error", json=payload)
+
+            assert response.status_code == 200
+
+            # Check that context was truncated by validator
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args
+            command = call_args[0][0]
+            assert command.error_data["context"].get("_truncated") is True
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_error_log'] = original_handler
+            else:
+                container._handlers.pop('create_error_log', None)
 
     def test_batch_over_50_rejected(self):
         """
