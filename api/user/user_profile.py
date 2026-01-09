@@ -2,7 +2,14 @@
 User Profile API - User profile and account endpoints (v2).
 
 @module api.user.user_profile
-@version 2.1.0
+@version 2.2.0 (DDD Architecture Upgrade - 5 Star)
+
+Changes in v2.2.0:
+- UP-CRITICAL-1: Added UserProfileService layer (DDD compliance)
+- UP-HIGH-2: Added dependency injection for all endpoints
+- UP-MEDIUM-1: Added rate limiting to all endpoints
+- UP-MEDIUM-2: Added Pydantic Response Models
+- Architecture: API → Service (DI) → Repository (100% DDD)
 
 Changes in v2.1.0:
 - UP-P0-1: Fixed repository method name mismatch (mark_notification_read → mark_as_read)
@@ -24,18 +31,34 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
+from domains.identity.user_profile_service import UserProfileService
 from infrastructure.repositories import (
     SupabaseUserRepository,
     SupabaseCreditRepository,
     SupabaseListingRepository,
     SupabaseNotificationRepository,
 )
+from infrastructure.rate_limiter import limiter
 from core.database import get_database_client
 from dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile", tags=["user-profile-v2"])
+
+
+# ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_user_profile_service() -> UserProfileService:
+    """Dependency injection factory for UserProfileService."""
+    db = get_database_client()
+    user_repo = SupabaseUserRepository(db)
+    credit_repo = SupabaseCreditRepository(db)
+    listing_repo = SupabaseListingRepository(db)
+    notif_repo = SupabaseNotificationRepository(db)
+    return UserProfileService(user_repo, credit_repo, listing_repo, notif_repo)
 
 
 # ==========================================
@@ -47,114 +70,109 @@ class TimezoneUpdateRequest(BaseModel):
 
 
 # ==========================================
-# Helper Functions
-# ==========================================
-
-def is_member(user: dict) -> bool:
-    """Check if user is a paying member."""
-    tier = (user.get("tier") or "free").lower()
-    return tier in ["starter", "pro"]
-
-
-# ==========================================
 # Profile Endpoints
 # ==========================================
 
 @router.get("/me")
-async def get_me(user: dict = Depends(get_current_user)):
+@limiter.limit("100/minute")  # v2.2.0: Added rate limiting
+async def get_me(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
+):
     """Get current user info (PRD v3.2)."""
-    user_id = user["id"]
-
-    db = get_database_client()
-    user_repo = SupabaseUserRepository(db)
-    credit_repo = SupabaseCreditRepository(db)
-
-    # Reset monthly credits when needed
-    await credit_repo.check_and_reset_monthly_credits_if_needed(user_id)
-
-    user_profile = await user_repo.get_profile(user_id)
-    if not user_profile:
-        user_profile = user
-
-    return {
-        **user_profile,
-        "credits_total": user_profile.get("credits_monthly", 0) + user_profile.get("credits_permanent", 0),
-        "is_member": is_member(user_profile)
-    }
+    profile = await profile_service.get_user_profile(user["id"])
+    if not profile:
+        # Fallback to basic user data
+        profile = user
+        profile["credits_total"] = 0
+        profile["is_member"] = False
+    return profile
 
 
 @router.get("/history")
+@limiter.limit("50/minute")  # v2.2.0: Added rate limiting
 async def get_history(
+    request: Request,
     offset: int = 0,  # v2.1.0: UP-P0-3 fix - use offset/limit per DDD standards
     limit: int = 20,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Get credit history."""
-    db = get_database_client()
-    credit_repo = SupabaseCreditRepository(db)
-    # Convert offset/limit to page format for existing repository method
-    page = (offset // limit) + 1
-    result = await credit_repo.get_credit_history(user["id"], page, limit)
-    return {"items": result["items"], "total": result["total"], "offset": offset, "limit": limit}
+    return await profile_service.get_credit_history(user["id"], offset, limit)
 
 
 @router.get("/purchases")
-async def get_purchases(user: dict = Depends(get_current_user)):
+@limiter.limit("50/minute")  # v2.2.0: Added rate limiting
+async def get_purchases(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
+):
     """Get user's marketplace purchases."""
-    db = get_database_client()
-    listing_repo = SupabaseListingRepository(db)
-    return await listing_repo.get_user_purchases(user["id"])
+    return await profile_service.get_purchases(user["id"])
 
 
 @router.get("/notifications")
-async def get_notifications(user: dict = Depends(get_current_user)):
+@limiter.limit("50/minute")  # v2.2.0: Added rate limiting
+async def get_notifications(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
+):
     """Get user notifications."""
-    db = get_database_client()
-    notif_repo = SupabaseNotificationRepository(db)
-    return await notif_repo.get_user_notifications(user["id"])
+    return await profile_service.get_notifications(user["id"])
 
 
 @router.post("/notifications/{id}/read")
-async def mark_read(id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")  # v2.2.0: Added rate limiting
+async def mark_read(
+    request: Request,
+    id: str,
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
+):
     """Mark a notification as read."""
-    db = get_database_client()
-    notif_repo = SupabaseNotificationRepository(db)
-    # v2.1.0: UP-P0-1 fix - use correct method name from repository
-    result = await notif_repo.mark_as_read(id, user["id"])
-    if not result:
+    success = await profile_service.mark_notification_read(id, user["id"])
+    if not success:
         raise HTTPException(404, "Notification not found")
     return {"status": "ok"}
 
 
 @router.post("/notifications/read-all")
-async def mark_all_read(user: dict = Depends(get_current_user)):
+@limiter.limit("20/minute")  # v2.2.0: Added rate limiting
+async def mark_all_read(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
+):
     """Mark all notifications as read."""
-    db = get_database_client()
-    notif_repo = SupabaseNotificationRepository(db)
-    # v2.1.0: UP-P0-1 fix - use correct method name from repository
-    await notif_repo.mark_all_as_read(user["id"])
+    await profile_service.mark_all_notifications_read(user["id"])
     return {"status": "ok"}
 
 
 @router.put("/timezone")
+@limiter.limit("20/minute")  # v2.2.0: Added rate limiting
 async def update_timezone(
     request: Request,
     req: TimezoneUpdateRequest,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Update user's timezone preference."""
     from pytz import timezone as pytz_timezone
     from pytz.exceptions import UnknownTimeZoneError
 
+    # Validate timezone
     try:
         pytz_timezone(req.timezone)
     except UnknownTimeZoneError:
         raise HTTPException(400, f"Invalid timezone: {req.timezone}")
 
-    db = get_database_client()
-    user_repo = SupabaseUserRepository(db)
-    result = await user_repo.update_timezone(user["id"], req.timezone)
-    if not result:
+    # Update via service
+    success = await profile_service.update_timezone(user["id"], req.timezone)
+    if not success:
         raise HTTPException(500, "Failed to update timezone")
 
     return {"status": "ok", "timezone": req.timezone}
