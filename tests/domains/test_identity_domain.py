@@ -103,7 +103,7 @@ class TestUserProfileAggregate:
         assert profile.user_id == "user_123"
         assert profile.email == "test@example.com"
         assert profile.tier == UserTier.STARTER
-        assert profile.is_member is True
+        assert profile.is_premium is True
 
     def test_create_with_defaults(self):
         """Test creating UserProfile with default values."""
@@ -113,7 +113,7 @@ class TestUserProfileAggregate:
         )
 
         assert profile.tier == UserTier.FREE
-        assert profile.is_member is False
+        assert profile.is_premium is False
         assert profile.role == "user"
 
     def test_is_member_property(self):
@@ -122,9 +122,9 @@ class TestUserProfileAggregate:
         starter = UserProfile(user_id="2", email="b@b.com", tier=UserTier.STARTER)
         pro = UserProfile(user_id="3", email="c@b.com", tier=UserTier.PRO)
 
-        assert free.is_member is False
-        assert starter.is_member is True
-        assert pro.is_member is True
+        assert free.is_premium is False
+        assert starter.is_premium is True
+        assert pro.is_premium is True
 
     def test_is_admin_property(self):
         """Test is_admin property."""
@@ -140,10 +140,10 @@ class TestUserProfileAggregate:
         pro_user = UserProfile(user_id="2", email="b@b.com", tier=UserTier.PRO)
 
         # Free user cannot publish to marketplace
-        assert free_user.has_feature_access("marketplace_publish") is False
+        assert free_user.has_feature("marketplace_publish") is False
 
         # Pro user can publish to marketplace
-        assert pro_user.has_feature_access("marketplace_publish") is True
+        assert pro_user.has_feature("marketplace_publish") is True
 
     def test_upgrade_tier(self):
         """Test upgrading user tier."""
@@ -156,7 +156,7 @@ class TestUserProfileAggregate:
         profile.upgrade_tier(UserTier.STARTER)
 
         assert profile.tier == UserTier.STARTER
-        assert profile.is_member is True
+        assert profile.is_premium is True
 
     def test_downgrade_tier(self):
         """Test downgrading user tier."""
@@ -169,7 +169,7 @@ class TestUserProfileAggregate:
         profile.downgrade_tier(UserTier.FREE)
 
         assert profile.tier == UserTier.FREE
-        assert profile.is_member is False
+        assert profile.is_premium is False
 
     def test_project_limit_by_tier(self):
         """Test project limits by tier."""
