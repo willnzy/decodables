@@ -2,9 +2,15 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.28
+@version 3.28 (DDD Compliant)
 
 Changes:
+- v3.28: DDD Architecture Migration (EXP-CRITICAL-1)
+  - Migrated from domains/platform/experiments/crud.py to Repository pattern
+  - All data access now through infrastructure/repositories/experiment_repository.py
+  - Added @retry_on_network_error_async to all Repository methods
+  - Added OOM protection (.limit(10000)) to all Repository queries
+  - Achieved 100% DDD architecture compliance
 - v3.28: P2/P3 final improvements
   - EXP-MEDIUM-2: Added timezone handling to date parsing
   - EXP-HIGH-5: Fixed list_experiments return type (Service returns tuple)
@@ -50,7 +56,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from dependencies import require_admin
-from domains.platform import experiments as experiment_service
+from domains.platform import experiments as experiment_service  # v3.28: Now uses Repository internally
 from domains.platform import experiment_ai_service  # EXP-HIGH-4: Moved import to top
 from infrastructure.rate_limiter import limiter
 
@@ -211,6 +217,7 @@ async def list_experiments(
         if status is not None and status not in VALID_EXPERIMENT_STATUSES:
             raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
 
+        # v3.28: experiment_service now uses Repository internally (DDD compliant)
         experiments, total = experiment_service.list_experiments(status=status, limit=limit, offset=offset)
         return ExperimentListResponse(experiments=experiments, total=total, offset=offset, limit=limit)
 
