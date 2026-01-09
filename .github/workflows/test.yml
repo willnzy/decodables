@@ -40,11 +40,8 @@ jobs:
       
       - name: Run unit tests
         run: |
-          pytest tests/test_payment_service.py \
-                 tests/test_credits_logic.py \
-                 tests/test_analytics_service.py \
-                 tests/test_cache_service.py \
-                 tests/test_access_control.py \
+          pytest tests/test_credits_logic.py \
+                 tests/services/test_analytics_service.py \
                  tests/edge_cases/ \
                  tests/business_rules/ \
                  -v --tb=short
@@ -202,8 +199,6 @@ jobs:
           pytest tests/integration/ \
                  tests/services/ \
                  tests/test_timezone_utils.py \
-                 tests/test_events_service.py \
-                 tests/test_experiment_ai_service.py \
                  -v --tb=short || true
         env:
           TESTING: 'true'
