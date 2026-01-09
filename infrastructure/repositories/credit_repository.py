@@ -127,9 +127,22 @@ class SupabaseCreditRepository(ICreditRepository):
                     reason="RPC returned no data"
                 )
 
+            # B-NEW-6 FIX: Validate RPC return structure
             data = result.data
             if isinstance(data, list):
+                if not data:  # Empty list
+                    raise CreditOperationFailedException(
+                        user_id=user_id,
+                        operation="deduct",
+                        reason="RPC returned empty list"
+                    )
                 data = data[0]
+            elif not data:  # None or empty dict
+                raise CreditOperationFailedException(
+                    user_id=user_id,
+                    operation="deduct",
+                    reason="RPC returned no data"
+                )
 
             # Check for insufficient credits
             if data.get("error"):
@@ -205,9 +218,22 @@ class SupabaseCreditRepository(ICreditRepository):
                     reason="RPC returned no data"
                 )
 
+            # B-NEW-6 FIX: Validate RPC return structure
             data = result.data
             if isinstance(data, list):
+                if not data:  # Empty list
+                    raise CreditOperationFailedException(
+                        user_id=user_id,
+                        operation="add",
+                        reason="RPC returned empty list"
+                    )
                 data = data[0]
+            elif not data:  # None or empty dict
+                raise CreditOperationFailedException(
+                    user_id=user_id,
+                    operation="add",
+                    reason="RPC returned no data"
+                )
 
             # Create transaction record
             # RPC returns: balance_monthly, balance_permanent (not monthly_after/permanent_after)
@@ -293,8 +319,13 @@ class SupabaseCreditRepository(ICreditRepository):
             return result.count if result.count is not None else 0
 
         except Exception as e:
+            # B-NEW-3 FIX: Raise exception instead of returning 0
             logger.error(f"Failed to get transaction count for user {user_id}: {e}")
-            return 0
+            raise CreditOperationFailedException(
+                user_id=user_id,
+                operation="count",
+                reason=str(e)
+            )
 
     async def check_idempotency(
         self,

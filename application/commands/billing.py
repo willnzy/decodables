@@ -15,6 +15,11 @@ from domains.billing import (
     UserCredits,
 )
 from domains.billing.aggregates.user_credits import CreditTransaction
+from domains.billing.exceptions import (
+    InsufficientCreditsException,
+    CreditOperationFailedException,
+    InvalidAmountException,
+)
 
 
 @dataclass
@@ -80,10 +85,26 @@ class DeductCreditsHandler:
                 remaining_credits=remaining,
             )
 
-        except Exception as e:
+        except InsufficientCreditsException as e:
+            # B-NEW-1 FIX: Expected business exception - insufficient credits
             return DeductCreditsResult(
                 success=False,
-                error=str(e),
+                error="Insufficient credits",
+            )
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Other business exceptions
+            return DeductCreditsResult(
+                success=False,
+                error="Failed to deduct credits",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in DeductCreditsHandler: {e}", exc_info=True)
+            return DeductCreditsResult(
+                success=False,
+                error="System error",
             )
 
 
@@ -142,10 +163,20 @@ class AddCreditsHandler:
                 new_balance=new_balance,
             )
 
-        except Exception as e:
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Catch specific business exceptions
             return AddCreditsResult(
                 success=False,
-                error=str(e),
+                error="Failed to add credits",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in AddCreditsHandler: {e}", exc_info=True)
+            return AddCreditsResult(
+                success=False,
+                error="System error",
             )
 
 
@@ -186,8 +217,18 @@ class GrantSignupBonusHandler:
                 credits_granted=tx.amount,
             )
 
-        except Exception as e:
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Catch specific business exceptions
             return GrantSignupBonusResult(
                 success=False,
-                error=str(e),
+                error="Failed to grant signup bonus",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in GrantSignupBonusHandler: {e}", exc_info=True)
+            return GrantSignupBonusResult(
+                success=False,
+                error="System error",
             )

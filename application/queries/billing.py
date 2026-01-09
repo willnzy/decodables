@@ -11,6 +11,10 @@ from datetime import datetime
 
 from domains.billing import BillingService, TransactionType
 from domains.billing.aggregates.user_credits import CreditTransaction
+from domains.billing.exceptions import (
+    CreditOperationFailedException,
+    InvalidAmountException,
+)
 
 
 @dataclass
@@ -58,10 +62,20 @@ class GetUserCreditsHandler:
                 tier=user_credits.tier,
             )
 
-        except Exception as e:
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Catch specific business exceptions
             return GetUserCreditsResult(
                 success=False,
-                error=str(e),
+                error="Failed to retrieve credits",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in GetUserCreditsHandler: {e}", exc_info=True)
+            return GetUserCreditsResult(
+                success=False,
+                error="System error",
             )
 
 
@@ -124,10 +138,20 @@ class GetTransactionHistoryHandler:
                 total_count=total_count,
             )
 
-        except Exception as e:
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Catch specific business exceptions
             return GetTransactionHistoryResult(
                 success=False,
-                error=str(e),
+                error="Failed to retrieve transaction history",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in GetTransactionHistoryHandler: {e}", exc_info=True)
+            return GetTransactionHistoryResult(
+                success=False,
+                error="System error",
             )
 
 
@@ -164,8 +188,8 @@ class CheckCanAffordHandler:
                     query.user_id,
                     query.operation
                 )
-                cost = self._billing_service.get_operation_cost(query.operation)
-                required = cost.amount
+                # B-HIGH-5 FIX: get_operation_cost() returns int directly, not an object
+                required = await self._billing_service.get_operation_cost(query.operation)
             else:
                 can_afford = await self._billing_service.check_can_afford(
                     query.user_id,
@@ -184,8 +208,18 @@ class CheckCanAffordHandler:
                 required_amount=required,
             )
 
-        except Exception as e:
+        except (CreditOperationFailedException, InvalidAmountException) as e:
+            # B-NEW-1 FIX: Catch specific business exceptions
             return CheckCanAffordResult(
                 success=False,
-                error=str(e),
+                error="Failed to check affordability",
+            )
+        except Exception as e:
+            # Unexpected system errors - log and return generic error
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"[Billing] Unexpected error in CheckCanAffordHandler: {e}", exc_info=True)
+            return CheckCanAffordResult(
+                success=False,
+                error="System error",
             )
