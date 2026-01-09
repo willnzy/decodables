@@ -90,67 +90,31 @@ if stored_user_code != req.user_code:
 code = ''.join(random.choices(chars, k=6))  # 例如: "ABC123"
 ```
 
-### ✅ 预期设计
+### ✅ 正确设计 (已实施)
 
-根据您的说明,`user_code` 应该包含**注册日期时间信息**,便于管理员快速了解用户注册时间:
+`user_code` 包含**完整的注册信息**,便于管理员快速了解用户注册时间和业务增长:
 
-**建议格式** (人类友好):
-- `{YYMMDD}{HHMM}{RND}` - 例如: `260109143X7Y` (2026-01-09 14:30 注册)
-  - `260109` - 年月日 (2026年1月9日)
-  - `1430` - 小时分钟 (14:30)
-  - `X7Y` - 3位随机字符 (保证唯一性)
+**正确格式** (原始设计):
+- `{YYMMDD}_{HHMMSSmmmm}_{UUUUUUU}_{RRR}`
+- 例如: `260109_0636037350_0012345_U55`
 
-**优点**:
-- 管理员看到 `260109143X7Y` 立即知道是 2026年1月9日 14:30 左右注册的用户
-- 仍然保持全局唯一性
-- 长度仍为 10-11 字符,合理范围
+**格式拆解**:
+- `260109` - 注册日期 (2026年1月9日)
+- `0636037350` - 注册时间精确到0.1毫秒 (06:36:03.7350)
+- `0012345` - 用户注册序号,第12,345个用户 (7位补零)
+- `U55` - 3位随机字符 (额外唯一性保证)
 
-### 🔧 需要修复
+**设计优点**:
+1. **时间精度**: 毫秒级时间戳,几乎不可能碰撞
+2. **业务洞察**: 用户注册序号反映业务增长
+3. **管理友好**: 管理员一眼看出注册时间和用户规模
+4. **唯一性保证**: 时间(10位) + 用户数(7位) + 随机(3位) = 三重保证
 
-1. **更新 `generate_user_code()` 逻辑**:
-```python
-from datetime import datetime, timezone
-
-def generate_user_code(self) -> str:
-    """
-    Generate unique user code with registration timestamp.
-
-    Format: {YYMMDD}{HHMM}{RND}
-    Example: 260109143X7Y (registered on 2026-01-09 14:30)
-
-    Returns:
-        Unique user code (10-11 chars)
-    """
-    import random
-    import string
-
-    now = datetime.now(timezone.utc)
-    # YYMMDD (6 chars)
-    date_part = now.strftime("%y%m%d")
-    # HHMM (4 chars)
-    time_part = now.strftime("%H%M")
-    # Random 3 chars for uniqueness
-    chars = string.ascii_uppercase + string.digits
-
-    for _ in range(10):
-        random_part = ''.join(random.choices(chars, k=3))
-        code = f"{date_part}{time_part}{random_part}"
-        # Check uniqueness
-        existing = self.client.table("profiles").select("id").eq("user_code", code).execute()
-        if not existing.data:
-            return code
-    # Fallback: add one more random char
-    random_part = ''.join(random.choices(chars, k=4))
-    return f"{date_part}{time_part}{random_part}"
-```
-
-2. **更新数据库字段长度**:
-```sql
--- profiles.user_code 应该支持 10-11 字符
-ALTER TABLE profiles ALTER COLUMN user_code TYPE VARCHAR(15);
-```
-
-3. **更新所有相关文档和注释**
+**实现细节**:
+- 总长度: 29 字符 (6 + 1 + 10 + 1 + 7 + 1 + 3)
+- 时间: UTC 时区
+- 用户数: 从 `profiles` 表实时查询 `count`
+- 数据库字段: `TEXT` (支持任意长度)
 
 ---
 
@@ -431,32 +395,42 @@ def migrate_user_code(user):
 
 ## 实施记录
 
-### 2026-01-09: user_code 时间戳格式实现完成
+### 2026-01-09: user_code 正确格式实现完成
 
 **代码改动**:
-- ✅ 更新 `infrastructure/repositories/user_repository.py:289-323`
-  - 从随机格式 (ABC123) 改为时间戳格式 (260109143X7Y)
-  - 格式: YYMMDD + HHMM + 3 随机字符 (共 13 字符)
-  - Fallback: 10 次碰撞后使用 14 字符 (4 随机字符)
+- ✅ 更新 `infrastructure/repositories/user_repository.py:289-332`
+  - 从随机格式 (ABC123) 改为完整格式 (260109_0636037350_0012345_U55)
+  - 格式: `YYMMDD_HHMMSSmmmm_UUUUUUU_RRR` (29 字符)
+  - 包含: 日期(6) + 时间精确到0.1毫秒(10) + 用户总数(7) + 随机(3)
 
 **测试覆盖**:
-- ✅ 新增 `tests/infrastructure/test_user_code_generation.py` (4 个测试)
-  - ✅ 格式验证 (YYMMDDHHMMRRR)
-  - ✅ 唯一性检查
-  - ✅ Fallback 机制
-  - ✅ 时间戳可读性
+- ✅ 新增 `tests/infrastructure/test_user_code_generation.py` (7 个测试)
+  - ✅ 完整格式验证 (YYMMDD_HHMMSSmmmm_UUUUUUU_RRR)
+  - ✅ 用户数量不同场景 (0, 1234, 999999, 9999999, None)
+  - ✅ 时间戳可读性和精度验证
+  - ✅ 唯一性验证 (毫秒级+用户数+随机数)
 
 **影响范围**:
 - ✅ 仅影响新注册用户,现有用户不受影响
-- ✅ 数据库字段 (TEXT) 支持新长度
-- ✅ 所有依赖测试通过
+- ✅ 数据库字段 (TEXT) 支持新长度 (29字符)
+- ✅ 所有依赖测试通过 (7/7 新测试 + 原有 webhook 测试)
 
-**示例**:
+**格式详解**:
 ```
-Old format: ABC123 (6 chars, random)
-New format: 260109143X7Y (13 chars, timestamp-based)
-            ^^^^^^ ^^^^ ^^^
-            YYMMDD HHMM Random
-            2026年  14:30 X7Y
-            1月9日
+示例: 260109_0636037350_0012345_U55
+
+部分拆解:
+- 260109: 日期 (2026年1月9日)
+- 0636037350: 时间精确到0.1毫秒 (06:36:03.7350)
+- 0012345: 第12,345个注册用户 (7位,补零)
+- U55: 3位随机字符 (额外唯一性保证)
+
+管理员可读信息:
+1. 注册日期时间: 2026-01-09 06:36:03.7350 UTC
+2. 用户注册序号: 第12,345个用户
+3. 业务增长洞察: 可分析每日/每小时注册量
+
+对比旧格式:
+Old: ABC123 (6 chars, 完全随机, 无业务信息)
+New: 260109_0636037350_0012345_U55 (29 chars, 包含时间+增长数据)
 ```

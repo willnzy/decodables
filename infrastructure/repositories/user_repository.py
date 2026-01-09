@@ -288,39 +288,48 @@ class SupabaseUserRepository(IUserRepository):
 
     def generate_user_code(self) -> str:
         """
-        Generate unique user code with registration timestamp.
+        Generate unique user code with registration timestamp and user count.
 
-        Format: {YYMMDD}{HHMM}{RND}
-        Example: 260109143X7Y (registered on 2026-01-09 14:30)
+        Format: {YYMMDD}_{HHMMSSmmmm}_{UUUUUUU}_{RRR}
+        Example: 260109_143025123_0001234_A7X
+        - 260109: Registration date (2026-01-09)
+        - 143025123: Time with milliseconds (14:30:25.123)
+        - 0001234: Total user count (7 digits, zero-padded)
+        - A7X: 3 random alphanumeric chars
 
-        The user_code is human-friendly and allows admins to quickly identify
-        when a user registered based on the embedded timestamp.
+        The user_code allows admins to quickly identify:
+        1. When the user registered (date + time with millisecond precision)
+        2. Business growth metrics (user count at registration time)
 
         Returns:
-            Unique user code (13 chars: YYMMDD + HHMM + 3 random chars)
+            Unique user code (29 chars: 6 + 1 + 10 + 1 + 7 + 1 + 3)
         """
         from datetime import datetime, timezone
         import random
         import string
 
         now = datetime.now(timezone.utc)
+
         # YYMMDD (6 chars)
         date_part = now.strftime("%y%m%d")
-        # HHMM (4 chars)
-        time_part = now.strftime("%H%M")
-        # Random 3 chars for uniqueness
-        chars = string.ascii_uppercase + string.digits
 
-        for _ in range(10):
-            random_part = ''.join(random.choices(chars, k=3))
-            code = f"{date_part}{time_part}{random_part}"
-            # Check uniqueness
-            existing = self.client.table("profiles").select("id").eq("user_code", code).execute()
-            if not existing.data:
-                return code
-        # Fallback: add one more random char if collision persists
-        random_part = ''.join(random.choices(chars, k=4))
-        return f"{date_part}{time_part}{random_part}"
+        # HHMMSSmmmm (10 chars: time with sub-second precision)
+        # Use 4 digits for sub-second: first 4 digits of microseconds (0-9999)
+        time_with_ms = now.strftime("%H%M%S") + f"{now.microsecond // 100:04d}"
+
+        # Get total user count (7 digits, zero-padded)
+        result = self.client.table("profiles").select("id", count="exact").execute()
+        user_count = result.count if result.count is not None else 0
+        count_part = f"{user_count:07d}"
+
+        # Random 3 chars for additional uniqueness
+        chars = string.ascii_uppercase + string.digits
+        random_part = ''.join(random.choices(chars, k=3))
+
+        # Format: YYMMDD_HHMMSSmmmm_UUUUUUU_RRR
+        code = f"{date_part}_{time_with_ms}_{count_part}_{random_part}"
+
+        return code
 
     @retry_on_network_error()
     async def create_profile(
