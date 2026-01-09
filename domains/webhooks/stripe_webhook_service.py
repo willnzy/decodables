@@ -1,0 +1,682 @@
+"""
+Stripe Webhook Service
+
+Handles Stripe payment webhook events.
+
+@version 1.0.0 (DDD Architecture - 5 Star)
+
+Architecture: API → StripeWebhookService → Repositories
+"""
+
+import logging
+from typing import Dict, Any, Optional
+
+from core.database import get_supabase_client
+from infrastructure.repositories import (
+    SupabaseUserRepository,
+    SupabaseCreditRepository,
+    SupabasePaymentRepository,
+)
+from domains.billing.payment_service import (
+    construct_event,
+    get_tier_from_price_id,
+    get_credits_amount,
+)
+from domains.platform.analytics_service import AnalyticsEvents, track_payment
+
+logger = logging.getLogger(__name__)
+
+
+class StripeWebhookService:
+    """
+    Stripe Webhook Service - Handles Stripe payment events.
+
+    This service processes Stripe webhook events for payments,
+    subscriptions, and credits purchases.
+
+    Architecture: API → StripeWebhookService → Repositories
+
+    v1.0.0: Created for DDD compliance
+    """
+
+    def __init__(
+        self,
+        user_repo: SupabaseUserRepository,
+        credit_repo: SupabaseCreditRepository,
+        payment_repo: SupabasePaymentRepository,
+    ):
+        """
+        Initialize Stripe Webhook Service.
+
+        Args:
+            user_repo: User repository for subscription tier updates
+            credit_repo: Credit repository for credits operations
+            payment_repo: Payment repository for payment records
+        """
+        self.user_repo = user_repo
+        self.credit_repo = credit_repo
+        self.payment_repo = payment_repo
+        self.supabase = get_supabase_client()
+
+    def verify_signature(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
+        """
+        Verify Stripe webhook signature.
+
+        Args:
+            payload: Raw request body
+            sig_header: Stripe-Signature header value
+
+        Returns:
+            Verified event dictionary
+
+        Raises:
+            Exception: If signature verification fails
+        """
+        return construct_event(payload, sig_header)
+
+    async def is_duplicate_event(self, event_id: str, event_type: str, event: Dict[str, Any]) -> bool:
+        """
+        Check if webhook event already processed (idempotency).
+
+        Uses PostgreSQL RPC for atomic check-and-insert.
+
+        Args:
+            event_id: Stripe event ID
+            event_type: Stripe event type
+            event: Full event payload (for logging)
+
+        Returns:
+            True if event already processed, False otherwise
+
+        Raises:
+            Exception: If idempotency check fails for critical events
+        """
+        try:
+            result = self.supabase.rpc("check_webhook_idempotency", {
+                "p_event_id": event_id,
+                "p_event_type": event_type,
+                "p_payload": event
+            }).execute()
+
+            check_data = result.data
+            if check_data and check_data.get("idempotent"):
+                logger.info(f"[Webhook] Duplicate event ignored: {event_id} ({event_type})")
+                return True
+            return False
+        except Exception as e:
+            # Fail-safe: reject critical events if idempotency check fails
+            critical_events = ['checkout.session.completed', 'invoice.payment_succeeded']
+            if event_type in critical_events:
+                logger.error(f"[Webhook] CRITICAL: Idempotency check failed for {event_type}, rejecting: {e}")
+                raise
+            else:
+                logger.warning(f"[Webhook] Idempotency check failed for {event_id}: {e}")
+                return False
+
+    async def update_webhook_result(self, event_id: str, result: Dict[str, Any]) -> None:
+        """
+        Update webhook processing result in database.
+
+        Best-effort operation, failures are logged but not raised.
+
+        Args:
+            event_id: Stripe event ID
+            result: Processing result dictionary
+        """
+        try:
+            self.supabase.rpc("update_webhook_result", {
+                "p_event_id": event_id,
+                "p_result": result
+            }).execute()
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to update result for {event_id}: {e}")
+
+    async def handle_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Route and handle Stripe webhook event.
+
+        Args:
+            event: Verified Stripe webhook event
+
+        Returns:
+            Dict with status and optional action/error details
+        """
+        event_type = event.get("type")
+
+        # Validate event structure
+        if not event.get("id"):
+            logger.error(f"[Webhook] Received Stripe event without id")
+            return {"status": "error", "error": "missing_event_id"}
+        if not event_type:
+            logger.error(f"[Webhook] Received Stripe event without type: {event['id']}")
+            return {"status": "error", "error": "missing_event_type"}
+
+        # Route to appropriate handler
+        if event_type == "checkout.session.completed":
+            return await self._handle_checkout_completed(event)
+        elif event_type == "invoice.payment_succeeded":
+            return await self._handle_invoice_payment(event)
+        elif event_type in ["customer.subscription.deleted", "customer.subscription.updated"]:
+            return await self._handle_subscription_change(event)
+
+        return {"status": "ok"}
+
+    async def _handle_checkout_completed(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle checkout.session.completed event.
+
+        Processes:
+        1. Subscription purchases (starter, pro)
+        2. Credits purchases (credits_100, credits_500, credits_2000)
+
+        Transaction order (v2.4.0):
+        1. Payment record FIRST (audit trail)
+        2. Credits/tier update (actual benefit)
+        3. Activity logging and analytics (non-critical)
+
+        Args:
+            event: Stripe checkout.session.completed event
+
+        Returns:
+            Dict with status, action, and relevant IDs
+        """
+        session = event["data"]["object"]
+        session_id = session.get("id", "unknown")
+
+        # Validate metadata
+        metadata = session.get("metadata", {})
+        if not metadata:
+            logger.error(f"[Webhook] checkout.session.completed missing metadata: session={session_id}")
+            return {"status": "error", "error": "missing_metadata", "session_id": session_id}
+
+        uid = metadata.get("user_id")
+        plan = metadata.get("plan_type")
+
+        if not uid or not plan:
+            logger.error(f"[Webhook] checkout.session.completed incomplete metadata: uid={uid}, plan={plan}, session={session_id}")
+            return {"status": "error", "error": "incomplete_metadata", "session_id": session_id}
+
+        amount_total = session.get("amount_total", 0)  # Amount in cents
+        currency = session.get("currency", "usd").upper()
+
+        # Validate amount
+        if amount_total <= 0:
+            logger.error(f"[Webhook] Invalid amount for checkout {session_id}: {amount_total}")
+            return {"status": "error", "error": "invalid_amount", "session_id": session_id}
+
+        # Handle credits purchase (credits_100, credits_500, credits_2000)
+        credits_amount = get_credits_amount(plan)
+        if credits_amount > 0:
+            return await self._process_credits_purchase(uid, credits_amount, amount_total, currency, session_id)
+
+        # Handle subscription purchase (starter, pro)
+        elif plan in ["starter", "pro"]:
+            return await self._process_subscription_start(uid, plan, amount_total, currency, session, session_id)
+
+        return {"status": "ok"}
+
+    async def _process_credits_purchase(
+        self,
+        uid: str,
+        credits_amount: int,
+        amount_total: int,
+        currency: str,
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process credits purchase.
+
+        v2.4.0: W-P0-3 fix - Payment record FIRST (audit trail before benefit)
+
+        Args:
+            uid: User ID
+            credits_amount: Number of credits to add
+            amount_total: Payment amount in cents
+            currency: Payment currency
+            session_id: Stripe session ID
+
+        Returns:
+            Dict with status and action details
+        """
+        # Step 1: Log payment FIRST (audit trail)
+        try:
+            await self.payment_repo.create(
+                uid, amount_total, currency, "credits_purchase",
+                metadata={
+                    "description": f"Purchase {credits_amount} Credits - ${amount_total/100:.2f}",
+                    "session_id": session_id
+                }
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to record payment for user {uid}: {e}")
+            return {"status": "error", "error": "payment_record_failed", "session_id": session_id}
+
+        # Step 2: Add credits (only after payment is recorded)
+        try:
+            await self.credit_repo.add_credits_permanent(
+                uid,
+                credits_amount,
+                f"Purchase {credits_amount} Credits",
+                "topup_purchase"
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] CRITICAL: Payment recorded but credits failed for user {uid}: {e}")
+            return {
+                "status": "partial_error",
+                "error": "credits_add_failed",
+                "session_id": session_id,
+                "user_id": uid
+            }
+
+        # Step 3: Log activity (non-critical)
+        try:
+            self.supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "credits_purchase",
+                "metadata": {
+                    "amount": credits_amount,
+                    "payment": amount_total,
+                    "session_id": session_id
+                },
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+
+        # Step 4: Track analytics (non-critical)
+        try:
+            track_payment(
+                uid,
+                AnalyticsEvents.CREDITS_PURCHASED,
+                amount_total,
+                currency,
+                extra_properties={"credits_amount": credits_amount}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to track analytics: {e}")
+
+        return {"status": "ok", "action": "credits_added", "user_id": uid, "credits": credits_amount}
+
+    async def _process_subscription_start(
+        self,
+        uid: str,
+        plan: str,
+        amount_total: int,
+        currency: str,
+        session: Dict[str, Any],
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process subscription start (first payment).
+
+        v2.4.0: W-P0-2 fix - Uses atomic RPC for transaction consistency
+
+        Args:
+            uid: User ID
+            plan: Plan type (starter, pro)
+            amount_total: Payment amount in cents
+            currency: Payment currency
+            session: Full session object
+            session_id: Stripe session ID
+
+        Returns:
+            Dict with status and action details
+        """
+        # Validate customer_id
+        stripe_customer_id = session.get("customer")
+        if not stripe_customer_id:
+            logger.error(f"[Webhook] Missing customer_id in checkout session for user {uid}")
+            return {"status": "error", "error": "missing_customer_id", "user_id": uid}
+
+        amt = 500 if plan == "starter" else 1000
+
+        # Try atomic RPC for subscription creation
+        try:
+            result = self.supabase.rpc("process_subscription_start", {
+                "p_user_id": uid,
+                "p_plan": plan,
+                "p_stripe_customer_id": stripe_customer_id,
+                "p_credits_amount": amt,
+                "p_payment_amount": amount_total,
+                "p_currency": currency,
+                "p_session_id": session_id
+            }).execute()
+
+            if not result.data or not result.data.get("success"):
+                error_msg = result.data.get("error") if result.data else "Unknown error"
+                logger.error(f"[Webhook] Atomic subscription start failed for user {uid}: {error_msg}")
+                return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
+
+        except Exception as e:
+            # Fallback to non-atomic (legacy) flow if RPC doesn't exist
+            logger.warning(f"[Webhook] Atomic RPC not available, using legacy flow: {e}")
+            try:
+                # Legacy flow: payment first, then tier, then credits
+                await self.payment_repo.create(
+                    uid, amount_total, currency, "sub_payment",
+                    metadata={
+                        "description": f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}",
+                        "session_id": session_id
+                    }
+                )
+                await self.user_repo.update_subscription_tier(uid, plan, stripe_customer_id, "active")
+                await self.credit_repo.add_credits_monthly(
+                    uid,
+                    amt,
+                    f"{plan.capitalize()} Monthly Credits",
+                    "sub_grant"
+                )
+            except Exception as legacy_error:
+                logger.error(f"[Webhook] Legacy subscription flow failed for user {uid}: {legacy_error}")
+                return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
+
+        # Log activity (non-critical)
+        try:
+            self.supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "subscription_started",
+                "metadata": {"plan": plan, "payment": amount_total, "session_id": session_id},
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+
+        # Track analytics (non-critical)
+        try:
+            track_payment(uid, AnalyticsEvents.CHECKOUT_COMPLETED, amount_total, currency, plan=plan)
+        except Exception as e:
+            logger.warning(f"Failed to track analytics: {e}")
+
+        return {"status": "ok", "action": "subscription_started", "user_id": uid, "plan": plan}
+
+    async def _handle_invoice_payment(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle invoice.payment_succeeded event (subscription renewal).
+
+        v2.4.0: W-HIGH-2/3 fix - Proper transaction handling:
+        1. Validate customer and user first
+        2. Record payment before refreshing credits
+        3. Handle subscription status properly
+
+        Args:
+            event: Stripe invoice.payment_succeeded event
+
+        Returns:
+            Dict with status and action details
+        """
+        invoice = event["data"]["object"]
+        invoice_id = invoice.get("id", "unknown")
+        customer_id = invoice.get("customer")
+        amount_paid = invoice.get("amount_paid", 0)
+        currency = invoice.get("currency", "usd").upper()
+        billing_reason = invoice.get("billing_reason", "")
+
+        # Validate customer_id
+        if not customer_id:
+            logger.error(f"[Webhook] invoice.payment_succeeded missing customer_id: invoice={invoice_id}")
+            return {"status": "error", "error": "missing_customer_id", "invoice_id": invoice_id}
+
+        # Look up user by stripe_customer_id
+        user_res = self.supabase.table("profiles").select("id, tier, subscription_status")\
+            .eq("stripe_customer_id", customer_id).execute()
+
+        if not user_res.data:
+            logger.warning(f"[Webhook] No user found for customer {customer_id}: invoice={invoice_id}")
+            return {"status": "error", "error": "user_not_found", "customer_id": customer_id}
+
+        user = user_res.data[0]
+        uid = user["id"]
+        tier = user.get("tier", "free")
+        current_status = user.get("subscription_status", "inactive")
+
+        # Handle subscription renewal (monthly refresh)
+        if tier in ["starter", "pro"] and billing_reason == "subscription_cycle":
+            return await self._process_subscription_renewal(
+                uid, tier, current_status, amount_paid, currency, invoice_id
+            )
+
+        # Handle subscription_create billing reason (first subscription confirmation)
+        if billing_reason == "subscription_create" and tier in ["starter", "pro"]:
+            if current_status != "active":
+                try:
+                    self.supabase.table("profiles").update({
+                        "subscription_status": "active"
+                    }).eq("id", uid).execute()
+                    logger.info(f"[Webhook] Confirmed subscription active for user {uid}")
+                except Exception as e:
+                    logger.warning(f"[Webhook] Failed to confirm subscription status for user {uid}: {e}")
+
+        return {"status": "ok"}
+
+    async def _process_subscription_renewal(
+        self,
+        uid: str,
+        tier: str,
+        current_status: str,
+        amount_paid: int,
+        currency: str,
+        invoice_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process subscription renewal.
+
+        v2.4.0: W-HIGH-2 fix - Payment record FIRST (audit trail)
+
+        Args:
+            uid: User ID
+            tier: Current tier (starter, pro)
+            current_status: Current subscription status
+            amount_paid: Payment amount in cents
+            currency: Payment currency
+            invoice_id: Stripe invoice ID
+
+        Returns:
+            Dict with status and action details
+        """
+        # Step 1: Record payment FIRST (audit trail)
+        try:
+            await self.payment_repo.create(
+                uid, amount_paid, currency, "sub_renewal",
+                metadata={
+                    "description": f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}",
+                    "invoice_id": invoice_id
+                }
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to record renewal payment for user {uid}: {e}")
+            return {"status": "error", "error": "payment_record_failed", "invoice_id": invoice_id}
+
+        # Step 2: Ensure subscription status is active
+        if current_status != "active":
+            try:
+                self.supabase.table("profiles").update({
+                    "subscription_status": "active"
+                }).eq("id", uid).execute()
+                logger.info(f"[Webhook] Reactivated subscription for user {uid}")
+            except Exception as e:
+                logger.warning(f"[Webhook] Failed to update subscription status for user {uid}: {e}")
+
+        # Step 3: Refresh credits
+        try:
+            await self.credit_repo.refresh_monthly_credits(uid, tier)
+        except Exception as e:
+            logger.error(f"[Webhook] CRITICAL: Payment recorded but credits refresh failed for user {uid}: {e}")
+            return {
+                "status": "partial_error",
+                "error": "credits_refresh_failed",
+                "invoice_id": invoice_id,
+                "user_id": uid
+            }
+
+        # Step 4: Log activity (non-critical)
+        try:
+            self.supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "monthly_credits_refreshed",
+                "metadata": {"tier": tier, "payment": amount_paid, "invoice_id": invoice_id},
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+
+        return {"status": "ok", "action": "credits_refreshed", "user_id": uid}
+
+    async def _handle_subscription_change(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle customer.subscription.deleted/updated events.
+
+        v2.4.0: W-MEDIUM-* fix - Improved error handling and logging:
+        1. Better status handling for edge cases
+        2. Structured logging with context
+        3. Graceful degradation on failures
+
+        Args:
+            event: Stripe subscription change event
+
+        Returns:
+            Dict with status and action details
+        """
+        subscription = event["data"]["object"]
+        subscription_id = subscription.get("id", "unknown")
+        customer_id = subscription.get("customer")
+        status = subscription.get("status")
+        event_type = event.get("type", "unknown")
+
+        # Validate customer_id
+        if not customer_id:
+            logger.warning(f"[Webhook] subscription change missing customer_id: sub={subscription_id}, event={event_type}")
+            return {"status": "error", "error": "missing_customer_id", "subscription_id": subscription_id}
+
+        # Log all subscription changes for audit
+        logger.info(f"[Webhook] Processing subscription change: sub={subscription_id}, status={status}, event={event_type}")
+
+        # Look up user
+        user_res = self.supabase.table("profiles").select("id, tier")\
+            .eq("stripe_customer_id", customer_id).execute()
+
+        if not user_res.data:
+            logger.warning(f"[Webhook] No user found for customer {customer_id}: sub={subscription_id}")
+            return {"status": "error", "error": "user_not_found", "customer_id": customer_id}
+
+        uid = user_res.data[0]["id"]
+        current_tier = user_res.data[0].get("tier", "free")
+
+        # Handle termination statuses
+        termination_statuses = ["canceled", "unpaid", "past_due", "incomplete_expired"]
+        if status in termination_statuses:
+            return await self._process_subscription_termination(uid, current_tier, status, subscription_id)
+
+        # Handle active status (reactivation or plan change)
+        elif status == "active":
+            return await self._process_subscription_reactivation(
+                uid, current_tier, customer_id, subscription, subscription_id
+            )
+
+        # Handle incomplete/trialing statuses
+        elif status in ["incomplete", "trialing"]:
+            logger.info(f"[Webhook] Subscription in {status} state for user {uid}, no action needed")
+            return {"status": "ok", "action": "no_action", "reason": f"subscription_{status}"}
+
+        # Unknown status
+        logger.warning(f"[Webhook] Unhandled subscription status '{status}' for user {uid}")
+        return {"status": "ok", "action": "no_action", "reason": f"unhandled_status_{status}"}
+
+    async def _process_subscription_termination(
+        self,
+        uid: str,
+        current_tier: str,
+        status: str,
+        subscription_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process subscription termination (cancel, unpaid, etc).
+
+        Args:
+            uid: User ID
+            current_tier: Current tier before downgrade
+            status: Termination status
+            subscription_id: Stripe subscription ID
+
+        Returns:
+            Dict with status and action details
+        """
+        # Downgrade to free
+        try:
+            await self.user_repo.update_subscription_tier(uid, "free", subscription_status="inactive")
+            logger.info(f"[Webhook] Downgraded user {uid} to free tier (was {current_tier}), reason: {status}")
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to downgrade user {uid}: {e}")
+            return {"status": "error", "error": "tier_update_failed", "user_id": uid}
+
+        # Log activity (non-critical)
+        try:
+            self.supabase.table("activity_logs").insert({
+                "user_id": uid,
+                "action": "subscription_ended",
+                "metadata": {
+                    "reason": status,
+                    "previous_tier": current_tier,
+                    "subscription_id": subscription_id
+                },
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log activity: {e}")
+
+        return {"status": "ok", "action": "subscription_ended", "user_id": uid, "previous_tier": current_tier}
+
+    async def _process_subscription_reactivation(
+        self,
+        uid: str,
+        current_tier: str,
+        customer_id: str,
+        subscription: Dict[str, Any],
+        subscription_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process subscription reactivation or plan change.
+
+        Args:
+            uid: User ID
+            current_tier: Current tier
+            customer_id: Stripe customer ID
+            subscription: Full subscription object
+            subscription_id: Stripe subscription ID
+
+        Returns:
+            Dict with status and action details
+        """
+        # Get price_id and map to tier
+        price_id = subscription.get("items", {}).get("data", [{}])[0].get("price", {}).get("id", "")
+        new_tier = get_tier_from_price_id(price_id)
+
+        # Handle unknown price_id
+        if new_tier == "free":
+            logger.warning(f"[Webhook] Unknown price_id '{price_id}' for user {uid}, keeping current tier {current_tier}")
+            # Don't downgrade to free for unknown price - could be a new plan not yet configured
+            new_tier = current_tier if current_tier in ["starter", "pro"] else "free"
+
+        # Update tier
+        try:
+            await self.user_repo.update_subscription_tier(
+                uid, new_tier,
+                stripe_customer_id=customer_id,
+                subscription_status="active"
+            )
+            logger.info(f"[Webhook] Updated user {uid} subscription: {current_tier} -> {new_tier}")
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to update subscription for user {uid}: {e}")
+            return {"status": "error", "error": "tier_update_failed", "user_id": uid}
+
+        # Log activity if tier changed
+        if new_tier != current_tier:
+            try:
+                self.supabase.table("activity_logs").insert({
+                    "user_id": uid,
+                    "action": "subscription_changed",
+                    "metadata": {
+                        "previous_tier": current_tier,
+                        "new_tier": new_tier,
+                        "subscription_id": subscription_id
+                    },
+                }).execute()
+            except Exception as e:
+                logger.warning(f"Failed to log activity: {e}")
+
+        return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
