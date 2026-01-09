@@ -165,3 +165,83 @@ class TestTierService:
         tier_service.clear_cache()
 
         assert len(tier_service._cache) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_trial_duration_days_from_config(self):
+        """Test getting trial duration from system_configs."""
+        mock_repo = AsyncMock()
+        mock_repo.get_by_key.return_value = "45"  # Custom trial duration
+
+        tier_service = TierService(mock_repo)
+        duration = await tier_service.get_trial_duration_days()
+
+        assert duration == 45
+        mock_repo.get_by_key.assert_called_once_with(
+            "trial.duration_days",
+            default_value="30"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_trial_duration_days_fallback(self):
+        """Test trial duration fallback to default on error."""
+        mock_repo = AsyncMock()
+        mock_repo.get_by_key.side_effect = Exception("DB error")
+
+        tier_service = TierService(mock_repo)
+        duration = await tier_service.get_trial_duration_days()
+
+        assert duration == 30  # Should fall back to DEFAULT_TRIAL_DURATION_DAYS
+
+    @pytest.mark.asyncio
+    async def test_get_trial_duration_days_invalid_value(self):
+        """Test trial duration handles invalid value."""
+        mock_repo = AsyncMock()
+        mock_repo.get_by_key.return_value = "not_a_number"
+
+        tier_service = TierService(mock_repo)
+        duration = await tier_service.get_trial_duration_days()
+
+        assert duration == 30  # Should fall back to default
+
+    @pytest.mark.asyncio
+    async def test_update_trial_duration_days_success(self):
+        """Test updating trial duration."""
+        mock_repo = AsyncMock()
+
+        tier_service = TierService(mock_repo)
+        result = await tier_service.update_trial_duration_days(45)
+
+        assert result is True
+        mock_repo.upsert.assert_called_once()
+
+        # Verify the call arguments
+        call_args = mock_repo.upsert.call_args
+        assert call_args.kwargs["key"] == "trial.duration_days"
+        assert call_args.kwargs["value"] == "45"
+        assert call_args.kwargs["value_type"] == "integer"
+        assert call_args.kwargs["config_group"] == "trial"
+
+    @pytest.mark.asyncio
+    async def test_update_trial_duration_days_invalid_value(self):
+        """Test updating trial duration with invalid value."""
+        mock_repo = AsyncMock()
+
+        tier_service = TierService(mock_repo)
+
+        # Should raise ValueError for non-positive days
+        with pytest.raises(ValueError, match="Trial duration must be positive"):
+            await tier_service.update_trial_duration_days(0)
+
+        with pytest.raises(ValueError, match="Trial duration must be positive"):
+            await tier_service.update_trial_duration_days(-5)
+
+    @pytest.mark.asyncio
+    async def test_update_trial_duration_days_error(self):
+        """Test updating trial duration handles errors."""
+        mock_repo = AsyncMock()
+        mock_repo.upsert.side_effect = Exception("DB error")
+
+        tier_service = TierService(mock_repo)
+        result = await tier_service.update_trial_duration_days(45)
+
+        assert result is False

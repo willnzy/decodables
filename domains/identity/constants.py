@@ -53,6 +53,9 @@ TIER_MONTHLY_PRICES = {
     TIER_T3: 29.9,
 }
 
+# Trial period configuration (can be overridden via system_configs)
+DEFAULT_TRIAL_DURATION_DAYS = 30  # Free tier users get 30-day trial with full access
+
 
 def is_valid_tier(tier: str) -> bool:
     """Check if a tier code is valid."""

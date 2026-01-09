@@ -54,8 +54,9 @@ CREDITS_MONTHLY_PRO = 1000
 MAX_LISTING_PRICE = 500
 SELLER_REVENUE_PERCENT = 90  # Seller gets 90%, platform gets 10%
 
-# Trial Period
-TRIAL_DAYS = 30  # Free users get 30-day trial with full access
+# Trial Period (Legacy - deprecated, use TierService.get_trial_duration_days() instead)
+# This is kept for backward compatibility but should be migrated to system_configs
+TRIAL_DAYS = 30  # Default: Free users get 30-day trial with full access
 
 # Tiers
 VALID_TIERS = ["free", "starter", "pro"]

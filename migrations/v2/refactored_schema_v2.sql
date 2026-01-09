@@ -2040,7 +2040,10 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可通过 Admin API 修改)', true, true),
 ('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', true, false),
 ('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', true, false),
-('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false)
+('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false),
+
+-- ========== Trial Period (1条) ==========
+('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true)
 
 ON CONFLICT (key) DO UPDATE SET
     value = EXCLUDED.value,
@@ -2119,12 +2122,12 @@ BEGIN
     SELECT COUNT(*) INTO v_config_count FROM system_configs WHERE is_active = TRUE;
 
     RAISE NOTICE '✅ Total system_configs rows: %', v_config_count;
-    RAISE NOTICE '✅ Expected: >= 66';
+    RAISE NOTICE '✅ Expected: >= 67';
 
-    IF v_config_count >= 66 THEN
+    IF v_config_count >= 67 THEN
         RAISE NOTICE '✅ System configs verification PASSED';
     ELSE
-        RAISE WARNING '⚠️ System configs verification FAILED (expected >= 66, got %)', v_config_count;
+        RAISE WARNING '⚠️ System configs verification FAILED (expected >= 67, got %)', v_config_count;
     END IF;
 END $$;
 

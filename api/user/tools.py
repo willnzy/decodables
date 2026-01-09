@@ -186,29 +186,14 @@ async def ocr_tool(
     from shared.ai.ocr_service import process_ocr
     from domains.shared.access_control import AccessControl
     from core.utils.timezone import get_request_timezone
-    from config import TRIAL_DAYS
+    from domains.identity import is_user_in_trial
+    from config import TRIAL_DAYS  # Fallback for legacy support
 
     # v2.1.0: TL-MEDIUM-1 - Validate project_id format
     validate_project_id(project_id)
 
-    # Check if user is in trial period
-    is_trial = False
-    user_tier = (user.get("tier") or "free").lower()
-    if user_tier == "free":
-        created_at = user.get("created_at")
-        if created_at:
-            try:
-                if isinstance(created_at, str):
-                    created_at_str = created_at.replace("Z", "+00:00")
-                    registration_date = datetime.fromisoformat(created_at_str)
-                else:
-                    registration_date = created_at
-                if registration_date.tzinfo is None:
-                    registration_date = registration_date.replace(tzinfo=timezone.utc)
-                days_since = (datetime.now(timezone.utc) - registration_date).total_seconds() / (24 * 3600)
-                is_trial = days_since <= TRIAL_DAYS
-            except (ValueError, TypeError):
-                pass
+    # Check if user is in trial period (using configurable helper)
+    is_trial = is_user_in_trial(user, trial_days=TRIAL_DAYS)
 
     # Check OCR permission
     if not AccessControl.can_use_ocr(user, is_trial=is_trial):

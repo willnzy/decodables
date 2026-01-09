@@ -29,6 +29,7 @@ from .exceptions import (
 from .repository import IUserRepository
 from .service import IdentityService
 from .tier_service import TierService
+from .trial_helper import is_user_in_trial, is_user_in_trial_async
 from .constants import (
     TIER_T1,
     TIER_T2,
@@ -39,6 +40,7 @@ from .constants import (
     TIER_LEVELS,
     DEFAULT_TIER_DISPLAY_NAMES,
     TIER_MONTHLY_PRICES,
+    DEFAULT_TRIAL_DURATION_DAYS,
     is_valid_tier,
     get_tier_level,
     compare_tiers,
@@ -62,6 +64,9 @@ __all__ = [
     # Service
     'IdentityService',
     'TierService',
+    # Helpers
+    'is_user_in_trial',
+    'is_user_in_trial_async',
     # Constants
     'TIER_T1',
     'TIER_T2',
@@ -72,6 +77,7 @@ __all__ = [
     'TIER_LEVELS',
     'DEFAULT_TIER_DISPLAY_NAMES',
     'TIER_MONTHLY_PRICES',
+    'DEFAULT_TRIAL_DURATION_DAYS',
     'is_valid_tier',
     'get_tier_level',
     'compare_tiers',

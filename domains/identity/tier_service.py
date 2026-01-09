@@ -18,6 +18,7 @@ from .constants import (
     VALID_TIERS,
     TIER_LABELS,
     DEFAULT_TIER_DISPLAY_NAMES,
+    DEFAULT_TRIAL_DURATION_DAYS,
 )
 from infrastructure.repositories.config_repository import SupabaseConfigRepository
 
@@ -184,3 +185,73 @@ class TierService:
         """Clear the tier display name cache."""
         self._cache.clear()
         logger.debug("Tier display name cache cleared")
+
+    async def get_trial_duration_days(self) -> int:
+        """
+        Get trial period duration in days from system_configs.
+
+        Free tier users get a trial period with full access.
+        This value is configurable by admins.
+
+        Returns:
+            Number of trial days (default: 30)
+
+        Example:
+            >>> tier_service = TierService(config_repo)
+            >>> await tier_service.get_trial_duration_days()
+            30
+        """
+        config_key = "trial.duration_days"
+
+        try:
+            value = await self.config_repo.get_by_key(
+                config_key,
+                default_value=str(DEFAULT_TRIAL_DURATION_DAYS)
+            )
+
+            # Convert to integer
+            return int(value)
+
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid trial duration value: {e}, using default {DEFAULT_TRIAL_DURATION_DAYS}")
+            return DEFAULT_TRIAL_DURATION_DAYS
+        except Exception as e:
+            logger.error(f"Failed to fetch trial duration: {e}, using default {DEFAULT_TRIAL_DURATION_DAYS}")
+            return DEFAULT_TRIAL_DURATION_DAYS
+
+    async def update_trial_duration_days(self, days: int) -> bool:
+        """
+        Update trial period duration (Admin operation).
+
+        Args:
+            days: New trial duration in days (must be > 0)
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            ValueError: If days <= 0
+        """
+        if days <= 0:
+            raise ValueError(f"Trial duration must be positive, got {days}")
+
+        config_key = "trial.duration_days"
+
+        try:
+            # Update in database
+            await self.config_repo.upsert(
+                key=config_key,
+                value=str(days),
+                value_type="integer",
+                config_group="trial",
+                description="Free tier 试用期天数 (可配置)",
+                is_active=True,
+                is_editable=True
+            )
+
+            logger.info(f"Updated trial duration: {days} days")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to update trial duration: {e}")
+            return False
