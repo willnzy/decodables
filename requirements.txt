@@ -14,7 +14,7 @@ slowapi
 python-multipart
 svix
 pyjwt
-cryptography
+cryptography>=41.0.5,<44  # Compatible with pyopenssl; fixes PyO3 import issue on Python 3.12
 pymupdf
 pytest
 pytest-asyncio

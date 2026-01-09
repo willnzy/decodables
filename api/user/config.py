@@ -2,7 +2,12 @@
 Config API - Public configuration endpoints (v2).
 
 @module api.user.config
-@version 2.1.0
+@version 2.2.0
+
+Changes in v2.2.0:
+- Added dependency injection for ConfigService (DDD compliance)
+- API now calls Service → Repository (perfect DDD architecture)
+- Removed direct Repository instantiation from endpoints
 
 Changes in v2.1.0:
 - C-P0-1: Added whitelist for public configs (security fix)
@@ -18,15 +23,32 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from domains.platform.config_service import ConfigService
 from infrastructure.repositories import SupabaseConfigRepository
 from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/config", tags=["user-config-v2"])
+
+
+# ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_config_service() -> ConfigService:
+    """
+    Dependency injection factory for ConfigService.
+
+    Returns:
+        ConfigService instance with Repository injected
+    """
+    db = get_database_client()
+    config_repo = SupabaseConfigRepository(db)
+    return ConfigService(config_repo)
 
 
 # ==========================================
@@ -100,16 +122,17 @@ class ConfigGroupResponse(BaseModel):
 # ==========================================
 
 @router.get("")
-async def list_configs() -> Dict[str, Any]:
+async def list_configs(
+    config_service: ConfigService = Depends(get_config_service),
+) -> Dict[str, Any]:
     """
     Get all public configurations.
 
     Only returns configs in the public whitelist.
     Sensitive configs are not exposed.
     """
-    db = get_database_client()
-    config_repo = SupabaseConfigRepository(db)
-    configs = await config_repo.get_all()
+    # v2.2.0: Use ConfigService (DDD compliance)
+    configs = await config_service.get_all_configs()
 
     # v2.1.0: Filter to only public configs
     public_configs = {
@@ -120,15 +143,17 @@ async def list_configs() -> Dict[str, Any]:
 
 
 @router.get("/group/{group_name}")
-async def get_group(group_name: str) -> ConfigGroupResponse:
+async def get_group(
+    group_name: str,
+    config_service: ConfigService = Depends(get_config_service),
+) -> ConfigGroupResponse:
     """
     Get all configurations in a group.
 
     Only returns configs in the public whitelist.
     """
-    db = get_database_client()
-    config_repo = SupabaseConfigRepository(db)
-    configs = await config_repo.get_all(group=group_name)
+    # v2.2.0: Use ConfigService (DDD compliance)
+    configs = await config_service.get_all_configs(category=group_name)
 
     # v2.1.0: Filter to only public configs
     public_configs = [c for c in configs if is_config_public(c.get("key", ""))]
@@ -136,7 +161,10 @@ async def get_group(group_name: str) -> ConfigGroupResponse:
 
 
 @router.get("/{key}")
-async def get_config(key: str) -> Dict[str, Any]:
+async def get_config(
+    key: str,
+    config_service: ConfigService = Depends(get_config_service),
+) -> Dict[str, Any]:
     """
     Get a single configuration by key.
 
@@ -147,9 +175,9 @@ async def get_config(key: str) -> Dict[str, Any]:
         logger.warning(f"[Config] Blocked access to non-public config: {key}")
         raise HTTPException(403, "Access denied")
 
-    db = get_database_client()
-    config_repo = SupabaseConfigRepository(db)
-    value = await config_repo.get_by_key(key)
-    if not value:
+    # v2.2.0: Use ConfigService (DDD compliance)
+    # ConfigService.get_config() returns parsed value (dict or primitive)
+    config = await config_service.get_config(key, use_cache=True)
+    if not config:
         raise HTTPException(404, f"Config not found: {key}")
-    return {"key": key, "value": value}
+    return {"key": key, "value": config}
