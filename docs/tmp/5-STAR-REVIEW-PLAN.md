@@ -65,7 +65,7 @@
 | 4 | Config | 3 | 🟢 | ✅ v1.0.0 → v2.2.0 | ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) |
 | 5 | Experiments | 4 | 🟡 | ✅ v3.31 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 6 | Export | 4 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 7 | Generation Images | 2 | 🔴 | ⚠️ 部分 | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 7 | Generation Images | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 8 | Generation PDF | 1 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 9 | Generation Story | 2 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 10 | Generations | 6 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
@@ -87,18 +87,18 @@
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 8 (Analytics, Billing, Campaigns, Config, Experiments, Payment, User Profile, Webhooks)
-- **已达到 5 星**: 8 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (8/8) 🎉
-- **5 星达成率**: 100% (8/8 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 16
-- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images, Generation PDF, Generation Story)
+- 已完成 FULL REVIEW: 9 (Analytics, Billing, Campaigns, Config, Experiments, Generation Images, Payment, User Profile, Webhooks)
+- **已达到 5 星**: 9 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (9/9) 🎉
+- **5 星达成率**: 100% (9/9 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 15
+- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF, Generation Story)
 - 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星)
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星)
 
 ---
 
-## 已完成 FULL REVIEW 的模块 (8 个)
+## 已完成 FULL REVIEW 的模块 (9 个)
 
 | 模块 | FULL REVIEW 时间 | 5星 Review 时间 | 最终评级 | 状态 | 文档 |
 |------|------------------|----------------|----------|------|------|
@@ -110,6 +110,7 @@
 | 6. User Profile | 2026-01-10 06:30 | 2026-01-10 07:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | USER-PROFILE-5STAR-REVIEW-v2.2.0.md |
 | 7. Payment | 2026-01-10 07:30 | 2026-01-10 08:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | PAYMENT-5STAR-REVIEW-v2.3.0.md |
 | 8. Webhooks | 2026-01-10 10:00 | 2026-01-10 12:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | WEBHOOKS-5STAR-REVIEW-v2.5.0.md |
+| 9. Generation Images | 2026-01-10 12:30 | 2026-01-10 14:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-IMAGES-5STAR-REVIEW-v3.28.md |
 
 ---
 
@@ -864,14 +865,120 @@ python -m pytest tests/api/user/test_webhooks.py -v
 
 ---
 
+### ✅ 第 9 轮: Generation Images 模块 5 星 Review (已完成并修复)
+
+**模块**: `api/user/generation_images.py` (AI Image Generation)
+**Review 时间**: 2026-01-10 12:30 - 14:00
+**初始版本**: v3.27
+**最终版本**: v3.28
+**初始评级**: ⭐⭐⭐⭐ (85/100)
+**最终评级**: ⭐⭐⭐⭐⭐ (98/100)
+**状态**: ✅ **5星达标** (修复后)
+
+#### 发现的问题 (v3.27)
+
+**GI-CRITICAL-1**: 无 Service 层，无依赖注入 (架构违规)
+- 描述: API 层包含 260+ 行业务逻辑，手动创建 Repository，直接访问 Supabase
+- 影响: Architecture score 50/100 (严重违反 DDD)
+- 修复: 创建 GenerationService (600+ 行) 处理完整 AI 生成工作流
+
+#### 修复详情 (v3.27 → v3.28)
+
+**架构升级**:
+```
+v3.27: API → Repository + Direct DB (❌ DDD 违规)
+v3.28: API → Service → Repository (✅ 100% DDD)
+```
+
+**代码改动**:
+- ✅ 创建 `domains/generation/__init__.py`
+- ✅ 创建 `domains/generation/generation_service.py` (600+ 行)
+  - generate_images_sync(): 同步生成完整工作流
+  - generate_images_async(): 异步任务队列
+  - _refund_credits(): 退款逻辑（超时/失败/空结果）
+  - _save_generation_results(): 保存资产和历史记录
+- ✅ 重写 `api/user/generation_images.py` (500 → 280 行, -44%)
+  - 添加 DI 工厂: `get_generation_service()`
+  - API 层纯 HTTP 逻辑 (验证 + 异常转换)
+- ✅ 完全重写 `tests/api/user/test_generation_images.py` (750 行)
+  - 使用 `app.dependency_overrides` (FastAPI 最佳实践)
+  - Mock GenerationService 而非零散组件
+  - 15 个测试全部通过 (9 sync + 6 async)
+
+**测试验证**:
+```bash
+python -m pytest tests/api/user/test_generation_images.py -v
+======================= 15 passed in 1.05s ========================
+```
+
+**评分变化**:
+- Code Standards: 90/100 → 95/100 (+5) ⬆️
+- **Architecture**: 50/100 → 100/100 (+50) ⬆️
+- Security: 98/100 (无变化)
+- Call Chain: 90/100 → 95/100 (+5) ⬆️
+- Test Coverage: 95/100 (无变化)
+- **总分**: 85/100 → 98/100 (+13) ⬆️
+- **星级**: ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐
+
+#### 关键改进
+
+1. **Service 层创建** (+50 架构分)
+   - GenerationService (600+ 行): AI 图像生成完整工作流
+   - 完整 DI 工厂模式
+   - 业务逻辑完全从 API 层分离
+
+2. **API 层精简** (-44% 代码)
+   - 从 500 行减少到 280 行
+   - 纯 HTTP 层职责 (验证 + 路由 + 异常转换)
+
+3. **测试质量提升**
+   - 完全重写使用 FastAPI 最佳实践
+   - `app.dependency_overrides` 替代 `@patch`
+   - 15/15 测试通过
+
+4. **调用链完整**
+   - API → Service (DI) → Repository → Database
+   - 完整工作流: 扣费 → 生成 (超时保护) → 保存 → 分析
+   - 自动退款: 超时/失败/空结果
+
+**工作流对比**:
+
+```python
+# ❌ v3.27 - DDD 违规
+asset_repo = SupabaseAssetRepository(get_supabase_client())  # 手动创建
+supabase = get_supabase_client()  # 直接 DB
+supabase.table("user_generations").insert(record).execute()
+
+# ✅ v3.28 - 完美 DDD
+generation_service: GenerationService = Depends(get_generation_service)  # DI
+result = await generation_service.generate_images_sync(...)  # Service
+```
+
+**核心功能**:
+- ✅ Flux-schnell (Free/Starter) vs Flux-dev (Pro)
+- ✅ 参考图片支持 (SSRF 防护)
+- ✅ 提示词增强 (AI Design Page mode)
+- ✅ 超时保护 (120s asyncio.wait_for)
+- ✅ 自动退款 (4 种失败场景)
+- ✅ 内容安全检查 (Unicode normalization)
+- ✅ Rate limiting (10/minute)
+
+**结论**: Generation Images v3.28 完全符合 5 星标准 (98/100) ✅
+
+**审核文档**:
+- GENERATION-IMAGES-5STAR-REVIEW-v3.27.md (问题分析)
+- GENERATION-IMAGES-5STAR-REVIEW-v3.28.md (5 星确认)
+
+---
+
 ## 总体目标
 
 **目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **8/8 模块完成 5 星 Review** (100%)
-- ✅ **8/8 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Payment ✨, User Profile ✨, Webhooks ✨)
-- **5 星达成率**: **100%** (8/8) 🎉
+- ✅ **9/9 模块完成 5 星 Review** (100%)
+- ✅ **9/9 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Generation Images ✨, Payment ✨, User Profile ✨, Webhooks ✨)
+- **5 星达成率**: **100%** (9/9) 🎉
 
 **阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
 
@@ -890,17 +997,19 @@ python -m pytest tests/api/user/test_webhooks.py -v
 6. ✅ User Profile 5 星 Review (v2.1.0 → v2.2.0, 架构修复, ⭐⭐⭐⭐⭐)
 7. ✅ Payment 5 星 Review (v2.2.0 → v2.3.0, 架构修复, ⭐⭐⭐⭐⭐)
 8. ✅ Webhooks 5 星 Review (v2.4.0 → v2.5.0, DDD 架构升级, ⭐⭐⭐⭐⭐)
+9. ✅ Generation Images 5 星 Review (v3.27 → v3.28, DDD 架构升级, ⭐⭐⭐⭐⭐)
 
 **🚀 阶段 2: 继续扩展 Review 范围**
 
 **优先级建议** (从高风险模块开始):
-1. ⏳ **Generation Images** (2 endpoints, 🔴 高风险) - AI 生成核心
-2. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
-3. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
+1. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
+2. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
+3. ⏳ **Export** (4 endpoints, 🟡 中风险) - 导出功能
 
 **已完成高风险模块**:
 - ✅ Billing (支付账单) ⭐⭐⭐⭐⭐
 - ✅ User Profile (用户核心数据) ⭐⭐⭐⭐⭐
 - ✅ Payment (支付集成) ⭐⭐⭐⭐⭐
 - ✅ Webhooks (外部集成) ⭐⭐⭐⭐⭐
+- ✅ Generation Images (AI 图像生成) ⭐⭐⭐⭐⭐
 
