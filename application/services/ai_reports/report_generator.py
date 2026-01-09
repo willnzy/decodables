@@ -2,7 +2,7 @@
 AI Reports Generator - Report generation functions
 
 @module services.ai_reports.report_generator
-@version 3.24
+@version 3.27
 """
 
 import os
@@ -19,6 +19,14 @@ from .collectors import (
     collect_retention_metrics,
     collect_product_metrics,
     collect_user_behavior_trends,
+)
+from .config import (
+    OPENAI_MODEL,
+    OPENAI_TEMPERATURE,
+    OPENAI_MAX_TOKENS,
+    OPENAI_TIMEOUT,
+    REPORT_TYPE_ANALYSIS_DEPTH,
+    LOW_CONVERSION_RATE_THRESHOLD
 )
 
 logger = logging.getLogger(__name__)
@@ -87,15 +95,8 @@ def generate_ai_business_report(
             "fallback": get_quick_insights()
         }
 
-    # Map report_type to analysis parameters
-    analysis_depth_map = {
-        "quick": "quick",
-        "comprehensive": "deep",
-        "growth": "standard",
-        "engagement": "standard",
-        "revenue": "standard"
-    }
-    analysis_depth = analysis_depth_map.get(report_type, "standard")
+    # Map report_type to analysis parameters (from config)
+    analysis_depth = REPORT_TYPE_ANALYSIS_DEPTH.get(report_type, "standard")
 
     # Map report_type to focus areas
     focus_areas = None
@@ -136,15 +137,15 @@ Provide actionable insights and recommendations."""
 
     try:
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.3,
-            max_tokens=2000,
+            temperature=OPENAI_TEMPERATURE,
+            max_tokens=OPENAI_MAX_TOKENS,
             response_format={"type": "json_object"},
-            timeout=30  # AI-MEDIUM-9: Add timeout
+            timeout=OPENAI_TIMEOUT
         )
 
         result = json.loads(response.choices[0].message.content)
@@ -187,7 +188,7 @@ def get_quick_insights() -> List[Dict[str, Any]]:
     # Add conversion metrics
     conv_metrics = collect_conversion_metrics()
     for metric in conv_metrics:
-        if metric.current_value < 3:  # Low conversion warning
+        if metric.current_value < LOW_CONVERSION_RATE_THRESHOLD:
             insights.append({
                 "title": "Low conversion rate detected",
                 "description": f"Conversion rate at {metric.current_value:.1f}%",

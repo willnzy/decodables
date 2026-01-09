@@ -82,7 +82,32 @@ async def adm_get_ai_insights(
     type: str = Query("all", description="Insight type: all, growth, engagement, revenue"),
     admin: dict = Depends(require_admin)
 ):
-    """Fetch AI insights."""
+    """
+    Fetch AI-generated insights for platform metrics.
+
+    Returns insights about user growth, engagement, and revenue based on the specified type.
+    Insights are generated from the last 7 days of data.
+
+    Args:
+        type: Filter insights by category
+            - `all`: All insight types
+            - `growth`: User acquisition and growth metrics
+            - `engagement`: User engagement and activity metrics
+            - `revenue`: Revenue and monetization metrics
+
+    Returns:
+        List[Dict]: Array of insight objects, each containing:
+            - category: Insight category (growth/engagement/revenue)
+            - title: Short title
+            - description: Detailed description
+            - metric_value: Numerical value
+            - trend: Trend indicator (up/down/stable)
+
+    Raises:
+        400: Invalid type parameter
+        401: Unauthorized - admin access required
+        500: Server error fetching insights
+    """
     # v3.25: AI-MEDIUM-2 - Validate type parameter
     if type not in VALID_INSIGHT_TYPES:
         raise HTTPException(400, f"Invalid type. Must be one of: {', '.join(VALID_INSIGHT_TYPES)}")
@@ -103,7 +128,32 @@ async def adm_get_ai_recommendations(
     area: str = Query("all", description="Area: all, growth, retention, monetization"),
     admin: dict = Depends(require_admin)
 ):
-    """Fetch AI optimization recommendations."""
+    """
+    Fetch AI-generated optimization recommendations.
+
+    Analyzes platform metrics and generates actionable recommendations for improvement
+    in specific business areas.
+
+    Args:
+        area: Focus area for recommendations
+            - `all`: All recommendation areas
+            - `growth`: User acquisition and signup optimization
+            - `retention`: User engagement and retention strategies
+            - `monetization`: Revenue optimization and conversion
+
+    Returns:
+        List[Dict]: Array of recommendation objects, each containing:
+            - priority: Urgency level (high/medium/low)
+            - area: Recommendation area
+            - title: Short recommendation title
+            - description: Detailed analysis
+            - action: Suggested action to take
+
+    Raises:
+        400: Invalid area parameter
+        401: Unauthorized - admin access required
+        500: Server error fetching recommendations
+    """
     # v3.25: AI-MEDIUM-3 - Validate area parameter
     if area not in VALID_RECOMMENDATION_AREAS:
         raise HTTPException(400, f"Invalid area. Must be one of: {', '.join(VALID_RECOMMENDATION_AREAS)}")
@@ -125,7 +175,38 @@ async def adm_get_behavior_analysis(
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD or ISO format)"),
     admin: dict = Depends(require_admin)
 ):
-    """Fetch AI-powered user behavior analysis."""
+    """
+    Fetch AI-powered user behavior analysis.
+
+    Analyzes user activity patterns, peak hours, and user segments over a specified date range.
+    Limited to 50,000 events to prevent performance issues.
+
+    Args:
+        start_date: Analysis period start (defaults to 30 days ago)
+            - Format: YYYY-MM-DD or ISO 8601
+            - Example: "2024-01-01" or "2024-01-01T00:00:00"
+        end_date: Analysis period end (defaults to today)
+            - Format: YYYY-MM-DD or ISO 8601
+            - Example: "2024-01-31" or "2024-01-31T23:59:59"
+
+    Returns:
+        Dict: Behavior analysis report containing:
+            - patterns: Event distribution, peak hours, hourly activity
+                - event_distribution: Count by event type
+                - peak_activity_hour: Hour with most activity (0-23)
+                - hourly_activity: Activity count for each hour
+                - total_events_analyzed: Number of events processed
+                - limited: Boolean indicating if data was truncated
+            - segments: User segmentation data
+                - by_tier: Count of users by tier (free/starter/pro)
+                - total_users: Total user count
+            - period: Analysis period (start/end dates)
+
+    Raises:
+        400: Invalid date format
+        401: Unauthorized - admin access required
+        500: Server error during analysis
+    """
     # v3.25: AI-MEDIUM-4 - Validate date formats
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
@@ -149,6 +230,45 @@ async def adm_generate_ai_report(
 ):
     """
     Generate a comprehensive AI-powered business intelligence report.
+
+    Uses OpenAI GPT-4o to analyze platform metrics and generate detailed business insights,
+    recommendations, and anomaly detection. Rate limited to 5 requests per minute.
+
+    Args:
+        report_type: Type of report to generate
+            - `comprehensive`: Full analysis (deep analysis depth)
+            - `growth`: Focus on user acquisition metrics
+            - `engagement`: Focus on user activity metrics
+            - `revenue`: Focus on monetization metrics
+            - `quick`: Lightweight rule-based insights (no AI)
+        time_range: Analysis time window
+            - `7d`: Last 7 days
+            - `30d`: Last 30 days (default)
+            - `90d`: Last 90 days
+            - `365d`: Last year
+
+    Returns:
+        Dict: AI-generated report containing:
+            - executive_summary: High-level business overview
+            - key_insights: Array of detailed insights with priority
+            - anomalies: List of detected metric anomalies
+            - recommendations: Top prioritized action items
+            - metrics_analyzed: Count of metrics processed
+            - report_type: Report type used
+            - time_range: Time range analyzed
+            - generated_at: ISO timestamp
+
+        On OpenAI API failure, returns fallback with quick insights.
+
+    Raises:
+        400: Invalid report_type or time_range
+        401: Unauthorized - admin access required
+        500: Report generation failed
+
+    Notes:
+        - OpenAI API timeout: 30 seconds
+        - Falls back to rule-based insights if AI unavailable
+        - Collects metrics for growth, conversion, retention, product
     """
     # v3.25: AI-MEDIUM-5 - Validate report_type parameter
     if report_type not in VALID_REPORT_TYPES:
@@ -180,6 +300,31 @@ async def adm_get_quick_insights(
 ):
     """
     Get quick rule-based insights for dashboard preview.
+
+    Provides fast, lightweight insights without AI processing. Suitable for dashboard
+    widgets and real-time updates. Returns immediately without external API calls.
+
+    Returns:
+        Dict: Response containing:
+            - insights: Array of insight objects:
+                - title: Short insight title
+                - description: Brief description
+                - priority: Urgency level (high/medium/low)
+                - category: Insight category (growth/revenue/engagement)
+                - metric_value: Optional numerical value
+                - change: Optional percentage change
+                - recommendation: Optional action suggestion
+            - error: Error message if generation fails (insights will be empty array)
+
+    Raises:
+        401: Unauthorized - admin access required
+
+    Notes:
+        - No OpenAI API calls - purely rule-based
+        - Analyzes growth metrics and conversion rates
+        - Detects significant metric changes (anomalies)
+        - Falls back gracefully on errors
+        - Higher rate limit (60/minute) vs full reports (5/minute)
     """
     from application.services.ai_report_service import get_quick_insights
 

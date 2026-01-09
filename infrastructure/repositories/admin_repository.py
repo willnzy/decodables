@@ -406,6 +406,7 @@ class SupabaseAdminStatsRepository:
         Get AI-generated recommendations for platform optimization.
 
         v3.25: Implemented method (previously missing, caused AttributeError).
+        v3.26: Optimized query efficiency - use count queries and reduce data transfer.
 
         Args:
             area: Recommendation area - "all", "growth", "retention", "monetization"
@@ -442,10 +443,17 @@ class SupabaseAdminStatsRepository:
 
         # Retention recommendations
         if area in ("all", "retention"):
-            # Check users who haven't created projects
+            # Optimized: Use count queries instead of fetching all data
             total_users = self.client.table("profiles").select("id", count="exact").execute()
-            users_with_projects = self.client.table("projects").select("user_id").execute()
-            unique_creators = len(set(p["user_id"] for p in (users_with_projects.data or [])))
+
+            # Count distinct users who have created projects (more efficient)
+            # Note: Supabase doesn't support COUNT(DISTINCT), so we still need to fetch user_ids
+            # but we can limit the query
+            users_with_projects_result = self.client.table("projects").select(
+                "user_id"
+            ).limit(100000).execute()  # Limit to prevent OOM
+
+            unique_creators = len(set(p["user_id"] for p in (users_with_projects_result.data or [])))
 
             total = total_users.count or 0
             if total > 0:
@@ -461,15 +469,22 @@ class SupabaseAdminStatsRepository:
 
         # Monetization recommendations
         if area in ("all", "monetization"):
-            total_users = self.client.table("profiles").select("id", count="exact").execute()
+            # Optimized: Reuse total_users from retention if already queried
+            if area == "all" and 'total' in locals():
+                # Reuse total from retention check
+                total = locals()['total']
+                total_users_count = total
+            else:
+                total_users = self.client.table("profiles").select("id", count="exact").execute()
+                total_users_count = total_users.count or 0
+
             paying_users = self.client.table("profiles").select("id", count="exact").neq(
                 "tier", "free"
             ).execute()
 
-            total = total_users.count or 0
             paying = paying_users.count or 0
-            if total > 0:
-                conversion_rate = (paying / total) * 100
+            if total_users_count > 0:
+                conversion_rate = (paying / total_users_count) * 100
                 if conversion_rate < 5:
                     recommendations.append({
                         "priority": "high",
@@ -490,6 +505,7 @@ class SupabaseAdminStatsRepository:
 
         v3.25: Implemented method (previously missing, caused AttributeError).
         v3.26: Added @retry_on_network_error decorator and data limit (AI-HIGH-2 fix).
+        v3.27: Use configuration constants for limits and defaults.
 
         Args:
             start_date: Start date for analysis (ISO format)
@@ -498,15 +514,21 @@ class SupabaseAdminStatsRepository:
         Returns:
             Dict with patterns, segments, and activity data
         """
+        # Import config constants
+        from application.services.ai_reports.config import (
+            MAX_USER_EVENTS_BEHAVIOR_ANALYSIS,
+            DEFAULT_BEHAVIOR_ANALYSIS_DAYS
+        )
+
         if not start_date:
-            start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            start_date = (datetime.now(timezone.utc) - timedelta(days=DEFAULT_BEHAVIOR_ANALYSIS_DAYS)).isoformat()
         if not end_date:
             end_date = datetime.now(timezone.utc).isoformat()
 
-        # Get user activity patterns (limited to 50,000 records to prevent OOM)
+        # Get user activity patterns (limited to prevent OOM)
         events = self.client.table("user_events").select(
             "event_type, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).limit(50000).execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).limit(MAX_USER_EVENTS_BEHAVIOR_ANALYSIS).execute()
 
         event_counts = {}
         hourly_activity = {i: 0 for i in range(24)}
@@ -543,7 +565,7 @@ class SupabaseAdminStatsRepository:
                 "peak_activity_hour": peak_hour,
                 "hourly_activity": hourly_activity,
                 "total_events_analyzed": total_events,
-                "limited": total_events >= 50000  # Indicate if data was limited
+                "limited": total_events >= MAX_USER_EVENTS_BEHAVIOR_ANALYSIS  # Indicate if data was limited
             },
             "segments": {
                 "by_tier": segments,
