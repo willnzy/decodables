@@ -442,12 +442,24 @@ def get_subscription_status(customer_id: str) -> Optional[Dict]:
 # ==========================================
 
 @retry_on_stripe_error()
-def get_customer_subscriptions(customer_id: str) -> list:
-    """Get all subscriptions for a customer."""
+def get_customer_subscriptions(customer_id: str, timeout: int = 30) -> list:
+    """
+    Get all subscriptions for a customer.
+
+    Args:
+        customer_id: Stripe customer ID
+        timeout: Request timeout in seconds (default: 30, fixes SUB-HIGH-5)
+
+    Returns:
+        List of subscription objects
+
+    v3.27 (SUB-HIGH-5): Added timeout parameter to prevent hanging
+    """
     try:
         subscriptions = stripe.Subscription.list(
             customer=customer_id,
-            limit=10
+            limit=10,
+            timeout=timeout  # v3.27: Added timeout to prevent hanging
         )
         return subscriptions.data
     except stripe.error.StripeError as e:
@@ -488,24 +500,31 @@ def get_customer_payments(customer_id: str, limit: int = 10, timeout: int = 30) 
         return []
 
 
-def cancel_subscription(subscription_id: str, immediate: bool = False) -> Dict:
+def cancel_subscription(subscription_id: str, immediate: bool = False, timeout: int = 30) -> Dict:
     """
     Cancel a subscription.
 
     Args:
         subscription_id: Stripe subscription ID
         immediate: If True, cancel immediately. If False, cancel at period end.
+        timeout: Request timeout in seconds (default: 30, fixes SUB-HIGH-3)
 
     Returns:
         Dict with success, subscription, and error
+
+    v3.27 (SUB-HIGH-3): Added timeout parameter to prevent hanging
     """
     try:
         if immediate:
-            subscription = stripe.Subscription.cancel(subscription_id)
+            subscription = stripe.Subscription.cancel(
+                subscription_id,
+                timeout=timeout  # v3.27: Added timeout
+            )
         else:
             subscription = stripe.Subscription.modify(
                 subscription_id,
-                cancel_at_period_end=True
+                cancel_at_period_end=True,
+                timeout=timeout  # v3.27: Added timeout
             )
 
         return {
@@ -525,7 +544,8 @@ def cancel_subscription(subscription_id: str, immediate: bool = False) -> Dict:
 def create_refund(
     payment_intent_id: str,
     amount_cents: Optional[int] = None,
-    reason: str = "requested_by_customer"
+    reason: str = "requested_by_customer",
+    timeout: int = 30
 ) -> Dict:
     """
     Create a refund for a payment.
@@ -534,14 +554,18 @@ def create_refund(
         payment_intent_id: Stripe PaymentIntent ID
         amount_cents: Amount to refund in cents (None for full refund)
         reason: Refund reason ('duplicate', 'fraudulent', 'requested_by_customer')
+        timeout: Request timeout in seconds (default: 30, fixes SUB-HIGH-2)
 
     Returns:
         Dict with success, refund, and error
+
+    v3.27 (SUB-HIGH-2): Added timeout parameter to prevent hanging
     """
     try:
         refund_params = {
             "payment_intent": payment_intent_id,
-            "reason": reason
+            "reason": reason,
+            "timeout": timeout  # v3.27: Added timeout to prevent hanging
         }
 
         if amount_cents is not None:
@@ -564,10 +588,90 @@ def create_refund(
 
 
 @retry_on_stripe_error()
-def get_payment_intent_details(payment_intent_id: str):
-    """Get PaymentIntent details."""
+def get_payment_intent_details(payment_intent_id: str, timeout: int = 30):
+    """
+    Get PaymentIntent details.
+
+    Args:
+        payment_intent_id: Stripe PaymentIntent ID
+        timeout: Request timeout in seconds (default: 30, fixes SUB-HIGH-1)
+
+    Returns:
+        PaymentIntent object or None on error
+
+    v3.27 (SUB-HIGH-1): Added timeout parameter to prevent hanging
+    """
     try:
-        return stripe.PaymentIntent.retrieve(payment_intent_id)
+        return stripe.PaymentIntent.retrieve(
+            payment_intent_id,
+            timeout=timeout  # v3.27: Added timeout to prevent hanging
+        )
     except stripe.error.StripeError as e:
         logger.error(f"[Stripe] Get payment intent error for {payment_intent_id}: {e}")
+        return None
+
+
+@retry_on_stripe_error()
+def get_subscription_details(subscription_id: str, timeout: int = 30):
+    """
+    Get Subscription details.
+
+    Args:
+        subscription_id: Stripe Subscription ID
+        timeout: Request timeout in seconds (default: 30, fixes SUB-CRITICAL-1)
+
+    Returns:
+        Subscription object or None on error
+
+    v3.27 (SUB-CRITICAL-1): Created wrapper to replace direct stripe.Subscription.retrieve()
+    """
+    try:
+        return stripe.Subscription.retrieve(
+            subscription_id,
+            timeout=timeout  # v3.27: Added timeout to prevent hanging
+        )
+    except stripe.error.StripeError as e:
+        logger.error(f"[Stripe] Get subscription error for {subscription_id}: {e}")
+        return None
+
+
+@retry_on_stripe_error()
+def modify_subscription(
+    subscription_id: str,
+    items: Optional[list] = None,
+    proration_behavior: str = 'create_prorations',
+    timeout: int = 30,
+    **kwargs
+):
+    """
+    Modify a Subscription.
+
+    Args:
+        subscription_id: Stripe Subscription ID
+        items: List of subscription items (line_items)
+        proration_behavior: 'create_prorations', 'none', 'always_invoice'
+        timeout: Request timeout in seconds (default: 30, fixes SUB-CRITICAL-2)
+        **kwargs: Additional parameters to pass to stripe.Subscription.modify()
+
+    Returns:
+        Updated Subscription object or None on error
+
+    v3.27 (SUB-CRITICAL-2): Created wrapper to replace direct stripe.Subscription.modify()
+    """
+    try:
+        modify_params = {
+            "proration_behavior": proration_behavior,
+            "timeout": timeout,  # v3.27: Added timeout to prevent hanging
+            **kwargs
+        }
+
+        if items is not None:
+            modify_params["items"] = items
+
+        return stripe.Subscription.modify(
+            subscription_id,
+            **modify_params
+        )
+    except stripe.error.StripeError as e:
+        logger.error(f"[Stripe] Modify subscription error for {subscription_id}: {e}")
         return None

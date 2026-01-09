@@ -2,9 +2,15 @@
 Admin Subscriptions Router - Subscription management endpoints for admins
 
 @module api.admin.subscriptions
-@version 3.25
+@version 3.27
 
 Changes:
+- v3.27: P0 Security fixes
+  - SUB-CRITICAL-1: Replaced direct stripe.Subscription.retrieve() with service wrapper
+  - SUB-CRITICAL-2: Replaced direct stripe.Subscription.modify() with service wrapper
+  - SUB-HIGH-1/2/3/5: Added timeout to all Stripe API calls
+  - SUB-HIGH-4: Removed unused get_supabase_client() call
+  - SUB-MEDIUM-4: Removed function-level stripe imports (already at module level)
 - v3.25: Security improvements
   - SUB-MEDIUM-1: Added field length limits to request models
   - SUB-MEDIUM-2: Added target_tier enum validation
@@ -20,6 +26,8 @@ import os
 import logging
 from typing import Optional
 
+import stripe  # v3.27: Moved to module level (SUB-MEDIUM-4)
+
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field, field_validator
 
@@ -34,6 +42,8 @@ from domains.billing.payment_service import (
     cancel_subscription,
     create_refund,
     get_payment_intent_details,
+    get_subscription_details,  # v3.27: Added for SUB-CRITICAL-1
+    modify_subscription,  # v3.27: Added for SUB-CRITICAL-2
 )
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
@@ -202,8 +212,10 @@ async def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = De
 async def adm_cancel_subscription(request: Request, req: AdminCancelSubscriptionRequest, admin: dict = Depends(require_admin)):
     """
     Admin-initiated subscription cancellation.
+
+    v3.27 (SUB-CRITICAL-1): Replaced direct stripe.Subscription.retrieve() with get_subscription_details()
     """
-    import stripe
+    # v3.27 (SUB-MEDIUM-4): Removed function-level import stripe (already at module level)
 
     db = get_database_client()
     users_repo = SupabaseUserRepository(db)
@@ -213,22 +225,22 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
     user = await users_repo.get_profile(req.user_id)
     if not user:
         raise HTTPException(404, "User not found")
-    
+
     stored_user_code = user.get("user_code")
     if not stored_user_code:
         raise HTTPException(400, "User has no user code assigned")
     if stored_user_code != req.user_code:
         raise HTTPException(403, "User code does not match. Please verify the user code.")
-    
+
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
         raise HTTPException(400, "User has no Stripe customer ID")
-    
-    try:
-        subscription_detail = stripe.Subscription.retrieve(req.subscription_id)
-    except stripe.error.StripeError as e:
+
+    # v3.27 (SUB-CRITICAL-1): Use get_subscription_details() instead of direct API call
+    subscription_detail = get_subscription_details(req.subscription_id)
+    if not subscription_detail:
         # v3.25: SUB-LOW-1 - Limit Stripe error exposure
-        logger.error(f"[Admin] Subscription retrieve failed: {e}")
+        logger.error(f"[Admin] Subscription retrieve failed for {req.subscription_id}")
         raise HTTPException(404, "Subscription not found or access denied")
     
     if subscription_detail.customer != customer_id:
@@ -307,11 +319,15 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
 async def adm_downgrade_subscription(request: Request, req: AdminDowngradeRequest, admin: dict = Depends(require_admin)):
     """
     Admin-assisted subscription downgrade.
+
+    v3.27 (SUB-CRITICAL-2): Replaced direct stripe.Subscription.modify() with modify_subscription()
+    v3.27 (SUB-HIGH-4): Removed unused get_supabase_client() call
+    v3.27 (SUB-MEDIUM-4): Removed function-level import stripe
     """
-    import stripe
+    # v3.27 (SUB-MEDIUM-4): Removed function-level import stripe (already at module level)
 
     db = get_database_client()
-    supabase = get_supabase_client()
+    # v3.27 (SUB-HIGH-4): Removed unused get_supabase_client() call
     users_repo = SupabaseUserRepository(db)
     payment_repo = SupabasePaymentRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)
@@ -447,70 +463,71 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
         starter_price_id = os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
         if not starter_price_id:
             raise HTTPException(500, "Starter price ID not configured")
-        
-        try:
-            updated_sub = stripe.Subscription.modify(
-                active_sub.id,
-                items=[{
-                    "id": active_sub.items.data[0].id,
-                    "price": starter_price_id
-                }],
-                proration_behavior='create_prorations' if req.immediate else 'none',
-                billing_cycle_anchor='unchanged' if not req.immediate else 'now'
-            )
 
-            if req.immediate:
-                await users_repo.update_subscription_tier(req.user_id, "starter", subscription_status="active")
-                await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["starter"])
+        # v3.27 (SUB-CRITICAL-2): Use modify_subscription() instead of direct API call
+        updated_sub = modify_subscription(
+            active_sub.id,
+            items=[{
+                "id": active_sub.items.data[0].id,
+                "price": starter_price_id
+            }],
+            proration_behavior='create_prorations' if req.immediate else 'none',
+            billing_cycle_anchor='unchanged' if not req.immediate else 'now'
+        )
 
-                await payment_repo.create(
-                    user_id=req.user_id,
-                    amount=0,
-                    currency="USD",
-                    payment_type="tier_downgrade",
-                    metadata={
-                        "from_tier": "pro",
-                        "to_tier": "starter",
-                        "immediate": True,
-                        "subscription_id": active_sub.id,
-                        "reason": req.reason,
-                        "admin_id": admin["id"]
-                    }
-                )
-            else:
-                await payment_repo.create(
-                    user_id=req.user_id,
-                    amount=0,
-                    currency="USD",
-                    payment_type="tier_downgrade_scheduled",
-                    metadata={
-                        "from_tier": "pro",
-                        "to_tier": "starter",
-                        "next_billing": str(updated_sub.current_period_end),
-                        "subscription_id": active_sub.id,
-                        "reason": req.reason,
-                        "admin_id": admin["id"]
-                    }
-                )
-
-            await admin_repo.admin_log_operation(
-                admin_id=admin["id"],
-                operation_type="subscription_downgrade",
-                target_user_id=req.user_id,
-                details=f"Pro → Starter ({'immediate' if req.immediate else 'at period end'})",
-                reason=req.reason
-            )
-            
-            return {
-                "status": "downgraded" if req.immediate else "downgrade_scheduled",
-                "from_tier": "pro",
-                "to_tier": "starter",
-                "subscription_id": active_sub.id
-            }
-            
-        except stripe.error.StripeError as e:
+        if not updated_sub:
             # v3.25: SUB-LOW-1 - Limit Stripe error exposure
-            logger.error(f"[Admin] Subscription downgrade failed: {e}")
+            logger.error(f"[Admin] Subscription downgrade failed for {active_sub.id}")
             raise HTTPException(400, "Subscription modification failed")
+
+        # v3.27: Removed redundant try-except since modify_subscription() already handles errors
+        if req.immediate:
+            await users_repo.update_subscription_tier(req.user_id, "starter", subscription_status="active")
+            await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["starter"])
+
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade",
+                metadata={
+                    "from_tier": "pro",
+                    "to_tier": "starter",
+                    "immediate": True,
+                    "subscription_id": active_sub.id,
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
+            )
+        else:
+            await payment_repo.create(
+                user_id=req.user_id,
+                amount=0,
+                currency="USD",
+                payment_type="tier_downgrade_scheduled",
+                metadata={
+                    "from_tier": "pro",
+                    "to_tier": "starter",
+                    "next_billing": str(updated_sub.current_period_end),
+                    "subscription_id": active_sub.id,
+                    "reason": req.reason,
+                    "admin_id": admin["id"]
+                }
+            )
+
+        await admin_repo.admin_log_operation(
+            admin_id=admin["id"],
+            operation_type="subscription_downgrade",
+            target_user_id=req.user_id,
+            details=f"Pro → Starter ({'immediate' if req.immediate else 'at period end'})",
+            reason=req.reason
+        )
+
+        return {
+            "status": "downgraded" if req.immediate else "downgrade_scheduled",
+            "from_tier": "pro",
+            "to_tier": "starter",
+            "subscription_id": active_sub.id
+        }
     
     raise HTTPException(400, "Invalid downgrade path")
