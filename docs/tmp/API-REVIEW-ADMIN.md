@@ -3,9 +3,9 @@
 > **创建日期**: 2026-01-08
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: ✅ 已完成
-> **最后更新**: 2026-01-10 00:00
-> **当前进度**: 98/125 (78.4%) - 11个模块已完成 ⭐⭐⭐⭐⭐ 深度审查 (DDD架构迁移)
-> **深度审查模块**: AI Insights(5) + Config(8) + Events(5) + Experiments(14) + Logs(4) + Metrics(7) + Moderation(10) + Stats(18) + Subscriptions(3) + System(11) + Users(13)
+> **最后更新**: 2026-01-09 15:00
+> **当前进度**: 98/125 (78.4%) - 12个模块已完成 ⭐⭐⭐⭐⭐ 深度审查 (待 DDD 迁移)
+> **深度审查模块**: AI Insights(5) + AI Models Config(8) + Config(8) + Events(5) + Experiments(14) + Logs(4) + Metrics(7) + Moderation(10) + Stats(18) + Subscriptions(3) + System(11) + Users(13)
 
 ---
 
@@ -64,8 +64,8 @@ Admin API 作为内部管理工具，有以下特点：
 
 | 模块 | 接口数 | 已完成 | 状态 |
 |------|--------|--------|------|
-| AI Insights | 5 | 5 | ✅ 已完成 |
-| AI Models Config | 8 | 8 | ✅ 已完成 |
+| AI Insights | 5 | 5 | ✅ 已完成 ⭐⭐⭐⭐⭐ |
+| AI Models Config | 8 | 8 | ✅ 已完成 ⭐⭐⭐⭐⭐ (待 DDD v3.30) |
 | Campaigns | 8 | 8 | ✅ 已完成 |
 | Config | 8 | 8 | ✅ 已完成 |
 | Events | 5 | 5 | ✅ 已完成 |
@@ -140,7 +140,7 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## AI Models Config 模块 (8个) ✅
+## AI Models Config 模块 (8个) ⭐⭐⭐⭐⭐ 深度审查完成 (待 DDD v3.30 迁移)
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
@@ -163,9 +163,36 @@ Admin API 作为内部管理工具，有以下特点：
 - [x] #12 获取AI使用量统计
 - [x] #13 清除AI缓存
 
-**完成状态**: ✅ 已完成 (2026-01-09)
+**完成状态**: ✅ 深度审查完成 (2026-01-09 15:00)
 
-### v3.25 安全改进
+### 🎯 综合评分: 3.3/5 (66%) - C+
+
+| 维度 | 评分 | 主要问题 |
+|------|------|----------|
+| **架构合规性** | 2.5/5 | 🔴 缺少 Domain Service 层<br>🔴 Sync/Async 混用<br>🔴 直接操作数据库 |
+| **安全性** | 4/5 | 🟡 缺少 Audit Log<br>🟡 Canary 端点缺验证 |
+| **性能** | 3/5 | 🔴 Sync/Async 混用阻塞<br>🟡 配置未缓存<br>🟡 串行查询 |
+| **测试覆盖** | 4/5 | 🟡 缺少集成测试<br>🟡 无 Canary 逻辑测试 |
+| **代码质量** | 3.5/5 | 🟡 Mock 函数未实现<br>🟢 Magic Numbers |
+
+### 🔴 P0 - 必须立即修复 (阻塞性问题)
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 CRITICAL | AIM-CRITICAL-1 | 缺少 Domain Service 层 | ⏳ 待修复 (v3.30) |
+| 🔴 CRITICAL | AIM-CRITICAL-2 | Sync/Async 混用阻塞事件循环 | ⏳ 待修复 (v3.30) |
+| 🔴 CRITICAL | AIM-CRITICAL-3 | Canary 端点直接操作数据库 | ⏳ 待修复 (v3.30) |
+
+### 🟠 P1 - 高优先级 (功能完整性)
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟠 HIGH | AIM-HIGH-1 | Service 层返回 Mock 数据 (未持久化) | ⏳ 待修复 |
+| 🟠 HIGH | AIM-HIGH-2 | 缺少用法统计实现 | ⏳ 待修复 |
+| 🟠 HIGH | AIM-HIGH-3 | 缓存清理 image 分支缺失 | ⏳ 待修复 |
+| 🟡 MEDIUM | AIM-SEC-2 | 缺少 Audit Log | ⏳ 待修复 |
+
+### v3.25 安全改进 (已完成)
 
 | 严重度 | 问题 ID | 描述 | 修复状态 |
 |--------|---------|------|----------|
@@ -179,9 +206,24 @@ Admin API 作为内部管理工具，有以下特点：
 | 🟢 LOW | AIM-LOW-2 | update_text_model_config 调用签名错误 | ✅ 已修复 |
 | 🟢 LOW | AIM-LOW-3 | update_image_model_config 调用签名错误 | ✅ 已修复 |
 
+**深度审查报告**: `docs/tmp/REVIEW-AI-MODELS-CONFIG.md`
+
 **修改文件**:
 - `api/admin/ai_models.py` - v3.24 → v3.25
 - `tests/api/admin/test_ai_models.py` - 39 个测试用例
+
+**测试状态**: ✅ 39/39 通过
+
+**审查质量**: ⭐⭐⭐⭐⭐ 深度审查 (架构/安全/性能/测试全面分析)
+
+**DDD 迁移计划** (v3.30):
+- 创建 `domains/platform/ai/service.py` (Domain Service 层)
+- 创建 `domains/platform/ai/constants.py` (常量迁移)
+- 全部改为 async (修复 Sync/Async 混用)
+- Canary 端点迁移到 Service 层
+- 实现真实数据持久化 (替换 Mock)
+- 添加 Audit Log
+- **预估工作量**: 5-8 小时
 
 ---
 

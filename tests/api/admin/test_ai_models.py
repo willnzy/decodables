@@ -166,7 +166,8 @@ class TestAiModelsParameterValidation:
 
     def test_valid_providers_set(self):
         """Valid providers set is defined."""
-        from api.admin.ai_models import VALID_PROVIDERS
+        # v3.30: Updated import from Domain layer
+        from domains.platform.ai.constants import VALID_PROVIDERS
 
         assert "openai" in VALID_PROVIDERS
         assert "fal" in VALID_PROVIDERS
