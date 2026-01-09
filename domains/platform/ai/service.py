@@ -2,7 +2,13 @@
 AI 模块 Domain Service - AI 模型配置业务逻辑
 
 @module domains.platform.ai.service
-@version 3.30 (DDD Migration)
+@version 3.31 (Repository Dependency Injection)
+
+Changes in v3.31:
+- Added Repository dependency injection
+- Added factory function for ConfigRepository
+- All write functions now accept optional config_repo parameter
+- Improved testability and SOLID compliance
 
 Changes in v3.30:
 - Complete DDD Migration from api/admin/ai_models.py (AIM-CRITICAL-1)
@@ -14,7 +20,7 @@ Changes in v3.30:
 - 添加 Audit Log (AIM-SEC-2)
 
 Architecture:
-- API → Service → ConfigService/Shared (for Config)
+- API → Service → ConfigService/Shared (for Config, with DI support)
 - API → Service → CacheProvider (for Cache)
 """
 
@@ -34,8 +40,33 @@ from domains.platform.ai.constants import (
     CACHE_PREFIX_ALL,
     TIER_ALL,
 )
+from domains.platform.repository import IAIModelConfigRepository
 
 logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Repository Factory Functions
+# ==========================================
+
+def _get_config_repo(repo: Optional[IAIModelConfigRepository] = None) -> IAIModelConfigRepository:
+    """
+    获取 AIModelConfigRepository 实例 (依赖注入或默认实例).
+
+    Args:
+        repo: 可选的 Repository 实例 (用于依赖注入/测试)
+
+    Returns:
+        IAIModelConfigRepository 实例
+    """
+    if repo:
+        return repo
+
+    from core.database import get_database_client
+    from infrastructure.repositories import SupabaseConfigRepository
+
+    db_client = get_database_client()
+    return SupabaseConfigRepository(db_client)
 
 
 # ==========================================
@@ -96,11 +127,13 @@ async def update_text_model_config(
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
-    admin_id: Optional[str] = None
+    admin_id: Optional[str] = None,
+    config_repo: Optional[IAIModelConfigRepository] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     更新文本模型配置.
 
+    v3.31: Added Repository dependency injection
     v3.30: DDD Migration
     - 从 model_config_service.py 迁移
     - 改为 async (修复 AIM-CRITICAL-2)
@@ -113,19 +146,16 @@ async def update_text_model_config(
         max_tokens: 最大 tokens
         temperature: 温度
         admin_id: 管理员 ID
+        config_repo: 可选的 ConfigRepository 实例 (用于依赖注入/测试)
 
     Returns:
         更新后的配置或 None
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseConfigRepository
-
     try:
-        db_client = get_database_client()
-        config_repo = SupabaseConfigRepository(db_client)
+        repo = _get_config_repo(config_repo)
 
         # 读取当前配置
-        current = await config_repo.get_by_key(CONFIG_KEY_TEXT_MODEL)
+        current = await repo.get_by_key(CONFIG_KEY_TEXT_MODEL)
         if current:
             import json
             current = json.loads(current)
@@ -153,14 +183,14 @@ async def update_text_model_config(
 
         # 持久化
         import json
-        await config_repo.create(
+        await repo.create(
             key=CONFIG_KEY_TEXT_MODEL,
             value=json.dumps(current),
             group="ai",
             description="User text generation model config",
             value_type="json",
             admin_id=admin_id
-        ) if not await config_repo.get_by_key(CONFIG_KEY_TEXT_MODEL) else await config_repo.update(
+        ) if not await repo.get_by_key(CONFIG_KEY_TEXT_MODEL) else await repo.update(
             key=CONFIG_KEY_TEXT_MODEL,
             value=json.dumps(current),
             admin_id=admin_id
@@ -187,11 +217,13 @@ async def update_image_model_config(
     tier: str,
     provider: Optional[str] = None,
     model: Optional[str] = None,
-    admin_id: Optional[str] = None
+    admin_id: Optional[str] = None,
+    config_repo: Optional[IAIModelConfigRepository] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     更新图像模型配置.
 
+    v3.31: Added Repository dependency injection
     v3.30: DDD Migration
     - 从 model_config_service.py 迁移
     - 改为 async (修复 AIM-CRITICAL-2)
@@ -203,19 +235,16 @@ async def update_image_model_config(
         provider: 提供商名称
         model: 模型名称
         admin_id: 管理员 ID
+        config_repo: 可选的 ConfigRepository 实例 (用于依赖注入/测试)
 
     Returns:
         更新后的配置或 None
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseConfigRepository
-
     try:
-        db_client = get_database_client()
-        config_repo = SupabaseConfigRepository(db_client)
+        repo = _get_config_repo(config_repo)
 
         # 读取当前配置
-        current = await config_repo.get_by_key(CONFIG_KEY_IMAGE_MODEL)
+        current = await repo.get_by_key(CONFIG_KEY_IMAGE_MODEL)
         if current:
             import json
             current = json.loads(current)
@@ -251,14 +280,14 @@ async def update_image_model_config(
 
         # 持久化
         import json
-        await config_repo.create(
+        await repo.create(
             key=CONFIG_KEY_IMAGE_MODEL,
             value=json.dumps(current),
             group="ai",
             description="User image generation model config",
             value_type="json",
             admin_id=admin_id
-        ) if not await config_repo.get_by_key(CONFIG_KEY_IMAGE_MODEL) else await config_repo.update(
+        ) if not await repo.get_by_key(CONFIG_KEY_IMAGE_MODEL) else await repo.update(
             key=CONFIG_KEY_IMAGE_MODEL,
             value=json.dumps(current),
             admin_id=admin_id
@@ -285,11 +314,13 @@ async def update_canary_config(
     enabled: bool,
     percentage: int,
     target_model: Optional[str],
-    admin_id: Optional[str] = None
+    admin_id: Optional[str] = None,
+    config_repo: Optional[IAIModelConfigRepository] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     更新 Canary 灰度配置.
 
+    v3.31: Added Repository dependency injection
     v3.30: DDD Migration
     - 从 api/admin/ai_models.py 迁移 (修复 AIM-CRITICAL-3)
     - 不再直接操作数据库，使用 ConfigRepository
@@ -300,19 +331,16 @@ async def update_canary_config(
         percentage: 灰度百分比 (0-100)
         target_model: 目标模型
         admin_id: 管理员 ID
+        config_repo: 可选的 ConfigRepository 实例 (用于依赖注入/测试)
 
     Returns:
         更新后的配置或 None
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseConfigRepository
-
     try:
-        db_client = get_database_client()
-        config_repo = SupabaseConfigRepository(db_client)
+        repo = _get_config_repo(config_repo)
 
         # 读取当前配置
-        current = await config_repo.get_by_key(CONFIG_KEY_CANARY)
+        current = await repo.get_by_key(CONFIG_KEY_CANARY)
         if current:
             import json
             old_value = json.loads(current)
@@ -328,14 +356,14 @@ async def update_canary_config(
 
         # 持久化
         import json
-        await config_repo.create(
+        await repo.create(
             key=CONFIG_KEY_CANARY,
             value=json.dumps(canary_config),
             group="ai",
             description="AI Canary rollout configuration",
             value_type="json",
             admin_id=admin_id
-        ) if not await config_repo.get_by_key(CONFIG_KEY_CANARY) else await config_repo.update(
+        ) if not await repo.get_by_key(CONFIG_KEY_CANARY) else await repo.update(
             key=CONFIG_KEY_CANARY,
             value=json.dumps(canary_config),
             admin_id=admin_id
@@ -361,11 +389,13 @@ async def update_canary_config(
 async def toggle_ai_provider(
     provider: str,
     enabled: bool,
-    admin_id: Optional[str] = None
+    admin_id: Optional[str] = None,
+    config_repo: Optional[IAIModelConfigRepository] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     切换 AI 提供商状态.
 
+    v3.31: Added Repository dependency injection
     v3.30: DDD Migration
     - 从 model_config_service.py 迁移
     - 改为 async (修复 AIM-CRITICAL-2)
@@ -376,19 +406,16 @@ async def toggle_ai_provider(
         provider: 提供商名称
         enabled: 是否启用
         admin_id: 管理员 ID
+        config_repo: 可选的 ConfigRepository 实例 (用于依赖注入/测试)
 
     Returns:
         更新后的状态或 None
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseConfigRepository
-
     try:
-        db_client = get_database_client()
-        config_repo = SupabaseConfigRepository(db_client)
+        repo = _get_config_repo(config_repo)
 
         # 读取当前提供商状态
-        current = await config_repo.get_by_key(CONFIG_KEY_ENABLED_PROVIDERS)
+        current = await repo.get_by_key(CONFIG_KEY_ENABLED_PROVIDERS)
         if current:
             import json
             providers = json.loads(current)
@@ -412,14 +439,14 @@ async def toggle_ai_provider(
 
         # 持久化
         import json
-        await config_repo.create(
+        await repo.create(
             key=CONFIG_KEY_ENABLED_PROVIDERS,
             value=json.dumps(providers),
             group="ai",
             description="Enabled AI providers",
             value_type="json",
             admin_id=admin_id
-        ) if not await config_repo.get_by_key(CONFIG_KEY_ENABLED_PROVIDERS) else await config_repo.update(
+        ) if not await repo.get_by_key(CONFIG_KEY_ENABLED_PROVIDERS) else await repo.update(
             key=CONFIG_KEY_ENABLED_PROVIDERS,
             value=json.dumps(providers),
             admin_id=admin_id
