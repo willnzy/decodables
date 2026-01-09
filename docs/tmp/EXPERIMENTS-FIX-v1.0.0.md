@@ -1,17 +1,21 @@
-# Experiments P0 问题修复报告 v1.0.0
+# Experiments P0 问题修复报告 v1.1.0
 
-**Fix Date**: 2026-01-10
+**Fix Date**: 2026-01-10 (Updated: 2026-01-10 17:30)
 **Module**: Experiments
 **Previous Version**: v3.25 (assignment), v3.24 (tracking)
-**New Version**: v3.26 (assignment), v3.25 (tracking)
+**New Version**: v3.27 (package), v3.26 (assignment), v3.25 (tracking)
 
 ---
 
 ## 修复概述
 
-修复了 Experiments 模块 Review 中发现的 **2 个 P0 关键问题** + 顺带修复 **1 个 P2 问题**。
+修复了 Experiments 模块 Review 中发现的 **3 个 P0 关键问题** + 顺带修复 **1 个 P2 问题**。
 
 **问题来源**: `EXPERIMENTS-FULL-REVIEW-v1.0.0.md`
+
+**v1.1.0 更新**:
+- 新增 #EXP-HIGH-8: 缺失 experiment_exposures 和 experiment_conversions 表
+- 已创建并添加两个表到 schema
 
 ---
 
@@ -177,14 +181,77 @@ CREATE TABLE experiment_assignments (
 
 ---
 
+### ✅ #EXP-HIGH-8: 缺失数据库表 (P0 - v1.1.0 新增)
+
+**问题描述**:
+- tracking.py 的 `track_exposure()` 和 `track_conversion()` 函数依赖两个表:
+  - `experiment_exposures` - 曝光事件追踪
+  - `experiment_conversions` - 转化事件追踪
+- **V2 schema 中缺失这两个表**, 导致追踪功能完全失效
+
+**受影响功能**:
+- 用户看到实验变体时无法记录曝光
+- 用户转化时无法记录转化事件
+- 无法进行实验数据分析和优化
+
+**修复方案**:
+1. 创建 migration 脚本: `migrations/add_experiment_tracking_tables.sql`
+2. 更新 V2 schema: `migrations/v2/refactored_schema_v2.sql`
+3. 添加两个表 (33, 34 号表):
+
+```sql
+-- experiment_exposures (实验曝光表)
+CREATE TABLE experiment_exposures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    context JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- experiment_conversions (实验转化表)
+CREATE TABLE experiment_conversions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    value NUMERIC(10, 2) DEFAULT 1.0,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**索引**:
+- exposures: experiment_id, user_id, created_at, (experiment_id + user_id + created_at) 去重索引
+- conversions: experiment_id, user_id, metric_key, created_at, (experiment_id + metric_key + created_at) 聚合索引
+
+**tracking.py 修复**:
+- 恢复 `track_exposure()` 正常功能
+- 恢复 `track_conversion()` 正常功能
+- 修复字段名: `user_identifier` → `user_id`
+- 修复查询: 使用 `experiment_id` 而非 `experiment_key`
+
+**影响**: 🔴 极高 → ✅ 已解决
+**变更**:
+- `tracking.py` (恢复功能 + 字段名修复)
+- `migrations/add_experiment_tracking_tables.sql` (新建)
+- `migrations/v2/refactored_schema_v2.sql` (+60 行)
+
+---
+
 ## 代码变更统计
 
 | 文件 | 行数变化 | 说明 |
 |------|----------|------|
 | `assignment.py` | +37 / -18 | status 枚举值 + user_id 字段名 + JOIN 查询 |
-| `tracking.py` | +7 / -3 | user_id 字段名 + JOIN 查询 |
+| `tracking.py` | +10 / -3 | user_id 字段名 + 恢复追踪功能 |
+| `__init__.py` | +3 / -1 | 版本更新 v3.27 |
+| `migrations/add_experiment_tracking_tables.sql` | +101 / 0 | 新建表 migration |
+| `migrations/v2/refactored_schema_v2.sql` | +60 / -2 | 添加两个追踪表 |
 
-**总变更**: +44 / -21 (净增加 23 行)
+**总变更**: +211 / -24 (净增加 187 行)
 
 ---
 

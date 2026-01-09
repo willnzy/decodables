@@ -1478,7 +1478,7 @@ CREATE INDEX idx_sub_history_user ON subscription_history(user_id, effective_dat
 CREATE INDEX idx_sub_history_tier ON subscription_history(tier);
 
 -- ----------------------------------------------------------------------------
--- 28. credit_purchases (积分购买记录表)
+-- 31. credit_purchases (积分购买记录表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE credit_purchases (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1510,7 +1510,7 @@ CREATE UNIQUE INDEX idx_credit_purchases_idempotency ON credit_purchases(idempot
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 29. feature_flags (Feature Flag 表)
+-- 32. feature_flags (Feature Flag 表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE feature_flags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1539,7 +1539,7 @@ CREATE TRIGGER trg_feature_flags_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
--- 30. experiments (A/B 测试实验表)
+-- 33. experiments (A/B 测试实验表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE experiments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1570,7 +1570,7 @@ CREATE TRIGGER trg_experiments_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
--- 31. experiment_assignments (实验分配表)
+-- 34. experiment_assignments (实验分配表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE experiment_assignments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1588,7 +1588,7 @@ CREATE INDEX idx_exp_assignments_experiment ON experiment_assignments(experiment
 CREATE INDEX idx_exp_assignments_user ON experiment_assignments(user_id);
 
 -- ----------------------------------------------------------------------------
--- 32. experiment_results (实验结果表)
+-- 35. experiment_results (实验结果表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE experiment_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1614,12 +1614,59 @@ CREATE TRIGGER trg_experiment_results_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- ----------------------------------------------------------------------------
+-- 36. experiment_exposures (实验曝光表)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_exposures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    context JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE experiment_exposures IS '实验曝光表: 追踪用户看到实验变体的事件 (用于去重和分析)';
+COMMENT ON COLUMN experiment_exposures.context IS '曝光上下文 (页面、来源等)';
+
+-- 索引
+CREATE INDEX idx_exp_exposures_experiment ON experiment_exposures(experiment_id);
+CREATE INDEX idx_exp_exposures_user ON experiment_exposures(user_id);
+CREATE INDEX idx_exp_exposures_created_at ON experiment_exposures(created_at DESC);
+CREATE INDEX idx_exp_exposures_dedup ON experiment_exposures(experiment_id, user_id, created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 37. experiment_conversions (实验转化表)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_conversions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    value NUMERIC(10, 2) DEFAULT 1.0,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE experiment_conversions IS '实验转化表: 追踪实验的转化事件和指标';
+COMMENT ON COLUMN experiment_conversions.metric_key IS '转化指标名称 (如 signup, purchase, click)';
+COMMENT ON COLUMN experiment_conversions.value IS '转化值 (如收入金额、点击次数)';
+COMMENT ON COLUMN experiment_conversions.metadata IS '转化元数据 (订单ID、产品信息等)';
+
+-- 索引
+CREATE INDEX idx_exp_conversions_experiment ON experiment_conversions(experiment_id);
+CREATE INDEX idx_exp_conversions_user ON experiment_conversions(user_id);
+CREATE INDEX idx_exp_conversions_metric ON experiment_conversions(metric_key);
+CREATE INDEX idx_exp_conversions_created_at ON experiment_conversions(created_at DESC);
+CREATE INDEX idx_exp_conversions_exp_metric ON experiment_conversions(experiment_id, metric_key, created_at DESC);
+
 -- ============================================================================
 -- 第十三部分: 营销活动表
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 33. campaigns (营销活动表)
+-- 38. campaigns (营销活动表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE campaigns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1657,7 +1704,7 @@ CREATE TRIGGER trg_campaigns_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
--- 34. campaign_participations (活动参与表)
+-- 39. campaign_participations (活动参与表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE campaign_participations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1675,7 +1722,7 @@ CREATE INDEX idx_campaign_participations_user ON campaign_participations(user_id
 CREATE INDEX idx_campaign_participations_campaign ON campaign_participations(campaign_id);
 
 -- ----------------------------------------------------------------------------
--- 35. campaign_dismissals (活动关闭记录表)
+-- 40. campaign_dismissals (活动关闭记录表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE campaign_dismissals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1696,7 +1743,7 @@ CREATE INDEX idx_campaign_dismissals_user ON campaign_dismissals(user_id);
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 36. notifications (通知表)
+-- 41. notifications (通知表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1719,7 +1766,7 @@ CREATE INDEX idx_notifications_type ON notifications(notification_type);
 CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read) WHERE is_read = FALSE;
 
 -- ----------------------------------------------------------------------------
--- 37. onboarding_steps (引导步骤定义表)
+-- 42. onboarding_steps (引导步骤定义表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE onboarding_steps (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1748,7 +1795,7 @@ CREATE TRIGGER trg_onboarding_steps_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
--- 38. user_onboarding_progress (用户引导进度表)
+-- 43. user_onboarding_progress (用户引导进度表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE user_onboarding_progress (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1772,7 +1819,7 @@ CREATE INDEX idx_onboarding_progress_status ON user_onboarding_progress(status);
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 39. referrals (推荐表)
+-- 44. referrals (推荐表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE referrals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1800,7 +1847,7 @@ CREATE INDEX idx_referrals_status ON referrals(status);
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 40. project_versions (项目版本表)
+-- 45. project_versions (项目版本表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE project_versions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1825,7 +1872,7 @@ CREATE INDEX idx_project_versions_created ON project_versions(created_at DESC);
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 41. assets (用户资产表)
+-- 46. assets (用户资产表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1872,7 +1919,7 @@ CREATE TRIGGER trg_assets_soft_delete
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 42. user_discounts (用户折扣表)
+-- 47. user_discounts (用户折扣表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE user_discounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

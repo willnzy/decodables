@@ -4,7 +4,11 @@ Experiments Service Package
 Modular A/B testing experiment service.
 
 @package services.experiments
-@version 3.26
+@version 3.27
+
+Changes in v3.27:
+- Fixed assignment.py: status enum ('active' not 'running') + user_id field fixes
+- Fixed tracking.py: user_id field + added missing tables to schema
 """
 
 from .core import supabase, logger, CACHE_TTL
