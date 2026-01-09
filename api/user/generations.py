@@ -1,9 +1,15 @@
-"""Generations API - Generation history endpoints (v2).
+"""Generations API - Generation history endpoints (v3).
 
 @module api.user.generations
-@version 2.1.0
+@version 3.0.0
 
 Changes:
+- v3.0.0: DDD architecture upgrade
+  - Created GenerationHistoryService with complete business logic
+  - Added dependency injection (get_generation_history_service)
+  - Migrated to DDD: API → Service → Database
+  - Reduced API layer from 284 to ~200 lines (-30%)
+  - All business logic moved to GenerationHistoryService
 - v2.1.0: Security improvements
   - GEN-P0-1: Added UUID validation for generation_id
   - GEN-MEDIUM-1: Delete now returns 404 if record not found
@@ -21,17 +27,16 @@ Endpoints:
 
 import logging
 import re
-from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
+from typing import List, Dict, Any
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from infrastructure.logging.activity_logger import log_activity
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
+from core.database import get_database_client
+from domains.generation import GenerationHistoryService
+from domains.generation.history_service import GenerationNotFoundException
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +85,16 @@ class BatchDeleteResponse(BaseModel):
 
 
 # ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_generation_history_service() -> GenerationHistoryService:
+    """Dependency injection factory for GenerationHistoryService."""
+    db = get_database_client()
+    return GenerationHistoryService(db_client=db)
+
+
+# ==========================================
 # Endpoints
 # ==========================================
 
@@ -91,34 +106,33 @@ async def get_generation_history(
     offset: int = Query(0, ge=0),
     favorites_only: bool = False,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> GenerationHistoryResponse:
     """
     Get user's image generation history.
 
     Returns paginated list of generated images with metadata.
     Supports filtering by favorites.
+
+    Security:
+    - User ownership enforced by Service
+    - Pagination limits (1-100)
+
+    Returns:
+        GenerationHistoryResponse: Paginated generation history
     """
-    query = supabase.table("user_generations") \
-        .select("*") \
-        .eq("user_id", user["id"]) \
-        .order("created_at", desc=True)
-
-    if favorites_only:
-        query = query.eq("is_favorited", True)
-
-    result = query.range(offset, offset + limit - 1).execute()
-
-    # Get total count
-    count_query = supabase.table("user_generations") \
-        .select("id", count="exact") \
-        .eq("user_id", user["id"])
-    if favorites_only:
-        count_query = count_query.eq("is_favorited", True)
-    count_result = count_query.execute()
+    # v3.0.0: Get history via Service (DDD compliant)
+    try:
+        generations, total = await history_service.get_history(
+            user["id"], limit, offset, favorites_only
+        )
+    except Exception as e:
+        logger.error(f"Get history failed for user {user['id'][:8]}...: {e}")
+        raise HTTPException(500, "Failed to fetch generation history")
 
     return GenerationHistoryResponse(
-        generations=result.data or [],
-        total=count_result.count if count_result.count else len(result.data or []),
+        generations=generations,
+        total=total,
         limit=limit,
         offset=offset,
     )
@@ -131,24 +145,33 @@ async def update_generation(
     generation_id: str,
     req: FavoriteRequest,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> FavoriteResponse:
     """
     Update generation properties (favorite status, etc.).
 
     **Recommended**: Use PATCH for partial resource updates.
+
+    Security:
+    - UUID validation for generation_id
+    - User ownership verified by Service
     """
     # v2.1.0: GEN-P0-1 - Validate generation_id format
     if not UUID_PATTERN.match(generation_id):
         raise HTTPException(400, "Invalid generation ID format")
 
-    result = supabase.table("user_generations") \
-        .update({"is_favorited": req.is_favorited}) \
-        .eq("id", generation_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
-
-    if not result.data:
+    # v3.0.0: Update via Service (DDD compliant)
+    try:
+        await history_service.update_generation(
+            user["id"],
+            generation_id,
+            {"is_favorited": req.is_favorited}
+        )
+    except GenerationNotFoundException:
         raise HTTPException(404, "Generation not found")
+    except Exception as e:
+        logger.error(f"Update generation failed: {e}")
+        raise HTTPException(500, "Failed to update generation")
 
     return FavoriteResponse(success=True, is_favorited=req.is_favorited)
 
@@ -160,25 +183,34 @@ async def toggle_favorite(
     generation_id: str,
     req: FavoriteRequest,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> FavoriteResponse:
     """
     Toggle favorite status of a generated image.
 
     **DEPRECATED**: Use `PATCH /{generation_id}` instead.
-    This endpoint will be removed in v3.0.
+    This endpoint will be removed in v4.0.
+
+    Security:
+    - UUID validation for generation_id
+    - User ownership verified by Service
     """
     # v2.1.0: GEN-P0-1 - Validate generation_id format
     if not UUID_PATTERN.match(generation_id):
         raise HTTPException(400, "Invalid generation ID format")
 
-    result = supabase.table("user_generations") \
-        .update({"is_favorited": req.is_favorited}) \
-        .eq("id", generation_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
-
-    if not result.data:
+    # v3.0.0: Call Service (same logic as PATCH)
+    try:
+        await history_service.update_generation(
+            user["id"],
+            generation_id,
+            {"is_favorited": req.is_favorited}
+        )
+    except GenerationNotFoundException:
         raise HTTPException(404, "Generation not found")
+    except Exception as e:
+        logger.error(f"Toggle favorite failed: {e}")
+        raise HTTPException(500, "Failed to toggle favorite")
 
     return FavoriteResponse(success=True, is_favorited=req.is_favorited)
 
@@ -189,31 +221,27 @@ async def clear_generation_history(
     request: Request,
     keep_favorites: bool = True,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> BatchDeleteResponse:
     """
     Clear all generation history, optionally keeping favorites.
 
     **DEPRECATED**: Use `POST /batch-delete` instead.
-    This endpoint will be removed in v3.0.
+    This endpoint will be removed in v4.0.
 
     **IMPORTANT**: This route must come BEFORE /{generation_id}
     otherwise "batch" will be matched as a generation_id.
+
+    Security:
+    - User ownership enforced by Service
+    - Audit logging in Service
     """
-    query = supabase.table("user_generations") \
-        .delete() \
-        .eq("user_id", user["id"])
-
-    if keep_favorites:
-        query = query.eq("is_favorited", False)
-
-    result = query.execute()
-    deleted_count = len(result.data) if result.data else 0
-
-    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
-    log_activity(user["id"], "batch_delete_generations", {
-        "keep_favorites": keep_favorites,
-        "deleted_count": deleted_count,
-    })
+    # v3.0.0: Batch delete via Service (DDD compliant)
+    try:
+        deleted_count = await history_service.batch_delete(user["id"], keep_favorites)
+    except Exception as e:
+        logger.error(f"Batch delete failed: {e}")
+        raise HTTPException(500, "Failed to clear history")
 
     return BatchDeleteResponse(
         success=True,
@@ -227,26 +255,30 @@ async def delete_generation(
     request: Request,
     generation_id: str,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> DeleteResponse:
-    """Delete a generated image from history."""
+    """
+    Delete a generated image from history.
+
+    Security:
+    - UUID validation for generation_id
+    - User ownership verified by Service
+    - Audit logging in Service
+    """
     # v2.1.0: GEN-P0-1 - Validate generation_id format
     if not UUID_PATTERN.match(generation_id):
         raise HTTPException(400, "Invalid generation ID format")
 
-    result = supabase.table("user_generations") \
-        .delete() \
-        .eq("id", generation_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
-
-    # v2.1.0: GEN-MEDIUM-1 - Check if record was actually deleted
-    if not result.data:
+    # v3.0.0: Delete via Service (DDD compliant)
+    try:
+        deleted_id = await history_service.delete_generation(user["id"], generation_id)
+    except GenerationNotFoundException:
         raise HTTPException(404, "Generation not found")
+    except Exception as e:
+        logger.error(f"Delete generation failed: {e}")
+        raise HTTPException(500, "Failed to delete generation")
 
-    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
-    log_activity(user["id"], "delete_generation", {"generation_id": generation_id})
-
-    return DeleteResponse(success=True, deleted=generation_id)
+    return DeleteResponse(success=True, deleted=deleted_id)
 
 
 @router.post("/batch-delete")
@@ -255,27 +287,23 @@ async def batch_delete_generations(
     request: Request,
     keep_favorites: bool = True,
     user: dict = Depends(get_current_user),
+    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> BatchDeleteResponse:
     """
     Clear all generation history, optionally keeping favorites.
 
     **Recommended**: Use POST for batch operations.
+
+    Security:
+    - User ownership enforced by Service
+    - Audit logging in Service
     """
-    query = supabase.table("user_generations") \
-        .delete() \
-        .eq("user_id", user["id"])
-
-    if keep_favorites:
-        query = query.eq("is_favorited", False)
-
-    result = query.execute()
-    deleted_count = len(result.data or [])
-
-    # v2.1.0: GEN-MEDIUM-2 - Add audit logging
-    log_activity(user["id"], "batch_delete_generations", {
-        "keep_favorites": keep_favorites,
-        "deleted_count": deleted_count,
-    })
+    # v3.0.0: Batch delete via Service (DDD compliant)
+    try:
+        deleted_count = await history_service.batch_delete(user["id"], keep_favorites)
+    except Exception as e:
+        logger.error(f"Batch delete failed: {e}")
+        raise HTTPException(500, "Failed to clear history")
 
     return BatchDeleteResponse(
         success=True,

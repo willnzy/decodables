@@ -53,7 +53,6 @@ def mock_platform_service():
 def sample_feature_flag():
     """Sample feature flag for testing."""
     return FeatureFlag(
-        flag_id="test-feature",
         key="test_feature",
         name="Test Feature",
         description="A test feature flag",
@@ -69,7 +68,6 @@ def sample_experiment():
     """Sample experiment for testing."""
     return Experiment(
         experiment_id="exp-001",
-        key="test_experiment",
         name="Test Experiment",
         description="A test A/B experiment",
         status=ExperimentStatus.RUNNING,
@@ -251,7 +249,7 @@ class TestEvaluateFeatureFlagQuery:
         """Test evaluating feature flag for a user."""
         # Arrange
         query = EvaluateFeatureFlagQuery(
-            flag_key="test_feature",
+            key="test_feature",
             user_id="user_123",
             user_tier="pro",
         )
@@ -259,9 +257,9 @@ class TestEvaluateFeatureFlagQuery:
 
         # Act
         result = await mock_platform_service.evaluate_flag(
-            flag_key=query.flag_key,
+            key=query.key,
             user_id=query.user_id,
-            context={"tier": query.user_tier},
+            user_tier=query.user_tier,
         )
 
         # Assert
@@ -273,14 +271,14 @@ class TestEvaluateFeatureFlagQuery:
         """Test feature flag returns default when no rules match."""
         # Arrange
         query = EvaluateFeatureFlagQuery(
-            flag_key="test_feature",
+            key="test_feature",
             user_id="user_456",
         )
         mock_platform_service.evaluate_flag.return_value = False
 
         # Act
         result = await mock_platform_service.evaluate_flag(
-            flag_key=query.flag_key,
+            key=query.key,
             user_id=query.user_id,
         )
 

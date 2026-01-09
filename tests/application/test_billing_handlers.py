@@ -47,11 +47,15 @@ class TestDeductCreditsHandler:
         """Test successful credit deduction."""
         from application.commands.billing import DeductCreditsCommand
 
-        mock_billing_service.deduct_credits.return_value = MagicMock(
-            success=True,
-            amount_deducted=5,
-            new_balance=95,
-        )
+        # Mock the transaction object
+        mock_tx = MagicMock(spec=CreditTransaction)
+        mock_tx.amount = -5
+        mock_billing_service.deduct_for_operation.return_value = mock_tx
+
+        # Mock the user credits
+        mock_user_credits = MagicMock(spec=UserCredits)
+        mock_user_credits.total_credits = 95
+        mock_billing_service.get_user_credits.return_value = mock_user_credits
 
         command = DeductCreditsCommand(
             user_id="user_123",
@@ -63,18 +67,19 @@ class TestDeductCreditsHandler:
         result = await handler.handle(command)
 
         assert result.success is True
-        assert result.amount_deducted == 5
-        assert result.new_balance == 95
-        mock_billing_service.deduct_credits.assert_called_once()
+        assert result.remaining_credits == 95
+        assert result.transaction == mock_tx
+        mock_billing_service.deduct_for_operation.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_deduct_credits_insufficient(self, handler, mock_billing_service):
         """Test deduction with insufficient credits."""
         from application.commands.billing import DeductCreditsCommand
+        from domains.billing.exceptions import InsufficientCreditsException
 
-        mock_billing_service.deduct_credits.return_value = MagicMock(
-            success=False,
-            error="Insufficient credits",
+        mock_billing_service.deduct_for_operation.side_effect = InsufficientCreditsException(
+            required=100,
+            available=50
         )
 
         command = DeductCreditsCommand(
@@ -110,46 +115,58 @@ class TestAddCreditsHandler:
         """Test adding monthly credits."""
         from application.commands.billing import AddCreditsCommand
 
-        mock_billing_service.add_credits.return_value = MagicMock(
-            success=True,
-            amount_added=500,
-            new_balance=500,
-        )
+        # Mock the transaction object
+        mock_tx = MagicMock(spec=CreditTransaction)
+        mock_tx.amount = 500
+        mock_billing_service.add_credits.return_value = mock_tx
+
+        # Mock the user credits
+        mock_user_credits = MagicMock(spec=UserCredits)
+        mock_user_credits.total_credits = 500
+        mock_billing_service.get_user_credits.return_value = mock_user_credits
 
         command = AddCreditsCommand(
             user_id="user_123",
             amount=500,
-            credit_type="monthly",
-            reason="subscription_renewal",
+            bucket=CreditBucket.MONTHLY,
+            tx_type=TransactionType.SUB_GRANT,
+            description="subscription_renewal",
         )
 
         result = await handler.handle(command)
 
         assert result.success is True
-        assert result.amount_added == 500
+        assert result.new_balance == 500
+        assert result.transaction == mock_tx
 
     @pytest.mark.asyncio
     async def test_add_permanent_credits(self, handler, mock_billing_service):
         """Test adding permanent credits."""
         from application.commands.billing import AddCreditsCommand
 
-        mock_billing_service.add_credits.return_value = MagicMock(
-            success=True,
-            amount_added=100,
-            new_balance=100,
-        )
+        # Mock the transaction object
+        mock_tx = MagicMock(spec=CreditTransaction)
+        mock_tx.amount = 100
+        mock_billing_service.add_credits.return_value = mock_tx
+
+        # Mock the user credits
+        mock_user_credits = MagicMock(spec=UserCredits)
+        mock_user_credits.total_credits = 100
+        mock_billing_service.get_user_credits.return_value = mock_user_credits
 
         command = AddCreditsCommand(
             user_id="user_123",
             amount=100,
-            credit_type="permanent",
-            reason="purchase",
+            bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.TOPUP_PURCHASE,
+            description="purchase",
         )
 
         result = await handler.handle(command)
 
         assert result.success is True
-        assert result.amount_added == 100
+        assert result.new_balance == 100
+        assert result.transaction == mock_tx
 
 
 class TestGrantSignupBonusHandler:
@@ -173,18 +190,17 @@ class TestGrantSignupBonusHandler:
         """Test granting signup bonus."""
         from application.commands.billing import GrantSignupBonusCommand
 
-        mock_billing_service.grant_signup_bonus.return_value = MagicMock(
-            success=True,
-            amount_added=50,
-            new_balance=50,
-        )
+        # Mock the transaction object
+        mock_tx = MagicMock(spec=CreditTransaction)
+        mock_tx.amount = 50
+        mock_billing_service.grant_signup_bonus.return_value = mock_tx
 
         command = GrantSignupBonusCommand(user_id="new_user_123")
 
         result = await handler.handle(command)
 
         assert result.success is True
-        assert result.amount_added == 50  # Signup bonus is 50
+        assert result.credits_granted == 50  # Signup bonus is 50
 
 
 class TestGetUserCreditsHandler:
@@ -208,10 +224,10 @@ class TestGetUserCreditsHandler:
         """Test getting user credits."""
         from application.queries.billing import GetUserCreditsQuery
 
-        mock_billing_service.get_user_credits.return_value = UserCredits(
+        mock_billing_service.get_user_credits.return_value = UserCredits.create(
             user_id="user_123",
-            monthly_credits=500,
-            permanent_credits=100,
+            monthly=500,
+            permanent=100,
             tier="starter",
         )
 
@@ -247,6 +263,7 @@ class TestGetTransactionHistoryHandler:
         """Create mock billing service."""
         service = MagicMock(spec=BillingService)
         service.get_transaction_history = AsyncMock()
+        service.get_transaction_count = AsyncMock()
         return service
 
     @pytest.fixture
@@ -262,25 +279,23 @@ class TestGetTransactionHistoryHandler:
 
         mock_billing_service.get_transaction_history.return_value = [
             CreditTransaction(
-                id="tx_001",
-                user_id="user_123",
                 amount=-5,
-                balance_after=95,
-                tx_type=TransactionType.DEDUCTION,
-                credit_type=CreditType.MONTHLY,
-                operation="image_generation",
+                bucket=CreditBucket.MONTHLY,
+                tx_type=TransactionType.GENERATION,
+                description="image_generation",
+                balance_after=Credits(monthly=95, permanent=0),
                 created_at=datetime.now(timezone.utc),
             ),
             CreditTransaction(
-                id="tx_002",
-                user_id="user_123",
                 amount=500,
-                balance_after=500,
+                bucket=CreditBucket.MONTHLY,
                 tx_type=TransactionType.MONTHLY_RESET,
-                credit_type=CreditType.MONTHLY,
+                description="Monthly reset",
+                balance_after=Credits(monthly=500, permanent=0),
                 created_at=datetime.now(timezone.utc),
             ),
         ]
+        mock_billing_service.get_transaction_count.return_value = 2
 
         query = GetTransactionHistoryQuery(
             user_id="user_123",
@@ -299,6 +314,7 @@ class TestGetTransactionHistoryHandler:
         from application.queries.billing import GetTransactionHistoryQuery
 
         mock_billing_service.get_transaction_history.return_value = []
+        mock_billing_service.get_transaction_count.return_value = 0
 
         query = GetTransactionHistoryQuery(user_id="new_user")
         result = await handler.handle(query)
@@ -314,24 +330,24 @@ class TestGetTransactionHistoryHandler:
 
         mock_billing_service.get_transaction_history.return_value = [
             CreditTransaction(
-                id="tx_001",
-                user_id="user_123",
                 amount=-5,
-                balance_after=95,
-                tx_type=TransactionType.DEDUCTION,
-                credit_type=CreditType.MONTHLY,
-                operation="image_generation",
+                bucket=CreditBucket.MONTHLY,
+                tx_type=TransactionType.GENERATION,
+                description="image_generation",
+                balance_after=Credits(monthly=95, permanent=0),
                 created_at=datetime.now(timezone.utc),
             ),
         ]
+        mock_billing_service.get_transaction_count.return_value = 1
 
         query = GetTransactionHistoryQuery(
             user_id="user_123",
-            tx_type="deduction",
+            tx_type="generation",  # Use valid TransactionType value
             limit=10,
         )
         result = await handler.handle(query)
 
         assert result.success is True
         assert len(result.transactions) == 1
+        assert result.total_count == 1
         mock_billing_service.get_transaction_history.assert_called_once()
