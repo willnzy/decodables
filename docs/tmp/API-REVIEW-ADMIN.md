@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 110/125 (88%)
+> **当前进度**: 123/125 (98%)
 
 ---
 
@@ -682,36 +682,53 @@ Admin API 作为内部管理工具，有以下特点：
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 111 | search_users_api | GET | /users | api/admin/users.py | 70 |
-| 112 | get_users_by_tier_api | GET | /users/by-tier/{tier} | api/admin/users.py | 82 |
-| 113 | get_user_audit | GET | /users/{uid} | api/admin/users.py | 94 |
-| 114 | adjust_user_credits | POST | /users/{uid}/credits | api/admin/users.py | 105 |
-| 115 | update_user | PATCH | /users/{uid} | api/admin/users.py | 126 |
-| 116 | update_user_tier | POST | /users/{uid}/tier | api/admin/users.py | 157 |
-| 117 | create_user_discount_api | POST | /users/{uid}/discount | api/admin/users.py | 189 |
-| 118 | get_user_payments | GET | /users/{uid}/payments | api/admin/users.py | 208 |
-| 119 | get_user_projects | GET | /users/{uid}/projects | api/admin/users.py | 233 |
-| 120 | get_user_asset_usage | GET | /users/{uid}/asset-usage | api/admin/users.py | 247 |
-| 121 | get_user_env_stats | GET | /users/{uid}/env-stats | api/admin/users.py | 277 |
-| 122 | restore_project_api | POST | /projects/{project_id}/restore | api/admin/users.py | 331 |
-| 123 | get_projects_feed | GET | /projects/feed | api/admin/users.py | 346 |
+| 111 | search_users_api | GET | /users | api/admin/users.py | 90 |
+| 112 | get_users_by_tier_api | GET | /users/by-tier/{tier} | api/admin/users.py | 104 |
+| 113 | get_user_audit | GET | /users/{uid} | api/admin/users.py | 123 |
+| 114 | adjust_user_credits | POST | /users/{uid}/credits | api/admin/users.py | 140 |
+| 115 | update_user | PATCH | /users/{uid} | api/admin/users.py | 167 |
+| 116 | update_user_tier | POST | /users/{uid}/tier | api/admin/users.py | 204 |
+| 117 | create_user_discount_api | POST | /users/{uid}/discount | api/admin/users.py | 242 |
+| 118 | get_user_payments | GET | /users/{uid}/payments | api/admin/users.py | 267 |
+| 119 | get_user_projects | GET | /users/{uid}/projects | api/admin/users.py | 299 |
+| 120 | get_user_asset_usage | GET | /users/{uid}/asset-usage | api/admin/users.py | 320 |
+| 121 | get_user_env_stats | GET | /users/{uid}/env-stats | api/admin/users.py | 357 |
+| 122 | restore_project_api | POST | /projects/{project_id}/restore | api/admin/users.py | 418 |
+| 123 | get_projects_feed | GET | /projects/feed | api/admin/users.py | 439 |
 
 **测试用例 Checklist**
-- [ ] #111 搜索用户
-- [ ] #112 按等级获取用户
-- [ ] #113 获取用户审计详情
-- [ ] #114 调整用户积分
-- [ ] #115 更新用户信息
-- [ ] #116 更新用户等级
-- [ ] #117 创建用户折扣
-- [ ] #118 获取用户支付记录
-- [ ] #119 获取用户项目
-- [ ] #120 获取用户素材使用
-- [ ] #121 获取用户环境统计
-- [ ] #122 恢复已删除项目
-- [ ] #123 获取项目Feed
+- [x] #111 搜索用户
+- [x] #112 按等级获取用户
+- [x] #113 获取用户审计详情
+- [x] #114 调整用户积分
+- [x] #115 更新用户信息
+- [x] #116 更新用户等级
+- [x] #117 创建用户折扣
+- [x] #118 获取用户支付记录
+- [x] #119 获取用户项目
+- [x] #120 获取用户素材使用
+- [x] #121 获取用户环境统计
+- [x] #122 恢复已删除项目
+- [x] #123 获取项目Feed
 
-**完成状态**: 未开始
+**安全问题与修复 (v3.25)**
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | USER-MEDIUM-1 | 13个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | USER-MEDIUM-2 | 2个端点使用 page 分页而非 offset | ✅ 已迁移 |
+| 🟡 MEDIUM | USER-MEDIUM-3 | `tier` 路径参数无枚举验证 | ✅ 已添加 VALID_TIERS |
+| 🟢 LOW | USER-LOW-1 | Request Model 缺少字段长度限制 | ✅ 已添加 |
+| 🟢 LOW | USER-LOW-2 | `uid`/`project_id` 路径参数无长度验证 | ✅ 已添加 (max 100) |
+| 🟢 LOW | USER-LOW-3 | 3个端点暴露详细错误信息 | ✅ 已限制 |
+
+**修改文件**:
+- `api/admin/users.py` - v2.0.0 → v3.25
+- `infrastructure/repositories/admin_repository.py` - 更新 admin_get_user_projects 参数
+- `infrastructure/repositories/project_repository.py` - 更新 get_all_projects_feed 参数
+- `tests/api/admin/test_users.py` - 14 个测试用例
+
+**完成状态**: ✅ 完成 (14/14 测试通过)
 
 ---
 

@@ -727,20 +727,19 @@ class SupabaseProjectRepository(IProjectRepository):
     @retry_on_network_error()
     async def get_all_projects_feed(
         self,
-        page: int = 1,
+        offset: int = 0,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
-        Get site-wide project feed (admin function).
+        Get site-wide project feed (admin function) (v3.25: offset pagination).
 
         Args:
-            page: Page number
-            limit: Items per page
+            offset: Number of records to skip
+            limit: Number of records to return
 
         Returns:
             List of project dicts with user info
         """
-        offset = (page - 1) * limit
         result = self.client.table("projects").select(
             "id, title, thumbnail_url, created_at, user_id, profiles(username, avatar_url)"
         ).eq("is_deleted", False).order("created_at", desc=True).range(

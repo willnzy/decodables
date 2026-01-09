@@ -72,14 +72,13 @@ class SupabaseAdminUsersRepository:
         return {"success": True, "new_value": new_value}
 
     @retry_on_network_error()
-    async def admin_get_user_projects(self, user_id: str, page: int = 1, limit: int = 20, include_deleted: bool = True) -> List[Dict[str, Any]]:
-        """Admin get user's projects."""
-        offset = (page - 1) * limit
+    async def admin_get_user_projects(self, user_id: str, offset: int = 0, limit: int = 20, include_deleted: bool = True) -> List[Dict[str, Any]]:
+        """Admin get user's projects (v3.25: offset pagination)."""
         query = self.client.table("projects").select("*").eq("user_id", user_id)
-        
+
         if not include_deleted:
             query = query.eq("is_deleted", False)
-        
+
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
 
