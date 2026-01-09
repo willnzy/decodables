@@ -2,7 +2,7 @@
 Admin AI Router - AI insights and report generation for admins
 
 @module api.admin.ai
-@version 3.25
+@version 3.26
 
 Changes:
 - v3.25: Security improvements
@@ -14,6 +14,11 @@ Changes:
   - AI-MEDIUM-5: Added `report_type` parameter validation (enum)
   - AI-MEDIUM-6: Added `time_range` parameter validation (enum)
   - AI-LOW-1: Limited error detail exposure in generate-report
+- v3.26: Critical bug fixes (Deep Review)
+  - AI-CRITICAL-1: Fixed generate_report parameter mismatch
+  - AI-HIGH-1: Added error handling to insights/recommendations/behavior-analysis
+  - AI-MEDIUM-9: Added OpenAI API timeout (30s)
+  - Performance: Limited behavior_analysis data to 50K records
 
 Endpoints:
 - GET /api/admin/ai/insights - Get AI insights
@@ -82,9 +87,13 @@ async def adm_get_ai_insights(
     if type not in VALID_INSIGHT_TYPES:
         raise HTTPException(400, f"Invalid type. Must be one of: {', '.join(VALID_INSIGHT_TYPES)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_ai_insights(type)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_ai_insights(type)
+    except Exception as e:
+        logger.error(f"Error fetching AI insights: {e}")
+        raise HTTPException(500, "Failed to fetch AI insights")
 
 
 @router.get("/recommendations")
@@ -99,9 +108,13 @@ async def adm_get_ai_recommendations(
     if area not in VALID_RECOMMENDATION_AREAS:
         raise HTTPException(400, f"Invalid area. Must be one of: {', '.join(VALID_RECOMMENDATION_AREAS)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_ai_recommendations(area)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_ai_recommendations(area)
+    except Exception as e:
+        logger.error(f"Error fetching AI recommendations: {e}")
+        raise HTTPException(500, "Failed to fetch AI recommendations")
 
 
 @router.get("/behavior-analysis")
@@ -117,9 +130,13 @@ async def adm_get_behavior_analysis(
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_behavior_analysis(start_date, end_date)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_behavior_analysis(start_date, end_date)
+    except Exception as e:
+        logger.error(f"Error fetching behavior analysis: {e}")
+        raise HTTPException(500, "Failed to fetch behavior analysis")
 
 
 @router.post("/generate-report")

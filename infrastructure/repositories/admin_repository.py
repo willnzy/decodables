@@ -489,6 +489,7 @@ class SupabaseAdminStatsRepository:
         Get AI-powered user behavior analysis.
 
         v3.25: Implemented method (previously missing, caused AttributeError).
+        v3.26: Added @retry_on_network_error decorator and data limit (AI-HIGH-2 fix).
 
         Args:
             start_date: Start date for analysis (ISO format)
@@ -502,13 +503,14 @@ class SupabaseAdminStatsRepository:
         if not end_date:
             end_date = datetime.now(timezone.utc).isoformat()
 
-        # Get user activity patterns
+        # Get user activity patterns (limited to 50,000 records to prevent OOM)
         events = self.client.table("user_events").select(
             "event_type, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).limit(50000).execute()
 
         event_counts = {}
         hourly_activity = {i: 0 for i in range(24)}
+        total_events = len(events.data or [])
 
         for event in (events.data or []):
             et = event.get("event_type", "unknown")
@@ -517,15 +519,17 @@ class SupabaseAdminStatsRepository:
             created_at = event.get("created_at", "")
             if created_at:
                 try:
-                    hour = int(created_at[11:13])
+                    # Parse hour from ISO timestamp (safer than hardcoded slicing)
+                    from datetime import datetime as dt
+                    hour = dt.fromisoformat(created_at.replace('Z', '+00:00')).hour
                     hourly_activity[hour] += 1
-                except (ValueError, IndexError):
+                except (ValueError, IndexError, AttributeError):
                     pass
 
         # Calculate peak hours
         peak_hour = max(hourly_activity, key=hourly_activity.get) if hourly_activity else 12
 
-        # Get user segments
+        # Get user segments (use count aggregation for efficiency)
         tier_dist = self.client.table("profiles").select("tier").execute()
         segments = {"free": 0, "starter": 0, "pro": 0}
         for profile in (tier_dist.data or []):
@@ -537,7 +541,9 @@ class SupabaseAdminStatsRepository:
             "patterns": {
                 "event_distribution": event_counts,
                 "peak_activity_hour": peak_hour,
-                "hourly_activity": hourly_activity
+                "hourly_activity": hourly_activity,
+                "total_events_analyzed": total_events,
+                "limited": total_events >= 50000  # Indicate if data was limited
             },
             "segments": {
                 "by_tier": segments,

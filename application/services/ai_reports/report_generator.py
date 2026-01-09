@@ -68,16 +68,16 @@ def identify_anomalies(metrics: List[MetricData]) -> List[str]:
 
 
 def generate_ai_business_report(
-    analysis_depth: str = "standard",
-    focus_areas: Optional[List[str]] = None
+    report_type: str = "comprehensive",
+    time_range: str = "30d"
 ) -> Dict[str, Any]:
     """
     Generate comprehensive AI business report.
-    
+
     Args:
-        analysis_depth: "quick", "standard", or "deep"
-        focus_areas: Optional list of focus areas
-        
+        report_type: Report type - "comprehensive", "growth", "engagement", "revenue", "quick"
+        time_range: Time range - "7d", "30d", "90d", "365d"
+
     Returns:
         Report dictionary with insights
     """
@@ -86,21 +86,36 @@ def generate_ai_business_report(
             "error": "OpenAI API not configured",
             "fallback": get_quick_insights()
         }
-    
+
+    # Map report_type to analysis parameters
+    analysis_depth_map = {
+        "quick": "quick",
+        "comprehensive": "deep",
+        "growth": "standard",
+        "engagement": "standard",
+        "revenue": "standard"
+    }
+    analysis_depth = analysis_depth_map.get(report_type, "standard")
+
+    # Map report_type to focus areas
+    focus_areas = None
+    if report_type in ["growth", "engagement", "revenue"]:
+        focus_areas = [report_type]
+
     # Collect all metrics
     all_metrics = []
     all_metrics.extend(collect_growth_metrics())
     all_metrics.extend(collect_conversion_metrics())
     all_metrics.extend(collect_retention_metrics())
     all_metrics.extend(collect_product_metrics())
-    
+
     behavior_trends = collect_user_behavior_trends()
-    
+
     # Build prompt
     metrics_text = "\n".join([m.to_prompt_string() for m in all_metrics])
     trends_text = "\n".join([t.to_prompt_string() for t in behavior_trends])
     anomalies = identify_anomalies(all_metrics)
-    
+
     user_prompt = f"""Analyze these SaaS metrics:
 
 ## Growth & Engagement Metrics
@@ -112,6 +127,8 @@ def generate_ai_business_report(
 ## Detected Anomalies
 {chr(10).join(['- ' + a for a in anomalies]) if anomalies else 'None detected'}
 
+Report Type: {report_type}
+Time Range: {time_range}
 Analysis Depth: {analysis_depth}
 Focus Areas: {', '.join(focus_areas) if focus_areas else 'All areas'}
 
@@ -126,15 +143,18 @@ Provide actionable insights and recommendations."""
             ],
             temperature=0.3,
             max_tokens=2000,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            timeout=30  # AI-MEDIUM-9: Add timeout
         )
-        
+
         result = json.loads(response.choices[0].message.content)
         result["metrics_analyzed"] = len(all_metrics)
+        result["report_type"] = report_type
+        result["time_range"] = time_range
         result["generated_at"] = __import__('datetime').datetime.now().isoformat()
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"AI report generation failed: {e}")
         return {
