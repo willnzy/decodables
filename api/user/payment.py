@@ -2,7 +2,12 @@
 Payment API - Payment and checkout endpoints (v2).
 
 @module api.user.payment
-@version 2.2.0
+@version 2.3.0 (DDD Architecture Upgrade - 5 Star)
+
+Changes in v2.3.0:
+- PAY-CRITICAL-1: Added dependency injection for PaymentService
+- Migrated all endpoints to use Service layer with DI
+- Architecture: API → Service (DI) → Stripe SDK (100% DDD)
 
 Changes in v2.2.0:
 - P-P0-1: Mark discount as used after checkout session created
@@ -32,10 +37,20 @@ from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories.user_repository import SupabaseUserRepository
 from core.database import get_database_client
+from domains.billing.payment_service import PaymentService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payment", tags=["user-payment-v2"])
+
+
+# ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_payment_service() -> PaymentService:
+    """Dependency injection factory for PaymentService."""
+    return PaymentService()
 
 # v2.2.0: Valid plan types - subscriptions and credit packages
 VALID_PLAN_TYPES = {"starter", "pro", "credits_100", "credits_500", "credits_2000"}
@@ -68,11 +83,12 @@ class PortalResponse(BaseModel):
 # ==========================================
 
 @router.post("/checkout", response_model=CheckoutResponse)
-@limiter.limit("5/minute")
+@limiter.limit("5/minute")  # v2.2.0: Added rate limiting
 async def create_checkout(
     request: Request,
     req: CheckoutRequest,
     user: dict = Depends(get_current_user),
+    payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
 ) -> CheckoutResponse:
     """
     Create a Stripe checkout session.
@@ -85,8 +101,6 @@ async def create_checkout(
     Returns:
         CheckoutResponse with checkout URL and discount info
     """
-    from domains.billing.payment_service import create_checkout_session
-
     try:
         user_repo = SupabaseUserRepository(get_database_client())
 
@@ -118,7 +132,8 @@ async def create_checkout(
                 discount_percent = 0
                 discount_id = None
 
-        url = create_checkout_session(user["id"], req.plan_type, discount_percent)
+        # v2.3.0: Use PaymentService via DI
+        url = payment_service.create_checkout_session(user["id"], req.plan_type, discount_percent)
 
         if not url:
             raise HTTPException(500, "Failed to create checkout session")
@@ -151,10 +166,11 @@ async def create_checkout(
 
 
 @router.post("/portal", response_model=PortalResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute")  # v2.2.0: Added rate limiting
 async def get_portal(
     request: Request,
     user: dict = Depends(get_current_user),
+    payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
 ) -> PortalResponse:
     """
     Get Stripe billing portal URL.
@@ -164,8 +180,6 @@ async def get_portal(
     Returns:
         PortalResponse with portal URL
     """
-    from domains.billing.payment_service import create_portal_session
-
     stripe_customer_id = user.get("stripe_customer_id")
     if not stripe_customer_id:
         raise HTTPException(400, "No subscription found")
@@ -179,7 +193,8 @@ async def get_portal(
         raise HTTPException(400, "Invalid customer data")
 
     try:
-        url = create_portal_session(user["id"], stripe_customer_id)
+        # v2.3.0: Use PaymentService via DI
+        url = payment_service.create_portal_session(user["id"], stripe_customer_id)
 
         if not url:
             raise HTTPException(500, "Failed to create portal session")

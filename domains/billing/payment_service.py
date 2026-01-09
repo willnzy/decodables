@@ -2,7 +2,13 @@
 Payment Service
 Stripe 支付服务
 
-@version 3.24
+@version 3.25 (DDD Architecture Upgrade - 5 Star)
+
+Changes in v3.25:
+- PAY-CRITICAL-1: Created PaymentService class (DDD compliance)
+- Added dependency injection support
+- Converted module functions to class methods
+- Module functions kept for backward compatibility (deprecated)
 
 Changes in v3.24:
 - P1: Added validate_config() for startup price ID validation
@@ -675,3 +681,253 @@ def modify_subscription(
     except stripe.error.StripeError as e:
         logger.error(f"[Stripe] Modify subscription error for {subscription_id}: {e}")
         return None
+
+
+# ==========================================
+# Payment Service Class (v3.25 - DDD)
+# ==========================================
+
+class PaymentService:
+    """
+    Payment Service - Handles Stripe payment operations.
+
+    This service provides a DDD-compliant interface for payment operations,
+    including checkout session creation and billing portal access.
+
+    Architecture: API → PaymentService → Stripe SDK
+
+    v3.25: Created for DDD compliance (PAY-CRITICAL-1 fix)
+    """
+
+    def __init__(self):
+        """
+        Initialize Payment Service.
+
+        Note: This service directly uses Stripe SDK (no repository layer needed).
+        All Stripe configuration is loaded from environment variables.
+        """
+        pass
+
+    def create_checkout_session(
+        self,
+        user_id: str,
+        plan_type: str,
+        discount_percent: int = 0,
+        idempotency_key: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Create Stripe Checkout Session.
+
+        Args:
+            user_id: User ID
+            plan_type: 'credits_100', 'credits_500', 'credits_2000', 'starter', 'pro'
+            discount_percent: Discount percentage (0-100)
+            idempotency_key: Optional key to prevent duplicate sessions
+
+        Returns:
+            Checkout session URL or None on failure
+        """
+        return create_checkout_session(user_id, plan_type, discount_percent, idempotency_key)
+
+    def create_portal_session(self, user_id: str, customer_id: str) -> Optional[str]:
+        """
+        Create Stripe billing portal session.
+
+        Args:
+            user_id: User ID (for logging)
+            customer_id: Stripe customer ID
+
+        Returns:
+            Portal session URL or None on failure
+        """
+        return create_portal_session(user_id, customer_id)
+
+    # Helper methods
+    def get_or_create_coupon(self, discount_percent: int) -> Optional[str]:
+        """
+        Get existing coupon ID or create a new one.
+
+        Args:
+            discount_percent: Discount percentage (1-100)
+
+        Returns:
+            Coupon ID or None if creation fails
+        """
+        return get_or_create_coupon(discount_percent)
+
+    def get_tier_from_price_id(self, price_id: str) -> str:
+        """
+        Get tier name from Stripe price ID.
+
+        Args:
+            price_id: Stripe price ID
+
+        Returns:
+            Tier name ('starter', 'pro') or 'free' if not found
+        """
+        return get_tier_from_price_id(price_id)
+
+    def get_credits_amount(self, plan_type: str) -> int:
+        """
+        Get credits amount for a plan type.
+
+        Args:
+            plan_type: Plan type (credits_100, credits_500, credits_2000)
+
+        Returns:
+            Number of credits or 0 if not a credit plan
+        """
+        return get_credits_amount(plan_type)
+
+    def validate_config(self) -> Dict[str, Any]:
+        """
+        Validate Stripe configuration.
+
+        Returns:
+            Dict with validation status and missing keys
+        """
+        return validate_config()
+
+    def is_configured(self) -> bool:
+        """Check if Stripe is properly configured."""
+        return is_configured()
+
+    # Admin methods
+    def get_subscription_status(self, customer_id: str) -> Optional[Dict]:
+        """
+        Get customer subscription status.
+
+        Args:
+            customer_id: Stripe customer ID
+
+        Returns:
+            Dict with status, tier, and current_period_end
+        """
+        return get_subscription_status(customer_id)
+
+    def get_customer_subscriptions(self, customer_id: str, timeout: int = 30) -> list:
+        """
+        Get all subscriptions for a customer.
+
+        Args:
+            customer_id: Stripe customer ID
+            timeout: Request timeout in seconds
+
+        Returns:
+            List of subscription objects
+        """
+        return get_customer_subscriptions(customer_id, timeout)
+
+    def get_customer_payments(self, customer_id: str, limit: int = 10, timeout: int = 30) -> list:
+        """
+        Get successful payments for a customer.
+
+        Args:
+            customer_id: Stripe customer ID
+            limit: Maximum number of payment intents to retrieve
+            timeout: Request timeout in seconds
+
+        Returns:
+            List of successful payment intents
+        """
+        return get_customer_payments(customer_id, limit, timeout)
+
+    def cancel_subscription(self, subscription_id: str, immediate: bool = False, timeout: int = 30) -> Dict:
+        """
+        Cancel a subscription.
+
+        Args:
+            subscription_id: Stripe subscription ID
+            immediate: If True, cancel immediately. If False, cancel at period end.
+            timeout: Request timeout in seconds
+
+        Returns:
+            Dict with success, subscription, and error
+        """
+        return cancel_subscription(subscription_id, immediate, timeout)
+
+    def create_refund(
+        self,
+        payment_intent_id: str,
+        amount_cents: Optional[int] = None,
+        reason: str = "requested_by_customer",
+        timeout: int = 30
+    ) -> Dict:
+        """
+        Create a refund for a payment.
+
+        Args:
+            payment_intent_id: Stripe PaymentIntent ID
+            amount_cents: Amount to refund in cents (None for full refund)
+            reason: Refund reason
+            timeout: Request timeout in seconds
+
+        Returns:
+            Dict with success, refund, and error
+        """
+        return create_refund(payment_intent_id, amount_cents, reason, timeout)
+
+    def get_payment_intent_details(self, payment_intent_id: str, timeout: int = 30):
+        """
+        Get PaymentIntent details.
+
+        Args:
+            payment_intent_id: Stripe PaymentIntent ID
+            timeout: Request timeout in seconds
+
+        Returns:
+            PaymentIntent object or None on error
+        """
+        return get_payment_intent_details(payment_intent_id, timeout)
+
+    def get_subscription_details(self, subscription_id: str, timeout: int = 30):
+        """
+        Get Subscription details.
+
+        Args:
+            subscription_id: Stripe Subscription ID
+            timeout: Request timeout in seconds
+
+        Returns:
+            Subscription object or None on error
+        """
+        return get_subscription_details(subscription_id, timeout)
+
+    def modify_subscription(
+        self,
+        subscription_id: str,
+        items: Optional[list] = None,
+        proration_behavior: str = 'create_prorations',
+        timeout: int = 30,
+        **kwargs
+    ):
+        """
+        Modify a Subscription.
+
+        Args:
+            subscription_id: Stripe Subscription ID
+            items: List of subscription items
+            proration_behavior: Proration behavior
+            timeout: Request timeout in seconds
+            **kwargs: Additional parameters
+
+        Returns:
+            Updated Subscription object or None on error
+        """
+        return modify_subscription(subscription_id, items, proration_behavior, timeout, **kwargs)
+
+    def construct_event(self, payload: bytes, sig_header: str) -> Dict:
+        """
+        Construct and verify Stripe webhook event.
+
+        Args:
+            payload: Raw request body
+            sig_header: Stripe-Signature header value
+
+        Returns:
+            Verified event dict
+
+        Raises:
+            Exception: If signature verification fails
+        """
+        return construct_event(payload, sig_header)

@@ -171,7 +171,7 @@ class TestCreateCheckout:
         # Verify service calls
         mock_get_discount.assert_called_once_with(mock_user["id"], "starter")
         mock_create_session.assert_called_once_with(
-            mock_user["id"], "starter", 0
+            mock_user["id"], "starter", 0, None
         )
 
     @patch('domains.billing.payment_service.create_checkout_session')
@@ -213,7 +213,7 @@ class TestCreateCheckout:
 
         # Verify discount applied
         mock_create_session.assert_called_once_with(
-            mock_user["id"], "pro", 20
+            mock_user["id"], "pro", 20, None
         )
 
     def test_create_checkout_invalid_plan_type(
@@ -428,7 +428,7 @@ class TestCreateCheckout:
         assert response.status_code == 200
         data = response.json()
         assert data["discount_applied"] == 0  # Invalid discount ignored
-        mock_create_session.assert_called_once_with(mock_user["id"], "pro", 0)
+        mock_create_session.assert_called_once_with(mock_user["id"], "pro", 0, None)
 
     @patch('domains.billing.payment_service.create_checkout_session')
     @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
@@ -501,7 +501,7 @@ class TestCreateCheckout:
 
         # Assert
         assert response.status_code == 200
-        mock_create_session.assert_called_once_with(mock_user["id"], "credits_100", 0)
+        mock_create_session.assert_called_once_with(mock_user["id"], "credits_100", 0, None)
 
     @patch('domains.billing.payment_service.create_checkout_session')
     @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
@@ -535,7 +535,7 @@ class TestCreateCheckout:
 
         # Assert
         assert response.status_code == 200
-        mock_create_session.assert_called_once_with(mock_user["id"], "credits_500", 0)
+        mock_create_session.assert_called_once_with(mock_user["id"], "credits_500", 0, None)
 
     @patch('domains.billing.payment_service.create_checkout_session')
     @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
@@ -569,7 +569,7 @@ class TestCreateCheckout:
 
         # Assert
         assert response.status_code == 200
-        mock_create_session.assert_called_once_with(mock_user["id"], "credits_2000", 0)
+        mock_create_session.assert_called_once_with(mock_user["id"], "credits_2000", 0, None)
 
     @patch('domains.billing.payment_service.create_checkout_session')
     @patch('infrastructure.repositories.user_repository.SupabaseUserRepository.get_user_discount')
@@ -609,7 +609,7 @@ class TestCreateCheckout:
         assert response.status_code == 200
         data = response.json()
         assert data["discount_applied"] == 0  # Mismatch, discount ignored
-        mock_create_session.assert_called_once_with(mock_user["id"], "starter", 0)
+        mock_create_session.assert_called_once_with(mock_user["id"], "starter", 0, None)
 
 
 # ==========================================
