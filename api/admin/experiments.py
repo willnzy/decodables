@@ -2,9 +2,14 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.30 (Complete DDD Migration - Analysis & Trend)
+@version 3.31 (Utility Endpoints Migration - 100% Service-based)
 
 Changes:
+- v3.31: Migrated remaining utility endpoints to ExperimentService
+  - ai_analysis now uses experiment_service.get_experiment_results()
+  - quick_recommendation now uses experiment_service.get_experiment_results()
+  - ALL 14 endpoints now exclusively use Service layer (100% DDD compliance)
+  - Removed all direct calls to old module functions
 - v3.30: Migrated analysis and trend endpoints to ExperimentService
   - get_experiment_results now uses experiment_service.get_experiment_results()
   - trigger_aggregation now uses experiment_service.aggregate_experiment_results()
@@ -596,9 +601,11 @@ async def get_ai_analysis(
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
-        results = experiments.get_experiment_results(experiment_key)
-        if not results:
+        results_data = await experiment_service.get_experiment_results(experiment_key)
+        if not results_data or not results_data.get("results"):
             results = {"variants": {}}
+        else:
+            results = results_data.get("results", {})
         results = _enrich_results_with_significance(results)
 
         additional_context = req.additional_context if req else None
@@ -633,9 +640,11 @@ async def get_quick_recommendation(
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
-        results = experiments.get_experiment_results(experiment_key)
-        if not results:
+        results_data = await experiment_service.get_experiment_results(experiment_key)
+        if not results_data or not results_data.get("results"):
             results = {"variants": {}}
+        else:
+            results = results_data.get("results", {})
         results = _enrich_results_with_significance(results)
 
         recommendation = experiment_ai_service.get_quick_recommendation(results)
