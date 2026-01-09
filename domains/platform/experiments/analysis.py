@@ -35,8 +35,8 @@ def aggregate_experiment_results(experiment_key: str = None) -> bool:
         if experiment_key:
             experiments = [get_experiment(experiment_key)]
         else:
-            result = list_experiments(status="running")
-            experiments = result.get("items", [])
+            # v3.28: EXP-HIGH-5 - Fixed tuple unpacking (list_experiments now returns tuple)
+            experiments, _ = list_experiments(status="running")
 
         for exp in experiments:
             if not exp:
