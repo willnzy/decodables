@@ -217,7 +217,10 @@ CREATE TABLE profiles (
 
     -- Stripe ID 格式验证
     CONSTRAINT check_stripe_customer_id_format CHECK (stripe_customer_id IS NULL OR stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'),
-    CONSTRAINT check_stripe_subscription_id_format CHECK (stripe_subscription_id IS NULL OR stripe_subscription_id ~ '^sub_[A-Za-z0-9]+$')
+    CONSTRAINT check_stripe_subscription_id_format CHECK (stripe_subscription_id IS NULL OR stripe_subscription_id ~ '^sub_[A-Za-z0-9]+$'),
+
+    -- user_code 格式验证 (26位数字: YYMMDDHHMMSS+mmmm+UUUUUUU+RRR)
+    CONSTRAINT check_user_code_format CHECK (user_code ~ '^[0-9]{26}$')
 );
 
 COMMENT ON TABLE profiles IS '用户档案表: 存储用户基础信息、积分余额、订阅状态等核心数据';
@@ -2808,6 +2811,105 @@ BEGIN
     RAISE NOTICE '   5. Setup RLS policies (if using Supabase)';
     RAISE NOTICE '';
     RAISE NOTICE '============================================================================';
+END $$;
+
+-- ============================================================================
+-- Row-Level Security (RLS) Policies
+-- ============================================================================
+-- Note: Only enable if deploying to Supabase or need multi-tenant security
+-- For Railway/standalone PostgreSQL, RLS can be skipped
+
+-- Enable RLS on user-owned tables
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
+
+-- Profiles: Users can only read/update their own profile
+CREATE POLICY profiles_select_own ON profiles
+    FOR SELECT
+    USING (id = current_setting('app.current_user_id', true));
+
+CREATE POLICY profiles_update_own ON profiles
+    FOR UPDATE
+    USING (id = current_setting('app.current_user_id', true));
+
+-- Projects: Users can only access their own projects
+CREATE POLICY projects_select_own ON projects
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY projects_insert_own ON projects
+    FOR INSERT
+    WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY projects_update_own ON projects
+    FOR UPDATE
+    USING (user_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY projects_delete_own ON projects
+    FOR DELETE
+    USING (user_id = current_setting('app.current_user_id', true));
+
+-- Credit Transactions: Users can only read their own transactions
+CREATE POLICY credit_tx_select_own ON credit_transactions
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id', true));
+
+-- User Generations: Users can only access their own AI generations
+CREATE POLICY generations_select_own ON user_generations
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY generations_insert_own ON user_generations
+    FOR INSERT
+    WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
+-- Marketplace Listings: Public listings visible to all, users can manage their own
+CREATE POLICY listings_select_public ON marketplace_listings
+    FOR SELECT
+    USING (is_public = TRUE AND is_deleted = FALSE);
+
+CREATE POLICY listings_select_own ON marketplace_listings
+    FOR SELECT
+    USING (seller_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY listings_insert_own ON marketplace_listings
+    FOR INSERT
+    WITH CHECK (seller_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY listings_update_own ON marketplace_listings
+    FOR UPDATE
+    USING (seller_id = current_setting('app.current_user_id', true));
+
+CREATE POLICY listings_delete_own ON marketplace_listings
+    FOR DELETE
+    USING (seller_id = current_setting('app.current_user_id', true));
+
+-- Marketplace Purchases: Users can only see their own purchases
+CREATE POLICY purchases_select_own ON marketplace_purchases
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id', true));
+
+-- Comment on RLS setup
+COMMENT ON POLICY profiles_select_own ON profiles IS 'RLS: Users can only view their own profile';
+COMMENT ON POLICY projects_select_own ON projects IS 'RLS: Users can only view their own projects';
+COMMENT ON POLICY credit_tx_select_own ON credit_transactions IS 'RLS: Users can only view their own credit transactions';
+COMMENT ON POLICY listings_select_public ON marketplace_listings IS 'RLS: All users can view public listings';
+COMMENT ON POLICY listings_select_own ON marketplace_listings IS 'RLS: Sellers can view all their listings';
+
+DO $$
+BEGIN
+    RAISE NOTICE '';
+    RAISE NOTICE '✅ Row-Level Security (RLS) policies created';
+    RAISE NOTICE '   - 6 tables protected with RLS';
+    RAISE NOTICE '   - 15 policies created for multi-tenant security';
+    RAISE NOTICE '   - Usage: SET app.current_user_id = ''user_xxx'' before queries';
+    RAISE NOTICE '';
+    RAISE NOTICE '⚠️  To disable RLS (if not using Supabase):';
+    RAISE NOTICE '   ALTER TABLE table_name DISABLE ROW LEVEL SECURITY;';
 END $$;
 
 
