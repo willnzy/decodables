@@ -2,7 +2,12 @@
 Notifications 模块 Domain Service - 通知管理业务逻辑
 
 @module domains.platform.notifications.service
-@version 3.30 (DDD Migration)
+@version 3.31 (Audit Decorator Migration)
+
+Changes in v3.31:
+- Applied @audit_log decorator to 3 functions (Task 1)
+- Removed manual audit logging code (-45 lines)
+- Simplified service functions by using decorator
 
 Changes in v3.30:
 - Complete DDD Migration from api/admin/notifications.py (NTF-CRITICAL-1)
@@ -18,6 +23,8 @@ Architecture:
 import logging
 from typing import Optional, List, Dict, Any
 
+from core.audit import audit_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +32,11 @@ logger = logging.getLogger(__name__)
 # Notification Operations
 # ==========================================
 
+@audit_log(
+    operation_type="broadcast",
+    event_type="admin_broadcast",
+    get_details=lambda result, **kwargs: f"Broadcast to {kwargs.get('target_group')}: {kwargs.get('title', '')[:50]}"
+)
 async def send_broadcast(
     title: str,
     content: str,
@@ -34,10 +46,10 @@ async def send_broadcast(
     """
     发送广播通知.
 
+    v3.31: Applied @audit_log decorator
     v3.30: DDD Migration
     - 从 API 层迁移
     - 从 Repository 层迁移业务逻辑 (NTF-MEDIUM-1)
-    - 添加审计日志 (NTF-CRITICAL-3)
 
     Args:
         title: 通知标题
@@ -49,16 +61,10 @@ async def send_broadcast(
         广播结果
     """
     from core.database import get_database_client
-    from infrastructure.repositories import (
-        SupabaseNotificationRepository,
-        SupabaseAdminStatsRepository,
-        SupabaseAdminUsersRepository,
-    )
+    from infrastructure.repositories import SupabaseNotificationRepository
 
     db_client = get_database_client()
     notification_repo = SupabaseNotificationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     # Business Logic: Query target users based on group
     if target_group == "all":
@@ -90,24 +96,16 @@ async def send_broadcast(
         "title": title
     }
 
-    # Audit Logs
-    await stats_repo.log_user_event(admin_id, "admin_broadcast", {
-        "target_group": target_group,
-        "title": title
-    })
-
-    await admin_users_repo.admin_log_operation(
-        admin_id=admin_id,
-        operation_type="broadcast",
-        target_user_id=None,
-        details=f"Broadcast to {target_group}: {title[:50]}",
-        reason=None
-    )
-
     logger.info(f"[Notifications] Broadcast sent to {len(user_ids)} users by admin {admin_id}")
     return result
 
 
+@audit_log(
+    operation_type="notification_send",
+    event_type="admin_notification_send",
+    get_target_user_id=lambda *args, **kwargs: kwargs.get("user_id"),
+    get_details=lambda result, **kwargs: f"Notification: {kwargs.get('title', '')[:50]}"
+)
 async def send_to_user(
     user_id: str,
     title: str,
@@ -118,9 +116,8 @@ async def send_to_user(
     """
     发送通知给单个用户.
 
-    v3.30: DDD Migration
-    - 从 API 层迁移
-    - 添加审计日志 (NTF-CRITICAL-3)
+    v3.31: Applied @audit_log decorator
+    v3.30: DDD Migration - 从 API 层迁移
 
     Args:
         user_id: 用户 ID
@@ -133,16 +130,10 @@ async def send_to_user(
         发送结果
     """
     from core.database import get_database_client
-    from infrastructure.repositories import (
-        SupabaseNotificationRepository,
-        SupabaseAdminStatsRepository,
-        SupabaseAdminUsersRepository,
-    )
+    from infrastructure.repositories import SupabaseNotificationRepository
 
     db_client = get_database_client()
     notification_repo = SupabaseNotificationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     notification = await notification_repo.send_notification_to_user(
         user_id=user_id,
@@ -154,24 +145,15 @@ async def send_to_user(
     if not notification:
         return None
 
-    # Audit Logs
-    await stats_repo.log_user_event(admin_id, "admin_notification_send", {
-        "target_user": user_id,
-        "title": title
-    })
-
-    await admin_users_repo.admin_log_operation(
-        admin_id=admin_id,
-        operation_type="notification_send",
-        target_user_id=user_id,
-        details=f"Notification: {title[:50]}",
-        reason=None
-    )
-
     logger.info(f"[Notifications] Notification sent to user {user_id} by admin {admin_id}")
     return {"status": "sent", "notification": notification}
 
 
+@audit_log(
+    operation_type="notification_batch",
+    event_type="admin_notification_batch",
+    get_details=lambda result, **kwargs: f"Batch notification to {len(kwargs.get('user_ids', []))} users: {kwargs.get('title', '')[:50]}"
+)
 async def send_to_users(
     user_ids: List[str],
     title: str,
@@ -182,9 +164,8 @@ async def send_to_users(
     """
     批量发送通知.
 
-    v3.30: DDD Migration
-    - 从 API 层迁移
-    - 添加审计日志 (NTF-CRITICAL-3)
+    v3.31: Applied @audit_log decorator
+    v3.30: DDD Migration - 从 API 层迁移
 
     Args:
         user_ids: 用户 ID 列表
@@ -197,36 +178,16 @@ async def send_to_users(
         发送结果
     """
     from core.database import get_database_client
-    from infrastructure.repositories import (
-        SupabaseNotificationRepository,
-        SupabaseAdminStatsRepository,
-        SupabaseAdminUsersRepository,
-    )
+    from infrastructure.repositories import SupabaseNotificationRepository
 
     db_client = get_database_client()
     notification_repo = SupabaseNotificationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
     notifications = await notification_repo.send_notification_to_users(
         user_ids=user_ids,
         title=title,
         content=content,
         notification_type=notification_type
-    )
-
-    # Audit Logs
-    await stats_repo.log_user_event(admin_id, "admin_notification_batch", {
-        "user_count": len(user_ids),
-        "title": title
-    })
-
-    await admin_users_repo.admin_log_operation(
-        admin_id=admin_id,
-        operation_type="notification_batch",
-        target_user_id=None,
-        details=f"Batch notification to {len(user_ids)} users: {title[:50]}",
-        reason=None
     )
 
     logger.info(f"[Notifications] Batch notification sent to {len(user_ids)} users by admin {admin_id}")
