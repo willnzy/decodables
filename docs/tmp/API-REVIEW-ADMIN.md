@@ -955,3 +955,59 @@ Admin API 作为内部管理工具，测试优先级为 P3:
 - 性能压测
 - 并发安全 (Admin 操作量小)
 - 复杂边界条件
+
+## Logs 模块 (4个) ⭐⭐⭐⭐⭐ v3.26 DDD架构重构完成
+
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
+|------|------|------|------|------|------|
+| 1 | get_error_logs | GET | /logs/errors | api/admin/logs.py | 80 |
+| 2 | get_error_stats | GET | /logs/errors/stats | api/admin/logs.py | 118 |
+| 3 | get_operation_logs | GET | /logs/operations | api/admin/logs.py | 146 |
+| 4 | export_operation_logs | GET | /logs/operations/export | api/admin/logs.py | 186 |
+
+**测试用例 Checklist**
+- [x] #1 获取错误日志
+- [x] #2 获取错误统计
+- [x] #3 获取操作日志
+- [x] #4 导出操作日志
+
+**问题与修复 (v3.26 完整重构)**
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 CRITICAL | LOG-CRITICAL-1 | GET /errors 直接访问数据库 (违反 DDD) | ✅ 创建 ErrorLogsRepository |
+| 🔴 CRITICAL | LOG-CRITICAL-2 | GET /errors/stats 直接访问数据库 (违反 DDD) | ✅ 迁移到 Repository |
+| 🟠 HIGH | LOG-HIGH-1 | GET /errors/stats 没有查询限制 (OOM 风险) | ✅ 添加 .limit(100000) |
+| 🟠 HIGH | LOG-HIGH-2 | 所有接口缺少 Pydantic Response Models | ✅ 创建 logs_models.py |
+| 🟠 HIGH | LOG-HIGH-3 | 缺少 @retry_on_network_error 装饰器 | ✅ Repository 层全部添加 |
+| 🟡 MEDIUM | LOG-MEDIUM-1 | GET /operations/export 硬编码 limit=10000 | ✅ 增加到 100000 |
+| 🟡 MEDIUM | LOG-MEDIUM-2 | 错误消息不一致 | ✅ 统一使用 HTTPException |
+| 🟢 LOW | LOG-LOW-1 | 缺少审计日志 | ✅ 添加敏感操作审计 |
+
+**修改文件**:
+- 新建 `infrastructure/repositories/error_logs_repository.py` - v1.0.0
+- 新建 `api/admin/logs_models.py` - v1.0.0
+- `api/admin/logs.py` - v3.25 → v3.26 (完整重构)
+- `infrastructure/repositories/__init__.py` - 添加 ErrorLogsRepository 导出
+
+**架构对比**:
+
+Before v3.26:
+```
+GET /errors → get_supabase_client() → DB ❌
+GET /errors/stats → get_supabase_client() → DB ❌
+GET /operations → SupabaseAdminUsersRepository → DB ✅
+GET /operations/export → SupabaseAdminUsersRepository → CSV ✅
+```
+
+After v3.26:
+```
+GET /errors → ErrorLogsRepository → DB ✅
+GET /errors/stats → ErrorLogsRepository → DB ✅
+GET /operations → SupabaseAdminUsersRepository → DB ✅
+GET /operations/export → SupabaseAdminUsersRepository → CSV ✅
+```
+
+**完成状态**: ✅ 完成 (22/22 测试通过, 100% DDD 合规)
+
+---
