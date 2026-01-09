@@ -296,7 +296,8 @@ class TestCancelSubscription:
         assert result["success"] is True
         stripe_mock.Subscription.modify.assert_called_once_with(
             "sub_123",
-            cancel_at_period_end=True
+            cancel_at_period_end=True,
+            timeout=30
         )
         stripe_mock.Subscription.cancel.assert_not_called()
     
@@ -308,7 +309,7 @@ class TestCancelSubscription:
         result = payment_service.cancel_subscription("sub_123", immediate=True)
         
         assert result["success"] is True
-        stripe_mock.Subscription.cancel.assert_called_once_with("sub_123")
+        stripe_mock.Subscription.cancel.assert_called_once_with("sub_123", timeout=30)
         stripe_mock.Subscription.modify.assert_not_called()
     
     def test_cancel_error_returns_failure(self, reset_stripe_mock):
@@ -422,7 +423,8 @@ class TestAdminFunctions:
             assert result == mock_subs
             mock_list.assert_called_once_with(
                 customer="cus_123",
-                limit=10
+                limit=10,
+                timeout=30
             )
     
     def test_get_customer_subscriptions_error_returns_empty(self, reset_stripe_mock):

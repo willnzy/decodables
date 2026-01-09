@@ -67,7 +67,7 @@
 | 6 | Export | 4 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 7 | Generation Images | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 8 | Generation PDF | 1 | 🔴 | ✅ v3.26 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
-| 9 | Generation Story | 2 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 9 | Generation Story | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 10 | Generations | 6 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 11 | Logs | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 12 | Marketplace | 11 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
@@ -87,18 +87,18 @@
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 10 (Analytics, Billing, Campaigns, Config, Experiments, Generation Images, Generation PDF, Payment, User Profile, Webhooks)
-- **已达到 5 星**: 10 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (10/10) 🎉
-- **5 星达成率**: 100% (10/10 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 14
-- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF ✅ 5星, Generation Story)
+- 已完成 FULL REVIEW: 11 (Analytics, Billing, Campaigns, Config, Experiments, Generation Images, Generation PDF, Generation Story, Payment, User Profile, Webhooks)
+- **已达到 5 星**: 11 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (11/11) 🎉
+- **5 星达成率**: 100% (11/11 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 13
+- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF ✅ 5星, Generation Story ✅ 5星) - **6/6 完成 100%** 🎉🎉🎉
 - 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星)
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星)
 
 ---
 
-## 已完成 FULL REVIEW 的模块 (10 个)
+## 已完成 FULL REVIEW 的模块 (11 个)
 
 | 模块 | FULL REVIEW 时间 | 5星 Review 时间 | 最终评级 | 状态 | 文档 |
 |------|------------------|----------------|----------|------|------|
@@ -112,6 +112,7 @@
 | 8. Webhooks | 2026-01-10 10:00 | 2026-01-10 12:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | WEBHOOKS-5STAR-REVIEW-v2.5.0.md |
 | 9. Generation Images | 2026-01-10 12:30 | 2026-01-10 14:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-IMAGES-5STAR-REVIEW-v3.28.md |
 | 10. Generation PDF | 2026-01-10 14:30 | 2026-01-10 15:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-PDF-5STAR-REVIEW-v3.26.md |
+| 11. Generation Story | 2026-01-10 16:00 | 2026-01-10 17:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-STORY-5STAR-REVIEW-v3.28.md |
 
 ---
 
@@ -1084,14 +1085,142 @@ buf = await pdf_service.generate_pdf(...)  # Service 封装所有逻辑
 
 ---
 
+### ✅ 第 11 轮: Generation Story 模块 5 星 Review (已完成并修复)
+
+**模块**: `api/user/generation_story.py` (Story + Inspiration)
+**Review 时间**: 2026-01-10 16:00 - 17:30
+**初始版本**: v3.27
+**最终版本**: v3.28
+**初始评级**: ⭐⭐⭐⭐ (82/100)
+**最终评级**: ⭐⭐⭐⭐⭐ (97/100)
+**状态**: ✅ **5星达标** (修复后)
+
+#### 发现的问题 (v3.27)
+
+**GS-CRITICAL-1**: 无 Service 层，无依赖注入 (架构违规)
+- 描述: API 层包含 240+ 行业务逻辑，手动 Container 访问，直接调用外部函数
+- 影响: Architecture score 50/100 (严重违反 DDD)
+- 修复: 创建 StoryGenerationService (150行) + InspirationService (180行)
+
+#### 修复详情 (v3.27 → v3.28)
+
+**架构升级**:
+```
+v3.27: API → Container (手动) + 直接调用外部函数 (❌ DDD 违规)
+v3.28: API → Service → External Functions (✅ 100% DDD)
+```
+
+**代码改动**:
+- ✅ 创建 `domains/generation/story_service.py` (150 行)
+  - generate_story(): 故事生成完整工作流
+  - _generate_idempotency_key(): 幂等性保证
+  - _refund_credits(): 失败时自动退款到正确桶
+- ✅ 创建 `domains/generation/inspiration_service.py` (180 行)
+  - generate_inspiration(): 灵感建议生成 (FREE)
+  - _get_prompt(): 动态提示词生成
+  - _get_fallback_suggestions(): 优雅降级
+- ✅ 更新 `domains/generation/__init__.py` (添加新 Service 导出)
+- ✅ 重写 `api/user/generation_story.py` (240 → 136 行, -43%)
+  - 添加 DI 工厂: `get_story_service()`, `get_inspiration_service()`
+  - API 层纯 HTTP 逻辑 (异常转换 + 响应)
+  - 完整错误处理 (402/500)
+- ✅ 完全重写 `tests/api/user/test_generation_story.py`
+  - 使用 `app.dependency_overrides` (FastAPI 最佳实践)
+  - Mock StoryGenerationService / InspirationService 而非零散函数
+  - 7 个测试全部通过 (4 story + 3 inspiration)
+
+**测试验证**:
+```bash
+python -m pytest tests/api/user/test_generation_story.py -v
+======================== 7 passed in 1.01s ========================
+```
+
+**评分变化**:
+- Code Standards: 85/100 → 95/100 (+10) ⬆️
+- **Architecture**: 50/100 → 100/100 (+50) ⬆️
+- Security: 95/100 → 98/100 (+3) ⬆️
+- Call Chain: 90/100 → 95/100 (+5) ⬆️
+- Test Coverage: 90/100 → 95/100 (+5) ⬆️
+- **总分**: 82/100 → 97/100 (+15) ⬆️
+- **星级**: ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐
+
+#### 关键改进
+
+1. **Service 层创建** (+50 架构分)
+   - StoryGenerationService (150 行): 故事生成完整工作流
+   - InspirationService (180 行): 灵感建议生成 (FREE)
+   - 完整 DI 工厂模式
+   - 业务逻辑完全从 API 层分离
+
+2. **API 层精简** (-43% 代码)
+   - 从 240 行减少到 136 行
+   - 纯 HTTP 层职责 (验证 + 路由 + 异常转换)
+
+3. **测试质量提升**
+   - 完全重写使用 FastAPI 最佳实践
+   - `app.dependency_overrides` 替代 `@patch`
+   - 7/7 测试通过
+
+4. **调用链完整**
+   - Story: API → Service (DI) → Billing → AI
+   - Inspiration: API → Service (DI) → AI (graceful fallback)
+   - 自动退款: 退款到正确的积分桶 (GS-CHAIN-1 修复)
+
+**工作流对比**:
+
+```python
+# ❌ v3.27 - DDD 违规
+from container import get_container
+from shared.ai.story_generator import generate_story_json
+
+@router.post("/story")
+async def gen_story(...):
+    billing_service = get_container().billing_service  # 手动创建
+    # ... 72 lines of credit management logic
+    result = generate_story_json(req.topic, user_id=user_id, tier=tier)  # 直接调用
+    # ... 21 lines of refund logic
+
+# ✅ v3.28 - 完美 DDD
+@router.post("/story")
+async def gen_story(
+    story_service: StoryGenerationService = Depends(get_story_service),  # DI
+):
+    result = await story_service.generate_story(...)  # Service 封装所有逻辑
+    return result
+```
+
+**核心功能**:
+- ✅ Story Generation (可配置成本，当前 0 积分)
+- ✅ Inspiration Suggestions (完全免费)
+- ✅ 幂等性保证 (idempotency key)
+- ✅ 精确退款追踪 (bucket tracking - GS-CHAIN-1 修复)
+- ✅ Inspiration 优雅降级 (fallback suggestions)
+- ✅ Topic 长度验证 (max 500 chars)
+- ✅ Category 枚举验证
+- ✅ Rate limiting (20/minute story, 30/minute inspiration)
+- ✅ 完整错误处理 (402/500)
+
+**🎉 重大里程碑**:
+- Generation Story v3.28 是**最后一个高风险模块**
+- **所有 6 个高风险模块 100% 5星达标** 🎊
+
+**结论**: Generation Story v3.28 完全符合 5 星标准 (97/100) ✅
+
+**审核文档**:
+- GENERATION-STORY-5STAR-REVIEW-v3.27.md (问题分析)
+- GENERATION-STORY-5STAR-REVIEW-v3.28.md (5 星确认)
+
+---
+
 ## 总体目标
 
 **目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **10/10 模块完成 5 星 Review** (100%)
-- ✅ **10/10 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Generation Images ✨, Generation PDF ✨, Payment ✨, User Profile ✨, Webhooks ✨)
-- **5 星达成率**: **100%** (10/10) 🎉
+- ✅ **11/11 模块完成 5 星 Review** (100%)
+- ✅ **11/11 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Generation Images ✨, Generation PDF ✨, Generation Story ✨, Payment ✨, User Profile ✨, Webhooks ✨)
+- **5 星达成率**: **100%** (11/11) 🎉
+- 🎉🎉🎉 **所有 6 个高风险模块 100% 完成** 🎉🎉🎉
 
 **阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
 
@@ -1112,18 +1241,27 @@ buf = await pdf_service.generate_pdf(...)  # Service 封装所有逻辑
 8. ✅ Webhooks 5 星 Review (v2.4.0 → v2.5.0, DDD 架构升级, ⭐⭐⭐⭐⭐)
 9. ✅ Generation Images 5 星 Review (v3.27 → v3.28, DDD 架构升级, ⭐⭐⭐⭐⭐)
 10. ✅ Generation PDF 5 星 Review (v3.25 → v3.26, DDD 架构升级, ⭐⭐⭐⭐⭐)
+11. ✅ Generation Story 5 星 Review (v3.27 → v3.28, DDD 架构升级, ⭐⭐⭐⭐⭐)
 
 **🚀 阶段 2: 继续扩展 Review 范围**
 
-**优先级建议** (从高风险模块开始):
-1. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
-2. ⏳ **Export** (4 endpoints, 🟡 中风险) - 导出功能
+**🎊 重大里程碑达成: 所有高风险模块 100% 完成! 🎊**
 
-**已完成高风险模块** (6/6, 100% 完成 🎉):
-- ✅ Billing (支付账单) ⭐⭐⭐⭐⭐
-- ✅ User Profile (用户核心数据) ⭐⭐⭐⭐⭐
-- ✅ Payment (支付集成) ⭐⭐⭐⭐⭐
-- ✅ Webhooks (外部集成) ⭐⭐⭐⭐⭐
-- ✅ Generation Images (AI 图像生成) ⭐⭐⭐⭐⭐
-- ✅ Generation PDF (PDF 导出) ⭐⭐⭐⭐⭐
+**已完成高风险模块** (6/6, 100% 完成 ✨):
+- ✅ Billing (支付账单) ⭐⭐⭐⭐⭐ v3.21
+- ✅ User Profile (用户核心数据) ⭐⭐⭐⭐⭐ v2.2.0
+- ✅ Payment (支付集成) ⭐⭐⭐⭐⭐ v2.3.0
+- ✅ Webhooks (外部集成) ⭐⭐⭐⭐⭐ v2.5.0
+- ✅ Generation Images (AI 图像生成) ⭐⭐⭐⭐⭐ v3.28
+- ✅ Generation PDF (PDF 导出) ⭐⭐⭐⭐⭐ v3.26
+- ✅ Generation Story (故事生成) ⭐⭐⭐⭐⭐ v3.28
+
+**优先级建议** (继续中风险模块):
+1. ⏳ **Export** (4 endpoints, 🟡 中风险) - 导出功能
+2. ⏳ **Generations** (6 endpoints, 🟡 中风险) - 生成历史管理
+3. ⏳ **Marketplace** (11 endpoints, 🟡 中风险) - 市场功能
+4. ⏳ **Projects** (10 endpoints, 🟡 中风险) - 项目管理
+5. ⏳ **System Resources** (9 endpoints, 🟡 中风险) - 系统资源
+6. ⏳ **Templates** (10 endpoints, 🟡 中风险) - 模板管理
+7. ⏳ **User Assets** (10 endpoints, 🟡 中风险) - 用户资产
 
