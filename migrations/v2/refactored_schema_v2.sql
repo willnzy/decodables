@@ -1167,7 +1167,160 @@ CREATE TRIGGER trg_asset_prompt_templates_updated_at
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 27. subscription_history (订阅历史表)
+-- 27. pricing_plans (定价方案主表) ⭐ NEW
+-- ----------------------------------------------------------------------------
+CREATE TABLE pricing_plans (
+    id SERIAL PRIMARY KEY,
+
+    -- 基础信息
+    plan_code VARCHAR(50) UNIQUE NOT NULL,
+    plan_type VARCHAR(20) NOT NULL CHECK (plan_type IN ('subscription', 'credits')),
+    plan_name VARCHAR(100) NOT NULL,
+    description TEXT,
+
+    -- 价格信息 (美分)
+    price_cents INT NOT NULL CHECK (price_cents >= 0),
+    original_price_cents INT CHECK (original_price_cents >= 0),
+    currency VARCHAR(3) DEFAULT 'USD' NOT NULL,
+
+    -- 订阅专用字段
+    billing_interval VARCHAR(20),
+    tier VARCHAR(10),
+    monthly_credits INT,
+
+    -- 积分包专用字段
+    credits_amount INT,
+
+    -- Stripe 集成
+    stripe_price_id_prod VARCHAR(100),
+    stripe_price_id_dev VARCHAR(100),
+    stripe_product_id VARCHAR(100),
+
+    -- 状态管理
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    is_visible BOOLEAN DEFAULT TRUE NOT NULL,
+    is_featured BOOLEAN DEFAULT FALSE NOT NULL,
+    sort_order INT DEFAULT 0 NOT NULL,
+
+    -- 版本管理
+    version INT DEFAULT 1 NOT NULL CHECK (version > 0),
+    effective_from TIMESTAMPTZ DEFAULT NOW(),
+    effective_until TIMESTAMPTZ,
+
+    -- 元数据
+    metadata JSONB DEFAULT '{}'::jsonb,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+
+    -- 约束
+    CONSTRAINT check_subscription_fields CHECK (
+        (plan_type = 'subscription' AND billing_interval IS NOT NULL AND tier IS NOT NULL)
+        OR (plan_type = 'credits' AND credits_amount IS NOT NULL)
+    ),
+    CONSTRAINT check_effective_dates CHECK (effective_until IS NULL OR effective_until > effective_from)
+);
+
+COMMENT ON TABLE pricing_plans IS '定价方案主表: 所有订阅和积分包的价格配置';
+COMMENT ON COLUMN pricing_plans.price_cents IS '实际价格(美分): 990=$9.9';
+COMMENT ON COLUMN pricing_plans.original_price_cents IS '原价(美分,划线价): 1490=$14.9';
+COMMENT ON COLUMN pricing_plans.stripe_price_id_prod IS 'Stripe Price ID (生产环境)';
+COMMENT ON COLUMN pricing_plans.stripe_price_id_dev IS 'Stripe Price ID (开发环境)';
+COMMENT ON COLUMN pricing_plans.metadata IS '扩展元数据(JSON): discount_percent, badge, experiment_id';
+
+CREATE INDEX idx_pricing_plans_plan_code ON pricing_plans(plan_code);
+CREATE INDEX idx_pricing_plans_plan_type ON pricing_plans(plan_type);
+CREATE INDEX idx_pricing_plans_is_active ON pricing_plans(is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_pricing_plans_is_visible ON pricing_plans(is_visible) WHERE is_visible = TRUE;
+CREATE INDEX idx_pricing_plans_effective_from ON pricing_plans(effective_from);
+CREATE INDEX idx_pricing_plans_tier ON pricing_plans(tier) WHERE tier IS NOT NULL;
+CREATE INDEX idx_pricing_plans_sort_order ON pricing_plans(sort_order);
+
+-- 触发器
+CREATE TRIGGER trg_pricing_plans_updated_at
+    BEFORE UPDATE ON pricing_plans
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_pricing_plans_audit
+    AFTER INSERT OR UPDATE OR DELETE ON pricing_plans
+    FOR EACH ROW
+    EXECUTE FUNCTION log_pricing_plan_change();
+
+-- ----------------------------------------------------------------------------
+-- 28. pricing_history (价格变更历史表) ⭐ NEW
+-- ----------------------------------------------------------------------------
+CREATE TABLE pricing_history (
+    id SERIAL PRIMARY KEY,
+    plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
+    plan_code VARCHAR(50) NOT NULL,
+
+    -- 变更信息
+    action VARCHAR(20) NOT NULL CHECK (action IN ('create', 'update', 'update_price', 'activate', 'deactivate', 'show', 'hide', 'delete')),
+    old_data JSONB,
+    new_data JSONB,
+
+    -- 审计信息
+    changed_by VARCHAR(100) NOT NULL,
+    changed_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+COMMENT ON TABLE pricing_history IS '价格变更历史: 自动审计追踪所有价格相关的修改';
+COMMENT ON COLUMN pricing_history.old_data IS '修改前的完整数据快照(JSON)';
+COMMENT ON COLUMN pricing_history.new_data IS '修改后的完整数据快照(JSON)';
+
+CREATE INDEX idx_pricing_history_plan_id ON pricing_history(plan_id);
+CREATE INDEX idx_pricing_history_plan_code ON pricing_history(plan_code);
+CREATE INDEX idx_pricing_history_changed_at ON pricing_history(changed_at DESC);
+CREATE INDEX idx_pricing_history_changed_by ON pricing_history(changed_by);
+CREATE INDEX idx_pricing_history_action ON pricing_history(action);
+
+-- ----------------------------------------------------------------------------
+-- 29. user_price_overrides (用户级价格覆盖表) ⭐ NEW
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_price_overrides (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(100) NOT NULL,
+    pricing_plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
+
+    -- 覆盖价格
+    override_price_cents INT NOT NULL CHECK (override_price_cents >= 0),
+    reason TEXT NOT NULL,
+
+    -- 有效期
+    valid_from TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    valid_until TIMESTAMPTZ,
+
+    -- 审计
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+
+    -- 约束
+    UNIQUE(user_id, pricing_plan_id),
+    CONSTRAINT check_valid_dates CHECK (valid_until IS NULL OR valid_until > valid_from)
+);
+
+COMMENT ON TABLE user_price_overrides IS '用户级价格覆盖: 支持特定用户的定制价格';
+COMMENT ON COLUMN user_price_overrides.override_price_cents IS '用户专属价格(美分): 1990=$19.9';
+COMMENT ON COLUMN user_price_overrides.valid_until IS 'NULL=永久有效, 否则到期后失效';
+
+CREATE INDEX idx_user_price_overrides_user_id ON user_price_overrides(user_id);
+CREATE INDEX idx_user_price_overrides_plan_id ON user_price_overrides(pricing_plan_id);
+CREATE INDEX idx_user_price_overrides_valid_from ON user_price_overrides(valid_from);
+CREATE INDEX idx_user_price_overrides_valid_until ON user_price_overrides(valid_until) WHERE valid_until IS NOT NULL;
+
+-- 触发器
+CREATE TRIGGER trg_user_price_overrides_updated_at
+    BEFORE UPDATE ON user_price_overrides
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- 30. subscription_history (订阅历史表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE subscription_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1935,6 +2088,64 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION upsert_ai_usage_daily IS 'Upsert AI 使用量日汇总 (累加统计)';
 
+-- ----------------------------------------------------------------------------
+-- Pricing 审计触发器函数
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION log_pricing_plan_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_action TEXT;
+    v_old_data JSONB;
+    v_new_data JSONB;
+BEGIN
+    -- 确定操作类型
+    IF (TG_OP = 'INSERT') THEN
+        v_action := 'create';
+        v_old_data := NULL;
+        v_new_data := row_to_json(NEW)::jsonb;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- 判断具体更新类型
+        IF (OLD.price_cents IS DISTINCT FROM NEW.price_cents OR
+            OLD.original_price_cents IS DISTINCT FROM NEW.original_price_cents) THEN
+            v_action := 'update_price';
+        ELSIF (OLD.is_active IS DISTINCT FROM NEW.is_active) THEN
+            v_action := CASE WHEN NEW.is_active THEN 'activate' ELSE 'deactivate' END;
+        ELSIF (OLD.is_visible IS DISTINCT FROM NEW.is_visible) THEN
+            v_action := CASE WHEN NEW.is_visible THEN 'show' ELSE 'hide' END;
+        ELSE
+            v_action := 'update';
+        END IF;
+        v_old_data := row_to_json(OLD)::jsonb;
+        v_new_data := row_to_json(NEW)::jsonb;
+    ELSIF (TG_OP = 'DELETE') THEN
+        v_action := 'delete';
+        v_old_data := row_to_json(OLD)::jsonb;
+        v_new_data := NULL;
+    END IF;
+
+    -- 记录到审计表
+    INSERT INTO pricing_history (
+        plan_id,
+        plan_code,
+        action,
+        old_data,
+        new_data,
+        changed_by
+    ) VALUES (
+        COALESCE(NEW.id, OLD.id),
+        COALESCE(NEW.plan_code, OLD.plan_code),
+        v_action,
+        v_old_data,
+        v_new_data,
+        COALESCE(NEW.updated_by, NEW.created_by, OLD.updated_by, 'system')
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION log_pricing_plan_change IS '触发器函数: 自动记录价格变更历史到 pricing_history 表';
+
 -- ============================================================================
 -- 第二十部分: 初始化数据
 -- ============================================================================
@@ -2062,6 +2273,227 @@ INSERT INTO holidays (name, slug, month, day, regions, category, is_major, descr
 ('Halloween', 'halloween', 10, 31, ARRAY['US', 'UK', 'CA'], 'cultural', true, 'Spooky celebration'),
 ('Christmas', 'christmas', 12, 25, ARRAY['global'], 'cultural', true, 'Christmas Day celebration')
 ON CONFLICT (slug) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- Pricing Plans 初始化数据 (6个定价方案)
+-- ----------------------------------------------------------------------------
+-- ⚠️ 注意: 实际部署时需要替换 Stripe Price ID 占位符
+-- 占位符格式: {{ STRIPE_PRICE_XXX }}
+-- 从 Stripe Dashboard → Products → Pricing 获取实际 Price ID
+
+-- Free Plan (t1) - Monthly
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    billing_interval, tier, monthly_credits,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'tier_t1_monthly',
+    'subscription',
+    'Free Plan',
+    '免费方案，注册即可使用基础功能',
+    0,
+    NULL,
+    'USD',
+    'month',
+    't1',
+    0,
+    NULL,
+    NULL,
+    NULL,
+    TRUE,
+    TRUE,
+    FALSE,
+    0,
+    1,
+    NOW(),
+    '{"badge": "FREE"}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    updated_at = NOW();
+
+-- Starter Plan (t2) - Monthly
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    billing_interval, tier, monthly_credits,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'tier_t2_monthly',
+    'subscription',
+    'Starter Plan',
+    '适合个人创作者，包含贴纸库和发布权限',
+    990,
+    1490,
+    'USD',
+    'month',
+    't2',
+    200,
+    '{{ STRIPE_PRICE_SUB_STARTER_PROD }}',
+    '{{ STRIPE_PRICE_SUB_STARTER_DEV }}',
+    '{{ STRIPE_PRODUCT_STARTER }}',
+    TRUE,
+    TRUE,
+    FALSE,
+    1,
+    1,
+    NOW(),
+    '{"discount_percent": 34, "badge": null}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    original_price_cents = EXCLUDED.original_price_cents,
+    updated_at = NOW();
+
+-- Pro Plan (t3) - Monthly
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    billing_interval, tier, monthly_credits,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'tier_t3_monthly',
+    'subscription',
+    'Pro Plan',
+    '专业创作者首选，包含全功能和商业授权',
+    1990,
+    2990,
+    'USD',
+    'month',
+    't3',
+    500,
+    '{{ STRIPE_PRICE_SUB_PRO_PROD }}',
+    '{{ STRIPE_PRICE_SUB_PRO_DEV }}',
+    '{{ STRIPE_PRODUCT_PRO }}',
+    TRUE,
+    TRUE,
+    TRUE,
+    2,
+    1,
+    NOW(),
+    '{"discount_percent": 34, "badge": "RECOMMENDED"}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    original_price_cents = EXCLUDED.original_price_cents,
+    updated_at = NOW();
+
+-- 100 Credits Pack
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    credits_amount,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'credits_100',
+    'credits',
+    '100 Credits Pack',
+    '适合偶尔使用 AI 功能的用户',
+    299,
+    NULL,
+    'USD',
+    100,
+    '{{ STRIPE_PRICE_CREDITS_100_PROD }}',
+    '{{ STRIPE_PRICE_CREDITS_100_DEV }}',
+    '{{ STRIPE_PRODUCT_CREDITS }}',
+    TRUE,
+    TRUE,
+    FALSE,
+    10,
+    1,
+    NOW(),
+    '{"unit_price_cents": 2.99, "badge": null}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    updated_at = NOW();
+
+-- 500 Credits Pack (9折)
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    credits_amount,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'credits_500',
+    'credits',
+    '500 Credits Pack',
+    '适合经常使用 AI 功能的创作者',
+    1349,
+    1499,
+    'USD',
+    500,
+    '{{ STRIPE_PRICE_CREDITS_500_PROD }}',
+    '{{ STRIPE_PRICE_CREDITS_500_DEV }}',
+    '{{ STRIPE_PRODUCT_CREDITS }}',
+    TRUE,
+    TRUE,
+    TRUE,
+    11,
+    1,
+    NOW(),
+    '{"discount_percent": 10, "unit_price_cents": 2.698, "badge": "POPULAR"}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    original_price_cents = EXCLUDED.original_price_cents,
+    updated_at = NOW();
+
+-- 2000 Credits Pack (8折)
+INSERT INTO pricing_plans (
+    plan_code, plan_type, plan_name, description,
+    price_cents, original_price_cents, currency,
+    credits_amount,
+    stripe_price_id_prod, stripe_price_id_dev,
+    stripe_product_id,
+    is_active, is_visible, is_featured, sort_order,
+    version, effective_from,
+    metadata, created_by
+) VALUES (
+    'credits_2000',
+    'credits',
+    '2000 Credits Pack',
+    '适合专业创作者或团队使用',
+    4800,
+    6000,
+    'USD',
+    2000,
+    '{{ STRIPE_PRICE_CREDITS_2000_PROD }}',
+    '{{ STRIPE_PRICE_CREDITS_2000_DEV }}',
+    '{{ STRIPE_PRODUCT_CREDITS }}',
+    TRUE,
+    TRUE,
+    TRUE,
+    12,
+    1,
+    NOW(),
+    '{"discount_percent": 20, "unit_price_cents": 2.4, "badge": "BEST VALUE"}'::jsonb,
+    'system'
+) ON CONFLICT (plan_code) DO UPDATE SET
+    price_cents = EXCLUDED.price_cents,
+    original_price_cents = EXCLUDED.original_price_cents,
+    updated_at = NOW();
 
 -- ============================================================================
 -- 第二十一部分: 视图
