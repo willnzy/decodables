@@ -480,6 +480,7 @@ class TestBillingService:
         repo.deduct_atomic = AsyncMock()
         repo.add_atomic = AsyncMock()
         repo.get_transaction_history = AsyncMock(return_value=[])
+        repo.get_transaction_count = AsyncMock(return_value=0)
         repo.reset_monthly_credits = AsyncMock()
         return repo
 
@@ -546,17 +547,19 @@ class TestBillingService:
 
         assert result is False
 
-    def test_get_operation_cost_known(self, billing_service):
+    @pytest.mark.asyncio
+    async def test_get_operation_cost_known(self, billing_service):
         """Test getting cost for known operations."""
         # Uses emergency fallback since no config_service
-        assert billing_service.get_operation_cost("image_generation") == 5
-        assert billing_service.get_operation_cost("text_generation") == 0
-        assert billing_service.get_operation_cost("smart_scan") == 10
+        assert await billing_service.get_operation_cost("image_generation") == 5
+        assert await billing_service.get_operation_cost("text_generation") == 0
+        assert await billing_service.get_operation_cost("smart_scan") == 10
 
-    def test_get_operation_cost_unknown_raises(self, billing_service):
+    @pytest.mark.asyncio
+    async def test_get_operation_cost_unknown_raises(self, billing_service):
         """Test getting cost for unknown operation raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            billing_service.get_operation_cost("unknown_operation")
+            await billing_service.get_operation_cost("unknown_operation")
 
         assert "Unknown operation" in str(exc_info.value)
 
@@ -734,7 +737,8 @@ class TestBillingBusinessRules:
 
         assert service.SIGNUP_BONUS == 50
 
-    def test_operation_costs(self):
+    @pytest.mark.asyncio
+    async def test_operation_costs(self):
         """
         Business Rule: AI operation costs
         - Image generation: 5 credits
@@ -743,6 +747,6 @@ class TestBillingBusinessRules:
         """
         service = BillingService(repository=MagicMock())
 
-        assert service.get_operation_cost("image_generation") == 5
-        assert service.get_operation_cost("text_generation") == 0
-        assert service.get_operation_cost("smart_scan") == 10
+        assert await service.get_operation_cost("image_generation") == 5
+        assert await service.get_operation_cost("text_generation") == 0
+        assert await service.get_operation_cost("smart_scan") == 10
