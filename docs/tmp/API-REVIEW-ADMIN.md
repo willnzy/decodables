@@ -4,7 +4,7 @@
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: 进行中
 > **最后更新**: 2026-01-09
-> **当前进度**: 106/125 (85%)
+> **当前进度**: 110/125 (88%)
 
 ---
 
@@ -648,18 +648,33 @@ Admin API 作为内部管理工具，有以下特点：
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 107 | get_tasks_status | GET | /status | api/admin/tasks_mgmt.py | 34 |
-| 108 | get_task_logs | GET | /logs | api/admin/tasks_mgmt.py | 63 |
-| 109 | get_tasks_health | GET | /health | api/admin/tasks_mgmt.py | 85 |
-| 110 | run_task_manually | POST | /{task_name}/run | api/admin/tasks_mgmt.py | 121 |
+| 107 | get_tasks_status | GET | /status | api/admin/tasks_mgmt.py | 55 |
+| 108 | get_task_logs | GET | /logs | api/admin/tasks_mgmt.py | 87 |
+| 109 | get_tasks_health | GET | /health | api/admin/tasks_mgmt.py | 122 |
+| 110 | run_task_manually | POST | /{task_name}/run | api/admin/tasks_mgmt.py | 161 |
 
 **测试用例 Checklist**
-- [ ] #107 获取任务状态
-- [ ] #108 获取任务日志
-- [ ] #109 获取任务健康状态
-- [ ] #110 手动运行任务
+- [x] #107 获取任务状态
+- [x] #108 获取任务日志
+- [x] #109 获取任务健康状态
+- [x] #110 手动运行任务
 
-**完成状态**: 未开始
+**安全问题与修复 (v3.25)**
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🟡 MEDIUM | TASK-MEDIUM-1 | 4个端点缺少 rate limiting | ✅ 已添加 |
+| 🟡 MEDIUM | TASK-MEDIUM-2 | `limit` 参数无范围验证 (可能无限大) | ✅ 已添加 (1-500) |
+| 🟡 MEDIUM | TASK-MEDIUM-3 | `status` 参数无枚举验证 | ✅ 已添加 VALID_TASK_STATUSES |
+| 🟡 MEDIUM | TASK-MEDIUM-4 | `task_name` 使用硬编码列表而非常量 | ✅ 已添加 VALID_TASK_NAMES |
+| 🟢 LOW | TASK-LOW-1 | 异常暴露详细错误信息 | ✅ 已限制 |
+| 🟢 LOW | TASK-LOW-2 | `task_name` 路径参数无长度验证 | ✅ 已添加 (max 50) |
+
+**修改文件**:
+- `api/admin/tasks_mgmt.py` - v3.24 → v3.25
+- `tests/api/admin/test_tasks_mgmt.py` - 19 个测试用例
+
+**完成状态**: ✅ 完成 (19/19 测试通过)
 
 ---
 
