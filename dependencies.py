@@ -56,6 +56,14 @@ async def get_current_user(authorization: str = Header(None)):
             raise UnauthorizedException(message=f"Invalid token: {str(e)}")
     else:
         # Development mode: Decode without verification (UNSAFE)
+        # ⚠️ WARNING: This mode should NEVER be used in production!
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "[Security] JWT verification is DISABLED! "
+            "CLERK_PEM_PUBLIC_KEY is not configured. "
+            "This is ONLY acceptable in local development."
+        )
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
             user_id = payload.get("sub")
@@ -154,16 +162,23 @@ async def optional_user(authorization: str = Header(None)):
     Optional user authentication.
     Returns user if authenticated, None otherwise.
     Does not raise exceptions for missing/invalid tokens.
-    
+
     Returns:
         dict | None: User profile or None
     """
     if not authorization or not authorization.startswith("Bearer "):
         return None
-    
+
     try:
         return await get_current_user(authorization)
-    except Exception:
+    except (UnauthorizedException, UserNotFoundException):
+        # Expected authentication failures - return None
+        return None
+    except Exception as e:
+        # Unexpected errors - log and return None
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[Auth] Unexpected error in optional_user: {e}", exc_info=True)
         return None
 
 
