@@ -41,7 +41,8 @@ def assign_variant(
         return None
     
     # Check if experiment is running
-    if experiment.get('status') != 'running':
+    # EXP-HIGH-6 FIX: Database uses 'active', not 'running'
+    if experiment.get('status') != 'active':
         return None
     
     # Check targeting
@@ -51,9 +52,10 @@ def assign_variant(
     
     # Check for existing assignment
     try:
+        # EXP-HIGH-7 FIX: Database field is 'user_id', not 'user_identifier'
         existing = supabase.table("experiment_assignments").select("variant_key")\
             .eq("experiment_id", experiment.get('id'))\
-            .eq("user_identifier", user_identifier).execute()
+            .eq("user_id", user_identifier).execute()
 
         if existing.data:
             return existing.data[0].get('variant_key')
@@ -66,17 +68,19 @@ def assign_variant(
         return None
     
     # Save assignment using upsert to handle race conditions
-    # on_conflict requires unique constraint on (experiment_id, user_identifier)
+    # on_conflict requires unique constraint on (experiment_id, user_id)
+    # EXP-HIGH-7 FIX: Database field is 'user_id', not 'user_identifier'
+    # EXP-LOW-1 FIX: Remove redundant 'experiment_key' (not in schema)
     try:
         supabase.table("experiment_assignments").upsert(
             {
                 "experiment_id": experiment.get('id'),
-                "experiment_key": experiment_key,
-                "user_identifier": user_identifier,
+                "user_id": user_identifier,
                 "variant_key": variant_key,
-                "user_properties": user_properties or {},
+                # Note: user_properties field doesn't exist in database schema
+                # Removed to match actual schema
             },
-            on_conflict="experiment_id,user_identifier"
+            on_conflict="experiment_id,user_id"
         ).execute()
     except Exception as e:
         logger.warning(f"[Assignment] Upsert failed for {experiment_key}/{user_identifier}: {e}")
@@ -118,16 +122,20 @@ def get_user_variant(experiment_key: str, user_identifier: str) -> Optional[str]
     """Get user's assigned variant for an experiment."""
     if not supabase:
         return None
-    
+
     try:
-        result = supabase.table("experiment_assignments").select("variant_key")\
-            .eq("experiment_key", experiment_key)\
-            .eq("user_identifier", user_identifier).execute()
-        
+        # EXP-HIGH-7 FIX: Database field is 'user_id', not 'user_identifier'
+        # Need to join with experiments table to filter by experiment_key
+        result = supabase.table("experiment_assignments").select(
+            "variant_key, experiments!inner(experiment_key)"
+        ).eq("experiments.experiment_key", experiment_key).eq(
+            "user_id", user_identifier
+        ).execute()
+
         if result.data:
             return result.data[0].get('variant_key')
         return None
-        
+
     except Exception as e:
         logger.error(f"[Assignment] Failed to get variant: {e}")
         return None
@@ -137,14 +145,24 @@ def get_user_experiments(user_identifier: str) -> List[Dict]:
     """Get all experiments a user is assigned to."""
     if not supabase:
         return []
-    
+
     try:
+        # EXP-HIGH-7 FIX: Database field is 'user_id', not 'user_identifier'
+        # Join with experiments table to get experiment_key
         result = supabase.table("experiment_assignments").select(
-            "experiment_key, variant_key, created_at"
-        ).eq("user_identifier", user_identifier).execute()
-        
-        return result.data or []
-        
+            "variant_key, assigned_at, experiments!inner(experiment_key)"
+        ).eq("user_id", user_identifier).execute()
+
+        # Flatten the nested structure
+        experiments = []
+        for row in (result.data or []):
+            experiments.append({
+                "experiment_key": row.get("experiments", {}).get("experiment_key"),
+                "variant_key": row.get("variant_key"),
+                "created_at": row.get("assigned_at")  # Note: field is 'assigned_at' in schema
+            })
+        return experiments
+
     except Exception as e:
         logger.error(f"[Assignment] Failed to get user experiments: {e}")
         return []

@@ -92,14 +92,18 @@ def track_conversion(
     
     # Get user's variant
     try:
-        assignment = supabase.table("experiment_assignments").select("variant_key")\
-            .eq("experiment_key", experiment_key)\
-            .eq("user_identifier", user_identifier).execute()
-        
+        # EXP-HIGH-7 FIX: Database field is 'user_id', not 'user_identifier'
+        # Need to join with experiments table to filter by experiment_key
+        assignment = supabase.table("experiment_assignments").select(
+            "variant_key, experiments!inner(experiment_key)"
+        ).eq("experiments.experiment_key", experiment_key).eq(
+            "user_id", user_identifier
+        ).execute()
+
         if not assignment.data:
             logger.warning(f"[Tracking] No assignment found for conversion")
             return False
-        
+
         variant_key = assignment.data[0].get('variant_key')
         
         supabase.table("experiment_conversions").insert({
