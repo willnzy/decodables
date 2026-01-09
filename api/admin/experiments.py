@@ -2,14 +2,20 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.29 (Perfect DDD with Dependency Injection)
+@version 3.30 (Complete DDD Migration - Analysis & Trend)
 
 Changes:
+- v3.30: Migrated analysis and trend endpoints to ExperimentService
+  - get_experiment_results now uses experiment_service.get_experiment_results()
+  - trigger_aggregation now uses experiment_service.aggregate_experiment_results()
+  - trigger_all_aggregation now uses experiment_service.aggregate_experiment_results(None)
+  - get_experiment_trend now uses experiment_service.get_daily_trend()
+  - get_hourly_trend now uses experiment_service.get_hourly_trend()
+  - ALL endpoints now use Service layer (100% DDD compliance)
 - v3.29: Added dependency injection for ExperimentService (Perfect DDD)
   - Created ExperimentService class replacing module functions
   - Added get_experiment_service() DI factory
-  - All 14 endpoints now use Depends(get_experiment_service)
-  - Removed direct module function calls
+  - All CRUD endpoints use Depends(get_experiment_service)
   - Architecture: API → Service (DI) → Repository
 - v3.28: DDD Architecture Migration (EXP-CRITICAL-1)
   - Migrated from domains/platform/experiments/crud.py to Repository pattern
@@ -452,7 +458,8 @@ async def get_experiment_results(
     experiment_key: str,
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD or ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD or ISO format)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.30: DI
 ):
     """Get experiment results."""
     try:
@@ -477,7 +484,8 @@ async def get_experiment_results(
         else:
             end_dt = None
 
-        results = experiments.get_experiment_results(experiment_key, start_dt, end_dt)
+        # v3.30: Use ExperimentService
+        results = await experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
         if not results:
             raise HTTPException(404, "Experiment not found")
 
@@ -496,13 +504,15 @@ async def get_experiment_results(
 async def trigger_aggregation(
     request: Request,
     experiment_key: str,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.30: DI
 ):
     """Trigger result aggregation."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for {experiment_key}")
 
-        success = experiments.aggregate_experiment_results(experiment_key)
+        # v3.30: Use ExperimentService
+        success = await experiment_service.aggregate_experiment_results(experiment_key)
         if not success:
             raise HTTPException(500, "Failed to aggregate results")
 
@@ -524,13 +534,15 @@ async def trigger_aggregation(
 @limiter.limit("5/minute")
 async def trigger_all_aggregation(
     request: Request,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.30: DI
 ):
     """Trigger aggregation for all running experiments."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for all experiments")
 
-        success = experiments.aggregate_experiment_results()
+        # v3.30: Use ExperimentService (None = all running experiments)
+        success = await experiment_service.aggregate_experiment_results(None)
         if not success:
             raise HTTPException(500, "Failed to aggregate results")
 
@@ -648,13 +660,15 @@ async def get_experiment_trend(
     request: Request,
     experiment_key: str,
     days: int = Query(DEFAULT_TREND_DAYS, ge=1, le=MAX_TREND_DAYS, description="Number of days (1-90)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.30: DI
 ):
     """Get daily trend data for charts."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting daily trend: {experiment_key} ({days} days)")
 
-        trend_data = experiments.get_daily_trend(experiment_key, days)
+        # v3.30: Use ExperimentService
+        trend_data = await experiment_service.get_daily_trend(experiment_key, days)
         if not trend_data:
             raise HTTPException(status_code=404, detail="Experiment not found")
 
@@ -676,13 +690,15 @@ async def get_hourly_trend(
     request: Request,
     experiment_key: str,
     hours: int = Query(DEFAULT_TREND_HOURS, ge=1, le=MAX_TREND_HOURS, description="Number of hours (1-168)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.30: DI
 ):
     """Get hourly trend data."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting hourly trend: {experiment_key} ({hours} hours)")
 
-        trend_data = experiments.get_hourly_trend(experiment_key, hours)
+        # v3.30: Use ExperimentService
+        trend_data = await experiment_service.get_hourly_trend(experiment_key, hours)
         if not trend_data:
             raise HTTPException(status_code=404, detail="Experiment not found")
 
