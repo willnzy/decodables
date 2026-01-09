@@ -2,9 +2,16 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.25
+@version 3.26
 
 Changes:
+- v3.26: Critical fixes and improvements
+  - EXP-CRITICAL-1: Fixed API direct database access (trend endpoints now use Service)
+  - EXP-HIGH-1: Added Pydantic response models for all endpoints
+  - EXP-HIGH-2: Added query limits to prevent OOM
+  - EXP-HIGH-3: Added unified error handling to all endpoints
+  - EXP-HIGH-4: Moved AI imports to top level
+  - EXP-HIGH-6: Added audit logging for all operations
 - v3.25: Security improvements
   - EXP-MEDIUM-1: Added rate limiting to all endpoints
   - EXP-MEDIUM-2: Added status parameter validation (list)
@@ -41,12 +48,31 @@ from pydantic import BaseModel, Field, field_validator
 
 from dependencies import require_admin
 from domains.platform import experiments as experiment_service
+from domains.platform import experiment_ai_service  # EXP-HIGH-4: Moved import to top
 from infrastructure.rate_limiter import limiter
-from core.database import supabase
+
+# Import response models (EXP-HIGH-1)
+from api.admin.experiments_models import (
+    ExperimentListResponse, ExperimentResponse, ExperimentCreateResponse,
+    ExperimentDetailResponse, ExperimentUpdateResponse, StatusUpdateResponse,
+    ExperimentDeleteResponse, ExperimentResultsResponse, AggregationResponse,
+    CacheClearResponse, AIAnalysisResponse, RecommendationResponse,
+    DailyTrendResponse, HourlyTrendResponse
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
+
+
+# ==========================================
+# Constants
+# ==========================================
+
+DEFAULT_TREND_DAYS = 30
+MAX_TREND_DAYS = 90
+DEFAULT_TREND_HOURS = 24
+MAX_TREND_HOURS = 168  # 7 days
 
 
 # ==========================================
@@ -165,7 +191,7 @@ def _enrich_results_with_significance(results: Dict[str, Any]) -> Dict[str, Any]
 # CRUD Endpoints (v3.25: Added rate limiting and validation)
 # ==========================================
 
-@router.get("")
+@router.get("", response_model=ExperimentListResponse)
 @limiter.limit("30/minute")
 async def list_experiments(
     request: Request,
@@ -175,15 +201,24 @@ async def list_experiments(
     admin: dict = Depends(require_admin)
 ):
     """List all experiments."""
-    # v3.25: EXP-MEDIUM-2 - Validate status parameter
-    if status is not None and status not in VALID_EXPERIMENT_STATUSES:
-        raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Listing experiments (status={status}, offset={offset}, limit={limit})")
 
-    experiments, total = experiment_service.list_experiments(status=status, limit=limit, offset=offset)
-    return {"experiments": experiments, "total": total, "offset": offset, "limit": limit}
+        # v3.25: EXP-MEDIUM-2 - Validate status parameter
+        if status is not None and status not in VALID_EXPERIMENT_STATUSES:
+            raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
+
+        experiments, total = experiment_service.list_experiments(status=status, limit=limit, offset=offset)
+        return ExperimentListResponse(experiments=experiments, total=total, offset=offset, limit=limit)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] List experiments failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to list experiments")
 
 
-@router.post("")
+@router.post("", response_model=ExperimentCreateResponse)
 @limiter.limit("20/minute")
 async def create_experiment(
     request: Request,
@@ -191,34 +226,45 @@ async def create_experiment(
     admin: dict = Depends(require_admin)
 ):
     """Create new experiment."""
-    total_weight = sum(v.weight for v in req.variants)
-    if total_weight != 100:
-        raise HTTPException(400, f"Variants weight must sum to 100, got {total_weight}")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Creating experiment: {req.experiment_key}")
 
-    variants = [v.model_dump() for v in req.variants]
-    targeting = req.targeting.model_dump() if req.targeting else None
-    metrics = [m.model_dump() for m in req.metrics] if req.metrics else None
+        total_weight = sum(v.weight for v in req.variants)
+        if total_weight != 100:
+            raise HTTPException(400, f"Variants weight must sum to 100, got {total_weight}")
 
-    experiment = experiment_service.create_experiment(
-        experiment_key=req.experiment_key,
-        name=req.name,
-        description=req.description,
-        experiment_type=req.experiment_type,
-        variants=variants,
-        targeting=targeting,
-        traffic_allocation=req.traffic_allocation,
-        metrics=metrics,
-        start_at=req.start_at,
-        end_at=req.end_at,
-        created_by=admin.get("id")
-    )
+        variants = [v.model_dump() for v in req.variants]
+        targeting = req.targeting.model_dump() if req.targeting else None
+        metrics = [m.model_dump() for m in req.metrics] if req.metrics else None
 
-    if not experiment:
+        experiment = experiment_service.create_experiment(
+            experiment_key=req.experiment_key,
+            name=req.name,
+            description=req.description,
+            experiment_type=req.experiment_type,
+            variants=variants,
+            targeting=targeting,
+            traffic_allocation=req.traffic_allocation,
+            metrics=metrics,
+            start_at=req.start_at,
+            end_at=req.end_at,
+            created_by=admin.get("id")
+        )
+
+        if not experiment:
+            raise HTTPException(500, "Failed to create experiment")
+
+        logger.info(f"[Admin {admin.get('id')}] Created experiment: {req.experiment_key}")
+        return ExperimentCreateResponse(status="created", experiment=ExperimentResponse(**experiment))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Create experiment failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to create experiment")
-    return {"status": "created", "experiment": experiment}
 
 
-@router.get("/{experiment_key}")
+@router.get("/{experiment_key}", response_model=ExperimentDetailResponse)
 @limiter.limit("30/minute")
 async def get_experiment(
     request: Request,
@@ -226,13 +272,23 @@ async def get_experiment(
     admin: dict = Depends(require_admin)
 ):
     """Get experiment details."""
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
-    return {"experiment": experiment}
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Getting experiment: {experiment_key}")
+
+        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        if not experiment:
+            raise HTTPException(404, "Experiment not found")
+
+        return ExperimentDetailResponse(experiment=ExperimentResponse(**experiment))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get experiment failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to retrieve experiment")
 
 
-@router.put("/{experiment_key}")
+@router.put("/{experiment_key}", response_model=ExperimentUpdateResponse)
 @limiter.limit("20/minute")
 async def update_experiment(
     request: Request,
@@ -241,41 +297,52 @@ async def update_experiment(
     admin: dict = Depends(require_admin)
 ):
     """Update experiment configuration."""
-    updates = {}
-    if req.name is not None:
-        updates["name"] = req.name
-    if req.description is not None:
-        updates["description"] = req.description
-    if req.variants is not None:
-        total_weight = sum(v.weight for v in req.variants)
-        if total_weight != 100:
-            raise HTTPException(400, f"Variants weight must sum to 100, got {total_weight}")
-        updates["variants"] = [v.model_dump() for v in req.variants]
-    if req.targeting is not None:
-        updates["targeting"] = req.targeting.model_dump()
-    if req.traffic_allocation is not None:
-        updates["traffic_allocation"] = req.traffic_allocation
-    if req.metrics is not None:
-        updates["metrics"] = [m.model_dump() for m in req.metrics]
-    if req.start_at is not None:
-        updates["start_at"] = req.start_at
-    if req.end_at is not None:
-        updates["end_at"] = req.end_at
-    if req.fallback_variant is not None:
-        updates["fallback_variant"] = req.fallback_variant
-    if req.winning_variant is not None:
-        updates["winning_variant"] = req.winning_variant
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Updating experiment: {experiment_key}")
 
-    if not updates:
-        raise HTTPException(400, "No fields to update")
+        updates = {}
+        if req.name is not None:
+            updates["name"] = req.name
+        if req.description is not None:
+            updates["description"] = req.description
+        if req.variants is not None:
+            total_weight = sum(v.weight for v in req.variants)
+            if total_weight != 100:
+                raise HTTPException(400, f"Variants weight must sum to 100, got {total_weight}")
+            updates["variants"] = [v.model_dump() for v in req.variants]
+        if req.targeting is not None:
+            updates["targeting"] = req.targeting.model_dump()
+        if req.traffic_allocation is not None:
+            updates["traffic_allocation"] = req.traffic_allocation
+        if req.metrics is not None:
+            updates["metrics"] = [m.model_dump() for m in req.metrics]
+        if req.start_at is not None:
+            updates["start_at"] = req.start_at
+        if req.end_at is not None:
+            updates["end_at"] = req.end_at
+        if req.fallback_variant is not None:
+            updates["fallback_variant"] = req.fallback_variant
+        if req.winning_variant is not None:
+            updates["winning_variant"] = req.winning_variant
 
-    experiment = experiment_service.update_experiment(experiment_key, updates, admin.get("id"))
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
-    return {"status": "updated", "experiment": experiment}
+        if not updates:
+            raise HTTPException(400, "No fields to update")
+
+        experiment = experiment_service.update_experiment(experiment_key, updates, admin.get("id"))
+        if not experiment:
+            raise HTTPException(404, "Experiment not found")
+
+        logger.info(f"[Admin {admin.get('id')}] Updated experiment: {experiment_key}")
+        return ExperimentUpdateResponse(status="updated", experiment=ExperimentResponse(**experiment))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Update experiment failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to update experiment")
 
 
-@router.put("/{experiment_key}/status")
+@router.put("/{experiment_key}/status", response_model=StatusUpdateResponse)
 @limiter.limit("20/minute")
 async def update_experiment_status(
     request: Request,
@@ -284,14 +351,25 @@ async def update_experiment_status(
     admin: dict = Depends(require_admin)
 ):
     """Update experiment status."""
-    # Note: Status validation is now done in StatusUpdateRequest via field_validator
-    success = experiment_service.update_experiment_status(experiment_key, req.status, admin.get("id"))
-    if not success:
-        raise HTTPException(404, "Experiment not found")
-    return {"status": "updated", "new_status": req.status}
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Updating status for {experiment_key}: {req.status}")
+
+        # Note: Status validation is now done in StatusUpdateRequest via field_validator
+        success = experiment_service.update_experiment_status(experiment_key, req.status, admin.get("id"))
+        if not success:
+            raise HTTPException(404, "Experiment not found")
+
+        logger.info(f"[Admin {admin.get('id')}] Status updated: {experiment_key} -> {req.status}")
+        return StatusUpdateResponse(status="updated", new_status=req.status)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Update status failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to update status")
 
 
-@router.delete("/{experiment_key}")
+@router.delete("/{experiment_key}", response_model=ExperimentDeleteResponse)
 @limiter.limit("10/minute")
 async def delete_experiment(
     request: Request,
@@ -299,23 +377,34 @@ async def delete_experiment(
     admin: dict = Depends(require_admin)
 ):
     """Delete experiment."""
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
-    if experiment.get("status") == "running":
-        raise HTTPException(400, "Cannot delete running experiment")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Deleting experiment: {experiment_key}")
 
-    success = experiment_service.delete_experiment(experiment_key)
-    if not success:
+        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        if not experiment:
+            raise HTTPException(404, "Experiment not found")
+        if experiment.get("status") == "running":
+            raise HTTPException(400, "Cannot delete running experiment")
+
+        success = experiment_service.delete_experiment(experiment_key)
+        if not success:
+            raise HTTPException(500, "Failed to delete experiment")
+
+        logger.info(f"[Admin {admin.get('id')}] Deleted experiment: {experiment_key}")
+        return ExperimentDeleteResponse(status="deleted", experiment_key=experiment_key)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Delete experiment failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to delete experiment")
-    return {"status": "deleted", "experiment_key": experiment_key}
 
 
 # ==========================================
 # Results & Analysis Endpoints (v3.25: Added rate limiting)
 # ==========================================
 
-@router.get("/{experiment_key}/results")
+@router.get("/{experiment_key}/results", response_model=ExperimentResultsResponse)
 @limiter.limit("30/minute")
 async def get_experiment_results(
     request: Request,
@@ -325,20 +414,31 @@ async def get_experiment_results(
     admin: dict = Depends(require_admin)
 ):
     """Get experiment results."""
-    # v3.25: EXP-MEDIUM-4 - Validate date formats
-    validate_date_format(start_date, "start_date")
-    validate_date_format(end_date, "end_date")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Getting results for {experiment_key}")
 
-    start_dt = datetime.fromisoformat(start_date) if start_date else None
-    end_dt = datetime.fromisoformat(end_date) if end_date else None
+        # v3.25: EXP-MEDIUM-4 - Validate date formats
+        validate_date_format(start_date, "start_date")
+        validate_date_format(end_date, "end_date")
 
-    results = experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
-    if not results:
-        raise HTTPException(404, "Experiment not found")
-    return _enrich_results_with_significance(results)
+        start_dt = datetime.fromisoformat(start_date) if start_date else None
+        end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+        results = experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
+        if not results:
+            raise HTTPException(404, "Experiment not found")
+
+        enriched = _enrich_results_with_significance(results)
+        return ExperimentResultsResponse(**enriched)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get results failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to retrieve results")
 
 
-@router.post("/{experiment_key}/aggregate")
+@router.post("/{experiment_key}/aggregate", response_model=AggregationResponse)
 @limiter.limit("10/minute")
 async def trigger_aggregation(
     request: Request,
@@ -346,37 +446,75 @@ async def trigger_aggregation(
     admin: dict = Depends(require_admin)
 ):
     """Trigger result aggregation."""
-    success = experiment_service.aggregate_experiment_results(experiment_key)
-    if not success:
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for {experiment_key}")
+
+        success = experiment_service.aggregate_experiment_results(experiment_key)
+        if not success:
+            raise HTTPException(500, "Failed to aggregate results")
+
+        logger.info(f"[Admin {admin.get('id')}] Aggregation completed: {experiment_key}")
+        return AggregationResponse(
+            status="aggregated",
+            experiment_key=experiment_key,
+            message="Aggregation completed successfully"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Aggregation failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to aggregate results")
-    return {"status": "aggregated", "experiment_key": experiment_key}
 
 
-@router.post("/aggregate-all")
+@router.post("/aggregate-all", response_model=AggregationResponse)
 @limiter.limit("5/minute")
 async def trigger_all_aggregation(
     request: Request,
     admin: dict = Depends(require_admin)
 ):
     """Trigger aggregation for all running experiments."""
-    success = experiment_service.aggregate_experiment_results()
-    if not success:
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for all experiments")
+
+        success = experiment_service.aggregate_experiment_results()
+        if not success:
+            raise HTTPException(500, "Failed to aggregate results")
+
+        logger.info(f"[Admin {admin.get('id')}] All aggregations completed")
+        return AggregationResponse(
+            status="aggregated",
+            message="All experiments aggregated successfully"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Aggregate-all failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to aggregate results")
-    return {"status": "aggregated"}
 
 
-@router.post("/cache/clear")
+@router.post("/cache/clear", response_model=CacheClearResponse)
 @limiter.limit("10/minute")
 async def clear_cache(
     request: Request,
     admin: dict = Depends(require_admin)
 ):
     """Clear experiment cache."""
-    experiment_service.clear_experiment_cache()
-    return {"status": "cache_cleared"}
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Clearing experiment cache")
+
+        experiment_service.clear_experiment_cache()
+
+        logger.info(f"[Admin {admin.get('id')}] Cache cleared")
+        return CacheClearResponse(status="cache_cleared")
+
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Clear cache failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to clear cache")
 
 
-@router.post("/{experiment_key}/ai-analysis")
+@router.post("/{experiment_key}/ai-analysis", response_model=AIAnalysisResponse)
 @limiter.limit("10/minute")
 async def get_ai_analysis(
     request: Request,
@@ -385,26 +523,35 @@ async def get_ai_analysis(
     admin: dict = Depends(require_admin)
 ):
     """Get AI analysis report for experiment."""
-    from domains.platform import experiment_ai_service
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Requesting AI analysis for {experiment_key}")
 
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
+        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        if not experiment:
+            raise HTTPException(404, "Experiment not found")
 
-    results = experiment_service.get_experiment_results(experiment_key)
-    if not results:
-        results = {"variants": {}}
-    results = _enrich_results_with_significance(results)
+        results = experiment_service.get_experiment_results(experiment_key)
+        if not results:
+            results = {"variants": {}}
+        results = _enrich_results_with_significance(results)
 
-    additional_context = req.additional_context if req else None
-    analysis = experiment_ai_service.analyze_experiment_results(experiment, results, additional_context)
+        additional_context = req.additional_context if req else None
+        analysis = experiment_ai_service.analyze_experiment_results(experiment, results, additional_context)
 
-    if not analysis.get("success"):
-        raise HTTPException(500, "AI analysis failed")
-    return analysis
+        if not analysis.get("success"):
+            raise HTTPException(500, "AI analysis failed")
+
+        logger.info(f"[Admin {admin.get('id')}] AI analysis completed for {experiment_key}")
+        return AIAnalysisResponse(**analysis)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] AI analysis failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to generate AI analysis")
 
 
-@router.get("/{experiment_key}/quick-recommendation")
+@router.get("/{experiment_key}/quick-recommendation", response_model=RecommendationResponse)
 @limiter.limit("30/minute")
 async def get_quick_recommendation(
     request: Request,
@@ -412,123 +559,85 @@ async def get_quick_recommendation(
     admin: dict = Depends(require_admin)
 ):
     """Get quick decision recommendation (rule-based)."""
-    from domains.platform import experiment_ai_service
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Getting quick recommendation for {experiment_key}")
 
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
+        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        if not experiment:
+            raise HTTPException(404, "Experiment not found")
 
-    results = experiment_service.get_experiment_results(experiment_key)
-    if not results:
-        results = {"variants": {}}
-    results = _enrich_results_with_significance(results)
+        results = experiment_service.get_experiment_results(experiment_key)
+        if not results:
+            results = {"variants": {}}
+        results = _enrich_results_with_significance(results)
 
-    recommendation = experiment_ai_service.get_quick_recommendation(results)
-    return {"experiment_key": experiment_key, "recommendation": recommendation}
+        recommendation = experiment_ai_service.get_quick_recommendation(results)
+
+        logger.info(f"[Admin {admin.get('id')}] Quick recommendation generated for {experiment_key}")
+        return RecommendationResponse(experiment_key=experiment_key, recommendation=recommendation)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Quick recommendation failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to generate recommendation")
 
 
 # ==========================================
 # Trend Endpoints (v3.25: Added rate limiting and validation)
 # ==========================================
 
-@router.get("/{experiment_key}/trend")
-@limiter.limit("30/minute")
+@router.get("/{experiment_key}/trend", response_model=DailyTrendResponse)
+@limiter.limit("20/minute")
 async def get_experiment_trend(
     request: Request,
     experiment_key: str,
-    # v3.25: EXP-MEDIUM-5 - Days range validation
-    days: int = Query(30, ge=1, le=90, description="Number of days (1-90)"),
+    days: int = Query(DEFAULT_TREND_DAYS, ge=1, le=MAX_TREND_DAYS, description="Number of days (1-90)"),
     admin: dict = Depends(require_admin)
 ):
     """Get daily trend data for charts."""
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Getting daily trend: {experiment_key} ({days} days)")
 
-    experiment_id = experiment.get("id")
-    variants = experiment.get("variants", [])
-    variant_keys = [v.get("key") for v in variants]
+        trend_data = experiment_service.get_daily_trend(experiment_key, days)
+        if not trend_data:
+            raise HTTPException(status_code=404, detail="Experiment not found")
 
-    now = datetime.now(timezone.utc)
-    start_date = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+        return DailyTrendResponse(**trend_data)
 
-    results_data = supabase.table("experiment_results").select("*")\
-        .eq("experiment_id", experiment_id).gte("date", start_date).order("date").execute()
-
-    daily_data = {}
-    for result in results_data.data or []:
-        date_str = result.get("date", "")
-        if not date_str:
-            continue
-        if date_str not in daily_data:
-            daily_data[date_str] = {vk: {"exposures": 0, "conversions": 0} for vk in variant_keys}
-
-        variant_key = result.get("variant_key")
-        if variant_key in daily_data[date_str]:
-            daily_data[date_str][variant_key]["exposures"] += result.get("exposures", 0)
-            daily_data[date_str][variant_key]["conversions"] += result.get("conversions", 0)
-
-    trend_list = []
-    for date_str in sorted(daily_data.keys()):
-        day_entry = {"date": date_str}
-        for variant_key in variant_keys:
-            vdata = daily_data[date_str].get(variant_key, {"exposures": 0, "conversions": 0})
-            day_entry[f"{variant_key}_exposures"] = vdata["exposures"]
-            day_entry[f"{variant_key}_conversions"] = vdata["conversions"]
-            rate = (vdata["conversions"] / vdata["exposures"] * 100) if vdata["exposures"] > 0 else 0
-            day_entry[f"{variant_key}_rate"] = round(rate, 2)
-        trend_list.append(day_entry)
-
-    return {"experiment_key": experiment_key, "variants": variant_keys, "days": days, "trend": trend_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[Admin {admin.get('id')}] Get daily trend failed for {experiment_key}: "
+            f"{type(e).__name__} - {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve trend data")
 
 
-@router.get("/{experiment_key}/hourly-trend")
-@limiter.limit("30/minute")
+@router.get("/{experiment_key}/hourly-trend", response_model=HourlyTrendResponse)
+@limiter.limit("20/minute")
 async def get_hourly_trend(
     request: Request,
     experiment_key: str,
-    # v3.25: EXP-MEDIUM-6 - Hours range validation
-    hours: int = Query(24, ge=1, le=168, description="Number of hours (1-168)"),
+    hours: int = Query(DEFAULT_TREND_HOURS, ge=1, le=MAX_TREND_HOURS, description="Number of hours (1-168)"),
     admin: dict = Depends(require_admin)
 ):
     """Get hourly trend data."""
-    experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
-    if not experiment:
-        raise HTTPException(404, "Experiment not found")
+    try:
+        logger.info(f"[Admin {admin.get('id')}] Getting hourly trend: {experiment_key} ({hours} hours)")
 
-    experiment_id = experiment.get("id")
-    variants = experiment.get("variants", [])
-    variant_keys = [v.get("key") for v in variants]
+        trend_data = experiment_service.get_hourly_trend(experiment_key, hours)
+        if not trend_data:
+            raise HTTPException(status_code=404, detail="Experiment not found")
 
-    now = datetime.now(timezone.utc)
-    start_time = now - timedelta(hours=hours)
-    start_date = start_time.strftime("%Y-%m-%d")
+        return HourlyTrendResponse(**trend_data)
 
-    results_data = supabase.table("experiment_results").select("*")\
-        .eq("experiment_id", experiment_id).gte("date", start_date).order("date").order("hour").execute()
-
-    trend_list = []
-    for result in results_data.data or []:
-        date_str = result.get("date", "")
-        hour = result.get("hour", 0)
-        variant_key = result.get("variant_key")
-        time_str = f"{date_str}T{hour:02d}:00:00"
-
-        result_datetime = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
-        if result_datetime.replace(tzinfo=timezone.utc) < start_time:
-            continue
-
-        existing = next((t for t in trend_list if t.get("time") == time_str), None)
-        if not existing:
-            existing = {"time": time_str}
-            for vk in variant_keys:
-                existing[f"{vk}_exposures"] = 0
-                existing[f"{vk}_conversions"] = 0
-            trend_list.append(existing)
-
-        if variant_key in variant_keys:
-            existing[f"{variant_key}_exposures"] = result.get("exposures", 0)
-            existing[f"{variant_key}_conversions"] = result.get("conversions", 0)
-
-    trend_list.sort(key=lambda x: x.get("time", ""))
-    return {"experiment_key": experiment_key, "variants": variant_keys, "hours": hours, "trend": trend_list}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[Admin {admin.get('id')}] Get hourly trend failed for {experiment_key}: "
+            f"{type(e).__name__} - {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve trend data")

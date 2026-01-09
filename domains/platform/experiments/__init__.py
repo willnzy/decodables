@@ -4,7 +4,7 @@ Experiments Service Package
 Modular A/B testing experiment service.
 
 @package services.experiments
-@version 3.24
+@version 3.26
 """
 
 from .core import supabase, logger, CACHE_TTL
@@ -32,6 +32,10 @@ from .analysis import (
     get_experiment_results,
     calculate_statistical_significance,
 )
+from .trend import (
+    get_daily_trend,
+    get_hourly_trend,
+)
 from .utils import (
     clear_experiment_cache,
 )
@@ -50,6 +54,8 @@ __all__ = [
     # Analysis
     'aggregate_experiment_results', 'get_experiment_results',
     'calculate_statistical_significance',
+    # Trend
+    'get_daily_trend', 'get_hourly_trend',
     # Utils
     'clear_experiment_cache',
 ]
