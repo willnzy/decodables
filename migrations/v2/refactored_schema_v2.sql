@@ -2916,74 +2916,188 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- Disable RLS on All Tables (Default Behavior)
+-- Enable RLS with Admin-Only Access (Default Behavior)
 -- ============================================================================
--- This ensures no UNRESTRICTED warnings in Supabase
--- Suitable for Railway/standalone PostgreSQL/development environments
+-- This enables RLS on ALL tables with admin-only access policies
+-- Suitable for: Backend API controlled by FastAPI with admin roles
+
+-- Step 1: Create Admin Role Check Function
+-- ============================================================================
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Check if current user is admin
+    -- This reads from app.current_user_role set by your FastAPI backend
+    RETURN current_setting('app.current_user_role', true) = 'admin';
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION is_admin IS 'Check if current user has admin role (set by FastAPI)';
+
+-- ============================================================================
+-- Step 2: Enable RLS on ALL Tables
+-- ============================================================================
 
 DO $$
 BEGIN
     RAISE NOTICE '';
-    RAISE NOTICE '🔓 Disabling RLS on all tables (default safe configuration)...';
+    RAISE NOTICE '🔒 Enabling RLS on all tables...';
 END $$;
 
--- Disable RLS on all tables
-ALTER TABLE IF EXISTS profiles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS projects DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS credit_transactions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS user_generations DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS marketplace_listings DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS marketplace_purchases DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS activity_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS ai_call_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS ai_usage_daily DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS analytics_aggregation DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS analytics_events DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS api_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS asset_categories DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS asset_prompt_templates DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS assets DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS campaign_dismissals DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS campaign_participations DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS campaigns DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS clerk_webhook_events DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS config_audit_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS content_reports DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS credit_purchases DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS daily_themes DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS experiment_assignments DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS experiment_results DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS experiments DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS feature_flags DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS holidays DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS marketplace_favorites DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS marketplace_reviews DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS notifications DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS onboarding_steps DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS pricing_history DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS pricing_plans DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS project_versions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS referrals DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS scheduled_task_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS stripe_webhook_events DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS subscription_history DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS system_assets DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS system_configs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS system_resource_audit_logs DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS user_discounts DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS user_onboarding_progress DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS user_price_overrides DISABLE ROW LEVEL SECURITY;
+-- User-related tables
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
+
+-- System tables (admin-only)
+ALTER TABLE system_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE holidays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_themes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_categories ENABLE ROW LEVEL SECURITY;
+
+-- Feature & Experiment tables
+ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_participations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_dismissals ENABLE ROW LEVEL SECURITY;
+
+-- Analytics & Logging tables
+ALTER TABLE api_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_call_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_usage_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_aggregation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_task_logs ENABLE ROW LEVEL SECURITY;
+
+-- Webhook tables
+ALTER TABLE clerk_webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+
+-- Other tables
+ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_discounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_price_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE onboarding_steps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_onboarding_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_resource_audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================================
+-- Step 3: Create Admin-Only Policies for ALL Tables
+-- ============================================================================
 
 DO $$
+DECLARE
+    table_name TEXT;
+    table_names TEXT[] := ARRAY[
+        'profiles', 'projects', 'credit_transactions', 'user_generations',
+        'marketplace_listings', 'marketplace_purchases', 'marketplace_favorites',
+        'marketplace_reviews', 'system_configs', 'pricing_plans', 'pricing_history',
+        'holidays', 'daily_themes', 'system_assets', 'asset_categories', 'assets',
+        'asset_prompt_templates', 'feature_flags', 'experiments', 'experiment_assignments',
+        'experiment_results', 'campaigns', 'campaign_participations', 'campaign_dismissals',
+        'api_logs', 'ai_call_logs', 'ai_usage_daily', 'activity_logs',
+        'analytics_events', 'analytics_aggregation', 'scheduled_task_logs',
+        'clerk_webhook_events', 'stripe_webhook_events', 'content_reports',
+        'credit_purchases', 'subscription_history', 'user_discounts', 'user_price_overrides',
+        'notifications', 'onboarding_steps', 'user_onboarding_progress', 'referrals',
+        'project_versions', 'config_audit_logs', 'system_resource_audit_logs'
+    ];
 BEGIN
+    FOREACH table_name IN ARRAY table_names
+    LOOP
+        -- Admin can SELECT
+        EXECUTE format('
+            CREATE POLICY %I_admin_select ON %I
+            FOR SELECT
+            USING (is_admin());
+        ', table_name, table_name);
+
+        -- Admin can INSERT
+        EXECUTE format('
+            CREATE POLICY %I_admin_insert ON %I
+            FOR INSERT
+            WITH CHECK (is_admin());
+        ', table_name, table_name);
+
+        -- Admin can UPDATE
+        EXECUTE format('
+            CREATE POLICY %I_admin_update ON %I
+            FOR UPDATE
+            USING (is_admin());
+        ', table_name, table_name);
+
+        -- Admin can DELETE
+        EXECUTE format('
+            CREATE POLICY %I_admin_delete ON %I
+            FOR DELETE
+            USING (is_admin());
+        ', table_name, table_name);
+
+        RAISE NOTICE 'Created admin-only policies for: %', table_name;
+    END LOOP;
+END $$;
+
+-- ============================================================================
+-- Step 4: Verification
+-- ============================================================================
+
+DO $$
+DECLARE
+    rls_count INTEGER;
+    policy_count INTEGER;
+BEGIN
+    -- Count tables with RLS enabled
+    SELECT COUNT(*)
+    INTO rls_count
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relrowsecurity = true
+    AND n.nspname = 'public';
+
+    -- Count policies
+    SELECT COUNT(*)
+    INTO policy_count
+    FROM pg_policies
+    WHERE schemaname = 'public';
+
     RAISE NOTICE '';
-    RAISE NOTICE '✅ RLS disabled on all tables';
-    RAISE NOTICE '   - All tables are now accessible without restrictions';
-    RAISE NOTICE '   - No UNRESTRICTED warnings in Supabase';
-    RAISE NOTICE '   - Suitable for Railway/standalone PostgreSQL/development';
+    RAISE NOTICE '============================================================================';
+    RAISE NOTICE '✅ RLS Enabled: % tables', rls_count;
+    RAISE NOTICE '✅ Policies Created: % policies', policy_count;
+    RAISE NOTICE '============================================================================';
     RAISE NOTICE '';
-    RAISE NOTICE '🔒 To enable RLS for Supabase multi-tenant security:';
-    RAISE NOTICE '   Run the optional script: enable_rls.sql';
+    RAISE NOTICE '📋 Usage in FastAPI:';
+    RAISE NOTICE '   conn.execute(text("SET app.current_user_role = :role"), {"role": "admin"})';
+    RAISE NOTICE '';
+    RAISE NOTICE '⚠️  IMPORTANT:';
+    RAISE NOTICE '   - Only users with app.current_user_role = ''admin'' can access data';
+    RAISE NOTICE '   - Your FastAPI backend MUST set this variable before EVERY query';
+    RAISE NOTICE '   - Regular users will get ZERO rows unless you add user-specific policies';
+    RAISE NOTICE '';
+    RAISE NOTICE '🔓 To disable RLS: Run disable_rls.sql';
     RAISE NOTICE '';
 END $$;
 
