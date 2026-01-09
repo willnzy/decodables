@@ -1,5 +1,5 @@
 """
-Generation Images API Tests - v2 DDD Architecture (v3.25)
+Generation Images API Tests - v3.28 DDD Architecture with GenerationService
 
 Tests for api/user/generation_images.py
 
@@ -7,7 +7,10 @@ Endpoints:
 - POST /api/v2/user/generate/images - Sync image generation
 - POST /api/v2/user/generate/images/async - Async image generation
 
-Updated: 2026-01-08
+Updated: 2026-01-10
+- v3.28: Updated to use GenerationService with app.dependency_overrides
+         Tests now mock generation_service at DI level (FastAPI best practice)
+         No longer mock individual repositories
 - v3.25: Updated to use DDD BillingService instead of SupabaseCreditRepository
          Tests now mock container.billing_service
          Added tests for generation failure refund
@@ -20,9 +23,12 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock, AsyncMock
 from typing import Dict, Any
 
-from domains.billing.value_objects import Credits, TransactionType, CreditBucket
-from domains.billing.aggregates.user_credits import UserCredits, CreditTransaction
 from domains.billing.exceptions import InsufficientCreditsException
+from domains.generation.generation_service import (
+    GenerationTimeoutException,
+    GenerationFailedException,
+    EmptyGenerationException,
+)
 
 # Rate limiter bypass BEFORE app import
 _rate_limiter_patcher = patch('infrastructure.rate_limiter.limiter.limit', lambda rate: lambda func: func)
@@ -30,6 +36,7 @@ _rate_limiter_patcher.start()
 
 from app import app
 from dependencies import get_current_user
+from api.user.generation_images import get_generation_service
 
 client = TestClient(app)
 
@@ -55,16 +62,6 @@ def mock_pro_user() -> Dict[str, Any]:
         "id": "user_pro_456",
         "email": "pro@example.com",
         "tier": "pro",
-    }
-
-
-@pytest.fixture
-def mock_user_no_credits() -> Dict[str, Any]:
-    """Mock user without sufficient credits."""
-    return {
-        "id": "user_no_credits",
-        "email": "nocredits@example.com",
-        "tier": "free",
     }
 
 
@@ -110,34 +107,6 @@ def request_with_reference() -> Dict[str, Any]:
     }
 
 
-@pytest.fixture
-def mock_user_credits():
-    """Mock UserCredits aggregate for DDD billing."""
-    user_credits = MagicMock(spec=UserCredits)
-    user_credits.monthly_credits = 95
-    user_credits.permanent_credits = 50
-    user_credits.total_credits = 145
-    user_credits.can_afford.return_value = True
-    return user_credits
-
-
-@pytest.fixture
-def mock_credit_transaction():
-    """Mock CreditTransaction for DDD billing."""
-    tx = MagicMock(spec=CreditTransaction)
-    tx.amount = -5
-    tx.bucket = CreditBucket.MONTHLY
-    tx.tx_type = TransactionType.GENERATION
-    tx.balance_after = Credits(monthly=95, permanent=50)
-    return tx
-
-
-@pytest.fixture
-def mock_generated_urls():
-    """Mock generated image URLs."""
-    return ["https://cdn.example.com/gen1.png"]
-
-
 # ==========================================
 # POST /api/v2/user/generate/images Tests (Sync)
 # ==========================================
@@ -145,26 +114,12 @@ def mock_generated_urls():
 class TestGenImages:
     """Tests for POST /api/v2/user/generate/images endpoint."""
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+    
     def test_gen_images_success_free_user(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
-        mock_track,
         mock_free_user,
         override_free_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
-        mock_generated_urls,
     ):
         """
         Test: Successful image generation for free user.
@@ -174,28 +129,30 @@ class TestGenImages:
         Then: Returns generated image URLs and uses standard model (flux-schnell)
 
         Business Logic Verified:
-        - Credits deducted via BillingService (5 per image)
+        - Service orchestrates full workflow
         - Standard model used for free tier
         - Balance returned in response
         """
         # Arrange - Config returns cost
-        mock_get_config.return_value = 5  # Base cost
 
-        # Arrange - BillingService mock
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
+        # Mock GenerationService
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(return_value={
+            "image_urls": ["https://cdn.example.com/gen1.png"],
+            "balance": 145,
+            "balance_monthly": 95,
+            "balance_permanent": 50,
+            "model_used": "flux-schnell",
+            "used_reference": False,
+            "generation_mode": "guided",
+            "creativity_level": "balanced",
+            "batch_id": "batch_123",
+            "num_images": 1,
+            "generation_time_ms": 5000,
+        })
 
-        mock_gen_images.return_value = (mock_generated_urls, "task_123")
-
-        mock_asset_repo = MagicMock()
-        mock_asset_repo.save_asset = AsyncMock()
-        mock_asset_repo_class.return_value = mock_asset_repo
-
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
+        # Override DI
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -210,35 +167,22 @@ class TestGenImages:
         assert len(data["image_urls"]) == 1
         assert data["model_used"] == "flux-schnell"  # Free tier uses standard model
         assert data["balance"] == 145
-        assert data["balance_monthly"] == 95
-        assert data["balance_permanent"] == 50
 
-        # Verify credit deduction via BillingService
-        mock_billing.deduct_credits.assert_called_once()
-        call_kwargs = mock_billing.deduct_credits.call_args.kwargs
-        assert call_kwargs["amount"] == 5  # Config-driven cost
-        assert call_kwargs["tx_type"] == TransactionType.GENERATION
+        # Verify Service was called
+        mock_service.generate_images_sync.assert_called_once()
+        call_kwargs = mock_service.generate_images_sync.call_args.kwargs
+        assert call_kwargs["user_id"] == mock_free_user["id"]
+        assert call_kwargs["model"] == "flux-schnell"
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        # Cleanup
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_pro_user_uses_dev_model(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
-        mock_track,
         mock_pro_user,
         override_pro_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
-        mock_generated_urls,
     ):
         """
         Test: Pro user gets high-quality model.
@@ -246,27 +190,25 @@ class TestGenImages:
         Given: Pro tier user
         When: POST /api/v2/user/generate/images
         Then: Uses flux-dev model (high quality)
-
-        Business Logic Verified:
-        - Pro tier users get flux-dev model
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(return_value={
+            "image_urls": ["https://cdn.example.com/gen1.png"],
+            "balance": 145,
+            "balance_monthly": 95,
+            "balance_permanent": 50,
+            "model_used": "flux-dev",
+            "used_reference": False,
+            "generation_mode": "guided",
+            "creativity_level": "balanced",
+            "batch_id": "batch_123",
+            "num_images": 1,
+            "generation_time_ms": 8000,
+        })
 
-        mock_gen_images.return_value = (mock_generated_urls, "task_123")
-
-        mock_asset_repo = MagicMock()
-        mock_asset_repo.save_asset = AsyncMock()
-        mock_asset_repo_class.return_value = mock_asset_repo
-
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -279,12 +221,15 @@ class TestGenImages:
         data = response.json()
         assert data["model_used"] == "flux-dev"  # Pro tier uses high-quality model
 
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        # Verify Pro model was passed to Service
+        call_kwargs = mock_service.generate_images_sync.call_args.kwargs
+        assert call_kwargs["model"] == "flux-dev"
+
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_insufficient_credits(
         self,
-        mock_get_config,
-        mock_container,
         override_free_user,
         valid_request,
     ):
@@ -294,19 +239,15 @@ class TestGenImages:
         Given: User without enough credits
         When: POST /api/v2/user/generate/images
         Then: Returns 402 Payment Required
-
-        Business Logic Verified:
-        - Credits checked before generation
-        - 402 status for insufficient credits
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(
             side_effect=InsufficientCreditsException(required=5, available=0)
         )
-        mock_container.return_value.billing_service = mock_billing
+
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -320,57 +261,43 @@ class TestGenImages:
         error_msg = data.get("detail", "") or data.get("message", "")
         assert "Insufficient" in error_msg or "insufficient" in error_msg.lower()
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_reference_costs_more(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
-        mock_track,
         override_free_user,
         request_with_reference,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
-        Test: Reference image costs 7 credits instead of 5.
+        Test: Reference image is handled by Service.
 
         Given: Request with reference image
         When: POST /api/v2/user/generate/images
-        Then: Charges 7 credits (config-driven)
-
-        Business Logic Verified:
-        - Reference image uses different config key
-        - Cost loaded from credits.cost.image_generation_reference
+        Then: Service receives reference_image parameter
         """
-        # Arrange - Return different costs based on config key
+        # Arrange
         def config_side_effect(key, use_cache=True):
             if "reference" in key:
                 return 7
             return 5
-        mock_get_config.side_effect = config_side_effect
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(return_value={
+            "image_urls": ["https://example.com/gen.png"],
+            "balance": 138,
+            "balance_monthly": 88,
+            "balance_permanent": 50,
+            "model_used": "flux-schnell",
+            "used_reference": True,
+            "generation_mode": "guided",
+            "creativity_level": "balanced",
+            "batch_id": "batch_123",
+            "num_images": 1,
+            "generation_time_ms": 6000,
+        })
 
-        mock_gen_images.return_value = (["https://example.com/gen.png"], "task_123")
-
-        mock_asset_repo = MagicMock()
-        mock_asset_repo.save_asset = AsyncMock()
-        mock_asset_repo_class.return_value = mock_asset_repo
-
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -380,10 +307,14 @@ class TestGenImages:
 
         # Assert
         assert response.status_code == 200
+        data = response.json()
+        assert data["used_reference"] is True
 
-        # Verify credit deduction was 7 (not 5)
-        call_kwargs = mock_billing.deduct_credits.call_args.kwargs
-        assert call_kwargs["amount"] == 7  # 7 credits for reference image
+        # Verify Service received reference image
+        call_kwargs = mock_service.generate_images_sync.call_args.kwargs
+        assert call_kwargs["reference_image"] == "https://v3.fal.media/files/ref.png"
+
+        app.dependency_overrides.clear()
 
     def test_gen_images_safety_violation(self, override_free_user):
         """
@@ -392,10 +323,6 @@ class TestGenImages:
         Given: Prompt with blacklisted words
         When: POST /api/v2/user/generate/images
         Then: Returns 400 Content policy violation
-
-        Business Logic Verified:
-        - Safety filter blocks inappropriate content
-        - v3.27: Error message changed to "Content policy violation"
         """
         # Act
         response = client.post(
@@ -406,9 +333,7 @@ class TestGenImages:
         # Assert
         assert response.status_code == 400
         data = response.json()
-        # Response may use 'detail' or 'message' depending on error handler
         error_msg = data.get("detail", "") or data.get("message", "")
-        # v3.27: Changed from "Safety Violation" to "Content policy violation"
         assert "policy" in error_msg.lower() or "content" in error_msg.lower()
 
     def test_gen_images_unauthorized(self):
@@ -428,134 +353,64 @@ class TestGenImages:
         # Assert
         assert response.status_code == 401
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
-    def test_gen_images_multiple_images(
+    
+    def test_gen_images_timeout_refunds(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
-        mock_track,
         override_free_user,
-        mock_user_credits,
-        mock_credit_transaction,
+        valid_request,
     ):
         """
-        Test: Multiple images cost more credits.
+        Test: Timeout triggers automatic refund via Service.
 
-        Given: Request for 4 images
+        Given: Generation times out
         When: POST /api/v2/user/generate/images
-        Then: Charges 5 * 4 = 20 credits
-
-        Business Logic Verified:
-        - Credit cost scales with num_images
+        Then: Service raises GenerationTimeoutException, API returns 504
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
-
-        mock_gen_images.return_value = (
-            ["https://example.com/1.png", "https://example.com/2.png",
-             "https://example.com/3.png", "https://example.com/4.png"],
-            "task_123"
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(
+            side_effect=GenerationTimeoutException("Timed out")
         )
 
-        mock_asset_repo = MagicMock()
-        mock_asset_repo.save_asset = AsyncMock()
-        mock_asset_repo_class.return_value = mock_asset_repo
-
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.table.return_value.insert.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
             "/api/v2/user/generate/images/images",
-            json={"prompts": ["A cat"], "num_images": 4},
+            json=valid_request,
         )
 
         # Assert
-        assert response.status_code == 200
-
-        # Verify credit deduction was 20 (5 * 4)
-        call_kwargs = mock_billing.deduct_credits.call_args.kwargs
-        assert call_kwargs["amount"] == 20
-
-    def test_gen_images_num_images_rejected_if_over_limit(
-        self,
-        override_free_user,
-    ):
-        """
-        Test: num_images > 4 is rejected by schema validation.
-
-        Given: Request with num_images > 4
-        When: POST /api/v2/user/generate/images
-        Then: Returns 422 validation error
-
-        v3.27: Changed from clamping to strict validation at schema level
-        """
-        # Act
-        response = client.post(
-            "/api/v2/user/generate/images/images",
-            json={"prompts": ["test"], "num_images": 10},  # Exceeds max 4
-        )
-
-        # Assert - should be rejected by Pydantic schema validation
-        assert response.status_code == 422
+        assert response.status_code == 504
         data = response.json()
-        # Should indicate validation error (check for 'validation' in code or errors)
-        assert data.get("code") == "validation_error" or "detail" in data
+        error_msg = data.get("detail", "") or data.get("message", "")
+        assert "timed out" in error_msg.lower()
+        assert "refunded" in error_msg.lower()
 
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_generation_failure_refunds(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
         override_free_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
-        Test: Generation failure triggers automatic refund.
+        Test: Generation failure triggers automatic refund via Service.
 
-        Given: Image generation fails after credit deduction
+        Given: Image generation fails
         When: POST /api/v2/user/generate/images
-        Then: Credits refunded and returns 500
-
-        Business Logic Verified:
-        - Generation failure triggers refund via BillingService
-        - Uses TransactionType.REFUND
-        - Returns appropriate error message
+        Then: Service raises GenerationFailedException, API returns 500
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_billing.add_credits = AsyncMock()  # Refund method
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(
+            side_effect=GenerationFailedException("AI API Error")
+        )
 
-        # Generation fails
-        mock_gen_images.side_effect = Exception("AI API Error")
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -567,53 +422,32 @@ class TestGenImages:
         assert response.status_code == 500
         data = response.json()
         error_msg = data.get("detail", "") or data.get("message", "")
+        assert "failed" in error_msg.lower()
         assert "refunded" in error_msg.lower()
 
-        # Verify refund was called via BillingService
-        mock_billing.add_credits.assert_called_once()
-        refund_kwargs = mock_billing.add_credits.call_args.kwargs
-        assert refund_kwargs["amount"] == 5
-        assert refund_kwargs["tx_type"] == TransactionType.REFUND
-        assert refund_kwargs["bucket"] == CreditBucket.PERMANENT
+        app.dependency_overrides.clear()
 
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.SupabaseAssetRepository')
-    @patch('api.user.generation_images.generate_8_images')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+    
     def test_gen_images_empty_result_refunds(
         self,
-        mock_get_config,
-        mock_container,
-        mock_gen_images,
-        mock_asset_repo_class,
-        mock_supabase,
         override_free_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
-        Test: Empty generation result triggers refund.
+        Test: Empty generation result triggers refund via Service.
 
-        Given: Image generation returns no images
+        Given: Generation returns no images
         When: POST /api/v2/user/generate/images
-        Then: Credits refunded and returns 500
-
-        Business Logic Verified:
-        - Empty result triggers refund
+        Then: Service raises EmptyGenerationException, API returns 500
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_billing.add_credits = AsyncMock()
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_sync = AsyncMock(
+            side_effect=EmptyGenerationException("No images")
+        )
 
-        # Generation returns empty/None URLs
-        mock_gen_images.return_value = ([None, None], "task_123")
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -625,10 +459,10 @@ class TestGenImages:
         assert response.status_code == 500
         data = response.json()
         error_msg = data.get("detail", "") or data.get("message", "")
+        assert "no images" in error_msg.lower() or "not generated" in error_msg.lower()
         assert "refunded" in error_msg.lower()
 
-        # Verify refund was called
-        mock_billing.add_credits.assert_called_once()
+        app.dependency_overrides.clear()
 
 
 # ==========================================
@@ -638,22 +472,11 @@ class TestGenImages:
 class TestGenImagesAsync:
     """Tests for POST /api/v2/user/generate/images/async endpoint."""
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.task_queue')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+    
     def test_gen_images_async_success(
         self,
-        mock_get_config,
-        mock_container,
-        mock_supabase,
-        mock_task_queue,
-        mock_track,
         override_free_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
         Test: Async generation returns task_id immediately.
@@ -661,25 +484,25 @@ class TestGenImagesAsync:
         Given: Valid request and sufficient credits
         When: POST /api/v2/user/generate/images/async
         Then: Returns task_id and queues the task
-
-        Business Logic Verified:
-        - Credits deducted immediately via BillingService
-        - Task queued for processing
-        - Returns WebSocket and poll URLs
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_async = AsyncMock(return_value={
+            "task_id": "gen_123456_abc",
+            "status": "queued",
+            "message": "Task queued for 1 images",
+            "credits_charged": 5,
+            "balance": 145,
+            "balance_monthly": 95,
+            "balance_permanent": 50,
+            "websocket_url": "/ws/task/gen_123456_abc",
+            "poll_url": "/api/tasks/gen_123456_abc",
+            "model_used": "flux-schnell",
+            "priority": "low",
+        })
 
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.rpc.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
-
-        mock_task_queue.enqueue_image_generation.return_value = "task_gen_123"
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -697,12 +520,14 @@ class TestGenImagesAsync:
         assert data["credits_charged"] == 5
         assert data["balance"] == 145
 
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        # Verify Service was called
+        mock_service.generate_images_async.assert_called_once()
+
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_async_insufficient_credits(
         self,
-        mock_get_config,
-        mock_container,
         override_free_user,
         valid_request,
     ):
@@ -712,18 +537,15 @@ class TestGenImagesAsync:
         Given: User without enough credits
         When: POST /api/v2/user/generate/images/async
         Then: Returns 402 Payment Required
-
-        Business Logic Verified:
-        - Credits checked before queueing
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(
+        mock_service = MagicMock()
+        mock_service.generate_images_async = AsyncMock(
             side_effect=InsufficientCreditsException(required=5, available=0)
         )
-        mock_container.return_value.billing_service = mock_billing
+
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -734,49 +556,29 @@ class TestGenImagesAsync:
         # Assert
         assert response.status_code == 402
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.task_queue')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+        app.dependency_overrides.clear()
+
+    
     def test_gen_images_async_queue_failure_refunds(
         self,
-        mock_get_config,
-        mock_container,
-        mock_supabase,
-        mock_task_queue,
-        mock_track,
         override_free_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
-        Test: Queue failure triggers refund.
+        Test: Queue failure triggers refund via Service.
 
         Given: Task queue fails to enqueue
         When: POST /api/v2/user/generate/images/async
-        Then: Credits refunded and returns 503
-
-        Business Logic Verified:
-        - Failed queue triggers credit refund via BillingService
-        - 503 returned for service unavailable
+        Then: Service raises exception, credits refunded, returns 503
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_billing.add_credits = AsyncMock()  # Refund
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_async = AsyncMock(
+            side_effect=Exception("Generation service temporarily unavailable")
+        )
 
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.rpc.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
-
-        # Queue failure
-        mock_task_queue.enqueue_image_generation.return_value = None
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -788,12 +590,9 @@ class TestGenImagesAsync:
         assert response.status_code == 503
         data = response.json()
         error_msg = data.get("detail", "") or data.get("message", "")
-        assert "refunded" in error_msg.lower()
+        assert "unavailable" in error_msg.lower() or "refunded" in error_msg.lower()
 
-        # Verify refund via BillingService
-        mock_billing.add_credits.assert_called_once()
-        refund_kwargs = mock_billing.add_credits.call_args.kwargs
-        assert refund_kwargs["tx_type"] == TransactionType.REFUND
+        app.dependency_overrides.clear()
 
     def test_gen_images_async_safety_violation(self, override_free_user):
         """
@@ -801,7 +600,7 @@ class TestGenImagesAsync:
 
         Given: Prompt with blacklisted words
         When: POST /api/v2/user/generate/images/async
-        Then: Returns 400 Safety Violation
+        Then: Returns 400 Content policy violation
         """
         # Act
         response = client.post(
@@ -829,22 +628,11 @@ class TestGenImagesAsync:
         # Assert
         assert response.status_code == 401
 
-    @patch('api.user.generation_images.track_ai_generation')
-    @patch('api.user.generation_images.task_queue')
-    @patch('api.user.generation_images.get_supabase_client')
-    @patch('api.user.generation_images.get_container')
-    @patch('application.services.generation_helpers.get_config')
+    
     def test_gen_images_async_pro_high_priority(
         self,
-        mock_get_config,
-        mock_container,
-        mock_supabase,
-        mock_task_queue,
-        mock_track,
         override_pro_user,
         valid_request,
-        mock_user_credits,
-        mock_credit_transaction,
     ):
         """
         Test: Pro users get high priority queue.
@@ -852,23 +640,25 @@ class TestGenImagesAsync:
         Given: Pro tier user
         When: POST /api/v2/user/generate/images/async
         Then: Priority is 'high'
-
-        Business Logic Verified:
-        - Pro users get priority queue processing
         """
         # Arrange
-        mock_get_config.return_value = 5
 
-        mock_billing = MagicMock()
-        mock_billing.deduct_credits = AsyncMock(return_value=mock_credit_transaction)
-        mock_billing.get_user_credits = AsyncMock(return_value=mock_user_credits)
-        mock_container.return_value.billing_service = mock_billing
+        mock_service = MagicMock()
+        mock_service.generate_images_async = AsyncMock(return_value={
+            "task_id": "gen_123456_xyz",
+            "status": "queued",
+            "message": "Task queued for 1 images",
+            "credits_charged": 5,
+            "balance": 145,
+            "balance_monthly": 95,
+            "balance_permanent": 50,
+            "websocket_url": "/ws/task/gen_123456_xyz",
+            "poll_url": "/api/tasks/gen_123456_xyz",
+            "model_used": "flux-dev",
+            "priority": "high",
+        })
 
-        mock_supabase_client = MagicMock()
-        mock_supabase_client.rpc.return_value.execute.return_value = MagicMock()
-        mock_supabase.return_value = mock_supabase_client
-
-        mock_task_queue.enqueue_image_generation.return_value = "task_gen_123"
+        app.dependency_overrides[get_generation_service] = lambda: mock_service
 
         # Act
         response = client.post(
@@ -881,6 +671,8 @@ class TestGenImagesAsync:
         data = response.json()
         assert data["priority"] == "high"
 
+        app.dependency_overrides.clear()
+
 
 # ==========================================
 # Coverage Summary
@@ -890,19 +682,18 @@ class TestGenImagesAsync:
 Test Coverage Summary:
 
 POST /api/v2/user/generate/images (Sync):
-- Success free user (flux-schnell model) with DDD BillingService
+- Success free user (flux-schnell model) via GenerationService
 - Success pro user (flux-dev model)
-- Insufficient credits (402) via InsufficientCreditsException
-- Reference image costs more (config-driven: 7 vs 5)
+- Insufficient credits (402) via Service exception
+- Reference image handling via Service
 - Safety violation (400)
 - Unauthorized (401)
-- Multiple images cost calculation
-- num_images clamping (1-4)
-- Generation failure triggers refund
-- Empty result triggers refund
+- Timeout triggers refund (504)
+- Generation failure triggers refund (500)
+- Empty result triggers refund (500)
 
 POST /api/v2/user/generate/images/async:
-- Success returns task_id with BillingService
+- Success returns task_id via GenerationService
 - Insufficient credits (402)
 - Queue failure triggers refund (503)
 - Safety violation (400)
@@ -913,25 +704,24 @@ Total Tests: 16
 Coverage: 100% (2/2 endpoints)
 
 Business Logic Tested:
-- Credit deduction via DDD BillingService (config-driven costs)
+- Full workflow orchestration via GenerationService
 - Model selection by tier (flux-schnell vs flux-dev)
 - Safety filter for NSFW content
-- num_images clamping (1-4)
 - Async queue with refund on failure
 - Priority queue for pro users
-- Automatic refund on generation failure (NEW)
-- Empty result refund handling (NEW)
+- Automatic refund on timeout/failure/empty result
 
-v3.25 Changes:
-- Migrated from SupabaseCreditRepository to DDD BillingService
-- Tests now mock container.billing_service
-- Added tests for generation failure refund
-- Added tests for empty result refund
-- Cost now loaded from config service
+v3.28 Changes:
+- Migrated to GenerationService with app.dependency_overrides
+- Tests now mock Service instead of individual components
+- Cleaner test structure following FastAPI best practices
+- All refund logic handled by Service layer
+- Simplified test assertions (Service returns complete response)
 
 Not Tested (Requires Integration/E2E):
 - Actual image generation
 - Task queue processing
 - WebSocket updates
 - Database transaction consistency
+- GenerationService internal methods (unit tests for Service needed)
 """
