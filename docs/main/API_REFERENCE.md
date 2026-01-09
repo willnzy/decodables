@@ -2045,15 +2045,21 @@ Content-Disposition: attachment; filename="minibook.pdf"
 | `t2` | Second Tier | Starter Plan | $14.9 | $9.9 | 200 | 20 | flux-schnell |
 | `t3` | Third Tier | Pro Plan | $29.9 | $19.9 | 500 | 200 | flux-dev |
 
-> 所有价格通过 Stripe Price ID 配置，不硬编码在代码中
+> **价格配置说明**:
+> - 所有价格存储在 `pricing_plans` 表中，支持灵活调整
+> - Stripe Price ID 区分生产/开发环境
+> - 支持用户专属定价 (通过 `user_price_overrides` 表)
+> - 详见: [PRICING-SYSTEM-DESIGN.md](shared/PRICING-SYSTEM-DESIGN.md)
 
 ### 6.2 积分购买档位
 
-| 档位 | 积分 | 原价 | 现价 | 折扣 |
-|------|------|------|------|------|
-| 小包 | 100 | $2.99 | $2.99 | - |
-| 中包 | 500 | $14.99 | $13.49 | 9折 |
-| 大包 | 2000 | $60.00 | $48.00 | 8折 |
+| 档位 | 积分 | 原价 | 现价 | 折扣 | Plan Code |
+|------|------|------|------|------|-----------|
+| 小包 | 100 | $2.99 | $2.99 | - | `credits_100` |
+| 中包 | 500 | $14.99 | $13.49 | 10% off | `credits_500` |
+| 大包 | 2000 | $60.00 | $48.00 | 20% off | `credits_2000` |
+
+> **重要**: 充值积分**永久有效**，不会过期
 
 ### 6.3 积分消耗
 
