@@ -72,17 +72,17 @@ class UnifiedTextService:
         """
         # 1. 获取模型配置
         if use_admin_model:
-            config = get_admin_model_config()
+            config = await get_admin_model_config()
         else:
-            config = get_text_model_config()
-        
+            config = await get_text_model_config()
+
         provider = config.get("provider", "openai")
         model = config.get("model", "gpt-4o-mini")
-        
+
         # 2. 检查灰度 (仅用户模型)
         is_canary = False
         if user_id and not use_admin_model:
-            use_canary, canary_config = should_use_canary(user_id, "text_reasoning", tier)
+            use_canary, canary_config = await should_use_canary(user_id, "text_reasoning", tier)
             if use_canary and canary_config:
                 provider = canary_config["provider"]
                 model = canary_config["model"]
@@ -109,7 +109,7 @@ class UnifiedTextService:
                 )
         
         # 4. 检查提供商是否启用
-        if not is_provider_enabled(provider):
+        if not await is_provider_enabled(provider):
             logger.warning(f"[UnifiedText] Provider not enabled: {provider}")
             # 尝试使用 fallback
             fallback = get_fallback_config(config)

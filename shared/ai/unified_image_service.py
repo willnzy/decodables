@@ -67,22 +67,22 @@ class UnifiedImageService:
             AIResponse 对象，content 为图像 URL 列表
         """
         # 1. 获取模型配置 (基于用户等级)
-        config = get_image_model_config(tier)
+        config = await get_image_model_config(tier)
         provider = config.get("provider", "fal")
         model = config.get("model", "flux-schnell")
-        
+
         # 2. 检查灰度
         is_canary = False
         if user_id:
-            use_canary, canary_config = should_use_canary(user_id, "image_generation", tier)
+            use_canary, canary_config = await should_use_canary(user_id, "image_generation", tier)
             if use_canary and canary_config:
                 provider = canary_config["provider"]
                 model = canary_config["model"]
                 is_canary = True
                 logger.info(f"[UnifiedImage] Using canary: {provider}/{model}")
-        
+
         # 3. 检查提供商是否启用
-        if not is_provider_enabled(provider):
+        if not await is_provider_enabled(provider):
             logger.warning(f"[UnifiedImage] Provider not enabled: {provider}")
             # 尝试使用 fallback
             fallback = get_fallback_config(config)
@@ -164,15 +164,15 @@ class UnifiedImageService:
             AIResponse 对象
         """
         # 获取配置 (图生图推荐使用 flux-dev)
-        config = get_image_model_config(tier)
+        config = await get_image_model_config(tier)
         provider = config.get("provider", "fal")
-        
+
         # 图生图强制使用 flux-dev (质量更好)
         model = "flux-dev" if provider == "fal" else config.get("model")
-        
+
         # 检查灰度
         if user_id:
-            use_canary, canary_config = should_use_canary(user_id, "image_generation", tier)
+            use_canary, canary_config = await should_use_canary(user_id, "image_generation", tier)
             if use_canary and canary_config:
                 provider = canary_config["provider"]
                 model = canary_config["model"]
