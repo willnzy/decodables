@@ -13,50 +13,67 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from decimal import Decimal
 
 
+# ==========================================
+# Fixtures
+# ==========================================
+
+@pytest.fixture(autouse=True)
+def mock_config_service():
+    """Mock _get_config_service to prevent ConfigRepository instantiation."""
+    with patch('shared.ai.model_config._get_config_service') as mock_get_service:
+        mock_service = MagicMock()
+        mock_service.get_config = AsyncMock(return_value=None)
+        mock_get_service.return_value = mock_service
+        yield mock_service
+
+
 class TestEstimateCost:
-    @patch('shared.ai.usage_tracker.get_model_cost')
-    def test_text_cost_calculation(self, mock_get_cost):
+    @pytest.mark.asyncio
+    @patch('shared.ai.usage_tracker.get_model_cost', new_callable=AsyncMock)
+    async def test_text_cost_calculation(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 1.0  # $1 per 1M tokens
-        
-        cost = _estimate_cost(
+
+        cost = await _estimate_cost(
             provider="openai",
             model="gpt-4o-mini",
             call_type="text",
             input_tokens=500,
             output_tokens=500
         )
-        
+
         # 1000 tokens at $1/1M = $0.001
         assert cost == Decimal("0.0010")
 
-    @patch('shared.ai.usage_tracker.get_model_cost')
-    def test_image_cost_calculation(self, mock_get_cost):
+    @pytest.mark.asyncio
+    @patch('shared.ai.usage_tracker.get_model_cost', new_callable=AsyncMock)
+    async def test_image_cost_calculation(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.04  # $0.04 per image
-        
-        cost = _estimate_cost(
+
+        cost = await _estimate_cost(
             provider="fal",
             model="flux-schnell",
             call_type="image",
             images=5
         )
-        
+
         assert cost == Decimal("0.2000")
 
-    @patch('shared.ai.usage_tracker.get_model_cost')
-    def test_cost_precision(self, mock_get_cost):
+    @pytest.mark.asyncio
+    @patch('shared.ai.usage_tracker.get_model_cost', new_callable=AsyncMock)
+    async def test_cost_precision(self, mock_get_cost):
         from shared.ai.usage_tracker import _estimate_cost
         mock_get_cost.return_value = 0.50
-        
-        cost = _estimate_cost(
+
+        cost = await _estimate_cost(
             provider="openai",
             model="gpt-4o",
             call_type="text",
             input_tokens=123,
             output_tokens=456
         )
-        
+
         # Should have 4 decimal places
         assert str(cost).count('.') <= 1
         places = len(str(cost).split('.')[-1]) if '.' in str(cost) else 0
@@ -65,11 +82,12 @@ class TestEstimateCost:
 
 class TestTrackAIUsageSync:
     @patch('shared.ai.usage_tracker.supabase')
-    @patch('shared.ai.usage_tracker._estimate_cost')
-    def test_tracks_usage_successfully(self, mock_cost, mock_supabase):
+    @patch('shared.ai.usage_tracker.asyncio.run')
+    def test_tracks_usage_successfully(self, mock_asyncio_run, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage_sync
-        mock_cost.return_value = Decimal("0.0010")
-        
+        # Mock asyncio.run to return the Decimal directly
+        mock_asyncio_run.return_value = Decimal("0.0010")
+
         track_ai_usage_sync(
             provider="openai",
             model="gpt-4o-mini",
@@ -78,15 +96,16 @@ class TestTrackAIUsageSync:
             input_tokens=500,
             output_tokens=500
         )
-        
+
         mock_supabase.rpc.assert_called_once()
+        mock_asyncio_run.assert_called_once()
 
     @patch('shared.ai.usage_tracker.supabase', None)
-    @patch('shared.ai.usage_tracker._estimate_cost')
-    def test_handles_no_supabase(self, mock_cost):
+    @patch('shared.ai.usage_tracker.asyncio.run')
+    def test_handles_no_supabase(self, mock_asyncio_run):
         from shared.ai.usage_tracker import track_ai_usage_sync
-        mock_cost.return_value = Decimal("0.0010")
-        
+        mock_asyncio_run.return_value = Decimal("0.0010")
+
         # Should not raise
         track_ai_usage_sync(
             provider="openai",
@@ -96,12 +115,12 @@ class TestTrackAIUsageSync:
         )
 
     @patch('shared.ai.usage_tracker.supabase')
-    @patch('shared.ai.usage_tracker._estimate_cost')
-    def test_handles_exception(self, mock_cost, mock_supabase):
+    @patch('shared.ai.usage_tracker.asyncio.run')
+    def test_handles_exception(self, mock_asyncio_run, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage_sync
-        mock_cost.return_value = Decimal("0.0010")
+        mock_asyncio_run.return_value = Decimal("0.0010")
         mock_supabase.rpc.side_effect = Exception("DB Error")
-        
+
         # Should not raise
         track_ai_usage_sync(
             provider="openai",
@@ -114,7 +133,7 @@ class TestTrackAIUsageSync:
 class TestTrackAIUsageAsync:
     @pytest.mark.asyncio
     @patch('shared.ai.usage_tracker.supabase')
-    @patch('shared.ai.usage_tracker._estimate_cost')
+    @patch('shared.ai.usage_tracker._estimate_cost', new_callable=AsyncMock)
     async def test_tracks_usage_async(self, mock_cost, mock_supabase):
         from shared.ai.usage_tracker import track_ai_usage
         mock_cost.return_value = Decimal("0.0010")

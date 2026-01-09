@@ -54,9 +54,9 @@ async def track_ai_usage(
     """
     try:
         today = date.today().isoformat()
-        
+
         # 估算成本
-        cost_usd = _estimate_cost(
+        cost_usd = await _estimate_cost(
             provider=provider,
             model=model,
             call_type=call_type,
@@ -114,15 +114,16 @@ def track_ai_usage_sync(
     """
     try:
         today = date.today().isoformat()
-        
-        cost_usd = _estimate_cost(
+
+        # 使用 asyncio.run 来调用异步的 _estimate_cost
+        cost_usd = asyncio.run(_estimate_cost(
             provider=provider,
             model=model,
             call_type=call_type,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             images=images
-        )
+        ))
         
         if supabase:
             supabase.rpc("upsert_ai_usage_daily", {
@@ -143,7 +144,7 @@ def track_ai_usage_sync(
         logger.warning(f"[UsageTracker] Failed to track usage (sync): {e}")
 
 
-def _estimate_cost(
+async def _estimate_cost(
     provider: str,
     model: str,
     call_type: str,
@@ -153,13 +154,13 @@ def _estimate_cost(
 ) -> Decimal:
     """
     估算 API 调用成本
-    
+
     基于配置的成本参考值计算。
     文本模型: 成本 = (input_tokens + output_tokens) / 1M * cost_per_1M
     图像模型: 成本 = images * cost_per_image
     """
-    cost_per_unit = get_model_cost(provider, model)
-    
+    cost_per_unit = await get_model_cost(provider, model)
+
     if call_type == "text":
         # 文本模型: 按 token 计费 (cost 是 per 1M tokens)
         total_tokens = input_tokens + output_tokens
@@ -167,7 +168,7 @@ def _estimate_cost(
     else:
         # 图像模型: 按图像计费
         cost = Decimal(str(cost_per_unit)) * Decimal(str(images))
-    
+
     return cost.quantize(Decimal("0.0001"))
 
 

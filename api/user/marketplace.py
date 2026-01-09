@@ -42,10 +42,15 @@ from application.commands.marketplace import (
     UpdateListingCommand,
     UnpublishListingCommand,
     PurchaseListingCommand,
+    CreateReportCommand,  # v3.0.0
 )
 from application.queries.marketplace import (
     GetListingQuery,
     SearchListingsQuery,
+    GetMyListingsQuery,  # v3.0.0
+    GetSellerStatsQuery,  # v3.0.0
+    GetLeaderboardQuery,  # v3.0.0
+    GetMyReportsQuery,  # v3.0.0
 )
 
 logger = logging.getLogger(__name__)
@@ -454,6 +459,8 @@ async def get_my_listings(
     """
     Get user's own listings (all moderation states).
 
+    v3.0.0: Now uses GetMyListingsHandler (CQRS pattern).
+
     Args:
         page: Page number (1-indexed)
         limit: Items per page
@@ -462,40 +469,30 @@ async def get_my_listings(
     Returns:
         Own listings with moderation info
     """
-    from domains.marketplace.value_objects import ListingStatus
-
     container = get_container()
-    marketplace_service = container.marketplace_service
+    handler = container.get_my_listings_handler
 
-    try:
-        # Convert page to offset
-        offset = (page - 1) * limit
+    # Convert page to offset
+    offset = (page - 1) * limit
 
-        # Parse status filter
-        status_filter = None
-        if status:
-            try:
-                status_filter = ListingStatus(status)
-            except ValueError:
-                pass
+    query = GetMyListingsQuery(
+        seller_id=user["id"],
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
 
-        # M-HIGH-001 fix: Use method that returns total count
-        listings, total_count = await marketplace_service.get_seller_listings_with_count(
-            seller_id=user["id"],
-            status=status_filter,
-            limit=limit,
-            offset=offset,
-        )
+    result = await handler.handle(query)
 
-        return ListingsResponse(
-            items=[l.to_dict() for l in listings],
-            total=total_count,
-            page=page,
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to get my listings: {e}")
+    if not result.success:
+        logger.error(f"Failed to get my listings: {result.error}")
         raise HTTPException(500, "Failed to get listings")
+
+    return ListingsResponse(
+        items=result.listings_list,
+        total=result.total_count,
+        page=page,
+    )
 
 
 @router.get("/seller/stats", response_model=SellerStatsResponse)
@@ -505,25 +502,28 @@ async def get_seller_stats(
     """
     Get seller statistics.
 
+    v3.0.0: Now uses GetSellerStatsHandler (CQRS pattern).
+
     Returns:
         total_earned_credits, listings_count, total_sales, total_usage
     """
     container = get_container()
-    marketplace_service = container.marketplace_service
+    handler = container.get_seller_stats_handler
 
-    try:
-        stats = await marketplace_service.get_seller_stats(user["id"])
+    query = GetSellerStatsQuery(seller_id=user["id"])
 
-        return SellerStatsResponse(
-            total_earned_credits=stats.get("total_earned_credits", 0),
-            listings_count=stats.get("listings_count", 0),
-            total_sales=stats.get("total_sales", 0),
-            total_usage=stats.get("total_usage", 0),
-        )
+    result = await handler.handle(query)
 
-    except Exception as e:
-        logger.error(f"Failed to get seller stats: {e}")
+    if not result.success:
+        logger.error(f"Failed to get seller stats: {result.error}")
         raise HTTPException(500, "Failed to get stats")
+
+    return SellerStatsResponse(
+        total_earned_credits=result.stats.get("total_earned_credits", 0),
+        listings_count=result.stats.get("listings_count", 0),
+        total_sales=result.stats.get("total_sales", 0),
+        total_usage=result.stats.get("total_usage", 0),
+    )
 
 
 # ==========================================

@@ -34,6 +34,7 @@ from domains.platform import (
     IFeatureFlagRepository,
     IExperimentRepository,
 )
+from domains.support import SupportService  # v3.0.0
 
 # Application - Command Handlers
 from application.commands.billing import (
@@ -57,6 +58,7 @@ from application.commands.marketplace import (
     UpdateListingHandler,
     UnpublishListingHandler,
     PurchaseListingHandler,
+    CreateReportHandler,  # v3.0.0
 )
 from application.commands.platform import (
     CreateFeatureFlagHandler,
@@ -77,6 +79,10 @@ from application.queries.creation import (
 from application.queries.marketplace import (
     GetListingHandler,
     SearchListingsHandler,
+    GetMyListingsHandler,  # v3.0.0
+    GetSellerStatsHandler,  # v3.0.0
+    GetLeaderboardHandler,  # v3.0.0
+    GetMyReportsHandler,  # v3.0.0
 )
 from application.queries.platform import (
     EvaluateFeatureFlagHandler,
@@ -202,6 +208,14 @@ class Container:
             )
         return self._services['platform']
 
+    @property
+    def support_service(self) -> SupportService:
+        """Get support service instance (v3.0.0)."""
+        from core.database import get_database_client
+        if 'support' not in self._services:
+            self._services['support'] = SupportService(get_database_client())
+        return self._services['support']
+
     # ========== Command Handlers ==========
 
     @property
@@ -319,6 +333,13 @@ class Container:
             self._handlers['create_experiment'] = CreateExperimentHandler(self.platform_service)
         return self._handlers['create_experiment']
 
+    @property
+    def create_report_handler(self) -> CreateReportHandler:
+        """Get create report handler (v3.0.0)."""
+        if 'create_report' not in self._handlers:
+            self._handlers['create_report'] = CreateReportHandler(self.support_service)
+        return self._handlers['create_report']
+
     # ========== Query Handlers ==========
 
     @property
@@ -390,6 +411,34 @@ class Container:
         if 'get_experiment_variant' not in self._handlers:
             self._handlers['get_experiment_variant'] = GetExperimentVariantHandler(self.platform_service)
         return self._handlers['get_experiment_variant']
+
+    @property
+    def get_my_listings_handler(self) -> GetMyListingsHandler:
+        """Get my listings query handler (v3.0.0)."""
+        if 'get_my_listings' not in self._handlers:
+            self._handlers['get_my_listings'] = GetMyListingsHandler(self.marketplace_service)
+        return self._handlers['get_my_listings']
+
+    @property
+    def get_seller_stats_handler(self) -> GetSellerStatsHandler:
+        """Get seller stats query handler (v3.0.0)."""
+        if 'get_seller_stats' not in self._handlers:
+            self._handlers['get_seller_stats'] = GetSellerStatsHandler(self.marketplace_service)
+        return self._handlers['get_seller_stats']
+
+    @property
+    def get_leaderboard_handler(self) -> GetLeaderboardHandler:
+        """Get leaderboard query handler (v3.0.0)."""
+        if 'get_leaderboard' not in self._handlers:
+            self._handlers['get_leaderboard'] = GetLeaderboardHandler(self.marketplace_service)
+        return self._handlers['get_leaderboard']
+
+    @property
+    def get_my_reports_handler(self) -> GetMyReportsHandler:
+        """Get my reports query handler (v3.0.0)."""
+        if 'get_my_reports' not in self._handlers:
+            self._handlers['get_my_reports'] = GetMyReportsHandler(self.support_service)
+        return self._handlers['get_my_reports']
 
     # ========== Utility Methods ==========
 

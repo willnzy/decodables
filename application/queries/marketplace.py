@@ -266,3 +266,212 @@ class GetUserPurchasesHandler:
                 success=False,
                 error=str(e),
             )
+
+
+# ==========================================
+# v3.0.0: New Queries for Architecture Consistency
+# ==========================================
+
+@dataclass
+class GetMyListingsQuery:
+    """Query to get seller's own listings."""
+    seller_id: str
+    status: Optional[str] = None  # Filter by status
+    limit: int = 20
+    offset: int = 0
+
+
+@dataclass
+class GetMyListingsResult:
+    """Result of my listings query."""
+    success: bool
+    listings: List[Listing] = None
+    listings_list: List[Dict[str, Any]] = None
+    total_count: int = 0
+    error: Optional[str] = None
+
+    def __post_init__(self):
+        if self.listings is None:
+            self.listings = []
+        if self.listings_list is None:
+            self.listings_list = []
+
+
+class GetMyListingsHandler:
+    """Handler for GetMyListingsQuery."""
+
+    def __init__(self, marketplace_service: MarketplaceService):
+        self._marketplace_service = marketplace_service
+
+    async def handle(self, query: GetMyListingsQuery) -> GetMyListingsResult:
+        """Execute my listings query with count."""
+        from domains.marketplace.value_objects import ListingStatus
+
+        try:
+            # Parse status filter
+            status_filter = None
+            if query.status:
+                try:
+                    status_filter = ListingStatus(query.status)
+                except ValueError:
+                    pass  # Invalid status, ignore filter
+
+            # Get listings with total count
+            listings, total_count = await self._marketplace_service.get_seller_listings_with_count(
+                seller_id=query.seller_id,
+                status=status_filter,
+                limit=query.limit,
+                offset=query.offset,
+            )
+
+            return GetMyListingsResult(
+                success=True,
+                listings=listings,
+                listings_list=[l.to_dict() for l in listings],
+                total_count=total_count,
+            )
+
+        except Exception as e:
+            return GetMyListingsResult(
+                success=False,
+                error=str(e),
+            )
+
+
+@dataclass
+class GetSellerStatsQuery:
+    """Query to get seller statistics."""
+    seller_id: str
+
+
+@dataclass
+class GetSellerStatsResult:
+    """Result of seller stats query."""
+    success: bool
+    stats: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class GetSellerStatsHandler:
+    """Handler for GetSellerStatsQuery."""
+
+    def __init__(self, marketplace_service: MarketplaceService):
+        self._marketplace_service = marketplace_service
+
+    async def handle(self, query: GetSellerStatsQuery) -> GetSellerStatsResult:
+        """Execute seller stats query."""
+        try:
+            stats = await self._marketplace_service.get_seller_stats(query.seller_id)
+
+            return GetSellerStatsResult(
+                success=True,
+                stats=stats,
+            )
+
+        except Exception as e:
+            return GetSellerStatsResult(
+                success=False,
+                error=str(e),
+            )
+
+
+@dataclass
+class GetLeaderboardQuery:
+    """Query to get marketplace leaderboard."""
+    period: str = "monthly"  # "monthly" or "all_time"
+    board_type: str = "all"  # "all", "project", or "asset"
+    limit: int = 10
+
+
+@dataclass
+class GetLeaderboardResult:
+    """Result of leaderboard query."""
+    success: bool
+    items: List[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+    def __post_init__(self):
+        if self.items is None:
+            self.items = []
+
+
+class GetLeaderboardHandler:
+    """Handler for GetLeaderboardQuery."""
+
+    def __init__(self, marketplace_service: MarketplaceService):
+        self._marketplace_service = marketplace_service
+
+    async def handle(self, query: GetLeaderboardQuery) -> GetLeaderboardResult:
+        """Execute leaderboard query."""
+        try:
+            items = await self._marketplace_service.get_leaderboard(
+                period=query.period,
+                board_type=query.board_type,
+                limit=query.limit,
+            )
+
+            return GetLeaderboardResult(
+                success=True,
+                items=items,
+            )
+
+        except Exception as e:
+            return GetLeaderboardResult(
+                success=False,
+                error=str(e),
+            )
+
+
+@dataclass
+class GetMyReportsQuery:
+    """Query to get user's reports."""
+    user_id: str
+    page: int = 1
+    limit: int = 20
+
+
+@dataclass
+class GetMyReportsResult:
+    """Result of my reports query."""
+    success: bool
+    items: List[Dict[str, Any]] = None
+    total_count: int = 0
+    error: Optional[str] = None
+
+    def __post_init__(self):
+        if self.items is None:
+            self.items = []
+
+
+class GetMyReportsHandler:
+    """Handler for GetMyReportsQuery."""
+
+    def __init__(self, support_service):
+        """
+        Initialize handler with SupportService.
+
+        Args:
+            support_service: SupportService instance
+        """
+        self._support_service = support_service
+
+    async def handle(self, query: GetMyReportsQuery) -> GetMyReportsResult:
+        """Execute my reports query."""
+        try:
+            reports, total_count = await self._support_service.get_user_reports(
+                user_id=query.user_id,
+                page=query.page,
+                limit=query.limit,
+            )
+
+            return GetMyReportsResult(
+                success=True,
+                items=reports,
+                total_count=total_count,
+            )
+
+        except Exception as e:
+            return GetMyReportsResult(
+                success=False,
+                error=str(e),
+            )

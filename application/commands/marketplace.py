@@ -531,3 +531,72 @@ class UnpublishListingHandler:
                 success=False,
                 error=str(e),
             )
+
+
+# ==========================================
+# v3.0.0: Support-related Commands
+# ==========================================
+
+@dataclass
+class CreateReportCommand:
+    """Command to create a marketplace content report."""
+    user_id: str
+    listing_id: str
+    reason: str
+
+
+@dataclass
+class CreateReportResult:
+    """Result of report creation."""
+    success: bool
+    report_id: Optional[str] = None
+    message: str = ""
+    error: Optional[str] = None
+
+
+class CreateReportHandler:
+    """Handler for CreateReportCommand."""
+
+    def __init__(self, support_service):
+        """
+        Initialize handler with SupportService.
+
+        Args:
+            support_service: SupportService instance
+        """
+        self._support_service = support_service
+
+    async def handle(self, command: CreateReportCommand) -> CreateReportResult:
+        """Execute report creation."""
+        from domains.support import ReportAlreadyExistsException
+
+        try:
+            report = await self._support_service.create_report(
+                user_id=command.user_id,
+                listing_id=command.listing_id,
+                reason=command.reason,
+            )
+
+            if report:
+                return CreateReportResult(
+                    success=True,
+                    report_id=report.get("id"),
+                    message="Report submitted successfully",
+                )
+
+            return CreateReportResult(
+                success=False,
+                error="Failed to submit report",
+            )
+
+        except ReportAlreadyExistsException as e:
+            return CreateReportResult(
+                success=False,
+                error=str(e),
+            )
+        except Exception as e:
+            # Don't expose internal error details
+            return CreateReportResult(
+                success=False,
+                error="Failed to submit report",
+            )

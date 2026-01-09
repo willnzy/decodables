@@ -18,6 +18,26 @@ from shared.ai.base import AIResponse, AIUsage, AIErrorType
 
 
 # ==========================================
+# Fixtures
+# ==========================================
+
+@pytest.fixture(autouse=True)
+def mock_config_service():
+    """
+    Automatically mock _get_config_service to prevent ConfigRepository instantiation.
+    This fixture is autouse=True so it applies to all tests in this file.
+    """
+    with patch('shared.ai.model_config._get_config_service') as mock_model_service, \
+         patch('shared.ai.canary._get_config_service') as mock_canary_service:
+        mock_service = MagicMock()
+        # Mock get_config as AsyncMock since it's called with await
+        mock_service.get_config = AsyncMock(return_value=None)
+        mock_model_service.return_value = mock_service
+        mock_canary_service.return_value = mock_service
+        yield mock_service
+
+
+# ==========================================
 # UnifiedTextService Tests
 # ==========================================
 
@@ -31,12 +51,12 @@ class TestUnifiedTextService:
     @patch('shared.ai.unified_text_service.track_ai_usage')
     @patch('shared.ai.unified_text_service.get_cached_result')
     async def test_successful_chat(
-        self, mock_cache_get, mock_track, mock_get_adapter, 
+        self, mock_cache_get, mock_track, mock_get_adapter,
         mock_is_enabled, mock_get_config
     ):
         """成功的聊天请求"""
         from shared.ai.unified_text_service import unified_text_service
-        
+
         # Setup mocks
         mock_get_config.return_value = {
             "provider": "openai",
@@ -45,7 +65,7 @@ class TestUnifiedTextService:
         }
         mock_is_enabled.return_value = True
         mock_cache_get.return_value = None  # 无缓存
-        
+
         # Mock adapter
         mock_adapter = MagicMock()
         mock_adapter.chat_completion = AsyncMock(return_value=AIResponse(
@@ -58,14 +78,14 @@ class TestUnifiedTextService:
         ))
         mock_get_adapter.return_value = mock_adapter
         mock_track.return_value = None
-        
+
         # Execute
         response = await unified_text_service.chat(
             messages=[{"role": "user", "content": "Hello"}],
             user_id="user_123",
             tier="free"
         )
-        
+
         # Assert
         assert response.success is True
         assert "Hello" in response.content or "AI" in response.content
