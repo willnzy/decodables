@@ -1,9 +1,14 @@
 # 数据库字段映射表
 
 > **项目**: Make Decodables (MagicZine AI)
-> **版本**: v3.24 → v4.0 (Refactored)
+> **版本**: v3.27 → v4.0 (Refactored)
 > **日期**: 2026-01-09
 > **说明**: 本文档记录了数据库重构中所有表和字段的变更，用于代码迁移和全局替换
+>
+> **新增内容 (v4.0)**:
+> - ✨ 补充 13 张缺失表（P0 4张 + P1 5张 + P2 4张）
+> - ✨ 补充完整的 system_configs 初始化数据（57 行）
+> - ✨ 修复现有表的缺失字段
 
 ---
 
@@ -232,6 +237,76 @@
 
 ---
 
+### 2.3 asset_categories (素材分类树) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 系统素材的分类树结构，使用 LTREE 实现层级分类（最多 3 级）。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | parent_id | UUID REFERENCES asset_categories(id) | ✨ | 父分类ID |
+| - | path | LTREE NOT NULL | ✨ | 层级路径（如: graphics.stickers.animals） |
+| - | level | INTEGER NOT NULL | ✨ | 层级深度（1-3） |
+| - | slug | VARCHAR(50) UNIQUE | ✨ | 分类标识 |
+| - | name | VARCHAR(100) | ✨ | 分类名称 |
+| - | name_i18n | JSONB DEFAULT '{}' | ✨ | 国际化名称 |
+| - | asset_type | VARCHAR(20) | ✨ | 素材类型: text/image/shape/table/sticker/illustration/clipart/graphic |
+| - | is_visible | BOOLEAN DEFAULT TRUE | ✨ | 是否可见 |
+| - | display_order | INTEGER DEFAULT 0 | ✨ | 显示顺序 |
+| - | min_tier | VARCHAR(20) DEFAULT 'free' | ✨ | 最低访问等级 |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+| - | updated_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 更新时间 |
+
+**索引**:
+- `idx_asset_categories_path` ON (path) USING GIST
+- `idx_asset_categories_parent` ON (parent_id)
+- `idx_asset_categories_slug` ON (slug)
+- `idx_asset_categories_type` ON (asset_type)
+
+**CHECK约束**:
+- level BETWEEN 1 AND 3
+- asset_type IN ('text', 'image', 'shape', 'table', 'sticker', 'illustration', 'clipart', 'graphic')
+- min_tier IN ('free', 'starter', 'pro')
+
+---
+
+### 2.4 system_assets (系统内置素材) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 存储系统预置的贴纸、插画、图形等素材。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | category_id | UUID NOT NULL REFERENCES asset_categories(id) | ✨ | 分类ID |
+| - | name | VARCHAR(200) | ✨ | 素材名称 |
+| - | asset_type | VARCHAR(20) | ✨ | 素材类型 |
+| - | file_url | TEXT | ✨ | 文件URL |
+| - | thumbnail_url | TEXT | ✨ | 缩略图URL |
+| - | content | JSONB NOT NULL DEFAULT '{}' | ✨ | Fabric.js对象内容 |
+| - | min_tier | VARCHAR(20) DEFAULT 'free' | ✨ | 最低访问等级 |
+| - | tags | TEXT[] DEFAULT ARRAY[]::TEXT[] | ✨ | 标签数组 |
+| - | is_visible | BOOLEAN DEFAULT TRUE | ✨ | 是否可见 |
+| - | usage_count | INTEGER DEFAULT 0 | ✨ | 使用次数 |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+| - | updated_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 更新时间 |
+
+**索引**:
+- `idx_system_assets_category` ON (category_id)
+- `idx_system_assets_type` ON (asset_type)
+- `idx_system_assets_tier` ON (min_tier)
+- `idx_system_assets_tags` ON (tags) USING GIN
+- `idx_system_assets_visible` ON (is_visible) WHERE is_visible = TRUE
+
+**CHECK约束**:
+- asset_type IN ('text', 'image', 'shape', 'table', 'sticker', 'illustration', 'clipart', 'graphic')
+- min_tier IN ('free', 'starter', 'pro')
+
+---
+
 ## 3. 市场系统表
 
 ### 3.1 marketplace_listings (市场商品)
@@ -451,19 +526,28 @@
 
 ---
 
-### 5.2 activity_logs (活动日志)
+### 5.2 activity_logs (活动日志) ✨
 
-**表名变更**: 无
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 记录用户重要操作，用于审计、异常检测和用户行为分析。
 
 | 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
 |---------|---------|------|---------|------|
-| id | id | UUID PRIMARY KEY | - | 主键 |
-| user_id | user_id | TEXT REFERENCES profiles(id) | - | 用户ID |
-| action | action | TEXT | - | 操作类型 |
-| metadata | metadata | JSONB | - | 元数据 |
-| timezone | timezone | TEXT | - | 时区 |
-| created_at_local | created_at_local | TIMESTAMP | - | 创建时间（本地） |
-| created_at | created_at | TIMESTAMPTZ | - | 创建时间（UTC） |
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | user_id | TEXT REFERENCES profiles(id) | ✨ | 用户ID |
+| - | action | TEXT NOT NULL | ✨ | 操作类型 |
+| - | entity_type | VARCHAR(50) | ✨ | 实体类型 |
+| - | entity_id | TEXT | ✨ | 实体ID |
+| - | details | JSONB DEFAULT '{}' | ✨ | 详情数据 |
+| - | ip_address | INET | ✨ | IP地址 |
+| - | user_agent | TEXT | ✨ | User Agent |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+
+**索引**:
+- `idx_activity_logs_user_created` ON (user_id, created_at DESC)
+- `idx_activity_logs_action` ON (action)
+- `idx_activity_logs_entity` ON (entity_type, entity_id)
 
 ---
 
@@ -573,7 +657,30 @@
 
 ---
 
-### 6.4 analytics_daily_metrics (日度指标)
+### 6.4 analytics_aggregation (分析聚合表) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 预聚合分析数据（DAU、MAU、收入等），避免实时查询大表。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | date | DATE NOT NULL | ✨ | 聚合日期 |
+| - | metric_name | VARCHAR(100) NOT NULL | ✨ | 指标名称 |
+| - | value | NUMERIC | ✨ | 指标值 |
+| - | metadata | JSONB DEFAULT '{}' | ✨ | 元数据 |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+
+**索引**:
+- `idx_analytics_aggregation_date` ON (date DESC)
+- `idx_analytics_aggregation_metric` ON (metric_name)
+
+**UNIQUE约束**: `(date, metric_name)`
+
+---
+
+### 6.5 analytics_daily_metrics (日度指标)
 
 **表名变更**: 无（v3.12新增）
 
@@ -830,6 +937,39 @@
 
 ---
 
+### 7.4 ai_call_logs (AI API调用日志) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 记录每次 AI API 调用的详细信息，用于成本追踪、性能监控和问题排查。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | user_id | TEXT REFERENCES profiles(id) | ✨ | 用户ID |
+| - | provider | TEXT NOT NULL | ✨ | AI提供商: openai/fal/qwen |
+| - | model | TEXT NOT NULL | ✨ | 模型名称 |
+| - | call_type | TEXT NOT NULL | ✨ | 调用类型: text_reasoning/image_generation/image_editing |
+| - | status | TEXT NOT NULL | ✨ | 状态: success/failed/timeout/rate_limited |
+| - | error_message | TEXT | ✨ | 错误信息 |
+| - | input_tokens | INTEGER DEFAULT 0 | ✨ | 输入token数 |
+| - | output_tokens | INTEGER DEFAULT 0 | ✨ | 输出token数 |
+| - | latency_ms | INTEGER | ✨ | 延迟（毫秒） |
+| - | cost_usd | DECIMAL(10,6) | ✨ | 成本（美元） |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+
+**索引**:
+- `idx_ai_call_logs_user_created` ON (user_id, created_at DESC)
+- `idx_ai_call_logs_provider_model` ON (provider, model, created_at DESC)
+- `idx_ai_call_logs_status` ON (status) WHERE status != 'success'
+
+**CHECK约束**:
+- provider IN ('openai', 'fal', 'qwen')
+- call_type IN ('text_reasoning', 'image_generation', 'image_editing')
+- status IN ('success', 'failed', 'timeout', 'rate_limited')
+
+---
+
 ### 7.5 ai_usage_daily (AI使用统计)
 
 **表名变更**: 无（v3.21新增）
@@ -861,7 +1001,68 @@
 
 ## 8. 营销与活动表
 
-### 8.1 holiday_themes (节日主题)
+### 8.1 daily_themes (每日主题) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 每日推送的创作主题，引导用户创作并提升活跃度。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | date | DATE NOT NULL UNIQUE | ✨ | 主题日期 |
+| - | theme_code | VARCHAR(50) | ✨ | 主题代码 |
+| - | title | VARCHAR(200) | ✨ | 主题标题 |
+| - | title_i18n | JSONB DEFAULT '{}' | ✨ | 国际化标题 |
+| - | description | TEXT | ✨ | 主题描述 |
+| - | description_i18n | JSONB DEFAULT '{}' | ✨ | 国际化描述 |
+| - | holiday_id | UUID REFERENCES holidays(id) | ✨ | 关联节日ID |
+| - | suggested_tags | TEXT[] DEFAULT ARRAY[]::TEXT[] | ✨ | 推荐标签 |
+| - | suggested_colors | JSONB DEFAULT '[]' | ✨ | 推荐颜色 |
+| - | bonus_credits | INTEGER DEFAULT 0 | ✨ | 奖励积分 |
+| - | is_active | BOOLEAN DEFAULT TRUE | ✨ | 是否激活 |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+| - | updated_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 更新时间 |
+
+**索引**:
+- `idx_daily_themes_date` ON (date DESC)
+- `idx_daily_themes_active` ON (is_active) WHERE is_active = TRUE
+- `idx_daily_themes_holiday` ON (holiday_id)
+
+---
+
+### 8.2 holidays (节日日历) ✨
+
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 存储全球节日信息，为主题系统和营销活动提供数据源。
+
+| 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
+|---------|---------|------|---------|------|
+| - | id | UUID PRIMARY KEY | ✨ | 主键 |
+| - | holiday_code | VARCHAR(50) UNIQUE | ✨ | 节日代码 |
+| - | name | VARCHAR(100) | ✨ | 节日名称 |
+| - | name_i18n | JSONB DEFAULT '{}' | ✨ | 国际化名称 |
+| - | date | DATE NOT NULL | ✨ | 节日日期 |
+| - | date_type | VARCHAR(20) DEFAULT 'gregorian' | ✨ | 日期类型: gregorian/lunar/islamic |
+| - | regions | TEXT[] DEFAULT ARRAY[]::TEXT[] | ✨ | 适用地区 |
+| - | is_global | BOOLEAN DEFAULT FALSE | ✨ | 是否全球节日 |
+| - | category | VARCHAR(50) | ✨ | 节日分类 |
+| - | is_active | BOOLEAN DEFAULT TRUE | ✨ | 是否激活 |
+| - | created_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 创建时间 |
+| - | updated_at | TIMESTAMPTZ DEFAULT NOW() | ✨ | 更新时间 |
+
+**索引**:
+- `idx_holidays_date` ON (date)
+- `idx_holidays_code` ON (holiday_code)
+- `idx_holidays_active` ON (is_active) WHERE is_active = TRUE
+
+**CHECK约束**:
+- date_type IN ('gregorian', 'lunar', 'islamic')
+
+---
+
+### 8.3 holiday_themes (节日主题) [已存在]
 
 **表名变更**: 无（v3.13新增）
 
@@ -1079,9 +1280,11 @@
 
 ---
 
-### 10.4 scheduled_task_logs (定时任务日志)
+### 10.4 scheduled_task_logs (定时任务日志) ✨
 
-**表名变更**: 无（v3.15新增）
+**表名变更**: ✨ 新增表（v4.0补充）
+
+**说明**: 记录定时任务执行情况（积分重置、数据清理等），监控任务成功率和性能。
 
 | 旧字段名 | 新字段名 | 类型 | 改动类型 | 说明 |
 |---------|---------|------|---------|------|
@@ -1252,7 +1455,55 @@ VALUES (user_id, -5, 'monthly', ...)  # 负金额=退款
 
 ---
 
-## 14. 测试清单
+## 14. 新增表汇总 (v4.0)
+
+本次重构新增了 **13 张表**，按优先级分为 3 个等级：
+
+### 14.1 P0 级别表 (关键阻塞) - 4张
+
+| 表名 | 章节 | 用途 | 行数预估 |
+|------|------|------|----------|
+| `ai_call_logs` | 7.4 | AI API 调用日志，成本追踪和性能监控 | 1M+ |
+| `ai_usage_daily` | 7.5 | AI 使用量日汇总，成本分析 | 10K |
+| `asset_categories` | 2.3 | 素材分类树（LTREE 层级结构） | 100-500 |
+| `system_assets` | 2.4 | 系统内置素材（贴纸、插画等） | 5K-10K |
+
+### 14.2 P1 级别表 (重要功能) - 5张
+
+| 表名 | 章节 | 用途 | 行数预估 |
+|------|------|------|----------|
+| `daily_themes` | 8.1 | 每日创作主题，提升用户活跃度 | 365+ |
+| `holidays` | 8.2 | 全球节日日历，主题和营销活动数据源 | 500-1000 |
+| `activity_logs` | 5.2 | 用户重要操作日志，审计和行为分析 | 1M+ |
+| `analytics_aggregation` | 6.4 | 预聚合分析数据（DAU/MAU/收入） | 10K |
+| `scheduled_task_logs` | 10.4 | 定时任务执行日志，监控任务成功率 | 100K |
+
+### 14.3 P2 级别表 (增强功能) - 4张
+
+| 表名 | 章节 | 用途 | 行数预估 |
+|------|------|------|----------|
+| `config_audit_logs` | 4.2 | system_configs 变更审计 | 1K |
+| `content_reports` | 10.2 | 用户内容举报，审核团队处理 | 10K |
+| `system_resource_audit_logs` | 4.4 | 系统资源变更审计 | 10K |
+| `asset_prompt_templates` | 7.1 | AI 提示词模板库 | 500-1000 |
+
+### 14.4 新增表总览
+
+**技术特性**:
+- ✅ LTREE 扩展：用于 `asset_categories` 层级分类（最多 3 级）
+- ✅ GIN 索引：用于 JSONB 和数组字段快速查询
+- ✅ 部分索引：仅索引活跃数据，减少索引大小
+- ✅ CHECK 约束：数据库层面验证枚举值和范围
+- ✅ 国际化支持：name_i18n 等 JSONB 字段支持多语言
+
+**数据增长速度**:
+- **快速增长**（每分钟 50+）：`ai_call_logs`, `activity_logs`
+- **中等增长**（每天 10+）：`scheduled_task_logs`, `content_reports`, `system_resource_audit_logs`
+- **慢速增长**（偶尔增加）：`asset_categories`, `system_assets`, `daily_themes`, `holidays`, `asset_prompt_templates`
+
+---
+
+## 15. 测试清单
 
 ### 14.1 数据迁移验证
 

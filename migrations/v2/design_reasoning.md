@@ -1,7 +1,7 @@
 # 数据库重构设计说明
 
 > **项目**: Make Decodables (MagicZine AI)
-> **版本**: v3.24 → v4.0 (Refactored)
+> **版本**: v3.27 → v4.0 (Refactored)
 > **日期**: 2026-01-09
 > **架构师**: Claude Sonnet 4.5
 
@@ -11,21 +11,22 @@
 
 ### 1.1 重构目标
 
-本次重构旨在将 Make Decodables 数据库从 v3.24 版本升级到符合**行业最佳实践**的 v4.0 版本，主要目标：
+本次重构旨在将 Make Decodables 数据库从 v3.27 版本升级到符合**行业最佳实践**的 v4.0 版本，主要目标：
 
 1. **标准化命名和结构**：统一字段命名、标准审计字段、一致的索引策略
-2. **保持核心业务规则**：双ID系统、积分扣费顺序、幂等性设计
-3. **性能优化**：优化索引、合理冗余字段
-4. **可扩展性**：预留JSONB扩展字段
-5. **可追溯性**：完整的字段映射和COMMENT注释
+2. **补充缺失内容**：补充 13 张缺失表 + 完整的 system_configs 初始化数据
+3. **保持核心业务规则**：双ID系统、积分扣费顺序、幂等性设计
+4. **性能优化**：优化索引、合理冗余字段
+5. **可扩展性**：预留JSONB扩展字段
+6. **可追溯性**：完整的字段映射和COMMENT注释
 
 ### 1.2 重构范围
 
-- **38张核心表**：完整重构
-- **5个视图** + **3个物化视图**：保留并优化
-- **25+个函数**：保持不变（已符合规范）
-- **11+个触发器**：保持不变
-- **60+个RLS策略**：保持不变
+- **42张核心表**：完整重构（29张原有表 + 13张新增表）
+- **128个索引**：单列索引、复合索引、部分索引、GIN/GIST索引
+- **23个触发器**：updated_at 自动更新、软删除时间戳、业务规则触发器
+- **7个核心函数**：积分扣除、任务清理、视图刷新等
+- **57行 system_configs 初始化数据**：Rate Limits、AI Providers、Feature Flags等
 
 ### 1.3 不改变的核心规则
 
@@ -736,7 +737,683 @@ CREATE TABLE marketplace_listings (
 
 ---
 
-## 8. 索引策略总结
+## 8. 新增表设计说明
+
+### 8.1 新增表概览
+
+本次重构补充了 **13 张缺失表**，按优先级分为 3 个等级：
+
+| 优先级 | 表数量 | 用途 |
+|--------|--------|------|
+| **P0** (关键阻塞) | 4张 | AI成本追踪、素材分类系统 |
+| **P1** (重要功能) | 5张 | 主题系统、审计日志、分析聚合 |
+| **P2** (增强功能) | 4张 | 配置审计、内容举报、资源审计、AI提示模板 |
+
+### 8.2 P0 级别表 (关键阻塞)
+
+#### 8.2.1 ai_call_logs (AI API 调用日志)
+
+**业务背景**：
+- 每次 AI 生成（图片/文字）都需要记录调用详情
+- 用于成本分析、性能监控、问题排查
+
+**字段设计**：
+
+```sql
+CREATE TABLE ai_call_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT REFERENCES profiles(id),
+
+    -- 调用信息
+    provider TEXT NOT NULL CHECK (provider IN ('openai', 'fal', 'qwen')),
+    model TEXT NOT NULL,
+    call_type TEXT NOT NULL CHECK (call_type IN ('text_reasoning', 'image_generation', 'image_editing')),
+
+    -- 结果状态
+    status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'timeout', 'rate_limited')),
+    error_message TEXT,
+
+    -- Token 统计
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+
+    -- 性能指标
+    latency_ms INTEGER,
+    cost_usd DECIMAL(10, 6),
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引优化
+CREATE INDEX idx_ai_call_logs_user_created ON ai_call_logs(user_id, created_at DESC);
+CREATE INDEX idx_ai_call_logs_provider_model ON ai_call_logs(provider, model, created_at DESC);
+CREATE INDEX idx_ai_call_logs_status ON ai_call_logs(status) WHERE status != 'success';
+```
+
+**为什么重要**：
+- ✅ 成本追踪：监控每个Provider的API成本
+- ✅ 性能监控：识别慢调用和超时
+- ✅ 问题排查：失败调用的错误信息
+- ✅ 容量规划：预测未来API使用量
+
+#### 8.2.2 ai_usage_daily (AI 使用量日汇总)
+
+**业务背景**：
+- 每日聚合 AI 调用数据
+- 生成成本报告和趋势分析
+
+**字段设计**：
+
+```sql
+CREATE TABLE ai_usage_daily (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    date DATE NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+
+    -- 聚合统计
+    total_calls INTEGER DEFAULT 0,
+    successful_calls INTEGER DEFAULT 0,
+    failed_calls INTEGER DEFAULT 0,
+
+    -- Token 统计
+    total_input_tokens BIGINT DEFAULT 0,
+    total_output_tokens BIGINT DEFAULT 0,
+
+    -- 性能统计
+    avg_latency_ms INTEGER DEFAULT 0,
+    estimated_cost_usd DECIMAL(10, 4) DEFAULT 0,
+
+    -- 错误统计
+    error_counts JSONB DEFAULT '{}',
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, provider, model, call_type)
+);
+
+-- 索引优化
+CREATE INDEX idx_ai_usage_daily_date ON ai_usage_daily(date DESC);
+CREATE INDEX idx_ai_usage_daily_provider ON ai_usage_daily(provider, date DESC);
+```
+
+**为什么重要**：
+- ✅ 成本分析：每日/每月/每年成本趋势
+- ✅ 容量规划：预测未来API配额需求
+- ✅ Provider对比：OpenAI vs FAL 成本/性能对比
+- ✅ 异常检测：失败率突然升高时告警
+
+#### 8.2.3 asset_categories (素材分类树)
+
+**业务背景**：
+- 系统内置素材需要分类管理（贴纸、插画、图形等）
+- 使用 LTREE 实现层级分类（最多 3 级）
+
+**字段设计**：
+
+```sql
+CREATE TABLE asset_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parent_id UUID REFERENCES asset_categories(id) ON DELETE CASCADE,
+
+    -- LTREE 路径 (核心字段)
+    path LTREE NOT NULL,
+    level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 3),
+
+    -- 分类信息
+    slug VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    name_i18n JSONB DEFAULT '{}',
+
+    -- 资产类型
+    asset_type VARCHAR(20) NOT NULL CHECK (asset_type IN ('text', 'image', 'shape', 'table', 'sticker', 'illustration', 'clipart', 'graphic')),
+
+    -- 可见性控制
+    is_visible BOOLEAN DEFAULT TRUE,
+    display_order INTEGER DEFAULT 0,
+    min_tier VARCHAR(20) DEFAULT 'free',
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- LTREE 索引 (关键性能)
+CREATE INDEX idx_asset_categories_path ON asset_categories USING GIST (path);
+CREATE INDEX idx_asset_categories_parent ON asset_categories(parent_id);
+CREATE INDEX idx_asset_categories_slug ON asset_categories(slug);
+```
+
+**LTREE 路径示例**：
+
+```
+graphics                       -- Level 1
+graphics.stickers              -- Level 2
+graphics.stickers.animals      -- Level 3
+graphics.stickers.holidays     -- Level 3
+graphics.illustrations         -- Level 2
+graphics.illustrations.nature  -- Level 3
+```
+
+**查询示例**：
+
+```sql
+-- 查询所有图形类素材 (包含子分类)
+SELECT * FROM asset_categories
+WHERE path <@ 'graphics'::ltree;
+
+-- 查询直接子分类
+SELECT * FROM asset_categories
+WHERE parent_id = (SELECT id FROM asset_categories WHERE slug = 'graphics');
+
+-- 查询所有贴纸子类
+SELECT * FROM asset_categories
+WHERE path ~ 'graphics.stickers.*'::lquery;
+```
+
+**为什么重要**：
+- ✅ 灵活分类：支持 3 级层级
+- ✅ 高效查询：LTREE 索引查询子树性能优秀
+- ✅ 国际化：name_i18n 支持多语言
+- ✅ 权限控制：min_tier 控制不同等级用户访问
+
+#### 8.2.4 system_assets (系统内置素材)
+
+**业务背景**：
+- 存储系统预置的贴纸、插画、图形等
+- 关联到 asset_categories 分类树
+
+**字段设计**：
+
+```sql
+CREATE TABLE system_assets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id UUID NOT NULL REFERENCES asset_categories(id),
+
+    -- 素材信息
+    name VARCHAR(200) NOT NULL,
+    asset_type VARCHAR(20) NOT NULL CHECK (asset_type IN ('text', 'image', 'shape', 'table', 'sticker', 'illustration', 'clipart', 'graphic')),
+
+    -- 文件信息
+    file_url TEXT,
+    thumbnail_url TEXT,
+
+    -- 素材内容 (Fabric.js 对象)
+    content JSONB NOT NULL DEFAULT '{}',
+
+    -- 访问控制
+    min_tier VARCHAR(20) DEFAULT 'free' CHECK (min_tier IN ('free', 'starter', 'pro')),
+
+    -- 标签和搜索
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 可见性
+    is_visible BOOLEAN DEFAULT TRUE,
+
+    -- 使用统计
+    usage_count INTEGER DEFAULT 0,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引优化
+CREATE INDEX idx_system_assets_category ON system_assets(category_id);
+CREATE INDEX idx_system_assets_type ON system_assets(asset_type);
+CREATE INDEX idx_system_assets_tier ON system_assets(min_tier);
+CREATE INDEX idx_system_assets_tags ON system_assets USING GIN (tags);
+CREATE INDEX idx_system_assets_visible ON system_assets(is_visible) WHERE is_visible = TRUE;
+```
+
+**为什么重要**：
+- ✅ 系统素材库：预置高质量贴纸/插画
+- ✅ 分类管理：通过 category_id 关联分类树
+- ✅ 权限控制：min_tier 控制会员专属素材
+- ✅ 全文搜索：tags 数组支持 GIN 索引快速搜索
+
+### 8.3 P1 级别表 (重要功能)
+
+#### 8.3.1 daily_themes (每日主题)
+
+**业务背景**：
+- 每日推送一个创作主题（如"圣诞节"、"母亲节"）
+- 引导用户创作，提升活跃度
+
+**字段设计**：
+
+```sql
+CREATE TABLE daily_themes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    date DATE NOT NULL UNIQUE,
+
+    -- 主题信息
+    theme_code VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    title_i18n JSONB DEFAULT '{}',
+    description TEXT,
+    description_i18n JSONB DEFAULT '{}',
+
+    -- 关联节日
+    holiday_id UUID REFERENCES holidays(id),
+
+    -- 推荐内容
+    suggested_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+    suggested_colors JSONB DEFAULT '[]',
+
+    -- 激励措施
+    bonus_credits INTEGER DEFAULT 0,
+
+    -- 可见性
+    is_active BOOLEAN DEFAULT TRUE,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_daily_themes_date ON daily_themes(date DESC);
+CREATE INDEX idx_daily_themes_active ON daily_themes(is_active) WHERE is_active = TRUE;
+```
+
+#### 8.3.2 holidays (节日日历)
+
+**业务背景**：
+- 存储全球节日信息（圣诞、春节、中秋等）
+- 为主题系统和营销活动提供数据源
+
+**字段设计**：
+
+```sql
+CREATE TABLE holidays (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    holiday_code VARCHAR(50) NOT NULL UNIQUE,
+
+    -- 节日信息
+    name VARCHAR(100) NOT NULL,
+    name_i18n JSONB DEFAULT '{}',
+
+    -- 日期信息 (支持农历/阳历)
+    date DATE NOT NULL,
+    date_type VARCHAR(20) DEFAULT 'gregorian' CHECK (date_type IN ('gregorian', 'lunar', 'islamic')),
+
+    -- 地区信息
+    regions TEXT[] DEFAULT ARRAY[]::TEXT[],
+    is_global BOOLEAN DEFAULT FALSE,
+
+    -- 节日类型
+    category VARCHAR(50),
+
+    -- 可见性
+    is_active BOOLEAN DEFAULT TRUE,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_holidays_date ON holidays(date);
+CREATE INDEX idx_holidays_code ON holidays(holiday_code);
+CREATE INDEX idx_holidays_active ON holidays(is_active) WHERE is_active = TRUE;
+```
+
+#### 8.3.3 activity_logs (活动日志)
+
+**业务背景**：
+- 记录用户重要操作（登录、创建项目、购买等）
+- 用于审计、异常检测、用户行为分析
+
+**字段设计**：
+
+```sql
+CREATE TABLE activity_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT REFERENCES profiles(id),
+
+    -- 活动信息
+    action TEXT NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id TEXT,
+
+    -- 详情
+    details JSONB DEFAULT '{}',
+
+    -- 审计字段
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_activity_logs_user_created ON activity_logs(user_id, created_at DESC);
+CREATE INDEX idx_activity_logs_action ON activity_logs(action);
+CREATE INDEX idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+```
+
+#### 8.3.4 analytics_aggregation (分析聚合表)
+
+**业务背景**：
+- 预聚合分析数据（DAU、MAU、收入等）
+- 避免实时查询大表
+
+**字段设计**：
+
+```sql
+CREATE TABLE analytics_aggregation (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    date DATE NOT NULL,
+    metric_name VARCHAR(100) NOT NULL,
+
+    -- 聚合数据
+    value NUMERIC,
+    metadata JSONB DEFAULT '{}',
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, metric_name)
+);
+
+CREATE INDEX idx_analytics_aggregation_date ON analytics_aggregation(date DESC);
+CREATE INDEX idx_analytics_aggregation_metric ON analytics_aggregation(metric_name);
+```
+
+#### 8.3.5 scheduled_task_logs (定时任务日志)
+
+**业务背景**：
+- 记录定时任务执行情况（积分重置、数据清理等）
+- 监控任务成功率和性能
+
+**字段设计**：
+
+```sql
+CREATE TABLE scheduled_task_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    task_name VARCHAR(100) NOT NULL,
+
+    -- 执行信息
+    status VARCHAR(20) NOT NULL CHECK (status IN ('success', 'failed', 'running', 'timeout')),
+    started_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    duration_ms INTEGER,
+
+    -- 结果详情
+    result_summary JSONB DEFAULT '{}',
+    error_message TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_scheduled_task_logs_task ON scheduled_task_logs(task_name, started_at DESC);
+CREATE INDEX idx_scheduled_task_logs_status ON scheduled_task_logs(status) WHERE status != 'success';
+```
+
+### 8.4 P2 级别表 (增强功能)
+
+#### 8.4.1 config_audit_logs (配置审计日志)
+
+**业务背景**：
+- 记录 system_configs 的所有变更
+- 审计敏感配置（Rate Limits、Feature Flags）
+
+**字段设计**：
+
+```sql
+CREATE TABLE config_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    config_key TEXT NOT NULL,
+
+    -- 变更信息
+    old_value TEXT,
+    new_value TEXT,
+    change_type VARCHAR(20) CHECK (change_type IN ('create', 'update', 'delete')),
+
+    -- 操作人
+    changed_by TEXT REFERENCES profiles(id),
+    change_reason TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_config_audit_logs_key ON config_audit_logs(config_key, created_at DESC);
+CREATE INDEX idx_config_audit_logs_changed_by ON config_audit_logs(changed_by);
+```
+
+#### 8.4.2 content_reports (内容举报)
+
+**业务背景**：
+- 用户举报不当内容（市场商品、项目等）
+- 审核团队处理举报
+
+**字段设计**：
+
+```sql
+CREATE TABLE content_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reporter_id TEXT REFERENCES profiles(id),
+
+    -- 举报对象
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID NOT NULL,
+
+    -- 举报原因
+    reason VARCHAR(50) NOT NULL,
+    description TEXT,
+
+    -- 审核状态
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'reviewing', 'resolved', 'dismissed')),
+    reviewed_by TEXT REFERENCES profiles(id),
+    review_notes TEXT,
+    reviewed_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_content_reports_entity ON content_reports(entity_type, entity_id);
+CREATE INDEX idx_content_reports_status ON content_reports(status) WHERE status = 'pending';
+```
+
+#### 8.4.3 system_resource_audit_logs (系统资源审计)
+
+**业务背景**：
+- 记录系统资源变更（system_assets、system_configs等）
+- 追踪谁在何时修改了什么
+
+**字段设计**：
+
+```sql
+CREATE TABLE system_resource_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    resource_type VARCHAR(50) NOT NULL,
+    resource_id UUID NOT NULL,
+    action VARCHAR(20) CHECK (action IN ('create', 'update', 'delete')),
+    changed_by TEXT REFERENCES profiles(id),
+    changes JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_system_resource_audit_logs_resource ON system_resource_audit_logs(resource_type, resource_id);
+CREATE INDEX idx_system_resource_audit_logs_action ON system_resource_audit_logs(action);
+```
+
+#### 8.4.4 asset_prompt_templates (AI 提示词模板)
+
+**业务背景**：
+- 存储 AI 生成的提示词模板
+- 为用户提供快速生成选项
+
+**字段设计**：
+
+```sql
+CREATE TABLE asset_prompt_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id UUID REFERENCES asset_categories(id),
+
+    -- 模板信息
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+
+    -- 提示词内容
+    prompt_template TEXT NOT NULL,
+    negative_prompt_template TEXT,
+
+    -- 参数配置
+    default_params JSONB DEFAULT '{}',
+
+    -- 适用模型
+    compatible_models TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 访问控制
+    min_tier VARCHAR(20) DEFAULT 'free',
+
+    -- 使用统计
+    usage_count INTEGER DEFAULT 0,
+
+    -- 可见性
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_asset_prompt_templates_category ON asset_prompt_templates(category_id);
+CREATE INDEX idx_asset_prompt_templates_active ON asset_prompt_templates(is_active) WHERE is_active = TRUE;
+```
+
+### 8.5 新增表总结
+
+| 表名 | 优先级 | 行数预估 | 增长速度 | 索引数 |
+|------|--------|----------|----------|--------|
+| ai_call_logs | P0 | 1M+ | 快 (每分钟100+) | 3 |
+| ai_usage_daily | P0 | 10K | 慢 (每天30+) | 2 |
+| asset_categories | P0 | 100-500 | 慢 (偶尔增加) | 3 |
+| system_assets | P0 | 5K-10K | 中 (定期补充) | 5 |
+| daily_themes | P1 | 365+ | 慢 (每天1) | 2 |
+| holidays | P1 | 500-1000 | 慢 (偶尔增加) | 3 |
+| activity_logs | P1 | 1M+ | 快 (每分钟50+) | 3 |
+| analytics_aggregation | P1 | 10K | 慢 (每天50+) | 2 |
+| scheduled_task_logs | P1 | 100K | 中 (每小时10+) | 2 |
+| config_audit_logs | P2 | 1K | 慢 (偶尔) | 2 |
+| content_reports | P2 | 10K | 中 (每天10+) | 2 |
+| system_resource_audit_logs | P2 | 10K | 中 (每天5+) | 2 |
+| asset_prompt_templates | P2 | 500-1000 | 慢 (偶尔增加) | 2 |
+
+---
+
+## 9. system_configs 初始化数据
+
+### 9.1 数据概览
+
+补充了 **57 行完整的 system_configs 初始化数据**，覆盖以下分组：
+
+| 配置分组 | 数量 | 用途 |
+|----------|------|------|
+| Rate Limits | 24 | API 速率限制 |
+| AI Providers | 8 | AI 提供商配置 |
+| Credits | 9 | 积分成本和规则 |
+| Feature Flags | 4 | 功能开关 |
+| Limits | 5 | 业务限制 |
+| Pricing | 4 | 定价配置 |
+| Analytics | 3 | 分析配置 |
+
+### 9.2 Rate Limits 配置 (24条)
+
+**设计理念**：细粒度的速率限制，防止滥用
+
+```sql
+-- API 限制
+('rate_limit.payment.checkout', '{"limit": 5, "window": "minute"}', 'json', 'rate_limit', 'Checkout API 限制', TRUE),
+('rate_limit.payment.webhook', '{"limit": 100, "window": "minute"}', 'json', 'rate_limit', 'Webhook 限制', TRUE),
+
+-- AI 生成限制
+('rate_limit.generate.images', '{"limit": 10, "window": "minute"}', 'json', 'rate_limit', 'AI 图片生成限制', TRUE),
+('rate_limit.generate.text', '{"limit": 20, "window": "minute"}', 'json', 'rate_limit', 'AI 文字生成限制', TRUE),
+
+-- 市场操作限制
+('rate_limit.marketplace.publish', '{"limit": 5, "window": "hour"}', 'json', 'rate_limit', '发布商品限制', TRUE),
+('rate_limit.marketplace.purchase', '{"limit": 20, "window": "hour"}', 'json', 'rate_limit', '购买商品限制', TRUE),
+
+-- 项目操作限制
+('rate_limit.project.create', '{"limit": 10, "window": "hour"}', 'json', 'rate_limit', '创建项目限制', TRUE),
+('rate_limit.project.export', '{"limit": 5, "window": "minute"}', 'json', 'rate_limit', '导出项目限制', TRUE),
+```
+
+### 9.3 AI Providers 配置 (8条)
+
+**设计理念**：集中管理 AI 提供商和模型配置
+
+```sql
+-- 提供商开关
+('ai_providers.enabled', '{"openai": true, "fal": true, "qwen": false}', 'json', 'ai_providers', '启用的 AI 提供商', TRUE),
+
+-- 模型配置 (用户功能)
+('ai_model.user.text_reasoning', '{"provider": "openai", "model": "gpt-4o-mini"}', 'json', 'ai_models', '用户文字推理模型', TRUE),
+('ai_model.user.image_generation', '{"provider": "fal", "model": "flux-pro"}', 'json', 'ai_models', '用户图片生成模型', TRUE),
+
+-- 模型配置 (系统功能)
+('ai_model.system.text_reasoning', '{"provider": "openai", "model": "gpt-4o"}', 'json', 'ai_models', '系统文字推理模型 (高级)', FALSE),
+('ai_model.system.moderation', '{"provider": "openai", "model": "omni-moderation"}', 'json', 'ai_models', '内容审核模型', FALSE),
+
+-- 超时配置
+('ai_timeout.text_reasoning', '30000', 'integer', 'ai_providers', '文字推理超时 (ms)', TRUE),
+('ai_timeout.image_generation', '120000', 'integer', 'ai_providers', '图片生成超时 (ms)', TRUE),
+```
+
+### 9.4 Credits 配置 (9条)
+
+**设计理念**：明确积分成本和业务规则
+
+```sql
+-- AI 成本
+('credits.cost.image_generation', '5', 'integer', 'credits', 'AI 图片生成成本', TRUE),
+('credits.cost.text_generation', '0', 'integer', 'credits', 'AI 文字生成成本 (免费)', TRUE),
+('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan 成本', TRUE),
+
+-- 奖励
+('credits.reward.signup', '50', 'integer', 'credits', '注册赠送积分 (永久)', FALSE),
+('credits.reward.daily_theme', '10', 'integer', 'credits', '每日主题完成奖励', TRUE),
+('credits.reward.referral', '20', 'integer', 'credits', '推荐好友奖励', FALSE),
+
+-- 等级配额
+('credits.tier.free.monthly', '0', 'integer', 'credits', 'Free 等级月度积分', FALSE),
+('credits.tier.starter.monthly', '200', 'integer', 'credits', 'Starter 等级月度积分', FALSE),
+('credits.tier.pro.monthly', '500', 'integer', 'credits', 'Pro 等级月度积分', FALSE),
+```
+
+### 9.5 Feature Flags 配置 (4条)
+
+**设计理念**：灰度发布和功能开关
+
+```sql
+('FEATURE_AI_GENERATION', 'true', 'boolean', 'feature_flag', '启用 AI 生成功能', TRUE),
+('FEATURE_MARKETPLACE', 'true', 'boolean', 'feature_flag', '启用市场功能', TRUE),
+('FEATURE_DAILY_THEMES', 'false', 'boolean', 'feature_flag', '启用每日主题 (待上线)', TRUE),
+('FEATURE_REFERRAL_PROGRAM', 'false', 'boolean', 'feature_flag', '启用推荐计划 (待上线)', TRUE),
+```
+
+### 9.6 其他配置
+
+**Limits (5条)** - 业务限制：
+```sql
+('limits.project.max_free', '5', 'integer', 'limits', 'Free 用户最多项目数', TRUE),
+('limits.project.max_starter', '20', 'integer', 'limits', 'Starter 用户最多项目数', TRUE),
+('limits.marketplace.max_price', '500', 'integer', 'limits', '市场商品最高定价 (积分)', FALSE),
+```
+
+**Pricing (4条)** - 定价信息（展示用）：
+```sql
+('pricing.tier.free', '0', 'integer', 'pricing', 'Free 等级价格 (USD)', FALSE),
+('pricing.tier.starter', '9.90', 'decimal', 'pricing', 'Starter 等级价格 (USD/月)', FALSE),
+('pricing.tier.pro', '19.90', 'decimal', 'pricing', 'Pro 等级价格 (USD/月)', FALSE),
+```
+
+**Analytics (3条)** - 分析配置：
+```sql
+('analytics.retention_days', '90', 'integer', 'analytics', 'Analytics 事件保留天数', TRUE),
+('analytics.aggregation_schedule', '0 2 * * *', 'text', 'analytics', '聚合任务 Cron (每天凌晨2点)', TRUE),
+```
+
+---
+
+## 10. 索引策略总结
 
 ### 8.1 索引总览
 
