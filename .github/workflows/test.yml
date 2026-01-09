@@ -42,6 +42,9 @@ jobs:
         run: |
           pytest tests/test_payment_service.py \
                  tests/test_credits_logic.py \
+                 tests/test_analytics_service.py \
+                 tests/test_cache_service.py \
+                 tests/test_access_control.py \
                  tests/edge_cases/ \
                  tests/business_rules/ \
                  -v --tb=short
@@ -84,6 +87,11 @@ jobs:
                  tests/test_ai_canary.py \
                  tests/test_ai_adapters.py \
                  tests/test_ai_unified_services.py \
+                 tests/test_ai_cache.py \
+                 tests/test_ai_usage_tracker.py \
+                 tests/test_openai_adapter.py \
+                 tests/test_fal_adapter.py \
+                 tests/test_qwen_adapter.py \
                  -v --tb=short
         env:
           TESTING: 'true'
@@ -92,6 +100,40 @@ jobs:
           DASHSCOPE_API_KEY: 'test-dashscope-key'
           SUPABASE_URL: 'https://mock.supabase.co'
           SUPABASE_KEY: 'mock_supabase_key'
+
+  # ============================================
+  # Domain & Application Tests
+  # ============================================
+  domain-tests:
+    name: Domain & Application Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio httpx
+
+      - name: Run domain tests
+        run: |
+          pytest tests/domains/ \
+                 tests/application/ \
+                 -v --tb=short
+        env:
+          TESTING: 'true'
+          SUPABASE_URL: 'https://mock.supabase.co'
+          SUPABASE_KEY: 'mock_supabase_key'
+          STRIPE_SECRET_KEY: 'sk_test_mock'
 
   # ============================================
   # API Tests (Must Pass)
@@ -157,8 +199,11 @@ jobs:
       
       - name: Run integration tests
         run: |
-          pytest tests/services/ \
+          pytest tests/integration/ \
+                 tests/services/ \
                  tests/test_timezone_utils.py \
+                 tests/test_events_service.py \
+                 tests/test_experiment_ai_service.py \
                  -v --tb=short || true
         env:
           TESTING: 'true'
@@ -273,7 +318,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, ai-tests, api-tests]
+    needs: [unit-tests, ai-tests, domain-tests, api-tests]
     if: always()
     
     steps:
@@ -295,7 +340,14 @@ jobs:
           else
             echo "❌ **AI System Tests**: Failed" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
+          # Domain Tests
+          if [ "${{ needs.domain-tests.result }}" == "success" ]; then
+            echo "✅ **Domain & Application Tests**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Domain & Application Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
           # API Tests
           if [ "${{ needs.api-tests.result }}" == "success" ]; then
             echo "✅ **API Tests**: Passed" >> $GITHUB_STEP_SUMMARY
@@ -307,15 +359,16 @@ jobs:
           echo "### Test Files Coverage" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Files |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | payment, tier, credits, config, edge_cases, potential_bugs |" >> $GITHUB_STEP_SUMMARY
-          echo "| AI Tests | ai_base, ai_model_config, ai_canary, ai_adapters, ai_unified_services |" >> $GITHUB_STEP_SUMMARY
-          echo "| API Tests | generation, image, projects, upload, user, export, ai_admin |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration | webhook, admin_payment, ai_integration, themes, timezone |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | payment, credits, analytics, cache, access_control, edge_cases, business_rules |" >> $GITHUB_STEP_SUMMARY
+          echo "| AI Tests | ai_base, ai_model_config, ai_canary, ai_adapters, ai_unified, ai_cache, ai_usage, openai, fal, qwen |" >> $GITHUB_STEP_SUMMARY
+          echo "| Domain Tests | billing, creation, identity, marketplace, platform domains + application handlers |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Tests | user APIs (30+), admin APIs (25+), health |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration | billing/subscription/generation flows, services, events, experiments, timezone |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📊 **Total**: 24 test files | **Coverage**: ~92%" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **Total**: 120+ test files | **Coverage**: ~85%" >> $GITHUB_STEP_SUMMARY
       
       - name: Final status
-        if: needs.unit-tests.result == 'failure' || needs.ai-tests.result == 'failure'
+        if: needs.unit-tests.result == 'failure' || needs.ai-tests.result == 'failure' || needs.domain-tests.result == 'failure'
         run: |
           echo "::error::Critical tests failed!"
           exit 1
