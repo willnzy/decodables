@@ -3,8 +3,8 @@
 > **创建日期**: 2026-01-08
 > **总接口数**: 125 个 (Admin 123 + Health 2)
 > **当前阶段**: ✅ 已完成
-> **最后更新**: 2026-01-09
-> **当前进度**: 125/125 (100%) 🎉
+> **最后更新**: 2026-01-09 22:05
+> **当前进度**: 46/125 (36.8%) - Tasks(4) + Logs(4) + Events(5) + Config(8 ⭐⭐⭐⭐⭐) = 21 已深度审查
 
 ---
 
@@ -226,18 +226,18 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
-## Config 配置管理 (8个) ✅
+## Config 配置管理 (8个) ⭐⭐⭐⭐⭐ 深度审查完成 + 完整重构
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 22 | adm_get_all_configs | GET | /config | api/admin/config.py | 88 |
-| 23 | adm_get_config | GET | /config/{config_key:path} | api/admin/config.py | 104 |
-| 24 | adm_update_config | PUT | /config | api/admin/config.py | 122 |
-| 25 | adm_batch_update_configs | PUT | /config/batch | api/admin/config.py | 146 |
-| 26 | adm_clear_config_cache | POST | /config/cache/clear | api/admin/config.py | 168 |
-| 27 | adm_get_rate_limits | GET | /rate-limits | api/admin/config.py | 183 |
-| 28 | adm_apply_rate_limit_preset | POST | /rate-limits/preset | api/admin/config.py | 193 |
-| 29 | adm_get_rate_limit_presets | GET | /rate-limits/presets | api/admin/config.py | 228 |
+| 22 | get_all_configs | GET | /config | api/admin/config.py | 115 |
+| 23 | get_config | GET | /config/{config_key} | api/admin/config.py | 155 |
+| 24 | update_config | PUT | /config | api/admin/config.py | 189 |
+| 25 | batch_update_configs_endpoint | PUT | /config/batch | api/admin/config.py | 228 |
+| 26 | clear_cache | POST | /config/cache/clear | api/admin/config.py | 402 |
+| 27 | get_rate_limits | GET | /rate-limits | api/admin/config.py | 274 |
+| 28 | apply_rate_limit_preset_endpoint | POST | /rate-limits/preset | api/admin/config.py | 327 |
+| 29 | get_rate_limit_presets | GET | /rate-limits/presets | api/admin/config.py | 365 |
 
 **测试用例 Checklist**
 - [x] #22 获取所有配置
@@ -249,9 +249,49 @@ Admin API 作为内部管理工具，有以下特点：
 - [x] #28 应用限流预设
 - [x] #29 获取限流预设列表
 
-**完成状态**: ✅ 已完成 (2026-01-09)
+**完成状态**: ✅ 已完成 (2026-01-09) | **测试**: 27/27 ✅
 
-### v3.25 安全改进
+### v3.26 完整 DDD 架构重构 (2026-01-09)
+
+**深度审查**: 发现 **11 个问题** (2 CRITICAL + 4 HIGH + 3 MEDIUM + 2 LOW)
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 CRITICAL | CFG-CRITICAL-1 | Domain Service 直接访问数据库，违反 DDD | ✅ 已修复 |
+| 🔴 CRITICAL | CFG-CRITICAL-2 | ConfigRepository (341行) 存在但未被使用 | ✅ 已激活 |
+| 🟠 HIGH | CFG-HIGH-1 | 缺少 Pydantic Response Models | ✅ 已添加 |
+| 🟠 HIGH | CFG-HIGH-2 | 缺少查询 limit，OOM 风险 | ✅ 已添加 |
+| 🟠 HIGH | CFG-HIGH-3 | 模块级 Supabase 实例，无法测试 | ✅ 已修复 |
+| 🟠 HIGH | CFG-HIGH-4 | 缺少统一错误处理 | ✅ 已添加 |
+| 🟡 MEDIUM | CFG-MEDIUM-1 | 双重缓存机制冗余 | ✅ 已清理 |
+| 🟡 MEDIUM | CFG-MEDIUM-2 | 同步/异步混用 | ✅ 全异步 |
+| 🟡 MEDIUM | CFG-MEDIUM-3 | 部分端点缺少审计日志 | ✅ 已补全 |
+| 🟢 LOW | CFG-LOW-1 | 测试文件重复 | ✅ 已删除 |
+| 🟢 LOW | CFG-LOW-2 | 限流过于宽松 (60/minute) | ✅ 已调整为 30 |
+
+**架构改进**:
+- ✅ 创建 ConfigRepository 接口 (domains/platform/config_repository.py)
+- ✅ 创建 ConfigService v2 (domains/platform/config_service_v2.py)
+- ✅ 重构 API Layer 使用依赖注入 (get_database_client → Repository → Service)
+- ✅ 移除 Repository 内存缓存，统一由 Domain Service 管理
+- ✅ 所有方法改为 async/await
+- ✅ 添加完整审计日志
+
+**修改文件**:
+- `api/admin/config.py` - v3.25 → v3.26 (完全重写)
+- `api/admin/config_models.py` - v1.0.0 (新建，11 个模型)
+- `domains/platform/config_repository.py` - v1.0.0 (新建接口)
+- `domains/platform/config_service_v2.py` - v2.0.0 (新建 Service)
+- `infrastructure/repositories/config_repository.py` - v1.0.0 → v1.1.0 (清理缓存，添加 limit)
+- `tests/api/admin/test_config_api.py` - 已删除 (重复)
+- `docs/tmp/REVIEW-CONFIG.md` - 完整深度审查文档
+
+**测试结果**:
+```
+27 passed in 1.00s ✅
+```
+
+### v3.25 安全改进 (已被 v3.26 完全覆盖)
 
 | 严重度 | 问题 ID | 描述 | 修复状态 |
 |--------|---------|------|----------|
@@ -260,10 +300,6 @@ Admin API 作为内部管理工具，有以下特点：
 | 🟡 MEDIUM | CFG-MEDIUM-3 | `category` 参数无验证 | ✅ 已添加枚举验证 |
 | 🟡 MEDIUM | CFG-MEDIUM-4 | `preset` 改用 field_validator | ✅ 已迁移 |
 | 🟢 LOW | CFG-LOW-1 | 字段长度限制 | ✅ 已添加 |
-
-**修改文件**:
-- `api/admin/config.py` - v3.24 → v3.25
-- `tests/api/admin/test_config.py` - 27 个测试用例
 
 ---
 
