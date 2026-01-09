@@ -1,7 +1,7 @@
 -- ==============================================================================
--- Make Decodables Database Initialization Script (v3.23 - Complete)
--- Includes: core schema + RLS policies + all updates through v3.23
--- 
+-- Make Decodables Database Initialization Script (v3.27 - Complete)
+-- Includes: core schema + RLS policies + all updates through v3.27
+--
 -- Version History:
 -- v3.0: Credit buckets, marketplace, notifications, discounts
 -- v3.1: assets.metadata, OCR support
@@ -28,6 +28,8 @@
 -- v3.22: Atomic transactions (credits, marketplace), Webhook idempotency
 -- v3.23: Task queue system (generation_tasks, async image generation)
 -- v3.24: User generations history table (遗漏补充)
+-- v3.26: Marketplace two-level category system (category + source fields)
+-- v3.27: Campaign atomic usage increment function
 -- ==============================================================================
 
 -- ==========================================
@@ -143,7 +145,15 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
   -- v3.9: Timezone support
   timezone TEXT DEFAULT 'UTC',
   created_at_local TIMESTAMP,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- v3.26: Category and source constraints
+  CONSTRAINT chk_listings_category CHECK (category IN (
+    'clipart', 'illustration', 'photo', 'background',
+    'template', 'font', 'sticker', 'icon', 'pattern', 'element',
+    'emoji', 'frame', 'character', 'scene',
+    'mini_book', 'worksheet', 'flashcard'
+  )),
+  CONSTRAINT chk_listings_source CHECK (source IN ('system', 'user', 'ai', 'community'))
 );
 
 -- 6. User purchases
@@ -654,6 +664,10 @@ CREATE INDEX IF NOT EXISTS idx_listings_resource_id ON marketplace_listings(reso
 CREATE INDEX IF NOT EXISTS idx_marketplace_listings_resource_id ON marketplace_listings(resource_id);
 CREATE INDEX IF NOT EXISTS idx_listings_seller_public ON marketplace_listings(seller_id, is_public, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_marketplace_listings_version ON marketplace_listings(version);
+-- v3.26: Category and source indexes
+CREATE INDEX IF NOT EXISTS idx_listings_category ON marketplace_listings(category);
+CREATE INDEX IF NOT EXISTS idx_listings_source ON marketplace_listings(source);
+CREATE INDEX IF NOT EXISTS idx_listings_resource_category ON marketplace_listings(resource_type, category);
 
 -- ==========================================
 -- Part 2: RLS Policy Configuration
@@ -1451,6 +1465,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION increment_campaign_usage(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION increment_campaign_usage(UUID) TO service_role;
+
+-- v3.26: Column comments for marketplace_listings
+COMMENT ON COLUMN marketplace_listings.category IS 'Content category: clipart, sticker, background, template, etc.';
+COMMENT ON COLUMN marketplace_listings.source IS 'Asset source: system (built-in), user (uploaded), ai (generated), community (shared)';
 
 -- ==========================================
 -- Part 10: Holiday Themes Data (v3.13 + v3.14)
@@ -2539,7 +2557,7 @@ DO $$
 BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=====================================================';
-  RAISE NOTICE '✅ Make Decodables Database v3.24 - Setup Complete';
+  RAISE NOTICE '✅ Make Decodables Database v3.27 - Setup Complete';
   RAISE NOTICE '=====================================================';
   RAISE NOTICE '';
   RAISE NOTICE 'Tables created: 38+';
@@ -2558,5 +2576,7 @@ BEGIN
   RAISE NOTICE '  - v3.22: Atomic transactions, Webhook idempotency';
   RAISE NOTICE '  - v3.23: Task queue system (generation_tasks)';
   RAISE NOTICE '  - v3.24: User generations history';
+  RAISE NOTICE '  - v3.26: Marketplace two-level category system';
+  RAISE NOTICE '  - v3.27: Campaign atomic usage increment function';
   RAISE NOTICE '=====================================================';
 END $$;
