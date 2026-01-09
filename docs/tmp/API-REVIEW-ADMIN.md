@@ -1011,3 +1011,73 @@ GET /operations/export → SupabaseAdminUsersRepository → CSV ✅
 **完成状态**: ✅ 完成 (22/22 测试通过, 100% DDD 合规)
 
 ---
+
+## Events 模块 (5个) ⭐⭐⭐⭐⭐ v3.26 完整重构完成
+
+| 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
+|------|------|------|------|------|------|
+| 1 | adm_get_user_events | GET | /events/events | api/admin/events.py | 93 |
+| 2 | adm_get_event_stats | GET | /events/events/stats | api/admin/events.py | 134 |
+| 3 | adm_get_aggregated_stats | GET | /events/aggregated/{stat_type} | api/admin/events.py | 176 |
+| 4 | adm_get_aggregated_stats_range | GET | /events/aggregated/{stat_type}/range | api/admin/events.py | 212 |
+| 5 | adm_run_aggregation | POST | /events/aggregation/run | api/admin/events.py | 244 |
+
+**测试用例 Checklist**
+- [x] #1 获取用户事件
+- [x] #2 获取事件统计
+- [x] #3 获取聚合统计
+- [x] #4 获取范围聚合统计
+- [x] #5 手动运行聚合任务
+
+**问题与修复 (v3.26 完整重构)**
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 CRITICAL | EVT-CRITICAL-1 | GET /events 参数丢失 (start_date/end_date 不生效) | ✅ Repository 添加参数支持 |
+| 🔴 CRITICAL | EVT-CRITICAL-2 | GET /events/stats 忽略 end_date + group_by | ✅ 修复 Repository 实现 |
+| 🟠 HIGH | EVT-HIGH-1 | GET /events 分页架构不一致 (offset→page转换) | ✅ 统一使用 offset |
+| 🟠 HIGH | EVT-HIGH-2 | GET /events/stats 没有查询限制 (OOM 风险) | ✅ 添加 .limit(100000) |
+| 🟠 HIGH | EVT-HIGH-3 | 所有接口缺少 Pydantic Response Models | ✅ 创建 events_models.py |
+| 🟠 HIGH | EVT-HIGH-4 | GET /events 返回值不包含分页信息 | ✅ 返回 Dict (total/has_more) |
+| 🟡 MEDIUM | EVT-MEDIUM-1 | 缺少统一错误处理 | ✅ 所有接口添加 try-except |
+| 🟡 MEDIUM | EVT-MEDIUM-2 | group_by 功能未实现 (只支持 event_type) | ✅ 实现 4 种 group_by |
+| 🟡 MEDIUM | EVT-MEDIUM-3 | GET /events 查询限制过高 (limit=1000) | ✅ 降低到 100 |
+| 🟢 LOW | EVT-LOW-1 | 缺少审计日志 | ✅ 所有操作添加日志 |
+| 🟢 LOW | EVT-LOW-2 | POST /aggregation/run 缺少审计日志 | ✅ 添加触发日志 |
+
+**修改文件**:
+- 新建 `api/admin/events_models.py` - v1.0.0
+- `api/admin/events.py` - v3.25 → v3.26 (完整重构)
+- `infrastructure/repositories/admin_repository.py` - 修复 admin_get_user_events + admin_get_event_stats
+
+**架构对比**:
+
+Before v3.25:
+```
+GET /events → Repository.admin_get_user_events(page) ⚠️
+  - start_date/end_date 参数丢失 (不生效)
+  - offset → page 转换 (架构不一致)
+  - 返回 List (无分页信息)
+
+GET /events/stats → Repository.admin_get_event_stats() ⚠️
+  - end_date 参数被忽略
+  - group_by 只支持 event_type (1/4)
+  - 无查询限制 (OOM 风险)
+```
+
+After v3.26:
+```
+GET /events → Repository.admin_get_user_events(offset, start_date, end_date) ✅
+  - 所有参数正确支持
+  - 统一 offset 分页
+  - 返回 Dict {events, total, offset, limit, has_more}
+
+GET /events/stats → Repository.admin_get_event_stats(start_date, end_date, group_by) ✅
+  - 所有参数正确支持
+  - 完整实现 4 种 group_by (event_type, user_id, date, hour)
+  - .limit(100000) 防止 OOM
+```
+
+**完成状态**: ✅ 完成 (27/27 测试通过, 100% 功能修复)
+
+---

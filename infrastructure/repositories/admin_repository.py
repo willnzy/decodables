@@ -346,33 +346,118 @@ class SupabaseAdminStatsRepository:
         return result.data or []
 
     @retry_on_network_error()
-    async def admin_get_user_events(self, user_id: Optional[str] = None, event_type: Optional[str] = None,
-                              page: int = 1, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get user events."""
-        offset = (page - 1) * limit
-        query = self.client.table("user_events").select("*")
-        
+    async def admin_get_user_events(
+        self,
+        user_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get user events with filters and pagination.
+
+        v3.26 Changes:
+        - EVT-CRITICAL-1: Added start_date/end_date filter support
+        - EVT-HIGH-1: Migrated from page to offset pagination
+        - EVT-HIGH-4: Return Dict with pagination info instead of List
+
+        Args:
+            user_id: Filter by user ID
+            event_type: Filter by event type
+            start_date: Start date (ISO format)
+            end_date: End date (ISO format)
+            offset: Pagination offset
+            limit: Maximum number of events to return
+
+        Returns:
+            Dict with events, total, offset, limit, has_more
+        """
+        query = self.client.table("user_events").select("*", count="exact")
+
         if user_id:
             query = query.eq("user_id", user_id)
         if event_type:
             query = query.eq("event_type", event_type)
-        
+        if start_date:
+            query = query.gte("created_at", start_date)
+        if end_date:
+            query = query.lte("created_at", end_date)
+
         result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
-        return result.data or []
+        total = result.count or 0
+
+        return {
+            "events": result.data or [],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": (offset + limit) < total
+        }
 
     @retry_on_network_error()
-    async def admin_get_event_stats(self, start_date: Optional[str] = None, end_date: Optional[str] = None, group_by: str = "event_type") -> Dict[str, Any]:
-        """Get event statistics."""
+    async def admin_get_event_stats(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        group_by: str = "event_type"
+    ) -> Dict[str, Any]:
+        """
+        Get event statistics with grouping support.
+
+        v3.26 Changes:
+        - EVT-CRITICAL-2: Added end_date filter support
+        - EVT-HIGH-2: Added .limit(100000) to prevent OOM
+        - EVT-MEDIUM-2: Implemented full group_by support (4 types)
+
+        Args:
+            start_date: Start date (ISO format), defaults to 7 days ago
+            end_date: End date (ISO format), defaults to now
+            group_by: Group by field (event_type, user_id, date, hour)
+
+        Returns:
+            Dict with statistics grouped by specified field
+        """
         if not start_date:
             start_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        
-        result = self.client.table("user_events").select("event_type").gte("created_at", start_date).execute()
-        
+
+        # Select fields based on group_by
+        if group_by == "event_type":
+            fields = "event_type"
+        elif group_by == "user_id":
+            fields = "user_id"
+        elif group_by in ("date", "hour"):
+            fields = "created_at"
+        else:
+            fields = "event_type"  # Fallback
+
+        # EVT-HIGH-2: Added limit to prevent OOM
+        query = self.client.table("user_events").select(fields).gte("created_at", start_date).limit(100000)
+
+        if end_date:
+            query = query.lte("created_at", end_date)
+
+        result = query.execute()
+
+        # Aggregate based on group_by
         stats = {}
         for event in (result.data or []):
-            et = event.get("event_type", "unknown")
-            stats[et] = stats.get(et, 0) + 1
-        
+            if group_by == "event_type":
+                key = event.get("event_type", "unknown")
+            elif group_by == "user_id":
+                key = event.get("user_id", "unknown")
+            elif group_by == "date":
+                created_at = event.get("created_at", "")
+                key = created_at[:10] if created_at else "unknown"  # YYYY-MM-DD
+            elif group_by == "hour":
+                created_at = event.get("created_at", "")
+                key = created_at[:13] if created_at else "unknown"  # YYYY-MM-DDTHH
+            else:
+                key = "unknown"
+
+            stats[key] = stats.get(key, 0) + 1
+
         return stats
 
     @retry_on_network_error()
