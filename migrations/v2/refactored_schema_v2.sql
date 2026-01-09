@@ -386,18 +386,7 @@ CREATE INDEX idx_projects_origin_owner ON projects(origin_owner_id) WHERE origin
 CREATE INDEX idx_projects_active ON projects(is_deleted) WHERE is_deleted = FALSE;
 CREATE INDEX idx_projects_metadata ON projects USING GIN(metadata);
 
--- 外键约束
-ALTER TABLE projects
-    ADD CONSTRAINT fk_projects_marketplace_listing
-    FOREIGN KEY (marketplace_listing_id)
-    REFERENCES marketplace_listings(id)
-    ON DELETE SET NULL;
-
-ALTER TABLE projects
-    ADD CONSTRAINT fk_projects_source_listing
-    FOREIGN KEY (source_listing_id)
-    REFERENCES marketplace_listings(id)
-    ON DELETE SET NULL;
+-- Note: 外键约束在 marketplace_listings 表定义后添加 (见第 850 行左右)
 
 -- 触发器
 CREATE TRIGGER trg_projects_updated_at
@@ -844,6 +833,20 @@ CREATE TRIGGER trg_listings_soft_delete
     BEFORE UPDATE ON marketplace_listings
     FOR EACH ROW
     EXECUTE FUNCTION set_deleted_at_on_soft_delete();
+
+-- 外键约束 (projects → marketplace_listings)
+-- Note: 必须在 marketplace_listings 表创建后才能添加
+ALTER TABLE projects
+    ADD CONSTRAINT fk_projects_marketplace_listing
+    FOREIGN KEY (marketplace_listing_id)
+    REFERENCES marketplace_listings(id)
+    ON DELETE SET NULL;
+
+ALTER TABLE projects
+    ADD CONSTRAINT fk_projects_source_listing
+    FOREIGN KEY (source_listing_id)
+    REFERENCES marketplace_listings(id)
+    ON DELETE SET NULL;
 
 -- ----------------------------------------------------------------------------
 -- 12. marketplace_purchases (市场购买记录表)
