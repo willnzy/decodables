@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 
 class TestGetCanaryConfig:
-    @patch('services.ai.canary.get_config')
+    @patch('shared.ai.canary.get_config')
     def test_returns_config_when_exists(self, mock_get_config):
         from shared.ai.canary import get_canary_config
         mock_get_config.return_value = {"enabled": True, "text_reasoning": {}}
@@ -22,7 +22,7 @@ class TestGetCanaryConfig:
         
         assert result["enabled"] is True
 
-    @patch('services.ai.canary.get_config')
+    @patch('shared.ai.canary.get_config')
     def test_returns_default_when_none(self, mock_get_config):
         from shared.ai.canary import get_canary_config
         mock_get_config.return_value = None
@@ -33,7 +33,7 @@ class TestGetCanaryConfig:
 
 
 class TestShouldUseCanary:
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_disabled_when_not_enabled(self, mock_config):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {"enabled": False}
@@ -43,7 +43,7 @@ class TestShouldUseCanary:
         assert result is False
         assert config is None
 
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_disabled_when_no_model_config(self, mock_config):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {"enabled": True}
@@ -52,7 +52,7 @@ class TestShouldUseCanary:
         
         assert result is False
 
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_disabled_when_tier_not_target(self, mock_config):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {
@@ -69,8 +69,8 @@ class TestShouldUseCanary:
         
         assert result is False
 
-    @patch('services.ai.canary._get_user_bucket')
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary._get_user_bucket')
+    @patch('shared.ai.canary.get_canary_config')
     def test_enabled_when_in_bucket(self, mock_config, mock_bucket):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {
@@ -89,8 +89,8 @@ class TestShouldUseCanary:
         assert result is True
         assert config["provider"] == "qwen"
 
-    @patch('services.ai.canary._get_user_bucket')
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary._get_user_bucket')
+    @patch('shared.ai.canary.get_canary_config')
     def test_disabled_when_not_in_bucket(self, mock_config, mock_bucket):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {
@@ -108,7 +108,7 @@ class TestShouldUseCanary:
         
         assert result is False
 
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_disabled_when_zero_traffic(self, mock_config):
         from shared.ai.canary import should_use_canary
         mock_config.return_value = {
@@ -153,7 +153,7 @@ class TestGetUserBucket:
 
 
 class TestGetEffectiveModelConfig:
-    @patch('services.ai.canary.should_use_canary')
+    @patch('shared.ai.canary.should_use_canary')
     def test_uses_canary_config(self, mock_should_use):
         from shared.ai.canary import get_effective_model_config
         
@@ -166,7 +166,7 @@ class TestGetEffectiveModelConfig:
         assert result["model"] == "qwen-plus"
         assert result["is_canary"] is True
 
-    @patch('services.ai.canary.should_use_canary')
+    @patch('shared.ai.canary.should_use_canary')
     def test_uses_base_config(self, mock_should_use):
         from shared.ai.canary import get_effective_model_config
         
@@ -181,7 +181,7 @@ class TestGetEffectiveModelConfig:
 
 
 class TestGetCanaryStatus:
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_returns_status(self, mock_config):
         from shared.ai.canary import get_canary_status
         mock_config.return_value = {
@@ -200,7 +200,7 @@ class TestGetCanaryStatus:
         assert result["text_reasoning"]["enabled"] is True
         assert result["text_reasoning"]["canary_provider"] == "qwen"
 
-    @patch('services.ai.canary.get_canary_config')
+    @patch('shared.ai.canary.get_canary_config')
     def test_handles_missing_model_config(self, mock_config):
         from shared.ai.canary import get_canary_status
         mock_config.return_value = {"enabled": False}

@@ -10,15 +10,15 @@ import os
 
 class TestOpenAITextAdapter:
     @patch.dict(os.environ, {'OPENAI_API_KEY': ''}, clear=True)
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
     def test_not_available_without_key(self):
         from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         adapter = OpenAITextAdapter()
         assert adapter.is_available() is False
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     def test_available_with_key(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAITextAdapter
         adapter = OpenAITextAdapter()
@@ -32,8 +32,8 @@ class TestOpenAITextAdapter:
         assert 'gpt-4o' in models
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_success(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAITextAdapter
@@ -72,8 +72,8 @@ class TestOpenAITextAdapter:
         assert "not configured" in response.error
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_o1_model(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAITextAdapter
@@ -100,8 +100,8 @@ class TestOpenAITextAdapter:
         assert response.success is True
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_chat_completion_error(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAITextAdapter
@@ -149,7 +149,7 @@ class TestOpenAITextAdapterConvertSystem:
 
 class TestOpenAIImageAdapter:
     @patch.dict(os.environ, {'OPENAI_API_KEY': ''})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', '')
     def test_not_available_without_key(self):
         from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
         adapter = OpenAIImageAdapter()
@@ -162,8 +162,8 @@ class TestOpenAIImageAdapter:
         assert 'dall-e-3' in models
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_generate_image_success(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAIImageAdapter
@@ -199,8 +199,8 @@ class TestOpenAIImageAdapter:
         assert response.success is False
 
     @patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'})
-    @patch('services.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
-    @patch('services.ai.adapters.openai_adapter.openai.AsyncOpenAI')
+    @patch('shared.ai.adapters.openai_adapter.OPENAI_API_KEY', 'test-key')
+    @patch('shared.ai.adapters.openai_adapter.openai.AsyncOpenAI')
     @pytest.mark.asyncio
     async def test_generate_image_with_negative_prompt(self, mock_client_class):
         from shared.ai.adapters.openai_adapter import OpenAIImageAdapter

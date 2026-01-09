@@ -9,10 +9,10 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 class TestUnifiedTextServiceChat:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_successful_chat(self, mock_config, mock_enabled, mock_adapter, mock_track):
         from shared.ai.unified_text_service import unified_text_service
         from shared.ai.base import AIResponse, AIUsage
@@ -40,8 +40,8 @@ class TestUnifiedTextServiceChat:
         assert response.content == "Hello!"
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_cached_result')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.get_cached_result')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_cache_hit(self, mock_config, mock_cache):
         from shared.ai.unified_text_service import unified_text_service
         
@@ -57,10 +57,10 @@ class TestUnifiedTextServiceChat:
         assert response.content == "Cached response"
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_admin_model_config')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_admin_model_config')
     async def test_admin_model(self, mock_config, mock_enabled, mock_adapter, mock_track):
         from shared.ai.unified_text_service import unified_text_service
         from shared.ai.base import AIResponse, AIUsage
@@ -88,11 +88,11 @@ class TestUnifiedTextServiceChat:
         mock_config.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.should_use_canary')
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.should_use_canary')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_canary_model(self, mock_config, mock_enabled, mock_adapter, mock_track, mock_canary):
         from shared.ai.unified_text_service import unified_text_service
         from shared.ai.base import AIResponse, AIUsage
@@ -122,9 +122,9 @@ class TestUnifiedTextServiceChat:
         mock_adapter.assert_called_with("qwen")
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_provider_disabled_uses_fallback(self, mock_config, mock_enabled, mock_fallback):
         from shared.ai.unified_text_service import unified_text_service
         
@@ -141,9 +141,9 @@ class TestUnifiedTextServiceChat:
         assert "not enabled" in response.error
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.is_provider_enabled')
-    @patch('services.ai.unified_text_service.get_text_model_config')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.is_provider_enabled')
+    @patch('shared.ai.unified_text_service.get_text_model_config')
     async def test_adapter_not_available(self, mock_config, mock_enabled, mock_adapter):
         from shared.ai.unified_text_service import unified_text_service
         
@@ -161,7 +161,7 @@ class TestUnifiedTextServiceChat:
 
 class TestTryFallback:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
     async def test_no_fallback_configured(self, mock_fallback):
         from shared.ai.unified_text_service import unified_text_service
         
@@ -177,9 +177,9 @@ class TestTryFallback:
         assert "No fallback" in response.error
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
     async def test_fallback_success(self, mock_fallback, mock_adapter, mock_track):
         from shared.ai.unified_text_service import unified_text_service
         from shared.ai.base import AIResponse, AIUsage
@@ -206,8 +206,8 @@ class TestTryFallback:
         assert response.content == "Fallback response"
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.get_text_adapter')
-    @patch('services.ai.unified_text_service.get_fallback_config')
+    @patch('shared.ai.unified_text_service.get_text_adapter')
+    @patch('shared.ai.unified_text_service.get_fallback_config')
     async def test_fallback_adapter_not_available(self, mock_fallback, mock_adapter):
         from shared.ai.unified_text_service import unified_text_service
         
@@ -226,7 +226,7 @@ class TestTryFallback:
 
 class TestConvenienceFunctions:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.unified_text_service.chat')
+    @patch('shared.ai.unified_text_service.unified_text_service.chat')
     async def test_chat_function(self, mock_chat):
         from shared.ai.unified_text_service import chat
         from shared.ai.base import AIResponse
@@ -243,7 +243,7 @@ class TestConvenienceFunctions:
         assert response.success is True
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_text_service.unified_text_service.chat')
+    @patch('shared.ai.unified_text_service.unified_text_service.chat')
     async def test_admin_chat_function(self, mock_chat):
         from shared.ai.unified_text_service import admin_chat
         from shared.ai.base import AIResponse

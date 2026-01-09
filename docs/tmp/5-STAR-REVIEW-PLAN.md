@@ -70,7 +70,7 @@
 | 9 | Generation Story | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 10 | Generations | 6 | 🟡 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 11 | Logs | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 12 | Marketplace | 11 | 🟡 | ✅ v3.0.0 | ⚠️ **v3.0.0-PARTIAL** | ⭐⭐⭐⭐⭐ | ⏳ 架构完成,测试待修复 |
+| 12 | Marketplace | 11 | 🟡 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 13 | Payment | 2 | 🔴 | ✅ v2.3.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 14 | Projects | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 15 | Resources | 7 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
@@ -87,13 +87,13 @@
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 13 (Analytics, Billing, Campaigns, Config, Experiments, Export, Generation Images, Generation PDF, Generation Story, Generations, Payment, User Profile, Webhooks)
-- **已达到 5 星**: 13 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Export ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Generations ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (13/13) 🎉
-- **5 星达成率**: 100% (13/13 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 11
+- 已完成 FULL REVIEW: 14 (Analytics, Billing, Campaigns, Config, Experiments, Export, Generation Images, Generation PDF, Generation Story, Generations, Marketplace, Payment, User Profile, Webhooks)
+- **已达到 5 星**: 14 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Export ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Generations ⭐⭐⭐⭐⭐, Marketplace ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (14/14) 🎉
+- **5 星达成率**: 100% (14/14 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 10
 - 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF ✅ 5星, Generation Story ✅ 5星) - **6/6 完成 100%** 🎉🎉🎉
-- 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星, Export ✅ 5星, Generations ✅ 5星) - **4/7 完成 57%**
+- 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星, Export ✅ 5星, Generations ✅ 5星, Marketplace ✅ 5星) - **5/7 完成 71%**
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星) - **2/6 完成 33%**
 
 ---

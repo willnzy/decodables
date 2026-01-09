@@ -9,11 +9,11 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 class TestUnifiedImageServiceGenerate:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_successful_generation(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
         from shared.ai.unified_image_service import unified_image_service
         from shared.ai.base import AIResponse, AIUsage
@@ -42,11 +42,11 @@ class TestUnifiedImageServiceGenerate:
         assert len(response.content) == 1
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_canary_model(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
         from shared.ai.unified_image_service import unified_image_service
         from shared.ai.base import AIResponse, AIUsage
@@ -75,10 +75,10 @@ class TestUnifiedImageServiceGenerate:
         mock_adapter.assert_called_with("jimeng")
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_fallback_config')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_provider_disabled(self, mock_config, mock_canary, mock_enabled, mock_fallback):
         from shared.ai.unified_image_service import unified_image_service
         
@@ -95,10 +95,10 @@ class TestUnifiedImageServiceGenerate:
         assert response.success is False
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_adapter_not_available(self, mock_config, mock_canary, mock_enabled, mock_adapter):
         from shared.ai.unified_image_service import unified_image_service
         
@@ -117,11 +117,11 @@ class TestUnifiedImageServiceGenerate:
 
 class TestUnifiedImageServiceImageToImage:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.is_provider_enabled')
-    @patch('services.ai.unified_image_service.should_use_canary')
-    @patch('services.ai.unified_image_service.get_image_model_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.is_provider_enabled')
+    @patch('shared.ai.unified_image_service.should_use_canary')
+    @patch('shared.ai.unified_image_service.get_image_model_config')
     async def test_image_to_image_success(self, mock_config, mock_canary, mock_enabled, mock_adapter, mock_track):
         from shared.ai.unified_image_service import unified_image_service
         from shared.ai.base import AIResponse, AIUsage
@@ -151,7 +151,7 @@ class TestUnifiedImageServiceImageToImage:
 
 class TestTryFallback:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
     async def test_no_fallback_configured(self, mock_fallback):
         from shared.ai.unified_image_service import unified_image_service
         
@@ -166,9 +166,9 @@ class TestTryFallback:
         assert "No fallback" in response.error
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
-    @patch('services.ai.unified_image_service.get_image_adapter')
-    @patch('services.ai.unified_image_service.get_fallback_config')
+    @patch('shared.ai.unified_image_service.track_ai_usage', new_callable=AsyncMock)
+    @patch('shared.ai.unified_image_service.get_image_adapter')
+    @patch('shared.ai.unified_image_service.get_fallback_config')
     async def test_fallback_success(self, mock_fallback, mock_adapter, mock_track):
         from shared.ai.unified_image_service import unified_image_service
         from shared.ai.base import AIResponse, AIUsage
@@ -195,7 +195,7 @@ class TestTryFallback:
 
 class TestConvenienceFunctions:
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.unified_image_service.generate')
+    @patch('shared.ai.unified_image_service.unified_image_service.generate')
     async def test_generate_image_function(self, mock_generate):
         from shared.ai.unified_image_service import generate_image
         from shared.ai.base import AIResponse
@@ -211,7 +211,7 @@ class TestConvenienceFunctions:
         assert response.success is True
 
     @pytest.mark.asyncio
-    @patch('services.ai.unified_image_service.unified_image_service.image_to_image')
+    @patch('shared.ai.unified_image_service.unified_image_service.image_to_image')
     async def test_image_to_image_function(self, mock_i2i):
         from shared.ai.unified_image_service import image_to_image
         from shared.ai.base import AIResponse

@@ -1397,113 +1397,162 @@ class TestPurchaseListing:
 class TestGetMyListings:
     """Tests for GET /api/v2/user/marketplace/my-listings endpoint."""
 
-    @patch('api.user.marketplace.get_container')
     def test_get_my_listings_success(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Get user's own listings successfully
 
+        v3.0.0: Now uses GetMyListingsHandler via container dependency injection.
+
         Given: User has created listings
         When: GET /api/v2/user/marketplace/my-listings
         Then: Returns user's listings with moderation status and accurate total count
         """
-        # Arrange
-        mock_listing_obj = MagicMock()
-        mock_listing_obj.to_dict.return_value = {
-            "id": "listing_mine_1",
-            "title": "My Listing",
-            "moderation_status": "pending",
-        }
-        mock_service = AsyncMock()
-        # v2.1.0: Now uses get_seller_listings_with_count for accurate pagination
-        mock_service.get_seller_listings_with_count.return_value = ([mock_listing_obj], 10)
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        from application.queries.marketplace import GetMyListingsHandler, GetMyListingsResult
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/my-listings",
-        )
+        # Arrange: Mock GetMyListingsHandler
+        mock_handler = MagicMock(spec=GetMyListingsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetMyListingsResult(
+            success=True,
+            listings=[],
+            listings_list=[{
+                "id": "listing_mine_1",
+                "title": "My Listing",
+                "moderation_status": "pending",
+            }],
+            total_count=10,
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "items" in data
-        assert "total" in data
-        assert len(data["items"]) == 1
-        assert data["items"][0]["title"] == "My Listing"
-        # v2.1.0: Verify accurate total count (M-HIGH-001 fix)
-        assert data["total"] == 10
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_my_listings')
+        container._handlers['get_my_listings'] = mock_handler
 
-    @patch('api.user.marketplace.get_container')
+        try:
+            # Act
+            response = client.get("/api/v2/user/marketplace/my-listings")
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert "items" in data
+            assert "total" in data
+            assert len(data["items"]) == 1
+            assert data["items"][0]["title"] == "My Listing"
+            # v2.1.0: Verify accurate total count (M-HIGH-001 fix)
+            assert data["total"] == 10
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_my_listings'] = original_handler
+            else:
+                container._handlers.pop('get_my_listings', None)
+
     def test_get_my_listings_pagination_offset_calculation(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Pagination offset is calculated correctly
 
+        v3.0.0: Now uses GetMyListingsHandler via container dependency injection.
+
         Given: User requests page 3 with limit 20
         When: GET /api/v2/user/marketplace/my-listings?page=3&limit=20
-        Then: Service called with offset=40 (page-1)*limit
+        Then: Handler called with offset=40 (page-1)*limit
         """
-        # Arrange
-        mock_service = AsyncMock()
-        # v2.1.0: Now uses get_seller_listings_with_count
-        mock_service.get_seller_listings_with_count.return_value = ([], 0)
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        from application.queries.marketplace import GetMyListingsHandler, GetMyListingsResult, GetMyListingsQuery
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/my-listings?page=3&limit=20",
-        )
+        # Arrange: Mock GetMyListingsHandler
+        mock_handler = MagicMock(spec=GetMyListingsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetMyListingsResult(
+            success=True,
+            listings=[],
+            listings_list=[],
+            total_count=0,
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        # Verify service was called with correct offset
-        call_args = mock_service.get_seller_listings_with_count.call_args
-        assert call_args.kwargs['offset'] == 40  # (3-1)*20 = 40
-        assert call_args.kwargs['limit'] == 20
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_my_listings')
+        container._handlers['get_my_listings'] = mock_handler
 
-    @patch('api.user.marketplace.get_container')
+        try:
+            # Act
+            response = client.get("/api/v2/user/marketplace/my-listings?page=3&limit=20")
+
+            # Assert
+            assert response.status_code == 200
+            # Verify handler was called with correct offset
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]  # Get the Query object
+            assert isinstance(call_args, GetMyListingsQuery)
+            assert call_args.offset == 40  # (3-1)*20 = 40
+            assert call_args.limit == 20
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_my_listings'] = original_handler
+            else:
+                container._handlers.pop('get_my_listings', None)
+
     def test_get_my_listings_with_status_filter(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Filter listings by status
 
+        v3.0.0: Now uses GetMyListingsHandler via container dependency injection.
+
         Given: User filters by status=draft
         When: GET /api/v2/user/marketplace/my-listings?status=draft
-        Then: Service called with ListingStatus.DRAFT
+        Then: Handler called with status='draft'
         """
-        from domains.marketplace.value_objects import ListingStatus
+        from application.queries.marketplace import GetMyListingsHandler, GetMyListingsResult, GetMyListingsQuery
 
-        # Arrange
-        mock_service = AsyncMock()
-        # v2.1.0: Now uses get_seller_listings_with_count
-        mock_service.get_seller_listings_with_count.return_value = ([], 0)
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        # Arrange: Mock GetMyListingsHandler
+        mock_handler = MagicMock(spec=GetMyListingsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetMyListingsResult(
+            success=True,
+            listings=[],
+            listings_list=[],
+            total_count=0,
+        ))
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/my-listings?status=draft",
-        )
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_my_listings')
+        container._handlers['get_my_listings'] = mock_handler
 
-        # Assert
-        assert response.status_code == 200
-        call_args = mock_service.get_seller_listings_with_count.call_args
-        assert call_args.kwargs['status'] == ListingStatus.DRAFT
+        try:
+            # Act
+            response = client.get("/api/v2/user/marketplace/my-listings?status=draft")
+
+            # Assert
+            assert response.status_code == 200
+            # Verify handler was called with status filter
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]  # Get the Query object
+            assert isinstance(call_args, GetMyListingsQuery)
+            assert call_args.status == "draft"
+
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_my_listings'] = original_handler
+            else:
+                container._handlers.pop('get_my_listings', None)
 
     def test_get_my_listings_invalid_status_validation(
         self,
@@ -1532,43 +1581,60 @@ class TestGetMyListings:
 class TestGetSellerStats:
     """Tests for GET /api/v2/user/marketplace/seller/stats endpoint."""
 
-    @patch('api.user.marketplace.get_container')
     def test_get_seller_stats_success(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Get seller statistics successfully
+        v3.0.0: Now uses GetSellerStatsHandler via container dependency injection.
 
         Given: User has sold items
         When: GET /api/v2/user/marketplace/seller/stats
         Then: Returns total_earned_credits, listings_count, total_sales, total_usage
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.get_seller_stats.return_value = {
-            "total_earned_credits": 450,
-            "listings_count": 5,
-            "total_sales": 30,
-            "total_usage": 120,
-        }
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        from application.queries.marketplace import GetSellerStatsHandler, GetSellerStatsResult
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/seller/stats",
-        )
+        mock_handler = MagicMock(spec=GetSellerStatsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetSellerStatsResult(
+            success=True,
+            stats={
+                "total_earned_credits": 450,
+                "listings_count": 5,
+                "total_sales": 30,
+                "total_usage": 120,
+            }
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total_earned_credits"] == 450
-        assert data["listings_count"] == 5
-        assert data["total_sales"] == 30
-        assert data["total_usage"] == 120
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_seller_stats')
+        container._handlers['get_seller_stats'] = mock_handler
+
+        try:
+            # Act
+            response = client.get(
+                "/api/v2/user/marketplace/seller/stats",
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_earned_credits"] == 450
+            assert data["listings_count"] == 5
+            assert data["total_sales"] == 30
+            assert data["total_usage"] == 120
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_seller_stats'] = original_handler
+            else:
+                container._handlers.pop('get_seller_stats', None)
 
 
 # ==========================================
@@ -1578,73 +1644,111 @@ class TestGetSellerStats:
 class TestGetLeaderboard:
     """Tests for GET /api/v2/user/marketplace/leaderboard endpoint."""
 
-    @patch('api.user.marketplace.get_container')
     def test_get_leaderboard_success(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Get leaderboard successfully
+        v3.0.0: Now uses GetLeaderboardHandler via container dependency injection.
 
         Given: User with valid authentication
         When: GET /api/v2/user/marketplace/leaderboard
         Then: Returns top listings by usage_count
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.get_leaderboard.return_value = [
-            {"listing_id": "listing_1", "title": "Top Asset", "usage_count": 500},
-            {"listing_id": "listing_2", "title": "Second Asset", "usage_count": 300},
-        ]
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        from application.queries.marketplace import GetLeaderboardHandler, GetLeaderboardResult
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/leaderboard",
-        )
+        mock_handler = MagicMock(spec=GetLeaderboardHandler)
+        mock_handler.handle = AsyncMock(return_value=GetLeaderboardResult(
+            success=True,
+            items=[
+                {"listing_id": "listing_1", "title": "Top Asset", "usage_count": 500},
+                {"listing_id": "listing_2", "title": "Second Asset", "usage_count": 300},
+            ]
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "items" in data
-        assert "period" in data
-        assert "type" in data
-        assert len(data["items"]) == 2
-        assert data["items"][0]["usage_count"] == 500
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_leaderboard')
+        container._handlers['get_leaderboard'] = mock_handler
 
-    @patch('api.user.marketplace.get_container')
+        try:
+            # Act
+            response = client.get(
+                "/api/v2/user/marketplace/leaderboard",
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert "items" in data
+            assert "period" in data
+            assert "type" in data
+            assert len(data["items"]) == 2
+            assert data["items"][0]["usage_count"] == 500
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_leaderboard'] = original_handler
+            else:
+                container._handlers.pop('get_leaderboard', None)
+
     def test_get_leaderboard_with_filters(
         self,
-        mock_get_container,
         override_get_current_user_free,
     ):
         """
         Test: Get leaderboard with period and type filters
+        v3.0.0: Now uses GetLeaderboardHandler via container dependency injection.
 
         Given: User with valid authentication
         When: GET with period=all_time&type=project
         Then: Returns filtered leaderboard
         """
         # Arrange
-        mock_service = AsyncMock()
-        mock_service.get_leaderboard.return_value = []
-        mock_container = MagicMock()
-        mock_container.marketplace_service = mock_service
-        mock_get_container.return_value = mock_container
+        from application.queries.marketplace import GetLeaderboardHandler, GetLeaderboardResult, GetLeaderboardQuery
 
-        # Act
-        response = client.get(
-            "/api/v2/user/marketplace/leaderboard?period=all_time&type=project",
-        )
+        mock_handler = MagicMock(spec=GetLeaderboardHandler)
+        mock_handler.handle = AsyncMock(return_value=GetLeaderboardResult(
+            success=True,
+            items=[]
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["period"] == "all_time"
-        assert data["type"] == "project"
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_leaderboard')
+        container._handlers['get_leaderboard'] = mock_handler
+
+        try:
+            # Act
+            response = client.get(
+                "/api/v2/user/marketplace/leaderboard?period=all_time&type=project",
+            )
+
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["period"] == "all_time"
+            assert data["type"] == "project"
+
+            # Verify handler was called with correct query parameters
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert isinstance(call_args, GetLeaderboardQuery)
+            assert call_args.period == "all_time"
+            assert call_args.board_type == "project"
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_leaderboard'] = original_handler
+            else:
+                container._handlers.pop('get_leaderboard', None)
 
 
 # ==========================================
@@ -1654,34 +1758,37 @@ class TestGetLeaderboard:
 class TestSubmitReport:
     """Tests for POST /api/v2/user/marketplace/report endpoint."""
 
-    @patch('api.user.marketplace.log_activity')  # Patch where it's used, not defined
-    @patch('api.user.marketplace.get_database_client')
     def test_submit_report_success(
         self,
-        mock_get_db_client,
-        mock_log_activity,
         override_get_current_user_free,
         mock_free_user,
     ):
         """
         Test: Submit report successfully
+        v3.0.0: Now uses CreateReportHandler via container dependency injection.
 
         Given: User reporting inappropriate content
         When: POST /api/v2/user/marketplace/report
         Then: Returns report_id and success message
         """
         # Arrange
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        from application.commands.marketplace import CreateReportHandler, CreateReportResult
 
-        mock_repo = MagicMock()
-        mock_repo.create_report = AsyncMock(return_value={
-            "id": "report_123",
-            "listing_id": "listing_bad",
-            "reason": "Inappropriate content",
-        })
+        mock_handler = MagicMock(spec=CreateReportHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateReportResult(
+            success=True,
+            report_id="report_123",
+            message="Report submitted successfully",
+            error=None
+        ))
 
-        with patch('api.user.marketplace.SupabaseSupportRepository', return_value=mock_repo):
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_report')
+        container._handlers['create_report'] = mock_handler
+
+        try:
             # Act
             response = client.post(
                 "/api/v2/user/marketplace/report",
@@ -1698,35 +1805,45 @@ class TestSubmitReport:
             assert data["report_id"] == "report_123"
             assert "submitted successfully" in data["message"].lower()
 
-            # Verify service calls
-            mock_repo.create_report.assert_called_once_with(
-                mock_free_user["id"],
-                "listing_bad",
-                "Inappropriate content",
-            )
-            mock_log_activity.assert_called_once()
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_report'] = original_handler
+            else:
+                container._handlers.pop('create_report', None)
 
-    @patch('api.user.marketplace.get_database_client')
     def test_submit_report_already_reported(
         self,
-        mock_get_db_client,
         override_get_current_user_free,
     ):
         """
         Test: Duplicate report should return 400
+        v3.0.0: Now uses CreateReportHandler via container dependency injection.
 
         Given: User already reported this listing
         When: POST /api/v2/user/marketplace/report
         Then: Returns 400 Bad Request
         """
         # Arrange
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        from application.commands.marketplace import CreateReportHandler, CreateReportResult
 
-        mock_repo = MagicMock()
-        mock_repo.create_report = AsyncMock(side_effect=Exception("Already reported this listing"))
+        mock_handler = MagicMock(spec=CreateReportHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateReportResult(
+            success=False,
+            report_id=None,
+            message=None,
+            error="You have already reported this listing"
+        ))
 
-        with patch('api.user.marketplace.SupabaseSupportRepository', return_value=mock_repo):
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_report')
+        container._handlers['create_report'] = mock_handler
+
+        try:
             # Act
             response = client.post(
                 "/api/v2/user/marketplace/report",
@@ -1742,6 +1859,15 @@ class TestSubmitReport:
             # App uses custom error format with "message" not "detail"
             assert "already reported" in data["message"].lower()
 
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['create_report'] = original_handler
+            else:
+                container._handlers.pop('create_report', None)
+
 
 # ==========================================
 # GET /api/v2/user/marketplace/my-reports Tests
@@ -1750,26 +1876,22 @@ class TestSubmitReport:
 class TestGetMyReports:
     """Tests for GET /api/v2/user/marketplace/my-reports endpoint."""
 
-    @patch('api.user.marketplace.get_database_client')
     def test_get_my_reports_success(
         self,
-        mock_get_db_client,
         override_get_current_user_free,
         mock_free_user,
     ):
         """
         Test: Get user's reports successfully
+        v3.0.0: Now uses GetMyReportsHandler via container dependency injection.
 
         Given: User has submitted reports
         When: GET /api/v2/user/marketplace/my-reports
         Then: Returns list of reports
         """
         # Arrange
-        mock_db = MagicMock()
-        mock_get_db_client.return_value = mock_db
+        from application.queries.marketplace import GetMyReportsHandler, GetMyReportsResult
 
-        mock_repo = MagicMock()
-        # v2.1.0: Now uses get_user_reports_with_count for accurate pagination
         reports_data = [
             {
                 "id": "report_1",
@@ -1784,9 +1906,21 @@ class TestGetMyReports:
                 "status": "resolved",
             },
         ]
-        mock_repo.get_user_reports_with_count = AsyncMock(return_value=(reports_data, 15))
 
-        with patch('api.user.marketplace.SupabaseSupportRepository', return_value=mock_repo):
+        mock_handler = MagicMock(spec=GetMyReportsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetMyReportsResult(
+            success=True,
+            items=reports_data,
+            total_count=15
+        ))
+
+        # Override container dependency
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_my_reports')
+        container._handlers['get_my_reports'] = mock_handler
+
+        try:
             # Act
             response = client.get(
                 "/api/v2/user/marketplace/my-reports",
@@ -1799,8 +1933,17 @@ class TestGetMyReports:
             assert "total" in data
             assert len(data["items"]) == 2
             assert data["items"][0]["reason"] == "Spam"
-            # v2.1.0: Verify accurate total count (M-HIGH-002 fix)
+            # v3.0.0: Verify accurate total count
             assert data["total"] == 15
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            # Cleanup
+            if original_handler:
+                container._handlers['get_my_reports'] = original_handler
+            else:
+                container._handlers.pop('get_my_reports', None)
 
 
 # ==========================================

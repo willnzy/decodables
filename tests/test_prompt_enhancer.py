@@ -282,7 +282,7 @@ class TestEnhancePrompt:
     主题模式增强测试
     """
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_prompt_success(self, mock_run_async):
         """【业务规则 5】成功增强提示词"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -309,7 +309,7 @@ class TestEnhancePrompt:
         assert 'enhanced_prompt' in result
         assert result['original_theme'] == "A cat in the garden"
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_prompt_api_failure_uses_fallback(self, mock_run_async):
         """【业务规则 5.5】API 失败时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -327,7 +327,7 @@ class TestEnhancePrompt:
         
         assert result['fallback'] is True
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_prompt_json_error_uses_fallback(self, mock_run_async):
         """【业务规则】JSON 解析错误时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -345,7 +345,7 @@ class TestEnhancePrompt:
         
         assert result['fallback'] is True
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_prompt_missing_field_uses_fallback(self, mock_run_async):
         """【业务规则】缺少必需字段时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -401,7 +401,7 @@ class TestEnhanceAssetPrompt:
     资产模式增强测试
     """
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_success(self, mock_run_async):
         """【业务规则 5】成功增强资产提示词"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -432,7 +432,7 @@ class TestEnhanceAssetPrompt:
         assert 'enhanced_prompt' in result
         assert result['original_who'] == "A cute cat"
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_api_failure(self, mock_run_async):
         """【业务规则】API 失败时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -461,7 +461,7 @@ class TestAsyncFunctions:
     """
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_prompt_async_success(self, mock_service):
         """【业务规则】异步增强成功"""
         from shared.ai.prompt_enhancer import enhance_prompt_async
@@ -486,7 +486,7 @@ class TestAsyncFunctions:
         assert 'enhanced_prompt' in result
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_prompt_async_failure(self, mock_service):
         """【业务规则】异步增强失败使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt_async
@@ -504,7 +504,7 @@ class TestAsyncFunctions:
         assert result['fallback'] is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_asset_prompt_async_success(self, mock_service):
         """【业务规则】异步资产增强成功"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt_async
@@ -531,7 +531,7 @@ class TestAsyncFunctions:
         assert 'enhanced_prompt' in result
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_asset_prompt_async_failure(self, mock_service):
         """【业务规则】异步资产增强失败使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt_async
@@ -558,7 +558,7 @@ class TestStyleIntegration:
     风格集成测试
     """
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_style_appended_if_not_in_response(self, mock_run_async):
         """【业务规则】如果响应中没有风格，则添加"""
         from shared.ai.prompt_enhancer import enhance_prompt, STYLE_DESCRIPTIONS
@@ -656,8 +656,8 @@ class TestRunAsyncInAsyncContext:
 class TestFlexibleModeTemperature:
     """Flexible 模式温度计算测试"""
     
-    @patch('services.ai.prompt_enhancer._run_async')
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     def test_flexible_mode_temperature_calculation(self, mock_service, mock_run_async):
         """flexible 模式温度计算: 0.3 + creativity_level * 0.6"""
         from shared.ai.prompt_enhancer import enhance_prompt, fallback_enhance
@@ -675,7 +675,7 @@ class TestFlexibleModeTemperature:
         # Should use fallback
         assert result['fallback'] is True
         
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_prompt_flexible_high_creativity(self, mock_run_async):
         """高创意度 flexible 模式"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -698,7 +698,7 @@ class TestFlexibleModeTemperature:
 class TestEnhanceAssetPromptFlexible:
     """Asset 提示词增强 Flexible 模式测试"""
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_flexible_mode(self, mock_run_async):
         """Asset 提示词 flexible 模式"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -719,7 +719,7 @@ class TestEnhanceAssetPromptFlexible:
         
         assert 'enhanced_prompt' in result
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_with_all_params(self, mock_run_async):
         """Asset 提示词带所有参数"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -751,7 +751,7 @@ class TestEnhanceAssetPromptFlexible:
 class TestEnhanceAssetPromptErrors:
     """Asset 提示词增强错误处理测试"""
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_missing_enhanced_prompt(self, mock_run_async):
         """【业务规则】缺少 enhanced_prompt 字段时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -773,7 +773,7 @@ class TestEnhanceAssetPromptErrors:
         
         assert result['fallback'] is True
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_json_error(self, mock_run_async):
         """【业务规则】JSON 解析错误时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -791,7 +791,7 @@ class TestEnhanceAssetPromptErrors:
         
         assert result['fallback'] is True
     
-    @patch('services.ai.prompt_enhancer._run_async')
+    @patch('shared.ai.prompt_enhancer._run_async')
     def test_enhance_asset_prompt_generic_exception(self, mock_run_async):
         """【业务规则】通用异常时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -814,7 +814,7 @@ class TestAsyncErrorHandling:
     """异步函数错误处理测试"""
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_prompt_async_missing_field(self, mock_service):
         """【业务规则】异步增强缺少字段时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt_async
@@ -837,7 +837,7 @@ class TestAsyncErrorHandling:
         assert result['fallback'] is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_prompt_async_generic_exception(self, mock_service):
         """【业务规则】异步增强异常时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_prompt_async
@@ -852,7 +852,7 @@ class TestAsyncErrorHandling:
         assert result['fallback'] is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_asset_prompt_async_missing_field(self, mock_service):
         """【业务规则】异步资产增强缺少字段时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt_async
@@ -875,7 +875,7 @@ class TestAsyncErrorHandling:
         assert result['fallback'] is True
     
     @pytest.mark.asyncio
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     async def test_enhance_asset_prompt_async_generic_exception(self, mock_service):
         """【业务规则】异步资产增强异常时使用 fallback"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt_async
@@ -936,7 +936,7 @@ class TestRunAsyncInEventLoop:
 class TestFullIntegration:
     """完整集成测试 - 覆盖内部异步函数"""
     
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     def test_enhance_prompt_full_flow(self, mock_service):
         """完整流程测试 enhance_prompt"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -967,7 +967,7 @@ class TestFullIntegration:
         assert result['original_character'] == "A fluffy orange cat"
         assert result['mode'] == 'guided'
     
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     def test_enhance_asset_prompt_full_flow(self, mock_service):
         """完整流程测试 enhance_asset_prompt"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt
@@ -1003,7 +1003,7 @@ class TestFullIntegration:
         assert result['original_where'] == "in outer space"
         assert result['mode'] == 'flexible'
     
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     def test_enhance_prompt_adds_style_if_missing(self, mock_service):
         """AI 响应没有包含风格时自动添加"""
         from shared.ai.prompt_enhancer import enhance_prompt
@@ -1029,7 +1029,7 @@ class TestFullIntegration:
         # Should append watercolor style description
         assert 'watercolor' in result['enhanced_prompt'].lower()
     
-    @patch('services.ai.prompt_enhancer.unified_text_service')
+    @patch('shared.ai.prompt_enhancer.unified_text_service')
     def test_enhance_asset_prompt_adds_style_if_missing(self, mock_service):
         """Asset AI 响应没有包含风格时自动添加"""
         from shared.ai.prompt_enhancer import enhance_asset_prompt

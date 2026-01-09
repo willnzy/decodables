@@ -10,7 +10,7 @@ import os
 
 class TestFALImageAdapter:
     @patch.dict(os.environ, {'FAL_KEY': ''}, clear=True)
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', '')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', '')
     def test_not_available_without_key(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter
         adapter = FALImageAdapter()
@@ -54,7 +54,7 @@ class TestFALImageAdapter:
         assert response.success is False
         assert "Unknown" in response.error
 
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_success(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter
@@ -78,7 +78,7 @@ class TestFALImageAdapter:
         assert response.success is True
         assert len(response.content) == 1
 
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_with_negative_prompt(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter
@@ -104,7 +104,7 @@ class TestFALImageAdapter:
         call_args = mock_fal.submit_async.call_args
         assert "negative_prompt" in call_args[1]["arguments"]
 
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_generate_image_error(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter
@@ -138,7 +138,7 @@ class TestFALImageAdapter:
         
         assert response.success is False
 
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_image_to_image_success(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter
@@ -164,7 +164,7 @@ class TestFALImageAdapter:
         assert response.success is True
         assert len(response.content) == 1
 
-    @patch('services.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
+    @patch('shared.ai.adapters.fal_adapter.FAL_KEY', 'test-key')
     @pytest.mark.asyncio
     async def test_image_to_image_error(self):
         from shared.ai.adapters.fal_adapter import FALImageAdapter

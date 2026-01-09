@@ -74,7 +74,7 @@ class TestUploadReferenceImage:
         assert result == "http://example.com/image.png"
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase', None)
+    @patch('shared.ai.image_generator.supabase', None)
     async def test_returns_none_when_no_supabase(self):
         from shared.ai.image_generator import upload_reference_image
         
@@ -84,7 +84,7 @@ class TestUploadReferenceImage:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_uploads_base64_image(self, mock_supabase):
         from shared.ai.image_generator import upload_reference_image
         import base64
@@ -103,7 +103,7 @@ class TestUploadReferenceImage:
         assert result == "https://storage.supabase.co/image.png"
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_uploads_base64_with_data_uri_prefix(self, mock_supabase):
         """测试带 data URI 前缀的 base64 图片"""
         from shared.ai.image_generator import upload_reference_image
@@ -124,7 +124,7 @@ class TestUploadReferenceImage:
         assert result == "https://storage.supabase.co/image.png"
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_uploads_anonymous_user(self, mock_supabase):
         """测试匿名用户上传 (无 user_id)"""
         from shared.ai.image_generator import upload_reference_image
@@ -146,7 +146,7 @@ class TestUploadReferenceImage:
         assert 'anonymous' in upload_call_args[1]['path']
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_upload_exception_returns_none(self, mock_supabase):
         """测试上传异常时返回 None"""
         from shared.ai.image_generator import upload_reference_image
@@ -166,7 +166,7 @@ class TestUploadReferenceImage:
 
 class TestDownloadAndUploadImage:
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase', None)
+    @patch('shared.ai.image_generator.supabase', None)
     async def test_returns_none_when_no_supabase(self):
         from shared.ai.image_generator import download_and_upload_image
         
@@ -176,7 +176,7 @@ class TestDownloadAndUploadImage:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_downloads_and_uploads(self, mock_supabase):
         from shared.ai.image_generator import download_and_upload_image
         
@@ -198,7 +198,7 @@ class TestDownloadAndUploadImage:
         assert result == "https://storage.supabase.co/uploaded.png"
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_downloads_and_uploads_anonymous_user(self, mock_supabase):
         """测试匿名用户下载上传"""
         from shared.ai.image_generator import download_and_upload_image
@@ -223,7 +223,7 @@ class TestDownloadAndUploadImage:
         assert 'anonymous' in upload_call_args[1]['path']
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_returns_none_on_non_200_status(self, mock_supabase):
         """测试下载失败 (非 200 状态码)"""
         from shared.ai.image_generator import download_and_upload_image
@@ -242,7 +242,7 @@ class TestDownloadAndUploadImage:
         assert result is None
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.supabase')
+    @patch('shared.ai.image_generator.supabase')
     async def test_returns_none_on_exception(self, mock_supabase):
         """测试下载异常"""
         from shared.ai.image_generator import download_and_upload_image
@@ -260,8 +260,8 @@ class TestDownloadAndUploadImage:
 
 class TestGenerateAndUploadSingle:
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.download_and_upload_image')
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.download_and_upload_image')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_text_to_image_generation(self, mock_service, mock_download):
         from shared.ai.image_generator import generate_and_upload_single
         from shared.ai.base import AIResponse
@@ -282,8 +282,8 @@ class TestGenerateAndUploadSingle:
         mock_service.generate.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.download_and_upload_image')
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.download_and_upload_image')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_image_to_image_generation(self, mock_service, mock_download):
         from shared.ai.image_generator import generate_and_upload_single
         from shared.ai.base import AIResponse
@@ -305,7 +305,7 @@ class TestGenerateAndUploadSingle:
         mock_service.image_to_image.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_generation_failure(self, mock_service):
         from shared.ai.image_generator import generate_and_upload_single
         from shared.ai.base import AIResponse
@@ -323,7 +323,7 @@ class TestGenerateAndUploadSingle:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_empty_content_response(self, mock_service):
         from shared.ai.image_generator import generate_and_upload_single
         from shared.ai.base import AIResponse
@@ -341,8 +341,8 @@ class TestGenerateAndUploadSingle:
         assert result is None
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.download_and_upload_image')
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.download_and_upload_image')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_with_custom_negative_prompt(self, mock_service, mock_download):
         """测试自定义 negative prompt"""
         from shared.ai.image_generator import generate_and_upload_single
@@ -367,7 +367,7 @@ class TestGenerateAndUploadSingle:
         assert "ugly" in call_kwargs['negative_prompt'] or "nsfw" in call_kwargs['negative_prompt']
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.unified_image_service')
+    @patch('shared.ai.image_generator.unified_image_service')
     async def test_exception_during_generation(self, mock_service):
         """测试生成过程中的异常"""
         from shared.ai.image_generator import generate_and_upload_single
@@ -385,7 +385,7 @@ class TestGenerateAndUploadSingle:
 
 class TestGenerate8Images:
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_generates_multiple_images(self, mock_gen_single):
         from shared.ai.image_generator import generate_8_images
         
@@ -402,7 +402,7 @@ class TestGenerate8Images:
         assert all(url == "https://storage.supabase.co/image.png" for url in urls)
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_validates_generation_mode(self, mock_gen_single):
         from shared.ai.image_generator import generate_8_images
         
@@ -417,7 +417,7 @@ class TestGenerate8Images:
         assert len(urls) == 1
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_clamps_creativity_level(self, mock_gen_single):
         from shared.ai.image_generator import generate_8_images
         
@@ -431,8 +431,8 @@ class TestGenerate8Images:
         assert len(urls) == 1
 
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.upload_reference_image')
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.upload_reference_image')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_with_reference_image(self, mock_gen_single, mock_upload_ref):
         from shared.ai.image_generator import generate_8_images
         
@@ -449,8 +449,8 @@ class TestGenerate8Images:
         mock_upload_ref.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.upload_reference_image')
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.upload_reference_image')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_failed_reference_image_falls_back_to_text(self, mock_gen_single, mock_upload_ref):
         """测试 reference image 上传失败时降级为纯文本生成"""
         from shared.ai.image_generator import generate_8_images
@@ -470,7 +470,7 @@ class TestGenerate8Images:
         mock_gen_single.assert_called_once()
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_with_multiple_variations(self, mock_gen_single):
         """测试生成多个变体"""
         from shared.ai.image_generator import generate_8_images
@@ -487,7 +487,7 @@ class TestGenerate8Images:
         assert mock_gen_single.call_count == 3
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_clamps_num_images(self, mock_gen_single):
         """测试 num_images 范围限制"""
         from shared.ai.image_generator import generate_8_images
@@ -503,7 +503,7 @@ class TestGenerate8Images:
         assert len(urls) == 4
     
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_and_upload_single')
+    @patch('shared.ai.image_generator.generate_and_upload_single')
     async def test_with_negative_prompt(self, mock_gen_single):
         """测试带 negative prompt 的生成"""
         from shared.ai.image_generator import generate_8_images
@@ -524,7 +524,7 @@ class TestGenerate8Images:
 
 class TestGenerateImagesAsync:
     @pytest.mark.asyncio
-    @patch('services.ai.image_generator.generate_8_images')
+    @patch('shared.ai.image_generator.generate_8_images')
     async def test_convenience_function(self, mock_gen_8):
         from shared.ai.image_generator import generate_images_async
         
