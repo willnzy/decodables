@@ -2032,7 +2032,15 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 -- ========== Marketplace (3条) ==========
 ('marketplace.seller_revenue_ratio', '0.70', 'number', 'marketplace', 'Seller revenue share (70%)', true),
 ('marketplace.platform_fee_ratio', '0.30', 'number', 'marketplace', 'Platform fee (30%)', true),
-('marketplace.trial_duration_days', '7', 'number', 'marketplace', 'Trial duration in days', true)
+('marketplace.trial_duration_days', '7', 'number', 'marketplace', 'Trial duration in days', true),
+
+-- ========== Tier System (6条) ==========
+('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称 (可通过 Admin API 修改)', true, true),
+('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称 (可通过 Admin API 修改)', true, true),
+('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可通过 Admin API 修改)', true, true),
+('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', true, false),
+('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', true, false),
+('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false)
 
 ON CONFLICT (key) DO UPDATE SET
     value = EXCLUDED.value,
@@ -2111,12 +2119,12 @@ BEGIN
     SELECT COUNT(*) INTO v_config_count FROM system_configs WHERE is_active = TRUE;
 
     RAISE NOTICE '✅ Total system_configs rows: %', v_config_count;
-    RAISE NOTICE '✅ Expected: >= 60';
+    RAISE NOTICE '✅ Expected: >= 66';
 
-    IF v_config_count >= 60 THEN
+    IF v_config_count >= 66 THEN
         RAISE NOTICE '✅ System configs verification PASSED';
     ELSE
-        RAISE WARNING '⚠️ System configs verification FAILED (expected >= 60, got %)', v_config_count;
+        RAISE WARNING '⚠️ System configs verification FAILED (expected >= 66, got %)', v_config_count;
     END IF;
 END $$;
 

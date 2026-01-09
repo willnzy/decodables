@@ -28,6 +28,7 @@ from .exceptions import (
 )
 from .repository import IUserRepository
 from .service import IdentityService
+from .tier_service import TierService
 from .constants import (
     TIER_T1,
     TIER_T2,
@@ -60,6 +61,7 @@ __all__ = [
     'IUserRepository',
     # Service
     'IdentityService',
+    'TierService',
     # Constants
     'TIER_T1',
     'TIER_T2',
