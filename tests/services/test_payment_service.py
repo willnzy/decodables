@@ -24,9 +24,43 @@ from unittest.mock import MagicMock, patch, Mock
 import sys
 
 # Mock stripe module before importing payment_service
+class MockStripeError(Exception):
+    """Mock Stripe Error"""
+    pass
+
+class MockIdempotencyError(MockStripeError):
+    """Mock Idempotency Error"""
+    pass
+
+class MockSignatureVerificationError(MockStripeError):
+    """Mock Signature Verification Error"""
+    pass
+
+class MockInvalidRequestError(MockStripeError):
+    """Mock Invalid Request Error"""
+    pass
+
+class MockAPIConnectionError(MockStripeError):
+    """Mock API Connection Error"""
+    pass
+
+class MockRateLimitError(MockStripeError):
+    """Mock Rate Limit Error"""
+    pass
+
+# Create stripe module mock
 stripe_mock = MagicMock()
-stripe_mock.error = MagicMock()
-stripe_mock.error.StripeError = type('StripeError', (Exception,), {})
+
+# Create error module with proper exception classes (not MagicMock)
+class ErrorModule:
+    StripeError = MockStripeError
+    IdempotencyError = MockIdempotencyError
+    SignatureVerificationError = MockSignatureVerificationError
+    InvalidRequestError = MockInvalidRequestError
+    APIConnectionError = MockAPIConnectionError
+    RateLimitError = MockRateLimitError
+
+stripe_mock.error = ErrorModule
 sys.modules['stripe'] = stripe_mock
 
 # Now import payment_service
@@ -401,7 +435,7 @@ class TestAdminFunctions:
         """【业务规则】获取用户所有订阅"""
         mock_subs = [MagicMock(), MagicMock()]
         
-        with patch('services.payment_service.stripe.Subscription.list') as mock_list:
+        with patch('domains.billing.payment_service.stripe.Subscription.list') as mock_list:
             mock_list.return_value = MagicMock(data=mock_subs)
             
             result = payment_service.get_customer_subscriptions("cus_123")

@@ -1,9 +1,15 @@
-"""Logs API - Error logs endpoint (v2).
+"""Logs API - Error logs endpoint (v3).
 
 @module api.user.logs
-@version 2.1.0
+@version 3.0.0
 
 Changes:
+- v3.0.0: DDD architecture upgrade - CQRS pattern
+  - Created LoggingService with error logging business logic
+  - Added 2 Command Handlers (CreateErrorLog, CreateErrorLogBatch)
+  - Eliminated direct Supabase calls from API layer
+  - Improved testability and maintainability
+
 - v2.1.0: Security improvements
   - LOG-P0-1: Added rate limiting (30/minute for single, 10/minute for batch)
   - LOG-P0-2: Added batch size limit (max 50 errors per request)
@@ -28,13 +34,13 @@ from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field, field_validator
-from core.database import get_supabase_client
 from infrastructure.rate_limiter import limiter
+from container import get_container
+from application.commands.logging import CreateErrorLogCommand, CreateErrorLogBatchCommand
 
 logger = logging.getLogger(__name__)
-supabase = get_supabase_client()
 
-router = APIRouter(prefix="/logs", tags=["user-logs-v2"])
+router = APIRouter(prefix="/logs", tags=["user-logs-v3"])
 
 # v2.1.0: LOG-HIGH-1 - Error ID validation pattern (alphanumeric, underscore, hyphen)
 ERROR_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{1,100}$")
@@ -151,40 +157,44 @@ async def log_error(
     """
     Receive and store a single error log from frontend.
 
+    v3.0.0: Now uses CreateErrorLogHandler (CQRS pattern).
+
     Does not require authentication - errors should be logged
     even for unauthenticated users.
 
     v2.1.0: Added rate limiting (30/minute) to prevent abuse.
     """
-    try:
-        user_id = _extract_user_id_from_token(authorization)
+    container = get_container()
+    handler = container.create_error_log_handler
 
-        error_data = {
-            "error_id": req.error_id,
-            "error_type": req.error_type,
-            "error_code": req.error_code,
-            "message": req.message[:2000] if req.message else None,
-            "status_code": req.status_code,
-            "endpoint": req.endpoint[:500] if req.endpoint else None,
-            "method": req.method,
-            "user_id": user_id,
-            "user_code": req.user_code,
-            "session_id": req.session_id,
-            "page_url": req.page_url[:2000] if req.page_url else None,
-            "user_agent": req.user_agent[:500] if req.user_agent else None,
-            "stack_trace": req.stack_trace[:5000] if req.stack_trace else None,
-            "context": req.context or {},
-            "client_timestamp": req.client_timestamp,
-        }
+    user_id = _extract_user_id_from_token(authorization)
 
-        supabase.table("error_logs").insert(error_data).execute()
+    error_data = {
+        "error_id": req.error_id,
+        "error_type": req.error_type,
+        "error_code": req.error_code,
+        "message": req.message[:2000] if req.message else None,
+        "status_code": req.status_code,
+        "endpoint": req.endpoint[:500] if req.endpoint else None,
+        "method": req.method,
+        "user_id": user_id,
+        "user_code": req.user_code,
+        "session_id": req.session_id,
+        "page_url": req.page_url[:2000] if req.page_url else None,
+        "user_agent": req.user_agent[:500] if req.user_agent else None,
+        "stack_trace": req.stack_trace[:5000] if req.stack_trace else None,
+        "context": req.context or {},
+        "client_timestamp": req.client_timestamp,
+    }
 
-        logger.info(f"[ErrorLog] {req.error_type} - {req.message[:100] if req.message else 'No message'}")
+    command = CreateErrorLogCommand(error_data=error_data)
+    result = await handler.handle(command)
 
-        return ErrorLogResponse(status="ok")
-    except Exception as e:
-        logger.warning(f"[ErrorLog] Failed to store error: {e}")
+    if not result.success:
+        logger.warning(f"[ErrorLog] Failed to store error: {result.error}")
         return ErrorLogResponse(status="ok", warning="Error may not have been stored")
+
+    return ErrorLogResponse(status="ok")
 
 
 @router.post("/errors")
@@ -197,35 +207,40 @@ async def log_errors_batch(
     """
     Receive and store batch error logs from frontend.
 
+    v3.0.0: Now uses CreateErrorLogBatchHandler (CQRS pattern).
+
     v2.1.0: Added rate limiting (10/minute) and batch size limit (50).
     """
-    try:
-        user_id = _extract_user_id_from_token(authorization)
+    container = get_container()
+    handler = container.create_error_log_batch_handler
 
-        error_records = []
-        for err in req.errors:
-            error_records.append({
-                "error_id": err.error_id,
-                "error_type": err.error_type,
-                "error_code": err.error_code,
-                "message": err.message[:2000] if err.message else None,
-                "status_code": err.status_code,
-                "endpoint": err.endpoint[:500] if err.endpoint else None,
-                "method": err.method,
-                "user_id": user_id,
-                "user_code": err.user_code,
-                "session_id": err.session_id,
-                "page_url": err.page_url[:2000] if err.page_url else None,
-                "user_agent": err.user_agent[:500] if err.user_agent else None,
-                "stack_trace": err.stack_trace[:5000] if err.stack_trace else None,
-                "context": err.context or {},
-                "client_timestamp": err.client_timestamp,
-            })
+    user_id = _extract_user_id_from_token(authorization)
 
-        if error_records:
-            supabase.table("error_logs").insert(error_records).execute()
+    error_records = []
+    for err in req.errors:
+        error_records.append({
+            "error_id": err.error_id,
+            "error_type": err.error_type,
+            "error_code": err.error_code,
+            "message": err.message[:2000] if err.message else None,
+            "status_code": err.status_code,
+            "endpoint": err.endpoint[:500] if err.endpoint else None,
+            "method": err.method,
+            "user_id": user_id,
+            "user_code": err.user_code,
+            "session_id": err.session_id,
+            "page_url": err.page_url[:2000] if err.page_url else None,
+            "user_agent": err.user_agent[:500] if err.user_agent else None,
+            "stack_trace": err.stack_trace[:5000] if err.stack_trace else None,
+            "context": err.context or {},
+            "client_timestamp": err.client_timestamp,
+        })
 
-        return ErrorLogResponse(status="ok", errors_received=len(error_records))
-    except Exception as e:
-        logger.warning(f"[ErrorLog] Failed to store batch errors: {e}")
+    command = CreateErrorLogBatchCommand(errors=error_records)
+    result = await handler.handle(command)
+
+    if not result.success:
+        logger.warning(f"[ErrorLog] Failed to store batch errors: {result.error}")
         return ErrorLogResponse(status="ok", warning="Some errors may not have been stored")
+
+    return ErrorLogResponse(status="ok", errors_received=result.count)

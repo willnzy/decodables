@@ -216,6 +216,15 @@ class Container:
             self._services['support'] = SupportService(get_database_client())
         return self._services['support']
 
+    @property
+    def logging_service(self):
+        """Get logging service instance (v3.0.0)."""
+        from core.database import get_database_client
+        from domains.logging import LoggingService
+        if 'logging' not in self._services:
+            self._services['logging'] = LoggingService(get_database_client())
+        return self._services['logging']
+
     # ========== Command Handlers ==========
 
     @property
@@ -339,6 +348,22 @@ class Container:
         if 'create_report' not in self._handlers:
             self._handlers['create_report'] = CreateReportHandler(self.support_service)
         return self._handlers['create_report']
+
+    @property
+    def create_error_log_handler(self):
+        """Get create error log handler (v3.0.0)."""
+        from application.commands.logging import CreateErrorLogHandler
+        if 'create_error_log' not in self._handlers:
+            self._handlers['create_error_log'] = CreateErrorLogHandler(self.logging_service)
+        return self._handlers['create_error_log']
+
+    @property
+    def create_error_log_batch_handler(self):
+        """Get create error log batch handler (v3.0.0)."""
+        from application.commands.logging import CreateErrorLogBatchHandler
+        if 'create_error_log_batch' not in self._handlers:
+            self._handlers['create_error_log_batch'] = CreateErrorLogBatchHandler(self.logging_service)
+        return self._handlers['create_error_log_batch']
 
     # ========== Query Handlers ==========
 
