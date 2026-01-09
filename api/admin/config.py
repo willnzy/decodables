@@ -100,7 +100,9 @@ class RateLimitPresetRequest(BaseModel):
 
 def _get_config_service() -> ConfigService:
     """Get ConfigService instance with injected repository."""
-    config_repo = ConfigRepository()
+    from infrastructure.repositories.config_repository import SupabaseConfigRepository
+    db = get_database_client()
+    config_repo = SupabaseConfigRepository(db)
     return ConfigService(config_repo)
 
 
