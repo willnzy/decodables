@@ -2816,16 +2816,19 @@ END $$;
 -- ============================================================================
 -- Row-Level Security (RLS) Policies
 -- ============================================================================
--- Note: Only enable if deploying to Supabase or need multi-tenant security
--- For Railway/standalone PostgreSQL, RLS can be skipped
+-- ⚠️  RLS is DISABLED by default in this migration
+-- To enable RLS for Supabase multi-tenant security, run: enable_rls.sql
+-- For Railway/standalone PostgreSQL, RLS is not needed
 
--- Enable RLS on user-owned tables
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
+-- Note: RLS policies are defined but NOT enabled
+-- Uncomment the following lines to enable RLS:
+
+-- ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Users can only read/update their own profile
 CREATE POLICY profiles_select_own ON profiles
