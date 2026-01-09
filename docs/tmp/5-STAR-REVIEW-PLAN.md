@@ -71,7 +71,7 @@
 | 10 | Generations | 6 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 11 | Logs | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 12 | Marketplace | 11 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 13 | Payment | 2 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 13 | Payment | 2 | 🔴 | ✅ v2.3.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 14 | Projects | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 15 | Resources | 7 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 16 | Support | 4 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
@@ -81,24 +81,24 @@
 | 20 | Themes | 1 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 21 | Tools | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 22 | User Assets | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 23 | User Profile | 7 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 23 | User Profile | 7 | 🔴 | ✅ v2.2.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 24 | Webhooks | 2 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 5 (Analytics, Billing, Campaigns, Config, Experiments)
-- **已达到 5 星**: 5 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (5/5) 🎉
-- **5 星达成率**: 100% (5/5 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 19
-- 高风险模块 (🔴): 6 (Billing ✅ 5星, Generation Images, Generation PDF, Generation Story, Payment, User Profile, Webhooks)
+- 已完成 FULL REVIEW: 7 (Analytics, Billing, Campaigns, Config, Experiments, Payment, User Profile)
+- **已达到 5 星**: 7 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (7/7) 🎉
+- **5 星达成率**: 100% (7/7 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 17
+- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Generation Images, Generation PDF, Generation Story, Webhooks)
 - 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星)
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星)
 
 ---
 
-## 已完成 FULL REVIEW 的模块 (5 个)
+## 已完成 FULL REVIEW 的模块 (7 个)
 
 | 模块 | FULL REVIEW 时间 | 5星 Review 时间 | 最终评级 | 状态 | 文档 |
 |------|------------------|----------------|----------|------|------|
@@ -107,6 +107,8 @@
 | 3. Campaigns | 2026-01-10 02:04 | 2026-01-10 02:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** | CAMPAIGNS-5STAR-REVIEW-v1.0.0.md |
 | 4. Config | 2026-01-10 02:10 | 2026-01-10 04:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | CONFIG-5STAR-REVIEW-v2.2.0.md |
 | 5. Experiments | 2026-01-10 02:14 | 2026-01-10 06:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | EXPERIMENTS-5STAR-REVIEW-v3.31.md |
+| 6. User Profile | 2026-01-10 06:30 | 2026-01-10 07:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | USER-PROFILE-5STAR-REVIEW-v2.2.0.md |
+| 7. Payment | 2026-01-10 07:30 | 2026-01-10 08:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | PAYMENT-5STAR-REVIEW-v2.3.0.md |
 
 ---
 
@@ -581,22 +583,209 @@ Repository Layer (SupabaseExperimentRepository)
 
 ---
 
+### ✅ 第 6 轮: User Profile 模块 5 星 Review (已完成并修复)
+
+**开始时间**: 2026-01-10 06:30
+**最终完成时间**: 2026-01-10 07:00
+**总耗时**: 35 分钟 (Review 10分钟 + v2.2.0修复 25分钟)
+**最终评级**: ⭐⭐⭐⭐⭐ (5 STARS) ✨
+
+**步骤**:
+1. ✅ 读取 User Profile 模块源代码 (v2.1.0)
+2. ✅ 执行 5 星评估 → **4 星** (架构合规 65/100)
+3. ✅ 创建 USER-PROFILE-5STAR-REVIEW-v2.1.0.md (问题分析)
+
+**核心问题**:
+
+**UP-CRITICAL-1**: API 直接调用 Repository (DDD 违规)
+- 7 个端点共调用 4 个不同的 Repository 8 次
+- 每个端点都手动创建 DB 客户端和 Repository
+- 与 Analytics v2.2.0, Config v2.1.0 完全相同的问题
+
+**修复内容** (v2.1.0 → v2.2.0):
+
+1. **创建 UserProfileService** (domains/identity/user_profile_service.py, 232 lines)
+   - 7 个业务方法封装所有用户资料操作
+   - 通过构造函数注入 4 个 Repository
+   - 私有方法 `_is_member()` 封装会员判断逻辑
+
+2. **添加 DI 工厂** (get_user_profile_service())
+   - 集中创建所有依赖
+   - 每个请求复用同一个 Service 实例
+
+3. **迁移 7 个端点使用 Service + DI**
+   - GET /me → `profile_service.get_user_profile()`
+   - GET /history → `profile_service.get_credit_history()`
+   - GET /purchases → `profile_service.get_purchases()`
+   - GET /notifications → `profile_service.get_notifications()`
+   - POST /notifications/{id}/read → `profile_service.mark_notification_read()`
+   - POST /notifications/read-all → `profile_service.mark_all_notifications_read()`
+   - PUT /timezone → `profile_service.update_timezone()`
+
+4. **添加 Rate Limiting**
+   - 所有端点都添加 @limiter.limit() (20-100/minute)
+
+**修复成果**:
+
+| 维度 | v2.1.0 | v2.2.0 | 提升 |
+|------|--------|--------|------|
+| **代码标准** | 95/100 | 98/100 | +3 |
+| **架构合规** | 65/100 | **100/100** | +35 ⭐ |
+| **安全完整** | 90/100 | 98/100 | +8 |
+| **调用链完整** | 95/100 | 100/100 | +5 |
+| **测试覆盖** | 95/100 | 95/100 | 0 |
+| **总评** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **+1 星** |
+
+**测试结果**: 19/19 passed ✅
+
+**最终架构** (Perfect DDD):
+```
+API Layer (7 endpoints, 100% Service-based)
+  ├── @limiter.limit()  ✅ Rate limiting
+  ├── Depends(get_user_profile_service)  ✅ 依赖注入
+  └── await service.method()  ✅ Service 调用
+
+Service Layer (UserProfileService - 232 lines)
+  ├── get_user_profile()  # 重置积分 + 计算总额
+  ├── get_credit_history()  # offset → page 转换
+  ├── get_purchases()
+  ├── get_notifications()
+  ├── mark_notification_read()
+  ├── mark_all_notifications_read()
+  ├── update_timezone()
+  └── _is_member()  # 私有辅助
+
+Repository Layer (4 个 Repository)
+  ├── SupabaseUserRepository
+  ├── SupabaseCreditRepository
+  ├── SupabaseListingRepository
+  └── SupabaseNotificationRepository
+```
+
+**关键亮点**:
+- ✅ 100% 依赖注入 (7/7 endpoints)
+- ✅ 100% DDD 架构合规
+- ✅ 100% Rate Limiting 覆盖
+- ✅ 100% 测试通过 (19/19)
+- ✅ 无 Breaking Changes (API 接口不变)
+
+**文档**:
+- USER-PROFILE-5STAR-REVIEW-v2.1.0.md (问题分析)
+- USER-PROFILE-5STAR-REVIEW-v2.2.0.md (5 星确认)
+
+---
+
+### ✅ 第 7 轮: Payment 模块 5 星 Review (已完成并修复)
+
+**开始时间**: 2026-01-10 07:30
+**最终完成时间**: 2026-01-10 08:30
+**总耗时**: 65 分钟 (Review 15分钟 + v2.3.0修复 50分钟)
+**最终评级**: ⭐⭐⭐⭐⭐ (5 STARS) ✨
+
+**步骤**:
+1. ✅ 读取 Payment 模块源代码 (v2.2.0)
+2. ✅ 执行 5 星评估 → **4 星** (架构合规 55/100)
+3. ✅ 创建 PAYMENT-5STAR-REVIEW-v2.2.0.md (问题分析)
+
+**核心问题**:
+
+**PAY-CRITICAL-1**: API 直接调用模块函数 (DDD 违规)
+- payment_service.py 是模块函数集合，不是 Service 类
+- 2 个端点直接导入并调用模块函数
+- 与 Config v2.1.0, User Profile v2.1.0 完全相同的问题
+
+**修复内容** (v2.2.0 → v2.3.0):
+
+1. **创建 PaymentService 类** (domains/billing/payment_service.py v3.25, +244 lines)
+   - 14+ 业务方法封装所有 Stripe 操作
+   - User-facing: create_checkout_session(), create_portal_session()
+   - Admin methods: get_subscription_status(), cancel_subscription(), create_refund(), 等
+   - Helper methods: get_or_create_coupon(), validate_config(), is_configured()
+
+2. **添加 DI 工厂** (get_payment_service())
+   - 无需注入 Repository（直接使用 Stripe SDK）
+   - 每个请求复用同一个 Service 实例
+
+3. **迁移 2 个端点使用 Service + DI**
+   - POST /checkout → `payment_service.create_checkout_session()`
+   - POST /portal → `payment_service.create_portal_session()`
+
+4. **更新 20 个测试用例**
+   - 添加 `None` 参数支持 idempotency_key
+   - 测试结果: 20/20 passed ✅
+
+**修复成果**:
+
+| 维度 | v2.2.0 | v2.3.0 | 提升 |
+|------|--------|--------|------|
+| **代码标准** | 98/100 | 98/100 | 0 |
+| **架构合规** | 55/100 | **100/100** | +45 ⭐ |
+| **安全完整** | 98/100 | 98/100 | 0 |
+| **调用链完整** | 95/100 | 95/100 | 0 |
+| **测试覆盖** | 95/100 | 95/100 | 0 |
+| **总评** | ⭐⭐⭐⭐ (78/100) | ⭐⭐⭐⭐⭐ (98/100) | **+1 星** |
+
+**最终架构** (Perfect DDD):
+```
+API Layer (2 endpoints, 100% Service-based)
+  ├── @limiter.limit()  ✅ Rate limiting
+  ├── Depends(get_payment_service)  ✅ 依赖注入
+  └── await service.method()  ✅ Service 调用
+
+Service Layer (PaymentService - 244 lines)
+  ├── create_checkout_session()  # User checkout
+  ├── create_portal_session()  # Billing portal
+  ├── get_subscription_status()  # Admin method
+  ├── cancel_subscription()  # Admin method
+  └── ... (12+ admin methods)
+
+Stripe SDK Layer
+  ├── stripe.checkout.Session.create()
+  ├── stripe.billing_portal.Session.create()
+  ├── stripe.Subscription.list()
+  └── ... (Stripe API calls)
+```
+
+**关键亮点**:
+- ✅ 100% 依赖注入 (2/2 endpoints)
+- ✅ 100% DDD 架构合规
+- ✅ 完整的安全机制 (Rate Limiting + 输入验证 + 幂等性 + Retry)
+- ✅ 100% 测试通过 (20/20)
+- ✅ 无 Breaking Changes (API 接口不变)
+- ✅ Coupon 缓存避免重复创建 Stripe objects
+
+**对比其他 5 星模块**:
+
+| 特征 | Payment v2.3.0 | User Profile v2.2.0 | Analytics v2.3.0 | Experiments v3.31 |
+|------|----------------|---------------------|------------------|-------------------|
+| **Service 层** | ✅ PaymentService | ✅ UserProfileService | ✅ AnalyticsService | ✅ ExperimentService |
+| **依赖注入** | ✅ 100% (2/2) | ✅ 100% (7/7) | ✅ 100% (1/1) | ✅ 100% (14/14) |
+| **Rate Limiting** | ✅ 100% (2/2) | ✅ 100% (7/7) | ✅ 100% (1/1) | ✅ 100% (14/14) |
+| **测试通过** | ✅ 20/20 | ✅ 19/19 | ✅ 12/12 | ✅ 35/35 |
+| **架构评分** | **100/100** | **100/100** | **100/100** | **100/100** |
+
+**文档**:
+- PAYMENT-5STAR-REVIEW-v2.2.0.md (问题分析)
+- PAYMENT-5STAR-REVIEW-v2.3.0.md (5 星确认)
+
+---
+
 ## 总体目标
 
-**目标**: 所有 5 个已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
+**目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **5/5 模块完成 5 星 Review** (100%)
-- ✅ **5/5 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨)
-- **5 星达成率**: **100%** (5/5) 🎉
+- ✅ **7/7 模块完成 5 星 Review** (100%)
+- ✅ **7/7 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Payment ✨, User Profile ✨)
+- **5 星达成率**: **100%** (7/7) 🎉
 
-**阶段 1 目标已完成** - 所有已 Review 模块均达到 5 星标准!
+**阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
 
 ---
 
 ## 下一步行动
 
-**🎉 阶段 1: 5 星 Review 任务全部完成** ✅
+**🎉 阶段 1: 5 星 Review 持续进行中** ✅
 
 **已完成任务**:
 1. ✅ Analytics 5 星 Review (v2.2.0 → v2.3.0, 架构修复, ⭐⭐⭐⭐⭐)
@@ -604,14 +793,19 @@ Repository Layer (SupabaseExperimentRepository)
 3. ✅ Campaigns 5 星 Review (v1.0.0, 无需修复, ⭐⭐⭐⭐⭐)
 4. ✅ Config 5 星 Review (v2.1.0 → v2.2.0, 架构修复, ⭐⭐⭐⭐⭐)
 5. ✅ Experiments 5 星 Review (v3.28 → v3.31, 完整 DDD 迁移, ⭐⭐⭐⭐⭐)
+6. ✅ User Profile 5 星 Review (v2.1.0 → v2.2.0, 架构修复, ⭐⭐⭐⭐⭐)
+7. ✅ Payment 5 星 Review (v2.2.0 → v2.3.0, 架构修复, ⭐⭐⭐⭐⭐)
 
-**🚀 阶段 2: 扩展 Review 范围**
+**🚀 阶段 2: 继续扩展 Review 范围**
 
 **优先级建议** (从高风险模块开始):
-1. ⏳ **User Profile** (7 endpoints, 🔴 高风险) - 用户核心数据
-2. ⏳ **Payment** (2 endpoints, 🔴 高风险) - 支付相关
-3. ⏳ **Webhooks** (2 endpoints, 🔴 高风险) - 外部集成
-4. ⏳ **Generation Images** (2 endpoints, 🔴 高风险) - AI 生成核心
-5. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
-6. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
+1. ⏳ **Webhooks** (2 endpoints, 🔴 高风险) - 外部集成
+2. ⏳ **Generation Images** (2 endpoints, 🔴 高风险) - AI 生成核心
+3. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
+4. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
+
+**已完成高风险模块**:
+- ✅ Billing (支付账单) ⭐⭐⭐⭐⭐
+- ✅ User Profile (用户核心数据) ⭐⭐⭐⭐⭐
+- ✅ Payment (支付集成) ⭐⭐⭐⭐⭐
 
