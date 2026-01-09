@@ -49,6 +49,7 @@ def mock_billing_repository():
     repo.deduct_atomic = AsyncMock()
     repo.add_atomic = AsyncMock()
     repo.get_transaction_history = AsyncMock()
+    repo.get_transaction_count = AsyncMock()
     return repo
 
 
@@ -126,7 +127,11 @@ class TestDeductCreditsFlow:
     async def test_deduct_credits_insufficient_balance(self, command_bus, mock_billing_repository):
         """Test deduction fails when insufficient balance."""
         # Arrange
-        mock_billing_repository.deduct_atomic.side_effect = Exception("Insufficient credits")
+        from domains.billing.exceptions import InsufficientCreditsException
+        mock_billing_repository.deduct_atomic.side_effect = InsufficientCreditsException(
+            required=100,
+            available=50
+        )
 
         # Act
         command = DeductCreditsCommand(
@@ -284,6 +289,7 @@ class TestGetTransactionHistoryFlow:
         ]
 
         mock_billing_repository.get_transaction_history.return_value = transactions
+        mock_billing_repository.get_transaction_count.return_value = 2
 
         # Act
         query = GetTransactionHistoryQuery(user_id="user_123", limit=10)
