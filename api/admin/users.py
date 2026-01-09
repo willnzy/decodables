@@ -92,13 +92,18 @@ class DiscountRequest(BaseModel):
 async def search_users_api(
     request: Request,
     query: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(20, ge=1, le=100, description="Number of results to return (1-100)"),
     admin: dict = Depends(require_admin),
 ):
-    """Search users by query."""
+    """
+    Search users by query.
+
+    v3.26 (USER-MEDIUM-1): Added limit parameter to prevent large result sets
+    """
     db = get_database_client()
     user_repo = SupabaseUserRepository(db)
-    users = await user_repo.search_users(query)
-    return {"users": users}
+    users = await user_repo.search_users(query, limit=limit)
+    return {"users": users, "count": len(users), "limit": limit}
 
 
 @router.get("/users/by-tier/{tier}")
@@ -252,13 +257,18 @@ async def create_user_discount_api(
     req: DiscountRequest,
     admin: dict = Depends(require_admin),
 ):
-    """Create a user-specific discount."""
+    """
+    Create a user-specific discount.
+
+    v3.26 (USER-LOW-3): Added admin operation logging
+    """
     # v3.25: USER-LOW-2 - Validate uid length
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
     db = get_database_client()
     user_repo = SupabaseUserRepository(db)
+    admin_repo = SupabaseAdminUsersRepository(db)
 
     discount = await user_repo.create_user_discount(
         uid,
@@ -266,6 +276,16 @@ async def create_user_discount_api(
         req.valid_days,
         req.target_plan,
     )
+
+    # v3.26 (USER-LOW-3): Log admin operation
+    await admin_repo.admin_log_operation(
+        admin_id=admin["id"],
+        operation_type="discount_create",
+        target_user_id=uid,
+        details=f"{req.discount_percent}% off for {req.valid_days} days" + (f" on {req.target_plan}" if req.target_plan else ""),
+        reason=None,
+    )
+
     return discount
 
 

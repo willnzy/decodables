@@ -493,21 +493,23 @@ class SupabaseUserRepository(IUserRepository):
         return "UTC"
 
     @retry_on_network_error()  # v3.26 (REPO-HIGH-1): Added retry decorator
-    async def search_users(self, query: str) -> List[Dict[str, Any]]:
+    async def search_users(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Search users by email, username, or user_code.
 
         Args:
             query: Search query
+            limit: Maximum number of results (default: 20)
 
         Returns:
             List of matching profiles
 
         v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
+        v3.26 (USER-MEDIUM-1): Added configurable limit parameter
         """
         result = self.client.table("profiles").select("id, email, username, user_code, tier").or_(
             f"email.ilike.%{query}%,username.ilike.%{query}%,user_code.ilike.%{query}%"
-        ).limit(20).execute()
+        ).limit(limit).execute()
         return result.data or []
 
     @retry_on_network_error()  # v3.26 (REPO-HIGH-3): Added retry decorator + pagination

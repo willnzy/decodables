@@ -259,12 +259,16 @@ async def test_search_users_api_success():
             result = await search_users_api(
                 request=mock_request,
                 query="test",
+                limit=20,
                 admin=admin
             )
 
             assert "users" in result
             assert len(result["users"]) == 1
-            mock_repo.search_users.assert_called_once_with("test")
+            # v3.26: Now includes limit parameter
+            assert result["count"] == 1
+            assert result["limit"] == 20
+            mock_repo.search_users.assert_called_once_with("test", limit=20)
 
 
 @pytest.mark.asyncio
@@ -283,6 +287,7 @@ async def test_search_users_api_query_max_length():
             result = await search_users_api(
                 request=mock_request,
                 query="a" * 200,
+                limit=20,
                 admin=admin
             )
             assert "users" in result
@@ -303,6 +308,7 @@ async def test_search_users_api_empty_results():
             result = await search_users_api(
                 request=mock_request,
                 query="nonexistent",
+                limit=20,
                 admin=admin
             )
 
@@ -1235,21 +1241,35 @@ async def test_create_user_discount_success():
     req = DiscountRequest(discount_percent=25, valid_days=30, target_plan="starter")
 
     with patch('api.admin.users.get_database_client') as mock_db_client:
-        mock_repo = Mock()
+        mock_user_repo = Mock()
         mock_discount = {"id": "disc_123", "discount_percent": 25, "valid_days": 30}
-        mock_repo.create_user_discount = AsyncMock(return_value=mock_discount)
+        mock_user_repo.create_user_discount = AsyncMock(return_value=mock_discount)
+
+        mock_admin_repo = Mock()
+        mock_admin_repo.admin_log_operation = AsyncMock(return_value=None)
+
         mock_db_client.return_value = Mock()
 
-        with patch('api.admin.users.SupabaseUserRepository', return_value=mock_repo):
-            result = await create_user_discount_api(
-                request=mock_request,
-                uid="user123",
-                req=req,
-                admin=admin
-            )
+        with patch('api.admin.users.SupabaseUserRepository', return_value=mock_user_repo):
+            with patch('api.admin.users.SupabaseAdminUsersRepository', return_value=mock_admin_repo):
+                result = await create_user_discount_api(
+                    request=mock_request,
+                    uid="user123",
+                    req=req,
+                    admin=admin
+                )
 
-            assert result["id"] == "disc_123"
-            mock_repo.create_user_discount.assert_called_once_with("user123", 25, 30, "starter")
+                assert result["id"] == "disc_123"
+                mock_user_repo.create_user_discount.assert_called_once_with("user123", 25, 30, "starter")
+
+                # v3.26: Verify admin operation was logged
+                mock_admin_repo.admin_log_operation.assert_called_once()
+                call_args = mock_admin_repo.admin_log_operation.call_args[1]
+                assert call_args["admin_id"] == "admin123"
+                assert call_args["operation_type"] == "discount_create"
+                assert call_args["target_user_id"] == "user123"
+                assert "25%" in call_args["details"]
+                assert "30 days" in call_args["details"]
 
 
 # ==========================================
