@@ -2,14 +2,20 @@
 Analytics API - Analytics events endpoint (v2).
 
 @module api.user.analytics
-@version 2.2.0
+@version 2.3.0
 
 Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
 
+Architecture Migration (v2.3.0):
+- DDD Compliance: Migrated to use AnalyticsService and Repository
+- API layer now uses dependency injection for AnalyticsService
+- Removed direct supabase access from API layer
+- All database operations moved to SupabaseAnalyticsEventsRepository
+
 Performance Optimization (v2.1.0):
 - Batch INSERT: N events → 3 DB calls (instead of 3N)
-- run_in_threadpool: Prevents event loop blocking
+- run_in_threadpool: Prevents event loop blocking (now in Repository)
 - Reference: https://supabase.com/docs/reference/python/insert
 
 Security & Validation Enhancements (v2.2.0):
@@ -30,18 +36,32 @@ import uuid
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
 from core.database import get_supabase_client
-
-supabase = get_supabase_client()
+from domains.analytics import AnalyticsService
+from infrastructure.repositories.analytics_events_repository import SupabaseAnalyticsEventsRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["user-analytics-v2"])
+
+
+# ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_analytics_service() -> AnalyticsService:
+    """
+    Dependency injection factory for AnalyticsService.
+
+    Creates AnalyticsService with SupabaseAnalyticsEventsRepository.
+    """
+    supabase = get_supabase_client()
+    analytics_repo = SupabaseAnalyticsEventsRepository(supabase)
+    return AnalyticsService(analytics_repo)
 
 
 # ==========================================
@@ -168,17 +188,6 @@ def _get_country_from_ip(ip: str) -> Dict[str, str]:
     return {"country_code": "unknown"}
 
 
-# Event types that should also log to activity_logs
-ACTIVITY_LOG_EVENTS = {
-    "project_print": "print_project",
-    "project_export_pdf": "download_pdf",
-    "project_export_zip": "export_zip",
-    "project_preview": "preview_pdf",
-    "project_delete": "delete_project",
-    "project_create_complete": "create_project",
-}
-
-
 # ==========================================
 # Endpoints
 # ==========================================
@@ -189,6 +198,7 @@ async def log_analytics_events(
     request: Request,
     req: AnalyticsEventsRequest,
     user: Optional[dict] = Depends(get_current_user_optional),
+    analytics_service: AnalyticsService = Depends(get_analytics_service),
 ) -> AnalyticsEventsResponse:
     """
     Record user analytics events (batch submission).
@@ -214,121 +224,33 @@ async def log_analytics_events(
     user_agent = request.headers.get("User-Agent", "unknown")
     accept_language = request.headers.get("Accept-Language", "unknown")
 
-    # ========================================
-    # Phase 1: Build batch data (no DB calls)
-    # ========================================
-    user_event_rows = []
-    analytics_event_rows = []
-    activity_rows = []
-
-    for event in req.events:
-        env_info = event.env
-        properties = event.properties
-
-        # Generate event_id if not provided
-        event_id = event.event_id or str(uuid.uuid4())
-
-        # Enrich properties with server-side info
-        # Use __ prefix to prevent client from overwriting server fields
-        enriched_properties = {
-            **properties,  # Client properties (already validated by Pydantic)
-            "__server_ip": client_ip,
-            "__server_country": location_info.get("country_code"),
-            "__server_city": location_info.get("city"),
-            "__server_region": location_info.get("region"),
-            "__server_user_agent": user_agent,
-            "__server_accept_language": accept_language,
-            "__client_browser": env_info.get("browser"),
-            "__client_os": env_info.get("os"),
-            "__client_device_type": env_info.get("device_type"),
-            "__client_timezone": env_info.get("timezone"),
-            "__client_timezone_offset": env_info.get("timezone_offset"),
-            "__client_language": env_info.get("language"),
-            "__client_connection_type": env_info.get("connection_type"),
-        }
-
-        # Build user_events row
-        user_event_rows.append({
-            "user_id": user_id,
+    # Convert Pydantic models to dicts for service
+    events_data = [
+        {
             "event_type": event.event_type,
-            "properties": enriched_properties,
-            "session_id": event.session_id,
-            "event_id": event_id,  # Use generated or provided event_id
-        })
-
-        # Build analytics_events row
-        event_data = {
-            "event_type": event.event_type,
+            "event_id": event.event_id,
             "event_level": event.event_level,
             "timestamp": event.timestamp,
-            "properties": enriched_properties,
             "session_id": event.session_id,
-            "env": env_info,
+            "properties": event.properties,
+            "env": event.env,
             "user_properties": event.user_properties,
         }
-        analytics_event_rows.append({
-            "user_id": user_id,  # Only use authenticated user_id, not client-provided
-            "event_type": event.event_type,
-            "event_id": event_id,  # Use generated or provided event_id
-            "event_level": event.event_level,
-            "event_data": event_data,
-            "session_id": event.session_id,
-        })
+        for event in req.events
+    ]
 
-        # Build activity_logs row (only for key events with user_id)
-        if user_id and event.event_type in ACTIVITY_LOG_EVENTS:
-            activity_rows.append({
-                "user_id": user_id,
-                "action": ACTIVITY_LOG_EVENTS[event.event_type],
-                "metadata": enriched_properties,
-            })
-
-    # ========================================
-    # Phase 2: Batch INSERT (3 DB calls max)
-    # ========================================
-    # Performance: N events → 3 DB calls (instead of 3N)
-
-    # Track successful insertions
-    user_events_inserted = 0
-    analytics_events_inserted = 0
-    activity_logs_inserted = 0
-
-    # 1. Batch insert to user_events table
-    if user_event_rows:
-        try:
-            await run_in_threadpool(
-                lambda: supabase.table("user_events").insert(user_event_rows).execute()
-            )
-            user_events_inserted = len(user_event_rows)
-        except Exception as e:
-            logger.warning(f"[Analytics] Failed to batch insert {len(user_event_rows)} events to user_events: {e}")
-
-    # 2. Batch insert to analytics_events table
-    if analytics_event_rows:
-        try:
-            await run_in_threadpool(
-                lambda: supabase.table("analytics_events").insert(analytics_event_rows).execute()
-            )
-            analytics_events_inserted = len(analytics_event_rows)
-        except Exception as e:
-            logger.warning(f"[Analytics] Failed to batch insert {len(analytics_event_rows)} events to analytics_events: {e}")
-
-    # 3. Batch insert to activity_logs table
-    if activity_rows:
-        try:
-            await run_in_threadpool(
-                lambda: supabase.table("activity_logs").insert(activity_rows).execute()
-            )
-            activity_logs_inserted = len(activity_rows)
-        except Exception as e:
-            logger.warning(f"[Analytics] Failed to batch insert {len(activity_rows)} events to activity_logs: {e}")
-
-    # At least one table must succeed (preferably analytics_events as it's the primary table)
-    total_inserted = max(user_events_inserted, analytics_events_inserted)
+    # Use AnalyticsService to process and save events
+    requested, total_inserted = await analytics_service.process_and_save_events(
+        events=events_data,
+        user_id=user_id,
+        location_info=location_info,
+        user_agent=user_agent,
+        accept_language=accept_language,
+    )
 
     return AnalyticsEventsResponse(
         status="ok",
-        requested=len(req.events),
+        requested=requested,
         inserted=total_inserted,
         ip=client_ip,
         country=location_info.get("country_code", "unknown"),
