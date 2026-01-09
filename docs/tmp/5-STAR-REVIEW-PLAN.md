@@ -64,7 +64,7 @@
 | 3 | Campaigns | 3 | 🟡 | ✅ v1.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** |
 | 4 | Config | 3 | 🟢 | ✅ v1.0.0 → v2.2.0 | ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) |
 | 5 | Experiments | 4 | 🟡 | ✅ v3.31 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
-| 6 | Export | 4 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 6 | Export | 4 | 🟡 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 7 | Generation Images | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 8 | Generation PDF | 1 | 🔴 | ✅ v3.26 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 9 | Generation Story | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
@@ -87,18 +87,18 @@
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 11 (Analytics, Billing, Campaigns, Config, Experiments, Generation Images, Generation PDF, Generation Story, Payment, User Profile, Webhooks)
-- **已达到 5 星**: 11 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (11/11) 🎉
-- **5 星达成率**: 100% (11/11 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 13
+- 已完成 FULL REVIEW: 12 (Analytics, Billing, Campaigns, Config, Experiments, Export, Generation Images, Generation PDF, Generation Story, Payment, User Profile, Webhooks)
+- **已达到 5 星**: 12 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Export ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (12/12) 🎉
+- **5 星达成率**: 100% (12/12 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 12
 - 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF ✅ 5星, Generation Story ✅ 5星) - **6/6 完成 100%** 🎉🎉🎉
-- 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星)
+- 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星, Export ✅ 5星)
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星)
 
 ---
 
-## 已完成 FULL REVIEW 的模块 (11 个)
+## 已完成 FULL REVIEW 的模块 (12 个)
 
 | 模块 | FULL REVIEW 时间 | 5星 Review 时间 | 最终评级 | 状态 | 文档 |
 |------|------------------|----------------|----------|------|------|
@@ -113,6 +113,7 @@
 | 9. Generation Images | 2026-01-10 12:30 | 2026-01-10 14:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-IMAGES-5STAR-REVIEW-v3.28.md |
 | 10. Generation PDF | 2026-01-10 14:30 | 2026-01-10 15:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-PDF-5STAR-REVIEW-v3.26.md |
 | 11. Generation Story | 2026-01-10 16:00 | 2026-01-10 17:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | GENERATION-STORY-5STAR-REVIEW-v3.28.md |
+| 12. Export | 2026-01-10 18:00 | 2026-01-10 19:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | EXPORT-5STAR-REVIEW-v3.0.0.md |
 
 ---
 
@@ -1212,14 +1213,116 @@ async def gen_story(
 
 ---
 
+### ✅ 第 12 轮: Export 模块 5 星 Review (已完成并修复)
+
+**模块**: `api/user/export.py` (PDF/Preview/ZIP Export)
+**Review 时间**: 2026-01-10 18:00 - 19:30
+**初始版本**: v2.1.0
+**最终版本**: v3.0.0
+**初始评级**: ⭐⭐⭐⭐ (78/100)
+**最终评级**: ⭐⭐⭐⭐⭐ (95/100)
+**状态**: ✅ **5星达标** (修复后)
+
+#### 发现的问题 (v2.1.0)
+
+**EX-CRITICAL-1**: 无 Service 层，无依赖注入 (架构违规)
+- 描述: API 层包含 350+ 行业务逻辑，手动 Repository 创建，直接调用外部函数
+- 影响: Architecture score 55/100 (严重违反 DDD)
+- 修复: 创建 ExportService (312行) with 4 public methods
+
+#### 修复详情 (v2.1.0 → v3.0.0)
+
+**架构升级**:
+```
+v2.1.0: API → Repository (手动创建) + 直接调用函数 (❌ DDD 违规)
+v3.0.0: API → Service → Repository (✅ 100% DDD)
+```
+
+**代码改动**:
+- ✅ 创建 `domains/export/__init__.py` (5 行)
+  - 导出 ExportService
+- ✅ 创建 `domains/export/export_service.py` (349 行)
+  - export_pdf(): PDF 生成 + 文件名清理
+  - export_preview(): PNG 预览生成 (PyMuPDF)
+  - export_project_zip(): 项目 ZIP 导出 (Pro tier)
+  - export_custom_zip(): 自定义 ZIP 导出 (deprecated)
+  - 3 个自定义异常: ProjectNotFoundException, ExportException, InsufficientPermissionException
+  - 3 个私有辅助方法: _get_user_project, _extract_project_data, _sanitize_filename
+- ✅ 重写 `api/user/export.py` (352 → 330 行, -6%)
+  - 添加 DI 工厂: `get_export_service()`
+  - API 层纯 HTTP 逻辑 (异常转换 + 响应)
+  - _is_allowed_url 保留在 API 层 (Pydantic + Service 共用)
+- ✅ 完全重写 `tests/api/user/test_export.py`
+  - 使用 `app.dependency_overrides` (FastAPI 最佳实践)
+  - Mock ExportService 而非 Repository
+  - 29 个测试 (27 passed, 2 skipped - PyMuPDF)
+
+**测试验证**:
+```bash
+python -m pytest tests/api/user/test_export.py -v
+=================== 27 passed, 2 skipped in 1.03s ===================
+```
+
+**评分变化**:
+- Code Standards: 90/100 → 95/100 (+5) ⬆️
+- **Architecture**: 55/100 → 95/100 (+40) ⬆️
+- Security: 100/100 → 100/100 (maintained) ✅
+- Call Chain: 85/100 → 90/100 (+5) ⬆️
+- Test Coverage: 95/100 → 98/100 (+3) ⬆️
+- **总分**: 78/100 → 95/100 (+17) ⬆️
+- **星级**: ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐
+
+#### 关键改进
+
+1. **Service 层创建** (+40 架构分)
+   - ExportService (312 行): 完整业务逻辑封装
+   - 4 个 public methods: PDF, Preview, Project ZIP, Custom ZIP
+   - 3 个 custom exceptions: 清晰的错误处理
+   - 完整 DI 工厂模式
+
+2. **API 层精简** (-6% 代码)
+   - 从 352 行减少到 330 行
+   - 纯 HTTP 层职责 (验证 + 路由 + 异常转换)
+
+3. **测试质量提升** (+3 分)
+   - 完全重写使用 FastAPI 最佳实践
+   - `app.dependency_overrides` 替代 `@patch`
+   - 27/29 测试通过 (2 skipped due to PyMuPDF)
+
+4. **安全特性保持** (100/100 maintained)
+   - v2.1.0 所有安全改进完整保留
+   - SSRF protection (URL whitelist)
+   - UUID validation
+   - Filename sanitization (moved to Service)
+   - Rate limiting + DoS protection
+
+**核心功能**:
+- ✅ PDF Export (FREE)
+- ✅ PNG Preview Export (FREE)
+- ✅ ZIP Project Export (Pro tier)
+- ✅ Custom ZIP Export (deprecated)
+- ✅ SSRF Protection (URL domain whitelist)
+- ✅ Filename Sanitization (XSS/injection prevention)
+- ✅ UUID Validation (project_id format)
+- ✅ Rate Limiting (10/min PDF, 20/min Preview, 5/min ZIP)
+- ✅ Pro Tier Enforcement (ZIP exports)
+
+**结论**: Export v3.0.0 完全符合 5 星标准 (95/100) ✅
+
+**审核文档**:
+- EXPORT-5STAR-REVIEW-v2.1.0.md (问题分析)
+- EXPORT-5STAR-REVIEW-v3.0.0.md (5 星确认)
+
+---
+
 ## 总体目标
 
 **目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **11/11 模块完成 5 星 Review** (100%)
-- ✅ **11/11 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Generation Images ✨, Generation PDF ✨, Generation Story ✨, Payment ✨, User Profile ✨, Webhooks ✨)
-- **5 星达成率**: **100%** (11/11) 🎉
+- ✅ **12/12 模块完成 5 星 Review** (100%)
+- ✅ **12/12 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Export ✨, Generation Images ✨, Generation PDF ✨, Generation Story ✨, Payment ✨, User Profile ✨, Webhooks ✨)
+- **5 星达成率**: **100%** (12/12) 🎉
 - 🎉🎉🎉 **所有 6 个高风险模块 100% 完成** 🎉🎉🎉
 
 **阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
@@ -1242,6 +1345,7 @@ async def gen_story(
 9. ✅ Generation Images 5 星 Review (v3.27 → v3.28, DDD 架构升级, ⭐⭐⭐⭐⭐)
 10. ✅ Generation PDF 5 星 Review (v3.25 → v3.26, DDD 架构升级, ⭐⭐⭐⭐⭐)
 11. ✅ Generation Story 5 星 Review (v3.27 → v3.28, DDD 架构升级, ⭐⭐⭐⭐⭐)
+12. ✅ Export 5 星 Review (v2.1.0 → v3.0.0, DDD 架构升级, ⭐⭐⭐⭐⭐)
 
 **🚀 阶段 2: 继续扩展 Review 范围**
 
@@ -1256,12 +1360,16 @@ async def gen_story(
 - ✅ Generation PDF (PDF 导出) ⭐⭐⭐⭐⭐ v3.26
 - ✅ Generation Story (故事生成) ⭐⭐⭐⭐⭐ v3.28
 
+**已完成中风险模块** (3/7, 43% 完成):
+- ✅ Campaigns (3 endpoints) ⭐⭐⭐⭐⭐ v1.0.0
+- ✅ Experiments (4 endpoints) ⭐⭐⭐⭐⭐ v3.31
+- ✅ Export (4 endpoints) ⭐⭐⭐⭐⭐ v3.0.0
+
 **优先级建议** (继续中风险模块):
-1. ⏳ **Export** (4 endpoints, 🟡 中风险) - 导出功能
-2. ⏳ **Generations** (6 endpoints, 🟡 中风险) - 生成历史管理
-3. ⏳ **Marketplace** (11 endpoints, 🟡 中风险) - 市场功能
-4. ⏳ **Projects** (10 endpoints, 🟡 中风险) - 项目管理
-5. ⏳ **System Resources** (9 endpoints, 🟡 中风险) - 系统资源
-6. ⏳ **Templates** (10 endpoints, 🟡 中风险) - 模板管理
-7. ⏳ **User Assets** (10 endpoints, 🟡 中风险) - 用户资产
+1. ⏳ **Generations** (6 endpoints, 🟡 中风险) - 生成历史管理
+2. ⏳ **Marketplace** (11 endpoints, 🟡 中风险) - 市场功能
+3. ⏳ **Projects** (10 endpoints, 🟡 中风险) - 项目管理
+4. ⏳ **System Resources** (9 endpoints, 🟡 中风险) - 系统资源
+5. ⏳ **Templates** (10 endpoints, 🟡 中风险) - 模板管理
+6. ⏳ **User Assets** (10 endpoints, 🟡 中风险) - 用户资产
 
