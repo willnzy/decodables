@@ -2,14 +2,17 @@
 Platform Repository Interfaces - Abstract data access for platform domain.
 
 @module domains.platform.repository
-@version 1.0.0
+@version 1.1.0
+
+Changes:
+- v1.1.0: Added IAIModelConfigRepository and INotificationRepository interfaces
 
 This defines the repository interfaces (ports) for platform operations.
 Concrete implementations live in infrastructure/repositories/.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from .aggregates.feature_flag import FeatureFlag
 from .aggregates.experiment import Experiment
@@ -246,5 +249,187 @@ class IExperimentRepository(ABC):
 
         Returns:
             Variant ID or None
+        """
+        pass
+
+
+class IAIModelConfigRepository(ABC):
+    """
+    Repository interface for AI model configuration operations.
+
+    v1.1.0: Added for AI Models Config DDD migration
+    """
+
+    @abstractmethod
+    async def get_config(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get AI model configuration by key.
+
+        Args:
+            key: Config key (e.g., 'ai_model.user.text_reasoning')
+
+        Returns:
+            Config dict or None if not found
+        """
+        pass
+
+    @abstractmethod
+    async def set_config(self, key: str, value: Dict[str, Any]) -> bool:
+        """
+        Set AI model configuration.
+
+        Args:
+            key: Config key
+            value: Config value (JSON)
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    async def delete_config(self, key: str) -> bool:
+        """
+        Delete AI model configuration.
+
+        Args:
+            key: Config key to delete
+
+        Returns:
+            True if deleted
+        """
+        pass
+
+    @abstractmethod
+    async def get_all_configs(self, prefix: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get all configs, optionally filtered by prefix.
+
+        Args:
+            prefix: Key prefix filter (e.g., 'ai_model.')
+
+        Returns:
+            Dict of key-value pairs
+        """
+        pass
+
+
+class INotificationRepository(ABC):
+    """
+    Repository interface for notification operations.
+
+    v1.1.0: Added for Notifications DDD migration
+    """
+
+    @abstractmethod
+    async def create_notification(
+        self,
+        user_id: str,
+        title: str,
+        message: str,
+        notification_type: str = "info",
+        action_url: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create a notification for a single user.
+
+        Args:
+            user_id: Target user ID
+            title: Notification title
+            message: Notification content
+            notification_type: Type of notification
+            action_url: Optional action URL
+
+        Returns:
+            Created notification dict or None
+        """
+        pass
+
+    @abstractmethod
+    async def get_user_notifications(
+        self,
+        user_id: str,
+        unread_only: bool = False,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get notifications for a user.
+
+        Args:
+            user_id: User ID
+            unread_only: Only return unread notifications
+            limit: Max number to return
+
+        Returns:
+            List of notification dicts
+        """
+        pass
+
+    @abstractmethod
+    async def mark_as_read(self, notification_id: str, user_id: str) -> bool:
+        """
+        Mark notification as read.
+
+        Args:
+            notification_id: Notification ID
+            user_id: User ID (for security)
+
+        Returns:
+            True if marked as read
+        """
+        pass
+
+    @abstractmethod
+    async def mark_all_as_read(self, user_id: str) -> bool:
+        """
+        Mark all notifications as read for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    async def delete_notification(self, notification_id: str, user_id: str) -> bool:
+        """
+        Delete a notification.
+
+        Args:
+            notification_id: Notification ID
+            user_id: User ID (for security)
+
+        Returns:
+            True if deleted
+        """
+        pass
+
+    @abstractmethod
+    async def get_all_notification_stats(self) -> Dict[str, Any]:
+        """
+        Get overall notification statistics.
+
+        Returns:
+            Stats dict with total, unread, read, by_type counts
+        """
+        pass
+
+    @abstractmethod
+    async def get_notification_history(
+        self,
+        offset: int = 0,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get paginated notification history.
+
+        Args:
+            offset: Pagination offset
+            limit: Page size
+
+        Returns:
+            Dict with items, total, offset, limit
         """
         pass
