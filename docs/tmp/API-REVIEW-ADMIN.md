@@ -76,10 +76,10 @@ Admin API 作为内部管理工具，有以下特点：
 | Stats | 18 | 18 | ✅ 已完成 |
 | Subscriptions | 3 | 3 | ✅ 已完成 |
 | System | 11 | 11 | ✅ 已完成 |
-| Tasks Management | 4 | 0 | 未开始 |
-| Users | 13 | 0 | 未开始 |
-| Health | 2 | 0 | 未开始 |
-| **总计** | **125** | **106** | 85% |
+| Tasks Management | 4 | 4 | ✅ 已完成 |
+| Users | 13 | 13 | ✅ 已完成 |
+| Health | 2 | 2 | ✅ 已完成 |
+| **总计** | **125** | **125** | 100% 🎉 |
 
 ---
 
@@ -726,9 +726,9 @@ Admin API 作为内部管理工具，有以下特点：
 - `api/admin/users.py` - v2.0.0 → v3.25
 - `infrastructure/repositories/admin_repository.py` - 更新 admin_get_user_projects 参数
 - `infrastructure/repositories/project_repository.py` - 更新 get_all_projects_feed 参数
-- `tests/api/admin/test_users.py` - 14 个测试用例
+- `tests/api/admin/test_users.py` - 59 个测试用例 (包含边界测试和异常测试)
 
-**完成状态**: ✅ 完成 (14/14 测试通过)
+**完成状态**: ✅ 完成 (59/59 测试通过)
 
 ---
 
