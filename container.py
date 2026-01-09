@@ -225,6 +225,15 @@ class Container:
             self._services['logging'] = LoggingService(get_database_client())
         return self._services['logging']
 
+    @property
+    def themes_service(self):
+        """Get themes service instance (v3.0.0)."""
+        from core.database import get_database_client
+        from domains.themes import ThemesService
+        if 'themes' not in self._services:
+            self._services['themes'] = ThemesService(get_database_client())
+        return self._services['themes']
+
     # ========== Command Handlers ==========
 
     @property
@@ -394,6 +403,14 @@ class Container:
         if 'get_project' not in self._handlers:
             self._handlers['get_project'] = GetProjectHandler(self.creation_service)
         return self._handlers['get_project']
+
+    @property
+    def get_current_theme_handler(self):
+        """Get current theme query handler (v3.0.0)."""
+        from application.queries.themes import GetCurrentThemeHandler
+        if 'get_current_theme' not in self._handlers:
+            self._handlers['get_current_theme'] = GetCurrentThemeHandler(self.themes_service)
+        return self._handlers['get_current_theme']
 
     @property
     def get_user_projects_handler(self) -> GetUserProjectsHandler:
