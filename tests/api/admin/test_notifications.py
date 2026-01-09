@@ -71,7 +71,7 @@ class TestNotificationConstants:
 
     def test_valid_target_groups(self):
         """Valid target groups are defined."""
-        from api.admin.notifications import VALID_TARGET_GROUPS
+        from domains.platform.notifications.constants import VALID_TARGET_GROUPS
 
         assert "all" in VALID_TARGET_GROUPS
         assert "free" in VALID_TARGET_GROUPS
@@ -81,7 +81,7 @@ class TestNotificationConstants:
 
     def test_valid_notification_types(self):
         """Valid notification types are defined."""
-        from api.admin.notifications import VALID_NOTIFICATION_TYPES
+        from domains.platform.notifications.constants import VALID_NOTIFICATION_TYPES
 
         assert "system" in VALID_NOTIFICATION_TYPES
         assert "marketing" in VALID_NOTIFICATION_TYPES
@@ -333,14 +333,14 @@ class TestNotificationParameterValidation:
     @pytest.mark.parametrize("target_group", ["all", "free", "starter", "pro"])
     def test_valid_target_group_values(self, target_group):
         """Valid target group values are accepted."""
-        from api.admin.notifications import VALID_TARGET_GROUPS
+        from domains.platform.notifications.constants import VALID_TARGET_GROUPS
 
         assert target_group in VALID_TARGET_GROUPS
 
     @pytest.mark.parametrize("notification_type", ["system", "marketing", "alert", "update", "promotion"])
     def test_valid_notification_type_values(self, notification_type):
         """Valid notification type values are accepted."""
-        from api.admin.notifications import VALID_NOTIFICATION_TYPES
+        from domains.platform.notifications.constants import VALID_NOTIFICATION_TYPES
 
         assert notification_type in VALID_NOTIFICATION_TYPES
 
