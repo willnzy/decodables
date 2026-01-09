@@ -43,14 +43,24 @@ class SupabaseStorageProvider(IStorageService):
 
         Args:
             supabase_client: Optional Supabase client instance.
-                           If None, will import from domains.platform.config_service
+                           If None, will create from environment variables
         """
         if supabase_client:
             self._client = supabase_client
         else:
-            # Import existing initialized client
-            from domains.platform.config_service import supabase
-            self._client = supabase
+            # Create Supabase client from environment variables
+            from supabase import create_client
+            supabase_url = os.environ.get("SUPABASE_URL")
+            supabase_key = os.environ.get("SUPABASE_KEY")
+
+            if supabase_url and supabase_key:
+                # Ensure URL has trailing slash
+                if not supabase_url.endswith('/'):
+                    supabase_url = supabase_url + '/'
+                self._client = create_client(supabase_url, supabase_key)
+            else:
+                self._client = None
+                logger.warning("[SupabaseStorageProvider] Supabase credentials not found in environment")
 
         if not self._client:
             logger.warning("[SupabaseStorageProvider] Supabase client not initialized")

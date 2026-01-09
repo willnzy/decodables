@@ -54,13 +54,13 @@ class BillingService:
     # Signup bonus (fallback)
     SIGNUP_BONUS = 50
 
-    def __init__(self, repository: ICreditRepository, config_service=None):
+    def __init__(self, repository: ICreditRepository, config_service: 'ConfigService' = None):
         """
         Initialize billing service with repository and config service.
 
         Args:
             repository: Credit repository implementation
-            config_service: Optional config service for dynamic configuration
+            config_service: Optional ConfigService instance for dynamic configuration (async)
         """
         self._repository = repository
         self._config_service = config_service
@@ -108,10 +108,10 @@ class BillingService:
         Returns:
             True if user has enough credits
         """
-        cost = self.get_operation_cost(operation)
+        cost = await self.get_operation_cost(operation)
         return await self.check_can_afford(user_id, cost)
 
-    def get_operation_cost(self, operation: str) -> int:
+    async def get_operation_cost(self, operation: str) -> int:
         """
         Get the cost for a specific operation.
 
@@ -132,7 +132,7 @@ class BillingService:
         if self._config_service:
             try:
                 config_key = f"credits.cost.{operation}"
-                config_value = self._config_service.get_config(config_key, use_cache=True)
+                config_value = await self._config_service.get_config(config_key, use_cache=True)
 
                 if config_value is not None:
                     # Handle different value formats
@@ -187,7 +187,7 @@ class BillingService:
             InsufficientCreditsException: If not enough credits
             ValueError: If operation is unknown
         """
-        cost = self.get_operation_cost(operation)
+        cost = await self.get_operation_cost(operation)
         tx_type = self._operation_to_tx_type(operation)
 
         return await self._repository.deduct_atomic(

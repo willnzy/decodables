@@ -2,9 +2,10 @@
 Generation Helpers - Shared utilities for AI generation endpoints
 
 @module services.generation_helpers
-@version 3.26
+@version 3.27
 
 Changes:
+- v3.27: Migrated to async ConfigService (no sync methods)
 - v3.26: GI-P0-003 - Enhanced safety check with Unicode normalization and regex patterns
          Added comprehensive blacklist with category-based detection
 - v3.25: Use ConfigService for dynamic credit costs (no hardcoded values)
@@ -16,9 +17,22 @@ import unicodedata
 from typing import Optional, List, Dict, Any
 
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
-from domains.platform.config_service import get_config
+from domains.platform.config_service import ConfigService
+from domains.platform.config_repository import ConfigRepository
 
 logger = logging.getLogger(__name__)
+
+
+# Global ConfigService instance (lazy initialized)
+_config_service: Optional[ConfigService] = None
+
+
+def _get_config_service() -> ConfigService:
+    """Get or create global ConfigService instance."""
+    global _config_service
+    if _config_service is None:
+        _config_service = ConfigService(ConfigRepository())
+    return _config_service
 
 
 # ==========================================
@@ -138,19 +152,20 @@ def validate_creativity_level(level: Optional[float]) -> float:
     return max(0.0, min(1.0, level))
 
 
-def get_base_cost(has_reference: bool) -> int:
+async def get_base_cost(has_reference: bool) -> int:
     """
-    Get base cost for image generation from config.
+    Get base cost for image generation from config (async).
 
     Priority:
     1. Database system_configs (primary)
     2. Emergency fallback (if database unavailable)
     """
+    config_service = _get_config_service()
     config_key = CONFIG_KEY_IMAGE_GENERATION_REF if has_reference else CONFIG_KEY_IMAGE_GENERATION
     fallback = EMERGENCY_FALLBACK_COST_REF if has_reference else EMERGENCY_FALLBACK_COST
 
     try:
-        config_value = get_config(config_key, use_cache=True)
+        config_value = await config_service.get_config(config_key, use_cache=True)
         if config_value is not None:
             # Handle different value formats
             if isinstance(config_value, dict):
@@ -163,15 +178,15 @@ def get_base_cost(has_reference: bool) -> int:
     return fallback
 
 
-def calculate_cost(num_prompts: int, has_reference: bool, num_images: int = 1) -> int:
-    """Calculate credit cost for generation using config-driven costs."""
-    base_cost = get_base_cost(has_reference)
+async def calculate_cost(num_prompts: int, has_reference: bool, num_images: int = 1) -> int:
+    """Calculate credit cost for generation using config-driven costs (async)."""
+    base_cost = await get_base_cost(has_reference)
     return num_prompts * base_cost * num_images
 
 
-def get_text_generation_cost() -> int:
+async def get_text_generation_cost() -> int:
     """
-    Get cost for text generation from config.
+    Get cost for text generation from config (async).
 
     Priority:
     1. Database system_configs (primary)
@@ -179,8 +194,9 @@ def get_text_generation_cost() -> int:
 
     Note: Currently configured as 0 (free), but can be changed via config.
     """
+    config_service = _get_config_service()
     try:
-        config_value = get_config(CONFIG_KEY_TEXT_GENERATION, use_cache=True)
+        config_value = await config_service.get_config(CONFIG_KEY_TEXT_GENERATION, use_cache=True)
         if config_value is not None:
             if isinstance(config_value, dict):
                 return int(config_value.get('amount', config_value.get('value', EMERGENCY_FALLBACK_COST_TEXT)))

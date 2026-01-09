@@ -39,9 +39,8 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, Path
 from pydantic import BaseModel, Field, field_validator
 
-from domains.platform.config_service import RATE_LIMIT_PRESETS
-from domains.platform.config_service_v2 import ConfigService
-from infrastructure.repositories.config_repository import SupabaseConfigRepository
+from domains.platform.config_service import RATE_LIMIT_PRESETS, ConfigService
+from domains.platform.config_repository import ConfigRepository
 from infrastructure.rate_limiter import limiter
 from core.database import get_database_client
 from dependencies import require_admin
@@ -101,8 +100,7 @@ class RateLimitPresetRequest(BaseModel):
 
 def _get_config_service() -> ConfigService:
     """Get ConfigService instance with injected repository."""
-    db_client = get_database_client()
-    config_repo = SupabaseConfigRepository(db_client)
+    config_repo = ConfigRepository()
     return ConfigService(config_repo)
 
 
