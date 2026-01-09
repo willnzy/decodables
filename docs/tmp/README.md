@@ -5,7 +5,7 @@
 
 ---
 
-## 📁 Current Files (12)
+## 📁 Current Files (14)
 
 ### 📊 5-Star Review System
 
@@ -17,11 +17,13 @@
 | [CAMPAIGNS-5STAR-REVIEW-v1.0.0.md](CAMPAIGNS-5STAR-REVIEW-v1.0.0.md) | Campaigns | ✅ 完成 | v1.0.0 5星审查报告 |
 | [EVENTS-5-STAR-FINAL.md](EVENTS-5-STAR-FINAL.md) | Events | ⭐⭐⭐⭐⭐ | v3.27 最终报告 (5/5星) |
 
-### 🏗️ Architecture & Migration
+### 🏗️ Architecture & API Review
 
 | 文档 | 用途 | 状态 |
 |------|------|------|
 | [API-Architecture-Review-2026-01-10.md](API-Architecture-Review-2026-01-10.md) | API 架构审查 | ✅ 最新 (2026-01-10) |
+| [API-REVIEW-ADMIN.md](API-REVIEW-ADMIN.md) | Admin API 详细审查 | 📋 参考 (19KB) |
+| [API-REVIEW-USER.md](API-REVIEW-USER.md) | User API 详细审查 | 📋 参考 (46KB) |
 | [AI-MODELS-REPO-DI-MIGRATION.md](AI-MODELS-REPO-DI-MIGRATION.md) | AI Models DI 迁移指南 | 📝 迁移中 |
 | [CAMPAIGNS-REPO-DI-MIGRATION.md](CAMPAIGNS-REPO-DI-MIGRATION.md) | Campaigns DI 迁移指南 | 📝 迁移中 |
 | [NOTIFICATIONS-REPO-DI-MIGRATION.md](NOTIFICATIONS-REPO-DI-MIGRATION.md) | Notifications DI 迁移指南 | 📝 迁移中 |
@@ -40,14 +42,17 @@
 
 **最近清理**: 2026-01-10
 
-**删除文件数**: 40个
+**删除文件数**: 38个
 
 **删除类别**:
 - ❌ 过时的审查文档 (5个): DEEP-REVIEW-*, HONEST-REVIEW-*, P0-CRITICAL-*
 - ❌ 重复的模块审查 (24个): *-FIX-*, *-FULL-REVIEW-*, *-MODULE-REVIEW-*
 - ❌ 旧式 REVIEW-XXX 系列 (12个): REVIEW-AI.md, REVIEW-CONFIG.md, etc.
-- ❌ 过时的 API 审查 (3个): API-REVIEW-ADMIN.md (68KB), API-REVIEW-USER.md (98KB)
-- ❌ 其他过时文档 (2个): GENERATION-IMAGES-*, NOTIFICATIONS-AUDIT-*
+- ❌ 其他过时文档 (3个): GENERATION-IMAGES-*, NOTIFICATIONS-AUDIT-*, ADMIN-API-5STAR-*
+
+**保留关键文档**:
+- ✅ API-REVIEW-ADMIN.md (19KB) - 从 git 恢复
+- ✅ API-REVIEW-USER.md (46KB) - 从 git 恢复
 
 **保留原则**:
 - ✅ 最新的5星审查报告
@@ -96,4 +101,15 @@ config-review-latest.md           ❌ 错误 (无版本)
 ---
 
 **Last Updated**: 2026-01-10
-**Total Files**: 12 (从 52 个清理到 12 个)
+**Total Files**: 14 (从 52 个清理到 14 个)
+
+---
+
+## ⚠️ Important Note
+
+删除文件前必须:
+1. 列出完整清单
+2. 向用户确认
+3. 等待批准后执行
+
+避免误删重要文档!
