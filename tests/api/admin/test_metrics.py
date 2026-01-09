@@ -94,14 +94,13 @@ class TestMetricsConstants:
         assert "1d" not in VALID_PERIODS
 
     def test_valid_metric_types(self):
-        """Valid metric types are defined."""
+        """Valid metric types are defined (v3.28: updated to match scheduler.py)."""
         from api.admin.metrics import VALID_METRIC_TYPES
 
+        # v3.28: MET-HIGH-5 - Fixed to match scheduler.py
         assert "all" in VALID_METRIC_TYPES
+        assert "hourly" in VALID_METRIC_TYPES
         assert "daily" in VALID_METRIC_TYPES
-        assert "monthly" in VALID_METRIC_TYPES
-        assert "retention" in VALID_METRIC_TYPES
-        assert "funnel" in VALID_METRIC_TYPES
         assert "invalid" not in VALID_METRIC_TYPES
 
 
@@ -162,9 +161,9 @@ class TestMetricsFieldValidation:
 
         assert period in VALID_PERIODS
 
-    @pytest.mark.parametrize("metric_type", ["all", "daily", "monthly", "retention", "funnel"])
+    @pytest.mark.parametrize("metric_type", ["all", "hourly", "daily"])
     def test_valid_metric_type_values(self, metric_type):
-        """Valid metric type values are accepted."""
+        """Valid metric type values are accepted (v3.28: updated)."""
         from api.admin.metrics import VALID_METRIC_TYPES
 
         assert metric_type in VALID_METRIC_TYPES
