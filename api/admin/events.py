@@ -2,9 +2,20 @@
 Admin Events Router - Events and aggregation endpoints for admins
 
 @module api.admin.events
-@version 3.26
+@version 3.27
 
 Changes:
+- v3.27: DDD Architecture Refactor (2026-01-09)
+  - EVT-CRITICAL-1: Created DDD three-layer architecture
+    * Created domains/events/ (Entity, Repository Interface, Domain Service, Constants)
+    * Created application/services/events_service.py (Use Case orchestration)
+    * Created infrastructure/repositories/events_repository.py (Supabase implementation)
+  - EVT-CRITICAL-2: API now calls Service instead of Repository directly
+  - EVT-HIGH-1: Migrated constants to Domain layer
+  - EVT-HIGH-4: Added @retry_on_network_error to get_user_events
+  - EVT-MEDIUM-1: Improved error handling (distinguish 400 vs 500)
+  - EVT-MEDIUM-2: Migrated validation logic to Domain Service
+
 - v3.26: Complete architecture refactor (2026-01-09)
   - EVT-CRITICAL-1: Fixed start_date/end_date parameter support
   - EVT-CRITICAL-2: Fixed end_date and group_by in stats
@@ -36,16 +47,23 @@ Endpoints:
 """
 
 import logging
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
 from core.database import get_database_client
-from infrastructure.repositories import SupabaseAdminStatsRepository
+from infrastructure.repositories.events_repository import SupabaseEventsRepository
+from application.services.events_service import EventsService
 from infrastructure.rate_limiter import limiter
 from scheduler import run_aggregation_now
 from dependencies import require_admin
+from domains.events import (
+    VALID_GROUP_BY,
+    VALID_STAT_TYPES,
+    VALID_TASK_TYPES,
+    MAX_LIMIT,
+    MAX_RANGE_DAYS,
+)
 from .events_models import (
     UserEventsResponse,
     EventStatsResponse,
@@ -60,34 +78,7 @@ router = APIRouter(prefix="/events", tags=["admin-events-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
-# ==========================================
-
-# v3.25: EVT-MEDIUM-3 - Date format validation pattern
-DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
-
-# v3.25: EVT-MEDIUM-4 - Valid group_by values
-VALID_GROUP_BY = {"event_type", "user_id", "date", "hour"}
-
-# v3.25: EVT-MEDIUM-5 - Valid stat_types
-VALID_STAT_TYPES = {
-    "daily_users", "daily_revenue", "daily_projects", "credit_usage_30d",
-    "tier_distribution", "conversion_funnel_30d", "event_stats_7d",
-    "monthly_metrics", "retention_metrics"
-}
-
-# v3.25: EVT-MEDIUM-7 - Valid task_types
-VALID_TASK_TYPES = {"all", "hourly", "daily"}
-
-
-def validate_date_format(date_str: Optional[str], field_name: str) -> None:
-    """v3.25: EVT-MEDIUM-3 - Validate date format (YYYY-MM-DD or ISO)."""
-    if date_str is not None and not DATE_PATTERN.match(date_str):
-        raise HTTPException(400, f"Invalid {field_name} format. Use YYYY-MM-DD or ISO format")
-
-
-# ==========================================
-# Events Endpoints (v3.25: Added rate limiting and validation)
+# Events Endpoints
 # ==========================================
 
 @router.get("/events", response_model=UserEventsResponse)
@@ -99,24 +90,23 @@ async def adm_get_user_events(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD or ISO format)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD or ISO format)"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    # v3.26: EVT-MEDIUM-3 - Reduced limit max from 1000 to 100
-    limit: int = Query(100, ge=1, le=100, description="Page size (1-100)"),
+    limit: int = Query(50, ge=1, le=MAX_LIMIT, description=f"Page size (1-{MAX_LIMIT})"),
     admin: dict = Depends(require_admin)
 ):
     """Fetch user events (with optional filters)."""
-    # v3.25: EVT-MEDIUM-3 - Validate date formats
-    validate_date_format(start_date, "start_date")
-    validate_date_format(end_date, "end_date")
-
     try:
+        logger.info(
+            f"[Admin {admin.get('id')}] Getting user events "
+            f"(user_id={user_id}, event_type={event_type}, offset={offset}, limit={limit})"
+        )
+
+        # Initialize Service layer
         db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
+        repository = SupabaseEventsRepository(db_client)
+        service = EventsService(repository)
 
-        # v3.26: EVT-LOW-1 - Add audit logging
-        logger.info(f"[Admin {admin.get('id')}] Queried user events (offset={offset}, limit={limit})")
-
-        # v3.26: EVT-HIGH-1 - Direct offset pagination (no conversion)
-        result = await stats_repo.admin_get_user_events(
+        # Service handles validation and calls Repository
+        result = await service.get_user_events(
             user_id=user_id,
             event_type=event_type,
             start_date=start_date,
@@ -124,10 +114,18 @@ async def adm_get_user_events(
             offset=offset,
             limit=limit
         )
-        return result
+
+        return UserEventsResponse(**result)
+
+    except ValueError as e:
+        # Client error (400)
+        logger.warning(f"[Admin {admin.get('id')}] Invalid parameters: {e}")
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.26: EVT-MEDIUM-1 - Unified error handling
-        logger.error(f"[Admin] Get user events failed: {type(e).__name__} - {e}")
+        # Server error (500)
+        logger.error(f"[Admin {admin.get('id')}] Get user events failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to retrieve user events")
 
 
@@ -141,36 +139,45 @@ async def adm_get_event_stats(
     admin: dict = Depends(require_admin)
 ):
     """Fetch event statistics (grouped by event_type by default)."""
-    # v3.25: EVT-MEDIUM-3 - Validate date formats
-    validate_date_format(start_date, "start_date")
-    validate_date_format(end_date, "end_date")
-
-    # v3.25: EVT-MEDIUM-4 - Validate group_by parameter
-    if group_by not in VALID_GROUP_BY:
-        raise HTTPException(400, f"Invalid group_by. Must be one of: {', '.join(VALID_GROUP_BY)}")
-
     try:
+        logger.info(
+            f"[Admin {admin.get('id')}] Getting event stats "
+            f"(group_by={group_by}, start_date={start_date}, end_date={end_date})"
+        )
+
+        # Initialize Service layer
         db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
+        repository = SupabaseEventsRepository(db_client)
+        service = EventsService(repository)
 
-        # v3.26: EVT-LOW-1 - Add audit logging
-        logger.info(f"[Admin {admin.get('id')}] Queried event stats (group_by={group_by})")
+        # Service handles validation and calls Repository
+        stats = await service.get_event_stats(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by
+        )
 
-        stats = await stats_repo.admin_get_event_stats(start_date, end_date, group_by)
-        return {
-            "stats": stats,
-            "group_by": group_by,
-            "start_date": start_date,
-            "end_date": end_date
-        }
+        return EventStatsResponse(
+            stats=stats,
+            group_by=group_by,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+    except ValueError as e:
+        # Client error (400)
+        logger.warning(f"[Admin {admin.get('id')}] Invalid parameters: {e}")
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.26: EVT-MEDIUM-1 - Unified error handling
-        logger.error(f"[Admin] Get event stats failed: {type(e).__name__} - {e}")
+        # Server error (500)
+        logger.error(f"[Admin {admin.get('id')}] Get event stats failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to retrieve event statistics")
 
 
 # ==========================================
-# Aggregated Stats Endpoints (v3.25: Added rate limiting and validation)
+# Aggregated Stats Endpoints
 # ==========================================
 
 @router.get("/aggregated/{stat_type}", response_model=AggregatedStatsResponse)
@@ -183,29 +190,42 @@ async def adm_get_aggregated_stats(
 ):
     """
     Fetch aggregated stats for the given stat_type.
-    Supported types: daily_users, daily_revenue, daily_projects, credit_usage_30d,
-    tier_distribution, conversion_funnel_30d, event_stats_7d, etc.
+    Supported types: daily_active_users, hourly_active_users, daily_events, hourly_events
     """
-    # v3.25: EVT-MEDIUM-5 - Validate stat_type parameter
-    if stat_type not in VALID_STAT_TYPES:
-        raise HTTPException(400, f"Invalid stat_type. Must be one of: {', '.join(VALID_STAT_TYPES)}")
-
     try:
+        logger.info(
+            f"[Admin {admin.get('id')}] Getting aggregated stats "
+            f"(stat_type={stat_type}, use_cache={use_cache})"
+        )
+
+        # Initialize Service layer
         db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
+        repository = SupabaseEventsRepository(db_client)
+        service = EventsService(repository)
 
-        # v3.26: EVT-LOW-1 - Add audit logging
-        logger.info(f"[Admin {admin.get('id')}] Queried aggregated stats (stat_type={stat_type})")
+        # Service handles validation and calls Repository
+        aggregated_stats = await service.get_aggregated_stats(
+            stat_type=stat_type,
+            use_cache=use_cache
+        )
 
-        data = await stats_repo.get_aggregated_stats(stat_type, use_cache)
+        if aggregated_stats is None:
+            return AggregatedStatsResponse(
+                data=None,
+                message="No cached data available. Run aggregation task first."
+            )
 
-        if data is None:
-            return {"data": None, "message": "No cached data available. Run aggregation task first."}
+        return AggregatedStatsResponse(data=aggregated_stats.to_dict())
 
-        return {"data": data}
+    except ValueError as e:
+        # Client error (400)
+        logger.warning(f"[Admin {admin.get('id')}] Invalid stat_type: {e}")
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.26: EVT-MEDIUM-1 - Unified error handling
-        logger.error(f"[Admin] Get aggregated stats failed: {type(e).__name__} - {e}")
+        # Server error (500)
+        logger.error(f"[Admin {admin.get('id')}] Get aggregated stats failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to retrieve aggregated statistics")
 
 
@@ -214,30 +234,42 @@ async def adm_get_aggregated_stats(
 async def adm_get_aggregated_stats_range(
     request: Request,
     stat_type: str,
-    days: int = Query(30, ge=1, le=365, description="Number of days (1-365)"),
+    days: int = Query(30, ge=1, le=MAX_RANGE_DAYS, description=f"Number of days (1-{MAX_RANGE_DAYS})"),
     admin: dict = Depends(require_admin)
 ):
     """Fetch aggregated stats over a specific number of days."""
-    # v3.25: EVT-MEDIUM-5 - Validate stat_type parameter
-    if stat_type not in VALID_STAT_TYPES:
-        raise HTTPException(400, f"Invalid stat_type. Must be one of: {', '.join(VALID_STAT_TYPES)}")
-
     try:
+        logger.info(
+            f"[Admin {admin.get('id')}] Getting aggregated stats range "
+            f"(stat_type={stat_type}, days={days})"
+        )
+
+        # Initialize Service layer
         db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
+        repository = SupabaseEventsRepository(db_client)
+        service = EventsService(repository)
 
-        # v3.26: EVT-LOW-1 - Add audit logging
-        logger.info(f"[Admin {admin.get('id')}] Queried aggregated stats range (stat_type={stat_type}, days={days})")
+        # Service handles validation and calls Repository
+        stats_list = await service.get_aggregated_stats_range(
+            stat_type=stat_type,
+            days=days
+        )
 
-        stats = await stats_repo.get_aggregated_stats_range(stat_type, days)
-        return {
-            "stats": stats,
-            "stat_type": stat_type,
-            "days": days
-        }
+        return AggregatedStatsRangeResponse(
+            stats=[stat.to_dict() for stat in stats_list],
+            stat_type=stat_type,
+            days=days
+        )
+
+    except ValueError as e:
+        # Client error (400)
+        logger.warning(f"[Admin {admin.get('id')}] Invalid parameters: {e}")
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.26: EVT-MEDIUM-1 - Unified error handling
-        logger.error(f"[Admin] Get aggregated stats range failed: {type(e).__name__} - {e}")
+        # Server error (500)
+        logger.error(f"[Admin {admin.get('id')}] Get aggregated stats range failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to retrieve aggregated statistics range")
 
 
@@ -248,32 +280,47 @@ async def adm_run_aggregation(
     task_type: str = Query("all", description="Task type: all, hourly, daily"),
     admin: dict = Depends(require_admin)
 ):
-    """Manually trigger aggregation task (task_type: all | hourly | daily)."""
-    # v3.25: EVT-MEDIUM-7 - Validate task_type parameter
+    """
+    Manually trigger aggregation task (task_type: all | hourly | daily).
+
+    TODO (EVT-CRITICAL-2): Refactor to use Service layer instead of direct scheduler call
+    """
+    # Validate task_type
     if task_type not in VALID_TASK_TYPES:
-        raise HTTPException(400, f"Invalid task_type. Must be one of: {', '.join(VALID_TASK_TYPES)}")
+        raise HTTPException(
+            400,
+            f"Invalid task_type '{task_type}'. Must be one of: {', '.join(VALID_TASK_TYPES)}"
+        )
 
     try:
-        # v3.26: EVT-LOW-2 - Add audit logging
         logger.info(f"[Admin {admin.get('id')}] Manually triggered aggregation: {task_type}")
 
+        # TODO: Replace with Service call
+        # Currently calling scheduler directly (EVT-CRITICAL-2)
         result = run_aggregation_now(task_type)
 
         # Ensure result conforms to response model
         if isinstance(result, dict):
-            return {
-                "status": result.get("status", "completed"),
-                "task_type": task_type,
-                "message": result.get("message"),
-                "details": result
-            }
+            return AggregationTriggerResponse(
+                status=result.get("status", "completed"),
+                task_type=task_type,
+                message=result.get("message"),
+                details=result
+            )
         else:
-            return {
-                "status": "completed",
-                "task_type": task_type,
-                "details": {"result": str(result)}
-            }
+            return AggregationTriggerResponse(
+                status="completed",
+                task_type=task_type,
+                details={"result": str(result)}
+            )
+
+    except ValueError as e:
+        # Client error (400)
+        logger.warning(f"[Admin {admin.get('id')}] Invalid task_type: {e}")
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.26: EVT-MEDIUM-1 - Unified error handling
-        logger.error(f"[Admin] Run aggregation failed: {type(e).__name__} - {e}")
+        # Server error (500)
+        logger.error(f"[Admin {admin.get('id')}] Run aggregation failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to run aggregation task")
