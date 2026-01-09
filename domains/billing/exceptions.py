@@ -29,6 +29,10 @@ class InsufficientCreditsException(BillingException):
         if required is not None and available is not None:
             message = f"Insufficient credits: need {required}, have {available}"
 
+        # Store as instance attributes for easier access in tests
+        self.required = required
+        self.available = available
+
         super().__init__(
             message=message,
             context={
