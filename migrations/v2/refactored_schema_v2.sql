@@ -60,6 +60,64 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION set_deleted_at_on_soft_delete() IS '触发器函数: 软删除时自动设置 deleted_at 时间戳';
 
+-- ----------------------------------------------------------------------------
+-- 通用函数: Pricing 审计触发器
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION log_pricing_plan_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_action TEXT;
+    v_old_data JSONB;
+    v_new_data JSONB;
+BEGIN
+    -- 确定操作类型
+    IF (TG_OP = 'INSERT') THEN
+        v_action := 'create';
+        v_old_data := NULL;
+        v_new_data := row_to_json(NEW)::jsonb;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- 判断具体更新类型
+        IF (OLD.price_cents IS DISTINCT FROM NEW.price_cents OR
+            OLD.original_price_cents IS DISTINCT FROM NEW.original_price_cents) THEN
+            v_action := 'update_price';
+        ELSIF (OLD.is_active IS DISTINCT FROM NEW.is_active) THEN
+            v_action := CASE WHEN NEW.is_active THEN 'activate' ELSE 'deactivate' END;
+        ELSIF (OLD.is_visible IS DISTINCT FROM NEW.is_visible) THEN
+            v_action := CASE WHEN NEW.is_visible THEN 'show' ELSE 'hide' END;
+        ELSE
+            v_action := 'update';
+        END IF;
+        v_old_data := row_to_json(OLD)::jsonb;
+        v_new_data := row_to_json(NEW)::jsonb;
+    ELSIF (TG_OP = 'DELETE') THEN
+        v_action := 'delete';
+        v_old_data := row_to_json(OLD)::jsonb;
+        v_new_data := NULL;
+    END IF;
+
+    -- 记录到审计表
+    INSERT INTO pricing_history (
+        plan_id,
+        plan_code,
+        action,
+        old_data,
+        new_data,
+        changed_by
+    ) VALUES (
+        COALESCE(NEW.id, OLD.id),
+        COALESCE(NEW.plan_code, OLD.plan_code),
+        v_action,
+        v_old_data,
+        v_new_data,
+        COALESCE(NEW.updated_by, NEW.created_by, OLD.updated_by, 'system')
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION log_pricing_plan_change IS '触发器函数: 自动记录价格变更历史到 pricing_history 表';
+
 -- ============================================================================
 -- 第二部分: 核心业务表
 -- ============================================================================
@@ -2087,64 +2145,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION upsert_ai_usage_daily IS 'Upsert AI 使用量日汇总 (累加统计)';
-
--- ----------------------------------------------------------------------------
--- Pricing 审计触发器函数
--- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION log_pricing_plan_change()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_action TEXT;
-    v_old_data JSONB;
-    v_new_data JSONB;
-BEGIN
-    -- 确定操作类型
-    IF (TG_OP = 'INSERT') THEN
-        v_action := 'create';
-        v_old_data := NULL;
-        v_new_data := row_to_json(NEW)::jsonb;
-    ELSIF (TG_OP = 'UPDATE') THEN
-        -- 判断具体更新类型
-        IF (OLD.price_cents IS DISTINCT FROM NEW.price_cents OR
-            OLD.original_price_cents IS DISTINCT FROM NEW.original_price_cents) THEN
-            v_action := 'update_price';
-        ELSIF (OLD.is_active IS DISTINCT FROM NEW.is_active) THEN
-            v_action := CASE WHEN NEW.is_active THEN 'activate' ELSE 'deactivate' END;
-        ELSIF (OLD.is_visible IS DISTINCT FROM NEW.is_visible) THEN
-            v_action := CASE WHEN NEW.is_visible THEN 'show' ELSE 'hide' END;
-        ELSE
-            v_action := 'update';
-        END IF;
-        v_old_data := row_to_json(OLD)::jsonb;
-        v_new_data := row_to_json(NEW)::jsonb;
-    ELSIF (TG_OP = 'DELETE') THEN
-        v_action := 'delete';
-        v_old_data := row_to_json(OLD)::jsonb;
-        v_new_data := NULL;
-    END IF;
-
-    -- 记录到审计表
-    INSERT INTO pricing_history (
-        plan_id,
-        plan_code,
-        action,
-        old_data,
-        new_data,
-        changed_by
-    ) VALUES (
-        COALESCE(NEW.id, OLD.id),
-        COALESCE(NEW.plan_code, OLD.plan_code),
-        v_action,
-        v_old_data,
-        v_new_data,
-        COALESCE(NEW.updated_by, NEW.created_by, OLD.updated_by, 'system')
-    );
-
-    RETURN COALESCE(NEW, OLD);
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON FUNCTION log_pricing_plan_change IS '触发器函数: 自动记录价格变更历史到 pricing_history 表';
 
 -- ============================================================================
 -- 第二十部分: 初始化数据
