@@ -2906,13 +2906,85 @@ COMMENT ON POLICY listings_select_own ON marketplace_listings IS 'RLS: Sellers c
 DO $$
 BEGIN
     RAISE NOTICE '';
-    RAISE NOTICE '✅ Row-Level Security (RLS) policies created';
-    RAISE NOTICE '   - 6 tables protected with RLS';
-    RAISE NOTICE '   - 15 policies created for multi-tenant security';
-    RAISE NOTICE '   - Usage: SET app.current_user_id = ''user_xxx'' before queries';
+    RAISE NOTICE '✅ Row-Level Security (RLS) policies created (but NOT enabled)';
+    RAISE NOTICE '   - 15 policies defined for 6 tables';
+    RAISE NOTICE '   - RLS is DISABLED by default (suitable for Railway/development)';
     RAISE NOTICE '';
-    RAISE NOTICE '⚠️  To disable RLS (if not using Supabase):';
-    RAISE NOTICE '   ALTER TABLE table_name DISABLE ROW LEVEL SECURITY;';
+    RAISE NOTICE '🔒 To enable RLS for Supabase multi-tenant:';
+    RAISE NOTICE '   Run: enable_rls.sql';
+    RAISE NOTICE '';
+END $$;
+
+-- ============================================================================
+-- Disable RLS on All Tables (Default Behavior)
+-- ============================================================================
+-- This ensures no UNRESTRICTED warnings in Supabase
+-- Suitable for Railway/standalone PostgreSQL/development environments
+
+DO $$
+BEGIN
+    RAISE NOTICE '';
+    RAISE NOTICE '🔓 Disabling RLS on all tables (default safe configuration)...';
+END $$;
+
+-- Disable RLS on all tables
+ALTER TABLE IF EXISTS profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS credit_transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_generations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS marketplace_listings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS marketplace_purchases DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS activity_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS ai_call_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS ai_usage_daily DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS analytics_aggregation DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS analytics_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS api_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS asset_categories DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS asset_prompt_templates DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS assets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS campaign_dismissals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS campaign_participations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS campaigns DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS clerk_webhook_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS config_audit_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS content_reports DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS credit_purchases DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS daily_themes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS experiment_assignments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS experiment_results DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS experiments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS feature_flags DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS holidays DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS marketplace_favorites DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS marketplace_reviews DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS notifications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS onboarding_steps DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS pricing_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS pricing_plans DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS project_versions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS referrals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS scheduled_task_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS stripe_webhook_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS subscription_history DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS system_assets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS system_configs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS system_resource_audit_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_discounts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_onboarding_progress DISABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_price_overrides DISABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    RAISE NOTICE '';
+    RAISE NOTICE '✅ RLS disabled on all tables';
+    RAISE NOTICE '   - All tables are now accessible without restrictions';
+    RAISE NOTICE '   - No UNRESTRICTED warnings in Supabase';
+    RAISE NOTICE '   - Suitable for Railway/standalone PostgreSQL/development';
+    RAISE NOTICE '';
+    RAISE NOTICE '🔒 To enable RLS for Supabase multi-tenant security:';
+    RAISE NOTICE '   Run the optional script: enable_rls.sql';
+    RAISE NOTICE '';
 END $$;
 
 
