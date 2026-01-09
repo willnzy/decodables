@@ -39,13 +39,38 @@ async def _log_admin_operation(
     """
     Log admin operation to admin_operations table.
 
-    TODO: Implement actual DB write
-    Currently only logs to logger.
+    Args:
+        admin_id: Admin user ID
+        operation_type: Type of operation (e.g., "get_user_events", "get_event_stats")
+        details: Additional operation details (filters, parameters, etc.)
     """
-    logger.info(
-        f"[Audit] Admin {admin_id} performed {operation_type} "
-        f"with details: {details}"
-    )
+    try:
+        from core.database import get_supabase_client
+        import json
+
+        client = get_supabase_client()
+
+        # Prepare log entry
+        log_entry = {
+            "admin_id": admin_id,
+            "operation_type": operation_type,
+            "details": json.dumps(details) if details else None,
+            "created_at": "now()"  # PostgreSQL function for server timestamp
+        }
+
+        # Write to admin_operations table
+        client.table("admin_operations").insert(log_entry).execute()
+
+        logger.info(
+            f"[Audit] Admin {admin_id} performed {operation_type} "
+            f"(logged to DB)"
+        )
+    except Exception as e:
+        # Fail gracefully - don't break the main operation if audit logging fails
+        logger.error(
+            f"[Audit] Failed to log admin operation: {e}. "
+            f"Admin: {admin_id}, Operation: {operation_type}"
+        )
 
 
 class EventsService:
