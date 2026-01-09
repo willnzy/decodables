@@ -492,6 +492,7 @@ class SupabaseUserRepository(IUserRepository):
             pass
         return "UTC"
 
+    @retry_on_network_error()  # v3.26 (REPO-HIGH-1): Added retry decorator
     async def search_users(self, query: str) -> List[Dict[str, Any]]:
         """
         Search users by email, username, or user_code.
@@ -501,23 +502,33 @@ class SupabaseUserRepository(IUserRepository):
 
         Returns:
             List of matching profiles
+
+        v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
         """
         result = self.client.table("profiles").select("id, email, username, user_code, tier").or_(
             f"email.ilike.%{query}%,username.ilike.%{query}%,user_code.ilike.%{query}%"
         ).limit(20).execute()
         return result.data or []
 
-    async def get_users_by_tier(self, tier: str) -> List[str]:
+    @retry_on_network_error()  # v3.26 (REPO-HIGH-3): Added retry decorator + pagination
+    async def get_users_by_tier(self, tier: str, offset: int = 0, limit: int = 100) -> List[str]:
         """
-        Get all user IDs for a specific tier.
+        Get user IDs for a specific tier with pagination.
 
         Args:
             tier: Tier name
+            offset: Number of records to skip (default: 0)
+            limit: Maximum number of records (default: 100)
 
         Returns:
             List of user IDs
+
+        v3.26 (REPO-HIGH-3): Added pagination support (offset/limit) to prevent OOM
+        v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
         """
-        result = self.client.table("profiles").select("id").eq("tier", tier).execute()
+        result = self.client.table("profiles").select("id").eq(
+            "tier", tier
+        ).range(offset, offset + limit - 1).execute()
         return [u["id"] for u in (result.data or [])]
 
     async def get_user_discount(
@@ -545,6 +556,7 @@ class SupabaseUserRepository(IUserRepository):
         result = query.order("discount_percent", desc=True).limit(1).execute()
         return result.data[0] if result.data else None
 
+    @retry_on_network_error()  # v3.26 (REPO-HIGH-2): Added retry decorator
     async def create_user_discount(
         self,
         user_id: str,
@@ -563,6 +575,8 @@ class SupabaseUserRepository(IUserRepository):
 
         Returns:
             Created discount record
+
+        v3.26 (REPO-HIGH-2): Added @retry_on_network_error decorator
         """
         from datetime import timedelta
         expires_at = datetime.now(timezone.utc) + timedelta(days=valid_days)

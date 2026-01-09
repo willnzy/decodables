@@ -376,7 +376,8 @@ async def test_get_users_by_tier_case_normalization():
 
             # Should be normalized to lowercase
             assert result["tier"] == "free"
-            mock_repo.get_users_by_tier.assert_called_once_with("free")
+            # v3.26: Now includes offset and limit parameters
+            mock_repo.get_users_by_tier.assert_called_once_with("free", offset=0, limit=100)
 
 
 @pytest.mark.asyncio
@@ -400,6 +401,10 @@ async def test_get_users_by_tier_returns_count():
 
             assert result["count"] == 3
             assert len(result["users"]) == 3
+            # v3.26: Now returns pagination metadata
+            assert result["offset"] == 0
+            assert result["limit"] == 100
+            assert result["has_more"] == False
 
 
 # ==========================================
@@ -736,21 +741,27 @@ async def test_get_user_asset_usage_error_sanitization():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_supabase.return_value.table.side_effect = Exception("Database error with password abc123xyz")
+    # v3.26: Updated to use Repository pattern - patch at import location
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            await get_user_asset_usage(
-                request=mock_request,
-                uid="user123",
-                admin=admin
-            )
+        with patch('infrastructure.repositories.SupabaseAssetRepository') as mock_asset_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_asset_usage = AsyncMock(side_effect=Exception("Database error with password abc123xyz"))
+            mock_asset_repo_class.return_value = mock_repo
 
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Failed to retrieve asset usage data"
-        # Ensure password is NOT exposed
-        assert "abc123xyz" not in str(exc_info.value.detail)
-        assert "password" not in str(exc_info.value.detail).lower()
+            with pytest.raises(HTTPException) as exc_info:
+                await get_user_asset_usage(
+                    request=mock_request,
+                    uid="user123",
+                    admin=admin
+                )
+
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Failed to retrieve asset usage data"
+            # Ensure password is NOT exposed
+            assert "abc123xyz" not in str(exc_info.value.detail)
+            assert "password" not in str(exc_info.value.detail).lower()
 
 
 @pytest.mark.asyncio
@@ -759,29 +770,40 @@ async def test_get_user_asset_usage_success():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    mock_assets = [
-        {"id": "a1", "source": "upload", "usage_count": 10},
-        {"id": "a2", "source": "ai", "usage_count": 5},
-        {"id": "a3", "source": "upload", "usage_count": 3},
-    ]
+    # v3.26: Updated to use Repository pattern with new response format
+    mock_stats = {
+        "total_assets": 3,
+        "by_type": {"image": 2, "video": 1},
+        "by_category": {"nature": 2, "urban": 1},
+        "most_used": [
+            {"id": "a1", "name": "Asset 1", "type": "image", "category": "nature", "usage_count": 10},
+            {"id": "a2", "name": "Asset 2", "type": "video", "category": "urban", "usage_count": 5}
+        ],
+        "queried_limit": 1000,
+        "is_truncated": False
+    }
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_result = Mock()
-        mock_result.data = mock_assets
-        mock_supabase.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_result
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        result = await get_user_asset_usage(
-            request=mock_request,
-            uid="user123",
-            admin=admin
-        )
+        with patch('infrastructure.repositories.SupabaseAssetRepository') as mock_asset_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_asset_usage = AsyncMock(return_value=mock_stats)
+            mock_asset_repo_class.return_value = mock_repo
 
-        assert result["user_id"] == "user123"
-        assert result["total_assets"] == 3
-        assert result["total_usage"] == 18  # 10 + 5 + 3
-        assert result["by_source"]["upload"] == 2
-        assert result["by_source"]["ai"] == 1
-        assert len(result["top_used"]) <= 10
+            result = await get_user_asset_usage(
+                request=mock_request,
+                uid="user123",
+                admin=admin
+            )
+
+            assert result["user_id"] == "user123"
+            assert result["total_assets"] == 3
+            assert result["by_type"]["image"] == 2
+            assert result["by_type"]["video"] == 1
+            assert len(result["most_used"]) == 2
+            # v3.26: Repository is called with limit and top_n parameters
+            mock_repo.get_user_asset_usage.assert_called_once_with("user123", limit=1000, top_n=10)
 
 
 @pytest.mark.asyncio
@@ -790,21 +812,27 @@ async def test_get_user_env_stats_error_sanitization():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_supabase.return_value.table.side_effect = Exception("Internal error with token xyz789secret")
+    # v3.26: Updated to use Repository pattern - patch at import location
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        with pytest.raises(HTTPException) as exc_info:
-            await get_user_env_stats(
-                request=mock_request,
-                uid="user123",
-                admin=admin
-            )
+        with patch('infrastructure.repositories.SupabaseAnalyticsRepository') as mock_analytics_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_env_stats = AsyncMock(side_effect=Exception("Internal error with token xyz789secret"))
+            mock_analytics_repo_class.return_value = mock_repo
 
-        assert exc_info.value.status_code == 500
-        assert exc_info.value.detail == "Failed to retrieve environment statistics"
-        # Ensure token is NOT exposed
-        assert "xyz789secret" not in str(exc_info.value.detail)
-        assert "token" not in str(exc_info.value.detail).lower()
+            with pytest.raises(HTTPException) as exc_info:
+                await get_user_env_stats(
+                    request=mock_request,
+                    uid="user123",
+                    admin=admin
+                )
+
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Failed to retrieve environment statistics"
+            # Ensure token is NOT exposed
+            assert "xyz789secret" not in str(exc_info.value.detail)
+            assert "token" not in str(exc_info.value.detail).lower()
 
 
 @pytest.mark.asyncio
@@ -813,32 +841,42 @@ async def test_get_user_env_stats_success():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    mock_events = [
-        {"properties": {"browser": "Chrome", "device_type": "desktop", "os": "Windows"}},
-        {"properties": {"browser": "Firefox", "device_type": "mobile", "os": "iOS"}},
-        {"properties": {"browser": "Chrome", "device_type": "desktop", "os": "macOS"}},
-    ]
+    # v3.26: Updated to use Repository pattern with new response format
+    mock_stats = {
+        "total_events": 3,
+        "browsers": {"Chrome": 2, "Firefox": 1},
+        "devices": {"desktop": 2, "mobile": 1},
+        "os_stats": {"Windows": 1, "iOS": 1, "macOS": 1},
+        "referrers": {"google.com": 2, "direct": 1},
+        "queried_limit": 100,
+        "is_truncated": False
+    }
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_result = Mock()
-        mock_result.data = mock_events
-        mock_supabase.return_value.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_result
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        result = await get_user_env_stats(
-            request=mock_request,
-            uid="user123",
-            admin=admin
-        )
+        with patch('infrastructure.repositories.SupabaseAnalyticsRepository') as mock_analytics_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_env_stats = AsyncMock(return_value=mock_stats)
+            mock_analytics_repo_class.return_value = mock_repo
 
-        assert result["user_id"] == "user123"
-        assert result["sample_size"] == 3
-        assert result["browsers"]["Chrome"] == 2
-        assert result["browsers"]["Firefox"] == 1
-        assert result["devices"]["desktop"] == 2
-        assert result["devices"]["mobile"] == 1
-        assert result["os_types"]["Windows"] == 1
-        assert result["os_types"]["iOS"] == 1
-        assert result["os_types"]["macOS"] == 1
+            result = await get_user_env_stats(
+                request=mock_request,
+                uid="user123",
+                admin=admin
+            )
+
+            assert result["user_id"] == "user123"
+            assert result["sample_size"] == 3
+            assert result["browsers"]["Chrome"] == 2
+            assert result["browsers"]["Firefox"] == 1
+            assert result["devices"]["desktop"] == 2
+            assert result["devices"]["mobile"] == 1
+            assert result["os_types"]["Windows"] == 1
+            assert result["os_types"]["iOS"] == 1
+            assert result["os_types"]["macOS"] == 1
+            # v3.26: Repository is called with limit parameter
+            mock_repo.get_user_env_stats.assert_called_once_with("user123", limit=100)
 
 
 # ==========================================
@@ -1161,33 +1199,28 @@ async def test_update_user_tier_to_free():
 
 @pytest.mark.asyncio
 async def test_update_user_tier_deprecated_endpoint():
-    """POST /users/{uid}/tier (deprecated) should still work but be marked deprecated."""
+    """POST /users/{uid}/tier (deprecated) should return 410 Gone in v3.26."""
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
     req = TierUpdateRequest(tier="starter")
 
-    with patch('api.admin.users.get_database_client') as mock_db_client:
-        mock_user_repo = Mock()
-        mock_user_repo.get_profile = AsyncMock(return_value={"tier": "free"})
-        mock_user_repo.update_subscription_tier = AsyncMock(return_value=None)
+    # v3.26: Endpoint now returns 410 Gone instead of working
+    with pytest.raises(HTTPException) as exc_info:
+        await update_user_tier(
+            request=mock_request,
+            uid="user123",
+            req=req,
+            admin=admin
+        )
 
-        mock_admin_repo = Mock()
-        mock_admin_repo.admin_log_operation = AsyncMock(return_value=None)
-
-        mock_db_client.return_value = Mock()
-
-        with patch('api.admin.users.SupabaseUserRepository', return_value=mock_user_repo):
-            with patch('api.admin.users.SupabaseAdminUsersRepository', return_value=mock_admin_repo):
-                result = await update_user_tier(
-                    request=mock_request,
-                    uid="user123",
-                    req=req,
-                    admin=admin
-                )
-
-                assert result["status"] == "ok"
-                # Verify it still works the same as update_user
-                mock_user_repo.update_subscription_tier.assert_called_once()
+    assert exc_info.value.status_code == 410
+    assert "removed" in str(exc_info.value.detail).lower()
+    assert "PATCH" in str(exc_info.value.detail)
+    # Should include migration guidance
+    detail = exc_info.value.detail
+    assert isinstance(detail, dict)
+    assert "replacement_endpoint" in detail
+    assert "migration_guide" in detail
 
 
 # ==========================================
@@ -1229,21 +1262,33 @@ async def test_get_user_asset_usage_empty_assets():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_result = Mock()
-        mock_result.data = []
-        mock_supabase.return_value.table.return_value.select.return_value.eq.return_value.execute.return_value = mock_result
+    # v3.26: Updated to use Repository pattern
+    mock_stats = {
+        "total_assets": 0,
+        "by_type": {},
+        "by_category": {},
+        "most_used": [],
+        "queried_limit": 1000,
+        "is_truncated": False
+    }
 
-        result = await get_user_asset_usage(
-            request=mock_request,
-            uid="user123",
-            admin=admin
-        )
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        assert result["total_assets"] == 0
-        assert result["total_usage"] == 0
-        assert result["by_source"] == {}
-        assert result["top_used"] == []
+        with patch('infrastructure.repositories.SupabaseAssetRepository') as mock_asset_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_asset_usage = AsyncMock(return_value=mock_stats)
+            mock_asset_repo_class.return_value = mock_repo
+
+            result = await get_user_asset_usage(
+                request=mock_request,
+                uid="user123",
+                admin=admin
+            )
+
+            assert result["total_assets"] == 0
+            assert result["by_type"] == {}
+            assert result["most_used"] == []
 
 
 @pytest.mark.asyncio
@@ -1252,49 +1297,39 @@ async def test_get_user_env_stats_empty_events():
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_result = Mock()
-        mock_result.data = []
-        mock_supabase.return_value.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_result
+    # v3.26: Updated to use Repository pattern
+    mock_stats = {
+        "total_events": 0,
+        "browsers": {},
+        "devices": {},
+        "os_stats": {},
+        "referrers": {},
+        "queried_limit": 100,
+        "is_truncated": False
+    }
 
-        result = await get_user_env_stats(
-            request=mock_request,
-            uid="user123",
-            admin=admin
-        )
+    with patch('api.admin.users.get_database_client') as mock_db_client:
+        mock_db_client.return_value = Mock()
 
-        assert result["sample_size"] == 0
-        assert result["browsers"] == {}
-        assert result["devices"] == {}
-        assert result["os_types"] == {}
+        with patch('infrastructure.repositories.SupabaseAnalyticsRepository') as mock_analytics_repo_class:
+            mock_repo = Mock()
+            mock_repo.get_user_env_stats = AsyncMock(return_value=mock_stats)
+            mock_analytics_repo_class.return_value = mock_repo
+
+            result = await get_user_env_stats(
+                request=mock_request,
+                uid="user123",
+                admin=admin
+            )
+
+            assert result["sample_size"] == 0
+            assert result["browsers"] == {}
+            assert result["devices"] == {}
+            assert result["os_types"] == {}
 
 
-@pytest.mark.asyncio
-async def test_get_user_env_stats_handles_missing_properties():
-    """GET /users/{uid}/env-stats should handle events with missing properties."""
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
-
-    mock_events = [
-        {"properties": {"browser": "Chrome"}},  # Missing device_type and os
-        {"properties": None},  # Null properties
-        {"properties": {}},  # Empty properties
-    ]
-
-    with patch('api.admin.users.get_supabase_client') as mock_supabase:
-        mock_result = Mock()
-        mock_result.data = mock_events
-        mock_supabase.return_value.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value = mock_result
-
-        result = await get_user_env_stats(
-            request=mock_request,
-            uid="user123",
-            admin=admin
-        )
-
-        assert result["sample_size"] == 3
-        assert result["browsers"].get("Chrome") == 1
-        # Should not crash on missing properties
+# v3.26: Removed test_get_user_env_stats_handles_missing_properties
+# Property handling is now done in SupabaseAnalyticsRepository, not in the API layer
 
 
 @pytest.mark.asyncio

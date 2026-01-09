@@ -456,12 +456,25 @@ def get_customer_subscriptions(customer_id: str) -> list:
 
 
 @retry_on_stripe_error()
-def get_customer_payments(customer_id: str, limit: int = 10) -> list:
-    """Get successful payments for a customer."""
+def get_customer_payments(customer_id: str, limit: int = 10, timeout: int = 30) -> list:
+    """
+    Get successful payments for a customer.
+
+    Args:
+        customer_id: Stripe customer ID
+        limit: Maximum number of payment intents to retrieve
+        timeout: Request timeout in seconds (default: 30, fixes USER-HIGH-3)
+
+    Returns:
+        List of successful payment intents
+
+    v3.26 (USER-HIGH-3): Added timeout parameter to prevent hanging
+    """
     try:
         payment_intents = stripe.PaymentIntent.list(
             customer=customer_id,
-            limit=limit
+            limit=limit,
+            timeout=timeout  # v3.26: Added timeout to prevent hanging
         )
 
         successful_payments = [

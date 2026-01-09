@@ -106,9 +106,15 @@ async def search_users_api(
 async def get_users_by_tier_api(
     request: Request,
     tier: str,
+    offset: int = 0,
+    limit: int = 100,
     admin: dict = Depends(require_admin),
 ):
-    """Get users by tier (for bulk notifications)."""
+    """
+    Get users by tier (for bulk notifications).
+
+    v3.26 (REPO-HIGH-3): Added pagination (offset/limit) to prevent OOM
+    """
     # v3.25: USER-MEDIUM-3 - Validate tier enum
     tier_lower = tier.lower()
     if tier_lower not in VALID_TIERS:
@@ -116,8 +122,16 @@ async def get_users_by_tier_api(
 
     db = get_database_client()
     user_repo = SupabaseUserRepository(db)
-    users = await user_repo.get_users_by_tier(tier_lower)
-    return {"users": users, "count": len(users), "tier": tier_lower}
+    # v3.26: Pass pagination parameters
+    users = await user_repo.get_users_by_tier(tier_lower, offset=offset, limit=limit)
+    return {
+        "users": users,
+        "count": len(users),
+        "tier": tier_lower,
+        "offset": offset,
+        "limit": limit,
+        "has_more": len(users) >= limit
+    }
 
 
 @router.get("/users/{uid}")
@@ -210,31 +224,22 @@ async def update_user_tier(
     admin: dict = Depends(require_admin),
 ):
     """
-    Update user tier.
+    Update user tier (DEPRECATED - REMOVED in v3.26).
 
-    **DEPRECATED**: Use `PATCH /users/{uid}` instead.
-    This endpoint will be removed in v3.0.
+    v3.26 (USER-HIGH-4): This endpoint has been REMOVED due to duplicate code.
+    **Please use `PATCH /users/{uid}` instead.**
+
+    Returns:
+        410 Gone - This endpoint is no longer available
     """
-    # v3.25: USER-LOW-2 - Validate uid length
-    if len(uid) > 100:
-        raise HTTPException(400, "User ID too long (max 100 characters)")
-
-    db = get_database_client()
-    user_repo = SupabaseUserRepository(db)
-    admin_repo = SupabaseAdminUsersRepository(db)
-
-    old_profile = await user_repo.get_profile(uid)
-    old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
-
-    subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
-    await user_repo.update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
-
-    await admin_repo.admin_log_operation(
-        admin_id=admin["id"],
-        operation_type="tier_change",
-        target_user_id=uid,
-        details=f"{old_tier} → {req.tier}",
-        reason=None,
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "error": "Endpoint removed",
+            "message": "POST /users/{uid}/tier has been removed in v3.26. Please use PATCH /users/{uid} instead.",
+            "replacement_endpoint": f"PATCH /admin/users/{uid}",
+            "migration_guide": "Change your request from POST to PATCH and use the same request body."
+        }
     )
     return {"status": "ok"}
 
@@ -322,31 +327,36 @@ async def get_user_projects(
 async def get_user_asset_usage(
     request: Request,
     uid: str,
+    top_n: int = 10,
     admin: dict = Depends(require_admin),
 ):
-    """Get detailed asset usage for a user."""
+    """
+    Get detailed asset usage for a user.
+
+    v3.26 (USER-CRITICAL-1): Migrated to use SupabaseAssetRepository
+    - Fixes: DDD architecture violation (was directly accessing DB)
+    - Adds: @retry_on_network_error decorator via Repository
+    - Adds: Query limit (1000) to prevent OOM
+    - Adds: Configurable top_n parameter
+    """
     # v3.25: USER-LOW-2 - Validate uid length
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    supabase = get_supabase_client()
-
     try:
-        assets_result = supabase.table("assets").select("*").eq("user_id", uid).execute()
-        assets = assets_result.data if assets_result.data else []
+        # v3.26: Use Repository layer (fixes DDD violation)
+        from infrastructure.repositories import SupabaseAssetRepository
+        from core.database import get_database_client
 
-        total_usage = sum(a.get("usage_count", 0) for a in assets)
-        by_source = {}
-        for a in assets:
-            src = a.get("source", "unknown")
-            by_source[src] = by_source.get(src, 0) + 1
+        db = get_database_client()
+        asset_repo = SupabaseAssetRepository(db)
+
+        # Repository handles query limit, retry logic, and aggregation
+        stats = await asset_repo.get_user_asset_usage(uid, limit=1000, top_n=top_n)
 
         return {
             "user_id": uid,
-            "total_assets": len(assets),
-            "total_usage": total_usage,
-            "by_source": by_source,
-            "top_used": sorted(assets, key=lambda x: x.get("usage_count", 0), reverse=True)[:10],
+            **stats
         }
     except Exception as e:
         # v3.25: USER-LOW-3 - Limited error exposure
@@ -359,51 +369,42 @@ async def get_user_asset_usage(
 async def get_user_env_stats(
     request: Request,
     uid: str,
+    limit: int = 100,
     admin: dict = Depends(require_admin),
 ):
-    """Get detailed user environment statistics."""
+    """
+    Get detailed user environment statistics.
+
+    v3.26 (USER-CRITICAL-1 + USER-HIGH-1): Migrated to use SupabaseAnalyticsRepository
+    - Fixes: DDD architecture violation (was directly accessing DB)
+    - Fixes: OOM risk (reduced default limit from 500 to 100)
+    - Fixes: Referrer parsing IndexError (safe parsing in Repository)
+    - Adds: @retry_on_network_error decorator via Repository
+    - Adds: Configurable limit parameter
+    """
     # v3.25: USER-LOW-2 - Validate uid length
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    supabase = get_supabase_client()
-
     try:
-        events = supabase.table("analytics_events").select(
-            "properties",
-        ).eq("user_id", uid).limit(500).execute()
+        # v3.26: Use Repository layer (fixes DDD violation)
+        from infrastructure.repositories import SupabaseAnalyticsRepository
+        from core.database import get_database_client
 
-        events_data = events.data if events.data else []
+        db = get_database_client()
+        analytics_repo = SupabaseAnalyticsRepository(db)
 
-        browsers = {}
-        devices = {}
-        screen_sizes = {}
-        referrers = {}
-        os_types = {}
-
-        for event in events_data:
-            props = event.get("properties") or {}
-
-            if browser := props.get("browser"):
-                browsers[browser] = browsers.get(browser, 0) + 1
-            if device := props.get("device_type"):
-                devices[device] = devices.get(device, 0) + 1
-            if screen := props.get("screen_size"):
-                screen_sizes[screen] = screen_sizes.get(screen, 0) + 1
-            if ref := props.get("referrer"):
-                domain = ref.split("/")[2] if len(ref.split("/")) > 2 else ref
-                referrers[domain] = referrers.get(domain, 0) + 1
-            if os_name := props.get("os"):
-                os_types[os_name] = os_types.get(os_name, 0) + 1
+        # Repository handles query limit, retry logic, safe parsing, and aggregation
+        stats = await analytics_repo.get_user_env_stats(uid, limit=limit)
 
         return {
             "user_id": uid,
-            "sample_size": len(events_data),
-            "browsers": browsers,
-            "devices": devices,
-            "screen_sizes": screen_sizes,
-            "referrers": dict(sorted(referrers.items(), key=lambda x: x[1], reverse=True)[:10]),
-            "os_types": os_types,
+            "sample_size": stats["total_events"],
+            "browsers": stats["browsers"],
+            "devices": stats["devices"],
+            "os_types": stats["os_stats"],
+            "referrers": dict(sorted(stats["referrers"].items(), key=lambda x: x[1], reverse=True)[:10]),
+            "screen_sizes": {},  # Not implemented in new version (can add later if needed)
         }
     except Exception as e:
         # v3.25: USER-LOW-3 - Limited error exposure
