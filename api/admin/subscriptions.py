@@ -23,7 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from core.database import get_supabase_client, get_database_client
+from core.database import get_database_client
 from infrastructure.repositories import (
     SupabaseAdminUsersRepository,
     SupabasePaymentRepository,
@@ -49,6 +49,13 @@ router = APIRouter(prefix="/subscriptions", tags=["admin-subscriptions-v2"])
 
 # v3.25: SUB-MEDIUM-2 - Valid target tiers for downgrade
 VALID_TARGET_TIERS = {"free", "starter"}
+
+# v3.25: Monthly credits by tier (from CLAUDE.md business rules)
+TIER_MONTHLY_CREDITS = {
+    "free": 0,
+    "starter": 200,
+    "pro": 500,
+}
 
 
 # ==========================================
@@ -149,9 +156,11 @@ async def adm_refund(request: Request, req: AdminRefundRequest, admin: dict = De
         amount_cents=req.amount_cents,
         reason="requested_by_customer"
     )
-    
+
     if not result["success"]:
-        raise HTTPException(400, f"Refund failed: {result['error']}")
+        # v3.25: SUB-LOW-1 - Limit error exposure
+        logger.error(f"[Admin] Refund failed for PI {req.payment_intent_id}: {result['error']}")
+        raise HTTPException(400, "Refund operation failed")
 
     refund = result["refund"]
     refund_amount = refund.amount
@@ -232,9 +241,11 @@ async def adm_cancel_subscription(request: Request, req: AdminCancelSubscription
         raise HTTPException(400, "Subscription is already scheduled for cancellation")
     
     result = cancel_subscription(req.subscription_id, immediate=req.immediate)
-    
+
     if not result["success"]:
-        raise HTTPException(400, f"Cancel subscription failed: {result['error']}")
+        # v3.25: SUB-LOW-1 - Limit error exposure
+        logger.error(f"[Admin] Cancel subscription failed for {req.subscription_id}: {result['error']}")
+        raise HTTPException(400, "Failed to cancel subscription")
     
     subscription = result["subscription"]
     
@@ -324,17 +335,14 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
     tier_levels = {"free": 0, "starter": 1, "pro": 2}
     if tier_levels.get(target_tier, -1) >= tier_levels.get(current_tier, 0):
         raise HTTPException(400, f"Cannot downgrade from {current_tier} to {target_tier}")
-    
-    if target_tier not in ["free", "starter"]:
-        raise HTTPException(400, "Invalid target tier. Must be 'free' or 'starter'")
-    
+
     customer_id = user.get("stripe_customer_id")
     
     # Case 1: downgrading to Free
     if target_tier == "free":
         if not customer_id:
             await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
-            supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
+            await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["free"])
 
             await payment_repo.create(
                 user_id=req.user_id,
@@ -356,7 +364,7 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
 
         if not active_sub:
             await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="inactive")
-            supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
+            await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["free"])
 
             await payment_repo.create(
                 user_id=req.user_id,
@@ -375,10 +383,12 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
         if req.immediate:
             result = cancel_subscription(active_sub.id, immediate=True)
             if not result["success"]:
-                raise HTTPException(400, f"Failed to cancel subscription: {result['error']}")
+                # v3.25: SUB-LOW-1 - Limit error exposure
+                logger.error(f"[Admin] Failed to cancel subscription {active_sub.id}: {result['error']}")
+                raise HTTPException(400, "Failed to cancel subscription")
 
             await users_repo.update_subscription_tier(req.user_id, "free", subscription_status="canceled")
-            supabase.table("profiles").update({"credits_monthly": 0}).eq("id", req.user_id).execute()
+            await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["free"])
 
             await payment_repo.create(
                 user_id=req.user_id,
@@ -397,7 +407,9 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
         else:
             result = cancel_subscription(active_sub.id, immediate=False)
             if not result["success"]:
-                raise HTTPException(400, f"Failed to schedule cancellation: {result['error']}")
+                # v3.25: SUB-LOW-1 - Limit error exposure
+                logger.error(f"[Admin] Failed to schedule cancellation for {active_sub.id}: {result['error']}")
+                raise HTTPException(400, "Failed to schedule cancellation")
 
             await payment_repo.create(
                 user_id=req.user_id,
@@ -449,7 +461,7 @@ async def adm_downgrade_subscription(request: Request, req: AdminDowngradeReques
 
             if req.immediate:
                 await users_repo.update_subscription_tier(req.user_id, "starter", subscription_status="active")
-                supabase.table("profiles").update({"credits_monthly": 500}).eq("id", req.user_id).execute()
+                await users_repo.update_monthly_credits(req.user_id, TIER_MONTHLY_CREDITS["starter"])
 
                 await payment_repo.create(
                     user_id=req.user_id,

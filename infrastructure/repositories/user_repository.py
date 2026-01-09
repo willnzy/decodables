@@ -554,3 +554,19 @@ class SupabaseUserRepository(IUserRepository):
         }).eq("id", discount_id).execute()
 
         return len(result.data) > 0 if result.data else False
+
+    @retry_on_network_error()
+    async def update_monthly_credits(self, user_id: str, credits: int) -> None:
+        """
+        Update user's monthly credits.
+
+        Args:
+            user_id: User ID
+            credits: Monthly credits amount
+
+        Raises:
+            Exception if update fails
+        """
+        self.client.table("profiles").update({
+            "credits_monthly": credits
+        }).eq("id", user_id).execute()
