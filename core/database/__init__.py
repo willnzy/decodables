@@ -30,6 +30,7 @@ from .client import (
 )
 from .retry import (
     retry_on_network_error,
+    retry_on_network_error_async,
     is_retryable_error,
     RetryConfig,
 )
@@ -57,6 +58,7 @@ __all__ = [
     'DatabaseClient',  # Type alias for type hints
     # Retry
     'retry_on_network_error',
+    'retry_on_network_error_async',
     'is_retryable_error',
     'RetryConfig',
     # Async utilities (FastAPI best practice)

@@ -2,9 +2,15 @@
 Admin Stats API - Dashboard and analytics endpoints for admins.
 
 @module api.admin.stats
-@version 3.25
+@version 3.26
 
 Changes:
+- v3.26: Critical fixes and error handling improvements
+  - STAT-CRITICAL-1: Fixed revenue endpoint (was calling non-existent method)
+  - STAT-HIGH-1: Added try-except error handling to all 7 core endpoints
+  - STAT-HIGH-3: Added retry mechanism to _get_aggregated_stat helper
+  - STAT-LOW-2: Enhanced error logging with detailed messages
+
 - v3.25: Security improvements
   - STAT-MEDIUM-1: Added rate limiting to all 18 endpoints
   - STAT-MEDIUM-2: Added date format validation
@@ -39,7 +45,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
 from dependencies import require_admin
-from core.database import get_database_client, get_supabase_client
+from core.database import get_database_client, get_supabase_client, retry_on_network_error_async
 from infrastructure.repositories import SupabaseAdminStatsRepository
 from infrastructure.rate_limiter import limiter
 
@@ -74,6 +80,7 @@ def validate_date_format(date_str: Optional[str], field_name: str) -> None:
 # Helper Functions (v3.25: Enhanced logging)
 # ==========================================
 
+@retry_on_network_error_async()
 async def _get_aggregated_stat(stat_type: str, default: dict):
     """Fetch pre-aggregated stats from database."""
     try:
@@ -87,8 +94,8 @@ async def _get_aggregated_stat(stat_type: str, default: dict):
             return result.data[0].get("data", default)
         return default
     except Exception as e:
-        # v3.25: STAT-LOW-1 - Enhanced error logging
-        logger.error(f"[Admin Stats] Failed to get {stat_type}: {type(e).__name__}")
+        # v3.26: STAT-HIGH-3 + STAT-LOW-2 - Enhanced error logging with details
+        logger.error(f"[Admin Stats] Failed to get {stat_type}: {type(e).__name__} - {e}")
         return default
 
 
@@ -108,9 +115,13 @@ async def get_dashboard_stats(
     if period not in VALID_DASHBOARD_PERIODS:
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_DASHBOARD_PERIODS)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_dashboard_stats(period)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_dashboard_stats(period)
+    except Exception as e:
+        logger.error(f"Failed to fetch dashboard stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch dashboard statistics")
 
 
 @router.get("/user-growth")
@@ -131,9 +142,13 @@ async def get_user_growth_stats(
     if group_by not in VALID_GROUP_BY:
         raise HTTPException(400, f"Invalid group_by. Must be one of: {', '.join(VALID_GROUP_BY)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
+    except Exception as e:
+        logger.error(f"Failed to fetch user growth stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch user growth statistics")
 
 
 @router.get("/revenue")
@@ -154,9 +169,13 @@ async def get_revenue_stats(
     if group_by not in VALID_GROUP_BY:
         raise HTTPException(400, f"Invalid group_by. Must be one of: {', '.join(VALID_GROUP_BY)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
+    except Exception as e:
+        logger.error(f"Failed to fetch revenue stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch revenue statistics")
 
 
 @router.get("/projects")
@@ -172,9 +191,13 @@ async def get_project_stats(
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_project_stats(start_date, end_date)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_project_stats(start_date, end_date)
+    except Exception as e:
+        logger.error(f"Failed to fetch project stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch project statistics")
 
 
 @router.get("/credits")
@@ -190,9 +213,13 @@ async def get_credit_usage_stats(
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
+    except Exception as e:
+        logger.error(f"Failed to fetch credit usage stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch credit usage statistics")
 
 
 @router.get("/tier-distribution")
@@ -202,9 +229,13 @@ async def get_tier_distribution(
     admin: dict = Depends(require_admin),
 ):
     """Fetch user tier distribution."""
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_tier_distribution()
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_tier_distribution()
+    except Exception as e:
+        logger.error(f"Failed to fetch tier distribution: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch tier distribution")
 
 
 @router.get("/conversion-funnel")
@@ -219,9 +250,13 @@ async def get_conversion_funnel(
     if period not in VALID_DASHBOARD_PERIODS:
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_DASHBOARD_PERIODS)}")
 
-    db_client = get_database_client()
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    return await stats_repo.admin_get_conversion_funnel(period)
+    try:
+        db_client = get_database_client()
+        stats_repo = SupabaseAdminStatsRepository(db_client)
+        return await stats_repo.admin_get_conversion_funnel(period)
+    except Exception as e:
+        logger.error(f"Failed to fetch conversion funnel: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch conversion funnel")
 
 
 # ==========================================
