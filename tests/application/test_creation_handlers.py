@@ -85,7 +85,7 @@ class TestCreateProjectHandler:
         from domains.creation import ProjectLimitExceededException
 
         mock_creation_service.create_project.side_effect = ProjectLimitExceededException(
-            owner_id="user_123",
+            user_id="user_123",
             limit=5,
         )
 
