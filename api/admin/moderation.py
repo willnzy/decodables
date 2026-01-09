@@ -2,18 +2,24 @@
 Admin Moderation Router - Marketplace moderation and content reports
 
 @module api.admin.moderation
-@version 3.25
+@version 3.28 (DDD Compliant)
 
 Changes:
+- v3.28: Complete DDD Architecture Migration (MOD-CRITICAL-1)
+  - All business logic moved to domains/moderation/service.py
+  - API layer only handles HTTP concerns (auth, validation, responses)
+  - Fixed total calculation bug (MOD-HIGH-1)
+  - Added OOM protection to Repository (MOD-HIGH-2)
+  - Added update protection to Repository (MOD-HIGH-3)
+  - Optimized query performance (MOD-HIGH-4, MOD-MEDIUM-2)
+  - Unified method signatures (MOD-MEDIUM-3)
+  - Achieved 100% DDD architecture compliance
 - v3.25: Security improvements
-  - MOD-MEDIUM-1: Added rate limiting to all endpoints
-  - MOD-MEDIUM-2: Migrated from page to offset pagination
-  - MOD-MEDIUM-3: Added moderation status enum validation
-  - MOD-MEDIUM-4: Added resource type enum validation
-  - MOD-MEDIUM-5: Added limit range validation (1-100)
-  - MOD-MEDIUM-6: Added report status validation via field_validator
-  - MOD-LOW-1: Added field length limits (reason, response)
-  - MOD-LOW-2: Limited error message exposure
+  - Added rate limiting to all endpoints
+  - Migrated from page to offset pagination
+  - Added status/type enum validation
+  - Added field length limits
+  - Limited error message exposure
 
 Endpoints:
 - GET /api/admin/marketplace/moderation/list - Get moderation list
@@ -34,11 +40,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field, field_validator
 
-from core.database import get_database_client
-from infrastructure.repositories import (
-    SupabaseAdminModerationRepository,
-    SupabaseAdminUsersRepository,
-    SupabaseAdminStatsRepository,
+# v3.28: Import Service layer instead of Repository
+from domains import moderation as moderation_service
+from domains.moderation.constants import (
+    VALID_MODERATION_STATUSES,
+    VALID_RESOURCE_TYPES,
+    VALID_REPORT_STATUSES,
 )
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
@@ -49,32 +56,15 @@ router = APIRouter(prefix="/moderation", tags=["admin-moderation-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
-# ==========================================
-
-# v3.25: MOD-MEDIUM-3 - Valid moderation statuses
-VALID_MODERATION_STATUSES = {"pending", "approved", "rejected"}
-
-# v3.25: MOD-MEDIUM-4 - Valid resource types
-VALID_RESOURCE_TYPES = {"sticker", "clipart", "template", "font", "all"}
-
-# v3.25: MOD-MEDIUM-6 - Valid report statuses
-VALID_REPORT_STATUSES = {"reviewed", "resolved", "dismissed"}
-
-
-# ==========================================
-# Request Models (v3.25: Added field validations)
+# Request Models
 # ==========================================
 
 class AdminModerationRejectRequest(BaseModel):
-    # v3.25: MOD-LOW-1 - Added field length limit
     reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class ReportResponseRequest(BaseModel):
-    # v3.25: MOD-MEDIUM-6 - Added status validation
     status: str = Field(..., max_length=50)
-    # v3.25: MOD-LOW-1 - Added field length limit
     response: Optional[str] = Field(None, max_length=2000)
 
     @field_validator("status")
@@ -86,41 +76,43 @@ class ReportResponseRequest(BaseModel):
 
 
 # ==========================================
-# Marketplace Moderation Endpoints (v3.25: Added rate limiting)
+# Marketplace Moderation Endpoints
 # ==========================================
 
 @router.get("/marketplace/moderation/list")
 @limiter.limit("30/minute")
 async def adm_moderation_list(
     request: Request,
-    # v3.25: MOD-MEDIUM-3 - Added status enum validation
     status: Optional[str] = Query(None, max_length=50),
-    # v3.25: MOD-MEDIUM-4 - Added resource type enum validation
     resource_type: Optional[str] = Query(None, max_length=50, alias="type"),
-    # v3.25: MOD-MEDIUM-2 - Migrated from page to offset pagination
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    # v3.25: MOD-MEDIUM-5 - Added limit range validation
     limit: int = Query(20, ge=1, le=100, description="Max items per page"),
     admin: dict = Depends(require_admin)
 ):
     """Retrieve moderation list (PRD §16)."""
-    # v3.25: Validate status if provided
+    # Validate status if provided
     if status is not None and status not in VALID_MODERATION_STATUSES:
         raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_MODERATION_STATUSES)}")
 
-    # v3.25: Validate resource_type if provided
+    # Validate resource_type if provided
     if resource_type is not None and resource_type not in VALID_RESOURCE_TYPES:
         raise HTTPException(400, f"Invalid type. Must be one of: {', '.join(VALID_RESOURCE_TYPES)}")
 
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    items = await moderation_repo.admin_get_moderation_list(
-        status=status,
-        resource_type=resource_type,
-        offset=offset,
-        limit=limit
-    )
-    return {"items": items, "total": len(items), "offset": offset, "limit": limit}
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        items, total = await moderation_service.get_moderation_list(
+            status=status,
+            resource_type=resource_type,
+            offset=offset,
+            limit=limit
+        )
+        return {"items": items, "total": total, "offset": offset, "limit": limit}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] List moderation queue failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to list moderation queue")
 
 
 @router.get("/marketplace/moderation/{listing_id}")
@@ -131,12 +123,18 @@ async def adm_moderation_detail(
     admin: dict = Depends(require_admin)
 ):
     """Retrieve moderation detail (PRD §16)."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    item = await moderation_repo.admin_get_moderation_detail(listing_id)
-    if not item:
-        raise HTTPException(404, "Listing not found")
-    return item
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        item = await moderation_service.get_moderation_detail(listing_id)
+        if not item:
+            raise HTTPException(404, "Listing not found")
+        return item
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get moderation detail failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to get moderation detail")
 
 
 @router.post("/marketplace/moderation/{listing_id}/approve")
@@ -147,25 +145,20 @@ async def adm_moderation_approve(
     admin: dict = Depends(require_admin)
 ):
     """Approve listing (PRD §16)."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    admin_users_repo = SupabaseAdminUsersRepository(db_client)
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        # Service layer handles Repository orchestration + logging
+        result = await moderation_service.approve_listing(listing_id, admin["id"])
+        if not result:
+            raise HTTPException(404, "Listing not found")
 
-    result = await moderation_repo.admin_approve_listing(listing_id, admin["id"])
-    if not result:
-        raise HTTPException(404, "Listing not found")
+        return {"status": "approved", "listing_id": listing_id}
 
-    await stats_repo.log_user_event(admin["id"], "admin_moderation_approve", {"listing_id": listing_id})
-
-    await admin_users_repo.admin_log_operation(
-        admin_id=admin["id"],
-        operation_type="listing_approve",
-        target_user_id=result.get("seller_id"),
-        details=f"Approved listing: {result.get('title', listing_id)[:50]}",
-        reason=None
-    )
-    return {"status": "approved", "listing_id": listing_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Approve listing failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to approve listing")
 
 
 @router.post("/marketplace/moderation/{listing_id}/reject")
@@ -177,34 +170,20 @@ async def adm_moderation_reject(
     admin: dict = Depends(require_admin)
 ):
     """Reject listing (PRD §16)."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
-    admin_users_repo = SupabaseAdminUsersRepository(db_client)
-
     try:
-        result = await moderation_repo.admin_reject_listing(listing_id, admin["id"], req.reason)
+        # v3.28: Call Service layer (DDD compliant)
+        result = await moderation_service.reject_listing(listing_id, admin["id"], req.reason)
+        if not result:
+            raise HTTPException(404, "Listing not found")
+
+        return {"status": "rejected", "listing_id": listing_id, "reason": req.reason}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        # v3.25: MOD-LOW-2 - Limited error message exposure
-        logger.error(f"Failed to reject listing {listing_id}: {e}")
+        # v3.25: Limited error message exposure
+        logger.error(f"[Admin {admin.get('id')}] Reject listing failed: {type(e).__name__} - {e}")
         raise HTTPException(400, "Failed to reject listing")
-
-    if not result:
-        raise HTTPException(404, "Listing not found")
-
-    await stats_repo.log_user_event(admin["id"], "admin_moderation_reject", {
-        "listing_id": listing_id,
-        "reason": req.reason
-    })
-
-    await admin_users_repo.admin_log_operation(
-        admin_id=admin["id"],
-        operation_type="listing_reject",
-        target_user_id=result.get("seller_id"),
-        details=f"Rejected listing: {result.get('title', listing_id)[:50]}",
-        reason=req.reason
-    )
-    return {"status": "rejected", "listing_id": listing_id, "reason": req.reason}
 
 
 @router.post("/marketplace/moderation/{listing_id}/delete")
@@ -215,16 +194,19 @@ async def adm_moderation_delete(
     admin: dict = Depends(require_admin)
 ):
     """Soft-delete listing (PRD §16)."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        result = await moderation_service.delete_listing(listing_id, admin["id"])
+        if not result:
+            raise HTTPException(404, "Listing not found")
 
-    result = await moderation_repo.admin_delete_listing(listing_id)
-    if not result:
-        raise HTTPException(404, "Listing not found")
+        return {"status": "deleted", "listing_id": listing_id}
 
-    await stats_repo.log_user_event(admin["id"], "admin_moderation_delete", {"listing_id": listing_id})
-    return {"status": "deleted", "listing_id": listing_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Delete listing failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to delete listing")
 
 
 @router.post("/marketplace/moderation/{listing_id}/unpublish")
@@ -235,20 +217,23 @@ async def adm_moderation_unpublish(
     admin: dict = Depends(require_admin)
 ):
     """Force-unpublish a listing (PRD §16)."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        result = await moderation_service.unpublish_listing(listing_id, admin["id"])
+        if not result:
+            raise HTTPException(404, "Listing not found")
 
-    result = await moderation_repo.admin_unpublish_listing(listing_id)
-    if not result:
-        raise HTTPException(404, "Listing not found")
+        return {"status": "unpublished", "listing_id": listing_id}
 
-    await stats_repo.log_user_event(admin["id"], "admin_moderation_unpublish", {"listing_id": listing_id})
-    return {"status": "unpublished", "listing_id": listing_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Unpublish listing failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to unpublish listing")
 
 
 # ==========================================
-# Content Reports Endpoints (v3.25: Added rate limiting)
+# Content Reports Endpoints
 # ==========================================
 
 @router.get("/reports")
@@ -256,17 +241,32 @@ async def adm_moderation_unpublish(
 async def adm_get_reports(
     request: Request,
     status: Optional[str] = Query(None, max_length=50),
-    # v3.25: MOD-MEDIUM-2 - Migrated from page to offset pagination
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     limit: int = Query(20, ge=1, le=100, description="Max items per page"),
     admin: dict = Depends(require_admin)
 ):
     """Get all content reports with optional status filtering."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    reports = await moderation_repo.admin_get_reports(status=status, offset=offset, limit=limit)
-    total = await moderation_repo.admin_get_reports_count(status=status)
-    return {"items": reports, "total": total, "offset": offset, "limit": limit, "has_more": offset + limit < total}
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        # v3.28: MOD-HIGH-4 Fix - Single query returns both items and total
+        reports, total, has_more = await moderation_service.get_reports(
+            status=status,
+            offset=offset,
+            limit=limit
+        )
+        return {
+            "items": reports,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get reports failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to get reports")
 
 
 @router.get("/reports/stats")
@@ -276,15 +276,17 @@ async def adm_get_reports_stats(
     admin: dict = Depends(require_admin)
 ):
     """Get reports statistics by status."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    return {
-        "pending": await moderation_repo.admin_get_reports_count("pending"),
-        "reviewed": await moderation_repo.admin_get_reports_count("reviewed"),
-        "resolved": await moderation_repo.admin_get_reports_count("resolved"),
-        "dismissed": await moderation_repo.admin_get_reports_count("dismissed"),
-        "total": await moderation_repo.admin_get_reports_count()
-    }
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        # v3.28: MOD-MEDIUM-2 Fix - Single query with in-memory aggregation
+        stats = await moderation_service.get_reports_stats()
+        return stats
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get reports stats failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to get reports statistics")
 
 
 @router.get("/reports/{report_id}")
@@ -295,12 +297,18 @@ async def adm_get_report_detail(
     admin: dict = Depends(require_admin)
 ):
     """Get detailed information about a specific report."""
-    db_client = get_database_client()
-    moderation_repo = SupabaseAdminModerationRepository(db_client)
-    report = await moderation_repo.admin_get_report_detail(report_id)
-    if not report:
-        raise HTTPException(404, "Report not found")
-    return report
+    try:
+        # v3.28: Call Service layer (DDD compliant)
+        report = await moderation_service.get_report_detail(report_id)
+        if not report:
+            raise HTTPException(404, "Report not found")
+        return report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin {admin.get('id')}] Get report detail failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to get report detail")
 
 
 @router.post("/reports/{report_id}/respond")
@@ -312,15 +320,10 @@ async def adm_respond_to_report(
     admin: dict = Depends(require_admin)
 ):
     """Respond to a content report."""
-    # Note: Status validation is now done in ReportResponseRequest via field_validator
-
     try:
-        db_client = get_database_client()
-        moderation_repo = SupabaseAdminModerationRepository(db_client)
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        admin_users_repo = SupabaseAdminUsersRepository(db_client)
-
-        result = await moderation_repo.admin_respond_to_report(
+        # v3.28: Call Service layer (DDD compliant)
+        # v3.28: MOD-MEDIUM-3 Fix - Unified parameter name (new_status)
+        result = await moderation_service.respond_to_report(
             report_id=report_id,
             admin_id=admin["id"],
             new_status=req.status,
@@ -330,24 +333,11 @@ async def adm_respond_to_report(
         if not result:
             raise HTTPException(404, "Report not found")
 
-        await stats_repo.log_user_event(admin["id"], "admin_report_respond", {
-            "report_id": report_id,
-            "status": req.status
-        })
-
-        await admin_users_repo.admin_log_operation(
-            admin_id=admin["id"],
-            operation_type="report_respond",
-            target_user_id=result.get("reporter_id"),
-            details=f"Report #{report_id[:8]}... → {req.status}",
-            reason=req.response
-        )
-
         return {"status": req.status, "report_id": report_id}
 
     except HTTPException:
         raise
     except Exception as e:
-        # v3.25: MOD-LOW-2 - Limited error message exposure
-        logger.error(f"Failed to respond to report: {e}")
+        # v3.25: Limited error message exposure
+        logger.error(f"[Admin {admin.get('id')}] Respond to report failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to respond to report")

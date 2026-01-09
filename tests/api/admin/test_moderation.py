@@ -1,6 +1,7 @@
 """Test admin/moderation API endpoints.
 
 Tests for marketplace moderation and content reports endpoints.
+v3.28: Updated imports to use new domain constants (MOD-LOW-1).
 v3.25: Added comprehensive tests including security validation.
 """
 import pytest
@@ -93,7 +94,8 @@ class TestModerationConstants:
 
     def test_valid_moderation_statuses(self):
         """Valid moderation statuses are defined."""
-        from api.admin.moderation import VALID_MODERATION_STATUSES
+        # v3.28: Import from domain constants
+        from domains.moderation.constants import VALID_MODERATION_STATUSES
 
         assert "pending" in VALID_MODERATION_STATUSES
         assert "approved" in VALID_MODERATION_STATUSES
@@ -102,7 +104,8 @@ class TestModerationConstants:
 
     def test_valid_resource_types(self):
         """Valid resource types are defined."""
-        from api.admin.moderation import VALID_RESOURCE_TYPES
+        # v3.28: Import from domain constants
+        from domains.moderation.constants import VALID_RESOURCE_TYPES
 
         assert "sticker" in VALID_RESOURCE_TYPES
         assert "clipart" in VALID_RESOURCE_TYPES
@@ -113,7 +116,8 @@ class TestModerationConstants:
 
     def test_valid_report_statuses(self):
         """Valid report statuses are defined."""
-        from api.admin.moderation import VALID_REPORT_STATUSES
+        # v3.28: Import from domain constants
+        from domains.moderation.constants import VALID_REPORT_STATUSES
 
         assert "reviewed" in VALID_REPORT_STATUSES
         assert "resolved" in VALID_REPORT_STATUSES
@@ -181,14 +185,16 @@ class TestModerationFieldValidation:
     @pytest.mark.parametrize("status", ["pending", "approved", "rejected"])
     def test_valid_moderation_status_values(self, status):
         """Valid moderation status values are accepted."""
-        from api.admin.moderation import VALID_MODERATION_STATUSES
+        # v3.28: Import from domain constants
+        from domains.moderation.constants import VALID_MODERATION_STATUSES
 
         assert status in VALID_MODERATION_STATUSES
 
     @pytest.mark.parametrize("resource_type", ["sticker", "clipart", "template", "font", "all"])
     def test_valid_resource_type_values(self, resource_type):
         """Valid resource type values are accepted."""
-        from api.admin.moderation import VALID_RESOURCE_TYPES
+        # v3.28: Import from domain constants
+        from domains.moderation.constants import VALID_RESOURCE_TYPES
 
         assert resource_type in VALID_RESOURCE_TYPES
 
