@@ -121,7 +121,7 @@ def list_experiments(
     experiment_type: str = None,
     offset: int = 0,
     limit: int = 20
-) -> Dict:
+) -> tuple[List[Dict], int]:
     """List experiments with filters.
 
     Args:
@@ -131,28 +131,28 @@ def list_experiments(
         limit: Maximum number of items to return
 
     Returns:
-        Dict with items and total count
+        Tuple of (experiments list, total count) - v3.28: Fixed return type (EXP-HIGH-5)
     """
     if not supabase:
-        return {"items": [], "total": 0}
+        return ([], 0)
 
     try:
         query = supabase.table("experiments").select("*", count="exact")
-        
+
         if status:
             query = query.eq("status", status)
         if experiment_type:
             query = query.eq("experiment_type", experiment_type)
-        
+
         result = query.order("created_at", desc=True)\
             .range(offset, offset + limit - 1).execute()
-        
+
         items = [parse_experiment(e) for e in (result.data or [])]
-        return {"items": items, "total": result.count or 0}
-        
+        return (items, result.count or 0)
+
     except Exception as e:
         logger.error(f"[Experiment] Failed to list: {e}")
-        return {"items": [], "total": 0}
+        return ([], 0)
 
 
 def update_experiment(

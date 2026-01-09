@@ -2,9 +2,12 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.26
+@version 3.28
 
 Changes:
+- v3.28: P2/P3 final improvements
+  - EXP-MEDIUM-2: Added timezone handling to date parsing
+  - EXP-HIGH-5: Fixed list_experiments return type (Service returns tuple)
 - v3.26: Critical fixes and improvements
   - EXP-CRITICAL-1: Fixed API direct database access (trend endpoints now use Service)
   - EXP-HIGH-1: Added Pydantic response models for all endpoints
@@ -421,8 +424,20 @@ async def get_experiment_results(
         validate_date_format(start_date, "start_date")
         validate_date_format(end_date, "end_date")
 
-        start_dt = datetime.fromisoformat(start_date) if start_date else None
-        end_dt = datetime.fromisoformat(end_date) if end_date else None
+        # v3.28: EXP-MEDIUM-2 - Add timezone handling
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+        else:
+            start_dt = None
+
+        if end_date:
+            end_dt = datetime.fromisoformat(end_date)
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+        else:
+            end_dt = None
 
         results = experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
         if not results:
