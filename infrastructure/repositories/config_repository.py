@@ -181,7 +181,8 @@ class SupabaseConfigRepository(ConfigRepository):
             "created_by": admin_id,
         }).execute()
 
-        self._invalidate_cache(key)
+        # CFG-LOW-2 FIX: Cache invalidation handled by Domain Service layer
+        # self._invalidate_cache(key)  # Removed - no-op in this layer
 
         return result.data[0] if result.data else None
 
