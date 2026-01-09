@@ -2,7 +2,7 @@
 Config Repository Implementation - System configuration data access.
 
 @module infrastructure.repositories.config_repository
-@version 1.0.0
+@version 1.1.0
 """
 
 import logging
@@ -10,15 +10,17 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from core.database import DatabaseClient, retry_on_network_error
+from domains.platform.config_repository import ConfigRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseConfigRepository:
+class SupabaseConfigRepository(ConfigRepository):
     """
     Supabase implementation of configuration repository.
 
-    Provides data access for system_configs table with caching support.
+    Provides data access for system_configs table.
+    Caching is handled at Domain Service layer.
     """
 
     def __init__(self, client: DatabaseClient):
@@ -29,28 +31,6 @@ class SupabaseConfigRepository:
             client: Supabase database client
         """
         self.client = client
-        self._config_cache: Dict[str, tuple] = {}
-        self._config_ttl = 300  # 5 minutes
-
-    def _get_cached_config(self, key: str) -> Optional[str]:
-        """Get config from cache."""
-        cached = self._config_cache.get(key)
-        if cached:
-            value, timestamp = cached
-            if (datetime.now(timezone.utc).timestamp() - timestamp) < self._config_ttl:
-                return value
-        return None
-
-    def _set_cached_config(self, key: str, value):
-        """Set config in cache."""
-        self._config_cache[key] = (value, datetime.now(timezone.utc).timestamp())
-
-    def _invalidate_cache(self, key: Optional[str] = None):
-        """Invalidate config cache."""
-        if key:
-            self._config_cache.pop(key, None)
-        else:
-            self._config_cache.clear()
 
     @retry_on_network_error()
     async def get_by_key(self, key: str, default_value: Optional[str] = None) -> Optional[str]:
@@ -64,19 +44,12 @@ class SupabaseConfigRepository:
         Returns:
             Configuration value or default_value
         """
-        # Check cache
-        cached = self._get_cached_config(key)
-        if cached is not None:
-            return cached
-
         result = self.client.table("system_configs").select("value").eq(
             "key", key
         ).eq("is_active", True).execute()
 
         if result.data:
-            value = result.data[0].get("value")
-            self._set_cached_config(key, value)
-            return value
+            return result.data[0].get("value")
 
         return default_value
 
@@ -103,7 +76,8 @@ class SupabaseConfigRepository:
         if not include_inactive:
             query = query.eq("is_active", True)
 
-        result = query.order("config_group").order("key").execute()
+        # Add limit to prevent OOM (CFG-HIGH-2)
+        result = query.order("config_group").order("key").limit(10000).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -246,8 +220,6 @@ class SupabaseConfigRepository:
             "key", key
         ).execute()
 
-        self._invalidate_cache(key)
-
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
@@ -267,8 +239,6 @@ class SupabaseConfigRepository:
             await self._log_audit(key, "delete", None, None, admin_id)
 
         result = self.client.table("system_configs").delete().eq("key", key).execute()
-
-        self._invalidate_cache(key)
 
         return len(result.data) > 0 if result.data else False
 
@@ -332,9 +302,10 @@ class SupabaseConfigRepository:
 
     def invalidate_cache(self, key: Optional[str] = None):
         """
-        Public method to invalidate cache.
+        Invalidate cache (no-op, caching handled by Domain Service).
 
         Args:
             key: Specific key to invalidate, or None for all
         """
-        self._invalidate_cache(key)
+        # Caching is handled at Domain Service layer
+        pass
