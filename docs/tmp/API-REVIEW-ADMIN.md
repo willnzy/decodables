@@ -741,6 +741,66 @@ Admin API 作为内部管理工具，有以下特点：
 
 ---
 
+### v3.26 深度审查结果 (2026-01-09) 🟢
+
+**审查结果**: 发现 1 个 HIGH 问题（架构违反）、4 个 MEDIUM 问题
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 HIGH | TASK-HIGH-1 | API 层直接访问数据库，违反 DDD 架构规范 | ⚠️ 架构债务 (计划 v4.0) |
+| 🟡 MEDIUM | TASK-MEDIUM-1 | 缺少 Pydantic Request/Response 模型 | ⚠️ 待添加 |
+| 🟡 MEDIUM | TASK-MEDIUM-2 | GET /health 查询无数据量限制 (OOM 风险) | ⚠️ 待添加 .limit() |
+| 🟡 MEDIUM | TASK-MEDIUM-3 | 缺少 @retry_on_network_error 装饰器 | ⚠️ 待添加 |
+| 🟡 MEDIUM | TASK-MEDIUM-4 | run_aggregation_now 对 cleanup/retention 无实际逻辑 | ⚠️ 待完善 |
+
+**核心发现**:
+1. ⚠️ **严重违反 DDD 架构**: API 层直接使用 `supabase` 客户端查询，完全绕过 Repository 层
+   - 业务逻辑散落在 API 层
+   - 无法统一添加重试、日志、监控
+   - 测试需要 mock supabase 而非 Repository
+
+2. ✅ **测试覆盖率优秀**: 19 个测试用例，覆盖率 ~95%
+   - Mock 隔离外部依赖
+   - 参数化测试覆盖所有 enum 值
+   - 验证错误消息不泄露敏感信息
+
+3. ✅ **安全措施完善**: v3.25 已添加速率限制、参数验证、错误清理
+
+4. ⚠️ **性能和可用性风险**:
+   - GET /health 无查询限制 (可能 OOM)
+   - 所有查询无重试机制
+   - POST /run 同步调用（可能超时）
+
+**架构对比**:
+
+```python
+# ❌ Tasks 模块 (违反 DDD)
+@router.get("/status")
+async def get_tasks_status(...):
+    result = supabase.table("scheduled_task_logs").select("*").execute()
+    return {"tasks": task_status}
+
+# ✅ Stats 模块 (符合 DDD)
+@router.get("/dashboard")
+async def get_dashboard_stats(...):
+    db_client = get_database_client()
+    stats_repo = SupabaseAdminStatsRepository(db_client)
+    return await stats_repo.admin_get_dashboard_stats(period)
+```
+
+**整改建议** (详见 `docs/tmp/REVIEW-TASKS.md`):
+1. **短期 (v3.30)**: 添加 Pydantic 模型、查询限制、重试机制
+2. **中期 (v4.0)**: 重构为 DDD 架构 (API → Repository → Database)
+3. **长期 (v4.x)**: 添加审计日志、异步任务触发
+
+**测试状态**: ✅ 所有 19 个测试通过
+
+**审查文档**: `docs/tmp/REVIEW-TASKS.md`
+
+**审查质量**: ⭐⭐⭐⭐⭐ 深度审查 (完整调用链分析 + DDD 架构检查)
+
+---
+
 ## Users 用户管理 (13个)
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
