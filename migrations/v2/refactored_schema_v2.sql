@@ -171,8 +171,8 @@ CREATE TABLE profiles (
     tier_changed_at TIMESTAMPTZ,
 
     -- 积分余额 (核心字段!)
-    credits_monthly INTEGER NOT NULL DEFAULT 0 CHECK (credits_monthly >= 0),
-    credits_permanent INTEGER NOT NULL DEFAULT 0 CHECK (credits_permanent >= 0),
+    credits_monthly INTEGER NOT NULL DEFAULT 0 CHECK (credits_monthly >= 0 AND credits_monthly <= 1000000),  -- 上限 1M 月度积分
+    credits_permanent INTEGER NOT NULL DEFAULT 0 CHECK (credits_permanent >= 0 AND credits_permanent <= 10000000),  -- 上限 10M 永久积分
 
     -- 试用期
     trial_start_date TIMESTAMPTZ,
@@ -209,7 +209,15 @@ CREATE TABLE profiles (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
+    deleted_at TIMESTAMPTZ,
+
+    -- 日期逻辑验证
+    CONSTRAINT check_trial_dates CHECK (trial_end_date IS NULL OR trial_start_date IS NULL OR trial_end_date > trial_start_date),
+    CONSTRAINT check_subscription_dates CHECK (subscription_current_period_end IS NULL OR subscription_current_period_start IS NULL OR subscription_current_period_end > subscription_current_period_start),
+
+    -- Stripe ID 格式验证
+    CONSTRAINT check_stripe_customer_id_format CHECK (stripe_customer_id IS NULL OR stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'),
+    CONSTRAINT check_stripe_subscription_id_format CHECK (stripe_subscription_id IS NULL OR stripe_subscription_id ~ '^sub_[A-Za-z0-9]+$')
 );
 
 COMMENT ON TABLE profiles IS '用户档案表: 存储用户基础信息、积分余额、订阅状态等核心数据';
@@ -222,7 +230,7 @@ COMMENT ON COLUMN profiles.timezone IS '用户时区 (用于本地化时间显�
 COMMENT ON COLUMN profiles.cohort_month IS '用户群组月份 (用于 cohort 分析)';
 
 -- 索引
-CREATE INDEX idx_profiles_email ON profiles(email);
+-- Note: email 已有 UNIQUE 约束，无需额外索引
 CREATE INDEX idx_profiles_user_code ON profiles(user_code);
 CREATE INDEX idx_profiles_stripe_customer_id ON profiles(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 CREATE INDEX idx_profiles_tier ON profiles(tier);
@@ -294,7 +302,10 @@ CREATE TABLE credit_transactions (
     metadata JSONB DEFAULT '{}'::jsonb,
 
     -- 时间戳 (只有 created_at，无 updated_at，因为这是 Append-Only 表)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- 幂等性键格式验证 (至少 16 字符)
+    CONSTRAINT check_idempotency_key_format CHECK (idempotency_key IS NULL OR length(idempotency_key) >= 16)
 );
 
 COMMENT ON TABLE credit_transactions IS '积分交易记录表 (Append-Only): 记录所有积分变动，禁止修改和删除';
@@ -616,7 +627,7 @@ CREATE TABLE asset_categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 层级关系
-    parent_id UUID REFERENCES asset_categories(id) ON DELETE CASCADE,
+    parent_id UUID REFERENCES asset_categories(id) ON DELETE SET NULL,  -- 改为 SET NULL 避免循环级联
     path LTREE NOT NULL,
     level INTEGER NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 3),
 
@@ -870,7 +881,10 @@ CREATE TABLE marketplace_purchases (
     -- 时间戳
     purchased_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
-    UNIQUE(user_id, listing_id)
+    UNIQUE(user_id, listing_id),
+
+    -- 幂等性键格式验证 (至少 16 字符)
+    CONSTRAINT check_purchase_idempotency_format CHECK (idempotency_key IS NULL OR length(idempotency_key) >= 16)
 );
 
 COMMENT ON TABLE marketplace_purchases IS '市场购买记录表: 记录用户购买的 listing';
@@ -1332,7 +1346,11 @@ CREATE TABLE pricing_plans (
          AND billing_interval IS NULL
          AND tier IS NULL)
     ),
-    CONSTRAINT check_effective_dates CHECK (effective_until IS NULL OR effective_until > effective_from)
+    CONSTRAINT check_effective_dates CHECK (effective_until IS NULL OR effective_until > effective_from),
+
+    -- Stripe Price ID 格式验证
+    CONSTRAINT check_stripe_price_id_prod_format CHECK (stripe_price_id_prod IS NULL OR stripe_price_id_prod ~ '^price_[A-Za-z0-9]+$' OR stripe_price_id_prod ~ '^\{\{.*\}\}$'),
+    CONSTRAINT check_stripe_price_id_dev_format CHECK (stripe_price_id_dev IS NULL OR stripe_price_id_dev ~ '^price_[A-Za-z0-9]+$' OR stripe_price_id_dev ~ '^\{\{.*\}\}$')
 );
 
 COMMENT ON TABLE pricing_plans IS '定价方案主表: 所有订阅和积分包的价格配置';
@@ -1388,13 +1406,15 @@ CREATE INDEX idx_pricing_history_plan_code ON pricing_history(plan_code);
 CREATE INDEX idx_pricing_history_changed_at ON pricing_history(changed_at DESC);
 CREATE INDEX idx_pricing_history_changed_by ON pricing_history(changed_by);
 CREATE INDEX idx_pricing_history_action ON pricing_history(action);
+CREATE INDEX idx_pricing_history_old_data_gin ON pricing_history USING GIN(old_data);  -- GIN 索引用于 JSONB 查询
+CREATE INDEX idx_pricing_history_new_data_gin ON pricing_history USING GIN(new_data);  -- GIN 索引用于 JSONB 查询
 
 -- ----------------------------------------------------------------------------
 -- 29. user_price_overrides (用户级价格覆盖表) ⭐ NEW
 -- ----------------------------------------------------------------------------
 CREATE TABLE user_price_overrides (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(100) NOT NULL,
+    user_id TEXT NOT NULL,  -- 统一使用 TEXT 类型 (与 profiles.id 一致)
     pricing_plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
 
     -- 覆盖价格
@@ -1466,7 +1486,10 @@ CREATE TABLE credit_purchases (
     idempotency_key TEXT UNIQUE,
     metadata JSONB DEFAULT '{}',
     completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- 幂等性键格式验证 (至少 16 字符)
+    CONSTRAINT check_credit_purchase_idempotency_format CHECK (idempotency_key IS NULL OR length(idempotency_key) >= 16)
 );
 
 COMMENT ON TABLE credit_purchases IS '积分购买记录表: 记录用户购买积分包的交易';
@@ -1849,9 +1872,13 @@ CREATE TABLE user_discounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
+    valid_from TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     valid_until TIMESTAMPTZ,
     target_plan TEXT CHECK (target_plan IN ('starter', 'pro')),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- 日期逻辑验证
+    CONSTRAINT check_discount_dates CHECK (valid_until IS NULL OR valid_until > valid_from)
 );
 
 COMMENT ON TABLE user_discounts IS '用户折扣表: 个性化折扣优惠';
