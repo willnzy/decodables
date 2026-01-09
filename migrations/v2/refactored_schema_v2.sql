@@ -22,6 +22,13 @@
 -- ============================================================================
 
 -- ============================================================================
+-- Transaction Control: 确保迁移原子性
+-- ============================================================================
+BEGIN;
+SET client_min_messages = WARNING;  -- 减少输出噪音
+SET statement_timeout = '5min';     -- 防止长时间锁定
+
+-- ============================================================================
 -- 第一部分: 扩展 & 通用函数
 -- ============================================================================
 
@@ -65,6 +72,18 @@ END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION set_deleted_at_on_soft_delete() IS '触发器函数: 软删除时自动设置 deleted_at 时间戳';
+
+-- ----------------------------------------------------------------------------
+-- 通用函数: 防止修改 Append-Only 表
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION prevent_modification()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Table % is append-only. UPDATE and DELETE operations are not allowed.', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION prevent_modification IS '触发器函数: 防止 Append-Only 表被修改或删除';
 
 -- ----------------------------------------------------------------------------
 -- 通用函数: Pricing 审计触发器
@@ -287,11 +306,18 @@ COMMENT ON COLUMN credit_transactions.idempotency_key IS '幂等性键 (用于 W
 -- 索引
 CREATE INDEX idx_credit_tx_user_id ON credit_transactions(user_id);
 CREATE INDEX idx_credit_tx_user_created ON credit_transactions(user_id, created_at DESC);
+CREATE INDEX idx_credit_tx_user_type_time ON credit_transactions(user_id, transaction_type, created_at DESC);  -- Composite index for filtered queries
 CREATE INDEX idx_credit_tx_type ON credit_transactions(transaction_type);
 CREATE INDEX idx_credit_tx_bucket ON credit_transactions(bucket);
 CREATE INDEX idx_credit_tx_created_at ON credit_transactions(created_at DESC);
 CREATE INDEX idx_credit_tx_metadata ON credit_transactions USING GIN(metadata);
 CREATE UNIQUE INDEX idx_credit_tx_idempotency ON credit_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+-- 触发器: 防止修改 Append-Only 表
+CREATE TRIGGER trg_credit_tx_prevent_modification
+    BEFORE UPDATE OR DELETE ON credit_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_modification();
 
 -- ----------------------------------------------------------------------------
 -- 3. projects (用户项目表)
@@ -345,8 +371,22 @@ COMMENT ON COLUMN projects.contains_locked_elements IS '是否包含锁定元素
 CREATE INDEX idx_projects_user_id ON projects(user_id);
 CREATE INDEX idx_projects_user_created ON projects(user_id, created_at DESC);
 CREATE INDEX idx_projects_listing ON projects(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
+CREATE INDEX idx_projects_origin_owner ON projects(origin_owner_id) WHERE origin_owner_id IS NOT NULL;
 CREATE INDEX idx_projects_active ON projects(is_deleted) WHERE is_deleted = FALSE;
 CREATE INDEX idx_projects_metadata ON projects USING GIN(metadata);
+
+-- 外键约束
+ALTER TABLE projects
+    ADD CONSTRAINT fk_projects_marketplace_listing
+    FOREIGN KEY (marketplace_listing_id)
+    REFERENCES marketplace_listings(id)
+    ON DELETE SET NULL;
+
+ALTER TABLE projects
+    ADD CONSTRAINT fk_projects_source_listing
+    FOREIGN KEY (source_listing_id)
+    REFERENCES marketplace_listings(id)
+    ON DELETE SET NULL;
 
 -- 触发器
 CREATE TRIGGER trg_projects_updated_at
@@ -1280,10 +1320,17 @@ CREATE TABLE pricing_plans (
     created_by VARCHAR(100),
     updated_by VARCHAR(100),
 
-    -- 约束
+    -- 约束: 确保字段互斥性
     CONSTRAINT check_subscription_fields CHECK (
-        (plan_type = 'subscription' AND billing_interval IS NOT NULL AND tier IS NOT NULL)
-        OR (plan_type = 'credits' AND credits_amount IS NOT NULL)
+        (plan_type = 'subscription'
+         AND billing_interval IS NOT NULL
+         AND tier IS NOT NULL
+         AND credits_amount IS NULL)
+        OR
+        (plan_type = 'credits'
+         AND credits_amount IS NOT NULL
+         AND billing_interval IS NULL
+         AND tier IS NULL)
     ),
     CONSTRAINT check_effective_dates CHECK (effective_until IS NULL OR effective_until > effective_from)
 );
@@ -2628,3 +2675,12 @@ BEGIN
     RAISE NOTICE '';
     RAISE NOTICE '============================================================================';
 END $$;
+
+
+-- ============================================================================
+-- Transaction Control: 提交所有更改
+-- ============================================================================
+COMMIT;
+
+-- 迁移成功完成
+
