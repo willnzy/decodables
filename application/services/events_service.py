@@ -30,6 +30,24 @@ from domains.events import (
 logger = logging.getLogger(__name__)
 
 
+# Phase 4: Audit logging helper
+async def _log_admin_operation(
+    admin_id: str,
+    operation_type: str,
+    details: Optional[Dict[str, Any]] = None
+) -> None:
+    """
+    Log admin operation to admin_operations table.
+
+    TODO: Implement actual DB write
+    Currently only logs to logger.
+    """
+    logger.info(
+        f"[Audit] Admin {admin_id} performed {operation_type} "
+        f"with details: {details}"
+    )
+
+
 class EventsService:
     """
     Application service for Events use cases.
