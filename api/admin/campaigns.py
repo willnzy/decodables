@@ -2,9 +2,16 @@
 Admin Campaigns API - Campaign management for admins.
 
 @module api.admin.campaigns
-@version 3.25
+@version 3.30 (DDD Migration)
 
 Changes:
+- v3.30: Complete DDD Migration (CAM-CRITICAL-1, CAM-CRITICAL-3)
+  - API → Domain Service → Repository
+  - Removed direct database access (supabase.table())
+  - Constants moved to domains/marketing/campaigns/constants.py
+  - Added Audit Log for all mutations
+  - All endpoints call Domain Service
+
 - v3.25: Security improvements
   - CAM-MEDIUM-1: Added rate limiting to all endpoints
   - CAM-MEDIUM-2: Added status parameter validation (enum)
@@ -26,7 +33,6 @@ Endpoints:
 
 import logging
 from typing import Optional, List
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
@@ -34,65 +40,72 @@ from pydantic import BaseModel, Field, field_validator
 from dependencies import require_admin
 from infrastructure.rate_limiter import limiter
 
-from core.database import get_supabase_client
-supabase = get_supabase_client()
+# v3.30: Import from Domain layer (DDD Migration)
+from domains.marketing.campaigns import (
+    list_campaigns,
+    get_campaign,
+    create_campaign,
+    update_campaign,
+    delete_campaign,
+    activate_campaign,
+    pause_campaign,
+    get_campaign_stats,
+)
+from domains.marketing.campaigns.constants import (
+    VALID_CAMPAIGN_STATUSES,
+    VALID_CAMPAIGN_TYPES,
+    VALID_TARGET_TYPES,
+    NAME_MIN_LENGTH,
+    NAME_MAX_LENGTH,
+    DESCRIPTION_MAX_LENGTH,
+    USAGE_LIMIT_MIN,
+    USAGE_LIMIT_MAX,
+    USAGE_PER_USER_MIN,
+    USAGE_PER_USER_MAX,
+    TIMEZONE_MAX_LENGTH,
+    DATETIME_STR_MAX_LENGTH,
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+)
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/campaigns", tags=["admin-campaigns-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
-# ==========================================
-
-# v3.25: CAM-MEDIUM-2 - Valid campaign statuses
-VALID_CAMPAIGN_STATUSES = {"draft", "active", "paused", "completed", "deleted"}
-
-# v3.25: Valid campaign types
-VALID_CAMPAIGN_TYPES = {"credits_gift", "credits_discount", "credits_bonus"}
-
-# v3.25: Valid target types
-VALID_TARGET_TYPES = {"all", "subscription", "users", "new_users", "inactive_users"}
-
-
-# ==========================================
-# Request Models (v3.25: Added field validations)
+# Request Models
 # ==========================================
 
 class CampaignCreateRequest(BaseModel):
     """Campaign creation request."""
-    # v3.25: CAM-MEDIUM-5 - Name length validation
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
+    name: str = Field(..., min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
+    description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX_LENGTH)
     type: str = Field(..., pattern="^(credits_gift|credits_discount|credits_bonus)$")
     config: dict
     target_type: str = Field(..., pattern="^(all|subscription|users|new_users|inactive_users)$")
     target_config: Optional[dict] = None
     notification_channels: List[str] = []
     notification_config: Optional[dict] = None
-    start_at: str = Field(..., max_length=50)
-    end_at: Optional[str] = Field(None, max_length=50)
-    timezone: str = Field("UTC", max_length=50)
-    usage_limit: Optional[int] = Field(None, ge=1, le=1000000)
-    usage_per_user: Optional[int] = Field(None, ge=1, le=100)
+    start_at: str = Field(..., max_length=DATETIME_STR_MAX_LENGTH)
+    end_at: Optional[str] = Field(None, max_length=DATETIME_STR_MAX_LENGTH)
+    timezone: str = Field("UTC", max_length=TIMEZONE_MAX_LENGTH)
+    usage_limit: Optional[int] = Field(None, ge=USAGE_LIMIT_MIN, le=USAGE_LIMIT_MAX)
+    usage_per_user: Optional[int] = Field(None, ge=USAGE_PER_USER_MIN, le=USAGE_PER_USER_MAX)
 
 
 class CampaignUpdateRequest(BaseModel):
     """Campaign update request."""
-    # v3.25: CAM-MEDIUM-5 - Name length validation
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=1000)
+    name: Optional[str] = Field(None, min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
+    description: Optional[str] = Field(None, max_length=DESCRIPTION_MAX_LENGTH)
     config: Optional[dict] = None
     target_type: Optional[str] = Field(None, max_length=50)
     target_config: Optional[dict] = None
     notification_channels: Optional[List[str]] = None
     notification_config: Optional[dict] = None
-    start_at: Optional[str] = Field(None, max_length=50)
-    end_at: Optional[str] = Field(None, max_length=50)
-    usage_limit: Optional[int] = Field(None, ge=1, le=1000000)
+    start_at: Optional[str] = Field(None, max_length=DATETIME_STR_MAX_LENGTH)
+    end_at: Optional[str] = Field(None, max_length=DATETIME_STR_MAX_LENGTH)
+    usage_limit: Optional[int] = Field(None, ge=USAGE_LIMIT_MIN, le=USAGE_LIMIT_MAX)
 
-    # v3.25: CAM-MEDIUM-4 - target_type validation
     @field_validator("target_type")
     @classmethod
     def validate_target_type(cls, v):
@@ -102,83 +115,79 @@ class CampaignUpdateRequest(BaseModel):
 
 
 # ==========================================
-# Endpoints (v3.25: Added rate limiting)
+# Endpoints
 # ==========================================
 
 @router.get("")
 @limiter.limit("30/minute")
-async def list_campaigns(
+async def list_campaigns_endpoint(
     request: Request,
     status: Optional[str] = Query(None, description="Filter by status"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    limit: int = Query(20, ge=1, le=100, description="Page size (1-100)"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description=f"Page size (1-{MAX_LIMIT})"),
     admin: dict = Depends(require_admin),
 ):
     """List all campaigns."""
-    # v3.25: CAM-MEDIUM-2 - Validate status parameter
+    # v3.30: Status validation
     if status is not None and status not in VALID_CAMPAIGN_STATUSES:
         raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_CAMPAIGN_STATUSES)}")
 
-    query = supabase.table("campaigns").select("*").order("created_at", desc=True)
-
-    if status:
-        query = query.eq("status", status)
-
-    result = query.range(offset, offset + limit - 1).execute()
-
-    return {"campaigns": result.data or [], "offset": offset, "limit": limit}
+    # v3.30: Call Domain Service
+    result = await list_campaigns(status=status, offset=offset, limit=limit)
+    return result
 
 
 @router.get("/{campaign_id}")
 @limiter.limit("30/minute")
-async def get_campaign(
+async def get_campaign_endpoint(
     request: Request,
     campaign_id: str,
     admin: dict = Depends(require_admin),
 ):
     """Get campaign details."""
-    result = supabase.table("campaigns").select("*").eq("id", campaign_id).execute()
+    # v3.30: Call Domain Service
+    campaign = await get_campaign(campaign_id)
 
-    if not result.data:
+    if not campaign:
         raise HTTPException(404, "Campaign not found")
 
-    return result.data[0]
+    return campaign
 
 
 @router.post("")
 @limiter.limit("20/minute")
-async def create_campaign(
+async def create_campaign_endpoint(
     request: Request,
     req: CampaignCreateRequest,
     admin: dict = Depends(require_admin),
 ):
     """Create a new campaign."""
-    campaign_data = {
-        "name": req.name,
-        "description": req.description,
-        "type": req.type,
-        "config": req.config,
-        "target_type": req.target_type,
-        "target_config": req.target_config,
-        "notification_channels": req.notification_channels,
-        "notification_config": req.notification_config,
-        "start_at": req.start_at,
-        "end_at": req.end_at,
-        "timezone": req.timezone,
-        "usage_limit": req.usage_limit,
-        "usage_per_user": req.usage_per_user,
-        "status": "draft",
-        "is_active": False,
-        "created_by": admin["id"],
-    }
-
     try:
-        result = supabase.table("campaigns").insert(campaign_data).execute()
+        # v3.30: Call Domain Service
+        campaign = await create_campaign(
+            name=req.name,
+            description=req.description,
+            campaign_type=req.type,
+            config=req.config,
+            target_type=req.target_type,
+            target_config=req.target_config,
+            notification_channels=req.notification_channels,
+            notification_config=req.notification_config,
+            start_at=req.start_at,
+            end_at=req.end_at,
+            timezone=req.timezone,
+            usage_limit=req.usage_limit,
+            usage_per_user=req.usage_per_user,
+            admin_id=admin["id"],
+        )
 
-        if not result.data:
+        if not campaign:
             raise HTTPException(500, "Failed to create campaign")
 
-        return result.data[0]
+        return campaign
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create campaign: {e}")
         raise HTTPException(500, "Failed to create campaign")
@@ -186,7 +195,7 @@ async def create_campaign(
 
 @router.put("/{campaign_id}")
 @limiter.limit("20/minute")
-async def update_campaign(
+async def update_campaign_endpoint(
     request: Request,
     campaign_id: str,
     req: CampaignUpdateRequest,
@@ -198,15 +207,19 @@ async def update_campaign(
     if not update_data:
         raise HTTPException(400, "No fields to update")
 
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-
     try:
-        result = supabase.table("campaigns").update(update_data).eq("id", campaign_id).execute()
+        # v3.30: Call Domain Service
+        campaign = await update_campaign(
+            campaign_id=campaign_id,
+            update_data=update_data,
+            admin_id=admin["id"],
+        )
 
-        if not result.data:
+        if not campaign:
             raise HTTPException(404, "Campaign not found")
 
-        return result.data[0]
+        return campaign
+
     except HTTPException:
         raise
     except Exception as e:
@@ -216,23 +229,21 @@ async def update_campaign(
 
 @router.delete("/{campaign_id}")
 @limiter.limit("10/minute")
-async def delete_campaign(
+async def delete_campaign_endpoint(
     request: Request,
     campaign_id: str,
     admin: dict = Depends(require_admin),
 ):
     """Delete a campaign (soft delete)."""
     try:
-        result = supabase.table("campaigns").update({
-            "status": "deleted",
-            "is_active": False,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", campaign_id).execute()
+        # v3.30: Call Domain Service
+        success = await delete_campaign(campaign_id=campaign_id, admin_id=admin["id"])
 
-        if not result.data:
+        if not success:
             raise HTTPException(404, "Campaign not found")
 
         return {"status": "deleted", "campaign_id": campaign_id}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -242,23 +253,21 @@ async def delete_campaign(
 
 @router.post("/{campaign_id}/activate")
 @limiter.limit("10/minute")
-async def activate_campaign(
+async def activate_campaign_endpoint(
     request: Request,
     campaign_id: str,
     admin: dict = Depends(require_admin),
 ):
     """Activate a campaign."""
     try:
-        result = supabase.table("campaigns").update({
-            "status": "active",
-            "is_active": True,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", campaign_id).execute()
+        # v3.30: Call Domain Service
+        success = await activate_campaign(campaign_id=campaign_id, admin_id=admin["id"])
 
-        if not result.data:
+        if not success:
             raise HTTPException(404, "Campaign not found")
 
         return {"status": "activated", "campaign_id": campaign_id}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -268,23 +277,21 @@ async def activate_campaign(
 
 @router.post("/{campaign_id}/pause")
 @limiter.limit("10/minute")
-async def pause_campaign(
+async def pause_campaign_endpoint(
     request: Request,
     campaign_id: str,
     admin: dict = Depends(require_admin),
 ):
     """Pause a campaign."""
     try:
-        result = supabase.table("campaigns").update({
-            "status": "paused",
-            "is_active": False,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", campaign_id).execute()
+        # v3.30: Call Domain Service
+        success = await pause_campaign(campaign_id=campaign_id, admin_id=admin["id"])
 
-        if not result.data:
+        if not success:
             raise HTTPException(404, "Campaign not found")
 
         return {"status": "paused", "campaign_id": campaign_id}
+
     except HTTPException:
         raise
     except Exception as e:
@@ -294,38 +301,21 @@ async def pause_campaign(
 
 @router.get("/{campaign_id}/stats")
 @limiter.limit("30/minute")
-async def get_campaign_stats(
+async def get_campaign_stats_endpoint(
     request: Request,
     campaign_id: str,
     admin: dict = Depends(require_admin),
 ):
     """Get campaign statistics."""
     try:
-        # Get campaign
-        campaign_result = supabase.table("campaigns").select("*").eq("id", campaign_id).execute()
+        # v3.30: Call Domain Service
+        stats = await get_campaign_stats(campaign_id)
 
-        if not campaign_result.data:
+        if not stats:
             raise HTTPException(404, "Campaign not found")
 
-        campaign = campaign_result.data[0]
+        return stats
 
-        # Get claims
-        claims_result = supabase.table("campaign_claims").select(
-            "id, credits_received, created_at",
-        ).eq("campaign_id", campaign_id).execute()
-
-        claims = claims_result.data or []
-        total_credits = sum(c.get("credits_received", 0) for c in claims)
-
-        return {
-            "campaign_id": campaign_id,
-            "campaign_name": campaign.get("name"),
-            "status": campaign.get("status"),
-            "total_claims": len(claims),
-            "total_credits_given": total_credits,
-            "usage_count": campaign.get("usage_count", 0),
-            "usage_limit": campaign.get("usage_limit"),
-        }
     except HTTPException:
         raise
     except Exception as e:

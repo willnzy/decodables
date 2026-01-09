@@ -294,7 +294,7 @@ class TestCampaignConstants:
 
     def test_valid_campaign_statuses(self):
         """Valid campaign statuses are defined."""
-        from api.admin.campaigns import VALID_CAMPAIGN_STATUSES
+        from domains.marketing.campaigns.constants import VALID_CAMPAIGN_STATUSES
 
         assert "draft" in VALID_CAMPAIGN_STATUSES
         assert "active" in VALID_CAMPAIGN_STATUSES
@@ -305,7 +305,7 @@ class TestCampaignConstants:
 
     def test_valid_campaign_types(self):
         """Valid campaign types are defined."""
-        from api.admin.campaigns import VALID_CAMPAIGN_TYPES
+        from domains.marketing.campaigns.constants import VALID_CAMPAIGN_TYPES
 
         assert "credits_gift" in VALID_CAMPAIGN_TYPES
         assert "credits_discount" in VALID_CAMPAIGN_TYPES
@@ -314,7 +314,7 @@ class TestCampaignConstants:
 
     def test_valid_target_types(self):
         """Valid target types are defined."""
-        from api.admin.campaigns import VALID_TARGET_TYPES
+        from domains.marketing.campaigns.constants import VALID_TARGET_TYPES
 
         assert "all" in VALID_TARGET_TYPES
         assert "subscription" in VALID_TARGET_TYPES
