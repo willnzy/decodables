@@ -288,20 +288,39 @@ class SupabaseUserRepository(IUserRepository):
 
     def generate_user_code(self) -> str:
         """
-        Generate unique 6-char user code.
+        Generate unique user code with registration timestamp.
+
+        Format: {YYMMDD}{HHMM}{RND}
+        Example: 260109143X7Y (registered on 2026-01-09 14:30)
+
+        The user_code is human-friendly and allows admins to quickly identify
+        when a user registered based on the embedded timestamp.
 
         Returns:
-            Unique user code
+            Unique user code (13 chars: YYMMDD + HHMM + 3 random chars)
         """
+        from datetime import datetime, timezone
         import random
         import string
+
+        now = datetime.now(timezone.utc)
+        # YYMMDD (6 chars)
+        date_part = now.strftime("%y%m%d")
+        # HHMM (4 chars)
+        time_part = now.strftime("%H%M")
+        # Random 3 chars for uniqueness
         chars = string.ascii_uppercase + string.digits
+
         for _ in range(10):
-            code = ''.join(random.choices(chars, k=6))
+            random_part = ''.join(random.choices(chars, k=3))
+            code = f"{date_part}{time_part}{random_part}"
+            # Check uniqueness
             existing = self.client.table("profiles").select("id").eq("user_code", code).execute()
             if not existing.data:
                 return code
-        return ''.join(random.choices(chars, k=8))
+        # Fallback: add one more random char if collision persists
+        random_part = ''.join(random.choices(chars, k=4))
+        return f"{date_part}{time_part}{random_part}"
 
     @retry_on_network_error()
     async def create_profile(

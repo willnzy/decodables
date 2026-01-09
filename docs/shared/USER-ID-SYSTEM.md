@@ -427,4 +427,36 @@ def migrate_user_code(user):
 
 最后更新: 2026-01-09
 维护人: 后端团队
-状态: 待实施 (user_code 时间戳格式)
+状态: ✅ 已实施 (user_code 时间戳格式)
+
+## 实施记录
+
+### 2026-01-09: user_code 时间戳格式实现完成
+
+**代码改动**:
+- ✅ 更新 `infrastructure/repositories/user_repository.py:289-323`
+  - 从随机格式 (ABC123) 改为时间戳格式 (260109143X7Y)
+  - 格式: YYMMDD + HHMM + 3 随机字符 (共 13 字符)
+  - Fallback: 10 次碰撞后使用 14 字符 (4 随机字符)
+
+**测试覆盖**:
+- ✅ 新增 `tests/infrastructure/test_user_code_generation.py` (4 个测试)
+  - ✅ 格式验证 (YYMMDDHHMMRRR)
+  - ✅ 唯一性检查
+  - ✅ Fallback 机制
+  - ✅ 时间戳可读性
+
+**影响范围**:
+- ✅ 仅影响新注册用户,现有用户不受影响
+- ✅ 数据库字段 (TEXT) 支持新长度
+- ✅ 所有依赖测试通过
+
+**示例**:
+```
+Old format: ABC123 (6 chars, random)
+New format: 260109143X7Y (13 chars, timestamp-based)
+            ^^^^^^ ^^^^ ^^^
+            YYMMDD HHMM Random
+            2026年  14:30 X7Y
+            1月9日
+```
