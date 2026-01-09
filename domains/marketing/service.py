@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
 # Valid notification channels
 VALID_NOTIFICATION_CHANNELS = {"banner", "modal", "toast", "personal_message"}
 
-# Valid campaign types
-VALID_CAMPAIGN_TYPES = {"credits_gift", "credits_discount", "credits_bonus"}
+# Valid campaign types (must match database CHECK constraint)
+# Database: CHECK (type IN ('credits_reward', 'discount', 'trial_extension', 'bonus'))
+VALID_CAMPAIGN_TYPES = {"credits_reward", "discount", "trial_extension", "bonus"}
 
 # Maximum credit amount for validation
 MAX_CREDIT_AMOUNT = 10000
@@ -161,7 +162,7 @@ class CampaignService:
 
         # Calculate credits
         credits_received = 0
-        if campaign.type == "credits_gift":
+        if campaign.type == "credits_reward":  # C-HIGH-1 FIX: Match database enum value
             credits_received = self._validate_credit_amount(campaign.config.get("amount", 0))
             if credits_received is None:
                 logger.error(f"[CampaignService] Invalid credit amount in campaign {campaign_id}")
@@ -213,7 +214,12 @@ class CampaignService:
         return True
 
     def _check_target_eligibility(self, campaign: CampaignData, user: Optional[dict]) -> bool:
-        """Check if user matches the campaign's target audience."""
+        """
+        Check if user matches the campaign's target audience.
+
+        C-MEDIUM-1 FIX: Match database CHECK constraint
+        Database: CHECK (target_type IN ('all', 'tier', 'cohort', 'user_list'))
+        """
         target_type = campaign.target_type
         target_config = campaign.target_config
 
@@ -223,38 +229,24 @@ class CampaignService:
         if not user:
             return False
 
-        if target_type == "subscription":
+        # C-MEDIUM-1 FIX: 'tier' matches database enum (was 'subscription')
+        if target_type == "tier":
             user_tier = user.get("tier", "free")
             allowed_tiers = target_config.get("tiers", [])
             return user_tier in allowed_tiers
 
-        elif target_type == "users":
+        # C-MEDIUM-1 FIX: 'user_list' matches database enum (was 'users')
+        elif target_type == "user_list":
             allowed_users = target_config.get("user_ids", [])
             return user["id"] in allowed_users
 
-        elif target_type == "new_users":
-            days = target_config.get("days_since_signup", 7)
-            created_at = user.get("created_at")
-            if not created_at:
+        # C-MEDIUM-1 FIX: 'cohort' for grouped user targeting
+        elif target_type == "cohort":
+            cohort_name = target_config.get("cohort_name")
+            user_cohort = user.get("cohort")
+            if not cohort_name or not user_cohort:
                 return False
-            try:
-                signup_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
-                return (now - signup_date).days <= days
-            except Exception:
-                return False
-
-        elif target_type == "inactive_users":
-            days = target_config.get("days_inactive", 30)
-            last_login = user.get("last_login_at")
-            if not last_login:
-                return True  # Never logged in = inactive
-            try:
-                login_date = datetime.fromisoformat(last_login.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
-                return (now - login_date).days >= days
-            except Exception:
-                return False
+            return user_cohort == cohort_name
 
         return False
 

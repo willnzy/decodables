@@ -66,7 +66,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
         # Batch query claims
         try:
-            claims_result = self.client.table("campaign_claims").select(
+            claims_result = self.client.table("campaign_participations").select(
                 "campaign_id"
             ).eq("user_id", user_id).in_("campaign_id", campaign_ids).execute()
 
@@ -100,7 +100,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
         Returns False if claim already exists.
         """
         try:
-            self.client.table("campaign_claims").insert({
+            self.client.table("campaign_participations").insert({
                 "campaign_id": campaign_id,
                 "user_id": user_id,
                 "credits_received": credits_received,
@@ -113,7 +113,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
     async def delete_claim(self, campaign_id: str, user_id: str) -> None:
         """Delete a campaign claim for rollback purposes."""
-        self.client.table("campaign_claims").delete().eq(
+        self.client.table("campaign_participations").delete().eq(
             "campaign_id", campaign_id
         ).eq("user_id", user_id).execute()
 
@@ -129,9 +129,9 @@ class SupabaseCampaignRepository(ICampaignRepository):
                 "p_campaign_id": campaign_id,
             }).execute()
 
-            if result.data and len(result.data) > 0:
-                return result.data[0].get("success", False)
-            return False
+            # C-MEDIUM-2 FIX: RPC returns BOOLEAN directly, not list[dict]
+            # result.data is True/False, not [{"success": true/false}]
+            return bool(result.data)
         except Exception as e:
             logger.warning(f"[CampaignRepo] Failed to increment usage_count: {e}")
             return False
