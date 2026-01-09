@@ -2,7 +2,15 @@
 Marketplace API - Marketplace listings and purchases.
 
 @module api.user.marketplace
-@version 2.1.0
+@version 3.0.0
+
+Changes:
+- v3.0.0: DDD architecture upgrade - CQRS pattern consistency
+  - Created SupportService with report business logic
+  - Added 5 new Handlers (GetMyListings, GetSellerStats, GetLeaderboard, CreateReport, GetMyReports)
+  - All 11 endpoints now use consistent CQRS pattern (Command/Query → Handler → Service)
+  - Eliminated direct Service calls and direct Repository calls
+  - Reduced API layer complexity, improved testability
 
 Endpoints:
 - GET /api/v2/user/marketplace/listings - List marketplace items
@@ -33,9 +41,6 @@ from pydantic import BaseModel, Field
 from dependencies import get_current_user, require_member
 from container import get_container
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.support_repository import SupabaseSupportRepository
-from infrastructure.logging.activity_logger import log_activity
-from core.database import get_database_client
 
 from application.commands.marketplace import (
     CreateListingCommand,
@@ -555,6 +560,8 @@ async def get_leaderboard(
     """
     Get marketplace leaderboard.
 
+    v3.0.0: Now uses GetLeaderboardHandler (CQRS pattern).
+
     Only includes approved + public + not deleted listings.
 
     Args:
@@ -565,20 +572,25 @@ async def get_leaderboard(
         Top listings by usage_count
     """
     container = get_container()
-    marketplace_service = container.marketplace_service
+    handler = container.get_leaderboard_handler
 
-    try:
-        items = await marketplace_service.get_leaderboard(period, type)
+    query = GetLeaderboardQuery(
+        period=period,
+        board_type=type,
+        limit=10,
+    )
 
-        return LeaderboardResponse(
-            items=items,
-            period=period,
-            type=type,
-        )
+    result = await handler.handle(query)
 
-    except Exception as e:
-        logger.error(f"Failed to get leaderboard: {e}")
+    if not result.success:
+        logger.error(f"Failed to get leaderboard: {result.error}")
         raise HTTPException(500, "Failed to get leaderboard")
+
+    return LeaderboardResponse(
+        items=result.items,
+        period=period,
+        type=type,
+    )
 
 
 # ==========================================
@@ -623,6 +635,8 @@ async def submit_report(
     """
     Submit a content report for a marketplace listing.
 
+    v3.0.0: Now uses CreateReportHandler (CQRS pattern) with SupportService.
+
     Users can report listings for copyright violations, inappropriate content, etc.
 
     Args:
@@ -634,28 +648,31 @@ async def submit_report(
     Raises:
         HTTPException: 400 if already reported, 500 if failed
     """
-    try:
-        support_repo = SupabaseSupportRepository(get_database_client())
-        report = await support_repo.create_report(user["id"], req.listing_id, req.reason)
-        if report:
-            log_activity(user["id"], "submit_report", {"listing_id": req.listing_id})
-            return ReportResponse(
-                success=True,
-                report_id=report["id"],
-                message="Report submitted successfully",
-            )
-        raise HTTPException(500, "Failed to submit report")
+    container = get_container()
+    handler = container.create_report_handler
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_msg = str(e)
+    command = CreateReportCommand(
+        user_id=user["id"],
+        listing_id=req.listing_id,
+        reason=req.reason,
+    )
+
+    result = await handler.handle(command)
+
+    if not result.success:
+        error_msg = result.error or ""
         # M-HIGH-003 fix: Only expose safe error messages
         if "already reported" in error_msg.lower():
             raise HTTPException(400, "You have already reported this listing")
         # Don't expose internal error details
-        logger.error(f"Failed to submit report: {e}")
+        logger.error(f"Failed to submit report: {result.error}")
         raise HTTPException(500, "Failed to submit report")
+
+    return ReportResponse(
+        success=True,
+        report_id=result.report_id,
+        message=result.message,
+    )
 
 
 @router.get("/my-reports")
@@ -667,6 +684,8 @@ async def get_my_reports(
     """
     Get reports submitted by the current user.
 
+    v3.0.0: Now uses GetMyReportsHandler (CQRS pattern) with SupportService.
+
     Args:
         page: Page number (default: 1)
         limit: Items per page (default: 20)
@@ -674,16 +693,22 @@ async def get_my_reports(
     Returns:
         List of user's reports
     """
-    try:
-        support_repo = SupabaseSupportRepository(get_database_client())
-        # M-HIGH-002 fix: Use method that returns total count
-        reports, total_count = await support_repo.get_user_reports_with_count(
-            user["id"], page, limit
-        )
-        return MyReportsResponse(
-            items=reports,
-            total=total_count,
-        )
-    except Exception as e:
-        logger.error(f"Failed to get my reports: {e}")
+    container = get_container()
+    handler = container.get_my_reports_handler
+
+    query = GetMyReportsQuery(
+        user_id=user["id"],
+        page=page,
+        limit=limit,
+    )
+
+    result = await handler.handle(query)
+
+    if not result.success:
+        logger.error(f"Failed to get my reports: {result.error}")
         raise HTTPException(500, "Failed to get reports")
+
+    return MyReportsResponse(
+        items=result.items,
+        total=result.total_count,
+    )

@@ -70,7 +70,7 @@
 | 9 | Generation Story | 2 | 🔴 | ✅ v3.28 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 10 | Generations | 6 | 🟡 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 11 | Logs | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 12 | Marketplace | 11 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 12 | Marketplace | 11 | 🟡 | ✅ v3.0.0 | ⚠️ **v3.0.0-PARTIAL** | ⭐⭐⭐⭐⭐ | ⏳ 架构完成,测试待修复 |
 | 13 | Payment | 2 | 🔴 | ✅ v2.3.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 14 | Projects | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 15 | Resources | 7 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
