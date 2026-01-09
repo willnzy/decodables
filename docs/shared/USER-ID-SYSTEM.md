@@ -48,8 +48,8 @@ supabase.table("projects").select("*").eq("user_id", user_id).execute()
 **格式详解** (26 位):
 
 ```
-格式: YYMMDDHHMMSS + mmmm + UUUUUUUU + RRR
-示例: 26010914305278900123456ABC
+格式: YYMMDDHHMMSS + mmmm + UUUUUUU + RRR
+示例: 26010914305278900123456789
 ```
 
 **拆解说明**:
@@ -59,18 +59,18 @@ supabase.table("projects").select("*").eq("user_id", user_id).execute()
 | 日期 | 6 位 | YYMMDD (UTC+0) | `260109` = 2026-01-09 |
 | 时间 | 6 位 | HHMMSS (UTC+0) | `143052` = 14:30:52 |
 | 毫秒 | 4 位 | 毫秒数 (0000-9999) | `7890` |
-| 用户数 | 8 位 | 总注册人数，不够补 0 | `00123456` = 第 123,456 个用户 |
-| 随机数 | 3 位 | 大写字母+数字组合 | `ABC` |
+| 用户数 | 7 位 | 总注册人数，不够补 0 | `0123456` = 第 123,456 个用户 |
+| 随机数 | 3 位 | 纯数字 (000-999) | `789` |
 
 **完整示例解读**:
 ```
-user_code: 26010914305278900123456ABC
+user_code: 26010914305278900123456789
 
 解读:
 - 注册日期: 2026-01-09
 - 注册时间: 14:30:52.7890 (UTC+0)
 - 用户序号: 第 123,456 个注册用户
-- 随机后缀: ABC (额外唯一性保证)
+- 随机后缀: 789 (额外唯一性保证)
 
 管理员一眼就能看出:
 1. 这是 2026 年 1 月 9 日下午 2:30 注册的用户
@@ -82,7 +82,7 @@ user_code: 26010914305278900123456ABC
 1. ✅ **时间精度**: 毫秒级时间戳，几乎不可能碰撞
 2. ✅ **业务洞察**: 用户注册序号反映业务增长
 3. ✅ **管理友好**: 管理员一眼看出注册时间和用户规模
-4. ✅ **唯一性保证**: 时间(16位) + 用户数(8位) + 随机数(3位) = 三重保证
+4. ✅ **唯一性保证**: 时间(16位) + 用户数(7位) + 随机数(3位) = 三重保证
 5. ✅ **数据分析**: 可轻松统计每日/每小时注册量
 
 **生成逻辑**:
@@ -111,16 +111,15 @@ def generate_user_code(self) -> str:
     time_part = now.strftime("%H%M%S")  # HHMMSS (6 位)
     ms_part = f"{now.microsecond // 100:04d}"  # 毫秒 (4 位，保留到 0.1 毫秒)
 
-    # 用户总数 (8 位，补零)
+    # 用户总数 (7 位，补零)
     result = self.client.table("profiles").select("id", count="exact").execute()
     user_count = result.count or 0
-    count_part = f"{user_count + 1:08d}"  # 8 位，不够补 0
+    count_part = f"{user_count + 1:07d}"  # 7 位，不够补 0
 
-    # 随机后缀 (3 位)
-    chars = string.ascii_uppercase + string.digits
-    random_part = ''.join(random.choices(chars, k=3))
+    # 随机后缀 (3 位纯数字)
+    random_part = f"{random.randint(0, 999):03d}"  # 000-999
 
-    # 组合: 6 + 6 + 4 + 8 + 3 = 27 位
+    # 组合: 6 + 6 + 4 + 7 + 3 = 26 位
     user_code = f"{date_part}{time_part}{ms_part}{count_part}{random_part}"
 
     # 验证唯一性 (理论上不会重复，但仍需检查)
@@ -171,8 +170,8 @@ def parse_user_code(user_code: str) -> dict:
     date_part = user_code[0:6]  # 260109
     time_part = user_code[6:12]  # 143052
     ms_part = user_code[12:16]  # 7890
-    count_part = user_code[16:24]  # 00123456
-    random_part = user_code[24:26]  # ABC
+    count_part = user_code[16:23]  # 0123456
+    random_part = user_code[23:26]  # 789
 
     return {
         "registration_date": f"20{date_part[0:2]}-{date_part[2:4]}-{date_part[4:6]}",
@@ -478,8 +477,8 @@ export function parseUserCode(userCode: string): ParsedUserCode | null {
   const datePart = userCode.substring(0, 6)   // 260109
   const timePart = userCode.substring(6, 12)  // 143052
   const msPart = userCode.substring(12, 16)   // 7890
-  const countPart = userCode.substring(16, 24) // 00123456
-  const randomPart = userCode.substring(24, 26) // ABC
+  const countPart = userCode.substring(16, 23) // 0123456
+  const randomPart = userCode.substring(23, 26) // 789
 
   return {
     registrationDate: `20${datePart.substring(0, 2)}-${datePart.substring(2, 4)}-${datePart.substring(4, 6)}`,

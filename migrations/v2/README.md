@@ -229,7 +229,7 @@ psql -d decodables_test < refactored_schema_v2.sql
 
 1. **双 ID 系统**:
    - `user_id` (TEXT) - Clerk ID 格式 `user_2xxx...`（**非 UUID**！）
-   - `user_code` (TEXT UNIQUE) - 26位格式 `26010914305278900123456ABC` (包含注册时间+用户序号)
+   - `user_code` (TEXT UNIQUE) - 26位格式 `26010914305278900123456789` (包含注册时间+用户序号)
 
 2. **积分扣费顺序**:
    - 先扣 `credits_monthly` → 再扣 `credits_permanent`

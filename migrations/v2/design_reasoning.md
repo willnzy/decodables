@@ -34,7 +34,7 @@
 
 1. **双ID系统**：
    - `user_id` (TEXT): Clerk格式 `user_2NNEqL2n...`（非UUID！）- 系统内部使用
-   - `user_code` (TEXT UNIQUE): 26位格式 `26010914305278900123456ABC`（包含注册时间+用户序号）- 管理员使用
+   - `user_code` (TEXT UNIQUE): 26位格式 `26010914305278900123456789`（包含注册时间+用户序号）- 管理员使用
 
 2. **积分扣费顺序**：
    - 先扣 `credits_monthly` → 再扣 `credits_permanent`
