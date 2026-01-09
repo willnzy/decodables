@@ -1920,6 +1920,27 @@ DECLARE
     v_deduct_monthly INT;
     v_deduct_permanent INT;
 BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_amount <= 0 OR p_amount > 1000000 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid amount (must be 1-1000000)'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_type IS NULL OR length(p_type) = 0 OR length(p_type) > 50 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid type'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_description IS NOT NULL AND length(p_description) > 500 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Description too long (max 500 chars)'::TEXT;
+        RETURN;
+    END IF;
+
     -- 幂等性检查: 防止重复扣除
     IF p_idempotency_key IS NOT NULL THEN
         IF EXISTS (
@@ -2028,6 +2049,32 @@ DECLARE
     v_monthly INT;
     v_permanent INT;
 BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_amount <= 0 OR p_amount > 1000000 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid amount (must be 1-1000000)'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_bucket NOT IN ('monthly', 'permanent') THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid bucket (must be monthly or permanent)'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_type IS NULL OR length(p_type) = 0 OR length(p_type) > 50 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Invalid type'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_description IS NOT NULL AND length(p_description) > 500 THEN
+        RETURN QUERY SELECT FALSE, 0, 0, 'Description too long (max 500 chars)'::TEXT;
+        RETURN;
+    END IF;
+
     -- 加锁获取当前余额
     SELECT credits_monthly, credits_permanent
     INTO v_monthly, v_permanent
@@ -2088,6 +2135,22 @@ DECLARE
     v_resource_type TEXT;
     v_resource_id UUID;
 BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+        RETURN QUERY SELECT FALSE, 'Invalid user_id'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_listing_id IS NULL THEN
+        RETURN QUERY SELECT FALSE, 'Invalid listing_id'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_idempotency_key IS NOT NULL AND length(p_idempotency_key) > 200 THEN
+        RETURN QUERY SELECT FALSE, 'Idempotency key too long (max 200 chars)'::TEXT;
+        RETURN;
+    END IF;
+
     -- 获取 listing 信息
     SELECT price_credits, title, thumbnail_url, description, version, resource_type, resource_id
     INTO v_price, v_title, v_thumbnail, v_description, v_version, v_resource_type, v_resource_id
@@ -2106,16 +2169,29 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 扣除积分
-    PERFORM deduct_credits_atomic(
-        p_user_id,
-        v_price,
-        'marketplace_purchase',
-        'Purchase listing: ' || v_title,
-        p_idempotency_key,
-        'listing',
-        p_listing_id::TEXT
-    );
+    -- 扣除积分 (必须检查是否成功)
+    DECLARE
+        v_deduct_success BOOLEAN;
+        v_error_msg TEXT;
+    BEGIN
+        SELECT success, error_message
+        INTO v_deduct_success, v_error_msg
+        FROM deduct_credits_atomic(
+            p_user_id,
+            v_price,
+            'marketplace_purchase',
+            'Purchase listing: ' || v_title,
+            p_idempotency_key,
+            'listing',
+            p_listing_id::TEXT
+        );
+
+        -- 如果扣费失败，立即返回错误
+        IF NOT v_deduct_success THEN
+            RETURN QUERY SELECT FALSE, COALESCE(v_error_msg, 'Insufficient credits');
+            RETURN;
+        END IF;
+    END;
 
     -- 记录购买
     INSERT INTO marketplace_purchases (
@@ -2627,6 +2703,34 @@ COMMENT ON VIEW v_ai_usage_last_30_days IS 'AI 使用量最近 30 天汇总视�
 -- ============================================================================
 -- 完成
 -- ============================================================================
+
+-- 验证 Stripe ID 占位符是否已替换
+DO $$
+DECLARE
+    v_placeholder_count INT;
+    v_placeholders TEXT;
+BEGIN
+    -- 检查 pricing_plans 表中的占位符
+    SELECT COUNT(*)
+    INTO v_placeholder_count
+    FROM pricing_plans
+    WHERE stripe_price_id_prod ~ '^\{\{.*\}\}$'
+       OR stripe_price_id_dev ~ '^\{\{.*\}\}$';
+
+    IF v_placeholder_count > 0 THEN
+        SELECT string_agg(plan_code || ': prod=' || COALESCE(stripe_price_id_prod, 'NULL') || ', dev=' || COALESCE(stripe_price_id_dev, 'NULL'), E'\n')
+        INTO v_placeholders
+        FROM pricing_plans
+        WHERE stripe_price_id_prod ~ '^\{\{.*\}\}$'
+           OR stripe_price_id_dev ~ '^\{\{.*\}\}$';
+
+        RAISE WARNING E'⚠️ Stripe ID placeholders detected in pricing_plans:\n%', v_placeholders;
+        RAISE WARNING '⚠️ Please replace all {{ STRIPE_PRICE_XXX }} placeholders with actual Stripe Price IDs';
+        RAISE WARNING '⚠️ Get Price IDs from: Stripe Dashboard → Products → Pricing';
+    ELSE
+        RAISE NOTICE '✅ Stripe ID placeholders verification PASSED (all replaced)';
+    END IF;
+END $$;
 
 -- 验证表数量
 DO $$
