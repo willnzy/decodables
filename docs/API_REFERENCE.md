@@ -184,7 +184,7 @@ checkout.session 需要携带的 metadata:
 ```json
 {
   "user_id": "clerk_user_id",
-  "plan": "starter|pro|credits_100"
+  "plan": "t2|t3|credits_100"
 }
 ```
 
@@ -218,7 +218,7 @@ checkout.session 需要携带的 metadata:
   "avatar_url": "https://...",
   "first_name": "John",
   "last_name": "Doe",
-  "tier": "starter",
+  "tier": "t2",
   "credits_monthly": 450,
   "credits_permanent": 50,
   "credits_total": 500,
@@ -603,11 +603,11 @@ checkout.session 需要携带的 metadata:
 **请求体**:
 ```json
 {
-  "plan_type": "starter"
+  "plan_type": "t2"
 }
 ```
 
-> `plan_type`: `starter`, `pro`
+> `plan_type`: `t2`, `t3`
 
 **响应**:
 ```json
@@ -872,8 +872,8 @@ Content-Disposition: attachment; filename="minibook.pdf"
 | `featured` | bool | false | 仅精选 |
 | `resource_type` | string | - | 资源类型筛选 |
 | `sort` | string | "latest" | 排序: `latest`, `popular`, `price_low`, `price_high` |
-| `tier` | string | - | 等级筛选: `free`, `starter`, `pro` |
-| `price` | string | - | 价格筛选: `free`, `paid` |
+| `tier` | string | - | 等级筛选: `t1`, `t2`, `t3` |
+| `price` | string | - | 价格筛选: `t1`, `paid` |
 | `page` | int | 1 | 页码 |
 | `limit` | int | 20 | 每页数量 |
 
@@ -888,7 +888,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
       "thumbnail_url": "https://...",
       "resource_type": "sticker",
       "price_credits": 50,
-      "allowed_tiers": ["starter", "pro"],
+      "allowed_tiers": ["t2", "t3"],
       "seller": {
         "id": "user_xxx",
         "username": "creator",
@@ -917,7 +917,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
   "resource_url": "https://...",
   "resource_type": "sticker",
   "price_credits": 50,
-  "allowed_tiers": ["starter", "pro"],
+  "allowed_tiers": ["t2", "t3"],
   "seller": { ... },
   "is_purchased": false,
   "can_purchase": true,
@@ -941,7 +941,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
   "resource_url": "https://...",
   "resource_type": "sticker",
   "price_credits": 30,
-  "allowed_tiers": ["starter", "pro"],
+  "allowed_tiers": ["t2", "t3"],
   "submit_for_review": true
 }
 ```
@@ -956,8 +956,8 @@ Content-Disposition: attachment; filename="minibook.pdf"
 ```
 
 **权限**:
-- Starter: 仅能发布免费资源（allowed_tiers 包含 starter）
-- Pro: 可发布任意价格资源
+- Second Tier (t2): 仅能发布免费资源（allowed_tiers 包含 t2）
+- Third Tier (t3): 可发布任意价格资源
 
 #### PUT `/marketplace/listings/{listing_id}`
 
@@ -969,7 +969,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
   "title": "更新后的标题",
   "description": "更新后的描述",
   "price_credits": 40,
-  "allowed_tiers": ["pro"]
+  "allowed_tiers": ["t3"]
 }
 ```
 
@@ -1135,7 +1135,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
       "thumbnail_url": "https://...",
       "resource_url": "https://...",
       "is_locked": false,
-      "required_tier": "free"
+      "required_tier": "t1"
     }
   ],
   "total": 200,
@@ -1446,7 +1446,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
         "os": "MacOS"
       },
       "user_properties": {
-        "tier": "starter"
+        "tier": "t2"
       }
     }
   ]
@@ -1491,7 +1491,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
     },
     "limits": {
       "max_file_size": 5242880,
-      "max_projects_free": 1
+      "max_projects_t1": 1
     }
   }
 }
@@ -1790,7 +1790,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
 **请求体**:
 ```json
 {
-  "tier": "pro"
+  "tier": "t3"
 }
 ```
 
@@ -1803,7 +1803,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
 {
   "discount_percent": 20,
   "valid_days": 7,
-  "target_plan": "pro"
+  "target_plan": "t3"
 }
 ```
 
@@ -1853,7 +1853,7 @@ Content-Disposition: attachment; filename="minibook.pdf"
   "user_id": "user_xxx",
   "user_code": "ABC123",
   "user_email": "user@example.com",
-  "target_tier": "starter",
+  "target_tier": "t2",
   "immediate": false,
   "reason": "用户要求降级"
 }
@@ -2039,11 +2039,11 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ### 6.1 用户等级
 
-| 等级 | 原价 | 现价 | 月度积分 | 项目限制 | AI 模型 |
-|------|------|------|----------|----------|---------|
-| Free | $0 | $0 | 0 | 1 | flux-schnell |
-| Starter | $14.9 | $9.9 | 200 | 20 | flux-schnell |
-| Pro | $29.9 | $19.9 | 500 | 200 | flux-dev |
+| 系统代码 | 简称 | 显示名称 | 原价 | 现价 | 月度积分 | 项目限制 | AI 模型 |
+|---------|------|---------|------|------|----------|----------|---------|
+| `t1` | First Tier | Free Plan | $0 | $0 | 0 | 1 | flux-schnell |
+| `t2` | Second Tier | Starter Plan | $14.9 | $9.9 | 200 | 20 | flux-schnell |
+| `t3` | Third Tier | Pro Plan | $29.9 | $19.9 | 500 | 200 | flux-dev |
 
 > 所有价格通过 Stripe Price ID 配置，不硬编码在代码中
 
@@ -2079,11 +2079,11 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ### 6.6 发布权限
 
-| 等级 | 可发布资源 |
-|------|------------|
-| Free | 不可发布 |
-| Starter | 仅免费资源 |
-| Pro | 任意价格资源 |
+| 系统代码 | 简称 | 可发布资源 |
+|---------|------|------------|
+| `t1` | First Tier | 不可发布 |
+| `t2` | Second Tier | 仅免费资源 |
+| `t3` | Third Tier | 任意价格资源 |
 
 ### 6.7 删除流程
 
