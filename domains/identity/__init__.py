@@ -28,6 +28,21 @@ from .exceptions import (
 )
 from .repository import IUserRepository
 from .service import IdentityService
+from .constants import (
+    TIER_T1,
+    TIER_T2,
+    TIER_T3,
+    VALID_TIERS,
+    TIER_LABELS,
+    TIER_MONTHLY_CREDITS,
+    TIER_LEVELS,
+    DEFAULT_TIER_DISPLAY_NAMES,
+    TIER_MONTHLY_PRICES,
+    is_valid_tier,
+    get_tier_level,
+    compare_tiers,
+    is_premium_tier,
+)
 
 __all__ = [
     # Value Objects
@@ -45,4 +60,18 @@ __all__ = [
     'IUserRepository',
     # Service
     'IdentityService',
+    # Constants
+    'TIER_T1',
+    'TIER_T2',
+    'TIER_T3',
+    'VALID_TIERS',
+    'TIER_LABELS',
+    'TIER_MONTHLY_CREDITS',
+    'TIER_LEVELS',
+    'DEFAULT_TIER_DISPLAY_NAMES',
+    'TIER_MONTHLY_PRICES',
+    'is_valid_tier',
+    'get_tier_level',
+    'compare_tiers',
+    'is_premium_tier',
 ]

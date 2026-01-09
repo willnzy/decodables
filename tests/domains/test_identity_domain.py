@@ -28,16 +28,21 @@ class TestUserTier:
     """Tests for UserTier enum."""
 
     def test_tier_values(self):
-        """Test tier enum values."""
-        assert UserTier.FREE.value == "free"
-        assert UserTier.STARTER.value == "starter"
-        assert UserTier.PRO.value == "pro"
+        """Test tier enum values using new t1/t2/t3 system codes."""
+        assert UserTier.T1.value == "t1"
+        assert UserTier.T2.value == "t2"
+        assert UserTier.T3.value == "t3"
+
+        # Backward compatibility
+        assert UserTier.FREE.value == "t1"
+        assert UserTier.STARTER.value == "t2"
+        assert UserTier.PRO.value == "t3"
 
     def test_tier_from_string(self):
-        """Test creating tier from string."""
-        assert UserTier("free") == UserTier.FREE
-        assert UserTier("starter") == UserTier.STARTER
-        assert UserTier("pro") == UserTier.PRO
+        """Test creating tier from string using new codes."""
+        assert UserTier("t1") == UserTier.T1
+        assert UserTier("t2") == UserTier.T2
+        assert UserTier("t3") == UserTier.T3
 
     def test_tier_comparison(self):
         """Test tier comparison methods - skipped (level not implemented)."""
@@ -50,27 +55,27 @@ class TestFeatureAccess:
     def test_marketplace_publish_access(self):
         """Test marketplace publish feature access."""
         # Using UserTier.has_feature directly since FeatureAccess class doesn't exist
-        assert not UserTier.FREE.has_feature("publish_asset")
-        assert UserTier.STARTER.has_feature("publish_asset")
-        assert UserTier.PRO.has_feature("publish_asset")
+        assert not UserTier.T1.has_feature("publish_asset")
+        assert UserTier.T2.has_feature("publish_asset")
+        assert UserTier.T3.has_feature("publish_asset")
 
     def test_sticker_library_access(self):
         """Test sticker library feature access."""
-        assert not UserTier.FREE.has_feature("sticker_library")
-        assert UserTier.STARTER.has_feature("sticker_library")
-        assert UserTier.PRO.has_feature("sticker_library")
+        assert not UserTier.T1.has_feature("sticker_library")
+        assert UserTier.T2.has_feature("sticker_library")
+        assert UserTier.T3.has_feature("sticker_library")
 
     def test_commercial_license_access(self):
         """Test commercial license feature access."""
-        assert not UserTier.FREE.has_feature("commercial_license")
-        assert not UserTier.STARTER.has_feature("commercial_license")
-        assert UserTier.PRO.has_feature("commercial_license")
+        assert not UserTier.T1.has_feature("commercial_license")
+        assert not UserTier.T2.has_feature("commercial_license")
+        assert UserTier.T3.has_feature("commercial_license")
 
     def test_basic_features_all_tiers(self):
         """Test basic features available to all tiers."""
-        assert UserTier.FREE.has_feature("basic_editor")
-        assert UserTier.STARTER.has_feature("basic_editor")
-        assert UserTier.PRO.has_feature("basic_editor")
+        assert UserTier.T1.has_feature("basic_editor")
+        assert UserTier.T2.has_feature("basic_editor")
+        assert UserTier.T3.has_feature("basic_editor")
 
 
 class TestUserProfileAggregate:
@@ -82,13 +87,13 @@ class TestUserProfileAggregate:
         profile = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.STARTER,
+            tier=UserTier.T2,
             created_at=now,
         )
 
         assert profile.user_id == "user_123"
         assert profile.email == "test@example.com"
-        assert profile.tier == UserTier.STARTER
+        assert profile.tier == UserTier.T2
         assert profile.is_premium is True
 
     def test_create_with_defaults(self):
@@ -98,15 +103,15 @@ class TestUserProfileAggregate:
             email="free@example.com",
         )
 
-        assert profile.tier == UserTier.FREE
+        assert profile.tier == UserTier.T1
         assert profile.is_premium is False
         # Note: role property not in current UserProfile implementation
 
     def test_is_member_property(self):
         """Test is_member property for different tiers."""
-        free = UserProfile(user_id="1", email="a@b.com", tier=UserTier.FREE)
-        starter = UserProfile(user_id="2", email="b@b.com", tier=UserTier.STARTER)
-        pro = UserProfile(user_id="3", email="c@b.com", tier=UserTier.PRO)
+        free = UserProfile(user_id="1", email="a@b.com", tier=UserTier.T1)
+        starter = UserProfile(user_id="2", email="b@b.com", tier=UserTier.T2)
+        pro = UserProfile(user_id="3", email="c@b.com", tier=UserTier.T3)
 
         assert free.is_premium is False
         assert starter.is_premium is True
@@ -118,8 +123,8 @@ class TestUserProfileAggregate:
 
     def test_has_feature_access(self):
         """Test feature access check."""
-        free_user = UserProfile(user_id="1", email="a@b.com", tier=UserTier.FREE)
-        pro_user = UserProfile(user_id="2", email="b@b.com", tier=UserTier.PRO)
+        free_user = UserProfile(user_id="1", email="a@b.com", tier=UserTier.T1)
+        pro_user = UserProfile(user_id="2", email="b@b.com", tier=UserTier.T3)
 
         # Free user cannot publish to marketplace (using publish_asset feature)
         assert free_user.has_feature("publish_asset") is False
@@ -132,12 +137,12 @@ class TestUserProfileAggregate:
         profile = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.FREE,
+            tier=UserTier.T1,
         )
 
-        profile.upgrade_tier(UserTier.STARTER)
+        profile.upgrade_tier(UserTier.T2)
 
-        assert profile.tier == UserTier.STARTER
+        assert profile.tier == UserTier.T2
         assert profile.is_premium is True
 
     def test_downgrade_tier(self):
@@ -145,12 +150,12 @@ class TestUserProfileAggregate:
         profile = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.PRO,
+            tier=UserTier.T3,
         )
 
-        profile.downgrade_tier(UserTier.FREE)
+        profile.downgrade_tier(UserTier.T1)
 
-        assert profile.tier == UserTier.FREE
+        assert profile.tier == UserTier.T1
         assert profile.is_premium is False
 
     def test_project_limit_by_tier(self):
@@ -174,7 +179,7 @@ class TestUserProfileAggregate:
         profile = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.STARTER,
+            tier=UserTier.T2,
             display_name="Test User",
         )
 
@@ -182,7 +187,7 @@ class TestUserProfileAggregate:
 
         assert data["user_id"] == "user_123"
         assert data["email"] == "test@example.com"
-        assert data["tier"] == "starter"
+        assert data["tier"] == "t2"
         assert data["display_name"] == "Test User"
         assert data["is_premium"] is True  # Changed from is_member
 
@@ -216,7 +221,7 @@ class TestIdentityService:
         mock_repository.get_by_id.return_value = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.STARTER,
+            tier=UserTier.T2,
         )
 
         user = await identity_service.get_user("user_123")
@@ -244,7 +249,7 @@ class TestIdentityService:
         mock_repository.get_by_id.return_value = UserProfile(
             user_id="user_123",
             email="test@example.com",
-            tier=UserTier.FREE,
+            tier=UserTier.T1,
         )
 
         # Test using has_feature directly through UserProfile

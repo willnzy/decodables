@@ -28,7 +28,7 @@ class UserProfile:
     """
     user_id: str
     email: str
-    tier: UserTier = UserTier.FREE
+    tier: UserTier = UserTier.T1
     onboarding_step: OnboardingStep = OnboardingStep.NOT_STARTED
     preferences: UserPreferences = field(default_factory=UserPreferences)
     display_name: Optional[str] = None
@@ -59,7 +59,7 @@ class UserProfile:
             user_id=user_id,
             email=email,
             display_name=display_name,
-            tier=UserTier.FREE,
+            tier=UserTier.T1,
             onboarding_step=OnboardingStep.NOT_STARTED,
             preferences=UserPreferences(),
         )
@@ -67,7 +67,7 @@ class UserProfile:
     @property
     def is_premium(self) -> bool:
         """Check if user has a paid subscription."""
-        return self.tier in (UserTier.STARTER, UserTier.PRO)
+        return self.tier in (UserTier.T2, UserTier.T3)
 
     @property
     def is_onboarding_complete(self) -> bool:

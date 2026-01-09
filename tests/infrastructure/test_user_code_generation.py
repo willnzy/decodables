@@ -28,14 +28,15 @@ class TestUserCodeGeneration:
         """
         Test that generated user_code matches the correct format.
 
-        Format: {YYMMDD}_{HHMMSSmmmm}_{UUUUUUU}_{RRR}
-        Example: 260109_1430251234_0001234_A7X
+        Format: YYMMDDHHMMSSmmmm UUUUUUURRRFormat (26 digits, NO separators):
+        Example: 26010914305278900123456789
 
         Parts:
         - YYMMDD: 6 digit date
-        - HHMMSSmmmm: 10 digit time with sub-second precision (4 digits = microseconds/100)
+        - HHMMSS: 6 digit time
+        - mmmm: 4 digit milliseconds (0.1ms precision)
         - UUUUUUU: 7 digit user count (zero-padded)
-        - RRR: 3 random alphanumeric chars
+        - RRR: 3 random digits
         """
         # Mock Supabase client
         mock_client = MagicMock()
@@ -43,45 +44,63 @@ class TestUserCodeGeneration:
         # Mock user count query
         mock_count_result = MagicMock()
         mock_count_result.count = 1234
-        mock_client.table.return_value.select.return_value.execute.return_value = mock_count_result
+
+        # Mock for uniqueness check (should return no existing data)
+        mock_exists_result = MagicMock()
+        mock_exists_result.data = []
+
+        # Set up mock to handle both count query and uniqueness check
+        mock_table = mock_client.table.return_value
+        mock_select = mock_table.select.return_value
+
+        # First call: count query
+        mock_select.execute.return_value = mock_count_result
+
+        # Second call: uniqueness check (via .eq().execute())
+        mock_eq = mock_select.eq.return_value
+        mock_eq.execute.return_value = mock_exists_result
 
         repo = SupabaseUserRepository(mock_client)
         user_code = repo.generate_user_code()
 
-        # Verify total length (29 chars: 6 + 1 + 10 + 1 + 7 + 1 + 3)
-        assert len(user_code) == 29, f"Expected 29 chars, got {len(user_code)}: {user_code}"
+        # Verify total length (26 digits: 6 + 6 + 4 + 7 + 3)
+        assert len(user_code) == 26, f"Expected 26 digits, got {len(user_code)}: {user_code}"
 
-        # Verify format: YYMMDD_HHMMSSmmmm_UUUUUUU_RRR
-        pattern = r'^(\d{6})_(\d{10})_(\d{7})_([A-Z0-9]{3})$'
+        # Verify format: YYMMDDHHMMSS + mmmm + UUUUUUU + RRR (all digits, no separators)
+        pattern = r'^(\d{6})(\d{6})(\d{4})(\d{7})(\d{3})$'
         match = re.match(pattern, user_code)
         assert match is not None, f"user_code '{user_code}' does not match expected format"
 
-        date_part, time_part, count_part, random_part = match.groups()
+        date_part, time_part, ms_part, count_part, random_part = match.groups()
 
         # Verify date part is valid (YYMMDD)
         now = datetime.now(timezone.utc)
         expected_date = now.strftime("%y%m%d")
         assert date_part == expected_date, f"Date part '{date_part}' does not match current date '{expected_date}'"
 
-        # Verify time part format (HHMMSSmmmm)
-        assert len(time_part) == 10, f"Time part should be 10 chars, got {len(time_part)}"
+        # Verify time part format (HHMMSS)
+        assert len(time_part) == 6, f"Time part should be 6 digits, got {len(time_part)}"
         hours = int(time_part[0:2])
         minutes = int(time_part[2:4])
         seconds = int(time_part[4:6])
-        subsecond = int(time_part[6:10])  # 4 digits: 0-9999
         assert 0 <= hours <= 23, f"Invalid hours: {hours}"
         assert 0 <= minutes <= 59, f"Invalid minutes: {minutes}"
         assert 0 <= seconds <= 59, f"Invalid seconds: {seconds}"
-        assert 0 <= subsecond <= 9999, f"Invalid subsecond: {subsecond}"
 
-        # Verify count part (7 digits, zero-padded)
-        assert count_part == "0001234", f"Count part should be '0001234', got '{count_part}'"
-        assert int(count_part) == 1234, f"Count part should represent 1234 users"
+        # Verify millisecond part (4 digits: 0-9999, 0.1ms precision)
+        assert len(ms_part) == 4, f"Millisecond part should be 4 digits, got {len(ms_part)}"
+        milliseconds = int(ms_part)
+        assert 0 <= milliseconds <= 9999, f"Invalid milliseconds: {milliseconds}"
 
-        # Verify random part is alphanumeric
-        assert random_part.isalnum(), f"Random part '{random_part}' should be alphanumeric"
-        assert all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' for c in random_part), \
-            f"Random part '{random_part}' should only contain uppercase letters and digits"
+        # Verify count part (7 digits, zero-padded, +1 for the user being created)
+        assert count_part == "0001235", f"Count part should be '0001235' (1234+1), got '{count_part}'"
+        assert int(count_part) == 1235, f"Count part should represent user #1235 (count was 1234, +1)"
+
+        # Verify random part is all digits (3 digits: 000-999)
+        assert random_part.isdigit(), f"Random part '{random_part}' should be all digits"
+        assert len(random_part) == 3, f"Random part should be 3 digits"
+        random_value = int(random_part)
+        assert 0 <= random_value <= 999, f"Random value should be 0-999, got {random_value}"
 
     def test_user_code_zero_users(self):
         """Test user_code generation when no users exist yet (count = 0)."""
@@ -90,18 +109,25 @@ class TestUserCodeGeneration:
         # Mock zero user count
         mock_count_result = MagicMock()
         mock_count_result.count = 0
-        mock_client.table.return_value.select.return_value.execute.return_value = mock_count_result
+
+        # Mock for uniqueness check
+        mock_exists_result = MagicMock()
+        mock_exists_result.data = []
+
+        # Set up mock to handle both queries
+        mock_table = mock_client.table.return_value
+        mock_select = mock_table.select.return_value
+        mock_select.execute.return_value = mock_count_result
+        mock_select.eq.return_value.execute.return_value = mock_exists_result
 
         repo = SupabaseUserRepository(mock_client)
         user_code = repo.generate_user_code()
 
-        # Extract count part
-        parts = user_code.split('_')
-        assert len(parts) == 4, f"Expected 4 parts separated by underscore, got {len(parts)}"
-        count_part = parts[2]
+        # Extract count part (characters 16-23: 7 digits)
+        count_part = user_code[16:23]
 
-        # Verify zero count is zero-padded to 7 digits
-        assert count_part == "0000000", f"Count part for 0 users should be '0000000', got '{count_part}'"
+        # Verify zero count (+1 for new user) is zero-padded to 7 digits
+        assert count_part == "0000001", f"Count part for first user should be '0000001', got '{count_part}'"
 
     def test_user_code_large_user_count(self):
         """Test user_code generation with large user count (999,999)."""
@@ -110,17 +136,25 @@ class TestUserCodeGeneration:
         # Mock large user count
         mock_count_result = MagicMock()
         mock_count_result.count = 999999
-        mock_client.table.return_value.select.return_value.execute.return_value = mock_count_result
+
+        # Mock for uniqueness check
+        mock_exists_result = MagicMock()
+        mock_exists_result.data = []
+
+        # Set up mock to handle both queries
+        mock_table = mock_client.table.return_value
+        mock_select = mock_table.select.return_value
+        mock_select.execute.return_value = mock_count_result
+        mock_select.eq.return_value.execute.return_value = mock_exists_result
 
         repo = SupabaseUserRepository(mock_client)
         user_code = repo.generate_user_code()
 
-        # Extract count part
-        parts = user_code.split('_')
-        count_part = parts[2]
+        # Extract count part (characters 16-23: 7 digits)
+        count_part = user_code[16:23]
 
-        # Verify large count is zero-padded to 7 digits
-        assert count_part == "0999999", f"Count part for 999,999 users should be '0999999', got '{count_part}'"
+        # Verify large count (+1) is zero-padded to 7 digits
+        assert count_part == "1000000", f"Count part for user #1,000,000 should be '1000000', got '{count_part}'"
 
     def test_user_code_max_user_count(self):
         """Test user_code generation with maximum 7-digit user count (9,999,999)."""

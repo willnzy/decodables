@@ -12,42 +12,66 @@ from datetime import datetime
 
 
 class UserTier(str, Enum):
-    """User subscription tier."""
-    FREE = "free"
-    STARTER = "starter"
-    PRO = "pro"
+    """
+    User subscription tier.
+
+    System codes (永不改变):
+    - t1: First Tier (Free Plan)
+    - t2: Second Tier (Starter Plan)
+    - t3: Third Tier (Pro Plan)
+
+    Display names are configurable via system_configs.
+    """
+    T1 = "t1"  # First Tier (Free Plan)
+    T2 = "t2"  # Second Tier (Starter Plan)
+    T3 = "t3"  # Third Tier (Pro Plan)
+
+    # Backward compatibility aliases (deprecated)
+    FREE = "t1"
+    STARTER = "t2"
+    PRO = "t3"
 
     @property
     def display_name(self) -> str:
-        """Human-readable tier name."""
-        return self.value.capitalize()
+        """
+        Human-readable tier name (fixed label).
+
+        Note: User-facing display names should come from system_configs
+        via TierService.get_tier_display_name()
+        """
+        labels = {
+            "t1": "First Tier",
+            "t2": "Second Tier",
+            "t3": "Third Tier",
+        }
+        return labels.get(self.value, self.value.upper())
 
     @property
     def monthly_credits(self) -> int:
         """Monthly credit allowance for this tier."""
         allowances = {
-            UserTier.FREE: 0,
-            UserTier.STARTER: 500,
-            UserTier.PRO: 1000,
+            UserTier.T1: 0,
+            UserTier.T2: 200,
+            UserTier.T3: 500,
         }
         return allowances[self]
 
     @property
     def price_monthly(self) -> float:
-        """Monthly price in USD."""
+        """Monthly price in USD (original price)."""
         prices = {
-            UserTier.FREE: 0.0,
-            UserTier.STARTER: 14.9,
-            UserTier.PRO: 29.9,
+            UserTier.T1: 0.0,
+            UserTier.T2: 14.9,
+            UserTier.T3: 29.9,
         }
         return prices[self]
 
     def has_feature(self, feature: str) -> bool:
         """Check if tier has access to a feature."""
         features = {
-            UserTier.FREE: {"basic_editor", "export_png"},
-            UserTier.STARTER: {"basic_editor", "export_png", "sticker_library", "publish_asset"},
-            UserTier.PRO: {"basic_editor", "export_png", "sticker_library", "publish_asset",
+            UserTier.T1: {"basic_editor", "export_png"},
+            UserTier.T2: {"basic_editor", "export_png", "sticker_library", "publish_asset"},
+            UserTier.T3: {"basic_editor", "export_png", "sticker_library", "publish_asset",
                           "commercial_license", "priority_support", "advanced_ai"},
         }
         return feature in features.get(self, set())

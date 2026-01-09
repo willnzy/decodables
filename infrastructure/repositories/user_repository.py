@@ -288,46 +288,56 @@ class SupabaseUserRepository(IUserRepository):
 
     def generate_user_code(self) -> str:
         """
-        Generate unique user code with registration timestamp and user count.
+        Generate unique 26-digit user code with registration timestamp and user count.
 
-        Format: {YYMMDD}_{HHMMSSmmmm}_{UUUUUUU}_{RRR}
-        Example: 260109_143025123_0001234_A7X
-        - 260109: Registration date (2026-01-09)
-        - 143025123: Time with milliseconds (14:30:25.123)
-        - 0001234: Total user count (7 digits, zero-padded)
-        - A7X: 3 random alphanumeric chars
+        Format: YYMMDDHHMMSS + mmmm + UUUUUUU + RRR
+        Example: 26010914305278900123456789
+        - 260109: Registration date (2026-01-09) [6 digits]
+        - 143052: Registration time (14:30:52) [6 digits]
+        - 7890: Milliseconds (0.1ms precision) [4 digits]
+        - 0123456: Total user count [7 digits, zero-padded]
+        - 789: Random digits for uniqueness [3 digits]
 
         The user_code allows admins to quickly identify:
-        1. When the user registered (date + time with millisecond precision)
+        1. When the user registered (date + time with 0.1ms precision)
         2. Business growth metrics (user count at registration time)
+        3. Makes user management and analytics easier
 
         Returns:
-            Unique user code (29 chars: 6 + 1 + 10 + 1 + 7 + 1 + 3)
+            Unique user code (26 digits: 6 + 6 + 4 + 7 + 3)
+
+        See: docs/shared/USER-ID-SYSTEM.md for full documentation
         """
         from datetime import datetime, timezone
         import random
-        import string
 
         now = datetime.now(timezone.utc)
 
-        # YYMMDD (6 chars)
+        # Date part (YYMMDD - 6 digits)
         date_part = now.strftime("%y%m%d")
 
-        # HHMMSSmmmm (10 chars: time with sub-second precision)
-        # Use 4 digits for sub-second: first 4 digits of microseconds (0-9999)
-        time_with_ms = now.strftime("%H%M%S") + f"{now.microsecond // 100:04d}"
+        # Time part (HHMMSS - 6 digits)
+        time_part = now.strftime("%H%M%S")
+
+        # Milliseconds (4 digits, 0.1ms precision: 0000-9999)
+        ms_part = f"{now.microsecond // 100:04d}"
 
         # Get total user count (7 digits, zero-padded)
         result = self.client.table("profiles").select("id", count="exact").execute()
-        user_count = result.count if result.count is not None else 0
-        count_part = f"{user_count:07d}"
+        user_count = (result.count or 0) if hasattr(result, 'count') else 0
+        count_part = f"{user_count + 1:07d}"  # +1 for the user being created
 
-        # Random 3 chars for additional uniqueness
-        chars = string.ascii_uppercase + string.digits
-        random_part = ''.join(random.choices(chars, k=3))
+        # Random 3 digits (000-999) for additional uniqueness
+        random_part = f"{random.randint(0, 999):03d}"
 
-        # Format: YYMMDD_HHMMSSmmmm_UUUUUUU_RRR
-        code = f"{date_part}_{time_with_ms}_{count_part}_{random_part}"
+        # Combine: 6 + 6 + 4 + 7 + 3 = 26 digits (NO separators)
+        code = f"{date_part}{time_part}{ms_part}{count_part}{random_part}"
+
+        # Verify uniqueness (extremely rare collision, but check anyway)
+        existing = self.client.table("profiles").select("id").eq("user_code", code).execute()
+        if existing.data:
+            # Recursive retry with new random suffix (collision is near-impossible)
+            return self.generate_user_code()
 
         return code
 
