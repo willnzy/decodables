@@ -1,8 +1,8 @@
 # Subscriptions 模块深度审查报告
 
 **审查时间**: 2026-01-09
-**审查质量**: ⭐⭐⭐⭐⭐ 完整调用链分析 + P0 修复完成
-**版本**: v3.25 → v3.27
+**审查质量**: ⭐⭐⭐⭐⭐ 完整调用链分析 + 全部问题修复完成
+**版本**: v3.25 → v3.27 (P0) → v3.28 (P1/P2 完整重构)
 
 ---
 
@@ -11,10 +11,10 @@
 ### 审查范围
 
 完整调用链分析:
-1. ✅ API Layer ([api/admin/subscriptions.py](api/admin/subscriptions.py)) - 517 行
-2. ✅ Service Layer ([domains/billing/payment_service.py](domains/billing/payment_service.py)) - 678 行
-3. ✅ Repository Layer (SupabaseUserRepository, SupabasePaymentRepository)
-4. ✅ Test Coverage ([tests/api/admin/test_subscriptions.py](tests/api/admin/test_subscriptions.py)) - 367 行, 22 个测试
+1. ✅ API Layer ([api/admin/subscriptions.py](api/admin/subscriptions.py)) - 236 行 (重构后 -55.8%)
+2. ✅ Service Layer ([domains/subscriptions/subscription_service.py](domains/subscriptions/subscription_service.py)) - 588 行 (新建)
+3. ✅ Repository Layer (SupabaseSubscriptionRepository) - 165 行 (新建)
+4. ✅ Test Coverage - 54 个测试 (22 API + 32 Service), 覆盖率 91.21%
 
 ### 问题汇总
 
@@ -22,11 +22,11 @@
 |--------|------|----------|
 | 🔴 CRITICAL | 2 | ✅ 全部修复 (v3.27) |
 | 🔴 HIGH | 5 | ✅ 全部修复 (v3.27) |
-| 🟡 MEDIUM | 8 | ✅ 1 已修复，7 P1 待处理 |
-| 🟢 LOW | 2 | ✅ 1 已修复，1 P2 待处理 |
-| **总计** | **17** | **7 P0 已修复，10 P1/P2 待处理** |
+| 🟡 MEDIUM | 8 | ✅ 全部修复 (v3.28) |
+| 🟢 LOW | 2 | ✅ 全部修复 (v3.28) |
+| **总计** | **17** | **✅ 17/17 全部修复完成** |
 
-**P0 修复完成**: 所有 CRITICAL + HIGH 问题已在 v3.27 修复 ✅
+**模块状态**: 🎉 **100% 完成** - 所有 P0/P1/P2 问题已修复 + DDD 完整重构 ✅
 
 ---
 
@@ -460,17 +460,151 @@ Payment Service → Stripe API
 
 ---
 
+## v3.28 P1/P2 完整重构 (2026-01-09)
+
+### 重构范围
+
+**新增文件** (5个):
+1. `domains/subscriptions/subscription_service.py` (588 lines) - 业务逻辑层
+2. `infrastructure/repositories/subscription_repository.py` (165 lines) - 数据访问层
+3. `tests/domains/subscriptions/test_subscription_service.py` (1072 lines) - 32 个单元测试
+4. `domains/subscriptions/__init__.py` + `tests/domains/subscriptions/__init__.py`
+
+**修改文件** (2个):
+1. `api/admin/subscriptions.py` - 534 lines → 236 lines (-298 lines, -55.8%)
+2. `infrastructure/repositories/__init__.py` - 添加 SubscriptionRepository 导出
+
+### 架构改进
+
+**重构前** (v3.27):
+```
+API Layer (534 lines)
+├─ 业务逻辑 (404 lines)
+│  ├─ 用户验证 (重复代码 3次)
+│  ├─ 退款逻辑 (91 lines)
+│  ├─ 取消订阅逻辑 (102 lines)
+│  └─ 降级逻辑 (211 lines, 过于复杂)
+└─ 直接调用 Repository
+```
+
+**重构后** (v3.28):
+```
+API Layer (236 lines)
+├─ Request/Response 转换
+└─ 调用 Service
+
+Service Layer (588 lines)
+├─ _verify_user_identity() - 公共验证逻辑
+├─ process_refund() - 退款业务逻辑
+├─ cancel_user_subscription() - 取消订阅业务逻辑
+├─ downgrade_user_subscription() - 降级业务逻辑
+│  ├─ _downgrade_to_free() - 降级到Free
+│  └─ _downgrade_pro_to_starter() - Pro降级Starter
+└─ _extract_plan_name() - 辅助方法
+
+Repository Layer (165 lines)
+├─ get_user_subscription_info()
+├─ update_tier_and_credits()
+└─ record_subscription_change()
+```
+
+### P1/P2 问题修复
+
+#### SUB-MEDIUM-1: refund endpoint 业务逻辑过长 (91 lines) ✅
+- **修复**: 提取到 `SubscriptionService.process_refund()`
+- **效果**: API 层仅保留 27 行 (Request → Service → Response)
+
+#### SUB-MEDIUM-2: cancel endpoint 业务逻辑过长 (102 lines) ✅
+- **修复**: 提取到 `SubscriptionService.cancel_user_subscription()`
+- **效果**: API 层仅保留 28 行
+
+#### SUB-MEDIUM-3: downgrade endpoint 业务逻辑过长 (211 lines) ✅
+- **修复**: 提取到 `SubscriptionService.downgrade_user_subscription()`
+- **效果**: API 层仅保留 28 行
+
+#### SUB-MEDIUM-5: 缺少 SubscriptionRepository ✅
+- **修复**: 创建 `SupabaseSubscriptionRepository` (165 lines)
+- **功能**: 封装订阅相关数据访问操作
+
+#### SUB-MEDIUM-6: 缺少 Response Models ✅
+- **修复**: 添加 3 个 Response Models
+  - `RefundResponse` - 退款响应
+  - `CancelSubscriptionResponse` - 取消订阅响应
+  - `DowngradeSubscriptionResponse` - 降级响应
+
+#### SUB-MEDIUM-7: downgrade 逻辑过于复杂 ✅
+- **修复**: 拆分为 2 个私有方法
+  - `_downgrade_to_free()` - 处理降级到 Free (3 种情况)
+  - `_downgrade_pro_to_starter()` - 处理 Pro → Starter
+
+#### SUB-MEDIUM-8: 重复的 user_code 验证逻辑 ✅
+- **修复**: 提取到 `_verify_user_identity()` 方法
+- **效果**: 3 处重复代码统一为 1 处调用
+
+#### SUB-LOW-2: 测试覆盖率仅 30% ✅
+- **修复**: 新增 32 个 Service 层单元测试
+- **覆盖率**: 91.21% (超过 90% 目标)
+- **测试内容**:
+  - 用户验证 (5 tests)
+  - 退款流程 (8 tests)
+  - 取消订阅 (6 tests)
+  - 降级订阅 (9 tests)
+  - 辅助方法 (4 tests)
+
+### 测试结果
+
+```
+✅ 54/54 测试全部通过
+✅ API 层测试: 22/22 (validation + auth)
+✅ Service 层测试: 32/32 (business logic with mocks)
+✅ Service 层覆盖率: 91.21%
+```
+
+**测试覆盖**:
+- ✅ 所有成功路径 (happy path)
+- ✅ 所有错误处理分支
+- ✅ 边界条件 (amount = 0, no subscription, etc.)
+- ✅ 业务规则验证 (user_code, tier levels, etc.)
+
+### 代码质量提升
+
+| 指标 | 重构前 | 重构后 | 改善 |
+|------|--------|--------|------|
+| API 层代码量 | 534 lines | 236 lines | -55.8% |
+| 单文件最长接口 | 211 lines | 28 lines | -86.7% |
+| 代码重复 | 3 处 user_code 验证 | 1 处 | -66.7% |
+| 测试覆盖率 | ~30% | 91.21% | +203% |
+| 测试数量 | 22 | 54 | +145% |
+
+---
+
 ## 完成状态
 
 | 阶段 | 状态 | 完成时间 |
 |------|------|----------|
 | ⭐⭐⭐⭐⭐ 深度审查 | ✅ 完成 | 2026-01-09 |
-| P0 修复 (CRITICAL + HIGH) | ✅ 完成 | 2026-01-09 |
-| P1 重构 (Service + Repository) | ⏳ 待处理 | TBD |
-| P2 测试覆盖提升 | ⏳ 待处理 | TBD |
+| P0 修复 (CRITICAL + HIGH) | ✅ 完成 | 2026-01-09 v3.27 |
+| P1 重构 (Service + Repository) | ✅ 完成 | 2026-01-09 v3.28 |
+| P2 测试覆盖提升 | ✅ 完成 | 2026-01-09 v3.28 |
 
-**当前版本**: v3.27 (P0 安全修复完成)
+**当前版本**: v3.28 (P0/P1/P2 全部完成)
+**Git Commit**: cf736b5
 
 ---
 
-*审查质量: ⭐⭐⭐⭐⭐ 完整调用链分析 + P0 问题已修复*
+## 总结
+
+**Subscriptions 模块**: 🎉 **100% 完成** - 17/17 问题全部修复
+
+- ✅ P0 (7个): 安全漏洞全部修复
+- ✅ P1 (8个): DDD 重构完成
+- ✅ P2 (2个): 测试覆盖率达标
+- ✅ 代码质量: API层减少55.8%，单文件可读性大幅提升
+- ✅ 测试质量: 覆盖率91.21%，54个测试全部通过
+- ✅ 架构完整: API → Service → Repository 三层分离
+
+**下一步**: 开始 Metrics 模块的五星深度审查
+
+---
+
+*审查质量: ⭐⭐⭐⭐⭐ 完整调用链分析 + 全部问题修复 + DDD 完整重构*
