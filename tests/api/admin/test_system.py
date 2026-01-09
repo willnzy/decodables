@@ -98,7 +98,7 @@ class TestSystemConstants:
 
     def test_valid_value_types(self):
         """Valid value types are defined."""
-        from api.admin.system import VALID_VALUE_TYPES
+        from domains.platform.system.constants import VALID_VALUE_TYPES
 
         assert "text" in VALID_VALUE_TYPES
         assert "json" in VALID_VALUE_TYPES
@@ -109,7 +109,7 @@ class TestSystemConstants:
 
     def test_valid_config_groups(self):
         """Valid config groups are defined."""
-        from api.admin.system import VALID_CONFIG_GROUPS
+        from domains.platform.system.constants import VALID_CONFIG_GROUPS
 
         assert "general" in VALID_CONFIG_GROUPS
         assert "feature_flags" in VALID_CONFIG_GROUPS
@@ -122,7 +122,7 @@ class TestSystemConstants:
 
     def test_cache_key_pattern(self):
         """Cache key pattern matches expected formats."""
-        from api.admin.system import CACHE_KEY_PATTERN
+        from domains.platform.system.constants import CACHE_KEY_PATTERN
 
         # Valid patterns
         assert CACHE_KEY_PATTERN.match("user:123")
@@ -274,28 +274,28 @@ class TestSystemParameterValidation:
     @pytest.mark.parametrize("value_type", ["text", "json", "number", "boolean", "encrypted"])
     def test_valid_value_type_values(self, value_type):
         """Valid value type values are accepted."""
-        from api.admin.system import VALID_VALUE_TYPES
+        from domains.platform.system.constants import VALID_VALUE_TYPES
 
         assert value_type in VALID_VALUE_TYPES
 
     @pytest.mark.parametrize("config_group", ["general", "feature_flags", "payment", "ai", "notification", "security", "cache"])
     def test_valid_config_group_values(self, config_group):
         """Valid config group values are accepted."""
-        from api.admin.system import VALID_CONFIG_GROUPS
+        from domains.platform.system.constants import VALID_CONFIG_GROUPS
 
         assert config_group in VALID_CONFIG_GROUPS
 
     @pytest.mark.parametrize("pattern", ["*", "user:*", "config_*", "key:123"])
     def test_valid_cache_patterns(self, pattern):
         """Valid cache patterns are accepted."""
-        from api.admin.system import CACHE_KEY_PATTERN
+        from domains.platform.system.constants import CACHE_KEY_PATTERN
 
         assert CACHE_KEY_PATTERN.match(pattern)
 
     @pytest.mark.parametrize("pattern", ["key with spaces", "key$special", "key;injection"])
     def test_invalid_cache_patterns(self, pattern):
         """Invalid cache patterns are rejected."""
-        from api.admin.system import CACHE_KEY_PATTERN
+        from domains.platform.system.constants import CACHE_KEY_PATTERN
 
         assert not CACHE_KEY_PATTERN.match(pattern)
 

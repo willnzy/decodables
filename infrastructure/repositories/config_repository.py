@@ -132,12 +132,14 @@ class SupabaseConfigRepository(ConfigRepository):
     @retry_on_network_error()
     async def get_groups(self) -> List[str]:
         """
-        Get distinct config groups.
+        Get distinct config groups with OOM protection.
+
+        SYS-MEDIUM-3: Added .limit(10000) for OOM protection.
 
         Returns:
             List of group names
         """
-        result = self.client.table("system_configs").select("config_group").execute()
+        result = self.client.table("system_configs").select("config_group").limit(10000).execute()
         groups = set(
             row.get("config_group")
             for row in (result.data or [])
