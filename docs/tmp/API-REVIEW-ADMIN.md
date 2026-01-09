@@ -2,9 +2,9 @@
 
 > **创建日期**: 2026-01-08
 > **总接口数**: 125 个 (Admin 123 + Health 2)
-> **当前阶段**: 进行中
+> **当前阶段**: ✅ 已完成
 > **最后更新**: 2026-01-09
-> **当前进度**: 123/125 (98%)
+> **当前进度**: 125/125 (100%) 🎉
 
 ---
 
@@ -736,14 +736,26 @@ Admin API 作为内部管理工具，有以下特点：
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |
 |------|------|------|------|------|------|
-| 124 | health_check | GET | /health | api/health.py | 31 |
-| 125 | detailed_health_check | GET | /health/detailed | api/health.py | 64 |
+| 124 | health_check | GET | /health | api/health.py | 39 |
+| 125 | detailed_health_check | GET | /health/detailed | api/health.py | 73 |
 
 **测试用例 Checklist**
-- [ ] #124 基础健康检查
-- [ ] #125 详细健康检查 (数据库/缓存/外部服务)
+- [x] #124 基础健康检查
+- [x] #125 详细健康检查 (数据库/缓存/外部服务)
 
-**完成状态**: 未开始
+**发现的问题**:
+
+| 级别 | 编号 | 问题描述 | 修复方案 |
+|------|------|----------|----------|
+| 🟡 MEDIUM | HEALTH-MEDIUM-1 | 2个端点缺少限流 | ✅ 已添加 (60/min, 30/min) |
+| 🟢 LOW | HEALTH-LOW-1 | Helper 函数暴露详细错误信息 | ✅ 已限制 |
+| 🟢 LOW | HEALTH-LOW-2 | `/health/detailed` 端点无认证保护 | ✅ 已添加 require_admin |
+
+**修改文件**:
+- `api/health.py` - v3.24 → v3.25
+- `tests/api/test_health.py` - 33 个测试用例 (包含边界测试和异常测试)
+
+**完成状态**: ✅ 完成 (33/33 测试通过)
 
 ---
 

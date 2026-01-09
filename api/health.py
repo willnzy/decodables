@@ -3,20 +3,28 @@ Health Check Router - Railway deployment monitoring
 健康检查路由 - 用于 Railway 部署监控
 
 @module api.health
-@version 3.24
+@version 3.25
+
+Changes:
+- v3.25: Security improvements
+  - HEALTH-MEDIUM-1: Added rate limiting to both endpoints
+  - HEALTH-LOW-1: Limited error exposure in helper functions
+  - HEALTH-LOW-2: Added admin authentication to /health/detailed
 
 Endpoints:
-- GET /health - Basic health check
-- GET /health/detailed - Detailed health with queue status
+- GET /health - Basic health check (public)
+- GET /health/detailed - Detailed health with queue status (admin only)
 """
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 
+from dependencies import require_admin
 from core.cache.redis_provider import is_redis_available, get_redis_info
 from core.database import get_supabase_client
+from infrastructure.rate_limiter import limiter
 from config import API_VERSION, ENV
 
 logger = logging.getLogger(__name__)
@@ -29,7 +37,8 @@ router = APIRouter(tags=["health"])
 # ==========================================
 
 @router.get("/health")
-async def health_check():
+@limiter.limit("60/minute")
+async def health_check(request: Request):
     """
     Basic health check for Railway monitoring.
 
@@ -62,9 +71,12 @@ async def health_check():
 
 
 @router.get("/health/detailed")
-async def detailed_health_check():
+@limiter.limit("30/minute")
+async def detailed_health_check(request: Request, admin: dict = Depends(require_admin)):
     """
     Detailed health check with queue and worker status.
+
+    **Requires admin authentication** (v3.25: HEALTH-LOW-2)
 
     Provides:
     - Redis connection info
@@ -117,6 +129,7 @@ def check_supabase_connection() -> bool:
         result = supabase.table("profiles").select("id").limit(1).execute()
         return True
     except Exception as e:
+        # v3.25: HEALTH-LOW-1 - Limited error exposure
         logger.warning(f"[Health] Supabase check failed: {e}")
         return False
 
@@ -144,8 +157,9 @@ def get_queue_info() -> Optional[dict]:
                     "scheduled": queue.scheduled_job_registry.count,
                 }
             except Exception as e:
-                logger.warning(f"[Health] Failed to get {queue_name} queue stats: {e}")
-                queue_stats[queue_name] = {"error": str(e)}
+                # v3.25: HEALTH-LOW-1 - Limited error exposure
+                logger.warning(f"[Health] Failed to get {queue_name} queue stats")
+                queue_stats[queue_name] = {"error": "Failed to retrieve queue stats"}
 
         # Get worker count
         from rq import Worker
@@ -161,6 +175,7 @@ def get_queue_info() -> Optional[dict]:
             }
         }
     except Exception as e:
+        # v3.25: HEALTH-LOW-1 - Limited error exposure
         logger.error(f"[Health] Failed to get queue info: {e}")
         return None
 
