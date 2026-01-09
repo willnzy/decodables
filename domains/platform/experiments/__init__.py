@@ -4,14 +4,20 @@ Experiments Service Package
 Modular A/B testing experiment service.
 
 @package services.experiments
-@version 3.27
+@version 3.29
 
+Changes in v3.29:
+- Added ExperimentService class for DDD architecture
+- API layer now uses Depends(get_experiment_service) for dependency injection
+- CRUD operations migrated to Service layer
+- Legacy module functions kept for analysis/tracking (not yet migrated)
 Changes in v3.27:
 - Fixed assignment.py: status enum ('active' not 'running') + user_id field fixes
 - Fixed tracking.py: user_id field + added missing tables to schema
 """
 
 from .core import supabase, logger, CACHE_TTL
+from .service import ExperimentService  # v3.29: DDD Service
 from .crud import (
     create_experiment,
     get_experiment,
@@ -47,7 +53,9 @@ from .utils import (
 __all__ = [
     # Core
     'supabase', 'logger',
-    # CRUD
+    # Service (v3.29: DDD)
+    'ExperimentService',
+    # CRUD (legacy module functions)
     'create_experiment', 'get_experiment', 'get_experiment_by_id',
     'list_experiments', 'update_experiment', 'update_experiment_status',
     'delete_experiment', 'get_active_experiments',
