@@ -1,5 +1,5 @@
 """
-Tests for Admin Tasks Management API (v3.25)
+Tests for Admin Tasks Management API (v3.26)
 
 Test coverage:
 - Authentication (require_admin)
@@ -7,10 +7,11 @@ Test coverage:
 - Rate limiting
 - Parameter validation (limit range, status/task_name enum)
 - Error message sanitization
+- DDD architecture (Repository pattern)
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from fastapi import HTTPException, Request
 from datetime import datetime, timezone
 
@@ -53,78 +54,79 @@ def test_valid_task_names_constant():
 
 
 # ==========================================
-# Test GET /status (v3.25)
+# Test GET /status (v3.26: DDD架构)
 # ==========================================
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_tasks_status_success(mock_supabase):
-    """GET /status should return task status."""
-    mock_supabase.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = Mock(
-        data=[
-            {
-                "task_name": "hourly",
-                "started_at": "2026-01-09T10:00:00Z",
-                "status": "success",
-                "duration_ms": 1500,
-                "error_message": None
-            }
-        ]
-    )
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_tasks_status_success(mock_get_db):
+    """GET /status should return task status via Repository."""
+    # Mock Repository response
+    mock_repo = AsyncMock()
+    mock_repo.get_task_status = AsyncMock(return_value={
+        "hourly": {
+            "last_run": "2026-01-09T10:00:00Z",
+            "last_status": "success",
+            "last_duration_ms": 1500,
+            "last_error": None,
+            "recent_runs": []
+        }
+    })
 
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        mock_request = Mock(spec=Request)
+        admin = {"id": "admin123", "role": "admin"}
 
-    result = await get_tasks_status(request=mock_request, admin=admin)
+        result = await get_tasks_status(request=mock_request, admin=admin)
 
-    assert "tasks" in result
-    assert "hourly" in result["tasks"]
-    assert result["tasks"]["hourly"]["last_status"] == "success"
+        assert "tasks" in result
+        assert "hourly" in result["tasks"]
+        assert result["tasks"]["hourly"]["last_status"] == "success"
 
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_tasks_status_error_sanitization(mock_supabase):
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_tasks_status_error_sanitization(mock_get_db):
     """GET /status should sanitize error messages."""
-    mock_supabase.table.side_effect = Exception("Database connection failed with credentials abc123")
+    mock_get_db.side_effect = Exception("Database connection failed with credentials abc123")
 
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    result = await get_tasks_status(request=mock_request, admin=admin)
+    with pytest.raises(HTTPException) as exc_info:
+        await get_tasks_status(request=mock_request, admin=admin)
 
-    assert result["tasks"] == {}
-    assert result["error"] == "Failed to retrieve task status"
-    assert "abc123" not in result["error"]
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to retrieve task status"
 
 
 # ==========================================
-# Test GET /logs (v3.25)
+# Test GET /logs (v3.26: DDD架构)
 # ==========================================
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_task_logs_success(mock_supabase):
-    """GET /logs should return task logs."""
-    mock_query = Mock()
-    mock_query.order.return_value.limit.return_value.execute.return_value = Mock(
-        data=[{"task_name": "daily", "status": "success"}]
-    )
-    mock_supabase.table.return_value.select.return_value = mock_query
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_task_logs_success(mock_get_db):
+    """GET /logs should return task logs via Repository."""
+    mock_repo = AsyncMock()
+    mock_repo.get_task_logs = AsyncMock(return_value=[
+        {"task_name": "daily", "status": "success"}
+    ])
 
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        mock_request = Mock(spec=Request)
+        admin = {"id": "admin123", "role": "admin"}
 
-    result = await get_task_logs(
-        request=mock_request,
-        task_name=None,
-        status=None,
-        limit=100,
-        admin=admin
-    )
+        result = await get_task_logs(
+            request=mock_request,
+            task_name=None,
+            status=None,
+            limit=100,
+            admin=admin
+        )
 
-    assert "logs" in result
-    assert len(result["logs"]) == 1
+        assert "logs" in result
+        assert len(result["logs"]) == 1
 
 
 @pytest.mark.asyncio
@@ -166,16 +168,15 @@ async def test_get_task_logs_invalid_task_name():
 
 
 @pytest.mark.asyncio
-async def test_get_task_logs_valid_status():
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_task_logs_valid_status(mock_get_db):
     """GET /logs should accept valid status values."""
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    mock_repo = AsyncMock()
+    mock_repo.get_task_logs = AsyncMock(return_value=[])
 
-    with patch('api.admin.tasks_mgmt.supabase') as mock_supabase:
-        mock_query = Mock()
-        mock_query.eq.return_value = mock_query
-        mock_query.order.return_value.limit.return_value.execute.return_value = Mock(data=[])
-        mock_supabase.table.return_value.select.return_value = mock_query
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        mock_request = Mock(spec=Request)
+        admin = {"id": "admin123", "role": "admin"}
 
         for status in VALID_TASK_STATUSES:
             result = await get_task_logs(
@@ -189,16 +190,15 @@ async def test_get_task_logs_valid_status():
 
 
 @pytest.mark.asyncio
-async def test_get_task_logs_valid_task_name():
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_task_logs_valid_task_name(mock_get_db):
     """GET /logs should accept valid task_name values."""
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    mock_repo = AsyncMock()
+    mock_repo.get_task_logs = AsyncMock(return_value=[])
 
-    with patch('api.admin.tasks_mgmt.supabase') as mock_supabase:
-        mock_query = Mock()
-        mock_query.eq.return_value = mock_query
-        mock_query.order.return_value.limit.return_value.execute.return_value = Mock(data=[])
-        mock_supabase.table.return_value.select.return_value = mock_query
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        mock_request = Mock(spec=Request)
+        admin = {"id": "admin123", "role": "admin"}
 
         for task_name in VALID_TASK_NAMES:
             result = await get_task_logs(
@@ -212,99 +212,103 @@ async def test_get_task_logs_valid_task_name():
 
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_task_logs_error_sanitization(mock_supabase):
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_task_logs_error_sanitization(mock_get_db):
     """GET /logs should sanitize error messages."""
-    mock_supabase.table.side_effect = Exception("Internal database error with token xyz789")
+    mock_get_db.side_effect = Exception("Internal database error with token xyz789")
 
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    result = await get_task_logs(
-        request=mock_request,
-        task_name=None,
-        status=None,
-        limit=100,
-        admin=admin
-    )
+    with pytest.raises(HTTPException) as exc_info:
+        await get_task_logs(
+            request=mock_request,
+            task_name=None,
+            status=None,
+            limit=100,
+            admin=admin
+        )
 
-    assert result["logs"] == []
-    assert result["error"] == "Failed to retrieve task logs"
-    assert "xyz789" not in result["error"]
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to retrieve task logs"
 
 
 # ==========================================
-# Test GET /health (v3.25)
+# Test GET /health (v3.26: DDD架构)
 # ==========================================
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_tasks_health_success(mock_supabase):
-    """GET /health should return task health status."""
-    mock_supabase.table.return_value.select.return_value.gte.return_value.execute.return_value = Mock(
-        data=[
-            {"task_name": "hourly", "status": "success"},
-            {"task_name": "daily", "status": "success"}
-        ]
-    )
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_tasks_health_success(mock_get_db):
+    """GET /health should return task health status via Repository."""
+    mock_repo = AsyncMock()
+    mock_repo.get_tasks_health = AsyncMock(return_value={
+        "total_runs": 2,
+        "failed_runs": 0,
+        "success_rate": 100.0,
+        "period_start": "2026-01-09T09:00:00Z"
+    })
 
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        with patch('api.admin.tasks_mgmt.scheduler', create=True) as mock_scheduler:
+            mock_scheduler.running = True
 
-    with patch('api.admin.tasks_mgmt.scheduler', create=True) as mock_scheduler:
-        mock_scheduler.running = True
+            mock_request = Mock(spec=Request)
+            admin = {"id": "admin123", "role": "admin"}
 
-        result = await get_tasks_health(request=mock_request, admin=admin)
+            result = await get_tasks_health(request=mock_request, admin=admin)
 
-        assert result["status"] == "healthy"
-        assert result["scheduler"] == "running"
-        assert result["last_hour"]["total_runs"] == 2
-        assert result["last_hour"]["failed_runs"] == 0
-        assert result["last_hour"]["success_rate"] == 100.0
+            assert result["status"] == "healthy"
+            assert result["scheduler"] == "running"
+            assert result["last_hour"]["total_runs"] == 2
+            assert result["last_hour"]["failed_runs"] == 0
+            assert result["last_hour"]["success_rate"] == 100.0
 
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_tasks_health_degraded(mock_supabase):
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_tasks_health_degraded(mock_get_db):
     """GET /health should return degraded when tasks fail."""
-    mock_supabase.table.return_value.select.return_value.gte.return_value.execute.return_value = Mock(
-        data=[
-            {"task_name": "hourly", "status": "success"},
-            {"task_name": "daily", "status": "failed"}
-        ]
-    )
+    mock_repo = AsyncMock()
+    mock_repo.get_tasks_health = AsyncMock(return_value={
+        "total_runs": 2,
+        "failed_runs": 1,
+        "success_rate": 50.0,
+        "period_start": "2026-01-09T09:00:00Z"
+    })
 
-    mock_request = Mock(spec=Request)
-    admin = {"id": "admin123", "role": "admin"}
+    with patch('api.admin.tasks_mgmt.SupabaseTasksRepository', return_value=mock_repo):
+        with patch('api.admin.tasks_mgmt.scheduler', create=True) as mock_scheduler:
+            mock_scheduler.running = True
 
-    with patch('api.admin.tasks_mgmt.scheduler', create=True) as mock_scheduler:
-        mock_scheduler.running = True
+            mock_request = Mock(spec=Request)
+            admin = {"id": "admin123", "role": "admin"}
 
-        result = await get_tasks_health(request=mock_request, admin=admin)
+            result = await get_tasks_health(request=mock_request, admin=admin)
 
-        assert result["status"] == "degraded"
-        assert result["last_hour"]["failed_runs"] == 1
-        assert result["last_hour"]["success_rate"] == 50.0
+            assert result["status"] == "degraded"
+            assert result["last_hour"]["failed_runs"] == 1
+            assert result["last_hour"]["success_rate"] == 50.0
 
 
 @pytest.mark.asyncio
-@patch('api.admin.tasks_mgmt.supabase')
-async def test_get_tasks_health_error_sanitization(mock_supabase):
+@patch('api.admin.tasks_mgmt.get_database_client')
+async def test_get_tasks_health_error_sanitization(mock_get_db):
     """GET /health should sanitize error messages."""
-    mock_supabase.table.side_effect = Exception("Database error with sensitive info")
+    mock_get_db.side_effect = Exception("Database error with sensitive info")
 
     mock_request = Mock(spec=Request)
     admin = {"id": "admin123", "role": "admin"}
 
-    result = await get_tasks_health(request=mock_request, admin=admin)
+    with pytest.raises(HTTPException) as exc_info:
+        await get_tasks_health(request=mock_request, admin=admin)
 
-    assert result["status"] == "error"
-    assert result["error"] == "Failed to retrieve task health status"
-    assert "sensitive" not in result["error"]
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Failed to retrieve task health status"
 
 
 # ==========================================
-# Test POST /{task_name}/run (v3.25)
+# Test POST /{task_name}/run (v3.26: 完善 cleanup/retention)
 # ==========================================
 
 @pytest.mark.asyncio
@@ -315,7 +319,7 @@ async def test_run_task_manually_success():
 
     # Mock the imported function inside the endpoint
     with patch('scheduler.run_aggregation_now') as mock_run:
-        mock_run.return_value = {"success": True}
+        mock_run.return_value = {"status": "completed", "task_type": "hourly"}
 
         result = await run_task_manually(
             request=mock_request,
@@ -369,15 +373,16 @@ async def test_run_task_manually_valid_task_names():
     admin = {"id": "admin123", "role": "admin"}
 
     with patch('scheduler.run_aggregation_now') as mock_run:
-        mock_run.return_value = {"success": True}
+        mock_run.return_value = {"status": "completed", "task_type": "hourly"}
 
-        for task_name in VALID_TASK_NAMES:
-            result = await run_task_manually(
-                request=mock_request,
-                task_name=task_name,
-                admin=admin
-            )
-            assert result["status"] == "triggered"
+        with patch('scheduler.run_storage_cleanup') as mock_cleanup:
+            for task_name in VALID_TASK_NAMES:
+                result = await run_task_manually(
+                    request=mock_request,
+                    task_name=task_name,
+                    admin=admin
+                )
+                assert result["status"] == "triggered"
 
 
 @pytest.mark.asyncio
@@ -398,4 +403,3 @@ async def test_run_task_manually_error_sanitization():
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.detail == "Failed to run task"
-        assert "xyz" not in str(exc_info.value.detail)

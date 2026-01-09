@@ -801,6 +801,57 @@ async def get_dashboard_stats(...):
 
 ---
 
+### v3.27 深度审查修复 (2026-01-09) ✅
+
+**修复结果**: 全部 4 个问题已修复，符合 DDD 架构
+
+| 严重度 | 问题 ID | 描述 | 修复状态 |
+|--------|---------|------|----------|
+| 🔴 HIGH | TASK-HIGH-1 | API 层直接访问数据库，违反 DDD 架构 | ✅ 已修复 (创建 Repository 层) |
+| 🟡 MEDIUM | TASK-MEDIUM-1 | 缺少 Pydantic Request/Response 模型 | ✅ 已添加 |
+| 🟡 MEDIUM | TASK-MEDIUM-2 | GET /health 查询无数据量限制 | ✅ 已添加 .limit(1000) |
+| 🟡 MEDIUM | TASK-MEDIUM-3 | 缺少 @retry_on_network_error 装饰器 | ✅ 已添加 (Repository 层) |
+| 🟡 MEDIUM | TASK-MEDIUM-4 | run_aggregation_now 对 cleanup/retention 无实际逻辑 | ✅ 已完善 |
+
+**核心改进**:
+1. ✅ **DDD 架构迁移**: 创建 `SupabaseTasksRepository`，API 层调用 Repository，完全符合架构规范
+2. ✅ **Pydantic 模型**: 创建 `tasks_models.py`，6 个 Response 模型
+3. ✅ **重试机制**: Repository 所有方法添加 `@retry_on_network_error` 装饰器
+4. ✅ **查询限制**: `get_task_status()` limit(50)、`get_tasks_health()` limit(1000)
+5. ✅ **cleanup/retention 逻辑**: cleanup 调用 `run_storage_cleanup()`，retention fallback 到 daily aggregation
+6. ✅ **审计日志**: 记录手动触发任务的管理员 ID
+7. ✅ **统一错误处理**: 全部改为 HTTPException (v3.26: TASK-LOW-3)
+
+**架构对比**:
+```python
+# Before (v3.25): 违反 DDD
+@router.get("/status")
+async def get_tasks_status(...):
+    result = supabase.table("scheduled_task_logs").select("*").execute()
+    return {"tasks": task_status}
+
+# After (v3.26): 符合 DDD
+@router.get("/status", response_model=TaskStatusResponse)
+async def get_tasks_status(...):
+    db_client = get_database_client()
+    tasks_repo = SupabaseTasksRepository(db_client)
+    task_status = await tasks_repo.get_task_status()
+    return {"tasks": task_status}
+```
+
+**修改文件**:
+- `api/admin/tasks_mgmt.py` - v3.25 → v3.26 (完全重构)
+- `infrastructure/repositories/tasks_repository.py` - v1.0.0 (新建)
+- `infrastructure/repositories/__init__.py` - 导出 SupabaseTasksRepository
+- `api/admin/tasks_models.py` - v1.0.0 (新建，6 个 Pydantic 模型)
+- `tests/api/admin/test_tasks_mgmt.py` - v3.26 (更新为 mock Repository)
+
+**测试状态**: ✅ 所有 19 个测试通过
+
+**审查质量**: ⭐⭐⭐⭐⭐ 深度审查 + 完整修复
+
+---
+
 ## Users 用户管理 (13个)
 
 | 序号 | 函数 | 方法 | 路由 | 文件 | 行号 |

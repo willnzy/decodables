@@ -22,6 +22,7 @@ from .admin_repository import (
     SupabaseAdminModerationRepository,
     SupabaseAdminStatsRepository,
 )
+from .tasks_repository import SupabaseTasksRepository
 
 __all__ = [
     'SupabaseCreditRepository',
@@ -39,4 +40,5 @@ __all__ = [
     'SupabaseAdminUsersRepository',
     'SupabaseAdminModerationRepository',
     'SupabaseAdminStatsRepository',
+    'SupabaseTasksRepository',
 ]
