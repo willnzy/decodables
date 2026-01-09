@@ -2,7 +2,13 @@
 Notifications 模块 Domain Service - 通知管理业务逻辑
 
 @module domains.platform.notifications.service
-@version 3.31 (Audit Decorator Migration)
+@version 3.32 (Repository Dependency Injection)
+
+Changes in v3.32:
+- Added Repository dependency injection (Task 2)
+- Added factory functions for Repository instances
+- All service functions now accept optional Repository parameters
+- Improved testability and SOLID compliance
 
 Changes in v3.31:
 - Applied @audit_log decorator to 3 functions (Task 1)
@@ -17,15 +23,80 @@ Changes in v3.30:
 - Moved broadcast logic from Repository to Service (NTF-MEDIUM-1)
 
 Architecture:
-- API → Service → Repository
+- API → Service → Repository (with DI support)
 """
 
 import logging
 from typing import Optional, List, Dict, Any
 
 from core.audit import audit_log
+from domains.platform.repository import INotificationRepository
 
 logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Repository Factory Functions
+# ==========================================
+
+def _get_notification_repo(repo: Optional[INotificationRepository] = None) -> INotificationRepository:
+    """
+    获取 NotificationRepository 实例 (依赖注入或默认实例).
+
+    Args:
+        repo: 可选的 Repository 实例 (用于依赖注入/测试)
+
+    Returns:
+        INotificationRepository 实例
+    """
+    if repo:
+        return repo
+
+    from core.database import get_database_client
+    from infrastructure.repositories import SupabaseNotificationRepository
+
+    db_client = get_database_client()
+    return SupabaseNotificationRepository(db_client)
+
+
+def _get_stats_repo(repo=None):
+    """
+    获取 AdminStatsRepository 实例 (依赖注入或默认实例).
+
+    Args:
+        repo: 可选的 Repository 实例 (用于依赖注入/测试)
+
+    Returns:
+        AdminStatsRepository 实例
+    """
+    if repo:
+        return repo
+
+    from core.database import get_database_client
+    from infrastructure.repositories import SupabaseAdminStatsRepository
+
+    db_client = get_database_client()
+    return SupabaseAdminStatsRepository(db_client)
+
+
+def _get_admin_users_repo(repo=None):
+    """
+    获取 AdminUsersRepository 实例 (依赖注入或默认实例).
+
+    Args:
+        repo: 可选的 Repository 实例 (用于依赖注入/测试)
+
+    Returns:
+        AdminUsersRepository 实例
+    """
+    if repo:
+        return repo
+
+    from core.database import get_database_client
+    from infrastructure.repositories import SupabaseAdminUsersRepository
+
+    db_client = get_database_client()
+    return SupabaseAdminUsersRepository(db_client)
 
 
 # ==========================================
@@ -42,10 +113,12 @@ async def send_broadcast(
     content: str,
     target_group: str,
     admin_id: str,
+    notification_repo: Optional[INotificationRepository] = None,
 ) -> Dict[str, Any]:
     """
     发送广播通知.
 
+    v3.32: Added Repository dependency injection
     v3.31: Applied @audit_log decorator
     v3.30: DDD Migration
     - 从 API 层迁移
@@ -56,15 +129,16 @@ async def send_broadcast(
         content: 通知内容
         target_group: 目标用户组 (all/free/starter/pro)
         admin_id: 管理员 ID
+        notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 
     Returns:
         广播结果
     """
+    repo = _get_notification_repo(notification_repo)
+
     from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
 
     db_client = get_database_client()
-    notification_repo = SupabaseNotificationRepository(db_client)
 
     # Business Logic: Query target users based on group
     if target_group == "all":
@@ -80,7 +154,7 @@ async def send_broadcast(
     # Create notifications for all users
     notifications = []
     for user_id in user_ids:
-        notification = await notification_repo.create_notification(
+        notification = await repo.create_notification(
             user_id=user_id,
             title=title,
             message=content,
@@ -112,10 +186,12 @@ async def send_to_user(
     content: str,
     notification_type: str,
     admin_id: str,
+    notification_repo: Optional[INotificationRepository] = None,
 ) -> Dict[str, Any]:
     """
     发送通知给单个用户.
 
+    v3.32: Added Repository dependency injection
     v3.31: Applied @audit_log decorator
     v3.30: DDD Migration - 从 API 层迁移
 
@@ -125,17 +201,14 @@ async def send_to_user(
         content: 通知内容
         notification_type: 通知类型
         admin_id: 管理员 ID
+        notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 
     Returns:
         发送结果
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
+    repo = _get_notification_repo(notification_repo)
 
-    db_client = get_database_client()
-    notification_repo = SupabaseNotificationRepository(db_client)
-
-    notification = await notification_repo.send_notification_to_user(
+    notification = await repo.send_notification_to_user(
         user_id=user_id,
         title=title,
         content=content,
@@ -160,10 +233,12 @@ async def send_to_users(
     content: str,
     notification_type: str,
     admin_id: str,
+    notification_repo: Optional[INotificationRepository] = None,
 ) -> Dict[str, Any]:
     """
     批量发送通知.
 
+    v3.32: Added Repository dependency injection
     v3.31: Applied @audit_log decorator
     v3.30: DDD Migration - 从 API 层迁移
 
@@ -173,17 +248,14 @@ async def send_to_users(
         content: 通知内容
         notification_type: 通知类型
         admin_id: 管理员 ID
+        notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 
     Returns:
         发送结果
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
+    repo = _get_notification_repo(notification_repo)
 
-    db_client = get_database_client()
-    notification_repo = SupabaseNotificationRepository(db_client)
-
-    notifications = await notification_repo.send_notification_to_users(
+    notifications = await repo.send_notification_to_users(
         user_ids=user_ids,
         title=title,
         content=content,
@@ -194,44 +266,43 @@ async def send_to_users(
     return {"status": "sent", "count": len(notifications)}
 
 
-async def get_stats() -> Dict[str, Any]:
+async def get_stats(
+    notification_repo: Optional[INotificationRepository] = None,
+) -> Dict[str, Any]:
     """
     获取通知统计.
 
+    v3.32: Added Repository dependency injection
     v3.30: DDD Migration - 从 API 层迁移
+
+    Args:
+        notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 
     Returns:
         统计数据
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
-
-    db_client = get_database_client()
-    notification_repo = SupabaseNotificationRepository(db_client)
-
-    return await notification_repo.get_all_notification_stats()
+    repo = _get_notification_repo(notification_repo)
+    return await repo.get_all_notification_stats()
 
 
 async def get_history(
     offset: int = 0,
     limit: int = 50,
+    notification_repo: Optional[INotificationRepository] = None,
 ) -> Dict[str, Any]:
     """
     获取通知历史.
 
+    v3.32: Added Repository dependency injection
     v3.30: DDD Migration - 从 API 层迁移
 
     Args:
         offset: 分页偏移
         limit: 分页大小
+        notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 
     Returns:
         通知历史记录
     """
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
-
-    db_client = get_database_client()
-    notification_repo = SupabaseNotificationRepository(db_client)
-
-    return await notification_repo.get_notification_history(offset=offset, limit=limit)
+    repo = _get_notification_repo(notification_repo)
+    return await repo.get_notification_history(offset=offset, limit=limit)
