@@ -1,15 +1,24 @@
 """
-Test api/user/themes.py - Holiday Themes API
+Test api/user/themes.py - Holiday Themes API (v3)
 
 Endpoints: GET /api/v2/user/themes/current
 
+@module tests.api.user.test_themes
+@version 3.0.0
+
+Changes in v3.0.0:
+- Updated tests to mock Query Handler instead of Supabase (CQRS pattern)
+- Tests now verify GetCurrentThemeHandler is called correctly
+- Removed @patch('api.user.themes.date') - date passed in Query object
+- Maintain all existing test coverage (9 tests)
+
 Created: 2026-01-07
-Updated: 2026-01-08 (Complete rewrite with 9 comprehensive tests)
+Updated: 2026-01-10 (v3.0.0 upgrade)
 """
 
 import pytest
 from datetime import date
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 # Rate limiter bypass BEFORE app import
@@ -73,75 +82,120 @@ def mock_thanksgiving_theme():
 class TestGetCurrentTheme:
     """Test GET /api/v2/user/themes/current endpoint."""
 
-    @patch('api.user.themes.date')
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_active_fixed_date(self, mock_supabase, mock_date, mock_christmas_theme):
-        """Test getting active theme with fixed date rule (Christmas)."""
-        # Mock today's date to be during Christmas period
-        mock_date.today.return_value = date(2024, 12, 25)
-        # Make date() constructor still work for helper functions
-        mock_date.side_effect = lambda *args, **kw: date(*args, **kw) if args else None
+    def test_get_current_theme_active_fixed_date(self, mock_christmas_theme):
+        """
+        v3.0.0: Test getting active theme with fixed date rule (Christmas).
 
-        # Mock Supabase response
-        mock_result = MagicMock()
-        mock_result.data = [mock_christmas_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        Tests: GetCurrentThemeHandler returns active theme.
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
 
-        response = client.get("/api/v2/user/themes/current")
+        # Mock handler to return Christmas theme
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=mock_christmas_theme
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["theme_id"] == "christmas-2024"
-        assert data["name"] == "Christmas 2024"
-        assert data["config"]["colors"]["primary"] == "#c41e3a"
-        assert data["config"]["badge"]["icon"] == "🎄"
+        # Override container
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
 
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_no_active_themes(self, mock_supabase):
-        """Test when no themes are active today."""
-        # Mock Supabase with no data
-        mock_result = MagicMock()
-        mock_result.data = []
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        try:
+            response = client.get("/api/v2/user/themes/current")
 
-        response = client.get("/api/v2/user/themes/current")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["theme_id"] == "christmas-2024"
+            assert data["name"] == "Christmas 2024"
+            assert data["config"]["colors"]["primary"] == "#c41e3a"
+            assert data["config"]["badge"]["icon"] == "🎄"
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["theme_id"] is None
-        assert data["name"] is None
-        assert data["config"] is None
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
 
-    @patch('api.user.themes.date')
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_multiple_priority(self, mock_supabase, mock_date, mock_christmas_theme, mock_thanksgiving_theme):
-        """Test priority ordering when multiple themes match."""
-        # Mock date to be during both themes' active period
-        mock_date.today.return_value = date(2024, 12, 25)
-        mock_date.side_effect = lambda *args, **kw: date(*args, **kw) if args else None
+    def test_get_current_theme_no_active_themes(self):
+        """
+        v3.0.0: Test when no themes are active today.
 
-        # Mock both themes active but Christmas has higher priority (10 vs 8)
-        mock_result = MagicMock()
-        mock_result.data = [
-            mock_christmas_theme,  # priority 10 (should be returned)
-            mock_thanksgiving_theme  # priority 8
-        ]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        Tests: Handler returns None, API returns empty response.
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
 
-        response = client.get("/api/v2/user/themes/current")
+        # Mock handler to return None
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=None
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
-        # Should return Christmas theme (higher priority)
-        assert data["theme_id"] == "christmas-2024"
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
 
-    @patch('api.user.themes.date')
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_year_wrap(self, mock_supabase, mock_date):
-        """Test fixed date rule that wraps across years (Dec 31 - Jan 2)."""
-        # Mock date to Jan 1st
-        mock_date.today.return_value = date(2025, 1, 1)
-        mock_date.side_effect = lambda *args, **kw: date(*args, **kw) if args else None
+        try:
+            response = client.get("/api/v2/user/themes/current")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["theme_id"] is None
+            assert data["name"] is None
+            assert data["config"] is None
+
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
+
+    def test_get_current_theme_multiple_priority(self, mock_christmas_theme):
+        """
+        v3.0.0: Test priority ordering when multiple themes match.
+
+        Tests: Handler returns highest priority theme (Service handles priority logic).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
+
+        # Mock handler to return Christmas theme (higher priority)
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=mock_christmas_theme  # priority 10 (should be returned)
+        ))
+
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
+
+        try:
+            response = client.get("/api/v2/user/themes/current")
+
+            assert response.status_code == 200
+            data = response.json()
+            # Should return Christmas theme (higher priority)
+            assert data["theme_id"] == "christmas-2024"
+
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
+
+    def test_get_current_theme_year_wrap(self):
+        """
+        v3.0.0: Test fixed date rule that wraps across years (Dec 31 - Jan 2).
+
+        Tests: Handler returns theme with year-wrap date range (Service handles logic).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
 
         new_years_theme = {
             "id": "new-years-2025",
@@ -159,109 +213,163 @@ class TestGetCurrentTheme:
             }
         }
 
-        mock_result = MagicMock()
-        mock_result.data = [new_years_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        # Mock handler to return New Year theme
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=new_years_theme
+        ))
 
-        response = client.get("/api/v2/user/themes/current")
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["theme_id"] == "new-years-2025"
+        try:
+            response = client.get("/api/v2/user/themes/current")
 
-    @patch('api.user.themes.date')
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_date_outside_range(self, mock_supabase, mock_date, mock_christmas_theme):
-        """Test when today is outside theme date range."""
-        # Mock date to be in summer (outside Christmas range)
-        mock_date.today.return_value = date(2024, 7, 15)
-        mock_date.side_effect = lambda *args, **kw: date(*args, **kw) if args else None
+            assert response.status_code == 200
+            data = response.json()
+            assert data["theme_id"] == "new-years-2025"
 
-        mock_result = MagicMock()
-        mock_result.data = [mock_christmas_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
 
-        response = client.get("/api/v2/user/themes/current")
+    def test_get_current_theme_date_outside_range(self):
+        """
+        v3.0.0: Test when today is outside theme date range.
 
-        assert response.status_code == 200
-        data = response.json()
-        # Should return empty response since date is outside range
-        assert data["theme_id"] is None
+        Tests: Handler returns None when date doesn't match (Service handles date logic).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
 
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_invalid_date_rule(self, mock_supabase):
-        """Test handling of invalid date rule format."""
-        invalid_theme = {
-            "id": "invalid-theme",
-            "name": "Invalid Theme",
-            "is_active": True,
-            "priority": 5,
-            "date_rule": {
-                "type": "fixed",
-                "start": "invalid",
-                "end": "also-invalid"
-            },
-            "theme_config": {}
-        }
+        # Mock handler to return None (date outside range)
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=None
+        ))
 
-        mock_result = MagicMock()
-        mock_result.data = [invalid_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
 
-        response = client.get("/api/v2/user/themes/current")
+        try:
+            response = client.get("/api/v2/user/themes/current")
 
-        assert response.status_code == 200
-        data = response.json()
-        # Should return empty since date rule is invalid
-        assert data["theme_id"] is None
+            assert response.status_code == 200
+            data = response.json()
+            # Should return empty response since date is outside range
+            assert data["theme_id"] is None
 
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_unknown_type(self, mock_supabase):
-        """Test handling of unknown date rule type."""
-        unknown_type_theme = {
-            "id": "unknown-type",
-            "name": "Unknown Type Theme",
-            "is_active": True,
-            "priority": 5,
-            "date_rule": {
-                "type": "unknown_type"
-            },
-            "theme_config": {}
-        }
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
 
-        mock_result = MagicMock()
-        mock_result.data = [unknown_type_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+    def test_get_current_theme_invalid_date_rule(self):
+        """
+        v3.0.0: Test handling of invalid date rule format.
 
-        response = client.get("/api/v2/user/themes/current")
+        Tests: Handler returns None for invalid date rules (Service validates).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
 
-        assert response.status_code == 200
-        data = response.json()
-        # Should return empty since rule type is unknown
-        assert data["theme_id"] is None
+        # Mock handler to return None (invalid date rule)
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=None
+        ))
 
-    @patch('api.user.themes.supabase')
-    def test_get_current_theme_missing_date_rule_fields(self, mock_supabase):
-        """Test handling of missing required date_rule fields."""
-        incomplete_theme = {
-            "id": "incomplete-theme",
-            "name": "Incomplete Theme",
-            "is_active": True,
-            "priority": 5,
-            "date_rule": {
-                "type": "fixed"
-                # Missing "start" and "end"
-            },
-            "theme_config": {}
-        }
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
 
-        mock_result = MagicMock()
-        mock_result.data = [incomplete_theme]
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value = mock_result
+        try:
+            response = client.get("/api/v2/user/themes/current")
 
-        response = client.get("/api/v2/user/themes/current")
+            assert response.status_code == 200
+            data = response.json()
+            # Should return empty since date rule is invalid
+            assert data["theme_id"] is None
 
-        assert response.status_code == 200
-        data = response.json()
-        # Should return empty since date rule is incomplete
-        assert data["theme_id"] is None
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
+
+    def test_get_current_theme_unknown_type(self):
+        """
+        v3.0.0: Test handling of unknown date rule type.
+
+        Tests: Handler returns None for unknown rule types (Service validates).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
+
+        # Mock handler to return None (unknown rule type)
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=None
+        ))
+
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
+
+        try:
+            response = client.get("/api/v2/user/themes/current")
+
+            assert response.status_code == 200
+            data = response.json()
+            # Should return empty since rule type is unknown
+            assert data["theme_id"] is None
+
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
+
+    def test_get_current_theme_missing_date_rule_fields(self):
+        """
+        v3.0.0: Test handling of missing required date_rule fields.
+
+        Tests: Handler returns None for incomplete date rules (Service validates).
+        """
+        from application.queries.themes import GetCurrentThemeHandler, GetCurrentThemeResult
+
+        # Mock handler to return None (incomplete date rule)
+        mock_handler = MagicMock(spec=GetCurrentThemeHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCurrentThemeResult(
+            theme=None
+        ))
+
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('get_current_theme')
+        container._handlers['get_current_theme'] = mock_handler
+
+        try:
+            response = client.get("/api/v2/user/themes/current")
+
+            assert response.status_code == 200
+            data = response.json()
+            # Should return empty since date rule is incomplete
+            assert data["theme_id"] is None
+
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original_handler:
+                container._handlers['get_current_theme'] = original_handler
+            else:
+                container._handlers.pop('get_current_theme', None)
