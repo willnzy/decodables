@@ -2,9 +2,15 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.28 (DDD Compliant)
+@version 3.29 (Perfect DDD with Dependency Injection)
 
 Changes:
+- v3.29: Added dependency injection for ExperimentService (Perfect DDD)
+  - Created ExperimentService class replacing module functions
+  - Added get_experiment_service() DI factory
+  - All 14 endpoints now use Depends(get_experiment_service)
+  - Removed direct module function calls
+  - Architecture: API → Service (DI) → Repository
 - v3.28: DDD Architecture Migration (EXP-CRITICAL-1)
   - Migrated from domains/platform/experiments/crud.py to Repository pattern
   - All data access now through infrastructure/repositories/experiment_repository.py
@@ -56,9 +62,12 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from dependencies import require_admin
-from domains.platform import experiments as experiment_service  # v3.28: Now uses Repository internally
+from domains.platform.experiments.service import ExperimentService  # v3.29: Use Service class
+from domains.platform import experiments  # v3.29: Keep for legacy functions (analysis, trend, etc.)
 from domains.platform import experiment_ai_service  # EXP-HIGH-4: Moved import to top
+from infrastructure.repositories.experiment_repository import SupabaseExperimentRepository
 from infrastructure.rate_limiter import limiter
+from core.database import get_supabase_client
 
 # Import response models (EXP-HIGH-1)
 from api.admin.experiments_models import (
@@ -72,6 +81,22 @@ from api.admin.experiments_models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
+
+
+# ==========================================
+# Dependency Injection
+# ==========================================
+
+def get_experiment_service() -> ExperimentService:
+    """
+    Dependency injection factory for ExperimentService.
+
+    Returns:
+        ExperimentService instance with Repository injected
+    """
+    db = get_supabase_client()
+    experiment_repo = SupabaseExperimentRepository(client=db)
+    return ExperimentService(experiment_repo)
 
 
 # ==========================================
@@ -186,7 +211,7 @@ def _enrich_results_with_significance(results: Dict[str, Any]) -> Dict[str, Any]
         control_data = variants_data["control"]
         for variant_key, variant_data in variants_data.items():
             if variant_key != "control":
-                significance = experiment_service.calculate_statistical_significance(
+                significance = experiments.calculate_statistical_significance(
                     control_conversions=control_data.get("total_conversions", 0),
                     control_exposures=control_data.get("total_exposures", 0),
                     variant_conversions=variant_data.get("total_conversions", 0),
@@ -207,7 +232,8 @@ async def list_experiments(
     status: Optional[str] = Query(None, max_length=50, description="Filter by status"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(20, ge=1, le=100, description="Page size (1-100)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """List all experiments."""
     try:
@@ -217,8 +243,8 @@ async def list_experiments(
         if status is not None and status not in VALID_EXPERIMENT_STATUSES:
             raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_EXPERIMENT_STATUSES)}")
 
-        # v3.28: experiment_service now uses Repository internally (DDD compliant)
-        experiments, total = experiment_service.list_experiments(status=status, limit=limit, offset=offset)
+        # v3.29: Use ExperimentService with DI
+        experiments, total = await experiment_service.list_experiments(status=status, limit=limit, offset=offset)
         return ExperimentListResponse(experiments=experiments, total=total, offset=offset, limit=limit)
 
     except HTTPException:
@@ -233,7 +259,8 @@ async def list_experiments(
 async def create_experiment(
     request: Request,
     req: ExperimentCreateRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Create new experiment."""
     try:
@@ -247,7 +274,7 @@ async def create_experiment(
         targeting = req.targeting.model_dump() if req.targeting else None
         metrics = [m.model_dump() for m in req.metrics] if req.metrics else None
 
-        experiment = experiment_service.create_experiment(
+        experiment = await experiment_service.create_experiment(
             experiment_key=req.experiment_key,
             name=req.name,
             description=req.description,
@@ -279,13 +306,14 @@ async def create_experiment(
 async def get_experiment(
     request: Request,
     experiment_key: str,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Get experiment details."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting experiment: {experiment_key}")
 
-        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        experiment = await experiment_service.get_experiment(experiment_key)
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
@@ -304,7 +332,8 @@ async def update_experiment(
     request: Request,
     experiment_key: str,
     req: ExperimentUpdateRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Update experiment configuration."""
     try:
@@ -338,7 +367,7 @@ async def update_experiment(
         if not updates:
             raise HTTPException(400, "No fields to update")
 
-        experiment = experiment_service.update_experiment(experiment_key, updates, admin.get("id"))
+        experiment = await experiment_service.update_experiment(experiment_key, **updates)
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
@@ -358,15 +387,16 @@ async def update_experiment_status(
     request: Request,
     experiment_key: str,
     req: StatusUpdateRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Update experiment status."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Updating status for {experiment_key}: {req.status}")
 
         # Note: Status validation is now done in StatusUpdateRequest via field_validator
-        success = experiment_service.update_experiment_status(experiment_key, req.status, admin.get("id"))
-        if not success:
+        result = await experiment_service.update_experiment_status(experiment_key, req.status)
+        if not result:
             raise HTTPException(404, "Experiment not found")
 
         logger.info(f"[Admin {admin.get('id')}] Status updated: {experiment_key} -> {req.status}")
@@ -384,19 +414,20 @@ async def update_experiment_status(
 async def delete_experiment(
     request: Request,
     experiment_key: str,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Delete experiment."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Deleting experiment: {experiment_key}")
 
-        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        experiment = await experiment_service.get_experiment(experiment_key)
         if not experiment:
             raise HTTPException(404, "Experiment not found")
         if experiment.get("status") == "running":
             raise HTTPException(400, "Cannot delete running experiment")
 
-        success = experiment_service.delete_experiment(experiment_key)
+        success = await experiment_service.delete_experiment(experiment_key)
         if not success:
             raise HTTPException(500, "Failed to delete experiment")
 
@@ -446,7 +477,7 @@ async def get_experiment_results(
         else:
             end_dt = None
 
-        results = experiment_service.get_experiment_results(experiment_key, start_dt, end_dt)
+        results = experiments.get_experiment_results(experiment_key, start_dt, end_dt)
         if not results:
             raise HTTPException(404, "Experiment not found")
 
@@ -471,7 +502,7 @@ async def trigger_aggregation(
     try:
         logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for {experiment_key}")
 
-        success = experiment_service.aggregate_experiment_results(experiment_key)
+        success = experiments.aggregate_experiment_results(experiment_key)
         if not success:
             raise HTTPException(500, "Failed to aggregate results")
 
@@ -499,7 +530,7 @@ async def trigger_all_aggregation(
     try:
         logger.info(f"[Admin {admin.get('id')}] Triggering aggregation for all experiments")
 
-        success = experiment_service.aggregate_experiment_results()
+        success = experiments.aggregate_experiment_results()
         if not success:
             raise HTTPException(500, "Failed to aggregate results")
 
@@ -526,7 +557,7 @@ async def clear_cache(
     try:
         logger.info(f"[Admin {admin.get('id')}] Clearing experiment cache")
 
-        experiment_service.clear_experiment_cache()
+        experiments.clear_experiment_cache()
 
         logger.info(f"[Admin {admin.get('id')}] Cache cleared")
         return CacheClearResponse(status="cache_cleared")
@@ -542,17 +573,18 @@ async def get_ai_analysis(
     request: Request,
     experiment_key: str,
     req: Optional[AIAnalysisRequest] = None,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Get AI analysis report for experiment."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Requesting AI analysis for {experiment_key}")
 
-        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        experiment = await experiment_service.get_experiment(experiment_key)
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
-        results = experiment_service.get_experiment_results(experiment_key)
+        results = experiments.get_experiment_results(experiment_key)
         if not results:
             results = {"variants": {}}
         results = _enrich_results_with_significance(results)
@@ -578,17 +610,18 @@ async def get_ai_analysis(
 async def get_quick_recommendation(
     request: Request,
     experiment_key: str,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    experiment_service: ExperimentService = Depends(get_experiment_service),  # v3.29: DI
 ):
     """Get quick decision recommendation (rule-based)."""
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting quick recommendation for {experiment_key}")
 
-        experiment = experiment_service.get_experiment(experiment_key, use_cache=False)
+        experiment = await experiment_service.get_experiment(experiment_key)
         if not experiment:
             raise HTTPException(404, "Experiment not found")
 
-        results = experiment_service.get_experiment_results(experiment_key)
+        results = experiments.get_experiment_results(experiment_key)
         if not results:
             results = {"variants": {}}
         results = _enrich_results_with_significance(results)
@@ -621,7 +654,7 @@ async def get_experiment_trend(
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting daily trend: {experiment_key} ({days} days)")
 
-        trend_data = experiment_service.get_daily_trend(experiment_key, days)
+        trend_data = experiments.get_daily_trend(experiment_key, days)
         if not trend_data:
             raise HTTPException(status_code=404, detail="Experiment not found")
 
@@ -649,7 +682,7 @@ async def get_hourly_trend(
     try:
         logger.info(f"[Admin {admin.get('id')}] Getting hourly trend: {experiment_key} ({hours} hours)")
 
-        trend_data = experiment_service.get_hourly_trend(experiment_key, hours)
+        trend_data = experiments.get_hourly_trend(experiment_key, hours)
         if not trend_data:
             raise HTTPException(status_code=404, detail="Experiment not found")
 
