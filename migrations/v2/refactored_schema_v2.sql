@@ -49,6 +49,12 @@ COMMENT ON FUNCTION update_updated_at_column() IS '触发器函数: 自动更新
 CREATE OR REPLACE FUNCTION set_deleted_at_on_soft_delete()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- INSERT 操作时 OLD 为 NULL,直接返回
+    IF OLD IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    -- UPDATE 操作: 检查 is_deleted 字段变化
     IF NEW.is_deleted = TRUE AND OLD.is_deleted = FALSE THEN
         NEW.deleted_at = CURRENT_TIMESTAMP;
     ELSIF NEW.is_deleted = FALSE THEN
@@ -1837,6 +1843,21 @@ DECLARE
     v_deduct_monthly INT;
     v_deduct_permanent INT;
 BEGIN
+    -- 幂等性检查: 防止重复扣除
+    IF p_idempotency_key IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM credit_transactions
+            WHERE idempotency_key = p_idempotency_key || '-deduct'
+        ) THEN
+            -- 返回已存在的交易结果
+            SELECT credits_monthly, credits_permanent
+            INTO v_monthly, v_permanent
+            FROM profiles WHERE id = p_user_id;
+            RETURN QUERY SELECT FALSE, v_monthly, v_permanent, 'Duplicate transaction (idempotency)'::TEXT;
+            RETURN;
+        END IF;
+    END IF;
+
     -- 加锁获取当前余额
     SELECT credits_monthly, credits_permanent
     INTO v_monthly, v_permanent
