@@ -82,23 +82,23 @@
 | 21 | Tools | 2 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 22 | User Assets | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 23 | User Profile | 7 | 🔴 | ✅ v2.2.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
-| 24 | Webhooks | 2 | 🔴 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 24 | Webhooks | 2 | 🔴 | ✅ v2.5.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 7 (Analytics, Billing, Campaigns, Config, Experiments, Payment, User Profile)
-- **已达到 5 星**: 7 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (7/7) 🎉
-- **5 星达成率**: 100% (7/7 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 17
-- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Generation Images, Generation PDF, Generation Story, Webhooks)
+- 已完成 FULL REVIEW: 8 (Analytics, Billing, Campaigns, Config, Experiments, Payment, User Profile, Webhooks)
+- **已达到 5 星**: 8 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (8/8) 🎉
+- **5 星达成率**: 100% (8/8 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 16
+- 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images, Generation PDF, Generation Story)
 - 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星)
 - 低风险模块 (🟢): 6 (Analytics ✅ 5星, Config ✅ 5星)
 
 ---
 
-## 已完成 FULL REVIEW 的模块 (7 个)
+## 已完成 FULL REVIEW 的模块 (8 个)
 
 | 模块 | FULL REVIEW 时间 | 5星 Review 时间 | 最终评级 | 状态 | 文档 |
 |------|------------------|----------------|----------|------|------|
@@ -109,6 +109,7 @@
 | 5. Experiments | 2026-01-10 02:14 | 2026-01-10 06:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | EXPERIMENTS-5STAR-REVIEW-v3.31.md |
 | 6. User Profile | 2026-01-10 06:30 | 2026-01-10 07:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | USER-PROFILE-5STAR-REVIEW-v2.2.0.md |
 | 7. Payment | 2026-01-10 07:30 | 2026-01-10 08:30 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | PAYMENT-5STAR-REVIEW-v2.3.0.md |
+| 8. Webhooks | 2026-01-10 10:00 | 2026-01-10 12:00 | ⭐⭐⭐⭐⭐ | ✅ **5星** (修复后) | WEBHOOKS-5STAR-REVIEW-v2.5.0.md |
 
 ---
 
@@ -768,6 +769,99 @@ Stripe SDK Layer
 - PAYMENT-5STAR-REVIEW-v2.2.0.md (问题分析)
 - PAYMENT-5STAR-REVIEW-v2.3.0.md (5 星确认)
 
+### 第 8 轮: Webhooks 模块 5 星 Review
+
+**模块**: `api/user/webhooks.py` (User API - Clerk/Stripe webhooks)
+**Review 时间**: 2026-01-10 10:00 - 12:00
+**初始版本**: v2.4.0
+**最终版本**: v2.5.0
+**初始评级**: ⭐⭐⭐⭐ (78/100)
+**最终评级**: ⭐⭐⭐⭐⭐ (98/100)
+**状态**: ✅ **5星达标** (修复后)
+
+#### 发现的问题 (v2.4.0)
+
+**WEBHOOKS-CRITICAL-1**: 无 Service 层，无依赖注入 (架构违规)
+- 描述: API 层包含 400+ 行业务逻辑，手动创建 Repository，直接访问 Supabase
+- 影响: Architecture score 50/100 (严重违反 DDD)
+- 修复: 创建 ClerkWebhookService (301行) + StripeWebhookService (619行)
+
+#### 修复详情 (v2.4.0 → v2.5.0)
+
+**架构升级**:
+```
+v2.4.0: API → Repository (❌ DDD 违规)
+v2.5.0: API → Service → Repository (✅ 100% DDD)
+```
+
+**代码改动**:
+- ✅ 创建 `domains/webhooks/__init__.py`
+- ✅ 创建 `domains/webhooks/clerk_webhook_service.py` (301 行)
+  - verify_signature(): Svix webhook 签名验证
+  - handle_event(): 事件路由
+  - _handle_user_created(): 用户创建 (JIT检查 + 邮箱唯一性 + 注册奖励)
+  - _handle_user_updated(): 用户信息更新
+  - _handle_session_created/ended(): 登录/登出日志
+  - _grant_signup_bonus(): 原子 RPC 注册奖励
+- ✅ 创建 `domains/webhooks/stripe_webhook_service.py` (619 行)
+  - verify_signature(): Stripe 签名验证
+  - is_duplicate_event(): 幂等性检查 (PostgreSQL RPC)
+  - handle_event(): 事件路由
+  - _handle_checkout_completed(): 订阅/积分购买
+  - _process_subscription_creation(): 原子 RPC 订阅创建
+  - _process_credits_purchase(): 支付记录优先 + 积分发放
+  - _handle_invoice_payment(): 订阅续费
+  - _handle_subscription_canceled/updated(): 订阅状态变更
+- ✅ 重写 `api/user/webhooks.py` (667 → 175 行, -74%)
+  - 添加 DI 工厂: `get_clerk_webhook_service()`, `get_stripe_webhook_service()`
+  - API 层纯 HTTP 逻辑 (参数解析 + 异常转换)
+- ✅ 完全重写 `tests/api/user/test_webhooks.py` (689 行)
+  - 使用 `app.dependency_overrides` (FastAPI 最佳实践)
+  - Mock 整个 Service 而非零散 Repository
+  - 13 个测试全部通过 (6 Clerk + 7 Stripe)
+
+**测试验证**:
+```bash
+python -m pytest tests/api/user/test_webhooks.py -v
+======================= 13 passed in 1.06s ========================
+```
+
+**评分变化**:
+- Code Standards: 95/100 (无变化)
+- **Architecture**: 50/100 → 100/100 (+50) ⬆️
+- Security: 98/100 (无变化)
+- Call Chain: 95/100 (无变化)
+- Test Coverage: 90/100 (无变化)
+- **总分**: 78/100 → 98/100 (+20) ⬆️
+- **星级**: ⭐⭐⭐⭐ → ⭐⭐⭐⭐⭐
+
+#### 关键改进
+
+1. **Service 层创建** (+50 架构分)
+   - ClerkWebhookService (301 行): 用户认证事件处理
+   - StripeWebhookService (619 行): 支付事件处理
+   - 完整 DI 工厂模式
+
+2. **API 层精简** (-74% 代码)
+   - 从 667 行减少到 175 行
+   - 纯 HTTP 层职责 (路由 + 异常转换)
+
+3. **测试质量提升**
+   - 完全重写使用 FastAPI 最佳实践
+   - `app.dependency_overrides` 替代 `@patch`
+   - 13/13 测试通过
+
+4. **调用链完整**
+   - API → Service (DI) → Repository
+   - 签名验证 → 幂等性检查 → 事件处理
+   - 原子 RPC 保证数据一致性
+
+**结论**: Webhooks v2.5.0 完全符合 5 星标准 (98/100) ✅
+
+**审核文档**:
+- WEBHOOKS-5STAR-REVIEW-v2.4.0.md (问题分析)
+- WEBHOOKS-5STAR-REVIEW-v2.5.0.md (5 星确认)
+
 ---
 
 ## 总体目标
@@ -775,9 +869,9 @@ Stripe SDK Layer
 **目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **7/7 模块完成 5 星 Review** (100%)
-- ✅ **7/7 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Payment ✨, User Profile ✨)
-- **5 星达成率**: **100%** (7/7) 🎉
+- ✅ **8/8 模块完成 5 星 Review** (100%)
+- ✅ **8/8 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Payment ✨, User Profile ✨, Webhooks ✨)
+- **5 星达成率**: **100%** (8/8) 🎉
 
 **阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
 
@@ -795,17 +889,18 @@ Stripe SDK Layer
 5. ✅ Experiments 5 星 Review (v3.28 → v3.31, 完整 DDD 迁移, ⭐⭐⭐⭐⭐)
 6. ✅ User Profile 5 星 Review (v2.1.0 → v2.2.0, 架构修复, ⭐⭐⭐⭐⭐)
 7. ✅ Payment 5 星 Review (v2.2.0 → v2.3.0, 架构修复, ⭐⭐⭐⭐⭐)
+8. ✅ Webhooks 5 星 Review (v2.4.0 → v2.5.0, DDD 架构升级, ⭐⭐⭐⭐⭐)
 
 **🚀 阶段 2: 继续扩展 Review 范围**
 
 **优先级建议** (从高风险模块开始):
-1. ⏳ **Webhooks** (2 endpoints, 🔴 高风险) - 外部集成
-2. ⏳ **Generation Images** (2 endpoints, 🔴 高风险) - AI 生成核心
-3. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
-4. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
+1. ⏳ **Generation Images** (2 endpoints, 🔴 高风险) - AI 生成核心
+2. ⏳ **Generation PDF** (1 endpoint, 🔴 高风险) - 文档生成
+3. ⏳ **Generation Story** (2 endpoints, 🔴 高风险) - 故事生成
 
 **已完成高风险模块**:
 - ✅ Billing (支付账单) ⭐⭐⭐⭐⭐
 - ✅ User Profile (用户核心数据) ⭐⭐⭐⭐⭐
 - ✅ Payment (支付集成) ⭐⭐⭐⭐⭐
+- ✅ Webhooks (外部集成) ⭐⭐⭐⭐⭐
 
