@@ -33,8 +33,8 @@
 以下业务规则在重构中**绝对不变**：
 
 1. **双ID系统**：
-   - `user_id` (TEXT): Clerk格式 `user_2NNEqL2n...`（非UUID！）
-   - `user_code` (TEXT UNIQUE): 自定义格式 `260109143X7Y`
+   - `user_id` (TEXT): Clerk格式 `user_2NNEqL2n...`（非UUID！）- 系统内部使用
+   - `user_code` (TEXT UNIQUE): 26位格式 `26010914305278900123456ABC`（包含注册时间+用户序号）- 管理员使用
 
 2. **积分扣费顺序**：
    - 先扣 `credits_monthly` → 再扣 `credits_permanent`
@@ -459,9 +459,9 @@ price_cents INTEGER  -- 999 表示 $9.99
 **示例**：
 
 ```sql
-tier TEXT NOT NULL DEFAULT 'free'
-  CHECK (tier IN ('free', 'starter', 'pro'))
-  COMMENT '用户等级 | free=免费, starter=入门, pro=专业版',
+tier TEXT NOT NULL DEFAULT 't1'
+  CHECK (tier IN ('t1', 't2', 't3'))
+  COMMENT '用户等级 | t1=First Tier, t2=Second Tier, t3=Third Tier (显示名称可通过 system_configs 配置)',
 
 moderation_status TEXT NOT NULL DEFAULT 'draft'
   CHECK (moderation_status IN ('draft', 'pending', 'approved', 'rejected'))
@@ -532,7 +532,7 @@ COMMENT ON COLUMN table_name.column_name IS '字段用途 | 补充说明 | @Ref:
 COMMENT ON COLUMN profiles.email IS '用户邮箱';
 
 -- 枚举字段
-COMMENT ON COLUMN profiles.tier IS '用户等级 | free=免费, starter=入门, pro=专业版';
+COMMENT ON COLUMN profiles.tier IS '用户等级代码 | t1=First Tier, t2=Second Tier, t3=Third Tier (显示名称可配置)';
 
 -- 改名字段
 COMMENT ON COLUMN profiles.created_at IS '创建时间（UTC） | @Ref: profiles.createdAt';
@@ -602,8 +602,8 @@ CREATE TABLE profiles (
     COMMENT '永久积分 | 购买/市场收入，永不过期',
 
   -- 订阅系统
-  tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'starter', 'pro'))
-    COMMENT '用户等级 | free=免费, starter=入门, pro=专业版',
+  tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3'))
+    COMMENT '用户等级代码 | t1=First Tier, t2=Second Tier, t3=Third Tier',
   subscription_status TEXT NOT NULL DEFAULT 'inactive'
     COMMENT '订阅状态 | active=活跃, past_due=逾期, canceled=已取消, inactive=未订阅',
 
@@ -705,8 +705,8 @@ CREATE TABLE marketplace_listings (
     COMMENT '来源 | system=系统, user=用户, ai=AI生成, community=社区',
 
   -- 权限控制
-  allowed_tiers TEXT[] NOT NULL DEFAULT '{free, starter, pro}'
-    COMMENT '允许访问的用户等级 | 如: {starter,pro} = 仅会员',
+  allowed_tiers TEXT[] NOT NULL DEFAULT '{t1, t2, t3}'
+    COMMENT '允许访问的用户等级 | 如: {t2,t3} = 仅会员',
 
   -- 定价
   price_credits INTEGER NOT NULL DEFAULT 0
@@ -943,7 +943,7 @@ CREATE TABLE system_assets (
     content JSONB NOT NULL DEFAULT '{}',
 
     -- 访问控制
-    min_tier VARCHAR(20) DEFAULT 'free' CHECK (min_tier IN ('free', 'starter', 'pro')),
+    min_tier VARCHAR(20) DEFAULT 't1' CHECK (min_tier IN ('t1', 't2', 't3')),
 
     -- 标签和搜索
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -1490,7 +1490,7 @@ project_id UUID REFERENCES projects(id) ON DELETE SET NULL
 
 ```sql
 -- 枚举值
-tier TEXT CHECK (tier IN ('free', 'starter', 'pro'))
+tier TEXT CHECK (tier IN ('t1', 't2', 't3'))
 
 -- 范围值
 traffic_allocation INTEGER CHECK (traffic_allocation >= 0 AND traffic_allocation <= 100)

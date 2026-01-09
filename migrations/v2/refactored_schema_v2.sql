@@ -78,10 +78,13 @@ CREATE TABLE profiles (
     avatar_url TEXT,
 
     -- 用户唯一码 (用于客服查询和用户反馈)
+    -- 格式: YYMMDDHHMMSS + mmmm + UUUUUUUU + RRR (26位)
+    -- 示例: 26010914305278900123456ABC
+    -- 包含: 注册日期时间(16位) + 毫秒(4位) + 用户序号(8位) + 随机数(3位)
     user_code TEXT UNIQUE NOT NULL,
 
-    -- 用户等级 (free/starter/pro)
-    tier TEXT NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'starter', 'pro')),
+    -- 用户等级 (系统代码: t1/t2/t3, 显示名称可通过 system_configs 配置)
+    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3')),
     tier_changed_at TIMESTAMPTZ,
 
     -- 积分余额 (核心字段!)
@@ -127,9 +130,9 @@ CREATE TABLE profiles (
 );
 
 COMMENT ON TABLE profiles IS '用户档案表: 存储用户基础信息、积分余额、订阅状态等核心数据';
-COMMENT ON COLUMN profiles.id IS 'Clerk 用户ID (TEXT类型!), 格式: user_2NNEqL2n...';
-COMMENT ON COLUMN profiles.user_code IS '用户唯一码 (格式: YYMMDDHHMMXXX), 用于客服查询';
-COMMENT ON COLUMN profiles.tier IS '用户等级: free/starter/pro (硬编码，不可改)';
+COMMENT ON COLUMN profiles.id IS 'Clerk 用户ID (TEXT类型!), 格式: user_2NNEqL2n..., 系统内部使用';
+COMMENT ON COLUMN profiles.user_code IS '用户唯一码 (26位: YYMMDDHHMMSS+mmmm+UUUUUUUU+RRR), 包含注册时间和用户序号, 管理员使用';
+COMMENT ON COLUMN profiles.tier IS '用户等级代码: t1(First Tier)/t2(Second Tier)/t3(Third Tier), 显示名称可通过 system_configs 配置';
 COMMENT ON COLUMN profiles.credits_monthly IS '月度积分余额 (订阅每月刷新)';
 COMMENT ON COLUMN profiles.credits_permanent IS '永久积分余额 (购买的积分包)';
 COMMENT ON COLUMN profiles.timezone IS '用户时区 (用于本地化时间显示)';
@@ -529,7 +532,7 @@ CREATE TABLE asset_categories (
     display_order INTEGER DEFAULT 0,
 
     -- 访问控制
-    min_tier VARCHAR(20) DEFAULT 'free' CHECK (min_tier IN ('free', 'starter', 'pro')),
+    min_tier VARCHAR(20) DEFAULT 't1' CHECK (min_tier IN ('t1', 't2', 't3')),
 
     -- 时间限定 (节日主题)
     visible_from TIMESTAMPTZ,
@@ -597,7 +600,7 @@ CREATE TABLE system_assets (
     content JSONB NOT NULL DEFAULT '{}',
 
     -- 访问控制
-    min_tier VARCHAR(20) DEFAULT 'free' CHECK (min_tier IN ('free', 'starter', 'pro')),
+    min_tier VARCHAR(20) DEFAULT 't1' CHECK (min_tier IN ('t1', 't2', 't3')),
     is_pro_only BOOLEAN DEFAULT FALSE,
 
     -- 标签 (搜索用)
@@ -1169,7 +1172,7 @@ CREATE TRIGGER trg_asset_prompt_templates_updated_at
 CREATE TABLE subscription_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    tier TEXT NOT NULL CHECK (tier IN ('free', 'starter', 'pro')),
+    tier TEXT NOT NULL CHECK (tier IN ('t1', 't2', 't3')),
     action TEXT NOT NULL CHECK (action IN ('upgrade', 'downgrade', 'cancel', 'renew')),
     stripe_subscription_id TEXT,
     stripe_event_id TEXT,

@@ -2,7 +2,7 @@
 
 ## 概述
 
-Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制,允许管理员动态修改等级名称,以便未来营销策略调整。
+Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制，允许管理员通过 Admin 面板动态修改等级显示名称，以便未来营销策略调整。
 
 ---
 
@@ -10,307 +10,319 @@ Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制,允
 
 ### 三层等级系统
 
-| 等级代码 (tier) | 当前显示名称 | 月度积分 | 价格 |
-|-----------------|--------------|----------|------|
-| `free` | **Free Plan** | 0 | $0 |
-| `starter` | **Starter Plan** | 200 | $9.9/月 |
-| `pro` | **Pro Plan** | 500 | $19.9/月 |
+| 系统代码 (tier) | 简称 | 当前显示名称 (可配置) | 月度积分 | 价格 |
+|-----------------|------|---------------------|----------|------|
+| `t1` | First Tier | Free Plan | 0 | $0 |
+| `t2` | Second Tier | Starter Plan | 200 | $9.9/月 |
+| `t3` | Third Tier | Pro Plan | 500 | $19.9/月 |
 
 **设计原则**:
-- **tier 代码** (`free`/`starter`/`pro`) - 系统内部使用,不可更改
-- **显示名称** (Free Plan/Starter Plan/Pro Plan) - 用户看到的名称,可配置
+- **系统代码** (`t1`/`t2`/`t3`) - 数据库字段、代码逻辑使用，**永不改变**
+- **简称** (First Tier/Second Tier/Third Tier) - 固定的描述性名称，便于理解层级
+- **显示名称** (Free Plan/Starter Plan/Pro Plan) - 用户看到的名称，**可通过 Admin 配置**，存储在 system_configs 表
+
+**为什么使用 t1/t2/t3**:
+- ✅ **简洁**: 比 `free`/`starter`/`pro` 更短，减少输入和存储
+- ✅ **中立**: 不包含业务语义，方便未来调整（例如 t2 可以从 "Starter Plan" 改名为 "Growth Plan"）
+- ✅ **可扩展**: 未来可以轻松添加 t4、t5 等更高等级
+- ✅ **国际化**: 不需要翻译系统代码，只需翻译显示名称
 
 ---
 
-## 当前问题 ❌
+## 存储设计
 
-系统中 tier 名称是**硬编码**的,分散在多个位置:
+### system_configs 配置表
 
-### 后端硬编码
-```python
-# api/admin/subscriptions.py
-if 'starter' in price_id.lower():
-    plan_name = "Starter"  # 硬编码
-elif 'pro' in price_id.lower():
-    plan_name = "Pro"  # 硬编码
-```
-
-### 前端硬编码
-```tsx
-// 假设存在
-const TIER_NAMES = {
-  free: "Free Plan",
-  starter: "Starter Plan",
-  pro: "Pro Plan"
-}
-```
-
-**问题**:
-1. 如果想将 "Starter Plan" 改为 "Growth Plan",需要修改代码
-2. 多处硬编码,容易遗漏
-3. 不支持 A/B 测试或多语言
-
----
-
-## 解决方案 ✅
-
-### 方案 1: 数据库配置表 (推荐)
-
-#### 1.1 创建 `tier_configs` 表
+显示名称存储在 `system_configs` 表中，支持通过 Admin API 动态修改：
 
 ```sql
-CREATE TABLE tier_configs (
-    tier TEXT PRIMARY KEY,  -- 'free', 'starter', 'pro'
-    display_name TEXT NOT NULL,  -- 'Free Plan', 'Starter Plan', 'Pro Plan'
-    description TEXT,  -- 等级描述
-    monthly_credits INT NOT NULL,  -- 月度积分
-    is_active BOOLEAN DEFAULT TRUE,  -- 是否启用
-    sort_order INT DEFAULT 0,  -- 显示顺序
+-- Tier 显示名称配置 (可通过 Admin 修改)
+INSERT INTO system_configs (key, value, value_type, category, description, is_user_visible) VALUES
+('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称', FALSE),
+('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称', FALSE),
+('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称', FALSE);
+
+-- Tier 月度积分配置 (也可配置)
+INSERT INTO system_configs (key, value, value_type, category, description, is_user_visible) VALUES
+('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', FALSE),
+('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', FALSE),
+('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', FALSE);
+```
+
+### profiles 表
+
+用户的 tier 字段存储系统代码 (`t1`/`t2`/`t3`)：
+
+```sql
+CREATE TABLE profiles (
+    id TEXT PRIMARY KEY,  -- Clerk user ID
+    email TEXT NOT NULL UNIQUE,
+
+    -- 用户等级 (系统代码)
+    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3')),
+    tier_changed_at TIMESTAMPTZ,
+
+    -- 积分余额
+    credits_monthly INTEGER NOT NULL DEFAULT 0,
+    credits_permanent INTEGER NOT NULL DEFAULT 0,
+
+    -- 审计字段
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 初始数据
-INSERT INTO tier_configs (tier, display_name, description, monthly_credits, sort_order) VALUES
-('free', 'Free Plan', 'Perfect for trying out Make Decodables', 0, 1),
-('starter', 'Starter Plan', 'Great for regular creators', 200, 2),
-('pro', 'Pro Plan', 'For professional creators and teams', 500, 3);
-
--- 索引
-CREATE INDEX idx_tier_configs_active ON tier_configs(is_active);
-CREATE INDEX idx_tier_configs_sort ON tier_configs(sort_order);
+CREATE INDEX idx_profiles_tier ON profiles(tier);
 ```
 
-#### 1.2 Repository 层
+---
+
+## 代码使用规范
+
+### ✅ 正确使用
 
 ```python
-# infrastructure/repositories/tier_repository.py
-class SupabaseTierRepository:
-    """Tier configuration repository."""
+# domains/user/constants.py
+"""User tier constants."""
 
-    def __init__(self, client):
-        self.client = client
+# 系统代码 (永不改变)
+TIER_T1 = "t1"  # First Tier
+TIER_T2 = "t2"  # Second Tier
+TIER_T3 = "t3"  # Third Tier
 
-    async def get_all_tiers(self) -> list[dict]:
-        """Get all active tiers ordered by sort_order."""
-        result = self.client.table("tier_configs").select("*").eq(
-            "is_active", True
-        ).order("sort_order").execute()
-        return result.data or []
+# 有效的 tier 代码
+VALID_TIERS = {TIER_T1, TIER_T2, TIER_T3}
 
-    async def get_tier_by_code(self, tier: str) -> dict:
-        """
-        Get tier configuration by tier code.
+# 简称 (固定描述)
+TIER_LABELS = {
+    TIER_T1: "First Tier",
+    TIER_T2: "Second Tier",
+    TIER_T3: "Third Tier",
+}
 
-        Args:
-            tier: Tier code ('free', 'starter', 'pro')
+# 默认月度积分 (也可从 system_configs 读取)
+TIER_MONTHLY_CREDITS = {
+    TIER_T1: 0,
+    TIER_T2: 200,
+    TIER_T3: 500,
+}
 
-        Returns:
-            Tier configuration dict with display_name, monthly_credits, etc.
-        """
-        result = self.client.table("tier_configs").select("*").eq(
-            "tier", tier
-        ).execute()
-        return result.data[0] if result.data else None
-
-    async def update_tier_display_name(self, tier: str, display_name: str) -> dict:
-        """
-        Update tier display name (Admin operation).
-
-        Args:
-            tier: Tier code
-            display_name: New display name
-
-        Returns:
-            Updated tier config
-        """
-        result = self.client.table("tier_configs").update({
-            "display_name": display_name,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }).eq("tier", tier).execute()
-        return result.data[0] if result.data else None
+# Tier 等级 (用于比较)
+TIER_LEVELS = {
+    TIER_T1: 1,
+    TIER_T2: 2,
+    TIER_T3: 3,
+}
 ```
-
-#### 1.3 Service 层 (缓存优化)
 
 ```python
 # domains/user/tier_service.py
-from functools import lru_cache
-from typing import Dict
+"""Tier configuration service."""
 
 class TierService:
-    """Tier configuration service with caching."""
+    """管理 Tier 配置和显示名称."""
 
-    def __init__(self, tier_repo: SupabaseTierRepository):
-        self.tier_repo = tier_repo
-        self._cache: Dict[str, dict] = {}
-        self._cache_timestamp = None
+    def __init__(self, config_repo):
+        self.config_repo = config_repo
+        self._cache = {}
 
     async def get_tier_display_name(self, tier: str) -> str:
         """
-        Get tier display name with caching.
+        获取 Tier 显示名称 (可配置).
 
         Args:
-            tier: Tier code ('free', 'starter', 'pro')
+            tier: 系统代码 ('t1', 't2', 't3')
 
         Returns:
-            Display name (e.g., 'Starter Plan')
+            显示名称 (例如: 'Free Plan', 可能被 Admin 修改)
         """
-        # 缓存 5 分钟
-        from datetime import datetime, timedelta, timezone
+        if tier not in self._cache:
+            config_key = f"tier.{tier}.display_name"
+            config = await self.config_repo.get_config(config_key)
+            self._cache[tier] = config["value"] if config else TIER_LABELS[tier]
 
-        now = datetime.now(timezone.utc)
-        if (not self._cache_timestamp or
-            now - self._cache_timestamp > timedelta(minutes=5)):
-            # 刷新缓存
-            tiers = await self.tier_repo.get_all_tiers()
-            self._cache = {t["tier"]: t for t in tiers}
-            self._cache_timestamp = now
+        return self._cache[tier]
 
-        tier_config = self._cache.get(tier)
-        return tier_config["display_name"] if tier_config else tier.title()
+    def get_tier_label(self, tier: str) -> str:
+        """
+        获取 Tier 固定简称.
 
-    async def get_tier_config(self, tier: str) -> dict:
-        """Get full tier configuration."""
-        if tier in self._cache:
-            return self._cache[tier]
-        return await self.tier_repo.get_tier_by_code(tier)
+        Args:
+            tier: 系统代码
 
-    async def invalidate_cache(self):
-        """Invalidate tier cache (called after admin updates)."""
-        self._cache = {}
-        self._cache_timestamp = None
+        Returns:
+            简称 (例如: 'First Tier', 永不改变)
+        """
+        return TIER_LABELS.get(tier, tier.upper())
+
+    async def update_tier_display_name(self, tier: str, display_name: str):
+        """
+        更新 Tier 显示名称 (Admin 操作).
+
+        Args:
+            tier: 系统代码
+            display_name: 新的显示名称
+        """
+        if tier not in VALID_TIERS:
+            raise ValueError(f"Invalid tier: {tier}")
+
+        config_key = f"tier.{tier}.display_name"
+        await self.config_repo.update_config(config_key, display_name)
+
+        # 清除缓存
+        self._cache.pop(tier, None)
 ```
 
-#### 1.4 API 层使用
+```python
+# 业务逻辑使用系统代码
+from domains.user.constants import TIER_T1, TIER_T2, TIER_MONTHLY_CREDITS
+
+# ✅ 正确: 使用系统代码
+if user.tier == TIER_T2:
+    credits = TIER_MONTHLY_CREDITS[TIER_T2]  # 200
+
+# ✅ 正确: 判断等级
+from domains.user.constants import TIER_LEVELS
+if TIER_LEVELS[user.tier] >= TIER_LEVELS[TIER_T2]:
+    # 用户是 Second Tier 或更高等级
+    allow_feature = True
+```
 
 ```python
-# api/admin/subscriptions.py
+# API 返回显示名称
 from domains.user.tier_service import TierService
 
-@router.post("/subscription/cancel")
-async def adm_cancel_subscription(...):
-    # ...
+@router.get("/me")
+async def get_current_user(user_id: str):
+    user = await user_repo.get_profile(user_id)
+    tier_service = TierService(config_repo)
 
-    # ❌ 旧代码: 硬编码
-    # plan_name = "Unknown"
-    # if 'starter' in price_id.lower():
-    #     plan_name = "Starter"
-    # elif 'pro' in price_id.lower():
-    #     plan_name = "Pro"
-
-    # ✅ 新代码: 从配置获取
-    tier_service = TierService(SupabaseTierRepository(db))
-
-    # 从 Stripe price_id 推断 tier code
-    tier_code = get_tier_from_price_id(price_id)
-    plan_name = await tier_service.get_tier_display_name(tier_code)
-
-    # 使用 plan_name...
+    return {
+        "tier": user["tier"],  # "t2" (系统代码)
+        "tier_label": tier_service.get_tier_label(user["tier"]),  # "Second Tier" (固定)
+        "tier_name": await tier_service.get_tier_display_name(user["tier"]),  # "Starter Plan" (可配置)
+        "credits_monthly": user["credits_monthly"],
+        "credits_permanent": user["credits_permanent"],
+    }
 ```
 
-#### 1.5 Admin API (修改 tier 名称)
+### ❌ 错误使用
 
 ```python
-# api/admin/system.py (新增)
+# ❌ 错误: 硬编码显示名称
+if user.tier == "t2":
+    plan_name = "Starter Plan"  # 将来可能改名!
+
+# ✅ 正确: 从配置获取
+plan_name = await tier_service.get_tier_display_name(user.tier)
+
+# ❌ 错误: 使用字符串比较等级
+if user.tier == "t2" or user.tier == "t3":
+    # 不优雅,且难扩展
+
+# ✅ 正确: 使用等级数值比较
+if TIER_LEVELS[user.tier] >= TIER_LEVELS[TIER_T2]:
+    # 优雅且易扩展
+```
+
+---
+
+## Admin API
+
+### 更新 Tier 显示名称
+
+```python
+# api/admin/system.py
 @router.patch("/tiers/{tier}/display-name")
 @limiter.limit("10/minute")
 async def update_tier_display_name(
     request: Request,
     tier: str,
-    display_name: str = Body(..., min_length=1, max_length=50),
+    req: UpdateTierDisplayNameRequest,
     admin: dict = Depends(require_admin)
 ):
     """
-    Update tier display name.
+    更新 Tier 显示名称.
 
-    Example: Change "Starter Plan" to "Growth Plan"
+    Example:
+        PATCH /api/v2/admin/tiers/t2/display-name
+        {"display_name": "Growth Plan"}
     """
-    if tier not in ["free", "starter", "pro"]:
-        raise HTTPException(400, "Invalid tier code")
+    if tier not in VALID_TIERS:
+        raise HTTPException(400, f"Invalid tier: {tier}")
 
-    db = get_database_client()
-    tier_repo = SupabaseTierRepository(db)
-    tier_service = TierService(tier_repo)
-
-    # 更新数据库
-    updated = await tier_repo.update_tier_display_name(tier, display_name)
-
-    # 清除缓存
-    await tier_service.invalidate_cache()
+    tier_service = TierService(config_repo)
+    await tier_service.update_tier_display_name(tier, req.display_name)
 
     # 审计日志
-    admin_repo = SupabaseAdminUsersRepository(db)
     await admin_repo.admin_log_operation(
         admin_id=admin["id"],
         operation_type="tier_config_update",
         target_user_id=None,
-        details=f"Changed {tier} display name to '{display_name}'",
+        details=f"Changed {tier} ({tier_service.get_tier_label(tier)}) display name to '{req.display_name}'",
         reason=None
     )
 
-    return {"status": "updated", "tier": tier, "display_name": display_name}
+    return {
+        "status": "updated",
+        "tier": tier,
+        "tier_label": tier_service.get_tier_label(tier),
+        "display_name": req.display_name
+    }
 ```
 
----
-
-### 方案 2: 环境变量配置 (简单但不灵活)
+### 获取所有 Tier 配置
 
 ```python
-# config.py
-import os
+@router.get("/tiers")
+async def get_all_tiers(admin: dict = Depends(require_admin)):
+    """
+    获取所有 Tier 配置.
 
-TIER_DISPLAY_NAMES = {
-    "free": os.getenv("TIER_FREE_NAME", "Free Plan"),
-    "starter": os.getenv("TIER_STARTER_NAME", "Starter Plan"),
-    "pro": os.getenv("TIER_PRO_NAME", "Pro Plan"),
-}
+    Returns:
+        [
+            {
+                "tier": "t1",
+                "tier_label": "First Tier",
+                "display_name": "Free Plan",
+                "monthly_credits": 0
+            },
+            {
+                "tier": "t2",
+                "tier_label": "Second Tier",
+                "display_name": "Starter Plan",
+                "monthly_credits": 200
+            },
+            {
+                "tier": "t3",
+                "tier_label": "Third Tier",
+                "display_name": "Pro Plan",
+                "monthly_credits": 500
+            }
+        ]
+    """
+    tier_service = TierService(config_repo)
 
-# 使用
-from config import TIER_DISPLAY_NAMES
-plan_name = TIER_DISPLAY_NAMES.get(tier, tier.title())
+    tiers = []
+    for tier_code in sorted(VALID_TIERS):
+        display_name = await tier_service.get_tier_display_name(tier_code)
+        tier_label = tier_service.get_tier_label(tier_code)
+        monthly_credits = TIER_MONTHLY_CREDITS[tier_code]
+
+        tiers.append({
+            "tier": tier_code,
+            "tier_label": tier_label,
+            "display_name": display_name,
+            "monthly_credits": monthly_credits,
+        })
+
+    return {"tiers": sorted(tiers, key=lambda x: TIER_LEVELS[x["tier"]])}
 ```
-
-**缺点**:
-- 需要重启服务才能生效
-- 不支持运行时修改
-- 无法记录修改历史
 
 ---
 
-## 实施计划
+## 前端使用
 
-### Phase 1: 数据库设计
-
-- [x] 创建 `tier_configs` 表
-- [x] 插入初始数据
-- [ ] 创建迁移脚本
-
-### Phase 2: 后端实现
-
-- [ ] 创建 `TierRepository`
-- [ ] 创建 `TierService` (含缓存)
-- [ ] 添加 Admin API (更新 tier 名称)
-- [ ] 更新所有使用 tier 名称的地方
-
-**需要更新的文件**:
-```bash
-# 后端
-api/admin/subscriptions.py  # 使用 TierService
-api/user/profile.py         # 返回 tier 配置
-domains/user/tier_service.py  # 新文件
-infrastructure/repositories/tier_repository.py  # 新文件
-
-# 测试
-tests/domains/test_tier_service.py  # 新文件
-tests/api/admin/test_tier_config.py  # 新文件
-```
-
-### Phase 3: 前端实现
-
-- [ ] 创建 `useTierConfig` hook
-- [ ] 更新所有显示 tier 名称的组件
-- [ ] Admin 面板添加 Tier 配置页面
+### useTierConfig Hook
 
 ```tsx
 // decodables-fe/@business/hooks/useTierConfig.ts
@@ -318,7 +330,7 @@ export function useTierConfig() {
   const { data, isLoading } = useQuery({
     queryKey: ['tier-configs'],
     queryFn: async () => {
-      const res = await fetch('/api/v2/tiers/configs')
+      const res = await fetch('/api/v2/admin/tiers')
       return res.json()
     },
     staleTime: 5 * 60 * 1000, // 5 分钟缓存
@@ -327,217 +339,119 @@ export function useTierConfig() {
   return {
     tiers: data?.tiers || [],
     getTierName: (tier: string) => {
+      // 返回可配置的显示名称
       const config = data?.tiers?.find(t => t.tier === tier)
-      return config?.display_name || tier
+      return config?.display_name || tier.toUpperCase()
+    },
+    getTierLabel: (tier: string) => {
+      // 返回固定的简称
+      const config = data?.tiers?.find(t => t.tier === tier)
+      return config?.tier_label || tier.toUpperCase()
     },
     isLoading,
   }
 }
+```
 
-// 使用
+### 前端显示
+
+```tsx
+// 使用 Hook
 function PricingCard({ tier }: { tier: string }) {
-  const { getTierName } = useTierConfig()
+  const { getTierName, getTierLabel } = useTierConfig()
 
   return (
     <Card>
+      {/* 显示可配置的名称 */}
       <h3>{getTierName(tier)}</h3>  {/* "Starter Plan" */}
+
+      {/* 显示固定的简称 */}
+      <Badge variant="secondary">{getTierLabel(tier)}</Badge>  {/* "Second Tier" */}
+
+      {/* 显示系统代码 (debug 用) */}
+      <code className="text-xs">{tier}</code>  {/* "t2" */}
     </Card>
   )
 }
-```
 
-### Phase 4: Admin 面板
-
-```tsx
-// decodables-fe/app/admin/settings/tiers/page.tsx
-export default function TierSettingsPage() {
-  const { tiers, refetch } = useTierConfig()
-  const [editingTier, setEditingTier] = useState(null)
-
-  async function handleUpdateName(tier: string, newName: string) {
-    await fetch(`/api/v2/admin/tiers/${tier}/display-name`, {
-      method: 'PATCH',
-      body: JSON.stringify({ display_name: newName }),
-    })
-    refetch()
-  }
+// 用户档案显示
+function UserProfile({ user }: { user: User }) {
+  const { getTierName, getTierLabel } = useTierConfig()
 
   return (
-    <AdminLayout>
-      <h1>Tier Configuration</h1>
-      <Table>
-        {tiers.map(tier => (
-          <TableRow key={tier.tier}>
-            <TableCell>{tier.tier}</TableCell>
-            <TableCell>
-              {editingTier === tier.tier ? (
-                <Input
-                  defaultValue={tier.display_name}
-                  onBlur={(e) => {
-                    handleUpdateName(tier.tier, e.target.value)
-                    setEditingTier(null)
-                  }}
-                />
-              ) : (
-                <div onClick={() => setEditingTier(tier.tier)}>
-                  {tier.display_name} ✏️
-                </div>
-              )}
-            </TableCell>
-            <TableCell>{tier.monthly_credits}</TableCell>
-          </TableRow>
-        ))}
-      </Table>
-    </AdminLayout>
+    <div>
+      <p>Current Plan: {getTierName(user.tier)}</p>  {/* "Starter Plan" */}
+      <p>Tier Level: {getTierLabel(user.tier)}</p>  {/* "Second Tier" */}
+      <p className="text-muted">Tier Code: {user.tier}</p>  {/* "t2" */}
+    </div>
   )
 }
 ```
 
 ---
 
-## Tier Code 到 Stripe Price ID 的映射
+## 迁移计划
 
-为了从 Stripe price_id 推断 tier code,需要建立映射关系:
+### Phase 1: 数据库迁移
 
-```python
-# config.py
-import os
+将现有的 `free`/`starter`/`pro` 迁移为 `t1`/`t2`/`t3`：
 
-STRIPE_PRICE_TO_TIER = {
-    os.getenv("STRIPE_STARTER_MONTHLY_PRICE_ID"): "starter",
-    os.getenv("STRIPE_STARTER_ANNUAL_PRICE_ID"): "starter",
-    os.getenv("STRIPE_PRO_MONTHLY_PRICE_ID"): "pro",
-    os.getenv("STRIPE_PRO_ANNUAL_PRICE_ID"): "pro",
-}
+```sql
+-- 迁移脚本: scripts/migrations/001_migrate_tier_codes.sql
+BEGIN;
 
-def get_tier_from_price_id(price_id: str) -> str:
-    """
-    Get tier code from Stripe price ID.
+-- 更新 profiles 表
+UPDATE profiles SET tier = 't1' WHERE tier = 'free';
+UPDATE profiles SET tier = 't2' WHERE tier = 'starter';
+UPDATE profiles SET tier = 't3' WHERE tier = 'pro';
 
-    Args:
-        price_id: Stripe price ID
+-- 更新 CHECK 约束
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_tier_check;
+ALTER TABLE profiles ADD CONSTRAINT profiles_tier_check CHECK (tier IN ('t1', 't2', 't3'));
 
-    Returns:
-        Tier code ('starter', 'pro', or 'unknown')
-    """
-    return STRIPE_PRICE_TO_TIER.get(price_id, "unknown")
+-- 插入 system_configs 配置
+INSERT INTO system_configs (key, value, value_type, category, description, is_user_visible) VALUES
+('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称 (可配置)', FALSE),
+('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称 (可配置)', FALSE),
+('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可配置)', FALSE)
+ON CONFLICT (key) DO NOTHING;
+
+COMMIT;
+
+-- 验证迁移结果
+SELECT tier, COUNT(*) as user_count
+FROM profiles
+GROUP BY tier
+ORDER BY tier;
+
+-- 预期结果:
+--  tier | user_count
+-- ------+------------
+--  t1   | XXX
+--  t2   | YYY
+--  t3   | ZZZ
 ```
 
-**使用**:
-```python
-# api/admin/subscriptions.py
-from config import get_tier_from_price_id
+### Phase 2: 后端代码更新
 
-price_id = subscription_detail.items.data[0].price.id
-tier_code = get_tier_from_price_id(price_id)
-plan_name = await tier_service.get_tier_display_name(tier_code)
+```bash
+# 需要更新的文件
+domains/user/constants.py                      # 更新常量 (free → t1)
+infrastructure/repositories/user_repository.py # 更新默认值
+api/**/*.py                                    # 更新所有 tier 判断逻辑
+tests/**/*.py                                  # 更新所有测试用例
+docs/后台业务逻辑说明.md                        # 更新文档
+CLAUDE.md                                      # 更新配置文档
 ```
 
----
+### Phase 3: 前端代码更新
 
-## 常量定义 (保持向后兼容)
-
-```python
-# domains/user/constants.py
-"""User tier constants and configurations."""
-
-# Tier codes (系统内部使用,不可更改)
-TIER_FREE = "free"
-TIER_STARTER = "starter"
-TIER_PRO = "pro"
-
-# Valid tier codes
-VALID_TIERS = {TIER_FREE, TIER_STARTER, TIER_PRO}
-
-# Default display names (仅用于 fallback)
-DEFAULT_TIER_NAMES = {
-    TIER_FREE: "Free Plan",
-    TIER_STARTER: "Starter Plan",
-    TIER_PRO: "Pro Plan",
-}
-
-# Monthly credits by tier
-TIER_MONTHLY_CREDITS = {
-    TIER_FREE: 0,
-    TIER_STARTER: 200,
-    TIER_PRO: 500,
-}
-
-# Tier levels (用于比较,如降级验证)
-TIER_LEVELS = {
-    TIER_FREE: 0,
-    TIER_STARTER: 1,
-    TIER_PRO: 2,
-}
-```
-
-**使用**:
-```python
-from domains.user.constants import TIER_STARTER, TIER_MONTHLY_CREDITS
-
-# 判断 tier
-if user.tier == TIER_STARTER:
-    # ...
-
-# 获取月度积分
-credits = TIER_MONTHLY_CREDITS[user.tier]
-```
-
----
-
-## 更新现有代码
-
-### 1. 更新 subscriptions.py
-
-```python
-# api/admin/subscriptions.py
-
-# 添加 helper 函数
-def get_tier_code_from_price_id(price_id: str) -> str:
-    """Get tier code from Stripe price ID."""
-    from config import STRIPE_PRICE_TO_TIER
-    return STRIPE_PRICE_TO_TIER.get(price_id, "unknown")
-
-# 使用 TierService
-@router.post("/subscription/cancel")
-async def adm_cancel_subscription(...):
-    # ...
-    tier_service = TierService(SupabaseTierRepository(db))
-
-    # 获取 tier code
-    price_id = subscription_detail.items.data[0].price.id
-    tier_code = get_tier_code_from_price_id(price_id)
-
-    # 获取显示名称
-    plan_name = await tier_service.get_tier_display_name(tier_code)
-
-    # 记录到日志/审计
-    await admin_repo.admin_log_operation(
-        admin_id=admin["id"],
-        operation_type="subscription_cancel",
-        target_user_id=req.user_id,
-        details=f"{plan_name} ({'immediate' if req.immediate else 'at period end'})",
-        reason=req.reason
-    )
-```
-
-### 2. 更新 CLAUDE.md
-
-```markdown
-# CLAUDE.md
-
-## 用户等级
-
-| 等级代码 | 默认名称 | 月度积分 | 价格 |
-|----------|----------|----------|------|
-| free | Free Plan | 0 | $0 |
-| starter | Starter Plan | 200 | $9.9/月 |
-| pro | Pro Plan | 500 | $19.9/月 |
-
-**重要**:
-- 等级代码 (`free`/`starter`/`pro`) 是系统内部使用,不可更改
-- 显示名称 (Free Plan/Starter Plan/Pro Plan) 可通过 Admin 面板配置
-- 月度积分由系统常量定义 (TIER_MONTHLY_CREDITS)
+```bash
+# 需要更新的文件
+@business/types/user.ts                # 更新 Tier 类型定义 (Tier = 't1' | 't2' | 't3')
+@business/hooks/useTierConfig.ts       # 新增 Hook
+@business/stores/userStore.ts          # 更新 tier 处理逻辑
+app/**/components/**/*.tsx             # 更新所有显示 tier 的组件
 ```
 
 ---
@@ -550,32 +464,38 @@ async def adm_cancel_subscription(...):
 # tests/domains/test_tier_service.py
 import pytest
 from domains.user.tier_service import TierService
+from domains.user.constants import TIER_T1, TIER_T2, TIER_T3
 
 @pytest.mark.asyncio
 async def test_get_tier_display_name():
-    """Should return correct tier display name."""
-    tier_repo = MockTierRepository()
-    tier_service = TierService(tier_repo)
+    """Should return correct tier display name from config."""
+    tier_service = TierService(mock_config_repo)
 
-    name = await tier_service.get_tier_display_name("starter")
-    assert name == "Starter Plan"
+    assert await tier_service.get_tier_display_name(TIER_T1) == "Free Plan"
+    assert await tier_service.get_tier_display_name(TIER_T2) == "Starter Plan"
+    assert await tier_service.get_tier_display_name(TIER_T3) == "Pro Plan"
+
+def test_get_tier_label():
+    """Should return fixed tier labels."""
+    tier_service = TierService(mock_config_repo)
+
+    assert tier_service.get_tier_label(TIER_T1) == "First Tier"
+    assert tier_service.get_tier_label(TIER_T2) == "Second Tier"
+    assert tier_service.get_tier_label(TIER_T3) == "Third Tier"
 
 @pytest.mark.asyncio
-async def test_tier_cache():
-    """Should cache tier configs for 5 minutes."""
-    tier_repo = MockTierRepository()
-    tier_service = TierService(tier_repo)
+async def test_update_tier_display_name():
+    """Admin should be able to update tier display name."""
+    tier_service = TierService(mock_config_repo)
 
-    # First call - should hit DB
-    name1 = await tier_service.get_tier_display_name("starter")
-    assert tier_repo.call_count == 1
+    # 更新 T2 显示名称
+    await tier_service.update_tier_display_name(TIER_T2, "Growth Plan")
 
-    # Second call - should use cache
-    name2 = await tier_service.get_tier_display_name("pro")
-    assert tier_repo.call_count == 1  # Still 1
+    # 验证缓存已清除
+    assert await tier_service.get_tier_display_name(TIER_T2) == "Growth Plan"
 
-    # Same result
-    assert name1 == name2 == "Starter Plan"
+    # 固定简称不变
+    assert tier_service.get_tier_label(TIER_T2) == "Second Tier"
 ```
 
 ### 集成测试
@@ -583,20 +503,19 @@ async def test_tier_cache():
 ```python
 # tests/api/admin/test_tier_config.py
 @pytest.mark.asyncio
-async def test_update_tier_display_name():
-    """Admin should be able to update tier display name."""
+async def test_update_tier_display_name_api():
+    """Test admin API for updating tier display name."""
     response = await client.patch(
-        "/api/v2/admin/tiers/starter/display-name",
+        "/api/v2/admin/tiers/t2/display-name",
         json={"display_name": "Growth Plan"},
         headers={"Authorization": f"Bearer {admin_token}"}
     )
 
     assert response.status_code == 200
-    assert response.json()["display_name"] == "Growth Plan"
-
-    # Verify database updated
-    tier_config = await tier_repo.get_tier_by_code("starter")
-    assert tier_config["display_name"] == "Growth Plan"
+    data = response.json()
+    assert data["tier"] == "t2"
+    assert data["tier_label"] == "Second Tier"
+    assert data["display_name"] == "Growth Plan"
 ```
 
 ---
@@ -605,38 +524,40 @@ async def test_update_tier_display_name():
 
 ### 后端文档
 - [x] `docs/shared/TIER-NAMING-SYSTEM.md` (本文档)
-- [ ] `docs/后台业务逻辑说明.md` - 添加 Tier 配置系统说明
-- [ ] `CLAUDE.md` - 更新用户等级表,说明可配置性
+- [ ] `docs/后台业务逻辑说明.md` - 更新 Tier 系统说明
+- [ ] `CLAUDE.md` - 更新用户等级表
 - [ ] `API_REFERENCE.md` - 添加 Tier 配置 API
 
 ### 前端文档
 - [ ] `decodables-fe/docs/shared/TIER-NAMING-SYSTEM.md` (复制本文档)
 - [ ] `decodables-fe/docs/前端完整开发规范.md` - 添加 Tier 显示规范
 
-### 代码注释
-- [ ] 所有硬编码 tier 名称的地方更新为使用 `TierService`
-- [ ] 添加注释说明 tier code vs display name 的区别
+### 数据库文档
+- [ ] `migrations/v2/design_reasoning.md` - 更新 Tier 系统说明
+- [ ] `migrations/v2/refactored_schema_v2.sql` - 更新 tier CHECK 约束和注释
+- [ ] `migrations/v2/README.md` - 更新 Tier 说明
 
 ---
 
 ## 总结
 
-| 方面 | Tier Code | Display Name |
-|------|-----------|--------------|
-| **性质** | 系统内部标识符 | 用户可见名称 |
-| **示例** | `starter` | `Starter Plan` |
-| **可修改** | ❌ 不可修改 | ✅ Admin 可配置 |
-| **存储位置** | 代码常量 | 数据库 `tier_configs` 表 |
-| **使用场景** | 业务逻辑,数据库字段 | UI 显示,营销文案 |
+| 层级 | 系统代码 | 固定简称 | 显示名称 (可配置) |
+|------|----------|----------|------------------|
+| **示例** | `t2` | `Second Tier` | `Starter Plan` |
+| **用途** | 数据库字段、代码逻辑 | 层级描述、文档说明 | UI 显示、营销文案 |
+| **可修改** | ❌ 永不改变 | ❌ 永不改变 | ✅ Admin 可配置 |
+| **存储位置** | profiles.tier + 代码常量 | 代码常量 | system_configs 表 |
 
 **最佳实践**:
-- ✅ 业务逻辑使用 **tier code** (`free`/`starter`/`pro`)
-- ✅ UI 显示使用 **display name** (从 `TierService` 获取)
-- ✅ 新增 tier 时,同时更新代码常量和数据库配置
-- ✅ 修改名称只需通过 Admin API,无需改代码
+- ✅ 业务逻辑使用 **系统代码** (`t1`/`t2`/`t3`)
+- ✅ 文档和日志使用 **固定简称** (First Tier/Second Tier/Third Tier)
+- ✅ UI 显示使用 **显示名称** (从 TierService 获取)
+- ✅ 代码中使用常量 (`TIER_T1`, `TIER_T2`, `TIER_T3`)，不硬编码字符串
+- ✅ 等级比较使用 `TIER_LEVELS` 字典，不使用字符串比较
+- ✅ 修改名称只需通过 Admin API，无需改代码
 
 ---
 
-最后更新: 2026-01-09
-维护人: 后端团队
-状态: 设计完成,待实施
+**最后更新**: 2026-01-09
+**维护人**: 后端团队
+**状态**: 设计完成，待实施
