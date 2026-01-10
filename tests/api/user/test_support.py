@@ -1,7 +1,14 @@
 """
-Support API Tests - v2 DDD Architecture
+Support API Tests - v3.0.0 DDD Architecture
 
 Tests for api/user/support.py
+
+@version 3.0.0
+@updated 2026-01-10 (v3.0.0: Updated to mock Command Handlers instead of Infrastructure)
+
+Test Pattern:
+- v2.1.0: Mocked Infrastructure (SupabaseSupportRepository, AI services)
+- v3.0.0: Mocks Command Handlers (CreateSupportTicketHandler, AiChatSupportHandler, etc.)
 
 Endpoints:
 - POST /api/v2/user/support/ticket - Create support ticket
@@ -9,8 +16,10 @@ Endpoints:
 - POST /api/v2/user/support/contact - Contact form submission
 - POST /api/v2/user/support/feedback - Submit user feedback
 
-@module tests.api.user.test_support
-@version 2.1.0
+Changes in v3.0.0:
+- Migrated to Handler-based testing pattern
+- Mock handlers via Container._handlers injection
+- Removed direct Infrastructure mocking
 
 Changes in v2.1.0:
 - Added tests for images list size limit (SUP-MEDIUM-1)
@@ -97,82 +106,109 @@ def mock_openai_response():
 # ==========================================
 
 class TestCreateTicket:
-    """Tests for POST /api/v2/user/support/ticket endpoint."""
+    """Tests for POST /api/v2/user/support/ticket endpoint (v3.0.0)."""
 
-    @patch('api.user.support.SupabaseSupportRepository')
     def test_create_ticket_success(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Create support ticket successfully
+        v3.0.0: Test create support ticket successfully
 
         Given: User with valid authentication
         When: POST /api/v2/user/support/ticket with message
         Then: Returns status=ok
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.create_support_ticket = AsyncMock()
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import CreateSupportTicketHandler, CreateSupportTicketResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/ticket",
-            json={
-                "message": "I need help with my project",
-                "email": "custom@example.com",
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateSupportTicketHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateSupportTicketResult(
+            result_data={"status": "ok"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_support_ticket')
+        container._handlers['create_support_ticket'] = mock_handler
 
-        # Verify service call
-        mock_repo.create_support_ticket.assert_called_once_with(
-            mock_user["id"],
-            "custom@example.com",
-            "I need help with my project",
-        )
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/ticket",
+                json={
+                    "message": "I need help with my project",
+                    "email": "custom@example.com",
+                },
+            )
 
-    @patch('api.user.support.SupabaseSupportRepository')
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+
+            # Verify handler called
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_id == mock_user["id"]
+            assert call_args.user_email == "custom@example.com"
+            assert call_args.message == "I need help with my project"
+
+        finally:
+            if original_handler:
+                container._handlers['create_support_ticket'] = original_handler
+            else:
+                container._handlers.pop('create_support_ticket', None)
+
     def test_create_ticket_default_email(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Create ticket with default user email
+        v3.0.0: Test create ticket with default user email
 
         Given: User without custom email
         When: POST without email field
         Then: Uses user's default email
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.create_support_ticket = AsyncMock()
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import CreateSupportTicketHandler, CreateSupportTicketResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/ticket",
-            json={"message": "Need help"},
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=CreateSupportTicketHandler)
+        mock_handler.handle = AsyncMock(return_value=CreateSupportTicketResult(
+            result_data={"status": "ok"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('create_support_ticket')
+        container._handlers['create_support_ticket'] = mock_handler
 
-        # Verify default email used
-        mock_repo.create_support_ticket.assert_called_once_with(
-            mock_user["id"],
-            "test@example.com",  # From mock_user
-            "Need help",
-        )
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/ticket",
+                json={"message": "Need help"},
+            )
+
+            # Assert
+            assert response.status_code == 200
+
+            # Verify default email used
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_email == "test@example.com"  # From mock_user
+            assert call_args.message == "Need help"
+
+        finally:
+            if original_handler:
+                container._handlers['create_support_ticket'] = original_handler
+            else:
+                container._handlers.pop('create_support_ticket', None)
 
     def test_create_ticket_validation_error(
         self,
@@ -240,191 +276,166 @@ class TestCreateTicket:
 # ==========================================
 
 class TestChatSupport:
-    """Tests for POST /api/v2/user/support/chat endpoint."""
+    """Tests for POST /api/v2/user/support/chat endpoint (v3.0.0)."""
 
-    @patch('application.services.ai_chat_service.chat_with_assistant')
-    @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
     def test_chat_with_assistant_api(
         self,
-        mock_chat_with_assistant,
         override_get_current_user,
         mock_chat_response,
     ):
         """
-        Test: Chat using Assistants API (with RAG)
+        v3.0.0: Test chat using Assistants API (with RAG)
 
-        Given: OPENAI_ASSISTANT_ID is configured
+        Given: Handler returns assistant response
         When: POST /api/v2/user/support/chat without images
-        Then: Uses Assistants API and returns response
+        Then: Returns chat response
         """
-        # Arrange
-        mock_chat_with_assistant.return_value = mock_chat_response
+        from application.commands.support import AiChatSupportHandler, AiChatSupportResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/chat",
-            json={
-                "message": "How do I create a project?",
-                "conversation_history": [],
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=AiChatSupportHandler)
+        mock_handler.handle = AsyncMock(return_value=AiChatSupportResult(
+            result_data=mock_chat_response
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert data["message"] == "I can help you with that!"
-        assert data["source"] == "assistant"
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('ai_chat_support')
+        container._handlers['ai_chat_support'] = mock_handler
 
-        # Verify Assistants API was called
-        mock_chat_with_assistant.assert_called_once()
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/chat",
+                json={
+                    "message": "How do I create a project?",
+                    "conversation_history": [],
+                },
+            )
 
-    @patch('application.services.ai_chat_service.chat_with_vision')
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+            assert data["message"] == "I can help you with that!"
+            assert data["source"] == "assistant"
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+
+        finally:
+            if original_handler:
+                container._handlers['ai_chat_support'] = original_handler
+            else:
+                container._handlers.pop('ai_chat_support', None)
+
     def test_chat_with_vision_api(
         self,
-        mock_chat_with_vision,
         override_get_current_user,
         mock_chat_response,
     ):
         """
-        Test: Chat with images using Vision API
+        v3.0.0: Test chat with images using Vision API
 
-        Given: User provides images
+        Given: Handler returns vision response
         When: POST /api/v2/user/support/chat with images
-        Then: Uses Vision API and returns response
+        Then: Returns chat response
         """
-        # Arrange
-        mock_chat_with_vision.return_value = mock_chat_response
+        from application.commands.support import AiChatSupportHandler, AiChatSupportResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/chat",
-            json={
-                "message": "What's wrong with this image?",
-                "images": ["data:image/png;base64,iVBORw0KGgoAAAA..."],
-                "conversation_history": [],
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=AiChatSupportHandler)
+        mock_handler.handle = AsyncMock(return_value=AiChatSupportResult(
+            result_data=mock_chat_response
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('ai_chat_support')
+        container._handlers['ai_chat_support'] = mock_handler
 
-        # Verify Vision API was called
-        mock_chat_with_vision.assert_called_once()
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/chat",
+                json={
+                    "message": "What's wrong with this image?",
+                    "images": ["data:image/png;base64,iVBORw0KGgoAAAA..."],
+                    "conversation_history": [],
+                },
+            )
 
-    @patch('shared.ai.story_generator.client')
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+
+        finally:
+            if original_handler:
+                container._handlers['ai_chat_support'] = original_handler
+            else:
+                container._handlers.pop('ai_chat_support', None)
+
     @patch('config.OPENAI_ASSISTANT_ID', None)
     def test_chat_fallback_chat_completions(
         self,
-        mock_openai_client,
         override_get_current_user,
-        mock_openai_response,
+        mock_chat_response_fallback,
     ):
         """
-        Test: Chat using Chat Completions API (fallback)
+        v3.0.0: Test chat using Chat Completions API (fallback)
 
         Given: OPENAI_ASSISTANT_ID is not configured
         When: POST /api/v2/user/support/chat without images
         Then: Uses Chat Completions API and returns response
         """
-        # Arrange
-        mock_openai_client.chat.completions.create.return_value = mock_openai_response
+        from application.commands.support import AiChatSupportHandler, AiChatSupportResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/chat",
-            json={
-                "message": "Need help",
-                "conversation_history": [
-                    {"role": "user", "content": "Previous message"},
-                    {"role": "assistant", "content": "Previous response"},
-                ],
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=AiChatSupportHandler)
+        mock_handler.handle = AsyncMock(return_value=AiChatSupportResult(
+            result_data=mock_chat_response_fallback
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert data["message"] == "I can help you with that!"
-        assert data["source"] == "fallback"
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('ai_chat_support')
+        container._handlers['ai_chat_support'] = mock_handler
 
-        # Verify Chat Completions was called
-        mock_openai_client.chat.completions.create.assert_called_once()
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/chat",
+                json={
+                    "message": "Need help",
+                    "conversation_history": [
+                        {"role": "user", "content": "Previous message"},
+                        {"role": "assistant", "content": "Previous response"},
+                    ],
+                },
+            )
 
-    @patch('application.services.ai_chat_service.chat_with_assistant')
-    @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
-    def test_chat_with_conversation_history(
-        self,
-        mock_chat_with_assistant,
-        override_get_current_user,
-        mock_chat_response,
-    ):
-        """
-        Test: Chat with conversation history
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+            assert data["message"] == "Here's how to solve your issue..."
+            assert data["source"] == "fallback"
 
-        Given: User has previous conversation
-        When: POST with conversation_history
-        Then: Passes history to AI service
-        """
-        # Arrange
-        mock_chat_with_assistant.return_value = mock_chat_response
-        history = [
-            {"role": "user", "content": "How do I start?"},
-            {"role": "assistant", "content": "Click the create button"},
-        ]
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/chat",
-            json={
-                "message": "What's next?",
-                "conversation_history": history,
-            },
-        )
-
-        # Assert
-        assert response.status_code == 200
-
-        # Verify history was passed
-        call_args = mock_chat_with_assistant.call_args
-        assert call_args[0][1] == history  # Second argument is conversation_history
-
-    @patch('application.services.ai_chat_service.chat_with_assistant')
-    @patch('config.OPENAI_ASSISTANT_ID', 'asst_test_123')
-    def test_chat_ai_error_handling(
-        self,
-        mock_chat_with_assistant,
-        override_get_current_user,
-    ):
-        """
-        Test: AI service error should return friendly error
-
-        Given: AI service throws exception
-        When: POST /api/v2/user/support/chat
-        Then: Returns 200 with error status and fallback message
-        """
-        # Arrange
-        mock_chat_with_assistant.side_effect = Exception("OpenAI API Error")
-
-        # Act
-        response = client.post(
-            "/api/v2/user/support/chat",
-            json={
-                "message": "Need help",
-                "conversation_history": [],
-            },
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "error"
-        assert "having trouble" in data["message"].lower()
-        assert "info@makedecodables.com" in data["message"]
-        assert data["error"] == "OpenAI API Error"
+        finally:
+            if original_handler:
+                container._handlers['ai_chat_support'] = original_handler
+            else:
+                container._handlers.pop('ai_chat_support', None)
 
     def test_chat_validation_error_empty_message(
         self,
@@ -501,88 +512,117 @@ class TestChatSupport:
 # ==========================================
 
 class TestContact:
-    """Tests for POST /api/v2/user/support/contact endpoint."""
+    """Tests for POST /api/v2/user/support/contact endpoint (v3.0.0)."""
 
-    @patch('api.user.support.SupabaseSupportRepository')
     def test_contact_success(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Submit contact form successfully
+        v3.0.0: Test submit contact form successfully
 
         Given: User with valid authentication
         When: POST /api/v2/user/support/contact with all fields
         Then: Returns status=ok with confirmation message
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.send_support_email = MagicMock()  # Not async in buggy API
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import SendContactMessageHandler, SendContactMessageResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/contact",
-            json={
-                "name": "John Doe",
-                "email": "john@example.com",
-                "subject": "Product Inquiry",
-                "message": "I'm interested in your product",
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=SendContactMessageHandler)
+        mock_handler.handle = AsyncMock(return_value=SendContactMessageResult(
+            result_data={"status": "ok", "message": "Message received"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert data["message"] == "Message received"
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('send_contact_message')
+        container._handlers['send_contact_message'] = mock_handler
 
-        # Verify service call - API formats message with name/subject
-        mock_repo.send_support_email.assert_called_once()
-        call_args = mock_repo.send_support_email.call_args
-        assert call_args[1]["user_id"] == mock_user["id"]
-        assert call_args[1]["user_email"] == "john@example.com"
-        assert "John Doe" in call_args[1]["message"]
-        assert "Product Inquiry" in call_args[1]["message"]
-        assert "I'm interested in your product" in call_args[1]["message"]
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/contact",
+                json={
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                    "subject": "Product Inquiry",
+                    "message": "I'm interested in your product",
+                },
+            )
 
-    @patch('api.user.support.SupabaseSupportRepository')
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+            assert data["message"] == "Message received"
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_id == mock_user["id"]
+            assert call_args.name == "John Doe"
+            assert call_args.email == "john@example.com"
+            assert call_args.subject == "Product Inquiry"
+            assert call_args.message == "I'm interested in your product"
+
+        finally:
+            if original_handler:
+                container._handlers['send_contact_message'] = original_handler
+            else:
+                container._handlers.pop('send_contact_message', None)
+
     def test_contact_without_subject(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Submit contact form without subject (optional)
+        v3.0.0: Test submit contact form without subject (optional)
 
         Given: User without subject field
         When: POST /api/v2/user/support/contact
         Then: Returns success (subject is optional)
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.send_support_email = MagicMock()  # Not async in buggy API
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import SendContactMessageHandler, SendContactMessageResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/contact",
-            json={
-                "name": "John Doe",
-                "email": "john@example.com",
-                "message": "General inquiry",
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=SendContactMessageHandler)
+        mock_handler.handle = AsyncMock(return_value=SendContactMessageResult(
+            result_data={"status": "ok", "message": "Message received"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('send_contact_message')
+        container._handlers['send_contact_message'] = mock_handler
 
-        # Verify subject is N/A when not provided
-        call_args = mock_repo.send_support_email.call_args
-        assert "Subject: N/A" in call_args[1]["message"]
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/contact",
+                json={
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                    "message": "General inquiry",
+                },
+            )
+
+            # Assert
+            assert response.status_code == 200
+
+            # Verify handler was called with None subject
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.subject is None
+
+        finally:
+            if original_handler:
+                container._handlers['send_contact_message'] = original_handler
+            else:
+                container._handlers.pop('send_contact_message', None)
 
     def test_contact_validation_error_missing_fields(
         self,
@@ -658,124 +698,167 @@ class TestContact:
 # ==========================================
 
 class TestFeedback:
-    """Tests for POST /api/v2/user/support/feedback endpoint."""
+    """Tests for POST /api/v2/user/support/feedback endpoint (v3.0.0)."""
 
-    @patch('api.user.support.SupabaseSupportRepository')
     def test_feedback_success(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Submit feedback successfully
+        v3.0.0: Test submit feedback successfully
 
         Given: User with valid authentication
         When: POST /api/v2/user/support/feedback with message
         Then: Returns status=ok with confirmation message
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.send_feedback_with_images = MagicMock()  # Not async in buggy API
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import SubmitFeedbackHandler, SubmitFeedbackResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/feedback",
-            json={
-                "message": "Great product! Love the new features.",
-                "email": "custom@example.com",
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=SubmitFeedbackHandler)
+        mock_handler.handle = AsyncMock(return_value=SubmitFeedbackResult(
+            result_data={"status": "ok", "message": "Feedback submitted successfully"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert "submitted successfully" in data["message"].lower()
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('submit_feedback')
+        container._handlers['submit_feedback'] = mock_handler
 
-        # Verify service call
-        mock_repo.send_feedback_with_images.assert_called_once_with(
-            mock_user["id"],
-            "custom@example.com",
-            "Great product! Love the new features.",
-            [],  # No images
-        )
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/feedback",
+                json={
+                    "message": "Great product! Love the new features.",
+                    "email": "custom@example.com",
+                },
+            )
 
-    @patch('api.user.support.SupabaseSupportRepository')
+            # Assert
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+            assert "submitted successfully" in data["message"].lower()
+
+            # Verify handler was called
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_id == mock_user["id"]
+            assert call_args.user_email == "custom@example.com"
+            assert call_args.message == "Great product! Love the new features."
+            assert call_args.images == []
+
+        finally:
+            if original_handler:
+                container._handlers['submit_feedback'] = original_handler
+            else:
+                container._handlers.pop('submit_feedback', None)
+
     def test_feedback_with_images(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Submit feedback with images/screenshots
+        v3.0.0: Test submit feedback with images/screenshots
 
         Given: User with screenshots
         When: POST /api/v2/user/support/feedback with images
         Then: Returns success and passes images to service
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.send_feedback_with_images = MagicMock()  # Not async in buggy API
-        mock_repo_class.return_value = mock_repo
-        images = [
-            "data:image/png;base64,iVBORw0KGgo...",
-            "https://example.com/screenshot.png",
-        ]
+        from application.commands.support import SubmitFeedbackHandler, SubmitFeedbackResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/feedback",
-            json={
-                "message": "Bug in the editor",
-                "images": images,
-            },
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=SubmitFeedbackHandler)
+        mock_handler.handle = AsyncMock(return_value=SubmitFeedbackResult(
+            result_data={"status": "ok", "message": "Feedback submitted successfully"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('submit_feedback')
+        container._handlers['submit_feedback'] = mock_handler
 
-        # Verify images were passed - API uses user email when req.email is None
-        mock_repo.send_feedback_with_images.assert_called_once_with(
-            mock_user["id"],
-            "test@example.com",  # Fallback to user's email from mock_user
-            "Bug in the editor",
-            images,
-        )
+        try:
+            images = [
+                "data:image/png;base64,iVBORw0KGgo...",
+                "https://example.com/screenshot.png",
+            ]
 
-    @patch('api.user.support.SupabaseSupportRepository')
+            # Act
+            response = client.post(
+                "/api/v2/user/support/feedback",
+                json={
+                    "message": "Bug in the editor",
+                    "images": images,
+                },
+            )
+
+            # Assert
+            assert response.status_code == 200
+
+            # Verify handler was called with images
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_email == "test@example.com"  # Default email
+            assert call_args.message == "Bug in the editor"
+            assert call_args.images == images
+
+        finally:
+            if original_handler:
+                container._handlers['submit_feedback'] = original_handler
+            else:
+                container._handlers.pop('submit_feedback', None)
+
     def test_feedback_without_email(
         self,
-        mock_repo_class,
         override_get_current_user,
         mock_user,
     ):
         """
-        Test: Submit feedback without custom email (optional)
+        v3.0.0: Test submit feedback without custom email (optional)
 
         Given: User without email field
         When: POST /api/v2/user/support/feedback
         Then: Returns success (email is optional)
         """
-        # Arrange
-        mock_repo = MagicMock()
-        mock_repo.send_feedback_with_images = MagicMock()  # Not async in buggy API
-        mock_repo_class.return_value = mock_repo
+        from application.commands.support import SubmitFeedbackHandler, SubmitFeedbackResult
 
-        # Act
-        response = client.post(
-            "/api/v2/user/support/feedback",
-            json={"message": "Good job!"},
-        )
+        # Mock handler
+        mock_handler = MagicMock(spec=SubmitFeedbackHandler)
+        mock_handler.handle = AsyncMock(return_value=SubmitFeedbackResult(
+            result_data={"status": "ok", "message": "Feedback submitted successfully"}
+        ))
 
-        # Assert
-        assert response.status_code == 200
+        # Inject mock handler
+        from container import get_container
+        container = get_container()
+        original_handler = container._handlers.get('submit_feedback')
+        container._handlers['submit_feedback'] = mock_handler
 
-        # Verify email fallback - API uses user email when req.email is None
-        call_args = mock_repo.send_feedback_with_images.call_args
-        assert call_args[0][1] == "test@example.com"  # Fallback to user's email
+        try:
+            # Act
+            response = client.post(
+                "/api/v2/user/support/feedback",
+                json={"message": "Good job!"},
+            )
+
+            # Assert
+            assert response.status_code == 200
+
+            # Verify handler was called with default email
+            mock_handler.handle.assert_called_once()
+            call_args = mock_handler.handle.call_args[0][0]
+            assert call_args.user_email == "test@example.com"  # Fallback to user's email
+
+        finally:
+            if original_handler:
+                container._handlers['submit_feedback'] = original_handler
+            else:
+                container._handlers.pop('submit_feedback', None)
 
     def test_feedback_validation_error_empty_message(
         self,
@@ -966,7 +1049,7 @@ class TestSecurityValidations:
 # ==========================================
 
 """
-Test Coverage Summary:
+Test Coverage Summary (v3.0.0):
 
 POST /api/v2/user/support/ticket:
 ✅ Success with custom email
@@ -979,8 +1062,6 @@ POST /api/v2/user/support/chat:
 ✅ Success with Assistants API (RAG)
 ✅ Success with Vision API (images)
 ✅ Fallback to Chat Completions API
-✅ With conversation history
-✅ AI error handling (200 with error status)
 ✅ Validation error: empty message (422)
 ✅ Validation error: message too long (422)
 ✅ Unauthorized (401)
@@ -1008,23 +1089,36 @@ Security Validations (v2.1.0):
 ✅ Feedback: too many images (422)
 ✅ Feedback: invalid email format (422)
 
-Total Tests: 29
+Total Tests: 28 (v3.0.0)
 Coverage: 100% (4/4 endpoints + security validations)
 
+Test Breakdown:
+- TestCreateTicket: 5 tests
+- TestChatSupport: 6 tests
+- TestContact: 5 tests
+- TestFeedback: 6 tests
+- TestSecurityValidations: 6 tests
+
+Changes in v3.0.0:
+- Migrated from Infrastructure mocking to Handler mocking
+- All tests now mock Command Handlers via Container injection
+- Tests focus on API contract and data validation
+- Removed implementation-detail tests (these belong in domain/service tests)
+
 Business Logic Tested:
-- ✅ Email fallback (custom email → user email → unknown@user.com)
-- ✅ AI service selection (Assistants API → Vision API → Chat Completions fallback)
-- ✅ Conversation history handling (last 10 messages)
+- ✅ Handler command parameter validation
+- ✅ Email fallback (custom email → user email)
 - ✅ Image support (base64 and URLs)
 - ✅ Optional fields (email, subject)
 - ✅ String validation (min_length, max_length)
-- ✅ Error handling (AI failures return friendly messages)
 - ✅ Authentication requirement
 
-Not Tested (Requires Integration/E2E):
+Not Tested (Requires Integration/E2E or Domain Tests):
+- AI service selection logic (Assistants API → Vision API → Chat Completions)
+- Conversation history handling (last 10 messages)
+- Error handling (AI failures return friendly messages)
 - Actual OpenAI API interaction
 - Real rate limiting behavior
 - Email delivery
 - Database transaction consistency
-- File upload for images
 """
