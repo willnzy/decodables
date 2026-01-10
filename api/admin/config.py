@@ -118,9 +118,70 @@ async def get_all_configs(
     admin: dict = Depends(require_admin)
 ):
     """
-    Get all system configurations.
+    Get all system configurations with optional category filtering.
 
-    Optionally filter by category (e.g., "rate_limit", "feature_flags").
+    Retrieves all configuration key-value pairs from the system_configs table.
+    Used for viewing current system settings, feature flags, rate limits, and other
+    configurable parameters. Supports filtering by category for focused queries.
+
+    Args:
+        category: Optional category filter (max 50 chars)
+            Valid values:
+                - "rate_limit": Rate limiting configurations
+                - "feature_flags": Feature flag settings
+                - "system": System-wide settings
+                - "ai": AI service configurations
+                - "storage": Storage settings
+                - "payment": Payment gateway settings
+            If not specified, returns all configurations across all categories
+
+    Returns:
+        AllConfigsResponse containing:
+            - configs: List of configuration entries including:
+                - key: Configuration key (e.g., "rate_limit.api.max_requests")
+                - value: Configuration value (JSON object)
+                - category: Configuration category
+                - description: Human-readable description
+                - is_active: Whether config is currently active
+                - updated_at: Last update timestamp
+            - total: Total number of configurations returned
+
+    Raises:
+        400: Invalid category value (not in VALID_CONFIG_CATEGORIES)
+        401: Unauthorized (not admin)
+        500: Database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30 requests per minute
+        - Category validated against VALID_CONFIG_CATEGORIES enum
+        - Read-only operation (no data modification)
+
+    Example:
+        GET /api/v2/admin/config?category=rate_limit
+
+        Response:
+        {
+            "configs": [
+                {
+                    "key": "rate_limit.api.max_requests",
+                    "value": {"limit": 100, "window": "minute"},
+                    "category": "rate_limit",
+                    "description": "Maximum API requests per minute",
+                    "is_active": true,
+                    "updated_at": "2026-01-10T10:30:00Z"
+                },
+                {
+                    "key": "rate_limit.global.enabled",
+                    "value": {"enabled": true},
+                    "category": "rate_limit",
+                    "description": "Global rate limiting toggle",
+                    "is_active": true,
+                    "updated_at": "2026-01-09T15:20:00Z"
+                }
+            ],
+            "total": 2
+        }
     """
     try:
         # Validate category if provided
@@ -157,7 +218,62 @@ async def get_config(
     config_key: str = Path(..., max_length=200, description="Configuration key"),
     admin: dict = Depends(require_admin)
 ):
-    """Get a single system configuration by key."""
+    """
+    Get a single system configuration by key.
+
+    Retrieves a specific configuration value by its unique key. Useful for checking
+    individual settings without loading all configurations. Returns 404 if the key
+    doesn't exist in the system_configs table.
+
+    Args:
+        config_key: Configuration key to retrieve (max 200 chars)
+            Examples:
+                - "rate_limit.api.max_requests"
+                - "feature_flags.new_editor.enabled"
+                - "ai.fal.api_key"
+                - "payment.stripe.webhook_secret"
+            Key format: {category}.{subcategory}.{setting}
+
+    Returns:
+        SingleConfigResponse containing:
+            - key: Configuration key (echoed back)
+            - value: Configuration value (JSON object)
+                Structure varies by config type, e.g.:
+                - Rate limits: {"limit": 100, "window": "minute", "enabled": true}
+                - Feature flags: {"enabled": true, "rollout_percentage": 50}
+                - API keys: {"key": "sk_...", "environment": "production"}
+            - is_active: Whether this config is currently active
+            - updated_at: Last update timestamp (or null if not tracked)
+
+    Raises:
+        404: Configuration key not found
+        401: Unauthorized (not admin)
+        400: config_key exceeds 200 chars
+        500: Database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30 requests per minute
+        - Key length validated (max 200 chars)
+        - Read-only operation (no data modification)
+        - Sensitive values (API keys, secrets) are returned unmasked
+          (admin-only access assumed secure)
+
+    Example:
+        GET /api/v2/admin/config/rate_limit.api.max_requests
+
+        Response:
+        {
+            "key": "rate_limit.api.max_requests",
+            "value": {
+                "limit": 100,
+                "window": "minute",
+                "enabled": true
+            },
+            "is_active": true,
+            "updated_at": "2026-01-10T10:30:00Z"
+        }
+    """
     try:
         config_service = _get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Queried config: {config_key}")
