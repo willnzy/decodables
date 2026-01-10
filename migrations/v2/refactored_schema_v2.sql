@@ -3429,6 +3429,295 @@ EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ============================================================================
+-- Phase 2.2: P1 高优先级表 (High Priority Business Tables)
+-- Created: 2026-01-10
+-- Purpose: 添加管理员操作审计、资产使用追踪、市场报告和指标追踪表
+-- ============================================================================
+
+-- ============================================================
+-- 18. admin_operations (管理员操作审计日志表)
+-- ============================================================
+CREATE TABLE admin_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    operation_type TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    action_details JSONB DEFAULT '{}',
+    ip_address INET,
+    user_agent TEXT,
+    status TEXT DEFAULT 'success',
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_operation_type CHECK (
+        operation_type IN (
+            'create', 'update', 'delete', 'restore',
+            'approve', 'reject', 'ban', 'unban',
+            'grant_credits', 'refund', 'adjust_tier',
+            'force_delete', 'export_data', 'import_data'
+        )
+    ),
+    CONSTRAINT check_target_type CHECK (
+        target_type IN (
+            'user', 'project', 'listing', 'ticket', 'transaction',
+            'feature_flag', 'experiment', 'config', 'system'
+        )
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('success', 'failed', 'partial')
+    )
+);
+
+CREATE INDEX idx_admin_operations_admin_id ON admin_operations(admin_id, created_at DESC);
+CREATE INDEX idx_admin_operations_operation_type ON admin_operations(operation_type, created_at DESC);
+CREATE INDEX idx_admin_operations_target ON admin_operations(target_type, target_id);
+CREATE INDEX idx_admin_operations_created_at ON admin_operations(created_at DESC);
+CREATE INDEX idx_admin_operations_failed ON admin_operations(created_at DESC) WHERE status = 'failed';
+
+COMMENT ON TABLE admin_operations IS '管理员操作审计日志表: 记录所有管理员操作,用于审计和合规';
+COMMENT ON COLUMN admin_operations.admin_id IS '执行操作的管理员 ID';
+COMMENT ON COLUMN admin_operations.operation_type IS '操作类型 (create/update/delete/ban/grant_credits 等)';
+COMMENT ON COLUMN admin_operations.target_type IS '目标类型 (user/project/listing/ticket 等)';
+COMMENT ON COLUMN admin_operations.target_id IS '目标对象 ID';
+COMMENT ON COLUMN admin_operations.action_details IS '操作详情 (JSON 格式,包含修改前后的值)';
+COMMENT ON COLUMN admin_operations.status IS '操作状态 (success/failed/partial)';
+COMMENT ON COLUMN admin_operations.error_message IS '错误消息 (如果失败)';
+
+-- ============================================================
+-- 19. listing_usages (资产使用追踪表)
+-- ============================================================
+CREATE TABLE listing_usages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    usage_type TEXT NOT NULL,
+    usage_count INTEGER DEFAULT 1,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_usage_type CHECK (
+        usage_type IN (
+            'view', 'preview', 'download', 'use_in_project',
+            'favorite', 'share', 'report'
+        )
+    ),
+    CONSTRAINT check_usage_count CHECK (usage_count > 0)
+);
+
+CREATE INDEX idx_listing_usages_listing_id ON listing_usages(listing_id, created_at DESC);
+CREATE INDEX idx_listing_usages_user_id ON listing_usages(user_id, created_at DESC);
+CREATE INDEX idx_listing_usages_project_id ON listing_usages(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX idx_listing_usages_usage_type ON listing_usages(usage_type, created_at DESC);
+CREATE INDEX idx_listing_usages_created_at ON listing_usages(created_at DESC);
+
+COMMENT ON TABLE listing_usages IS '资产使用追踪表: 记录 marketplace listing 的使用情况,用于分析和推荐';
+COMMENT ON COLUMN listing_usages.listing_id IS '被使用的 listing ID';
+COMMENT ON COLUMN listing_usages.user_id IS '使用者 ID';
+COMMENT ON COLUMN listing_usages.project_id IS '使用该 listing 的项目 ID (如果是 use_in_project)';
+COMMENT ON COLUMN listing_usages.usage_type IS '使用类型 (view/preview/download/use_in_project/favorite/share/report)';
+COMMENT ON COLUMN listing_usages.usage_count IS '使用次数 (默认 1,聚合时可能 > 1)';
+COMMENT ON COLUMN listing_usages.metadata IS '附加元数据 (如 duration, device_type)';
+
+-- ============================================================
+-- 20. marketplace_reports (市场内容举报表)
+-- ============================================================
+CREATE TABLE marketplace_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+    reporter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    report_reason TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    reviewed_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    resolution TEXT,
+    action_taken TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_report_reason CHECK (
+        report_reason IN (
+            'copyright_violation', 'inappropriate_content', 'spam',
+            'misleading_description', 'poor_quality', 'offensive',
+            'duplicate', 'other'
+        )
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('pending', 'under_review', 'resolved', 'dismissed')
+    ),
+    CONSTRAINT check_action_taken CHECK (
+        action_taken IS NULL OR action_taken IN (
+            'removed_listing', 'warned_seller', 'banned_seller',
+            'no_action', 'content_modified'
+        )
+    ),
+    CONSTRAINT check_description_not_empty CHECK (LENGTH(TRIM(description)) > 0)
+);
+
+CREATE INDEX idx_marketplace_reports_listing_id ON marketplace_reports(listing_id, created_at DESC);
+CREATE INDEX idx_marketplace_reports_reporter_id ON marketplace_reports(reporter_id, created_at DESC);
+CREATE INDEX idx_marketplace_reports_status ON marketplace_reports(status, created_at DESC);
+CREATE INDEX idx_marketplace_reports_reviewed_by ON marketplace_reports(reviewed_by, reviewed_at DESC);
+CREATE INDEX idx_marketplace_reports_pending ON marketplace_reports(created_at DESC) WHERE status IN ('pending', 'under_review');
+
+COMMENT ON TABLE marketplace_reports IS '市场内容举报表: 记录用户对 listing 的举报,用于内容审核';
+COMMENT ON COLUMN marketplace_reports.listing_id IS '被举报的 listing ID';
+COMMENT ON COLUMN marketplace_reports.reporter_id IS '举报人 ID';
+COMMENT ON COLUMN marketplace_reports.report_reason IS '举报原因 (copyright_violation/inappropriate_content 等)';
+COMMENT ON COLUMN marketplace_reports.description IS '详细描述';
+COMMENT ON COLUMN marketplace_reports.status IS '处理状态 (pending/under_review/resolved/dismissed)';
+COMMENT ON COLUMN marketplace_reports.reviewed_by IS '审核人员 (管理员 ID)';
+COMMENT ON COLUMN marketplace_reports.reviewed_at IS '审核时间';
+COMMENT ON COLUMN marketplace_reports.resolution IS '解决方案说明';
+COMMENT ON COLUMN marketplace_reports.action_taken IS '采取的行动 (removed_listing/warned_seller/banned_seller/no_action)';
+
+-- ============================================================
+-- 21. daily_metrics (每日指标表)
+-- ============================================================
+CREATE TABLE daily_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    metric_date DATE NOT NULL UNIQUE,
+    total_users INTEGER DEFAULT 0,
+    active_users INTEGER DEFAULT 0,
+    new_users INTEGER DEFAULT 0,
+    total_projects INTEGER DEFAULT 0,
+    new_projects INTEGER DEFAULT 0,
+    total_listings INTEGER DEFAULT 0,
+    new_listings INTEGER DEFAULT 0,
+    total_purchases INTEGER DEFAULT 0,
+    revenue_usd NUMERIC(10, 2) DEFAULT 0,
+    revenue_credits INTEGER DEFAULT 0,
+    ai_generations INTEGER DEFAULT 0,
+    smart_scans INTEGER DEFAULT 0,
+    credits_consumed INTEGER DEFAULT 0,
+    credits_granted INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    avg_response_time_ms NUMERIC(10, 2),
+    p95_response_time_ms NUMERIC(10, 2),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_metric_date CHECK (metric_date >= '2024-01-01'),
+    CONSTRAINT check_non_negative_counts CHECK (
+        total_users >= 0 AND active_users >= 0 AND new_users >= 0 AND
+        total_projects >= 0 AND new_projects >= 0 AND
+        total_listings >= 0 AND new_listings >= 0 AND
+        total_purchases >= 0 AND ai_generations >= 0 AND
+        smart_scans >= 0 AND credits_consumed >= 0 AND
+        credits_granted >= 0 AND error_count >= 0
+    )
+);
+
+CREATE INDEX idx_daily_metrics_metric_date ON daily_metrics(metric_date DESC);
+CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
+
+COMMENT ON TABLE daily_metrics IS '每日指标表: 存储每天的关键业务指标,用于趋势分析和仪表板';
+COMMENT ON COLUMN daily_metrics.metric_date IS '指标日期 (YYYY-MM-DD)';
+COMMENT ON COLUMN daily_metrics.total_users IS '总用户数 (截至当天)';
+COMMENT ON COLUMN daily_metrics.active_users IS '活跃用户数 (当天有操作的用户)';
+COMMENT ON COLUMN daily_metrics.new_users IS '新注册用户数';
+COMMENT ON COLUMN daily_metrics.total_projects IS '总项目数 (截至当天)';
+COMMENT ON COLUMN daily_metrics.new_projects IS '新创建项目数';
+COMMENT ON COLUMN daily_metrics.revenue_usd IS '美元收入';
+COMMENT ON COLUMN daily_metrics.revenue_credits IS '积分收入 (积分包销售)';
+COMMENT ON COLUMN daily_metrics.ai_generations IS 'AI 生成次数';
+COMMENT ON COLUMN daily_metrics.smart_scans IS 'Smart Scan 次数';
+COMMENT ON COLUMN daily_metrics.credits_consumed IS '消耗的积分总数';
+COMMENT ON COLUMN daily_metrics.credits_granted IS '发放的积分总数';
+COMMENT ON COLUMN daily_metrics.avg_response_time_ms IS '平均响应时间 (毫秒)';
+COMMENT ON COLUMN daily_metrics.p95_response_time_ms IS 'P95 响应时间 (毫秒)';
+COMMENT ON COLUMN daily_metrics.metadata IS '附加元数据 (如按 tier 分组的数据)';
+
+-- ============================================================
+-- 22. monthly_metrics (月度指标表)
+-- ============================================================
+CREATE TABLE monthly_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    metric_year INTEGER NOT NULL,
+    metric_month INTEGER NOT NULL,
+    total_users INTEGER DEFAULT 0,
+    active_users INTEGER DEFAULT 0,
+    new_users INTEGER DEFAULT 0,
+    churned_users INTEGER DEFAULT 0,
+    total_projects INTEGER DEFAULT 0,
+    new_projects INTEGER DEFAULT 0,
+    total_listings INTEGER DEFAULT 0,
+    new_listings INTEGER DEFAULT 0,
+    total_purchases INTEGER DEFAULT 0,
+    revenue_usd NUMERIC(12, 2) DEFAULT 0,
+    revenue_credits INTEGER DEFAULT 0,
+    ai_generations INTEGER DEFAULT 0,
+    smart_scans INTEGER DEFAULT 0,
+    credits_consumed INTEGER DEFAULT 0,
+    credits_granted INTEGER DEFAULT 0,
+    mrr NUMERIC(12, 2) DEFAULT 0,
+    arr NUMERIC(12, 2) DEFAULT 0,
+    ltv NUMERIC(12, 2),
+    cac NUMERIC(12, 2),
+    retention_rate NUMERIC(5, 2),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_metric_year CHECK (metric_year >= 2024 AND metric_year <= 2100),
+    CONSTRAINT check_metric_month CHECK (metric_month >= 1 AND metric_month <= 12),
+    CONSTRAINT unique_monthly_metric UNIQUE (metric_year, metric_month),
+    CONSTRAINT check_non_negative_monthly_counts CHECK (
+        total_users >= 0 AND active_users >= 0 AND new_users >= 0 AND
+        churned_users >= 0 AND total_projects >= 0 AND new_projects >= 0 AND
+        total_listings >= 0 AND new_listings >= 0 AND
+        total_purchases >= 0 AND ai_generations >= 0 AND
+        smart_scans >= 0 AND credits_consumed >= 0 AND credits_granted >= 0
+    )
+);
+
+CREATE INDEX idx_monthly_metrics_year_month ON monthly_metrics(metric_year DESC, metric_month DESC);
+CREATE INDEX idx_monthly_metrics_created_at ON monthly_metrics(created_at DESC);
+
+COMMENT ON TABLE monthly_metrics IS '月度指标表: 存储每月的关键业务指标和 SaaS 指标';
+COMMENT ON COLUMN monthly_metrics.metric_year IS '年份 (YYYY)';
+COMMENT ON COLUMN monthly_metrics.metric_month IS '月份 (1-12)';
+COMMENT ON COLUMN monthly_metrics.churned_users IS '流失用户数 (取消订阅或超过 30 天未登录)';
+COMMENT ON COLUMN monthly_metrics.mrr IS 'Monthly Recurring Revenue (月度经常性收入)';
+COMMENT ON COLUMN monthly_metrics.arr IS 'Annual Recurring Revenue (年度经常性收入)';
+COMMENT ON COLUMN monthly_metrics.ltv IS 'Lifetime Value (用户生命周期价值)';
+COMMENT ON COLUMN monthly_metrics.cac IS 'Customer Acquisition Cost (用户获客成本)';
+COMMENT ON COLUMN monthly_metrics.retention_rate IS '留存率 (%)';
+
+-- ============================================================
+-- 触发器: 更新 updated_at 字段
+-- ============================================================
+CREATE TRIGGER trigger_update_marketplace_reports_updated_at
+BEFORE UPDATE ON marketplace_reports
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_daily_metrics_updated_at
+BEFORE UPDATE ON daily_metrics
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_monthly_metrics_updated_at
+BEFORE UPDATE ON monthly_metrics
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- Phase 2.2 完成
+-- ============================================================
+-- 新增 5 个 P1 表:
+--   ✅ admin_operations (管理员操作审计)
+--   ✅ listing_usages (资产使用追踪)
+--   ✅ marketplace_reports (市场举报)
+--   ✅ daily_metrics (每日指标)
+--   ✅ monthly_metrics (月度指标)
+-- ============================================================
+
+
+-- ============================================================================
 -- Transaction Control: 提交所有更改
 -- ============================================================================
 COMMIT;
