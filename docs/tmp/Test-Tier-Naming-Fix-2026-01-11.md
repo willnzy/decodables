@@ -2,7 +2,8 @@
 
 **修复日期**: 2026-01-11
 **修复人**: Claude Code (Task Agent)
-**问题来源**: GitHub Actions CI 失败 (20 个测试用例)
+**问题来源**: GitHub Actions CI 失败 (22 个测试用例)
+**最终状态**: ✅ 全部修复完成
 
 ---
 
@@ -85,6 +86,20 @@ TestGetUserCreditsFlow::test_get_user_credits_not_found
 TestGetUserCreditsHandler::test_get_user_credits_new_user
 ```
 
+### 6. test_credits_logic.py (2 failures) ⚠️ 第二轮修复
+
+```
+TestMonthlyCreditsReset::test_check_reset_after_30_days
+TestUserCreditsAggregate::test_tier_allowance_mapping
+```
+
+**错误示例**:
+```python
+E   AssertionError: assert 0 == 500
+E   +  where 0 = get_tier_monthly_allowance()
+E   +  where get_tier_monthly_allowance = UserCredits(..., tier='starter', ...).get_tier_monthly_allowance
+```
+
 ---
 
 ## 修复内容
@@ -162,6 +177,8 @@ pytest tests/domains/test_creation_domain.py::TestProjectLimits -xvs
 
 ## 提交记录
 
+### 第一轮修复 (主要测试文件)
+
 **Commit**: `372db65`
 **Message**: `test: migrate tier naming from free/starter/pro to t1/t2/t3`
 
@@ -175,16 +192,28 @@ pytest tests/domains/test_creation_domain.py::TestProjectLimits -xvs
 - Dictionary keys updated to match new tier constants
 ```
 
+### 第二轮修复 (遗漏的测试文件)
+
+**Commit**: `f476a17`
+**Message**: `test: fix tier naming in test_credits_logic.py`
+
+```
+- Fixed 2 remaining test failures from GitHub Actions
+- TestMonthlyCreditsReset::test_check_reset_after_30_days
+- TestUserCreditsAggregate::test_tier_allowance_mapping
+- Total 4 tier references updated (tier="t3", tier="t2")
+```
+
 **Branch**: `develop`
-**Status**: ✅ Pushed to origin/develop
+**Status**: ✅ 全部推送到 origin/develop
 
 ---
 
 ## 影响范围
 
-**修复的文件**: 5 个测试文件
-**修复的测试用例**: 20 个
-**修改的代码行**: ~60 行
+**修复的文件**: 6 个测试文件
+**修复的测试用例**: 22 个
+**修改的代码行**: ~65 行
 
 **未修复的文件** (不在本次范围):
 - 其他使用旧 tier 名称的测试文件 (如 test_payment_service.py, test_ai_unified_services.py 等)
@@ -257,13 +286,14 @@ def normalize_tier(tier: str) -> str:
 
 ## 总结
 
-✅ **20 个失败的测试用例已全部修复**
+✅ **22 个失败的测试用例已全部修复** (第一轮 20 个 + 第二轮 2 个)
 ✅ **所有修复已通过本地验证**
-✅ **代码已提交并推送到 develop 分支**
+✅ **代码已提交并推送到 develop 分支** (2 个 commits)
 ✅ **GitHub Actions CI 应该通过**
 
 **修复质量**: 高 (遵循 tier 命名规范,不影响业务逻辑)
 **风险评估**: 低 (仅修改测试,不涉及生产代码)
+**执行方式**: 第一轮由 Task agent 批量修复,第二轮手动修复遗漏文件
 
 ---
 
