@@ -10,7 +10,7 @@ All concrete repositories should inherit from this class.
 
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, TypeVar, Generic
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 
 from core.database import get_supabase_client, retry_on_network_error
@@ -95,10 +95,39 @@ class BaseRepository(ABC, Generic[T]):
     # Soft Delete Operations
     # ============================================================
 
+    async def _get_recovery_period_days(self) -> int:
+        """
+        获取软删除恢复期天数配置.
+
+        从 system_configs 表读取 'recovery_period_days' 配置,
+        如果读取失败或配置不存在,返回默认值 30 天.
+
+        Returns:
+            恢复期天数 (默认 30)
+        """
+        try:
+            result = self.client.table("system_configs") \
+                .select("config_value") \
+                .eq("config_key", "recovery_period_days") \
+                .single() \
+                .execute()
+
+            if result.data and result.data.get("config_value"):
+                return int(result.data["config_value"])
+        except Exception as e:
+            logger.warning(
+                f"Failed to get recovery_period_days config: {e}, using default 30"
+            )
+
+        return 30  # 默认值
+
     @retry_on_network_error()
     async def soft_delete(self, id: str, user_id: Optional[str] = None) -> bool:
         """
         Soft delete a record (mark as deleted).
+
+        自动计算恢复期过期时间:
+        recovery_expires_at = deleted_at + recovery_period_days (默认30天)
 
         Args:
             id: Record ID
@@ -111,9 +140,17 @@ class BaseRepository(ABC, Generic[T]):
             Exception: If database operation fails
         """
         try:
+            # 获取恢复期天数配置
+            recovery_days = await self._get_recovery_period_days()
+
+            # 计算删除时间和过期时间
+            deleted_at = datetime.now(timezone.utc)
+            recovery_expires_at = deleted_at + timedelta(days=recovery_days)
+
             query = self.client.table(self.table_name).update({
                 "is_deleted": True,
-                "deleted_at": datetime.now(timezone.utc).isoformat()
+                "deleted_at": deleted_at.isoformat(),
+                "recovery_expires_at": recovery_expires_at.isoformat()
             }).eq("id", id)
 
             # Add user ownership check if provided
@@ -123,7 +160,10 @@ class BaseRepository(ABC, Generic[T]):
             result = query.execute()
 
             if result.data:
-                logger.info(f"Soft deleted {self.table_name} record: {id}")
+                logger.info(
+                    f"Soft deleted {self.table_name} record: {id}, "
+                    f"recoverable until {recovery_expires_at.isoformat()}"
+                )
                 return True
             else:
                 logger.warning(f"Failed to soft delete {self.table_name} record: {id} (not found or no permission)")
@@ -151,7 +191,8 @@ class BaseRepository(ABC, Generic[T]):
         try:
             query = self.client.table(self.table_name).update({
                 "is_deleted": False,
-                "deleted_at": None
+                "deleted_at": None,
+                "recovery_expires_at": None
             }).eq("id", id).eq("is_deleted", True)
 
             # Add user ownership check if provided
@@ -169,6 +210,51 @@ class BaseRepository(ABC, Generic[T]):
 
         except Exception as e:
             logger.error(f"Error restoring {self.table_name} record {id}: {e}")
+            raise
+
+    @retry_on_network_error()
+    async def list_deleted_recoverable(
+        self,
+        user_id: str,
+        offset: int = 0,
+        limit: int = 20
+    ) -> tuple[List[T], int]:
+        """
+        查询用户的可恢复删除记录 (恢复期内的删除记录).
+
+        只返回 is_deleted=true 且 recovery_expires_at > NOW() 的记录,
+        即恢复期尚未过期的删除记录.
+
+        Args:
+            user_id: User ID
+            offset: Offset for pagination
+            limit: Limit for pagination
+
+        Returns:
+            Tuple of (list of entities, total count)
+
+        Raises:
+            Exception: If database operation fails
+        """
+        try:
+            # 查询恢复期内的删除记录
+            query = self.client.table(self.table_name) \
+                .select("*", count="exact") \
+                .eq("user_id", user_id) \
+                .eq("is_deleted", True) \
+                .gt("recovery_expires_at", datetime.now(timezone.utc).isoformat()) \
+                .order("deleted_at", desc=True) \
+                .range(offset, offset + limit - 1)
+
+            result = query.execute()
+
+            entities = [self._map_to_entity(row) for row in result.data]
+            total = result.count or 0
+
+            return entities, total
+
+        except Exception as e:
+            logger.error(f"Error listing deleted recoverable records: {e}")
             raise
 
     # ============================================================

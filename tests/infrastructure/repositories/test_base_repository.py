@@ -9,7 +9,7 @@ Tests the abstract BaseRepository class soft/hard delete operations.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
 from infrastructure.repositories.base_repository import BaseRepository
@@ -71,6 +71,9 @@ class TestSoftDelete:
 
     async def test_soft_delete_success(self, test_repo, mock_db_client):
         """Successfully soft delete a record."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         # Mock successful deletion
         mock_result = MagicMock()
         mock_result.data = [{"id": "123", "is_deleted": True}]
@@ -89,9 +92,13 @@ class TestSoftDelete:
         update_call = mock_db_client.table.return_value.update.call_args[0][0]
         assert update_call["is_deleted"] is True
         assert "deleted_at" in update_call
+        assert "recovery_expires_at" in update_call  # New field
 
     async def test_soft_delete_with_user_id(self, test_repo, mock_db_client):
         """Soft delete with user ownership check."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         mock_result = MagicMock()
         mock_result.data = [{"id": "123"}]
 
@@ -107,6 +114,9 @@ class TestSoftDelete:
 
     async def test_soft_delete_not_found(self, test_repo, mock_db_client):
         """Soft delete fails when record not found."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         mock_result = MagicMock()
         mock_result.data = None
 
@@ -118,6 +128,9 @@ class TestSoftDelete:
 
     async def test_soft_delete_exception(self, test_repo, mock_db_client):
         """Soft delete raises exception on database error."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         mock_db_client.table.return_value.update.side_effect = Exception("Database error")
 
         with pytest.raises(Exception, match="Database error"):
@@ -346,6 +359,9 @@ class TestIntegration:
 
     async def test_soft_delete_and_restore_workflow(self, test_repo, mock_db_client):
         """Test soft delete → restore workflow."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         # Soft delete
         mock_result_delete = MagicMock()
         mock_result_delete.data = [{"id": "123"}]
@@ -364,6 +380,9 @@ class TestIntegration:
 
     async def test_soft_delete_to_permanent_workflow(self, test_repo, mock_db_client):
         """Test soft delete → permanent delete workflow."""
+        # Mock recovery period config
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
         # Soft delete first
         mock_result_soft = MagicMock()
         mock_result_soft.data = [{"id": "123"}]
@@ -380,3 +399,181 @@ class TestIntegration:
 
         permanently_deleted = await test_repo.hard_delete("123")
         assert permanently_deleted is True
+
+# ==========================================
+# Recovery Period Tests
+# ==========================================
+
+@pytest.mark.asyncio
+class TestRecoveryPeriod:
+    """Tests for recovery period expiry functionality."""
+
+    async def test_get_recovery_period_days_success(self, test_repo, mock_db_client):
+        """Successfully get recovery period from config."""
+        # Mock config table response
+        mock_result = MagicMock()
+        mock_result.data = {"config_value": "45"}
+        mock_db_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_result
+
+        # Execute
+        days = await test_repo._get_recovery_period_days()
+
+        # Assert
+        assert days == 45
+        mock_db_client.table.assert_called_with("system_configs")
+
+    async def test_get_recovery_period_days_default_on_error(self, test_repo, mock_db_client):
+        """Return default 30 days when config read fails."""
+        # Mock database error
+        mock_db_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.side_effect = Exception("DB error")
+
+        # Execute
+        days = await test_repo._get_recovery_period_days()
+
+        # Assert default value
+        assert days == 30
+
+    async def test_soft_delete_with_recovery_expiry(self, test_repo, mock_db_client):
+        """Soft delete should set recovery_expires_at."""
+        # Mock config response
+        test_repo._get_recovery_period_days = AsyncMock(return_value=30)
+
+        # Mock successful deletion
+        mock_result = MagicMock()
+        mock_result.data = [{"id": "123", "is_deleted": True}]
+        mock_db_client.table.return_value.update.return_value.eq.return_value.execute.return_value = mock_result
+
+        # Execute
+        result = await test_repo.soft_delete("123")
+
+        # Assert
+        assert result is True
+
+        # Verify update call includes recovery_expires_at
+        update_call = mock_db_client.table.return_value.update.call_args[0][0]
+        assert "recovery_expires_at" in update_call
+        assert update_call["is_deleted"] is True
+        assert "deleted_at" in update_call
+
+        # Verify recovery_expires_at is ~30 days from now
+        recovery_time = datetime.fromisoformat(update_call["recovery_expires_at"].replace('Z', '+00:00'))
+        deleted_time = datetime.fromisoformat(update_call["deleted_at"].replace('Z', '+00:00'))
+        delta = recovery_time - deleted_time
+        assert 29 <= delta.days <= 30  # Allow for timing variance
+
+    async def test_restore_clears_recovery_expiry(self, test_repo, mock_db_client):
+        """Restore should clear recovery_expires_at."""
+        # Mock successful restore
+        mock_result = MagicMock()
+        mock_result.data = [{"id": "123"}]
+        mock_db_client.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = mock_result
+
+        # Execute
+        result = await test_repo.restore("123")
+
+        # Assert
+        assert result is True
+
+        # Verify update call clears recovery_expires_at
+        update_call = mock_db_client.table.return_value.update.call_args[0][0]
+        assert update_call["is_deleted"] is False
+        assert update_call["deleted_at"] is None
+        assert update_call["recovery_expires_at"] is None
+
+    async def test_list_deleted_recoverable_success(self, test_repo, mock_db_client):
+        """List only recoverable deleted records (not expired)."""
+        # Mock query result with 2 recoverable records
+        mock_result = MagicMock()
+        mock_result.data = [
+            {"id": "123", "name": "Record 1"},
+            {"id": "456", "name": "Record 2"}
+        ]
+        mock_result.count = 2
+
+        # Setup mock chain
+        mock_db_client.table.return_value.select.return_value.eq.return_value.eq.return_value.gt.return_value.order.return_value.range.return_value.execute.return_value = mock_result
+
+        # Execute
+        entities, total = await test_repo.list_deleted_recoverable(
+            user_id="user_789",
+            offset=0,
+            limit=20
+        )
+
+        # Assert
+        assert len(entities) == 2
+        assert total == 2
+        assert entities[0].id == "123"
+        assert entities[1].id == "456"
+
+        # Verify query filters
+        mock_db_client.table.assert_called_with("test_table")
+        # Verify it filters by user_id, is_deleted=true, and recovery_expires_at > NOW()
+
+    async def test_list_deleted_recoverable_empty(self, test_repo, mock_db_client):
+        """List returns empty when no recoverable records."""
+        # Mock empty result
+        mock_result = MagicMock()
+        mock_result.data = []
+        mock_result.count = 0
+
+        mock_db_client.table.return_value.select.return_value.eq.return_value.eq.return_value.gt.return_value.order.return_value.range.return_value.execute.return_value = mock_result
+
+        # Execute
+        entities, total = await test_repo.list_deleted_recoverable(
+            user_id="user_789",
+            offset=0,
+            limit=20
+        )
+
+        # Assert
+        assert len(entities) == 0
+        assert total == 0
+
+    async def test_soft_delete_with_custom_recovery_period(self, test_repo, mock_db_client):
+        """Soft delete uses custom recovery period from config."""
+        # Mock config with 60 days
+        test_repo._get_recovery_period_days = AsyncMock(return_value=60)
+
+        # Mock successful deletion
+        mock_result = MagicMock()
+        mock_result.data = [{"id": "123"}]
+        mock_db_client.table.return_value.update.return_value.eq.return_value.execute.return_value = mock_result
+
+        # Execute
+        result = await test_repo.soft_delete("123")
+
+        # Assert
+        assert result is True
+
+        # Verify recovery period is ~60 days
+        update_call = mock_db_client.table.return_value.update.call_args[0][0]
+        recovery_time = datetime.fromisoformat(update_call["recovery_expires_at"].replace('Z', '+00:00'))
+        deleted_time = datetime.fromisoformat(update_call["deleted_at"].replace('Z', '+00:00'))
+        delta = recovery_time - deleted_time
+        assert 59 <= delta.days <= 60
+
+    async def test_list_deleted_recoverable_pagination(self, test_repo, mock_db_client):
+        """List deleted recoverable supports pagination."""
+        # Mock paginated result
+        mock_result = MagicMock()
+        mock_result.data = [{"id": f"{i}", "name": f"Record {i}"} for i in range(10, 20)]
+        mock_result.count = 50  # Total count
+
+        mock_db_client.table.return_value.select.return_value.eq.return_value.eq.return_value.gt.return_value.order.return_value.range.return_value.execute.return_value = mock_result
+
+        # Execute with offset=10, limit=10
+        entities, total = await test_repo.list_deleted_recoverable(
+            user_id="user_789",
+            offset=10,
+            limit=10
+        )
+
+        # Assert
+        assert len(entities) == 10
+        assert total == 50
+        assert entities[0].id == "10"
+
+        # Verify range call
+        mock_range = mock_db_client.table.return_value.select.return_value.eq.return_value.eq.return_value.gt.return_value.order.return_value.range
+        mock_range.assert_called_once_with(10, 19)  # offset to offset+limit-1
