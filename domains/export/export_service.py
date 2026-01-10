@@ -1,14 +1,24 @@
 """Export Service - PDF, Preview, ZIP export functionality.
 
 @module domains.export.export_service
-@version 1.0.0
+@version 2.0.0
 
 Service for project export functionality with complete DDD architecture.
+
+Changes in v2.0.0:
+- Added async-optimized export methods (export_pdf_async, export_zip_async)
+- Concurrent image downloads with aiohttp for ZIP exports
+- CPU-intensive operations offloaded to threadpool
+- Progress callback support for real-time updates
 """
 
 import logging
+import asyncio
+import zipfile
 from io import BytesIO
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
+
+from fastapi.concurrency import run_in_threadpool
 
 from domains.creation.repository import IProjectRepository
 from infrastructure.logging.activity_logger import log_activity
@@ -346,3 +356,202 @@ class ExportService:
         safe_name = safe_name[:50].strip() or "export"
 
         return safe_name
+
+    # ==========================================
+    # Async-Optimized Methods (v2.0.0)
+    # ==========================================
+
+    async def export_pdf_async(
+        self,
+        user_id: str,
+        project_id: str,
+    ) -> tuple[BytesIO, str]:
+        """
+        Async-optimized PDF export with threadpool offloading.
+
+        Args:
+            user_id: User ID for ownership verification
+            project_id: Project ID to export
+
+        Returns:
+            tuple: (PDF buffer, sanitized filename)
+
+        Raises:
+            ProjectNotFoundException: If project not found or access denied
+            ExportException: If PDF generation fails
+        """
+        # Get and verify project
+        proj = await self._get_user_project(user_id, project_id)
+
+        # Extract data
+        image_urls, texts, paper_size = self._extract_project_data(proj)
+
+        # Generate PDF in threadpool (CPU-intensive operation)
+        buf = BytesIO()
+        try:
+            await run_in_threadpool(
+                create_foldable_book,
+                image_urls,
+                texts,
+                buf,
+                paper_type=paper_size
+            )
+            buf.seek(0)
+        except Exception as e:
+            logger.error(f"PDF generation failed for project {project_id[:8]}...: {type(e).__name__}")
+            raise ExportException(f"PDF generation failed: {str(e)}")
+
+        # Log activity
+        log_activity(user_id, "download_pdf", {"project_id": project_id})
+
+        # Get sanitized filename
+        title = self._sanitize_filename(proj.get("title", "project"))
+
+        return buf, title
+
+    async def export_zip_async(
+        self,
+        user_id: str,
+        project_id: str,
+        tier: str,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> tuple[BytesIO, str]:
+        """
+        Async-optimized ZIP export with concurrent image downloads.
+
+        Args:
+            user_id: User ID for ownership verification
+            project_id: Project ID to export
+            tier: User tier (must be "t3")
+            progress_callback: Optional callback(current, total, message) for progress updates
+
+        Returns:
+            tuple: (ZIP buffer, sanitized filename)
+
+        Raises:
+            InsufficientPermissionException: If tier is not "t3"
+            ProjectNotFoundException: If project not found or access denied
+            ExportException: If no valid URLs or ZIP generation fails
+        """
+        # Verify Pro tier
+        if tier.lower() != "t3":
+            raise InsufficientPermissionException("ZIP export requires Pro plan")
+
+        # Get and verify project
+        proj = await self._get_user_project(user_id, project_id)
+
+        # Extract URLs
+        image_urls, _, _ = self._extract_project_data(proj)
+
+        # Filter allowed URLs (SSRF protection)
+        from api.user.export import _is_allowed_url
+        valid_urls = [url for url in image_urls if _is_allowed_url(url) and url]
+
+        if not valid_urls:
+            raise ExportException("No valid image URLs found in project")
+
+        # Download images concurrently
+        try:
+            import aiohttp
+
+            async with aiohttp.ClientSession() as session:
+                download_tasks = [
+                    self._download_image_async(session, url, idx)
+                    for idx, url in enumerate(valid_urls)
+                ]
+
+                # Download with progress updates
+                images = []
+                for idx, task in enumerate(asyncio.as_completed(download_tasks)):
+                    result = await task
+                    images.append(result)
+
+                    if progress_callback:
+                        await progress_callback(
+                            idx + 1,
+                            len(valid_urls),
+                            f"Downloaded {idx + 1}/{len(valid_urls)} images"
+                        )
+
+                # Sort by index (as_completed returns in random order)
+                images.sort(key=lambda x: x[0])
+
+        except Exception as e:
+            logger.error(f"Image download failed for project {project_id[:8]}...: {type(e).__name__}")
+            raise ExportException(f"Image download failed: {str(e)}")
+
+        # Create ZIP in threadpool (I/O + CPU intensive)
+        buf = BytesIO()
+        try:
+            await run_in_threadpool(
+                self._create_zip_from_images,
+                images,
+                buf
+            )
+            buf.seek(0)
+        except Exception as e:
+            logger.error(f"ZIP creation failed for project {project_id[:8]}...: {type(e).__name__}")
+            raise ExportException(f"ZIP creation failed: {str(e)}")
+
+        # Log activity
+        log_activity(user_id, "export_zip", {"project_id": project_id})
+
+        # Get sanitized filename
+        title = self._sanitize_filename(proj.get("title", "project"))
+
+        return buf, title
+
+    async def _download_image_async(
+        self,
+        session,
+        url: str,
+        index: int
+    ) -> tuple[int, Optional[bytes]]:
+        """
+        Download single image asynchronously.
+
+        Args:
+            session: aiohttp ClientSession
+            url: Image URL
+            index: Image index
+
+        Returns:
+            tuple: (index, image_data) or (index, None) if failed
+        """
+        import aiohttp
+
+        try:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    return (index, data)
+                else:
+                    logger.warning(f"Image download failed (HTTP {resp.status}): {url}")
+                    return (index, None)
+        except asyncio.TimeoutError:
+            logger.warning(f"Image download timeout: {url}")
+            return (index, None)
+        except Exception as e:
+            logger.warning(f"Image download error for {url}: {type(e).__name__}")
+            return (index, None)
+
+    def _create_zip_from_images(
+        self,
+        images: List[tuple[int, Optional[bytes]]],
+        buffer: BytesIO
+    ):
+        """
+        Create ZIP file from downloaded images (runs in threadpool).
+
+        Args:
+            images: List of (index, image_data) tuples
+            buffer: BytesIO buffer to write ZIP to
+        """
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            for index, data in images:
+                if data:
+                    filename = f"Page_{index + 1}.png"
+                    zip_file.writestr(filename, data)
+                    logger.debug(f"Added {filename} to ZIP ({len(data)} bytes)")
+
+        logger.info(f"Created ZIP with {len([d for _, d in images if d])} images")

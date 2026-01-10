@@ -26,6 +26,7 @@ QUEUE_LOW = "low"
 
 # Task timeout configuration (seconds)
 TASK_TIMEOUT_IMAGE = 300  # 5 minutes for image generation
+TASK_TIMEOUT_EXPORT = 600  # 10 minutes for PDF/ZIP export
 TASK_TIMEOUT_DEFAULT = 120  # 2 minutes default
 
 # Priority mapping: tier -> queue
@@ -224,13 +225,96 @@ class TaskQueueService:
             logger.error(f"[TaskQueue] Cancel failed: {e}")
             return False
     
+    def enqueue_export_task(
+        self,
+        user_id: str,
+        project_id: str,
+        export_type: str,
+        tier: str = "t1",
+        idempotency_key: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Enqueue PDF/ZIP export task.
+
+        Args:
+            user_id: User ID
+            project_id: Project ID to export
+            export_type: "pdf" or "zip"
+            tier: User tier for priority routing
+            idempotency_key: Optional key for deduplication
+
+        Returns:
+            task_id if enqueued, None if failed
+        """
+        if not self._ensure_initialized():
+            logger.error("[TaskQueue] Cannot enqueue: service not available")
+            return None
+
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+
+        # Check for existing task with same idempotency key
+        if idempotency_key:
+            # Check Redis for existing task
+            existing_key = f"idempotency:{idempotency_key}"
+            existing_task_id = self._redis.get(existing_key)
+            if existing_task_id:
+                logger.info(f"[TaskQueue] Export task already exists (idempotent): {existing_task_id}")
+                return existing_task_id.decode('utf-8') if isinstance(existing_task_id, bytes) else existing_task_id
+
+            # Store idempotency mapping (24 hour TTL)
+            self._redis.setex(existing_key, 86400, task_id)
+
+        # Get appropriate queue
+        queue = self._get_queue(tier)
+        if not queue:
+            return None
+
+        try:
+            # Import handler function (avoid circular imports)
+            from .export_handler import execute_export_task
+
+            # Enqueue job
+            job = queue.enqueue(
+                execute_export_task,
+                task_id=task_id,
+                user_id=user_id,
+                project_id=project_id,
+                export_type=export_type,
+                tier=tier,
+                job_id=task_id,
+                job_timeout=TASK_TIMEOUT_EXPORT,
+                result_ttl=86400,  # Keep result for 24 hours
+                failure_ttl=86400,  # Keep failed job for 24 hours
+            )
+
+            # Initialize status in Redis
+            status_key = f"task:{task_id}:status"
+            self._redis.hset(status_key, mapping={
+                "status": "queued",
+                "progress": "0",
+                "current_step": "0",
+                "total_steps": "4",  # PDF: 4 steps, ZIP: 5 steps
+                "message": f"{export_type.upper()} export queued",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            self._redis.expire(status_key, 86400)  # 24 hour TTL
+
+            queue_name = TIER_PRIORITY.get(tier.lower(), QUEUE_DEFAULT)
+            logger.info(f"[TaskQueue] ✅ Enqueued {export_type} export task {task_id} to {queue_name} queue")
+            return task_id
+
+        except Exception as e:
+            logger.error(f"[TaskQueue] ❌ Failed to enqueue export task: {e}")
+            return None
+
     def get_queue_stats(self) -> Dict[str, Any]:
         """Get queue statistics for monitoring."""
         if not self._ensure_initialized():
             return {"available": False}
-        
+
         stats = {"available": True, "queues": {}}
-        
+
         for name, queue in self._queues.items():
             try:
                 stats["queues"][name] = {
@@ -240,7 +324,7 @@ class TaskQueueService:
                 }
             except Exception as e:
                 stats["queues"][name] = {"error": str(e)}
-        
+
         return stats
 
 
