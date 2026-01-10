@@ -99,7 +99,7 @@ class BaseRepository(ABC, Generic[T]):
         """
         获取软删除恢复期天数配置.
 
-        从 system_configs 表读取 'recovery_period_days' 配置,
+        从 system_configs 表读取 'soft_delete.recovery_period_days' 配置,
         如果读取失败或配置不存在,返回默认值 30 天.
 
         Returns:
@@ -107,13 +107,13 @@ class BaseRepository(ABC, Generic[T]):
         """
         try:
             result = self.client.table("system_configs") \
-                .select("config_value") \
-                .eq("config_key", "recovery_period_days") \
+                .select("value") \
+                .eq("key", "soft_delete.recovery_period_days") \
                 .single() \
                 .execute()
 
-            if result.data and result.data.get("config_value"):
-                return int(result.data["config_value"])
+            if result.data and result.data.get("value"):
+                return int(result.data["value"])
         except Exception as e:
             logger.warning(
                 f"Failed to get recovery_period_days config: {e}, using default 30"

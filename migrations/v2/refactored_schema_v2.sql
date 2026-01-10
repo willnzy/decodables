@@ -922,7 +922,12 @@ CREATE TABLE marketplace_favorites (
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     UNIQUE(user_id, listing_id),
     CONSTRAINT chk_marketplace_favorites_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_marketplace_favorites_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE marketplace_favorites IS '市场收藏表: 用户收藏的 listing';
@@ -950,7 +955,12 @@ CREATE TABLE marketplace_reviews (
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     UNIQUE(listing_id, reviewer_id),
     CONSTRAINT chk_marketplace_reviews_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_marketplace_reviews_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE marketplace_reviews IS '市场评价表: 用户对 listing 的评分和评论';
@@ -993,7 +1003,12 @@ CREATE TABLE daily_themes (
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_daily_themes_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_daily_themes_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE daily_themes IS '每日主题表: 每天推荐的主题和相关素材';
@@ -1034,7 +1049,12 @@ CREATE TABLE holidays (
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_holidays_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_holidays_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE holidays IS '节日数据表: 全球节日数据库';
@@ -1310,7 +1330,12 @@ CREATE TABLE asset_prompt_templates (
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_asset_prompt_templates_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_asset_prompt_templates_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE asset_prompt_templates IS '素材提示词模板表: 用户保存的 AI 生成模板 (5W1H)';
@@ -1735,7 +1760,12 @@ CREATE TABLE campaigns (
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     is_permanently_deleted BOOLEAN DEFAULT false,
     CONSTRAINT chk_campaigns_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_campaigns_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE campaigns IS '营销活动表: 积分奖励、折扣等营销活动';
@@ -2530,7 +2560,10 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false),
 
 -- ========== Trial Period (1条) ==========
-('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true)
+('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true),
+
+-- ========== Soft Delete Recovery Period (1条) ==========
+('soft_delete.recovery_period_days', '30', 'integer', 'database', '软删除恢复期天数,过期后用户无法在删除历史中看到记录', true, true)
 
 ON CONFLICT (key) DO UPDATE SET
     value = EXCLUDED.value,
@@ -3378,7 +3411,12 @@ CREATE TABLE support_tickets (
         status IN ('open', 'in_progress', 'waiting_user', 'resolved', 'closed')
     ),
     CONSTRAINT chk_support_tickets_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_support_tickets_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC) WHERE is_deleted = false;
@@ -3421,7 +3459,12 @@ CREATE TABLE support_replies (
 
     CONSTRAINT check_message_not_empty CHECK (LENGTH(TRIM(message)) > 0),
     CONSTRAINT chk_support_replies_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_support_replies_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC) WHERE is_deleted = false;
