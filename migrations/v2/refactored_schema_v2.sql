@@ -911,14 +911,20 @@ CREATE TABLE marketplace_favorites (
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, listing_id)
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    UNIQUE(user_id, listing_id),
+    CONSTRAINT chk_marketplace_favorites_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE marketplace_favorites IS '市场收藏表: 用户收藏的 listing';
+COMMENT ON COLUMN marketplace_favorites.is_deleted IS '软删除标记';
+COMMENT ON COLUMN marketplace_favorites.deleted_at IS '删除时间';
 
 -- 索引
-CREATE INDEX idx_favorites_user ON marketplace_favorites(user_id, created_at DESC);
-CREATE INDEX idx_favorites_listing ON marketplace_favorites(listing_id);
+CREATE INDEX idx_favorites_user ON marketplace_favorites(user_id, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_favorites_listing ON marketplace_favorites(listing_id) WHERE is_deleted = false;
 
 -- ----------------------------------------------------------------------------
 -- 14. marketplace_reviews (市场评价表)
@@ -932,15 +938,21 @@ CREATE TABLE marketplace_reviews (
     is_verified_purchase BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(listing_id, reviewer_id)
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    UNIQUE(listing_id, reviewer_id),
+    CONSTRAINT chk_marketplace_reviews_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE marketplace_reviews IS '市场评价表: 用户对 listing 的评分和评论';
+COMMENT ON COLUMN marketplace_reviews.is_deleted IS '软删除标记';
+COMMENT ON COLUMN marketplace_reviews.deleted_at IS '删除时间';
 
 -- 索引
-CREATE INDEX idx_reviews_listing ON marketplace_reviews(listing_id, created_at DESC);
-CREATE INDEX idx_reviews_reviewer ON marketplace_reviews(reviewer_id);
-CREATE INDEX idx_reviews_rating ON marketplace_reviews(rating);
+CREATE INDEX idx_reviews_listing ON marketplace_reviews(listing_id, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_reviews_reviewer ON marketplace_reviews(reviewer_id) WHERE is_deleted = false;
+CREATE INDEX idx_reviews_rating ON marketplace_reviews(rating) WHERE is_deleted = false;
 
 -- 触发器
 CREATE TRIGGER trg_reviews_updated_at
@@ -968,14 +980,20 @@ CREATE TABLE daily_themes (
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived')),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT chk_daily_themes_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE daily_themes IS '每日主题表: 每天推荐的主题和相关素材';
+COMMENT ON COLUMN daily_themes.is_deleted IS '软删除标记';
+COMMENT ON COLUMN daily_themes.deleted_at IS '删除时间';
 
 -- 索引
-CREATE INDEX idx_daily_themes_date ON daily_themes(date DESC);
-CREATE INDEX idx_daily_themes_status ON daily_themes(status);
+CREATE INDEX idx_daily_themes_date ON daily_themes(date DESC) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_status ON daily_themes(status) WHERE is_deleted = false;
 
 -- 触发器
 CREATE TRIGGER trg_daily_themes_updated_at
@@ -1002,15 +1020,21 @@ CREATE TABLE holidays (
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT chk_holidays_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE holidays IS '节日数据表: 全球节日数据库';
+COMMENT ON COLUMN holidays.is_deleted IS '软删除标记';
+COMMENT ON COLUMN holidays.deleted_at IS '删除时间';
 
 -- 索引
-CREATE INDEX idx_holidays_date ON holidays(month, day);
-CREATE INDEX idx_holidays_regions ON holidays USING GIN(regions);
-CREATE INDEX idx_holidays_category ON holidays(category);
+CREATE INDEX idx_holidays_date ON holidays(month, day) WHERE is_deleted = false;
+CREATE INDEX idx_holidays_regions ON holidays USING GIN(regions) WHERE is_deleted = false;
+CREATE INDEX idx_holidays_category ON holidays(category) WHERE is_deleted = false;
 
 -- 触发器
 CREATE TRIGGER trg_holidays_updated_at
@@ -1271,14 +1295,20 @@ CREATE TABLE asset_prompt_templates (
     use_count INTEGER DEFAULT 0,
     last_used_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT chk_asset_prompt_templates_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE asset_prompt_templates IS '素材提示词模板表: 用户保存的 AI 生成模板 (5W1H)';
+COMMENT ON COLUMN asset_prompt_templates.is_deleted IS '软删除标记';
+COMMENT ON COLUMN asset_prompt_templates.deleted_at IS '删除时间';
 
 -- 索引
-CREATE INDEX idx_asset_prompt_templates_user ON asset_prompt_templates(user_id);
-CREATE INDEX idx_asset_prompt_templates_usage ON asset_prompt_templates(user_id, use_count DESC);
+CREATE INDEX idx_asset_prompt_templates_user ON asset_prompt_templates(user_id) WHERE is_deleted = false;
+CREATE INDEX idx_asset_prompt_templates_usage ON asset_prompt_templates(user_id, use_count DESC) WHERE is_deleted = false;
 
 -- 触发器
 CREATE TRIGGER trg_asset_prompt_templates_updated_at
@@ -1688,14 +1718,22 @@ CREATE TABLE campaigns (
     is_active BOOLEAN DEFAULT TRUE,
     created_by TEXT REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    is_permanently_deleted BOOLEAN DEFAULT false,
+    CONSTRAINT chk_campaigns_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
 COMMENT ON TABLE campaigns IS '营销活动表: 积分奖励、折扣等营销活动';
+COMMENT ON COLUMN campaigns.is_deleted IS '软删除标记 (30天内可恢复)';
+COMMENT ON COLUMN campaigns.deleted_at IS '删除时间';
+COMMENT ON COLUMN campaigns.is_permanently_deleted IS '永久删除标记 (不可恢复)';
 
 -- 索引
-CREATE INDEX idx_campaigns_status ON campaigns(status, is_active);
-CREATE INDEX idx_campaigns_dates ON campaigns(start_at, end_at);
+CREATE INDEX idx_campaigns_status ON campaigns(status, is_active) WHERE is_deleted = false AND is_permanently_deleted = false;
+CREATE INDEX idx_campaigns_dates ON campaigns(start_at, end_at) WHERE is_deleted = false;
 
 -- 触发器
 CREATE TRIGGER trg_campaigns_updated_at
@@ -3302,6 +3340,8 @@ CREATE TABLE support_tickets (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     resolved_at TIMESTAMPTZ,
     closed_at TIMESTAMPTZ,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
 
     CONSTRAINT check_category CHECK (
         category IN (
@@ -3315,17 +3355,21 @@ CREATE TABLE support_tickets (
     ),
     CONSTRAINT check_status CHECK (
         status IN ('open', 'in_progress', 'waiting_user', 'resolved', 'closed')
-    )
+    ),
+    CONSTRAINT chk_support_tickets_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
-CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC);
+CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC) WHERE is_deleted = false;
 CREATE INDEX idx_support_tickets_ticket_number ON support_tickets(ticket_number);
-CREATE INDEX idx_support_tickets_status ON support_tickets(status, created_at DESC);
-CREATE INDEX idx_support_tickets_priority ON support_tickets(priority, created_at DESC);
-CREATE INDEX idx_support_tickets_assigned_to ON support_tickets(assigned_to, created_at DESC);
-CREATE INDEX idx_support_tickets_open ON support_tickets(created_at DESC) WHERE status IN ('open', 'in_progress', 'waiting_user');
+CREATE INDEX idx_support_tickets_status ON support_tickets(status, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_support_tickets_priority ON support_tickets(priority, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_support_tickets_assigned_to ON support_tickets(assigned_to, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_support_tickets_open ON support_tickets(created_at DESC) WHERE status IN ('open', 'in_progress', 'waiting_user') AND is_deleted = false;
 
 COMMENT ON TABLE support_tickets IS '支持工单表: 记录用户提交的支持请求';
+COMMENT ON COLUMN support_tickets.is_deleted IS '软删除标记';
+COMMENT ON COLUMN support_tickets.deleted_at IS '删除时间';
 COMMENT ON COLUMN support_tickets.ticket_number IS '工单编号 (唯一, 格式: TKT-20260110-001)';
 COMMENT ON COLUMN support_tickets.subject IS '工单标题';
 COMMENT ON COLUMN support_tickets.description IS '详细描述';
@@ -3350,15 +3394,21 @@ CREATE TABLE support_replies (
     attachments JSONB DEFAULT '[]',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
 
-    CONSTRAINT check_message_not_empty CHECK (LENGTH(TRIM(message)) > 0)
+    CONSTRAINT check_message_not_empty CHECK (LENGTH(TRIM(message)) > 0),
+    CONSTRAINT chk_support_replies_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL))
 );
 
-CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC);
-CREATE INDEX idx_support_replies_user_id ON support_replies(user_id, created_at DESC);
-CREATE INDEX idx_support_replies_created_at ON support_replies(created_at DESC);
+CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC) WHERE is_deleted = false;
+CREATE INDEX idx_support_replies_user_id ON support_replies(user_id, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX idx_support_replies_created_at ON support_replies(created_at DESC) WHERE is_deleted = false;
 
 COMMENT ON TABLE support_replies IS '工单回复表: 记录工单的所有回复 (用户和管理员)';
+COMMENT ON COLUMN support_replies.is_deleted IS '软删除标记';
+COMMENT ON COLUMN support_replies.deleted_at IS '删除时间';
 COMMENT ON COLUMN support_replies.ticket_id IS '关联的工单 ID';
 COMMENT ON COLUMN support_replies.user_id IS '回复人 ID (可以是普通用户或管理员)';
 COMMENT ON COLUMN support_replies.is_staff_reply IS '是否为管理员回复 (区分用户回复和官方回复)';
