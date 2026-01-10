@@ -2053,18 +2053,24 @@ except Exception as e:
 
 ## Phase 4: P3 (LOW) - 进度概览
 
-**总体进度**: 0 / 10 (0%)
+**总体进度**: 6 / 10 (60%) ✅
 **预计完成**: 2026-01-22
+**实际用时**: ~5 小时
 
-| 任务 | 预计工时 | 状态 |
-|------|----------|------|
-| 增加活动日志记录 | 3h | ⏸️ 未开始 |
-| Webhook 重试逻辑 | 4h | ⏸️ 未开始 |
-| 健康检查接口 | 2h | ⏸️ 未开始 |
-| 清理 Deprecated 接口 | 2h | ⏸️ 未开始 |
-| 统一错误响应格式 | 3h | ⏸️ 未开始 |
-| 完善 API 文档 | 4h | ⏸️ 未开始 |
-| 其他 P3 问题 | 6h | ⏸️ 未开始 |
+| 任务 | 预计工时 | 状态 | Commit |
+|------|----------|------|--------|
+| 验证统一错误格式 (P2-035) | - | ✅ 已完成 | Pre-existing |
+| 503 错误码增强 (P3-012) | 0.5h | ✅ 已完成 | `9a9a922` |
+| 健康检查接口验证 | 1h | ✅ 已完成 | `fee7e01` (副产品) |
+| 文件上传大小限制 (P3-005) | 1.5h | ✅ 已完成 | `1740234` |
+| 软删除恢复接口 (P3-008) | - | ✅ 已完成 | Pre-existing |
+| 清理 Deprecated 接口 (P3-007) | 2h | ✅ 已完成 | `5c616bf` |
+| Webhook 重试逻辑 (P3-022) | 4h | ⏸️ 未开始 | - |
+| 完善 API 文档和注释 | 4h | ⏸️ 未开始 | - |
+| 增加活动日志记录 | 3h | ⏸️ 未开始 | - |
+| Stats 响应格式统一 (P3-001) | 8h | ⏸️ 未开始 | - |
+
+**详细进度**: 见 [Phase-4-Progress-Summary.md](Phase-4-Progress-Summary.md)
 
 ---
 
@@ -2104,16 +2110,75 @@ f528710 - refactor(P0-010): remove legacy database write code
 
 ---
 
-### 2026-01-11 (周一) - 预计
+### 2026-01-11 (周六)
 
-**计划任务**:
-- [ ] Task 1.1: 修复 SQL 语法错误 (2h)
-- [ ] Task 1.2: 补全 field_mappings.py (1h)
-- [ ] Task 1.3: 修复 marketplace_listings 数据约束 (1h)
-- [ ] Task 1.4: 修复 marketplace 购买流程事务保护 (3h)
-- [ ] Task 1.5: 修复 Webhook Signature 验证 (开始,1h)
+**完成任务**: ✅ **Phase 4 (P3) - 6/10 任务完成**
 
-**预计完成**: Task 1.1 ~ 1.4 + Task 1.5 部分
+**Task 6.1**: 验证统一错误格式 (P2-035)
+- Status: ✅ 已在之前 Phase 完成
+- ErrorResponse model + HTTP 状态码映射已实现
+
+**Task 6.2**: 添加 503 SERVICE_UNAVAILABLE 错误码 (P3-012)
+- Commit: `9a9a922`
+- 新增 `ErrorCode.SERVICE_UNAVAILABLE`
+- 区分内部错误(500)和外部服务不可用(503)
+
+**Task 6.3**: 健康检查接口验证
+- Status: ✅ 已完整实现
+- Endpoints: `GET /health`, `GET /health/detailed`
+- 副产品: 修复 6 个文件的 import 错误 (Commit: `fee7e01`)
+
+**Task 6.4**: 文件上传大小限制 (P3-005)
+- Commit: `1740234`
+- 新增 `core/middleware/file_upload.py` (100 lines)
+- 13 tests, 100% passing
+- 应用到 5 个上传接口 (10MB 限制)
+- 安全: 防止 DoS 攻击
+
+**Task 6.5**: 软删除恢复接口验证 (P3-008)
+- Status: ✅ 已完整实现
+- Projects: `POST /projects/{id}/restore`
+- User Assets: `POST /assets/{id}/restore`
+
+**Task 6.6**: 清理 Deprecated 接口 (P3-007)
+- Commit: `5c616bf`, `39ed9a5`
+- 删除 2 个 wrapper 文件:
+  - `application/services/capi_service.py`
+  - `application/services/ai_report_service.py`
+- 删除 4 个失效函数 (experiments/crud.py):
+  - `create_experiment()`, `update_experiment()`, `update_experiment_status()`, `clear_experiment_cache()`
+- 迁移导入路径: `ai_report_service` → `ai_reports`
+- 测试: platform domain 19/19 passing
+- 代码清理: ~80 lines removed
+
+**Git 提交记录**:
+```bash
+9a9a922 - feat(exceptions): add SERVICE_UNAVAILABLE error code for P3-012
+fee7e01 - fix(imports): correct import paths for get_supabase_client and decorators
+1740234 - feat(middleware): add file upload size validation (P3-005)
+5c616bf - chore(cleanup): remove deprecated code and wrappers (P3-007)
+39ed9a5 - docs: update Phase 4 progress (Task 6 completed)
+```
+
+**成果总结**:
+- ✅ Phase 4: 6/10 tasks (60%)
+- ✅ 用时: ~5 hours
+- ✅ Lines: +680 / -80
+- ✅ Tests: 13 new tests (file upload)
+- ✅ Security: DoS 防护 (文件大小限制)
+- ✅ Code Quality: 移除死代码和混乱的 wrapper 层
+
+**待办事项** (4 tasks, ~19h):
+- Webhook 重试逻辑 (4h)
+- 完善 API 文档和注释 (4h)
+- 增加活动日志记录 (3h)
+- Stats 响应格式统一 (8h, 18 endpoints)
+
+**前端待迁移** (v4.0 前):
+- ⚠️ `decodables-fe/services/generateService.js:222`
+  - `DELETE /api/generations/batch` → `POST /api/v2/user/generations/batch-delete`
+
+**下一步**: 完善 API 文档和注释 (预计 4h)
 
 ---
 
