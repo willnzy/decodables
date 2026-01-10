@@ -551,7 +551,8 @@ def create_refund(
     payment_intent_id: str,
     amount_cents: Optional[int] = None,
     reason: str = "requested_by_customer",
-    timeout: int = 30
+    timeout: int = 30,
+    metadata: Optional[Dict[str, str]] = None
 ) -> Dict:
     """
     Create a refund for a payment.
@@ -561,13 +562,30 @@ def create_refund(
         amount_cents: Amount to refund in cents (None for full refund)
         reason: Refund reason ('duplicate', 'fraudulent', 'requested_by_customer')
         timeout: Request timeout in seconds (default: 30, fixes SUB-HIGH-2)
+        metadata: Optional metadata to attach to charge (P0-010: for webhook processing)
 
     Returns:
         Dict with success, refund, and error
 
+    v3.28 (P0-010): Added metadata parameter for webhook-based refund processing
     v3.27 (SUB-HIGH-2): Added timeout parameter to prevent hanging
     """
     try:
+        # P0-010 fix: Update charge metadata if provided (for webhook access)
+        if metadata:
+            try:
+                pi = stripe.PaymentIntent.retrieve(payment_intent_id, timeout=timeout)
+                if pi.latest_charge:
+                    stripe.Charge.modify(
+                        pi.latest_charge,
+                        metadata=metadata,
+                        timeout=timeout
+                    )
+                    logger.info(f"[Stripe] Updated charge {pi.latest_charge} metadata for webhook processing")
+            except stripe.error.StripeError as e:
+                logger.warning(f"[Stripe] Failed to update charge metadata: {e}")
+                # Continue with refund even if metadata update fails
+
         refund_params = {
             "payment_intent": payment_intent_id,
             "reason": reason,

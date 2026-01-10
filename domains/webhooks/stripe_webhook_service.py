@@ -158,6 +158,9 @@ class StripeWebhookService:
             return await self._handle_invoice_payment(event)
         elif event_type in ["customer.subscription.deleted", "customer.subscription.updated"]:
             return await self._handle_subscription_change(event)
+        elif event_type == "charge.refunded":
+            # P0-010 fix: Process refunds via webhook for transaction safety
+            return await self._handle_charge_refunded(event)
 
         return {"status": "ok"}
 
@@ -680,3 +683,162 @@ class StripeWebhookService:
                 logger.warning(f"Failed to log activity: {e}")
 
         return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
+
+    async def _handle_charge_refunded(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle charge.refunded webhook event.
+
+        P0-010 fix: Process refunds via webhook for transaction safety.
+        This ensures refund is only recorded in database after Stripe confirms it.
+
+        Event structure:
+        {
+            "id": "evt_xxx",
+            "type": "charge.refunded",
+            "data": {
+                "object": {
+                    "id": "ch_xxx",
+                    "payment_intent": "pi_xxx",
+                    "amount_refunded": 2000,  # cents
+                    "currency": "usd",
+                    "refunds": {
+                        "data": [{
+                            "id": "re_xxx",
+                            "amount": 2000,
+                            "reason": "requested_by_customer",
+                            "status": "succeeded",
+                            "created": 1234567890
+                        }]
+                    },
+                    "metadata": {
+                        "user_id": "user_xxx",
+                        "admin_id": "user_admin_xxx",  # Who initiated refund
+                        "refund_reason": "Customer request"
+                    }
+                }
+            }
+        }
+
+        Args:
+            event: Stripe charge.refunded webhook event
+
+        Returns:
+            Dict with status and processing details
+        """
+        charge = event["data"]["object"]
+        charge_id = charge.get("id", "unknown")
+        payment_intent_id = charge.get("payment_intent", "unknown")
+
+        # Extract refund data
+        refunds = charge.get("refunds", {}).get("data", [])
+        if not refunds:
+            logger.error(f"[Webhook] charge.refunded event has no refunds data: charge={charge_id}")
+            return {"status": "error", "error": "no_refunds_data"}
+
+        # Process the latest refund (Stripe sends charge.refunded for each refund)
+        refund = refunds[0]
+        refund_id = refund.get("id", "unknown")
+        amount_refunded = refund.get("amount", 0)  # cents
+        currency = charge.get("currency", "usd")
+        refund_reason = refund.get("reason", "unknown")
+        refund_status = refund.get("status", "unknown")
+
+        # Get metadata
+        metadata = charge.get("metadata", {})
+        user_id = metadata.get("user_id")
+        admin_id = metadata.get("admin_id")
+        custom_reason = metadata.get("refund_reason", refund_reason)
+
+        logger.info(
+            f"[Webhook] Processing charge.refunded: "
+            f"refund_id={refund_id}, charge={charge_id}, pi={payment_intent_id}, "
+            f"amount=${amount_refunded/100:.2f} {currency}, user={user_id}"
+        )
+
+        # Validate refund status
+        if refund_status != "succeeded":
+            logger.warning(f"[Webhook] Refund {refund_id} not succeeded (status={refund_status}), skipping database update")
+            return {"status": "ok", "action": "refund_not_succeeded", "refund_id": refund_id, "refund_status": refund_status}
+
+        # Validate user_id
+        if not user_id:
+            logger.error(f"[Webhook] charge.refunded missing user_id in metadata: refund={refund_id}")
+            return {"status": "error", "error": "missing_user_id", "refund_id": refund_id}
+
+        # Check if refund already recorded (idempotency)
+        try:
+            existing = self.payment_repo.get_by_payment_intent_and_type(payment_intent_id, "refund")
+            if existing and any(r.get("metadata", {}).get("stripe_refund_id") == refund_id for r in existing):
+                logger.info(f"[Webhook] Refund {refund_id} already recorded, skipping")
+                return {"status": "ok", "action": "already_recorded", "refund_id": refund_id}
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to check existing refund: {e}")
+
+        # Record refund in payment_records table
+        try:
+            refund_record = await self.payment_repo.create(
+                user_id=user_id,
+                payment_intent_id=payment_intent_id,
+                amount=amount_refunded / 100,  # Convert cents to dollars
+                currency=currency,
+                status="refunded",
+                payment_type="refund",
+                metadata={
+                    "stripe_refund_id": refund_id,
+                    "stripe_charge_id": charge_id,
+                    "refund_reason": custom_reason,
+                    "refund_status": refund_status,
+                    "admin_id": admin_id,
+                    "refunded_at": refund.get("created")
+                }
+            )
+
+            if not refund_record:
+                raise Exception("Payment record creation returned None")
+
+            logger.info(f"[Webhook] Recorded refund {refund_id} in payment_records: record_id={refund_record.get('id')}")
+
+        except Exception as e:
+            logger.critical(
+                f"🔴 CRITICAL: Stripe refund webhook processing failed!\n"
+                f"Refund ID: {refund_id}\n"
+                f"Payment Intent: {payment_intent_id}\n"
+                f"User ID: {user_id}\n"
+                f"Amount: ${amount_refunded/100:.2f} {currency}\n"
+                f"Admin ID: {admin_id}\n"
+                f"Reason: {custom_reason}\n"
+                f"Database Error: {e}\n"
+                f"⚠️  MANUAL ACTION REQUIRED: Record this refund in payment_records table!"
+            )
+            return {"status": "error", "error": "database_failure", "refund_id": refund_id, "details": str(e)}
+
+        # Log admin operation if admin_id exists
+        if admin_id:
+            try:
+                from infrastructure.repositories.admin_repository import AdminRepository
+                admin_repo = AdminRepository(self.supabase)
+                await admin_repo.admin_log_operation(
+                    admin_id=admin_id,
+                    operation_type="refund_processed",
+                    description=f"Processed Stripe refund ${amount_refunded/100:.2f} for user {user_id}",
+                    metadata={
+                        "refund_id": refund_id,
+                        "payment_intent_id": payment_intent_id,
+                        "amount": amount_refunded / 100,
+                        "currency": currency,
+                        "reason": custom_reason,
+                        "user_id": user_id
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"[Webhook] Failed to log admin operation: {e}")
+
+        return {
+            "status": "ok",
+            "action": "refund_processed",
+            "refund_id": refund_id,
+            "payment_intent_id": payment_intent_id,
+            "user_id": user_id,
+            "amount": amount_refunded / 100,
+            "currency": currency
+        }

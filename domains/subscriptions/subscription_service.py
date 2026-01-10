@@ -167,11 +167,16 @@ class SubscriptionService:
             if amount_cents > refundable_amount:
                 raise HTTPException(400, f"Refund amount ({amount_cents}) exceeds refundable amount ({refundable_amount})")
 
-        # Execute refund
+        # Execute refund with metadata for webhook processing (P0-010 fix)
         result = create_refund(
             payment_intent_id,
             amount_cents=amount_cents,
-            reason="requested_by_customer"
+            reason="requested_by_customer",
+            metadata={
+                "user_id": user_id,
+                "admin_id": admin_id,
+                "refund_reason": reason
+            }
         )
 
         if not result["success"]:
@@ -182,8 +187,10 @@ class SubscriptionService:
         refund_amount = refund.amount
         currency = refund.currency.upper()
 
-        # P0-010 partial fix: Add try-except with critical logging for database failure
-        # TODO: Migrate to webhook-based refunds for full transaction safety
+        # P0-010 LEGACY CODE (kept for backward compatibility during webhook migration)
+        # The database record will be created by the charge.refunded webhook handler.
+        # This code remains as a fallback until webhooks are fully deployed and tested.
+        # TODO: Remove this section after webhooks are confirmed working in production
         try:
             # Record refund in database
             await self.payment_repo.create(

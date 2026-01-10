@@ -132,6 +132,7 @@ async def stripe_webhook(
     - checkout.session.completed: Credits purchase or subscription start
     - invoice.payment_succeeded: Subscription renewal
     - customer.subscription.deleted/updated: Subscription changes
+    - charge.refunded: Refund processing (P0-010 fix)
 
     **Update webhook URL in Stripe Dashboard:**
     1. Go to https://dashboard.stripe.com/webhooks
@@ -142,6 +143,7 @@ async def stripe_webhook(
        - invoice.payment_succeeded
        - customer.subscription.deleted
        - customer.subscription.updated
+       - charge.refunded (P0-010 fix: required for refund safety)
     5. Save changes and copy the new signing secret to STRIPE_WEBHOOK_SECRET env var
     """
     # v2.5.0: Verify signature via Service
