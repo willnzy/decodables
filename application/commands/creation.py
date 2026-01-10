@@ -7,12 +7,16 @@ Creation Commands - Project operations that change state.
 
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
+import logging
 
 from domains.creation import (
     CreationService,
     Project,
     CanvasSize,
 )
+from domains.creation.locked_elements import update_project_locked_status
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,12 +94,14 @@ class UpdateProjectCommand:
     - title: New title
     - canvas_data: Canvas JSON data (editor state)
     - thumbnail_url: Thumbnail URL
+    - user_tier: User's current tier (for locked elements check)
     """
     project_id: str
     user_id: str
     title: Optional[str] = None
     canvas_data: Optional[Dict[str, Any]] = None
     thumbnail_url: Optional[str] = None
+    user_tier: str = "t1"  # Default to free tier
 
 
 @dataclass
@@ -110,11 +116,23 @@ class UpdateProjectResult:
 class UpdateProjectHandler:
     """Handler for UpdateProjectCommand."""
 
-    def __init__(self, creation_service: CreationService):
+    def __init__(self, creation_service: CreationService, listing_repository=None):
+        """
+        Initialize handler with dependencies.
+
+        Args:
+            creation_service: Creation service for project operations
+            listing_repository: Listing repository for locked elements check (optional)
+        """
         self._creation_service = creation_service
+        self._listing_repository = listing_repository
 
     async def handle(self, command: UpdateProjectCommand) -> UpdateProjectResult:
-        """Execute project update."""
+        """
+        Execute project update.
+
+        P1-013: Now includes locked elements check when canvas_data is updated.
+        """
         try:
             # First verify access - this also confirms ownership
             project = await self._creation_service.get_project_with_access(
@@ -132,6 +150,27 @@ class UpdateProjectHandler:
 
             if command.thumbnail_url is not None:
                 project.metadata.thumbnail_url = command.thumbnail_url
+
+            # P1-013: Check for locked elements if canvas_data was updated
+            if command.canvas_data is not None and self._listing_repository is not None:
+                try:
+                    has_locked = await update_project_locked_status(
+                        project=project,
+                        canvas_data=command.canvas_data,
+                        user_tier=command.user_tier,
+                        listing_repo=self._listing_repository
+                    )
+
+                    if has_locked:
+                        logger.warning(
+                            f"Project {project.id} contains locked elements "
+                            f"(user tier: {command.user_tier})"
+                        )
+                except Exception as lock_check_error:
+                    # Don't fail the entire update if locked elements check fails
+                    logger.error(f"Failed to check locked elements: {lock_check_error}")
+                    # Mark as potentially containing locked elements (fail-safe)
+                    project.contains_locked_elements = True
 
             # Persist changes through repository
             await self._creation_service._repository.update(project)

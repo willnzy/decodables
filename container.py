@@ -363,9 +363,12 @@ class Container:
 
     @property
     def update_project_handler(self) -> UpdateProjectHandler:
-        """Get update project handler."""
+        """Get update project handler (P1-013: now includes listing_repository for locked elements check)."""
         if 'update_project' not in self._handlers:
-            self._handlers['update_project'] = UpdateProjectHandler(self.creation_service)
+            self._handlers['update_project'] = UpdateProjectHandler(
+                self.creation_service,
+                self.listing_repository  # P1-013: For locked elements check
+            )
         return self._handlers['update_project']
 
     @property

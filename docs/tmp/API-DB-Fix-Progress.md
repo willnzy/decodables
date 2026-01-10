@@ -281,7 +281,7 @@ assert response.status_code == 403  # 一次性使用
 
 ## Phase 2: P1 (HIGH) - 详细进度
 
-**总体进度**: 1.5 / 6 (25%)
+**总体进度**: 4 / 6 (67%)
 **预计完成**: 2026-01-14
 
 ### Task 2.1: 统一 Tier 命名规范 ✅ COMPLETE
@@ -397,7 +397,8 @@ assert response.status_code == 403  # 一次性使用
 - [x] 实现 Graceful Fallback (RPC失败时回退到直接查询)
 - [x] 实现 PriceFilter 枚举映射 (FREE="t1" → "free")
 - [x] 增加单元测试: 8个测试用例
-- [x] 提交代码 (3次提交)
+- [x] 创建 MarketplaceRPCMapper (消除硬编码)
+- [x] 提交代码 (4次提交)
 
 **完成标准**:
 - [x] RPC 函数正常工作
@@ -411,9 +412,11 @@ assert response.status_code == 403  # 一次性使用
 - ✅ 2026-01-10: 创建 RPC 函数 p_get_marketplace_listings (167 lines SQL)
 - ✅ 2026-01-10: 修改 SupabaseListingRepository 使用 RPC + Fallback
 - ✅ 2026-01-10: 创建 test_listing_repository_rpc.py (375 lines, 8 tests)
-- ✅ 2026-01-10: Git 提交 11350d2, 96efba4
+- ✅ 2026-01-10: 创建 MarketplaceRPCMapper 消除硬编码 (+164 lines)
+- ✅ 2026-01-10: Git 提交 11350d2, 96efba4, e97900e
 - 📝 性能提升: 预计 5x-10x (单次 RPC vs 2-3次查询)
 - 📝 包含 seller profile JOIN，减少 N+1 查询问题
+- 📝 架构改进: 集中化映射逻辑，更好的关注点分离
 
 ---
 

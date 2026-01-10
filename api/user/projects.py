@@ -383,6 +383,7 @@ async def update_project(
         title=req.title,
         canvas_data=req.canvas_data,
         thumbnail_url=req.thumbnail_url,
+        user_tier=user.get("tier", "t1"),  # P1-013: For locked elements check
     )
 
     result = await handler.handle(command)
