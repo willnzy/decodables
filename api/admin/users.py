@@ -91,14 +91,67 @@ class DiscountRequest(BaseModel):
 @limiter.limit("30/minute")
 async def search_users_api(
     request: Request,
-    query: str = Query(..., min_length=1, max_length=200),
-    limit: int = Query(20, ge=1, le=100, description="Number of results to return (1-100)"),
+    query: str = Query(..., min_length=1, max_length=200, description="Search query for user_id, email, or user_code"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return (1-100, default: 20)"),
     admin: dict = Depends(require_admin),
 ):
     """
-    Search users by query.
+    Search users by query string (user_id, email, or user_code).
 
-    v3.26 (USER-MEDIUM-1): Added limit parameter to prevent large result sets
+    Performs fuzzy search across user identifiers and returns matching user profiles.
+    Useful for customer support lookups and user management.
+
+    v3.26 (USER-MEDIUM-1): Added limit parameter to prevent large result sets.
+
+    Args:
+        query: Search keyword (1-200 chars, required)
+            Searches in:
+                - user_id (Clerk ID format: user_2abc...)
+                - email address
+                - user_code (26-digit unique code)
+            Examples: "user_2abc", "john@example.com", "26010914305278900123"
+        limit: Maximum results to return (default: 20, max: 100)
+
+    Returns:
+        Dict containing:
+            - users: List of user objects including:
+                - id: User ID (Clerk format)
+                - email: User email address
+                - user_code: 26-digit unique user code
+                - tier: User tier (t1/t2/t3)
+                - created_at: Registration timestamp
+                - metadata: Additional user data
+            - count: Number of results returned
+            - limit: Limit applied
+
+    Raises:
+        400: Query too short (< 1 char) or too long (> 200 chars)
+        401: Unauthorized (not admin)
+        500: Database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30 requests per minute
+        - Query length validated (1-200 chars)
+        - Result set limited to prevent OOM
+
+    Example:
+        GET /api/v2/admin/users?query=john@example.com&limit=50
+
+        Response:
+        {
+            "users": [
+                {
+                    "id": "user_2abc3def4ghi",
+                    "email": "john@example.com",
+                    "user_code": "26010914305278900123456789",
+                    "tier": "t2",
+                    "created_at": "2026-01-09T14:30:52Z"
+                }
+            ],
+            "count": 1,
+            "limit": 50
+        }
     """
     db = get_database_client()
     user_repo = SupabaseUserRepository(db)
@@ -111,14 +164,81 @@ async def search_users_api(
 async def get_users_by_tier_api(
     request: Request,
     tier: str,
-    offset: int = 0,
-    limit: int = 100,
+    offset: int = Query(0, ge=0, description="Number of users to skip for pagination"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum number of users to return (1-100, default: 100)"),
     admin: dict = Depends(require_admin),
 ):
     """
-    Get users by tier (for bulk notifications).
+    Get users by tier with pagination (for bulk notifications).
 
-    v3.26 (REPO-HIGH-3): Added pagination (offset/limit) to prevent OOM
+    Retrieves all users belonging to a specific tier (Free/Starter/Pro).
+    Useful for sending tier-targeted notifications or analyzing user distribution.
+    Supports pagination to handle large user bases.
+
+    v3.26 (REPO-HIGH-3): Added pagination (offset/limit) to prevent OOM.
+
+    Args:
+        tier: User tier to filter by
+            Valid values: "t1" (Free), "t2" (Starter), "t3" (Pro)
+            Case-insensitive
+        offset: Skip first N users (default: 0)
+            Used for pagination
+        limit: Return max N users (default: 100, max: 100)
+            Limited to prevent out-of-memory errors
+
+    Returns:
+        Dict containing:
+            - users: List of user objects including:
+                - id: User ID (Clerk format)
+                - email: User email address
+                - user_code: 26-digit unique user code
+                - tier: User tier (t1/t2/t3)
+                - created_at: Registration timestamp
+                - metadata: Additional user data
+            - count: Number of users returned in this page
+            - tier: Tier filter applied
+            - offset: Offset applied
+            - limit: Limit applied
+            - has_more: Whether more users exist (for pagination)
+
+    Raises:
+        400: Invalid tier value (not t1/t2/t3)
+        401: Unauthorized (not admin)
+        500: Database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30 requests per minute
+        - Tier value validated against VALID_TIERS enum
+        - Result set limited to 100 per request (OOM prevention)
+
+    Example:
+        GET /api/v2/admin/users/by-tier/t2?offset=0&limit=50
+
+        Response:
+        {
+            "users": [
+                {
+                    "id": "user_2abc3def4ghi",
+                    "email": "john@example.com",
+                    "user_code": "26010914305278900123456789",
+                    "tier": "t2",
+                    "created_at": "2026-01-09T14:30:52Z"
+                },
+                {
+                    "id": "user_2def4ghi5jkl",
+                    "email": "jane@example.com",
+                    "user_code": "26010915123456780123456789",
+                    "tier": "t2",
+                    "created_at": "2026-01-09T15:12:34Z"
+                }
+            ],
+            "count": 2,
+            "tier": "t2",
+            "offset": 0,
+            "limit": 50,
+            "has_more": false
+        }
     """
     # v3.25: USER-MEDIUM-3 - Validate tier enum
     tier_lower = tier.lower()
