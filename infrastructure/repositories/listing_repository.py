@@ -284,23 +284,19 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             # P1-004: Try RPC function first (optimized path)
             try:
-                # Map enum values to RPC parameters
-                rpc_category = category.value if category else None
-                rpc_sort_by = sort_by.value if sort_by else "latest"
+                # Use centralized RPC mapper to convert domain enums to RPC parameters
+                from domains.marketplace.rpc_mappings import MarketplaceRPCMapper
 
-                # Map PriceFilter enum to RPC parameter
-                # PriceFilter.FREE = "t1" -> "free", PriceFilter.PAID = "paid" -> "paid"
-                if price_filter == PriceFilter.FREE:
-                    rpc_price_filter = "free"
-                elif price_filter == PriceFilter.PAID:
-                    rpc_price_filter = "paid"
-                else:  # PriceFilter.ALL or None
-                    rpc_price_filter = "all"
+                rpc_params = MarketplaceRPCMapper.map_all_filters(
+                    category=category,
+                    price_filter=price_filter,
+                    sort_by=sort_by,
+                )
 
                 result = self.client.rpc("p_get_marketplace_listings", {
-                    "p_category": rpc_category,
-                    "p_price_filter": rpc_price_filter,
-                    "p_sort_by": rpc_sort_by,
+                    "p_category": rpc_params["category"],
+                    "p_price_filter": rpc_params["price_filter"],
+                    "p_sort_by": rpc_params["sort_by"],
                     "p_tier_filter": tier_filter,
                     "p_search_query": query,
                     "p_limit": limit,
