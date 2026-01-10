@@ -286,8 +286,16 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             try:
                 # Map enum values to RPC parameters
                 rpc_category = category.value if category else None
-                rpc_price_filter = price_filter.value if price_filter else "all"
                 rpc_sort_by = sort_by.value if sort_by else "latest"
+
+                # Map PriceFilter enum to RPC parameter
+                # PriceFilter.FREE = "t1" -> "free", PriceFilter.PAID = "paid" -> "paid"
+                if price_filter == PriceFilter.FREE:
+                    rpc_price_filter = "free"
+                elif price_filter == PriceFilter.PAID:
+                    rpc_price_filter = "paid"
+                else:  # PriceFilter.ALL or None
+                    rpc_price_filter = "all"
 
                 result = self.client.rpc("p_get_marketplace_listings", {
                     "p_category": rpc_category,
