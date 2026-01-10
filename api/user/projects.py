@@ -112,6 +112,36 @@ class ProjectRestoreResponse(BaseModel):
     project: Optional[Dict[str, Any]] = None
 
 
+class DashboardProjectsResponse(BaseModel):
+    """Dashboard projects response (P2-002)."""
+    items: List[Dict[str, Any]]
+    total: int
+    offset: int
+    limit: int
+    view: str
+
+    class Config:
+        extra = "allow"
+
+
+class SellerStatsResponse(BaseModel):
+    """Seller statistics response (P2-002)."""
+    total_selling: int = 0
+    total_sales: int = 0
+    unique_buyers: int = 0
+    total_revenue: float = 0.0
+
+    class Config:
+        extra = "allow"
+
+
+class ProjectUpdateResponse(BaseModel):
+    """Project update response (P2-002)."""
+    status: str
+    locked_elements: List[str] = []
+    usage_recorded: List[str] = []
+
+
 # ==========================================
 # Endpoints
 # ==========================================
@@ -179,11 +209,12 @@ async def dashboard_projects(
     search: Optional[str] = None,
     include_canvas: bool = True,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> DashboardProjectsResponse:
     """
     Get projects for dashboard with view type filtering.
 
     P1-002 fix: Migrated to offset-based pagination.
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
@@ -193,7 +224,7 @@ async def dashboard_projects(
         include_canvas: Whether to include canvas_data
 
     Returns:
-        Projects list with view info (includes offset and limit in response)
+        DashboardProjectsResponse with projects list and view info
     """
     container = get_container()
     handler = container.get_dashboard_projects_handler
@@ -213,7 +244,14 @@ async def dashboard_projects(
         logger.error(f"Failed to get dashboard projects for user {user['id']}: {result.error}")
         raise HTTPException(500, "Failed to get dashboard projects")
 
-    return result.data
+    # P2-002: Return Pydantic model
+    return DashboardProjectsResponse(
+        items=result.data.get("items", []),
+        total=result.data.get("total", 0),
+        offset=result.data.get("offset", offset),
+        limit=result.data.get("limit", limit),
+        view=view,
+    )
 
 
 @router.get("/deleted")
@@ -221,14 +259,16 @@ async def list_deleted_projects(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ProjectListResponse:
     """
     Retrieve the user's deleted projects.
 
     P1-002 fix: Migrated to offset-based pagination.
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    P2-003 fix: Fixed bug using 'page' instead of 'offset' in response.
 
     Returns:
-        List of deleted projects that can be restored (includes offset and limit)
+        ProjectListResponse with deleted projects that can be restored
     """
     container = get_container()
     creation_service = container.creation_service
@@ -238,23 +278,40 @@ async def list_deleted_projects(
         offset=offset,
     )
 
-    return {"items": items, "total": len(items), "page": page}
+    # P2-002: Return Pydantic model
+    # P2-003: Fixed bug - use 'offset' instead of 'page'
+    return ProjectListResponse(
+        items=items,
+        total=len(items),
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/seller-stats")
 async def get_project_seller_stats(
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> SellerStatsResponse:
     """
     Get seller statistics for projects.
 
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+
     Returns:
-        Dict with total_selling, total_sales, unique_buyers, etc.
+        SellerStatsResponse with total_selling, total_sales, unique_buyers, etc.
     """
     container = get_container()
     creation_service = container.creation_service
 
-    return await creation_service.get_seller_project_stats(user["id"])
+    stats = await creation_service.get_seller_project_stats(user["id"])
+
+    # P2-002: Return Pydantic model with default values for missing fields
+    return SellerStatsResponse(
+        total_selling=stats.get("total_selling", 0),
+        total_sales=stats.get("total_sales", 0),
+        unique_buyers=stats.get("unique_buyers", 0),
+        total_revenue=stats.get("total_revenue", 0.0),
+    )
 
 
 @router.post("")
@@ -263,7 +320,7 @@ async def create_project(
     request: Request,
     req: ProjectCreateRequest,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ProjectResponse:
     """
     Create a new project.
 
@@ -272,8 +329,10 @@ async def create_project(
     - Starter: 20 projects
     - Pro: 200 projects
 
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+
     Returns:
-        Created project
+        ProjectResponse with created project details
     """
     # Validate title
     is_valid, error = validate_title(req.title)
@@ -306,21 +365,24 @@ async def create_project(
             raise HTTPException(400, result.error)
         raise HTTPException(400, result.error or "Failed to create project")
 
-    return result.project_dict
+    # P2-002: Return Pydantic model
+    return ProjectResponse(**result.project_dict)
 
 
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ProjectResponse:
     """
     Get single project details.
 
     Only owner can access the project.
 
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+
     Returns:
-        Project details
+        ProjectResponse with project details
     """
     container = get_container()
     handler = container.get_project_handler
@@ -339,7 +401,8 @@ async def get_project(
             raise HTTPException(403, "Access denied")
         raise HTTPException(400, result.error or "Failed to get project")
 
-    return result.project_dict
+    # P2-002: Return Pydantic model
+    return ProjectResponse(**result.project_dict)
 
 
 @router.put("/{project_id}")
@@ -347,7 +410,7 @@ async def update_project(
     project_id: str,
     req: ProjectUpdateRequest,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ProjectUpdateResponse:
     """
     Update a project.
 
@@ -356,8 +419,10 @@ async def update_project(
     - Project is within tier limit
     - Free user trial period
 
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+
     Returns:
-        Update status with locked_elements info
+        ProjectUpdateResponse with update status and locked_elements info
     """
     # Validate title if provided
     is_valid, error = validate_title(req.title)
@@ -395,11 +460,12 @@ async def update_project(
             raise HTTPException(403, result.error)
         raise HTTPException(400, result.error or "Failed to update project")
 
-    return {
-        "status": "saved",
-        "locked_elements": [],
-        "usage_recorded": [],
-    }
+    # P2-002: Return Pydantic model
+    return ProjectUpdateResponse(
+        status="saved",
+        locked_elements=[],
+        usage_recorded=[],
+    )
 
 
 @router.delete("/{project_id}")
@@ -484,14 +550,16 @@ async def duplicate_project(
     request: Request,
     project_id: str,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ProjectResponse:
     """
     Duplicate a project.
 
     Creates a copy of the project with title + " (Copy)".
 
+    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+
     Returns:
-        New duplicated project
+        ProjectResponse with new duplicated project
     """
     container = get_container()
     creation_service = container.creation_service
@@ -506,7 +574,8 @@ async def duplicate_project(
             tier=tier,
         )
 
-        return project.to_dict()
+        # P2-002: Return Pydantic model
+        return ProjectResponse(**project.to_dict())
 
     except ProjectLimitExceededException as e:
         raise HTTPException(403, str(e))
