@@ -247,6 +247,29 @@ class Container:
             self._services['user_tasks'] = TasksService(tasks_repo, credit_repo)
         return self._services['user_tasks']
 
+    @property
+    def tools_service(self):
+        """Get tools service instance (v3.0.0)."""
+        from core.database import get_database_client, get_supabase_client
+        from domains.tools import ToolsService
+        from infrastructure.repositories.credit_repository import SupabaseCreditRepository
+        from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+        from shared.ai.ocr_service import process_ocr
+        from domains.shared.access_control import AccessControl
+        if 'tools' not in self._services:
+            credit_repo = SupabaseCreditRepository(get_database_client())
+            asset_repo = SupabaseAssetRepository(get_database_client())
+            storage_client = get_supabase_client()
+            # Note: process_ocr is a function, not a class
+            self._services['tools'] = ToolsService(
+                credit_repo,
+                asset_repo,
+                storage_client,
+                process_ocr,  # OCR processor function
+                AccessControl,  # Access control class
+            )
+        return self._services['tools']
+
     # ========== Command Handlers ==========
 
     @property
@@ -440,6 +463,22 @@ class Container:
         if 'cancel_task' not in self._handlers:
             self._handlers['cancel_task'] = CancelTaskHandler(self.user_tasks_service)
         return self._handlers['cancel_task']
+
+    @property
+    def pdf_preview_handler(self):
+        """PDF preview command handler (v3.0.0)."""
+        from application.commands.tools import PdfPreviewHandler
+        if 'pdf_preview' not in self._handlers:
+            self._handlers['pdf_preview'] = PdfPreviewHandler(self.tools_service)
+        return self._handlers['pdf_preview']
+
+    @property
+    def ocr_handler(self):
+        """OCR command handler (v3.0.0)."""
+        from application.commands.tools import OcrHandler
+        if 'ocr' not in self._handlers:
+            self._handlers['ocr'] = OcrHandler(self.tools_service)
+        return self._handlers['ocr']
 
     @property
     def get_user_projects_handler(self) -> GetUserProjectsHandler:
