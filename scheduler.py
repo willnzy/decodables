@@ -96,13 +96,53 @@ def run_daily_aggregation():
 def run_storage_cleanup():
     """Run storage cleanup task (v3.18)"""
     logger.info(f"[{datetime.now()}] 🧹 Starting storage cleanup...")
-    
+
     try:
         from infrastructure.tasks.storage_cleanup import run_storage_cleanup as do_cleanup
         result = do_cleanup()
         logger.info(f"[{datetime.now()}] ✅ Storage cleanup complete: {result.get('files_deleted', 0)} files deleted, {result.get('space_freed_mb', 0)} MB freed")
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Storage cleanup failed: {e}")
+
+
+def run_webhook_retry():
+    """Run webhook retry task (P3-022)"""
+    logger.info(f"[{datetime.now()}] 🔄 Starting webhook retry task...")
+
+    try:
+        from core.database import get_supabase_client
+        from infrastructure.repositories import (
+            SupabaseWebhookRepository,
+            SupabaseUserRepository,
+            SupabaseCreditRepository,
+            SupabasePaymentRepository,
+        )
+        from domains.webhooks import ClerkWebhookService, StripeWebhookService
+        from domains.webhooks.webhook_retry_service import WebhookRetryService
+        import asyncio
+
+        db = get_supabase_client()
+
+        # Initialize services
+        webhook_repo = SupabaseWebhookRepository(db)
+        user_repo = SupabaseUserRepository(db)
+        credit_repo = SupabaseCreditRepository(db)
+        payment_repo = SupabasePaymentRepository(db)
+
+        clerk_service = ClerkWebhookService(user_repo, credit_repo)
+        stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
+        retry_service = WebhookRetryService(webhook_repo, clerk_service, stripe_service)
+
+        # Run retry task (synchronously wrap async function)
+        result = asyncio.run(retry_service.retry_all_failed_webhooks())
+
+        total = result["total"]
+        logger.info(
+            f"[{datetime.now()}] ✅ Webhook retry complete: "
+            f"{total['processed']} processed, {total['failed']} failed, {total['skipped']} skipped"
+        )
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Webhook retry failed: {e}", exc_info=True)
 
 def init_scheduler():
     """
@@ -142,13 +182,23 @@ def init_scheduler():
         replace_existing=True,
         misfire_grace_time=3600  # 1 hour grace period
     )
-    
+
+    # P3-022: Webhook retry task - run every hour at :15
+    scheduler.add_job(
+        run_webhook_retry,
+        CronTrigger(minute=15),  # Every hour at :15
+        id="webhook_retry",
+        replace_existing=True,
+        misfire_grace_time=600  # 10 minutes grace period
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("📅 Scheduler started with jobs:")
     logger.info("   - Hourly aggregation: every hour at :05")
     logger.info("   - Daily aggregation: 2:00 AM UTC")
     logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
+    logger.info("   - Webhook retry: every hour at :15 (P3-022)")
 
 def shutdown_scheduler():
     """

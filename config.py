@@ -69,3 +69,24 @@ ALLOWED_TIERS_WHITELIST = [
     ["pro"],
 ]
 
+# ==========================================
+# Webhook Retry Configuration (P3-022)
+# ==========================================
+
+# Maximum number of retry attempts for failed webhooks
+WEBHOOK_MAX_RETRIES = int(os.environ.get("WEBHOOK_MAX_RETRIES", "5"))
+
+# Retry delays in seconds (exponential backoff)
+# Attempt 1: 60s, Attempt 2: 300s (5min), Attempt 3: 900s (15min),
+# Attempt 4: 3600s (1h), Attempt 5: 7200s (2h)
+WEBHOOK_RETRY_DELAYS = [60, 300, 900, 3600, 7200]
+
+# How often to run the retry task scheduler (in seconds)
+WEBHOOK_SCHEDULER_INTERVAL = int(os.environ.get("WEBHOOK_SCHEDULER_INTERVAL", "60"))
+
+# Maximum age for retrying failed webhooks (in hours)
+# After this time, failed webhooks are marked as permanently failed
+WEBHOOK_MAX_RETRY_AGE_HOURS = int(os.environ.get("WEBHOOK_MAX_RETRY_AGE_HOURS", "72"))
+
+# Batch size for processing failed webhooks in one run
+WEBHOOK_RETRY_BATCH_SIZE = int(os.environ.get("WEBHOOK_RETRY_BATCH_SIZE", "50"))

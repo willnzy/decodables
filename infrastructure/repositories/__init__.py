@@ -46,6 +46,7 @@ from .error_logs_repository import SupabaseErrorLogsRepository
 from .analytics_repository import SupabaseAnalyticsRepository
 from .subscription_repository import SupabaseSubscriptionRepository
 from .metrics_repository import SupabaseMetricsRepository
+from .webhook_repository import SupabaseWebhookRepository
 
 __all__ = [
     # Base Repository
@@ -83,4 +84,5 @@ __all__ = [
     'SupabaseAnalyticsRepository',
     'SupabaseSubscriptionRepository',
     'SupabaseMetricsRepository',
+    'SupabaseWebhookRepository',
 ]
