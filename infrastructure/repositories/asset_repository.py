@@ -197,3 +197,167 @@ class SupabaseAssetRepository:
         except Exception as e:
             logger.error(f"Failed to get asset usage for user {user_id}: {e}")
             raise
+
+    @retry_on_network_error()
+    async def soft_delete_asset(self, asset_id: str, user_id: str) -> bool:
+        """
+        Soft delete an asset (mark as deleted).
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+
+        Returns:
+            True if deleted
+        """
+        result = self.client.table("assets").update({
+            "is_deleted": True
+        }).eq("id", asset_id).eq("user_id", user_id).execute()
+
+        return len(result.data) > 0 if result.data else False
+
+    @retry_on_network_error()
+    async def permanently_hide_asset(self, asset_id: str, user_id: str) -> bool:
+        """
+        Permanently hide an asset (hard delete from user perspective).
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+
+        Returns:
+            True if deleted
+        """
+        result = self.client.table("assets").delete().eq(
+            "id", asset_id
+        ).eq("user_id", user_id).execute()
+
+        return len(result.data) > 0 if result.data else False
+
+    @retry_on_network_error()
+    async def increment_asset_usage(self, asset_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Increment usage count for an asset.
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+
+        Returns:
+            Updated asset dict with new usage_count
+        """
+        # Get current asset
+        get_result = self.client.table("assets").select("usage_count").eq(
+            "id", asset_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not get_result.data:
+            return None
+
+        current_count = get_result.data.get("usage_count", 0)
+        new_count = current_count + 1
+
+        # Update usage count
+        update_result = self.client.table("assets").update({
+            "usage_count": new_count
+        }).eq("id", asset_id).eq("user_id", user_id).execute()
+
+        return update_result.data[0] if update_result.data else None
+
+    @retry_on_network_error()
+    async def get_deleted_assets(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Get soft-deleted assets (trash).
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of deleted asset dicts
+        """
+        result = self.client.table("assets").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", True).order("created_at", desc=True).execute()
+
+        return result.data or []
+
+    @retry_on_network_error()
+    async def restore_asset(self, asset_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Restore a soft-deleted asset.
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+
+        Returns:
+            Restored asset dict
+        """
+        result = self.client.table("assets").update({
+            "is_deleted": False
+        }).eq("id", asset_id).eq("user_id", user_id).eq("is_deleted", True).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def get_dashboard_stats(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get asset dashboard statistics.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Dashboard stats dict with total_assets, total_usage, by_source, recent
+        """
+        result = self.client.table("assets").select("*").eq("user_id", user_id).execute()
+        assets_data = result.data or []
+
+        total_assets = len(assets_data)
+        total_usage = sum(a.get("usage_count", 0) for a in assets_data)
+
+        # Aggregate by source
+        by_source = {}
+        for asset in assets_data:
+            src = asset.get("source", "unknown")
+            by_source[src] = by_source.get(src, 0) + 1
+
+        # Get recent 10
+        recent = sorted(
+            assets_data,
+            key=lambda x: x.get("created_at", ""),
+            reverse=True
+        )[:10]
+
+        return {
+            "total_assets": total_assets,
+            "total_usage": total_usage,
+            "by_source": by_source,
+            "recent": recent
+        }
+
+    @retry_on_network_error()
+    async def get_seller_stats(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get seller marketplace statistics.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Seller stats dict with total_listings, total_sales, total_revenue, listings
+        """
+        result = self.client.table("marketplace_listings").select(
+            "id, title, price, sales_count, created_at"
+        ).eq("user_id", user_id).eq("is_deleted", False).execute()
+
+        listings_data = result.data or []
+        total_sales = sum(l.get("sales_count", 0) for l in listings_data)
+        total_revenue = sum(l.get("price", 0) * l.get("sales_count", 0) for l in listings_data)
+
+        return {
+            "total_listings": len(listings_data),
+            "total_sales": total_sales,
+            "total_revenue": total_revenue,
+            "listings": listings_data
+        }

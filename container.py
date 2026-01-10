@@ -298,6 +298,18 @@ class Container:
             self._services['templates'] = TemplatesService(repository)
         return self._services['templates']
 
+    @property
+    def assets_service(self):
+        """Get assets service instance (v3.0.0)."""
+        from core.database import get_database_client, get_supabase_client
+        from domains.assets.assets_service import AssetsService
+        from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+        if 'assets' not in self._services:
+            repository = SupabaseAssetRepository(get_database_client())
+            storage_client = get_supabase_client()
+            self._services['assets'] = AssetsService(repository, storage_client)
+        return self._services['assets']
+
     # ========== Command Handlers ==========
 
     @property
@@ -861,6 +873,108 @@ class Container:
                 self.templates_service
             )
         return self._handlers['use_page_template']
+
+    # Assets Query Handlers (v3.0.0)
+    @property
+    def get_user_assets_handler(self):
+        """Get user assets handler (v3.0.0)."""
+        from application.queries.assets import GetUserAssetsHandler
+        if 'get_user_assets' not in self._handlers:
+            self._handlers['get_user_assets'] = GetUserAssetsHandler(
+                self.assets_service
+            )
+        return self._handlers['get_user_assets']
+
+    @property
+    def check_url_handler(self):
+        """Get check URL handler (v3.0.0)."""
+        from application.queries.assets import CheckURLHandler
+        if 'check_url' not in self._handlers:
+            self._handlers['check_url'] = CheckURLHandler(
+                self.assets_service
+            )
+        return self._handlers['check_url']
+
+    @property
+    def get_dashboard_stats_handler(self):
+        """Get dashboard stats handler (v3.0.0)."""
+        from application.queries.assets import GetDashboardStatsHandler
+        if 'get_dashboard_stats' not in self._handlers:
+            self._handlers['get_dashboard_stats'] = GetDashboardStatsHandler(
+                self.assets_service
+            )
+        return self._handlers['get_dashboard_stats']
+
+    @property
+    def get_seller_stats_handler(self):
+        """Get seller stats handler (v3.0.0)."""
+        from application.queries.assets import GetSellerStatsHandler
+        if 'get_seller_stats' not in self._handlers:
+            self._handlers['get_seller_stats'] = GetSellerStatsHandler(
+                self.assets_service
+            )
+        return self._handlers['get_seller_stats']
+
+    @property
+    def get_deleted_assets_handler(self):
+        """Get deleted assets handler (v3.0.0)."""
+        from application.queries.assets import GetDeletedAssetsHandler
+        if 'get_deleted_assets' not in self._handlers:
+            self._handlers['get_deleted_assets'] = GetDeletedAssetsHandler(
+                self.assets_service
+            )
+        return self._handlers['get_deleted_assets']
+
+    # Assets Command Handlers (v3.0.0)
+    @property
+    def upload_asset_handler(self):
+        """Get upload asset handler (v3.0.0)."""
+        from application.commands.assets import UploadAssetHandler
+        if 'upload_asset' not in self._handlers:
+            self._handlers['upload_asset'] = UploadAssetHandler(
+                self.assets_service
+            )
+        return self._handlers['upload_asset']
+
+    @property
+    def add_asset_from_url_handler(self):
+        """Get add asset from URL handler (v3.0.0)."""
+        from application.commands.assets import AddAssetFromURLHandler
+        if 'add_asset_from_url' not in self._handlers:
+            self._handlers['add_asset_from_url'] = AddAssetFromURLHandler(
+                self.assets_service
+            )
+        return self._handlers['add_asset_from_url']
+
+    @property
+    def delete_asset_handler(self):
+        """Get delete asset handler (v3.0.0)."""
+        from application.commands.assets import DeleteAssetHandler
+        if 'delete_asset' not in self._handlers:
+            self._handlers['delete_asset'] = DeleteAssetHandler(
+                self.assets_service
+            )
+        return self._handlers['delete_asset']
+
+    @property
+    def increment_asset_usage_handler(self):
+        """Get increment asset usage handler (v3.0.0)."""
+        from application.commands.assets import IncrementAssetUsageHandler
+        if 'increment_asset_usage' not in self._handlers:
+            self._handlers['increment_asset_usage'] = IncrementAssetUsageHandler(
+                self.assets_service
+            )
+        return self._handlers['increment_asset_usage']
+
+    @property
+    def restore_asset_handler(self):
+        """Get restore asset handler (v3.0.0)."""
+        from application.commands.assets import RestoreAssetHandler
+        if 'restore_asset' not in self._handlers:
+            self._handlers['restore_asset'] = RestoreAssetHandler(
+                self.assets_service
+            )
+        return self._handlers['restore_asset']
 
     # ========== Utility Methods ==========
 
