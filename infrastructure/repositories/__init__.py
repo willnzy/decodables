@@ -5,6 +5,9 @@ Repository Implementations - Supabase/PostgreSQL data access.
 @version 1.0.0
 """
 
+# Base Repository
+from .base_repository import BaseRepository
+
 # Field Mappings (Single Source of Truth)
 from .field_mappings import (
     PROFILES_DB_TO_DOMAIN,
@@ -45,6 +48,8 @@ from .subscription_repository import SupabaseSubscriptionRepository
 from .metrics_repository import SupabaseMetricsRepository
 
 __all__ = [
+    # Base Repository
+    'BaseRepository',
     # Field Mappings
     'PROFILES_DB_TO_DOMAIN',
     'CREDIT_TX_DB_TO_DOMAIN',
