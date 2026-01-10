@@ -5,39 +5,49 @@ Asset Repository - Asset management operations.
 @version 1.0.0
 
 Provides all asset CRUD operations.
+Inherits from BaseRepository for soft/hard delete support.
 """
 
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error
+from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseAssetRepository:
+class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
     """
     Asset repository for assets table operations.
 
     Provides all methods needed for asset management.
+    Inherits soft/hard delete operations from BaseRepository.
+
+    Note: Uses Dict[str, Any] as entity type since there's no Asset domain entity.
     """
 
-    def __init__(self, client=None):
-        """
-        Initialize repository with database client.
-
-        Args:
-            client: Supabase database client
-        """
-        self._client = client
-
     @property
-    def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
-        return self._client
+    def table_name(self) -> str:
+        """Table name for assets."""
+        return "assets"
+
+    def _map_to_entity(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Map database row to entity (passthrough for Dict).
+
+        Since there's no Asset domain entity, we return the row as-is.
+        """
+        return row
+
+    def _map_to_row(self, entity: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Map entity to database row (passthrough for Dict).
+
+        Since there's no Asset domain entity, we return the entity as-is.
+        """
+        return entity
 
     @retry_on_network_error()
     async def save_asset(
@@ -101,20 +111,19 @@ class SupabaseAssetRepository:
     @retry_on_network_error()
     async def delete_asset(self, asset_id: str, user_id: str) -> bool:
         """
-        Delete an asset.
+        Soft delete an asset (mark as deleted).
+
+        Uses BaseRepository.soft_delete() for soft deletion.
+        For hard delete (physical removal), use hard_delete() method.
 
         Args:
-            asset_id: Asset ID
+            asset_id: Asset ID (UUID)
             user_id: User ID (for ownership check)
 
         Returns:
-            True if deleted
+            True if deleted successfully
         """
-        result = self.client.table("assets").delete().eq(
-            "id", asset_id
-        ).eq("user_id", user_id).execute()
-
-        return len(result.data) > 0 if result.data else False
+        return await self.soft_delete(asset_id, user_id)
 
     @retry_on_network_error()
     async def get_user_asset_usage(
