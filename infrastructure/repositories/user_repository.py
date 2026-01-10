@@ -5,6 +5,7 @@ User Repository Implementation - Supabase data access for identity domain.
 @version 1.0.0
 
 Implements IUserRepository using Supabase PostgreSQL.
+Inherits from BaseRepository for soft/hard delete support.
 """
 
 from typing import Optional, List, Dict, Any
@@ -18,26 +19,23 @@ from domains.identity.exceptions import (
     UserNotFoundException,
     UserAlreadyExistsException,
 )
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error
+from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseUserRepository(IUserRepository):
+class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     """
     Supabase implementation of user repository.
+
+    Inherits soft/hard delete operations from BaseRepository.
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
-        self._client = client
-
     @property
-    def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
-        return self._client
+    def table_name(self) -> str:
+        """Table name for user profiles."""
+        return "profiles"
 
     async def get_by_id(self, user_id: str) -> Optional[UserProfile]:
         """Get user profile by user ID."""
@@ -49,7 +47,7 @@ class SupabaseUserRepository(IUserRepository):
             if not result.data:
                 return None
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except Exception as e:
             logger.error(f"Failed to get user {user_id}: {e}")
@@ -65,7 +63,7 @@ class SupabaseUserRepository(IUserRepository):
             if not result.data:
                 return None
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except Exception as e:
             logger.error(f"Failed to get user by email {email}: {e}")
@@ -79,7 +77,7 @@ class SupabaseUserRepository(IUserRepository):
                 data, on_conflict="id"  # profiles.id is the primary key
             ).select("*").single().execute()
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except Exception as e:
             logger.error(f"Failed to save user {user_profile.user_id}: {e}")
@@ -95,7 +93,7 @@ class SupabaseUserRepository(IUserRepository):
             data = self._map_to_row(user_profile)
             result = self.client.table("profiles").insert(data).select("*").single().execute()
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except Exception as e:
             logger.error(f"Failed to create user {user_profile.user_id}: {e}")
@@ -114,7 +112,7 @@ class SupabaseUserRepository(IUserRepository):
             if not result.data:
                 raise UserNotFoundException(user_profile.user_id)
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except UserNotFoundException:
             raise
@@ -123,29 +121,15 @@ class SupabaseUserRepository(IUserRepository):
             raise
 
     async def delete(self, user_id: str) -> bool:
-        """Delete a user profile."""
-        try:
-            result = self.client.table("profiles").delete().eq(
-                "user_id", user_id
-            ).execute()
+        """
+        Delete a user profile (soft delete).
 
-            return len(result.data) > 0 if result.data else False
+        Uses BaseRepository.soft_delete() for soft deletion.
+        For hard delete, use hard_delete() method.
+        """
+        return await self.soft_delete(user_id)
 
-        except Exception as e:
-            logger.error(f"Failed to delete user {user_id}: {e}")
-            return False
-
-    async def exists(self, user_id: str) -> bool:
-        """Check if user exists."""
-        try:
-            result = self.client.table("profiles").select("user_id").eq(
-                "user_id", user_id
-            ).single().execute()
-
-            return result.data is not None
-
-        except Exception:
-            return False
+    # Note: exists() method inherited from BaseRepository
 
     async def get_by_tier(
         self,
@@ -159,7 +143,7 @@ class SupabaseUserRepository(IUserRepository):
                 "tier", tier.value
             ).range(offset, offset + limit - 1).execute()
 
-            return [self._map_to_profile(row) for row in result.data]
+            return [self._map_to_entity(row) for row in result.data]
 
         except Exception as e:
             logger.error(f"Failed to get users by tier {tier}: {e}")
@@ -175,7 +159,7 @@ class SupabaseUserRepository(IUserRepository):
                 "onboarding_step", OnboardingStep.COMPLETED.value
             ).limit(limit).execute()
 
-            return [self._map_to_profile(row) for row in result.data]
+            return [self._map_to_entity(row) for row in result.data]
 
         except Exception as e:
             logger.error(f"Failed to get users needing onboarding: {e}")
@@ -203,7 +187,7 @@ class SupabaseUserRepository(IUserRepository):
             if not result.data:
                 raise UserNotFoundException(user_id)
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except UserNotFoundException:
             raise
@@ -226,7 +210,7 @@ class SupabaseUserRepository(IUserRepository):
             if not result.data:
                 raise UserNotFoundException(user_id)
 
-            return self._map_to_profile(result.data)
+            return self._map_to_entity(result.data)
 
         except UserNotFoundException:
             raise
@@ -234,7 +218,7 @@ class SupabaseUserRepository(IUserRepository):
             logger.error(f"Failed to update onboarding for user {user_id}: {e}")
             raise
 
-    def _map_to_profile(self, row: dict) -> UserProfile:
+    def _map_to_entity(self, row: dict) -> UserProfile:
         """Map database row to UserProfile."""
         preferences = UserPreferences.from_dict(row.get("preferences", {})) \
             if row.get("preferences") else UserPreferences()
