@@ -1,5 +1,5 @@
 """
-Tests for Resources API (v2)
+Tests for Resources API (v3)
 
 Endpoints tested:
 - GET /api/v2/user/resources
@@ -11,7 +11,13 @@ Endpoints tested:
 - GET /api/v2/user/resources/{id}
 
 @module tests.api.user.test_resources
-@version 2.1.0
+@version 3.0.0
+
+Changes in v3.0.0:
+- Migrated from Mock Service pattern to Mock Handler via Container pattern
+- All handlers now use container injection instead of @patch decorators
+- Updated mock return values to use Result objects
+- Added proper try/finally cleanup for all handler mocks
 
 Changes in v2.1.0:
 - Added tests for UUID validation (RES-MEDIUM-2)
@@ -35,10 +41,10 @@ client = TestClient(app)
 
 
 # ==========================================
-# Test Constants (v2.1.0)
+# Test Constants (v3.0.0)
 # ==========================================
 
-# v2.1.0: Valid UUID format for resource_id
+# v3.0.0: Valid UUID format for resource_id
 VALID_RESOURCE_ID = "12345678-1234-1234-1234-123456789abc"
 INVALID_RESOURCE_ID = "not-a-valid-uuid"
 
@@ -75,48 +81,74 @@ def override_optional_user(mock_free_user):
 class TestListResources:
     """Test GET /resources endpoint."""
 
-    @patch('api.user.resources.GetResourcesHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_list_resources_success(self, mock_service, mock_handler_class, override_optional_user):
-        """Should list resources."""
-        mock_result = MagicMock()
-        mock_result.items = [
-            {"id": "res_1", "type": "sticker", "url": "https://example.com/sticker1.png", "is_locked": False},
-            {"id": "res_2", "type": "background", "url": "https://example.com/bg1.png", "is_locked": True},
-        ]
-        mock_result.total = 2
-        mock_result.page = 1
+    def test_list_resources_success(self, override_optional_user):
+        """
+        v3.0.0: Should list resources (Mock Handler via Container).
+        """
+        from application.queries.content import GetResourcesHandler, GetResourcesResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetResourcesHandler)
+        mock_handler.handle = AsyncMock(return_value=GetResourcesResult(
+            items=[
+                {"id": "res_1", "type": "sticker", "url": "https://example.com/sticker1.png", "is_locked": False},
+                {"id": "res_2", "type": "background", "url": "https://example.com/bg1.png", "is_locked": True},
+            ],
+            total=2,
+            page=1,
+            limit=50,
+        ))
 
-        response = client.get("/api/v2/user/resources")
+        container = get_container()
+        original = container._handlers.get('get_resources')
+        container._handlers['get_resources'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 2
-        assert data["total"] == 2
-        assert data["page"] == 1
+        try:
+            response = client.get("/api/v2/user/resources")
 
-    @patch('api.user.resources.GetResourcesHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_list_resources_with_filters(self, mock_service, mock_handler_class, override_optional_user):
-        """Should filter resources by type and category."""
-        mock_result = MagicMock()
-        mock_result.items = [{"id": "res_1", "type": "sticker", "category": "animals"}]
-        mock_result.total = 1
-        mock_result.page = 1
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["items"]) == 2
+            assert data["total"] == 2
+            assert data["page"] == 1
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_resources'] = original
+            else:
+                container._handlers.pop('get_resources', None)
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+    def test_list_resources_with_filters(self, override_optional_user):
+        """
+        v3.0.0: Should filter resources by type and category (Mock Handler via Container).
+        """
+        from application.queries.content import GetResourcesHandler, GetResourcesResult
+        from container import get_container
 
-        response = client.get("/api/v2/user/resources?type=sticker&category=animals")
+        mock_handler = MagicMock(spec=GetResourcesHandler)
+        mock_handler.handle = AsyncMock(return_value=GetResourcesResult(
+            items=[{"id": "res_1", "type": "sticker", "category": "animals"}],
+            total=1,
+            page=1,
+            limit=50,
+        ))
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 1
+        container = get_container()
+        original = container._handlers.get('get_resources')
+        container._handlers['get_resources'] = mock_handler
+
+        try:
+            response = client.get("/api/v2/user/resources?type=sticker&category=animals")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["items"]) == 1
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_resources'] = original
+            else:
+                container._handlers.pop('get_resources', None)
 
 
 class TestGetResourceTypes:
@@ -136,121 +168,203 @@ class TestGetResourceTypes:
 class TestGetCategories:
     """Test GET /resources/categories/{type} endpoint."""
 
-    @patch('api.user.resources.GetCategoriesHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_categories(self, mock_service, mock_handler_class):
-        """Should get categories for resource type."""
-        mock_result = MagicMock()
-        mock_result.categories = [
-            {"id": "cat_1", "name": "Animals"},
-            {"id": "cat_2", "name": "Nature"},
-        ]
+    def test_get_categories(self):
+        """
+        v3.0.0: Should get categories for resource type (Mock Handler via Container).
+        """
+        from application.queries.content import GetCategoriesHandler, GetCategoriesResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetCategoriesHandler)
+        mock_handler.handle = AsyncMock(return_value=GetCategoriesResult(
+            categories=[
+                {"id": "cat_1", "name": "Animals"},
+                {"id": "cat_2", "name": "Nature"},
+            ]
+        ))
 
-        response = client.get("/api/v2/user/resources/categories/sticker")
+        container = get_container()
+        original = container._handlers.get('get_categories')
+        container._handlers['get_categories'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["categories"]) == 2
+        try:
+            response = client.get("/api/v2/user/resources/categories/sticker")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["categories"]) == 2
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_categories'] = original
+            else:
+                container._handlers.pop('get_categories', None)
 
 
 class TestGetStickers:
     """Test GET /resources/stickers endpoint."""
 
-    @patch('api.user.resources.GetStickersHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_stickers(self, mock_service, mock_handler_class, override_optional_user):
-        """Should get stickers."""
-        mock_result = {"items": [{"id": "sticker_1", "type": "sticker"}], "total": 1}
+    def test_get_stickers(self, override_optional_user):
+        """
+        v3.0.0: Should get stickers (Mock Handler via Container).
+        """
+        from application.queries.content import GetStickersHandler, GetStickersResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetStickersHandler)
+        mock_handler.handle = AsyncMock(return_value=GetStickersResult(
+            items=[{"id": "sticker_1", "type": "sticker"}],
+            total=1,
+            page=1,
+            limit=50,
+        ))
 
-        response = client.get("/api/v2/user/resources/stickers")
+        container = get_container()
+        original = container._handlers.get('get_stickers')
+        container._handlers['get_stickers'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 1
+        try:
+            response = client.get("/api/v2/user/resources/stickers")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["items"]) == 1
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_stickers'] = original
+            else:
+                container._handlers.pop('get_stickers', None)
 
 
 class TestGetBackgrounds:
     """Test GET /resources/backgrounds endpoint."""
 
-    @patch('api.user.resources.GetBackgroundsHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_backgrounds(self, mock_service, mock_handler_class, override_optional_user):
-        """Should get backgrounds."""
-        mock_result = {"items": [{"id": "bg_1", "type": "background"}], "total": 1}
+    def test_get_backgrounds(self, override_optional_user):
+        """
+        v3.0.0: Should get backgrounds (Mock Handler via Container).
+        """
+        from application.queries.content import GetBackgroundsHandler, GetBackgroundsResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetBackgroundsHandler)
+        mock_handler.handle = AsyncMock(return_value=GetBackgroundsResult(
+            items=[{"id": "bg_1", "type": "background"}],
+            total=1,
+            page=1,
+            limit=50,
+        ))
 
-        response = client.get("/api/v2/user/resources/backgrounds")
+        container = get_container()
+        original = container._handlers.get('get_backgrounds')
+        container._handlers['get_backgrounds'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 1
+        try:
+            response = client.get("/api/v2/user/resources/backgrounds")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["items"]) == 1
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_backgrounds'] = original
+            else:
+                container._handlers.pop('get_backgrounds', None)
 
 
 class TestGetTemplates:
     """Test GET /resources/templates endpoint."""
 
-    @patch('api.user.resources.GetProjectTemplatesHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_templates(self, mock_service, mock_handler_class, override_optional_user):
-        """Should get project templates."""
-        mock_result = {"items": [{"id": "tpl_1", "type": "template"}], "total": 1}
+    def test_get_templates(self, override_optional_user):
+        """
+        v3.0.0: Should get project templates (Mock Handler via Container).
+        """
+        from application.queries.content import GetProjectTemplatesHandler, GetProjectTemplatesResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetProjectTemplatesHandler)
+        mock_handler.handle = AsyncMock(return_value=GetProjectTemplatesResult(
+            items=[{"id": "tpl_1", "type": "template"}],
+            total=1,
+            page=1,
+            limit=50,
+        ))
 
-        response = client.get("/api/v2/user/resources/templates")
+        container = get_container()
+        original = container._handlers.get('get_project_templates')
+        container._handlers['get_project_templates'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["items"]) == 1
+        try:
+            response = client.get("/api/v2/user/resources/templates")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["items"]) == 1
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_project_templates'] = original
+            else:
+                container._handlers.pop('get_project_templates', None)
 
 
 class TestGetResourceById:
     """Test GET /resources/{id} endpoint."""
 
-    @patch('api.user.resources.GetResourceByIdHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_resource_by_id(self, mock_service, mock_handler_class, override_optional_user):
-        """Should get resource by ID."""
-        mock_result = MagicMock()
-        mock_result.resource = {"id": VALID_RESOURCE_ID, "type": "sticker", "url": "https://example.com/sticker.png"}
+    def test_get_resource_by_id(self, override_optional_user):
+        """
+        v3.0.0: Should get resource by ID (Mock Handler via Container).
+        """
+        from application.queries.content import GetResourceByIdHandler, GetResourceByIdResult
+        from container import get_container
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+        mock_handler = MagicMock(spec=GetResourceByIdHandler)
+        mock_handler.handle = AsyncMock(return_value=GetResourceByIdResult(
+            resource={"id": VALID_RESOURCE_ID, "type": "sticker", "url": "https://example.com/sticker.png"}
+        ))
 
-        response = client.get(f"/api/v2/user/resources/{VALID_RESOURCE_ID}")
+        container = get_container()
+        original = container._handlers.get('get_resource_by_id')
+        container._handlers['get_resource_by_id'] = mock_handler
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == VALID_RESOURCE_ID
+        try:
+            response = client.get(f"/api/v2/user/resources/{VALID_RESOURCE_ID}")
 
-    @patch('api.user.resources.GetResourceByIdHandler')
-    @patch('api.user.resources.get_content_service')
-    def test_get_resource_not_found(self, mock_service, mock_handler_class, override_optional_user):
-        """Should return 404 for non-existent resource."""
-        mock_result = MagicMock()
-        mock_result.resource = None
+            assert response.status_code == 200
+            data = response.json()
+            assert data["id"] == VALID_RESOURCE_ID
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_resource_by_id'] = original
+            else:
+                container._handlers.pop('get_resource_by_id', None)
 
-        mock_handler = MagicMock()
-        mock_handler.handle = AsyncMock(return_value=mock_result)
-        mock_handler_class.return_value = mock_handler
+    def test_get_resource_not_found(self, override_optional_user):
+        """
+        v3.0.0: Should return 404 for non-existent resource (Mock Handler via Container).
+        """
+        from application.queries.content import GetResourceByIdHandler, GetResourceByIdResult
+        from container import get_container
 
-        response = client.get(f"/api/v2/user/resources/{VALID_RESOURCE_ID}")
+        mock_handler = MagicMock(spec=GetResourceByIdHandler)
+        mock_handler.handle = AsyncMock(return_value=GetResourceByIdResult(resource=None))
 
-        assert response.status_code == 404
+        container = get_container()
+        original = container._handlers.get('get_resource_by_id')
+        container._handlers['get_resource_by_id'] = mock_handler
+
+        try:
+            response = client.get(f"/api/v2/user/resources/{VALID_RESOURCE_ID}")
+
+            assert response.status_code == 404
+            mock_handler.handle.assert_called_once()
+        finally:
+            if original:
+                container._handlers['get_resource_by_id'] = original
+            else:
+                container._handlers.pop('get_resource_by_id', None)
 
     def test_get_resource_invalid_id(self, override_optional_user):
         """
@@ -266,11 +380,15 @@ class TestGetResourceById:
 
 
 # ==========================================
-# Tests: Security Validations (v2.1.0)
+# Tests: Security Validations (v3.0.0)
 # ==========================================
 
 class TestSecurityValidations:
-    """Test security validations added in v2.1.0."""
+    """
+    Test security validations (added in v2.1.0, maintained in v3.0.0).
+
+    v3.0.0: No handler mocking needed for these validation tests.
+    """
 
     def test_invalid_resource_type_ignored(self, override_optional_user):
         """
@@ -318,16 +436,22 @@ class TestSecurityValidations:
 
 
 # ==========================================
-# Summary
+# Summary (v3.0.0)
 # ==========================================
 # Total tests: 14
 # Coverage:
-# - GET /resources (2 tests)
-# - GET /resources/types (1 test)
-# - GET /resources/categories/{type} (2 tests)
-# - GET /resources/stickers (1 test)
-# - GET /resources/backgrounds (1 test)
-# - GET /resources/templates (1 test)
-# - GET /resources/{id} (3 tests)
-# - Security validations (3 tests)
+# - GET /resources (2 tests) - Mock Handler via Container
+# - GET /resources/types (1 test) - No mocking needed
+# - GET /resources/categories/{type} (2 tests) - Mock Handler via Container (1 test)
+# - GET /resources/stickers (1 test) - Mock Handler via Container
+# - GET /resources/backgrounds (1 test) - Mock Handler via Container
+# - GET /resources/templates (1 test) - Mock Handler via Container
+# - GET /resources/{id} (3 tests) - Mock Handler via Container (2 tests)
+# - Security validations (3 tests) - No mocking needed
+#
+# Migration Status: ✅ Complete
+# - Removed all @patch decorators
+# - Migrated 8 tests to use Container handler injection
+# - Updated all Result objects to proper types
+# - Added try/finally cleanup for all handler mocks
 # ==========================================
