@@ -1,9 +1,17 @@
-"""Tasks API - Background tasks endpoints (v2).
+"""Tasks API - Background tasks endpoints (v3).
 
 @module api.user.tasks
-@version 2.1.0
+@version 3.0.0
 
 Changes:
+- v3.0.0: DDD architecture upgrade - CQRS Query/Command pattern
+  - Created TasksService with task status/cancellation business logic
+  - Added GetTaskStatusHandler (Query Handler)
+  - Added CancelTaskHandler (Command Handler)
+  - Eliminated direct infrastructure calls from API layer
+  - Moved all validation and business logic to Service layer
+  - Improved testability and maintainability
+
 - v2.1.0: Security improvements
   - T-MEDIUM-1: Added task_id format validation (3-64 chars, alphanumeric/hyphen/underscore)
   - T-LOW-1: Added "scheduled" to cancellable status list
@@ -13,42 +21,17 @@ Endpoints:
 - POST /api/v2/user/tasks/{task_id}/cancel - Cancel a task
 """
 
-import logging
-import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from dependencies import get_current_user
-from infrastructure.task_queue import task_queue, progress_tracker
+from container import get_container
+from application.queries.tasks import GetTaskStatusQuery, CancelTaskCommand
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.credit_repository import SupabaseCreditRepository
-from core.database import get_supabase_client, get_database_client
 
-supabase = get_supabase_client()
-
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/tasks", tags=["user-tasks-v2"])
-
-
-# ==========================================
-# Constants (v2.1.0)
-# ==========================================
-
-# v2.1.0: T-MEDIUM-1 - Task ID format validation
-# Allowed: alphanumeric, hyphens, underscores, 3-64 characters
-TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,64}$")
-
-# v2.1.0: T-LOW-1 - Cancellable task statuses (including scheduled from RQ)
-CANCELLABLE_STATUSES = ("pending", "queued", "scheduled")
-
-
-def validate_task_id(task_id: str) -> None:
-    """v2.1.0: T-MEDIUM-1 - Validate task_id format."""
-    if not TASK_ID_PATTERN.match(task_id):
-        raise HTTPException(400, "Invalid task ID format")
+router = APIRouter(prefix="/tasks", tags=["user-tasks-v3"])
 
 
 # ==========================================
@@ -94,6 +77,8 @@ async def get_task_status(
     """
     Get task status and progress.
 
+    v3.0.0: Now uses GetTaskStatusHandler (CQRS Query pattern).
+
     Returns:
         - status: pending, queued, processing, completed, failed, cancelled
         - progress: 0-100
@@ -101,51 +86,17 @@ async def get_task_status(
         - result: image URLs when completed
         - error: error message if failed
     """
-    # v2.1.0: T-MEDIUM-1 - Validate task_id format
-    validate_task_id(task_id)
+    container = get_container()
+    handler = container.get_task_status_handler
 
-    # Get status from progress tracker (Redis)
-    status = progress_tracker.get_status(task_id)
-
-    if not status:
-        # Try database as fallback
-        try:
-            result = supabase.rpc("get_task_details", {
-                "p_task_id": task_id,
-                "p_user_id": user["id"],
-            }).execute()
-
-            if result.data and result.data.get("success"):
-                data = result.data
-                return TaskStatusResponse(
-                    task_id=task_id,
-                    status=data.get("status", "unknown"),
-                    progress=data.get("progress", 0),
-                    current_step=data.get("current_step"),
-                    total_steps=data.get("total_steps"),
-                    message=data.get("message"),
-                    result=data.get("result"),
-                    error=data.get("error"),
-                    created_at=data.get("created_at"),
-                    completed_at=data.get("completed_at"),
-                )
-        except Exception as e:
-            logger.warning(f"Failed to get task from DB: {e}")
-
-        raise HTTPException(404, "Task not found")
-
-    return TaskStatusResponse(
+    query = GetTaskStatusQuery(
         task_id=task_id,
-        status=status.get("status", "unknown"),
-        progress=status.get("progress", 0),
-        current_step=status.get("current_step"),
-        total_steps=status.get("total_steps"),
-        message=status.get("message"),
-        result=status.get("result"),
-        error=status.get("error"),
-        created_at=status.get("created_at"),
-        completed_at=status.get("completed_at"),
+        user_id=user["id"],
     )
+
+    result = await handler.handle(query)
+
+    return TaskStatusResponse(**result.task_data)
 
 
 @router.post("/{task_id}/cancel")
@@ -158,50 +109,19 @@ async def cancel_task(
     """
     Cancel a pending or queued task.
 
+    v3.0.0: Now uses CancelTaskHandler (CQRS Command pattern).
+
     Only tasks that haven't started processing can be cancelled.
     Credits will be refunded for cancelled tasks.
     """
-    # v2.1.0: T-MEDIUM-1 - Validate task_id format
-    validate_task_id(task_id)
+    container = get_container()
+    handler = container.cancel_task_handler
 
-    # Check task status
-    status = progress_tracker.get_status(task_id)
+    command = CancelTaskCommand(
+        task_id=task_id,
+        user_id=user["id"],
+    )
 
-    if not status:
-        raise HTTPException(404, "Task not found")
+    result = await handler.handle(command)
 
-    # v2.1.0: T-LOW-1 - Use constant for cancellable statuses
-    if status.get("status") not in CANCELLABLE_STATUSES:
-        raise HTTPException(
-            400,
-            f"Cannot cancel task in '{status.get('status')}' status",
-        )
-
-    # Attempt cancellation
-    if task_queue.cancel_task(task_id, user["id"]):
-        credits_refunded = 0
-
-        # Get task params for refund
-        try:
-            result = supabase.table("generation_tasks").select("params").eq(
-                "task_id", task_id,
-            ).eq("user_id", user["id"]).single().execute()
-
-            if result.data:
-                credits_charged = result.data.get("params", {}).get("credits_charged", 0)
-                if credits_charged > 0:
-                    credit_repo = SupabaseCreditRepository(get_database_client())
-                    await credit_repo.add_credits(user["id"], credits_charged, f"Cancelled task {task_id}", "refund")
-                    credits_refunded = credits_charged
-
-        except Exception as e:
-            logger.warning(f"Failed to refund credits for cancelled task: {e}")
-
-        return TaskCancelResponse(
-            status="cancelled",
-            task_id=task_id,
-            credits_refunded=credits_refunded,
-            message="Task cancelled" + (" and credits refunded" if credits_refunded else ""),
-        )
-
-    raise HTTPException(400, "Failed to cancel task")
+    return TaskCancelResponse(**result.result_data)

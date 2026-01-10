@@ -1,18 +1,26 @@
 """
-Tasks Repository - Data access layer for scheduled tasks management.
+Tasks Repository - Data access layer for tasks management.
 
 @module infrastructure.repositories.tasks_repository
-@version 1.0.0
+@version 2.0.0
 
-This module provides database access methods for scheduled tasks,
-following DDD architecture and Repository pattern.
+Changes in v2.0.0:
+- Added SupabaseUserTasksRepository for user background tasks
+- Existing SupabaseTasksRepository for admin scheduled tasks (unchanged)
+
+This module provides database access methods for:
+1. Admin scheduled tasks (cron jobs, monitoring)
+2. User background tasks (generation tasks, async operations)
 """
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
 from core.database import retry_on_network_error
+
+logger = logging.getLogger(__name__)
 
 
 class TasksRepository(ABC):
@@ -157,3 +165,89 @@ class SupabaseTasksRepository(TasksRepository):
             "success_rate": round((total - failed) / total * 100, 2) if total > 0 else 100.0,
             "period_start": last_hour
         }
+
+
+# ==========================================
+# User Background Tasks Repository (v2.0.0)
+# ==========================================
+
+class SupabaseUserTasksRepository:
+    """
+    Supabase implementation for user background tasks.
+
+    Handles data access for async user operations like:
+    - Image generation tasks
+    - PDF generation tasks
+    - Story generation tasks
+    - Export tasks
+    """
+
+    def __init__(self, supabase_client):
+        """
+        Initialize with Supabase client.
+
+        Args:
+            supabase_client: Supabase client instance
+        """
+        self.supabase = supabase_client
+
+    @retry_on_network_error()
+    async def get_task_from_database(
+        self,
+        task_id: str,
+        user_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get task details from database via RPC function (fallback when not in cache).
+
+        Args:
+            task_id: Task identifier
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            Task details dict or None if not found/unsuccessful
+        """
+        try:
+            result = self.supabase.rpc("get_task_details", {
+                "p_task_id": task_id,
+                "p_user_id": user_id,
+            }).execute()
+
+            if result.data and result.data.get("success"):
+                return result.data
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Failed to get task from database: {e}")
+            return None
+
+    @retry_on_network_error()
+    async def get_task_params(
+        self,
+        task_id: str,
+        user_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get task parameters from generation_tasks table (for credit refund lookup).
+
+        Args:
+            task_id: Task identifier
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            Task params dict or None if not found
+        """
+        try:
+            result = self.supabase.table("generation_tasks").select("params").eq(
+                "task_id", task_id,
+            ).eq("user_id", user_id).single().execute()
+
+            if result.data:
+                return result.data.get("params", {})
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Failed to get task params: {e}")
+            return None

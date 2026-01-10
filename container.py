@@ -234,6 +234,19 @@ class Container:
             self._services['themes'] = ThemesService(get_database_client())
         return self._services['themes']
 
+    @property
+    def user_tasks_service(self):
+        """Get user tasks service instance (v3.0.0)."""
+        from core.database import get_database_client
+        from domains.tasks import TasksService
+        from infrastructure.repositories.tasks_repository import SupabaseUserTasksRepository
+        from infrastructure.repositories.credit_repository import SupabaseCreditRepository
+        if 'user_tasks' not in self._services:
+            tasks_repo = SupabaseUserTasksRepository(get_database_client())
+            credit_repo = SupabaseCreditRepository(get_database_client())
+            self._services['user_tasks'] = TasksService(tasks_repo, credit_repo)
+        return self._services['user_tasks']
+
     # ========== Command Handlers ==========
 
     @property
@@ -411,6 +424,22 @@ class Container:
         if 'get_current_theme' not in self._handlers:
             self._handlers['get_current_theme'] = GetCurrentThemeHandler(self.themes_service)
         return self._handlers['get_current_theme']
+
+    @property
+    def get_task_status_handler(self):
+        """Get task status query handler (v3.0.0)."""
+        from application.queries.tasks import GetTaskStatusHandler
+        if 'get_task_status' not in self._handlers:
+            self._handlers['get_task_status'] = GetTaskStatusHandler(self.user_tasks_service)
+        return self._handlers['get_task_status']
+
+    @property
+    def cancel_task_handler(self):
+        """Cancel task command handler (v3.0.0)."""
+        from application.queries.tasks import CancelTaskHandler
+        if 'cancel_task' not in self._handlers:
+            self._handlers['cancel_task'] = CancelTaskHandler(self.user_tasks_service)
+        return self._handlers['cancel_task']
 
     @property
     def get_user_projects_handler(self) -> GetUserProjectsHandler:
