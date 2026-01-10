@@ -129,6 +129,937 @@ CONFIGS_DB_TO_DOMAIN: Dict[str, str] = {
 }
 
 # ============================================================
+# PART 2: Additional Table Mappings (54 tables)
+# Auto-generated and manually reviewed on 2026-01-10
+# ============================================================
+
+# activity_logs 表
+ACTIVITY_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'action': 'action',
+    'resource_type': 'resource_type',
+    'resource_id': 'resource_id',
+    'description': 'description',
+    'metadata': 'metadata',
+    'ip_address': 'ip_address',
+    'timezone': 'timezone',
+    'created_at_local': 'created_at_local',
+    'created_at': 'created_at',
+}
+
+# admin_operations 表
+ADMIN_OPERATIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'admin_id': 'admin_id',
+    'operation_type': 'operation_type',
+    'target_type': 'target_type',
+    'target_id': 'target_id',
+    'action_details': 'action_details',
+    'ip_address': 'ip_address',
+    'user_agent': 'user_agent',
+    'status': 'status',
+    'error_message': 'error_message',
+    'created_at': 'created_at',
+}
+
+# aggregated_stats 表
+AGGREGATED_STATS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'stat_type': 'stat_type',
+    'stat_key': 'stat_key',
+    'stat_value': 'stat_value',
+    'metadata': 'metadata',
+    'period_start': 'period_start',
+    'period_end': 'period_end',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# ai_call_logs 表
+AI_CALL_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'provider': 'provider',
+    'model': 'model',
+    'call_type': 'call_type',
+    'status': 'status',
+    'input_data': 'input_data',
+    'output_data': 'output_data',
+    'input_tokens': 'input_tokens',
+    'output_tokens': 'output_tokens',
+    'total_tokens': 'total_tokens',
+    'latency_ms': 'latency_ms',
+    'cost_usd': 'cost_usd',
+    'error_code': 'error_code',
+    'error_message': 'error_message',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
+# ai_usage_daily 表
+AI_USAGE_DAILY_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'date': 'date',
+    'provider': 'provider',
+    'model': 'model',
+    'call_type': 'call_type',
+    'total_calls': 'total_calls',
+    'successful_calls': 'successful_calls',
+    'failed_calls': 'failed_calls',
+    'total_input_tokens': 'total_input_tokens',
+    'total_output_tokens': 'total_output_tokens',
+    'total_images': 'total_images',
+    'avg_latency_ms': 'avg_latency_ms',
+    'min_latency_ms': 'min_latency_ms',
+    'max_latency_ms': 'max_latency_ms',
+    'estimated_cost_usd': 'estimated_cost_usd',
+    'error_counts': 'error_counts',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# analytics_aggregation 表
+ANALYTICS_AGGREGATION_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'date': 'date',
+    'granularity': 'granularity',
+    'dimension_type': 'dimension_type',
+    'dimension_value': 'dimension_value',
+    'metrics': 'metrics',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# analytics_events 表
+ANALYTICS_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'session_id': 'session_id',
+    'event_id': 'event_id',
+    'event_name': 'event_name',
+    'event_type': 'event_type',
+    'context': 'context',
+    'properties': 'properties',
+    'timestamp': 'timestamp',
+    'created_at': 'created_at',
+}
+
+# api_logs 表
+API_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'endpoint': 'endpoint',
+    'method': 'method',
+    'status_code': 'status_code',
+    'latency_ms': 'latency_ms',
+    'ip_address': 'ip_address',
+    'user_agent': 'user_agent',
+    'request_body': 'request_body',
+    'response_body': 'response_body',
+    'error_message': 'error_message',
+    'created_at': 'created_at',
+}
+
+# asset_categories 表
+ASSET_CATEGORIES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'category_id',
+    'parent_id': 'parent_id',
+    'path': 'path',
+    'level': 'level',
+    'slug': 'slug',
+    'name': 'name',
+    'name_i18n': 'name_i18n',
+    'description': 'description',
+    'icon': 'icon',
+    'asset_type': 'asset_type',
+    'is_visible': 'is_visible',
+    'is_featured': 'is_featured',
+    'display_order': 'display_order',
+    'min_tier': 'min_tier',
+    'visible_from': 'visible_from',
+    'visible_until': 'visible_until',
+    'asset_count': 'asset_count',
+    'usage_count': 'usage_count',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# asset_prompt_templates 表
+ASSET_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'template_id',
+    'user_id': 'user_id',
+    'name': 'name',
+    'description': 'description',
+    'who_type': 'who_type',
+    'who_custom': 'who_custom',
+    'what_type': 'what_type',
+    'what_custom': 'what_custom',
+    'where_type': 'where_type',
+    'where_custom': 'where_custom',
+    'style': 'style',
+    'moods': 'moods',
+    'aspect_ratio': 'aspect_ratio',
+    'creativity_level': 'creativity_level',
+    'negative_prompt': 'negative_prompt',
+    'use_count': 'use_count',
+    'last_used_at': 'last_used_at',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# assets 表
+ASSETS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'asset_id',
+    'user_id': 'user_id',
+    'project_id': 'project_id',
+    'url': 'url',
+    'type': 'type',
+    'prompt': 'prompt',
+    'description': 'description',
+    'metadata': 'metadata',
+    'source_listing_id': 'source_listing_id',
+    'is_purchased': 'is_purchased',
+    'origin_owner_id': 'origin_owner_id',
+    'is_hidden_from_trash': 'is_hidden_from_trash',
+    'timezone': 'timezone',
+    'created_at_local': 'created_at_local',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# campaign_dismissals 表
+CAMPAIGN_DISMISSALS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'campaign_id': 'campaign_id',
+    'user_id': 'user_id',
+    'channel': 'channel',
+    'dismissed_at': 'dismissed_at',
+}
+
+# campaign_participations 表
+CAMPAIGN_PARTICIPATIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'campaign_id': 'campaign_id',
+    'user_id': 'user_id',
+    'credits_received': 'credits_received',
+    'claimed_at': 'claimed_at',
+}
+
+# campaigns 表
+CAMPAIGNS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'campaign_id',
+    'name': 'name',
+    'description': 'description',
+    'type': 'type',
+    'config': 'config',
+    'target_type': 'target_type',
+    'target_config': 'target_config',
+    'notification_channels': 'notification_channels',
+    'notification_config': 'notification_config',
+    'start_at': 'start_at',
+    'end_at': 'end_at',
+    'timezone': 'timezone',
+    'usage_limit': 'usage_limit',
+    'usage_per_user': 'usage_per_user',
+    'usage_count': 'usage_count',
+    'status': 'status',
+    'is_active': 'is_active',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+    'is_permanently_deleted': 'is_permanently_deleted',
+}
+
+# clerk_webhook_events 表
+CLERK_WEBHOOK_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'event_id': 'event_id',
+    'event_type': 'event_type',
+    'payload': 'payload',
+    'processed': 'processed',
+    'processed_at': 'processed_at',
+    'error_message': 'error_message',
+    'retry_count': 'retry_count',
+    'created_at': 'created_at',
+    'processing_status': 'processing_status',
+    'last_error': 'last_error',
+}
+
+# config_audit_logs 表
+CONFIG_AUDIT_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'config_key': 'config_key',
+    'old_value': 'old_value',
+    'new_value': 'new_value',
+    'action': 'action',
+    'changed_by': 'changed_by',
+    'changed_at': 'changed_at',
+}
+
+# content_reports 表
+CONTENT_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'report_id',
+    'reporter_id': 'reporter_id',
+    'listing_id': 'listing_id',
+    'reason': 'reason',
+    'description': 'description',
+    'status': 'status',
+    'admin_response': 'admin_response',
+    'reviewed_by': 'reviewed_by',
+    'reviewed_at': 'reviewed_at',
+    'timezone': 'timezone',
+    'created_at_local': 'created_at_local',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# credit_purchases 表
+CREDIT_PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'purchase_id',
+    'user_id': 'user_id',
+    'plan_type': 'plan_type',
+    'credits_amount': 'credits_amount',
+    'price_usd': 'price_usd',
+    'stripe_payment_intent_id': 'stripe_payment_intent_id',
+    'stripe_invoice_id': 'stripe_invoice_id',
+    'status': 'status',
+    'idempotency_key': 'idempotency_key',
+    'metadata': 'metadata',
+    'completed_at': 'completed_at',
+    'created_at': 'created_at',
+}
+
+# daily_metrics 表
+DAILY_METRICS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'metric_date': 'metric_date',
+    'total_users': 'total_users',
+    'active_users': 'active_users',
+    'new_users': 'new_users',
+    'total_projects': 'total_projects',
+    'new_projects': 'new_projects',
+    'total_listings': 'total_listings',
+    'new_listings': 'new_listings',
+    'total_purchases': 'total_purchases',
+    'revenue_usd': 'revenue_usd',
+    'revenue_credits': 'revenue_credits',
+    'ai_generations': 'ai_generations',
+    'smart_scans': 'smart_scans',
+    'credits_consumed': 'credits_consumed',
+    'credits_granted': 'credits_granted',
+    'error_count': 'error_count',
+    'avg_response_time_ms': 'avg_response_time_ms',
+    'p95_response_time_ms': 'p95_response_time_ms',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# daily_themes 表
+DAILY_THEMES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'theme_id',
+    'title': 'title',
+    'description': 'description',
+    'date': 'date',
+    'thumbnail_url': 'thumbnail_url',
+    'preview_urls': 'preview_urls',
+    'featured_asset_ids': 'featured_asset_ids',
+    'recommended_categories': 'recommended_categories',
+    'tags': 'tags',
+    'status': 'status',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# error_logs 表
+ERROR_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'error_type': 'error_type',
+    'error_message': 'error_message',
+    'error_stack': 'error_stack',
+    'request_path': 'request_path',
+    'request_method': 'request_method',
+    'request_body': 'request_body',
+    'response_status': 'response_status',
+    'environment': 'environment',
+    'severity': 'severity',
+    'metadata': 'metadata',
+    'resolved': 'resolved',
+    'resolved_at': 'resolved_at',
+    'resolved_by': 'resolved_by',
+    'created_at': 'created_at',
+}
+
+# experiment_assignments 表
+EXPERIMENT_ASSIGNMENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'experiment_id': 'experiment_id',
+    'user_id': 'user_id',
+    'variant_key': 'variant_key',
+    'assigned_at': 'assigned_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# experiment_conversions 表
+EXPERIMENT_CONVERSIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'experiment_id': 'experiment_id',
+    'user_id': 'user_id',
+    'variant_key': 'variant_key',
+    'metric_key': 'metric_key',
+    'value': 'value',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
+# experiment_exposures 表
+EXPERIMENT_EXPOSURES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'experiment_id': 'experiment_id',
+    'user_id': 'user_id',
+    'variant_key': 'variant_key',
+    'context': 'context',
+    'created_at': 'created_at',
+}
+
+# experiment_results 表
+EXPERIMENT_RESULTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'experiment_id': 'experiment_id',
+    'date': 'date',
+    'variant_key': 'variant_key',
+    'metrics': 'metrics',
+    'sample_size': 'sample_size',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# experiments 表
+EXPERIMENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'experiment_id',
+    'experiment_key': 'experiment_key',
+    'experiment_name': 'experiment_name',
+    'description': 'description',
+    'hypothesis': 'hypothesis',
+    'variants': 'variants',
+    'status': 'status',
+    'traffic_percentage': 'traffic_percentage',
+    'target_tiers': 'target_tiers',
+    'start_date': 'start_date',
+    'end_date': 'end_date',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# feature_flags 表
+FEATURE_FLAGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'flag_id',
+    'flag_key': 'flag_key',
+    'flag_name': 'flag_name',
+    'description': 'description',
+    'is_enabled': 'is_enabled',
+    'rollout_percentage': 'rollout_percentage',
+    'target_tiers': 'target_tiers',
+    'target_user_ids': 'target_user_ids',
+    'config': 'config',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# generation_tasks 表
+GENERATION_TASKS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'task_id',
+    'user_id': 'user_id',
+    'project_id': 'project_id',
+    'task_type': 'task_type',
+    'prompt': 'prompt',
+    'parameters': 'parameters',
+    'status': 'status',
+    'result_url': 'result_url',
+    'result_metadata': 'result_metadata',
+    'error_message': 'error_message',
+    'credits_cost': 'credits_cost',
+    'processing_time_ms': 'processing_time_ms',
+    'retry_count': 'retry_count',
+    'created_at': 'created_at',
+    'started_at': 'started_at',
+    'completed_at': 'completed_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# holidays 表
+HOLIDAYS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'holiday_id',
+    'name': 'name',
+    'name_i18n': 'name_i18n',
+    'slug': 'slug',
+    'month': 'month',
+    'day': 'day',
+    'regions': 'regions',
+    'category': 'category',
+    'is_major': 'is_major',
+    'theme_colors': 'theme_colors',
+    'asset_category_ids': 'asset_category_ids',
+    'description': 'description',
+    'tags': 'tags',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# listing_usages 表
+LISTING_USAGES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'listing_id': 'listing_id',
+    'user_id': 'user_id',
+    'project_id': 'project_id',
+    'usage_type': 'usage_type',
+    'usage_count': 'usage_count',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
+# marketplace_favorites 表
+MARKETPLACE_FAVORITES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'listing_id': 'listing_id',
+    'created_at': 'created_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# marketplace_reports 表
+MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'report_id',
+    'listing_id': 'listing_id',
+    'reporter_id': 'reporter_id',
+    'report_reason': 'report_reason',
+    'description': 'description',
+    'status': 'status',
+    'reviewed_by': 'reviewed_by',
+    'reviewed_at': 'reviewed_at',
+    'resolution': 'resolution',
+    'action_taken': 'action_taken',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# marketplace_reviews 表
+MARKETPLACE_REVIEWS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'review_id',
+    'listing_id': 'listing_id',
+    'reviewer_id': 'reviewer_id',
+    'rating': 'rating',
+    'review_text': 'review_text',
+    'is_verified_purchase': 'is_verified_purchase',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# monthly_metrics 表
+MONTHLY_METRICS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'metric_year': 'metric_year',
+    'metric_month': 'metric_month',
+    'total_users': 'total_users',
+    'active_users': 'active_users',
+    'new_users': 'new_users',
+    'churned_users': 'churned_users',
+    'total_projects': 'total_projects',
+    'new_projects': 'new_projects',
+    'total_listings': 'total_listings',
+    'new_listings': 'new_listings',
+    'total_purchases': 'total_purchases',
+    'revenue_usd': 'revenue_usd',
+    'revenue_credits': 'revenue_credits',
+    'ai_generations': 'ai_generations',
+    'smart_scans': 'smart_scans',
+    'credits_consumed': 'credits_consumed',
+    'credits_granted': 'credits_granted',
+    'mrr': 'mrr',
+    'arr': 'arr',
+    'ltv': 'ltv',
+    'cac': 'cac',
+    'retention_rate': 'retention_rate',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# notifications 表
+NOTIFICATIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'notification_id',
+    'user_id': 'user_id',
+    'notification_type': 'notification_type',
+    'title': 'title',
+    'message': 'message',
+    'action_url': 'action_url',
+    'is_read': 'is_read',
+    'read_at': 'read_at',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
+# onboarding_steps 表
+ONBOARDING_STEPS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'step_id',
+    'step_key': 'step_key',
+    'step_name': 'step_name',
+    'description': 'description',
+    'step_order': 'step_order',
+    'is_required': 'is_required',
+    'target_tiers': 'target_tiers',
+    'config': 'config',
+    'is_active': 'is_active',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# page_prompt_templates 表
+PAGE_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'template_id',
+    'template_name': 'template_name',
+    'template_category': 'template_category',
+    'prompt_template': 'prompt_template',
+    'description': 'description',
+    'example_input': 'example_input',
+    'example_output': 'example_output',
+    'parameters': 'parameters',
+    'is_active': 'is_active',
+    'usage_count': 'usage_count',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# payment_records 表
+PAYMENT_RECORDS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'payment_id',
+    'user_id': 'user_id',
+    'payment_type': 'payment_type',
+    'payment_method': 'payment_method',
+    'amount_usd': 'amount_usd',
+    'amount_credits': 'amount_credits',
+    'currency': 'currency',
+    'stripe_payment_intent_id': 'stripe_payment_intent_id',
+    'stripe_charge_id': 'stripe_charge_id',
+    'stripe_customer_id': 'stripe_customer_id',
+    'status': 'status',
+    'failure_reason': 'failure_reason',
+    'receipt_url': 'receipt_url',
+    'metadata': 'metadata',
+    'refunded_amount': 'refunded_amount',
+    'refunded_at': 'refunded_at',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# pricing_history 表
+PRICING_HISTORY_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'plan_id': 'plan_id',
+    'plan_code': 'plan_code',
+    'action': 'action',
+    'old_data': 'old_data',
+    'new_data': 'new_data',
+    'changed_by': 'changed_by',
+    'changed_at': 'changed_at',
+}
+
+# pricing_plans 表
+PRICING_PLANS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'plan_id',
+    'plan_code': 'plan_code',
+    'plan_type': 'plan_type',
+    'plan_name': 'plan_name',
+    'description': 'description',
+    'price_cents': 'price_cents',
+    'original_price_cents': 'original_price_cents',
+    'currency': 'currency',
+    'billing_interval': 'billing_interval',
+    'tier': 'tier',
+    'monthly_credits': 'monthly_credits',
+    'credits_amount': 'credits_amount',
+    'stripe_price_id_prod': 'stripe_price_id_prod',
+    'stripe_price_id_dev': 'stripe_price_id_dev',
+    'stripe_product_id': 'stripe_product_id',
+    'is_active': 'is_active',
+    'is_visible': 'is_visible',
+    'is_featured': 'is_featured',
+    'sort_order': 'sort_order',
+    'version': 'version',
+    'effective_from': 'effective_from',
+    'effective_until': 'effective_until',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'created_by': 'created_by',
+    'updated_by': 'updated_by',
+}
+
+# project_versions 表
+PROJECT_VERSIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'version_id',
+    'project_id': 'project_id',
+    'version_number': 'version_number',
+    'canvas_data': 'canvas_data',
+    'thumbnail_url': 'thumbnail_url',
+    'change_description': 'change_description',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+}
+
+# referrals 表
+REFERRALS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'referral_id',
+    'referrer_id': 'referrer_id',
+    'referee_id': 'referee_id',
+    'referral_code': 'referral_code',
+    'status': 'status',
+    'reward_given': 'reward_given',
+    'reward_amount': 'reward_amount',
+    'completed_at': 'completed_at',
+    'created_at': 'created_at',
+}
+
+# scheduled_task_logs 表
+SCHEDULED_TASK_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'task_name': 'task_name',
+    'task_type': 'task_type',
+    'started_at': 'started_at',
+    'completed_at': 'completed_at',
+    'duration_ms': 'duration_ms',
+    'status': 'status',
+    'result_summary': 'result_summary',
+    'error_message': 'error_message',
+    'error_stack': 'error_stack',
+    'hostname': 'hostname',
+    'pid': 'pid',
+    'created_at': 'created_at',
+}
+
+# stripe_webhook_events 表
+STRIPE_WEBHOOK_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'event_id': 'event_id',
+    'event_type': 'event_type',
+    'payload': 'payload',
+    'processed': 'processed',
+    'processed_at': 'processed_at',
+    'error_message': 'error_message',
+    'retry_count': 'retry_count',
+    'created_at': 'created_at',
+    'processing_status': 'processing_status',
+    'last_error': 'last_error',
+}
+
+# subscription_history 表
+SUBSCRIPTION_HISTORY_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'tier': 'tier',
+    'action': 'action',
+    'stripe_subscription_id': 'stripe_subscription_id',
+    'stripe_event_id': 'stripe_event_id',
+    'effective_date': 'effective_date',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
+# support_replies 表
+SUPPORT_REPLIES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'reply_id',
+    'ticket_id': 'ticket_id',
+    'user_id': 'user_id',
+    'is_staff_reply': 'is_staff_reply',
+    'message': 'message',
+    'attachments': 'attachments',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# support_tickets 表
+SUPPORT_TICKETS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'ticket_id',
+    'user_id': 'user_id',
+    'ticket_number': 'ticket_number',
+    'subject': 'subject',
+    'description': 'description',
+    'category': 'category',
+    'priority': 'priority',
+    'status': 'status',
+    'assigned_to': 'assigned_to',
+    'attachments': 'attachments',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+    'resolved_at': 'resolved_at',
+    'closed_at': 'closed_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# system_assets 表
+SYSTEM_ASSETS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'asset_id',
+    'category_id': 'category_id',
+    'name': 'name',
+    'slug': 'slug',
+    'description': 'description',
+    'asset_type': 'asset_type',
+    'source': 'source',
+    'source_user_id': 'source_user_id',
+    'file_url': 'file_url',
+    'thumbnail_url': 'thumbnail_url',
+    'file_size': 'file_size',
+    'file_format': 'file_format',
+    'width': 'width',
+    'height': 'height',
+    'content': 'content',
+    'min_tier': 'min_tier',
+    'is_pro_only': 'is_pro_only',
+    'tags': 'tags',
+    'is_visible': 'is_visible',
+    'is_featured': 'is_featured',
+    'display_order': 'display_order',
+    'usage_count': 'usage_count',
+    'download_count': 'download_count',
+    'favorite_count': 'favorite_count',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# system_resource_audit_logs 表
+SYSTEM_RESOURCE_AUDIT_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'resource_id': 'resource_id',
+    'action': 'action',
+    'old_data': 'old_data',
+    'new_data': 'new_data',
+    'changed_by': 'changed_by',
+    'changed_at': 'changed_at',
+    'ip_address': 'ip_address',
+    'user_agent': 'user_agent',
+}
+
+# user_discounts 表
+USER_DISCOUNTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'discount_id',
+    'user_id': 'user_id',
+    'discount_percent': 'discount_percent',
+    'valid_from': 'valid_from',
+    'valid_until': 'valid_until',
+    'target_plan': 'target_plan',
+    'created_at': 'created_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# user_events 表
+USER_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'event_type': 'event_type',
+    'event_data': 'event_data',
+    'session_id': 'session_id',
+    'ip_address': 'ip_address',
+    'user_agent': 'user_agent',
+    'referer': 'referer',
+    'created_at': 'created_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# user_generations 表
+USER_GENERATIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'generation_id',
+    'user_id': 'user_id',
+    'generation_type': 'generation_type',
+    'prompt': 'prompt',
+    'result_url': 'result_url',
+    'result_data': 'result_data',
+    'credits_used': 'credits_used',
+    'provider': 'provider',
+    'model': 'model',
+    'status': 'status',
+    'error_message': 'error_message',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+    'completed_at': 'completed_at',
+    'is_deleted': 'is_deleted',
+    'deleted_at': 'deleted_at',
+    'recovery_expires_at': 'recovery_expires_at',
+}
+
+# user_onboarding_progress 表
+USER_ONBOARDING_PROGRESS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',
+    'user_id': 'user_id',
+    'step_id': 'step_id',
+    'status': 'status',
+    'completed_at': 'completed_at',
+    'skipped_at': 'skipped_at',
+    'created_at': 'created_at',
+}
+
+# user_price_overrides 表
+USER_PRICE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'override_id',
+    'user_id': 'user_id',
+    'pricing_plan_id': 'pricing_plan_id',
+    'override_price_cents': 'override_price_cents',
+    'reason': 'reason',
+    'valid_from': 'valid_from',
+    'valid_until': 'valid_until',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# ============================================================
 # Mapping Utility Functions
 # ============================================================
 

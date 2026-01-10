@@ -9,8 +9,9 @@
 | `01_core_business.sql` | 31KB | 核心业务表（20张） | ① |
 | `02_platform_services.sql` | 26KB | 平台服务表（28张） | ② |
 | `03_infrastructure.sql` | 52KB | 基础设施表（12张）+ 函数 + 数据 | ③ |
+| `OPTIMIZATIONS.sql` ⭐ | 8KB | **性能与安全优化补丁** | ④ (可选但推荐) |
 
-**总计**: 60 张表 + 11 个函数 + 1 个视图 + 初始数据
+**总计**: 60 张表 + 17 个函数 + 1 个视图 + 初始数据 + 优化补丁
 
 ---
 
@@ -18,13 +19,14 @@
 
 ### 执行迁移
 
-⚠️ **必须按照 1 → 2 → 3 的顺序执行**
+⚠️ **必须按照 1 → 2 → 3 → 4 的顺序执行**
 
 ```bash
 # 连接数据库并执行
 psql -h your-host -U postgres -d your-database -f 01_core_business.sql
 psql -h your-host -U postgres -d your-database -f 02_platform_services.sql
 psql -h your-host -U postgres -d your-database -f 03_infrastructure.sql
+psql -h your-host -U postgres -d your-database -f OPTIMIZATIONS.sql  # ⭐ 推荐执行
 ```
 
 ### 或使用自动化脚本
@@ -35,6 +37,7 @@ DB_HOST="your-supabase-host.supabase.co"
 DB_USER="postgres"
 DB_NAME="postgres"
 
+# 核心表 (必须执行)
 for file in 01_core_business.sql 02_platform_services.sql 03_infrastructure.sql; do
     echo "执行 $file..."
     psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f $file
@@ -44,7 +47,11 @@ for file in 01_core_business.sql 02_platform_services.sql 03_infrastructure.sql;
     fi
 done
 
-echo "✅ 迁移完成"
+# 优化补丁 (强烈推荐)
+echo "执行优化补丁 OPTIMIZATIONS.sql..."
+psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f OPTIMIZATIONS.sql
+
+echo "✅ 迁移完成（包含优化补丁）"
 ```
 
 ---
