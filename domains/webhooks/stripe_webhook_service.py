@@ -297,6 +297,24 @@ class StripeWebhookService:
         except Exception as e:
             logger.warning(f"Failed to track analytics: {e}")
 
+        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        try:
+            from infrastructure.logging.activity_logger import log_webhook_operation
+            await log_webhook_operation(
+                operation_type="webhook_credits_purchase",
+                source="stripe",
+                target_user_id=uid,
+                details=f"Credits purchased: {credits_amount} credits for ${amount_total/100:.2f}",
+                metadata={
+                    "session_id": session_id,
+                    "credits_amount": credits_amount,
+                    "amount_paid": amount_total,
+                    "currency": currency,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log webhook operation: {e}")
+
         return {"status": "ok", "action": "credits_added", "user_id": uid, "credits": credits_amount}
 
     async def _process_subscription_start(
@@ -387,6 +405,25 @@ class StripeWebhookService:
             track_payment(uid, AnalyticsEvents.CHECKOUT_COMPLETED, amount_total, currency, plan=plan)
         except Exception as e:
             logger.warning(f"Failed to track analytics: {e}")
+
+        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        try:
+            from infrastructure.logging.activity_logger import log_webhook_operation
+            await log_webhook_operation(
+                operation_type="webhook_subscription_create",
+                source="stripe",
+                target_user_id=uid,
+                details=f"Subscription created: {plan} plan for ${amount_total/100:.2f}/month",
+                metadata={
+                    "session_id": session_id,
+                    "stripe_customer_id": stripe_customer_id,
+                    "plan": plan,
+                    "amount_total": amount_total,
+                    "currency": currency,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log webhook operation: {e}")
 
         return {"status": "ok", "action": "subscription_started", "user_id": uid, "plan": plan}
 
@@ -519,6 +556,24 @@ class StripeWebhookService:
         except Exception as e:
             logger.warning(f"Failed to log activity: {e}")
 
+        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        try:
+            from infrastructure.logging.activity_logger import log_webhook_operation
+            await log_webhook_operation(
+                operation_type="webhook_invoice_paid",
+                source="stripe",
+                target_user_id=uid,
+                details=f"Subscription renewed: {tier} plan for ${amount_paid/100:.2f}",
+                metadata={
+                    "invoice_id": invoice_id,
+                    "tier": tier,
+                    "amount_paid": amount_paid,
+                    "currency": currency,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log webhook operation: {e}")
+
         return {"status": "ok", "action": "credits_refreshed", "user_id": uid}
 
     async def _handle_subscription_change(self, event: Dict[str, Any]) -> Dict[str, Any]:
@@ -622,6 +677,23 @@ class StripeWebhookService:
         except Exception as e:
             logger.warning(f"Failed to log activity: {e}")
 
+        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        try:
+            from infrastructure.logging.activity_logger import log_webhook_operation
+            await log_webhook_operation(
+                operation_type="webhook_subscription_cancel",
+                source="stripe",
+                target_user_id=uid,
+                details=f"Subscription cancelled: {current_tier} → t1 (reason: {status})",
+                metadata={
+                    "subscription_id": subscription_id,
+                    "previous_tier": current_tier,
+                    "cancellation_reason": status,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log webhook operation: {e}")
+
         return {"status": "ok", "action": "subscription_ended", "user_id": uid, "previous_tier": current_tier}
 
     async def _process_subscription_reactivation(
@@ -681,6 +753,24 @@ class StripeWebhookService:
                 }).execute()
             except Exception as e:
                 logger.warning(f"Failed to log activity: {e}")
+
+            # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+            try:
+                from infrastructure.logging.activity_logger import log_webhook_operation
+                await log_webhook_operation(
+                    operation_type="webhook_subscription_update",
+                    source="stripe",
+                    target_user_id=uid,
+                    details=f"Subscription updated: {current_tier} → {new_tier}",
+                    metadata={
+                        "subscription_id": subscription_id,
+                        "previous_tier": current_tier,
+                        "new_tier": new_tier,
+                        "price_id": price_id,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to log webhook operation: {e}")
 
         return {"status": "ok", "action": "subscription_reactivated", "user_id": uid, "tier": new_tier}
 
@@ -832,6 +922,28 @@ class StripeWebhookService:
                 )
             except Exception as e:
                 logger.warning(f"[Webhook] Failed to log admin operation: {e}")
+
+        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        try:
+            from infrastructure.logging.activity_logger import log_webhook_operation
+            await log_webhook_operation(
+                operation_type="webhook_refund_process",
+                source="stripe",
+                target_user_id=user_id,
+                details=f"Refund processed: ${amount_refunded/100:.2f} {currency.upper()} (reason: {custom_reason})",
+                metadata={
+                    "refund_id": refund_id,
+                    "payment_intent_id": payment_intent_id,
+                    "charge_id": charge_id,
+                    "amount": amount_refunded / 100,
+                    "currency": currency,
+                    "refund_reason": custom_reason,
+                    "refund_status": refund_status,
+                    "admin_id": admin_id,
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log webhook operation: {e}")
 
         return {
             "status": "ok",
