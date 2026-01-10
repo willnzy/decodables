@@ -182,30 +182,53 @@ class SubscriptionService:
         refund_amount = refund.amount
         currency = refund.currency.upper()
 
-        # Record refund in database
-        await self.payment_repo.create(
-            user_id=user_id,
-            amount=-refund_amount / 100,  # Convert cents to dollars, negative for refund
-            currency=currency,
-            payment_type="refund",
-            stripe_payment_id=refund.id,
-            metadata={
-                "payment_intent_id": payment_intent_id,
-                "original_amount": pi.amount,
-                "refundable_amount": refundable_amount,
-                "reason": reason,
-                "admin_id": admin_id
-            }
-        )
+        # P0-010 partial fix: Add try-except with critical logging for database failure
+        # TODO: Migrate to webhook-based refunds for full transaction safety
+        try:
+            # Record refund in database
+            await self.payment_repo.create(
+                user_id=user_id,
+                amount=-refund_amount / 100,  # Convert cents to dollars, negative for refund
+                currency=currency,
+                payment_type="refund",
+                stripe_payment_id=refund.id,
+                metadata={
+                    "payment_intent_id": payment_intent_id,
+                    "original_amount": pi.amount,
+                    "refundable_amount": refundable_amount,
+                    "reason": reason,
+                    "admin_id": admin_id
+                }
+            )
 
-        # Log admin operation
-        await self.admin_repo.admin_log_operation(
-            admin_id=admin_id,
-            operation_type="refund",
-            target_user_id=user_id,
-            details=f"${refund_amount/100:.2f} {currency} (PI: {payment_intent_id[:20]}...)",
-            reason=reason
-        )
+            # Log admin operation
+            await self.admin_repo.admin_log_operation(
+                admin_id=admin_id,
+                operation_type="refund",
+                target_user_id=user_id,
+                details=f"${refund_amount/100:.2f} {currency} (PI: {payment_intent_id[:20]}...)",
+                reason=reason
+            )
+        except Exception as db_error:
+            # CRITICAL: Stripe refund succeeded but database update failed
+            # This requires immediate manual intervention to reconcile
+            logger.critical(
+                f"🔴 CRITICAL: Stripe refund succeeded but database update failed!\n"
+                f"Refund ID: {refund.id}\n"
+                f"Payment Intent: {payment_intent_id}\n"
+                f"User ID: {user_id}\n"
+                f"Amount: ${refund_amount/100:.2f} {currency}\n"
+                f"Admin ID: {admin_id}\n"
+                f"Reason: {reason}\n"
+                f"Database Error: {db_error}\n"
+                f"⚠️  MANUAL ACTION REQUIRED: Record this refund in payment_records table!"
+            )
+            # Re-raise to notify admin of the failure
+            raise HTTPException(
+                500,
+                f"Refund processed in Stripe (ID: {refund.id[:20]}...) but failed to update database. "
+                f"Please contact system administrator immediately with refund ID."
+            )
 
         return {
             "status": "refunded",
