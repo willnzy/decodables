@@ -336,6 +336,23 @@ async def delete_generation(
         logger.error(f"Delete generation failed: {e}")
         raise HTTPException(500, "Failed to delete generation")
 
+    # ✅ Task 9 - Phase 2: Log generation deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],
+            operation_type="generation_delete",
+            target_type="generation",
+            target_id=generation_id,
+            details="Generation deleted",
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log generation deletion: {e}")
+
     return DeleteResponse(success=True, deleted=deleted_id)
 
 
@@ -415,6 +432,26 @@ async def batch_delete_generations(
     except Exception as e:
         logger.error(f"Batch delete failed: {e}")
         raise HTTPException(500, "Failed to clear history")
+
+    # ✅ Task 9 - Phase 2: Log batch deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],
+            operation_type="generation_batch_delete",
+            target_type="generation",
+            details=f"Batch deleted {deleted_count} generations (keep_favorites={keep_favorites})",
+            metadata={
+                "deleted_count": deleted_count,
+                "keep_favorites": keep_favorites,
+            },
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log batch deletion: {e}")
 
     return BatchDeleteResponse(
         success=True,

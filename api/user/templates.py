@@ -299,6 +299,23 @@ async def delete_asset_template(
     )
     result = await handler.handle(command)
 
+    # ✅ Task 9 - Phase 2: Log template deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],
+            operation_type="template_delete",
+            target_type="template",
+            target_id=template_id,
+            details="Asset template deleted",
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log template deletion: {e}")
+
     return TemplateResponse(success=result.success)
 
 
@@ -447,6 +464,23 @@ async def delete_page_template(
         user_id=user["id"]
     )
     result = await handler.handle(command)
+
+    # ✅ Task 9 - Phase 2: Log template deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],
+            operation_type="template_delete",
+            target_type="template",
+            target_id=template_id,
+            details="Page template deleted",
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log template deletion: {e}")
 
     return TemplateResponse(success=result.success)
 

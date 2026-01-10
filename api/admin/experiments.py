@@ -442,6 +442,23 @@ async def delete_experiment(
         if not success:
             raise HTTPException(500, "Failed to delete experiment")
 
+        # ✅ Task 9 - Phase 2: Log experiment deletion to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="experiment_delete",
+                target_type="experiment",
+                target_id=experiment_key,
+                details=f"Experiment '{experiment_key}' deleted",
+                source="api",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log experiment deletion: {e}")
+
         logger.info(f"[Admin {admin.get('id')}] Deleted experiment: {experiment_key}")
         return ExperimentDeleteResponse(status="deleted", experiment_key=experiment_key)
 

@@ -434,6 +434,25 @@ async def archive_flag(
     """
     success = await service.archive_flag(key, admin["user_id"])
 
+    # ✅ Task 9 - Phase 2: Log feature flag deletion to audit trail
+    if success:
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["user_id"],
+                operation_type="feature_flag_delete",
+                target_type="feature_flag",
+                target_id=key,
+                details=f"Feature flag '{key}' archived",
+                source="api",
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to log feature flag deletion: {e}")
+
     if not success:
         raise HTTPException(404, f"Flag not found: {key}")
 

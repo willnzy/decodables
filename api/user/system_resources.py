@@ -479,6 +479,24 @@ async def delete_resource(
 
     result = await handler.handle(command)
 
+    # ✅ Task 9 - Phase 2: Log resource deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=admin["id"],
+            operation_type="resource_delete",
+            target_type="system_resource",
+            target_id=resource_id,
+            details="System resource deleted (soft delete)",
+            source="api",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to log resource deletion: {e}")
+
     return result.result_data
 
 

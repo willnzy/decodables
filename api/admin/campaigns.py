@@ -242,6 +242,23 @@ async def delete_campaign_endpoint(
         if not success:
             raise HTTPException(404, "Campaign not found")
 
+        # ✅ Task 9 - Phase 2: Log campaign deletion to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="campaign_delete",
+                target_type="campaign",
+                target_id=campaign_id,
+                details="Campaign deleted (soft delete)",
+                source="api",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log campaign deletion: {e}")
+
         return {"status": "deleted", "campaign_id": campaign_id}
 
     except HTTPException:
