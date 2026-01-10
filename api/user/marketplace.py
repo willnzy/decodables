@@ -113,6 +113,20 @@ class ListingCreateRequest(BaseModel):
         return v
 
 
+class CreateListingResponse(BaseModel):
+    """Response after creating a listing (P2-002)."""
+    listing_id: str
+    moderation_status: str
+    message: str
+
+
+class UpdateListingResponse(BaseModel):
+    """Response after updating a listing (P2-002)."""
+    status: str
+    listing_id: str
+    requires_resubmit: bool
+
+
 class ListingUpdateRequest(BaseModel):
     """Request to update a listing."""
     title: Optional[str] = None
@@ -240,7 +254,7 @@ async def list_listings(
 async def get_listing(
     listing_id: str,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> ListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get single listing details.
 
@@ -266,7 +280,8 @@ async def get_listing(
             raise HTTPException(404, "Listing not found")
         raise HTTPException(400, result.error or "Failed to get listing")
 
-    return result.listing_dict
+    # P2-002: Return Pydantic model instead of raw dict
+    return ListingResponse(**result.listing_dict)
 
 
 @router.post("/listings")
@@ -275,7 +290,7 @@ async def create_listing(
     request: Request,
     req: ListingCreateRequest,
     user: dict = Depends(require_member),
-) -> Dict[str, Any]:
+) -> CreateListingResponse:
     """
     Publish to marketplace (submit for review).
 
@@ -328,14 +343,14 @@ async def create_listing(
     if not result.success:
         raise HTTPException(400, result.error or "Failed to create listing")
 
-    # CreateListingResult has 'listing' object, not 'listing_id' directly
-    listing_id = result.listing.listing_id if result.listing else None
+    # P2-002: Return Pydantic model instead of raw dict
+    listing_id = result.listing.listing_id if result.listing else ""
 
-    return {
-        "listing_id": listing_id,
-        "moderation_status": "pending",
-        "message": "Submitted for review",
-    }
+    return CreateListingResponse(
+        listing_id=listing_id,
+        moderation_status="pending",
+        message="Submitted for review",
+    )
 
 
 @router.put("/listings/{listing_id}")
@@ -343,7 +358,7 @@ async def update_listing(
     listing_id: str,
     req: ListingUpdateRequest,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> UpdateListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Update a listing (seller only).
 
@@ -378,11 +393,12 @@ async def update_listing(
             raise HTTPException(400, "Cannot edit listing in current status")
         raise HTTPException(400, error_msg)
 
-    return {
-        "status": "updated",
-        "listing_id": listing_id,
-        "requires_resubmit": result.requires_resubmit,
-    }
+    # P2-002: Return Pydantic model instead of raw dict
+    return UpdateListingResponse(
+        status="updated",
+        listing_id=listing_id,
+        requires_resubmit=result.requires_resubmit,
+    )
 
 
 @router.delete("/listings/{listing_id}")
