@@ -3914,6 +3914,78 @@ EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ============================================================================
+-- Phase 2.4: 添加缺失字段到现有表 (Add Missing Fields to Existing Tables)
+-- Created: 2026-01-10
+-- Purpose: 补充 profiles 和 projects 表的缺失字段
+-- ============================================================================
+
+-- Add missing fields to profiles table
+ALTER TABLE profiles
+ADD COLUMN IF NOT EXISTS first_name TEXT,
+ADD COLUMN IF NOT EXISTS last_name TEXT,
+ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT 'not_started',
+ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS credits_reset_at TIMESTAMPTZ;
+
+-- Add CHECK constraint for onboarding_step enum
+ALTER TABLE profiles
+DROP CONSTRAINT IF EXISTS check_onboarding_step;
+
+ALTER TABLE profiles
+ADD CONSTRAINT check_onboarding_step CHECK (
+    onboarding_step IN (
+        'not_started',
+        'welcome',
+        'profile_setup',
+        'first_project',
+        'editor_tour',
+        'marketplace_intro',
+        'completed',
+        'skipped'
+    )
+);
+
+-- Add column comments for profiles
+COMMENT ON COLUMN profiles.first_name IS '用户名字';
+COMMENT ON COLUMN profiles.last_name IS '用户姓氏';
+COMMENT ON COLUMN profiles.onboarding_step IS '新手引导步骤 (not_started, welcome, profile_setup, first_project, editor_tour, marketplace_intro, completed, skipped)';
+COMMENT ON COLUMN profiles.preferences IS '用户偏好设置 (JSONB: theme, language, notifications, etc.)';
+COMMENT ON COLUMN profiles.credits_reset_at IS '积分重置时间 (用于月度积分重置逻辑)';
+
+-- Create index for onboarding tracking
+CREATE INDEX idx_profiles_onboarding_step ON profiles(onboarding_step)
+WHERE onboarding_step NOT IN ('completed', 'skipped');
+
+-- Add missing field to projects table
+ALTER TABLE projects
+ADD COLUMN IF NOT EXISTS is_permanently_deleted BOOLEAN DEFAULT false;
+
+-- Add column comment for projects
+COMMENT ON COLUMN projects.is_permanently_deleted IS '是否永久删除 (true 表示硬删除，false 表示软删除或未删除)';
+
+-- Create conditional index for active projects (excluding permanently deleted)
+CREATE INDEX idx_projects_active ON projects(user_id, created_at DESC)
+WHERE is_deleted = false AND is_permanently_deleted = false;
+
+-- ============================================================
+-- Phase 2.4 完成
+-- ============================================================
+-- 新增字段:
+--   profiles 表:
+--     ✅ first_name (用户名字)
+--     ✅ last_name (用户姓氏)
+--     ✅ onboarding_step (新手引导步骤)
+--     ✅ preferences (用户偏好设置)
+--     ✅ credits_reset_at (积分重置时间)
+--   projects 表:
+--     ✅ is_permanently_deleted (是否永久删除)
+--   索引:
+--     ✅ idx_profiles_onboarding_step (未完成引导的用户)
+--     ✅ idx_projects_active (活跃项目查询优化)
+-- ============================================================
+
+
+-- ============================================================================
 -- Transaction Control: 提交所有更改
 -- ============================================================================
 COMMIT;
