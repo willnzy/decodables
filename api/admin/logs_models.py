@@ -82,3 +82,31 @@ class OperationLogsResponse(BaseModel):
     offset: int = Field(..., description="Current pagination offset")
     limit: int = Field(..., description="Pagination limit")
     has_more: bool = Field(..., description="Whether more logs are available")
+
+
+# ==========================================
+# Audit Logs Models (Task 9 - Phase 5)
+# ==========================================
+
+class AuditLogEntry(BaseModel):
+    """Single audit log entry with enhanced fields."""
+    id: Optional[str] = Field(None, description="Log entry ID")
+    admin_id: str = Field(..., description="Admin user ID who performed operation (or 'system_webhook')")
+    operation_type: str = Field(..., description="Type of operation performed")
+    target_user_id: Optional[str] = Field(None, description="Target user ID if applicable")
+    target_type: Optional[str] = Field(None, description="Resource type: project, config, feature_flag, etc.")
+    target_id: Optional[str] = Field(None, description="Specific resource identifier")
+    details: Optional[str] = Field(None, description="Operation details")
+    reason: Optional[str] = Field(None, description="Reason for operation")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional context (before/after values, etc.)")
+    source: Optional[str] = Field(None, description="Action source: api, webhook, stripe, clerk")
+    created_at: str = Field(..., description="Operation timestamp (ISO format)")
+
+
+class AuditLogsResponse(BaseModel):
+    """Response for GET /logs/audit."""
+    logs: List[AuditLogEntry] = Field(..., description="List of audit logs")
+    total: int = Field(..., description="Total number of logs matching filters")
+    offset: int = Field(..., description="Current pagination offset")
+    limit: int = Field(..., description="Pagination limit")
+    has_more: bool = Field(..., description="Whether more logs are available")

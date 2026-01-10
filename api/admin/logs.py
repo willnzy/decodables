@@ -28,6 +28,7 @@ Endpoints:
 - GET /logs/errors/stats - Get error statistics
 - GET /logs/operations - Get admin operation logs
 - GET /logs/operations/export - Export operation logs as CSV
+- GET /logs/audit - Get comprehensive audit logs (Task 9 - Phase 5)
 """
 
 import csv
@@ -48,6 +49,7 @@ from .logs_models import (
     ErrorLogsResponse,
     ErrorStatsResponse,
     OperationLogsResponse,
+    AuditLogsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -240,3 +242,103 @@ async def export_operation_logs(
         # v3.26: LOG-MEDIUM-2 - Unified error handling
         logger.error(f"[Admin] Export operation logs failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to export operation logs")
+
+
+# ==========================================
+# Unified Audit Logs Endpoint (Task 9 - Phase 5)
+# ==========================================
+
+@router.get("/audit", response_model=AuditLogsResponse)
+@limiter.limit("30/minute")
+async def get_audit_logs(
+    request: Request,
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=100, description="Page size (max 100)"),
+    operation_type: Optional[str] = Query(None, description="Filter by operation type"),
+    admin_id: Optional[str] = Query(None, description="Filter by admin ID (use 'system_webhook' for automated)"),
+    target_user_id: Optional[str] = Query(None, description="Filter by affected user"),
+    target_type: Optional[str] = Query(None, description="Filter by target type (project/config/feature_flag)"),
+    target_id: Optional[str] = Query(None, description="Filter by specific resource ID"),
+    source: Optional[str] = Query(None, description="Filter by source (api/webhook/stripe/clerk)"),
+    start_date: Optional[str] = Query(None, max_length=30, description="Filter from date (ISO 8601)"),
+    end_date: Optional[str] = Query(None, max_length=30, description="Filter to date (ISO 8601)"),
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get comprehensive audit logs with advanced filtering.
+
+    Combines admin operations, webhook events, and system changes into
+    unified queryable audit trail.
+
+    Args:
+        offset: Skip first N records
+        limit: Return max N records (max 100)
+        operation_type: Filter by specific operation (project_delete, webhook_subscription_create, etc.)
+        admin_id: Filter by admin who performed action (use "system_webhook" for automated actions)
+        target_user_id: Filter by affected user
+        target_type: Filter by resource type (project, config, feature_flag, system_resource, etc.)
+        target_id: Filter by specific resource ID
+        source: Filter by action source (api, webhook, stripe, clerk)
+        start_date: Filter from timestamp (ISO 8601 format)
+        end_date: Filter to timestamp (ISO 8601 format)
+
+    Returns:
+        AuditLogsResponse containing:
+            - logs: List of audit log entries with all details
+            - pagination: offset, limit, total, has_more
+
+    Raises:
+        401: Unauthorized (not admin)
+        400: Invalid date format or parameters
+        500: Database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30/minute
+        - Supports export for compliance
+
+    Example:
+        GET /api/v2/admin/logs/audit?source=stripe&start_date=2026-01-01&limit=100
+    """
+    # Validate date formats
+    validate_date_format(start_date, "start_date")
+    validate_date_format(end_date, "end_date")
+
+    try:
+        db_client = get_database_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
+
+        logger.info(
+            f"[Admin {admin.get('id')}] Queried audit logs "
+            f"(operation_type={operation_type}, source={source}, offset={offset})"
+        )
+
+        result = await admin_repo.admin_get_operation_logs(
+            offset=offset,
+            limit=limit,
+            operation_type=operation_type,
+            admin_id=admin_id,
+            target_user_id=target_user_id,
+            target_type=target_type,
+            target_id=target_id,
+            source=source,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return AuditLogsResponse(
+            logs=result["logs"],
+            total=result["total"],
+            offset=result["offset"],
+            limit=result["limit"],
+            has_more=result["has_more"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[Admin {admin.get('id')}] Get audit logs failed: "
+            f"{type(e).__name__} - {e}"
+        )
+        raise HTTPException(500, "Failed to retrieve audit logs")
