@@ -1,47 +1,36 @@
 # docs/tmp - 临时文档目录
 
-**最后整理**: 2026-01-10 (激进清理)
-**剩余文档**: 7 个
+**最后整理**: 2026-01-10 (代码验证清理)
+**剩余文档**: 3 个
 
 ---
 
 ## 📋 目录说明
 
 此目录**仅存放待执行的任务**文档：
-- V3.0.0 升级计划（待执行）
 - API 评审计划（待执行）
+- 临时状态检查报告
 
 **清理原则**: 已完成的文档会立即迁移到 `docs/main/` 或删除，不保留详细文档。
 
 ---
 
-## 📁 当前文档 (7个)
-
-### 🚀 V3.0.0 升级计划 (4个)
-
-| 文档 | 模块 | 预计工时 | 优先级 | 状态 |
-|------|------|----------|--------|------|
-| RESOURCES-UPGRADE-v3.0.0-PLAN.md | Resources | 8h | P0 | 📋 待执行 |
-| USER-ASSETS-V3.0.0-PLAN.md | User Assets | 6h | P1 | 📋 待执行 |
-| TEMPLATES-V3.0.0-PLAN.md | Templates | 6h | P1 | 📋 待执行 |
-| SYSTEM-RESOURCES-V3.0.0-PLAN.md | System Resources | 4h | P2 | 📋 待执行 |
-
-**汇总**: 升级路线图已整合到 [`docs/main/V3-UPGRADE-ROADMAP.md`](../main/V3-UPGRADE-ROADMAP.md)
-
-**总工时**: 24 小时
+## 📁 当前文档 (3个)
 
 ### 📝 API 评审计划 (2个)
 
-| 文档 | 范围 | 状态 |
+| 文档 | 范围 | 优先级 | 状态 |
+|------|------|--------|------|
+| API-REVIEW-ADMIN.md | 管理员 API 评审 (125 个接口) | P3 (低) | 📋 待执行 |
+| API-REVIEW-USER.md | 用户 API 评审 | P0/P1 (高) | 📋 待执行 |
+
+### 📊 临时记录 (1个)
+
+| 文档 | 用途 | 日期 |
 |------|------|------|
-| API-REVIEW-ADMIN.md | 管理员 API 评审 | 📋 待执行 |
-| API-REVIEW-USER.md | 用户 API 评审 | 📋 待执行 |
+| TMP-DOCS-STATUS-CHECK.md | 代码级文档状态验证报告 | 2026-01-10 |
 
-### 📖 目录索引 (1个)
-
-| 文档 | 用途 |
-|------|------|
-| README.md | 本文档 (目录说明) |
+**说明**: 此验证报告可在下次清理时删除
 
 ---
 
@@ -68,23 +57,25 @@
 
 **整理后**: 7 个文档 (**仅保留待执行任务**)
 
-**删除的评审文档** (已汇总到 `MODULE-QUALITY-REVIEWS.md`):
-- EXPERIMENTS-5STAR-REVIEW-v3.31.md (⭐⭐⭐⭐⭐)
-- CONFIG-5STAR-REVIEW-v2.2.0.md (⭐⭐⭐⭐⭐)
-- WEBHOOKS-5STAR-REVIEW-v2.5.0.md (⭐⭐⭐⭐⭐)
-- PAYMENT-5STAR-REVIEW-v2.3.0.md (⭐⭐⭐⭐⭐)
-- ANALYTICS-5STAR-REVIEW-v2.3.0.md (⭐⭐⭐⭐)
-- GENERATIONS-5STAR-REVIEW-v3.0.0.md (⭐⭐⭐⭐)
-- EXPORT-5STAR-REVIEW-v3.0.0.md (⭐⭐⭐⭐)
-- MARKETPLACE-5STAR-REVIEW-v3.0.0.md (⭐⭐⭐⭐)
-- USER-PROFILE-5STAR-REVIEW-v2.2.0.md (⭐⭐⭐⭐)
-- GENERATION-IMAGES-5STAR-REVIEW-v3.28.md (⭐⭐⭐⭐)
-- GENERATION-PDF-5STAR-REVIEW-v3.26.md (⭐⭐⭐)
-- GENERATION-STORY-5STAR-REVIEW-v3.28.md (⭐⭐⭐)
-- LOGS-5STAR-REVIEW-PLAN-v3.0.0.md
-- LOGS-5STAR-REVIEW-v3.0.0.md
-- THEMES-5STAR-REVIEW-PLAN-v3.0.0.md
-- THEMES-5STAR-REVIEW-v3.0.0.md
+### 第三次清理 (2026-01-10 下午) - 代码验证清理 ⭐ 重要
+
+**整理前**: 7 个文档
+
+**操作**:
+- ✅ **通过检查实际代码文件验证任务状态** (非依赖文档状态)
+- ✅ 删除 4 个已完成的 V3 升级计划文档
+  - RESOURCES-UPGRADE-v3.0.0-PLAN.md → ✅ 已完成 (api/user/resources.py @version 3.0.0)
+  - USER-ASSETS-V3.0.0-PLAN.md → ✅ 已完成 (api/user/user_assets.py @version 3.0.0)
+  - TEMPLATES-V3.0.0-PLAN.md → ✅ 已完成 (api/user/templates.py @version 3.0.0)
+  - SYSTEM-RESOURCES-V3.0.0-PLAN.md → ✅ 已完成 (api/user/system_resources.py @version 3.0.0)
+- ✅ 更新 `docs/main/V3-UPGRADE-ROADMAP.md` - 标记所有模块已完成
+
+**整理后**: 3 个文档 (**只保留真正待执行的任务**)
+
+**验证结论**:
+- 4 个 V3 升级计划文档标注为"待执行"，但实际代码已全部升级到 v3.0.0
+- 说明文档与代码状态不同步，需要通过代码验证
+- 只有 2 个 API Review 文档是真正待执行的任务
 
 ---
 
@@ -94,9 +85,10 @@
 |------|--------|------|------|
 | **原始状态** | 54 | - | Phase 报告、评审、升级计划 |
 | **第一次整理** | 24 | -30 (-55%) | 删除临时文档，创建汇总 |
-| **激进清理** | **7** | -17 (-71%) | **只保留待执行任务** |
+| **激进清理** | 7 | -17 (-71%) | 只保留待执行任务 |
+| **代码验证清理** | **3** | -4 (-57%) | **删除已完成但未同步的文档** |
 
-**总清理**: 54 → 7 (**减少 87%**)
+**总清理**: 54 → 3 (**减少 94%**)
 
 ---
 
@@ -126,10 +118,16 @@
 删除 tmp/ 中的所有相关文档 (不保留详细版)
 ```
 
-### 定期检查
+### 定期检查 ⭐ 重要
 
 - **每周一**: 检查 tmp/ 目录，删除已完成任务的文档
-- **原则**: tmp/ 目录应该始终保持在 **10 个文档以内**
+- **验证方式**: **通过检查实际代码文件验证状态**，而非仅依赖文档标注
+- **原则**: tmp/ 目录应该始终保持在 **5 个文档以内**
+
+**关键教训** (2026-01-10):
+- ❌ 不能只看文档里的"待执行"标记
+- ✅ 必须检查实际代码版本号和实现
+- ✅ 避免文档与代码不同步
 
 ---
 
@@ -144,7 +142,7 @@
 | [SOFT-DELETE-SYSTEM.md](../main/SOFT-DELETE-SYSTEM.md) | 软删除系统完整文档 | Phase 3 所有文档 |
 | [SOFT-DELETE-HISTORY.md](../main/SOFT-DELETE-HISTORY.md) | 实施历史 | Phase 1/2/3 报告 |
 | [MODULE-QUALITY-REVIEWS.md](../main/MODULE-QUALITY-REVIEWS.md) | 质量评审汇总 | 12 个评审文档 |
-| [V3-UPGRADE-ROADMAP.md](../main/V3-UPGRADE-ROADMAP.md) | V3 升级路线图 | 4 个升级计划 |
+| [V3-UPGRADE-ROADMAP.md](../main/V3-UPGRADE-ROADMAP.md) | V3 升级路线图 | 4 个升级计划 ✅ 已更新为完成状态 |
 
 ### 其他重要文档
 
@@ -156,16 +154,17 @@
 
 ## ✅ 当前状态
 
-**tmp/ 目录状态**: 🟢 **干净整洁**
+**tmp/ 目录状态**: 🟢 **最干净状态**
 
-- ✅ 只包含 7 个待执行任务文档
+- ✅ 只包含 3 个文件 (2 个待执行任务 + 1 个临时验证报告)
 - ✅ 所有已完成任务的关键结论已汇总到 main/
 - ✅ 无冗余、无过时文档
 - ✅ 维护规则明确
+- ✅ **通过代码验证确保文档与代码同步**
 
 ---
 
-**Last Updated**: 2026-01-10 (激进清理后)
-**Total Files**: 7 (从 54 个清理到 7 个，减少 87%)
+**Last Updated**: 2026-01-10 (代码验证清理后)
+**Total Files**: 3 (从 54 个清理到 3 个，减少 94%)
 
-🎉 **tmp/ 目录保持最小化，仅待执行任务！**
+🎉 **tmp/ 目录达到最优状态，只保留真正待执行任务！**
