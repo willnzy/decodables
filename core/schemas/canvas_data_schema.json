@@ -1,0 +1,472 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://makedecodables.com/schemas/canvas-data.json",
+  "title": "Canvas Data Schema",
+  "description": "JSON Schema for project canvas_data (Fabric.js format)",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Fabric.js version",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": ["5.3.0"]
+    },
+    "objects": {
+      "type": "array",
+      "description": "Canvas objects (images, text, shapes, etc.)",
+      "items": {
+        "$ref": "#/definitions/canvasObject"
+      },
+      "maxItems": 1000
+    },
+    "background": {
+      "type": ["string", "null"],
+      "description": "Canvas background color or image",
+      "maxLength": 1000
+    },
+    "backgroundImage": {
+      "type": ["object", "null"],
+      "description": "Background image object"
+    },
+    "overlay": {
+      "type": ["object", "null"],
+      "description": "Canvas overlay"
+    }
+  },
+  "definitions": {
+    "canvasObject": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Object type",
+          "enum": [
+            "rect",
+            "circle",
+            "triangle",
+            "polygon",
+            "polyline",
+            "line",
+            "ellipse",
+            "path",
+            "group",
+            "image",
+            "text",
+            "textbox",
+            "i-text",
+            "activeSelection"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "description": "Object version"
+        },
+        "originX": {
+          "type": "string",
+          "enum": ["left", "center", "right"]
+        },
+        "originY": {
+          "type": "string",
+          "enum": ["top", "center", "bottom"]
+        },
+        "left": {
+          "type": "number",
+          "description": "X position"
+        },
+        "top": {
+          "type": "number",
+          "description": "Y position"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Object width"
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Object height"
+        },
+        "scaleX": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100,
+          "description": "Horizontal scale"
+        },
+        "scaleY": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100,
+          "description": "Vertical scale"
+        },
+        "angle": {
+          "type": "number",
+          "minimum": -360,
+          "maximum": 360,
+          "description": "Rotation angle in degrees"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Object opacity"
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "Object visibility"
+        },
+        "backgroundColor": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Background color"
+        },
+        "fillRule": {
+          "type": "string",
+          "enum": ["nonzero", "evenodd"]
+        },
+        "paintFirst": {
+          "type": "string",
+          "enum": ["fill", "stroke"]
+        },
+        "globalCompositeOperation": {
+          "type": "string",
+          "enum": [
+            "source-over",
+            "source-in",
+            "source-out",
+            "source-atop",
+            "destination-over",
+            "destination-in",
+            "destination-out",
+            "destination-atop",
+            "lighter",
+            "copy",
+            "xor",
+            "multiply",
+            "screen",
+            "overlay",
+            "darken",
+            "lighten",
+            "color-dodge",
+            "color-burn",
+            "hard-light",
+            "soft-light",
+            "difference",
+            "exclusion",
+            "hue",
+            "saturation",
+            "color",
+            "luminosity"
+          ]
+        },
+        "skewX": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "skewY": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "shadow": {
+          "type": ["object", "null"],
+          "properties": {
+            "color": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "blur": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "offsetX": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            },
+            "offsetY": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            }
+          }
+        },
+        "fill": {
+          "type": ["string", "object", "null"],
+          "description": "Fill color or pattern",
+          "maxLength": 1000
+        },
+        "stroke": {
+          "type": ["string", "null"],
+          "maxLength": 50,
+          "description": "Stroke color"
+        },
+        "strokeWidth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Stroke width"
+        },
+        "strokeDashArray": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 20
+        },
+        "strokeDashOffset": {
+          "type": "number"
+        },
+        "strokeLineCap": {
+          "type": "string",
+          "enum": ["butt", "round", "square"]
+        },
+        "strokeLineJoin": {
+          "type": "string",
+          "enum": ["miter", "bevel", "round"]
+        },
+        "strokeMiterLimit": {
+          "type": "number",
+          "minimum": 0
+        },
+        "strokeUniform": {
+          "type": "boolean"
+        },
+        "selectable": {
+          "type": "boolean"
+        },
+        "evented": {
+          "type": "boolean"
+        },
+        "hasControls": {
+          "type": "boolean"
+        },
+        "hasBorders": {
+          "type": "boolean"
+        },
+        "hasRotatingPoint": {
+          "type": "boolean"
+        },
+        "lockMovementX": {
+          "type": "boolean"
+        },
+        "lockMovementY": {
+          "type": "boolean"
+        },
+        "lockRotation": {
+          "type": "boolean"
+        },
+        "lockScalingX": {
+          "type": "boolean"
+        },
+        "lockScalingY": {
+          "type": "boolean"
+        },
+        "lockSkewingX": {
+          "type": "boolean"
+        },
+        "lockSkewingY": {
+          "type": "boolean"
+        },
+        "lockScalingFlip": {
+          "type": "boolean"
+        },
+        "lockUniScaling": {
+          "type": "boolean"
+        },
+        "flipX": {
+          "type": "boolean"
+        },
+        "flipY": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 100000,
+          "description": "Text content (for text objects)"
+        },
+        "fontSize": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "fontWeight": {
+          "type": ["string", "number"],
+          "description": "Font weight"
+        },
+        "fontFamily": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Font family name"
+        },
+        "fontStyle": {
+          "type": "string",
+          "enum": ["normal", "italic", "oblique"]
+        },
+        "lineHeight": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "textAlign": {
+          "type": "string",
+          "enum": ["left", "center", "right", "justify"]
+        },
+        "textBackgroundColor": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "charSpacing": {
+          "type": "number"
+        },
+        "underline": {
+          "type": "boolean"
+        },
+        "overline": {
+          "type": "boolean"
+        },
+        "linethrough": {
+          "type": "boolean"
+        },
+        "src": {
+          "type": "string",
+          "maxLength": 2048,
+          "description": "Image source URL (for image objects)",
+          "format": "uri"
+        },
+        "crossOrigin": {
+          "type": ["string", "null"],
+          "enum": ["anonymous", "use-credentials", null]
+        },
+        "filters": {
+          "type": "array",
+          "description": "Image filters",
+          "items": {
+            "type": "object"
+          },
+          "maxItems": 20
+        },
+        "path": {
+          "type": ["string", "array"],
+          "description": "SVG path data (for path objects)"
+        },
+        "pathOffset": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          }
+        },
+        "objects": {
+          "type": "array",
+          "description": "Child objects (for group objects)",
+          "items": {
+            "$ref": "#/definitions/canvasObject"
+          },
+          "maxItems": 100
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Circle radius"
+        },
+        "rx": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Horizontal radius (ellipse)"
+        },
+        "ry": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Vertical radius (ellipse)"
+        },
+        "x1": {
+          "type": "number",
+          "description": "Line start X"
+        },
+        "y1": {
+          "type": "number",
+          "description": "Line start Y"
+        },
+        "x2": {
+          "type": "number",
+          "description": "Line end X"
+        },
+        "y2": {
+          "type": "number",
+          "description": "Line end Y"
+        },
+        "points": {
+          "type": "array",
+          "description": "Polygon/Polyline points",
+          "items": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          },
+          "maxItems": 10000
+        },
+        "clipPath": {
+          "type": ["object", "null"],
+          "description": "Clipping path"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Custom metadata (Make Decodables specific)",
+          "properties": {
+            "listing_id": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "Marketplace listing ID (if from marketplace)"
+            },
+            "category": {
+              "type": "string",
+              "maxLength": 50,
+              "description": "Asset category"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["user_upload", "marketplace", "ai_generated", "template"],
+              "description": "Asset source"
+            },
+            "original_url": {
+              "type": "string",
+              "maxLength": 2048,
+              "description": "Original asset URL"
+            },
+            "ai_prompt": {
+              "type": "string",
+              "maxLength": 5000,
+              "description": "AI generation prompt"
+            },
+            "custom_data": {
+              "type": "object",
+              "description": "Additional custom metadata",
+              "maxProperties": 50
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

@@ -2,7 +2,15 @@
 Validation Utilities - Input validation and sanitization helpers.
 
 @module core.utils.validation
-@version 1.0.0
+@version 2.0.0
+
+Changes in v2.0.0 (2026-01-10):
+- MASTER-P2-046: Added JSON Schema validation for canvas_data
+- Integrated core.schemas module for structural validation
+- Enhanced validate_canvas_data with dual-layer validation:
+  1. JSON Schema validation (structure)
+  2. XSS/injection validation (security)
+- Maintained backward compatibility (security validation always runs)
 """
 
 import re
@@ -130,12 +138,17 @@ def _is_private_host(host: str) -> bool:
 
 def validate_canvas_data(
     data: Optional[Dict[str, Any]],
-    max_depth: int = MAX_CANVAS_DEPTH
+    max_depth: int = MAX_CANVAS_DEPTH,
+    use_json_schema: bool = True
 ) -> tuple[bool, Optional[str]]:
     """
-    Validate canvas_data to prevent XSS and injection attacks.
+    Validate canvas_data with dual-layer validation (v2.0.0).
+
+    Layer 1: JSON Schema validation (structural)
+    Layer 2: XSS/injection validation (security)
 
     Checks:
+    - JSON Schema compliance (if enabled and available)
     - Maximum nesting depth
     - No script tags or event handlers in string values
     - No excessively long strings
@@ -143,9 +156,14 @@ def validate_canvas_data(
     Args:
         data: Canvas data dict to validate
         max_depth: Maximum allowed nesting depth
+        use_json_schema: Whether to use JSON Schema validation (default True)
 
     Returns:
         Tuple of (is_valid, error_message)
+
+    Note:
+        - JSON Schema validation is optional (graceful degradation)
+        - XSS/injection validation always runs (security critical)
     """
     if data is None:
         return True, None
@@ -153,7 +171,25 @@ def validate_canvas_data(
     if not isinstance(data, dict):
         return False, "canvas_data must be a dictionary"
 
-    # Check depth and content recursively
+    # Layer 1: JSON Schema validation (optional, structural)
+    if use_json_schema:
+        try:
+            from core.schemas import validate_canvas_data_schema, JSONSCHEMA_AVAILABLE
+
+            if JSONSCHEMA_AVAILABLE:
+                is_valid, schema_error = validate_canvas_data_schema(data)
+                if not is_valid:
+                    return False, f"Schema validation failed: {schema_error}"
+        except ImportError:
+            # Graceful degradation: schemas module not available
+            pass
+        except Exception as e:
+            # Log but don't fail on schema validation errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"JSON Schema validation error (non-critical): {e}")
+
+    # Layer 2: XSS/injection validation (mandatory, security)
     try:
         _validate_canvas_recursive(data, current_depth=0, max_depth=max_depth)
         return True, None
