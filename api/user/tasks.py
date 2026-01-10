@@ -23,7 +23,7 @@ Endpoints:
 
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Path
 from pydantic import BaseModel
 
 from dependencies import get_current_user
