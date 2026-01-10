@@ -3718,6 +3718,202 @@ EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ============================================================================
+-- Phase 2.3: P2 补充表 (Supplementary Business Tables)
+-- Created: 2026-01-10
+-- Purpose: 添加 AI 任务管理、页面模板和支付记录表
+-- ============================================================================
+
+-- ============================================================
+-- 23. generation_tasks (AI 生成任务表)
+-- ============================================================
+CREATE TABLE generation_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    task_type TEXT NOT NULL,
+    prompt TEXT,
+    parameters JSONB DEFAULT '{}',
+    status TEXT DEFAULT 'pending',
+    result_url TEXT,
+    result_metadata JSONB DEFAULT '{}',
+    error_message TEXT,
+    credits_cost INTEGER DEFAULT 0,
+    processing_time_ms INTEGER,
+    retry_count INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_task_type CHECK (
+        task_type IN (
+            'text_to_image', 'image_to_image', 'text_generation',
+            'image_upscale', 'background_removal', 'style_transfer',
+            'object_detection', 'smart_scan'
+        )
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')
+    ),
+    CONSTRAINT check_credits_cost CHECK (credits_cost >= 0),
+    CONSTRAINT check_retry_count CHECK (retry_count >= 0 AND retry_count <= 5)
+);
+
+CREATE INDEX idx_generation_tasks_user_id ON generation_tasks(user_id, created_at DESC);
+CREATE INDEX idx_generation_tasks_project_id ON generation_tasks(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX idx_generation_tasks_status ON generation_tasks(status, created_at DESC);
+CREATE INDEX idx_generation_tasks_task_type ON generation_tasks(task_type, created_at DESC);
+CREATE INDEX idx_generation_tasks_created_at ON generation_tasks(created_at DESC);
+CREATE INDEX idx_generation_tasks_pending ON generation_tasks(created_at ASC) WHERE status = 'pending';
+
+COMMENT ON TABLE generation_tasks IS 'AI 生成任务表: 记录所有 AI 生成任务的状态和结果';
+COMMENT ON COLUMN generation_tasks.task_type IS '任务类型 (text_to_image/image_to_image/text_generation 等)';
+COMMENT ON COLUMN generation_tasks.prompt IS '用户输入的提示词';
+COMMENT ON COLUMN generation_tasks.parameters IS '任务参数 (JSON 格式,如 size, style, model)';
+COMMENT ON COLUMN generation_tasks.status IS '任务状态 (pending/processing/completed/failed/cancelled)';
+COMMENT ON COLUMN generation_tasks.result_url IS '生成结果 URL (图片或文件)';
+COMMENT ON COLUMN generation_tasks.result_metadata IS '结果元数据 (如 width, height, file_size)';
+COMMENT ON COLUMN generation_tasks.credits_cost IS '消耗的积分数';
+COMMENT ON COLUMN generation_tasks.processing_time_ms IS '处理时间 (毫秒)';
+COMMENT ON COLUMN generation_tasks.retry_count IS '重试次数 (最多 5 次)';
+
+-- ============================================================
+-- 24. page_prompt_templates (页面提示词模板表)
+-- ============================================================
+CREATE TABLE page_prompt_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_name TEXT NOT NULL UNIQUE,
+    template_category TEXT NOT NULL,
+    prompt_template TEXT NOT NULL,
+    description TEXT,
+    example_input JSONB DEFAULT '{}',
+    example_output TEXT,
+    parameters JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT true,
+    usage_count INTEGER DEFAULT 0,
+    created_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_template_category CHECK (
+        template_category IN (
+            'text_to_image', 'image_enhancement', 'style_preset',
+            'text_generation', 'custom', 'system'
+        )
+    ),
+    CONSTRAINT check_template_name_not_empty CHECK (LENGTH(TRIM(template_name)) > 0),
+    CONSTRAINT check_prompt_template_not_empty CHECK (LENGTH(TRIM(prompt_template)) > 0),
+    CONSTRAINT check_usage_count CHECK (usage_count >= 0)
+);
+
+CREATE INDEX idx_page_prompt_templates_category ON page_prompt_templates(template_category);
+CREATE INDEX idx_page_prompt_templates_active ON page_prompt_templates(is_active, usage_count DESC);
+CREATE INDEX idx_page_prompt_templates_template_name ON page_prompt_templates(template_name);
+CREATE INDEX idx_page_prompt_templates_created_by ON page_prompt_templates(created_by) WHERE created_by IS NOT NULL;
+
+COMMENT ON TABLE page_prompt_templates IS '页面提示词模板表: 存储可复用的 AI 提示词模板';
+COMMENT ON COLUMN page_prompt_templates.template_name IS '模板名称 (唯一)';
+COMMENT ON COLUMN page_prompt_templates.template_category IS '模板分类 (text_to_image/image_enhancement/style_preset 等)';
+COMMENT ON COLUMN page_prompt_templates.prompt_template IS '提示词模板 (可包含变量占位符如 {subject}, {style})';
+COMMENT ON COLUMN page_prompt_templates.description IS '模板描述';
+COMMENT ON COLUMN page_prompt_templates.example_input IS '示例输入 (JSON 格式,展示如何填充变量)';
+COMMENT ON COLUMN page_prompt_templates.example_output IS '示例输出 (生成后的完整提示词)';
+COMMENT ON COLUMN page_prompt_templates.parameters IS '参数定义 (JSON 数组,定义模板中的变量)';
+COMMENT ON COLUMN page_prompt_templates.is_active IS '是否启用';
+COMMENT ON COLUMN page_prompt_templates.usage_count IS '使用次数';
+COMMENT ON COLUMN page_prompt_templates.created_by IS '创建者 (管理员 user_id)';
+
+-- ============================================================
+-- 25. payment_records (支付记录表)
+-- ============================================================
+CREATE TABLE payment_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    payment_type TEXT NOT NULL,
+    payment_method TEXT NOT NULL,
+    amount_usd NUMERIC(10, 2) NOT NULL,
+    amount_credits INTEGER,
+    currency TEXT DEFAULT 'USD',
+    stripe_payment_intent_id TEXT UNIQUE,
+    stripe_charge_id TEXT,
+    stripe_customer_id TEXT,
+    status TEXT DEFAULT 'pending',
+    failure_reason TEXT,
+    receipt_url TEXT,
+    metadata JSONB DEFAULT '{}',
+    refunded_amount NUMERIC(10, 2) DEFAULT 0,
+    refunded_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_payment_type CHECK (
+        payment_type IN (
+            'subscription', 'credit_purchase', 'one_time_purchase',
+            'upgrade', 'addon'
+        )
+    ),
+    CONSTRAINT check_payment_method CHECK (
+        payment_method IN ('card', 'bank_transfer', 'paypal', 'alipay', 'wechat')
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('pending', 'processing', 'succeeded', 'failed', 'cancelled', 'refunded')
+    ),
+    CONSTRAINT check_amount_usd CHECK (amount_usd >= 0),
+    CONSTRAINT check_amount_credits CHECK (amount_credits IS NULL OR amount_credits >= 0),
+    CONSTRAINT check_refunded_amount CHECK (refunded_amount >= 0 AND refunded_amount <= amount_usd)
+);
+
+CREATE INDEX idx_payment_records_user_id ON payment_records(user_id, created_at DESC);
+CREATE INDEX idx_payment_records_stripe_payment_intent ON payment_records(stripe_payment_intent_id);
+CREATE INDEX idx_payment_records_status ON payment_records(status, created_at DESC);
+CREATE INDEX idx_payment_records_payment_type ON payment_records(payment_type, created_at DESC);
+CREATE INDEX idx_payment_records_created_at ON payment_records(created_at DESC);
+CREATE INDEX idx_payment_records_succeeded ON payment_records(created_at DESC) WHERE status = 'succeeded';
+
+COMMENT ON TABLE payment_records IS '支付记录表: 记录所有支付交易 (订阅/积分购买/一次性购买)';
+COMMENT ON COLUMN payment_records.payment_type IS '支付类型 (subscription/credit_purchase/one_time_purchase/upgrade/addon)';
+COMMENT ON COLUMN payment_records.payment_method IS '支付方式 (card/bank_transfer/paypal/alipay/wechat)';
+COMMENT ON COLUMN payment_records.amount_usd IS '支付金额 (美元)';
+COMMENT ON COLUMN payment_records.amount_credits IS '购买的积分数 (如果是积分购买)';
+COMMENT ON COLUMN payment_records.currency IS '货币类型 (默认 USD)';
+COMMENT ON COLUMN payment_records.stripe_payment_intent_id IS 'Stripe Payment Intent ID (唯一)';
+COMMENT ON COLUMN payment_records.stripe_charge_id IS 'Stripe Charge ID';
+COMMENT ON COLUMN payment_records.stripe_customer_id IS 'Stripe Customer ID';
+COMMENT ON COLUMN payment_records.status IS '支付状态 (pending/processing/succeeded/failed/cancelled/refunded)';
+COMMENT ON COLUMN payment_records.failure_reason IS '失败原因 (如果失败)';
+COMMENT ON COLUMN payment_records.receipt_url IS '收据 URL (Stripe 生成)';
+COMMENT ON COLUMN payment_records.refunded_amount IS '已退款金额';
+COMMENT ON COLUMN payment_records.refunded_at IS '退款时间';
+
+-- ============================================================
+-- 触发器: 更新 updated_at 字段
+-- ============================================================
+CREATE TRIGGER trigger_update_generation_tasks_updated_at
+BEFORE UPDATE ON generation_tasks
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_page_prompt_templates_updated_at
+BEFORE UPDATE ON page_prompt_templates
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_payment_records_updated_at
+BEFORE UPDATE ON payment_records
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- Phase 2.3 完成
+-- ============================================================
+-- 新增 3 个 P2 表:
+--   ✅ generation_tasks (AI 生成任务)
+--   ✅ page_prompt_templates (页面提示词模板)
+--   ✅ payment_records (支付记录)
+-- ============================================================
+
+
+-- ============================================================================
 -- Transaction Control: 提交所有更改
 -- ============================================================================
 COMMIT;
