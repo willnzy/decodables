@@ -196,7 +196,9 @@ class SupabaseConfigRepository(ConfigRepository):
         admin_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Update system config.
+        Update system config with audit logging.
+
+        P2-040: Added audit logging for config changes.
 
         Args:
             key: Config key
@@ -208,6 +210,16 @@ class SupabaseConfigRepository(ConfigRepository):
         Returns:
             Updated config record
         """
+        # P2-040: Get old value for audit log
+        old_config = None
+        if admin_id and value is not None:
+            try:
+                old_result = self.client.table("system_configs").select("value").eq("key", key).execute()
+                if old_result.data:
+                    old_config = old_result.data[0]
+            except Exception as e:
+                logger.warning(f"Failed to fetch old config value for audit: {e}")
+
         update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
         if value is not None:
@@ -222,6 +234,11 @@ class SupabaseConfigRepository(ConfigRepository):
         result = self.client.table("system_configs").update(update_data).eq(
             "key", key
         ).execute()
+
+        # P2-040: Log audit trail for config changes
+        if result.data and admin_id and value is not None:
+            old_value = old_config.get("value") if old_config else None
+            await self._log_audit(key, "update", old_value, value, admin_id)
 
         return result.data[0] if result.data else None
 
@@ -283,14 +300,19 @@ class SupabaseConfigRepository(ConfigRepository):
         admin_id: str
     ):
         """
-        Log config audit.
+        Log config audit to config_audit_logs table.
+
+        P2-040: Config change audit logging.
 
         Args:
             key: Config key
-            action: Action performed
+            action: Action performed (create/update/delete)
             old_value: Previous value
             new_value: New value
             admin_id: Admin user ID
+
+        Note:
+            Table schema uses 'changed_by' not 'admin_id'
         """
         try:
             self.client.table("config_audit_logs").insert({
@@ -298,10 +320,10 @@ class SupabaseConfigRepository(ConfigRepository):
                 "action": action,
                 "old_value": str(old_value) if old_value else None,
                 "new_value": str(new_value) if new_value else None,
-                "admin_id": admin_id,
+                "changed_by": admin_id,  # P2-040: Fixed field name (was admin_id)
             }).execute()
         except Exception as e:
-            logger.warning(f"Failed to log config audit: {e}")
+            logger.warning(f"[P2-040] Failed to log config audit: {e}")
 
     def invalidate_cache(self, key: Optional[str] = None):
         """
