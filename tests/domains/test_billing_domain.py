@@ -450,18 +450,20 @@ class TestTransactionType:
     """Tests for TransactionType enum."""
 
     def test_deduction_types(self):
-        """Test deduction transaction types."""
-        assert TransactionType.AI_GENERATION.value == "generation"
-        assert TransactionType.SMART_SCAN.value == "ocr"
-        assert TransactionType.MARKET_PURCHASE.value == "market_purchase"
+        """Test deduction transaction types (updated for Phase 1.2)."""
+        assert TransactionType.AI_GENERATION.value == "ai_generation"  # Changed from "generation"
+        assert TransactionType.SMART_SCAN.value == "smart_scan"        # Changed from "ocr"
+        assert TransactionType.EXPIRATION.value == "expiration"        # New enum value
 
     def test_addition_types(self):
-        """Test addition transaction types."""
+        """Test addition transaction types (updated for Phase 1.2)."""
         assert TransactionType.SIGNUP_BONUS.value == "signup_bonus"
-        assert TransactionType.SUBSCRIPTION_GRANT.value == "sub_grant"
-        assert TransactionType.PURCHASE.value == "topup_purchase"
+        assert TransactionType.SUBSCRIPTION_GRANT.value == "subscription_grant"  # Changed from "sub_grant"
+        assert TransactionType.PURCHASE.value == "purchase"            # Changed from "topup_purchase"
         assert TransactionType.REFUND.value == "refund"
-        assert TransactionType.ADMIN_ADJUSTMENT.value == "admin_grant"
+        assert TransactionType.ADMIN_ADJUSTMENT.value == "admin_adjustment"  # Changed from "admin_grant"
+        assert TransactionType.REFERRAL_BONUS.value == "referral_bonus"      # New enum value
+        assert TransactionType.CAMPAIGN_REWARD.value == "campaign_reward"    # New enum value
 
 
 # ==========================================

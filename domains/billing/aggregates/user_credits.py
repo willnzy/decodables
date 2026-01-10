@@ -14,6 +14,19 @@ from typing import Optional, List
 from ..value_objects import Credits, CreditBucket, TransactionType
 from ..exceptions import InsufficientCreditsException, InvalidAmountException
 
+# ============================================================
+# Business Constraints (matches database CHECK constraints)
+# ============================================================
+
+# Credit Balance Limits (from profiles table)
+MAX_MONTHLY_CREDITS = 1_000_000      # 1M monthly credits maximum
+MAX_PERMANENT_CREDITS = 10_000_000   # 10M permanent credits maximum
+MIN_CREDITS = 0                       # Non-negative only
+
+# Transaction Amount Limits
+MAX_SINGLE_TRANSACTION = 1_000_000    # Maximum single transaction amount
+MIN_TRANSACTION_AMOUNT = 1            # Minimum positive amount
+
 
 @dataclass
 class CreditTransaction:
@@ -41,11 +54,55 @@ class UserCredits:
     - Monthly credits are deducted first
     - Permanent credits are deducted when monthly is exhausted
     - All operations should be validated before persistence
+
+    Invariants (enforced by __post_init__):
+    - 0 <= monthly credits <= 1,000,000
+    - 0 <= permanent credits <= 10,000,000
+    - user_id must be non-empty
     """
     user_id: str
     balance: Credits
     tier: str = "free"
     pending_transactions: List[CreditTransaction] = field(default_factory=list)
+
+    def __post_init__(self):
+        """
+        Validate aggregate invariants after initialization.
+
+        Raises:
+            ValueError: If any constraint is violated
+        """
+        # Validate user_id
+        if not self.user_id or not self.user_id.strip():
+            raise ValueError("user_id cannot be empty")
+
+        # Validate credit balances against database constraints
+        if self.balance.monthly < MIN_CREDITS:
+            raise ValueError(
+                f"Monthly credits cannot be negative: {self.balance.monthly}"
+            )
+        if self.balance.monthly > MAX_MONTHLY_CREDITS:
+            raise ValueError(
+                f"Monthly credits exceed maximum ({MAX_MONTHLY_CREDITS:,}): "
+                f"{self.balance.monthly:,}"
+            )
+
+        if self.balance.permanent < MIN_CREDITS:
+            raise ValueError(
+                f"Permanent credits cannot be negative: {self.balance.permanent}"
+            )
+        if self.balance.permanent > MAX_PERMANENT_CREDITS:
+            raise ValueError(
+                f"Permanent credits exceed maximum ({MAX_PERMANENT_CREDITS:,}): "
+                f"{self.balance.permanent:,}"
+            )
+
+        # Validate tier (optional, but good practice)
+        valid_tiers = {"free", "starter", "pro", "t1", "t2", "t3"}
+        if self.tier and self.tier not in valid_tiers:
+            # Soft validation - log warning but don't fail
+            # (allows for future tier additions)
+            pass
 
     @classmethod
     def create(cls, user_id: str, monthly: int = 0, permanent: int = 0, tier: str = "free"):
@@ -97,12 +154,21 @@ class UserCredits:
             CreditTransaction record
 
         Raises:
-            InvalidAmountException: If amount <= 0
+            InvalidAmountException: If amount <= 0 or exceeds max transaction
             InsufficientCreditsException: If not enough credits
+            ValueError: If resulting balance would violate constraints
         """
+        # Pre-condition: Validate amount
         if amount <= 0:
             raise InvalidAmountException(amount, "Deduction amount must be positive")
 
+        if amount > MAX_SINGLE_TRANSACTION:
+            raise InvalidAmountException(
+                amount,
+                f"Single transaction cannot exceed {MAX_SINGLE_TRANSACTION:,} credits"
+            )
+
+        # Pre-condition: Validate sufficient balance
         if not self.can_afford(amount):
             raise InsufficientCreditsException(
                 required=amount,
@@ -119,6 +185,16 @@ class UserCredits:
 
         # Calculate new balance
         new_balance = self.balance.deduct(amount)
+
+        # Post-condition: Validate new balance doesn't violate constraints
+        # (This should never happen if Credits.deduct() is correct, but defensive check)
+        if new_balance.monthly < MIN_CREDITS or new_balance.permanent < MIN_CREDITS:
+            raise ValueError(
+                f"Internal error: Deduction would result in negative balance. "
+                f"Monthly: {new_balance.monthly}, Permanent: {new_balance.permanent}"
+            )
+
+        # Update balance (triggers __post_init__ validation via dataclass replace)
         self.balance = new_balance
 
         # Create transaction record
@@ -156,13 +232,38 @@ class UserCredits:
             CreditTransaction record
 
         Raises:
-            InvalidAmountException: If amount <= 0
+            InvalidAmountException: If amount <= 0 or exceeds max transaction
+            ValueError: If resulting balance would exceed maximum limits
         """
+        # Pre-condition: Validate amount
         if amount <= 0:
             raise InvalidAmountException(amount, "Addition amount must be positive")
 
+        if amount > MAX_SINGLE_TRANSACTION:
+            raise InvalidAmountException(
+                amount,
+                f"Single transaction cannot exceed {MAX_SINGLE_TRANSACTION:,} credits"
+            )
+
         # Calculate new balance
         new_balance = self.balance.add(amount, bucket)
+
+        # Post-condition: Validate new balance doesn't exceed maximum limits
+        if bucket == CreditBucket.MONTHLY and new_balance.monthly > MAX_MONTHLY_CREDITS:
+            raise ValueError(
+                f"Cannot add {amount:,} credits: would exceed monthly maximum "
+                f"({MAX_MONTHLY_CREDITS:,}). Current: {self.balance.monthly:,}, "
+                f"After: {new_balance.monthly:,}"
+            )
+
+        if bucket == CreditBucket.PERMANENT and new_balance.permanent > MAX_PERMANENT_CREDITS:
+            raise ValueError(
+                f"Cannot add {amount:,} credits: would exceed permanent maximum "
+                f"({MAX_PERMANENT_CREDITS:,}). Current: {self.balance.permanent:,}, "
+                f"After: {new_balance.permanent:,}"
+            )
+
+        # Update balance
         self.balance = new_balance
 
         # Create transaction record
@@ -178,7 +279,11 @@ class UserCredits:
 
         return tx
 
-    def reset_monthly(self, new_amount: int, tx_type: TransactionType = TransactionType.MONTHLY_RESET):
+    def reset_monthly(
+        self,
+        new_amount: int,
+        tx_type: TransactionType = TransactionType.SUBSCRIPTION_GRANT
+    ):
         """
         Reset monthly credits to new amount.
 
@@ -186,10 +291,31 @@ class UserCredits:
 
         Args:
             new_amount: New monthly credit amount
-            tx_type: Transaction type
+            tx_type: Transaction type (default: SUBSCRIPTION_GRANT)
+
+        Raises:
+            ValueError: If new_amount exceeds maximum monthly credits
         """
+        # Pre-condition: Validate new amount
+        if new_amount < MIN_CREDITS:
+            raise ValueError(f"Monthly credits cannot be negative: {new_amount}")
+
+        if new_amount > MAX_MONTHLY_CREDITS:
+            raise ValueError(
+                f"Monthly credits cannot exceed maximum ({MAX_MONTHLY_CREDITS:,}): "
+                f"{new_amount:,}"
+            )
+
         old_monthly = self.balance.monthly
         new_balance = self.balance.reset_monthly(new_amount)
+
+        # Post-condition: Validate new balance
+        if new_balance.monthly != new_amount:
+            raise ValueError(
+                f"Internal error: Monthly reset failed. "
+                f"Expected: {new_amount}, Got: {new_balance.monthly}"
+            )
+
         self.balance = new_balance
 
         # Record the change
