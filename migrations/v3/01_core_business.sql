@@ -410,6 +410,13 @@ CREATE TABLE marketplace_listings (
 
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录,
 
+    -- P1-012 fix: seller_id NOT NULL constraint (system resources can be NULL)
+    CONSTRAINT chk_marketplace_listings_seller_id_consistency
+    CHECK (
+        (source = 'system' AND seller_id IS NULL) OR
+        (source != 'system' AND seller_id IS NOT NULL)
+    ),
+
     CONSTRAINT chk_marketplace_listings_recovery_expires_at_consistency
     CHECK (
         recovery_expires_at IS NULL OR
