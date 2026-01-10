@@ -298,17 +298,96 @@ async def delete_cache_key_endpoint(request: Request, key: str, admin: dict = De
         raise HTTPException(500, "Failed to delete cache key")
 
 
-@router.post("/system/cache/clear-all")
-@limiter.limit("2/minute")
-async def clear_all_cache_endpoint(request: Request, admin: dict = Depends(require_admin)):
-    """Clear all cache (use with caution)."""
+@router.post("/system/cache/clear-all/confirm")
+@limiter.limit("1/10 minutes")
+async def request_clear_all_confirmation(request: Request, admin: dict = Depends(require_admin)):
+    """
+    Request a confirmation token for clearing all cache.
+
+    P0-013 fix: Two-step confirmation for dangerous operation.
+    Token expires in 2 minutes.
+    """
+    import secrets
+    from core.cache import get_cache_provider
+
     try:
+        # Generate secure random token
+        token = secrets.token_urlsafe(32)
+
+        # Store token in Redis with 2-minute expiry
+        cache_provider = get_cache_provider()
+        cache_key = f"cache_clear_confirm:{admin['id']}:{token}"
+        cache_provider.set(cache_key, "1", ttl=120)  # 2 minutes
+
+        logger.warning(f"[Admin] Cache clear confirmation requested by {admin['id']}")
+
+        return {
+            "token": token,
+            "expires_in_seconds": 120,
+            "message": "Use this token within 2 minutes to clear all cache"
+        }
+    except Exception as e:
+        logger.error(f"[Admin] Cache clear confirmation failed: {e}")
+        raise HTTPException(500, "Failed to generate confirmation token")
+
+
+@router.post("/system/cache/clear-all")
+@limiter.limit("1/10 minutes")
+async def clear_all_cache_endpoint(
+    request: Request,
+    confirm_token: str = Query(..., min_length=32, max_length=64, description="Confirmation token from /cache/clear-all/confirm"),
+    admin: dict = Depends(require_admin)
+):
+    """
+    Clear all cache (DANGEROUS - requires confirmation token).
+
+    P0-013 fix: Two-step confirmation + audit logging.
+
+    Steps:
+    1. Call POST /system/cache/clear-all/confirm to get token
+    2. Call this endpoint with the token within 2 minutes
+    """
+    from core.cache import get_cache_provider
+    from infrastructure.repositories.admin_repository import AdminRepository
+    from core.database import get_database_client
+
+    try:
+        # P0-013 fix: Verify confirmation token
+        cache_provider = get_cache_provider()
+        cache_key = f"cache_clear_confirm:{admin['id']}:{confirm_token}"
+        token_valid = cache_provider.get(cache_key)
+
+        if not token_valid:
+            logger.warning(f"[Admin] Invalid/expired cache clear token by {admin['id']}")
+            raise HTTPException(403, "Invalid or expired confirmation token. Request a new token from /cache/clear-all/confirm")
+
+        # Delete token (one-time use)
+        cache_provider.delete(cache_key)
+
+        # Clear cache
         result = await clear_all_cache()
 
         if not result:
             raise HTTPException(500, "Failed to clear cache")
 
-        return {"status": "cleared"}
+        # P0-013 fix: Audit logging
+        db = get_database_client()
+        admin_repo = AdminRepository(db)
+        await admin_repo.admin_log_operation(
+            admin_id=admin["id"],
+            operation_type="cache_clear_all",
+            description=f"Cleared all Redis cache (CRITICAL OPERATION)",
+            metadata={
+                "ip": request.client.host if request.client else "unknown",
+                "user_agent": request.headers.get("user-agent", "unknown")
+            }
+        )
+
+        logger.critical(f"🔴 CRITICAL: All cache cleared by admin {admin['id']} from IP {request.client.host if request.client else 'unknown'}")
+
+        return {"status": "cleared", "message": "All cache has been cleared. Database query load will increase temporarily."}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[Admin] Cache clear failed: {e}")
         raise HTTPException(500, "Failed to clear cache")
