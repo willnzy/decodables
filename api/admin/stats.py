@@ -2,9 +2,15 @@
 Admin Stats API - Dashboard and analytics endpoints for admins.
 
 @module api.admin.stats
-@version 3.29 (DDD Compliant)
+@version 3.30 (P2-001 Fix: Typed Response Models)
 
 Changes:
+- v3.30: P2-001 Fix - Migrate to Pydantic response models
+  - All endpoints now return typed Pydantic models
+  - API layer converts Service dict results to typed entities
+  - Type safety throughout the stack
+  - Consistent response structure with timestamps
+
 - v3.29: Complete DDD architecture migration (STAT-CRITICAL-1)
   - API layer now calls Service layer instead of Repository
   - Moved constants to domains/stats/constants.py (STAT-MEDIUM-2)
@@ -46,7 +52,7 @@ Endpoints:
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
@@ -81,6 +87,16 @@ from domains.stats.constants import (
     VALID_GROUP_BY,
     DATE_PATTERN,
 )
+# v3.30: Import Pydantic models (P2-001 Fix)
+from domains.stats.models import (
+    DashboardStats,
+    UserGrowthDataPoint,
+    RevenueDataPoint,
+    ProjectStats,
+    CreditUsageStats,
+    TierDistributionItem,
+    ConversionFunnelStep,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +117,13 @@ def validate_date_format(date_str: Optional[str], field_name: str) -> None:
 # Core Dashboard Stats (v3.25: Added rate limiting and validation)
 # ==========================================
 
-@router.get("/dashboard")
+@router.get("/dashboard", response_model=DashboardStats)
 @limiter.limit("30/minute")
 async def get_dashboard_stats_endpoint(
     request: Request,
     period: str = Query("month", max_length=10),
     admin: dict = Depends(require_admin),
-):
+) -> DashboardStats:
     """Fetch dashboard KPIs."""
     # v3.25: STAT-MEDIUM-3 - Validate period enum
     if period not in VALID_DASHBOARD_PERIODS:
@@ -115,13 +131,14 @@ async def get_dashboard_stats_endpoint(
 
     try:
         result = await get_dashboard_stats(period)
-        return result
+        # v3.30: Convert dict to Pydantic model (P2-001 Fix)
+        return DashboardStats(**result)
     except Exception as e:
         logger.error(f"Failed to fetch dashboard stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch dashboard statistics")
 
 
-@router.get("/user-growth")
+@router.get("/user-growth", response_model=List[UserGrowthDataPoint])
 @limiter.limit("30/minute")
 async def get_user_growth_stats_endpoint(
     request: Request,
@@ -129,7 +146,7 @@ async def get_user_growth_stats_endpoint(
     end_date: Optional[str] = Query(None, max_length=30),
     group_by: str = Query("day", max_length=10),
     admin: dict = Depends(require_admin),
-):
+) -> List[UserGrowthDataPoint]:
     """Fetch user growth stats."""
     # v3.25: STAT-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
@@ -141,13 +158,14 @@ async def get_user_growth_stats_endpoint(
 
     try:
         result = await get_user_growth_stats(start_date, end_date, group_by)
-        return result
+        # v3.30: Convert list of dicts to Pydantic models (P2-001 Fix)
+        return [UserGrowthDataPoint(**item) for item in result]
     except Exception as e:
         logger.error(f"Failed to fetch user growth stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch user growth statistics")
 
 
-@router.get("/revenue")
+@router.get("/revenue", response_model=List[RevenueDataPoint])
 @limiter.limit("30/minute")
 async def get_revenue_stats_endpoint(
     request: Request,
@@ -155,7 +173,7 @@ async def get_revenue_stats_endpoint(
     end_date: Optional[str] = Query(None, max_length=30),
     group_by: str = Query("day", max_length=10),
     admin: dict = Depends(require_admin),
-):
+) -> List[RevenueDataPoint]:
     """Fetch revenue stats."""
     # v3.25: STAT-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
@@ -167,20 +185,21 @@ async def get_revenue_stats_endpoint(
 
     try:
         result = await get_revenue_stats(start_date, end_date, group_by)
-        return result
+        # v3.30: Convert list of dicts to Pydantic models (P2-001 Fix)
+        return [RevenueDataPoint(**item) for item in result]
     except Exception as e:
         logger.error(f"Failed to fetch revenue stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch revenue statistics")
 
 
-@router.get("/projects")
+@router.get("/projects", response_model=ProjectStats)
 @limiter.limit("30/minute")
 async def get_project_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
     admin: dict = Depends(require_admin),
-):
+) -> ProjectStats:
     """Fetch project stats."""
     # v3.25: STAT-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
@@ -188,20 +207,21 @@ async def get_project_stats_endpoint(
 
     try:
         result = await get_project_stats(start_date, end_date)
-        return result
+        # v3.30: Convert dict to Pydantic model (P2-001 Fix)
+        return ProjectStats(**result)
     except Exception as e:
         logger.error(f"Failed to fetch project stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch project statistics")
 
 
-@router.get("/credits")
+@router.get("/credits", response_model=CreditUsageStats)
 @limiter.limit("30/minute")
 async def get_credit_usage_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
     admin: dict = Depends(require_admin),
-):
+) -> CreditUsageStats:
     """Fetch credit usage stats."""
     # v3.25: STAT-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
@@ -209,34 +229,45 @@ async def get_credit_usage_stats_endpoint(
 
     try:
         result = await get_credit_usage_stats(start_date, end_date)
-        return result
+        # v3.30: Convert dict to Pydantic model (P2-001 Fix)
+        return CreditUsageStats(**result)
     except Exception as e:
         logger.error(f"Failed to fetch credit usage stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch credit usage statistics")
 
 
-@router.get("/tier-distribution")
+@router.get("/tier-distribution", response_model=List[TierDistributionItem])
 @limiter.limit("30/minute")
 async def get_tier_distribution_endpoint(
     request: Request,
     admin: dict = Depends(require_admin),
-):
+) -> List[TierDistributionItem]:
     """Fetch user tier distribution."""
     try:
         result = await get_tier_distribution()
-        return result
+        # v3.30: Convert dict to list of Pydantic models (P2-001 Fix)
+        # Result format: {"t1": 100, "t2": 50, "t3": 20}
+        total = sum(result.values())
+        return [
+            TierDistributionItem(
+                tier=tier,
+                count=count,
+                percentage=round((count / total * 100) if total > 0 else 0, 2)
+            )
+            for tier, count in result.items()
+        ]
     except Exception as e:
         logger.error(f"Failed to fetch tier distribution: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch tier distribution")
 
 
-@router.get("/conversion-funnel")
+@router.get("/conversion-funnel", response_model=List[ConversionFunnelStep])
 @limiter.limit("30/minute")
 async def get_conversion_funnel_endpoint(
     request: Request,
     period: str = Query("month", max_length=10),
     admin: dict = Depends(require_admin),
-):
+) -> List[ConversionFunnelStep]:
     """Fetch conversion funnel stats."""
     # v3.25: STAT-MEDIUM-3 - Validate period enum
     if period not in VALID_DASHBOARD_PERIODS:
@@ -244,7 +275,22 @@ async def get_conversion_funnel_endpoint(
 
     try:
         result = await get_conversion_funnel(period)
-        return result
+        # v3.30: Convert dict to list of Pydantic models (P2-001 Fix)
+        # Result format: {"signups": 100, "created_project": 50, "converted": 10}
+        steps_data = [
+            {"step": "signups", "count": result.get("signups", 0), "conversion_rate": None},
+            {
+                "step": "created_project",
+                "count": result.get("created_project", 0),
+                "conversion_rate": round((result.get("created_project", 0) / result.get("signups", 1) * 100), 2) if result.get("signups", 0) > 0 else 0
+            },
+            {
+                "step": "converted",
+                "count": result.get("converted", 0),
+                "conversion_rate": round((result.get("converted", 0) / result.get("created_project", 1) * 100), 2) if result.get("created_project", 0) > 0 else 0
+            }
+        ]
+        return [ConversionFunnelStep(**step) for step in steps_data]
     except Exception as e:
         logger.error(f"Failed to fetch conversion funnel: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch conversion funnel")
@@ -256,105 +302,83 @@ async def get_conversion_funnel_endpoint(
 
 @router.get("/exports")
 @limiter.limit("30/minute")
-async def get_export_stats(request: Request, admin: dict = Depends(require_admin)):
+async def get_export_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch export operation stats (PDF, ZIP, print, preview)."""
-    return await _get_aggregated_stat(
-        "export_stats_30d",
-        {"totalPdf": 0, "totalZip": 0, "totalPrint": 0, "totalPreview": 0, "trend": []},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_export_stats()
 
 
 @router.get("/assets")
 @limiter.limit("30/minute")
-async def get_asset_usage_stats(request: Request, admin: dict = Depends(require_admin)):
+async def get_asset_usage_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch asset usage ranking stats."""
-    return await _get_aggregated_stat(
-        "asset_usage_ranking",
-        {"top_assets": [], "by_type": {}, "total_usage": 0, "total_assets_used": 0},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_asset_usage_stats()
 
 
 @router.get("/tier-activity")
 @limiter.limit("30/minute")
-async def get_tier_activity(request: Request, admin: dict = Depends(require_admin)):
+async def get_tier_activity_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch per-tier activity stats."""
     return await get_tier_activity_stats()
 
 
 @router.get("/subscription-events")
 @limiter.limit("30/minute")
-async def get_subscription_events(request: Request, admin: dict = Depends(require_admin)):
+async def get_subscription_events_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch subscription event stats."""
-    return await _get_aggregated_stat(
-        "subscription_events_30d",
-        {"totalUpgrades": 0, "totalDowngrades": 0, "totalCancellations": 0, "totalRefunds": 0, "trend": []},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_subscription_events_stats()
 
 
 @router.get("/page-views")
 @limiter.limit("30/minute")
-async def get_page_views(request: Request, admin: dict = Depends(require_admin)):
+async def get_page_views_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch page view stats."""
-    return await _get_aggregated_stat(
-        "page_views_7d",
-        {"pages": {}, "total_views": 0, "guest_views": 0},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_page_views_stats()
 
 
 @router.get("/project-details")
 @limiter.limit("30/minute")
-async def get_project_details(request: Request, admin: dict = Depends(require_admin)):
+async def get_project_details_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch detailed project stats."""
-    return await _get_aggregated_stat(
-        "project_details_30d",
-        {"deleted_projects": 0, "ocr_usage": 0, "total_pages_sample": 0, "avg_pages_per_project": 0},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_project_details_stats()
 
 
 @router.get("/returning-users")
 @limiter.limit("30/minute")
-async def get_returning_users(request: Request, admin: dict = Depends(require_admin)):
+async def get_returning_users_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch returning user stats."""
     return await get_returning_users_stats()
 
 
 @router.get("/tier-trend")
 @limiter.limit("30/minute")
-async def get_tier_trend(request: Request, admin: dict = Depends(require_admin)):
+async def get_tier_trend_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch tier trend over time."""
     return await get_tier_trend_stats()
 
 
 @router.get("/tier-conversion")
 @limiter.limit("30/minute")
-async def get_tier_conversion(request: Request, admin: dict = Depends(require_admin)):
+async def get_tier_conversion_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch tier conversion stats."""
     return await get_tier_conversion_stats()
 
 
 @router.get("/performance")
 @limiter.limit("30/minute")
-async def get_performance_metrics(request: Request, admin: dict = Depends(require_admin)):
+async def get_performance_metrics_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch page performance (Core Web Vitals) stats."""
-    return await _get_aggregated_stat(
-        "performance_metrics_7d",
-        {"metrics": {}, "by_page": {}, "total_samples": 0},
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_performance_metrics_stats()
 
 
 @router.get("/user-distribution")
 @limiter.limit("30/minute")
-async def get_user_distribution(request: Request, admin: dict = Depends(require_admin)):
+async def get_user_distribution_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
     """Fetch user distribution stats."""
-    return await _get_aggregated_stat(
-        "user_distribution_7d",
-        {
-            "country": [],
-            "browser": [],
-            "os": [],
-            "device_type": [],
-            "language": [],
-            "timezone": [],
-            "total_sessions": 0,
-        },
-    )
+    # v3.30: Fixed - call Service layer function (P2-001 Fix)
+    return await get_user_distribution_stats()
