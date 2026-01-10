@@ -298,9 +298,13 @@ psql -d decodables_test < refactored_schema_v2.sql
 - [docs/shared/TIER-NAMING-SYSTEM.md](/docs/shared/TIER-NAMING-SYSTEM.md) - 用户等级系统
 - [docs/后台业务逻辑说明.md](/docs/后台业务逻辑说明.md) - 后端业务逻辑
 
-### V1 数据库
-- [V1/ddl.sql](../V1/ddl.sql) - 当前生产环境 DDL (v3.27)
+### V1 数据库 (已废弃)
+- ~~[V1/ddl.sql](../V1/ddl.sql)~~ - 旧版 DDL (v3.27, 已废弃)
 - [V1/FILE_CLEANUP_PLAN.md](../V1/FILE_CLEANUP_PLAN.md) - V1 目录清理计划
+
+### V2 数据库 (当前使用)
+- [refactored_schema_v2.sql](../refactored_schema_v2.sql) - **完整数据库 DDL (v4.0)** ⭐
+- [docs/REFACTORING_REPORT.md](./REFACTORING_REPORT.md) - V2 重构报告
 
 ---
 
