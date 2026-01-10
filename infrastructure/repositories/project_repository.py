@@ -671,31 +671,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
         return result.data[0] if result.data else None
 
-    @retry_on_network_error()
-    async def get_user_deleted_projects(
-        self,
-        user_id: str,
-        limit: int = 20,
-        offset: int = 0
-    ) -> List[Dict[str, Any]]:
-        """
-        Get user's deleted projects.
-
-        Args:
-            user_id: User ID
-            limit: Max results
-            offset: Results to skip
-
-        Returns:
-            List of deleted project dicts
-        """
-        result = self.client.table("projects").select(
-            "id, title, thumbnail_url, deleted_at"
-        ).eq("user_id", user_id).eq("is_deleted", True).order(
-            "deleted_at", desc=True
-        ).range(offset, offset + limit - 1).execute()
-
-        return result.data or []
+    # Legacy method removed - use list_deleted_recoverable() from BaseRepository instead
+    # This automatically filters expired records and returns Entity + total count
 
     @retry_on_network_error()
     async def permanently_hide_project(

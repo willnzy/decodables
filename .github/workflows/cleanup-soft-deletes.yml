@@ -1,0 +1,82 @@
+name: Cleanup Expired Soft Deletes
+
+on:
+  schedule:
+    # 每天凌晨 2 点运行 (UTC)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      dry_run:
+        description: 'DRY RUN mode (true/false)'
+        required: false
+        default: 'true'
+      cleanup_after_days:
+        description: 'Cleanup records expired after N days'
+        required: false
+        default: '90'
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run cleanup (DRY RUN)
+        if: github.event_name == 'schedule'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: "true"
+          CLEANUP_AFTER_DAYS: "90"
+          BATCH_SIZE: "100"
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python scripts/cron/cleanup_expired_soft_deletes.py
+
+      - name: Run cleanup (Manual mode)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          CLEANUP_AFTER_DAYS: ${{ github.event.inputs.cleanup_after_days }}
+          BATCH_SIZE: "100"
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python scripts/cron/cleanup_expired_soft_deletes.py
+
+      # 如果需要实际删除，取消注释下面的步骤
+      # - name: Run cleanup (PRODUCTION)
+      #   if: github.event_name == 'schedule'
+      #   env:
+      #     SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      #     SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      #     DRY_RUN: "false"
+      #     CLEANUP_AFTER_DAYS: "90"
+      #     BATCH_SIZE: "100"
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   run: |
+      #     python scripts/cron/cleanup_expired_soft_deletes.py
+
+      - name: Upload cleanup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-logs-${{ github.run_id }}
+          path: |
+            *.log
+          retention-days: 30

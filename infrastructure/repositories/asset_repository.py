@@ -273,22 +273,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
         return update_result.data[0] if update_result.data else None
 
-    @retry_on_network_error()
-    async def get_deleted_assets(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        Get soft-deleted assets (trash).
-
-        Args:
-            user_id: User ID
-
-        Returns:
-            List of deleted asset dicts
-        """
-        result = self.client.table("assets").select("*").eq(
-            "user_id", user_id
-        ).eq("is_deleted", True).order("created_at", desc=True).execute()
-
-        return result.data or []
+    # Legacy method removed - use list_deleted_recoverable() from BaseRepository instead
+    # This automatically filters expired records and returns Entity + total count
 
     @retry_on_network_error()
     async def restore_asset(self, asset_id: str, user_id: str) -> Optional[Dict[str, Any]]:

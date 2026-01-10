@@ -190,17 +190,47 @@ class AssetsService:
         """
         return await self.repository.get_seller_stats(user_id)
 
-    async def get_deleted_assets(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_deleted_assets(
+        self,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0
+    ) -> tuple[List[Dict[str, Any]], int]:
         """
-        Get soft-deleted assets (trash).
+        Get soft-deleted assets (recoverable only).
+
+        Only returns assets within recovery period.
+        Expired assets are automatically filtered out.
 
         Args:
             user_id: User ID
+            limit: Max results per page
+            offset: Results to skip for pagination
 
         Returns:
-            List of deleted asset dicts
+            Tuple of (list of asset dicts, total count)
         """
-        return await self.repository.get_deleted_assets(user_id)
+        # Use BaseRepository method to auto-filter expired records
+        assets, total = await self.repository.list_deleted_recoverable(
+            user_id=user_id,
+            offset=offset,
+            limit=limit
+        )
+
+        # Convert Asset entities to dicts for backward compatibility
+        asset_dicts = []
+        for asset in assets:
+            asset_dicts.append({
+                "id": asset.id,
+                "filename": asset.filename,
+                "file_type": asset.file_type,
+                "file_url": asset.file_url,
+                "thumbnail_url": asset.thumbnail_url,
+                "deleted_at": asset.deleted_at,
+                "recovery_expires_at": asset.recovery_expires_at,
+            })
+
+        return asset_dicts, total
 
     # ==========================================
     # Command Methods

@@ -460,23 +460,40 @@ class CreationService:
         user_id: str,
         limit: int = 20,
         offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], int]:
         """
-        Get user's deleted projects (trash).
+        Get user's deleted projects (recoverable only).
+
+        Only returns projects within recovery period.
+        Expired projects are automatically filtered out.
 
         Args:
             user_id: User ID
-            limit: Max results
-            offset: Results to skip
+            limit: Max results per page
+            offset: Results to skip for pagination
 
         Returns:
-            List of deleted project dicts
+            Tuple of (list of project dicts, total count)
         """
-        return await self._repository.get_user_deleted_projects(
+        # Use BaseRepository method to auto-filter expired records
+        projects, total = await self._repository.list_deleted_recoverable(
             user_id=user_id,
-            limit=limit,
             offset=offset,
+            limit=limit
         )
+
+        # Convert Project entities to dicts for backward compatibility
+        project_dicts = []
+        for proj in projects:
+            project_dicts.append({
+                "id": proj.id,
+                "title": proj.title,
+                "thumbnail_url": proj.thumbnail_url,
+                "deleted_at": proj.deleted_at,
+                "recovery_expires_at": proj.recovery_expires_at,
+            })
+
+        return project_dicts, total
 
     async def get_seller_project_stats(self, user_id: str) -> Dict[str, Any]:
         """
