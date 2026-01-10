@@ -2,7 +2,12 @@
 Stats Domain - Statistics and analytics.
 
 @module domains.stats
-@version 3.29
+@version 3.30
+
+Changes in v3.30 (2026-01-10):
+- Added AI Insights sub-module (MASTER-P2-001)
+- Migrated AI Insights/Recommendations/Behavior Analysis to Service layer
+- Architecture: API → Service → Repository (DDD compliant)
 
 This domain handles:
 - Dashboard statistics
@@ -10,6 +15,7 @@ This domain handles:
 - Project and credit usage stats
 - Tier distribution and conversion funnel
 - Aggregated statistics from pre-computed data
+- AI-powered insights and recommendations
 """
 
 from domains.stats.service import (
@@ -35,6 +41,13 @@ from domains.stats.service import (
     get_user_distribution_stats,
 )
 
+from domains.stats.ai_insights import (
+    # AI Insights (3)
+    get_ai_insights,
+    get_ai_recommendations,
+    get_behavior_analysis,
+)
+
 __all__ = [
     # Core statistics
     "get_dashboard_stats",
@@ -56,4 +69,8 @@ __all__ = [
     "get_tier_conversion_stats",
     "get_performance_metrics_stats",
     "get_user_distribution_stats",
+    # AI Insights
+    "get_ai_insights",
+    "get_ai_recommendations",
+    "get_behavior_analysis",
 ]

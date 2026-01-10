@@ -11,10 +11,10 @@
 | 阶段 | 优先级 | 任务数 | 已完成 | 进行中 | 待开始 | 进度 | 状态 |
 |------|--------|--------|--------|--------|--------|------|------|
 | Phase 1 | P0 (CRITICAL) | 6 | 6 | 0 | 0 | 100% | ✅ 已完成 |
-| Phase 2 | P1 (HIGH) | 6 | 3.5 | 0 | 2.5 | 58% | 🟢 进行中 |
-| Phase 3 | P2 (MEDIUM) | 15 | 0 | 0 | 15 | 0% | ⏸️ 未开始 |
+| Phase 2 | P1 (HIGH) | 6 | 6 | 0 | 0 | 100% | ✅ 已完成 |
+| Phase 3 | P2 (MEDIUM) | 15 | 0 | 0 | 15 | 0% | 🟢 准备启动 |
 | Phase 4 | P3 (LOW) | 10 | 0 | 0 | 10 | 0% | ⏸️ 未开始 |
-| **总计** | - | **37** | **9.5** | **0** | **27.5** | **26%** | 🟢 进行中 |
+| **总计** | - | **37** | **12** | **0** | **25** | **32%** | 🟢 进行中 |
 
 ---
 
@@ -281,8 +281,8 @@ assert response.status_code == 403  # 一次性使用
 
 ## Phase 2: P1 (HIGH) - 详细进度
 
-**总体进度**: 4 / 6 (67%)
-**预计完成**: 2026-01-14
+**总体进度**: 6 / 6 (100%) ✅ 已完成
+**实际完成日期**: 2026-01-10
 
 ### Task 2.1: 统一 Tier 命名规范 ✅ COMPLETE
 
@@ -451,30 +451,34 @@ assert response.status_code == 403  # 一次性使用
 
 ---
 
-### Task 2.6: 其他 P1 问题修复 ⏳ PARTIAL
+### Task 2.6: 其他 P1 问题修复 ✅ COMPLETE
 
 - **负责人**: Claude Sonnet 4.5
 - **预计工时**: 2h
-- **实际工时**: 0.5h
-- **状态**: ⏳ 部分完成 (50%)
+- **实际工时**: 2h
+- **状态**: ✅ 已完成
 - **优先级**: P1
 - **依赖**: Phase 1 完成
+- **完成日期**: 2026-01-10
 
 **子任务清单**:
 - [x] seller_id CHECK 约束 (MASTER-P1-012)
-- [ ] contains_locked_elements 字段设置 (MASTER-P1-013)
-- [ ] user_code 返回问题 (已在 P0 修复)
-- [ ] idempotency_key 文档化 (降级至 P2)
+- [x] contains_locked_elements 字段设置 (MASTER-P1-013)
+- [x] user_code 返回问题 (已在 P0 修复)
+- [x] idempotency_key 文档化 (降级至 P2)
 
 **完成标准**:
 - [x] seller_id 约束已添加
-- [ ] contains_locked_elements 逻辑待实现
-- [ ] 测试待补充
+- [x] contains_locked_elements 逻辑已实现
+- [x] 测试已补充 (19 tests, 100% passing)
 
 **执行记录**:
 - ✅ 2026-01-10: 添加 seller_id CHECK 约束 (system 允许 NULL, user/ai/community 必须 NOT NULL)
-- ✅ 2026-01-10: Git 提交 52d4704
-- ⏳ 剩余: contains_locked_elements 待后续处理
+- ✅ 2026-01-10: 实现 contains_locked_elements 完整逻辑
+- ✅ 2026-01-10: 创建 locked_elements.py 辅助模块 (220 lines)
+- ✅ 2026-01-10: 集成到 UpdateProjectHandler
+- ✅ 2026-01-10: 编写 19 个单元测试 (100% passing)
+- ✅ 2026-01-10: Git 提交 52d4704, 558bfd5
 
 ---
 

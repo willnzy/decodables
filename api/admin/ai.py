@@ -2,23 +2,24 @@
 Admin AI Router - AI insights and report generation for admins
 
 @module api.admin.ai
-@version 3.26
+@version 3.27
 
 Changes:
-- v3.25: Security improvements
-  - AI-BROKEN-1: Implemented 3 missing Repository methods
-  - AI-MEDIUM-1: Added rate limiting to all endpoints
-  - AI-MEDIUM-2: Added `type` parameter validation (enum)
-  - AI-MEDIUM-3: Added `area` parameter validation (enum)
-  - AI-MEDIUM-4: Added date format validation for start_date/end_date
-  - AI-MEDIUM-5: Added `report_type` parameter validation (enum)
-  - AI-MEDIUM-6: Added `time_range` parameter validation (enum)
-  - AI-LOW-1: Limited error detail exposure in generate-report
+- v3.27: DDD Migration (2026-01-10)
+  - MASTER-P2-001: Migrated AI Insights to Service layer
+  - Removed direct Repository access (SupabaseAdminStatsRepository)
+  - Now uses domains.stats.ai_insights Service functions
+  - Architecture: API → Service → Repository (DDD compliant)
 - v3.26: Critical bug fixes (Deep Review)
   - AI-CRITICAL-1: Fixed generate_report parameter mismatch
   - AI-HIGH-1: Added error handling to insights/recommendations/behavior-analysis
   - AI-MEDIUM-9: Added OpenAI API timeout (30s)
   - Performance: Limited behavior_analysis data to 50K records
+- v3.25: Security improvements
+  - AI-BROKEN-1: Implemented 3 missing Repository methods
+  - AI-MEDIUM-1: Added rate limiting to all endpoints
+  - AI-MEDIUM-2/3/4/5/6: Parameter validation (enum, date format)
+  - AI-LOW-1: Limited error detail exposure in generate-report
 
 Endpoints:
 - GET /api/admin/ai/insights - Get AI insights
@@ -35,8 +36,7 @@ from enum import Enum
 
 from fastapi import APIRouter, HTTPException, Request, Depends, Query
 
-from core.database import get_database_client
-from infrastructure.repositories import SupabaseAdminStatsRepository
+from domains.stats import get_ai_insights, get_ai_recommendations, get_behavior_analysis
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
 
@@ -112,10 +112,9 @@ async def adm_get_ai_insights(
     if type not in VALID_INSIGHT_TYPES:
         raise HTTPException(400, f"Invalid type. Must be one of: {', '.join(VALID_INSIGHT_TYPES)}")
 
+    # v3.27: MASTER-P2-001 - Use Service layer instead of direct Repository access
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_ai_insights(type)
+        return await get_ai_insights(type)
     except Exception as e:
         logger.error(f"Error fetching AI insights: {e}")
         raise HTTPException(500, "Failed to fetch AI insights")
@@ -158,10 +157,9 @@ async def adm_get_ai_recommendations(
     if area not in VALID_RECOMMENDATION_AREAS:
         raise HTTPException(400, f"Invalid area. Must be one of: {', '.join(VALID_RECOMMENDATION_AREAS)}")
 
+    # v3.27: MASTER-P2-001 - Use Service layer instead of direct Repository access
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_ai_recommendations(area)
+        return await get_ai_recommendations(area)
     except Exception as e:
         logger.error(f"Error fetching AI recommendations: {e}")
         raise HTTPException(500, "Failed to fetch AI recommendations")
@@ -211,10 +209,9 @@ async def adm_get_behavior_analysis(
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
+    # v3.27: MASTER-P2-001 - Use Service layer instead of direct Repository access
     try:
-        db_client = get_database_client()
-        stats_repo = SupabaseAdminStatsRepository(db_client)
-        return await stats_repo.admin_get_behavior_analysis(start_date, end_date)
+        return await get_behavior_analysis(start_date, end_date)
     except Exception as e:
         logger.error(f"Error fetching behavior analysis: {e}")
         raise HTTPException(500, "Failed to fetch behavior analysis")
