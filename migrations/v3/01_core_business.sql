@@ -862,6 +862,48 @@ CREATE TABLE user_generations (
 );
 
 
+-- ============================================================================
+-- Performance Indexes (P1-004 ~ P1-005)
+-- ============================================================================
+
+-- 1. Marketplace listings moderation status index
+CREATE INDEX idx_listings_moderation_status
+ON marketplace_listings(moderation_status)
+WHERE is_deleted = false;
+
+COMMENT ON INDEX idx_listings_moderation_status IS
+'P1-004: Index for filtering listings by moderation status (draft/pending/approved/rejected)';
+
+-- 2. Marketplace listings category + public status composite index
+CREATE INDEX idx_listings_category_public
+ON marketplace_listings(category, is_public)
+WHERE is_deleted = false;
+
+COMMENT ON INDEX idx_listings_category_public IS
+'P1-004: Composite index for public listings browsing by category';
+
+-- 3. User code index (for customer support lookups)
+CREATE INDEX idx_profiles_user_code
+ON profiles(user_code)
+WHERE user_code IS NOT NULL;
+
+COMMENT ON INDEX idx_profiles_user_code IS
+'P1-005: Index for fast user lookup by user_code (26-digit unique identifier)';
+
+-- 4. Credit transactions user + type + date composite index
+CREATE INDEX idx_credit_tx_user_type_date
+ON credit_transactions(user_id, transaction_type, created_at DESC);
+
+COMMENT ON INDEX idx_credit_tx_user_type_date IS
+'P1-005: Composite index for user credit history queries (most common access pattern)';
+
+-- 5. Credit transactions idempotency key index
+CREATE INDEX idx_credit_tx_idempotency
+ON credit_transactions(idempotency_key)
+WHERE idempotency_key IS NOT NULL;
+
+COMMENT ON INDEX idx_credit_tx_idempotency IS
+'P1-005: Index for idempotency checks (prevents duplicate credit transactions)';
 
 
 -- ============================================================================
