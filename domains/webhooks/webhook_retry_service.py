@@ -118,8 +118,15 @@ class WebhookRetryService:
         for event_record in failed_events:
             event_id = event_record["event_id"]
             retry_count = event_record["retry_count"]
-            created_at = datetime.fromisoformat(event_record["created_at"].replace("Z", "+00:00"))
-            hours_ago = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+
+            # Parse created_at with error handling
+            try:
+                created_at = datetime.fromisoformat(event_record["created_at"].replace("Z", "+00:00"))
+                hours_ago = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+            except (ValueError, KeyError, TypeError) as e:
+                logger.error(f"[Webhook Retry] Invalid created_at for event {event_id}: {e}")
+                stats["skipped"] += 1
+                continue
 
             # Check eligibility
             if not self.should_retry(retry_count, hours_ago):
@@ -189,8 +196,15 @@ class WebhookRetryService:
         for event_record in failed_events:
             event_id = event_record["event_id"]
             retry_count = event_record["retry_count"]
-            created_at = datetime.fromisoformat(event_record["created_at"].replace("Z", "+00:00"))
-            hours_ago = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+
+            # Parse created_at with error handling
+            try:
+                created_at = datetime.fromisoformat(event_record["created_at"].replace("Z", "+00:00"))
+                hours_ago = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
+            except (ValueError, KeyError, TypeError) as e:
+                logger.error(f"[Webhook Retry] Invalid created_at for event {event_id}: {e}")
+                stats["skipped"] += 1
+                continue
 
             # Check eligibility
             if not self.should_retry(retry_count, hours_ago):
