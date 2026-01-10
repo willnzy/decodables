@@ -270,6 +270,23 @@ class Container:
             )
         return self._services['tools']
 
+    @property
+    def system_resources_admin_service(self):
+        """Get system resources admin service instance (v3.0.0)."""
+        from core.database import get_database_client, get_supabase_client
+        from domains.content.system_resources_service import SystemResourcesService
+        from infrastructure.repositories.system_resources_admin_repository import (
+            SupabaseSystemResourcesAdminRepository
+        )
+        if 'system_resources_admin' not in self._services:
+            repository = SupabaseSystemResourcesAdminRepository(get_database_client())
+            storage_client = get_supabase_client()
+            self._services['system_resources_admin'] = SystemResourcesService(
+                repository=repository,
+                storage_client=storage_client,
+            )
+        return self._services['system_resources_admin']
+
     # ========== Command Handlers ==========
 
     @property
@@ -441,6 +458,57 @@ class Container:
         if 'create_error_log_batch' not in self._handlers:
             self._handlers['create_error_log_batch'] = CreateErrorLogBatchHandler(self.logging_service)
         return self._handlers['create_error_log_batch']
+
+    # System Resources Command Handlers (v3.0.0)
+    @property
+    def create_system_resource_handler(self):
+        """Get create system resource handler (v3.0.0)."""
+        from application.commands.system_resources import CreateSystemResourceHandler
+        if 'create_system_resource' not in self._handlers:
+            self._handlers['create_system_resource'] = CreateSystemResourceHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['create_system_resource']
+
+    @property
+    def update_system_resource_handler(self):
+        """Get update system resource handler (v3.0.0)."""
+        from application.commands.system_resources import UpdateSystemResourceHandler
+        if 'update_system_resource' not in self._handlers:
+            self._handlers['update_system_resource'] = UpdateSystemResourceHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['update_system_resource']
+
+    @property
+    def replace_resource_file_handler(self):
+        """Get replace resource file handler (v3.0.0)."""
+        from application.commands.system_resources import ReplaceResourceFileHandler
+        if 'replace_resource_file' not in self._handlers:
+            self._handlers['replace_resource_file'] = ReplaceResourceFileHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['replace_resource_file']
+
+    @property
+    def delete_system_resource_handler(self):
+        """Get delete system resource handler (v3.0.0)."""
+        from application.commands.system_resources import DeleteSystemResourceHandler
+        if 'delete_system_resource' not in self._handlers:
+            self._handlers['delete_system_resource'] = DeleteSystemResourceHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['delete_system_resource']
+
+    @property
+    def batch_operation_handler(self):
+        """Get batch operation handler (v3.0.0)."""
+        from application.commands.system_resources import BatchOperationHandler
+        if 'batch_operation' not in self._handlers:
+            self._handlers['batch_operation'] = BatchOperationHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['batch_operation']
 
     # ========== Query Handlers ==========
 
@@ -639,6 +707,47 @@ class Container:
         if 'get_resource_stats' not in self._handlers:
             self._handlers['get_resource_stats'] = GetResourceStatsHandler(self.content_service)
         return self._handlers['get_resource_stats']
+
+    # System Resources Query Handlers (v3.0.0)
+    @property
+    def list_system_resources_handler(self):
+        """Get list system resources handler (v3.0.0)."""
+        from application.queries.system_resources import ListSystemResourcesHandler
+        if 'list_system_resources' not in self._handlers:
+            self._handlers['list_system_resources'] = ListSystemResourcesHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['list_system_resources']
+
+    @property
+    def get_system_resource_handler(self):
+        """Get system resource by ID handler (v3.0.0)."""
+        from application.queries.system_resources import GetSystemResourceHandler
+        if 'get_system_resource' not in self._handlers:
+            self._handlers['get_system_resource'] = GetSystemResourceHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['get_system_resource']
+
+    @property
+    def get_system_resource_stats_handler(self):
+        """Get system resource stats handler (v3.0.0)."""
+        from application.queries.system_resources import GetResourceStatsHandler
+        if 'get_system_resource_stats' not in self._handlers:
+            self._handlers['get_system_resource_stats'] = GetResourceStatsHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['get_system_resource_stats']
+
+    @property
+    def get_audit_log_handler(self):
+        """Get audit log handler (v3.0.0)."""
+        from application.queries.system_resources import GetAuditLogHandler
+        if 'get_audit_log' not in self._handlers:
+            self._handlers['get_audit_log'] = GetAuditLogHandler(
+                self.system_resources_admin_service
+            )
+        return self._handlers['get_audit_log']
 
     # ========== Utility Methods ==========
 
