@@ -2,9 +2,13 @@
 Marketplace API - Marketplace listings and purchases.
 
 @module api.user.marketplace
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0 (2026-01-10): P2-047 - SSRF protection for listing creation
+  - Added field_validator for thumbnail_url and resource_url in ListingCreateRequest
+  - URLs validated against allowed domains whitelist (Supabase, Fal.ai, etc.)
+  - Prevents SSRF attacks via localhost/private IPs
 - v3.0.0: DDD architecture upgrade - CQRS pattern consistency
   - Created SupportService with report business logic
   - Added 5 new Handlers (GetMyListings, GetSellerStats, GetLeaderboard, CreateReport, GetMyReports)
@@ -36,9 +40,10 @@ import logging
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user, require_member
+from core.utils.validation import validate_thumbnail_url
 from container import get_container
 from infrastructure.rate_limiter import limiter
 
@@ -77,6 +82,9 @@ class ListingCreateRequest(BaseModel):
       - For assets: clipart, sticker, background, icon, etc.
       - For projects: template, mini_book, worksheet, flashcard
     - source: where the asset comes from (system, user, ai, community)
+
+    Security:
+    - P2-047: thumbnail_url and resource_url are validated for SSRF protection
     """
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
@@ -90,6 +98,19 @@ class ListingCreateRequest(BaseModel):
     allowed_tiers: Optional[List[str]] = None
     version: Optional[str] = "1.0"
     changelog: Optional[str] = None
+
+    @field_validator("thumbnail_url", "resource_url")
+    @classmethod
+    def validate_urls(cls, v: Optional[str]) -> Optional[str]:
+        """Validate URLs for SSRF protection (P2-047)."""
+        if v is None:
+            return v
+
+        is_valid, error = validate_thumbnail_url(v)
+        if not is_valid:
+            raise ValueError(f"Invalid URL: {error}")
+
+        return v
 
 
 class ListingUpdateRequest(BaseModel):
