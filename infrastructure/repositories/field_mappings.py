@@ -80,21 +80,24 @@ PROJECTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'project_id',                       # UUID
     'user_id': 'user_id',                     # TEXT (FK to profiles.id)
     'title': 'title',                         # TEXT
-    'description': 'description',             # TEXT
-    'paper_size': 'paper_size',               # TEXT → PaperSize enum
-    'orientation': 'orientation',             # TEXT → Orientation enum
-    'num_pages': 'num_pages',                 # INTEGER
-    'is_public': 'is_public',                 # BOOLEAN
+    'canvas_data': 'canvas_data',             # JSONB
+    'thumbnail_url': 'thumbnail_url',         # TEXT
+    'last_downloaded_hash': 'last_downloaded_hash',  # TEXT
     'marketplace_listing_id': 'listing_id',   # UUID (nullable)
     'source_listing_id': 'source_listing_id', # UUID (nullable) - 购买来源
     'is_purchased': 'is_purchased',           # BOOLEAN
     'origin_owner_id': 'origin_owner_id',     # TEXT (nullable) - 原作者
     'contains_locked_elements': 'contains_locked_elements',  # BOOLEAN
-    'is_deleted': 'is_deleted',               # BOOLEAN
-    'is_permanently_deleted': 'is_permanently_deleted',  # BOOLEAN
-    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'is_hidden_from_trash': 'is_hidden_from_trash',  # BOOLEAN
+    'timezone': 'timezone',                   # TEXT
+    'created_at_local': 'created_at_local',   # TIMESTAMP
+    'updated_at_local': 'updated_at_local',   # TIMESTAMP
+    'metadata': 'metadata',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
+    'is_deleted': 'is_deleted',               # BOOLEAN
+    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'recovery_expires_at': 'recovery_expires_at',  # TIMESTAMPTZ
 }
 
 # ============================================================
@@ -102,25 +105,37 @@ PROJECTS_DB_TO_DOMAIN: Dict[str, str] = {
 # ============================================================
 LISTINGS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'listing_id',                       # UUID
-    'project_id': 'project_id',               # UUID (FK to projects.id)
     'seller_id': 'seller_id',                 # TEXT (FK to profiles.id)
     'title': 'title',                         # TEXT
     'description': 'description',             # TEXT
-    'price_usd': 'price_usd',                 # NUMERIC(10,2)
+    'thumbnail_url': 'thumbnail_url',         # TEXT
+    'resource_url': 'resource_url',           # TEXT
+    'resource_type': 'resource_type',         # TEXT (project/asset/template)
+    'resource_id': 'resource_id',             # UUID
+    'category': 'category',                   # TEXT
+    'source': 'source',                       # TEXT (system/user/ai/community)
     'price_credits': 'price_credits',         # INTEGER
-    'preview_image_url': 'preview_image_url', # TEXT
-    'tags': 'tags',                           # TEXT[]
-    'category': 'category',                   # TEXT → AssetCategory enum
-    'total_purchases': 'total_purchases',     # INTEGER
-    'total_favorites': 'total_favorites',     # INTEGER
-    'avg_rating': 'avg_rating',               # NUMERIC(3,2)
-    'moderation_status': 'moderation_status', # TEXT → ModerationStatus enum
-    'is_featured': 'is_featured',             # BOOLEAN
-    'is_visible': 'is_visible',               # BOOLEAN
-    'is_deleted': 'is_deleted',               # BOOLEAN
-    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'allowed_tiers': 'allowed_tiers',         # TEXT[]
+    'usage_count': 'usage_count',             # BIGINT
+    'sales_count': 'sales_count',             # INTEGER
+    'unique_buyers_count': 'unique_buyers_count',  # INTEGER
+    'total_revenue': 'total_revenue',         # INTEGER
+    'is_public': 'is_public',                 # BOOLEAN
+    'moderation_status': 'moderation_status', # TEXT (draft/pending/approved/rejected)
+    'moderation_note': 'moderation_note',     # TEXT
+    'moderated_by': 'moderated_by',           # TEXT (FK to profiles.id)
+    'moderated_at': 'moderated_at',           # TIMESTAMPTZ
+    'version': 'version',                     # VARCHAR(20)
+    'changelog': 'changelog',                 # TEXT
+    'version_history': 'version_history',     # JSONB
+    'timezone': 'timezone',                   # TEXT
+    'created_at_local': 'created_at_local',   # TIMESTAMP
+    'metadata': 'metadata',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
+    'is_deleted': 'is_deleted',               # BOOLEAN
+    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'recovery_expires_at': 'recovery_expires_at',  # TIMESTAMPTZ
 }
 
 # ============================================================
@@ -128,14 +143,24 @@ LISTINGS_DB_TO_DOMAIN: Dict[str, str] = {
 # ============================================================
 PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'purchase_id',                      # UUID
-    'listing_id': 'listing_id',               # UUID (FK to marketplace_listings.id)
     'user_id': 'buyer_id',                    # TEXT (FK to profiles.id) - 注意: 代码中使用 buyer_id
-    'project_id': 'project_id',               # UUID (FK to projects.id)
-    'price_usd': 'price_usd',                 # NUMERIC(10,2)
-    'price_credits': 'price_credits',         # INTEGER
-    'payment_method': 'payment_method',       # TEXT (usd/credits)
-    'stripe_payment_intent_id': 'stripe_payment_intent_id',  # TEXT
-    'created_at': 'created_at',               # TIMESTAMPTZ
+    'listing_id': 'listing_id',               # UUID (FK to marketplace_listings.id)
+    'price_paid': 'price_paid',               # INTEGER (积分)
+    'idempotency_key': 'idempotency_key',     # TEXT
+    'snapshot_title': 'snapshot_title',       # TEXT
+    'snapshot_thumbnail_url': 'snapshot_thumbnail_url',  # TEXT
+    'snapshot_description': 'snapshot_description',      # TEXT
+    'snapshot_version': 'snapshot_version',   # TEXT
+    'snapshot_resource_type': 'snapshot_resource_type',  # TEXT
+    'snapshot_resource_id': 'snapshot_resource_id',      # UUID
+    'utm_source': 'utm_source',               # TEXT
+    'utm_medium': 'utm_medium',               # TEXT
+    'utm_campaign': 'utm_campaign',           # TEXT
+    'referral_context': 'referral_context',   # TEXT
+    'timezone': 'timezone',                   # TEXT
+    'purchased_at_local': 'purchased_at_local',  # TIMESTAMP
+    'metadata': 'metadata',                   # JSONB
+    'purchased_at': 'purchased_at',           # TIMESTAMPTZ
 }
 
 # ============================================================
@@ -144,8 +169,13 @@ PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
 CONFIGS_DB_TO_DOMAIN: Dict[str, str] = {
     'key': 'config_key',                      # TEXT (PRIMARY KEY)
     'value': 'value',                         # TEXT
+    'value_type': 'value_type',               # TEXT (text/number/integer/boolean/json)
+    'config_group': 'config_group',           # TEXT
     'description': 'description',             # TEXT
-    'is_public': 'is_public',                 # BOOLEAN
+    'is_active': 'is_active',                 # BOOLEAN
+    'is_editable': 'is_editable',             # BOOLEAN
+    'updated_by': 'updated_by',               # TEXT
+    'ext_json': 'ext_json',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
 }
@@ -631,9 +661,6 @@ GENERATION_TASKS_DB_TO_DOMAIN: Dict[str, str] = {
     'started_at': 'started_at',
     'completed_at': 'completed_at',
     'updated_at': 'updated_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
 
 # holidays 表
@@ -1014,9 +1041,6 @@ USER_DISCOUNTS_DB_TO_DOMAIN: Dict[str, str] = {
     'valid_until': 'valid_until',
     'target_plan': 'target_plan',
     'created_at': 'created_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
 
 # user_events 表
@@ -1051,9 +1075,6 @@ USER_GENERATIONS_DB_TO_DOMAIN: Dict[str, str] = {
     'metadata': 'metadata',
     'created_at': 'created_at',
     'completed_at': 'completed_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
 
 # user_onboarding_progress 表
