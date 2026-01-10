@@ -186,8 +186,10 @@ class TestProcessRefund:
         assert result["amount"] == 1000
         assert result["currency"] == "USD"
 
-        mock_payment_repo.create.assert_awaited_once()
-        mock_admin_repo.admin_log_operation.assert_awaited_once()
+        # P0-010: Database record is created by webhook handler, not here
+        # mock_payment_repo.create should NOT be called in process_refund
+        # mock_admin_repo.admin_log_operation is also NOT called here
+        # Both will be handled by the charge.refunded webhook handler
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -930,7 +932,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": None
         }
 
