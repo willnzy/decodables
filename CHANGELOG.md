@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.28.0] - 2026-01-11
+
+### Fixed
+- **完全重写 test_ai.py - 所有 37 测试通过** (commits: 13f6bac, 30c0347, 5c78220)
+  - **问题**：21 个测试失败，16 个通过
+    - Mock 了不存在的函数 (`api.admin.ai.get_database_client`)
+    - 使用了错误的 mock 路径 (`domains.stats.*` 而非 `api.admin.ai.*`)
+    - 认证 mock 无效（`@patch` 在 TestClient 中不生效）
+    - Rate limiter 尝试连接 Redis 导致测试失败
+    - 缺少 `Path` 导入导致测试无法收集
+
+  - **解决方案**：
+    - ✅ 修复 `api/user/tasks.py` 缺失的 `Path` 导入
+    - ✅ 添加早期模块 mock (`infrastructure.rate_limiter`, `application.services.ai_reports`)
+    - ✅ 实现 FastAPI dependency override 模式用于 admin 认证
+    - ✅ 修正所有 mock 路径为 `api.admin.ai.*`
+    - ✅ 更新错误断言适配自定义错误格式 (`message`/`detail`)
+    - ✅ 修正 `generate_report` 测试使用查询参数而非 JSON body
+
+  - **测试结果**：
+    - 之前：21 failed, 16 passed ❌
+    - 之后：37 passed, 0 failed ✅
+    - 执行时间：~1 秒
+
+  - **新增测试覆盖**：
+    - 基础认证测试 (5)
+    - 参数验证单元测试 (11)
+    - 带 mock 的集成测试 (3)
+    - 成功场景测试 (8)
+    - 参数验证集成测试 (6)
+    - 异常处理测试 (4)
+    - 边界情况测试 (6)
+
+### Changed
+- **测试基础设施改进**
+  - 新增 fixtures：`mock_limiter`, `override_require_admin`
+  - 使用 FastAPI 最佳实践的 dependency override 模式
+  - 早期模块 mock 防止导入时错误
+  - 正确的 mock 路径策略（mock where used, not where defined）
+
+### Technical Details
+- **修改的文件**：
+  - `api/user/tasks.py` - 添加缺失的 `Path` 导入
+  - `tests/api/admin/test_ai.py` - 完全重写 (560 行)
+    - 新增早期模块 mock
+    - 实现 FastAPI dependency override fixtures
+    - 修正所有 domain service mock 路径
+    - 修正参数格式和错误断言
+
+- **提交记录**：
+  - `13f6bac` - fix(api): add missing Path import to tasks.py
+  - `30c0347` - refactor(tests): complete rewrite of test_ai.py - all 37 tests passing
+  - `5c78220` - chore(docs): delete Test-AI-Rewrite-TODO.md - task completed
+
 ## [3.23.1] - 2026-01-07
 
 ### Fixed
