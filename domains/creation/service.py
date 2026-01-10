@@ -33,9 +33,9 @@ class CreationService:
 
     # Project limits by tier
     PROJECT_LIMITS = {
-        "free": 5,
-        "starter": 50,
-        "pro": 500,
+        "t1": 5,
+        "t2": 50,
+        "t3": 500,
     }
 
     def __init__(self, repository: IProjectRepository):
@@ -115,7 +115,7 @@ class CreationService:
         title: str,
         canvas_size: Optional[CanvasSize] = None,
         description: Optional[str] = None,
-        user_tier: str = "free"
+        user_tier: str = "t1"
     ) -> Project:
         """
         Create a new project with atomic limit check.
@@ -266,7 +266,7 @@ class CreationService:
         self,
         project_id: str,
         user_id: str,
-        tier: str = "free"
+        tier: str = "t1"
     ) -> Project:
         """
         Duplicate a project with atomic limit check.

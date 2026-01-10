@@ -58,13 +58,13 @@ router = APIRouter(prefix="/subscriptions", tags=["admin-subscriptions-v2"])
 # ==========================================
 
 # v3.25: SUB-MEDIUM-2 - Valid target tiers for downgrade
-VALID_TARGET_TIERS = {"free", "starter"}
+VALID_TARGET_TIERS = {"t1", "t2"}
 
 # v3.25: Monthly credits by tier (from CLAUDE.md business rules)
 TIER_MONTHLY_CREDITS = {
-    "free": 0,
-    "starter": 200,
-    "pro": 500,
+    "t1": 0,
+    "t2": 200,
+    "t3": 500,
 }
 
 

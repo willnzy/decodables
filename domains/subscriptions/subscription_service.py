@@ -357,7 +357,7 @@ class SubscriptionService:
         # Verify user identity (including email)
         user = await self._verify_user_identity(user_id, user_code, user_email)
 
-        current_tier = user.get("tier", "free")
+        current_tier = user.get("tier", "t1")
         target_tier = target_tier.lower()
 
         # P0-012 fix: Validate target tier is valid
@@ -375,11 +375,11 @@ class SubscriptionService:
         customer_id = user.get("stripe_customer_id")
 
         # Route to appropriate handler
-        if target_tier == "free":
+        if target_tier == "t1":
             return await self._downgrade_to_free(
                 user_id, customer_id, current_tier, immediate, reason, admin_id
             )
-        elif current_tier == "pro" and target_tier == "starter":
+        elif current_tier == "t3" and target_tier == "t2":
             return await self._downgrade_pro_to_starter(
                 user_id, customer_id, current_tier, immediate, reason, admin_id
             )
@@ -400,8 +400,8 @@ class SubscriptionService:
 
         # Case 1: No Stripe customer (already free or never subscribed)
         if not customer_id:
-            await self.users_repo.update_subscription_tier(user_id, "free", subscription_status="inactive")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["free"])
+            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
+            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -410,13 +410,13 @@ class SubscriptionService:
                 payment_type="tier_downgrade",
                 metadata={
                     "from_tier": current_tier,
-                    "to_tier": "free",
+                    "to_tier": "t1",
                     "immediate": immediate,
                     "reason": reason,
                     "admin_id": admin_id
                 }
             )
-            return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
+            return {"status": "downgraded", "from_tier": current_tier, "to_tier": "t1"}
 
         # Case 2: Has Stripe customer - check for active subscription
         subscriptions = get_customer_subscriptions(customer_id)
@@ -424,8 +424,8 @@ class SubscriptionService:
 
         if not active_sub:
             # No active subscription - just update tier
-            await self.users_repo.update_subscription_tier(user_id, "free", subscription_status="inactive")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["free"])
+            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
+            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -434,12 +434,12 @@ class SubscriptionService:
                 payment_type="tier_downgrade",
                 metadata={
                     "from_tier": current_tier,
-                    "to_tier": "free",
+                    "to_tier": "t1",
                     "reason": reason,
                     "admin_id": admin_id
                 }
             )
-            return {"status": "downgraded", "from_tier": current_tier, "to_tier": "free"}
+            return {"status": "downgraded", "from_tier": current_tier, "to_tier": "t1"}
 
         # Case 3: Has active subscription - cancel it
         if immediate:
@@ -448,8 +448,8 @@ class SubscriptionService:
                 logger.error(f"[Admin] Failed to cancel subscription {active_sub.id}: {result['error']}")
                 raise HTTPException(400, "Failed to cancel subscription")
 
-            await self.users_repo.update_subscription_tier(user_id, "free", subscription_status="canceled")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["free"])
+            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="canceled")
+            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -458,7 +458,7 @@ class SubscriptionService:
                 payment_type="tier_downgrade",
                 metadata={
                     "from_tier": current_tier,
-                    "to_tier": "free",
+                    "to_tier": "t1",
                     "immediate": True,
                     "subscription_id": active_sub.id,
                     "reason": reason,
@@ -478,7 +478,7 @@ class SubscriptionService:
                 payment_type="tier_downgrade_scheduled",
                 metadata={
                     "from_tier": current_tier,
-                    "to_tier": "free",
+                    "to_tier": "t1",
                     "period_end": str(result['subscription'].current_period_end),
                     "subscription_id": active_sub.id,
                     "reason": reason,
@@ -489,7 +489,7 @@ class SubscriptionService:
         return {
             "status": "downgraded" if immediate else "downgrade_scheduled",
             "from_tier": current_tier,
-            "to_tier": "free",
+            "to_tier": "t1",
             "subscription_id": active_sub.id
         }
 
@@ -535,8 +535,8 @@ class SubscriptionService:
 
         # Update database
         if immediate:
-            await self.users_repo.update_subscription_tier(user_id, "starter", subscription_status="active")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["starter"])
+            await self.users_repo.update_subscription_tier(user_id, "t2", subscription_status="active")
+            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t2"])
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -544,8 +544,8 @@ class SubscriptionService:
                 currency="USD",
                 payment_type="tier_downgrade",
                 metadata={
-                    "from_tier": "pro",
-                    "to_tier": "starter",
+                    "from_tier": "t3",
+                    "to_tier": "t2",
                     "immediate": True,
                     "subscription_id": active_sub.id,
                     "reason": reason,
@@ -559,8 +559,8 @@ class SubscriptionService:
                 currency="USD",
                 payment_type="tier_downgrade_scheduled",
                 metadata={
-                    "from_tier": "pro",
-                    "to_tier": "starter",
+                    "from_tier": "t3",
+                    "to_tier": "t2",
                     "next_billing": str(updated_sub.current_period_end),
                     "subscription_id": active_sub.id,
                     "reason": reason,
@@ -579,8 +579,8 @@ class SubscriptionService:
 
         return {
             "status": "downgraded" if immediate else "downgrade_scheduled",
-            "from_tier": "pro",
-            "to_tier": "starter",
+            "from_tier": "t3",
+            "to_tier": "t2",
             "subscription_id": active_sub.id
         }
 

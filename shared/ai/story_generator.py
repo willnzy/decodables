@@ -88,7 +88,7 @@ def generate_story_json(
     topic: str,
     model: str = None,  # 保留用于向后兼容，但不再使用
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> Optional[dict]:
     """
     生成儿童故事书 JSON 数据
@@ -177,7 +177,7 @@ def generate_story_json(
 async def generate_story_json_async(
     topic: str,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> Optional[dict]:
     """
     异步版本的故事生成函数

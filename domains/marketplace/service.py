@@ -92,7 +92,7 @@ class MarketplaceService:
         price_type: PriceType = PriceType.FREE,
         credit_price: int = 0,
         allowed_tiers: Optional[List[str]] = None,
-        seller_tier: str = "free"
+        seller_tier: str = "t1"
     ) -> Listing:
         """
         Create a new listing.
@@ -117,7 +117,7 @@ class MarketplaceService:
             InvalidListingDataException: If data invalid
         """
         # Only starter+ can publish to marketplace
-        if seller_tier not in ("starter", "pro"):
+        if seller_tier not in ("t2", "t3"):
             raise ListingAccessDeniedException(
                 listing_id="new",
                 user_id=seller_id,
@@ -243,7 +243,7 @@ class MarketplaceService:
         self,
         listing_id: str,
         buyer_id: str,
-        buyer_tier: str = "free"
+        buyer_tier: str = "t1"
     ) -> Listing:
         """
         Purchase a listing.
@@ -287,7 +287,7 @@ class MarketplaceService:
 
         # Premium assets require subscription
         if listing.requires_premium:
-            if buyer_tier not in ("starter", "pro"):
+            if buyer_tier not in ("t2", "t3"):
                 raise PurchaseFailedException(
                     listing_id, buyer_id,
                     "Premium subscription required"

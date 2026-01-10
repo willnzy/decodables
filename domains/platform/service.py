@@ -301,7 +301,7 @@ class PlatformService:
     async def get_user_features(
         self,
         user_id: str,
-        user_tier: str = "free"
+        user_tier: str = "t1"
     ) -> Dict[str, bool]:
         """
         Get all feature flag values for a user.
@@ -322,7 +322,7 @@ class PlatformService:
     async def get_user_experiments(
         self,
         user_id: str,
-        user_tier: str = "free"
+        user_tier: str = "t1"
     ) -> Dict[str, Optional[str]]:
         """
         Get all experiment assignments for a user.

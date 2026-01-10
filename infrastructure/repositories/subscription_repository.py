@@ -98,7 +98,7 @@ class SupabaseSubscriptionRepository:
                 return None
 
             return {
-                "tier": user.get("tier", "free"),
+                "tier": user.get("tier", "t1"),
                 "subscription_status": user.get("subscription_status"),
                 "stripe_customer_id": user.get("stripe_customer_id"),
                 "credits_monthly": user.get("credits_monthly", 0),

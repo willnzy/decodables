@@ -118,7 +118,7 @@ async def my_assets(
     validate_optional_uuid(project_id, "project ID")
 
     # Pro tier check for cross-project scope
-    if scope == "all" and user["tier"] != "pro":
+    if scope == "all" and user["tier"] != "t3":
         from fastapi import HTTPException
         raise HTTPException(403, "Pro required for cross-project history")
 

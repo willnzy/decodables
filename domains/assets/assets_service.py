@@ -256,7 +256,7 @@ class AssetsService:
 
         Args:
             user_id: User ID
-            user_tier: User tier (must be "pro")
+            user_tier: User tier (must be "t3")
             file: Uploaded file
             project_id: Optional project ID
             timezone: User timezone
@@ -268,7 +268,7 @@ class AssetsService:
             HTTPException: If validation fails
         """
         # 1. Pro tier check
-        if user_tier.lower() != "pro":
+        if user_tier.lower() != "t3":
             raise HTTPException(403, "Personal asset upload requires Pro plan.")
 
         # 2. File type validation

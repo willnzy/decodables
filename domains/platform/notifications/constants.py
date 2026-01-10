@@ -13,13 +13,13 @@ v1.0.0: 初始创建
 # ==========================================
 
 # 有效的目标用户组
-VALID_TARGET_GROUPS = {"all", "free", "starter", "pro"}
+VALID_TARGET_GROUPS = {"all", "t1", "t2", "t3"}
 
 # Target Group 常量
 TARGET_GROUP_ALL = "all"
-TARGET_GROUP_FREE = "free"
-TARGET_GROUP_STARTER = "starter"
-TARGET_GROUP_PRO = "pro"
+TARGET_GROUP_FREE = "t1"
+TARGET_GROUP_STARTER = "t2"
+TARGET_GROUP_PRO = "t3"
 
 
 # ==========================================

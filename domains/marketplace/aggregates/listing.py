@@ -45,7 +45,7 @@ class Listing:
     source: ListingSource = ListingSource.USER
     price_type: PriceType = PriceType.FREE
     credit_price: int = 0
-    allowed_tiers: List[str] = field(default_factory=lambda: ["free", "starter", "pro"])
+    allowed_tiers: List[str] = field(default_factory=lambda: ["t1", "t2", "t3"])
     status: ListingStatus = ListingStatus.DRAFT
     stats: ListingStats = field(default_factory=ListingStats)
     is_featured: bool = False
@@ -95,7 +95,7 @@ class Listing:
             source=source,
             price_type=price_type,
             credit_price=credit_price if price_type == PriceType.CREDITS else 0,
-            allowed_tiers=allowed_tiers or ["free", "starter", "pro"],
+            allowed_tiers=allowed_tiers or ["t1", "t2", "t3"],
             status=ListingStatus.DRAFT,
         )
 
@@ -129,7 +129,7 @@ class Listing:
         """Check if listing requires premium subscription."""
         return self.price_type == PriceType.PREMIUM
 
-    def can_access(self, user_id: str, user_tier: str = "free") -> bool:
+    def can_access(self, user_id: str, user_tier: str = "t1") -> bool:
         """
         Check if user can access this listing.
 
@@ -153,7 +153,7 @@ class Listing:
         if self.is_free:
             return True
         # Premium requires paid subscription
-        if self.requires_premium and user_tier in ("starter", "pro"):
+        if self.requires_premium and user_tier in ("t2", "t3"):
             return True
         return False
 

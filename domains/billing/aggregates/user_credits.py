@@ -62,7 +62,7 @@ class UserCredits:
     """
     user_id: str
     balance: Credits
-    tier: str = "free"
+    tier: str = "t1"
     pending_transactions: List[CreditTransaction] = field(default_factory=list)
 
     def __post_init__(self):
@@ -98,14 +98,14 @@ class UserCredits:
             )
 
         # Validate tier (optional, but good practice)
-        valid_tiers = {"free", "starter", "pro", "t1", "t2", "t3"}
+        valid_tiers = {"t1", "t2", "t3", "t1", "t2", "t3"}
         if self.tier and self.tier not in valid_tiers:
             # Soft validation - log warning but don't fail
             # (allows for future tier additions)
             pass
 
     @classmethod
-    def create(cls, user_id: str, monthly: int = 0, permanent: int = 0, tier: str = "free"):
+    def create(cls, user_id: str, monthly: int = 0, permanent: int = 0, tier: str = "t1"):
         """Factory method to create UserCredits."""
         return cls(
             user_id=user_id,
@@ -336,8 +336,8 @@ class UserCredits:
     def get_tier_monthly_allowance(self) -> int:
         """Get monthly credit allowance based on tier."""
         allowances = {
-            "free": 0,
-            "starter": 500,
-            "pro": 1000,
+            "t1": 0,
+            "t2": 500,
+            "t3": 1000,
         }
         return allowances.get(self.tier, 0)

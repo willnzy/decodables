@@ -34,7 +34,7 @@ class ResourceCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=200)  # v3.25: SR-LOW-2
     description: Optional[str] = Field(None, max_length=2000)  # v3.25: SR-LOW-2
     tags: Optional[List[str]] = Field(default=[], max_length=MAX_TAGS)  # v3.25: Limit tags
-    allowed_tiers: Optional[List[str]] = ["free", "starter", "pro"]
+    allowed_tiers: Optional[List[str]] = ["t1", "t2", "t3"]
     sort_order: Optional[int] = Field(0, ge=0, le=10000)  # v3.25: Add bounds
     is_active: Optional[bool] = True
     metadata: Optional[dict] = {}

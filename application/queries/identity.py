@@ -68,7 +68,7 @@ class CheckFeatureAccessResult:
     """Result of feature access check."""
     success: bool
     has_access: bool = False
-    user_tier: str = "free"
+    user_tier: str = "t1"
     error: Optional[str] = None
 
 
@@ -87,7 +87,7 @@ class CheckFeatureAccessHandler:
             )
 
             user = await self._identity_service.get_user(query.user_id)
-            tier = user.tier.value if user else "free"
+            tier = user.tier.value if user else "t1"
 
             return CheckFeatureAccessResult(
                 success=True,

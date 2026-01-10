@@ -213,7 +213,7 @@ class StripeWebhookService:
             return await self._process_credits_purchase(uid, credits_amount, amount_total, currency, session_id)
 
         # Handle subscription purchase (starter, pro)
-        elif plan in ["starter", "pro"]:
+        elif plan in ["t2", "t3"]:
             return await self._process_subscription_start(uid, plan, amount_total, currency, session, session_id)
 
         return {"status": "ok"}
@@ -330,7 +330,7 @@ class StripeWebhookService:
             logger.error(f"[Webhook] Missing customer_id in checkout session for user {uid}")
             return {"status": "error", "error": "missing_customer_id", "user_id": uid}
 
-        amt = 500 if plan == "starter" else 1000
+        amt = 500 if plan == "t2" else 1000
 
         # Try atomic RPC for subscription creation
         try:
@@ -427,17 +427,17 @@ class StripeWebhookService:
 
         user = user_res.data[0]
         uid = user["id"]
-        tier = user.get("tier", "free")
+        tier = user.get("tier", "t1")
         current_status = user.get("subscription_status", "inactive")
 
         # Handle subscription renewal (monthly refresh)
-        if tier in ["starter", "pro"] and billing_reason == "subscription_cycle":
+        if tier in ["t2", "t3"] and billing_reason == "subscription_cycle":
             return await self._process_subscription_renewal(
                 uid, tier, current_status, amount_paid, currency, invoice_id
             )
 
         # Handle subscription_create billing reason (first subscription confirmation)
-        if billing_reason == "subscription_create" and tier in ["starter", "pro"]:
+        if billing_reason == "subscription_create" and tier in ["t2", "t3"]:
             if current_status != "active":
                 try:
                     self.supabase.table("profiles").update({
@@ -559,7 +559,7 @@ class StripeWebhookService:
             return {"status": "error", "error": "user_not_found", "customer_id": customer_id}
 
         uid = user_res.data[0]["id"]
-        current_tier = user_res.data[0].get("tier", "free")
+        current_tier = user_res.data[0].get("tier", "t1")
 
         # Handle termination statuses
         termination_statuses = ["canceled", "unpaid", "past_due", "incomplete_expired"]
@@ -602,7 +602,7 @@ class StripeWebhookService:
         """
         # Downgrade to free
         try:
-            await self.user_repo.update_subscription_tier(uid, "free", subscription_status="inactive")
+            await self.user_repo.update_subscription_tier(uid, "t1", subscription_status="inactive")
             logger.info(f"[Webhook] Downgraded user {uid} to free tier (was {current_tier}), reason: {status}")
         except Exception as e:
             logger.error(f"[Webhook] Failed to downgrade user {uid}: {e}")
@@ -650,10 +650,10 @@ class StripeWebhookService:
         new_tier = get_tier_from_price_id(price_id)
 
         # Handle unknown price_id
-        if new_tier == "free":
+        if new_tier == "t1":
             logger.warning(f"[Webhook] Unknown price_id '{price_id}' for user {uid}, keeping current tier {current_tier}")
             # Don't downgrade to free for unknown price - could be a new plan not yet configured
-            new_tier = current_tier if current_tier in ["starter", "pro"] else "free"
+            new_tier = current_tier if current_tier in ["t2", "t3"] else "t1"
 
         # Update tier
         try:

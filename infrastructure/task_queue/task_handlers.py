@@ -44,7 +44,7 @@ class ImageGenerationHandler:
     def __init__(self, task_data: Dict[str, Any]):
         self.task_id = task_data.get("task_id")
         self.user_id = task_data.get("user_id")
-        self.tier = task_data.get("tier", "free")
+        self.tier = task_data.get("tier", "t1")
         self.params = task_data.get("params", {})
         self.worker_id = f"worker_{os.getpid()}"
         

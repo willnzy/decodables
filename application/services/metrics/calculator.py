@@ -100,14 +100,14 @@ class MetricsCalculator:
         
         by_tier = defaultdict(int)
         for user in result.data or []:
-            tier = user.get("tier", "free")
+            tier = user.get("tier", "t1")
             by_tier[tier] += 1
         
         return {
             "total": len(result.data or []),
-            "free": by_tier.get("free", 0),
-            "starter": by_tier.get("starter", 0),
-            "pro": by_tier.get("pro", 0),
+            "t1": by_tier.get("t1", 0),
+            "t2": by_tier.get("t2", 0),
+            "t3": by_tier.get("t3", 0),
         }
     
     def calculate_mrr(self, target_date: date) -> Dict:
@@ -119,7 +119,7 @@ class MetricsCalculator:
         subscriber_count = defaultdict(int)
         
         for user in result.data or []:
-            tier = user.get("tier", "free")
+            tier = user.get("tier", "t1")
             if tier in TIER_PRICING:
                 mrr_by_tier[tier] += Decimal(TIER_PRICING[tier]) / 100
                 subscriber_count[tier] += 1
@@ -190,7 +190,7 @@ class MetricsCalculator:
         
         # Converted to paid
         paid = self.supabase.table("profiles").select("id", count="exact")\
-            .neq("tier", "free").eq("subscription_status", "active")\
+            .neq("tier", "t1").eq("subscription_status", "active")\
             .lte("created_at", end_ts).execute()
         
         total = signups.count or 1

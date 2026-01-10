@@ -64,7 +64,7 @@ class SystemResource:
             resource_type: Type of resource
             url: Resource URL
             category: Resource category
-            allowed_tiers: Tiers that can access (defaults to ["free"])
+            allowed_tiers: Tiers that can access (defaults to ["t1"])
             name: Display name
             tags: Search tags
 
@@ -73,7 +73,7 @@ class SystemResource:
         """
         import uuid
 
-        access_control = AccessControl(allowed_tiers=allowed_tiers or ["free"])
+        access_control = AccessControl(allowed_tiers=allowed_tiers or ["t1"])
         metadata = ResourceMetadata(name=name, tags=tags) if (name or tags) else None
 
         return cls(
@@ -100,7 +100,7 @@ class SystemResource:
         """
         # PRD v3.2: Projects are Pro-only
         if self.resource_type == ResourceType.PROJECT:
-            return user_tier == "pro"
+            return user_tier == "t3"
 
         # Other resources follow allowed_tiers
         return self.access_control.is_accessible_by_tier(user_tier)

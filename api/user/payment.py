@@ -53,7 +53,7 @@ def get_payment_service() -> PaymentService:
     return PaymentService()
 
 # v2.2.0: Valid plan types - subscriptions and credit packages
-VALID_PLAN_TYPES = {"starter", "pro", "credits_100", "credits_500", "credits_2000"}
+VALID_PLAN_TYPES = {"t2", "t3", "credits_100", "credits_500", "credits_2000"}
 PLAN_TYPE_PATTERN = "^(starter|pro|credits_100|credits_500|credits_2000)$"
 
 

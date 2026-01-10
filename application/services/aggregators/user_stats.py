@@ -33,7 +33,7 @@ def aggregate_daily_user_stats():
             .lt("created_at", next_date.isoformat()).execute()
         unique_active = len(set(a.get("user_id") for a in active_users.data or []))
         
-        tier_counts = {"free": 0, "starter": 0, "pro": 0}
+        tier_counts = {"t1": 0, "t2": 0, "t3": 0}
         for tier in tier_counts:
             count = supabase.table("profiles").select("id", count="exact")\
                 .eq("tier", tier)\
@@ -44,9 +44,9 @@ def aggregate_daily_user_stats():
         upsert_stats("daily_users", {
             "new_users": new_users.count or 0,
             "active_users": unique_active,
-            "new_free": tier_counts["free"],
-            "new_starter": tier_counts["starter"],
-            "new_pro": tier_counts["pro"]
+            "new_free": tier_counts["t1"],
+            "new_starter": tier_counts["t2"],
+            "new_pro": tier_counts["t3"]
         }, date)
     
     log("✅ Daily user stats complete")
@@ -60,7 +60,7 @@ def aggregate_tier_distribution():
         return
     
     distribution = {}
-    for tier in ["free", "starter", "pro"]:
+    for tier in ["t1", "t2", "t3"]:
         count = supabase.table("profiles").select("id", count="exact").eq("tier", tier).execute()
         distribution[tier] = count.count or 0
     
@@ -164,7 +164,7 @@ def aggregate_tier_trend():
         date = date.replace(hour=23, minute=59, second=59)
         
         tier_data = {}
-        for tier in ["free", "starter", "pro"]:
+        for tier in ["t1", "t2", "t3"]:
             count = supabase.table("profiles").select("id", count="exact")\
                 .eq("tier", tier)\
                 .lte("created_at", date.isoformat()).execute()
@@ -198,9 +198,9 @@ def aggregate_tier_conversion():
         profile = supabase.table("profiles").select("tier").eq("id", uid).execute()
         if profile.data:
             tier = profile.data[0].get("tier")
-            if tier == "starter":
+            if tier == "t2":
                 conversion_data["free_to_starter"] += 1
-            elif tier == "pro":
+            elif tier == "t3":
                 conversion_data["free_to_pro"] += 1
     
     upsert_stats("tier_conversion", conversion_data)

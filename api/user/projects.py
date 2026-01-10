@@ -282,7 +282,7 @@ async def create_project(
     container = get_container()
     handler = container.create_project_handler
 
-    tier = (user.get("tier") or "free").lower()
+    tier = (user.get("tier") or "t1").lower()
 
     command = CreateProjectCommand(
         user_id=user["id"],
@@ -489,7 +489,7 @@ async def duplicate_project(
     container = get_container()
     creation_service = container.creation_service
 
-    tier = (user.get("tier") or "free").lower()
+    tier = (user.get("tier") or "t1").lower()
 
     try:
         # Service returns Project directly, not a Result object

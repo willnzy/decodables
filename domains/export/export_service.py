@@ -178,18 +178,18 @@ class ExportService:
         Args:
             user_id: User ID for ownership verification
             project_id: Project ID to export
-            tier: User tier (must be "pro")
+            tier: User tier (must be "t3")
 
         Returns:
             tuple: (ZIP buffer, sanitized filename)
 
         Raises:
-            InsufficientPermissionException: If tier is not "pro"
+            InsufficientPermissionException: If tier is not "t3"
             ProjectNotFoundException: If project not found or access denied
             ExportException: If no valid URLs or ZIP generation fails
         """
         # Verify Pro tier
-        if tier.lower() != "pro":
+        if tier.lower() != "t3":
             raise InsufficientPermissionException("ZIP export requires Pro plan")
 
         # Get and verify project
@@ -235,18 +235,18 @@ class ExportService:
         Args:
             user_id: User ID for logging
             image_urls: List of image URLs (already validated by Pydantic)
-            tier: User tier (must be "pro")
+            tier: User tier (must be "t3")
             project_id: Optional project ID for logging
 
         Returns:
             BytesIO: ZIP buffer
 
         Raises:
-            InsufficientPermissionException: If tier is not "pro"
+            InsufficientPermissionException: If tier is not "t3"
             ExportException: If ZIP generation fails
         """
         # Verify Pro tier
-        if tier.lower() != "pro":
+        if tier.lower() != "t3":
             raise InsufficientPermissionException("ZIP export requires Pro plan")
 
         # Create ZIP

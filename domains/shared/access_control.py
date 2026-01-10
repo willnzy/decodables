@@ -25,10 +25,10 @@ def is_member(user: Dict[str, Any]) -> bool:
     if not user:
         return False
 
-    tier = user.get("tier", "free")
+    tier = user.get("tier", "t1")
     subscription_status = user.get("subscription_status", "inactive")
 
-    if tier in ["starter", "pro"]:
+    if tier in ["t2", "t3"]:
         return subscription_status in ["active", "trialing"]
 
     return False
@@ -45,7 +45,7 @@ def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
 
     Args:
         user: User profile dict with tier
-        allowed_tiers: List of allowed tiers (e.g., ["starter", "pro"])
+        allowed_tiers: List of allowed tiers (e.g., ["t2", "t3"])
 
     Returns:
         True if user can access resource
@@ -53,14 +53,14 @@ def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
     if not user or not allowed_tiers:
         return False
 
-    user_tier = user.get("tier", "free")
+    user_tier = user.get("tier", "t1")
 
     # Check exact match or "all"
     if "all" in allowed_tiers or user_tier in allowed_tiers:
         return True
 
     # Check tier hierarchy
-    tier_hierarchy = {"free": 0, "starter": 1, "pro": 2}
+    tier_hierarchy = {"t1": 0, "t2": 1, "t3": 2}
     user_level = tier_hierarchy.get(user_tier, 0)
 
     for allowed in allowed_tiers:
@@ -121,7 +121,7 @@ def validate_allowed_tiers(allowed_tiers: List[str]) -> Dict[str, Any]:
     Returns:
         Dict with valid (bool), tiers (list), and optional reason (str)
     """
-    valid_tiers = ["free", "starter", "pro", "all"]
+    valid_tiers = ["t1", "t2", "t3", "all"]
 
     if not allowed_tiers:
         return {"valid": True, "tiers": ["all"]}
@@ -186,14 +186,14 @@ class AccessControl:
         if not user:
             return False
 
-        tier = (user.get("tier") or "free").lower()
+        tier = (user.get("tier") or "t1").lower()
 
         # Pro users always have access
-        if tier == "pro":
+        if tier == "t3":
             return True
 
         # Free users can use during trial
-        if tier == "free" and is_trial:
+        if tier == "t1" and is_trial:
             return True
 
         return False

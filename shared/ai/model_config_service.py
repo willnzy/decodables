@@ -32,9 +32,9 @@ def get_model_configs() -> Dict[str, Any]:
     return {
         "text": get_text_model_config(),
         "image": {
-            "free": get_image_model_config("free"),
-            "starter": get_image_model_config("starter"),
-            "pro": get_image_model_config("pro"),
+            "t1": get_image_model_config("t1"),
+            "t2": get_image_model_config("t2"),
+            "t3": get_image_model_config("t3"),
         },
         "admin": get_admin_model_config(),
         "enabled_providers": get_enabled_providers(),

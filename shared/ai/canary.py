@@ -47,13 +47,13 @@ async def get_canary_config() -> Dict[str, Any]:
                 "canary_provider": "qwen",
                 "canary_model": "qwen-plus",
                 "traffic_percent": 10,
-                "target_tiers": ["pro"]
+                "target_tiers": ["t3"]
             },
             "image_generation": {
                 "canary_provider": "jimeng",
                 "canary_model": "jimeng-2.1",
                 "traffic_percent": 5,
-                "target_tiers": ["pro"]
+                "target_tiers": ["t3"]
             }
         }
     """
@@ -64,7 +64,7 @@ async def get_canary_config() -> Dict[str, Any]:
 async def should_use_canary(
     user_id: str,
     model_type: str,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> Tuple[bool, Optional[Dict[str, str]]]:
     """
     判断是否应该使用灰度模型
@@ -201,7 +201,7 @@ async def get_canary_status() -> Dict[str, Any]:
                 "canary_provider": "qwen",
                 "canary_model": "qwen-plus",
                 "traffic_percent": 10,
-                "target_tiers": ["pro"]
+                "target_tiers": ["t3"]
             },
             "image_generation": {...}
         }

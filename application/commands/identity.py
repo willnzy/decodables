@@ -129,7 +129,7 @@ class UpdateUserTierCommand:
     Triggered by Stripe webhook on subscription change.
     """
     user_id: str
-    new_tier: str  # "free", "starter", "pro"
+    new_tier: str  # "t1", "t2", "t3"
     stripe_customer_id: Optional[str] = None
     is_upgrade: bool = True
 

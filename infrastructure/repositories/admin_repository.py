@@ -178,7 +178,7 @@ class SupabaseAdminStatsRepository:
         total_users = self.client.table("profiles").select("id", count="exact").execute()
         new_users = self.client.table("profiles").select("id", count="exact").gte("created_at", start_date).execute()
         total_projects = self.client.table("projects").select("id", count="exact").eq("is_deleted", False).execute()
-        paying = self.client.table("profiles").select("id", count="exact").neq("tier", "free").eq("subscription_status", "active").execute()
+        paying = self.client.table("profiles").select("id", count="exact").neq("tier", "t1").eq("subscription_status", "active").execute()
         
         return {
             "total_users": total_users.count or 0,
@@ -216,11 +216,11 @@ class SupabaseAdminStatsRepository:
         """
         result = self.client.table("profiles").select("tier").limit(100000).execute()
 
-        distribution = {"free": 0, "starter": 0, "pro": 0}
+        distribution = {"t1": 0, "t2": 0, "t3": 0}
         total_fetched = len(result.data or [])
 
         for row in (result.data or []):
-            tier = row.get("tier", "free")
+            tier = row.get("tier", "t1")
             if tier in distribution:
                 distribution[tier] += 1
 
@@ -274,7 +274,7 @@ class SupabaseAdminStatsRepository:
         created_project = self.client.table("projects").select("user_id").gte("created_at", start_date).limit(100000).execute()
         unique_creators = len(set(p["user_id"] for p in (created_project.data or [])))
 
-        converted = self.client.table("profiles").select("id", count="exact").neq("tier", "free").gte("created_at", start_date).execute()
+        converted = self.client.table("profiles").select("id", count="exact").neq("tier", "t1").gte("created_at", start_date).execute()
 
         return {"signups": signups.count or 0, "created_project": unique_creators, "converted": converted.count or 0}
 
@@ -555,7 +555,7 @@ class SupabaseAdminStatsRepository:
         # Get revenue insight
         if insight_type in ("all", "revenue"):
             paying_stats = self.client.table("profiles").select("id", count="exact").neq(
-                "tier", "free"
+                "tier", "t1"
             ).eq("subscription_status", "active").execute()
             paying_users = paying_stats.count or 0
 
@@ -648,7 +648,7 @@ class SupabaseAdminStatsRepository:
                 total_users_count = total_users.count or 0
 
             paying_users = self.client.table("profiles").select("id", count="exact").neq(
-                "tier", "free"
+                "tier", "t1"
             ).execute()
 
             paying = paying_users.count or 0
@@ -722,9 +722,9 @@ class SupabaseAdminStatsRepository:
 
         # Get user segments (use count aggregation for efficiency)
         tier_dist = self.client.table("profiles").select("tier").execute()
-        segments = {"free": 0, "starter": 0, "pro": 0}
+        segments = {"t1": 0, "t2": 0, "t3": 0}
         for profile in (tier_dist.data or []):
-            tier = profile.get("tier", "free")
+            tier = profile.get("tier", "t1")
             if tier in segments:
                 segments[tier] += 1
 

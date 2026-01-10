@@ -46,9 +46,9 @@ DEFAULT_TEXT_CONFIG = {
 DEFAULT_IMAGE_CONFIG = {
     "provider": "fal",
     "models": {
-        "free": "flux-schnell",
-        "starter": "flux-schnell",
-        "pro": "flux-dev"
+        "t1": "flux-schnell",
+        "t2": "flux-schnell",
+        "t3": "flux-dev"
     },
     "fallback": {"provider": "fal", "model": "flux-schnell"},
     "show_provider": False
@@ -95,7 +95,7 @@ async def get_text_model_config() -> Dict[str, Any]:
     return config
 
 
-async def get_image_model_config(tier: str = "free") -> Dict[str, Any]:
+async def get_image_model_config(tier: str = "t1") -> Dict[str, Any]:
     """
     获取用户图像生成模型配置
 
@@ -118,7 +118,7 @@ async def get_image_model_config(tier: str = "free") -> Dict[str, Any]:
 
     # 根据 tier 选择具体模型
     models = config.get("models", DEFAULT_IMAGE_CONFIG["models"])
-    model = models.get(tier, models.get("free", "flux-schnell"))
+    model = models.get(tier, models.get("t1", "flux-schnell"))
 
     return {
         "provider": config.get("provider", "fal"),

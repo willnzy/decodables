@@ -53,7 +53,7 @@ class IPaymentService(ABC):
 
         Args:
             user_id: User ID
-            plan_type: Plan identifier (e.g., "credits_100", "starter", "pro")
+            plan_type: Plan identifier (e.g., "credits_100", "t2", "t3")
             discount_percent: Discount percentage (0-100)
             metadata: Additional metadata to attach
 

@@ -115,7 +115,7 @@ class AccessControl:
 
     def __post_init__(self):
         # Validate allowed_tiers
-        valid_tiers = {"free", "starter", "pro"}
+        valid_tiers = {"t1", "t2", "t3"}
         if not all(tier in valid_tiers for tier in self.allowed_tiers):
             raise ValueError(f"Invalid tiers. Must be subset of {valid_tiers}")
 
@@ -130,14 +130,14 @@ class AccessControl:
     @classmethod
     def free_tier(cls):
         """Create free tier access."""
-        return cls(allowed_tiers=["free"])
+        return cls(allowed_tiers=["t1"])
 
     @classmethod
     def starter_plus(cls):
         """Create starter+ access."""
-        return cls(allowed_tiers=["starter", "pro"])
+        return cls(allowed_tiers=["t2", "t3"])
 
     @classmethod
     def pro_only(cls):
         """Create pro-only access."""
-        return cls(allowed_tiers=["pro"])
+        return cls(allowed_tiers=["t3"])

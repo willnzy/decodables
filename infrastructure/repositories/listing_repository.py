@@ -528,7 +528,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             source = ListingSource.USER
 
         # Parse allowed_tiers
-        allowed_tiers = row.get("allowed_tiers", ["free", "starter", "pro"])
+        allowed_tiers = row.get("allowed_tiers", ["t1", "t2", "t3"])
         if isinstance(allowed_tiers, str):
             allowed_tiers = [allowed_tiers]
 
@@ -539,7 +539,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             category=category,
             metadata=metadata,
             source=source,
-            price_type=PriceType(row.get("price_type", "free")),
+            price_type=PriceType(row.get("price_type", "t1")),
             credit_price=row.get("credit_price", 0),
             allowed_tiers=allowed_tiers,
             status=ListingStatus(row.get("status", "draft")),

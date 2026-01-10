@@ -110,7 +110,7 @@ class GetExperimentVariantHandler:
 class GetUserFeaturesQuery:
     """Query to get all feature flags for a user."""
     user_id: str
-    user_tier: str = "free"
+    user_tier: str = "t1"
 
 
 @dataclass
@@ -155,7 +155,7 @@ class GetUserFeaturesHandler:
 class GetUserExperimentsQuery:
     """Query to get all experiment assignments for a user."""
     user_id: str
-    user_tier: str = "free"
+    user_tier: str = "t1"
 
 
 @dataclass

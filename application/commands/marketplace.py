@@ -34,12 +34,12 @@ class CreateListingCommand:
     title: str = ""
     description: Optional[str] = None
     source: str = "user"  # ListingSource value: "system", "user", "ai", "community"
-    price_type: str = "free"  # "free", "premium", "credits"
+    price_type: str = "t1"  # "t1", "premium", "credits"
     credit_price: int = 0
-    allowed_tiers: Optional[List[str]] = None  # ["free", "starter", "pro"]
+    allowed_tiers: Optional[List[str]] = None  # ["t1", "t2", "t3"]
     tags: Optional[List[str]] = None
     preview_url: Optional[str] = None
-    seller_tier: str = "free"
+    seller_tier: str = "t1"
 
 
 @dataclass
@@ -195,7 +195,7 @@ class PurchaseListingCommand:
     """
     listing_id: str
     buyer_id: str
-    buyer_tier: str = "free"
+    buyer_tier: str = "t1"
 
 
 @dataclass

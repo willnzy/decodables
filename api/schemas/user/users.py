@@ -15,7 +15,7 @@ class UserProfile(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
     avatar_url: Optional[str] = None
-    tier: str = "free"
+    tier: str = "t1"
     subscription_status: str = "inactive"
     credits_monthly: int = 0
     credits_permanent: int = 0

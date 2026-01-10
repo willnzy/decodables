@@ -132,16 +132,16 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         """Count resources by tier requirement."""
         result = self.client.table("system_resources").select("allowed_tiers").execute()
 
-        counts = {"free": 0, "starter": 0, "pro": 0}
+        counts = {"t1": 0, "t2": 0, "t3": 0}
 
         for row in (result.data or []):
             allowed_tiers = row.get("allowed_tiers", [])
-            if "free" in allowed_tiers:
-                counts["free"] += 1
-            elif "starter" in allowed_tiers:
-                counts["starter"] += 1
-            elif "pro" in allowed_tiers:
-                counts["pro"] += 1
+            if "t1" in allowed_tiers:
+                counts["t1"] += 1
+            elif "t2" in allowed_tiers:
+                counts["t2"] += 1
+            elif "t3" in allowed_tiers:
+                counts["t3"] += 1
 
         return counts
 
@@ -157,7 +157,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         """
         resource_type = ResourceType(row["type"])
         category = ResourceCategory(row["category"]) if row.get("category") else None
-        access_control = AccessControl(allowed_tiers=row.get("allowed_tiers", ["free"]))
+        access_control = AccessControl(allowed_tiers=row.get("allowed_tiers", ["t1"]))
 
         metadata = None
         if row.get("name") or row.get("tags"):

@@ -132,7 +132,7 @@ class ListingSource(str, Enum):
 
 class PriceType(str, Enum):
     """Pricing model types."""
-    FREE = "free"
+    FREE = "t1"
     PREMIUM = "premium"  # Requires paid subscription
     CREDITS = "credits"  # Pay with credits
 
@@ -149,7 +149,7 @@ class ListingSortOrder(str, Enum):
 class PriceFilter(str, Enum):
     """Price filter options."""
     ALL = "all"
-    FREE = "free"
+    FREE = "t1"
     PAID = "paid"
 
 

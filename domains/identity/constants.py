@@ -97,9 +97,9 @@ def normalize_tier(tier: str) -> str:
     Normalize tier string to system code.
 
     Handles backward compatibility for legacy tier names:
-    - "free" / "Free Plan" → "t1"
-    - "starter" / "Starter Plan" → "t2"
-    - "pro" / "Pro Plan" → "t3"
+    - "t1" / "Free Plan" → "t1"
+    - "t2" / "Starter Plan" → "t2"
+    - "t3" / "Pro Plan" → "t3"
 
     Args:
         tier: Tier string (can be legacy name or system code)
@@ -117,11 +117,11 @@ def normalize_tier(tier: str) -> str:
 
     # Legacy name mappings
     legacy_mappings = {
-        "free": TIER_T1,
+        "t1": TIER_T1,
         "free plan": TIER_T1,
-        "starter": TIER_T2,
+        "t2": TIER_T2,
         "starter plan": TIER_T2,
-        "pro": TIER_T3,
+        "t3": TIER_T3,
         "pro plan": TIER_T3,
     }
 

@@ -30,9 +30,9 @@ TASK_TIMEOUT_DEFAULT = 120  # 2 minutes default
 
 # Priority mapping: tier -> queue
 TIER_PRIORITY = {
-    "pro": QUEUE_HIGH,
-    "starter": QUEUE_DEFAULT,
-    "free": QUEUE_LOW,
+    "t3": QUEUE_HIGH,
+    "t2": QUEUE_DEFAULT,
+    "t1": QUEUE_LOW,
 }
 
 
@@ -77,7 +77,7 @@ class TaskQueueService:
         """Check if queue service is available."""
         return self._ensure_initialized()
     
-    def _get_queue(self, tier: str = "free") -> Optional[Queue]:
+    def _get_queue(self, tier: str = "t1") -> Optional[Queue]:
         """Get appropriate queue based on user tier."""
         if not self._ensure_initialized():
             return None
@@ -95,7 +95,7 @@ class TaskQueueService:
         self,
         user_id: str,
         params: Dict[str, Any],
-        tier: str = "free",
+        tier: str = "t1",
         idempotency_key: Optional[str] = None
     ) -> Optional[str]:
         """

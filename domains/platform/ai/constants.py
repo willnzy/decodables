@@ -71,9 +71,9 @@ CACHE_PREFIX_ALL = "md:ai:*"
 # 用户等级 (Tier)
 # ==========================================
 
-TIER_FREE = "free"
-TIER_STARTER = "starter"
-TIER_PRO = "pro"
+TIER_FREE = "t1"
+TIER_STARTER = "t2"
+TIER_PRO = "t3"
 TIER_ALL = "all"
 
 VALID_TIERS = {TIER_FREE, TIER_STARTER, TIER_PRO, TIER_ALL}

@@ -135,7 +135,7 @@ def check_prompt_safety(prompts: List[str]) -> bool:
 
 def get_model_for_tier(tier: str) -> str:
     """Get AI model based on user tier."""
-    return "flux-dev" if tier == "pro" else "flux-schnell"
+    return "flux-dev" if tier == "t3" else "flux-schnell"
 
 
 def validate_generation_mode(mode: Optional[str]) -> str:
@@ -215,7 +215,7 @@ def enhance_prompts(
     mode: str = "guided",
     creativity_level: float = 0.3,
     user_id: str = None,
-    tier: str = "free",
+    tier: str = "t1",
     who: Optional[str] = None,
     what: Optional[str] = None,
     where: Optional[str] = None,

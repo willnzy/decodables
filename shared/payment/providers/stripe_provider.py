@@ -145,7 +145,7 @@ class StripePaymentProvider(IPaymentService):
 
             return SubscriptionInfo(
                 status=status,
-                tier=result.get("tier", "free"),
+                tier=result.get("tier", "t1"),
                 current_period_end=result.get("current_period_end"),
                 cancel_at_period_end=False  # Not provided by existing service
             )

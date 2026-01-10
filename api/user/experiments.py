@@ -33,7 +33,7 @@ class AssignmentRequest(BaseModel):
 
     Attributes:
         user_identifier: User ID or anonymous ID (e.g., "user_123", "anon_abc")
-        user_properties: Optional user properties for targeting (e.g., {"tier": "pro"})
+        user_properties: Optional user properties for targeting (e.g., {"tier": "t3"})
     """
     user_identifier: str
     user_properties: Optional[Dict[str, Any]] = None

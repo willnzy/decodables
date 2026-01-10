@@ -25,12 +25,12 @@ Usage:
     await track_event_async(
         event_name=AnalyticsEvents.CHECKOUT_COMPLETED,
         user_id="user_123", 
-        properties={"amount_cents": 2990, "plan": "pro"}
+        properties={"amount_cents": 2990, "plan": "t3"}
     )
     
     # Convenience functions
     track_ai_generation(user_id, success=True, model="flux", cost_credits=5)
-    track_payment(user_id, "checkout_completed", amount_cents=2990, plan="pro")
+    track_payment(user_id, "checkout_completed", amount_cents=2990, plan="t3")
 
 Architecture:
     - Uses thread pool for non-blocking writes in sync contexts
@@ -237,7 +237,7 @@ async def track_event_async(
         await track_event_async(
             AnalyticsEvents.CHECKOUT_COMPLETED,
             user_id="user_123",
-            properties={"amount": 1999, "plan": "pro"}
+            properties={"amount": 1999, "plan": "t3"}
         )
     """
     import asyncio
@@ -369,7 +369,7 @@ def track_payment(
             user_id="user_123",
             event_type="checkout_completed",
             amount_cents=2990,
-            plan="pro",
+            plan="t3",
             stripe_payment_id="pi_xxx"
         )
     """

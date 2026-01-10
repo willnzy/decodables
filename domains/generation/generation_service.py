@@ -384,7 +384,7 @@ class GenerationService:
                 "p_user_id": user_id,
                 "p_task_type": "image_generation",
                 "p_params": task_params,
-                "p_priority": 2 if tier == "pro" else (1 if tier == "starter" else 0),
+                "p_priority": 2 if tier == "t3" else (1 if tier == "t2" else 0),
                 "p_total_steps": len(final_prompts) * num_images,
             }).execute()
         except Exception as e:
@@ -431,7 +431,7 @@ class GenerationService:
             "websocket_url": f"/ws/task/{task_id}",
             "poll_url": f"/api/tasks/{task_id}",
             "model_used": model,
-            "priority": "high" if tier == "pro" else ("normal" if tier == "starter" else "low"),
+            "priority": "high" if tier == "t3" else ("normal" if tier == "t2" else "low"),
         }
 
         if enhanced_prompt_text:

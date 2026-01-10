@@ -45,7 +45,7 @@ class UnifiedTextService:
         self,
         messages: List[Dict[str, str]],
         user_id: Optional[str] = None,
-        tier: str = "free",
+        tier: str = "t1",
         use_admin_model: bool = False,
         use_cache: bool = True,
         temperature: float = 0.7,
@@ -245,7 +245,7 @@ unified_text_service = UnifiedTextService()
 async def chat(
     messages: List[Dict[str, str]],
     user_id: Optional[str] = None,
-    tier: str = "free",
+    tier: str = "t1",
     **kwargs
 ) -> AIResponse:
     """

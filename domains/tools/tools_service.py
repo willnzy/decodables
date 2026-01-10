@@ -118,7 +118,7 @@ class ToolsService:
             HTTPException: 403 if not Pro, 400 if invalid file, 500 if processing fails
         """
         # Check tier access
-        if user.get("tier", "free").lower() != "pro":
+        if user.get("tier", "t1").lower() != "t3":
             raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan")
 
         # Validate file type

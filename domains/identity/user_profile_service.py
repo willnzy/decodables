@@ -239,5 +239,5 @@ class UserProfileService:
         Returns:
             True if user is starter or pro tier
         """
-        tier_normalized = (tier or "free").lower()
-        return tier_normalized in ["starter", "pro"]
+        tier_normalized = (tier or "t1").lower()
+        return tier_normalized in ["t2", "t3"]

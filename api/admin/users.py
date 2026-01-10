@@ -55,7 +55,7 @@ router = APIRouter(tags=["admin-users-v2"])
 # ==========================================
 
 # v3.25: USER-MEDIUM-3 - Valid user tiers
-VALID_TIERS = {"free", "starter", "pro"}
+VALID_TIERS = {"t1", "t2", "t3"}
 
 
 # ==========================================
@@ -207,7 +207,7 @@ async def update_user(
     old_profile = await user_repo.get_profile(uid)
     old_tier = old_profile.get("tier", "unknown") if old_profile else "unknown"
 
-    subscription_status = "active" if req.tier in ["starter", "pro"] else "inactive"
+    subscription_status = "active" if req.tier in ["t2", "t3"] else "inactive"
     await user_repo.update_subscription_tier(uid, req.tier, subscription_status=subscription_status)
 
     await admin_repo.admin_log_operation(

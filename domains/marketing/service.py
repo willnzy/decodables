@@ -231,7 +231,7 @@ class CampaignService:
 
         # C-MEDIUM-1 FIX: 'tier' matches database enum (was 'subscription')
         if target_type == "tier":
-            user_tier = user.get("tier", "free")
+            user_tier = user.get("tier", "t1")
             allowed_tiers = target_config.get("tiers", [])
             return user_tier in allowed_tiers
 

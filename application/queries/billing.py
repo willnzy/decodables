@@ -30,7 +30,7 @@ class GetUserCreditsResult:
     monthly_credits: int = 0
     permanent_credits: int = 0
     total_credits: int = 0
-    tier: str = "free"
+    tier: str = "t1"
     error: Optional[str] = None
 
 
@@ -51,7 +51,7 @@ class GetUserCreditsHandler:
                     monthly_credits=0,
                     permanent_credits=0,
                     total_credits=0,
-                    tier="free",
+                    tier="t1",
                 )
 
             return GetUserCreditsResult(

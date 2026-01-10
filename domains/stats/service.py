@@ -182,7 +182,7 @@ async def get_tier_distribution() -> Dict[str, Any]:
         return distribution
     except Exception as e:
         logger.error(f"[Stats] Failed to get tier distribution: {e}")
-        return {"free": 0, "starter": 0, "pro": 0}
+        return {"t1": 0, "t2": 0, "t3": 0}
 
 
 async def get_conversion_funnel(period: str = "month") -> Dict[str, Any]:

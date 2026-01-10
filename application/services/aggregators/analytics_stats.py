@@ -37,7 +37,7 @@ def aggregate_conversion_funnel():
     
     # Converted to paid
     paid = supabase.table("profiles").select("id", count="exact")\
-        .neq("tier", "free")\
+        .neq("tier", "t1")\
         .gte("created_at", thirty_days_ago.isoformat()).execute()
     
     total_signups = signups.count or 1
@@ -128,7 +128,7 @@ def aggregate_tier_activity():
     
     tier_activity = {}
     
-    for tier in ["free", "starter", "pro"]:
+    for tier in ["t1", "t2", "t3"]:
         # Get users of this tier
         users = supabase.table("profiles").select("id").eq("tier", tier).limit(100).execute()
         user_ids = [u["id"] for u in (users.data or [])]

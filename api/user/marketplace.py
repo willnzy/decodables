@@ -121,7 +121,7 @@ class ListingResponse(BaseModel):
     category: Optional[str] = None  # Specific content type
     source: str = "user"  # system, user, ai, community
     price_credits: int = 0
-    allowed_tiers: List[str] = ["free"]
+    allowed_tiers: List[str] = ["t1"]
     moderation_status: str = "draft"
     usage_count: int = 0
     created_at: Optional[str] = None
@@ -268,10 +268,10 @@ async def create_listing(
     container = get_container()
     handler = container.create_listing_handler
 
-    user_tier = (user.get("tier") or "free").lower()
+    user_tier = (user.get("tier") or "t1").lower()
 
     # Validate publish permission based on tier
-    if user_tier == "starter":
+    if user_tier == "t2":
         if req.resource_type != "asset":
             raise HTTPException(403, "Starter users can only publish assets")
         if req.price_credits > 0:
@@ -285,7 +285,7 @@ async def create_listing(
         category = "template" if req.resource_type == "project" else "element"
 
     # Map price_credits to price_type
-    price_type = "free" if req.price_credits == 0 else "credits"
+    price_type = "t1" if req.price_credits == 0 else "credits"
 
     command = CreateListingCommand(
         seller_id=user["id"],
@@ -428,7 +428,7 @@ async def purchase_listing(
     command = PurchaseListingCommand(
         listing_id=req.listing_id,
         buyer_id=user["id"],
-        buyer_tier=user.get("tier", "free"),
+        buyer_tier=user.get("tier", "t1"),
     )
 
     result = await handler.handle(command)

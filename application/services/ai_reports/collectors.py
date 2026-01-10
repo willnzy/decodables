@@ -88,7 +88,7 @@ def collect_conversion_metrics() -> List[MetricData]:
             .gte("created_at", ranges["current"][0].isoformat()).execute()
         
         paid = supabase.table("profiles").select("id", count="exact")\
-            .neq("tier", "free")\
+            .neq("tier", "t1")\
             .gte("created_at", ranges["current"][0].isoformat()).execute()
         
         current_rate = (paid.count / total.count * 100) if total.count else 0
@@ -99,7 +99,7 @@ def collect_conversion_metrics() -> List[MetricData]:
             .lte("created_at", ranges["previous"][1].isoformat()).execute()
         
         paid_prev = supabase.table("profiles").select("id", count="exact")\
-            .neq("tier", "free")\
+            .neq("tier", "t1")\
             .gte("created_at", ranges["previous"][0].isoformat())\
             .lte("created_at", ranges["previous"][1].isoformat()).execute()
         

@@ -48,7 +48,7 @@ def enhance_prompt(
     mode: str = 'guided',
     creativity_level: float = 0.3,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> dict:
     """Enhance simple theme description into detailed prompt."""
     user_input = f"""Theme: {theme}
@@ -110,7 +110,7 @@ def enhance_asset_prompt(
     mode: str = 'guided',
     creativity_level: float = 0.3,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> dict:
     """Enhance 5W1H structured input into detailed prompt."""
     mood_list = moods or ['warm']
@@ -181,7 +181,7 @@ async def enhance_prompt_async(
     mode: str = 'guided',
     creativity_level: float = 0.3,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> dict:
     """Async version of enhance_prompt."""
     user_input = f"""Theme: {theme}
@@ -237,7 +237,7 @@ async def enhance_asset_prompt_async(
     mode: str = 'guided',
     creativity_level: float = 0.3,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> dict:
     """Async version of enhance_asset_prompt."""
     mood_list = moods or ['warm']

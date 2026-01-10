@@ -66,7 +66,7 @@ class SupabaseCreditRepository(ICreditRepository):
                 user_id=data["id"],  # profiles.id is the user_id
                 monthly=data.get("credits_monthly", 0),
                 permanent=data.get("credits_permanent", 0),
-                tier=data.get("tier", "free"),
+                tier=data.get("tier", "t1"),
             )
         except Exception as e:
             logger.error(f"Failed to get credits for user {user_id}: {e}")
@@ -369,7 +369,7 @@ class SupabaseCreditRepository(ICreditRepository):
                 user_id=data["id"],
                 monthly=data["credits_monthly"],
                 permanent=data["credits_permanent"],
-                tier=data.get("tier", "free"),
+                tier=data.get("tier", "t1"),
             )
 
         except Exception as e:
@@ -631,7 +631,7 @@ class SupabaseCreditRepository(ICreditRepository):
         Returns:
             Dict with credits_monthly or None
         """
-        tier_credits = {"starter": 500, "pro": 1000}
+        tier_credits = {"t2": 500, "t3": 1000}
         amount = tier_credits.get(tier, 0)
 
         if amount == 0:
@@ -663,8 +663,8 @@ class SupabaseCreditRepository(ICreditRepository):
         if not profile:
             return
 
-        tier = profile.get("tier", "free")
-        if tier not in ["starter", "pro"]:
+        tier = profile.get("tier", "t1")
+        if tier not in ["t2", "t3"]:
             return
 
         reset_at = profile.get("credits_reset_at")

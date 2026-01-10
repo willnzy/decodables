@@ -38,8 +38,8 @@ PRICE_MAP = {
     "credits_100": os.environ.get("STRIPE_PRICE_CREDITS_100"),
     "credits_500": os.environ.get("STRIPE_PRICE_CREDITS_500"),
     "credits_2000": os.environ.get("STRIPE_PRICE_CREDITS_2000"),
-    "starter": os.environ.get("STRIPE_PRICE_SUB_STARTER"),
-    "pro": os.environ.get("STRIPE_PRICE_SUB_PRO")
+    "t2": os.environ.get("STRIPE_PRICE_SUB_STARTER"),
+    "t3": os.environ.get("STRIPE_PRICE_SUB_PRO")
 }
 
 # Credit amounts for each plan
@@ -140,7 +140,7 @@ def validate_config() -> Dict[str, Any]:
         warnings.append("STRIPE_WEBHOOK_SECRET (webhooks will fail)")
 
     # Check price IDs
-    required_prices = ["credits_100", "starter", "pro"]
+    required_prices = ["credits_100", "t2", "t3"]
     optional_prices = ["credits_500", "credits_2000"]
 
     for plan in required_prices:
@@ -171,7 +171,7 @@ def validate_config() -> Dict[str, Any]:
 
 def is_configured() -> bool:
     """Check if Stripe is properly configured."""
-    return bool(stripe.api_key) and bool(PRICE_MAP.get("starter")) and bool(PRICE_MAP.get("pro"))
+    return bool(stripe.api_key) and bool(PRICE_MAP.get("t2")) and bool(PRICE_MAP.get("t3"))
 
 
 # ==========================================
@@ -303,7 +303,7 @@ def create_checkout_session(
         logger.error(f"[Stripe] Invalid plan type: {plan_type}")
         raise ValueError(f"Invalid plan type: {plan_type}")
 
-    mode = "subscription" if plan_type in ["starter", "pro"] else "payment"
+    mode = "subscription" if plan_type in ["t2", "t3"] else "payment"
 
     # Generate idempotency key if not provided
     if not idempotency_key:
@@ -435,7 +435,7 @@ def get_subscription_status(customer_id: str) -> Optional[Dict]:
 
         return {
             "status": "inactive",
-            "tier": "free",
+            "tier": "t1",
             "current_period_end": None
         }
     except stripe.error.StripeError as e:

@@ -87,7 +87,7 @@ async def gen_story(
     try:
         result = await story_service.generate_story(
             user_id=user["id"],
-            tier=(user.get("tier") or "free").lower(),
+            tier=(user.get("tier") or "t1").lower(),
             topic=req.topic,
         )
         return result

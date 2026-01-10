@@ -113,7 +113,7 @@ class ResourceItem(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
     tags: Optional[List[str]] = None
-    allowed_tiers: List[str] = ["free"]
+    allowed_tiers: List[str] = ["t1"]
     is_locked: bool = False
 
     class Config:
@@ -161,7 +161,7 @@ async def list_resources(
     if category and category not in VALID_CATEGORIES:
         category = None  # Silently ignore invalid category
 
-    user_tier = user.get("tier", "free") if user else "free"
+    user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
     handler = container.get_resources_handler
@@ -251,7 +251,7 @@ async def get_stickers(
     if category and category not in VALID_CATEGORIES:
         category = None
 
-    user_tier = user.get("tier", "free") if user else "free"
+    user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
     handler = container.get_stickers_handler
@@ -294,7 +294,7 @@ async def get_backgrounds(
     if category and category not in VALID_CATEGORIES:
         category = None
 
-    user_tier = user.get("tier", "free") if user else "free"
+    user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
     handler = container.get_backgrounds_handler
@@ -337,7 +337,7 @@ async def get_templates(
     if category and category not in VALID_CATEGORIES:
         category = None
 
-    user_tier = user.get("tier", "free") if user else "free"
+    user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
     handler = container.get_project_templates_handler
@@ -376,7 +376,7 @@ async def get_resource(
     if not UUID_PATTERN.match(resource_id):
         raise HTTPException(400, "Invalid resource ID format")
 
-    user_tier = user.get("tier", "free") if user else "free"
+    user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
     handler = container.get_resource_by_id_handler

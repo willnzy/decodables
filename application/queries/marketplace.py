@@ -85,7 +85,7 @@ class SearchListingsQuery:
     query: str = ""
     category: Optional[str] = None
     price_type: Optional[str] = None  # Deprecated: use price_filter instead
-    price_filter: Optional[str] = None  # "all" | "free" | "paid"
+    price_filter: Optional[str] = None  # "all" | "t1" | "paid"
     sort_by: Optional[str] = None  # "latest" | "popular" | "price_asc" | "price_desc" | "best_selling"
     tier_filter: Optional[str] = None  # User tier filter
     featured: bool = False

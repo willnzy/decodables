@@ -226,7 +226,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         return UserProfile(
             user_id=row["id"],  # profiles.id is the Clerk user_id
             email=row["email"],
-            tier=UserTier(row.get("tier", "free")),
+            tier=UserTier(row.get("tier", "t1")),
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
             preferences=preferences,
             display_name=row.get("display_name"),
@@ -360,7 +360,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             "avatar_url": avatar_url,
             "first_name": first_name,
             "last_name": last_name,
-            "tier": "free",
+            "tier": "t1",
             "credits_monthly": 0,
             "credits_permanent": 50,  # Signup bonus
             "user_code": user_code,
@@ -399,7 +399,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             update_data["stripe_customer_id"] = stripe_customer_id
 
         # P0-011 fix: Reset monthly credits when downgrading to free tier
-        if tier == "free" or tier == "t1":
+        if tier == "t1" or tier == "t1":
             update_data["credits_monthly"] = 0
 
         result = self.client.table("profiles").update(update_data).eq("id", user_id).execute()

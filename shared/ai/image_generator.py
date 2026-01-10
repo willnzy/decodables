@@ -244,7 +244,7 @@ async def generate_and_upload_single(
     creativity_level: float = 0.3,
     negative_prompt: Optional[str] = None,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> Optional[str]:
     """
     Generate a single image and upload to Supabase Storage.
@@ -346,7 +346,7 @@ async def generate_8_images(
     negative_prompt: Optional[str] = None,
     num_images: int = 1,
     user_id: Optional[str] = None,
-    tier: str = "free"
+    tier: str = "t1"
 ) -> Tuple[List[Optional[str]], str]:
     """
     Generate images using unified AI service.
@@ -431,7 +431,7 @@ async def generate_8_images(
 async def generate_images_async(
     prompts: List[str],
     user_id: Optional[str] = None,
-    tier: str = "free",
+    tier: str = "t1",
     **kwargs
 ) -> Tuple[List[Optional[str]], str]:
     """

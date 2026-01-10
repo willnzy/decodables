@@ -46,9 +46,9 @@ class BillingService:
 
     # Monthly allowances by tier (fallback)
     TIER_ALLOWANCES = {
-        "free": 0,
-        "starter": 500,
-        "pro": 1000,
+        "t1": 0,
+        "t2": 500,
+        "t3": 1000,
     }
 
     # Signup bonus (fallback)

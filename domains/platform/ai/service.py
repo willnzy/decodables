@@ -96,9 +96,9 @@ async def get_model_configs() -> Dict[str, Any]:
         # 并发查询所有配置 (性能优化)
         text, free, starter, pro, admin, providers = await asyncio.gather(
             get_text_model_config(),
-            get_image_model_config("free"),
-            get_image_model_config("starter"),
-            get_image_model_config("pro"),
+            get_image_model_config("t1"),
+            get_image_model_config("t2"),
+            get_image_model_config("t3"),
             get_admin_model_config(),
             get_enabled_providers(),
         )
@@ -106,9 +106,9 @@ async def get_model_configs() -> Dict[str, Any]:
         return {
             "text": text,
             "image": {
-                "free": free,
-                "starter": starter,
-                "pro": pro,
+                "t1": free,
+                "t2": starter,
+                "t3": pro,
             },
             "admin": admin,
             "enabled_providers": providers,
@@ -253,9 +253,9 @@ async def update_image_model_config(
             current = {
                 "provider": "fal",
                 "models": {
-                    "free": "flux-schnell",
-                    "starter": "flux-schnell",
-                    "pro": "flux-dev"
+                    "t1": "flux-schnell",
+                    "t2": "flux-schnell",
+                    "t3": "flux-dev"
                 }
             }
 
@@ -272,7 +272,7 @@ async def update_image_model_config(
 
             if tier == TIER_ALL:
                 # 更新所有等级
-                for t in ["free", "starter", "pro"]:
+                for t in ["t1", "t2", "t3"]:
                     current["models"][t] = model
             else:
                 # 更新指定等级

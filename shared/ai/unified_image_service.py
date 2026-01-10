@@ -41,7 +41,7 @@ class UnifiedImageService:
         self,
         prompt: str,
         user_id: Optional[str] = None,
-        tier: str = "free",
+        tier: str = "t1",
         size: str = "landscape_4_3",
         num_images: int = 1,
         negative_prompt: Optional[str] = None,
@@ -145,7 +145,7 @@ class UnifiedImageService:
         prompt: str,
         image_url: str,
         user_id: Optional[str] = None,
-        tier: str = "free",
+        tier: str = "t1",
         strength: float = 0.7,
         **kwargs
     ) -> AIResponse:
@@ -283,7 +283,7 @@ unified_image_service = UnifiedImageService()
 async def generate_image(
     prompt: str,
     user_id: Optional[str] = None,
-    tier: str = "free",
+    tier: str = "t1",
     **kwargs
 ) -> AIResponse:
     """
@@ -301,7 +301,7 @@ async def image_to_image(
     prompt: str,
     image_url: str,
     user_id: Optional[str] = None,
-    tier: str = "free",
+    tier: str = "t1",
     **kwargs
 ) -> AIResponse:
     """

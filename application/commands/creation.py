@@ -29,7 +29,7 @@ class CreateProjectCommand:
     user_id: str
     title: str = "Untitled"
     canvas_data: Optional[Dict[str, Any]] = None
-    tier: str = "free"
+    tier: str = "t1"
 
 
 @dataclass
