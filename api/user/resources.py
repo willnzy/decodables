@@ -128,6 +128,21 @@ class ResourcesListResponse(BaseModel):
     has_more: bool = False
 
 
+class PaginatedResourcesResponse(BaseModel):
+    """Paginated resources response (P2-002)."""
+    items: List[Dict[str, Any]]
+    total: int
+    page: int
+    limit: int
+
+
+class SingleResourceResponse(BaseModel):
+    """Single resource response (P2-002)."""
+    # Allow arbitrary fields since resource structure varies
+    class Config:
+        extra = "allow"
+
+
 # ==========================================
 # Endpoints
 # ==========================================
@@ -238,7 +253,7 @@ async def get_stickers(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(optional_user),
-) -> Dict[str, Any]:
+) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get stickers for the editor.
 
@@ -265,12 +280,13 @@ async def get_stickers(
 
     result = await handler.handle(query)
 
-    return {
-        "items": result.items,
-        "total": result.total,
-        "page": result.page,
-        "limit": result.limit,
-    }
+    # P2-002: Return Pydantic model instead of raw dict
+    return PaginatedResourcesResponse(
+        items=result.items,
+        total=result.total,
+        page=result.page,
+        limit=result.limit,
+    )
 
 
 @router.get("/backgrounds")
@@ -281,7 +297,7 @@ async def get_backgrounds(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(50, ge=1, le=200),
     user: dict = Depends(optional_user),
-) -> Dict[str, Any]:
+) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get background images.
 
@@ -308,12 +324,13 @@ async def get_backgrounds(
 
     result = await handler.handle(query)
 
-    return {
-        "items": result.items,
-        "total": result.total,
-        "page": result.page,
-        "limit": result.limit,
-    }
+    # P2-002: Return Pydantic model instead of raw dict
+    return PaginatedResourcesResponse(
+        items=result.items,
+        total=result.total,
+        page=result.page,
+        limit=result.limit,
+    )
 
 
 @router.get("/templates")
@@ -324,7 +341,7 @@ async def get_templates(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(optional_user),
-) -> Dict[str, Any]:
+) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get project templates.
 
@@ -351,12 +368,13 @@ async def get_templates(
 
     result = await handler.handle(query)
 
-    return {
-        "items": result.items,
-        "total": result.total,
-        "page": result.page,
-        "limit": result.limit,
-    }
+    # P2-002: Return Pydantic model instead of raw dict
+    return PaginatedResourcesResponse(
+        items=result.items,
+        total=result.total,
+        page=result.page,
+        limit=result.limit,
+    )
 
 
 @router.get("/{resource_id}")
@@ -365,7 +383,7 @@ async def get_resource(
     request: Request,  # v2.1.0: Required for rate limiter
     resource_id: str,
     user: dict = Depends(optional_user),
-) -> Dict[str, Any]:
+) -> ResourceItem:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get a single resource by ID.
 
@@ -391,4 +409,5 @@ async def get_resource(
     if not result.resource:
         raise HTTPException(404, "Resource not found")
 
-    return result.resource
+    # P2-002: Return Pydantic model instead of raw dict
+    return ResourceItem(**result.resource)
