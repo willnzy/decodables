@@ -117,6 +117,21 @@ class ConfigGroupResponse(BaseModel):
     configs: List[Dict[str, Any]]
 
 
+class AllConfigsResponse(BaseModel):
+    """Response for all public configs (P2-002)."""
+    configs: Dict[str, Dict[str, Any]]
+
+    class Config:
+        # Allow arbitrary dict keys
+        extra = "allow"
+
+
+class SingleConfigResponse(BaseModel):
+    """Response for single config (P2-002)."""
+    key: str
+    value: Any
+
+
 # ==========================================
 # Endpoints
 # ==========================================
@@ -124,7 +139,7 @@ class ConfigGroupResponse(BaseModel):
 @router.get("")
 async def list_configs(
     config_service: ConfigService = Depends(get_config_service),
-) -> Dict[str, Any]:
+) -> AllConfigsResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get all public configurations.
 
@@ -139,7 +154,9 @@ async def list_configs(
         c["key"]: c for c in configs
         if is_config_public(c.get("key", ""))
     }
-    return public_configs
+
+    # P2-002: Return Pydantic model instead of raw dict
+    return AllConfigsResponse(configs=public_configs)
 
 
 @router.get("/group/{group_name}")
@@ -164,7 +181,7 @@ async def get_group(
 async def get_config(
     key: str,
     config_service: ConfigService = Depends(get_config_service),
-) -> Dict[str, Any]:
+) -> SingleConfigResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get a single configuration by key.
 
@@ -180,4 +197,6 @@ async def get_config(
     config = await config_service.get_config(key, use_cache=True)
     if not config:
         raise HTTPException(404, f"Config not found: {key}")
-    return {"key": key, "value": config}
+
+    # P2-002: Return Pydantic model instead of raw dict
+    return SingleConfigResponse(key=key, value=config)
