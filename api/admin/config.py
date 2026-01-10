@@ -312,6 +312,9 @@ async def update_config(
         config_service = _get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Updating config: {data.config_key}")
 
+        # Get old value for audit trail
+        old_value = await config_service.get_config(data.config_key)
+
         success = await config_service.set_config(
             data.config_key,
             data.config_value,
@@ -320,6 +323,27 @@ async def update_config(
 
         if not success:
             raise HTTPException(500, "Failed to update configuration")
+
+        # ✅ Phase 3 - Task 9: Log configuration change to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="config_update",
+                target_type="system_config",
+                target_id=data.config_key,
+                details=f"Config '{data.config_key}' updated",
+                metadata={
+                    "old_value": old_value,
+                    "new_value": data.config_value,
+                },
+                source="api",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log config update: {e}")
 
         logger.info(f"[Admin {admin.get('id')}] Config updated successfully: {data.config_key}")
 
@@ -358,6 +382,32 @@ async def batch_update_configs_endpoint(
 
         updated_count = sum(1 for success in results.values() if success)
         failed_count = len(results) - updated_count
+
+        # ✅ Phase 3 - Task 9: Log each successful config change to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+
+            for update in data.updates:
+                config_key = update.get("config_key")
+                if config_key and results.get(config_key):
+                    # Only log successful updates
+                    await admin_repo.admin_log_operation(
+                        admin_id=admin["id"],
+                        operation_type="config_update",
+                        target_type="system_config",
+                        target_id=config_key,
+                        details=f"Batch config update",
+                        metadata={
+                            "batch_size": len(data.updates),
+                            "new_value": update.get("config_value"),
+                        },
+                        source="api",
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to log batch config update: {e}")
 
         logger.info(
             f"[Admin {admin.get('id')}] Batch update completed: "
@@ -458,6 +508,23 @@ async def apply_rate_limit_preset_endpoint(
         if not success:
             raise HTTPException(400, f"Invalid preset: {data.preset}")
 
+        # ✅ Phase 3 - Task 9: Log rate limit preset change to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="rate_limit_preset_apply",
+                target_type="rate_limit",
+                details=f"Applied rate limit preset: {data.preset}",
+                metadata={"preset": data.preset},
+                source="api",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log rate limit preset change: {e}")
+
         logger.info(f"[Admin {admin.get('id')}] Rate limit preset applied: {data.preset}")
 
         return RateLimitPresetApplyResponse(
@@ -525,6 +592,22 @@ async def clear_cache(
         logger.info(f"[Admin {admin.get('id')}] Clearing config cache")  # CFG-MEDIUM-3: Added audit
 
         config_service.clear_config_cache()
+
+        # ✅ Phase 3 - Task 9: Log cache clear operation to audit trail
+        try:
+            from core.database import get_database_client
+            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            await admin_repo.admin_log_operation(
+                admin_id=admin["id"],
+                operation_type="cache_clear",
+                target_type="system",
+                details="Configuration cache cleared",
+                source="api",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log cache clear operation: {e}")
 
         logger.info(f"[Admin {admin.get('id')}] Config cache cleared successfully")
 
