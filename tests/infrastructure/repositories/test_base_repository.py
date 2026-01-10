@@ -412,7 +412,7 @@ class TestRecoveryPeriod:
         """Successfully get recovery period from config."""
         # Mock config table response
         mock_result = MagicMock()
-        mock_result.data = {"config_value": "45"}
+        mock_result.data = {"value": "45"}
         mock_db_client.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value = mock_result
 
         # Execute

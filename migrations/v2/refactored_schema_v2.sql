@@ -209,7 +209,7 @@ CREATE TABLE profiles (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
 
     -- 日期逻辑验证
@@ -222,6 +222,13 @@ CREATE TABLE profiles (
 
     -- user_code 格式验证 (26位数字: YYMMDDHHMMSS+mmmm+UUUUUUU+RRR)
     CONSTRAINT check_user_code_format CHECK (user_code ~ '^[0-9]{26}$')
+,
+
+    CONSTRAINT chk_profiles_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE profiles IS '用户档案表: 存储用户基础信息、积分余额、订阅状态等核心数据';
@@ -235,6 +242,14 @@ COMMENT ON COLUMN profiles.cohort_month IS '用户群组月份 (用于 cohort �
 
 -- 索引
 -- Note: email 已有 UNIQUE 约束，无需额外索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_profiles_deleted_recoverable
+ON profiles(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_profiles_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_profiles_user_code ON profiles(user_code);
 CREATE INDEX idx_profiles_stripe_customer_id ON profiles(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 CREATE INDEX idx_profiles_tier ON profiles(tier);
@@ -310,6 +325,13 @@ CREATE TABLE credit_transactions (
 
     -- 幂等性键格式验证 (至少 16 字符)
     CONSTRAINT check_idempotency_key_format CHECK (idempotency_key IS NULL OR length(idempotency_key) >= 16)
+,
+
+    CONSTRAINT chk_credit_transactions_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE credit_transactions IS '积分交易记录表 (Append-Only): 记录所有积分变动，禁止修改和删除';
@@ -319,6 +341,14 @@ COMMENT ON COLUMN credit_transactions.balance_permanent_after IS '交易后永�
 COMMENT ON COLUMN credit_transactions.idempotency_key IS '幂等性键 (用于 Webhook 去重)';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_credit_transactions_deleted_recoverable
+ON credit_transactions(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_credit_transactions_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_credit_tx_user_id ON credit_transactions(user_id);
 CREATE INDEX idx_credit_tx_user_created ON credit_transactions(user_id, created_at DESC);
 CREATE INDEX idx_credit_tx_user_type_time ON credit_transactions(user_id, transaction_type, created_at DESC);  -- Composite index for filtered queries
@@ -375,6 +405,14 @@ CREATE TABLE projects (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMPTZ
+    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录,
+,
+
+    CONSTRAINT chk_projects_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE projects IS '用户项目表: 存储用户创建的项目和购买的模板项目';
@@ -383,6 +421,14 @@ COMMENT ON COLUMN projects.marketplace_listing_id IS '关联的市场 listing ID
 COMMENT ON COLUMN projects.contains_locked_elements IS '是否包含锁定元素 (Pro功能)';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_projects_deleted_recoverable
+ON projects(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_projects_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_projects_user_id ON projects(user_id);
 CREATE INDEX idx_projects_user_created ON projects(user_id, created_at DESC);
 CREATE INDEX idx_projects_listing ON projects(marketplace_listing_id) WHERE marketplace_listing_id IS NOT NULL;
@@ -655,6 +701,13 @@ CREATE TABLE asset_categories (
 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+,
+
+    CONSTRAINT chk_asset_categories_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE asset_categories IS '素材分类树: 多级分类系统 (支持 LTREE 路径查询)';
@@ -662,6 +715,14 @@ COMMENT ON COLUMN asset_categories.path IS '物化路径 (LTREE 类型), 例如:
 COMMENT ON COLUMN asset_categories.level IS '层级深度: 1=一级分类, 2=二级分类, 3=三级分类';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_asset_categories_deleted_recoverable
+ON asset_categories(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_asset_categories_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_categories_path ON asset_categories USING GIST (path);
 CREATE INDEX idx_categories_parent ON asset_categories(parent_id);
 CREATE INDEX idx_categories_visible ON asset_categories(is_visible, display_order);
@@ -729,12 +790,27 @@ CREATE TABLE system_assets (
 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+,
+
+    CONSTRAINT chk_system_assets_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE system_assets IS '系统内置素材表: 区别于用户上传的 assets 表';
 COMMENT ON COLUMN system_assets.source IS '来源: system=系统内置, user=用户上传, ai=AI生成, community=社区';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_system_assets_deleted_recoverable
+ON system_assets(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_system_assets_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_system_assets_category ON system_assets(category_id);
 CREATE INDEX idx_system_assets_type ON system_assets(asset_type);
 CREATE INDEX idx_system_assets_source ON system_assets(source);
@@ -811,7 +887,15 @@ CREATE TABLE marketplace_listings (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
+    deleted_at TIMESTAMPTZ,
+
+    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录,
+
+    CONSTRAINT chk_marketplace_listings_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE marketplace_listings IS '市场 Listing 表: 用户发布的素材和模板';
@@ -819,6 +903,14 @@ COMMENT ON COLUMN marketplace_listings.category IS '分类: 素材类型分类';
 COMMENT ON COLUMN marketplace_listings.source IS '来源: user=用户创建, ai=AI生成, system=系统内置';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_marketplace_listings_deleted_recoverable
+ON marketplace_listings(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_marketplace_listings_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_listings_seller ON marketplace_listings(seller_id);
 CREATE INDEX idx_listings_category ON marketplace_listings(category);
 CREATE INDEX idx_listings_source ON marketplace_listings(source);
@@ -913,7 +1005,7 @@ CREATE TABLE marketplace_favorites (
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
@@ -935,6 +1027,14 @@ COMMENT ON COLUMN marketplace_favorites.is_deleted IS '软删除标记';
 COMMENT ON COLUMN marketplace_favorites.deleted_at IS '删除时间';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_marketplace_favorites_deleted_recoverable
+ON marketplace_favorites(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_marketplace_favorites_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_favorites_user ON marketplace_favorites(user_id, created_at DESC) WHERE is_deleted = false;
 CREATE INDEX idx_favorites_listing ON marketplace_favorites(listing_id) WHERE is_deleted = false;
 
@@ -951,7 +1051,7 @@ CREATE TABLE marketplace_reviews (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     UNIQUE(listing_id, reviewer_id),
     CONSTRAINT chk_marketplace_reviews_deleted_at_consistency
@@ -968,6 +1068,14 @@ COMMENT ON COLUMN marketplace_reviews.is_deleted IS '软删除标记';
 COMMENT ON COLUMN marketplace_reviews.deleted_at IS '删除时间';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_marketplace_reviews_deleted_recoverable
+ON marketplace_reviews(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_marketplace_reviews_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_reviews_listing ON marketplace_reviews(listing_id, created_at DESC) WHERE is_deleted = false;
 CREATE INDEX idx_reviews_reviewer ON marketplace_reviews(reviewer_id) WHERE is_deleted = false;
 CREATE INDEX idx_reviews_rating ON marketplace_reviews(rating) WHERE is_deleted = false;
@@ -1000,7 +1108,7 @@ CREATE TABLE daily_themes (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_daily_themes_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
@@ -1016,6 +1124,14 @@ COMMENT ON COLUMN daily_themes.is_deleted IS '软删除标记';
 COMMENT ON COLUMN daily_themes.deleted_at IS '删除时间';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_daily_themes_deleted_recoverable
+ON daily_themes(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_daily_themes_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_daily_themes_date ON daily_themes(date DESC) WHERE is_deleted = false;
 CREATE INDEX idx_daily_themes_status ON daily_themes(status) WHERE is_deleted = false;
 
@@ -1046,7 +1162,7 @@ CREATE TABLE holidays (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_holidays_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
@@ -1062,6 +1178,14 @@ COMMENT ON COLUMN holidays.is_deleted IS '软删除标记';
 COMMENT ON COLUMN holidays.deleted_at IS '删除时间';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_holidays_deleted_recoverable
+ON holidays(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_holidays_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_holidays_date ON holidays(month, day) WHERE is_deleted = false;
 CREATE INDEX idx_holidays_regions ON holidays USING GIN(regions) WHERE is_deleted = false;
 CREATE INDEX idx_holidays_category ON holidays(category) WHERE is_deleted = false;
@@ -1327,7 +1451,7 @@ CREATE TABLE asset_prompt_templates (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_asset_prompt_templates_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
@@ -1343,6 +1467,14 @@ COMMENT ON COLUMN asset_prompt_templates.is_deleted IS '软删除标记';
 COMMENT ON COLUMN asset_prompt_templates.deleted_at IS '删除时间';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_asset_prompt_templates_deleted_recoverable
+ON asset_prompt_templates(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_asset_prompt_templates_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_asset_prompt_templates_user ON asset_prompt_templates(user_id) WHERE is_deleted = false;
 CREATE INDEX idx_asset_prompt_templates_usage ON asset_prompt_templates(user_id, use_count DESC) WHERE is_deleted = false;
 
@@ -1756,7 +1888,7 @@ CREATE TABLE campaigns (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     is_permanently_deleted BOOLEAN DEFAULT false,
     CONSTRAINT chk_campaigns_deleted_at_consistency
@@ -1774,6 +1906,14 @@ COMMENT ON COLUMN campaigns.deleted_at IS '删除时间';
 COMMENT ON COLUMN campaigns.is_permanently_deleted IS '永久删除标记 (不可恢复)';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_campaigns_deleted_recoverable
+ON campaigns(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_campaigns_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_campaigns_status ON campaigns(status, is_active) WHERE is_deleted = false AND is_permanently_deleted = false;
 CREATE INDEX idx_campaigns_dates ON campaigns(start_at, end_at) WHERE is_deleted = false;
 
@@ -1793,11 +1933,26 @@ CREATE TABLE campaign_participations (
     credits_received INTEGER,
     claimed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(campaign_id, user_id)
+,
+
+    CONSTRAINT chk_campaign_participations_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE campaign_participations IS '活动参与表: 记录用户领取活动奖励';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_campaign_participations_deleted_recoverable
+ON campaign_participations(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_campaign_participations_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_campaign_participations_user ON campaign_participations(user_id);
 CREATE INDEX idx_campaign_participations_campaign ON campaign_participations(campaign_id);
 
@@ -1811,11 +1966,26 @@ CREATE TABLE campaign_dismissals (
     channel TEXT NOT NULL,
     dismissed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(campaign_id, user_id, channel)
+,
+
+    CONSTRAINT chk_campaign_dismissals_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE campaign_dismissals IS '活动关闭记录表: 记录用户关闭的活动通知';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_campaign_dismissals_deleted_recoverable
+ON campaign_dismissals(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_campaign_dismissals_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_campaign_dismissals_user ON campaign_dismissals(user_id);
 
 -- ============================================================================
@@ -1836,11 +2006,26 @@ CREATE TABLE notifications (
     read_at TIMESTAMPTZ,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+,
+
+    CONSTRAINT chk_notifications_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE notifications IS '通知表: 用户通知中心';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_notifications_deleted_recoverable
+ON notifications(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_notifications_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC);
 CREATE INDEX idx_notifications_type ON notifications(notification_type);
 CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read) WHERE is_read = FALSE;
@@ -1860,11 +2045,26 @@ CREATE TABLE onboarding_steps (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+,
+
+    CONSTRAINT chk_onboarding_steps_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE onboarding_steps IS '引导步骤定义表: 定义新手引导流程';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_onboarding_steps_deleted_recoverable
+ON onboarding_steps(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_onboarding_steps_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_onboarding_steps_order ON onboarding_steps(step_order);
 CREATE INDEX idx_onboarding_steps_active ON onboarding_steps(is_active);
 
@@ -1886,11 +2086,26 @@ CREATE TABLE user_onboarding_progress (
     skipped_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, step_id)
+,
+
+    CONSTRAINT chk_user_onboarding_progress_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE user_onboarding_progress IS '用户引导进度表: 跟踪用户的引导完成情况';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_user_onboarding_progress_deleted_recoverable
+ON user_onboarding_progress(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_user_onboarding_progress_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_onboarding_progress_user ON user_onboarding_progress(user_id);
 CREATE INDEX idx_onboarding_progress_status ON user_onboarding_progress(status);
 
@@ -1912,11 +2127,26 @@ CREATE TABLE referrals (
     completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(referrer_id, referee_id)
+,
+
+    CONSTRAINT chk_referrals_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE referrals IS '推荐表: 记录用户推荐关系';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_referrals_deleted_recoverable
+ON referrals(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_referrals_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_referrals_referrer ON referrals(referrer_id);
 CREATE INDEX idx_referrals_referee ON referrals(referee_id);
 CREATE INDEX idx_referrals_code ON referrals(referral_code);
@@ -1939,11 +2169,26 @@ CREATE TABLE project_versions (
     created_by TEXT NOT NULL REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, version_number)
+,
+
+    CONSTRAINT chk_project_versions_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE project_versions IS '项目版本表: 自动保存项目历史版本';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_project_versions_deleted_recoverable
+ON project_versions(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_project_versions_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_project_versions_project ON project_versions(project_id, version_number DESC);
 CREATE INDEX idx_project_versions_created ON project_versions(created_at DESC);
 
@@ -1972,12 +2217,28 @@ CREATE TABLE assets (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
+    deleted_at TIMESTAMPTZ,
+
+    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录,
+
+    CONSTRAINT chk_assets_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 COMMENT ON TABLE assets IS '用户资产表: 用户上传的图片、视频等资产';
 
 -- 索引
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_assets_deleted_recoverable
+ON assets(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_assets_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_assets_user ON assets(user_id, created_at DESC);
 CREATE INDEX idx_assets_project ON assets(project_id) WHERE project_id IS NOT NULL;
 CREATE INDEX idx_assets_type ON assets(type);
@@ -3386,7 +3647,7 @@ CREATE TABLE support_tickets (
     resolved_at TIMESTAMPTZ,
     closed_at TIMESTAMPTZ,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
@@ -3420,6 +3681,14 @@ CREATE TABLE support_tickets (
 );
 
 CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC) WHERE is_deleted = false;
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_support_tickets_deleted_recoverable
+ON support_tickets(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_support_tickets_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_support_tickets_ticket_number ON support_tickets(ticket_number);
 CREATE INDEX idx_support_tickets_status ON support_tickets(status, created_at DESC) WHERE is_deleted = false;
 CREATE INDEX idx_support_tickets_priority ON support_tickets(priority, created_at DESC) WHERE is_deleted = false;
@@ -3454,7 +3723,7 @@ CREATE TABLE support_replies (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
 
     CONSTRAINT check_message_not_empty CHECK (LENGTH(TRIM(message)) > 0),
@@ -3468,6 +3737,14 @@ CREATE TABLE support_replies (
 );
 
 CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC) WHERE is_deleted = false;
+-- 可恢复删除记录索引 (恢复期内)
+CREATE INDEX idx_support_replies_deleted_recoverable
+ON support_replies(user_id, deleted_at DESC)
+WHERE is_deleted = true AND recovery_expires_at > NOW();
+
+COMMENT ON INDEX idx_support_replies_deleted_recoverable IS '可恢复删除记录索引 - 只包含未过期的删除记录';
+
+
 CREATE INDEX idx_support_replies_user_id ON support_replies(user_id, created_at DESC) WHERE is_deleted = false;
 CREATE INDEX idx_support_replies_created_at ON support_replies(created_at DESC) WHERE is_deleted = false;
 
