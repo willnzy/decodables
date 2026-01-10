@@ -61,15 +61,15 @@ router = APIRouter(prefix="/projects", tags=["user-projects-v2"])
 
 class ProjectCreateRequest(BaseModel):
     """Request to create a project."""
-    title: Optional[str] = None
-    canvas_data: Optional[Dict[str, Any]] = None
+    title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
+    canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
 
 
 class ProjectUpdateRequest(BaseModel):
     """Request to update a project."""
-    canvas_data: Optional[Dict[str, Any]] = None
-    thumbnail_url: Optional[str] = None
-    title: Optional[str] = None
+    canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
+    thumbnail_url: Optional[str] = Field(None, max_length=500)  # P2-030: DoS protection
+    title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
     used_listing_ids: Optional[List[str]] = None
 
 

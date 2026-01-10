@@ -85,19 +85,20 @@ class ListingCreateRequest(BaseModel):
 
     Security:
     - P2-047: thumbnail_url and resource_url are validated for SSRF protection
+    - P2-030: All string fields have max_length for DoS protection
     """
     title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    resource_url: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=2000)  # P2-030: DoS protection
+    thumbnail_url: Optional[str] = Field(None, max_length=500)  # P2-030 + P2-047: URL length + SSRF
+    resource_url: Optional[str] = Field(None, max_length=500)  # P2-030 + P2-047: URL length + SSRF
     resource_type: str = Field(..., pattern="^(asset|project)$")
-    category: Optional[str] = None  # If not provided, defaults based on resource_type
+    category: Optional[str] = Field(None, max_length=50)  # P2-030: DoS protection
     source: str = Field("user", pattern="^(system|user|ai|community)$")
-    resource_id: Optional[str] = None
+    resource_id: Optional[str] = Field(None, max_length=50)  # P2-030: UUID length
     price_credits: int = Field(0, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
-    version: Optional[str] = "1.0"
-    changelog: Optional[str] = None
+    version: Optional[str] = Field("1.0", max_length=20)  # P2-030: DoS protection
+    changelog: Optional[str] = Field(None, max_length=5000)  # P2-030: DoS protection
 
     @field_validator("thumbnail_url", "resource_url")
     @classmethod
@@ -128,21 +129,21 @@ class UpdateListingResponse(BaseModel):
 
 
 class ListingUpdateRequest(BaseModel):
-    """Request to update a listing."""
-    title: Optional[str] = None
-    description: Optional[str] = None
+    """Request to update a listing (P2-030: DoS protection)."""
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
     price_credits: Optional[int] = Field(None, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
 
 
 class PurchaseRequest(BaseModel):
-    """Request to purchase a listing."""
-    listing_id: str
-    idempotency_key: Optional[str] = None
-    utm_source: Optional[str] = None
-    utm_medium: Optional[str] = None
-    utm_campaign: Optional[str] = None
-    referral_context: Optional[str] = None
+    """Request to purchase a listing (P2-030: DoS protection)."""
+    listing_id: str = Field(..., max_length=50)  # UUID
+    idempotency_key: Optional[str] = Field(None, max_length=100)
+    utm_source: Optional[str] = Field(None, max_length=100)
+    utm_medium: Optional[str] = Field(None, max_length=100)
+    utm_campaign: Optional[str] = Field(None, max_length=100)
+    referral_context: Optional[str] = Field(None, max_length=500)
 
 
 class ListingResponse(BaseModel):
