@@ -375,7 +375,6 @@ class SupabaseCreditRepository(ICreditRepository):
         except Exception as e:
             logger.error(f"Failed to reset monthly credits for user {user_id}: {e}")
             raise CreditOperationFailedException(
-                user_id=user_id,
                 operation="reset_monthly",
                 reason=str(e)
             )

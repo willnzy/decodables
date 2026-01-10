@@ -50,7 +50,7 @@ class TestMonthlyCreditsReset:
         # Mock database response
         mock_supabase_client.table.return_value.update.return_value.eq.return_value.select.return_value.single.return_value.execute.return_value = MagicMock(
             data={
-                "user_id": user_id,
+                "id": user_id,
                 "credits_monthly": 500,  # Reset to tier allowance
                 "credits_permanent": 200,  # Unchanged
                 "tier": "starter"
@@ -165,7 +165,7 @@ class TestPermanentCreditsNeverExpire:
         # Mock reset response
         mock_supabase_client.table.return_value.update.return_value.eq.return_value.select.return_value.single.return_value.execute.return_value = MagicMock(
             data={
-                "user_id": user_id,
+                "id": user_id,
                 "credits_monthly": 1000,  # Reset to Pro allowance
                 "credits_permanent": 300,  # Unchanged
                 "tier": "pro"
@@ -344,7 +344,7 @@ class TestIntegrationScenarios:
         assert tx4.amount == 100
 
         # Scenario 5: Monthly reset (Starter gets 500)
-        user_credits.reset_monthly(500, TransactionType.MONTHLY_RESET)
+        user_credits.reset_monthly(500, TransactionType.SUBSCRIPTION_GRANT)
         assert user_credits.monthly_credits == 500
         assert user_credits.permanent_credits == 130  # Preserved!
         assert user_credits.total_credits == 630
