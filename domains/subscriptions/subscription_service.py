@@ -33,13 +33,24 @@ logger = logging.getLogger(__name__)
 
 
 # Constants
-VALID_TARGET_TIERS = {"free", "starter"}
+VALID_TARGET_TIERS = {"free", "starter", "t1", "t2", "t3"}
 TIER_MONTHLY_CREDITS = {
     "free": 0,
+    "t1": 0,
     "starter": 200,
+    "t2": 200,
     "pro": 500,
+    "t3": 500,
 }
-TIER_LEVELS = {"free": 0, "starter": 1, "pro": 2}
+# P0-012 fix: Support both tier naming conventions (free/starter/pro and t1/t2/t3)
+TIER_LEVELS = {
+    "free": 0,
+    "t1": 0,
+    "starter": 1,
+    "t2": 1,
+    "pro": 2,
+    "t3": 2,
+}
 
 
 class SubscriptionService:
@@ -358,6 +369,14 @@ class SubscriptionService:
 
         current_tier = user.get("tier", "free")
         target_tier = target_tier.lower()
+
+        # P0-012 fix: Validate target tier is valid
+        if target_tier not in TIER_LEVELS:
+            raise HTTPException(400, f"Invalid target tier: {target_tier}. Must be one of: {', '.join(sorted(TIER_LEVELS.keys()))}")
+
+        # P0-012 fix: Validate current tier is valid
+        if current_tier not in TIER_LEVELS:
+            raise HTTPException(400, f"Invalid current tier: {current_tier}")
 
         # Validate downgrade direction
         if TIER_LEVELS.get(target_tier, -1) >= TIER_LEVELS.get(current_tier, 0):

@@ -391,10 +391,16 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
         Returns:
             Updated profile dict
+
+        Fix P0-011: Reset credits_monthly to 0 when downgrading to free tier
         """
         update_data = {"tier": tier, "subscription_status": subscription_status}
         if stripe_customer_id:
             update_data["stripe_customer_id"] = stripe_customer_id
+
+        # P0-011 fix: Reset monthly credits when downgrading to free tier
+        if tier == "free" or tier == "t1":
+            update_data["credits_monthly"] = 0
 
         result = self.client.table("profiles").update(update_data).eq("id", user_id).execute()
         return result.data[0] if result.data else None
