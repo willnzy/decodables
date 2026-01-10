@@ -92,19 +92,100 @@ def sanitize_search(search: str) -> str:
 @limiter.limit("60/minute")  # v3.25: SR-HIGH-1
 async def list_system_resources(
     request: Request,  # v3.25: Required for rate limiter
-    type: Optional[str] = Query(None, max_length=50),  # v3.25: SR-LOW-1
-    category: Optional[str] = Query(None, max_length=50),  # v3.25: SR-LOW-1
-    is_active: Optional[bool] = None,
-    search: Optional[str] = Query(None, max_length=MAX_SEARCH_LENGTH),  # v3.25: SR-MEDIUM-1
-    page: int = Query(1, ge=1, le=1000),  # v3.25: SR-LOW-2
-    limit: int = Query(50, ge=1, le=200),
+    type: Optional[str] = Query(None, max_length=50, description="Filter by resource type (e.g., 'sticker', 'template')"),
+    category: Optional[str] = Query(None, max_length=50, description="Filter by category (e.g., 'animals', 'holidays')"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status (true/false/null for all)"),
+    search: Optional[str] = Query(None, max_length=MAX_SEARCH_LENGTH, description="Search by name or description (max 200 chars)"),
+    page: int = Query(1, ge=1, le=1000, description="Page number (1-1000, default: 1)"),
+    limit: int = Query(50, ge=1, le=200, description="Items per page (1-200, default: 50)"),
     admin: dict = Depends(require_admin)
 ):
     """
-    List all system resources (Admin view - includes inactive).
+    List all system resources with filtering and search (Admin view).
 
-    v3.0.0: Now uses ListSystemResourcesHandler (Container pattern).
-    v3.25: Added rate limiting and parameter validation.
+    Retrieves system-wide resources such as stickers, templates, decorations, and
+    backgrounds that are available to users based on their tier. Admin view includes
+    inactive resources for management purposes. Supports filtering, search, and pagination.
+
+    v3.0.0: Uses ListSystemResourcesHandler (Container pattern).
+    v3.25: Added rate limiting and parameter validation (SR-HIGH-1, SR-LOW-1/2, SR-MEDIUM-1).
+
+    Args:
+        type: Optional filter by resource type (max 50 chars)
+            Common values: "sticker", "template", "decoration", "background", "font"
+        category: Optional filter by category (max 50 chars)
+            Examples: "animals", "holidays", "school", "nature"
+        is_active: Optional filter by active status
+            - true: Only active resources (visible to users)
+            - false: Only inactive resources (hidden)
+            - null: All resources (default)
+        search: Optional search query (max 200 chars)
+            Searches in: name, description, tags
+            Sanitized for SQL injection prevention
+        page: Page number for pagination (default: 1, max: 1000)
+        limit: Items per page (default: 50, max: 200)
+
+    Returns:
+        Dict containing:
+            - items: List of resource objects including:
+                - id: Resource UUID
+                - type: Resource type
+                - category: Category classification
+                - name: Display name
+                - description: Resource description
+                - file_url: Download URL for resource file
+                - thumbnail_url: Preview thumbnail URL
+                - allowed_tiers: List of tiers with access (["free", "starter", "pro"])
+                - tags: List of searchable tags
+                - sort_order: Display order priority
+                - is_active: Whether resource is visible to users
+                - created_at: Creation timestamp
+                - updated_at: Last modification timestamp
+            - total: Total number of resources (respecting filters)
+            - page: Current page number
+            - limit: Items per page
+            - has_more: Whether more pages exist
+
+    Raises:
+        400: Invalid type/category length (>50 chars) or search query (>200 chars)
+        401: Unauthorized (not admin)
+        429: Rate limit exceeded (max 60 requests per minute)
+        500: Database error or service unavailable
+
+    Security:
+        - Admin role required
+        - Rate limit: 60 requests per minute
+        - Search query sanitized against SQL injection
+        - Parameter length validation (type/category: 50, search: 200)
+        - Page number limited to 1000 (prevent excessive queries)
+
+    Example:
+        GET /api/v3/user/system-resources?type=sticker&category=animals&is_active=true&limit=20
+
+        Response:
+        {
+            "items": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "type": "sticker",
+                    "category": "animals",
+                    "name": "Cute Cat",
+                    "description": "A playful cat sticker",
+                    "file_url": "https://storage.example.com/stickers/cat_01.png",
+                    "thumbnail_url": "https://storage.example.com/thumbnails/cat_01.png",
+                    "allowed_tiers": ["free", "starter", "pro"],
+                    "tags": ["cat", "animal", "cute"],
+                    "sort_order": 100,
+                    "is_active": true,
+                    "created_at": "2026-01-01T10:00:00Z",
+                    "updated_at": "2026-01-10T15:30:00Z"
+                }
+            ],
+            "total": 1,
+            "page": 1,
+            "limit": 20,
+            "has_more": false
+        }
     """
     # v3.25: SR-MEDIUM-1 - Sanitize search
     safe_search = sanitize_search(search) if search else None
@@ -186,21 +267,97 @@ async def get_resource(
 async def create_resource(
     request: Request,  # v3.25: Required for rate limiter
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
-    type: str = Form(...),
-    category: Optional[str] = Form(None),
-    name: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),  # Comma-separated
-    allowed_tiers: Optional[str] = Form("free,starter,pro"),  # Comma-separated
-    sort_order: int = Form(0),
+    type: str = Form(..., description="Resource type (required, e.g., 'sticker', 'template')"),
+    category: Optional[str] = Form(None, description="Category classification (optional, e.g., 'animals', 'holidays')"),
+    name: Optional[str] = Form(None, description="Display name (optional, defaults to filename)"),
+    description: Optional[str] = Form(None, description="Resource description (optional)"),
+    tags: Optional[str] = Form(None, description="Comma-separated tags (optional, e.g., 'cat,animal,cute')"),
+    allowed_tiers: Optional[str] = Form("free,starter,pro", description="Comma-separated tiers with access (default: all)"),
+    sort_order: int = Form(0, description="Display order priority (default: 0, higher = shown first)"),
     admin: dict = Depends(require_admin)
 ):
     """
     Create a new system resource with file upload.
 
-    v3.0.0: Now uses CreateSystemResourceHandler (Container pattern).
-    v3.25: Added rate limiting.
+    Uploads a new resource file (image, template, font, etc.) to Supabase Storage
+    and creates a corresponding database record. The resource becomes available
+    to users based on tier permissions. Supports tier-based access control.
+
+    v3.0.0: Uses CreateSystemResourceHandler (Container pattern).
+    v3.25: Added rate limiting (SR-HIGH-1).
     P3-005: Added 10MB file size limit via validate_file_size dependency.
+
+    Args:
+        file: Resource file to upload (required, max 10MB)
+            Supported formats depend on type:
+                - sticker: PNG, JPG, SVG
+                - template: JSON (canvas data)
+                - background: PNG, JPG
+                - font: TTF, OTF, WOFF
+        type: Resource type (required)
+            Common values: "sticker", "template", "decoration", "background", "font"
+        category: Category classification (optional)
+            Examples: "animals", "holidays", "school", "nature", "abstract"
+        name: Display name (optional)
+            If not provided, uses uploaded filename
+        description: Human-readable description (optional)
+            Displayed in resource library
+        tags: Comma-separated searchable tags (optional)
+            Format: "cat,animal,cute,cartoon"
+        allowed_tiers: Comma-separated tier access list (default: "free,starter,pro")
+            Valid values: "free", "starter", "pro"
+            Examples:
+                - "pro": Pro users only
+                - "starter,pro": Starter and Pro users
+                - "free,starter,pro": All users (default)
+        sort_order: Display priority (default: 0)
+            Higher numbers appear first in lists
+            Range: -1000 to 1000
+
+    Returns:
+        Dict containing:
+            - success: true if resource created
+            - resource_id: UUID of created resource
+            - file_url: Public URL for resource file
+            - thumbnail_url: Public URL for thumbnail (if generated)
+            - message: Confirmation message
+
+    Raises:
+        400: Invalid file type, file too large (>10MB), or validation error
+        401: Unauthorized (not admin)
+        413: File size exceeds 10MB limit (validated by validate_file_size)
+        429: Rate limit exceeded (max 30 requests per minute)
+        500: Upload failed, storage error, or database error
+
+    Security:
+        - Admin role required
+        - Rate limit: 30 requests per minute
+        - File size limited to 10MB (DoS prevention, P3-005)
+        - File type validation (MIME type check)
+        - Uploaded to isolated Supabase bucket
+        - Audit log created with admin_id
+
+    Example:
+        POST /api/v3/user/system-resources
+        Content-Type: multipart/form-data
+
+        file: cute_cat.png (binary data)
+        type: sticker
+        category: animals
+        name: Cute Cat Sticker
+        description: A playful cat for decorating decodables
+        tags: cat,animal,cute,cartoon
+        allowed_tiers: free,starter,pro
+        sort_order: 100
+
+        Response:
+        {
+            "success": true,
+            "resource_id": "550e8400-e29b-41d4-a716-446655440000",
+            "file_url": "https://storage.example.com/resources/550e8400.../cute_cat.png",
+            "thumbnail_url": "https://storage.example.com/thumbnails/550e8400.../thumb.png",
+            "message": "Resource created successfully"
+        }
     """
     container = get_container()
     handler = container.create_system_resource_handler
