@@ -2286,17 +2286,36 @@ a077d60 - feat(admin): add unified audit logs query API (Task 9 - Phase 5)
   - Config: config_update, rate_limit_preset_apply, cache_clear
   - Webhook: webhook_subscription_*, webhook_invoice_paid, webhook_refund_process, webhook_credits_purchase, webhook_user_create
 
-**待完成** (Task 9 剩余 - 非核心):
-- Remaining Delete Operations: 6 endpoints (templates/generations/resources/feature flags/campaigns/experiments)
-  - 预计时间: 30 min (模式已建立,复制粘贴即可)
+**Task 9.2 (补充)**: Remaining Delete Operations (30min) ✅ 完成
+- Commit: `d764ae8`
+- 修改文件 (6 个):
+  - `api/user/templates.py` (+34 lines, 2 endpoints): asset + page template deletion
+  - `api/user/generations.py` (+42 lines, 2 endpoints): single + batch generation deletion
+  - `api/user/system_resources.py` (+17 lines, 1 endpoint): system resource deletion
+  - `api/admin/feature_flags.py` (+18 lines, 1 endpoint): feature flag archival
+  - `api/admin/campaigns.py` (+15 lines, 1 endpoint): campaign soft delete
+  - `api/admin/experiments.py` (+16 lines, 1 endpoint): experiment deletion
+- **新增操作类型** (6 个):
+  - ✅ `template_delete`: 模板删除 (asset + page)
+  - ✅ `generation_delete`: 单个生成记录删除
+  - ✅ `generation_batch_delete`: 批量生成记录删除 (含 metadata)
+  - ✅ `resource_delete`: 系统资源删除
+  - ✅ `feature_flag_delete`: Feature Flag 归档
+  - ✅ `campaign_delete`: Campaign 软删除
+  - ✅ `experiment_delete`: Experiment 删除
+- Lines: +142
 
 **前端待迁移** (v4.0 前):
 - ⚠️ `decodables-fe/services/generateService.js:222`
   - `DELETE /api/generations/batch` → `POST /api/v2/user/generations/batch-delete`
 
-**下一步**:
-1. ✅ **推荐**: 提交 Task 9 为已完成 (核心功能 100%)
-2. 或继续完成剩余 6 个删除操作日志 (可选,快速任务)
+**Task 9 - 最终完成状态**: ✅ 100% 完成
+- **用时**: ~2.5 hours (预计 3h, 提前 16%)
+- **Lines**: +676 (infrastructure: +179, webhook: +142, config: +83, API: +130, delete ops: +142)
+- **覆盖范围**: 29+ operations with full audit trail
+- **Commits**: 5 commits (54ea897, 05288f0, 320cea6, a077d60, d764ae8)
+
+**下一步**: 开始下一个任务 (Stats 响应格式统一 或 Webhook 重试逻辑)
 
 ---
 
