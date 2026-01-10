@@ -89,6 +89,7 @@ from domains.stats.constants import (
 )
 # v3.30: Import Pydantic models (P2-001 Fix)
 from domains.stats.models import (
+    # Core Stats Models (1-7)
     DashboardStats,
     UserGrowthDataPoint,
     RevenueDataPoint,
@@ -96,6 +97,18 @@ from domains.stats.models import (
     CreditUsageStats,
     TierDistributionItem,
     ConversionFunnelStep,
+    # Aggregated Stats Response Models (8-18) - P3-001 Fix
+    ExportStatsResponse,
+    AssetUsageResponse,
+    TierActivityStatsResponse,
+    SubscriptionEventsResponse,
+    PageViewsResponse,
+    ProjectDetailsResponse,
+    ReturningUsersStatsResponse,
+    TierTrendResponse,
+    TierConversionResponse,
+    PerformanceMetricsResponse,
+    UserDistributionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -300,85 +313,276 @@ async def get_conversion_funnel_endpoint(
 # Aggregated Stats (v3.25: Added rate limiting)
 # ==========================================
 
-@router.get("/exports")
+@router.get("/exports", response_model=ExportStatsResponse)
 @limiter.limit("30/minute")
-async def get_export_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_export_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> ExportStatsResponse:
     """Fetch export operation stats (PDF, ZIP, print, preview)."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_export_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_export_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import ExportStatsItem
+        exports = [
+            ExportStatsItem(export_type="pdf", count=raw_data.get("totalPdf", 0), avg_duration_seconds=None),
+            ExportStatsItem(export_type="zip", count=raw_data.get("totalZip", 0), avg_duration_seconds=None),
+            ExportStatsItem(export_type="print", count=raw_data.get("totalPrint", 0), avg_duration_seconds=None),
+            ExportStatsItem(export_type="preview", count=raw_data.get("totalPreview", 0), avg_duration_seconds=None),
+        ]
+        total_exports = sum([e.count for e in exports])
+        return ExportStatsResponse(exports=exports, total_exports=total_exports)
+    except Exception as e:
+        logger.error(f"Failed to fetch export stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch export statistics")
 
 
-@router.get("/assets")
+@router.get("/assets", response_model=AssetUsageResponse)
 @limiter.limit("30/minute")
-async def get_asset_usage_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_asset_usage_stats_endpoint(request: Request, admin: dict = Depends(require_admin)) -> AssetUsageResponse:
     """Fetch asset usage ranking stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_asset_usage_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_asset_usage_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import AssetUsageRanking
+        assets = [
+            AssetUsageRanking(
+                asset_id=item.get("asset_id", ""),
+                asset_name=item.get("asset_name"),
+                usage_count=item.get("usage_count", 0),
+                unique_users=item.get("unique_users", 0)
+            )
+            for item in raw_data.get("top_assets", [])
+        ]
+        return AssetUsageResponse(
+            assets=assets,
+            total_assets=raw_data.get("total_assets_used", len(assets))
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch asset usage stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch asset usage statistics")
 
 
-@router.get("/tier-activity")
+@router.get("/tier-activity", response_model=TierActivityStatsResponse)
 @limiter.limit("30/minute")
-async def get_tier_activity_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_tier_activity_endpoint(request: Request, admin: dict = Depends(require_admin)) -> TierActivityStatsResponse:
     """Fetch per-tier activity stats."""
-    return await get_tier_activity_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_tier_activity_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import TierActivityStats
+        tier_stats = [
+            TierActivityStats(
+                tier=tier_key,
+                active_users=tier_data.get("active_users", 0),
+                total_projects=tier_data.get("total_projects", 0),
+                avg_projects_per_user=tier_data.get("avg_projects_per_user", 0.0)
+            )
+            for tier_key, tier_data in raw_data.items()
+            if isinstance(tier_data, dict)
+        ]
+        return TierActivityStatsResponse(tier_stats=tier_stats)
+    except Exception as e:
+        logger.error(f"Failed to fetch tier activity stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch tier activity statistics")
 
 
-@router.get("/subscription-events")
+@router.get("/subscription-events", response_model=SubscriptionEventsResponse)
 @limiter.limit("30/minute")
-async def get_subscription_events_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_subscription_events_endpoint(request: Request, admin: dict = Depends(require_admin)) -> SubscriptionEventsResponse:
     """Fetch subscription event stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_subscription_events_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_subscription_events_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import SubscriptionEventItem
+        events = []
+        for trend_item in raw_data.get("trend", []):
+            if isinstance(trend_item, dict) and "date" in trend_item:
+                # Each trend item contains multiple event types
+                for event_type in ["upgrades", "downgrades", "cancellations", "refunds"]:
+                    if event_type in trend_item:
+                        events.append(SubscriptionEventItem(
+                            date=trend_item["date"],
+                            event_type=event_type,
+                            count=trend_item[event_type]
+                        ))
+        total_events = raw_data.get("totalUpgrades", 0) + raw_data.get("totalDowngrades", 0) + \
+                       raw_data.get("totalCancellations", 0) + raw_data.get("totalRefunds", 0)
+        return SubscriptionEventsResponse(events=events, total_events=total_events)
+    except Exception as e:
+        logger.error(f"Failed to fetch subscription events: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch subscription event statistics")
 
 
-@router.get("/page-views")
+@router.get("/page-views", response_model=PageViewsResponse)
 @limiter.limit("30/minute")
-async def get_page_views_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_page_views_endpoint(request: Request, admin: dict = Depends(require_admin)) -> PageViewsResponse:
     """Fetch page view stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_page_views_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_page_views_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import PageViewsDataPoint
+        # Convert pages dict to list of data points
+        page_views = [
+            PageViewsDataPoint(
+                date=page_key,
+                page_views=page_data.get("views", 0) if isinstance(page_data, dict) else 0,
+                unique_visitors=page_data.get("unique", 0) if isinstance(page_data, dict) else 0
+            )
+            for page_key, page_data in raw_data.get("pages", {}).items()
+        ]
+        return PageViewsResponse(page_views=page_views)
+    except Exception as e:
+        logger.error(f"Failed to fetch page views: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch page view statistics")
 
 
-@router.get("/project-details")
+@router.get("/project-details", response_model=ProjectDetailsResponse)
 @limiter.limit("30/minute")
-async def get_project_details_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_project_details_endpoint(request: Request, admin: dict = Depends(require_admin)) -> ProjectDetailsResponse:
     """Fetch detailed project stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_project_details_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_project_details_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import ProjectDetailsDataPoint
+        # Since aggregated_stats stores summary data, create a single data point
+        projects = [
+            ProjectDetailsDataPoint(
+                date="aggregated",  # Aggregated stats don't have daily breakdown
+                projects_created=raw_data.get("total_pages_sample", 0),
+                projects_published=0,  # Not tracked in current schema
+                projects_deleted=raw_data.get("deleted_projects", 0)
+            )
+        ]
+        return ProjectDetailsResponse(projects=projects)
+    except Exception as e:
+        logger.error(f"Failed to fetch project details: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch project detail statistics")
 
 
-@router.get("/returning-users")
+@router.get("/returning-users", response_model=ReturningUsersStatsResponse)
 @limiter.limit("30/minute")
-async def get_returning_users_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_returning_users_endpoint(request: Request, admin: dict = Depends(require_admin)) -> ReturningUsersStatsResponse:
     """Fetch returning user stats."""
-    return await get_returning_users_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_returning_users_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import ReturningUsersStats
+        stats = ReturningUsersStats(
+            returning_users_count=raw_data.get("returning_users_count", 0),
+            new_users_count=raw_data.get("new_users_count", 0),
+            retention_rate=raw_data.get("retention_rate", 0.0)
+        )
+        return ReturningUsersStatsResponse(stats=stats)
+    except Exception as e:
+        logger.error(f"Failed to fetch returning users stats: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch returning user statistics")
 
 
-@router.get("/tier-trend")
+@router.get("/tier-trend", response_model=TierTrendResponse)
 @limiter.limit("30/minute")
-async def get_tier_trend_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_tier_trend_endpoint(request: Request, admin: dict = Depends(require_admin)) -> TierTrendResponse:
     """Fetch tier trend over time."""
-    return await get_tier_trend_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_tier_trend_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import TierTrendDataPoint
+        trend = [
+            TierTrendDataPoint(
+                date=item.get("date", ""),
+                t1_count=item.get("t1", 0),
+                t2_count=item.get("t2", 0),
+                t3_count=item.get("t3", 0)
+            )
+            for item in raw_data.get("trend", [])
+            if isinstance(item, dict)
+        ]
+        return TierTrendResponse(trend=trend)
+    except Exception as e:
+        logger.error(f"Failed to fetch tier trend: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch tier trend statistics")
 
 
-@router.get("/tier-conversion")
+@router.get("/tier-conversion", response_model=TierConversionResponse)
 @limiter.limit("30/minute")
-async def get_tier_conversion_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_tier_conversion_endpoint(request: Request, admin: dict = Depends(require_admin)) -> TierConversionResponse:
     """Fetch tier conversion stats."""
-    return await get_tier_conversion_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_tier_conversion_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import TierConversionMatrix
+        conversions = [
+            TierConversionMatrix(
+                from_tier=item.get("from_tier", ""),
+                to_tier=item.get("to_tier", ""),
+                conversion_count=item.get("count", 0),
+                conversion_rate=item.get("rate", 0.0)
+            )
+            for item in raw_data.get("conversions", [])
+            if isinstance(item, dict)
+        ]
+        total_conversions = sum(c.conversion_count for c in conversions)
+        return TierConversionResponse(conversions=conversions, total_conversions=total_conversions)
+    except Exception as e:
+        logger.error(f"Failed to fetch tier conversion: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch tier conversion statistics")
 
 
-@router.get("/performance")
+@router.get("/performance", response_model=PerformanceMetricsResponse)
 @limiter.limit("30/minute")
-async def get_performance_metrics_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_performance_metrics_endpoint(request: Request, admin: dict = Depends(require_admin)) -> PerformanceMetricsResponse:
     """Fetch page performance (Core Web Vitals) stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_performance_metrics_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_performance_metrics_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import PerformanceMetrics
+        metrics_dict = raw_data.get("metrics", {})
+        metrics = PerformanceMetrics(
+            avg_lcp=metrics_dict.get("avg_lcp"),
+            avg_fid=metrics_dict.get("avg_fid"),
+            avg_cls=metrics_dict.get("avg_cls"),
+            avg_ttfb=metrics_dict.get("avg_ttfb")
+        )
+        return PerformanceMetricsResponse(metrics=metrics)
+    except Exception as e:
+        logger.error(f"Failed to fetch performance metrics: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch performance metrics")
 
 
-@router.get("/user-distribution")
+@router.get("/user-distribution", response_model=UserDistributionResponse)
 @limiter.limit("30/minute")
-async def get_user_distribution_endpoint(request: Request, admin: dict = Depends(require_admin)) -> Dict[str, Any]:
+async def get_user_distribution_endpoint(request: Request, admin: dict = Depends(require_admin)) -> UserDistributionResponse:
     """Fetch user distribution stats."""
-    # v3.30: Fixed - call Service layer function (P2-001 Fix)
-    return await get_user_distribution_stats()
+    # v3.30: P3-001 Fix - Add typed response model
+    try:
+        raw_data = await get_user_distribution_stats()
+        # Transform raw aggregated data to typed response
+        from domains.stats.models import UserDistributionItem
+        distribution = []
+        total_users = raw_data.get("total_sessions", 0)
+
+        # Process each dimension (country, browser, os, device_type, language, timezone)
+        for dimension in ["country", "browser", "os", "device_type", "language", "timezone"]:
+            dimension_data = raw_data.get(dimension, [])
+            if isinstance(dimension_data, list):
+                for item in dimension_data:
+                    if isinstance(item, dict):
+                        user_count = item.get("count", 0)
+                        distribution.append(UserDistributionItem(
+                            dimension=dimension,
+                            value=item.get("value", "unknown"),
+                            user_count=user_count,
+                            percentage=round((user_count / total_users * 100), 2) if total_users > 0 else 0.0
+                        ))
+
+        return UserDistributionResponse(distribution=distribution, total_users=total_users)
+    except Exception as e:
+        logger.error(f"Failed to fetch user distribution: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to fetch user distribution statistics")

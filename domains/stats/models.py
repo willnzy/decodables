@@ -187,3 +187,67 @@ class StatsListResponse(BaseModel):
     ]
     total_count: int = Field(..., description="Total number of items")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
+
+
+# ==========================================
+# Specific Response Models for P3-001 Fix
+# ==========================================
+
+class ExportStatsResponse(BaseModel):
+    """Response for GET /stats/exports."""
+    exports: List[ExportStatsItem] = Field(..., description="Export statistics by type")
+    total_exports: int = Field(..., description="Total number of exports")
+
+
+class AssetUsageResponse(BaseModel):
+    """Response for GET /stats/assets."""
+    assets: List[AssetUsageRanking] = Field(..., description="Asset usage rankings")
+    total_assets: int = Field(..., description="Total number of tracked assets")
+
+
+class TierActivityStatsResponse(BaseModel):
+    """Response for GET /stats/tier-activity."""
+    tier_stats: List[TierActivityStats] = Field(..., description="Activity stats per tier")
+
+
+class SubscriptionEventsResponse(BaseModel):
+    """Response for GET /stats/subscription-events."""
+    events: List[SubscriptionEventItem] = Field(..., description="Subscription events timeline")
+    total_events: int = Field(..., description="Total number of events")
+
+
+class PageViewsResponse(BaseModel):
+    """Response for GET /stats/page-views."""
+    page_views: List[PageViewsDataPoint] = Field(..., description="Page views over time")
+
+
+class ProjectDetailsResponse(BaseModel):
+    """Response for GET /stats/project-details."""
+    projects: List[ProjectDetailsDataPoint] = Field(..., description="Detailed project stats over time")
+
+
+class ReturningUsersStatsResponse(BaseModel):
+    """Response for GET /stats/returning-users."""
+    stats: ReturningUsersStats = Field(..., description="Returning users statistics")
+
+
+class TierTrendResponse(BaseModel):
+    """Response for GET /stats/tier-trend."""
+    trend: List[TierTrendDataPoint] = Field(..., description="Tier distribution trend over time")
+
+
+class TierConversionResponse(BaseModel):
+    """Response for GET /stats/tier-conversion."""
+    conversions: List[TierConversionMatrix] = Field(..., description="Tier conversion matrix")
+    total_conversions: int = Field(..., description="Total number of tier conversions")
+
+
+class PerformanceMetricsResponse(BaseModel):
+    """Response for GET /stats/performance."""
+    metrics: PerformanceMetrics = Field(..., description="Core Web Vitals metrics")
+
+
+class UserDistributionResponse(BaseModel):
+    """Response for GET /stats/user-distribution."""
+    distribution: List[UserDistributionItem] = Field(..., description="User distribution breakdown")
+    total_users: int = Field(..., description="Total number of users")
