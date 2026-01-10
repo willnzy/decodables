@@ -99,45 +99,117 @@ class SupabaseAdminUsersRepository:
         return result.data or []
 
     @retry_on_network_error()
-    async def admin_log_operation(self, admin_id: str, operation_type: str, target_user_id: Optional[str] = None,
-                            details: Optional[str] = None, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Log admin operation."""
-        result = self.client.table("admin_operations").insert({
-            "admin_id": admin_id,
-            "operation_type": operation_type,
-            "target_user_id": target_user_id,
-            "details": details,
-            "reason": reason,
-        }).execute()
-        
-        return result.data[0] if result.data else None
+    async def admin_log_operation(
+        self,
+        admin_id: str,
+        operation_type: str,
+        target_user_id: Optional[str] = None,
+        # NEW PARAMETERS for Phase 4 - Task 9:
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        source: Optional[str] = None,
+        # EXISTING PARAMETERS:
+        details: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Enhanced audit logging with source tracking and metadata support.
+
+        New operation_type values (added in Task 9):
+        - project_delete_soft, project_delete_permanent, project_restore
+        - template_delete, generation_delete, generation_batch_delete
+        - resource_delete, feature_flag_delete, campaign_delete, experiment_delete
+        - config_update, config_delete, rate_limit_preset_apply, cache_clear
+        - webhook_subscription_create, webhook_subscription_update, webhook_subscription_cancel
+        - webhook_invoice_paid, webhook_refund_process, webhook_credits_purchase
+        - webhook_user_create, webhook_tier_update
+
+        Args:
+            admin_id: Admin who performed action (use "system_webhook" for automated)
+            operation_type: Type of operation (see list above + existing types)
+            target_user_id: Affected user ID (optional)
+            target_type: Resource type being operated on (project, config, feature_flag, etc.)
+            target_id: Specific resource identifier (project_id, config_key, etc.)
+            metadata: Additional context as JSONB (before/after values, batch info, etc.)
+            source: Where action originated from (api, webhook, stripe, clerk)
+            details: Human-readable description
+            reason: Why the action was taken
+
+        Returns:
+            Created log entry or None if failed (graceful degradation)
+        """
+        try:
+            result = self.client.table("admin_operations").insert({
+                "admin_id": admin_id,
+                "operation_type": operation_type,
+                "target_user_id": target_user_id,
+                "target_type": target_type,
+                "target_id": target_id,
+                "action_details": metadata or {},  # Using action_details as metadata
+                "source": source or "api",
+                "details": details,
+                "reason": reason,
+            }).execute()
+
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Failed to log admin operation {operation_type}: {e}")
+            return None  # Graceful degradation - don't fail the main operation
 
     @retry_on_network_error()
     async def admin_get_operation_logs(
         self,
         offset: int = 0,
         limit: int = 50,
+        # EXISTING FILTERS:
         operation_type: Optional[str] = None,
         admin_id: Optional[str] = None,
         target_user_id: Optional[str] = None,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
+        # NEW FILTERS for Phase 4 - Task 9:
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get admin operation logs with offset-based pagination."""
+        """
+        Enhanced audit log query with new filter parameters.
+
+        Supports filtering by:
+        - operation_type: Specific operation (project_delete, webhook_subscription_create, etc.)
+        - admin_id: Admin who performed action (use "system_webhook" for automated)
+        - target_user_id: Affected user
+        - target_type: Resource type (project, config, feature_flag, system_resource, etc.)
+        - target_id: Specific resource ID
+        - source: Action source (api, webhook, stripe, clerk)
+        - start_date / end_date: Date range filtering
+
+        Returns:
+            Dict with logs, total, offset, limit, has_more
+        """
         query = self.client.table("admin_operations").select("*", count="exact")
 
+        # Apply all filters
         if operation_type:
             query = query.eq("operation_type", operation_type)
         if admin_id:
             query = query.eq("admin_id", admin_id)
         if target_user_id:
             query = query.eq("target_user_id", target_user_id)
+        if target_type:  # NEW
+            query = query.eq("target_type", target_type)
+        if target_id:    # NEW
+            query = query.eq("target_id", target_id)
+        if source:       # NEW
+            query = query.eq("source", source)
         if start_date:
             query = query.gte("created_at", start_date)
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        # Pagination with OOM protection
+        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).limit(100000).execute()
         total = result.count or 0
 
         return {

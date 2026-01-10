@@ -73,3 +73,57 @@ async def log_activity_async(
         None (logs warning if fails)
     """
     await run_in_threadpool(log_activity, user_id, action, metadata)
+
+
+async def log_webhook_operation(
+    operation_type: str,
+    source: str,  # "stripe" or "clerk"
+    target_user_id: Optional[str] = None,
+    details: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Log webhook-driven operations to admin_operations table.
+
+    Uses special admin ID "system_webhook" for automated actions.
+    Added in Phase 4 - Task 9 (Activity Logging).
+
+    Args:
+        operation_type: Type of webhook operation (webhook_subscription_create, etc.)
+        source: Webhook source ("stripe" or "clerk")
+        target_user_id: Affected user ID
+        details: Human-readable description
+        metadata: Event data (subscription_id, amount, etc.)
+
+    Example:
+        await log_webhook_operation(
+            operation_type="webhook_subscription_create",
+            source="stripe",
+            target_user_id="user_123",
+            details="Subscription created",
+            metadata={"subscription_id": "sub_xyz", "amount": 999}
+        )
+
+    Note:
+        Uses graceful degradation - webhook processing won't fail if logging fails.
+    """
+    from core.database import get_database_client
+    from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+    WEBHOOK_SYSTEM_ADMIN_ID = "system_webhook"  # Special admin ID for automated actions
+
+    try:
+        db = get_database_client()
+        admin_repo = SupabaseAdminUsersRepository(db)
+
+        await admin_repo.admin_log_operation(
+            admin_id=WEBHOOK_SYSTEM_ADMIN_ID,
+            operation_type=operation_type,
+            target_user_id=target_user_id,
+            source=source,
+            details=details,
+            metadata=metadata,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log webhook operation {operation_type}: {e}")
+        # Don't fail the webhook processing - graceful degradation

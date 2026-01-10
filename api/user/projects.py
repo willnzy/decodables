@@ -503,6 +503,24 @@ async def delete_project(
             raise HTTPException(403, "Access denied")
         raise HTTPException(400, result.error or "Failed to delete project")
 
+    # ✅ Phase 4 - Task 9: Log project deletion to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],  # User deleting their own project
+            operation_type="project_delete_permanent" if permanent else "project_delete_soft",
+            target_type="project",
+            target_id=project_id,
+            details=f"Project deletion ({'permanent' if permanent else 'soft delete'})",
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log project deletion: {e}")
+        # Don't fail the operation if logging fails
+
     status = "permanently_hidden" if permanent else "deleted"
     stage = 2 if permanent else 1
 
@@ -537,6 +555,24 @@ async def restore_project(
             raise HTTPException(403, "Access denied")
         logger.error(f"Failed to restore project {project_id}: {result.error}")
         raise HTTPException(400, result.error or "Failed to restore project")
+
+    # ✅ Phase 4 - Task 9: Log project restoration to audit trail
+    try:
+        from core.database import get_database_client
+        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+
+        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        await admin_repo.admin_log_operation(
+            admin_id=user["id"],
+            operation_type="project_restore",
+            target_type="project",
+            target_id=project_id,
+            details="Project restored from soft delete",
+            source="api",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log project restoration: {e}")
+        # Don't fail the operation if logging fails
 
     return ProjectRestoreResponse(
         status="ok",
