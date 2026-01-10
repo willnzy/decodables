@@ -58,7 +58,7 @@ class SupabaseUserRepository(IUserRepository):
     async def get_by_email(self, email: str) -> Optional[UserProfile]:
         """Get user profile by email."""
         try:
-            result = self.client.table("users").select("*").eq(
+            result = self.client.table("profiles").select("*").eq(
                 "email", email
             ).single().execute()
 
@@ -75,8 +75,8 @@ class SupabaseUserRepository(IUserRepository):
         """Persist user profile (upsert)."""
         try:
             data = self._map_to_row(user_profile)
-            result = self.client.table("users").upsert(
-                data, on_conflict="user_id"
+            result = self.client.table("profiles").upsert(
+                data, on_conflict="id"  # profiles.id is the primary key
             ).select("*").single().execute()
 
             return self._map_to_profile(result.data)
@@ -93,7 +93,7 @@ class SupabaseUserRepository(IUserRepository):
 
         try:
             data = self._map_to_row(user_profile)
-            result = self.client.table("users").insert(data).select("*").single().execute()
+            result = self.client.table("profiles").insert(data).select("*").single().execute()
 
             return self._map_to_profile(result.data)
 
@@ -107,7 +107,7 @@ class SupabaseUserRepository(IUserRepository):
             data = self._map_to_row(user_profile)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = self.client.table("users").update(data).eq(
+            result = self.client.table("profiles").update(data).eq(
                 "user_id", user_profile.user_id
             ).select("*").single().execute()
 
@@ -125,7 +125,7 @@ class SupabaseUserRepository(IUserRepository):
     async def delete(self, user_id: str) -> bool:
         """Delete a user profile."""
         try:
-            result = self.client.table("users").delete().eq(
+            result = self.client.table("profiles").delete().eq(
                 "user_id", user_id
             ).execute()
 
@@ -138,7 +138,7 @@ class SupabaseUserRepository(IUserRepository):
     async def exists(self, user_id: str) -> bool:
         """Check if user exists."""
         try:
-            result = self.client.table("users").select("user_id").eq(
+            result = self.client.table("profiles").select("user_id").eq(
                 "user_id", user_id
             ).single().execute()
 
@@ -155,7 +155,7 @@ class SupabaseUserRepository(IUserRepository):
     ) -> List[UserProfile]:
         """Get users by subscription tier."""
         try:
-            result = self.client.table("users").select("*").eq(
+            result = self.client.table("profiles").select("*").eq(
                 "tier", tier.value
             ).range(offset, offset + limit - 1).execute()
 
@@ -171,7 +171,7 @@ class SupabaseUserRepository(IUserRepository):
     ) -> List[UserProfile]:
         """Get users who haven't completed onboarding."""
         try:
-            result = self.client.table("users").select("*").neq(
+            result = self.client.table("profiles").select("*").neq(
                 "onboarding_step", OnboardingStep.COMPLETED.value
             ).limit(limit).execute()
 
@@ -196,7 +196,7 @@ class SupabaseUserRepository(IUserRepository):
             if stripe_customer_id:
                 update_data["stripe_customer_id"] = stripe_customer_id
 
-            result = self.client.table("users").update(update_data).eq(
+            result = self.client.table("profiles").update(update_data).eq(
                 "user_id", user_id
             ).select("*").single().execute()
 
@@ -218,10 +218,10 @@ class SupabaseUserRepository(IUserRepository):
     ) -> UserProfile:
         """Update user's onboarding progress."""
         try:
-            result = self.client.table("users").update({
+            result = self.client.table("profiles").update({
                 "onboarding_step": step.value,
                 "updated_at": datetime.utcnow().isoformat(),
-            }).eq("user_id", user_id).select("*").single().execute()
+            }).eq("id", user_id).select("*").single().execute()
 
             if not result.data:
                 raise UserNotFoundException(user_id)
@@ -240,7 +240,7 @@ class SupabaseUserRepository(IUserRepository):
             if row.get("preferences") else UserPreferences()
 
         return UserProfile(
-            user_id=row["user_id"],
+            user_id=row["id"],  # profiles.id is the Clerk user_id
             email=row["email"],
             tier=UserTier(row.get("tier", "free")),
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
@@ -257,7 +257,7 @@ class SupabaseUserRepository(IUserRepository):
     def _map_to_row(self, profile: UserProfile) -> dict:
         """Map UserProfile to database row."""
         return {
-            "user_id": profile.user_id,
+            "id": profile.user_id,  # profiles.id is the primary key
             "email": profile.email,
             "tier": profile.tier.value,
             "onboarding_step": profile.onboarding_step.value,

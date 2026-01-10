@@ -54,16 +54,16 @@ class SupabaseCreditRepository(ICreditRepository):
     async def get_by_user_id(self, user_id: str) -> Optional[UserCredits]:
         """Get user credits by user ID."""
         try:
-            result = self.client.table("users").select(
-                "user_id, credits_monthly, credits_permanent, tier"
-            ).eq("user_id", user_id).single().execute()
+            result = self.client.table("profiles").select(
+                "id, credits_monthly, credits_permanent, tier"
+            ).eq("id", user_id).single().execute()
 
             if not result.data:
                 return None
 
             data = result.data
             return UserCredits.create(
-                user_id=data["user_id"],
+                user_id=data["id"],  # profiles.id is the user_id
                 monthly=data.get("credits_monthly", 0),
                 permanent=data.get("credits_permanent", 0),
                 tier=data.get("tier", "free"),
@@ -75,12 +75,12 @@ class SupabaseCreditRepository(ICreditRepository):
     async def save(self, user_credits: UserCredits) -> UserCredits:
         """Persist user credits and pending transactions."""
         try:
-            # Update user credits
-            self.client.table("users").update({
+            # Update user credits in profiles table
+            self.client.table("profiles").update({
                 "credits_monthly": user_credits.monthly_credits,
                 "credits_permanent": user_credits.permanent_credits,
                 "tier": user_credits.tier,
-            }).eq("user_id", user_credits.user_id).execute()
+            }).eq("id", user_credits.user_id).execute()
 
             # Save pending transactions
             for tx in user_credits.pending_transactions:
@@ -351,10 +351,10 @@ class SupabaseCreditRepository(ICreditRepository):
     ) -> UserCredits:
         """Reset monthly credits for a user."""
         try:
-            result = self.client.table("users").update({
+            result = self.client.table("profiles").update({
                 "credits_monthly": new_amount
-            }).eq("user_id", user_id).select(
-                "user_id, credits_monthly, credits_permanent, tier"
+            }).eq("id", user_id).select(
+                "id, credits_monthly, credits_permanent, tier"
             ).single().execute()
 
             if not result.data:
@@ -366,7 +366,7 @@ class SupabaseCreditRepository(ICreditRepository):
 
             data = result.data
             return UserCredits.create(
-                user_id=data["user_id"],
+                user_id=data["id"],
                 monthly=data["credits_monthly"],
                 permanent=data["credits_permanent"],
                 tier=data.get("tier", "free"),
