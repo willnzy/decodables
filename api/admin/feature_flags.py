@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from core.feature_flag import feature_service, EvaluationContext
 from domains.feature_flags import FeatureFlagService, FeatureFlagRepository
-from dependencies import require_admin, get_supabase_client
+from dependencies import require_admin
+from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
 

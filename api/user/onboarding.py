@@ -16,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from domains.onboarding import OnboardingService, OnboardingRepository
-from dependencies import get_current_user, get_supabase_client
+from dependencies import get_current_user
+from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
 

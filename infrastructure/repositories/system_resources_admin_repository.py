@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 
 from core.database import DatabaseClient
-from infrastructure.decorators import retry_on_network_error
+from core.database.retry import retry_on_network_error
 
 
 class SupabaseSystemResourcesAdminRepository:
