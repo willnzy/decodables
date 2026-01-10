@@ -5,6 +5,7 @@ Listing Repository Implementation - Supabase data access for marketplace domain.
 @version 1.0.0
 
 Implements IListingRepository using Supabase PostgreSQL.
+Inherits from BaseRepository for soft/hard delete support.
 """
 
 from typing import Optional, List
@@ -25,26 +26,22 @@ from domains.marketplace.value_objects import (
     PriceFilter,
 )
 from domains.marketplace.exceptions import ListingNotFoundException
-from core.database import get_supabase_client
+from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseListingRepository(IListingRepository):
+class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     """
     Supabase implementation of listing repository.
+
+    Inherits soft/hard delete operations from BaseRepository.
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
-        self._client = client
-
     @property
-    def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
-        return self._client
+    def table_name(self) -> str:
+        """Table name for marketplace listings."""
+        return "marketplace_listings"
 
     async def get_by_id(self, listing_id: str) -> Optional[Listing]:
         """Get listing by ID."""
@@ -110,17 +107,21 @@ class SupabaseListingRepository(IListingRepository):
             raise
 
     async def delete(self, listing_id: str) -> bool:
-        """Delete a listing."""
-        try:
-            result = self.client.table("marketplace_listings").delete().eq(
-                "listing_id", listing_id
-            ).execute()
+        """
+        Soft delete a listing (mark as deleted).
 
-            return len(result.data) > 0 if result.data else False
+        Uses BaseRepository.soft_delete() for soft deletion.
+        For hard delete (physical removal), use hard_delete() method.
+        """
+        # Get listing UUID first
+        result = self.client.table("marketplace_listings").select("id").eq(
+            "listing_id", listing_id
+        ).single().execute()
 
-        except Exception as e:
-            logger.error(f"Failed to delete listing {listing_id}: {e}")
+        if not result.data:
             return False
+
+        return await super().soft_delete(result.data["id"])
 
     async def get_by_seller(
         self,
@@ -471,6 +472,15 @@ class SupabaseListingRepository(IListingRepository):
         except Exception as e:
             logger.error(f"Failed to get purchases for user {user_id}: {e}")
             return []
+
+    def _map_to_entity(self, row: dict) -> Listing:
+        """
+        Map database row to Listing entity (BaseRepository requirement).
+
+        This is the standard mapping method for BaseRepository.
+        _map_to_listing() is kept for backward compatibility.
+        """
+        return self._map_to_listing(row)
 
     def _map_to_listing(self, row: dict) -> Listing:
         """Map database row to Listing."""
