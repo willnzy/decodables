@@ -271,6 +271,25 @@ class TaskQueueService:
             return None
 
         try:
+            # Create database record (generation_tasks table)
+            from core.database import get_database_client
+            db = get_database_client()
+
+            task_type = f"export_{export_type}"  # "export_pdf" or "export_zip"
+            db.table("generation_tasks").insert({
+                "id": task_id,
+                "user_id": user_id,
+                "project_id": project_id,
+                "task_type": task_type,
+                "status": "pending",
+                "parameters": {
+                    "export_type": export_type,
+                    "tier": tier,
+                    "idempotency_key": idempotency_key,
+                },
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+
             # Import handler function (avoid circular imports)
             from .export_handler import execute_export_task
 

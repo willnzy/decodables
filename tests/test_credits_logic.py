@@ -79,7 +79,7 @@ class TestMonthlyCreditsReset:
             mock_user_repo_class.return_value = mock_user_repo
             mock_user_repo.get_profile.return_value = {
                 "id": user_id,
-                "tier": "pro",
+                "tier": "t3",
                 "credits_reset_at": old_reset_time
             }
 
@@ -393,11 +393,11 @@ class TestUserCreditsAggregate:
 
     def test_tier_allowance_mapping(self):
         """Test tier monthly allowance calculation"""
-        free_user = UserCredits.create("free", tier="free")
+        free_user = UserCredits.create("free", tier="t1")
         assert free_user.get_tier_monthly_allowance() == 0
 
-        starter_user = UserCredits.create("starter", tier="starter")
+        starter_user = UserCredits.create("starter", tier="t2")
         assert starter_user.get_tier_monthly_allowance() == 500
 
-        pro_user = UserCredits.create("pro", tier="pro")
+        pro_user = UserCredits.create("pro", tier="t3")
         assert pro_user.get_tier_monthly_allowance() == 1000

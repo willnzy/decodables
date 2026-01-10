@@ -275,7 +275,7 @@ CREATE TABLE generation_tasks (
         task_type IN (
             'text_to_image', 'image_to_image', 'text_generation',
             'image_upscale', 'background_removal', 'style_transfer',
-            'object_detection', 'smart_scan'
+            'object_detection', 'smart_scan', 'export_pdf', 'export_zip'
         )
     ),
     CONSTRAINT check_status CHECK (
