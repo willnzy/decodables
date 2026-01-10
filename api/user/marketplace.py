@@ -167,7 +167,7 @@ async def list_listings(
     sort: str = Query("latest", pattern="^(latest|popular|price_asc|price_desc|best_selling)$"),
     tier: Optional[str] = None,
     price: Optional[str] = None,
-    page: int = Query(1, ge=1),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
 ) -> ListingsResponse:
@@ -189,7 +189,7 @@ async def list_listings(
     container = get_container()
     handler = container.search_listings_handler
 
-    offset = (page - 1) * limit
+    
 
     query = SearchListingsQuery(
         query="",
@@ -456,7 +456,7 @@ async def purchase_listing(
 
 @router.get("/my-listings")
 async def get_my_listings(
-    page: int = Query(1, ge=1),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None, pattern="^(draft|pending_review|published|rejected|suspended|archived)$"),
     user: dict = Depends(get_current_user),
@@ -478,7 +478,7 @@ async def get_my_listings(
     handler = container.get_my_listings_handler
 
     # Convert page to offset
-    offset = (page - 1) * limit
+    
 
     query = GetMyListingsQuery(
         seller_id=user["id"],
@@ -677,7 +677,7 @@ async def submit_report(
 
 @router.get("/my-reports")
 async def get_my_reports(
-    page: int = Query(1, ge=1),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(get_current_user),
 ) -> MyReportsResponse:

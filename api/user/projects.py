@@ -89,10 +89,15 @@ class ProjectResponse(BaseModel):
 
 
 class ProjectListResponse(BaseModel):
-    """Project list response."""
+    """
+    Project list response (DDD compliant).
+
+    P1-002 fix: Migrated from page-based to offset-based pagination.
+    """
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
+    limit: int
 
 
 class ProjectDeleteResponse(BaseModel):
@@ -113,8 +118,8 @@ class ProjectRestoreResponse(BaseModel):
 
 @router.get("")
 async def list_projects(
-    page: int = Query(1, ge=1),
-    limit: int = Query(6, ge=1, le=100),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(6, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas_data: bool = True,
     user: dict = Depends(get_current_user),
@@ -122,21 +127,19 @@ async def list_projects(
     """
     Get user's projects with pagination.
 
-    Compatible with legacy /api/projects response format.
+    P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
 
     Args:
-        page: Page number (default: 1)
-        limit: Items per page (default: 6)
+        offset: Number of records to skip (default: 0)
+        limit: Number of records to return (default: 6, max: 100)
         search: Search query to filter by title
         include_canvas_data: Whether to include canvas_data
 
     Returns:
-        ProjectListResponse with items, total, page
+        ProjectListResponse with items, total, offset, limit
     """
     container = get_container()
     handler = container.get_user_projects_handler
-
-    offset = (page - 1) * limit
 
     query = GetUserProjectsQuery(
         user_id=user["id"],
@@ -163,15 +166,16 @@ async def list_projects(
     return ProjectListResponse(
         items=items,
         total=result.total_count,
-        page=page,
+        offset=offset,
+        limit=limit,
     )
 
 
 @router.get("/dashboard")
 async def dashboard_projects(
     view: str = Query("all", pattern="^(all|bought|selling)$"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
     user: dict = Depends(get_current_user),
@@ -179,15 +183,17 @@ async def dashboard_projects(
     """
     Get projects for dashboard with view type filtering.
 
+    P1-002 fix: Migrated to offset-based pagination.
+
     Args:
         view: View type - "all" (default), "bought", or "selling"
-        page: Page number
-        limit: Items per page
+        offset: Number of records to skip (default: 0)
+        limit: Number of records to return (default: 20, max: 100)
         search: Search query
         include_canvas: Whether to include canvas_data
 
     Returns:
-        Projects list with view info
+        Projects list with view info (includes offset and limit in response)
     """
     container = get_container()
     handler = container.get_dashboard_projects_handler
@@ -195,7 +201,7 @@ async def dashboard_projects(
     query = GetDashboardProjectsQuery(
         user_id=user["id"],
         view_type=view,
-        page=page,
+        offset=offset,
         limit=limit,
         search=search,
         include_canvas_data=include_canvas,
@@ -212,20 +218,20 @@ async def dashboard_projects(
 
 @router.get("/deleted")
 async def list_deleted_projects(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Retrieve the user's deleted projects.
 
+    P1-002 fix: Migrated to offset-based pagination.
+
     Returns:
-        List of deleted projects that can be restored
+        List of deleted projects that can be restored (includes offset and limit)
     """
     container = get_container()
     creation_service = container.creation_service
-
-    offset = (page - 1) * limit
     items = await creation_service.get_user_deleted_projects(
         user_id=user["id"],
         limit=limit,
