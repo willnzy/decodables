@@ -28,6 +28,12 @@ from .logging import (
     setup_logging,
 )
 from .cors import add_cors_headers
+from .file_upload import (
+    validate_file_size,
+    create_file_size_validator,
+    MAX_UPLOAD_SIZE_MB,
+    MAX_UPLOAD_SIZE_BYTES,
+)
 
 __all__ = [
     # Request ID
@@ -41,4 +47,9 @@ __all__ = [
     'setup_logging',
     # CORS
     'add_cors_headers',
+    # File Upload (P3-005)
+    'validate_file_size',
+    'create_file_size_validator',
+    'MAX_UPLOAD_SIZE_MB',
+    'MAX_UPLOAD_SIZE_BYTES',
 ]

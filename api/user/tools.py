@@ -34,6 +34,7 @@ from application.commands.tools import PdfPreviewCommand, OcrCommand
 from infrastructure.rate_limiter import limiter
 from infrastructure.logging.activity_logger import log_activity
 from core.utils.timezone import get_request_timezone
+from core.middleware import validate_file_size  # P3-005: File upload size validation
 from domains.identity import is_user_in_trial
 from config import TRIAL_DAYS
 
@@ -88,13 +89,14 @@ class OcrResponse(BaseModel):
 @limiter.limit("10/minute")
 async def pdf_preview(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     user: dict = Depends(get_current_user),
 ) -> PdfPreviewResponse:
     """
     Convert PDF to page preview images.
 
     v3.0.0: Now uses PdfPreviewHandler (CQRS Command pattern).
+    P3-005: Added 10MB file size limit via validate_file_size dependency.
 
     Pro only feature. Returns thumbnail URLs for each page.
     """
@@ -115,7 +117,7 @@ async def pdf_preview(
 @limiter.limit("10/minute")
 async def ocr_tool(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
 ) -> OcrResponse:

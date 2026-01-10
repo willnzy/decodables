@@ -35,6 +35,7 @@ import re
 
 from dependencies import require_admin
 from container import get_container
+from core.middleware import validate_file_size  # P3-005: File upload size validation
 from application.queries.system_resources import (
     ListSystemResourcesQuery,
     GetSystemResourceQuery,
@@ -184,7 +185,7 @@ async def get_resource(
 @limiter.limit("30/minute")  # v3.25: SR-HIGH-1
 async def create_resource(
     request: Request,  # v3.25: Required for rate limiter
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     type: str = Form(...),
     category: Optional[str] = Form(None),
     name: Optional[str] = Form(None),
@@ -199,6 +200,7 @@ async def create_resource(
 
     v3.0.0: Now uses CreateSystemResourceHandler (Container pattern).
     v3.25: Added rate limiting.
+    P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
     container = get_container()
     handler = container.create_system_resource_handler
@@ -263,7 +265,7 @@ async def update_resource(
 async def replace_resource_file(
     request: Request,  # v3.25: Required for rate limiter
     resource_id: str,
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     admin: dict = Depends(require_admin)
 ):
     """
@@ -271,6 +273,7 @@ async def replace_resource_file(
 
     v3.0.0: Now uses ReplaceResourceFileHandler (Container pattern).
     v3.25: Added rate limiting and UUID validation.
+    P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
     # v3.25: SR-MEDIUM-2 - Validate resource_id format
     validate_resource_id(resource_id)

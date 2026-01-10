@@ -45,6 +45,7 @@ from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from core.utils.timezone import get_request_timezone
+from core.middleware import validate_file_size  # P3-005: File upload size validation
 from container import get_container
 from application.queries.assets import (
     GetUserAssetsQuery,
@@ -137,7 +138,7 @@ async def my_assets(
 @limiter.limit("20/minute")
 async def upload_asset(
     request: Request,
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
     user: dict = Depends(get_current_user)
 ):
@@ -146,6 +147,8 @@ async def upload_asset(
 
     v3.0.0: Now uses UploadAssetHandler (Container pattern).
     Business logic (Pro check, file validation) moved to Service layer.
+
+    P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
