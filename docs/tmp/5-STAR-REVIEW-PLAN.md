@@ -73,7 +73,7 @@
 | 12 | Marketplace | 11 | 🟡 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 13 | Payment | 2 | 🔴 | ✅ v2.3.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (已修复) |
 | 14 | Projects | 10 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
-| 15 | Resources | 7 | 🟢 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
+| 15 | Resources | 7 | 🟢 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (DDD重构) |
 | 16 | Support | 4 | 🟢 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (DDD重构) |
 | 17 | System Resources | 9 | 🟡 | ❌ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⏳ 需要 FULL REVIEW |
 | 18 | Tasks | 2 | 🟢 | ✅ v3.0.0 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ **5星** (DDD重构) |
@@ -87,14 +87,14 @@
 **统计**:
 - 总模块数: 24
 - 总接口数: 110
-- 已完成 FULL REVIEW: 19 (Analytics, Billing, Campaigns, Config, Experiments, Export, Generation Images, Generation PDF, Generation Story, Generations, Logs, Marketplace, Payment, Support, Tasks, Themes, Tools, User Profile, Webhooks)
-- **已达到 5 星**: 19 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Export ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Generations ⭐⭐⭐⭐⭐, Logs ⭐⭐⭐⭐⭐, Marketplace ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, Support ⭐⭐⭐⭐⭐, Tasks ⭐⭐⭐⭐⭐, Themes ⭐⭐⭐⭐⭐, Tools ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
-- **5 星Review完成率**: 100% (19/19) 🎉
-- **5 星达成率**: 100% (19/19 模块全部达到 5 星标准 ✨)
-- 需要 FULL REVIEW: 5
+- 已完成 FULL REVIEW: 20 (Analytics, Billing, Campaigns, Config, Experiments, Export, Generation Images, Generation PDF, Generation Story, Generations, Logs, Marketplace, Payment, Resources, Support, Tasks, Themes, Tools, User Profile, Webhooks)
+- **已达到 5 星**: 20 (Analytics ⭐⭐⭐⭐⭐, Billing ⭐⭐⭐⭐⭐, Campaigns ⭐⭐⭐⭐⭐, Config ⭐⭐⭐⭐⭐, Experiments ⭐⭐⭐⭐⭐, Export ⭐⭐⭐⭐⭐, Generation Images ⭐⭐⭐⭐⭐, Generation PDF ⭐⭐⭐⭐⭐, Generation Story ⭐⭐⭐⭐⭐, Generations ⭐⭐⭐⭐⭐, Logs ⭐⭐⭐⭐⭐, Marketplace ⭐⭐⭐⭐⭐, Payment ⭐⭐⭐⭐⭐, Resources ⭐⭐⭐⭐⭐, Support ⭐⭐⭐⭐⭐, Tasks ⭐⭐⭐⭐⭐, Themes ⭐⭐⭐⭐⭐, Tools ⭐⭐⭐⭐⭐, User Profile ⭐⭐⭐⭐⭐, Webhooks ⭐⭐⭐⭐⭐)
+- **5 星Review完成率**: 100% (20/20) 🎉
+- **5 星达成率**: 100% (20/20 模块全部达到 5 星标准 ✨)
+- 需要 FULL REVIEW: 4
 - 高风险模块 (🔴): 6 (Billing ✅ 5星, User Profile ✅ 5星, Payment ✅ 5星, Webhooks ✅ 5星, Generation Images ✅ 5星, Generation PDF ✅ 5星, Generation Story ✅ 5星) - **6/6 完成 100%** 🎉🎉🎉
 - 中风险模块 (🟡): 7 (Campaigns ✅ 5星, Experiments ✅ 5星, Export ✅ 5星, Generations ✅ 5星, Marketplace ✅ 5星) - **5/7 完成 71%**
-- 低风险模块 (🟢): 7 (Analytics ✅ 5星, Config ✅ 5星, Logs ✅ 5星, Support ✅ 5星, Tasks ✅ 5星, Themes ✅ 5星, Tools ✅ 5星) - **7/7 完成 100%** 🎉🎉🎉
+- 低风险模块 (🟢): 8 (Analytics ✅ 5星, Config ✅ 5星, Logs ✅ 5星, Resources ✅ 5星, Support ✅ 5星, Tasks ✅ 5星, Themes ✅ 5星, Tools ✅ 5星) - **8/8 完成 100%** 🎉🎉🎉
 
 ---
 
@@ -1465,16 +1465,100 @@ v3.0.0: API → Handler → Service → Repository (完整 DDD)
 
 ---
 
+### ✅ 第 20 轮: Resources API 模块 5 星 Review (已完成并升级)
+
+**开始时间**: 2026-01-10 23:15
+**最终完成时间**: 2026-01-10 23:45
+**总耗时**: 30 分钟 (DDD v3.0.0 重构 + 15个测试迁移)
+**最终评级**: ⭐⭐⭐⭐⭐ (5 STARS) ✨
+
+**评分详情**:
+- v2.1.0 评分: ⭐⭐⭐⭐ (4星)
+  - 架构一致性: 60/100 (有 CQRS 但使用 Inline Handler)
+  - 代码质量: 95/100
+  - 测试覆盖: 100% (15/15 tests)
+  - 安全性: 90/100
+
+**核心问题**: Inline Handler Pattern vs Container Pattern
+```python
+# v2.1.0 (Inline)
+handler = GetResourcesHandler(content_service)  # 每次创建
+result = await handler.handle(query)
+
+# v3.0.0 (Container)
+container = get_container()
+handler = container.get_resources_handler  # 从容器获取
+result = await handler.handle(query)
+```
+
+**改动总结** (v3.0.0):
+1. **Phase 1**: 新增 3 个 Result 对象 (+45 lines)
+   - GetStickersResult
+   - GetBackgroundsResult
+   - GetProjectTemplatesResult
+
+2. **Phase 2**: Container 注册 7 个 Handler (+70 lines)
+   - GetResourcesHandler → container.get_resources_handler
+   - GetResourceByIdHandler → container.get_resource_by_id_handler
+   - GetStickersHandler → container.get_stickers_handler
+   - GetBackgroundsHandler → container.get_backgrounds_handler
+   - GetProjectTemplatesHandler → container.get_project_templates_handler
+   - GetCategoriesHandler → container.get_categories_handler
+   - GetResourceStatsHandler → container.get_resource_stats_handler
+
+3. **Phase 3**: API 层重构 6 个 endpoints (~50 lines)
+   - 移除 `get_content_service` dependency injection
+   - 所有 endpoint 改用 Container
+   - `/types` 无需 Handler (返回常量)
+
+4. **Phase 4**: 测试迁移 (15 tests)
+   - 移除所有 `@patch` 装饰器
+   - 使用 Container Handler Injection
+   - 所有 Result 对象更新为 v3.0.0 格式
+
+**架构对比**:
+```
+v2.1.0: API → Depends(get_content_service) → Inline Handler → Service → Repository
+v3.0.0: API → Container.handler → Service → Repository (完整 DDD)
+```
+
+**测试结果**: ✅ **15/15 passed** (100%)
+- TestListResources: 2 tests
+- TestGetResourceTypes: 1 test
+- TestGetCategories: 1 test
+- TestGetStickers: 1 test
+- TestGetBackgrounds: 1 test
+- TestGetTemplates: 1 test
+- TestGetResourceById: 3 tests
+- TestSecurityValidations: 5 tests
+
+**Git 提交**:
+- 72218a5: test(resources): migrate to v3.0.0 Handler mocking
+- edd39c7: refactor(resources): upgrade to v3.0.0 Container pattern
+- Status: ✅ Pushed
+
+**最终评分**:
+| 维度 | v2.1.0 | v3.0.0 | 提升 |
+|------|--------|--------|------|
+| 架构合规 | 60/100 | **100/100** | +40 ⭐ |
+| Result 覆盖 | 57/100 | **100/100** | +43 ⭐ |
+| Container 集成 | 0/100 | **100/100** | +100 ⭐ |
+| **总评** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | **+1星** |
+
+**结论**: Resources v3.0.0 完全符合 5 星标准 (100/100) ✅
+
+---
+
 ## 总体目标
 
 **目标**: 所有已 Review 模块达到 ⭐⭐⭐⭐⭐ 标准
 
 **当前进度**:
-- ✅ **19/19 模块完成 5 星 Review** (100%)
-- ✅ **19/19 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Export ✨, Generation Images ✨, Generation PDF ✨, Generation Story ✨, Generations ✨, Logs ✨, Marketplace ✨, Payment ✨, Support ✨, Tasks ✨, Themes ✨, Tools ✨, User Profile ✨, Webhooks ✨)
-- **5 星达成率**: **100%** (19/19) 🎉
+- ✅ **20/20 模块完成 5 星 Review** (100%)
+- ✅ **20/20 模块达到 5 星** (Analytics ✨, Billing ✨, Campaigns ✨, Config ✨, Experiments ✨, Export ✨, Generation Images ✨, Generation PDF ✨, Generation Story ✨, Generations ✨, Logs ✨, Marketplace ✨, Payment ✨, Resources ✨, Support ✨, Tasks ✨, Themes ✨, Tools ✨, User Profile ✨, Webhooks ✨)
+- **5 星达成率**: **100%** (20/20) 🎉
 - 🎉🎉🎉 **所有 6 个高风险模块 100% 完成** 🎉🎉🎉
-- 🎉🎉🎉 **所有 7 个低风险模块 100% 完成** 🎉🎉🎉
+- 🎉🎉🎉 **所有 8 个低风险模块 100% 完成** 🎉🎉🎉
 - 🎯 **5/7 中风险模块完成 (71%)** - Campaigns, Experiments, Export, Generations, Marketplace
 
 **阶段 2 目标继续推进** - 所有已 Review 模块均达到 5 星标准!
