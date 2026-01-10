@@ -17,21 +17,38 @@ from dataclasses import asdict, is_dataclass
 # ============================================================
 PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
     # 数据库字段 → 领域对象属性路径
-    'id': 'user_id',                          # TEXT (Clerk ID) → user_id
+    'id': 'user_id',                          # TEXT (Clerk ID)
     'email': 'email',                         # TEXT
-    'tier': 'tier',                           # TEXT (t1/t2/t3) → UserTier enum
-    'credits_monthly': 'credits_monthly',     # INTEGER
-    'credits_permanent': 'credits_permanent', # INTEGER
-    'stripe_customer_id': 'stripe_customer_id',    # TEXT
-    'stripe_subscription_id': 'stripe_subscription_id',  # TEXT
-    'onboarding_step': 'onboarding_step',     # TEXT → OnboardingStep enum
-    'preferences': 'preferences',             # JSONB → UserPreferences
+    'username': 'username',                   # TEXT
     'display_name': 'display_name',           # TEXT
     'avatar_url': 'avatar_url',               # TEXT
-    'is_deleted': 'is_deleted',               # BOOLEAN
-    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'user_code': 'user_code',                 # TEXT (26位唯一码)
+    'tier': 'tier',                           # TEXT (t1/t2/t3)
+    'tier_changed_at': 'tier_changed_at',     # TIMESTAMPTZ
+    'credits_monthly': 'credits_monthly',     # INTEGER
+    'credits_permanent': 'credits_permanent', # INTEGER
+    'trial_start_date': 'trial_start_date',   # TIMESTAMPTZ
+    'trial_end_date': 'trial_end_date',       # TIMESTAMPTZ
+    'is_trial_active': 'is_trial_active',     # BOOLEAN
+    'stripe_customer_id': 'stripe_customer_id',    # TEXT
+    'stripe_subscription_id': 'stripe_subscription_id',  # TEXT
+    'subscription_status': 'subscription_status',  # TEXT
+    'subscription_current_period_start': 'subscription_current_period_start',  # TIMESTAMPTZ
+    'subscription_current_period_end': 'subscription_current_period_end',  # TIMESTAMPTZ
+    'language': 'language',                   # TEXT
+    'timezone': 'timezone',                   # TEXT
+    'notification_email_enabled': 'notification_email_enabled',  # BOOLEAN
+    'notification_product_enabled': 'notification_product_enabled',  # BOOLEAN
+    'created_at_local': 'created_at_local',   # TIMESTAMP
+    'cohort_month': 'cohort_month',           # TEXT
+    'project_count': 'project_count',         # INTEGER
+    'asset_count': 'asset_count',             # INTEGER
+    'ext_json': 'ext_json',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
+    'is_deleted': 'is_deleted',               # BOOLEAN
+    'deleted_at': 'deleted_at',               # TIMESTAMPTZ
+    'recovery_expires_at': 'recovery_expires_at',  # TIMESTAMPTZ
 }
 
 # ============================================================
@@ -39,16 +56,21 @@ PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
 # ============================================================
 CREDIT_TX_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'transaction_id',                   # UUID
-    'user_id': 'user_id',                     # TEXT (FK to profiles.id)
-    'transaction_type': 'tx_type',            # TEXT → TransactionType enum
-    'bucket': 'bucket',                       # TEXT → CreditBucket enum
+    'user_id': 'user_id',                     # TEXT
+    'transaction_type': 'tx_type',            # TEXT
+    'bucket': 'bucket',                       # TEXT
     'amount': 'amount',                       # INTEGER
     'balance_monthly_after': 'balance_monthly_after',      # INTEGER
     'balance_permanent_after': 'balance_permanent_after',  # INTEGER
-    'description': 'description',             # TEXT
     'idempotency_key': 'idempotency_key',     # TEXT (UNIQUE)
-    'metadata': 'metadata',                   # JSONB → dict
+    'related_entity_type': 'related_entity_type',  # TEXT
+    'related_entity_id': 'related_entity_id',      # TEXT
+    'description': 'description',             # TEXT
+    'timezone': 'timezone',                   # TEXT
+    'created_at_local': 'created_at_local',   # TIMESTAMP
+    'metadata': 'metadata',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
+    'recovery_expires_at': 'recovery_expires_at',  # TIMESTAMPTZ
 }
 
 # ============================================================

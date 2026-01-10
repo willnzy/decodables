@@ -23,16 +23,37 @@ SPECIAL_MAPPINGS = {
         'marketplace_listings': 'listing_id',
         'marketplace_purchases': 'purchase_id',
         'credit_transactions': 'transaction_id',
-        'system_configs': 'config_key',  # system_configs 使用 key 作为主键
+        'credit_purchases': 'purchase_id',
         'experiments': 'experiment_id',
         'feature_flags': 'flag_id',
         'notifications': 'notification_id',
         'campaigns': 'campaign_id',
         'support_tickets': 'ticket_id',
+        'support_replies': 'reply_id',
+        'daily_themes': 'theme_id',
+        'holidays': 'holiday_id',
+        'referrals': 'referral_id',
+        'generation_tasks': 'task_id',
+        'user_generations': 'generation_id',
+        'marketplace_reviews': 'review_id',
+        'marketplace_reports': 'report_id',
+        'content_reports': 'report_id',
+        'payment_records': 'payment_id',
+        'asset_categories': 'category_id',
+        'asset_prompt_templates': 'template_id',
+        'page_prompt_templates': 'template_id',
+        'onboarding_steps': 'step_id',
+        'project_versions': 'version_id',
+        'pricing_plans': 'plan_id',
+        'user_discounts': 'discount_id',
+        'user_price_overrides': 'override_id',
+        'system_assets': 'asset_id',
+    },
+    'key': {
+        'system_configs': 'config_key',  # system_configs 使用 key 作为主键
     },
     'user_id': {
         'marketplace_purchases': 'buyer_id',  # 购买表中 user_id → buyer_id
-        'marketplace_listings': 'seller_id',  # 注意: listings 使用 seller_id
     }
 }
 
@@ -45,21 +66,27 @@ def extract_create_table(sql_content: str) -> List[Tuple[str, str]]:
 def parse_columns(table_definition: str) -> List[Tuple[str, str]]:
     """解析表定义，提取所有列名和类型"""
     columns = []
+    seen_columns = set()  # 防止重复
     lines = table_definition.split('\n')
 
     for line in lines:
         line = line.strip()
 
         # 跳过注释、约束、空行
-        if not line or line.startswith('--') or line.startswith('CONSTRAINT') or line.startswith('CHECK'):
+        if not line or line.startswith('--') or line.startswith('CONSTRAINT') or line.startswith('CHECK') or line.startswith('FOREIGN') or line.startswith('PRIMARY') or line.startswith('UNIQUE'):
             continue
 
         # 匹配列定义: column_name TYPE ...
+        # 只取第一个单词(列名)和第二个单词(类型),忽略后续的约束
         match = re.match(r'(\w+)\s+([\w\(\),\[\]]+)', line)
         if match:
             col_name = match.group(1)
             col_type = match.group(2)
-            columns.append((col_name, col_type))
+
+            # 防止重复添加(CHECK约束可能被误识别)
+            if col_name not in seen_columns:
+                columns.append((col_name, col_type))
+                seen_columns.add(col_name)
 
     return columns
 
@@ -149,13 +176,8 @@ def main():
     print('from typing import Dict')
     print()
 
-    # 按字母顺序生成
+    # 按字母顺序生成(生成所有表,包括之前的6张)
     for table_name in sorted(all_tables.keys()):
-        # 跳过已有映射的表
-        if table_name in ['profiles', 'credit_transactions', 'projects',
-                          'marketplace_listings', 'marketplace_purchases', 'system_configs']:
-            continue
-
         columns = all_tables[table_name]
         mapping = generate_mapping(table_name, columns)
         print(mapping)
