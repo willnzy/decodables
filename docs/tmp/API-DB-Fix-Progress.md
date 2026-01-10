@@ -484,7 +484,7 @@ assert response.status_code == 403  # 一次性使用
 
 ## Phase 3: P2 (MEDIUM) - 进度概览
 
-**总体进度**: 10 / 15 (67%)
+**总体进度**: 11 / 15 (73%)
 **预计完成**: 2026-01-19
 
 | 任务 | 预计工时 | 实际工时 | 状态 |
@@ -500,11 +500,12 @@ assert response.status_code == 403  # 一次性使用
 | **Stats API 返回类型迁移 (P2-001)** | **2h** | **0.5h** | **✅ 已完成** |
 | **接口参数长度限制 (P2-030)** | **1h** | **0.3h** | **✅ 已完成** |
 | **Metrics Funnel 查询优化 (P2-012)** | **2h** | **0.4h** | **✅ 已完成** |
+| **审计日志完善 (P2-040)** | **2h** | **0.2h** | **✅ 已完成** |
 | Redis 缓存实现 | 4h | - | ❌ 不需要 (AI Insights 不调用 OpenAI) |
 | 实现 feature_flags API | 4h | - | ⏸️ 未开始 (新功能) |
 | 实现 onboarding API | 4h | - | ⏸️ 未开始 (新功能) |
 | 实现 referrals API | 4h | - | ⏸️ 未开始 (新功能) |
-| 其他 P2 问题 (P2-035/040) | 4h | - | ⏸️ 未开始 |
+| 统一错误码格式 (P2-035) | 1h | - | ⏸️ 未开始 (架构改进) |
 
 **快速修复汇总** (Task 3.3-3.5):
 - ✅ 3 个任务完成
@@ -1790,6 +1791,152 @@ async def admin_get_conversion_funnel(self, period: str = "month") -> Dict[str, 
 **Commits**:
 - `72b5186` - fix(P2-012): optimize conversion funnel with RPC + indexes (50x-100x faster)
 - `ee04822` - chore: remove duplicate RPC file (already in 01_core_business.sql)
+
+---
+
+### Task 3.14: 审计日志完善 (P2-040) ✅ COMPLETE
+
+- **负责人**: Claude Sonnet 4.5
+- **预计工时**: 2h
+- **实际工时**: 0.2h (效率: 1000%)
+- **状态**: ✅ 已完成
+- **优先级**: P2 (MEDIUM - Security & Compliance)
+- **完成日期**: 2026-01-11
+
+**问题描述**:
+- 系统已有 `config_audit_logs` 表结构,但未被使用
+- ConfigRepository 有 `_log_audit()` 方法,但 `update()` 方法未调用
+- 配置变更缺少审计追踪,无法追溯谁在何时修改了什么
+
+**影响**:
+- 安全审计困难 (无法追溯配置变更)
+- 合规性问题 (缺少完整的变更历史)
+- 事故调查受阻 (无法回溯配置状态)
+
+**子任务清单**:
+- [x] 分析现有审计日志基础设施
+- [x] 修复 `update()` 方法 - 添加审计日志调用
+- [x] 修复 `_log_audit()` 字段名 (admin_id → changed_by)
+- [x] Git 提交并推送
+
+**完成标准**:
+- [x] 配置变更自动记录到 config_audit_logs
+- [x] 审计日志包含 old_value 和 new_value
+- [x] 审计日志包含操作者 (changed_by)
+- [x] 审计失败不影响主流程 (try-except保护)
+
+**执行记录**:
+- ✅ 2026-01-11: 分析审计日志基础设施 (表结构已存在)
+- ✅ 2026-01-11: 修改 `update()` 方法添加审计逻辑
+- ✅ 2026-01-11: 修复 `_log_audit()` 字段名错误
+- ✅ 2026-01-11: Git 提交 0042571 并推送
+
+**文件变更**:
+- `infrastructure/repositories/config_repository.py` (+42/-12 lines)
+  - `update()` method: Added old value fetch + audit logging
+  - `_log_audit()` method: Fixed field name (admin_id → changed_by)
+
+**审计日志实现详情**:
+
+**修改前** (未记录审计):
+```python
+async def update(self, key, value, ..., admin_id):
+    update_data = {...}
+    result = self.client.table("system_configs").update(update_data).eq("key", key).execute()
+    return result.data[0]  # ❌ 没有审计日志
+```
+
+**修改后** (完整审计):
+```python
+async def update(self, key, value, ..., admin_id):
+    # P2-040: Get old value for audit
+    old_config = None
+    if admin_id and value is not None:
+        old_result = self.client.table("system_configs").select("value").eq("key", key).execute()
+        if old_result.data:
+            old_config = old_result.data[0]
+
+    # Perform update
+    update_data = {...}
+    result = self.client.table("system_configs").update(update_data).eq("key", key).execute()
+
+    # P2-040: Log audit trail
+    if result.data and admin_id and value is not None:
+        old_value = old_config.get("value") if old_config else None
+        await self._log_audit(key, "update", old_value, value, admin_id)  # ✅ 审计日志
+
+    return result.data[0]
+```
+
+**审计日志字段修复**:
+```python
+# Before (错误字段名):
+self.client.table("config_audit_logs").insert({
+    "admin_id": admin_id,  # ❌ 表结构中不存在此字段
+    ...
+})
+
+# After (正确字段名):
+self.client.table("config_audit_logs").insert({
+    "changed_by": admin_id,  # ✅ 匹配表结构
+    ...
+})
+```
+
+**审计日志记录内容**:
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| config_key | TEXT | 被修改的配置键 |
+| action | TEXT | 操作类型 ('update', 'delete') |
+| old_value | TEXT | 修改前的值 |
+| new_value | TEXT | 修改后的值 |
+| changed_by | TEXT | 操作者用户ID (admin) |
+| changed_at | TIMESTAMPTZ | 操作时间 (自动) |
+
+**使用场景示例**:
+
+1. **管理员修改rate limit配置**:
+   ```
+   config_key: rate_limit.payment.checkout
+   action: update
+   old_value: {"limit": 5, "window": "minute"}
+   new_value: {"limit": 10, "window": "minute"}
+   changed_by: admin_user_123
+   changed_at: 2026-01-11 15:30:00
+   ```
+
+2. **安全审计查询**:
+   ```sql
+   SELECT * FROM config_audit_logs
+   WHERE config_key LIKE 'rate_limit.%'
+   ORDER BY changed_at DESC;
+   ```
+
+3. **配置变更回溯**:
+   ```sql
+   SELECT * FROM config_audit_logs
+   WHERE config_key = 'rate_limit.payment.checkout'
+   ORDER BY changed_at DESC
+   LIMIT 10;
+   ```
+
+**安全影响**:
+- ✅ 完整的配置变更历史追踪
+- ✅ 可追溯到具体操作者
+- ✅ 支持合规性审计要求
+- ✅ 便于事故调查和回溯
+
+**错误处理**:
+```python
+try:
+    self.client.table("config_audit_logs").insert({...}).execute()
+except Exception as e:
+    logger.warning(f"[P2-040] Failed to log config audit: {e}")
+    # ✅ 不影响主流程,仅记录警告
+```
+
+**Commit**: `0042571` - fix(P2-040): add audit logging for config changes
 
 ---
 
