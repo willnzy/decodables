@@ -144,10 +144,53 @@ class AddCreditsRequest(BaseModel):
 @limiter.limit("60/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
 async def get_credits(request: Request, user: dict = Depends(get_current_user)):
     """
-    Get current user's credit balance.
+    Get current user's credit balance and tier information.
+
+    Retrieves the user's current credit balance breakdown, including monthly
+    recurring credits and permanent (purchased) credits. Credits are used for
+    AI-powered features like image generation, text generation, and Smart Scan.
+
+    v1.2.0: Added rate limiting (B-MEDIUM-1) and sanitized errors (B-HIGH-3).
 
     Returns:
-        CreditsResponse with monthly, permanent, and total credits
+        CreditsResponse containing:
+            - monthly_credits: Credits from subscription (reset monthly)
+                t1 (Free): 0/month
+                t2 (Starter): 200/month
+                t3 (Pro): 500/month
+            - permanent_credits: Purchased credits (never expire)
+                From credit pack purchases (100/$2.99, 500/$13.49, 2000/$48)
+            - total_credits: Sum of monthly + permanent credits
+                Used for affordability checks and feature access
+            - tier: User's current tier (t1/t2/t3)
+
+    Raises:
+        401: Unauthorized (not authenticated)
+        429: Rate limit exceeded (max 60 requests per minute)
+        500: Database error or service unavailable
+
+    Security:
+        - Authentication required
+        - Rate limit: 60 requests per minute
+        - Error messages sanitized (no internal details exposed)
+        - User can only access their own credits
+
+    Usage:
+        Used by frontend to:
+        - Display credit balance in UI
+        - Check if user can afford AI operations
+        - Show appropriate upgrade prompts
+
+    Example:
+        GET /api/v2/user/billing/credits
+
+        Response:
+        {
+            "monthly_credits": 200,
+            "permanent_credits": 150,
+            "total_credits": 350,
+            "tier": "t2"
+        }
     """
     container = get_container()
     handler = container.get_user_credits_handler
@@ -172,25 +215,99 @@ async def get_credits(request: Request, user: dict = Depends(get_current_user)):
 @limiter.limit("30/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
 async def get_transactions(
     request: Request,
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    tx_type: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of transactions to return (1-100, default: 50)"),
+    offset: int = Query(0, ge=0, description="Number of transactions to skip for pagination"),
+    tx_type: Optional[str] = Query(None, description="Filter by transaction type (e.g., 'credit_purchase', 'ai_generation')"),
+    start_date: Optional[datetime] = Query(None, description="Filter transactions from this date onwards (ISO 8601 format)"),
+    end_date: Optional[datetime] = Query(None, description="Filter transactions up to this date (ISO 8601 format)"),
     user: dict = Depends(get_current_user),
 ):
     """
-    Get user's transaction history.
+    Get user's transaction history with optional filtering and pagination.
+
+    Retrieves a chronological list of all credit-related transactions for the user,
+    including purchases, refunds, AI operation charges, and subscription renewals.
+    Useful for billing transparency, dispute resolution, and usage tracking.
+
+    v1.2.0: Added rate limiting (B-MEDIUM-1) and sanitized errors (B-HIGH-3).
+    v1.1.0: Fixed ID fallback (B-P0-2) - uses idempotency_key when id is null.
 
     Args:
-        limit: Maximum items to return (default: 50)
-        offset: Number of items to skip (default: 0)
-        tx_type: Filter by transaction type
-        start_date: Filter by start date
-        end_date: Filter by end date
+        limit: Maximum number of transactions to return (default: 50, max: 100)
+            Pagination support for large transaction histories
+        offset: Skip first N transactions (default: 0)
+            Used with limit for pagination
+        tx_type: Optional filter by transaction type
+            Common values:
+                - "credit_purchase": Purchased credit packs
+                - "subscription_renewal": Monthly tier credit grant
+                - "ai_image_generation": Used 5 credits for AI image
+                - "ai_text_generation": Used 1 credit for AI text
+                - "smart_scan": Used 10 credits for Smart Scan
+                - "refund": Credit refund from support
+        start_date: Filter transactions from this date (inclusive)
+            ISO 8601 format: "2026-01-11T00:00:00Z"
+        end_date: Filter transactions to this date (inclusive)
+            ISO 8601 format: "2026-01-11T23:59:59Z"
 
     Returns:
-        TransactionHistoryResponse with transactions list
+        TransactionHistoryResponse containing:
+            - transactions: List of transaction objects including:
+                - id: Transaction ID (UUID or fallback to idempotency_key)
+                - amount: Credit amount (positive for credits added, negative for spent)
+                - balance_after: User's credit balance after this transaction
+                - tx_type: Transaction type identifier
+                - description: Human-readable description
+                - created_at: Transaction timestamp
+                - metadata: Additional transaction details (JSON)
+            - total: Total number of transactions (respecting filters)
+            - limit: Limit applied
+            - offset: Offset applied
+            - has_more: Whether more transactions exist (for pagination)
+
+    Raises:
+        400: Invalid date format, invalid limit/offset, or tx_type validation error
+        401: Unauthorized (not authenticated)
+        429: Rate limit exceeded (max 30 requests per minute)
+        500: Database error or service unavailable
+
+    Security:
+        - Authentication required
+        - Rate limit: 30 requests per minute
+        - User can only access their own transactions
+        - Error messages sanitized (no internal details exposed)
+        - Sensitive payment data (card numbers, CVV) never included
+
+    Example:
+        GET /api/v2/user/billing/transactions?limit=10&tx_type=ai_image_generation&start_date=2026-01-01T00:00:00Z
+
+        Response:
+        {
+            "transactions": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "amount": -5,
+                    "balance_after": 345,
+                    "tx_type": "ai_image_generation",
+                    "description": "AI Image Generation - Page 1",
+                    "created_at": "2026-01-11T10:30:00Z",
+                    "metadata": {"project_id": "abc123", "prompt": "..."}
+                },
+                {
+                    "id": "660e8400-e29b-41d4-a716-446655440001",
+                    "amount": 100,
+                    "balance_after": 350,
+                    "tx_type": "credit_purchase",
+                    "description": "Credit Pack Purchase - 100 credits",
+                    "created_at": "2026-01-10T15:20:00Z",
+                    "metadata": {"stripe_payment_id": "pi_..."}
+                }
+            ],
+            "total": 2,
+            "limit": 10,
+            "offset": 0,
+            "has_more": false
+        }
     """
     container = get_container()
     handler = container.get_transaction_history_handler
