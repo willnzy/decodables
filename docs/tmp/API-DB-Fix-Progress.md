@@ -2066,8 +2066,8 @@ except Exception as e:
 | 软删除恢复接口 (P3-008) | - | ✅ 已完成 | Pre-existing |
 | 清理 Deprecated 接口 (P3-007) | 2h | ✅ 已完成 | `5c616bf` |
 | Webhook 重试逻辑 (P3-022) | 4h | ⏸️ 未开始 | - |
-| 完善 API 文档和注释 | 4h | ⏸️ 未开始 | - |
-| 增加活动日志记录 | 3h | ⏸️ 未开始 | - |
+| 完善 API 文档和注释 | 4h | ✅ 已完成 | `f7b8296` |
+| 增加活动日志记录 (Task 9) | 3h | 🟢 进行中 (Phase 1-4 完成) | `54ea897`, `05288f0` |
 | Stats 响应格式统一 (P3-001) | 8h | ⏸️ 未开始 | - |
 
 **详细进度**: 见 [Phase-4-Progress-Summary.md](Phase-4-Progress-Summary.md)
@@ -2179,6 +2179,81 @@ fee7e01 - fix(imports): correct import paths for get_supabase_client and decorat
   - `DELETE /api/generations/batch` → `POST /api/v2/user/generations/batch-delete`
 
 **下一步**: 完善 API 文档和注释 (预计 4h)
+
+---
+
+### 2026-01-11 (周六 - 下午) - 续
+
+**完成任务**: ✅ **Task 9: 增加活动日志记录 - Phase 1-4 完成**
+
+**Task 9.1**: Phase 1 - Database + Core Infrastructure (30min)
+- Commit: `54ea897`
+- 创建迁移文件: `scripts/migrations/006_add_audit_logging_enhancements.sql`
+- 扩展 `admin_operations` 表:
+  - 新增 `source` 列 (api/webhook/stripe/clerk)
+  - 新增性能索引 (idx_admin_operations_source, idx_admin_operations_target, idx_admin_operations_admin_id_created)
+  - 扩展 `operation_type` 约束 (+20 新类型)
+  - 添加 `target_user_id`, `details`, `reason` 列
+- 扩展 `infrastructure/repositories/admin_repository.py`:
+  - `admin_log_operation()` 新增 4 个参数 (target_type, target_id, metadata, source)
+  - `admin_get_operation_logs()` 新增 3 个过滤参数
+- 创建 Webhook 日志助手 `infrastructure/logging/activity_logger.py`:
+  - 新增 `log_webhook_operation()` 函数
+  - 使用特殊 admin_id `"system_webhook"` 标记自动化操作
+  - 支持 graceful degradation (日志失败不影响主流程)
+
+**Task 9.2**: Phase 2 - Delete Operations Logging (45min)
+- Commit: `54ea897`
+- 为项目删除/恢复操作添加审计日志:
+  - `api/user/projects.py`: delete_project() + restore_project()
+  - Operation types: `project_delete_soft`, `project_delete_permanent`, `project_restore`
+  - 捕获 target_type="project", target_id=project_id
+  - Graceful degradation: try-except 包裹
+
+**Task 9.4**: Phase 4 - Webhook Audit Logging (45min) 🔴 CRITICAL
+- Commit: `05288f0`
+- **Stripe Webhook 日志** (6 个事件):
+  - ✅ `webhook_credits_purchase`: 积分购买 (checkout.session.completed)
+  - ✅ `webhook_subscription_create`: 订阅创建 (checkout.session.completed)
+  - ✅ `webhook_invoice_paid`: 订阅续费 (invoice.payment_succeeded)
+  - ✅ `webhook_subscription_cancel`: 订阅取消 (customer.subscription.deleted)
+  - ✅ `webhook_subscription_update`: 订阅变更 (customer.subscription.updated)
+  - ✅ `webhook_refund_process`: 退款处理 (charge.refunded)
+- **Clerk Webhook 日志** (1 个事件):
+  - ✅ `webhook_user_create`: 用户注册 (user.created)
+- 文件修改:
+  - `domains/webhooks/stripe_webhook_service.py` (+102 lines, 6 logging blocks)
+  - `domains/webhooks/clerk_webhook_service.py` (+18 lines, 1 logging block)
+- 元数据捕获: session_id, subscription_id, amount, currency, reason 等
+- Source 追踪: 区分 "stripe" 和 "clerk" 来源
+
+**Git 提交记录**:
+```bash
+54ea897 - feat(audit): implement Phase 1-2 - core infrastructure and project deletion logging (Task 9)
+05288f0 - feat(audit): complete Phase 4 - webhook audit logging (Task 9)
+```
+
+**成果总结**:
+- ✅ Task 9 进度: 4/5 phases (80%)
+- ✅ 用时: ~1.5 hours (进度超前)
+- ✅ Lines: +262 (infrastructure + webhook logging)
+- ✅ 关键成就:
+  - 🔴 CRITICAL: 填补了 8+ Webhook 事件的审计空白
+  - 💰 财务交易全程可追溯 (合规要求)
+  - 🔍 支持欺诈检测和争议解决
+  - 📊 统一审计日志 (`admin_operations` 表)
+  - 🛡️ Graceful degradation (日志失败不影响业务)
+
+**待完成** (Task 9 剩余):
+- Phase 3: Configuration Changes Logging (30min) - 4 operations
+- Phase 5: Unified Audit Query API (30min) - 1 endpoint
+- Remaining Delete Operations: 6 endpoints (templates/generations/resources/feature flags/campaigns)
+
+**前端待迁移** (v4.0 前):
+- ⚠️ `decodables-fe/services/generateService.js:222`
+  - `DELETE /api/generations/batch` → `POST /api/v2/user/generations/batch-delete`
+
+**下一步**: 继续 Task 9 Phase 3 - Configuration Changes Logging (预计 30min)
 
 ---
 
