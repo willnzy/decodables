@@ -228,7 +228,7 @@ class TestGetUserCreditsHandler:
             user_id="user_123",
             monthly=500,
             permanent=100,
-            tier="starter",
+            tier="t2",
         )
 
         query = GetUserCreditsQuery(user_id="user_123")
@@ -238,7 +238,7 @@ class TestGetUserCreditsHandler:
         assert result.monthly_credits == 500
         assert result.permanent_credits == 100
         assert result.total_credits == 600
-        assert result.tier == "starter"
+        assert result.tier == "t2"
 
     @pytest.mark.asyncio
     async def test_get_user_credits_new_user(self, handler, mock_billing_service):
@@ -252,7 +252,7 @@ class TestGetUserCreditsHandler:
 
         assert result.success is True
         assert result.total_credits == 0
-        assert result.tier == "free"
+        assert result.tier == "t1"
 
 
 class TestGetTransactionHistoryHandler:

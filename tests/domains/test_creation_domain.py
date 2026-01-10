@@ -215,17 +215,17 @@ class TestProjectLimits:
     def test_free_tier_limit(self):
         """Test Free tier project limit is 5."""
         from domains.creation.service import CreationService
-        assert CreationService.PROJECT_LIMITS["free"] == 5
+        assert CreationService.PROJECT_LIMITS["t1"] == 5
 
     def test_starter_tier_limit(self):
         """Test Starter tier project limit is 50."""
         from domains.creation.service import CreationService
-        assert CreationService.PROJECT_LIMITS["starter"] == 50
+        assert CreationService.PROJECT_LIMITS["t2"] == 50
 
     def test_pro_tier_limit(self):
         """Test Pro tier project limit is 500."""
         from domains.creation.service import CreationService
-        assert CreationService.PROJECT_LIMITS["pro"] == 500
+        assert CreationService.PROJECT_LIMITS["t3"] == 500
 
     def test_unknown_tier_defaults_to_free(self):
         """Test unknown tier defaults to Free limit."""

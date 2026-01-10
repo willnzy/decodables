@@ -93,7 +93,7 @@ class TestDeductCreditsFlow:
             user_id="user_123",
             monthly=100,
             permanent=50,
-            tier="pro",
+            tier="t3",
         )
 
         transaction = CreditTransaction(
@@ -157,7 +157,7 @@ class TestAddCreditsFlow:
             user_id="user_123",
             monthly=0,
             permanent=150,  # 50 + 100
-            tier="pro",
+            tier="t3",
         )
 
         transaction = CreditTransaction(
@@ -230,7 +230,7 @@ class TestGetUserCreditsFlow:
             user_id="user_123",
             monthly=500,
             permanent=50,
-            tier="starter",
+            tier="t2",
         )
 
         mock_billing_repository.get_by_user_id.return_value = user_credits
@@ -244,7 +244,7 @@ class TestGetUserCreditsFlow:
         assert result.monthly_credits == 500
         assert result.permanent_credits == 50
         assert result.total_credits == 550
-        assert result.tier == "starter"
+        assert result.tier == "t2"
 
     @pytest.mark.asyncio
     async def test_get_user_credits_not_found(self, query_bus, mock_billing_repository):
@@ -259,7 +259,7 @@ class TestGetUserCreditsFlow:
         # Assert
         assert result.success is True
         assert result.total_credits == 0
-        assert result.tier == "free"
+        assert result.tier == "t1"
 
 
 class TestGetTransactionHistoryFlow:
@@ -325,7 +325,7 @@ class TestBillingE2EFlow:
             user_id="user_123",
             monthly=0,
             permanent=0,
-            tier="free",
+            tier="t1",
         )
         mock_billing_repository.get_by_user_id.return_value = initial_credits
 
@@ -348,7 +348,7 @@ class TestBillingE2EFlow:
             user_id="user_123",
             monthly=0,
             permanent=100,
-            tier="free",
+            tier="t1",
         )
         mock_billing_repository.get_by_user_id.return_value = after_purchase
 
@@ -376,7 +376,7 @@ class TestBillingE2EFlow:
             user_id="user_123",
             monthly=0,
             permanent=95,
-            tier="free",
+            tier="t1",
         )
         mock_billing_repository.get_by_user_id.return_value = after_deduct
 

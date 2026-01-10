@@ -63,7 +63,7 @@ class TestVerifyUserIdentity:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro"
+            "tier": "t3"
         }
 
         result = await service._verify_user_identity("user-123", "ABC123")
@@ -365,7 +365,7 @@ class TestCancelSubscription:
         assert result["subscription_id"] == "sub_test"
 
         mock_users_repo.update_subscription_tier.assert_awaited_once_with(
-            "user-123", "free", subscription_status="canceled"
+            "user-123", "t1", subscription_status="canceled"
         )
 
     @pytest.mark.asyncio
@@ -422,7 +422,7 @@ class TestDowngradeSubscription:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -439,15 +439,15 @@ class TestDowngradeSubscription:
             user_id="user-123",
             user_code="ABC123",
             user_email="test@example.com",
-            target_tier="free",
+            target_tier="t1",
             immediate=True,
             reason="Test downgrade",
             admin_id="admin-1"
         )
 
         assert result["status"] == "downgraded"
-        assert result["from_tier"] == "pro"
-        assert result["to_tier"] == "free"
+        assert result["from_tier"] == "t3"
+        assert result["to_tier"] == "t1"
         assert result["subscription_id"] == "sub_test"
 
         mock_users_repo.update_subscription_tier.assert_awaited_once()
@@ -470,7 +470,7 @@ class TestDowngradeSubscription:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -490,18 +490,18 @@ class TestDowngradeSubscription:
                 user_id="user-123",
                 user_code="ABC123",
                 user_email="test@example.com",
-                target_tier="starter",
+                target_tier="t2",
                 immediate=True,
                 reason="Test downgrade",
                 admin_id="admin-1"
             )
 
         assert result["status"] == "downgraded"
-        assert result["from_tier"] == "pro"
-        assert result["to_tier"] == "starter"
+        assert result["from_tier"] == "t3"
+        assert result["to_tier"] == "t2"
 
         mock_users_repo.update_subscription_tier.assert_awaited_once_with(
-            "user-123", "starter", subscription_status="active"
+            "user-123", "t2", subscription_status="active"
         )
         mock_users_repo.update_monthly_credits.assert_awaited_once_with("user-123", 200)
 
@@ -512,7 +512,7 @@ class TestDowngradeSubscription:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "starter"
+            "tier": "t2"
         }
 
         with pytest.raises(HTTPException) as exc_info:
@@ -520,7 +520,7 @@ class TestDowngradeSubscription:
                 user_id="user-123",
                 user_code="ABC123",
                 user_email="test@example.com",
-                target_tier="pro",
+                target_tier="t3",
                 immediate=True,
                 reason="Test",
                 admin_id="admin-1"
@@ -820,7 +820,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "starter",
+            "tier": "t2",
             "stripe_customer_id": None
         }
 
@@ -828,15 +828,15 @@ class TestDowngradeSubscriptionAdditional:
             user_id="user-123",
             user_code="ABC123",
             user_email="test@example.com",
-            target_tier="free",
+            target_tier="t1",
             immediate=True,
             reason="Test downgrade",
             admin_id="admin-1"
         )
 
         assert result["status"] == "downgraded"
-        assert result["from_tier"] == "starter"
-        assert result["to_tier"] == "free"
+        assert result["from_tier"] == "t2"
+        assert result["to_tier"] == "t1"
         assert "subscription_id" not in result
 
         mock_users_repo.update_subscription_tier.assert_awaited_once()
@@ -855,7 +855,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -865,15 +865,15 @@ class TestDowngradeSubscriptionAdditional:
             user_id="user-123",
             user_code="ABC123",
             user_email="test@example.com",
-            target_tier="free",
+            target_tier="t1",
             immediate=True,
             reason="Test downgrade",
             admin_id="admin-1"
         )
 
         assert result["status"] == "downgraded"
-        assert result["from_tier"] == "pro"
-        assert result["to_tier"] == "free"
+        assert result["from_tier"] == "t3"
+        assert result["to_tier"] == "t1"
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_customer_subscriptions')
@@ -891,7 +891,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -908,14 +908,14 @@ class TestDowngradeSubscriptionAdditional:
             user_id="user-123",
             user_code="ABC123",
             user_email="test@example.com",
-            target_tier="free",
+            target_tier="t1",
             immediate=False,
             reason="Test downgrade",
             admin_id="admin-1"
         )
 
         assert result["status"] == "downgrade_scheduled"
-        assert result["to_tier"] == "free"
+        assert result["to_tier"] == "t1"
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_customer_subscriptions')
@@ -939,7 +939,7 @@ class TestDowngradeSubscriptionAdditional:
                 user_id="user-123",
                 user_code="ABC123",
                 user_email="test@example.com",
-                target_tier="starter",
+                target_tier="t2",
                 immediate=True,
                 reason="Test",
                 admin_id="admin-1"
@@ -961,7 +961,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -972,7 +972,7 @@ class TestDowngradeSubscriptionAdditional:
                 user_id="user-123",
                 user_code="ABC123",
                 user_email="test@example.com",
-                target_tier="starter",
+                target_tier="t2",
                 immediate=True,
                 reason="Test",
                 admin_id="admin-1"
@@ -998,7 +998,7 @@ class TestDowngradeSubscriptionAdditional:
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com",
-            "tier": "pro",
+            "tier": "t3",
             "stripe_customer_id": "cus_test"
         }
 
@@ -1018,14 +1018,14 @@ class TestDowngradeSubscriptionAdditional:
                 user_id="user-123",
                 user_code="ABC123",
                 user_email="test@example.com",
-                target_tier="starter",
+                target_tier="t2",
                 immediate=False,
                 reason="Test downgrade",
                 admin_id="admin-1"
             )
 
         assert result["status"] == "downgrade_scheduled"
-        assert result["to_tier"] == "starter"
+        assert result["to_tier"] == "t2"
 
         # Should NOT update tier immediately
         mock_users_repo.update_subscription_tier.assert_not_called()

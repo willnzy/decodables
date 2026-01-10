@@ -167,14 +167,14 @@ class TestUserCreditsAggregate:
             user_id="user_123",
             monthly=500,
             permanent=100,
-            tier="starter",
+            tier="t2",
         )
 
         assert user_credits.user_id == "user_123"
         assert user_credits.monthly_credits == 500
         assert user_credits.permanent_credits == 100
         assert user_credits.total_credits == 600
-        assert user_credits.tier == "starter"
+        assert user_credits.tier == "t2"
 
     def test_create_with_defaults(self):
         """Test creating UserCredits with default values."""
@@ -182,7 +182,7 @@ class TestUserCreditsAggregate:
 
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 0
-        assert user_credits.tier == "free"
+        assert user_credits.tier == "t1"
         assert user_credits.total_credits == 0
 
     def test_can_afford_true(self):
@@ -340,7 +340,7 @@ class TestUserCreditsAggregate:
         user_credits = UserCredits.create(
             user_id="user_123",
             monthly=50,
-            tier="starter",
+            tier="t2",
         )
 
         user_credits.reset_monthly(500)  # Starter gets 500
@@ -375,9 +375,9 @@ class TestUserCreditsAggregate:
 
     def test_get_tier_monthly_allowance(self):
         """Test getting monthly allowance by tier."""
-        free_user = UserCredits.create(user_id="u1", tier="free")
-        starter_user = UserCredits.create(user_id="u2", tier="starter")
-        pro_user = UserCredits.create(user_id="u3", tier="pro")
+        free_user = UserCredits.create(user_id="u1", tier="t1")
+        starter_user = UserCredits.create(user_id="u2", tier="t2")
+        pro_user = UserCredits.create(user_id="u3", tier="t3")
 
         assert free_user.get_tier_monthly_allowance() == 0
         assert starter_user.get_tier_monthly_allowance() == 500
@@ -621,10 +621,10 @@ class TestBillingService:
         mock_repository.reset_monthly_credits.return_value = UserCredits.create(
             user_id="user_123",
             monthly=500,
-            tier="starter",
+            tier="t2",
         )
 
-        result = await billing_service.process_subscription_renewal("user_123", "starter")
+        result = await billing_service.process_subscription_renewal("user_123", "t2")
 
         assert result.monthly_credits == 500
         mock_repository.reset_monthly_credits.assert_called_once_with("user_123", 500)
@@ -727,9 +727,9 @@ class TestBillingBusinessRules:
         """
         service = BillingService(repository=MagicMock())
 
-        assert service.TIER_ALLOWANCES["free"] == 0
-        assert service.TIER_ALLOWANCES["starter"] == 500
-        assert service.TIER_ALLOWANCES["pro"] == 1000
+        assert service.TIER_ALLOWANCES["t1"] == 0
+        assert service.TIER_ALLOWANCES["t2"] == 500
+        assert service.TIER_ALLOWANCES["t3"] == 1000
 
     def test_signup_bonus(self):
         """
