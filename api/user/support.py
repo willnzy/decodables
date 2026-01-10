@@ -1,10 +1,20 @@
 """
-Support API - Customer support and feedback endpoints (v2).
+Support API - Customer support and feedback endpoints (v3).
 
 @module api.user.support
-@version 2.1.0
+@version 3.0.0
 
 Changes:
+- v3.0.0: DDD architecture upgrade - CQRS Command pattern
+  - Created SupportService v3.1.0 with 4 new methods
+  - Added CreateSupportTicketHandler (Command Handler)
+  - Added AiChatSupportHandler (Command Handler)
+  - Added SendContactMessageHandler (Command Handler)
+  - Added SubmitFeedbackHandler (Command Handler)
+  - Eliminated direct Repository calls from API layer
+  - Moved all business logic to Service layer
+  - Improved testability and maintainability
+
 - v2.1.0: Security improvements
   - SUP-MEDIUM-1: Added images list size limit (max 4)
   - SUP-MEDIUM-2: Added conversation_history size limit (max 20)
@@ -27,13 +37,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user
+from container import get_container
+from application.commands.support import (
+    CreateSupportTicketCommand,
+    AiChatSupportCommand,
+    SendContactMessageCommand,
+    SubmitFeedbackCommand,
+)
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.support_repository import SupabaseSupportRepository
-from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/support", tags=["user-support-v2"])
+router = APIRouter(prefix="/support", tags=["user-support-v3"])
 
 
 # ==========================================
@@ -139,11 +154,25 @@ async def create_ticket(
     req: SupportTicketRequest,
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
-    """Create a support ticket."""
+    """
+    Create a support ticket.
+
+    v3.0.0: Now uses CreateSupportTicketHandler (CQRS Command pattern).
+    """
+    container = get_container()
+    handler = container.create_support_ticket_handler
+
     email = req.email or user.get("email", "unknown@user.com")
-    support_repo = SupabaseSupportRepository(get_database_client())
-    await support_repo.create_support_ticket(user["id"], email, req.message)
-    return SupportResponse(status="ok")
+
+    command = CreateSupportTicketCommand(
+        user_id=user["id"],
+        user_email=email,
+        message=req.message,
+    )
+
+    result = await handler.handle(command)
+
+    return SupportResponse(**result.result_data)
 
 
 @router.post("/chat")
@@ -153,59 +182,32 @@ async def chat_support(
     req: ChatSupportRequest,
     user: dict = Depends(get_current_user),
 ) -> ChatResponse:
-    """AI-powered support chat."""
-    from application.services.ai_chat_service import chat_with_assistant, chat_with_vision, SUPPORT_SYSTEM_PROMPT_FALLBACK
+    """
+    AI-powered support chat.
+
+    v3.0.0: Now uses AiChatSupportHandler (CQRS Command pattern).
+    """
+    from application.services import ai_chat_service
     from config import OPENAI_ASSISTANT_ID
     from shared.ai.story_generator import client as openai_client
 
-    try:
-        # Use vision API if images provided
-        if req.images:
-            result = await chat_with_vision(
-                req.message,
-                req.images,
-                req.conversation_history,
-            )
-            return ChatResponse(**result)
+    container = get_container()
+    handler = container.ai_chat_support_handler
 
-        # Use Assistants API for text-only (with RAG)
-        if OPENAI_ASSISTANT_ID:
-            result = await chat_with_assistant(
-                req.message,
-                req.conversation_history,
-            )
-            return ChatResponse(**result)
+    command = AiChatSupportCommand(
+        user_id=user["id"],
+        message=req.message,
+        images=req.images,
+        conversation_history=req.conversation_history,
+        ai_chat_service=ai_chat_service,
+        openai_assistant_id=OPENAI_ASSISTANT_ID,
+        openai_client=openai_client,
+        support_system_prompt=ai_chat_service.SUPPORT_SYSTEM_PROMPT_FALLBACK,
+    )
 
-        # Fallback to Chat Completions
-        messages = [
-            {"role": "system", "content": SUPPORT_SYSTEM_PROMPT_FALLBACK}
-        ]
-        for msg in req.conversation_history[-10:]:
-            if msg.get("role") in ["user", "assistant"]:
-                messages.append({"role": msg["role"], "content": msg["content"]})
+    result = await handler.handle(command)
 
-        messages.append({"role": "user", "content": req.message})
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=500,
-        )
-
-        return ChatResponse(
-            status="ok",
-            message=response.choices[0].message.content,
-            source="fallback",
-        )
-
-    except Exception as e:
-        logger.error(f"Chat error: {e}")
-        return ChatResponse(
-            status="error",
-            message="I'm having trouble right now. Please try again or contact us at info@makedecodables.com",
-            error=str(e),
-        )
+    return ChatResponse(**result.result_data)
 
 
 @router.post("/contact")
@@ -215,15 +217,25 @@ async def contact(
     req: ContactRequest,
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
-    """Submit contact form."""
+    """
+    Submit contact form.
 
-    support_repo = SupabaseSupportRepository(get_database_client())
-    support_repo.send_support_email(
+    v3.0.0: Now uses SendContactMessageHandler (CQRS Command pattern).
+    """
+    container = get_container()
+    handler = container.send_contact_message_handler
+
+    command = SendContactMessageCommand(
         user_id=user["id"],
-        user_email=req.email,
-        message=f"Name: {req.name}\nSubject: {req.subject or 'N/A'}\n\n{req.message}",
+        name=req.name,
+        email=req.email,
+        message=req.message,
+        subject=req.subject,
     )
-    return SupportResponse(status="ok", message="Message received")
+
+    result = await handler.handle(command)
+
+    return SupportResponse(**result.result_data)
 
 
 @router.post("/feedback")
@@ -233,8 +245,23 @@ async def feedback(
     req: FeedbackRequest,
     user: dict = Depends(get_current_user),
 ) -> SupportResponse:
-    """Submit user feedback."""
-    support_repo = SupabaseSupportRepository(get_database_client())
+    """
+    Submit user feedback.
+
+    v3.0.0: Now uses SubmitFeedbackHandler (CQRS Command pattern).
+    """
+    container = get_container()
+    handler = container.submit_feedback_handler
+
     email = req.email or user.get("email", "unknown@user.com")
-    support_repo.send_feedback_with_images(user["id"], email, req.message, req.images)
-    return SupportResponse(status="ok", message="Feedback submitted successfully")
+
+    command = SubmitFeedbackCommand(
+        user_id=user["id"],
+        user_email=email,
+        message=req.message,
+        images=req.images,
+    )
+
+    result = await handler.handle(command)
+
+    return SupportResponse(**result.result_data)

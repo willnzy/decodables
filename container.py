@@ -395,6 +395,38 @@ class Container:
         return self._handlers['create_report']
 
     @property
+    def create_support_ticket_handler(self):
+        """Get create support ticket handler (v3.1.0)."""
+        from application.commands.support import CreateSupportTicketHandler
+        if 'create_support_ticket' not in self._handlers:
+            self._handlers['create_support_ticket'] = CreateSupportTicketHandler(self.support_service)
+        return self._handlers['create_support_ticket']
+
+    @property
+    def ai_chat_support_handler(self):
+        """Get AI chat support handler (v3.1.0)."""
+        from application.commands.support import AiChatSupportHandler
+        if 'ai_chat_support' not in self._handlers:
+            self._handlers['ai_chat_support'] = AiChatSupportHandler(self.support_service)
+        return self._handlers['ai_chat_support']
+
+    @property
+    def send_contact_message_handler(self):
+        """Get send contact message handler (v3.1.0)."""
+        from application.commands.support import SendContactMessageHandler
+        if 'send_contact_message' not in self._handlers:
+            self._handlers['send_contact_message'] = SendContactMessageHandler(self.support_service)
+        return self._handlers['send_contact_message']
+
+    @property
+    def submit_feedback_handler(self):
+        """Get submit feedback handler (v3.1.0)."""
+        from application.commands.support import SubmitFeedbackHandler
+        if 'submit_feedback' not in self._handlers:
+            self._handlers['submit_feedback'] = SubmitFeedbackHandler(self.support_service)
+        return self._handlers['submit_feedback']
+
+    @property
     def create_error_log_handler(self):
         """Get create error log handler (v3.0.0)."""
         from application.commands.logging import CreateErrorLogHandler
