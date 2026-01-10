@@ -394,22 +394,62 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """
-    Handle FastAPI HTTPException (convert to our format).
+    Handle FastAPI HTTPException (convert to unified error format).
+
+    P2-035: Enhanced error code mapping for better frontend integration.
+    - Maps HTTP status codes to semantic error codes
+    - Refines error codes based on message content for higher specificity
+    - Returns consistent ErrorResponse format with request_id tracking
     """
     request_id = get_request_id() or getattr(request.state, 'request_id', None)
     
-    # Map common HTTP status codes to our error codes
+    # P2-035: Enhanced HTTP status → semantic error code mapping
     code_map = {
         400: ErrorCode.BAD_REQUEST,
         401: ErrorCode.AUTH_UNAUTHORIZED,
+        402: ErrorCode.PAYMENT_REQUIRED,
         403: ErrorCode.AUTH_FORBIDDEN,
         404: ErrorCode.RESOURCE_NOT_FOUND,
+        409: ErrorCode.RESOURCE_CONFLICT,
+        413: ErrorCode.UPLOAD_FILE_TOO_LARGE,
+        422: ErrorCode.VALIDATION_ERROR,
         429: ErrorCode.TOO_MANY_REQUESTS,
         500: ErrorCode.SERVER_ERROR,
+        503: ErrorCode.SERVER_ERROR,
     }
-    
-    error_code = code_map.get(exc.status_code, ErrorCode.SERVER_ERROR)
-    
+
+    # P2-035: Message-based error code refinement (higher specificity)
+    error_message = str(exc.detail).lower()
+
+    # Refine 400 errors based on message keywords
+    if exc.status_code == 400:
+        if any(kw in error_message for kw in ['validation', 'invalid', 'format', 'required']):
+            error_code = ErrorCode.VALIDATION_ERROR
+        elif 'exists' in error_message or 'duplicate' in error_message:
+            error_code = ErrorCode.RESOURCE_ALREADY_EXISTS
+        elif 'not found' in error_message:
+            error_code = ErrorCode.RESOURCE_NOT_FOUND
+        elif 'deleted' in error_message:
+            error_code = ErrorCode.RESOURCE_DELETED
+        else:
+            error_code = ErrorCode.BAD_REQUEST
+    # Refine 403 errors
+    elif exc.status_code == 403:
+        if 'token' in error_message or 'expired' in error_message:
+            error_code = ErrorCode.AUTH_TOKEN_EXPIRED
+        elif 'insufficient' in error_message or 'credits' in error_message or 'payment' in error_message:
+            error_code = ErrorCode.PAYMENT_REQUIRED
+        else:
+            error_code = ErrorCode.AUTH_FORBIDDEN
+    # Refine 500 errors
+    elif exc.status_code == 500:
+        if 'upload' in error_message:
+            error_code = ErrorCode.UPLOAD_FAILED
+        else:
+            error_code = ErrorCode.SERVER_ERROR
+    else:
+        error_code = code_map.get(exc.status_code, ErrorCode.SERVER_ERROR)
+
     error_response = ErrorResponse(
         code=error_code.value,
         message=str(exc.detail),
