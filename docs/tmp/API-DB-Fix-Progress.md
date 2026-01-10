@@ -524,11 +524,214 @@ f528710 - refactor(P0-010): remove legacy database write code
 
 ---
 
+## 🚀 部署前确认清单 (Deployment Checklist)
+
+### ✅ Phase 1 (P0) 已完成任务的部署前置条件
+
+#### 1. P0-010: Stripe 退款 Webhook 配置
+
+**⚠️ CRITICAL**: 代码已迁移至纯 Webhook 架构，必须配置 Stripe webhook 才能正常处理退款
+
+**操作步骤**:
+
+1. **登录 Stripe Dashboard**
+   - URL: https://dashboard.stripe.com/webhooks
+   - 使用生产环境账号
+
+2. **找到现有 Webhook Endpoint**
+   - 当前 URL: `https://your-domain.com/api/v2/user/webhooks/stripe`
+   - 如果不存在，需要创建新的 endpoint
+
+3. **添加 `charge.refunded` 事件**
+   - 点击 "Add events" 或 "Edit" 按钮
+   - 搜索并勾选: **charge.refunded**
+   - 确认以下事件已全部勾选:
+     - ✅ `checkout.session.completed`
+     - ✅ `invoice.payment_succeeded`
+     - ✅ `customer.subscription.deleted`
+     - ✅ `customer.subscription.updated`
+     - ✅ **`charge.refunded`** (新增)
+
+4. **保存并复制 Signing Secret**
+   - 点击 "Save" 保存事件配置
+   - 复制 "Signing secret" (以 `whsec_` 开头)
+   - 更新环境变量: `STRIPE_WEBHOOK_SECRET=whsec_xxxxx`
+
+5. **测试 Webhook**
+   - 在 Stripe Dashboard 发送测试事件:
+     - 选择 `charge.refunded` 事件
+     - 点击 "Send test webhook"
+   - 检查后端日志，确认收到并处理成功
+
+**验证方法**:
+```bash
+# 1. 触发一个真实退款 (小金额测试)
+# 2. 检查后端日志
+grep "charge.refunded" logs/app.log
+
+# 3. 检查数据库
+SELECT * FROM payment_records
+WHERE payment_type = 'refund'
+ORDER BY created_at DESC LIMIT 5;
+
+# 4. 验证 metadata 是否包含 stripe_refund_id
+SELECT metadata->>'stripe_refund_id'
+FROM payment_records
+WHERE payment_type = 'refund';
+```
+
+**回滚方案** (如果 webhook 无法配置):
+```python
+# 临时降级: 恢复 LEGACY 代码 (commit f528710)
+# 但强烈不推荐，应该优先解决 webhook 配置问题
+```
+
+**依赖人员**:
+- **DevOps**: 更新生产环境 `STRIPE_WEBHOOK_SECRET`
+- **后端**: 监控 webhook 处理日志
+- **测试**: 执行退款流程端到端测试
+
+---
+
+#### 2. P0-013: Cache Clear All 操作培训
+
+**⚠️ IMPORTANT**: 管理员需要了解新的两步确认流程
+
+**操作说明**:
+
+**旧流程 (已废弃)**:
+```bash
+POST /admin/system/cache/clear-all
+```
+
+**新流程 (必须遵守)**:
+```bash
+# 步骤 1: 请求确认 token (有效期 2 分钟)
+POST /admin/system/cache/clear-all/confirm
+Response: {"token": "abc123...", "expires_in_seconds": 120}
+
+# 步骤 2: 使用 token 执行清除 (token 一次性有效)
+POST /admin/system/cache/clear-all?confirm_token=abc123...
+```
+
+**Rate Limit**:
+- 每个步骤: `1 次 / 10 分钟`
+- 防止误操作和频繁清除
+
+**审计日志**:
+- 操作会记录到 `admin_operations` 表
+- 包含: admin_id, IP 地址, User-Agent
+- CRITICAL 级别日志
+
+**管理员培训清单**:
+- [ ] 通知所有管理员新流程
+- [ ] 演示两步确认操作
+- [ ] 强调 token 2 分钟过期限制
+- [ ] 说明一次性使用限制
+- [ ] 提醒操作会影响所有用户体验
+
+**文档更新**:
+- [ ] 更新 Admin 操作手册
+- [ ] 在后台界面添加操作说明提示
+- [ ] 记录到运维文档
+
+---
+
+#### 3. P0-015: 数据库 Schema 变更
+
+**⚠️ DATABASE**: `marketplace_listings.allowed_tiers` 默认值已修改
+
+**变更内容**:
+```sql
+-- 修改前
+allowed_tiers TEXT[] NOT NULL DEFAULT '{free, starter, pro}'
+
+-- 修改后
+allowed_tiers TEXT[] NOT NULL DEFAULT '{t1, t2, t3}'
+```
+
+**影响范围**:
+- 新创建的 marketplace listings 将使用新默认值
+- 现有数据不受影响 (除非重新创建)
+
+**部署操作**:
+```bash
+# 1. 备份生产数据库
+pg_dump -h <host> -U <user> -d <db> -t marketplace_listings > backup.sql
+
+# 2. 应用 schema 变更 (已在 migrations/v3/01_core_business.sql 中)
+# 如果是增量部署，执行：
+psql -h <host> -U <user> -d <db> -f migrations/v3/01_core_business.sql
+
+# 3. 验证默认值
+\d+ marketplace_listings
+-- 查看 allowed_tiers 列的 DEFAULT 值
+```
+
+**验证方法**:
+```sql
+-- 创建测试 listing
+INSERT INTO marketplace_listings (seller_id, title, category, price)
+VALUES ('user_test', 'Test Listing', 'element', 9.99)
+RETURNING allowed_tiers;
+
+-- 应该返回: {t1,t2,t3}
+```
+
+**回滚方案**:
+```sql
+-- 如果需要回滚
+ALTER TABLE marketplace_listings
+ALTER COLUMN allowed_tiers SET DEFAULT '{free, starter, pro}';
+```
+
+---
+
+#### 4. P0-014: 已验证无需操作
+
+**状态**: ✅ `category='element'` 已在 CHECK 约束中
+**操作**: 无需任何部署操作
+
+---
+
+### 📋 Phase 1 总体部署前检查
+
+**代码层面**:
+- [x] 所有代码已提交 (4 个 commits)
+- [x] 代码已推送到 `develop` 分支
+- [ ] 代码已合并到 `main` 分支
+- [ ] 生产环境已部署新代码
+
+**配置层面**:
+- [ ] Stripe Webhook 已配置 `charge.refunded` 事件
+- [ ] `STRIPE_WEBHOOK_SECRET` 已更新到生产环境变量
+- [ ] Redis 缓存正常运行
+
+**文档层面**:
+- [ ] Admin 操作手册已更新 (Cache Clear 新流程)
+- [ ] 运维文档已更新 (Stripe Webhook 配置)
+- [ ] API 文档已更新 (P0-010 退款流程说明)
+
+**测试层面**:
+- [ ] Staging 环境测试通过
+- [ ] Webhook 端到端测试通过
+- [ ] 退款流程端到端测试通过
+- [ ] Cache Clear 两步确认测试通过
+
+**人员层面**:
+- [ ] DevOps 已知晓部署步骤
+- [ ] 管理员已培训新的 Cache Clear 流程
+- [ ] 客服已知晓退款处理新流程
+
+---
+
 ## 问题与风险追踪
 
 | ID | 问题/风险 | 严重性 | 状态 | 解决方案 | 负责人 |
 |----|-----------|--------|------|----------|--------|
-| - | 暂无 | - | - | - | - |
+| R-001 | Stripe Webhook 未配置导致退款无法记录 | 🔴 CRITICAL | ⏸️ 待处理 | 部署前必须配置 charge.refunded | DevOps + Backend |
+| R-002 | 管理员不熟悉新 Cache Clear 流程 | 🟡 MEDIUM | ⏸️ 待处理 | 培训 + 文档更新 | Backend + Admin |
+| R-003 | 数据库 Schema 变更未同步到生产 | 🟡 MEDIUM | ⏸️ 待处理 | 执行 migration 脚本 | DevOps |
 
 ---
 
@@ -540,8 +743,9 @@ f528710 - refactor(P0-010): remove legacy database write code
 | 2026-01-10 | Phase 1 进度更新: 完成 4/6 任务 | P0 修复已完成 67% | Phase 1 预计提前完成 |
 | 2026-01-10 | 新增 P0-013 额外任务记录 | Cache 安全防护 | 增强系统安全性 |
 | 2026-01-10 | 更新 Task 1.2, 1.3, 1.5 状态 | 实际执行完成 | 剩余 Task 1.1, 1.4, 1.6 |
+| 2026-01-10 | 新增部署前确认清单章节 | 记录 Stripe/Cache/DB 配置要求 | 防止部署遗漏关键配置 |
 
 ---
 
-**最后更新**: 2026-01-10 22:30:00
+**最后更新**: 2026-01-10 22:45:00
 **更新人**: Claude Sonnet 4.5
