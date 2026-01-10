@@ -102,7 +102,7 @@ def _check_targeting(targeting: Dict, user_identifier: str, user_properties: Dic
     
     # Check tier targeting
     if 'tiers' in targeting and user_properties:
-        user_tier = user_properties.get('tier', 'free')
+        user_tier = user_properties.get('tier', 't1')  # Default to t1 (free tier)
         if user_tier not in targeting['tiers']:
             return False
     

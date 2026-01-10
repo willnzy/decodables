@@ -95,7 +95,7 @@ class AdminDowngradeRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=100)
     user_code: str = Field(..., min_length=1, max_length=50)  # For verification
     user_email: str = Field(..., min_length=1, max_length=255)  # For verification
-    target_tier: str = Field(..., max_length=20)  # 'starter' | 'free'
+    target_tier: str = Field(..., max_length=20)  # 't2' | 't1'
     immediate: bool = False  # True = immediate, False = apply at period end
     reason: str = Field(..., min_length=1, max_length=1000)
 
