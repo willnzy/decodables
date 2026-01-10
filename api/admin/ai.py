@@ -275,7 +275,7 @@ async def adm_generate_ai_report(
     if time_range not in VALID_TIME_RANGES:
         raise HTTPException(400, f"Invalid time_range. Must be one of: {', '.join(VALID_TIME_RANGES)}")
 
-    from application.services.ai_report_service import generate_ai_business_report
+    from application.services.ai_reports import generate_ai_business_report
 
     try:
         report = generate_ai_business_report(
@@ -323,7 +323,7 @@ async def adm_get_quick_insights(
         - Falls back gracefully on errors
         - Higher rate limit (60/minute) vs full reports (5/minute)
     """
-    from application.services.ai_report_service import get_quick_insights
+    from application.services.ai_reports import get_quick_insights
 
     try:
         insights = get_quick_insights()

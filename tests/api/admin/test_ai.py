@@ -410,7 +410,7 @@ class TestGenerateReportSuccess:
     """Test successful report generation scenarios."""
 
     @patch('api.admin.ai.require_admin')
-    @patch('application.services.ai_report_service.generate_ai_business_report')
+    @patch('application.services.ai_reports.generate_ai_business_report')
     def test_generate_report_success_comprehensive(self, mock_generate, mock_admin, client):
         """Successfully generate comprehensive report."""
         mock_admin.return_value = ADMIN_USER
@@ -437,7 +437,7 @@ class TestQuickInsightsSuccess:
     """Test successful quick insights retrieval."""
 
     @patch('api.admin.ai.require_admin')
-    @patch('application.services.ai_report_service.get_quick_insights')
+    @patch('application.services.ai_reports.get_quick_insights')
     def test_quick_insights_success(self, mock_get, mock_admin, client):
         """Successfully retrieve quick insights."""
         mock_admin.return_value = ADMIN_USER
@@ -606,7 +606,7 @@ class TestGenerateReportExceptionHandling:
     """Test generate report exception handling."""
 
     @patch('api.admin.ai.require_admin')
-    @patch('application.services.ai_report_service.generate_ai_business_report')
+    @patch('application.services.ai_reports.generate_ai_business_report')
     def test_generate_report_handles_openai_error(self, mock_generate, mock_admin, client):
         """OpenAI error returns 500 with generic message."""
         mock_admin.return_value = ADMIN_USER

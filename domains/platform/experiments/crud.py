@@ -134,41 +134,8 @@ def get_active_experiments() -> List[Dict]:
 
 
 # ==========================================
-# Deprecated Functions (v3.28)
+# Experiment Management Functions
 # ==========================================
-
-def create_experiment(*args, **kwargs) -> Optional[Dict]:
-    """
-    DEPRECATED: Create new experiment.
-
-    v3.28: This method is not yet migrated to Repository pattern.
-    TODO: Implement create() in Repository and migrate this function.
-    """
-    logger.error("[Experiment] create_experiment not yet migrated to Repository")
-    return None
-
-
-def update_experiment(*args, **kwargs) -> Optional[Dict]:
-    """
-    DEPRECATED: Update experiment.
-
-    v3.28: This method is not yet migrated to Repository pattern.
-    TODO: Implement update() in Repository and migrate this function.
-    """
-    logger.error("[Experiment] update_experiment not yet migrated to Repository")
-    return None
-
-
-def update_experiment_status(*args, **kwargs) -> Optional[Dict]:
-    """
-    DEPRECATED: Update experiment status.
-
-    v3.28: This method is not yet migrated to Repository pattern.
-    TODO: Implement status update in Repository and migrate this function.
-    """
-    logger.error("[Experiment] update_experiment_status not yet migrated to Repository")
-    return None
-
 
 def delete_experiment(experiment_key: str) -> bool:
     """
@@ -203,16 +170,3 @@ def delete_experiment(experiment_key: str) -> bool:
         return False
 
 
-# ==========================================
-# Cache Functions (Deprecated in v3.28)
-# ==========================================
-
-def clear_experiment_cache():
-    """
-    DEPRECATED: Clear experiment cache.
-
-    v3.28: Cache removed for DDD compliance.
-    Kept for API compatibility but does nothing.
-    """
-    logger.info("[Experiment] Cache clearing is no-op in v3.28 (DDD migration)")
-    pass

@@ -19,12 +19,9 @@ Changes in v3.27:
 from .core import supabase, logger, CACHE_TTL
 from .service import ExperimentService  # v3.29: DDD Service
 from .crud import (
-    create_experiment,
     get_experiment,
     get_experiment_by_id,
     list_experiments,
-    update_experiment,
-    update_experiment_status,
     delete_experiment,
     get_active_experiments,
 )
@@ -46,9 +43,6 @@ from .trend import (
     get_daily_trend,
     get_hourly_trend,
 )
-from .utils import (
-    clear_experiment_cache,
-)
 
 __all__ = [
     # Core
@@ -56,9 +50,8 @@ __all__ = [
     # Service (v3.29: DDD)
     'ExperimentService',
     # CRUD (legacy module functions)
-    'create_experiment', 'get_experiment', 'get_experiment_by_id',
-    'list_experiments', 'update_experiment', 'update_experiment_status',
-    'delete_experiment', 'get_active_experiments',
+    'get_experiment', 'get_experiment_by_id',
+    'list_experiments', 'delete_experiment', 'get_active_experiments',
     # Assignment
     'assign_variant', 'get_user_variant', 'get_user_experiments',
     # Tracking
@@ -68,6 +61,4 @@ __all__ = [
     'calculate_statistical_significance',
     # Trend
     'get_daily_trend', 'get_hourly_trend',
-    # Utils
-    'clear_experiment_cache',
 ]
