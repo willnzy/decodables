@@ -220,7 +220,7 @@ class TestUserCreditsAggregate:
             permanent=50,
         )
 
-        tx = user_credits.deduct(30, TransactionType.GENERATION, "Test deduction")
+        tx = user_credits.deduct(30, TransactionType.AI_GENERATION, "Test deduction")
 
         # Monthly should be reduced, permanent unchanged
         assert user_credits.monthly_credits == 70
@@ -236,7 +236,7 @@ class TestUserCreditsAggregate:
             permanent=100,
         )
 
-        tx = user_credits.deduct(25, TransactionType.GENERATION, "Test deduction")
+        tx = user_credits.deduct(25, TransactionType.AI_GENERATION, "Test deduction")
 
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 75
@@ -251,7 +251,7 @@ class TestUserCreditsAggregate:
         )
 
         # Deduct 50: should use 30 monthly + 20 permanent
-        tx = user_credits.deduct(50, TransactionType.OCR, "Mixed deduction")
+        tx = user_credits.deduct(50, TransactionType.SMART_SCAN, "Mixed deduction")
 
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 80
@@ -266,7 +266,7 @@ class TestUserCreditsAggregate:
         )
 
         with pytest.raises(InsufficientCreditsException) as exc_info:
-            user_credits.deduct(50, TransactionType.GENERATION, "Should fail")
+            user_credits.deduct(50, TransactionType.AI_GENERATION, "Should fail")
 
         # Check exception contains useful info
         assert exc_info.value.required == 50
@@ -280,7 +280,7 @@ class TestUserCreditsAggregate:
         )
 
         with pytest.raises(InvalidAmountException):
-            user_credits.deduct(-10, TransactionType.GENERATION, "Negative amount")
+            user_credits.deduct(-10, TransactionType.AI_GENERATION, "Negative amount")
 
     def test_deduct_zero_raises_error(self):
         """Test deduction with zero amount raises InvalidAmountException."""
@@ -290,7 +290,7 @@ class TestUserCreditsAggregate:
         )
 
         with pytest.raises(InvalidAmountException):
-            user_credits.deduct(0, TransactionType.GENERATION, "Zero amount")
+            user_credits.deduct(0, TransactionType.AI_GENERATION, "Zero amount")
 
     def test_add_credits_monthly(self):
         """Test adding monthly credits."""
@@ -302,7 +302,7 @@ class TestUserCreditsAggregate:
         tx = user_credits.add(
             amount=500,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.SUB_GRANT,
+            tx_type=TransactionType.SUBSCRIPTION_GRANT,
             description="subscription_renewal"
         )
 
@@ -320,7 +320,7 @@ class TestUserCreditsAggregate:
         tx = user_credits.add(
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="purchase"
         )
 
@@ -333,7 +333,7 @@ class TestUserCreditsAggregate:
         user_credits = UserCredits.create(user_id="user_123", monthly=100)
 
         with pytest.raises(InvalidAmountException):
-            user_credits.add(-10, CreditBucket.MONTHLY, TransactionType.ADMIN_GRANT)
+            user_credits.add(-10, CreditBucket.MONTHLY, TransactionType.ADMIN_ADJUSTMENT)
 
     def test_reset_monthly_credits(self):
         """Test resetting monthly credits (subscription renewal)."""
@@ -355,8 +355,8 @@ class TestUserCreditsAggregate:
             permanent=50,
         )
 
-        user_credits.deduct(10, TransactionType.GENERATION)
-        user_credits.add(20, CreditBucket.PERMANENT, TransactionType.ADMIN_GRANT)
+        user_credits.deduct(10, TransactionType.AI_GENERATION)
+        user_credits.add(20, CreditBucket.PERMANENT, TransactionType.ADMIN_ADJUSTMENT)
 
         assert len(user_credits.pending_transactions) == 2
 
@@ -367,7 +367,7 @@ class TestUserCreditsAggregate:
             monthly=100,
         )
 
-        user_credits.deduct(10, TransactionType.GENERATION)
+        user_credits.deduct(10, TransactionType.AI_GENERATION)
         assert len(user_credits.pending_transactions) == 1
 
         user_credits.clear_pending_transactions()
@@ -396,14 +396,14 @@ class TestCreditTransaction:
         tx = CreditTransaction(
             amount=-5,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="Generated 1 image",
             balance_after=Credits(monthly=95, permanent=50),
         )
 
         assert tx.amount == -5
         assert tx.bucket == CreditBucket.MONTHLY
-        assert tx.tx_type == TransactionType.GENERATION
+        assert tx.tx_type == TransactionType.AI_GENERATION
         assert tx.balance_after.total == 145
 
     def test_create_addition_transaction(self):
@@ -411,20 +411,20 @@ class TestCreditTransaction:
         tx = CreditTransaction(
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="Credit purchase",
         )
 
         assert tx.amount == 100
         assert tx.bucket == CreditBucket.PERMANENT
-        assert tx.tx_type == TransactionType.TOPUP_PURCHASE
+        assert tx.tx_type == TransactionType.PURCHASE
 
     def test_transaction_has_timestamp(self):
         """Test transaction has created_at timestamp."""
         tx = CreditTransaction(
             amount=-10,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
         )
 
         assert tx.created_at is not None
@@ -435,7 +435,7 @@ class TestCreditTransaction:
         tx = CreditTransaction(
             amount=-5,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             idempotency_key="unique_key_123",
         )
 
@@ -451,17 +451,17 @@ class TestTransactionType:
 
     def test_deduction_types(self):
         """Test deduction transaction types."""
-        assert TransactionType.GENERATION.value == "generation"
-        assert TransactionType.OCR.value == "ocr"
+        assert TransactionType.AI_GENERATION.value == "generation"
+        assert TransactionType.SMART_SCAN.value == "ocr"
         assert TransactionType.MARKET_PURCHASE.value == "market_purchase"
 
     def test_addition_types(self):
         """Test addition transaction types."""
         assert TransactionType.SIGNUP_BONUS.value == "signup_bonus"
-        assert TransactionType.SUB_GRANT.value == "sub_grant"
-        assert TransactionType.TOPUP_PURCHASE.value == "topup_purchase"
+        assert TransactionType.SUBSCRIPTION_GRANT.value == "sub_grant"
+        assert TransactionType.PURCHASE.value == "topup_purchase"
         assert TransactionType.REFUND.value == "refund"
-        assert TransactionType.ADMIN_GRANT.value == "admin_grant"
+        assert TransactionType.ADMIN_ADJUSTMENT.value == "admin_grant"
 
 
 # ==========================================
@@ -569,7 +569,7 @@ class TestBillingService:
         mock_tx = CreditTransaction(
             amount=-5,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
         )
         mock_repository.deduct_atomic.return_value = mock_tx
 
@@ -634,7 +634,7 @@ class TestBillingService:
             CreditTransaction(
                 amount=-5,
                 bucket=CreditBucket.MONTHLY,
-                tx_type=TransactionType.GENERATION,
+                tx_type=TransactionType.AI_GENERATION,
             ),
         ]
 
@@ -662,13 +662,13 @@ class TestBillingService:
 
         result = await billing_service.get_transaction_count(
             user_id="user_123",
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
         )
 
         assert result == 25
         mock_repository.get_transaction_count.assert_called_once()
         call_args = mock_repository.get_transaction_count.call_args
-        assert call_args.kwargs["tx_type"] == TransactionType.GENERATION
+        assert call_args.kwargs["tx_type"] == TransactionType.AI_GENERATION
 
 
 # ==========================================
@@ -692,7 +692,7 @@ class TestBillingBusinessRules:
             permanent=50,
         )
 
-        user_credits.deduct(80, TransactionType.GENERATION)
+        user_credits.deduct(80, TransactionType.AI_GENERATION)
 
         assert user_credits.monthly_credits == 20
         assert user_credits.permanent_credits == 50
@@ -711,7 +711,7 @@ class TestBillingBusinessRules:
             permanent=100,
         )
 
-        user_credits.deduct(50, TransactionType.GENERATION)
+        user_credits.deduct(50, TransactionType.AI_GENERATION)
 
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 80

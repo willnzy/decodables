@@ -105,7 +105,7 @@ class StoryGenerationService:
                 tx = await self.billing_service.deduct_credits(
                     user_id=user_id,
                     amount=cost,
-                    tx_type=TransactionType.GENERATION,
+                    tx_type=TransactionType.AI_GENERATION,
                     description=f"Story generation: {topic[:30]}..." if len(topic) > 30 else f"Story generation: {topic}",
                     idempotency_key=idempotency_key,
                 )

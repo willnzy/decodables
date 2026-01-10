@@ -99,7 +99,7 @@ class TestDeductCreditsFlow:
         transaction = CreditTransaction(
             amount=-5,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="AI image generation",
             balance_after=Credits(monthly=95, permanent=50),
             created_at=datetime.now(timezone.utc),
@@ -163,7 +163,7 @@ class TestAddCreditsFlow:
         transaction = CreditTransaction(
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="Credit purchase",
             balance_after=Credits(monthly=0, permanent=150),
             created_at=datetime.now(timezone.utc),
@@ -177,7 +177,7 @@ class TestAddCreditsFlow:
             user_id="user_123",
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="Credit purchase",
         )
         result = await command_bus.execute(command)
@@ -198,7 +198,7 @@ class TestGrantSignupBonusFlow:
         transaction = CreditTransaction(
             amount=50,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,  # Use existing enum value
+            tx_type=TransactionType.PURCHASE,  # Use existing enum value
             description="Signup bonus",
             balance_after=Credits(monthly=0, permanent=50),
             created_at=datetime.now(timezone.utc),
@@ -273,7 +273,7 @@ class TestGetTransactionHistoryFlow:
             CreditTransaction(
                 amount=-5,
                 bucket=CreditBucket.MONTHLY,
-                tx_type=TransactionType.GENERATION,
+                tx_type=TransactionType.AI_GENERATION,
                 description="AI generation",
                 balance_after=Credits(monthly=95, permanent=0),
                 created_at=datetime.now(timezone.utc),
@@ -281,7 +281,7 @@ class TestGetTransactionHistoryFlow:
             CreditTransaction(
                 amount=100,
                 bucket=CreditBucket.PERMANENT,
-                tx_type=TransactionType.TOPUP_PURCHASE,
+                tx_type=TransactionType.PURCHASE,
                 description="Credit purchase",
                 balance_after=Credits(monthly=0, permanent=100),
                 created_at=datetime.now(timezone.utc),
@@ -337,7 +337,7 @@ class TestBillingE2EFlow:
         purchase_tx = CreditTransaction(
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="Purchase",
             balance_after=Credits(monthly=0, permanent=100),
             created_at=datetime.now(timezone.utc),
@@ -356,7 +356,7 @@ class TestBillingE2EFlow:
             user_id="user_123",
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
         )
         purchase_result = await command_bus.execute(purchase_cmd)
         assert purchase_result.new_balance == 100
@@ -365,7 +365,7 @@ class TestBillingE2EFlow:
         deduct_tx = CreditTransaction(
             amount=-5,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="Generation",
             balance_after=Credits(monthly=0, permanent=95),
             created_at=datetime.now(timezone.utc),

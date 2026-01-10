@@ -35,7 +35,7 @@ class DeductCreditsCommand:
     user_id: str
     amount: int
     operation: Optional[str] = None  # e.g., "image_generation"
-    tx_type: TransactionType = TransactionType.GENERATION
+    tx_type: TransactionType = TransactionType.AI_GENERATION
     description: Optional[str] = None
     idempotency_key: Optional[str] = None
 

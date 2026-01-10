@@ -315,7 +315,7 @@ async def add_credits(
     # Map credit_type to CreditBucket and TransactionType
     from domains.billing.value_objects import CreditBucket, TransactionType
     bucket = CreditBucket.MONTHLY if req.credit_type == "monthly" else CreditBucket.PERMANENT
-    tx_type = TransactionType.SUB_GRANT if req.credit_type == "monthly" else TransactionType.ADMIN_GRANT
+    tx_type = TransactionType.SUBSCRIPTION_GRANT if req.credit_type == "monthly" else TransactionType.ADMIN_ADJUSTMENT
 
     command = AddCreditsCommand(
         user_id=req.user_id,  # v1.1.0: Target user from request, not current user

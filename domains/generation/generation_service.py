@@ -174,7 +174,7 @@ class GenerationService:
         tx = await self.billing_service.deduct_credits(
             user_id=user_id,
             amount=cost,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description=f"Gen {len(final_prompts)} images" + (" with ref" if has_reference else ""),
             idempotency_key=idempotency_key,
         )
@@ -352,7 +352,7 @@ class GenerationService:
         tx = await self.billing_service.deduct_credits(
             user_id=user_id,
             amount=cost,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description=f"Async gen {len(final_prompts)} images" + (" with ref" if has_reference else ""),
             idempotency_key=f"gen_async_{task_id}",
         )

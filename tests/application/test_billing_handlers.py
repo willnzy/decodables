@@ -129,7 +129,7 @@ class TestAddCreditsHandler:
             user_id="user_123",
             amount=500,
             bucket=CreditBucket.MONTHLY,
-            tx_type=TransactionType.SUB_GRANT,
+            tx_type=TransactionType.SUBSCRIPTION_GRANT,
             description="subscription_renewal",
         )
 
@@ -158,7 +158,7 @@ class TestAddCreditsHandler:
             user_id="user_123",
             amount=100,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="purchase",
         )
 
@@ -281,7 +281,7 @@ class TestGetTransactionHistoryHandler:
             CreditTransaction(
                 amount=-5,
                 bucket=CreditBucket.MONTHLY,
-                tx_type=TransactionType.GENERATION,
+                tx_type=TransactionType.AI_GENERATION,
                 description="image_generation",
                 balance_after=Credits(monthly=95, permanent=0),
                 created_at=datetime.now(timezone.utc),
@@ -332,7 +332,7 @@ class TestGetTransactionHistoryHandler:
             CreditTransaction(
                 amount=-5,
                 bucket=CreditBucket.MONTHLY,
-                tx_type=TransactionType.GENERATION,
+                tx_type=TransactionType.AI_GENERATION,
                 description="image_generation",
                 balance_after=Credits(monthly=95, permanent=0),
                 created_at=datetime.now(timezone.utc),

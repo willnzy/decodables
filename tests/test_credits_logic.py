@@ -146,7 +146,7 @@ class TestPermanentCreditsNeverExpire:
             user_id=user_id,
             amount=50,
             bucket=CreditBucket.PERMANENT,
-            tx_type=TransactionType.TOPUP_PURCHASE,
+            tx_type=TransactionType.PURCHASE,
             description="Credit purchase"
         )
 
@@ -207,7 +207,7 @@ class TestDeductionPriority:
         tx = await credit_repo.deduct_atomic(
             user_id=user_id,
             amount=50,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="AI generation"
         )
 
@@ -236,7 +236,7 @@ class TestDeductionPriority:
         tx = await credit_repo.deduct_atomic(
             user_id=user_id,
             amount=50,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="AI generation"
         )
 
@@ -263,7 +263,7 @@ class TestDeductionPriority:
         tx = await credit_repo.deduct_atomic(
             user_id=user_id,
             amount=50,
-            tx_type=TransactionType.GENERATION,
+            tx_type=TransactionType.AI_GENERATION,
             description="AI generation"
         )
 
@@ -291,7 +291,7 @@ class TestDeductionPriority:
             await credit_repo.deduct_atomic(
                 user_id=user_id,
                 amount=50,
-                tx_type=TransactionType.GENERATION,
+                tx_type=TransactionType.AI_GENERATION,
                 description="AI generation"
             )
 
@@ -319,26 +319,26 @@ class TestIntegrationScenarios:
         )
 
         # Scenario 1: Use 100 credits (from monthly)
-        tx1 = user_credits.deduct(100, TransactionType.GENERATION, "First generation")
+        tx1 = user_credits.deduct(100, TransactionType.AI_GENERATION, "First generation")
         assert user_credits.monthly_credits == 400
         assert user_credits.permanent_credits == 50
         assert tx1.amount == -100
         assert tx1.bucket == CreditBucket.MONTHLY
 
         # Scenario 2: Use 350 credits (from monthly)
-        tx2 = user_credits.deduct(350, TransactionType.GENERATION, "Second generation")
+        tx2 = user_credits.deduct(350, TransactionType.AI_GENERATION, "Second generation")
         assert user_credits.monthly_credits == 50
         assert user_credits.permanent_credits == 50
         assert tx2.bucket == CreditBucket.MONTHLY
 
         # Scenario 3: Use 70 credits (50 from monthly + 20 from permanent)
-        tx3 = user_credits.deduct(70, TransactionType.GENERATION, "Third generation")
+        tx3 = user_credits.deduct(70, TransactionType.AI_GENERATION, "Third generation")
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 30
         assert tx3.bucket == CreditBucket.MONTHLY  # Started from monthly
 
         # Scenario 4: Purchase 100 permanent credits
-        tx4 = user_credits.add(100, CreditBucket.PERMANENT, TransactionType.TOPUP_PURCHASE, "Credit purchase")
+        tx4 = user_credits.add(100, CreditBucket.PERMANENT, TransactionType.PURCHASE, "Credit purchase")
         assert user_credits.monthly_credits == 0
         assert user_credits.permanent_credits == 130
         assert tx4.amount == 100
@@ -351,7 +351,7 @@ class TestIntegrationScenarios:
 
         # Scenario 6: Try to use 700 credits (insufficient)
         with pytest.raises(InsufficientCreditsException):
-            user_credits.deduct(700, TransactionType.GENERATION, "Exceeds balance")
+            user_credits.deduct(700, TransactionType.AI_GENERATION, "Exceeds balance")
 
         # Assert: 5 successful transactions recorded
         assert len(user_credits.pending_transactions) == 5
@@ -370,7 +370,7 @@ class TestUserCreditsAggregate:
         credits = UserCredits.create("user_rule", monthly=100, permanent=200, tier="starter")
 
         # Deduct 150 (should use all monthly + 50 permanent)
-        credits.deduct(150, TransactionType.GENERATION)
+        credits.deduct(150, TransactionType.AI_GENERATION)
 
         assert credits.monthly_credits == 0
         assert credits.permanent_credits == 150
@@ -380,7 +380,7 @@ class TestUserCreditsAggregate:
         credits = UserCredits.create("user_neg", monthly=100, permanent=100)
 
         with pytest.raises(InvalidAmountException):
-            credits.deduct(-10, TransactionType.GENERATION)
+            credits.deduct(-10, TransactionType.AI_GENERATION)
 
     def test_monthly_reset_preserves_permanent(self):
         """Test reset_monthly preserves permanent credits"""

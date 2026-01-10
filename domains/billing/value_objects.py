@@ -17,19 +17,20 @@ class CreditBucket(str, Enum):
 
 
 class TransactionType(str, Enum):
-    """Credit transaction types."""
-    # Deductions
-    GENERATION = "generation"       # AI image generation
-    OCR = "ocr"                     # Smart scan / OCR
-    MARKET_PURCHASE = "market_purchase"  # Marketplace purchase
+    """Credit transaction types (matches database CHECK constraint)."""
+    # Additions (positive amount)
+    SUBSCRIPTION_GRANT = "subscription_grant"  # Monthly subscription grant
+    PURCHASE = "purchase"                      # Credit top-up purchase
+    SIGNUP_BONUS = "signup_bonus"             # Welcome bonus (50 permanent)
+    REFERRAL_BONUS = "referral_bonus"         # Referral reward
+    CAMPAIGN_REWARD = "campaign_reward"       # Campaign/promotion reward
+    REFUND = "refund"                         # Payment refund
+    ADMIN_ADJUSTMENT = "admin_adjustment"     # Admin manual grant/adjustment
 
-    # Additions
-    SIGNUP_BONUS = "signup_bonus"   # Welcome bonus (50 permanent)
-    SUB_GRANT = "sub_grant"         # Monthly subscription grant
-    TOPUP_PURCHASE = "topup_purchase"  # Credit top-up purchase
-    REFUND = "refund"               # Refund
-    ADMIN_GRANT = "admin_grant"     # Admin manual grant
-    MONTHLY_RESET = "monthly_reset"  # Monthly credit reset
+    # Deductions (negative amount)
+    AI_GENERATION = "ai_generation"           # AI image generation
+    SMART_SCAN = "smart_scan"                 # Smart scan / OCR
+    EXPIRATION = "expiration"                 # Credit expiration
 
 
 @dataclass(frozen=True)
@@ -136,17 +137,25 @@ class Credits:
 
 @dataclass(frozen=True)
 class CreditCost:
-    """Cost configuration for different operations."""
-    GENERATION: int = 5   # AI image generation
-    OCR: int = 10         # Smart scan / OCR
-    TEXT_GEN: int = 1     # AI text generation
+    """Cost configuration for different operations (matches TransactionType)."""
+    AI_GENERATION: int = 5   # AI image generation
+    SMART_SCAN: int = 10     # Smart scan / OCR
+    TEXT_GEN: int = 1        # AI text generation (future)
 
     @classmethod
     def get_cost(cls, operation: str) -> int:
-        """Get cost for an operation."""
+        """
+        Get cost for an operation.
+
+        Args:
+            operation: Transaction type value (e.g., "ai_generation", "smart_scan")
+
+        Returns:
+            Cost in credits
+        """
         costs = {
-            "generation": cls.GENERATION,
-            "ocr": cls.OCR,
+            "ai_generation": cls.AI_GENERATION,
+            "smart_scan": cls.SMART_SCAN,
             "text_gen": cls.TEXT_GEN,
         }
         return costs.get(operation, 0)

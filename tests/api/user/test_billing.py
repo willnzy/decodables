@@ -113,7 +113,7 @@ def mock_transaction():
         id="tx_123",
         amount=-10,
         balance_after=mock_balance,
-        tx_type=TransactionType.GENERATION,
+        tx_type=TransactionType.AI_GENERATION,
         description="AI image generation",
         created_at=datetime(2026, 1, 8, 12, 0, 0),
         idempotency_key="idem_123",
@@ -978,7 +978,7 @@ class TestAddCredits:
         call_args = mock_handler.handle.call_args[0][0]
         from domains.billing.value_objects import CreditBucket, TransactionType
         assert call_args.bucket == CreditBucket.MONTHLY
-        assert call_args.tx_type == TransactionType.SUB_GRANT
+        assert call_args.tx_type == TransactionType.SUBSCRIPTION_GRANT
 
     def test_add_credits_exceeds_max(self, override_require_admin):
         """

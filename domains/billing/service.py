@@ -370,9 +370,9 @@ class BillingService:
     def _operation_to_tx_type(self, operation: str) -> TransactionType:
         """Map operation name to transaction type."""
         mapping = {
-            "image_generation": TransactionType.GENERATION,
-            "text_generation": TransactionType.GENERATION,
-            "smart_scan": TransactionType.OCR,  # Smart scan uses OCR type
-            "ocr": TransactionType.OCR,
+            "image_generation": TransactionType.AI_GENERATION,
+            "text_generation": TransactionType.AI_GENERATION,
+            "smart_scan": TransactionType.SMART_SCAN,
+            "ocr": TransactionType.SMART_SCAN,
         }
-        return mapping.get(operation, TransactionType.GENERATION)
+        return mapping.get(operation, TransactionType.AI_GENERATION)
