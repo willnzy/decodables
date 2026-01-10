@@ -90,3 +90,47 @@ def compare_tiers(tier1: str, tier2: str) -> int:
 def is_premium_tier(tier: str) -> bool:
     """Check if tier is a paid/premium tier (t2 or t3)."""
     return tier in {TIER_T2, TIER_T3}
+
+
+def normalize_tier(tier: str) -> str:
+    """
+    Normalize tier string to system code.
+
+    Handles backward compatibility for legacy tier names:
+    - "free" / "Free Plan" → "t1"
+    - "starter" / "Starter Plan" → "t2"
+    - "pro" / "Pro Plan" → "t3"
+
+    Args:
+        tier: Tier string (can be legacy name or system code)
+
+    Returns:
+        Normalized system code (t1/t2/t3)
+
+    Raises:
+        ValueError: If tier string is invalid
+    """
+    if not tier:
+        raise ValueError("Tier cannot be empty")
+
+    tier_lower = tier.lower().strip()
+
+    # Legacy name mappings
+    legacy_mappings = {
+        "free": TIER_T1,
+        "free plan": TIER_T1,
+        "starter": TIER_T2,
+        "starter plan": TIER_T2,
+        "pro": TIER_T3,
+        "pro plan": TIER_T3,
+    }
+
+    # Check legacy mappings first
+    if tier_lower in legacy_mappings:
+        return legacy_mappings[tier_lower]
+
+    # Check if already a valid system code
+    if tier_lower in VALID_TIERS:
+        return tier_lower
+
+    raise ValueError(f"Invalid tier: {tier}. Must be one of: t1, t2, t3 (or legacy: free, starter, pro)")

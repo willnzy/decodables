@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
-from .constants import DEFAULT_TRIAL_DURATION_DAYS
+from .constants import DEFAULT_TRIAL_DURATION_DAYS, TIER_T1, normalize_tier
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,15 @@ def is_user_in_trial(
         trial_days = DEFAULT_TRIAL_DURATION_DAYS
 
     # Only free tier users have trial periods
-    user_tier = (user_data.get("tier") or "t1").lower()
+    user_tier_raw = user_data.get("tier") or "t1"
 
-    # Handle legacy tier names
-    if user_tier == "free":
-        user_tier = "t1"
+    try:
+        user_tier = normalize_tier(user_tier_raw)
+    except ValueError:
+        # Invalid tier, treat as t1 for backward compatibility
+        user_tier = TIER_T1
 
-    if user_tier != "t1":
+    if user_tier != TIER_T1:
         return False
 
     # Check registration date

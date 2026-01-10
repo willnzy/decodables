@@ -23,6 +23,14 @@ from domains.billing.payment_service import (
     get_subscription_details,
     modify_subscription,
 )
+from domains.identity.constants import (
+    TIER_T1,
+    TIER_T2,
+    TIER_T3,
+    TIER_LEVELS,
+    TIER_MONTHLY_CREDITS,
+    normalize_tier,
+)
 from infrastructure.repositories import (
     SupabaseUserRepository,
     SupabasePaymentRepository,
@@ -32,25 +40,14 @@ from infrastructure.repositories import (
 logger = logging.getLogger(__name__)
 
 
-# Constants
-VALID_TARGET_TIERS = {"free", "starter", "t1", "t2", "t3"}
-TIER_MONTHLY_CREDITS = {
-    "free": 0,
-    "t1": 0,
-    "starter": 200,
-    "t2": 200,
-    "pro": 500,
-    "t3": 500,
-}
-# P0-012 fix: Support both tier naming conventions (free/starter/pro and t1/t2/t3)
-TIER_LEVELS = {
-    "free": 0,
-    "t1": 0,
-    "starter": 1,
-    "t2": 1,
-    "pro": 2,
-    "t3": 2,
-}
+# ==========================================
+# Deprecated constants (use domains.identity.constants instead)
+# ==========================================
+# These are imported above:
+# - TIER_T1, TIER_T2, TIER_T3
+# - TIER_LEVELS
+# - TIER_MONTHLY_CREDITS
+# - normalize_tier()
 
 
 class SubscriptionService:
@@ -275,7 +272,7 @@ class SubscriptionService:
 
         # Update database
         if immediate:
-            await self.users_repo.update_subscription_tier(user_id, "free", subscription_status="canceled")
+            await self.users_repo.update_subscription_tier(user_id, TIER_T1, subscription_status="canceled")
             await self.payment_repo.create(
                 user_id=user_id,
                 amount=0,
