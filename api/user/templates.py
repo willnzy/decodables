@@ -1,11 +1,19 @@
 """
-Templates API - User prompt templates management (v2).
+Templates API - User prompt templates management (v3.0.0).
 
 @module api.user.templates
-@version 2.1.0
+@version 3.0.0
 
 Changes:
-- v2.1.0: Security improvements
+- v3.0.0: DDD architecture upgrade - Full CQRS pattern
+  - Created TemplatesService v1.0.0 with 10 business methods
+  - Added 2 Query Handlers (ListAsset, ListPage)
+  - Added 8 Command Handlers (Create/Update/Delete/Use × 2 types)
+  - Eliminated direct Supabase calls from API layer
+  - Moved all business logic to Service layer
+  - Improved testability and maintainability
+
+- v2.1.0: Security improvements (inherited)
   - TPL-MEDIUM-1: Added template_id UUID format validation
   - TPL-MEDIUM-2: Added max_length to custom text fields
   - TPL-MEDIUM-3: Added max_length to moods list
@@ -14,39 +22,48 @@ Changes:
 
 Endpoints:
 Asset Prompt Templates (5W1H):
-- GET /api/v2/user/templates/asset - List templates
-- POST /api/v2/user/templates/asset - Create template
-- PUT /api/v2/user/templates/asset/{id} - Update template
-- DELETE /api/v2/user/templates/asset/{id} - Delete template
-- POST /api/v2/user/templates/asset/{id}/use - Mark as used
+- GET /api/v3/user/templates/asset - List templates
+- POST /api/v3/user/templates/asset - Create template
+- PUT /api/v3/user/templates/asset/{id} - Update template
+- DELETE /api/v3/user/templates/asset/{id} - Delete template
+- POST /api/v3/user/templates/asset/{id}/use - Mark as used
 
 Page Prompt Templates (AI Design Page):
-- GET /api/v2/user/templates/page - List templates
-- POST /api/v2/user/templates/page - Create template
-- PUT /api/v2/user/templates/page/{id} - Update template
-- DELETE /api/v2/user/templates/page/{id} - Delete template
-- POST /api/v2/user/templates/page/{id}/use - Mark as used
+- GET /api/v3/user/templates/page - List templates
+- POST /api/v3/user/templates/page - Create template
+- PUT /api/v3/user/templates/page/{id} - Update template
+- DELETE /api/v3/user/templates/page/{id} - Delete template
+- POST /api/v3/user/templates/page/{id}/use - Mark as used
 """
 
 import logging
 import re
-from datetime import datetime, timezone
 from typing import Optional, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-
-from core.database import get_supabase_client
-supabase = get_supabase_client()
+from container import get_container
+from application.queries.templates import (
+    ListAssetTemplatesQuery,
+    ListPageTemplatesQuery,
+)
+from application.commands.templates import (
+    CreateAssetTemplateCommand,
+    UpdateAssetTemplateCommand,
+    DeleteAssetTemplateCommand,
+    UseAssetTemplateCommand,
+    CreatePageTemplateCommand,
+    UpdatePageTemplateCommand,
+    DeletePageTemplateCommand,
+    UsePageTemplateCommand,
+)
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/templates", tags=["user-templates-v2"])
-
-MAX_TEMPLATES_PER_USER = 20
+router = APIRouter(prefix="/templates", tags=["user-templates-v3"])
 
 # ==========================================
 # Constants (v2.1.0)
@@ -98,17 +115,7 @@ class AssetTemplateCreate(BaseModel):
     moods: List[str] = Field(default=["warm"], max_length=MAX_MOODS)  # v2.1.0: TPL-MEDIUM-3
     aspect_ratio: str = Field("square", max_length=20)  # v2.1.0
     creativity_level: float = Field(0.3, ge=0.0, le=1.0)
-    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0: TPL-LOW-3
-
-    # v2.1.0: Validate individual mood strings
-    @field_validator('moods')
-    @classmethod
-    def validate_moods(cls, v):
-        if v:
-            for mood in v:
-                if len(mood) > 50:
-                    raise ValueError("Each mood must be 50 characters or less")
-        return v
+    negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0
 
 
 class AssetTemplateUpdate(BaseModel):
@@ -126,16 +133,6 @@ class AssetTemplateUpdate(BaseModel):
     aspect_ratio: Optional[str] = Field(None, max_length=20)  # v2.1.0
     creativity_level: Optional[float] = Field(None, ge=0.0, le=1.0)
     negative_prompt: Optional[str] = Field(None, max_length=MAX_NEGATIVE_PROMPT_LENGTH)  # v2.1.0
-
-    # v2.1.0: Validate individual mood strings
-    @field_validator('moods')
-    @classmethod
-    def validate_moods(cls, v):
-        if v:
-            for mood in v:
-                if len(mood) > 50:
-                    raise ValueError("Each mood must be 50 characters or less")
-        return v
 
 
 class PageTemplateCreate(BaseModel):
@@ -189,14 +186,18 @@ async def list_asset_templates(
     request: Request,
     user: dict = Depends(get_current_user),
 ) -> TemplateListResponse:
-    """Get user's saved asset prompt templates (5W1H)."""
-    result = supabase.table("asset_prompt_templates") \
-        .select("*") \
-        .eq("user_id", user["id"]) \
-        .order("use_count", desc=True) \
-        .execute()
+    """
+    Get user's saved asset prompt templates (5W1H).
 
-    return TemplateListResponse(templates=result.data or [])
+    v3.0.0: Now uses ListAssetTemplatesHandler (Container pattern).
+    """
+    container = get_container()
+    handler = container.list_asset_templates_handler
+
+    query = ListAssetTemplatesQuery(user_id=user["id"])
+    result = await handler.handle(query)
+
+    return TemplateListResponse(templates=result.templates)
 
 
 @router.post("/asset")
@@ -206,21 +207,16 @@ async def create_asset_template(
     req: AssetTemplateCreate,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Create a new asset prompt template."""
-    # Check template limit
-    count_result = supabase.table("asset_prompt_templates") \
-        .select("id", count="exact") \
-        .eq("user_id", user["id"]) \
-        .execute()
+    """
+    Create a new asset prompt template.
 
-    if count_result.count and count_result.count >= MAX_TEMPLATES_PER_USER:
-        raise HTTPException(
-            400,
-            f"Maximum {MAX_TEMPLATES_PER_USER} templates allowed. Delete some first.",
-        )
+    v3.0.0: Now uses CreateAssetTemplateHandler (Container pattern).
+    Business logic (template limit check) moved to Service layer.
+    """
+    container = get_container()
+    handler = container.create_asset_template_handler
 
     template_data = {
-        "user_id": user["id"],
         "name": req.name,
         "description": req.description,
         "who_type": req.who_type,
@@ -236,14 +232,13 @@ async def create_asset_template(
         "negative_prompt": req.negative_prompt,
     }
 
-    result = supabase.table("asset_prompt_templates") \
-        .insert(template_data) \
-        .execute()
-
-    return TemplateResponse(
-        success=True,
-        template=result.data[0] if result.data else None,
+    command = CreateAssetTemplateCommand(
+        user_id=user["id"],
+        template_data=template_data
     )
+    result = await handler.handle(command)
+
+    return TemplateResponse(success=True, template=result.template)
 
 
 @router.put("/asset/{template_id}")
@@ -254,7 +249,11 @@ async def update_asset_template(
     req: AssetTemplateUpdate,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Update an existing asset prompt template."""
+    """
+    Update an existing asset prompt template.
+
+    v3.0.0: Now uses UpdateAssetTemplateHandler (Container pattern).
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
@@ -263,16 +262,17 @@ async def update_asset_template(
     if not update_data:
         raise HTTPException(400, "No fields to update")
 
-    result = supabase.table("asset_prompt_templates") \
-        .update(update_data) \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
+    container = get_container()
+    handler = container.update_asset_template_handler
 
-    if not result.data:
-        raise HTTPException(404, "Template not found")
+    command = UpdateAssetTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"],
+        updates=update_data
+    )
+    result = await handler.handle(command)
 
-    return TemplateResponse(success=True, template=result.data[0])
+    return TemplateResponse(success=True, template=result.template)
 
 
 @router.delete("/asset/{template_id}")
@@ -282,17 +282,24 @@ async def delete_asset_template(
     template_id: str,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Delete an asset prompt template."""
+    """
+    Delete an asset prompt template.
+
+    v3.0.0: Now uses DeleteAssetTemplateHandler (Container pattern).
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
-    supabase.table("asset_prompt_templates") \
-        .delete() \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
+    container = get_container()
+    handler = container.delete_asset_template_handler
 
-    return TemplateResponse(success=True)
+    command = DeleteAssetTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"]
+    )
+    result = await handler.handle(command)
+
+    return TemplateResponse(success=result.success)
 
 
 @router.post("/asset/{template_id}/use")
@@ -302,32 +309,25 @@ async def use_asset_template(
     template_id: str,
     user: dict = Depends(get_current_user),
 ) -> TemplateUseResponse:
-    """Mark an asset prompt template as used (increments use_count)."""
+    """
+    Mark an asset template as used (increments use_count).
+
+    v3.0.0: Now uses UseAssetTemplateHandler (Container pattern).
+    Business logic (use count increment) moved to Service layer.
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
-    get_result = supabase.table("asset_prompt_templates") \
-        .select("use_count") \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .single() \
-        .execute()
+    container = get_container()
+    handler = container.use_asset_template_handler
 
-    if not get_result.data:
-        raise HTTPException(404, "Template not found")
+    command = UseAssetTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"]
+    )
+    result = await handler.handle(command)
 
-    current_count = get_result.data.get("use_count", 0)
-
-    supabase.table("asset_prompt_templates") \
-        .update({
-            "use_count": current_count + 1,
-            "last_used_at": datetime.now(timezone.utc).isoformat(),
-        }) \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
-
-    return TemplateUseResponse(success=True, use_count=current_count + 1)
+    return TemplateUseResponse(success=True, use_count=result.new_use_count)
 
 
 # ==========================================
@@ -340,14 +340,18 @@ async def list_page_templates(
     request: Request,
     user: dict = Depends(get_current_user),
 ) -> TemplateListResponse:
-    """Get user's saved page prompt templates."""
-    result = supabase.table("page_prompt_templates") \
-        .select("*") \
-        .eq("user_id", user["id"]) \
-        .order("use_count", desc=True) \
-        .execute()
+    """
+    Get user's saved page prompt templates.
 
-    return TemplateListResponse(templates=result.data or [])
+    v3.0.0: Now uses ListPageTemplatesHandler (Container pattern).
+    """
+    container = get_container()
+    handler = container.list_page_templates_handler
+
+    query = ListPageTemplatesQuery(user_id=user["id"])
+    result = await handler.handle(query)
+
+    return TemplateListResponse(templates=result.templates)
 
 
 @router.post("/page")
@@ -357,20 +361,16 @@ async def create_page_template(
     req: PageTemplateCreate,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Create a new page prompt template."""
-    count_result = supabase.table("page_prompt_templates") \
-        .select("id", count="exact") \
-        .eq("user_id", user["id"]) \
-        .execute()
+    """
+    Create a new page prompt template.
 
-    if count_result.count and count_result.count >= MAX_TEMPLATES_PER_USER:
-        raise HTTPException(
-            400,
-            f"Maximum {MAX_TEMPLATES_PER_USER} templates allowed. Delete some first.",
-        )
+    v3.0.0: Now uses CreatePageTemplateHandler (Container pattern).
+    Business logic (template limit check) moved to Service layer.
+    """
+    container = get_container()
+    handler = container.create_page_template_handler
 
     template_data = {
-        "user_id": user["id"],
         "name": req.name,
         "layout": req.layout,
         "story_theme": req.story_theme,
@@ -381,14 +381,13 @@ async def create_page_template(
         "generation_mode": req.generation_mode,
     }
 
-    result = supabase.table("page_prompt_templates") \
-        .insert(template_data) \
-        .execute()
-
-    return TemplateResponse(
-        success=True,
-        template=result.data[0] if result.data else None,
+    command = CreatePageTemplateCommand(
+        user_id=user["id"],
+        template_data=template_data
     )
+    result = await handler.handle(command)
+
+    return TemplateResponse(success=True, template=result.template)
 
 
 @router.put("/page/{template_id}")
@@ -399,7 +398,11 @@ async def update_page_template(
     req: PageTemplateUpdate,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Update an existing page prompt template."""
+    """
+    Update an existing page prompt template.
+
+    v3.0.0: Now uses UpdatePageTemplateHandler (Container pattern).
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
@@ -408,16 +411,17 @@ async def update_page_template(
     if not update_data:
         raise HTTPException(400, "No fields to update")
 
-    result = supabase.table("page_prompt_templates") \
-        .update(update_data) \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
+    container = get_container()
+    handler = container.update_page_template_handler
 
-    if not result.data:
-        raise HTTPException(404, "Template not found")
+    command = UpdatePageTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"],
+        updates=update_data
+    )
+    result = await handler.handle(command)
 
-    return TemplateResponse(success=True, template=result.data[0])
+    return TemplateResponse(success=True, template=result.template)
 
 
 @router.delete("/page/{template_id}")
@@ -427,17 +431,24 @@ async def delete_page_template(
     template_id: str,
     user: dict = Depends(get_current_user),
 ) -> TemplateResponse:
-    """Delete a page prompt template."""
+    """
+    Delete a page prompt template.
+
+    v3.0.0: Now uses DeletePageTemplateHandler (Container pattern).
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
-    supabase.table("page_prompt_templates") \
-        .delete() \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
+    container = get_container()
+    handler = container.delete_page_template_handler
 
-    return TemplateResponse(success=True)
+    command = DeletePageTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"]
+    )
+    result = await handler.handle(command)
+
+    return TemplateResponse(success=result.success)
 
 
 @router.post("/page/{template_id}/use")
@@ -447,29 +458,22 @@ async def use_page_template(
     template_id: str,
     user: dict = Depends(get_current_user),
 ) -> TemplateUseResponse:
-    """Mark a page prompt template as used (increments use_count)."""
+    """
+    Mark a page template as used (increments use_count).
+
+    v3.0.0: Now uses UsePageTemplateHandler (Container pattern).
+    Business logic (use count increment) moved to Service layer.
+    """
     # v2.1.0: TPL-MEDIUM-1 - Validate template_id format
     validate_template_id(template_id)
 
-    get_result = supabase.table("page_prompt_templates") \
-        .select("use_count") \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .single() \
-        .execute()
+    container = get_container()
+    handler = container.use_page_template_handler
 
-    if not get_result.data:
-        raise HTTPException(404, "Template not found")
+    command = UsePageTemplateCommand(
+        template_id=template_id,
+        user_id=user["id"]
+    )
+    result = await handler.handle(command)
 
-    current_count = get_result.data.get("use_count", 0)
-
-    supabase.table("page_prompt_templates") \
-        .update({
-            "use_count": current_count + 1,
-            "last_used_at": datetime.now(timezone.utc).isoformat(),
-        }) \
-        .eq("id", template_id) \
-        .eq("user_id", user["id"]) \
-        .execute()
-
-    return TemplateUseResponse(success=True, use_count=current_count + 1)
+    return TemplateUseResponse(success=True, use_count=result.new_use_count)

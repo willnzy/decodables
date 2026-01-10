@@ -287,6 +287,17 @@ class Container:
             )
         return self._services['system_resources_admin']
 
+    @property
+    def templates_service(self):
+        """Get templates service instance (v3.0.0)."""
+        from core.database import get_database_client
+        from domains.templates.templates_service import TemplatesService
+        from infrastructure.repositories.templates_repository import SupabaseTemplatesRepository
+        if 'templates' not in self._services:
+            repository = SupabaseTemplatesRepository(get_database_client())
+            self._services['templates'] = TemplatesService(repository)
+        return self._services['templates']
+
     # ========== Command Handlers ==========
 
     @property
@@ -748,6 +759,108 @@ class Container:
                 self.system_resources_admin_service
             )
         return self._handlers['get_audit_log']
+
+    # Templates Query Handlers (v3.0.0)
+    @property
+    def list_asset_templates_handler(self):
+        """Get list asset templates handler (v3.0.0)."""
+        from application.queries.templates import ListAssetTemplatesHandler
+        if 'list_asset_templates' not in self._handlers:
+            self._handlers['list_asset_templates'] = ListAssetTemplatesHandler(
+                self.templates_service
+            )
+        return self._handlers['list_asset_templates']
+
+    @property
+    def list_page_templates_handler(self):
+        """Get list page templates handler (v3.0.0)."""
+        from application.queries.templates import ListPageTemplatesHandler
+        if 'list_page_templates' not in self._handlers:
+            self._handlers['list_page_templates'] = ListPageTemplatesHandler(
+                self.templates_service
+            )
+        return self._handlers['list_page_templates']
+
+    # Templates Command Handlers (v3.0.0)
+    @property
+    def create_asset_template_handler(self):
+        """Get create asset template handler (v3.0.0)."""
+        from application.commands.templates import CreateAssetTemplateHandler
+        if 'create_asset_template' not in self._handlers:
+            self._handlers['create_asset_template'] = CreateAssetTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['create_asset_template']
+
+    @property
+    def update_asset_template_handler(self):
+        """Get update asset template handler (v3.0.0)."""
+        from application.commands.templates import UpdateAssetTemplateHandler
+        if 'update_asset_template' not in self._handlers:
+            self._handlers['update_asset_template'] = UpdateAssetTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['update_asset_template']
+
+    @property
+    def delete_asset_template_handler(self):
+        """Get delete asset template handler (v3.0.0)."""
+        from application.commands.templates import DeleteAssetTemplateHandler
+        if 'delete_asset_template' not in self._handlers:
+            self._handlers['delete_asset_template'] = DeleteAssetTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['delete_asset_template']
+
+    @property
+    def use_asset_template_handler(self):
+        """Get use asset template handler (v3.0.0)."""
+        from application.commands.templates import UseAssetTemplateHandler
+        if 'use_asset_template' not in self._handlers:
+            self._handlers['use_asset_template'] = UseAssetTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['use_asset_template']
+
+    @property
+    def create_page_template_handler(self):
+        """Get create page template handler (v3.0.0)."""
+        from application.commands.templates import CreatePageTemplateHandler
+        if 'create_page_template' not in self._handlers:
+            self._handlers['create_page_template'] = CreatePageTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['create_page_template']
+
+    @property
+    def update_page_template_handler(self):
+        """Get update page template handler (v3.0.0)."""
+        from application.commands.templates import UpdatePageTemplateHandler
+        if 'update_page_template' not in self._handlers:
+            self._handlers['update_page_template'] = UpdatePageTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['update_page_template']
+
+    @property
+    def delete_page_template_handler(self):
+        """Get delete page template handler (v3.0.0)."""
+        from application.commands.templates import DeletePageTemplateHandler
+        if 'delete_page_template' not in self._handlers:
+            self._handlers['delete_page_template'] = DeletePageTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['delete_page_template']
+
+    @property
+    def use_page_template_handler(self):
+        """Get use page template handler (v3.0.0)."""
+        from application.commands.templates import UsePageTemplateHandler
+        if 'use_page_template' not in self._handlers:
+            self._handlers['use_page_template'] = UsePageTemplateHandler(
+                self.templates_service
+            )
+        return self._handlers['use_page_template']
 
     # ========== Utility Methods ==========
 
