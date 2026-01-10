@@ -1,9 +1,14 @@
 """Export API - PDF, preview, and ZIP export endpoints.
 
 @module api.user.export
-@version 3.0.0
+@version 4.0.0
 
 Changes:
+- v4.0.0: Async export implementation
+  - Added async export endpoints: POST /projects/{id}/pdf/async and POST /projects/{id}/zip/async
+  - Integrated with RQ task queue for background processing
+  - Added TaskResponse model for async task responses
+  - Old sync endpoints remain for backward compatibility
 - v3.0.0: DDD architecture upgrade
   - Created ExportService with complete business logic
   - Added dependency injection (get_export_service)
@@ -18,10 +23,12 @@ Changes:
   - EX-LOW-1: Sanitized user_id in logs (only first 8 chars)
 
 Endpoints:
-- GET /api/v2/user/export/projects/{project_id}/pdf - Generate PDF
+- GET /api/v2/user/export/projects/{project_id}/pdf - Generate PDF (sync, legacy)
+- POST /api/v2/user/export/projects/{project_id}/pdf/async - Generate PDF (async, recommended)
 - GET /api/v2/user/export/projects/{project_id}/preview - Generate preview image
 - POST /api/v2/user/export/zip - Export ZIP with provided URLs (deprecated)
-- GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP
+- GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP (sync, legacy)
+- POST /api/v2/user/export/projects/{project_id}/zip/async - Export project as ZIP (async, recommended)
 """
 
 import logging
@@ -98,6 +105,21 @@ class ZipExportRequest(BaseModel):
         if not validated:
             raise ValueError("At least one valid URL is required")
         return validated
+
+
+# ==========================================
+# Response Models
+# ==========================================
+
+class TaskResponse(BaseModel):
+    """Async export task response.
+
+    v4.0.0: Response model for async export endpoints.
+    """
+    task_id: str = Field(..., description="Unique task identifier")
+    status: str = Field(..., description="Task status (pending/queued/processing/completed/failed)")
+    message: str = Field(..., description="Human-readable status message")
+    estimated_time_seconds: int = Field(..., description="Estimated completion time in seconds")
 
 
 # ==========================================
@@ -326,4 +348,136 @@ async def export_project_zip(
         buf,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{title}_assets.zip"'},
+    )
+
+
+# ==========================================
+# Async Export Endpoints (v4.0.0)
+# ==========================================
+
+@router.post("/projects/{project_id}/pdf/async", response_model=TaskResponse)
+@limiter.limit("10/minute")
+async def export_project_pdf_async(
+    request: Request,
+    project_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Enqueue PDF export task for background processing.
+
+    v4.0.0: Async export endpoint using RQ task queue.
+
+    Workflow:
+    1. Validate project ownership and UUID format
+    2. Enqueue task to Redis Queue with tier-based priority
+    3. Return task_id immediately (non-blocking)
+    4. Client polls GET /api/v2/user/tasks/{task_id} for status
+    5. Download from task.result.download_url when completed
+
+    Security:
+    - UUID validation for project_id
+    - Idempotency via Redis (24h TTL)
+    - Tier-based priority routing (t3→high, t2→default, t1→low)
+
+    Returns:
+        TaskResponse: Task ID and status (202 Accepted)
+    """
+    # v2.1.0: EX-HIGH-1 - Validate project_id format
+    if not UUID_PATTERN.match(project_id):
+        raise HTTPException(400, "Invalid project ID format")
+
+    # Import task queue service
+    from infrastructure.task_queue.queue_service import task_queue
+
+    # Enqueue task with idempotency
+    tier = (user.get("tier") or "t1").lower()
+    idempotency_key = f"export:pdf:{user['id']}:{project_id}"
+
+    task_id = task_queue.enqueue_export_task(
+        user_id=user["id"],
+        project_id=project_id,
+        export_type="pdf",
+        tier=tier,
+        idempotency_key=idempotency_key,
+    )
+
+    if not task_id:
+        logger.error(f"Failed to enqueue PDF export for user {user['id'][:8]}...")
+        raise HTTPException(503, "Export service temporarily unavailable")
+
+    logger.info(f"Enqueued PDF export task {task_id} for user {user['id'][:8]}...")
+
+    return TaskResponse(
+        task_id=task_id,
+        status="pending",
+        message="PDF export task queued successfully",
+        estimated_time_seconds=10,
+    )
+
+
+@router.post("/projects/{project_id}/zip/async", response_model=TaskResponse)
+@limiter.limit("5/minute")
+async def export_project_zip_async(
+    request: Request,
+    project_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Enqueue ZIP export task for background processing.
+
+    v4.0.0: Async export endpoint using RQ task queue.
+
+    Requires Pro plan (t3).
+
+    Workflow:
+    1. Validate tier (Pro required)
+    2. Validate project ownership and UUID format
+    3. Enqueue task to Redis Queue with high priority (Pro users)
+    4. Return task_id immediately (non-blocking)
+    5. Client polls GET /api/v2/user/tasks/{task_id} for status
+    6. Download from task.result.download_url when completed
+
+    Security:
+    - Tier verification (Pro required)
+    - UUID validation for project_id
+    - Idempotency via Redis (24h TTL)
+    - SSRF protection (URL filtering in background worker)
+
+    Returns:
+        TaskResponse: Task ID and status (202 Accepted)
+    """
+    # v2.1.0: EX-HIGH-1 - Validate project_id format
+    if not UUID_PATTERN.match(project_id):
+        raise HTTPException(400, "Invalid project ID format")
+
+    # Verify Pro tier
+    tier = (user.get("tier") or "t1").lower()
+    if tier != "t3":
+        raise HTTPException(403, "ZIP export requires Pro plan")
+
+    # Import task queue service
+    from infrastructure.task_queue.queue_service import task_queue
+
+    # Enqueue task with idempotency
+    idempotency_key = f"export:zip:{user['id']}:{project_id}"
+
+    task_id = task_queue.enqueue_export_task(
+        user_id=user["id"],
+        project_id=project_id,
+        export_type="zip",
+        tier=tier,
+        idempotency_key=idempotency_key,
+    )
+
+    if not task_id:
+        logger.error(f"Failed to enqueue ZIP export for user {user['id'][:8]}...")
+        raise HTTPException(503, "Export service temporarily unavailable")
+
+    logger.info(f"Enqueued ZIP export task {task_id} for user {user['id'][:8]}...")
+
+    return TaskResponse(
+        task_id=task_id,
+        status="pending",
+        message="ZIP export task queued successfully",
+        estimated_time_seconds=30,
     )
