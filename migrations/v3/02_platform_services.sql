@@ -457,17 +457,190 @@ CREATE TABLE experiments (
 -- ----------------------------------------------------------------------------
 CREATE TABLE feature_flags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    flag_key TEXT UNIQUE NOT NULL,
-    flag_name TEXT NOT NULL,
+    key TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     description TEXT,
-    is_enabled BOOLEAN DEFAULT FALSE,
+    flag_type TEXT DEFAULT 'boolean' CHECK (flag_type IN ('boolean', 'multivariate', 'experiment')),
+    enabled BOOLEAN DEFAULT FALSE,
+    archived BOOLEAN DEFAULT FALSE,
+
+    -- 环境和时间控制
+    environments TEXT[] DEFAULT ARRAY['production', 'staging'],
+    start_at TIMESTAMPTZ,
+    end_at TIMESTAMPTZ,
+
+    -- 灰度配置
     rollout_percentage INTEGER DEFAULT 0 CHECK (rollout_percentage BETWEEN 0 AND 100),
-    target_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
-    target_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
-    config JSONB DEFAULT '{}',
+
+    -- 名单控制
+    whitelist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
+    blacklist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 定向规则 (JSON数组)
+    -- 格式: [{"id": "rule1", "priority": 1, "conditions": [...], "variant": "treatment"}]
+    targeting_rules JSONB DEFAULT '[]',
+
+    -- 变体配置 (JSON数组)
+    -- 格式: [{"key": "control", "value": false, "weight": 50}, {"key": "treatment", "value": true, "weight": 50}]
+    variants JSONB DEFAULT '[{"key": "control", "value": false, "weight": 50}, {"key": "treatment", "value": true, "weight": 50}]'::JSONB,
+    default_variant TEXT DEFAULT 'control',
+
+    -- 元数据
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+    owner TEXT,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT,
+    updated_by TEXT
+);
+
+-- 索引
+CREATE INDEX idx_ff_key ON feature_flags(key);
+CREATE INDEX idx_ff_enabled ON feature_flags(enabled) WHERE enabled = true AND archived = false;
+CREATE INDEX idx_ff_type ON feature_flags(flag_type);
+CREATE INDEX idx_ff_tags ON feature_flags USING GIN(tags);
+
+-- 注释
+COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型';
+COMMENT ON COLUMN feature_flags.key IS 'Flag唯一标识 (如 feat_new_editor)';
+COMMENT ON COLUMN feature_flags.flag_type IS 'Flag类型: boolean(开关), multivariate(多变体), experiment(实验)';
+
+
+-- ----------------------------------------------------------------------------
+-- 19-1. experiment_configs (实验扩展配置)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    flag_key TEXT NOT NULL UNIQUE REFERENCES feature_flags(key) ON DELETE CASCADE,
+
+    -- 实验设计
+    hypothesis TEXT,
+
+    -- 指标配置
+    primary_metric TEXT NOT NULL DEFAULT 'conversion',
+    secondary_metrics TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 统计配置
+    min_sample_size INTEGER DEFAULT 1000,
+    confidence_level DECIMAL(3,2) DEFAULT 0.95,
+    min_detectable_effect DECIMAL(5,4),
+
+    -- 时间规划
+    planned_duration_days INTEGER,
+    planned_start_date DATE,
+    planned_end_date DATE,
+    actual_start_date DATE,
+    actual_end_date DATE,
+
+    -- 状态管理
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'completed', 'stopped')),
+
+    -- 结论
+    winner_variant TEXT,
+    conclusion TEXT,
+    decision TEXT CHECK (decision IN ('ship_treatment', 'keep_control', 'inconclusive', NULL)),
+    decided_by TEXT,
+    decided_at TIMESTAMPTZ,
+
+    -- 审计
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_exp_status ON experiment_configs(status);
+CREATE INDEX idx_exp_dates ON experiment_configs(planned_start_date, planned_end_date);
+
+
+-- ----------------------------------------------------------------------------
+-- 19-2. flag_exposures (曝光事件)
+-- ----------------------------------------------------------------------------
+CREATE TABLE flag_exposures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_key TEXT NOT NULL,
+    flag_type TEXT NOT NULL,
+
+    user_id TEXT,
+    anonymous_id TEXT,
+
+    variant TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    reason TEXT NOT NULL,
+    rule_id TEXT,
+
+    context JSONB,
+    environment TEXT DEFAULT 'production',
+
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_exp_flag_time ON flag_exposures(flag_key, timestamp DESC);
+CREATE INDEX idx_exp_user ON flag_exposures(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_exp_time ON flag_exposures(timestamp);
+
+
+-- ----------------------------------------------------------------------------
+-- 19-3. flag_audit_logs (审计日志)
+-- ----------------------------------------------------------------------------
+CREATE TABLE flag_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_id UUID REFERENCES feature_flags(id) ON DELETE SET NULL,
+    flag_key TEXT NOT NULL,
+
+    action TEXT NOT NULL,
+    changes JSONB,
+    previous_value JSONB,
+
+    changed_by TEXT NOT NULL,
+    reason TEXT,
+
+    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_flag ON flag_audit_logs(flag_key);
+CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
+
+
+-- ----------------------------------------------------------------------------
+-- 19-4. experiment_results (实验结果聚合)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_results (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_key TEXT NOT NULL REFERENCES feature_flags(key) ON DELETE CASCADE,
+    variant TEXT NOT NULL,
+    metric TEXT NOT NULL,
+
+    date DATE NOT NULL,
+
+    exposures INTEGER DEFAULT 0,
+    conversions INTEGER DEFAULT 0,
+    total_value DECIMAL(15,2) DEFAULT 0,
+
+    conversion_rate DECIMAL(10,6),
+    avg_value DECIMAL(10,2),
+
+    cumulative_exposures INTEGER DEFAULT 0,
+    cumulative_conversions INTEGER DEFAULT 0,
+    cumulative_value DECIMAL(15,2) DEFAULT 0,
+    cumulative_rate DECIMAL(10,6),
+
+    relative_lift DECIMAL(10,4),
+    p_value DECIMAL(10,6),
+    confidence DECIMAL(5,2),
+    is_significant BOOLEAN DEFAULT false,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(flag_key, variant, metric, date)
+);
+
+CREATE INDEX idx_results_flag ON experiment_results(flag_key);
+CREATE INDEX idx_results_date ON experiment_results(date DESC);
 
 
 

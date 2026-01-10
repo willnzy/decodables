@@ -39,6 +39,7 @@ from .notifications import router as notifications_router
 from .subscriptions import router as subscriptions_router
 from .system import router as system_router
 from .tasks_mgmt import router as tasks_mgmt_router
+from .feature_flags import router as feature_flags_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -59,5 +60,6 @@ admin_router.include_router(notifications_router)
 admin_router.include_router(subscriptions_router)
 admin_router.include_router(system_router)
 admin_router.include_router(tasks_mgmt_router)
+admin_router.include_router(feature_flags_router)
 
 __all__ = ['admin_router']
