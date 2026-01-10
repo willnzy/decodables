@@ -15,6 +15,7 @@ class ErrorCode(str, Enum):
 
     # === Generic Errors ===
     SERVER_ERROR = "server_error"
+    SERVICE_UNAVAILABLE = "service_unavailable"  # 503: External service unavailable
     VALIDATION_ERROR = "validation_error"
     TOO_MANY_REQUESTS = "too_many_requests"
     BAD_REQUEST = "bad_request"

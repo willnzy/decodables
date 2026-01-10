@@ -403,7 +403,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     """
     request_id = get_request_id() or getattr(request.state, 'request_id', None)
     
-    # P2-035: Enhanced HTTP status → semantic error code mapping
+    # P2-035 + P3-012: Enhanced HTTP status → semantic error code mapping
     code_map = {
         400: ErrorCode.BAD_REQUEST,
         401: ErrorCode.AUTH_UNAUTHORIZED,
@@ -415,7 +415,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         422: ErrorCode.VALIDATION_ERROR,
         429: ErrorCode.TOO_MANY_REQUESTS,
         500: ErrorCode.SERVER_ERROR,
-        503: ErrorCode.SERVER_ERROR,
+        503: ErrorCode.SERVICE_UNAVAILABLE,  # P3-012: External services unavailable
     }
 
     # P2-035: Message-based error code refinement (higher specificity)
