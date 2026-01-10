@@ -289,31 +289,27 @@ class TestAdminGetBehaviorAnalysis:
 class TestInsightsSuccess:
     """Test successful insights retrieval scenarios."""
 
-    @patch('api.admin.ai.get_database_client')
+    @patch('domains.stats.get_ai_insights')
     @patch('api.admin.ai.require_admin')
-    def test_insights_success_all_type(self, mock_admin, mock_db, client):
+    def test_insights_success_all_type(self, mock_admin, mock_insights, client):
         """Successfully retrieve all insights with admin auth."""
         mock_admin.return_value = ADMIN_USER
-
-        mock_repo = MagicMock()
-        mock_repo.admin_get_ai_insights = AsyncMock(return_value=[
+        mock_insights.return_value = [
             {"category": "growth", "title": "User Growth", "metric_value": 100}
-        ])
+        ]
 
-        with patch('api.admin.ai.SupabaseAdminStatsRepository', return_value=mock_repo):
-            response = client.get(
-                "/api/v2/admin/ai/insights?type=all",
-                headers={"Authorization": "Bearer admin_token"}
-            )
+        response = client.get(
+            "/api/v2/admin/ai/insights?type=all",
+            headers={"Authorization": "Bearer admin_token"}
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
         assert len(data) > 0
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_insights_success_growth_type(self, mock_admin, mock_db, client):
+    def test_insights_success_growth_type(self, mock_admin, client):
         """Successfully retrieve growth insights."""
         mock_admin.return_value = ADMIN_USER
 
@@ -336,9 +332,8 @@ class TestInsightsSuccess:
 class TestRecommendationsSuccess:
     """Test successful recommendations retrieval scenarios."""
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_recommendations_success_all_area(self, mock_admin, mock_db, client):
+    def test_recommendations_success_all_area(self, mock_admin, client):
         """Successfully retrieve all recommendations."""
         mock_admin.return_value = ADMIN_USER
 
@@ -357,9 +352,8 @@ class TestRecommendationsSuccess:
         data = response.json()
         assert isinstance(data, list)
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_recommendations_success_retention_area(self, mock_admin, mock_db, client):
+    def test_recommendations_success_retention_area(self, mock_admin, client):
         """Successfully retrieve retention recommendations."""
         mock_admin.return_value = ADMIN_USER
 
@@ -380,9 +374,8 @@ class TestRecommendationsSuccess:
 class TestBehaviorAnalysisSuccess:
     """Test successful behavior analysis scenarios."""
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_behavior_analysis_success_with_dates(self, mock_admin, mock_db, client):
+    def test_behavior_analysis_success_with_dates(self, mock_admin, client):
         """Successfully retrieve behavior analysis with date range."""
         mock_admin.return_value = ADMIN_USER
 
@@ -548,12 +541,12 @@ class TestGenerateReportParameterValidation:
 class TestInsightsExceptionHandling:
     """Test insights endpoint exception handling."""
 
-    @patch('api.admin.ai.get_database_client')
+    @patch('domains.stats.get_ai_insights')
     @patch('api.admin.ai.require_admin')
-    def test_insights_handles_database_error(self, mock_admin, mock_db, client):
+    def test_insights_handles_database_error(self, mock_admin, mock_insights, client):
         """Database error returns 500 with generic message."""
         mock_admin.return_value = ADMIN_USER
-        mock_db.side_effect = Exception("Database connection failed")
+        mock_insights.side_effect = Exception("Database connection failed")
 
         response = client.get(
             "/api/v2/admin/ai/insights",
@@ -567,12 +560,12 @@ class TestInsightsExceptionHandling:
 class TestRecommendationsExceptionHandling:
     """Test recommendations endpoint exception handling."""
 
-    @patch('api.admin.ai.get_database_client')
+    @patch('domains.stats.get_ai_recommendations')
     @patch('api.admin.ai.require_admin')
-    def test_recommendations_handles_database_error(self, mock_admin, mock_db, client):
+    def test_recommendations_handles_database_error(self, mock_admin, mock_recommendations, client):
         """Database error returns 500 with generic message."""
         mock_admin.return_value = ADMIN_USER
-        mock_db.side_effect = Exception("Database connection failed")
+        mock_recommendations.side_effect = Exception("Database connection failed")
 
         response = client.get(
             "/api/v2/admin/ai/recommendations",
@@ -586,12 +579,12 @@ class TestRecommendationsExceptionHandling:
 class TestBehaviorAnalysisExceptionHandling:
     """Test behavior analysis endpoint exception handling."""
 
-    @patch('api.admin.ai.get_database_client')
+    @patch('domains.stats.get_behavior_analysis')
     @patch('api.admin.ai.require_admin')
-    def test_behavior_analysis_handles_database_error(self, mock_admin, mock_db, client):
+    def test_behavior_analysis_handles_database_error(self, mock_admin, mock_behavior, client):
         """Database error returns 500 with generic message."""
         mock_admin.return_value = ADMIN_USER
-        mock_db.side_effect = Exception("Database connection failed")
+        mock_behavior.side_effect = Exception("Database connection failed")
 
         response = client.get(
             "/api/v2/admin/ai/behavior-analysis",
@@ -628,9 +621,8 @@ class TestGenerateReportExceptionHandling:
 class TestBehaviorAnalysisBoundaryCases:
     """Test behavior analysis boundary cases."""
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_behavior_analysis_same_start_end_date(self, mock_admin, mock_db, client):
+    def test_behavior_analysis_same_start_end_date(self, mock_admin, client):
         """Same start and end date is valid."""
         mock_admin.return_value = ADMIN_USER
 
@@ -665,9 +657,8 @@ class TestBehaviorAnalysisBoundaryCases:
 class TestInsightsBoundaryCases:
     """Test insights boundary cases."""
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_insights_all_valid_types(self, mock_admin, mock_db, client):
+    def test_insights_all_valid_types(self, mock_admin, client):
         """Test all valid insight types."""
         mock_admin.return_value = ADMIN_USER
 
@@ -688,9 +679,8 @@ class TestInsightsBoundaryCases:
 class TestRecommendationsBoundaryCases:
     """Test recommendations boundary cases."""
 
-    @patch('api.admin.ai.get_database_client')
     @patch('api.admin.ai.require_admin')
-    def test_recommendations_all_valid_areas(self, mock_admin, mock_db, client):
+    def test_recommendations_all_valid_areas(self, mock_admin, client):
         """Test all valid recommendation areas."""
         mock_admin.return_value = ADMIN_USER
 
