@@ -315,7 +315,7 @@ class TestIntegrationScenarios:
             user_id="user_cycle",
             monthly=500,  # Starter monthly allowance
             permanent=50,  # Signup bonus
-            tier="starter"
+            tier="t2"
         )
 
         # Scenario 1: Use 100 credits (from monthly)
@@ -367,7 +367,7 @@ class TestUserCreditsAggregate:
     def test_deduction_priority_in_aggregate(self):
         """Test deduction priority rule in UserCredits aggregate"""
         # Arrange: 100 monthly + 200 permanent
-        credits = UserCredits.create("user_rule", monthly=100, permanent=200, tier="starter")
+        credits = UserCredits.create("user_rule", monthly=100, permanent=200, tier="t2")
 
         # Deduct 150 (should use all monthly + 50 permanent)
         credits.deduct(150, TransactionType.AI_GENERATION)
@@ -384,7 +384,7 @@ class TestUserCreditsAggregate:
 
     def test_monthly_reset_preserves_permanent(self):
         """Test reset_monthly preserves permanent credits"""
-        credits = UserCredits.create("user_reset", monthly=50, permanent=300, tier="pro")
+        credits = UserCredits.create("user_reset", monthly=50, permanent=300, tier="t3")
 
         credits.reset_monthly(1000)
 
