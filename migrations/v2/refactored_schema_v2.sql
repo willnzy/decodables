@@ -3150,6 +3150,285 @@ END $$;
 
 
 -- ============================================================================
+-- Phase 2.1: P0 缺失表 (Critical Business Tables)
+-- Created: 2026-01-10
+-- Purpose: 添加业务关键的追踪、日志和支持表
+-- ============================================================================
+
+-- ============================================================
+-- 13. user_events (用户行为事件追踪表)
+-- ============================================================
+CREATE TABLE user_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    event_data JSONB DEFAULT '{}',
+    session_id TEXT,
+    ip_address INET,
+    user_agent TEXT,
+    referer TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_event_type CHECK (
+        event_type IN (
+            'page_view', 'button_click', 'form_submit',
+            'feature_used', 'error_occurred', 'api_call',
+            'project_created', 'project_updated', 'project_deleted',
+            'asset_uploaded', 'asset_purchased', 'payment_completed',
+            'login', 'logout', 'signup', 'profile_updated'
+        )
+    )
+);
+
+CREATE INDEX idx_user_events_user_id ON user_events(user_id, created_at DESC);
+CREATE INDEX idx_user_events_event_type ON user_events(event_type, created_at DESC);
+CREATE INDEX idx_user_events_created_at ON user_events(created_at DESC);
+CREATE INDEX idx_user_events_session ON user_events(session_id) WHERE session_id IS NOT NULL;
+
+COMMENT ON TABLE user_events IS '用户行为事件追踪表: 记录所有用户交互行为,用于分析和监控';
+COMMENT ON COLUMN user_events.event_type IS '事件类型 (枚举值见 CHECK 约束)';
+COMMENT ON COLUMN user_events.event_data IS '事件详情 (JSON 格式),结构取决于 event_type';
+COMMENT ON COLUMN user_events.session_id IS '会话 ID (用于追踪同一会话的多个事件)';
+COMMENT ON COLUMN user_events.ip_address IS '用户 IP 地址 (INET 类型)';
+COMMENT ON COLUMN user_events.user_agent IS '浏览器 User-Agent 字符串';
+COMMENT ON COLUMN user_events.referer IS 'HTTP Referer (来源页面)';
+
+-- ============================================================
+-- 14. aggregated_stats (聚合统计表)
+-- ============================================================
+CREATE TABLE aggregated_stats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    stat_type TEXT NOT NULL,
+    stat_key TEXT NOT NULL,
+    stat_value NUMERIC DEFAULT 0,
+    metadata JSONB DEFAULT '{}',
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_stat_type CHECK (
+        stat_type IN ('daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom')
+    ),
+    CONSTRAINT check_period_range CHECK (period_end >= period_start),
+    CONSTRAINT unique_aggregated_stat UNIQUE (stat_type, stat_key, period_start)
+);
+
+CREATE INDEX idx_aggregated_stats_period ON aggregated_stats(period_start DESC, period_end DESC);
+CREATE INDEX idx_aggregated_stats_type_key ON aggregated_stats(stat_type, stat_key);
+CREATE INDEX idx_aggregated_stats_key_period ON aggregated_stats(stat_key, period_start DESC);
+
+COMMENT ON TABLE aggregated_stats IS '聚合统计表: 存储各时间维度的指标汇总 (用于仪表板展示)';
+COMMENT ON COLUMN aggregated_stats.stat_type IS '统计周期类型 (daily/weekly/monthly/quarterly/yearly/custom)';
+COMMENT ON COLUMN aggregated_stats.stat_key IS '指标键 (如 "total_users", "active_users", "revenue_usd")';
+COMMENT ON COLUMN aggregated_stats.stat_value IS '指标值 (数值类型)';
+COMMENT ON COLUMN aggregated_stats.metadata IS '附加元数据 (如 breakdown by tier, category)';
+COMMENT ON COLUMN aggregated_stats.period_start IS '统计周期开始时间';
+COMMENT ON COLUMN aggregated_stats.period_end IS '统计周期结束时间';
+
+-- ============================================================
+-- 15. error_logs (错误日志表)
+-- ============================================================
+CREATE TABLE error_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    error_type TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    error_stack TEXT,
+    request_path TEXT,
+    request_method TEXT,
+    request_body JSONB,
+    response_status INTEGER,
+    environment TEXT DEFAULT 'production',
+    severity TEXT DEFAULT 'error',
+    metadata JSONB DEFAULT '{}',
+    resolved BOOLEAN DEFAULT FALSE,
+    resolved_at TIMESTAMPTZ,
+    resolved_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_error_type CHECK (
+        error_type IN (
+            'validation_error', 'authentication_error', 'authorization_error',
+            'database_error', 'external_api_error', 'payment_error',
+            'file_upload_error', 'rate_limit_error', 'internal_server_error',
+            'not_found_error', 'conflict_error', 'timeout_error'
+        )
+    ),
+    CONSTRAINT check_severity CHECK (
+        severity IN ('debug', 'info', 'warning', 'error', 'critical')
+    ),
+    CONSTRAINT check_environment CHECK (
+        environment IN ('development', 'staging', 'production')
+    )
+);
+
+CREATE INDEX idx_error_logs_user_id ON error_logs(user_id, created_at DESC);
+CREATE INDEX idx_error_logs_error_type ON error_logs(error_type, created_at DESC);
+CREATE INDEX idx_error_logs_severity ON error_logs(severity, created_at DESC);
+CREATE INDEX idx_error_logs_created_at ON error_logs(created_at DESC);
+CREATE INDEX idx_error_logs_unresolved ON error_logs(created_at DESC) WHERE resolved = FALSE;
+
+COMMENT ON TABLE error_logs IS '错误日志表: 记录所有应用错误,用于问题排查和监控';
+COMMENT ON COLUMN error_logs.error_type IS '错误类型 (枚举值见 CHECK 约束)';
+COMMENT ON COLUMN error_logs.error_message IS '错误消息 (简短描述)';
+COMMENT ON COLUMN error_logs.error_stack IS '错误堆栈跟踪 (完整 traceback)';
+COMMENT ON COLUMN error_logs.request_path IS 'API 请求路径 (如 /api/projects/123)';
+COMMENT ON COLUMN error_logs.request_method IS 'HTTP 方法 (GET/POST/PUT/DELETE)';
+COMMENT ON COLUMN error_logs.request_body IS '请求体 (JSON 格式,敏感数据已脱敏)';
+COMMENT ON COLUMN error_logs.response_status IS 'HTTP 响应状态码 (如 500, 404)';
+COMMENT ON COLUMN error_logs.environment IS '运行环境 (development/staging/production)';
+COMMENT ON COLUMN error_logs.severity IS '严重程度 (debug/info/warning/error/critical)';
+COMMENT ON COLUMN error_logs.resolved IS '是否已解决';
+COMMENT ON COLUMN error_logs.resolved_at IS '解决时间';
+COMMENT ON COLUMN error_logs.resolved_by IS '解决人员 (管理员 user_id)';
+
+-- ============================================================
+-- 16. support_tickets (支持工单表)
+-- ============================================================
+CREATE TABLE support_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    ticket_number TEXT NOT NULL UNIQUE,
+    subject TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    priority TEXT DEFAULT 'medium',
+    status TEXT DEFAULT 'open',
+    assigned_to TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    attachments JSONB DEFAULT '[]',
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ,
+
+    CONSTRAINT check_category CHECK (
+        category IN (
+            'technical_issue', 'billing_question', 'feature_request',
+            'bug_report', 'account_issue', 'content_issue',
+            'payment_issue', 'other'
+        )
+    ),
+    CONSTRAINT check_priority CHECK (
+        priority IN ('low', 'medium', 'high', 'urgent')
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('open', 'in_progress', 'waiting_user', 'resolved', 'closed')
+    )
+);
+
+CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC);
+CREATE INDEX idx_support_tickets_ticket_number ON support_tickets(ticket_number);
+CREATE INDEX idx_support_tickets_status ON support_tickets(status, created_at DESC);
+CREATE INDEX idx_support_tickets_priority ON support_tickets(priority, created_at DESC);
+CREATE INDEX idx_support_tickets_assigned_to ON support_tickets(assigned_to, created_at DESC);
+CREATE INDEX idx_support_tickets_open ON support_tickets(created_at DESC) WHERE status IN ('open', 'in_progress', 'waiting_user');
+
+COMMENT ON TABLE support_tickets IS '支持工单表: 记录用户提交的支持请求';
+COMMENT ON COLUMN support_tickets.ticket_number IS '工单编号 (唯一, 格式: TKT-20260110-001)';
+COMMENT ON COLUMN support_tickets.subject IS '工单标题';
+COMMENT ON COLUMN support_tickets.description IS '详细描述';
+COMMENT ON COLUMN support_tickets.category IS '工单分类';
+COMMENT ON COLUMN support_tickets.priority IS '优先级 (low/medium/high/urgent)';
+COMMENT ON COLUMN support_tickets.status IS '状态 (open/in_progress/waiting_user/resolved/closed)';
+COMMENT ON COLUMN support_tickets.assigned_to IS '分配给的管理员 (user_id)';
+COMMENT ON COLUMN support_tickets.attachments IS 'JSON 数组,存储附件 URL 列表';
+COMMENT ON COLUMN support_tickets.metadata IS '附加元数据 (如 browser_info, device_type)';
+COMMENT ON COLUMN support_tickets.resolved_at IS '解决时间';
+COMMENT ON COLUMN support_tickets.closed_at IS '关闭时间';
+
+-- ============================================================
+-- 17. support_replies (工单回复表)
+-- ============================================================
+CREATE TABLE support_replies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    is_staff_reply BOOLEAN DEFAULT FALSE,
+    message TEXT NOT NULL,
+    attachments JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT check_message_not_empty CHECK (LENGTH(TRIM(message)) > 0)
+);
+
+CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC);
+CREATE INDEX idx_support_replies_user_id ON support_replies(user_id, created_at DESC);
+CREATE INDEX idx_support_replies_created_at ON support_replies(created_at DESC);
+
+COMMENT ON TABLE support_replies IS '工单回复表: 记录工单的所有回复 (用户和管理员)';
+COMMENT ON COLUMN support_replies.ticket_id IS '关联的工单 ID';
+COMMENT ON COLUMN support_replies.user_id IS '回复人 ID (可以是普通用户或管理员)';
+COMMENT ON COLUMN support_replies.is_staff_reply IS '是否为管理员回复 (区分用户回复和官方回复)';
+COMMENT ON COLUMN support_replies.message IS '回复内容';
+COMMENT ON COLUMN support_replies.attachments IS 'JSON 数组,存储附件 URL 列表';
+
+-- ============================================================
+-- 触发器: 自动生成工单编号
+-- ============================================================
+CREATE OR REPLACE FUNCTION generate_ticket_number()
+RETURNS TRIGGER AS $$
+DECLARE
+    today_count INTEGER;
+    today_date TEXT;
+BEGIN
+    -- 获取今天的日期 (YYYYMMDD 格式)
+    today_date := TO_CHAR(NOW(), 'YYYYMMDD');
+
+    -- 计算今天已创建的工单数量
+    SELECT COUNT(*) + 1
+    INTO today_count
+    FROM support_tickets
+    WHERE ticket_number LIKE 'TKT-' || today_date || '-%';
+
+    -- 生成工单编号: TKT-20260110-001
+    NEW.ticket_number := 'TKT-' || today_date || '-' || LPAD(today_count::TEXT, 3, '0');
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_generate_ticket_number
+BEFORE INSERT ON support_tickets
+FOR EACH ROW
+WHEN (NEW.ticket_number IS NULL)
+EXECUTE FUNCTION generate_ticket_number();
+
+COMMENT ON FUNCTION generate_ticket_number() IS '自动生成工单编号 (格式: TKT-YYYYMMDD-NNN)';
+
+-- ============================================================
+-- 触发器: 更新 updated_at 字段
+-- ============================================================
+CREATE TRIGGER trigger_update_aggregated_stats_updated_at
+BEFORE UPDATE ON aggregated_stats
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_support_tickets_updated_at
+BEFORE UPDATE ON support_tickets
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_update_support_replies_updated_at
+BEFORE UPDATE ON support_replies
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================
+-- Phase 2.1 完成
+-- ============================================================
+-- 新增 5 个 P0 表:
+--   ✅ user_events (用户行为追踪)
+--   ✅ aggregated_stats (统计聚合)
+--   ✅ error_logs (错误日志)
+--   ✅ support_tickets (支持工单)
+--   ✅ support_replies (工单回复)
+-- ============================================================
+
+
+-- ============================================================================
 -- Transaction Control: 提交所有更改
 -- ============================================================================
 COMMIT;
