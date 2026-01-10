@@ -582,6 +582,64 @@ class Container:
             self._handlers['get_my_reports'] = GetMyReportsHandler(self.support_service)
         return self._handlers['get_my_reports']
 
+    # ========== Resources Query Handlers (v3.0.0) ==========
+
+    @property
+    def get_resources_handler(self):
+        """Get resources query handler (v3.0.0)."""
+        from application.queries.content import GetResourcesHandler
+        if 'get_resources' not in self._handlers:
+            self._handlers['get_resources'] = GetResourcesHandler(self.content_service)
+        return self._handlers['get_resources']
+
+    @property
+    def get_resource_by_id_handler(self):
+        """Get resource by ID query handler (v3.0.0)."""
+        from application.queries.content import GetResourceByIdHandler
+        if 'get_resource_by_id' not in self._handlers:
+            self._handlers['get_resource_by_id'] = GetResourceByIdHandler(self.content_service)
+        return self._handlers['get_resource_by_id']
+
+    @property
+    def get_stickers_handler(self):
+        """Get stickers query handler (v3.0.0)."""
+        from application.queries.content import GetStickersHandler
+        if 'get_stickers' not in self._handlers:
+            self._handlers['get_stickers'] = GetStickersHandler(self.content_service)
+        return self._handlers['get_stickers']
+
+    @property
+    def get_backgrounds_handler(self):
+        """Get backgrounds query handler (v3.0.0)."""
+        from application.queries.content import GetBackgroundsHandler
+        if 'get_backgrounds' not in self._handlers:
+            self._handlers['get_backgrounds'] = GetBackgroundsHandler(self.content_service)
+        return self._handlers['get_backgrounds']
+
+    @property
+    def get_project_templates_handler(self):
+        """Get project templates query handler (v3.0.0)."""
+        from application.queries.content import GetProjectTemplatesHandler
+        if 'get_project_templates' not in self._handlers:
+            self._handlers['get_project_templates'] = GetProjectTemplatesHandler(self.content_service)
+        return self._handlers['get_project_templates']
+
+    @property
+    def get_categories_handler(self):
+        """Get categories query handler (v3.0.0)."""
+        from application.queries.content import GetCategoriesHandler
+        if 'get_categories' not in self._handlers:
+            self._handlers['get_categories'] = GetCategoriesHandler(self.content_service)
+        return self._handlers['get_categories']
+
+    @property
+    def get_resource_stats_handler(self):
+        """Get resource stats query handler (v3.0.0)."""
+        from application.queries.content import GetResourceStatsHandler
+        if 'get_resource_stats' not in self._handlers:
+            self._handlers['get_resource_stats'] = GetResourceStatsHandler(self.content_service)
+        return self._handlers['get_resource_stats']
+
     # ========== Utility Methods ==========
 
     def reset(self):

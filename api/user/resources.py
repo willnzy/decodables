@@ -1,10 +1,17 @@
 """
-Resources API - System resources (stickers, backgrounds, templates) (v2).
+Resources API - System resources (stickers, backgrounds, templates) (v3).
 
 @module api.user.resources
-@version 2.1.0
+@version 3.0.0
 
 Changes:
+- v3.0.0: DDD architecture upgrade - CQRS Query pattern
+  - Migrated from Inline Handler to Container pattern
+  - All 7 Query Handlers now registered in Container
+  - Removed Depends(get_content_service) from endpoints
+  - Added Result objects for Stickers/Backgrounds/Templates
+  - Improved architecture consistency with other v3 modules
+
 - v2.1.0: Security improvements
   - RES-MEDIUM-1: Added rate limiting to all endpoints
   - RES-MEDIUM-2: Added UUID validation for resource_id
@@ -31,27 +38,20 @@ from pydantic import BaseModel
 
 from dependencies import get_current_user, optional_user
 from infrastructure.rate_limiter import limiter
-from domains.content import ResourceType, ContentService
-from infrastructure.repositories import SupabaseSystemResourceRepository
+from domains.content import ResourceType
+from container import get_container
 from application.queries.content import (
     GetResourcesQuery,
-    GetResourcesHandler,
     GetResourceByIdQuery,
-    GetResourceByIdHandler,
     GetStickersQuery,
-    GetStickersHandler,
     GetBackgroundsQuery,
-    GetBackgroundsHandler,
     GetProjectTemplatesQuery,
-    GetProjectTemplatesHandler,
     GetCategoriesQuery,
-    GetCategoriesHandler,
 )
-from core.database import get_database_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/resources", tags=["user-resources-v2"])
+router = APIRouter(prefix="/resources", tags=["user-resources-v3"])
 
 # ==========================================
 # Constants (v2.1.0)
@@ -129,17 +129,6 @@ class ResourcesListResponse(BaseModel):
 
 
 # ==========================================
-# Dependency Injection
-# ==========================================
-
-def get_content_service() -> ContentService:
-    """Get content service instance."""
-    db_client = get_database_client()
-    repository = SupabaseSystemResourceRepository(db_client)
-    return ContentService(repository)
-
-
-# ==========================================
 # Endpoints
 # ==========================================
 
@@ -155,13 +144,13 @@ async def list_resources(
     limit: int = Query(50, ge=1, le=200),
     include_locked: bool = Query(True, description="Include locked resources"),
     user: dict = Depends(optional_user),
-    content_service: ContentService = Depends(get_content_service),
 ) -> ResourcesListResponse:
     """
     List system resources with optional filtering.
 
     Returns resources with access status based on user's tier.
 
+    v3.0.0: Now uses GetResourcesHandler (Container pattern).
     v2.1.0: Added rate limiting and parameter validation.
     """
     # v2.1.0: RES-MEDIUM-3 - Validate resource type if provided
@@ -174,6 +163,9 @@ async def list_resources(
 
     user_tier = user.get("tier", "free") if user else "free"
 
+    container = get_container()
+    handler = container.get_resources_handler
+
     query = GetResourcesQuery(
         user_tier=user_tier,
         resource_type=type,
@@ -184,7 +176,6 @@ async def list_resources(
         include_locked=include_locked,
     )
 
-    handler = GetResourcesHandler(content_service)
     result = await handler.handle(query)
 
     return ResourcesListResponse(
@@ -219,19 +210,21 @@ async def get_resource_types(request: Request) -> ResourceTypesResponse:
 async def get_categories(
     request: Request,  # v2.1.0: Required for rate limiter
     resource_type: str,
-    content_service: ContentService = Depends(get_content_service),
 ) -> CategoriesResponse:
     """
     Get available categories for a resource type.
 
+    v3.0.0: Now uses GetCategoriesHandler (Container pattern).
     v2.1.0: Added rate limiting and type validation.
     """
     # v2.1.0: RES-MEDIUM-3 - Validate resource type
     if resource_type not in VALID_RESOURCE_TYPES:
         return CategoriesResponse(categories=[])  # Return empty for invalid type
 
+    container = get_container()
+    handler = container.get_categories_handler
+
     query = GetCategoriesQuery(resource_type=resource_type)
-    handler = GetCategoriesHandler(content_service)
     result = await handler.handle(query)
 
     return CategoriesResponse(categories=result.categories)
@@ -245,13 +238,13 @@ async def get_stickers(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(optional_user),
-    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get stickers for the editor.
 
     Convenience endpoint that filters by sticker type.
 
+    v3.0.0: Now uses GetStickersHandler (Container pattern).
     v2.1.0: Added rate limiting and parameter validation.
     """
     # v2.1.0: RES-LOW-2 - Validate category
@@ -260,6 +253,9 @@ async def get_stickers(
 
     user_tier = user.get("tier", "free") if user else "free"
 
+    container = get_container()
+    handler = container.get_stickers_handler
+
     query = GetStickersQuery(
         user_tier=user_tier,
         category=category,
@@ -267,8 +263,14 @@ async def get_stickers(
         limit=limit,
     )
 
-    handler = GetStickersHandler(content_service)
-    return await handler.handle(query)
+    result = await handler.handle(query)
+
+    return {
+        "items": result.items,
+        "total": result.total,
+        "page": result.page,
+        "limit": result.limit,
+    }
 
 
 @router.get("/backgrounds")
@@ -279,13 +281,13 @@ async def get_backgrounds(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(50, ge=1, le=200),
     user: dict = Depends(optional_user),
-    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get background images.
 
     Convenience endpoint that filters by background type.
 
+    v3.0.0: Now uses GetBackgroundsHandler (Container pattern).
     v2.1.0: Added rate limiting and parameter validation.
     """
     # v2.1.0: RES-LOW-2 - Validate category
@@ -294,6 +296,9 @@ async def get_backgrounds(
 
     user_tier = user.get("tier", "free") if user else "free"
 
+    container = get_container()
+    handler = container.get_backgrounds_handler
+
     query = GetBackgroundsQuery(
         user_tier=user_tier,
         category=category,
@@ -301,8 +306,14 @@ async def get_backgrounds(
         limit=limit,
     )
 
-    handler = GetBackgroundsHandler(content_service)
-    return await handler.handle(query)
+    result = await handler.handle(query)
+
+    return {
+        "items": result.items,
+        "total": result.total,
+        "page": result.page,
+        "limit": result.limit,
+    }
 
 
 @router.get("/templates")
@@ -313,13 +324,13 @@ async def get_templates(
     page: int = Query(1, ge=1, le=1000),
     limit: int = Query(20, ge=1, le=100),
     user: dict = Depends(optional_user),
-    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get project templates.
 
     Convenience endpoint that filters by template/project type.
 
+    v3.0.0: Now uses GetProjectTemplatesHandler (Container pattern).
     v2.1.0: Added rate limiting and parameter validation.
     """
     # v2.1.0: RES-LOW-2 - Validate category
@@ -328,6 +339,9 @@ async def get_templates(
 
     user_tier = user.get("tier", "free") if user else "free"
 
+    container = get_container()
+    handler = container.get_project_templates_handler
+
     query = GetProjectTemplatesQuery(
         user_tier=user_tier,
         category=category,
@@ -335,8 +349,14 @@ async def get_templates(
         limit=limit,
     )
 
-    handler = GetProjectTemplatesHandler(content_service)
-    return await handler.handle(query)
+    result = await handler.handle(query)
+
+    return {
+        "items": result.items,
+        "total": result.total,
+        "page": result.page,
+        "limit": result.limit,
+    }
 
 
 @router.get("/{resource_id}")
@@ -345,11 +365,11 @@ async def get_resource(
     request: Request,  # v2.1.0: Required for rate limiter
     resource_id: str,
     user: dict = Depends(optional_user),
-    content_service: ContentService = Depends(get_content_service),
 ) -> Dict[str, Any]:
     """
     Get a single resource by ID.
 
+    v3.0.0: Now uses GetResourceByIdHandler (Container pattern).
     v2.1.0: Added rate limiting and ID validation.
     """
     # v2.1.0: RES-MEDIUM-2 - Validate resource_id format
@@ -358,12 +378,14 @@ async def get_resource(
 
     user_tier = user.get("tier", "free") if user else "free"
 
+    container = get_container()
+    handler = container.get_resource_by_id_handler
+
     query = GetResourceByIdQuery(
         resource_id=resource_id,
         user_tier=user_tier,
     )
 
-    handler = GetResourceByIdHandler(content_service)
     result = await handler.handle(query)
 
     if not result.resource:

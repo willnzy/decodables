@@ -133,13 +133,22 @@ class GetStickersQuery:
     limit: int = 100
 
 
+@dataclass
+class GetStickersResult:
+    """Result of stickers query."""
+    items: List[Dict[str, Any]]
+    total: int
+    page: int
+    limit: int
+
+
 class GetStickersHandler:
     """Handler for GetStickersQuery."""
 
     def __init__(self, content_service: ContentService):
         self._content_service = content_service
 
-    async def handle(self, query: GetStickersQuery) -> Dict[str, Any]:
+    async def handle(self, query: GetStickersQuery) -> GetStickersResult:
         """Execute stickers query."""
         offset = (query.page - 1) * query.limit
 
@@ -150,11 +159,18 @@ class GetStickersHandler:
             except ValueError:
                 pass
 
-        return await self._content_service.get_stickers(
+        result = await self._content_service.get_stickers(
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
             offset=offset,
+        )
+
+        return GetStickersResult(
+            items=result.get("items", []),
+            total=result.get("total", 0),
+            page=query.page,
+            limit=query.limit,
         )
 
 
@@ -167,13 +183,22 @@ class GetBackgroundsQuery:
     limit: int = 50
 
 
+@dataclass
+class GetBackgroundsResult:
+    """Result of backgrounds query."""
+    items: List[Dict[str, Any]]
+    total: int
+    page: int
+    limit: int
+
+
 class GetBackgroundsHandler:
     """Handler for GetBackgroundsQuery."""
 
     def __init__(self, content_service: ContentService):
         self._content_service = content_service
 
-    async def handle(self, query: GetBackgroundsQuery) -> Dict[str, Any]:
+    async def handle(self, query: GetBackgroundsQuery) -> GetBackgroundsResult:
         """Execute backgrounds query."""
         offset = (query.page - 1) * query.limit
 
@@ -184,11 +209,18 @@ class GetBackgroundsHandler:
             except ValueError:
                 pass
 
-        return await self._content_service.get_backgrounds(
+        result = await self._content_service.get_backgrounds(
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
             offset=offset,
+        )
+
+        return GetBackgroundsResult(
+            items=result.get("items", []),
+            total=result.get("total", 0),
+            page=query.page,
+            limit=query.limit,
         )
 
 
@@ -201,13 +233,22 @@ class GetProjectTemplatesQuery:
     limit: int = 20
 
 
+@dataclass
+class GetProjectTemplatesResult:
+    """Result of project templates query."""
+    items: List[Dict[str, Any]]
+    total: int
+    page: int
+    limit: int
+
+
 class GetProjectTemplatesHandler:
     """Handler for GetProjectTemplatesQuery."""
 
     def __init__(self, content_service: ContentService):
         self._content_service = content_service
 
-    async def handle(self, query: GetProjectTemplatesQuery) -> Dict[str, Any]:
+    async def handle(self, query: GetProjectTemplatesQuery) -> GetProjectTemplatesResult:
         """Execute project templates query."""
         offset = (query.page - 1) * query.limit
 
@@ -218,11 +259,18 @@ class GetProjectTemplatesHandler:
             except ValueError:
                 pass
 
-        return await self._content_service.get_projects(
+        result = await self._content_service.get_projects(
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
             offset=offset,
+        )
+
+        return GetProjectTemplatesResult(
+            items=result.get("items", []),
+            total=result.get("total", 0),
+            page=query.page,
+            limit=query.limit,
         )
 
 
