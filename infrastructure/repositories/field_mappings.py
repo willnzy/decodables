@@ -568,9 +568,6 @@ EXPERIMENT_ASSIGNMENTS_DB_TO_DOMAIN: Dict[str, str] = {
     'user_id': 'user_id',
     'variant_key': 'variant_key',
     'assigned_at': 'assigned_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
 
 # experiment_conversions 表
@@ -622,9 +619,6 @@ EXPERIMENTS_DB_TO_DOMAIN: Dict[str, str] = {
     'end_date': 'end_date',
     'created_at': 'created_at',
     'updated_at': 'updated_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
 
 # feature_flags 表
