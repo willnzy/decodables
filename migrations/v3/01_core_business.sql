@@ -112,7 +112,7 @@ CREATE TABLE asset_prompt_templates (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
+    deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     CONSTRAINT chk_asset_prompt_templates_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
@@ -333,12 +333,7 @@ CREATE TABLE marketplace_favorites (
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
+    deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     UNIQUE(user_id, listing_id),
     CONSTRAINT chk_marketplace_favorites_deleted_at_consistency
@@ -525,7 +520,7 @@ CREATE TABLE marketplace_reviews (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
+    deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
     UNIQUE(listing_id, reviewer_id),
     CONSTRAINT chk_marketplace_reviews_deleted_at_consistency
@@ -637,7 +632,7 @@ CREATE TABLE profiles (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ,,
+    deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
 
     -- 日期逻辑验证
@@ -725,9 +720,8 @@ CREATE TABLE projects (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录,
-,
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
 
     CONSTRAINT chk_projects_recovery_expires_at_consistency
     CHECK (
