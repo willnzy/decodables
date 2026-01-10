@@ -5,6 +5,7 @@ Project Repository Implementation - Supabase data access for creation domain.
 @version 1.0.0
 
 Implements IProjectRepository using Supabase PostgreSQL.
+Inherits from BaseRepository for soft/hard delete support.
 """
 
 from typing import Optional, List, Dict, Any
@@ -20,26 +21,23 @@ from domains.creation.value_objects import (
     ProjectMetadata,
 )
 from domains.creation.exceptions import ProjectNotFoundException
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error
+from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseProjectRepository(IProjectRepository):
+class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     """
     Supabase implementation of project repository.
+
+    Inherits soft/hard delete operations from BaseRepository.
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
-        self._client = client
-
     @property
-    def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
-        return self._client
+    def table_name(self) -> str:
+        """Table name for projects."""
+        return "projects"
 
     async def get_by_id(self, project_id: str) -> Optional[Project]:
         """Get project by ID."""
@@ -122,37 +120,41 @@ class SupabaseProjectRepository(IProjectRepository):
             raise
 
     async def delete(self, project_id: str) -> bool:
-        """Hard delete a project."""
-        try:
-            # Delete pages first
-            self.client.table("project_pages").delete().eq(
-                "project_id", project_id
-            ).execute()
+        """
+        Soft delete a project (mark as deleted).
 
-            # Delete project
-            result = self.client.table("projects").delete().eq(
-                "project_id", project_id
-            ).execute()
+        Uses BaseRepository.soft_delete() for soft deletion.
+        For hard delete (physical removal), use hard_delete() method.
 
-            return len(result.data) > 0 if result.data else False
+        Note: This delegates to soft_delete() for safety.
+        Project pages are preserved for potential restoration.
+        """
+        # Use 'id' field (UUID) for BaseRepository compatibility
+        # Get project first to find its UUID
+        result = self.client.table("projects").select("id").eq(
+            "project_id", project_id
+        ).single().execute()
 
-        except Exception as e:
-            logger.error(f"Failed to delete project {project_id}: {e}")
+        if not result.data:
             return False
 
-    async def soft_delete(self, project_id: str) -> bool:
-        """Soft delete a project."""
-        try:
-            self.client.table("projects").update({
-                "status": ProjectStatus.DELETED.value,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("project_id", project_id).execute()
+        return await super().soft_delete(result.data["id"])
 
-            return True
+    async def soft_delete(self, project_id: str, user_id: Optional[str] = None) -> bool:
+        """
+        Soft delete a project (inherited from BaseRepository).
 
-        except Exception as e:
-            logger.error(f"Failed to soft delete project {project_id}: {e}")
-            return False
+        Args:
+            project_id: Project ID (can be UUID or project_id string)
+            user_id: Optional user ID for ownership check
+
+        Returns:
+            True if deleted successfully
+
+        Note: Uses is_deleted flag, not status field.
+        """
+        # Support both UUID (id) and legacy project_id
+        return await super().soft_delete(project_id, user_id)
 
     async def get_by_owner(
         self,
@@ -316,6 +318,15 @@ class SupabaseProjectRepository(IProjectRepository):
         except Exception as e:
             logger.error(f"Failed to search projects: {e}")
             return []
+
+    def _map_to_entity(self, row: dict) -> Project:
+        """
+        Map database row to Project entity (BaseRepository requirement).
+
+        This is the standard mapping method for BaseRepository.
+        _map_to_project() is kept for backward compatibility.
+        """
+        return self._map_to_project(row)
 
     def _map_to_project(self, row: dict) -> Project:
         """Map database row to Project."""
