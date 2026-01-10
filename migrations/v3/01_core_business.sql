@@ -375,7 +375,7 @@ CREATE TABLE marketplace_listings (
 
     -- 定价
     price_credits INTEGER NOT NULL DEFAULT 0 CHECK (price_credits >= 0),
-    allowed_tiers TEXT[] NOT NULL DEFAULT '{free, starter, pro}',
+    allowed_tiers TEXT[] NOT NULL DEFAULT '{t1, t2, t3}',
 
     -- 统计
     usage_count BIGINT DEFAULT 0,
