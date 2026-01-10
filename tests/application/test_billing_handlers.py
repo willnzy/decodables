@@ -289,8 +289,8 @@ class TestGetTransactionHistoryHandler:
             CreditTransaction(
                 amount=500,
                 bucket=CreditBucket.MONTHLY,
-                tx_type=TransactionType.MONTHLY_RESET,
-                description="Monthly reset",
+                tx_type=TransactionType.SUBSCRIPTION_GRANT,
+                description="Monthly subscription grant",
                 balance_after=Credits(monthly=500, permanent=0),
                 created_at=datetime.now(timezone.utc),
             ),
@@ -342,7 +342,7 @@ class TestGetTransactionHistoryHandler:
 
         query = GetTransactionHistoryQuery(
             user_id="user_123",
-            tx_type="generation",  # Use valid TransactionType value
+            tx_type="ai_generation",  # Use valid TransactionType value
             limit=10,
         )
         result = await handler.handle(query)
