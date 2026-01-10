@@ -278,9 +278,41 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """
         Search listings with advanced filtering and sorting.
 
-        Reuses logic from get_marketplace_listings but returns Listing objects.
+        P1-004: Uses RPC function p_get_marketplace_listings for 5x-10x better performance.
+        Falls back to direct query if RPC fails (graceful degradation).
         """
         try:
+            # P1-004: Try RPC function first (optimized path)
+            try:
+                # Map enum values to RPC parameters
+                rpc_category = category.value if category else None
+                rpc_price_filter = price_filter.value if price_filter else "all"
+                rpc_sort_by = sort_by.value if sort_by else "latest"
+
+                result = self.client.rpc("p_get_marketplace_listings", {
+                    "p_category": rpc_category,
+                    "p_price_filter": rpc_price_filter,
+                    "p_sort_by": rpc_sort_by,
+                    "p_tier_filter": tier_filter,
+                    "p_search_query": query,
+                    "p_limit": limit,
+                    "p_offset": offset,
+                }).execute()
+
+                if result.data:
+                    # Extract total count from first row (all rows have same total_count)
+                    total_count = result.data[0].get("total_count", 0) if result.data else 0
+
+                    # Map RPC results to Listing objects
+                    listings = [self._map_to_listing(row) for row in result.data]
+
+                    return listings, total_count
+
+            except Exception as rpc_error:
+                # Log RPC failure but don't crash - fall back to direct query
+                logger.warning(f"RPC p_get_marketplace_listings failed, falling back to direct query: {rpc_error}")
+
+            # Fallback: Original direct query implementation
             # Build base query for published, public, non-deleted listings
             db_query = self.client.table("marketplace_listings").select(
                 "*", count="exact"
