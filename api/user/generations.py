@@ -102,24 +102,82 @@ def get_generation_history_service() -> GenerationHistoryService:
 @limiter.limit("60/minute")
 async def get_generation_history(
     request: Request,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    favorites_only: bool = False,
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of generations to return (1-100, default: 20)"),
+    offset: int = Query(0, ge=0, description="Number of generations to skip for pagination"),
+    favorites_only: bool = Query(False, description="If true, only return favorited generations"),
     user: dict = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> GenerationHistoryResponse:
     """
-    Get user's image generation history.
+    Get user's AI image generation history with optional favorites filter.
 
-    Returns paginated list of generated images with metadata.
-    Supports filtering by favorites.
+    Retrieves a chronological list of all AI-generated images created by the user,
+    including prompts, image URLs, creation timestamps, and favorite status.
+    Useful for browsing past generations, reusing prompts, and managing favorites.
 
-    Security:
-    - User ownership enforced by Service
-    - Pagination limits (1-100)
+    v3.0.0: Refactored to use GenerationHistoryService (DDD architecture).
+    v2.1.0: Added pagination limits and UUID validation (GEN-P0-1).
+
+    Args:
+        limit: Maximum generations to return (default: 20, max: 100)
+            Pagination support for large generation histories
+        offset: Skip first N generations (default: 0)
+            Used with limit for pagination
+        favorites_only: Filter to show only favorited generations (default: false)
+            Useful for "Saved" or "Favorites" views
 
     Returns:
-        GenerationHistoryResponse: Paginated generation history
+        GenerationHistoryResponse containing:
+            - generations: List of generation objects including:
+                - id: Generation UUID
+                - image_urls: List of generated image URLs (1-8 images)
+                - prompt: Original text prompt used
+                - style: Generation style (e.g., "illustration", "realistic")
+                - is_favorited: Whether user marked this as favorite
+                - created_at: Generation timestamp
+                - metadata: Additional generation parameters (JSON)
+            - total: Total number of generations (respecting favorites_only filter)
+            - limit: Limit applied
+            - offset: Offset applied
+            - has_more: Whether more generations exist (for pagination)
+
+    Raises:
+        400: Invalid limit/offset values
+        401: Unauthorized (not authenticated)
+        429: Rate limit exceeded (max 60 requests per minute)
+        500: Database error or service unavailable
+
+    Security:
+        - Authentication required
+        - User can only access their own generations
+        - Rate limit: 60 requests per minute
+        - Pagination enforced (max 100 per request)
+        - User ownership verified by Service layer
+
+    Example:
+        GET /api/v2/user/generations/history?limit=10&favorites_only=true
+
+        Response:
+        {
+            "generations": [
+                {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "image_urls": [
+                        "https://storage.example.com/gen_abc123_1.png",
+                        "https://storage.example.com/gen_abc123_2.png"
+                    ],
+                    "prompt": "A playful cat reading a book",
+                    "style": "illustration",
+                    "is_favorited": true,
+                    "created_at": "2026-01-10T15:30:00Z",
+                    "metadata": {"pages": 2, "tier": "t2"}
+                }
+            ],
+            "total": 1,
+            "limit": 10,
+            "offset": 0,
+            "has_more": false
+        }
     """
     # v3.0.0: Get history via Service (DDD compliant)
     try:
@@ -285,18 +343,71 @@ async def delete_generation(
 @limiter.limit("10/minute")
 async def batch_delete_generations(
     request: Request,
-    keep_favorites: bool = True,
+    keep_favorites: bool = Query(True, description="If true, preserve favorited generations (default: true)"),
     user: dict = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> BatchDeleteResponse:
     """
-    Clear all generation history, optionally keeping favorites.
+    Batch delete all generation history with optional favorite preservation.
 
-    **Recommended**: Use POST for batch operations.
+    Allows users to clear their generation history in bulk, useful for privacy,
+    storage management, or starting fresh. Supports preserving favorited generations
+    to avoid accidental deletion of important work.
+
+    **Recommended**: Use POST for batch operations (not DELETE).
+
+    v3.0.0: Refactored to use GenerationHistoryService (DDD architecture).
+
+    Args:
+        keep_favorites: Whether to preserve favorited generations (default: true)
+            - true: Only delete non-favorited generations (safe mode)
+            - false: Delete ALL generations including favorites (caution!)
+
+    Returns:
+        BatchDeleteResponse containing:
+            - success: true if operation completed
+            - deleted_count: Number of generations deleted
+                Does not include preserved favorites
+            - message: Optional confirmation message
+
+    Raises:
+        400: Invalid request parameters
+        401: Unauthorized (not authenticated)
+        429: Rate limit exceeded (max 10 requests per minute)
+        500: Database error or service unavailable
 
     Security:
-    - User ownership enforced by Service
-    - Audit logging in Service
+        - Authentication required
+        - User can only delete their own generations
+        - Rate limit: 10 requests per minute (prevent abuse)
+        - User ownership verified by Service layer
+        - Audit logging enabled for accountability
+
+    Behavior:
+        - Soft delete (marks as deleted, doesn't remove from DB immediately)
+        - Preserves favorites by default (keep_favorites=true)
+        - Returns count of deleted items
+        - Irreversible operation (no undo)
+
+    Example 1 (safe delete - keep favorites):
+        POST /api/v2/user/generations/batch-delete?keep_favorites=true
+
+        Response:
+        {
+            "success": true,
+            "deleted_count": 42,
+            "message": "Deleted 42 generations. 5 favorites preserved."
+        }
+
+    Example 2 (full delete - including favorites):
+        POST /api/v2/user/generations/batch-delete?keep_favorites=false
+
+        Response:
+        {
+            "success": true,
+            "deleted_count": 47,
+            "message": "Deleted all 47 generations including favorites."
+        }
     """
     # v3.0.0: Batch delete via Service (DDD compliant)
     try:
