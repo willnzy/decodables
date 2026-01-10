@@ -5,6 +5,22 @@ Repository Implementations - Supabase/PostgreSQL data access.
 @version 1.0.0
 """
 
+# Field Mappings (Single Source of Truth)
+from .field_mappings import (
+    PROFILES_DB_TO_DOMAIN,
+    CREDIT_TX_DB_TO_DOMAIN,
+    PROJECTS_DB_TO_DOMAIN,
+    LISTINGS_DB_TO_DOMAIN,
+    PURCHASES_DB_TO_DOMAIN,
+    CONFIGS_DB_TO_DOMAIN,
+    map_db_to_domain,
+    map_domain_to_db,
+    get_db_fields,
+    get_domain_fields,
+    validate_db_record,
+)
+
+# Repository Implementations
 from .credit_repository import SupabaseCreditRepository
 from .user_repository import SupabaseUserRepository
 from .project_repository import SupabaseProjectRepository
@@ -29,6 +45,19 @@ from .subscription_repository import SupabaseSubscriptionRepository
 from .metrics_repository import SupabaseMetricsRepository
 
 __all__ = [
+    # Field Mappings
+    'PROFILES_DB_TO_DOMAIN',
+    'CREDIT_TX_DB_TO_DOMAIN',
+    'PROJECTS_DB_TO_DOMAIN',
+    'LISTINGS_DB_TO_DOMAIN',
+    'PURCHASES_DB_TO_DOMAIN',
+    'CONFIGS_DB_TO_DOMAIN',
+    'map_db_to_domain',
+    'map_domain_to_db',
+    'get_db_fields',
+    'get_domain_fields',
+    'validate_db_record',
+    # Repository Implementations
     'SupabaseCreditRepository',
     'SupabaseUserRepository',
     'SupabaseProjectRepository',
