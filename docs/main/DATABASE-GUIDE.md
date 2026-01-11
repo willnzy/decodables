@@ -50,9 +50,9 @@ decodables/migrations/v2/
 
 | 文件 | 表数量 | 内容 | 状态 |
 |------|--------|------|------|
-| **01_core_business.sql** | ~25 | profiles, projects, credits, marketplace, system_resources, asset_categories | ✅ 主文件 |
-| **02_platform_services.sql** | ~20 | system_configs, feature_flags, experiments, events, notifications | ✅ 主文件 |
-| **03_infrastructure.sql** | ~15 | error_logs, task_queues, analytics, support_tickets | ✅ 主文件 |
+| **01_core_business.sql** | 25 | profiles, projects, credits, marketplace, system_resources, asset_categories | ✅ 主文件 |
+| **02_platform_services.sql** | 32 | system_configs, feature_flags, experiments, events, notifications | ✅ 主文件 |
+| **03_infrastructure.sql** | 12 | error_logs, task_queues, analytics, support_tickets | ✅ 主文件 |
 
 **重要更新 (2026-01-11)**:
 - ✅ **system_resources 表** - 已添加到 01_core_business.sql (Lines 828-901)
