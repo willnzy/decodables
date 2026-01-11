@@ -3,45 +3,46 @@
 -- ============================================================================
 -- 分类: 平台服务
 -- 说明: Feature Flag、Analytics、Webhooks、审计、主题、营销
--- 执行顺序: 第 2 个执行
--- 生成时间: 2026-01-10
+-- 执行顺序: 第 2 个执行 (依赖 01_core_business.sql 中的 profiles, marketplace_listings)
+-- 生成时间: 2026-01-12 (修复版)
 -- ============================================================================
 
 -- 开始事务
 BEGIN;
 
 -- ============================================================================
--- 包含的表 (28)
+-- 包含的表 (29) - 按依赖关系排序
 -- ============================================================================
--- activity_logs
--- aggregated_stats
--- ai_usage_daily
--- analytics_aggregation
--- analytics_events
--- campaign_dismissals
--- campaign_participations
--- campaigns
--- clerk_webhook_events
--- config_audit_logs
--- content_reports
--- daily_metrics
--- daily_themes
--- experiment_assignments
--- experiment_conversions
--- experiment_exposures
--- experiment_results
--- experiments
--- feature_flags
--- holidays
--- monthly_metrics
--- notifications
--- onboarding_steps
--- referrals
--- stripe_webhook_events
--- system_resource_audit_logs
--- user_events
--- user_onboarding_progress
+-- Layer 1: 无依赖 (仅依赖 profiles)
+--   - activity_logs, aggregated_stats, ai_usage_daily, analytics_aggregation
+--   - analytics_events, clerk_webhook_events, config_audit_logs, daily_metrics
+--   - daily_themes, feature_flags, holidays, monthly_metrics, notifications
+--   - stripe_webhook_events, system_resource_audit_logs, user_events
+--
+-- Layer 2: 依赖 Layer 1 或 01_core_business.sql 的表
+--   - campaigns (依赖 profiles)
+--   - content_reports (依赖 profiles, marketplace_listings)
+--   - experiments (独立)
+--   - onboarding_steps (独立)
+--   - articles (依赖 profiles)
+--   - experiment_configs (依赖 feature_flags)
+--   - flag_exposures (依赖 feature_flags - 仅字段关联,无外键)
+--   - flag_audit_logs (依赖 feature_flags)
+--
+-- Layer 3: 依赖 Layer 2 的表
+--   - campaign_dismissals (依赖 campaigns, profiles)
+--   - campaign_participations (依赖 campaigns, profiles)
+--   - experiment_assignments (依赖 experiments, profiles)
+--   - experiment_conversions (依赖 experiments, profiles)
+--   - experiment_exposures (依赖 experiments, profiles)
+--   - experiment_results (依赖 feature_flags - 使用统一版本)
+--   - referrals (依赖 profiles)
+--   - user_onboarding_progress (依赖 onboarding_steps, profiles)
 
+
+-- ============================================================================
+-- Layer 1: 无依赖的表
+-- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 1. activity_logs
@@ -59,7 +60,6 @@ CREATE TABLE activity_logs (
     created_at_local TIMESTAMP,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-
 
 
 -- ----------------------------------------------------------------------------
@@ -86,7 +86,6 @@ CREATE TABLE aggregated_stats (
 CREATE INDEX idx_aggregated_stats_period ON aggregated_stats(period_start DESC, period_end DESC);
 CREATE INDEX idx_aggregated_stats_type_key ON aggregated_stats(stat_type, stat_key);
 CREATE INDEX idx_aggregated_stats_key_period ON aggregated_stats(stat_key, period_start DESC);
-
 
 
 -- ----------------------------------------------------------------------------
@@ -125,7 +124,6 @@ CREATE TABLE ai_usage_daily (
 );
 
 
-
 -- ----------------------------------------------------------------------------
 -- 4. analytics_aggregation
 -- ----------------------------------------------------------------------------
@@ -140,7 +138,6 @@ CREATE TABLE analytics_aggregation (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(date, granularity, dimension_type, dimension_value)
 );
-
 
 
 -- ----------------------------------------------------------------------------
@@ -160,90 +157,8 @@ CREATE TABLE analytics_events (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 6. campaign_dismissals
--- ----------------------------------------------------------------------------
-CREATE TABLE campaign_dismissals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    channel TEXT NOT NULL,
-    dismissed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(campaign_id, user_id, channel)
-,
-
-    CONSTRAINT chk_campaign_dismissals_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 7. campaign_participations
--- ----------------------------------------------------------------------------
-CREATE TABLE campaign_participations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    credits_received INTEGER,
-    claimed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(campaign_id, user_id)
-,
-
-    CONSTRAINT chk_campaign_participations_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 8. campaigns
--- ----------------------------------------------------------------------------
-CREATE TABLE campaigns (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    description TEXT,
-    type TEXT NOT NULL CHECK (type IN ('credits_reward', 'discount', 'trial_extension', 'bonus')),
-    config JSONB NOT NULL DEFAULT '{}',
-    target_type TEXT NOT NULL DEFAULT 'all' CHECK (target_type IN ('all', 'tier', 'cohort', 'user_list')),
-    target_config JSONB DEFAULT '{}',
-    notification_channels TEXT[] DEFAULT ARRAY['banner'],
-    notification_config JSONB DEFAULT '{}',
-    start_at TIMESTAMPTZ NOT NULL,
-    end_at TIMESTAMPTZ NOT NULL,
-    timezone TEXT DEFAULT 'America/New_York',
-    usage_limit INTEGER,
-    usage_per_user INTEGER DEFAULT 1,
-    usage_count INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_by TEXT REFERENCES profiles(id),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
-    is_permanently_deleted BOOLEAN DEFAULT false,
-    CONSTRAINT chk_campaigns_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
-    CONSTRAINT chk_campaigns_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 9. clerk_webhook_events
+-- 6. clerk_webhook_events
 -- ----------------------------------------------------------------------------
 CREATE TABLE clerk_webhook_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -258,9 +173,8 @@ CREATE TABLE clerk_webhook_events (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 10. config_audit_logs
+-- 7. config_audit_logs
 -- ----------------------------------------------------------------------------
 CREATE TABLE config_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -273,31 +187,8 @@ CREATE TABLE config_audit_logs (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 11. content_reports
--- ----------------------------------------------------------------------------
-CREATE TABLE content_reports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reporter_id TEXT NOT NULL REFERENCES profiles(id),
-    listing_id UUID NOT NULL REFERENCES marketplace_listings(id),
-    reason TEXT NOT NULL,
-    description TEXT,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
-    admin_response TEXT,
-    reviewed_by TEXT REFERENCES profiles(id),
-    reviewed_at TIMESTAMPTZ,
-    timezone TEXT DEFAULT 'UTC',
-    created_at_local TIMESTAMP,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(reporter_id, listing_id)
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 12. daily_metrics
+-- 8. daily_metrics
 -- ----------------------------------------------------------------------------
 CREATE TABLE daily_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -338,9 +229,8 @@ CREATE INDEX idx_daily_metrics_metric_date ON daily_metrics(metric_date DESC);
 CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
 
 
-
 -- ----------------------------------------------------------------------------
--- 13. daily_themes
+-- 9. daily_themes
 -- ----------------------------------------------------------------------------
 CREATE TABLE daily_themes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -357,8 +247,8 @@ CREATE TABLE daily_themes (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
     CONSTRAINT chk_daily_themes_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
     CONSTRAINT chk_daily_themes_recovery_expires_at_consistency
@@ -369,91 +259,8 @@ CREATE TABLE daily_themes (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 14. experiment_assignments
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_assignments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    variant_key TEXT NOT NULL,
-    assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(experiment_id, user_id)
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 15. experiment_conversions
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_conversions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    variant_key TEXT NOT NULL,
-    metric_key TEXT NOT NULL,
-    value NUMERIC(10, 2) DEFAULT 1.0,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 16. experiment_exposures
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_exposures (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    variant_key TEXT NOT NULL,
-    context JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 17. experiment_results
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_results (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    date DATE NOT NULL,
-    variant_key TEXT NOT NULL,
-    metrics JSONB NOT NULL DEFAULT '{}',
-    sample_size INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(experiment_id, date, variant_key)
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 18. experiments
--- ----------------------------------------------------------------------------
-CREATE TABLE experiments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    experiment_key TEXT UNIQUE NOT NULL,
-    experiment_name TEXT NOT NULL,
-    description TEXT,
-    hypothesis TEXT,
-    variants JSONB NOT NULL,
-    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
-    traffic_percentage INTEGER DEFAULT 100 CHECK (traffic_percentage BETWEEN 0 AND 100),
-    target_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
-    start_date TIMESTAMPTZ,
-    end_date TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 19. feature_flags
+-- 10. feature_flags
 -- ----------------------------------------------------------------------------
 CREATE TABLE feature_flags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -509,143 +316,7 @@ COMMENT ON COLUMN feature_flags.flag_type IS 'Flag类型: boolean(开关), multi
 
 
 -- ----------------------------------------------------------------------------
--- 19-1. experiment_configs (实验扩展配置)
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_configs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    flag_key TEXT NOT NULL UNIQUE REFERENCES feature_flags(key) ON DELETE CASCADE,
-
-    -- 实验设计
-    hypothesis TEXT,
-
-    -- 指标配置
-    primary_metric TEXT NOT NULL DEFAULT 'conversion',
-    secondary_metrics TEXT[] DEFAULT ARRAY[]::TEXT[],
-
-    -- 统计配置
-    min_sample_size INTEGER DEFAULT 1000,
-    confidence_level DECIMAL(3,2) DEFAULT 0.95,
-    min_detectable_effect DECIMAL(5,4),
-
-    -- 时间规划
-    planned_duration_days INTEGER,
-    planned_start_date DATE,
-    planned_end_date DATE,
-    actual_start_date DATE,
-    actual_end_date DATE,
-
-    -- 状态管理
-    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'completed', 'stopped')),
-
-    -- 结论
-    winner_variant TEXT,
-    conclusion TEXT,
-    decision TEXT CHECK (decision IN ('ship_treatment', 'keep_control', 'inconclusive', NULL)),
-    decided_by TEXT,
-    decided_at TIMESTAMPTZ,
-
-    -- 审计
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_exp_status ON experiment_configs(status);
-CREATE INDEX idx_exp_dates ON experiment_configs(planned_start_date, planned_end_date);
-
-
--- ----------------------------------------------------------------------------
--- 19-2. flag_exposures (曝光事件)
--- ----------------------------------------------------------------------------
-CREATE TABLE flag_exposures (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    flag_key TEXT NOT NULL,
-    flag_type TEXT NOT NULL,
-
-    user_id TEXT,
-    anonymous_id TEXT,
-
-    variant TEXT NOT NULL,
-    enabled BOOLEAN NOT NULL,
-    reason TEXT NOT NULL,
-    rule_id TEXT,
-
-    context JSONB,
-    environment TEXT DEFAULT 'production',
-
-    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_exp_flag_time ON flag_exposures(flag_key, timestamp DESC);
-CREATE INDEX idx_exp_user ON flag_exposures(user_id) WHERE user_id IS NOT NULL;
-CREATE INDEX idx_exp_time ON flag_exposures(timestamp);
-
-
--- ----------------------------------------------------------------------------
--- 19-3. flag_audit_logs (审计日志)
--- ----------------------------------------------------------------------------
-CREATE TABLE flag_audit_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    flag_id UUID REFERENCES feature_flags(id) ON DELETE SET NULL,
-    flag_key TEXT NOT NULL,
-
-    action TEXT NOT NULL,
-    changes JSONB,
-    previous_value JSONB,
-
-    changed_by TEXT NOT NULL,
-    reason TEXT,
-
-    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_audit_flag ON flag_audit_logs(flag_key);
-CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
-
-
--- ----------------------------------------------------------------------------
--- 19-4. experiment_results (实验结果聚合)
--- ----------------------------------------------------------------------------
-CREATE TABLE experiment_results (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    flag_key TEXT NOT NULL REFERENCES feature_flags(key) ON DELETE CASCADE,
-    variant TEXT NOT NULL,
-    metric TEXT NOT NULL,
-
-    date DATE NOT NULL,
-
-    exposures INTEGER DEFAULT 0,
-    conversions INTEGER DEFAULT 0,
-    total_value DECIMAL(15,2) DEFAULT 0,
-
-    conversion_rate DECIMAL(10,6),
-    avg_value DECIMAL(10,2),
-
-    cumulative_exposures INTEGER DEFAULT 0,
-    cumulative_conversions INTEGER DEFAULT 0,
-    cumulative_value DECIMAL(15,2) DEFAULT 0,
-    cumulative_rate DECIMAL(10,6),
-
-    relative_lift DECIMAL(10,4),
-    p_value DECIMAL(10,6),
-    confidence DECIMAL(5,2),
-    is_significant BOOLEAN DEFAULT false,
-
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-
-    UNIQUE(flag_key, variant, metric, date)
-);
-
-CREATE INDEX idx_results_flag ON experiment_results(flag_key);
-CREATE INDEX idx_results_date ON experiment_results(date DESC);
-
-
-
--- ----------------------------------------------------------------------------
--- 20. holidays
+-- 11. holidays
 -- ----------------------------------------------------------------------------
 CREATE TABLE holidays (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -665,8 +336,8 @@ CREATE TABLE holidays (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,,
-    recovery_expires_at TIMESTAMPTZ,  -- 恢复期截止时间,过期后用户看不到此删除记录
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
     CONSTRAINT chk_holidays_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
     CONSTRAINT chk_holidays_recovery_expires_at_consistency
@@ -677,9 +348,8 @@ CREATE TABLE holidays (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 21. monthly_metrics
+-- 12. monthly_metrics
 -- ----------------------------------------------------------------------------
 CREATE TABLE monthly_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -725,9 +395,8 @@ CREATE INDEX idx_monthly_metrics_year_month ON monthly_metrics(metric_year DESC,
 CREATE INDEX idx_monthly_metrics_created_at ON monthly_metrics(created_at DESC);
 
 
-
 -- ----------------------------------------------------------------------------
--- 22. notifications
+-- 13. notifications (无软删除,只追加)
 -- ----------------------------------------------------------------------------
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -740,70 +409,11 @@ CREATE TABLE notifications (
     read_at TIMESTAMPTZ,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-,
-
-    CONSTRAINT chk_notifications_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 23. onboarding_steps
--- ----------------------------------------------------------------------------
-CREATE TABLE onboarding_steps (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    step_key TEXT UNIQUE NOT NULL,
-    step_name TEXT NOT NULL,
-    description TEXT,
-    step_order INTEGER NOT NULL,
-    is_required BOOLEAN DEFAULT TRUE,
-    target_tiers TEXT[] DEFAULT ARRAY['free', 'starter', 'pro'],
-    config JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-,
-
-    CONSTRAINT chk_onboarding_steps_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 24. referrals
--- ----------------------------------------------------------------------------
-CREATE TABLE referrals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    referrer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    referee_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    referral_code TEXT NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired')),
-    reward_given BOOLEAN DEFAULT FALSE,
-    reward_amount INTEGER,
-    completed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(referrer_id, referee_id)
-,
-
-    CONSTRAINT chk_referrals_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
-
-
--- ----------------------------------------------------------------------------
--- 25. stripe_webhook_events
+-- 14. stripe_webhook_events
 -- ----------------------------------------------------------------------------
 CREATE TABLE stripe_webhook_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -818,9 +428,8 @@ CREATE TABLE stripe_webhook_events (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 26. system_resource_audit_logs
+-- 15. system_resource_audit_logs
 -- ----------------------------------------------------------------------------
 CREATE TABLE system_resource_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -835,9 +444,8 @@ CREATE TABLE system_resource_audit_logs (
 );
 
 
-
 -- ----------------------------------------------------------------------------
--- 27. user_events
+-- 16. user_events
 -- ----------------------------------------------------------------------------
 CREATE TABLE user_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -867,22 +475,41 @@ CREATE INDEX idx_user_events_created_at ON user_events(created_at DESC);
 CREATE INDEX idx_user_events_session ON user_events(session_id) WHERE session_id IS NOT NULL;
 
 
+-- ============================================================================
+-- Layer 2: 依赖 Layer 1 的表
+-- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 28. user_onboarding_progress
+-- 17. campaigns (依赖 profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_onboarding_progress (
+CREATE TABLE campaigns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    step_id UUID NOT NULL REFERENCES onboarding_steps(id) ON DELETE CASCADE,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'skipped')),
-    completed_at TIMESTAMPTZ,
-    skipped_at TIMESTAMPTZ,
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL CHECK (type IN ('credits_reward', 'discount', 'trial_extension', 'bonus')),
+    config JSONB NOT NULL DEFAULT '{}',
+    target_type TEXT NOT NULL DEFAULT 'all' CHECK (target_type IN ('all', 'tier', 'cohort', 'user_list')),
+    target_config JSONB DEFAULT '{}',
+    notification_channels TEXT[] DEFAULT ARRAY['banner'],
+    notification_config JSONB DEFAULT '{}',
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    timezone TEXT DEFAULT 'America/New_York',
+    usage_limit INTEGER,
+    usage_per_user INTEGER DEFAULT 1,
+    usage_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by TEXT REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, step_id)
-,
-
-    CONSTRAINT chk_user_onboarding_progress_recovery_expires_at_consistency
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
+    is_permanently_deleted BOOLEAN DEFAULT false,
+    CONSTRAINT chk_campaigns_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_campaigns_recovery_expires_at_consistency
     CHECK (
         recovery_expires_at IS NULL OR
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
@@ -890,29 +517,86 @@ CREATE TABLE user_onboarding_progress (
 );
 
 
+-- ----------------------------------------------------------------------------
+-- 18. content_reports (依赖 profiles, marketplace_listings)
+-- ----------------------------------------------------------------------------
+CREATE TABLE content_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reporter_id TEXT NOT NULL REFERENCES profiles(id),
+    listing_id UUID NOT NULL REFERENCES marketplace_listings(id),
+    reason TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
+    admin_response TEXT,
+    reviewed_by TEXT REFERENCES profiles(id),
+    reviewed_at TIMESTAMPTZ,
+    timezone TEXT DEFAULT 'UTC',
+    created_at_local TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(reporter_id, listing_id)
+);
 
 
 -- ----------------------------------------------------------------------------
--- 29. articles (CMS - Manual, News, Changelog)
+-- 19. experiments (独立)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_key TEXT UNIQUE NOT NULL,
+    experiment_name TEXT NOT NULL,
+    description TEXT,
+    hypothesis TEXT,
+    variants JSONB NOT NULL,
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
+    traffic_percentage INTEGER DEFAULT 100 CHECK (traffic_percentage BETWEEN 0 AND 100),
+    target_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
+    start_date TIMESTAMPTZ,
+    end_date TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 20. onboarding_steps (独立,无软删除)
+-- ----------------------------------------------------------------------------
+CREATE TABLE onboarding_steps (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    step_key TEXT UNIQUE NOT NULL,
+    step_name TEXT NOT NULL,
+    description TEXT,
+    step_order INTEGER NOT NULL,
+    is_required BOOLEAN DEFAULT TRUE,
+    target_tiers TEXT[] DEFAULT ARRAY['free', 'starter', 'pro'],
+    config JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 21. articles (CMS - Manual, News, Changelog)
 -- ----------------------------------------------------------------------------
 CREATE TABLE articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slug VARCHAR(200) UNIQUE NOT NULL,              -- URL 友好标识
+    slug VARCHAR(200) UNIQUE NOT NULL,
     title VARCHAR(500) NOT NULL,
-    summary TEXT,                                    -- 摘要
-    content TEXT NOT NULL,                           -- Markdown 内容
+    summary TEXT,
+    content TEXT NOT NULL,
     category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog')),
-    tags JSONB DEFAULT '[]'::jsonb,                  -- 标签数组
-    cover_image VARCHAR(500),                        -- 封面图 URL
+    tags JSONB DEFAULT '[]'::jsonb,
+    cover_image VARCHAR(500),
 
     -- 发布状态
     is_published BOOLEAN DEFAULT false,
     published_at TIMESTAMPTZ,
 
     -- 元数据
-    author_id TEXT REFERENCES profiles(id),          -- Clerk user_id
-    sort_order INTEGER DEFAULT 0,                    -- 排序权重
-    view_count INTEGER DEFAULT 0,                    -- 阅读量
+    author_id TEXT REFERENCES profiles(id),
+    sort_order INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,
 
     -- 时间戳
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -925,6 +609,243 @@ CREATE INDEX idx_articles_published ON articles(is_published, published_at DESC)
 CREATE INDEX idx_articles_slug ON articles(slug);
 CREATE INDEX idx_articles_author ON articles(author_id);
 
+
+-- ----------------------------------------------------------------------------
+-- 22. experiment_configs (依赖 feature_flags)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    flag_key TEXT NOT NULL UNIQUE REFERENCES feature_flags(key) ON DELETE CASCADE,
+
+    -- 实验设计
+    hypothesis TEXT,
+
+    -- 指标配置
+    primary_metric TEXT NOT NULL DEFAULT 'conversion',
+    secondary_metrics TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 统计配置
+    min_sample_size INTEGER DEFAULT 1000,
+    confidence_level DECIMAL(3,2) DEFAULT 0.95,
+    min_detectable_effect DECIMAL(5,4),
+
+    -- 时间规划
+    planned_duration_days INTEGER,
+    planned_start_date DATE,
+    planned_end_date DATE,
+    actual_start_date DATE,
+    actual_end_date DATE,
+
+    -- 状态管理
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'completed', 'stopped')),
+
+    -- 结论
+    winner_variant TEXT,
+    conclusion TEXT,
+    decision TEXT CHECK (decision IN ('ship_treatment', 'keep_control', 'inconclusive', NULL)),
+    decided_by TEXT,
+    decided_at TIMESTAMPTZ,
+
+    -- 审计
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_exp_status ON experiment_configs(status);
+CREATE INDEX idx_exp_dates ON experiment_configs(planned_start_date, planned_end_date);
+
+
+-- ----------------------------------------------------------------------------
+-- 23. flag_exposures (曝光事件,无外键依赖)
+-- ----------------------------------------------------------------------------
+CREATE TABLE flag_exposures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_key TEXT NOT NULL,
+    flag_type TEXT NOT NULL,
+
+    user_id TEXT,
+    anonymous_id TEXT,
+
+    variant TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL,
+    reason TEXT NOT NULL,
+    rule_id TEXT,
+
+    context JSONB,
+    environment TEXT DEFAULT 'production',
+
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_exp_flag_time ON flag_exposures(flag_key, timestamp DESC);
+CREATE INDEX idx_exp_user ON flag_exposures(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_exp_time ON flag_exposures(timestamp);
+
+
+-- ----------------------------------------------------------------------------
+-- 24. flag_audit_logs (依赖 feature_flags)
+-- ----------------------------------------------------------------------------
+CREATE TABLE flag_audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_id UUID REFERENCES feature_flags(id) ON DELETE SET NULL,
+    flag_key TEXT NOT NULL,
+
+    action TEXT NOT NULL,
+    changes JSONB,
+    previous_value JSONB,
+
+    changed_by TEXT NOT NULL,
+    reason TEXT,
+
+    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_flag ON flag_audit_logs(flag_key);
+CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
+
+
+-- ============================================================================
+-- Layer 3: 依赖 Layer 2 的表
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 25. campaign_dismissals (依赖 campaigns, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE campaign_dismissals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL,
+    dismissed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(campaign_id, user_id, channel)
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 26. campaign_participations (依赖 campaigns, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE campaign_participations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    credits_received INTEGER,
+    claimed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(campaign_id, user_id)
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 27. experiment_assignments (依赖 experiments, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(experiment_id, user_id)
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 28. experiment_conversions (依赖 experiments, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_conversions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    value NUMERIC(10, 2) DEFAULT 1.0,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 29. experiment_exposures (依赖 experiments, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_exposures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    variant_key TEXT NOT NULL,
+    context JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 30. experiment_results (依赖 feature_flags - 统一版本)
+-- ----------------------------------------------------------------------------
+CREATE TABLE experiment_results (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    flag_key TEXT NOT NULL REFERENCES feature_flags(key) ON DELETE CASCADE,
+    variant TEXT NOT NULL,
+    metric TEXT NOT NULL,
+
+    date DATE NOT NULL,
+
+    exposures INTEGER DEFAULT 0,
+    conversions INTEGER DEFAULT 0,
+    total_value DECIMAL(15,2) DEFAULT 0,
+
+    conversion_rate DECIMAL(10,6),
+    avg_value DECIMAL(10,2),
+
+    cumulative_exposures INTEGER DEFAULT 0,
+    cumulative_conversions INTEGER DEFAULT 0,
+    cumulative_value DECIMAL(15,2) DEFAULT 0,
+    cumulative_rate DECIMAL(10,6),
+
+    relative_lift DECIMAL(10,4),
+    p_value DECIMAL(10,6),
+    confidence DECIMAL(5,2),
+    is_significant BOOLEAN DEFAULT false,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(flag_key, variant, metric, date)
+);
+
+CREATE INDEX idx_results_flag ON experiment_results(flag_key);
+CREATE INDEX idx_results_date ON experiment_results(date DESC);
+
+
+-- ----------------------------------------------------------------------------
+-- 31. referrals (依赖 profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE referrals (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    referrer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    referee_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    referral_code TEXT NOT NULL,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired')),
+    reward_given BOOLEAN DEFAULT FALSE,
+    reward_amount INTEGER,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(referrer_id, referee_id)
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 32. user_onboarding_progress (依赖 onboarding_steps, profiles)
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_onboarding_progress (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    step_id UUID NOT NULL REFERENCES onboarding_steps(id) ON DELETE CASCADE,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'skipped')),
+    completed_at TIMESTAMPTZ,
+    skipped_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, step_id)
+);
 
 
 -- ============================================================================
