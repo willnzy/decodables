@@ -149,21 +149,22 @@ class AnalyticsService:
             }
 
             # Build user_events row
+            # 注意: user_events 表使用 event_data (JSONB), 不是 properties
+            # 注意: user_events 表没有 event_id 字段，主键是 id (UUID, 自动生成)
             user_event_rows.append({
                 "user_id": user_id,
                 "event_type": event_type,
-                "properties": enriched_properties,
+                "event_data": enriched_properties,  # 修复: properties -> event_data
                 "session_id": session_id,
-                "event_id": event_id,
+                # 移除 event_id (表里不存在)
             })
 
             # Build analytics_events row
-            event_data = {
-                "event_type": event_type,
+            # 注意: analytics_events 表使用 properties 和 context (JSONB), 不是 event_data
+            # 注意: analytics_events 表没有 event_level 字段
+            context_data = {
                 "event_level": event_level,
                 "timestamp": timestamp,
-                "properties": enriched_properties,
-                "session_id": session_id,
                 "env": env_info,
                 "user_properties": event.get("user_properties", {}),
             }
@@ -171,9 +172,10 @@ class AnalyticsService:
                 "user_id": user_id,  # Only use authenticated user_id
                 "event_type": event_type,
                 "event_id": event_id,
-                "event_level": event_level,
-                "event_data": event_data,
+                "properties": enriched_properties,  # 修复: event_data -> properties
+                "context": context_data,            # 额外信息放入 context
                 "session_id": session_id,
+                # 移除 event_level (表里不存在，已放入 context)
             })
 
             # Build activity_logs row (only for key events with user_id)
