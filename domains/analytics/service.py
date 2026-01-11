@@ -148,34 +148,44 @@ class AnalyticsService:
                 "__client_connection_type": env_info.get("connection_type"),
             }
 
-            # Build user_events row
+            # Build user_events row (only for authenticated users with valid event types)
             # 注意: user_events 表使用 event_data (JSONB), 不是 properties
-            # 注意: user_events 表没有 event_id 字段，主键是 id (UUID, 自动生成)
-            user_event_rows.append({
-                "user_id": user_id,
-                "event_type": event_type,
-                "event_data": enriched_properties,  # 修复: properties -> event_data
-                "session_id": session_id,
-                # 移除 event_id (表里不存在)
-            })
+            # 注意: user_events 表的 user_id 是 NOT NULL，所以匿名事件不能插入
+            # 注意: user_events 表有 event_type 约束，只允许特定类型
+            valid_user_event_types = {
+                'page_view', 'button_click', 'form_submit',
+                'feature_used', 'error_occurred', 'api_call',
+                'project_created', 'project_updated', 'project_deleted',
+                'asset_uploaded', 'asset_purchased', 'payment_completed',
+                'login', 'logout', 'signup', 'profile_updated'
+            }
+            if user_id and event_type in valid_user_event_types:
+                user_event_rows.append({
+                    "user_id": user_id,
+                    "event_type": event_type,
+                    "event_data": enriched_properties,
+                    "session_id": session_id,
+                })
 
             # Build analytics_events row
+            # 注意: analytics_events 表需要 event_name (NOT NULL) 和 event_type
             # 注意: analytics_events 表使用 properties 和 context (JSONB), 不是 event_data
-            # 注意: analytics_events 表没有 event_level 字段
             context_data = {
                 "event_level": event_level,
                 "timestamp": timestamp,
                 "env": env_info,
                 "user_properties": event.get("user_properties", {}),
             }
+            # event_name 可以从 event 中获取，或使用 event_type 作为默认值
+            event_name = event.get("event_name") or event.get("name") or event_type
             analytics_event_rows.append({
-                "user_id": user_id,  # Only use authenticated user_id
+                "user_id": user_id,  # 可以为 null (匿名事件)
                 "event_type": event_type,
+                "event_name": event_name,  # 必填字段
                 "event_id": event_id,
-                "properties": enriched_properties,  # 修复: event_data -> properties
-                "context": context_data,            # 额外信息放入 context
+                "properties": enriched_properties,
+                "context": context_data,
                 "session_id": session_id,
-                # 移除 event_level (表里不存在，已放入 context)
             })
 
             # Build activity_logs row (only for key events with user_id)
