@@ -368,9 +368,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "type": error["type"]
         })
     
+    # Log validation errors with details for debugging
+    error_details = "; ".join([f"{e['field']}: {e['message']}" for e in errors[:5]])
     logger.warning(
-        f"Validation error on {request.method} {request.url.path}",
-        extra={"errors": errors, "body": str(exc.body)[:500]}  # Truncate body
+        f"Validation error on {request.method} {request.url.path}: {error_details}"
     )
     
     error_response = ErrorResponse(
