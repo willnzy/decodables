@@ -568,13 +568,15 @@ CREATE TABLE content_reports (
 
 -- P0-6: 创建 marketplace_reports 视图供 Repository 使用
 -- 注意: 如果之前存在同名表，需要先删除
+-- 命名规范: 视图统一使用 v_ 前缀
 DROP TABLE IF EXISTS marketplace_reports CASCADE;
 DROP VIEW IF EXISTS marketplace_reports CASCADE;
-CREATE VIEW marketplace_reports AS
+DROP VIEW IF EXISTS v_marketplace_reports CASCADE;
+CREATE VIEW v_marketplace_reports AS
 SELECT * FROM content_reports;
 
 -- P0-6: 允许通过视图插入
-CREATE OR REPLACE FUNCTION insert_marketplace_report()
+CREATE OR REPLACE FUNCTION insert_v_marketplace_report()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO content_reports (reporter_id, listing_id, reason, description, status, created_at)
@@ -584,10 +586,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_marketplace_reports_insert
-    INSTEAD OF INSERT ON marketplace_reports
+CREATE TRIGGER trg_v_marketplace_reports_insert
+    INSTEAD OF INSERT ON v_marketplace_reports
     FOR EACH ROW
-    EXECUTE FUNCTION insert_marketplace_report();
+    EXECUTE FUNCTION insert_v_marketplace_report();
 
 
 -- ----------------------------------------------------------------------------

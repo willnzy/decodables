@@ -129,14 +129,14 @@ class SupabaseSupportRepository:
             Exception: If user already reported this listing
         """
         # Check if user already reported this listing
-        existing = self.client.table("marketplace_reports").select("id").eq(
+        existing = self.client.table("v_marketplace_reports").select("id").eq(
             "reporter_id", user_id
         ).eq("listing_id", listing_id).execute()
 
         if existing.data:
             raise Exception("You have already reported this listing")
 
-        result = self.client.table("marketplace_reports").insert({
+        result = self.client.table("v_marketplace_reports").insert({
             "reporter_id": user_id,
             "listing_id": listing_id,
             "reason": reason,
@@ -167,7 +167,7 @@ class SupabaseSupportRepository:
         start = (page - 1) * limit
         end = start + limit - 1
 
-        result = self.client.table("marketplace_reports").select("*").eq(
+        result = self.client.table("v_marketplace_reports").select("*").eq(
             "reporter_id", user_id
         ).order("created_at", desc=True).range(start, end).execute()
 
@@ -196,7 +196,7 @@ class SupabaseSupportRepository:
         start = (page - 1) * limit
         end = start + limit - 1
 
-        result = self.client.table("marketplace_reports").select(
+        result = self.client.table("v_marketplace_reports").select(
             "*", count="exact"
         ).eq("reporter_id", user_id).order(
             "created_at", desc=True

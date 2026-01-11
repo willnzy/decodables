@@ -36,7 +36,7 @@ SPECIAL_MAPPINGS = {
         'generation_tasks': 'task_id',
         'user_generations': 'generation_id',
         'marketplace_reviews': 'review_id',
-        'marketplace_reports': 'report_id',
+        'v_marketplace_reports': 'report_id',
         'content_reports': 'report_id',
         'payment_records': 'payment_id',
         'asset_categories': 'category_id',

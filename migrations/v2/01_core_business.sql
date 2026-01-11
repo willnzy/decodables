@@ -299,7 +299,9 @@ CREATE TABLE projects (
 
 -- P0-8: 为 Repository 兼容创建 owner_id 作为 user_id 的别名视图
 -- 注意: Repository 可能使用 owner_id 或 user_id，此视图确保两者都可用
-CREATE OR REPLACE VIEW projects_v AS
+-- 命名规范: 视图统一使用 v_ 前缀
+DROP VIEW IF EXISTS projects_v CASCADE;  -- 删除旧视图名
+CREATE OR REPLACE VIEW v_projects AS
 SELECT
     *,
     user_id AS owner_id  -- 别名

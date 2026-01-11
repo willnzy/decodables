@@ -505,7 +505,7 @@ CONFIG_AUDIT_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
 }
 
 # content_reports 表 (SQL 中无软删除字段)
-# 注意: SQL 创建了 marketplace_reports 视图作为别名，可通过视图访问
+# 注意: SQL 创建了 v_marketplace_reports 视图作为别名，可通过视图访问
 CONTENT_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'report_id',
     'reporter_id': 'reporter_id',
@@ -522,8 +522,11 @@ CONTENT_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
-# marketplace_reports 视图 (content_reports 的别名视图)
-MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = CONTENT_REPORTS_DB_TO_DOMAIN.copy()
+# v_marketplace_reports 视图 (content_reports 的别名视图)
+# 命名规范: 视图统一使用 v_ 前缀
+V_MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = CONTENT_REPORTS_DB_TO_DOMAIN.copy()
+# 兼容旧名称 (废弃，将在下个版本移除)
+MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = V_MARKETPLACE_REPORTS_DB_TO_DOMAIN
 
 # credit_purchases 表
 CREDIT_PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
@@ -770,21 +773,8 @@ MARKETPLACE_FAVORITES_DB_TO_DOMAIN: Dict[str, str] = {
     'recovery_expires_at': 'recovery_expires_at',
 }
 
-# marketplace_reports 表
-MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
-    'id': 'report_id',
-    'listing_id': 'listing_id',
-    'reporter_id': 'reporter_id',
-    'report_reason': 'report_reason',
-    'description': 'description',
-    'status': 'status',
-    'reviewed_by': 'reviewed_by',
-    'reviewed_at': 'reviewed_at',
-    'resolution': 'resolution',
-    'action_taken': 'action_taken',
-    'created_at': 'created_at',
-    'updated_at': 'updated_at',
-}
+# 注意: marketplace_reports 已移到 line 525 处定义为 V_MARKETPLACE_REPORTS_DB_TO_DOMAIN
+# (删除此处重复定义)
 
 # marketplace_reviews 表
 MARKETPLACE_REVIEWS_DB_TO_DOMAIN: Dict[str, str] = {
