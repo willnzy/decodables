@@ -1,7 +1,7 @@
 # MagicZine AI (Make Decodables) 后台业务逻辑说明
 
-> **当前版本**: v3.4.0
-> **发布日期**: 2026-01-11
+> **当前版本**: v3.5.0
+> **发布日期**: 2026-01-12
 > **产品**: MagicZine AI / Make Decodables - AI 驱动的 8 页可折叠迷你书创作平台
 
 ---
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修改内容 | 作者 |
 |------|------|----------|------|
+| v3.5.0 | 2026-01-12 | 🔒 **数据库安全增强**：69 表启用 RLS、视图命名规范 `v_` 前缀、field_mappings 审计修复 | - |
 | v3.4.0 | 2026-01-11 | 📝 **新增文章管理系统**：Articles CMS (Manual/News/Changelog)、DDD 架构、Markdown 支持、发布/取消发布工作流 | - |
 | v3.3.0 | 2026-01-10 | 🗑️ **新增统一删除机制**：BaseRepository 三阶段删除 (软删除/永久标记/物理删除)、自动过滤、Repository 模式更新 | - |
 | v3.2.0 | 2026-01-09 | 📝 **新增认证系统章节**：Clerk 用户 ID 格式说明 (非 UUID！)、验证规则、认证流程 | - |
@@ -539,6 +540,42 @@ class SupabaseProjectRepository(BaseRepository[Project]):
 **相关文档**:
 - 完整实施细节: [`docs/tmp/PHASE-2-COMPLETION-SUMMARY.md`](../tmp/PHASE-2-COMPLETION-SUMMARY.md)
 - 数据库 Schema: [`migrations/v2/refactored_schema_v2.sql`](../../migrations/v2/refactored_schema_v2.sql)
+
+---
+
+### 2.6.1 数据库安全: RLS 与视图规范 (v3.5.0)
+
+> ✨ **v3.5 新增**: 统一的数据库安全策略
+
+#### Row Level Security (RLS)
+
+所有 69 个表已启用 RLS (无策略):
+- `service_role` key (后端) → ✅ 绕过 RLS，正常访问
+- `anon` key (泄露风险) → ❌ 拒绝所有访问
+
+```sql
+-- 03_infrastructure.sql:1834-1917
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+-- ... 其他 67 个表
+```
+
+#### 视图命名规范
+
+所有视图统一使用 `v_` 前缀:
+
+| 视图 | 基础表 | 用途 |
+|------|--------|------|
+| `v_projects` | projects | owner_id 别名 |
+| `v_marketplace_reports` | content_reports | Repository 兼容 |
+| `v_ai_usage_last_30_days` | ai_usage_daily | AI 使用统计 |
+
+```python
+# ✅ 使用统一命名
+result = self.client.table("v_marketplace_reports").select("*").execute()
+```
+
+**详见**: [`database-guide.md` Part 3](database-guide.md#part-3-数据库视图与安全)
 
 ---
 

@@ -1,7 +1,7 @@
 # Make Decodables 数据库完整指南
 
-> **版本**: 2.0
-> **更新日期**: 2026-01-10
+> **版本**: 2.1
+> **更新日期**: 2026-01-12
 
 ---
 
@@ -23,6 +23,10 @@
 7. [测试映射表](#27-测试映射表)
 8. [维护指南](#28-维护指南)
 9. [常见问题 FAQ](#29-常见问题-faq)
+
+**Part 3: 数据库视图与安全** ⭐ 新增
+1. [视图命名规范](#31-视图命名规范)
+2. [Row Level Security (RLS)](#32-row-level-security-rls)
 
 ---
 
@@ -330,7 +334,7 @@ git commit -m "feat(db): add new table"
 | `HOLIDAYS_DB_TO_DOMAIN` | holidays | Holiday | ✅ |
 | `USER_EVENTS_DB_TO_DOMAIN` | user_events | UserEvent | ❌ (append-only) |
 | `CONTENT_REPORTS_DB_TO_DOMAIN` | content_reports | ContentReport | ❌ |
-| `MARKETPLACE_REPORTS_DB_TO_DOMAIN` | marketplace_reports (视图) | ContentReport | ❌ |
+| `V_MARKETPLACE_REPORTS_DB_TO_DOMAIN` | v_marketplace_reports (视图) | ContentReport | ❌ |
 
 ### 基础设施表 (03_infrastructure.sql)
 
@@ -861,6 +865,91 @@ tier = UserTier(domain_data['tier'])  # 字符串 → Enum
 
 ---
 
-**文档版本**: v2.0
-**最后更新**: 2026-01-10
+# Part 3: 数据库视图与安全
+
+## 3.1 视图命名规范
+
+**更新时间**: 2026-01-12
+
+所有数据库视图统一使用 `v_` 前缀，便于区分表和视图。
+
+### 当前视图列表
+
+| 视图名称 | 基础表 | 用途 | 所在文件 |
+|----------|--------|------|----------|
+| `v_projects` | projects | 添加 owner_id 别名 | 01_core_business.sql |
+| `v_marketplace_reports` | content_reports | Repository 兼容 | 02_platform_services.sql |
+| `v_ai_usage_last_30_days` | ai_usage_daily | 30天 AI 使用统计 | 03_infrastructure.sql |
+
+### 代码中使用视图
+
+```python
+# ✅ 正确: 使用统一的 v_ 前缀视图名
+result = self.client.table("v_marketplace_reports").select("*").execute()
+
+# ❌ 错误: 使用旧的视图名
+result = self.client.table("marketplace_reports").select("*").execute()
+```
+
+### 字段映射
+
+视图的字段映射与其基础表共享：
+
+```python
+from infrastructure.repositories.field_mappings import (
+    V_MARKETPLACE_REPORTS_DB_TO_DOMAIN,  # 推荐使用
+    MARKETPLACE_REPORTS_DB_TO_DOMAIN,     # 兼容旧代码 (已废弃)
+)
+```
+
+---
+
+## 3.2 Row Level Security (RLS)
+
+**更新时间**: 2026-01-12
+
+### RLS 策略说明
+
+所有 69 个表已启用 Row Level Security (RLS)，但**未添加任何策略**。
+
+**效果**:
+- `service_role` key (后端使用) → ✅ 正常访问所有数据 (绕过 RLS)
+- `anon` key (前端泄露风险) → ❌ 拒绝所有访问
+
+### 为什么这样设计？
+
+| 原因 | 说明 |
+|------|------|
+| **架构匹配** | 前端不直接访问 Supabase，所有请求通过后端 API |
+| **认证分离** | 认证由 Clerk 处理，不是 Supabase Auth |
+| **安全深度防御** | 即使 anon key 泄露，数据也受保护 |
+| **简化管理** | 权限逻辑集中在后端代码 |
+
+### RLS 启用位置
+
+所有 RLS 启用语句集中在 `03_infrastructure.sql` 末尾:
+
+```sql
+-- 03_infrastructure.sql:1834-1917
+-- Row Level Security (RLS) 启用
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+-- ... 其他 67 个表
+```
+
+### 添加自定义策略 (可选)
+
+如果将来需要让前端直接访问部分表，可以添加策略:
+
+```sql
+-- 示例: 允许匿名用户读取公开的 listings
+CREATE POLICY "Public listings are viewable by everyone"
+ON marketplace_listings FOR SELECT
+USING (is_public = true AND status = 'published');
+```
+
+---
+
+**文档版本**: v2.1
+**最后更新**: 2026-01-12
 **维护者**: 后端团队
