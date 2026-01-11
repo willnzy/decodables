@@ -54,7 +54,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         query = self.client.table("system_resources").select("*")
 
         if resource_type:
-            query = query.eq("type", resource_type.value)
+            query = query.eq("resource_type", resource_type.value)
 
         if category:
             query = query.eq("category", category.value)
@@ -74,7 +74,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         """Create a new resource."""
         data = {
             "id": resource.resource_id,
-            "type": resource.resource_type.value,
+            "resource_type": resource.resource_type.value,
             "url": resource.url,
             "category": resource.category.value if resource.category else None,
             "allowed_tiers": resource.access_control.allowed_tiers,
@@ -119,11 +119,11 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
 
     async def count_by_type(self) -> dict:
         """Count resources by type."""
-        result = self.client.table("system_resources").select("type").execute()
+        result = self.client.table("system_resources").select("resource_type").execute()
 
         counts = {}
         for row in (result.data or []):
-            type_val = row.get("type", "unknown")
+            type_val = row.get("resource_type", "unknown")
             counts[type_val] = counts.get(type_val, 0) + 1
 
         return counts
@@ -155,7 +155,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         Returns:
             SystemResource instance
         """
-        resource_type = ResourceType(row["type"])
+        resource_type = ResourceType(row["resource_type"])
         category = ResourceCategory(row["category"]) if row.get("category") else None
         access_control = AccessControl(allowed_tiers=row.get("allowed_tiers", ["t1"]))
 

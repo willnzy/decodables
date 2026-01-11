@@ -69,7 +69,7 @@ class SupabaseSystemResourcesAdminRepository:
         query = self.client.table("system_resources").select("*", count="exact")
 
         if resource_type:
-            query = query.eq("type", resource_type)
+            query = query.eq("resource_type", resource_type)
         if category:
             query = query.eq("category", category)
         if is_active is not None:
@@ -198,12 +198,12 @@ class SupabaseSystemResourcesAdminRepository:
 
         # Group by type
         all_resources = self.client.table("system_resources")\
-            .select("type, is_active")\
+            .select("resource_type, is_active")\
             .execute()
 
         type_breakdown = {}
         for r in all_resources.data or []:
-            t = r.get("type", "unknown")
+            t = r.get("resource_type", "unknown")
             if t not in type_breakdown:
                 type_breakdown[t] = {"total": 0, "active": 0, "inactive": 0}
             type_breakdown[t]["total"] += 1

@@ -11,7 +11,7 @@
 BEGIN;
 
 -- ============================================================================
--- 包含的表 (20)
+-- 包含的表 (21)
 -- ============================================================================
 -- asset_categories
 -- asset_prompt_templates
@@ -31,6 +31,7 @@ BEGIN;
 -- projects
 -- subscription_history
 -- system_assets
+-- system_resources (新增 2026-01-11)
 -- user_discounts
 -- user_generations
 
@@ -820,6 +821,84 @@ CREATE TABLE system_assets (
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
     )
 );
+
+
+
+-- ----------------------------------------------------------------------------
+-- 18.5. system_resources (系统资源表) - 新增 2026-01-11
+-- ----------------------------------------------------------------------------
+CREATE TABLE system_resources (
+    -- ========== 主键 ==========
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- ========== 资源标识 ==========
+    resource_type TEXT NOT NULL CHECK (resource_type IN (
+        'text', 'image', 'shape', 'table', 'sticker',
+        'icon', 'frame', 'background', 'font', 'pattern'
+    )),
+
+    -- ========== 分类关联 ==========
+    category_id UUID REFERENCES asset_categories(id) ON DELETE SET NULL,
+    category TEXT,  -- 冗余字段 (ResourceCategory 枚举值)
+
+    -- ========== 资源内容 ==========
+    url TEXT NOT NULL,
+    thumbnail_url TEXT,
+
+    -- ========== 元数据 ==========
+    name TEXT,
+    description TEXT,
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+    metadata JSONB DEFAULT '{}',
+
+    -- ========== 文件信息 ==========
+    file_size INTEGER,  -- bytes
+    width INTEGER,
+    height INTEGER,
+    format TEXT,  -- png, svg, jpg
+
+    -- ========== 访问控制 ==========
+    allowed_tiers TEXT[] DEFAULT ARRAY['t1']::TEXT[],
+    min_tier TEXT DEFAULT 't1' CHECK (min_tier IN ('t1', 't2', 't3')),
+
+    -- ========== 显示控制 ==========
+    is_active BOOLEAN DEFAULT TRUE,
+    is_featured BOOLEAN DEFAULT FALSE,
+    display_order INTEGER DEFAULT 0,
+
+    -- ========== 时间戳 ==========
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT,
+    updated_by TEXT,
+
+    -- ========== Soft Delete ==========
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
+
+    CONSTRAINT chk_system_resources_recovery_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
+);
+
+COMMENT ON TABLE system_resources IS '系统资源表: stickers, templates, fonts等系统素材';
+
+-- 索引优化
+CREATE INDEX idx_sr_type ON system_resources(resource_type) WHERE deleted_at IS NULL;
+CREATE INDEX idx_sr_category ON system_resources(category_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_sr_active_type ON system_resources(is_active, resource_type) WHERE deleted_at IS NULL AND is_active = true;
+CREATE INDEX idx_sr_tier ON system_resources(min_tier) WHERE deleted_at IS NULL;
+CREATE INDEX idx_sr_tags ON system_resources USING GIN(tags) WHERE deleted_at IS NULL;
+CREATE INDEX idx_sr_created ON system_resources(created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_sr_featured ON system_resources(is_featured, display_order) WHERE deleted_at IS NULL AND is_featured = true;
+
+-- 触发器
+CREATE TRIGGER update_system_resources_updated_at
+    BEFORE UPDATE ON system_resources
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 
 
