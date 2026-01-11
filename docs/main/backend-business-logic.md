@@ -1,7 +1,7 @@
 # MagicZine AI (Make Decodables) 后台业务逻辑说明
 
-> **当前版本**: v3.3.0
-> **发布日期**: 2026-01-10
+> **当前版本**: v3.4.0
+> **发布日期**: 2026-01-11
 > **产品**: MagicZine AI / Make Decodables - AI 驱动的 8 页可折叠迷你书创作平台
 
 ---
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修改内容 | 作者 |
 |------|------|----------|------|
+| v3.4.0 | 2026-01-11 | 📝 **新增文章管理系统**：Articles CMS (Manual/News/Changelog)、DDD 架构、Markdown 支持、发布/取消发布工作流 | - |
 | v3.3.0 | 2026-01-10 | 🗑️ **新增统一删除机制**：BaseRepository 三阶段删除 (软删除/永久标记/物理删除)、自动过滤、Repository 模式更新 | - |
 | v3.2.0 | 2026-01-09 | 📝 **新增认证系统章节**：Clerk 用户 ID 格式说明 (非 UUID！)、验证规则、认证流程 | - |
 | v3.1.0 | 2026-01-08 | 🧹 **全量清理**：schemas/→api/schemas/、scheduled_tasks/→application/services/、文档整理 | - |
@@ -60,6 +61,7 @@
 14. [缓存系统](#14-缓存系统)
 15. [分析与追踪](#15-分析与追踪)
 16. [支付系统](#16-支付系统)
+17. [文章管理系统](#17-文章管理系统) ⭐ **v3.4 新增**
 
 ---
 
@@ -1697,6 +1699,110 @@ draft → pending → approved / rejected
 
 ---
 
+## 17. 文章管理系统
+
+> **版本**: v3.4.0 (2026-01-11 新增)
+
+文章管理系统用于管理帮助文档 (Manual)、新闻公告 (News) 和更新日志 (Changelog)。采用 DDD 架构，支持 Markdown 内容。
+
+### 17.1 架构设计
+
+**DDD 分层**:
+```
+api/user/articles.py        → Public API (无需认证)
+api/admin/articles.py       → Admin API (require_admin)
+domains/articles/           → 领域层
+  ├── entities.py           → Article, ArticleSummary, ArticleCategory
+  ├── repository.py         → 接口定义 (ArticleRepository)
+  └── service.py            → ArticleService (业务逻辑)
+infrastructure/repositories/
+  └── article_repository.py → SupabaseArticleRepository (实现)
+```
+
+**调用链**: API → ArticleService → ArticleRepository
+
+### 17.2 文章分类
+
+| Category | 用途 | 前端路由 |
+|----------|------|----------|
+| `manual` | 帮助文档/FAQ | `/manual`, `/manual/[slug]` |
+| `news` | 新闻/公告 | `/news`, `/news/[slug]` |
+| `changelog` | 更新日志 | `/changelog` |
+
+### 17.3 数据模型
+
+**articles 表**:
+```sql
+CREATE TABLE articles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug VARCHAR(200) UNIQUE NOT NULL,     -- URL 友好标识
+  title VARCHAR(500) NOT NULL,
+  content TEXT NOT NULL,                  -- Markdown 内容
+  summary TEXT,                           -- 摘要 (列表展示)
+  category VARCHAR(50) NOT NULL,          -- 'manual' | 'news' | 'changelog'
+  tags JSONB DEFAULT '[]',                -- 标签数组
+  cover_image VARCHAR(500),               -- 封面图 URL
+  is_published BOOLEAN DEFAULT false,     -- 发布状态
+  published_at TIMESTAMPTZ,               -- 发布时间
+  author_id VARCHAR(50),                  -- Clerk user_id
+  sort_order INTEGER DEFAULT 0,           -- 排序权重
+  view_count INTEGER DEFAULT 0,           -- 阅读量
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 17.4 API 端点
+
+**Public API** (无认证, 60 req/min):
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/articles` | GET | 列表 (分页、分类筛选) |
+| `/articles/categories` | GET | 分类及文章数 |
+| `/articles/search` | GET | 搜索 (30 req/min) |
+| `/articles/{slug}` | GET | 详情 (自动增加阅读量) |
+
+**Admin API** (require_admin, 10 req/min):
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/articles` | GET | 列表 (含草稿) |
+| `/articles/{id}` | GET | 详情 (by ID) |
+| `/articles` | POST | 创建 |
+| `/articles/{id}` | PUT | 更新 |
+| `/articles/{id}` | DELETE | 删除 |
+| `/articles/{id}/publish` | POST | 发布 |
+| `/articles/{id}/unpublish` | POST | 取消发布 |
+
+### 17.5 业务规则
+
+**Slug 生成**:
+- 自动从标题生成 (slugify)
+- 唯一性检查，冲突时追加序号
+- 更新时支持自定义 slug
+
+**发布/取消发布**:
+- 发布时设置 `published_at = now()`
+- 取消发布时清空 `published_at`
+- Public API 只返回 `is_published=true` 的文章
+
+**搜索**:
+- 模糊匹配: title, content, summary
+- 大小写不敏感 (ilike)
+- 支持分类筛选
+
+**阅读量**:
+- 访问 `/articles/{slug}` 时自动 +1
+- 非原子操作 (read-modify-write)
+
+### 17.6 相关文档
+
+- API 详情: [admin-api-review.md](shared/admin-api-review.md) § 3. Articles
+- 设计文档: [articles-system-design.md](shared/articles-system-design.md)
+
+---
+
 ## 附录
 
 ### A. 配置常量
@@ -1732,6 +1838,7 @@ TRIAL_DAYS = 30
 | `system_resources` | 系统资源 (贴纸/模板等) |
 | `notifications` | 用户通知 |
 | `user_generations` | 用户生成历史 |
+| `articles` | 文章 (Manual/News/Changelog) |
 
 ### C. API 端点汇总
 
@@ -1742,8 +1849,9 @@ TRIAL_DAYS = 30
 | 生成 | `/api/generate` | `/story`, `/images`, `/pdf` |
 | 市场 | `/api/marketplace` | `/items`, `/purchase`, `/publish`, `/leaderboard` |
 | 资源 | `/api/resources` | `/stickers`, `/backgrounds`, `/templates` |
+| 文章 | `/api/articles` | 列表, 详情, 搜索, 分类 (Public) |
 | 实验 | `/api/experiments` | `/variant`, `/track` |
-| 管理 | `/api/admin` | `/users`, `/credits/adjust`, `/marketplace/moderation`, `/configs`, `/metrics` |
+| 管理 | `/api/admin` | `/users`, `/credits/adjust`, `/marketplace/moderation`, `/configs`, `/metrics`, `/articles` |
 
 ### D. 错误代码
 
