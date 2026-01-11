@@ -61,6 +61,8 @@ CREATE TABLE profiles (
     email TEXT NOT NULL UNIQUE,
     username TEXT,
     display_name TEXT,
+    first_name TEXT,  -- P0-1: Repository 使用的字段
+    last_name TEXT,   -- P0-1: Repository 使用的字段
     avatar_url TEXT,
 
     -- 用户唯一码 (用于客服查询和用户反馈)
@@ -76,6 +78,7 @@ CREATE TABLE profiles (
     -- 积分余额 (核心字段!)
     credits_monthly INTEGER NOT NULL DEFAULT 0 CHECK (credits_monthly >= 0 AND credits_monthly <= 1000000),  -- 上限 1M 月度积分
     credits_permanent INTEGER NOT NULL DEFAULT 0 CHECK (credits_permanent >= 0 AND credits_permanent <= 10000000),  -- 上限 10M 永久积分
+    credits_reset_at TIMESTAMPTZ,  -- P0-2: 月度积分重置时间
 
     -- 试用期
     trial_start_date TIMESTAMPTZ,
@@ -95,6 +98,11 @@ CREATE TABLE profiles (
     notification_email_enabled BOOLEAN DEFAULT TRUE,
     notification_product_enabled BOOLEAN DEFAULT TRUE,
 
+    -- Onboarding 状态 (P0-4: Repository 使用的字段)
+    onboarding_step TEXT DEFAULT 'not_started' CHECK (onboarding_step IN (
+        'not_started', 'welcome', 'profile_setup', 'first_project', 'completed'
+    )),
+
     -- 本地化时间字段
     created_at_local TIMESTAMP,
 
@@ -105,7 +113,8 @@ CREATE TABLE profiles (
     project_count INTEGER DEFAULT 0 CHECK (project_count >= 0),
     asset_count INTEGER DEFAULT 0 CHECK (asset_count >= 0),
 
-    -- 扩展字段
+    -- 偏好设置 (P0-3: Repository 使用 preferences，保留 ext_json 作为通用扩展)
+    preferences JSONB DEFAULT '{}'::jsonb,
     ext_json JSONB DEFAULT '{}'::jsonb,
 
     -- 标准审计字段
@@ -503,10 +512,21 @@ CREATE TABLE credit_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
-    transaction_type TEXT NOT NULL CHECK (transaction_type IN (
+    -- 交易类型 (P0-6: 同时支持 transaction_type 和 tx_type)
+    -- transaction_type: 规范字段名 (用于报表和管理)
+    -- tx_type: Repository 使用的字段名 (用于插入)
+    -- 至少一个必须有值，两个都有值时必须相同
+    transaction_type TEXT CHECK (transaction_type IN (
         'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
         'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
-        'campaign_reward', 'expiration'
+        'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
+        'monthly_reset', 'marketplace_purchase'
+    )),
+    tx_type TEXT CHECK (tx_type IN (
+        'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
+        'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
+        'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
+        'monthly_reset', 'marketplace_purchase'
     )),
 
     bucket TEXT NOT NULL CHECK (bucket IN ('monthly', 'permanent')),
@@ -525,8 +545,34 @@ CREATE TABLE credit_transactions (
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    -- 约束: 至少一个类型字段必须有值
+    CONSTRAINT check_type_not_null CHECK (transaction_type IS NOT NULL OR tx_type IS NOT NULL),
+    -- 约束: 两个都有值时必须相同
+    CONSTRAINT check_type_consistency CHECK (
+        transaction_type IS NULL OR tx_type IS NULL OR transaction_type = tx_type
+    ),
     CONSTRAINT check_idempotency_key_format CHECK (idempotency_key IS NULL OR length(idempotency_key) >= 16)
 );
+
+-- P0-6: 触发器自动同步 transaction_type 和 tx_type
+CREATE OR REPLACE FUNCTION sync_credit_transaction_type()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 如果只有 tx_type，复制到 transaction_type
+    IF NEW.transaction_type IS NULL AND NEW.tx_type IS NOT NULL THEN
+        NEW.transaction_type := NEW.tx_type;
+    -- 如果只有 transaction_type，复制到 tx_type
+    ELSIF NEW.tx_type IS NULL AND NEW.transaction_type IS NOT NULL THEN
+        NEW.tx_type := NEW.transaction_type;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sync_credit_transaction_type
+    BEFORE INSERT OR UPDATE ON credit_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_credit_transaction_type();
 
 
 -- ----------------------------------------------------------------------------
@@ -903,12 +949,24 @@ CREATE TABLE user_discounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
+
+    -- 有效期 (同时支持 valid_from/valid_until 和 expires_at 两种风格)
     valid_from TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     valid_until TIMESTAMPTZ,
-    target_plan TEXT CHECK (target_plan IN ('starter', 'pro')),
+    expires_at TIMESTAMPTZ,  -- P0-5: Repository 使用的字段 (等价于 valid_until)
+
+    -- 目标计划 (支持 t2/t3 和 starter/pro 两种格式)
+    target_plan TEXT CHECK (target_plan IN ('starter', 'pro', 't2', 't3')),
+
+    -- 使用状态 (P0-5: Repository 使用的字段)
+    is_used BOOLEAN DEFAULT FALSE,
+    used_at TIMESTAMPTZ,
+
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT check_discount_dates CHECK (valid_until IS NULL OR valid_until > valid_from)
+    CONSTRAINT check_discount_dates CHECK (valid_until IS NULL OR valid_until > valid_from),
+    CONSTRAINT check_expires_at CHECK (expires_at IS NULL OR expires_at > valid_from),
+    CONSTRAINT check_used_at CHECK (used_at IS NULL OR is_used = TRUE)
 );
 
 

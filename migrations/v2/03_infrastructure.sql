@@ -576,6 +576,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- 函数 5
+-- P0-7: 修复返回字段名，Repository 期望 balance_monthly/balance_permanent
 CREATE OR REPLACE FUNCTION deduct_credits_atomic(
     p_user_id TEXT,
     p_amount INT,
@@ -587,8 +588,8 @@ CREATE OR REPLACE FUNCTION deduct_credits_atomic(
 )
 RETURNS TABLE (
     success BOOLEAN,
-    new_monthly INT,
-    new_permanent INT,
+    balance_monthly INT,  -- P0-7: 改为 Repository 期望的字段名
+    balance_permanent INT,  -- P0-7: 改为 Repository 期望的字段名
     error_message TEXT
 ) AS $$
 DECLARE
@@ -705,6 +706,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- 函数 6
+-- P0-7: 修复返回字段名，Repository 期望 balance_monthly/balance_permanent
 CREATE OR REPLACE FUNCTION add_credits_atomic(
     p_user_id TEXT,
     p_amount INT,
@@ -715,8 +717,8 @@ CREATE OR REPLACE FUNCTION add_credits_atomic(
 )
 RETURNS TABLE (
     success BOOLEAN,
-    new_monthly INT,
-    new_permanent INT,
+    balance_monthly INT,  -- P0-7: 改为 Repository 期望的字段名
+    balance_permanent INT,  -- P0-7: 改为 Repository 期望的字段名
     error_message TEXT
 ) AS $$
 DECLARE
