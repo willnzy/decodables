@@ -1336,11 +1336,18 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan/OCR cost', true, true),
 ('credits.cost.ocr', '10', 'integer', 'credits', 'OCR recognition cost', true, true),
 
--- ========== Pricing (4条) ==========
+-- ========== Pricing (10条) ==========
+-- Subscription Plans
 ('STARTER_PLAN_PRICE', '14.9', 'number', 'pricing', 'Starter monthly price', true, true),
+('STARTER_PLAN_ORIGINAL_PRICE', '24.95', 'number', 'pricing', 'Starter original price (for display)', true, true),
+('STARTER_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Starter monthly credits', true, true),
 ('PRO_PLAN_PRICE', '29.9', 'number', 'pricing', 'Pro monthly price', true, true),
-('STARTER_MONTHLY_CREDITS', '200', 'number', 'pricing', 'Starter monthly credits', true, true),
-('PRO_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Pro monthly credits', true, true),
+('PRO_PLAN_ORIGINAL_PRICE', '59.9', 'number', 'pricing', 'Pro original price (for display)', true, true),
+('PRO_MONTHLY_CREDITS', '1000', 'number', 'pricing', 'Pro monthly credits', true, true),
+('PRO_CREDITS_DISCOUNT_PERCENT', '20', 'number', 'pricing', 'Pro discount on credit purchases', true, true),
+
+-- Credits Tiers (JSON array)
+('CREDITS_TIERS', '[{"id":"credits_100","credits":100,"originalPrice":2.99,"currentPrice":2.99,"discount":null,"proDiscount":20},{"id":"credits_500","credits":500,"originalPrice":14.99,"currentPrice":13.49,"discount":10,"proDiscount":20,"popular":true},{"id":"credits_2000","credits":2000,"originalPrice":60.0,"currentPrice":48.0,"discount":20,"proDiscount":20}]', 'json', 'pricing', 'Credits purchase tiers', true, true),
 
 -- ========== AI Providers (8条) ==========
 ('ai_providers.enabled', '{"openai": true, "fal": true, "qwen": false, "wanx": false, "gemini": false, "grok": false, "jimeng": false, "anthropic": false}', 'json', 'ai_providers', 'Enable/disable AI providers', true, true),
