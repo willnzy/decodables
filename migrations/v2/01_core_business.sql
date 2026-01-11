@@ -231,22 +231,45 @@ CREATE TRIGGER update_asset_tags_updated_at
 CREATE TABLE projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
-    -- 用户ID
+    -- 用户ID (P0-8: Repository 同时使用 user_id 和 owner_id)
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 项目信息
     title TEXT NOT NULL DEFAULT 'My Magic Story',
+    description TEXT,  -- P0-8: Repository 使用的字段
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- P0-8: Repository 使用的字段
     canvas_data JSONB DEFAULT '{}'::jsonb,
     thumbnail_url TEXT,
+    canvas_size TEXT DEFAULT '1080x1080',  -- P0-8: Repository 使用的字段
+
+    -- 项目状态 (P0-8: Repository 使用 status 字段)
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived', 'deleted')),
+
+    -- 公开与模板设置 (P0-8: Repository 使用的字段)
+    is_public BOOLEAN DEFAULT FALSE,
+    is_template BOOLEAN DEFAULT FALSE,
+    template_category TEXT,
+
+    -- 协作者 (P0-8: Repository 使用的字段)
+    collaborators TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- 统计字段 (P0-8: Repository 使用的字段)
+    view_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
 
     -- 下载追踪
     last_downloaded_hash TEXT,
+    content_hash TEXT,  -- P0-8: Repository 使用的字段
 
     -- 市场相关
     marketplace_listing_id UUID,
     source_listing_id UUID,
     is_purchased BOOLEAN DEFAULT FALSE,
     origin_owner_id TEXT REFERENCES profiles(id),
+    listing_status TEXT,  -- P0-8: Repository 使用的字段 (如 'published', 'draft')
+
+    -- 永久删除标记 (P0-8: Repository 使用的字段)
+    is_permanently_deleted BOOLEAN DEFAULT FALSE,
 
     -- 标记
     contains_locked_elements BOOLEAN DEFAULT FALSE,
@@ -274,6 +297,38 @@ CREATE TABLE projects (
     )
 );
 
+-- P0-8: 为 Repository 兼容创建 owner_id 作为 user_id 的别名视图
+-- 注意: Repository 可能使用 owner_id 或 user_id，此视图确保两者都可用
+CREATE OR REPLACE VIEW projects_v AS
+SELECT
+    *,
+    user_id AS owner_id  -- 别名
+FROM projects;
+
+
+-- ----------------------------------------------------------------------------
+-- 4.1 project_pages (项目页面 - P0-9: Repository 使用但之前缺失的表)
+-- ----------------------------------------------------------------------------
+CREATE TABLE project_pages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    page_id TEXT NOT NULL UNIQUE,  -- P0-9: Repository 使用的业务 ID
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+    -- 页面信息
+    page_number INTEGER NOT NULL DEFAULT 1,
+    canvas_data JSONB DEFAULT '{}'::jsonb,
+    thumbnail_url TEXT,
+
+    -- 时间戳
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- 唯一约束: 每个项目的页码不能重复
+    UNIQUE(project_id, page_number)
+);
+
+CREATE INDEX idx_project_pages_project ON project_pages(project_id, page_number);
+
 
 -- ----------------------------------------------------------------------------
 -- 5. marketplace_listings (市场列表)
@@ -286,11 +341,19 @@ CREATE TABLE marketplace_listings (
     title TEXT NOT NULL,
     description TEXT,
     thumbnail_url TEXT NOT NULL,
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- P0-10: Repository 使用的字段
 
     -- 资源信息
     resource_url TEXT NOT NULL,
     resource_type TEXT NOT NULL CHECK (resource_type IN ('project', 'asset', 'template')),
     resource_id UUID,
+
+    -- 文件信息 (P0-10: Repository 使用的字段)
+    preview_url TEXT,
+    file_url TEXT,
+    file_size INTEGER,
+    file_format TEXT,
+    dimensions TEXT,  -- 如 "1080x1080"
 
     -- 分类
     category TEXT DEFAULT 'element' CHECK (category IN (
@@ -300,23 +363,31 @@ CREATE TABLE marketplace_listings (
         'mini_book', 'worksheet', 'flashcard'
     )),
     source TEXT DEFAULT 'user' CHECK (source IN ('system', 'user', 'ai', 'community')),
+    license_type TEXT DEFAULT 'standard',  -- P0-10: Repository 使用的字段
 
-    -- 定价
+    -- 定价 (P0-10: 同时支持 price_credits 和 credit_price)
     price_credits INTEGER NOT NULL DEFAULT 0 CHECK (price_credits >= 0),
+    price_type TEXT DEFAULT 'credits' CHECK (price_type IN ('free', 'credits', 'subscription')),  -- P0-10: Repository 使用的字段
     allowed_tiers TEXT[] NOT NULL DEFAULT '{t1, t2, t3}',
 
-    -- 统计
+    -- 统计 (P0-10: 补充 Repository 使用的统计字段)
     usage_count BIGINT DEFAULT 0,
     sales_count INTEGER DEFAULT 0,
     unique_buyers_count INTEGER DEFAULT 0,
     total_revenue INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
+    download_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
+    rating_average NUMERIC(3,2) DEFAULT 0,  -- P0-10: Repository 使用的字段
+    rating_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
 
-    -- 状态
+    -- 状态 (P0-10: 添加 status 字段供 Repository 使用)
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published', 'unpublished', 'rejected', 'deleted')),
     is_public BOOLEAN DEFAULT FALSE,
     moderation_status TEXT NOT NULL DEFAULT 'draft' CHECK (moderation_status IN ('draft', 'pending', 'approved', 'rejected')),
     moderation_note TEXT,
     moderated_by TEXT REFERENCES profiles(id),
     moderated_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,  -- P0-10: Repository 使用的字段
 
     -- 版本控制
     version VARCHAR(20) DEFAULT '1.0',
@@ -365,6 +436,13 @@ CREATE TABLE assets (
     project_id UUID REFERENCES projects(id),
     url TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('image', 'video', 'audio', 'document')),
+
+    -- P0-11: Repository 使用的字段
+    name TEXT,
+    category TEXT,  -- 素材分类
+    source TEXT DEFAULT 'upload' CHECK (source IN ('upload', 'ai', 'system', 'marketplace')),
+    usage_count INTEGER DEFAULT 0,
+
     prompt TEXT,
     description TEXT,
     metadata JSONB DEFAULT '{}',
