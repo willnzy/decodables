@@ -1,10 +1,10 @@
 # docs/shared - 前后端共用文档
 
-**文档总数**: 8 个
-**最后整理**: 2026-01-11 (添加用户体验设计文档)
+**文档总数**: 10 个
+**最后整理**: 2026-01-11 (添加 API 详细文档)
 **维护**: Make Decodables 全栈团队
 
-**目录用途**: 系统性文档和业务规范，**前端架构和开发过程中需要关注**
+**目录用途**: 系统性文档、业务规范、API 详细文档，**前后端开发都需要关注**
 
 ---
 
@@ -147,6 +147,35 @@
 
 ---
 
+### 🔌 API 详细文档 (2个)
+
+| 文档 | 大小 | 用途 | 前端关注点 | 状态 |
+|------|------|------|----------|------|
+| [admin-api-review.md](admin-api-review.md) | ~120KB | ⭐ Admin API 完整参考 (135 个端点详细文档) | ✅ 管理后台开发 | 🟢 完整 |
+| [user-api-review.md](user-api-review.md) | ~85KB | ⭐ User API 完整参考 (123 个端点详细文档) | ✅ 前端业务逻辑开发 | 🟢 完整 |
+
+**内容覆盖**:
+- **admin-api-review.md**:
+  - 135 个 Admin API 端点 (实际代码 143 个，8 个待补充)
+  - 17 个模块分类: Users、Stats、Campaigns、Config、Events、Experiments、Feature Flags 等
+  - 每个端点: HTTP 方法、路径、请求参数、请求体、响应格式、限流配置、验证规则
+  - DDD 架构合规性说明
+
+- **user-api-review.md**:
+  - 123 个 User API 端点 (全部完整)
+  - 26 个模块分类: Projects、Templates、Marketplace、Generation、Billing、Payment 等
+  - 每个端点: HTTP 方法、路径、请求参数、请求体、响应格式、限流配置、验证规则
+  - 测试覆盖率 65%+ 说明
+
+**使用场景**:
+- 🔍 查找具体 API 端点的详细信息
+- 📝 前端调用 API 的参数参考
+- 🧪 编写 API 集成测试
+- 📊 了解 API 限流和验证规则
+- 🔧 管理后台开发参考
+
+---
+
 ## 📖 前端开发快速查找
 
 ### 按功能模块查找
@@ -221,6 +250,7 @@
 | **每次价格调整** | tier-naming-system.md, pricing-system-design.md | 价格、折扣、月度积分变更 |
 | **每次架构变更** | canvas-data-schema.md | Canvas 数据结构修改 |
 | **每次分类调整** | asset-category-design.md | 新增/删除素材分类 |
+| **API 变更** | admin-api-review.md, user-api-review.md | 新增/修改/删除 API 端点 |
 | **按需** | feature-flag-design.md | 新增 Feature Flag 或实验 |
 | **功能迭代** | onboarding-design.md, theme-system-design.md | 引导流程或主题系统调整 |
 
@@ -253,13 +283,14 @@ decodables-fe/docs/shared/       # 前端仓库
 
 | 分类 | 文档数 | 占比 |
 |------|--------|------|
-| 用户与权限系统 | 2 | 25% |
-| 定价与计费系统 | 1 | 12.5% |
-| Canvas 系统 | 1 | 12.5% |
-| 素材与内容系统 | 1 | 12.5% |
-| 功能控制系统 | 1 | 12.5% |
-| 用户体验设计 | 2 | 25% |
-| **总计** | **8** | **100%** |
+| 用户与权限系统 | 2 | 20% |
+| 定价与计费系统 | 1 | 10% |
+| Canvas 系统 | 1 | 10% |
+| 素材与内容系统 | 1 | 10% |
+| 功能控制系统 | 1 | 10% |
+| 用户体验设计 | 2 | 20% |
+| API 详细文档 | 2 | 20% |
+| **总计** | **10** | **100%** |
 
 ---
 

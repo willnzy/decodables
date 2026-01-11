@@ -62,29 +62,26 @@
 
 ---
 
-### 3️⃣ API 规范 (2个)
+### 3️⃣ API 规范 (1个)
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [api-reference.md](api-reference.md) | 41KB | ⭐ **API 完整参考** (RESTful规范+接口列表) | 🔴 P0 |
-| [api-reference-supplement.md](api-reference-supplement.md) | ~60KB | **API 补充文档** (缺失的 42 个端点详细文档) | 🟡 P1 |
+| [api-reference.md](api-reference.md) | ~25KB | ⭐ **API 设计规范与总览** (RESTful规范+API总览) | 🔴 P0 |
 
 **内容覆盖**:
 - RESTful 设计规范 (HTTP 方法使用)
-- API 接口列表
+- API 总览
   - 健康检查 API
   - Webhooks (Clerk/Stripe)
-  - 用户 API (123 个接口)
-  - 管理员 API (101 个已记录 + 42 个补充 = 143 个接口)
+  - 用户 API (123 个端点) - 链接到 shared/user-api-review.md
+  - 管理员 API (143 个端点，已评审 135 个) - 链接到 shared/admin-api-review.md
 - 业务规则速查
 - 错误码说明
+- 附录 (认证系统、Tier 命名、积分系统、速率限制)
 
-**补充文档包含**:
-- AI Insights (5个端点) - 全新模块
-- Experiments (8个补充端点) - AI 分析功能
-- Feature Flags (4个补充端点) - 审计和测试
-- AI Models (4个补充端点) - Canary 配置
-- 其他模块 (21个补充端点)
+**详细端点文档** (移至 shared/):
+- user-api-review.md: 123 个 User API 端点完整文档
+- admin-api-review.md: 135 个 Admin API 端点完整文档 (实际代码 143 个)
 
 **使用场景**:
 - 🔌 前端集成
@@ -166,8 +163,7 @@
 - `backend-business-logic.md` - 业务规则必须了解
 - `api-reference.md` - 前端集成必备
 
-**🟡 P1 - 重要** (4个):
-- `api-reference-supplement.md` - 补充端点文档
+**🟡 P1 - 重要** (3个):
 - `deployment-scaling.md` - 部署前必读
 - `database-guide.md` - 数据库操作参考
 - `testing-guide.md` - 测试标准
@@ -181,18 +177,18 @@
 
 | 分类 | 文档数 | 占比 | 平均大小 |
 |------|--------|------|----------|
-| 架构与设计 | 3 | 33% | 40KB |
-| 业务逻辑 | 1 | 11% | 67KB |
-| API 规范 | 2 | 22% | 51KB |
-| 数据库规范 | 1 | 11% | 20KB |
-| 测试规范 | 1 | 11% | 33KB |
-| 其他 | 1 | 11% | 6.9KB |
-| **总计** | **9** | **100%** | **40KB** |
+| 架构与设计 | 3 | 38% | 40KB |
+| 业务逻辑 | 1 | 13% | 67KB |
+| API 规范 | 1 | 13% | 25KB |
+| 数据库规范 | 1 | 13% | 20KB |
+| 测试规范 | 1 | 13% | 33KB |
+| 其他 | 1 | 13% | 6.9KB |
+| **总计** | **8** | **100%** | **32KB** |
 
 **文档质量**:
-- ✅ 综合文档 (多文档合并): 6 个 (67%)
-- ✅ P0 必读文档: 3 个 (33%)
-- ✅ P1 重要文档: 5 个 (56%)
+- ✅ 综合文档 (多文档合并): 6 个 (75%)
+- ✅ P0 必读文档: 3 个 (38%)
+- ✅ P1 重要文档: 3 个 (38%)
 - ✅ P2 参考文档: 1 个 (13%)
 
 **合并统计**:
@@ -342,13 +338,15 @@
 ---
 
 **Last Updated**: 2026-01-11
-**Total Documents**: 9
-**Status**: 🟢 文档重组完成 + API 补充文档已添加
+**Total Documents**: 8
+**Status**: 🟢 API 文档重构完成
 
 **最新更新** (2026-01-11):
-- ✅ 新增 `api-reference-supplement.md` - 42 个缺失端点的完整文档
-- ✅ 更新 `api-reference.md` - 添加附录 D,说明文档现状和补充计划
-- ✅ Admin API 端点总数: 143 个 (已记录 101 + 补充 42)
-- ✅ User API 端点总数: 123 个 (已全部记录)
+- ✅ 重构 API 文档结构 - 拆分为规范文档和详细文档
+- ✅ `api-reference.md` - 精简为规范和总览 (863 行)
+- ✅ 新增 `shared/admin-api-review.md` - 135 个 Admin API 端点详细文档
+- ✅ 新增 `shared/user-api-review.md` - 123 个 User API 端点详细文档
+- ✅ Admin API 端点总数: 143 个 (已评审 135，待补充 8)
+- ✅ User API 端点总数: 123 个 (已全部评审)
 
 📚 **后端专用文档 - 前端不需要关注，专注后端架构和数据库开发！**

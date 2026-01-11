@@ -14,7 +14,7 @@
 4. [Webhooks](#4-webhooks)
 5. [API 总览](#5-api-总览)
    - [User API](#user-api-123个端点)
-   - [Admin API](#admin-api-135个端点)
+   - [Admin API](#admin-api-143个端点)
 6. [附录 A: 认证系统](#附录-a-认证系统)
 7. [附录 B: Tier 命名规范](#附录-b-tier-命名规范)
 8. [附录 C: 积分系统](#附录-c-积分系统)
@@ -521,7 +521,9 @@ checkout.session 需要携带的 metadata:
 
 ---
 
-### Admin API (135个端点)
+### Admin API (143个端点)
+
+> **注意**: 实际代码中有 143 个 Admin API 端点。本表格汇总了已完整评审的端点模块。
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
@@ -543,7 +545,9 @@ checkout.session 需要携带的 metadata:
 | **营销活动** | `/api/v2/admin/campaigns` | 8 | 活动 CRUD、统计 |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 135 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 143 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+
+> **说明**: admin-api-review.md 记录了已评审的 135 个端点，另有 8 个端点待补充评审文档（主要是部分模块的扩展功能）。
 
 ---
 
@@ -818,7 +822,7 @@ credits_monthly → credits_permanent
 
 ### 文档现状
 
-本文档当前记录了 **User API 123 个端点** 和 **Admin API 135 个端点**。
+本文档当前记录了 **User API 123 个端点** 和 **Admin API 143 个端点** (已评审 135 个)。
 
 ### 详细端点文档
 
@@ -830,7 +834,7 @@ credits_monthly → credits_permanent
 - ✅ 测试覆盖率: 65%+
 
 **Admin API 详细文档**: [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
-- ✅ 135 个 Admin API 端点完整文档
+- ✅ 143 个 Admin API 端点（135 个已有完整文档，8 个待补充）
 - ✅ 17 个模块分类组织
 - ✅ 每个端点的请求参数、请求体示例、响应示例
 - ✅ 验证规则、限流配置、错误码说明
