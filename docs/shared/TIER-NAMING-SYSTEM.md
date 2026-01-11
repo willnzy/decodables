@@ -20,11 +20,11 @@ Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制，�
 
 ### 三层等级系统
 
-| 系统代码 (tier) | 简称 | 当前显示名称 (可配置) | 月度积分 | 价格 |
-|-----------------|------|---------------------|----------|------|
-| `t1` | First Tier | Free Plan | 0 | $0 |
-| `t2` | Second Tier | Starter Plan | 200 | $9.9/月 |
-| `t3` | Third Tier | Pro Plan | 500 | $19.9/月 |
+| 系统代码 (tier) | 简称 | 当前显示名称 (可配置) | 月度积分 | 价格 | 主题色 |
+|-----------------|------|---------------------|----------|------|--------|
+| `t1` | First Tier | Free Plan | 0 | $0 | 🟢 Emerald |
+| `t2` | Second Tier | Starter Plan | 200 | $9.9/月 | 🔵 Blue |
+| `t3` | Third Tier | Pro Plan | 500 | $19.9/月 | 🟣 Violet |
 
 **设计原则**:
 - **系统代码** (`t1`/`t2`/`t3`) - 数据库字段、代码逻辑使用，**永不改变**
@@ -36,6 +36,89 @@ Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制，�
 - ✅ **中立**: 不包含业务语义，方便未来调整（例如 t2 可以从 "Starter Plan" 改名为 "Growth Plan"）
 - ✅ **可扩展**: 未来可以轻松添加 t4、t5 等更高等级
 - ✅ **国际化**: 不需要翻译系统代码，只需翻译显示名称
+
+---
+
+## 主题色配置
+
+每个 Tier 都有对应的品牌主题色，用于 UI 视觉区分：
+
+### 颜色映射表
+
+| 系统代码 | 主题色名称 | 主色 (500) | 深色 (600) | 浅背景 (50) | Tailwind 类名 |
+|----------|------------|------------|------------|-------------|---------------|
+| `t1` | Emerald | `#10B981` | `#059669` | `#ECFDF5` | `emerald-*` |
+| `t2` | Blue | `#3B82F6` | `#2563EB` | `#EFF6FF` | `blue-*` |
+| `t3` | Violet | `#7C3AED` | `#6D28D9` | `#F5F3FF` | `violet-*` |
+
+### CSS 变量
+
+```css
+/* 定义于 app/globals.css */
+:root {
+  /* t1 - Free (Emerald) */
+  --tier-t1-50: #ECFDF5;
+  --tier-t1-100: #D1FAE5;
+  --tier-t1-500: #10B981;
+  --tier-t1-600: #059669;
+
+  /* t2 - Starter (Blue) */
+  --tier-t2-50: #EFF6FF;
+  --tier-t2-100: #DBEAFE;
+  --tier-t2-500: #3B82F6;
+  --tier-t2-600: #2563EB;
+
+  /* t3 - Pro (Violet) */
+  --tier-t3-50: #F5F3FF;
+  --tier-t3-100: #EDE9FE;
+  --tier-t3-500: #8B5CF6;
+  --tier-t3-600: #7C3AED;
+}
+```
+
+### 前端使用
+
+```tsx
+// 颜色映射 (使用系统代码)
+const tierColors = {
+  t1: {
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-400',
+    text: 'text-emerald-600',
+    badge: 'badge-tier-t1',
+  },
+  t2: {
+    bg: 'bg-blue-50',
+    border: 'border-blue-400',
+    text: 'text-blue-600',
+    badge: 'badge-tier-t2',
+  },
+  t3: {
+    bg: 'bg-violet-50',
+    border: 'border-violet-400',
+    text: 'text-violet-600',
+    badge: 'badge-tier-t3',
+  },
+};
+
+// 使用示例
+function TierBadge({ tier }: { tier: 't1' | 't2' | 't3' }) {
+  const colors = tierColors[tier];
+  return (
+    <span className={`${colors.bg} ${colors.text} px-2 py-1 rounded-full text-xs font-medium`}>
+      {tier.toUpperCase()}
+    </span>
+  );
+}
+```
+
+### 后端日志使用
+
+```python
+# 日志中使用系统代码 + 简称
+logger.info(f"User upgraded to {tier} ({TIER_LABELS[tier]})")
+# 输出: User upgraded to t2 (Second Tier)
+```
 
 ---
 
