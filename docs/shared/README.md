@@ -243,7 +243,7 @@ decodables-fe/docs/shared/       # 前端仓库
 ## 🔗 相关文档目录
 
 - [docs/main/](../main/) - 后端专用文档 (8个) - **前端不需要关注**
-- [docs/tmp/](../tmp/) - 临时文档、归档报告 (5个)
+- [docs/tmp/](../tmp/) - 临时文档、归档报告 (7个)
 - [decodables-fe/docs/](../../../../decodables-fe/docs/) - 前端专用文档
 - [.claude/guides/](../../../.claude/guides/) - 开发指南和最佳实践
 
