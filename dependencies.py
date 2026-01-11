@@ -89,18 +89,18 @@ async def get_current_user(authorization: str = Header(None)):
         first_name = payload.get("first_name") or ""
         last_name = payload.get("last_name") or ""
 
-        # Create user profile with 50 signup bonus credits
+        # Create user profile with factory method
         from domains.identity.aggregates import UserProfile
-        user_profile = UserProfile(
-            id=user_id,
+        # Construct display_name from available info
+        display_name = username or f"{first_name} {last_name}".strip() or email.split("@")[0]
+        user_profile = UserProfile.create_new(
+            user_id=user_id,
             email=email,
-            username=username,
-            avatar_url=avatar_url,
-            first_name=first_name,
-            last_name=last_name,
-            tier="free",
-            role="user"
+            display_name=display_name or None
         )
+        # Set avatar_url if available
+        if avatar_url:
+            user_profile.avatar_url = avatar_url
         await user_repo.create(user_profile)
 
         # Fetch the newly created profile
