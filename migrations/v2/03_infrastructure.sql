@@ -139,43 +139,52 @@ CREATE TABLE api_logs (
 -- ----------------------------------------------------------------------------
 -- 4. error_logs
 -- ----------------------------------------------------------------------------
+-- 支持前端错误日志和后端错误日志
 CREATE TABLE error_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- 前端错误字段
+    error_id TEXT,                          -- 前端生成的唯一错误 ID
+    error_type TEXT NOT NULL,               -- 错误类型 (API/NETWORK/JS_ERROR/等)
+    error_code TEXT,                        -- 错误代码
+    message TEXT,                           -- 错误消息 (前端用)
+    status_code INTEGER,                    -- HTTP 状态码
+    endpoint TEXT,                          -- API 端点
+    method TEXT,                            -- HTTP 方法
+    stack_trace TEXT,                       -- 堆栈跟踪
+    page_url TEXT,                          -- 发生错误的页面 URL
+    user_agent TEXT,                        -- 浏览器 User-Agent
+    session_id TEXT,                        -- 前端会话 ID
+    user_code TEXT,                         -- 用户代码 (26位)
+    context JSONB DEFAULT '{}',             -- 上下文信息
+    client_timestamp TEXT,                  -- 前端时间戳
+    -- 用户关联
     user_id TEXT REFERENCES profiles(id) ON DELETE SET NULL,
-    error_type TEXT NOT NULL,
-    error_message TEXT NOT NULL,
-    error_stack TEXT,
-    request_path TEXT,
-    request_method TEXT,
-    request_body JSONB,
-    response_status INTEGER,
+    -- 后端错误字段 (保留兼容)
+    error_message TEXT,                     -- 后端错误消息
+    error_stack TEXT,                       -- 后端堆栈 (与 stack_trace 区分)
+    request_path TEXT,                      -- 后端请求路径
+    request_method TEXT,                    -- 后端请求方法
+    request_body JSONB,                     -- 后端请求体
+    response_status INTEGER,                -- 后端响应状态
+    -- 元数据
     environment TEXT DEFAULT 'production',
     severity TEXT DEFAULT 'error',
-    level TEXT DEFAULT 'error',  -- P0-9: Repository 使用 level 字段 (与 severity 同步)
+    level TEXT DEFAULT 'error',
     metadata JSONB DEFAULT '{}',
+    source TEXT DEFAULT 'frontend',         -- 来源: frontend/backend
+    -- 解决状态
     resolved BOOLEAN DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
     resolved_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-
-    CONSTRAINT check_error_type CHECK (
-        error_type IN (
-            'validation_error', 'authentication_error', 'authorization_error',
-            'database_error', 'external_api_error', 'payment_error',
-            'file_upload_error', 'rate_limit_error', 'internal_server_error',
-            'not_found_error', 'conflict_error', 'timeout_error'
-        )
-    ),
-    CONSTRAINT check_severity CHECK (
-        severity IN ('debug', 'info', 'warning', 'error', 'critical')
-    ),
-    CONSTRAINT check_level CHECK (
-        level IN ('debug', 'info', 'warning', 'error', 'critical')
-    ),
-    CONSTRAINT check_environment CHECK (
-        environment IN ('development', 'staging', 'production')
-    )
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 索引
+CREATE INDEX idx_error_logs_error_id ON error_logs(error_id) WHERE error_id IS NOT NULL;
+CREATE INDEX idx_error_logs_user_id ON error_logs(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_error_logs_session_id ON error_logs(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX idx_error_logs_error_type ON error_logs(error_type);
+CREATE INDEX idx_error_logs_created_at ON error_logs(created_at DESC);
 
 -- P0-9: 触发器同步 level 和 severity
 CREATE OR REPLACE FUNCTION sync_error_level()
@@ -195,10 +204,7 @@ CREATE TRIGGER trg_error_logs_sync_level
     FOR EACH ROW
     EXECUTE FUNCTION sync_error_level();
 
-CREATE INDEX idx_error_logs_user_id ON error_logs(user_id, created_at DESC);
-CREATE INDEX idx_error_logs_error_type ON error_logs(error_type, created_at DESC);
 CREATE INDEX idx_error_logs_severity ON error_logs(severity, created_at DESC);
-CREATE INDEX idx_error_logs_created_at ON error_logs(created_at DESC);
 CREATE INDEX idx_error_logs_unresolved ON error_logs(created_at DESC) WHERE resolved = FALSE;
 
 
