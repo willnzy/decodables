@@ -1,7 +1,7 @@
 # docs/shared - 前后端共用文档
 
-**文档总数**: 6 个
-**最后整理**: 2026-01-11 (文档重组)
+**文档总数**: 8 个
+**最后整理**: 2026-01-11 (添加用户体验设计文档)
 **维护**: Make Decodables 全栈团队
 
 **目录用途**: 系统性文档和业务规范，**前端架构和开发过程中需要关注**
@@ -112,6 +112,41 @@
 
 ---
 
+### 🎓 用户体验设计 (2个)
+
+| 文档 | 大小 | 用途 | 前端关注点 | 状态 |
+|------|------|------|----------|------|
+| [onboarding-design.md](onboarding-design.md) | ~15KB | ⭐ 新手引导系统设计 | ✅ Welcome Tour, Editor Tour, Checklist, Feature Spotlights | 🟢 已实现 |
+| [theme-system-design.md](theme-system-design.md) | ~12KB | ⭐ 主题系统设计 (Google Doodle 风格) | ✅ 节日主题、纪念日主题展示 | 🟢 已实现 |
+
+**内容覆盖**:
+- **onboarding-design.md**:
+  - Welcome Tour (产品介绍、核心功能引导)
+  - Editor Tour (编辑器功能逐步引导)
+  - Getting Started Checklist (任务清单)
+  - Feature Spotlights (新功能高亮提示)
+  - 量化目标: 7天留存 +15%, 首次创建项目 +30%
+
+- **theme-system-design.md**:
+  - Daily Theme 系统 (类似 Google Doodle)
+  - 三种主题类型: 固定日期节日、历史人物诞辰、世界纪念日
+  - 主题配置: 颜色、徽章、装饰、Banner 样式
+  - 前端实时渲染逻辑
+
+**使用场景**:
+- 🎓 实现新用户引导流程 → onboarding-design.md
+- 🎨 实现节日主题切换 → theme-system-design.md
+- 📊 设计用户任务清单 → onboarding-design.md
+- 🎉 设计纪念日主题展示 → theme-system-design.md
+
+**实现状态** (后端已完成):
+- ✅ Onboarding API: `api/user/onboarding.py` + `domains/onboarding/`
+- ✅ Theme API: `api/user/themes.py` (v3.0.0 DDD) + `domains/themes/`
+- ✅ 数据库表: `onboarding_steps`, `user_onboarding_progress`, `daily_themes`
+- 📋 前端实现: 待开发 (参考设计文档)
+
+---
+
 ## 📖 前端开发快速查找
 
 ### 按功能模块查找
@@ -123,9 +158,11 @@
 | **价格页面** | tier-naming-system.md + pricing-system-design.md | 显示名称 + 折扣价格 |
 | **订阅升级流程** | tier-naming-system.md + pricing-system-design.md | 月度积分 + 价格对比 |
 | **Canvas 编辑器** | canvas-data-schema.md | 数据结构 + 序列化 |
-| **素材库** | Asset-Category-System-Design.md | 10 类分类 + 标签系统 |
-| **功能开关** | Feature-Flag-Experiments-Unified-Design.md | 条件渲染逻辑 |
-| **A/B 测试** | Feature-Flag-Experiments-Unified-Design.md | 用户分组 + 实验跟踪 |
+| **素材库** | asset-category-design.md | 10 类分类 + 标签系统 |
+| **功能开关** | feature-flag-design.md | 条件渲染逻辑 |
+| **A/B 测试** | feature-flag-design.md | 用户分组 + 实验跟踪 |
+| **新手引导** | onboarding-design.md | Welcome Tour + Editor Tour + Checklist |
+| **节日主题** | theme-system-design.md | Daily Theme 切换展示 |
 
 ### 按开发阶段查找
 
@@ -134,8 +171,10 @@
 | **项目初始化** | user-id-system.md → tier-naming-system.md → canvas-data-schema.md |
 | **价格页面开发** | tier-naming-system.md → pricing-system-design.md |
 | **编辑器开发** | canvas-data-schema.md |
-| **素材库开发** | Asset-Category-System-Design.md |
-| **功能开关集成** | Feature-Flag-Experiments-Unified-Design.md |
+| **素材库开发** | asset-category-design.md |
+| **功能开关集成** | feature-flag-design.md |
+| **新手引导开发** | onboarding-design.md |
+| **主题系统开发** | theme-system-design.md |
 
 ---
 
@@ -155,13 +194,21 @@
    - 前端编辑器的核心数据模型
    - 序列化/反序列化逻辑必须与后端保持一致
 
-4. **Asset-Category-System-Design.md**:
+4. **asset-category-design.md**:
    - 前端素材库 UI 的分类导航和筛选逻辑
    - 标签系统的展示和交互
 
-5. **Feature-Flag-Experiments-Unified-Design.md**:
+5. **feature-flag-design.md**:
    - 前端功能开关的条件渲染逻辑
    - A/B 测试实验的用户分组和跟踪
+
+6. **onboarding-design.md**:
+   - 新用户引导流程的 UI 设计和交互逻辑
+   - Welcome Tour、Editor Tour、任务清单的前端实现
+
+7. **theme-system-design.md**:
+   - 节日主题的前端渲染和切换逻辑
+   - 主题配置的动态加载和应用
 
 ---
 
@@ -173,8 +220,9 @@
 |------|------|----------|
 | **每次价格调整** | tier-naming-system.md, pricing-system-design.md | 价格、折扣、月度积分变更 |
 | **每次架构变更** | canvas-data-schema.md | Canvas 数据结构修改 |
-| **每次分类调整** | Asset-Category-System-Design.md | 新增/删除素材分类 |
-| **按需** | Feature-Flag-Experiments-Unified-Design.md | 新增 Feature Flag 或实验 |
+| **每次分类调整** | asset-category-design.md | 新增/删除素材分类 |
+| **按需** | feature-flag-design.md | 新增 Feature Flag 或实验 |
+| **功能迭代** | onboarding-design.md, theme-system-design.md | 引导流程或主题系统调整 |
 
 ### 同步规则
 
@@ -195,7 +243,7 @@ decodables-fe/docs/shared/       # 前端仓库
 ## 🔗 相关文档目录
 
 - [docs/main/](../main/) - 后端专用文档 (8个) - **前端不需要关注**
-- [docs/tmp/](../tmp/) - 临时文档、待执行任务 (9个)
+- [docs/tmp/](../tmp/) - 临时文档、归档报告 (5个)
 - [decodables-fe/docs/](../../../../decodables-fe/docs/) - 前端专用文档
 - [.claude/guides/](../../../.claude/guides/) - 开发指南和最佳实践
 
@@ -205,17 +253,18 @@ decodables-fe/docs/shared/       # 前端仓库
 
 | 分类 | 文档数 | 占比 |
 |------|--------|------|
-| 用户与权限系统 | 2 | 33% |
-| 定价与计费系统 | 1 | 17% |
-| Canvas 系统 | 1 | 17% |
-| 素材与内容系统 | 1 | 17% |
-| 功能控制系统 | 1 | 17% |
-| **总计** | **6** | **100%** |
+| 用户与权限系统 | 2 | 25% |
+| 定价与计费系统 | 1 | 12.5% |
+| Canvas 系统 | 1 | 12.5% |
+| 素材与内容系统 | 1 | 12.5% |
+| 功能控制系统 | 1 | 12.5% |
+| 用户体验设计 | 2 | 25% |
+| **总计** | **8** | **100%** |
 
 ---
 
 **Last Updated**: 2026-01-11
-**Total Documents**: 6
-**Status**: 🟢 重组完成 - 只保留前端需要关注的系统性文档
+**Total Documents**: 8
+**Status**: 🟢 完整文档库 - 包含业务规范、数据契约、用户体验设计
 
-📚 **前后端协作的桥梁 - 业务规范与数据契约！**
+📚 **前后端协作的桥梁 - 业务规范、数据契约与 UX 设计！**
