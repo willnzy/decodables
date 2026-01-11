@@ -436,14 +436,35 @@ WHERE is_deleted = true AND is_permanently_deleted = false;
 
 #### 2.6.4 支持删除的表
 
+**支持软删除的表** (有 `is_deleted`, `deleted_at`, `recovery_expires_at`):
+
 | 表名 | Stage 1 | Stage 2 | 说明 |
 |------|---------|---------|------|
 | `profiles` | ✅ | ❌ | 用户账号 (GDPR 删除使用物理删除) |
 | `projects` | ✅ | ✅ | 项目 (保留创作数据用于分析) |
 | `marketplace_listings` | ✅ | ✅ | 市场商品 (保留交易历史) |
 | `assets` | ✅ | ✅ | 用户资源 (保留使用统计) |
-| `credit_transactions` | ❌ | ❌ | 积分交易 (只增不删) |
-| `user_purchases` | ❌ | ❌ | 购买记录 (只增不删) |
+| `asset_categories` | ✅ | ❌ | 素材分类 (LTREE 层级结构) |
+| `asset_prompt_templates` | ✅ | ❌ | AI 提示词模板 |
+| `marketplace_favorites` | ✅ | ❌ | 用户收藏 |
+| `marketplace_reviews` | ✅ | ❌ | 商品评价 |
+| `campaigns` | ✅ | ✅ | 营销活动 |
+| `daily_themes` | ✅ | ❌ | 每日主题 |
+| `holidays` | ✅ | ❌ | 节日配置 |
+| `support_tickets` | ✅ | ❌ | 工单 |
+| `support_replies` | ✅ | ❌ | 工单回复 |
+
+**不支持软删除的表** (只增不删或物理删除):
+
+| 表名 | 原因 |
+|------|------|
+| `credit_transactions` | 积分交易 (只增不删，审计要求) |
+| `marketplace_purchases` | 购买记录 (只增不删，财务要求) |
+| `user_events` | 用户事件 (append-only 日志表) |
+| `content_reports` | 内容举报 (保留完整记录) |
+| `error_logs` | 错误日志 (只增不删) |
+| `api_logs` | API 日志 (只增不删) |
+| `admin_operations` | 管理操作 (审计要求) |
 
 #### 2.6.5 使用示例
 

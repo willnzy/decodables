@@ -303,14 +303,48 @@ git commit -m "feat(db): add new table"
 
 ## 2.2 可用映射表
 
-| 映射表 | 数据库表 | 领域对象 |
-|--------|----------|----------|
-| `PROFILES_DB_TO_DOMAIN` | profiles | UserProfile |
-| `CREDIT_TX_DB_TO_DOMAIN` | credit_transactions | CreditTransaction |
-| `PROJECTS_DB_TO_DOMAIN` | projects | Project |
-| `LISTINGS_DB_TO_DOMAIN` | marketplace_listings | Listing |
-| `PURCHASES_DB_TO_DOMAIN` | marketplace_purchases | Purchase |
-| `CONFIGS_DB_TO_DOMAIN` | system_configs | SystemConfig |
+### 核心业务表 (01_core_business.sql)
+
+| 映射表 | 数据库表 | 领域对象 | 软删除 |
+|--------|----------|----------|--------|
+| `PROFILES_DB_TO_DOMAIN` | profiles | UserProfile | ✅ |
+| `CREDIT_TX_DB_TO_DOMAIN` | credit_transactions | CreditTransaction | ❌ |
+| `PROJECTS_DB_TO_DOMAIN` | projects | Project | ✅ |
+| `LISTINGS_DB_TO_DOMAIN` | marketplace_listings | Listing | ✅ |
+| `PURCHASES_DB_TO_DOMAIN` | marketplace_purchases | Purchase | ❌ |
+| `ASSETS_DB_TO_DOMAIN` | assets | Asset | ✅ |
+| `ASSET_CATEGORIES_DB_TO_DOMAIN` | asset_categories | AssetCategory | ✅ |
+| `SYSTEM_ASSETS_DB_TO_DOMAIN` | system_assets | SystemAsset | ❌ |
+| `USER_DISCOUNTS_DB_TO_DOMAIN` | user_discounts | UserDiscount | ❌ |
+
+### 平台服务表 (02_platform_services.sql)
+
+| 映射表 | 数据库表 | 领域对象 | 软删除 |
+|--------|----------|----------|--------|
+| `CONFIGS_DB_TO_DOMAIN` | system_configs | SystemConfig | ❌ |
+| `NOTIFICATIONS_DB_TO_DOMAIN` | notifications | Notification | ❌ |
+| `FEATURE_FLAGS_DB_TO_DOMAIN` | feature_flags | FeatureFlag | ❌ |
+| `EXPERIMENTS_DB_TO_DOMAIN` | experiments | Experiment | ❌ |
+| `CAMPAIGNS_DB_TO_DOMAIN` | campaigns | Campaign | ✅ |
+| `DAILY_THEMES_DB_TO_DOMAIN` | daily_themes | DailyTheme | ✅ |
+| `HOLIDAYS_DB_TO_DOMAIN` | holidays | Holiday | ✅ |
+| `USER_EVENTS_DB_TO_DOMAIN` | user_events | UserEvent | ❌ (append-only) |
+| `CONTENT_REPORTS_DB_TO_DOMAIN` | content_reports | ContentReport | ❌ |
+| `MARKETPLACE_REPORTS_DB_TO_DOMAIN` | marketplace_reports (视图) | ContentReport | ❌ |
+
+### 基础设施表 (03_infrastructure.sql)
+
+| 映射表 | 数据库表 | 领域对象 | 软删除 |
+|--------|----------|----------|--------|
+| `ERROR_LOGS_DB_TO_DOMAIN` | error_logs | ErrorLog | ❌ |
+| `API_LOGS_DB_TO_DOMAIN` | api_logs | ApiLog | ❌ |
+| `ADMIN_OPERATIONS_DB_TO_DOMAIN` | admin_operations | AdminOperation | ❌ |
+| `AGGREGATED_STATS_DB_TO_DOMAIN` | aggregated_stats | AggregatedStat | ❌ |
+| `SUPPORT_TICKETS_DB_TO_DOMAIN` | support_tickets | SupportTicket | ✅ |
+| `SUPPORT_REPLIES_DB_TO_DOMAIN` | support_replies | SupportReply | ✅ |
+| `PAYMENT_RECORDS_DB_TO_DOMAIN` | payment_records | PaymentRecord | ❌ |
+
+> 📝 **完整映射表**: 查看 `infrastructure/repositories/field_mappings.py` 获取所有 50+ 个表的映射定义
 
 ---
 
