@@ -1306,6 +1306,141 @@ COMMENT ON FUNCTION p_get_conversion_funnel IS
 
 
 -- ============================================================================
+-- Category Management RPC Functions (LTREE Operations)
+-- ============================================================================
+
+-- Get all descendant categories using LTREE
+CREATE OR REPLACE FUNCTION get_category_descendants(parent_path_input LTREE)
+RETURNS TABLE (
+    id UUID,
+    parent_id UUID,
+    path LTREE,
+    level INTEGER,
+    slug VARCHAR(50),
+    name VARCHAR(100),
+    name_i18n JSONB,
+    description TEXT,
+    icon VARCHAR(50),
+    asset_type VARCHAR(20),
+    is_visible BOOLEAN,
+    is_featured BOOLEAN,
+    display_order INTEGER,
+    min_tier VARCHAR(20),
+    visible_from TIMESTAMPTZ,
+    visible_until TIMESTAMPTZ,
+    asset_count INTEGER,
+    usage_count INTEGER,
+    metadata JSONB,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ac.id,
+        ac.parent_id,
+        ac.path,
+        ac.level,
+        ac.slug,
+        ac.name,
+        ac.name_i18n,
+        ac.description,
+        ac.icon,
+        ac.asset_type,
+        ac.is_visible,
+        ac.is_featured,
+        ac.display_order,
+        ac.min_tier,
+        ac.visible_from,
+        ac.visible_until,
+        ac.asset_count,
+        ac.usage_count,
+        ac.metadata,
+        ac.created_at,
+        ac.updated_at
+    FROM asset_categories ac
+    WHERE ac.path <@ parent_path_input
+      AND ac.deleted_at IS NULL
+    ORDER BY ac.path, ac.display_order;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_category_descendants IS
+'Get all descendant categories of a given path using LTREE operator';
+
+
+-- Update descendants path when parent category is moved
+CREATE OR REPLACE FUNCTION update_category_descendants_path(
+    old_path_input LTREE,
+    new_path_input LTREE
+)
+RETURNS INTEGER AS $$
+DECLARE
+    updated_count INTEGER;
+BEGIN
+    UPDATE asset_categories
+    SET
+        path = new_path_input || subpath(path, nlevel(old_path_input)),
+        level = nlevel(new_path_input || subpath(path, nlevel(old_path_input))),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE path <@ old_path_input
+      AND path != old_path_input
+      AND deleted_at IS NULL;
+
+    GET DIAGNOSTICS updated_count = ROW_COUNT;
+    RETURN updated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION update_category_descendants_path IS
+'Update all descendant paths when parent category is moved';
+
+
+-- Soft delete all descendant categories
+CREATE OR REPLACE FUNCTION soft_delete_category_descendants(parent_path_input LTREE)
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+    recovery_time TIMESTAMPTZ;
+BEGIN
+    recovery_time := CURRENT_TIMESTAMP + INTERVAL '30 days';
+
+    UPDATE asset_categories
+    SET
+        deleted_at = CURRENT_TIMESTAMP,
+        recovery_expires_at = recovery_time,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE path <@ parent_path_input
+      AND path != parent_path_input
+      AND deleted_at IS NULL;
+
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION soft_delete_category_descendants IS
+'Soft delete all descendant categories when parent is deleted with cascade';
+
+
+-- Increment category usage count atomically
+CREATE OR REPLACE FUNCTION increment_category_usage(category_id_input UUID)
+RETURNS VOID AS $$
+BEGIN
+    UPDATE asset_categories
+    SET
+        usage_count = usage_count + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = category_id_input
+      AND deleted_at IS NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION increment_category_usage IS
+'Atomically increment usage count for a category';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;
