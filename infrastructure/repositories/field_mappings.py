@@ -21,12 +21,15 @@ PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
     'email': 'email',                         # TEXT
     'username': 'username',                   # TEXT
     'display_name': 'display_name',           # TEXT
+    'first_name': 'first_name',               # TEXT (P0-1: Repository 使用)
+    'last_name': 'last_name',                 # TEXT (P0-1: Repository 使用)
     'avatar_url': 'avatar_url',               # TEXT
     'user_code': 'user_code',                 # TEXT (26位唯一码)
     'tier': 'tier',                           # TEXT (t1/t2/t3)
     'tier_changed_at': 'tier_changed_at',     # TIMESTAMPTZ
     'credits_monthly': 'credits_monthly',     # INTEGER
     'credits_permanent': 'credits_permanent', # INTEGER
+    'credits_reset_at': 'credits_reset_at',   # TIMESTAMPTZ (P0-2: 月度积分重置时间)
     'trial_start_date': 'trial_start_date',   # TIMESTAMPTZ
     'trial_end_date': 'trial_end_date',       # TIMESTAMPTZ
     'is_trial_active': 'is_trial_active',     # BOOLEAN
@@ -39,10 +42,12 @@ PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
     'timezone': 'timezone',                   # TEXT
     'notification_email_enabled': 'notification_email_enabled',  # BOOLEAN
     'notification_product_enabled': 'notification_product_enabled',  # BOOLEAN
+    'onboarding_step': 'onboarding_step',     # TEXT (P0-4: Onboarding 状态)
     'created_at_local': 'created_at_local',   # TIMESTAMP
     'cohort_month': 'cohort_month',           # TEXT
     'project_count': 'project_count',         # INTEGER
     'asset_count': 'asset_count',             # INTEGER
+    'preferences': 'preferences',             # JSONB (P0-3: 用户偏好设置)
     'ext_json': 'ext_json',                   # JSONB
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
@@ -80,19 +85,33 @@ PROJECTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'project_id',                       # UUID
     'user_id': 'user_id',                     # TEXT (FK to profiles.id)
     'title': 'title',                         # TEXT
+    'description': 'description',             # TEXT (P0-8: Repository 使用)
+    'tags': 'tags',                           # TEXT[] (P0-8: Repository 使用)
     'canvas_data': 'canvas_data',             # JSONB
     'thumbnail_url': 'thumbnail_url',         # TEXT
+    'canvas_size': 'canvas_size',             # TEXT (P0-8: 如 "1080x1080")
+    'status': 'status',                       # TEXT (P0-8: draft/active/archived/deleted)
+    'is_public': 'is_public',                 # BOOLEAN (P0-8)
+    'is_template': 'is_template',             # BOOLEAN (P0-8)
+    'template_category': 'template_category', # TEXT (P0-8)
+    'collaborators': 'collaborators',         # TEXT[] (P0-8)
+    'view_count': 'view_count',               # INTEGER (P0-8)
+    'like_count': 'like_count',               # INTEGER (P0-8)
     'last_downloaded_hash': 'last_downloaded_hash',  # TEXT
+    'content_hash': 'content_hash',           # TEXT (P0-8)
     'marketplace_listing_id': 'listing_id',   # UUID (nullable)
     'source_listing_id': 'source_listing_id', # UUID (nullable) - 购买来源
     'is_purchased': 'is_purchased',           # BOOLEAN
     'origin_owner_id': 'origin_owner_id',     # TEXT (nullable) - 原作者
+    'listing_status': 'listing_status',       # TEXT (P0-8: published/draft)
+    'is_permanently_deleted': 'is_permanently_deleted',  # BOOLEAN (P0-8)
     'contains_locked_elements': 'contains_locked_elements',  # BOOLEAN
     'is_hidden_from_trash': 'is_hidden_from_trash',  # BOOLEAN
     'timezone': 'timezone',                   # TEXT
     'created_at_local': 'created_at_local',   # TIMESTAMP
     'updated_at_local': 'updated_at_local',   # TIMESTAMP
     'metadata': 'metadata',                   # JSONB
+    'version': 'version',                     # INTEGER (乐观锁)
     'created_at': 'created_at',               # TIMESTAMPTZ
     'updated_at': 'updated_at',               # TIMESTAMPTZ
     'is_deleted': 'is_deleted',               # BOOLEAN
@@ -109,22 +128,39 @@ LISTINGS_DB_TO_DOMAIN: Dict[str, str] = {
     'title': 'title',                         # TEXT
     'description': 'description',             # TEXT
     'thumbnail_url': 'thumbnail_url',         # TEXT
+    'tags': 'tags',                           # TEXT[] (P0-10)
     'resource_url': 'resource_url',           # TEXT
     'resource_type': 'resource_type',         # TEXT (project/asset/template)
     'resource_id': 'resource_id',             # UUID
+    # 文件信息 (P0-10)
+    'preview_url': 'preview_url',             # TEXT
+    'file_url': 'file_url',                   # TEXT
+    'file_size': 'file_size',                 # INTEGER
+    'file_format': 'file_format',             # TEXT
+    'dimensions': 'dimensions',               # TEXT (如 "1080x1080")
     'category': 'category',                   # TEXT
     'source': 'source',                       # TEXT (system/user/ai/community)
+    'license_type': 'license_type',           # TEXT (P0-10)
     'price_credits': 'price_credits',         # INTEGER
+    'price_type': 'price_type',               # TEXT (P0-10: free/credits/subscription)
     'allowed_tiers': 'allowed_tiers',         # TEXT[]
+    # 统计字段 (P0-10)
     'usage_count': 'usage_count',             # BIGINT
     'sales_count': 'sales_count',             # INTEGER
     'unique_buyers_count': 'unique_buyers_count',  # INTEGER
     'total_revenue': 'total_revenue',         # INTEGER
+    'view_count': 'view_count',               # INTEGER (P0-10)
+    'download_count': 'download_count',       # INTEGER (P0-10)
+    'rating_average': 'rating_average',       # NUMERIC(3,2) (P0-10)
+    'rating_count': 'rating_count',           # INTEGER (P0-10)
+    # 状态字段 (P0-10)
+    'status': 'status',                       # TEXT (draft/pending/published/unpublished/rejected/deleted)
     'is_public': 'is_public',                 # BOOLEAN
     'moderation_status': 'moderation_status', # TEXT (draft/pending/approved/rejected)
     'moderation_note': 'moderation_note',     # TEXT
     'moderated_by': 'moderated_by',           # TEXT (FK to profiles.id)
     'moderated_at': 'moderated_at',           # TIMESTAMPTZ
+    'published_at': 'published_at',           # TIMESTAMPTZ (P0-10)
     'version': 'version',                     # VARCHAR(20)
     'changelog': 'changelog',                 # TEXT
     'version_history': 'version_history',     # JSONB
@@ -208,6 +244,9 @@ ADMIN_OPERATIONS_DB_TO_DOMAIN: Dict[str, str] = {
     'target_type': 'target_type',
     'target_id': 'target_id',
     'action_details': 'action_details',
+    'source': 'source',                       # TEXT (P0-13: 操作来源)
+    'details': 'details',                     # TEXT (P0-13: 操作详情)
+    'reason': 'reason',                       # TEXT (P0-14: 操作原因)
     'ip_address': 'ip_address',
     'user_agent': 'user_agent',
     'status': 'status',
@@ -221,6 +260,8 @@ AGGREGATED_STATS_DB_TO_DOMAIN: Dict[str, str] = {
     'stat_type': 'stat_type',
     'stat_key': 'stat_key',
     'stat_value': 'stat_value',
+    'date': 'date',                           # DATE (P0-15: 日期字段)
+    'data': 'data',                           # JSONB (P0-16: 复杂数据存储)
     'metadata': 'metadata',
     'period_start': 'period_start',
     'period_end': 'period_end',
@@ -371,6 +412,10 @@ ASSETS_DB_TO_DOMAIN: Dict[str, str] = {
     'project_id': 'project_id',
     'url': 'url',
     'type': 'type',
+    'name': 'name',                           # TEXT (P0-11: 素材名称)
+    'category': 'category',                   # TEXT (P0-11: 素材分类)
+    'source': 'source',                       # TEXT (P0-11: upload/ai/system/marketplace)
+    'usage_count': 'usage_count',             # INTEGER (P0-11: 使用次数)
     'prompt': 'prompt',
     'description': 'description',
     'metadata': 'metadata',
@@ -459,7 +504,8 @@ CONFIG_AUDIT_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
     'changed_at': 'changed_at',
 }
 
-# content_reports 表
+# content_reports 表 (SQL 中无软删除字段)
+# 注意: SQL 创建了 marketplace_reports 视图作为别名，可通过视图访问
 CONTENT_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'report_id',
     'reporter_id': 'reporter_id',
@@ -474,10 +520,10 @@ CONTENT_REPORTS_DB_TO_DOMAIN: Dict[str, str] = {
     'created_at_local': 'created_at_local',
     'created_at': 'created_at',
     'updated_at': 'updated_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
 }
+
+# marketplace_reports 视图 (content_reports 的别名视图)
+MARKETPLACE_REPORTS_DB_TO_DOMAIN: Dict[str, str] = CONTENT_REPORTS_DB_TO_DOMAIN.copy()
 
 # credit_purchases 表
 CREDIT_PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
@@ -554,6 +600,7 @@ ERROR_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
     'response_status': 'response_status',
     'environment': 'environment',
     'severity': 'severity',
+    'level': 'level',                         # TEXT (P0-9: 与 severity 同步)
     'metadata': 'metadata',
     'resolved': 'resolved',
     'resolved_at': 'resolved_at',
@@ -606,13 +653,15 @@ EXPERIMENT_RESULTS_DB_TO_DOMAIN: Dict[str, str] = {
 
 # experiments 表
 EXPERIMENTS_DB_TO_DOMAIN: Dict[str, str] = {
-    'id': 'experiment_id',
+    'id': 'id',                               # UUID (数据库 PK)
+    'experiment_id': 'experiment_id',         # TEXT (P0-4: 业务 ID, 自动生成)
     'experiment_key': 'experiment_key',
     'experiment_name': 'experiment_name',
     'description': 'description',
     'hypothesis': 'hypothesis',
     'variants': 'variants',
     'status': 'status',
+    'experiment_type': 'experiment_type',     # TEXT (P0-5: ab_test/multivariate/feature_rollout/holdout)
     'traffic_percentage': 'traffic_percentage',
     'target_tiers': 'target_tiers',
     'start_date': 'start_date',
@@ -622,18 +671,36 @@ EXPERIMENTS_DB_TO_DOMAIN: Dict[str, str] = {
 }
 
 # feature_flags 表
+# 注意: SQL 使用 key/name/enabled, Repository 使用 flag_key/flag_name/is_enabled
+# 映射需要同时支持两种风格
 FEATURE_FLAGS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'flag_id',
-    'flag_key': 'flag_key',
-    'flag_name': 'flag_name',
+    'key': 'flag_key',                        # SQL 使用 key, 映射到 flag_key
+    'name': 'flag_name',                      # SQL 使用 name, 映射到 flag_name
     'description': 'description',
-    'is_enabled': 'is_enabled',
+    'flag_type': 'flag_type',                 # TEXT (boolean/multivariate/experiment)
+    'enabled': 'is_enabled',                  # SQL 使用 enabled, 映射到 is_enabled
+    'archived': 'archived',                   # BOOLEAN
+    'status': 'status',                       # TEXT (P0-2: active/inactive/archived/draft)
+    'default_value': 'default_value',         # BOOLEAN (P0-3)
+    'environments': 'environments',           # TEXT[]
+    'start_at': 'start_at',                   # TIMESTAMPTZ
+    'end_at': 'end_at',                       # TIMESTAMPTZ
     'rollout_percentage': 'rollout_percentage',
-    'target_tiers': 'target_tiers',
-    'target_user_ids': 'target_user_ids',
+    'whitelist_user_ids': 'whitelist_user_ids',  # TEXT[] (替代 target_user_ids)
+    'blacklist_user_ids': 'blacklist_user_ids',  # TEXT[]
+    'targeting_rules': 'targeting_rules',     # JSONB
+    'variants': 'variants',                   # JSONB
+    'default_variant': 'default_variant',     # TEXT
+    'target_tiers': 'target_tiers',           # 保留兼容性 (可能映射到 targeting_rules)
+    'target_user_ids': 'target_user_ids',     # 保留兼容性 (映射到 whitelist_user_ids)
     'config': 'config',
+    'tags': 'tags',                           # TEXT[]
+    'owner': 'owner',                         # TEXT
     'created_at': 'created_at',
     'updated_at': 'updated_at',
+    'created_by': 'created_by',               # TEXT
+    'updated_by': 'updated_by',               # TEXT
 }
 
 # generation_tasks 表
@@ -765,10 +832,12 @@ MONTHLY_METRICS_DB_TO_DOMAIN: Dict[str, str] = {
 }
 
 # notifications 表
+# 注意: SQL 同时支持 notification_type 和 type (通过触发器同步)
 NOTIFICATIONS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'notification_id',
     'user_id': 'user_id',
     'notification_type': 'notification_type',
+    'type': 'type',                           # TEXT (P0-1: 与 notification_type 同步的别名)
     'title': 'title',
     'message': 'message',
     'action_url': 'action_url',
@@ -819,6 +888,7 @@ PAYMENT_RECORDS_DB_TO_DOMAIN: Dict[str, str] = {
     'amount_usd': 'amount_usd',
     'amount_credits': 'amount_credits',
     'currency': 'currency',
+    'timezone': 'timezone',                   # TEXT (P0-12: 时区字段)
     'stripe_payment_intent_id': 'stripe_payment_intent_id',
     'stripe_charge_id': 'stripe_charge_id',
     'stripe_customer_id': 'stripe_customer_id',
@@ -951,8 +1021,10 @@ SUPPORT_REPLIES_DB_TO_DOMAIN: Dict[str, str] = {
     'ticket_id': 'ticket_id',
     'user_id': 'user_id',
     'is_staff_reply': 'is_staff_reply',
+    'is_admin_reply': 'is_admin_reply',       # BOOLEAN (P0-8: 管理员回复标记)
     'message': 'message',
     'attachments': 'attachments',
+    'read_at': 'read_at',                     # TIMESTAMPTZ (P0-18: 回复读取时间)
     'created_at': 'created_at',
     'updated_at': 'updated_at',
     'is_deleted': 'is_deleted',
@@ -967,10 +1039,12 @@ SUPPORT_TICKETS_DB_TO_DOMAIN: Dict[str, str] = {
     'ticket_number': 'ticket_number',
     'subject': 'subject',
     'description': 'description',
+    'message': 'message',                     # TEXT (P0-7: 与 description 同步)
     'category': 'category',
     'priority': 'priority',
     'status': 'status',
     'assigned_to': 'assigned_to',
+    'admin_note': 'admin_note',               # TEXT (P0-11: 管理员备注)
     'attachments': 'attachments',
     'metadata': 'metadata',
     'created_at': 'created_at',
@@ -1038,8 +1112,9 @@ USER_DISCOUNTS_DB_TO_DOMAIN: Dict[str, str] = {
 }
 
 # user_events 表
+# 注意: 这是只追加表 (append-only)，没有软删除字段
 USER_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
-    'id': 'id',
+    'id': 'event_id',                         # UUID
     'user_id': 'user_id',
     'event_type': 'event_type',
     'event_data': 'event_data',
@@ -1048,9 +1123,7 @@ USER_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
     'user_agent': 'user_agent',
     'referer': 'referer',
     'created_at': 'created_at',
-    'is_deleted': 'is_deleted',
-    'deleted_at': 'deleted_at',
-    'recovery_expires_at': 'recovery_expires_at',
+    # 移除无效的软删除字段 (这是只追加表，不支持删除)
 }
 
 # user_generations 表
