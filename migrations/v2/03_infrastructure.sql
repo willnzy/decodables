@@ -1832,6 +1832,92 @@ $$ LANGUAGE plpgsql;
 
 
 -- ============================================================================
+-- Row Level Security (RLS) 启用
+-- ============================================================================
+-- 策略说明:
+-- - 启用 RLS 但不添加任何策略 = 默认拒绝所有通过 anon key 的访问
+-- - 后端使用 service_role key，会自动绕过 RLS
+-- - 这提供了安全深度防御：即使 anon key 泄露，也无法访问数据
+-- ============================================================================
+
+-- 01_core_business.sql 中的表 (26个)
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_pages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_tag_relations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_recent_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_favorite_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE generation_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE listing_usages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
+-- 注意: marketplace_reports 是视图 (VIEW)，不是表，不需要启用 RLS
+ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE page_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_discounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+
+-- 02_platform_services.sql 中的表 (31个)
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_usage_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_aggregation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clerk_webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE config_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_themes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE holidays ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monthly_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_resource_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE content_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE onboarding_steps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flag_exposures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flag_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_dismissals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_participations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_conversions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_exposures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_onboarding_progress ENABLE ROW LEVEL SECURITY;
+
+-- 03_infrastructure.sql 中的表 (12个)
+ALTER TABLE admin_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_call_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_task_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pricing_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_price_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE support_replies ENABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;
