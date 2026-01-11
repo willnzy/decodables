@@ -159,6 +159,74 @@ CREATE TABLE assets (
 );
 
 
+-- ----------------------------------------------------------------------------
+-- 3a. asset_tags - Tag system for asset classification
+-- ----------------------------------------------------------------------------
+CREATE TABLE asset_tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    name_i18n JSONB DEFAULT '{}'::JSONB,
+    tag_type VARCHAR(20) DEFAULT 'general' CHECK (tag_type IN ('general', 'color', 'style', 'theme', 'season')),
+    usage_count INT DEFAULT 0 CHECK (usage_count >= 0),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_asset_tags_type ON asset_tags(tag_type);
+CREATE INDEX idx_asset_tags_usage ON asset_tags(usage_count DESC);
+CREATE INDEX idx_asset_tags_name ON asset_tags(name);
+
+-- Trigger for auto-updating updated_at
+CREATE TRIGGER update_asset_tags_updated_at
+    BEFORE UPDATE ON asset_tags
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ----------------------------------------------------------------------------
+-- 3b. asset_tag_relations - Many-to-many between assets and tags
+-- ----------------------------------------------------------------------------
+CREATE TABLE asset_tag_relations (
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES asset_tags(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (asset_id, tag_id)
+);
+
+CREATE INDEX idx_asset_tag_rel_asset ON asset_tag_relations(asset_id);
+CREATE INDEX idx_asset_tag_rel_tag ON asset_tag_relations(tag_id);
+
+
+-- ----------------------------------------------------------------------------
+-- 3c. user_recent_assets - User browsing history
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_recent_assets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT NOT NULL,
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_user_recent_asset UNIQUE(user_id, asset_id)
+);
+
+CREATE INDEX idx_user_recent_user ON user_recent_assets(user_id, used_at DESC);
+CREATE INDEX idx_user_recent_asset ON user_recent_assets(asset_id);
+
+
+-- ----------------------------------------------------------------------------
+-- 3d. user_favorite_assets - User favorites/bookmarks
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_favorite_assets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT NOT NULL,
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_user_favorite_asset UNIQUE(user_id, asset_id)
+);
+
+CREATE INDEX idx_user_favorite_user ON user_favorite_assets(user_id, created_at DESC);
+CREATE INDEX idx_user_favorite_asset ON user_favorite_assets(asset_id);
+
 
 -- ----------------------------------------------------------------------------
 -- 4. credit_purchases
