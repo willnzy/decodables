@@ -892,6 +892,41 @@ CREATE TABLE user_onboarding_progress (
 
 
 
+-- ----------------------------------------------------------------------------
+-- 29. articles (CMS - Manual, News, Changelog)
+-- ----------------------------------------------------------------------------
+CREATE TABLE articles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug VARCHAR(200) UNIQUE NOT NULL,              -- URL 友好标识
+    title VARCHAR(500) NOT NULL,
+    summary TEXT,                                    -- 摘要
+    content TEXT NOT NULL,                           -- Markdown 内容
+    category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog')),
+    tags JSONB DEFAULT '[]'::jsonb,                  -- 标签数组
+    cover_image VARCHAR(500),                        -- 封面图 URL
+
+    -- 发布状态
+    is_published BOOLEAN DEFAULT false,
+    published_at TIMESTAMPTZ,
+
+    -- 元数据
+    author_id TEXT REFERENCES profiles(id),          -- Clerk user_id
+    sort_order INTEGER DEFAULT 0,                    -- 排序权重
+    view_count INTEGER DEFAULT 0,                    -- 阅读量
+
+    -- 时间戳
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX idx_articles_category ON articles(category);
+CREATE INDEX idx_articles_published ON articles(is_published, published_at DESC);
+CREATE INDEX idx_articles_slug ON articles(slug);
+CREATE INDEX idx_articles_author ON articles(author_id);
+
+
+
 -- ============================================================================
 -- 提交事务
 -- ============================================================================

@@ -81,8 +81,11 @@ PUBLIC_CONFIG_WHITELIST = {
 
 # Pattern-based whitelist (for prefixes)
 PUBLIC_CONFIG_PATTERNS = [
-    r"^FEATURE_",  # All feature flags
-    r"^UI_",       # All UI configs
+    r"^FEATURE_",   # All feature flags
+    r"^UI_",        # All UI configs
+    r"^LANDING_",   # Landing page content (CMS-Lite)
+    r"^SITE_",      # Site public info (name, contact, social)
+    r"^PRICING_",   # Pricing display info (features, tiers)
 ]
 
 

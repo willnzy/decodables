@@ -44,6 +44,7 @@ from .tasks_mgmt import router as tasks_mgmt_router
 from .feature_flags import router as feature_flags_router
 from .webhooks_retry import router as webhooks_retry_router
 from .asset_categories import router as asset_categories_router
+from .articles import router as articles_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -67,5 +68,6 @@ admin_router.include_router(tasks_mgmt_router)
 admin_router.include_router(feature_flags_router)
 admin_router.include_router(webhooks_retry_router)
 admin_router.include_router(asset_categories_router)
+admin_router.include_router(articles_router)
 
 __all__ = ['admin_router']

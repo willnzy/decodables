@@ -157,7 +157,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
             return result.data or []
 
     @retry_on_network_error()
-    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]]:
+    async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new category."""
         result = self.client.table("asset_categories").insert(data).execute()
 

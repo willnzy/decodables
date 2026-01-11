@@ -433,7 +433,8 @@ CREATE TABLE system_configs (
     value TEXT NOT NULL,
 
     -- 类型与分组
-    value_type TEXT NOT NULL DEFAULT 'text' CHECK (value_type IN ('text', 'number', 'integer', 'boolean', 'json')),
+    -- v2.1: 添加 'array' (JSON 数组) 和 'richtext' (Markdown/HTML) 类型
+    value_type TEXT NOT NULL DEFAULT 'text' CHECK (value_type IN ('text', 'number', 'integer', 'boolean', 'json', 'array', 'richtext')),
     config_group TEXT NOT NULL DEFAULT 'general',
 
     -- 描述

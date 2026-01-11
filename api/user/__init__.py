@@ -50,6 +50,7 @@ from .generation_story import router as generation_story_router
 from .system_resources import router as system_resources_router
 from .onboarding import router as onboarding_router
 from .referrals import router as referrals_router
+from .articles import router as articles_router
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -82,5 +83,6 @@ user_router.include_router(generation_story_router)
 user_router.include_router(system_resources_router)
 user_router.include_router(onboarding_router)
 user_router.include_router(referrals_router)
+user_router.include_router(articles_router)
 
 __all__ = ["user_router"]

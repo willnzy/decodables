@@ -47,6 +47,7 @@ from .analytics_repository import SupabaseAnalyticsRepository
 from .subscription_repository import SupabaseSubscriptionRepository
 from .metrics_repository import SupabaseMetricsRepository
 from .webhook_repository import SupabaseWebhookRepository
+from .article_repository import SupabaseArticleRepository
 
 __all__ = [
     # Base Repository
@@ -85,4 +86,5 @@ __all__ = [
     'SupabaseSubscriptionRepository',
     'SupabaseMetricsRepository',
     'SupabaseWebhookRepository',
+    'SupabaseArticleRepository',
 ]
