@@ -64,12 +64,16 @@ CREATE TABLE activity_logs (
 
 -- ----------------------------------------------------------------------------
 -- 2. aggregated_stats
+-- P0-15, P0-16, P0-17: Repository 使用 date 和 data 字段
 -- ----------------------------------------------------------------------------
 CREATE TABLE aggregated_stats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     stat_type TEXT NOT NULL,
     stat_key TEXT NOT NULL,
     stat_value NUMERIC DEFAULT 0,
+    -- P0-15, P0-16: Repository 使用的额外字段
+    date DATE,  -- 日期字段，用于按日期查询
+    data JSONB DEFAULT '{}',  -- 数据字段，用于存储复杂数据
     metadata JSONB DEFAULT '{}',
     period_start TIMESTAMPTZ NOT NULL,
     period_end TIMESTAMPTZ NOT NULL,
@@ -86,6 +90,7 @@ CREATE TABLE aggregated_stats (
 CREATE INDEX idx_aggregated_stats_period ON aggregated_stats(period_start DESC, period_end DESC);
 CREATE INDEX idx_aggregated_stats_type_key ON aggregated_stats(stat_type, stat_key);
 CREATE INDEX idx_aggregated_stats_key_period ON aggregated_stats(stat_key, period_start DESC);
+CREATE INDEX idx_aggregated_stats_date ON aggregated_stats(date) WHERE date IS NOT NULL;  -- P0-15: 日期索引
 
 
 -- ----------------------------------------------------------------------------
@@ -270,6 +275,10 @@ CREATE TABLE feature_flags (
     flag_type TEXT DEFAULT 'boolean' CHECK (flag_type IN ('boolean', 'multivariate', 'experiment')),
     enabled BOOLEAN DEFAULT FALSE,
     archived BOOLEAN DEFAULT FALSE,
+    -- P0-2: Repository 使用 status 字段过滤
+    status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'archived', 'draft')),
+    -- P0-3: Repository 使用 default_value (布尔)
+    default_value BOOLEAN DEFAULT FALSE,
 
     -- 环境和时间控制
     environments TEXT[] DEFAULT ARRAY['production', 'staging'],
@@ -401,7 +410,8 @@ CREATE INDEX idx_monthly_metrics_created_at ON monthly_metrics(created_at DESC);
 CREATE TABLE notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    notification_type TEXT NOT NULL,
+    notification_type TEXT NOT NULL,  -- SQL 标准字段
+    type TEXT,  -- P0-1: Repository 使用的别名字段
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     action_url TEXT,
@@ -410,6 +420,24 @@ CREATE TABLE notifications (
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- P0-1: 触发器同步 type 和 notification_type
+CREATE OR REPLACE FUNCTION sync_notification_type()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.type IS NOT NULL AND NEW.notification_type IS NULL THEN
+        NEW.notification_type := NEW.type;
+    ELSIF NEW.notification_type IS NOT NULL AND NEW.type IS NULL THEN
+        NEW.type := NEW.notification_type;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_notifications_sync_type
+    BEFORE INSERT OR UPDATE ON notifications
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_notification_type();
 
 
 -- ----------------------------------------------------------------------------
@@ -519,6 +547,7 @@ CREATE TABLE campaigns (
 
 -- ----------------------------------------------------------------------------
 -- 18. content_reports (依赖 profiles, marketplace_listings)
+-- P0-6: Repository 使用 marketplace_reports 表名，创建别名视图
 -- ----------------------------------------------------------------------------
 CREATE TABLE content_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -537,18 +566,41 @@ CREATE TABLE content_reports (
     UNIQUE(reporter_id, listing_id)
 );
 
+-- P0-6: 创建 marketplace_reports 视图供 Repository 使用
+CREATE OR REPLACE VIEW marketplace_reports AS
+SELECT * FROM content_reports;
+
+-- P0-6: 允许通过视图插入
+CREATE OR REPLACE FUNCTION insert_marketplace_report()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO content_reports (reporter_id, listing_id, reason, description, status, created_at)
+    VALUES (NEW.reporter_id, NEW.listing_id, NEW.reason, NEW.description, COALESCE(NEW.status, 'pending'), COALESCE(NEW.created_at, CURRENT_TIMESTAMP))
+    RETURNING * INTO NEW;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_marketplace_reports_insert
+    INSTEAD OF INSERT ON marketplace_reports
+    FOR EACH ROW
+    EXECUTE FUNCTION insert_marketplace_report();
+
 
 -- ----------------------------------------------------------------------------
 -- 19. experiments (独立)
 -- ----------------------------------------------------------------------------
 CREATE TABLE experiments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    experiment_id TEXT UNIQUE,  -- P0-4: Repository 使用的业务 ID (自动生成)
     experiment_key TEXT UNIQUE NOT NULL,
     experiment_name TEXT NOT NULL,
     description TEXT,
     hypothesis TEXT,
     variants JSONB NOT NULL,
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
+    -- P0-5: Repository 使用 experiment_type 字段
+    experiment_type TEXT DEFAULT 'ab_test' CHECK (experiment_type IN ('ab_test', 'multivariate', 'feature_rollout', 'holdout')),
     traffic_percentage INTEGER DEFAULT 100 CHECK (traffic_percentage BETWEEN 0 AND 100),
     target_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
     start_date TIMESTAMPTZ,
@@ -556,6 +608,22 @@ CREATE TABLE experiments (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- P0-4: 自动生成 experiment_id
+CREATE OR REPLACE FUNCTION generate_experiment_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.experiment_id IS NULL THEN
+        NEW.experiment_id := 'exp_' || REPLACE(gen_random_uuid()::TEXT, '-', '');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_experiments_generate_id
+    BEFORE INSERT ON experiments
+    FOR EACH ROW
+    EXECUTE FUNCTION generate_experiment_id();
 
 
 -- ----------------------------------------------------------------------------

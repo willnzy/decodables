@@ -41,6 +41,10 @@ CREATE TABLE admin_operations (
     target_type TEXT NOT NULL,
     target_id TEXT,
     action_details JSONB DEFAULT '{}',
+    -- P0-13, P0-14: Repository 使用的额外字段
+    source TEXT,  -- 操作来源
+    details TEXT,  -- 操作详情
+    reason TEXT,  -- 操作原因
     ip_address INET,
     user_agent TEXT,
     status TEXT DEFAULT 'success',
@@ -147,6 +151,7 @@ CREATE TABLE error_logs (
     response_status INTEGER,
     environment TEXT DEFAULT 'production',
     severity TEXT DEFAULT 'error',
+    level TEXT DEFAULT 'error',  -- P0-9: Repository 使用 level 字段 (与 severity 同步)
     metadata JSONB DEFAULT '{}',
     resolved BOOLEAN DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
@@ -164,10 +169,31 @@ CREATE TABLE error_logs (
     CONSTRAINT check_severity CHECK (
         severity IN ('debug', 'info', 'warning', 'error', 'critical')
     ),
+    CONSTRAINT check_level CHECK (
+        level IN ('debug', 'info', 'warning', 'error', 'critical')
+    ),
     CONSTRAINT check_environment CHECK (
         environment IN ('development', 'staging', 'production')
     )
 );
+
+-- P0-9: 触发器同步 level 和 severity
+CREATE OR REPLACE FUNCTION sync_error_level()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.level IS NOT NULL AND NEW.severity IS NULL THEN
+        NEW.severity := NEW.level;
+    ELSIF NEW.severity IS NOT NULL AND NEW.level IS NULL THEN
+        NEW.level := NEW.severity;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_error_logs_sync_level
+    BEFORE INSERT OR UPDATE ON error_logs
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_error_level();
 
 CREATE INDEX idx_error_logs_user_id ON error_logs(user_id, created_at DESC);
 CREATE INDEX idx_error_logs_error_type ON error_logs(error_type, created_at DESC);
@@ -187,6 +213,7 @@ CREATE TABLE payment_records (
     amount_usd NUMERIC(10, 2) NOT NULL,
     amount_credits INTEGER,
     currency TEXT DEFAULT 'USD',
+    timezone TEXT DEFAULT 'UTC',  -- P0-12: Repository 使用的时区字段
     stripe_payment_intent_id TEXT UNIQUE,
     stripe_charge_id TEXT,
     stripe_customer_id TEXT,
@@ -378,10 +405,12 @@ CREATE TABLE support_tickets (
     ticket_number TEXT NOT NULL UNIQUE,
     subject TEXT NOT NULL,
     description TEXT NOT NULL,
+    message TEXT,  -- P0-7: Repository 使用 message 字段 (与 description 同步)
     category TEXT NOT NULL,
     priority TEXT DEFAULT 'medium',
     status TEXT DEFAULT 'open',
     assigned_to TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    admin_note TEXT,  -- P0-11: Repository 使用的管理员备注字段
     attachments JSONB DEFAULT '[]',
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -456,8 +485,10 @@ CREATE TABLE support_replies (
     ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     is_staff_reply BOOLEAN DEFAULT FALSE,
+    is_admin_reply BOOLEAN DEFAULT FALSE,  -- P0-8: Repository 使用的字段
     message TEXT NOT NULL,
     attachments JSONB DEFAULT '[]',
+    read_at TIMESTAMPTZ,  -- P0-18: 回复读取时间
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     is_deleted BOOLEAN DEFAULT false,
