@@ -235,22 +235,33 @@ CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
--- 9. daily_themes
+-- 9. daily_themes (also supports holiday themes)
 -- ----------------------------------------------------------------------------
 CREATE TABLE daily_themes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title TEXT NOT NULL,
+    -- Basic info
+    name TEXT NOT NULL,                                    -- Theme display name (used by code)
+    title TEXT,                                            -- Alias for name (backward compat)
     description TEXT,
-    date DATE NOT NULL UNIQUE,
+    -- Activation control
+    is_active BOOLEAN DEFAULT true,                        -- Whether theme is enabled
+    priority INTEGER DEFAULT 0,                            -- Higher priority = shown first
+    date DATE,                                             -- Specific date (for daily themes)
+    date_rule JSONB,                                       -- Date rule for holiday themes
+    -- Content
     thumbnail_url TEXT,
     preview_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     featured_asset_ids UUID[] DEFAULT ARRAY[]::UUID[],
     recommended_categories TEXT[] DEFAULT ARRAY[]::TEXT[],
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+    theme_config JSONB DEFAULT '{}',                       -- Colors, badges, etc.
+    -- Status
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived')),
     metadata JSONB DEFAULT '{}',
+    -- Timestamps
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- Soft delete
     is_deleted BOOLEAN DEFAULT false,
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,
@@ -262,6 +273,8 @@ CREATE TABLE daily_themes (
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
     )
 );
+-- Index for active themes lookup
+CREATE INDEX idx_daily_themes_is_active_priority ON daily_themes (is_active, priority DESC) WHERE is_deleted = false;
 
 
 -- ----------------------------------------------------------------------------

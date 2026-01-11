@@ -33,7 +33,7 @@ class SupabaseThemesRepository:
             Exception: If query fails
         """
         try:
-            result = self.supabase.table("holiday_themes").select("*").eq(
+            result = self.supabase.table("daily_themes").select("*").eq(
                 "is_active", True
             ).order("priority", desc=True).execute()
 

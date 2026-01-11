@@ -570,17 +570,22 @@ DAILY_METRICS_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
-# daily_themes 表
+# daily_themes 表 (also supports holiday themes)
 DAILY_THEMES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'theme_id',
+    'name': 'name',
     'title': 'title',
     'description': 'description',
+    'is_active': 'is_active',
+    'priority': 'priority',
     'date': 'date',
+    'date_rule': 'date_rule',
     'thumbnail_url': 'thumbnail_url',
     'preview_urls': 'preview_urls',
     'featured_asset_ids': 'featured_asset_ids',
     'recommended_categories': 'recommended_categories',
     'tags': 'tags',
+    'theme_config': 'theme_config',
     'status': 'status',
     'metadata': 'metadata',
     'created_at': 'created_at',
