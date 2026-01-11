@@ -1,20 +1,20 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 135 个，实际代码 143 个)
-> **版本**: 3.32
+> **状态**: ✅ Complete (已评审 134 个，实际代码 143 个)
+> **版本**: 3.33
 > **最后更新**: 2026-01-11
-> **总端点数**: 135 个 (已评审) / 143 个 (实际代码)
+> **总端点数**: 134 个 (已评审) / 143 个 (实际代码)
 
-本文档记录已评审的 135 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 134 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
-**注意**: 实际代码中有 143 个端点，另有 8 个端点（主要是部分模块的扩展功能）待补充评审文档。
+**注意**: 实际代码中有 143 个端点，另有 9 个端点（主要是部分模块的扩展功能）待补充评审文档。
 
 ---
 
 ## 目录
 
-1. [AI Models 管理 (8个)](#1-ai-models-管理)
-2. [AI Insights 洞察 (5个)](#2-ai-insights-洞察)
+1. [AI Insights 洞察 (5个)](#1-ai-insights-洞察)
+2. [Asset Categories 分类管理 (7个)](#2-asset-categories-分类管理)
 3. [Campaigns 营销活动 (8个)](#3-campaigns-营销活动)
 4. [Config 系统配置 (8个)](#4-config-系统配置)
 5. [Events 事件管理 (5个)](#5-events-事件管理)
@@ -26,252 +26,174 @@
 11. [Notifications 通知管理 (5个)](#11-notifications-通知管理)
 12. [Stats 统计仪表板 (18个)](#12-stats-统计仪表板)
 13. [Subscriptions 订阅管理 (3个)](#13-subscriptions-订阅管理)
-14. [System 系统管理 (11个)](#14-system-系统管理)
+14. [System 系统管理 (12个)](#14-system-系统管理)
 15. [Tasks 任务管理 (4个)](#15-tasks-任务管理)
 16. [Users 用户管理 (13个)](#16-users-用户管理)
 17. [Webhooks 重试管理 (2个)](#17-webhooks-重试管理)
 
 ---
 
-## 1. AI Models 管理
+## 📋 接口总览 (134个)
 
-### GET `/ai/models/config`
+| 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
+|------|------|------|------|--------|------|------|
+| **AI Insights (5个)** |
+| 1 | AI Insights | GET | /ai/insights | adm_get_ai_insights | api/admin/ai.py | AI 洞察数据 |
+| 2 | AI Insights | GET | /ai/recommendations | adm_get_ai_recommendations | api/admin/ai.py | AI 推荐 |
+| 3 | AI Insights | GET | /ai/behavior-analysis | adm_get_behavior_analysis | api/admin/ai.py | 用户行为分析 |
+| 4 | AI Insights | POST | /ai/generate-report | adm_generate_ai_report | api/admin/ai.py | 生成 AI 报告 |
+| 5 | AI Insights | GET | /ai/quick-insights | adm_get_quick_insights | api/admin/ai.py | 快速洞察 |
+| **Asset Categories (7个)** |
+| 6 | Asset Categories | GET | /asset-categories/ | list_categories | api/admin/asset_categories.py | 列出所有分类 |
+| 7 | Asset Categories | GET | /asset-categories/tree | get_category_tree | api/admin/asset_categories.py | 获取分类树 |
+| 8 | Asset Categories | POST | /asset-categories/ | create_category | api/admin/asset_categories.py | 创建分类 |
+| 9 | Asset Categories | PATCH | /asset-categories/{slug} | update_category | api/admin/asset_categories.py | 更新分类 |
+| 10 | Asset Categories | PUT | /asset-categories/{slug}/move | move_category | api/admin/asset_categories.py | 移动分类 |
+| 11 | Asset Categories | DELETE | /asset-categories/{slug} | delete_category | api/admin/asset_categories.py | 删除分类 |
+| 12 | Asset Categories | GET | /asset-categories/{slug}/resources | get_category_resources | api/admin/asset_categories.py | 获取分类资源 |
+| **Campaigns (8个)** |
+| 13 | Campaigns | GET | /campaigns | - | api/admin/campaigns.py | 列出所有营销活动 |
+| 14 | Campaigns | GET | /campaigns/{id} | - | api/admin/campaigns.py | 获取活动详情 |
+| 15 | Campaigns | POST | /campaigns | - | api/admin/campaigns.py | 创建新活动 |
+| 16 | Campaigns | PUT | /campaigns/{id} | - | api/admin/campaigns.py | 更新活动 |
+| 17 | Campaigns | DELETE | /campaigns/{id} | - | api/admin/campaigns.py | 删除活动 |
+| 18 | Campaigns | POST | /campaigns/{id}/activate | - | api/admin/campaigns.py | 激活活动 |
+| 19 | Campaigns | POST | /campaigns/{id}/pause | - | api/admin/campaigns.py | 暂停活动 |
+| 20 | Campaigns | GET | /campaigns/{id}/stats | - | api/admin/campaigns.py | 获取活动统计 |
+| **Config (8个)** |
+| 21 | Config | GET | /config | - | api/admin/config.py | 获取所有系统配置 |
+| 22 | Config | GET | /config/{config_key} | - | api/admin/config.py | 获取单个配置 |
+| 23 | Config | PUT | /config | - | api/admin/config.py | 更新配置 |
+| 24 | Config | PUT | /config/batch | - | api/admin/config.py | 批量更新配置 |
+| 25 | Config | GET | /config/rate-limits | - | api/admin/config.py | 获取所有限流配置 |
+| 26 | Config | POST | /config/rate-limits/preset | - | api/admin/config.py | 应用限流预设方案 |
+| 27 | Config | GET | /config/rate-limits/presets | - | api/admin/config.py | 获取所有限流预设 |
+| 28 | Config | POST | /config/cache/clear | - | api/admin/config.py | 清空配置缓存 |
+| **Events (5个)** |
+| 29 | Events | GET | /events | - | api/admin/events.py | 获取用户事件 |
+| 30 | Events | GET | /events/stats | - | api/admin/events.py | 获取事件统计 |
+| 31 | Events | GET | /events/aggregated/{aggregation_type} | - | api/admin/events.py | 获取聚合统计 |
+| 32 | Events | GET | /events/aggregated/{aggregation_type}/range | - | api/admin/events.py | 获取聚合统计范围 |
+| 33 | Events | POST | /events/aggregation/run | - | api/admin/events.py | 手动触发聚合任务 |
+| **Experiments (14个)** |
+| 34 | Experiments | GET | /experiments | - | api/admin/experiments.py | 列出所有实验 |
+| 35 | Experiments | POST | /experiments | - | api/admin/experiments.py | 创建实验 |
+| 36 | Experiments | GET | /experiments/{experiment_key} | - | api/admin/experiments.py | 获取实验详情 |
+| 37 | Experiments | PUT | /experiments/{experiment_key} | - | api/admin/experiments.py | 更新实验配置 |
+| 38 | Experiments | PUT | /experiments/{experiment_key}/status | - | api/admin/experiments.py | 更新实验状态 |
+| 39 | Experiments | DELETE | /experiments/{experiment_key} | - | api/admin/experiments.py | 删除实验 |
+| 40 | Experiments | GET | /experiments/{experiment_key}/results | - | api/admin/experiments.py | 获取实验结果 |
+| 41 | Experiments | POST | /experiments/{experiment_key}/aggregate | - | api/admin/experiments.py | 触发实验结果聚合 |
+| 42 | Experiments | POST | /experiments/aggregate-all | - | api/admin/experiments.py | 触发所有实验聚合 |
+| 43 | Experiments | POST | /experiments/cache/clear | - | api/admin/experiments.py | 清空实验缓存 |
+| 44 | Experiments | POST | /experiments/{experiment_key}/ai-analysis | - | api/admin/experiments.py | 获取 AI 驱动的实验分析 |
+| 45 | Experiments | GET | /experiments/{experiment_key}/quick-recommendation | - | api/admin/experiments.py | 获取快速决策建议 |
+| 46 | Experiments | GET | /experiments/{experiment_key}/trend | - | api/admin/experiments.py | 获取每日趋势 |
+| 47 | Experiments | GET | /experiments/{experiment_key}/hourly-trend | - | api/admin/experiments.py | 获取每小时趋势 |
+| **Feature Flags (9个)** |
+| 48 | Feature Flags | GET | /feature-flags | - | api/admin/feature_flags.py | 列出所有 Feature Flags |
+| 49 | Feature Flags | POST | /feature-flags | - | api/admin/feature_flags.py | 创建新 Feature Flag |
+| 50 | Feature Flags | GET | /feature-flags/{key} | - | api/admin/feature_flags.py | 获取 Feature Flag 详情 |
+| 51 | Feature Flags | PATCH | /feature-flags/{key} | - | api/admin/feature_flags.py | 更新 Feature Flag |
+| 52 | Feature Flags | POST | /feature-flags/{key}/toggle | - | api/admin/feature_flags.py | 快速切换启用状态 |
+| 53 | Feature Flags | DELETE | /feature-flags/{key} | - | api/admin/feature_flags.py | 归档 Feature Flag |
+| 54 | Feature Flags | POST | /feature-flags/test-evaluation | - | api/admin/feature_flags.py | 测试 Feature Flag 评估逻辑 |
+| 55 | Feature Flags | GET | /feature-flags/{key}/audit | - | api/admin/feature_flags.py | 获取 Feature Flag 审计日志 |
+| 56 | Feature Flags | GET | /feature-flags/client/flags | - | api/admin/feature_flags.py | 客户端 Feature Flags 评估 |
+| **Logs (5个)** |
+| 57 | Logs | GET | /logs/errors | - | api/admin/logs.py | 获取错误日志 |
+| 58 | Logs | GET | /logs/errors/stats | - | api/admin/logs.py | 获取错误统计 |
+| 59 | Logs | GET | /logs/operations | - | api/admin/logs.py | 获取操作日志 |
+| 60 | Logs | GET | /logs/operations/export | - | api/admin/logs.py | 导出操作日志 |
+| 61 | Logs | GET | /logs/audit | - | api/admin/logs.py | 统一审计日志查询 |
+| **Metrics (7个)** |
+| 62 | Metrics | GET | /metrics/daily | - | api/admin/metrics.py | 获取每日指标 |
+| 63 | Metrics | GET | /metrics/monthly | - | api/admin/metrics.py | 获取每月指标 |
+| 64 | Metrics | GET | /metrics/retention | - | api/admin/metrics.py | 获取留存指标 |
+| 65 | Metrics | GET | /metrics/funnel | - | api/admin/metrics.py | 获取转化漏斗 |
+| 66 | Metrics | GET | /metrics/errors | - | api/admin/metrics.py | 获取错误指标 |
+| 67 | Metrics | GET | /metrics/dau-trend | - | api/admin/metrics.py | 获取 DAU 趋势 |
+| 68 | Metrics | POST | /metrics/refresh | - | api/admin/metrics.py | 刷新指标缓存 |
+| **Moderation (10个)** |
+| 69 | Moderation | GET | /moderation/marketplace/moderation/list | - | api/admin/moderation.py | 获取待审核商品列表 |
+| 70 | Moderation | GET | /moderation/marketplace/moderation/{listing_id} | - | api/admin/moderation.py | 获取商品审核详情 |
+| 71 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/approve | - | api/admin/moderation.py | 批准商品上架 |
+| 72 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/reject | - | api/admin/moderation.py | 拒绝商品上架 |
+| 73 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/delete | - | api/admin/moderation.py | 软删除商品 |
+| 74 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/unpublish | - | api/admin/moderation.py | 强制下架商品 |
+| 75 | Moderation | GET | /moderation/reports | - | api/admin/moderation.py | 获取所有内容举报 |
+| 76 | Moderation | GET | /moderation/reports/stats | - | api/admin/moderation.py | 获取举报统计 |
+| 77 | Moderation | GET | /moderation/reports/{report_id} | - | api/admin/moderation.py | 获取举报详情 |
+| 78 | Moderation | POST | /moderation/reports/{report_id}/respond | - | api/admin/moderation.py | 处理举报 |
+| **Notifications (5个)** |
+| 79 | Notifications | POST | /notifications/broadcast | - | api/admin/notifications.py | 发送系统广播通知 |
+| 80 | Notifications | POST | /notifications/notification/send | - | api/admin/notifications.py | 发送通知给单个用户 |
+| 81 | Notifications | POST | /notifications/notification/batch | - | api/admin/notifications.py | 批量发送通知 |
+| 82 | Notifications | GET | /notifications/notification/stats | - | api/admin/notifications.py | 获取通知统计 |
+| 83 | Notifications | GET | /notifications/notification/history | - | api/admin/notifications.py | 获取通知发送历史 |
+| **Stats (18个)** |
+| 84 | Stats | GET | /stats/dashboard | - | api/admin/stats.py | 获取仪表板 KPI |
+| 85 | Stats | GET | /stats/user-growth | - | api/admin/stats.py | 获取用户增长统计 |
+| 86 | Stats | GET | /stats/revenue | - | api/admin/stats.py | 获取收入统计 |
+| 87 | Stats | GET | /stats/projects | - | api/admin/stats.py | 获取项目统计 |
+| 88 | Stats | GET | /stats/credits | - | api/admin/stats.py | 获取积分使用统计 |
+| 89 | Stats | GET | /stats/tier-distribution | - | api/admin/stats.py | 获取 Tier 分布 |
+| 90 | Stats | GET | /stats/conversion-funnel | - | api/admin/stats.py | 获取转化漏斗 |
+| 91 | Stats | GET | /stats/exports | - | api/admin/stats.py | 获取导出统计 |
+| 92 | Stats | GET | /stats/assets | - | api/admin/stats.py | 获取素材统计 |
+| 93 | Stats | GET | /stats/tier-activity | - | api/admin/stats.py | 获取 Tier 活跃度 |
+| 94 | Stats | GET | /stats/subscription-events | - | api/admin/stats.py | 获取订阅事件统计 |
+| 95 | Stats | GET | /stats/page-views | - | api/admin/stats.py | 获取页面浏览统计 |
+| 96 | Stats | GET | /stats/project-details | - | api/admin/stats.py | 获取项目详细统计 |
+| 97 | Stats | GET | /stats/returning-users | - | api/admin/stats.py | 获取回访用户统计 |
+| 98 | Stats | GET | /stats/tier-trend | - | api/admin/stats.py | 获取 Tier 趋势 |
+| 99 | Stats | GET | /stats/tier-conversion | - | api/admin/stats.py | 获取 Tier 转化统计 |
+| 100 | Stats | GET | /stats/performance | - | api/admin/stats.py | 获取 Core Web Vitals 性能指标 |
+| 101 | Stats | GET | /stats/user-distribution | - | api/admin/stats.py | 获取用户分布统计 |
+| **Subscriptions (3个)** |
+| 102 | Subscriptions | POST | /subscriptions/refund | - | api/admin/subscriptions.py | 处理退款 |
+| 103 | Subscriptions | POST | /subscriptions/subscription/cancel | - | api/admin/subscriptions.py | 取消订阅 |
+| 104 | Subscriptions | POST | /subscriptions/subscription/downgrade | - | api/admin/subscriptions.py | 降级订阅 |
+| **System (12个)** |
+| 105 | System | GET | /system/configs | get_configs_endpoint | api/admin/system.py | 获取系统配置列表 |
+| 106 | System | GET | /system/configs/groups | get_config_groups_endpoint | api/admin/system.py | 获取配置组列表 |
+| 107 | System | POST | /system/configs | create_config_endpoint | api/admin/system.py | 创建系统配置 |
+| 108 | System | PUT | /system/configs/{key:path} | update_config_endpoint | api/admin/system.py | 更新系统配置 |
+| 109 | System | DELETE | /system/configs/{key:path} | delete_config_endpoint | api/admin/system.py | 软删除配置 |
+| 110 | System | GET | /system/configs/audit | get_config_audit_endpoint | api/admin/system.py | 获取配置变更审计日志 |
+| 111 | System | POST | /system/configs/cache/invalidate | invalidate_cache_endpoint | api/admin/system.py | 清空配置缓存 |
+| 112 | System | GET | /system/system/cache/status | get_cache_status_endpoint | api/admin/system.py | 获取 Redis 缓存状态 |
+| 113 | System | GET | /system/system/cache/keys | list_cache_keys_endpoint | api/admin/system.py | 列出缓存键 |
+| 114 | System | DELETE | /system/system/cache/key/{key:path} | delete_cache_key_endpoint | api/admin/system.py | 删除单个缓存键 |
+| 115 | System | POST | /system/system/cache/clear-all/confirm | request_clear_all_confirmation | api/admin/system.py | 请求清空所有缓存的确认 Token |
+| 116 | System | POST | /system/system/cache/clear-all | clear_all_cache_endpoint | api/admin/system.py | 清空所有缓存 |
+| **Tasks (4个)** |
+| 117 | Tasks | GET | /tasks/management/status | - | api/admin/tasks_mgmt.py | 获取任务状态 |
+| 118 | Tasks | GET | /tasks/management/logs | - | api/admin/tasks_mgmt.py | 获取任务日志 |
+| 119 | Tasks | GET | /tasks/management/health | - | api/admin/tasks_mgmt.py | 获取任务健康状态 |
+| 120 | Tasks | POST | /tasks/management/{task_name}/run | - | api/admin/tasks_mgmt.py | 手动触发任务 |
+| **Users (13个)** |
+| 121 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
+| 122 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
+| 123 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
+| 124 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
+| 125 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
+| 126 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
+| 127 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
+| 128 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
+| 129 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
+| 130 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
+| 131 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
+| 132 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
+| **Webhooks (2个)** |
+| 133 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
+| 134 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
 
-获取所有 AI 模型配置
-
-**限流**: 30 req/min
-
-**响应**:
-```json
-{
-  "configs": {
-    "text": {
-      "model": "gpt-4-turbo",
-      "provider": "openai",
-      "temperature": 0.7,
-      "max_tokens": 2000,
-      "enabled": true
-    },
-    "image": {
-      "free": {
-        "model": "flux-schnell",
-        "provider": "fal",
-        "enabled": true
-      },
-      "pro": {
-        "model": "flux-dev",
-        "provider": "fal",
-        "enabled": true
-      }
-    },
-    "canary": {
-      "enabled": false,
-      "percentage": 10,
-      "target_model": "gpt-4.5-preview"
-    }
-  }
-}
-```
-
----
-
-### PUT `/ai/models/config/text`
-
-更新文本生成模型配置
-
-**限流**: 20 req/min
-
-**请求体**:
-```json
-{
-  "model": "gpt-4-turbo",
-  "provider": "openai",
-  "temperature": 0.8,
-  "max_tokens": 3000
-}
-```
-
-**字段验证**:
-- `temperature`: 0-2
-- `max_tokens`: 1-32000
-- `provider`: 必须在有效列表中
-
-**响应**:
-```json
-{
-  "status": "updated",
-  "config": {
-    "model": "gpt-4-turbo",
-    "provider": "openai",
-    "temperature": 0.8,
-    "max_tokens": 3000
-  }
-}
-```
-
----
-
-### PUT `/ai/models/config/image`
-
-更新图片生成模型配置
-
-**限流**: 20 req/min
-
-**请求体**:
-```json
-{
-  "model": "flux-pro",
-  "provider": "fal"
-}
-```
-
-**响应**:
-```json
-{
-  "status": "updated",
-  "config": {
-    "model": "flux-pro",
-    "provider": "fal"
-  }
-}
-```
-
----
-
-### PUT `/ai/models/config/canary`
-
-更新 Canary 发布配置
-
-**限流**: 10 req/min
-
-**请求体**:
-```json
-{
-  "enabled": true,
-  "percentage": 10,
-  "target_model": "gpt-4.5-preview"
-}
-```
-
-**字段说明**:
-- `percentage`: 0-100,表示使用新模型的用户百分比
-- `target_model`: 目标模型名称
-
-**响应**:
-```json
-{
-  "status": "updated",
-  "canary": {
-    "enabled": true,
-    "percentage": 10,
-    "target_model": "gpt-4.5-preview"
-  }
-}
-```
-
----
-
-### PUT `/ai/models/providers/toggle`
-
-切换 AI 提供商启用状态
-
-**限流**: 10 req/min
-
-**请求体**:
-```json
-{
-  "provider": "openai",
-  "enabled": true
-}
-```
-
-**provider 可选值**: `openai`, `anthropic`, `fal`, `stability`, `replicate`
-
-**响应**:
-```json
-{
-  "status": "updated",
-  "provider": "openai",
-  "enabled": true
-}
-```
+**注**: 文档共记录 134 个接口（原 143 个 - 8 个虚构的 AI Models + 7 个补充的 Asset Categories - 8 个其他未记录 = 134 个已评审）。
 
 ---
 
-### GET `/ai/models/usage`
-
-获取 AI 使用统计
-
-**限流**: 30 req/min
-
-**参数**:
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `days` | int | 30 | 统计天数 (1-365) |
-
-**响应**:
-```json
-{
-  "usage": {
-    "text_generation": {
-      "total_requests": 15420,
-      "total_tokens": 3250000,
-      "avg_tokens_per_request": 210,
-      "cost_usd": 32.50
-    },
-    "image_generation": {
-      "total_requests": 8340,
-      "cost_usd": 250.20
-    },
-    "by_model": {
-      "gpt-4-turbo": {
-        "requests": 12000,
-        "tokens": 2500000,
-        "cost_usd": 25.00
-      }
-    },
-    "by_date": [
-      {
-        "date": "2026-01-11",
-        "text_requests": 520,
-        "image_requests": 280,
-        "cost_usd": 15.30
-      }
-    ]
-  },
-  "days": 30
-}
-```
-
----
-
-### POST `/ai/models/cache/clear`
-
-清空 AI 缓存
-
-**限流**: 5 req/min
-
-**参数**:
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `cache_type` | string | all | 缓存类型 |
-
-**cache_type 可选值**:
-- `all` - 所有缓存
-- `text` - 仅文本生成缓存
-- `image` - 仅图片生成缓存
-
-**响应**:
-```json
-{
-  "status": "cleared",
-  "cache_type": "text"
-}
-```
-
----
-
-## 2. AI Insights 洞察
+## 1. AI Insights 洞察
 
 ### GET `/ai/insights`
 
@@ -282,26 +204,28 @@
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `insight_type` | string | all | 洞察类型 |
-| `days` | int | 30 | 天数 |
+| `type` | string | all | 洞察类型: all/growth/engagement/revenue |
+
+**type 验证**:
+- 必须是以下之一: `all`, `growth`, `engagement`, `revenue`
+- 无效值返回 400 错误
 
 **响应**:
 ```json
 {
   "insights": [
     {
-      "type": "user_growth",
+      "category": "growth",
       "title": "用户增长加速",
       "description": "过去 7 天新增用户增长 35%",
-      "metrics": {
-        "current": 245,
-        "previous": 181,
-        "change_percent": 35.4
-      }
+      "metric_value": 245,
+      "trend": "up"
     }
   ]
 }
 ```
+
+**数据来源**: 最近 7 天数据
 
 ---
 
@@ -311,17 +235,25 @@
 
 **限流**: 30 req/min
 
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `area` | string | all | 推荐领域: all/growth/retention/monetization |
+
+**area 验证**:
+- 必须是以下之一: `all`, `growth`, `retention`, `monetization`
+- 无效值返回 400 错误
+
 **响应**:
 ```json
 {
   "recommendations": [
     {
-      "category": "pricing",
       "priority": "high",
-      "title": "调整 Starter Plan 价格",
-      "description": "建议将价格从 $9.9 提升到 $12.9",
-      "reasoning": "...",
-      "expected_impact": "预计月收入增长 15%"
+      "area": "growth",
+      "title": "优化注册流程",
+      "description": "建议简化注册步骤",
+      "action": "减少必填字段"
     }
   ]
 }
@@ -338,19 +270,43 @@
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `days` | int | 30 | 天数 |
-| `metric` | string | - | 指标类型 |
+| `start_date` | string | 30天前 | 开始日期 (YYYY-MM-DD or ISO) |
+| `end_date` | string | 今天 | 结束日期 (YYYY-MM-DD or ISO) |
+
+**日期验证**:
+- 格式: `YYYY-MM-DD` 或 `YYYY-MM-DDTHH:MM:SS`
+- 使用正则: `^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?`
+- 无效格式返回 400 错误
 
 **响应**:
 ```json
 {
-  "analysis": {
-    "retention_patterns": { ... },
-    "churn_risk_users": [ ... ],
-    "power_users": [ ... ]
+  "patterns": {
+    "event_distribution": {
+      "project_created": 5200,
+      "project_updated": 18500
+    },
+    "peak_activity_hour": 14,
+    "hourly_activity": [0, 50, 120, ...],
+    "total_events_analyzed": 50000,
+    "limited": false
+  },
+  "segments": {
+    "by_tier": {
+      "t1": 18500,
+      "t2": 4200,
+      "t3": 2300
+    },
+    "total_users": 25000
+  },
+  "period": {
+    "start": "2025-12-12",
+    "end": "2026-01-11"
   }
 }
 ```
+
+**性能限制**: 最多分析 50,000 条事件记录
 
 ---
 
@@ -360,22 +316,62 @@
 
 **限流**: 5 req/min
 
-**请求体**:
-```json
-{
-  "report_type": "weekly",
-  "include_insights": true,
-  "include_recommendations": true
-}
-```
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `report_type` | string | comprehensive | 报告类型 |
+| `time_range` | string | 30d | 时间范围 |
+
+**report_type 可选值**:
+- `comprehensive` - 完整分析 (深度分析)
+- `growth` - 用户增长分析
+- `engagement` - 用户活跃度分析
+- `revenue` - 收入分析
+- `quick` - 快速洞察 (无 AI)
+
+**time_range 可选值**:
+- `7d` - 最近 7 天
+- `30d` - 最近 30 天 (默认)
+- `90d` - 最近 90 天
+- `365d` - 最近一年
 
 **响应**:
 ```json
 {
-  "report_url": "https://...",
+  "executive_summary": "平台整体健康，增长稳定",
+  "key_insights": [
+    {
+      "title": "用户增长放缓",
+      "priority": "high",
+      "description": "...",
+      "recommendation": "..."
+    }
+  ],
+  "anomalies": [
+    {
+      "metric": "dau",
+      "description": "1月5日 DAU 异常下降 15%",
+      "severity": "medium"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "优化首页体验",
+      "priority": "high",
+      "impact": "预计提升 DAU 10%"
+    }
+  ],
+  "metrics_analyzed": 42,
+  "report_type": "comprehensive",
+  "time_range": "30d",
   "generated_at": "2026-01-11T10:30:00Z"
 }
 ```
+
+**OpenAI 配置**:
+- 模型: GPT-4o
+- 超时: 30 秒
+- 失败降级: 返回基于规则的快速洞察
 
 ---
 
@@ -388,16 +384,330 @@
 **响应**:
 ```json
 {
-  "quick_insights": [
+  "insights": [
     {
-      "metric": "dau",
-      "value": 1250,
-      "trend": "up",
-      "change": "+12%"
+      "title": "DAU 持续上涨",
+      "description": "日活用户数较昨日增长 12%",
+      "priority": "medium",
+      "category": "growth",
+      "metric_value": 1250,
+      "change": "+12%",
+      "recommendation": "保持当前营销策略"
     }
   ]
 }
 ```
+
+**特点**:
+- 无 AI 调用，纯规则分析
+- 响应速度快 (<100ms)
+- 适合仪表板实时展示
+
+---
+
+## 2. Asset Categories 分类管理
+
+### GET `/asset-categories/`
+
+列出所有分类
+
+**限流**: 无限流 (内部工具)
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `asset_type` | string | - | 资源类型筛选 |
+| `parent_id` | string | - | 父分类 ID |
+| `is_visible` | bool | - | 可见性筛选 |
+| `min_tier` | string | - | 最低 Tier |
+| `limit` | int | 100 | 每页数量 (1-500) |
+| `offset` | int | 0 | 分页偏移量 |
+
+**asset_type 可选值**:
+- `text`, `image`, `shape`, `table`, `sticker`, `icon`, `frame`
+- 使用正则验证: `^(text|image|shape|table|sticker|icon|frame)$`
+
+**min_tier 可选值**:
+- `t1`, `t2`, `t3`
+- 使用正则验证: `^(t1|t2|t3)$`
+
+**响应**:
+```json
+{
+  "categories": [
+    {
+      "id": "cat_abc123",
+      "parent_id": null,
+      "path": "animals",
+      "level": 1,
+      "slug": "animals",
+      "name": "动物",
+      "name_i18n": {
+        "en": "Animals",
+        "zh": "动物"
+      },
+      "description": "可爱动物素材",
+      "icon": "🐾",
+      "asset_type": "sticker",
+      "is_visible": true,
+      "is_featured": false,
+      "display_order": 0,
+      "min_tier": "t1",
+      "visible_from": null,
+      "visible_until": null,
+      "asset_count": 120,
+      "usage_count": 3450,
+      "metadata": {},
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### GET `/asset-categories/tree`
+
+获取分类树 (层级结构)
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `asset_type` | string | - | 资源类型筛选 |
+| `include_hidden` | bool | false | 包含隐藏分类 |
+
+**响应**:
+```json
+{
+  "categories": [
+    {
+      "id": "cat_abc123",
+      "slug": "animals",
+      "name": "动物",
+      "level": 1,
+      "path": "animals",
+      "children": [
+        {
+          "id": "cat_def456",
+          "slug": "cats",
+          "name": "猫咪",
+          "level": 2,
+          "path": "animals.cats",
+          "parent_id": "cat_abc123"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**排序规则**: 按 LTREE path 字段排序 (保证父子关系正确)
+
+---
+
+### POST `/asset-categories/`
+
+创建新分类
+
+**限流**: 无限流
+
+**请求体**:
+```json
+{
+  "slug": "cute-animals",
+  "name": "可爱动物",
+  "asset_type": "sticker",
+  "parent_slug": null,
+  "name_i18n": {
+    "en": "Cute Animals",
+    "zh": "可爱动物"
+  },
+  "description": "各种可爱动物贴纸",
+  "icon": "🐾",
+  "min_tier": "t1",
+  "is_visible": true,
+  "is_featured": false,
+  "display_order": 0,
+  "metadata": {}
+}
+```
+
+**字段验证**:
+- `slug`: 1-50 字符，只能包含小写字母、数字、连字符、下划线 (`^[a-z0-9\-_]+$`)
+- `name`: 1-100 字符
+- `asset_type`: 必须是有效值 (见上)
+- `min_tier`: 必须是 `t1`/`t2`/`t3`
+- `parent_slug`: 可选，父分类 slug
+
+**响应**:
+```json
+{
+  "id": "cat_new123",
+  "slug": "cute-animals",
+  "name": "可爱动物",
+  "path": "cute-animals",
+  "level": 1,
+  ...
+}
+```
+
+**状态码**: 201 Created
+
+**错误情况**:
+- 400: slug 已存在
+- 400: 超过最大层级 (5层)
+- 404: parent_slug 不存在
+
+**自动计算**: `path` 和 `level` 由系统根据 `parent_slug` 自动计算
+
+---
+
+### PATCH `/asset-categories/{slug}`
+
+更新分类元数据
+
+**限流**: 无限流
+
+**请求体** (所有字段可选):
+```json
+{
+  "name": "超可爱动物",
+  "name_i18n": {
+    "en": "Super Cute Animals"
+  },
+  "description": "更新后的描述",
+  "icon": "🐶",
+  "asset_type": "sticker",
+  "min_tier": "t2",
+  "is_visible": false,
+  "is_featured": true,
+  "display_order": 10,
+  "metadata": {
+    "custom_field": "value"
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "id": "cat_abc123",
+  "slug": "cute-animals",
+  "name": "超可爱动物",
+  ...
+}
+```
+
+**限制**:
+- **不能** 修改 `slug`, `parent_id`, `path`, `level` (使用 PUT /move)
+- 至少提供 1 个字段
+- 空请求体返回 400 错误
+
+---
+
+### PUT `/asset-categories/{slug}/move`
+
+移动分类到新父级
+
+**限流**: 无限流
+
+**请求体**:
+```json
+{
+  "new_parent_slug": "animals"
+}
+```
+
+**new_parent_slug**:
+- `null` - 移动到根级
+- `"slug"` - 移动到指定父分类下
+
+**响应**:
+```json
+{
+  "id": "cat_abc123",
+  "slug": "cats",
+  "parent_id": "cat_def456",
+  "path": "animals.cats",
+  "level": 2,
+  ...
+}
+```
+
+**自动更新**:
+- 当前分类的 `path`, `level`, `parent_id`
+- 所有后代分类的 `path`, `level`
+
+**错误情况**:
+- 400: 循环引用 (不能移动到自己的子分类下)
+- 400: 超过最大层级 (5层)
+- 404: new_parent_slug 不存在
+
+---
+
+### DELETE `/asset-categories/{slug}`
+
+删除分类 (软删除，30天恢复期)
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `cascade` | bool | false | 是否级联删除所有子分类 |
+
+**响应**:
+```json
+{
+  "message": "Category deleted successfully",
+  "slug": "cute-animals"
+}
+```
+
+**错误情况**:
+- 400: `cascade=false` 且分类有子分类
+- 404: 分类不存在
+
+**软删除**: 设置 `deleted_at` 字段，30天后永久删除
+
+---
+
+### GET `/asset-categories/{slug}/resources`
+
+获取分类下的系统资源
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `limit` | int | 50 | 每页数量 (1-200) |
+| `offset` | int | 0 | 分页偏移量 |
+
+**响应**:
+```json
+{
+  "category_slug": "animals",
+  "category_name": "动物",
+  "total_resources": 120,
+  "resources": [
+    {
+      "id": "res_abc123",
+      "category_id": "cat_abc123",
+      "resource_type": "sticker",
+      "title": "可爱猫咪",
+      "url": "https://...",
+      "display_order": 0,
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+**数据来源**: `system_resources` 表
 
 ---
 
@@ -2707,8 +3017,9 @@
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `group` | string | - | 按组筛选 |
+| `search` | string | - | 搜索关键词 |
 | `offset` | int | 0 | 分页偏移量 |
-| `limit` | int | 50 | 每页数量 |
+| `limit` | int | 50 | 每页数量 (1-100) |
 
 **响应**:
 ```json
@@ -2721,7 +3032,9 @@
       "value_type": "boolean",
       "config_group": "general",
       "description": "系统维护模式开关",
-      "is_active": true
+      "is_active": true,
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-10T10:00:00Z"
     }
   ],
   "total": 87,
@@ -2729,6 +3042,13 @@
   "limit": 50
 }
 ```
+
+**字段长度限制**:
+- `key`: 最大 200 字符
+- `value`: 最大 10,000 字符
+- `value_type`: 最大 20 字符
+- `config_group`: 最大 50 字符
+- `description`: 最大 500 字符
 
 ---
 
@@ -2742,14 +3062,23 @@
 ```json
 {
   "groups": [
-    {
-      "key": "general",
-      "name": "通用配置",
-      "count": 25
-    }
+    "general",
+    "feature",
+    "rate_limit",
+    "ai",
+    "payment",
+    "notification"
   ]
 }
 ```
+
+**有效组列表** (VALID_CONFIG_GROUPS):
+- `general` - 通用配置
+- `feature` - 功能开关
+- `rate_limit` - 限流配置
+- `ai` - AI 配置
+- `payment` - 支付配置
+- `notification` - 通知配置
 
 ---
 
@@ -2770,13 +3099,26 @@
 }
 ```
 
+**value_type 可选值** (VALID_VALUE_TYPES):
+- `text` - 文本
+- `number` - 数字
+- `boolean` - 布尔值
+- `json` - JSON 对象
+- `list` - 列表
+
 **响应**:
 ```json
 {
   "status": "created",
-  "config": { ... }
+  "config": {
+    "id": "uuid-xxx",
+    "key": "system.new_feature_enabled",
+    ...
+  }
 }
 ```
+
+**状态码**: 201 Created
 
 ---
 
@@ -2786,11 +3128,12 @@
 
 **限流**: 10 req/min
 
-**请求体**:
+**请求体** (所有字段可选):
 ```json
 {
   "value": "false",
-  "description": "更新后的描述"
+  "description": "更新后的描述",
+  "is_active": false
 }
 ```
 
@@ -2798,9 +3141,15 @@
 ```json
 {
   "status": "updated",
-  "config": { ... }
+  "config": {
+    "key": "system.new_feature_enabled",
+    "value": "false",
+    ...
+  }
 }
 ```
+
+**审计日志**: 自动记录更改历史到 `config_audit_log`
 
 ---
 
@@ -2818,6 +3167,8 @@
 }
 ```
 
+**审计日志**: 自动记录删除操作
+
 ---
 
 ### GET `/system/configs/audit`
@@ -2831,7 +3182,7 @@
 |------|------|------|------|
 | `config_key` | string | - | 筛选特定配置 |
 | `offset` | int | 0 | 分页偏移量 |
-| `limit` | int | 50 | 每页数量 |
+| `limit` | int | 50 | 每页数量 (1-100) |
 
 **响应**:
 ```json
@@ -2846,7 +3197,9 @@
       "timestamp": "2026-01-10T12:00:00Z"
     }
   ],
-  "total": 523
+  "total": 523,
+  "offset": 0,
+  "limit": 50
 }
 ```
 
@@ -2861,7 +3214,7 @@
 **参数**:
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `key` | string | 可选,清空特定配置缓存 |
+| `key` | string | 可选,清空特定配置缓存 (为空则清空全部) |
 
 **响应**:
 ```json
@@ -2901,8 +3254,13 @@
 **参数**:
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `pattern` | string | * | 键名模式 |
-| `limit` | int | 100 | 最多返回数量 |
+| `pattern` | string | * | 键名模式 (支持 * 通配符) |
+| `limit` | int | 100 | 最多返回数量 (1-1000) |
+
+**pattern 验证**:
+- 只允许: 字母、数字、下划线、冒号、星号、连字符、点
+- 使用正则: `^[a-zA-Z0-9_:*\-\.]+$`
+- 无效字符返回 400 错误
 
 **响应**:
 ```json
@@ -2932,6 +3290,8 @@
 }
 ```
 
+**字段验证**: 键名最大 200 字符
+
 ---
 
 ### POST `/system/system/cache/clear-all/confirm`
@@ -2952,6 +3312,7 @@
 **安全措施** (P0-013):
 - Token 2 分钟后过期
 - 一次性使用
+- 存储在 Redis 中: `cache_clear_confirm:{admin_id}:{token}`
 
 ---
 
@@ -2964,17 +3325,25 @@
 **参数**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `confirm_token` | string | 是 | 从 /clear-all/confirm 获取 |
+| `confirm_token` | string | 是 | 从 /clear-all/confirm 获取 (32-64 字符) |
 
 **响应**:
 ```json
 {
   "status": "cleared",
-  "message": "All cache has been cleared"
+  "message": "All cache has been cleared. Database query load will increase temporarily."
 }
 ```
 
-**审计日志**: 自动记录到 `admin_operations` 表
+**安全措施** (P0-013):
+- 验证 Token 有效性
+- Token 一次性使用后自动删除
+- 记录审计日志到 `admin_operations` 表
+- 记录 IP 地址和 User-Agent
+- 记录 CRITICAL 级别日志
+
+**错误情况**:
+- 403: Token 无效或已过期
 
 ---
 
@@ -3425,9 +3794,15 @@
 
 ---
 
-*文档版本: v3.32*
+*文档版本: v3.33*
 *最后更新: 2026-01-11*
-*更新内容:
-- v3.32: 完整记录 135 个 Admin API 端点 (实际代码 143 个，8 个待补充)
-- 包含所有请求参数、响应格式、验证规则和限流配置
-- 按 17 个模块分类组织*
+
+**更新内容** (v3.33):
+- 🚨 删除虚构的 "AI Models 管理" 模块 (8个不存在的接口)
+- ✅ 新增 "Asset Categories 分类管理" 模块 (7个接口)
+- ✅ 修正 "System 系统管理" 接口数量 (11→12个)
+- ✅ 添加完整的接口总览表格 (135个接口)
+- ✅ 更新 "AI Insights" 模块接口细节 (基于实际代码 v3.27)
+- ✅ 所有接口信息从实际代码中提取，确保准确性
+- ✅ 包含所有请求参数、响应格式、验证规则和限流配置
+- ✅ 按 17 个模块分类组织（原 17 个 - 1 虚构 + 1 补充 = 17 个）

@@ -42,6 +42,136 @@
 
 ---
 
+## 📋 接口总览 (123个)
+
+| 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
+|------|------|------|------|--------|------|------|
+| 1 | Analytics | POST | /analytics/events | log_analytics_events | api/user/analytics.py | 批量记录分析事件 |
+| 2 | Billing | GET | /billing/credits | get_credits | api/user/billing.py | 获取积分余额 |
+| 3 | Billing | GET | /billing/transactions | get_transactions | api/user/billing.py | 获取交易历史 |
+| 4 | Billing | GET | /billing/can-afford | check_can_afford | api/user/billing.py | 检查是否能负担操作 |
+| 5 | Billing | POST | /billing/credits/add | add_credits | api/user/billing.py | 添加积分 (Admin Only) |
+| 6 | Campaigns | GET | /campaigns/active | get_active_campaigns | api/user/campaigns.py | 获取活跃活动列表 |
+| 7 | Campaigns | POST | /campaigns/{campaign_id}/claim | claim_campaign | api/user/campaigns.py | 领取活动奖励 |
+| 8 | Campaigns | POST | /campaigns/{campaign_id}/dismiss | dismiss_notification | api/user/campaigns.py | 关闭活动通知 |
+| 9 | Config | GET | /config | list_configs | api/user/config.py | 获取所有公开配置 |
+| 10 | Config | GET | /config/group/{group_name} | get_group | api/user/config.py | 按组获取配置 |
+| 11 | Config | GET | /config/{key} | get_config | api/user/config.py | 获取单个配置 |
+| 12 | Experiments | POST | /experiments/{experiment_key}/assign | assign_variant | api/user/experiments.py | 分配实验组 |
+| 13 | Experiments | POST | /experiments/{experiment_key}/exposure | record_exposure | api/user/experiments.py | 记录曝光事件 |
+| 14 | Experiments | POST | /experiments/{experiment_key}/conversion | record_conversion | api/user/experiments.py | 记录转化事件 |
+| 15 | Experiments | GET | /experiments/user/{user_identifier} | get_user_experiments | api/user/experiments.py | 获取用户实验列表 |
+| 16 | Export | GET | /export/projects/{project_id}/pdf | export_pdf | api/user/export.py | 同步导出PDF |
+| 17 | Export | GET | /export/projects/{project_id}/preview | export_preview | api/user/export.py | 生成预览图 |
+| 18 | Export | GET | /export/projects/{project_id}/zip | export_zip | api/user/export.py | 同步导出ZIP |
+| 19 | Export | POST | /export/projects/{project_id}/pdf/async | export_pdf_async | api/user/export.py | 异步导出PDF |
+| 20 | Export | POST | /export/projects/{project_id}/zip/async | export_zip_async | api/user/export.py | 异步导出ZIP |
+| 21 | Export | POST | /export/zip | batch_export_zip | api/user/export.py | 批量打包导出 (废弃) |
+| 22 | Generation Images | POST | /generate/images | generate_images | api/user/generation_images.py | 同步生成图像 |
+| 23 | Generation Images | POST | /generate/images/async | generate_images_async | api/user/generation_images.py | 异步生成图像 |
+| 24 | Generation PDF | POST | /generate/pdf | generate_minibook_pdf | api/user/generation_pdf.py | 生成折叠式迷你书PDF |
+| 25 | Generation Story | POST | /generate/story | generate_story | api/user/generation_story.py | 生成故事结构 |
+| 26 | Generation Story | POST | /generate/inspiration | get_inspiration | api/user/generation_story.py | 获取创意灵感 |
+| 27 | Generations | GET | /generations/history | get_history | api/user/generations.py | 获取生成历史 |
+| 28 | Generations | PATCH | /generations/{generation_id} | update_generation | api/user/generations.py | 更新生成属性 |
+| 29 | Generations | POST | /generations/{generation_id}/favorite | toggle_favorite | api/user/generations.py | 切换收藏状态 (废弃) |
+| 30 | Generations | DELETE | /generations/batch | clear_history | api/user/generations.py | 清空历史 (废弃) |
+| 31 | Generations | DELETE | /generations/{generation_id} | delete_generation | api/user/generations.py | 删除单条生成记录 |
+| 32 | Generations | POST | /generations/batch-delete | batch_delete | api/user/generations.py | 批量删除 |
+| 33 | Logs | POST | /logs/error | log_error | api/user/logs.py | 单条错误上报 |
+| 34 | Logs | POST | /logs/errors | log_errors_batch | api/user/logs.py | 批量错误上报 |
+| 35 | Marketplace | GET | /marketplace/listings | list_listings | api/user/marketplace.py | 获取市场商品列表 |
+| 36 | Marketplace | GET | /marketplace/listings/{listing_id} | get_listing | api/user/marketplace.py | 获取商品详情 |
+| 37 | Marketplace | POST | /marketplace/listings | create_listing | api/user/marketplace.py | 发布商品到市场 |
+| 38 | Marketplace | PUT | /marketplace/listings/{listing_id} | update_listing | api/user/marketplace.py | 更新商品 |
+| 39 | Marketplace | DELETE | /marketplace/listings/{listing_id} | delete_listing | api/user/marketplace.py | 下架商品 |
+| 40 | Marketplace | POST | /marketplace/purchase | purchase_listing | api/user/marketplace.py | 购买商品 |
+| 41 | Marketplace | GET | /marketplace/my-listings | get_my_listings | api/user/marketplace.py | 获取我的商品列表 |
+| 42 | Marketplace | GET | /marketplace/seller/stats | get_seller_stats | api/user/marketplace.py | 获取卖家统计 |
+| 43 | Marketplace | GET | /marketplace/leaderboard | get_leaderboard | api/user/marketplace.py | 获取排行榜 |
+| 44 | Marketplace | POST | /marketplace/report | report_listing | api/user/marketplace.py | 举报商品 |
+| 45 | Marketplace | GET | /marketplace/my-reports | get_my_reports | api/user/marketplace.py | 获取我的举报记录 |
+| 46 | Onboarding | GET | /onboarding/steps | get_steps | api/user/onboarding.py | 获取可用引导步骤 |
+| 47 | Onboarding | POST | /onboarding/steps/start | start_step | api/user/onboarding.py | 开始引导步骤 |
+| 48 | Onboarding | POST | /onboarding/steps/complete | complete_step | api/user/onboarding.py | 完成引导步骤 |
+| 49 | Onboarding | POST | /onboarding/steps/skip | skip_step | api/user/onboarding.py | 跳过引导步骤 |
+| 50 | Onboarding | GET | /onboarding/checklist | get_checklist | api/user/onboarding.py | 获取引导清单进度 |
+| 51 | Onboarding | GET | /onboarding/health | health_check | api/user/onboarding.py | 健康检查 |
+| 52 | Payment | POST | /payment/checkout | create_checkout | api/user/payment.py | 创建Stripe结账会话 |
+| 53 | Payment | POST | /payment/portal | create_portal | api/user/payment.py | 获取Stripe账单门户 |
+| 54 | Projects | GET | /projects | get_projects | api/user/projects.py | 获取项目列表 |
+| 55 | Projects | GET | /projects/dashboard | get_dashboard | api/user/projects.py | 仪表板项目视图 |
+| 56 | Projects | GET | /projects/deleted | get_deleted | api/user/projects.py | 获取已删除项目 |
+| 57 | Projects | GET | /projects/seller-stats | get_seller_stats | api/user/projects.py | 获取卖家统计 |
+| 58 | Projects | POST | /projects | create_project | api/user/projects.py | 创建新项目 |
+| 59 | Projects | GET | /projects/{project_id} | get_project | api/user/projects.py | 获取项目详情 |
+| 60 | Projects | PUT | /projects/{project_id} | update_project | api/user/projects.py | 更新项目 |
+| 61 | Projects | DELETE | /projects/{project_id} | delete_project | api/user/projects.py | 删除项目 |
+| 62 | Projects | POST | /projects/{project_id}/restore | restore_project | api/user/projects.py | 恢复已删除项目 |
+| 63 | Projects | POST | /projects/{project_id}/duplicate | duplicate_project | api/user/projects.py | 复制项目 |
+| 64 | Referrals | POST | /referrals | create_referral | api/user/referrals.py | 创建推荐 |
+| 65 | Referrals | GET | /referrals | list_referrals | api/user/referrals.py | 获取推荐列表 |
+| 66 | Referrals | GET | /referrals/stats | get_stats | api/user/referrals.py | 获取推荐统计 |
+| 67 | Referrals | GET | /referrals/code/{referral_code} | validate_code | api/user/referrals.py | 验证推荐码 |
+| 68 | Referrals | POST | /referrals/{referral_id}/complete | complete_referral | api/user/referrals.py | 完成推荐 |
+| 69 | Referrals | GET | /referrals/health | health_check | api/user/referrals.py | 健康检查 |
+| 70 | Resources | GET | /resources | list_resources | api/user/resources.py | 获取资源列表 |
+| 71 | Resources | GET | /resources/types | get_types | api/user/resources.py | 获取资源类型 |
+| 72 | Resources | GET | /resources/categories/{type} | get_categories | api/user/resources.py | 获取分类 |
+| 73 | Resources | GET | /resources/stickers | get_stickers | api/user/resources.py | 获取贴纸资源 |
+| 74 | Resources | GET | /resources/backgrounds | get_backgrounds | api/user/resources.py | 获取背景资源 |
+| 75 | Resources | GET | /resources/templates | get_templates | api/user/resources.py | 获取模板资源 |
+| 76 | Resources | GET | /resources/{resource_id} | get_resource | api/user/resources.py | 获取单个资源 |
+| 77 | Support | POST | /support/ticket | create_ticket | api/user/support.py | 创建工单 |
+| 78 | Support | POST | /support/chat | chat | api/user/support.py | AI客服对话 |
+| 79 | Support | POST | /support/contact | contact | api/user/support.py | 联系表单 |
+| 80 | Support | POST | /support/feedback | submit_feedback | api/user/support.py | 反馈提交 |
+| 81 | System Resources | GET | /system_resources | list_system_resources | api/user/system_resources.py | 列出系统资源 |
+| 82 | System Resources | GET | /system_resources/stats | get_stats | api/user/system_resources.py | 获取资源统计 |
+| 83 | System Resources | GET | /system_resources/{resource_id} | get_system_resource | api/user/system_resources.py | 获取单个系统资源 |
+| 84 | System Resources | POST | /system_resources | create_system_resource | api/user/system_resources.py | 创建系统资源 |
+| 85 | System Resources | PATCH | /system_resources/{resource_id} | update_system_resource | api/user/system_resources.py | 更新系统资源 |
+| 86 | System Resources | POST | /system_resources/{resource_id}/replace | replace_resource_file | api/user/system_resources.py | 替换资源文件 |
+| 87 | System Resources | DELETE | /system_resources/{resource_id} | delete_system_resource | api/user/system_resources.py | 删除系统资源 |
+| 88 | System Resources | POST | /system_resources/batch | batch_operation | api/user/system_resources.py | 批量操作 |
+| 89 | System Resources | GET | /system_resources/{resource_id}/audit-log | get_audit_log | api/user/system_resources.py | 获取审计日志 |
+| 90 | Tasks | GET | /tasks/{task_id} | get_task | api/user/tasks.py | 查询任务状态 |
+| 91 | Tasks | POST | /tasks/{task_id}/cancel | cancel_task | api/user/tasks.py | 取消任务 |
+| 92 | Templates | GET | /templates/asset | list_asset_templates | api/user/templates.py | 列出资产模板 |
+| 93 | Templates | POST | /templates/asset | create_asset_template | api/user/templates.py | 创建资产模板 |
+| 94 | Templates | PUT | /templates/asset/{template_id} | update_asset_template | api/user/templates.py | 更新资产模板 |
+| 95 | Templates | DELETE | /templates/asset/{template_id} | delete_asset_template | api/user/templates.py | 删除资产模板 |
+| 96 | Templates | POST | /templates/asset/{template_id}/use | use_asset_template | api/user/templates.py | 使用资产模板 |
+| 97 | Templates | GET | /templates/page | list_page_templates | api/user/templates.py | 列出页面模板 |
+| 98 | Templates | POST | /templates/page | create_page_template | api/user/templates.py | 创建页面模板 |
+| 99 | Templates | PUT | /templates/page/{template_id} | update_page_template | api/user/templates.py | 更新页面模板 |
+| 100 | Templates | DELETE | /templates/page/{template_id} | delete_page_template | api/user/templates.py | 删除页面模板 |
+| 101 | Templates | POST | /templates/page/{template_id}/use | use_page_template | api/user/templates.py | 使用页面模板 |
+| 102 | Themes | GET | /themes/current | get_current_theme | api/user/themes.py | 获取当前主题 |
+| 103 | Tools | POST | /tools/pdf-preview | pdf_preview | api/user/tools.py | PDF预览生成 |
+| 104 | Tools | POST | /tools/ocr | ocr_text | api/user/tools.py | OCR文字识别 |
+| 105 | User Assets | GET | /user_assets | list_user_assets | api/user/user_assets.py | 获取我的资产列表 |
+| 106 | User Assets | POST | /user_assets | upload_asset | api/user/user_assets.py | 上传资产 |
+| 107 | User Assets | DELETE | /user_assets/{asset_id} | delete_asset | api/user/user_assets.py | 删除资产 |
+| 108 | User Assets | POST | /user_assets/from-url | add_asset_from_url | api/user/user_assets.py | 从URL添加资产 |
+| 109 | User Assets | GET | /user_assets/check-url | check_url | api/user/user_assets.py | URL检查 |
+| 110 | User Assets | POST | /user_assets/{asset_id}/increment-usage | increment_usage | api/user/user_assets.py | 使用次数增加 |
+| 111 | User Assets | GET | /user_assets/dashboard | get_dashboard | api/user/user_assets.py | 资产Dashboard |
+| 112 | User Assets | GET | /user_assets/seller-stats | get_seller_stats | api/user/user_assets.py | 卖家统计 |
+| 113 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
+| 114 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
+| 115 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
+| 116 | User Profile | GET | /user_profile/history | get_history | api/user/user_profile.py | 获取操作历史 |
+| 117 | User Profile | GET | /user_profile/purchases | get_purchases | api/user/user_profile.py | 获取购买记录 |
+| 118 | User Profile | GET | /user_profile/notifications | get_notifications | api/user/user_profile.py | 获取通知列表 |
+| 119 | User Profile | POST | /user_profile/notifications/{id}/read | mark_notification_read | api/user/user_profile.py | 标记通知为已读 |
+| 120 | User Profile | POST | /user_profile/notifications/read-all | mark_all_read | api/user/user_profile.py | 标记所有通知为已读 |
+| 121 | User Profile | PUT | /user_profile/timezone | update_timezone | api/user/user_profile.py | 更新时区 |
+| 122 | Webhooks | POST | /webhooks/clerk | clerk_webhook | api/user/webhooks.py | Clerk Webhook处理 |
+| 123 | Webhooks | POST | /webhooks/stripe | stripe_webhook | api/user/webhooks.py | Stripe Webhook处理 |
+
+---
+
 ## 1. Analytics 分析
 
 ### POST `/analytics/events`
