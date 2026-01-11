@@ -419,8 +419,8 @@ if not is_valid:
 ## Related Documentation
 
 - [Fabric.js Documentation](https://fabricjs.com/docs/)
-- [Canvas Architecture Design](./[重构后]Canvas-Architecture-Design.md)
-- [API Reference - Projects](../decodables/docs/API_REFERENCE.md#projects)
+- [Canvas Architecture Design](./canvas-architecture-design.md)
+- [API Reference - Projects](../decodables/docs/api-reference.md#projects)
 - [Security: Deep Defense](../.claude/guides/SECURITY-DEEP-DEFENSE.md)
 
 ---

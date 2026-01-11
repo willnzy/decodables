@@ -14,25 +14,25 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
-| [USER-ID-SYSTEM.md](USER-ID-SYSTEM.md) | ~8KB | ⭐ 用户标识符系统 (user_id vs user_code) | ✅ 用户反馈表单、管理员搜索 UI |
-| [TIER-NAMING-SYSTEM.md](TIER-NAMING-SYSTEM.md) | ~6KB | ⭐ 会员层级命名规范 (t1/t2/t3 vs Free/Starter/Pro) | ✅ 价格页面显示、升级 UI |
+| [user-id-system.md](user-id-system.md) | ~8KB | ⭐ 用户标识符系统 (user_id vs user_code) | ✅ 用户反馈表单、管理员搜索 UI |
+| [tier-naming-system.md](tier-naming-system.md) | ~6KB | ⭐ 会员层级命名规范 (t1/t2/t3 vs Free/Starter/Pro) | ✅ 价格页面显示、升级 UI |
 
 **内容覆盖**:
-- **USER-ID-SYSTEM.md**:
+- **user-id-system.md**:
   - `user_id` (系统内部使用，如 `user_2abc3def4ghi`)
   - `user_code` (用户反馈/管理员搜索，如 26 位格式)
   - 前端在用户反馈表单、支持工单、管理员用户搜索时需要使用 user_code
 
-- **TIER-NAMING-SYSTEM.md**:
+- **tier-naming-system.md**:
   - 系统代码 (`t1`/`t2`/`t3`) vs 显示名称 (Free Plan/Starter Plan/Pro Plan)
   - 前端价格页面、升级 UI、订阅管理需要使用正确的显示名称
   - 月度积分配置 (0/200/500)
 
 **使用场景**:
-- 🎨 设计用户反馈表单 → USER-ID-SYSTEM.md
-- 💰 实现价格页面 → TIER-NAMING-SYSTEM.md
-- 🔧 管理员用户搜索功能 → USER-ID-SYSTEM.md
-- 📊 订阅升级流程 → TIER-NAMING-SYSTEM.md
+- 🎨 设计用户反馈表单 → user-id-system.md
+- 💰 实现价格页面 → tier-naming-system.md
+- 🔧 管理员用户搜索功能 → user-id-system.md
+- 📊 订阅升级流程 → tier-naming-system.md
 
 ---
 
@@ -40,7 +40,7 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
-| [PRICING-SYSTEM-DESIGN.md](PRICING-SYSTEM-DESIGN.md) | ~15KB | ⭐ 定价系统设计 (订阅/积分/折扣) | ✅ 价格展示、购买流程 UI |
+| [pricing-system-design.md](pricing-system-design.md) | ~15KB | ⭐ 定价系统设计 (订阅/积分/折扣) | ✅ 价格展示、购买流程 UI |
 
 **内容覆盖**:
 - 订阅计划价格 (t2: $9.9/月, t3: $19.9/月)
@@ -59,7 +59,7 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
-| [Canvas-Data-Schema.md](Canvas-Data-Schema.md) | ~10KB | ⭐ Canvas 数据结构规范 | ✅ 编辑器数据模型、序列化/反序列化 |
+| [canvas-data-schema.md](canvas-data-schema.md) | ~10KB | ⭐ Canvas 数据结构规范 | ✅ 编辑器数据模型、序列化/反序列化 |
 
 **内容覆盖**:
 - Canvas 数据结构 (JSON Schema)
@@ -78,7 +78,7 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
-| [[重构后]Asset-Category-System-Design.md]([重构后]Asset-Category-System-Design.md) | ~25KB | ⭐ 素材分类系统设计 (10 类 + 标签) | ✅ 素材库 UI、分类导航、标签筛选 |
+| [asset-category-design.md](asset-category-design.md) | ~25KB | ⭐ 素材分类系统设计 (10 类 + 标签) | ✅ 素材库 UI、分类导航、标签筛选 |
 
 **内容覆盖**:
 - 10 个素材分类 (Images/Icons/Illustrations/Patterns/...)
@@ -97,7 +97,7 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
-| [[重构后]Feature-Flag-Experiments-Unified-Design.md]([重构后]Feature-Flag-Experiments-Unified-Design.md) | ~20KB | ⭐ Feature Flag + A/B 测试系统 | ✅ 功能开关、实验分组逻辑 |
+| [feature-flag-design.md](feature-flag-design.md) | ~20KB | ⭐ Feature Flag + A/B 测试系统 | ✅ 功能开关、实验分组逻辑 |
 
 **内容覆盖**:
 - Feature Flag 开关逻辑
@@ -118,11 +118,11 @@
 
 | 功能模块 | 推荐文档 | 关键点 |
 |----------|----------|--------|
-| **用户反馈/支持工单** | USER-ID-SYSTEM.md | 使用 user_code (26位) |
-| **管理员用户搜索** | USER-ID-SYSTEM.md | 支持 user_code 搜索 |
-| **价格页面** | TIER-NAMING-SYSTEM.md + PRICING-SYSTEM-DESIGN.md | 显示名称 + 折扣价格 |
-| **订阅升级流程** | TIER-NAMING-SYSTEM.md + PRICING-SYSTEM-DESIGN.md | 月度积分 + 价格对比 |
-| **Canvas 编辑器** | Canvas-Data-Schema.md | 数据结构 + 序列化 |
+| **用户反馈/支持工单** | user-id-system.md | 使用 user_code (26位) |
+| **管理员用户搜索** | user-id-system.md | 支持 user_code 搜索 |
+| **价格页面** | tier-naming-system.md + pricing-system-design.md | 显示名称 + 折扣价格 |
+| **订阅升级流程** | tier-naming-system.md + pricing-system-design.md | 月度积分 + 价格对比 |
+| **Canvas 编辑器** | canvas-data-schema.md | 数据结构 + 序列化 |
 | **素材库** | Asset-Category-System-Design.md | 10 类分类 + 标签系统 |
 | **功能开关** | Feature-Flag-Experiments-Unified-Design.md | 条件渲染逻辑 |
 | **A/B 测试** | Feature-Flag-Experiments-Unified-Design.md | 用户分组 + 实验跟踪 |
@@ -131,9 +131,9 @@
 
 | 阶段 | 推荐文档 |
 |------|----------|
-| **项目初始化** | USER-ID-SYSTEM.md → TIER-NAMING-SYSTEM.md → Canvas-Data-Schema.md |
-| **价格页面开发** | TIER-NAMING-SYSTEM.md → PRICING-SYSTEM-DESIGN.md |
-| **编辑器开发** | Canvas-Data-Schema.md |
+| **项目初始化** | user-id-system.md → tier-naming-system.md → canvas-data-schema.md |
+| **价格页面开发** | tier-naming-system.md → pricing-system-design.md |
+| **编辑器开发** | canvas-data-schema.md |
 | **素材库开发** | Asset-Category-System-Design.md |
 | **功能开关集成** | Feature-Flag-Experiments-Unified-Design.md |
 
@@ -143,15 +143,15 @@
 
 ### ✅ 前端需要关注的原因
 
-1. **USER-ID-SYSTEM.md** & **TIER-NAMING-SYSTEM.md**:
+1. **user-id-system.md** & **tier-naming-system.md**:
    - 前端 UI 需要正确展示用户标识符和会员层级名称
    - 用户反馈表单、支持工单、管理员搜索等功能依赖这些规范
 
-2. **PRICING-SYSTEM-DESIGN.md**:
+2. **pricing-system-design.md**:
    - 前端价格页面、购买流程需要正确展示价格和折扣
    - 订阅升级 UI 需要与后端价格配置保持一致
 
-3. **Canvas-Data-Schema.md**:
+3. **canvas-data-schema.md**:
    - 前端编辑器的核心数据模型
    - 序列化/反序列化逻辑必须与后端保持一致
 
@@ -171,8 +171,8 @@
 
 | 频率 | 文档 | 触发条件 |
 |------|------|----------|
-| **每次价格调整** | TIER-NAMING-SYSTEM.md, PRICING-SYSTEM-DESIGN.md | 价格、折扣、月度积分变更 |
-| **每次架构变更** | Canvas-Data-Schema.md | Canvas 数据结构修改 |
+| **每次价格调整** | tier-naming-system.md, pricing-system-design.md | 价格、折扣、月度积分变更 |
+| **每次架构变更** | canvas-data-schema.md | Canvas 数据结构修改 |
 | **每次分类调整** | Asset-Category-System-Design.md | 新增/删除素材分类 |
 | **按需** | Feature-Flag-Experiments-Unified-Design.md | 新增 Feature Flag 或实验 |
 

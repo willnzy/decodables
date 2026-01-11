@@ -110,7 +110,7 @@ decodables/
 
 ### 参考文档
 - `.claude/skills/backend.md` - 后端开发规范
-- `docs/shared/[重构后]System-Refactoring-Proposal-v2.md` - 重构方案
+- `docs/shared/architecture-proposal.md` - 重构方案
 
 ## Notes
 

@@ -6,7 +6,7 @@
 > **Commit**: c0906a2
 > **实施日期**: 2026-01-10
 > **覆盖范围**: 67文件, 245处修改
-> **相关API**: API_REFERENCE.md v3.26 § 5.2 (System Config), § 1.9 (DDD架构)
+> **相关API**: api-reference.md v3.26 § 5.2 (System Config), § 1.9 (DDD架构)
 
 ## 概述
 
@@ -536,7 +536,7 @@ async def test_update_tier_display_name_api():
 - [x] `docs/shared/TIER-NAMING-SYSTEM.md` (本文档)
 - [ ] `docs/后台业务逻辑说明.md` - 更新 Tier 系统说明
 - [ ] `CLAUDE.md` - 更新用户等级表
-- [ ] `API_REFERENCE.md` - 添加 Tier 配置 API
+- [ ] `api-reference.md` - 添加 Tier 配置 API
 
 ### 前端文档
 - [ ] `decodables-fe/docs/shared/TIER-NAMING-SYSTEM.md` (复制本文档)

@@ -38,12 +38,12 @@
 
 | 文档 | 说明 |
 |------|------|
-| [shared/[重构后]System-Refactoring-Proposal-v2.md](./shared/[重构后]System-Refactoring-Proposal-v2.md) | 系统重构方案 v2 |
-| [shared/[重构后]Project-Implementation-Plan.md](./shared/[重构后]Project-Implementation-Plan.md) | 重构实施计划 |
-| [shared/[重构后]Feature-Flag-Experiments-Unified-Design.md](./shared/[重构后]Feature-Flag-Experiments-Unified-Design.md) | Feature Flag 系统设计 |
-| [shared/[重构后]Asset-Category-System-Design.md](./shared/[重构后]Asset-Category-System-Design.md) | 素材分类系统设计 (10 类) |
-| [shared/[重构后]Onboarding-System-Design.md](./shared/[重构后]Onboarding-System-Design.md) | 新手引导系统设计 |
-| [shared/[重构后]Theme-Daily-Doodle-Design.md](./shared/[重构后]Theme-Daily-Doodle-Design.md) | 主题系统设计 |
+| [shared/architecture-proposal.md](./shared/architecture-proposal.md) | 系统重构方案 v2 |
+| [shared/[wip]refactoring-plan.md](./shared/[wip]refactoring-plan.md) | 重构实施计划 |
+| [shared/feature-flag-design.md](./shared/feature-flag-design.md) | Feature Flag 系统设计 |
+| [shared/asset-category-design.md](./shared/asset-category-design.md) | 素材分类系统设计 (10 类) |
+| [shared/[draft]onboarding-design.md](./shared/[draft]onboarding-design.md) | 新手引导系统设计 |
+| [shared/[draft]theme-system-design.md](./shared/[draft]theme-system-design.md) | 主题系统设计 |
 
 ---
 

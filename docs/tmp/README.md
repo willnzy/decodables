@@ -22,24 +22,24 @@
 
 | 文档 | 用途 | 日期 | 状态 |
 |------|------|------|------|
-| API-DB-Consistency-Audit-MASTER.md | API-数据库一致性审计 | 2026-01-10 | ✅ 已完成 (可删除) |
-| API-DB-Fix-Progress.md | 修复进度跟踪 | 2026-01-10 | ✅ 已完成 (可删除) |
-| COMPREHENSIVE-BACKEND-ANALYSIS-2026-01-11.md | 后端综合分析 | 2026-01-11 | ✅ 已完成 (可删除) |
+| [archived]api-db-audit-2026-01-10.md | API-数据库一致性审计 | 2026-01-10 | ✅ 已完成 (可删除) |
+| [archived]api-db-fix-progress-2026-01-10.md | 修复进度跟踪 | 2026-01-10 | ✅ 已完成 (可删除) |
+| [archived]backend-analysis-2026-01-11.md | 后端综合分析 | 2026-01-11 | ✅ 已完成 (可删除) |
 
 ### 📝 API 评审计划 (2个)
 
 | 文档 | 范围 | 优先级 | 状态 |
 |------|------|--------|------|
-| API-REVIEW-ADMIN.md | 管理员 API 评审 (125 个接口) | P3 (低) | 📋 待执行 |
-| API-REVIEW-USER.md | 用户 API 评审 | P0/P1 (高) | 📋 待执行 |
+| [wip]admin-api-review.md | 管理员 API 评审 (125 个接口) | P3 (低) | 📋 待执行 |
+| [wip]user-api-review.md | 用户 API 评审 | P0/P1 (高) | 📋 待执行 |
 
 ### 🎯 未来功能设计 (3个)
 
 | 文档 | 功能 | 状态 |
 |------|------|------|
-| [重构后]Project-Implementation-Plan.md | 重构实施计划 | 📝 已完成部分，等待剩余模块实施 |
-| [重构后]Onboarding-System-Design.md | 新手引导系统设计 | 📋 未实施 |
-| [重构后]Theme-Daily-Doodle-Design.md | 主题系统设计 | 📋 未实施 |
+| [wip]refactoring-plan.md | 重构实施计划 | 📝 已完成部分，等待剩余模块实施 |
+| [draft]onboarding-design.md | 新手引导系统设计 | 📋 未实施 |
+| [draft]theme-system-design.md | 主题系统设计 | 📋 未实施 |
 
 ### 📝 临时验证报告 (1个)
 
@@ -100,12 +100,12 @@
 
 **操作**:
 - ✅ 从 `docs/main/` 移入 2 个已完成的 API 评审文档
-  - API-REVIEW-ADMIN.md (管理员 API 评审，125 个接口)
-  - API-REVIEW-USER.md (用户 API 评审)
+  - [wip]admin-api-review.md (管理员 API 评审，125 个接口)
+  - [wip]user-api-review.md (用户 API 评审)
 - ✅ 从 `docs/shared/` 移入 3 个未来功能设计文档
-  - [重构后]Project-Implementation-Plan.md (重构实施计划)
-  - [重构后]Onboarding-System-Design.md (新手引导系统设计)
-  - [重构后]Theme-Daily-Doodle-Design.md (主题系统设计)
+  - [wip]refactoring-plan.md (重构实施计划)
+  - [draft]onboarding-design.md (新手引导系统设计)
+  - [draft]theme-system-design.md (主题系统设计)
 - ✅ 移除 `TMP-DOCS-STATUS-CHECK.md` (已过时的验证报告)
 
 **整理后**: 9 个文档 (**分类明确: 3 个完成报告 + 2 个待执行 API 评审 + 3 个未来功能设计 + 1 个 README**)

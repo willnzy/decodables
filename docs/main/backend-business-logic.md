@@ -245,7 +245,7 @@ decodables/
 ├── docs/                   # 文档
 │   ├── 后台业务逻辑说明.md      # 本文档
 │   ├── BACKEND_ARCHITECTURE_GUIDE.md
-│   ├── API_REFERENCE.md
+│   ├── api-reference.md
 │   ├── TEST_COVERAGE_PLAN.md
 │   ├── shared/             # 前后端共用文档
 │   └── adr/                # 架构决策记录

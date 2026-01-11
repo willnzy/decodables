@@ -1707,7 +1707,7 @@ from container import Container
 - 📖 `docs/后台业务逻辑说明.md` - 完整架构文档
 - 🧪 `tests/domains/` - Domain 层测试示例
 - 🧪 `tests/integration/` - 集成测试示例
-- 📋 `docs/shared/[重构后]System-Refactoring-Proposal-v2.md` - DDD 设计方案
+- 📋 `docs/shared/architecture-proposal.md` - DDD 设计方案
 
 ### 2.8.2 待办事项
 

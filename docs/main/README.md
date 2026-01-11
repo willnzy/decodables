@@ -21,9 +21,9 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [BACKEND-ARCHITECTURE.md](BACKEND-ARCHITECTURE.md) | 67KB | ⭐ **后端架构完整指南** (架构标准+DDD迁移+清理计划) | 🔴 P0 |
-| [ARCHITECTURE-PROPOSAL.md](ARCHITECTURE-PROPOSAL.md) | ~30KB | ⭐ **系统重构方案** (三层架构+DDD重构提案) | 🟡 P1 |
-| [DEPLOYMENT-SCALING.md](DEPLOYMENT-SCALING.md) | 22KB | ⭐ **部署扩展指南** (多实例部署+Railway架构) | 🟡 P1 |
+| [backend-architecture.md](backend-architecture.md) | 67KB | ⭐ **后端架构完整指南** (架构标准+DDD迁移+清理计划) | 🔴 P0 |
+| [architecture-proposal.md](architecture-proposal.md) | ~30KB | ⭐ **系统重构方案** (三层架构+DDD重构提案) | 🟡 P1 |
+| [deployment-scaling.md](deployment-scaling.md) | 22KB | ⭐ **部署扩展指南** (多实例部署+Railway架构) | 🟡 P1 |
 
 **内容覆盖**:
 - 后端 DDD 架构规范 (v3.1)
@@ -34,9 +34,9 @@
 - Railway 架构兼容性分析
 
 **使用场景**:
-- 🆕 新功能开发: `BACKEND-ARCHITECTURE.md`
-- 🔄 模块重构: `BACKEND-ARCHITECTURE.md` Part 2 + `ARCHITECTURE-PROPOSAL.md`
-- 🚀 生产部署: `DEPLOYMENT-SCALING.md`
+- 🆕 新功能开发: `backend-architecture.md`
+- 🔄 模块重构: `backend-architecture.md` Part 2 + `architecture-proposal.md`
+- 🚀 生产部署: `deployment-scaling.md`
 
 ---
 
@@ -44,7 +44,7 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [后台业务逻辑说明.md](后台业务逻辑说明.md) | 67KB | ⭐ **完整业务逻辑文档** (业务规则+价格+软删除+V3升级) | 🔴 P0 |
+| [backend-business-logic.md](backend-business-logic.md) | 67KB | ⭐ **完整业务逻辑文档** (业务规则+价格+软删除+V3升级) | 🔴 P0 |
 
 **内容覆盖**:
 - Tier 系统 (Free/Starter/Pro)
@@ -66,7 +66,7 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [API_REFERENCE.md](API_REFERENCE.md) | 41KB | ⭐ **API 完整参考** (RESTful规范+全量接口列表) | 🔴 P0 |
+| [api-reference.md](api-reference.md) | 41KB | ⭐ **API 完整参考** (RESTful规范+全量接口列表) | 🔴 P0 |
 
 **内容覆盖**:
 - RESTful 设计规范 (HTTP 方法使用)
@@ -89,7 +89,7 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [DATABASE-GUIDE.md](DATABASE-GUIDE.md) | 20KB | ⭐ **数据库开发指南** (Schema位置+字段映射) | 🟡 P1 |
+| [database-guide.md](database-guide.md) | 20KB | ⭐ **数据库开发指南** (Schema位置+字段映射) | 🟡 P1 |
 
 **内容覆盖**:
 - 数据库 Schema 文件位置说明
@@ -108,7 +108,7 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [TESTING-GUIDE.md](TESTING-GUIDE.md) | 33KB | ⭐ **测试完整指南** (测试计划+CI限制+质量评审) | 🟡 P1 |
+| [testing-guide.md](testing-guide.md) | 33KB | ⭐ **测试完整指南** (测试计划+CI限制+质量评审) | 🟡 P1 |
 
 **内容覆盖**:
 - 测试覆盖率提升计划 (Part 1)
@@ -128,7 +128,7 @@
 
 | 文档 | 大小 | 用途 | 优先级 |
 |------|------|------|--------|
-| [knowledge_base.md](knowledge_base.md) | 6.9KB | 产品知识库 (AI 客服用) | 🟢 P2 |
+| [knowledge-base.md](knowledge-base.md) | 6.9KB | 产品知识库 (AI 客服用) | 🟢 P2 |
 
 **内容覆盖**:
 - 产品介绍
@@ -142,28 +142,28 @@
 
 | 场景 | 推荐文档 |
 |------|----------|
-| **新人入门** | 1. 后台业务逻辑说明.md → 2. BACKEND-ARCHITECTURE.md → 3. API_REFERENCE.md |
-| **开发新功能** | 1. BACKEND-ARCHITECTURE.md → 2. 后台业务逻辑说明.md → 3. TESTING-GUIDE.md |
-| **模块重构** | 1. BACKEND-ARCHITECTURE.md (Part 2: DDD迁移) → 2. TESTING-GUIDE.md (附录: 质量评审) |
-| **数据库改动** | 1. DATABASE-GUIDE.md → 2. 后台业务逻辑说明.md (附录 B: 软删除) |
-| **API 开发** | 1. API_REFERENCE.md → 2. BACKEND-ARCHITECTURE.md |
-| **生产部署** | 1. DEPLOYMENT-SCALING.md → 2. BACKEND-ARCHITECTURE.md |
-| **测试编写** | 1. TESTING-GUIDE.md |
+| **新人入门** | 1. backend-business-logic.md → 2. backend-architecture.md → 3. api-reference.md |
+| **开发新功能** | 1. backend-architecture.md → 2. backend-business-logic.md → 3. testing-guide.md |
+| **模块重构** | 1. backend-architecture.md (Part 2: DDD迁移) → 2. testing-guide.md (附录: 质量评审) |
+| **数据库改动** | 1. database-guide.md → 2. backend-business-logic.md (附录 B: 软删除) |
+| **API 开发** | 1. api-reference.md → 2. backend-architecture.md |
+| **生产部署** | 1. deployment-scaling.md → 2. backend-architecture.md |
+| **测试编写** | 1. testing-guide.md |
 
 ### 按优先级查找
 
 **🔴 P0 - 必读** (3个):
-- `BACKEND-ARCHITECTURE.md` - 所有新代码必须遵循
-- `后台业务逻辑说明.md` - 业务规则必须了解
-- `API_REFERENCE.md` - 前端集成必备
+- `backend-architecture.md` - 所有新代码必须遵循
+- `backend-business-logic.md` - 业务规则必须了解
+- `api-reference.md` - 前端集成必备
 
 **🟡 P1 - 重要** (2个):
-- `DEPLOYMENT-SCALING.md` - 部署前必读
-- `DATABASE-GUIDE.md` - 数据库操作参考
-- `TESTING-GUIDE.md` - 测试标准
+- `deployment-scaling.md` - 部署前必读
+- `database-guide.md` - 数据库操作参考
+- `testing-guide.md` - 测试标准
 
 **🟢 P2 - 参考** (1个):
-- `knowledge_base.md` - 外部参考
+- `knowledge-base.md` - 外部参考
 
 ---
 
@@ -190,7 +190,7 @@
 - 第一次整理后: 18 个 (-4, 18%)
 - 第二次深度合并后: 13 个 (-5, 41%)
 - 第三次激进合并后: 7 个 (-6, 68%)
-- **第四次文档重组后**: **8 个** (+1 ARCHITECTURE-PROPOSAL.md 从 shared/ 移入)
+- **第四次文档重组后**: **8 个** (+1 architecture-proposal.md 从 shared/ 移入)
 - 合并后平均文档大小: ~37KB (从 ~15KB 提升 147%)
 
 ---
@@ -233,23 +233,23 @@
 
 | 核心文档 | 合并的文档 | 合并方式 | 最终大小 |
 |----------|------------|----------|----------|
-| **BACKEND-ARCHITECTURE.md** | 3 个文档 | Part 1/2/3 | 67KB |
+| **backend-architecture.md** | 3 个文档 | Part 1/2/3 | 67KB |
 | ↳ | BACKEND_ARCHITECTURE_GUIDE.md | Part 1 | - |
 | ↳ | DDD-Migration-Guide.md | Part 2 | - |
 | ↳ | ARCHITECTURE_CLEANUP_PLAN.md | Part 3 | - |
-| **DEPLOYMENT-SCALING.md** | 2 个文档 | Part 1/2 | 22KB |
+| **deployment-scaling.md** | 2 个文档 | Part 1/2 | 22KB |
 | ↳ | SCALING.md | Part 1 | - |
 | ↳ | RAILWAY_ARCHITECTURE_ANALYSIS.md | Part 2 | - |
-| **后台业务逻辑说明.md** | 3 个文档 | 附录 A/B/C | 67KB |
+| **backend-business-logic.md** | 3 个文档 | 附录 A/B/C | 67KB |
 | ↳ | PRICING-SYSTEM-DESIGN.md | 附录 A | - |
 | ↳ | SOFT-DELETE-SYSTEM.md | 附录 B | - |
 | ↳ | V3-UPGRADE-ROADMAP.md | 附录 C | - |
-| **API_REFERENCE.md** | 1 个文档 | 开头章节 | 41KB |
+| **api-reference.md** | 1 个文档 | 开头章节 | 41KB |
 | ↳ | API-HTTP-METHODS-GUIDELINES.md | 第 1 章 | - |
-| **DATABASE-GUIDE.md** | 2 个文档 | Part 1/2 | 20KB |
+| **database-guide.md** | 2 个文档 | Part 1/2 | 20KB |
 | ↳ | DATABASE-SCHEMA-LOCATION.md | Part 1 | - |
 | ↳ | FIELD-MAPPINGS-USAGE-GUIDE.md | Part 2 | - |
-| **TESTING-GUIDE.md** | 3 个文档 | Part 1/2 + 附录 | 33KB |
+| **testing-guide.md** | 3 个文档 | Part 1/2 + 附录 | 33KB |
 | ↳ | TEST_COVERAGE_PLAN.md | Part 1 | - |
 | ↳ | CI-TESTING-LIMITATIONS.md | Part 2 | - |
 | ↳ | MODULE-QUALITY-REVIEWS.md | 附录 | - |
@@ -264,19 +264,19 @@
 
 | 频率 | 文档 | 触发条件 |
 |------|------|----------|
-| **每次发布** | 后台业务逻辑说明.md, API_REFERENCE.md | 业务规则变更、API 变更 |
-| **每月** | TESTING-GUIDE.md (附录) | 完成新模块评审 |
-| **按需** | BACKEND-ARCHITECTURE.md | 架构标准变更 |
-| **一次性** | 后台业务逻辑说明.md (附录 C) | V3 升级完成后归档 |
+| **每次发布** | backend-business-logic.md, api-reference.md | 业务规则变更、API 变更 |
+| **每月** | testing-guide.md (附录) | 完成新模块评审 |
+| **按需** | backend-architecture.md | 架构标准变更 |
+| **一次性** | backend-business-logic.md (附录 C) | V3 升级完成后归档 |
 
 ### 文档状态标识
 
 | 标识 | 含义 | 示例 |
 |------|------|------|
 | ✅ 综合文档 | 多个文档合并而成 | 所有 ⭐ 标记的文档 |
-| 🔴 P0 必读 | 所有新代码必须遵循 | BACKEND-ARCHITECTURE.md |
-| 🟡 P1 重要 | 开发前建议阅读 | DEPLOYMENT-SCALING.md |
-| 🟢 P2 参考 | 按需查阅 | knowledge_base.md |
+| 🔴 P0 必读 | 所有新代码必须遵循 | backend-architecture.md |
+| 🟡 P1 重要 | 开发前建议阅读 | deployment-scaling.md |
+| 🟢 P2 参考 | 按需查阅 | knowledge-base.md |
 
 ---
 
@@ -284,41 +284,41 @@
 
 ### 新人入门流程
 
-1. **第 1 天**: 阅读 `后台业务逻辑说明.md` (主体内容)
+1. **第 1 天**: 阅读 `backend-business-logic.md` (主体内容)
    - 了解 Tier 系统、积分规则、AI 成本
 
-2. **第 2 天**: 阅读 `BACKEND-ARCHITECTURE.md` (Part 1)
+2. **第 2 天**: 阅读 `backend-architecture.md` (Part 1)
    - 掌握 DDD 架构标准
 
-3. **第 3 天**: 阅读 `API_REFERENCE.md` (第 1 章 + 业务规则速查)
+3. **第 3 天**: 阅读 `api-reference.md` (第 1 章 + 业务规则速查)
    - 熟悉 RESTful 规范和常用 API
 
 4. **按需阅读附录**:
-   - 需要修改价格 → `后台业务逻辑说明.md` 附录 A
-   - 需要实现软删除 → `后台业务逻辑说明.md` 附录 B
-   - 需要了解 V3 升级 → `后台业务逻辑说明.md` 附录 C
+   - 需要修改价格 → `backend-business-logic.md` 附录 A
+   - 需要实现软删除 → `backend-business-logic.md` 附录 B
+   - 需要了解 V3 升级 → `backend-business-logic.md` 附录 C
 
 ### 开发时的快速查阅
 
 **场景 1**: 添加新 API 接口
 ```
-1. API_REFERENCE.md 第 1 章 → RESTful 设计规范
-2. BACKEND-ARCHITECTURE.md Part 1 → 代码放置决策树
-3. TESTING-GUIDE.md Part 1 → 测试覆盖率标准
+1. api-reference.md 第 1 章 → RESTful 设计规范
+2. backend-architecture.md Part 1 → 代码放置决策树
+3. testing-guide.md Part 1 → 测试覆盖率标准
 ```
 
 **场景 2**: 重构旧模块
 ```
-1. BACKEND-ARCHITECTURE.md Part 2 → DDD 迁移指南
-2. TESTING-GUIDE.md 附录 → 质量评审标准
-3. 后台业务逻辑说明.md → 业务规则确认
+1. backend-architecture.md Part 2 → DDD 迁移指南
+2. testing-guide.md 附录 → 质量评审标准
+3. backend-business-logic.md → 业务规则确认
 ```
 
 **场景 3**: 生产部署
 ```
-1. DEPLOYMENT-SCALING.md Part 1 → 多实例部署步骤
-2. DEPLOYMENT-SCALING.md Part 2 → Railway 架构配置
-3. BACKEND-ARCHITECTURE.md Part 1 → 依赖规则确认
+1. deployment-scaling.md Part 1 → 多实例部署步骤
+2. deployment-scaling.md Part 2 → Railway 架构配置
+3. backend-architecture.md Part 1 → 依赖规则确认
 ```
 
 ---

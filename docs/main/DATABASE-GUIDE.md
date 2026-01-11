@@ -80,7 +80,7 @@ decodables/
 │       └── ddl.sql                   ❌ 旧版 (v3.27)
 │
 └── docs/
-    └── DATABASE-GUIDE.md             # 本文档
+    └── database-guide.md             # 本文档
 ```
 
 ---
@@ -239,7 +239,7 @@ git commit -m "feat(db): add new table"
 
 ### Asset-Category 系统文档
 
-- [Asset-Category-System-Design.md](../shared/[重构后]Asset-Category-System-Design.md) - 素材分类系统设计
+- [asset-category-design.md](../shared/asset-category-design.md) - 素材分类系统设计
 - Asset-Category API 实现:
   - [domains/content/category_repository.py](../../domains/content/category_repository.py) - Repository 接口
   - [domains/content/category_service.py](../../domains/content/category_service.py) - 业务逻辑
@@ -252,8 +252,8 @@ git commit -m "feat(db): add new table"
 
 ### 业务逻辑文档
 
-- [后台业务逻辑说明.md](后台业务逻辑说明.md) - 后端架构和业务规则
-- [BACKEND-ARCHITECTURE.md](BACKEND-ARCHITECTURE.md) - DDD 架构指南
+- [backend-business-logic.md](backend-business-logic.md) - 后端架构和业务规则
+- [backend-architecture.md](backend-architecture.md) - DDD 架构指南
 
 ---
 
@@ -271,7 +271,7 @@ git commit -m "feat(db): add new table"
 
 如有疑问,请参考:
 - Schema 文件: `migrations/v2/01_core_business.sql`
-- DDD 架构指南: `docs/main/BACKEND-ARCHITECTURE.md`
+- DDD 架构指南: `docs/main/backend-architecture.md`
 
 ---
 
@@ -279,7 +279,7 @@ git commit -m "feat(db): add new table"
 - [核心业务 Schema](../../migrations/v2/01_core_business.sql) ⭐
 - [平台服务 Schema](../../migrations/v2/02_platform_services.sql) ⭐
 - [基础设施 Schema](../../migrations/v2/03_infrastructure.sql) ⭐
-- [Asset-Category 设计文档](../shared/[重构后]Asset-Category-System-Design.md)
+- [Asset-Category 设计文档](../shared/asset-category-design.md)
 
 ---
 
