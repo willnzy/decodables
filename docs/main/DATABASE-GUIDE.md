@@ -28,25 +28,36 @@
 
 # Part 1: 数据库 Schema 文件位置
 
-**更新时间**: 2026-01-10
-**重要**: 数据库 DDL 文件已从 V1 迁移到 V2
+**更新时间**: 2026-01-11
+**重要**: ⚠️ 数据库 Schema 管理规范已更新
 
-## 1.1 主 DDL 文件
+## 1.1 主 Schema 文件 (3个)
 
-### ⭐ 主 DDL 文件 (单一数据源)
+### ⭐ 新规范 (2026-01-11 更新)
 
-**文件路径**: [`migrations/v2/refactored_schema_v2.sql`](../../migrations/v2/refactored_schema_v2.sql)
+**所有数据库变更直接更新以下 3 个主 Schema 文件，不再创建迁移脚本。**
 
-**版本**: v4.0
-**表数量**: 60 张
-**总行数**: ~4,000 行
-**状态**: ✅ 当前使用
+#### 主 Schema 文件位置
 
-**用途**:
-- 新环境初始化
-- 数据库结构参考
-- Schema 对比基准
-- 完整的表定义、索引、触发器、函数
+```
+decodables/migrations/v2/
+├── 01_core_business.sql        ⭐ 核心业务表 (用户/项目/积分/市场)
+├── 02_platform_services.sql    ⭐ 平台服务表 (配置/实验/事件/通知)
+└── 03_infrastructure.sql       ⭐ 基础设施表 (日志/队列/分析/支持)
+```
+
+**文件说明**:
+
+| 文件 | 表数量 | 内容 | 状态 |
+|------|--------|------|------|
+| **01_core_business.sql** | ~25 | profiles, projects, credits, marketplace, system_resources, asset_categories | ✅ 主文件 |
+| **02_platform_services.sql** | ~20 | system_configs, feature_flags, experiments, events, notifications | ✅ 主文件 |
+| **03_infrastructure.sql** | ~15 | error_logs, task_queues, analytics, support_tickets | ✅ 主文件 |
+
+**重要更新 (2026-01-11)**:
+- ✅ **system_resources 表** - 已添加到 01_core_business.sql (Lines 828-901)
+- ✅ **asset_categories 表** - 已添加 LTREE 层级支持 + 4 个 RPC 函数
+- ✅ **4 个关联表** - asset_tags, asset_tag_relations, user_recent_assets, user_favorite_assets
 
 ---
 
@@ -56,15 +67,14 @@
 decodables/
 ├── migrations/
 │   ├── v2/
-│   │   ├── refactored_schema_v2.sql  ⭐ 主 DDL (v4.0)
+│   │   ├── 01_core_business.sql       ⭐ 核心业务 Schema
+│   │   ├── 02_platform_services.sql   ⭐ 平台服务 Schema
+│   │   ├── 03_infrastructure.sql      ⭐ 基础设施 Schema
 │   │   ├── docs/
 │   │   │   ├── README.md             # V2 文档索引
 │   │   │   ├── REFACTORING_REPORT.md # 重构报告
 │   │   │   └── MIGRATION_GUIDE.md    # 迁移指南
-│   │   └── patches/                  # V2 补丁
-│   │
-│   ├── v3/                           # Phase 3 软删除迁移
-│   │   └── 001_add_soft_delete_to_core_tables.sql
+│   │   └── patches/                  # 历史补丁 (已归档)
 │   │
 │   └── V1/                           # 已废弃 (仅供参考)
 │       └── ddl.sql                   ❌ 旧版 (v3.27)
@@ -77,160 +87,199 @@ decodables/
 
 ## 1.3 如何使用
 
-### 1.3.1 版本历史
+### 1.3.1 Schema 管理规范
 
-| 版本 | 文件路径 | 表数量 | 状态 | 说明 |
-|------|----------|--------|------|------|
-| **v4.0** | `migrations/v2/refactored_schema_v2.sql` | 60 | ✅ 当前使用 | DDD 架构重构 + Phase 2/3 |
-| v3.27 | `migrations/V1/ddl.sql` | 42 | ❌ 已废弃 | 旧版生产环境 |
+#### ❌ 禁止事项
 
----
+```
+❌ 不要创建 migrations/v1.28__add_xxx.sql (迁移脚本)
+❌ 不要创建 migrations/v3/04_xxx.sql (中间脚本)
+❌ 不要创建任何临时迁移文件
+```
 
-### 1.3.2 V4.0 主要改进
+#### ✅ 正确做法
 
-#### 架构重构
+**数据库变更流程**:
 
-- ✅ 统一命名规范 (Snake Case)
-- ✅ 标准化审计字段 (created_at, updated_at, is_deleted, deleted_at)
-- ✅ 补充缺失的 13 张表
-- ✅ 修复现有表的缺失字段
-- ✅ 补充缺失的索引、触发器、函数
+```
+1. 确定变更属于哪个类别:
+   - 核心业务? → 编辑 migrations/v2/01_core_business.sql
+   - 平台服务? → 编辑 migrations/v2/02_platform_services.sql
+   - 基础设施? → 编辑 migrations/v2/03_infrastructure.sql
 
-#### 软删除支持
+2. 直接在对应文件中添加/修改表定义
 
-**Phase 2 完成** (16 张表):
-- profiles, projects, project_versions, assets
-- marketplace_listings, asset_categories, system_assets
-- notifications, campaign_participations, campaign_dismissals
-- onboarding_steps, user_onboarding_progress
-- referrals, page_prompt_templates
-- credit_transactions, payment_records
+3. git commit + push
 
-**Phase 3.1 新增** (8 张表):
-- marketplace_favorites, marketplace_reviews
-- campaigns, daily_themes, holidays
-- asset_prompt_templates
-- support_tickets, support_replies
+4. (生产环境) 手动执行 SQL 或使用 Supabase Migration
+```
 
-**合计**: 24/60 (40%) 表支持软删除
+**示例 - 添加新表**:
+
+```bash
+# 错误做法 ❌
+# 创建 migrations/v3/05_create_new_table.sql
+
+# 正确做法 ✅
+# 直接编辑 migrations/v2/01_core_business.sql
+vim /Users/zhangyi/Code_all/AI-WEB/decodables/migrations/v2/01_core_business.sql
+
+# 在文件末尾添加新表定义
+CREATE TABLE new_table (
+  id UUID PRIMARY KEY,
+  ...
+);
+
+# 提交
+git add migrations/v2/01_core_business.sql
+git commit -m "feat(db): add new_table"
+git push
+```
+
+### 1.3.2 版本历史
+
+| 版本 | 文件路径 | 管理方式 | 状态 | 说明 |
+|------|----------|----------|------|------|
+| **v2.1** (当前) | `migrations/v2/01-03_*.sql` (3个文件) | ✅ 直接编辑主文件 | ✅ 使用中 | 2026-01-11 更新 |
+| v2.0 | `migrations/v2/refactored_schema_v2.sql` | 单一文件 | ✅ 已拆分 | 已拆分为 3 个文件 |
+| v1.0 | `migrations/V1/ddl.sql` | 单一文件 | ❌ 已废弃 | 旧版 |
 
 ---
 
 ### 1.3.3 新环境初始化
 
 ```bash
-# 1. 使用 V2 主 DDL 初始化数据库
-psql -U postgres -d decodables < migrations/v2/refactored_schema_v2.sql
-
-# 2. (可选) 应用 Phase 3 增量迁移
-psql -U postgres -d decodables < migrations/v3/001_add_soft_delete_to_core_tables.sql
+# 1. 使用 V2 主 Schema 文件初始化数据库 (按顺序执行)
+psql -U postgres -d decodables < migrations/v2/01_core_business.sql
+psql -U postgres -d decodables < migrations/v2/02_platform_services.sql
+psql -U postgres -d decodables < migrations/v2/03_infrastructure.sql
 ```
 
 ### 1.3.4 查看 Schema 定义
 
 ```bash
-# 查看完整 Schema
-cat migrations/v2/refactored_schema_v2.sql
+# 查看核心业务表
+cat migrations/v2/01_core_business.sql
 
 # 查看特定表
-grep -A 50 "CREATE TABLE profiles" migrations/v2/refactored_schema_v2.sql
+grep -A 50 "CREATE TABLE system_resources" migrations/v2/01_core_business.sql
+grep -A 50 "CREATE TABLE asset_categories" migrations/v2/01_core_business.sql
 
 # 查看所有表名
-grep "CREATE TABLE" migrations/v2/refactored_schema_v2.sql
+grep "CREATE TABLE" migrations/v2/01_core_business.sql
+grep "CREATE TABLE" migrations/v2/02_platform_services.sql
+grep "CREATE TABLE" migrations/v2/03_infrastructure.sql
 ```
 
-### 1.3.5 Schema 对比
+### 1.3.5 查看 RPC 函数
 
 ```bash
-# 对比 V1 和 V2 差异
-diff migrations/V1/ddl.sql migrations/v2/refactored_schema_v2.sql
-
-# 查看新增的表
-grep "CREATE TABLE" migrations/v2/refactored_schema_v2.sql | \
-  grep -v -f <(grep "CREATE TABLE" migrations/V1/ddl.sql)
+# 查看 asset_categories 相关的 RPC 函数
+grep -A 20 "CREATE OR REPLACE FUNCTION get_category_descendants" migrations/v2/01_core_business.sql
+grep -A 20 "CREATE OR REPLACE FUNCTION get_category_ancestors" migrations/v2/01_core_business.sql
+grep -A 20 "CREATE OR REPLACE FUNCTION get_category_siblings" migrations/v2/01_core_business.sql
+grep -A 20 "CREATE OR REPLACE FUNCTION move_category" migrations/v2/01_core_business.sql
 ```
 
 ---
 
 ## 1.4 重要提示
 
-### 1.4.1 不要使用旧版 DDL
+### 1.4.1 数据库变更规范
 
-❌ **错误**:
+**所有数据库变更必须直接编辑 3 个主 Schema 文件，不要创建迁移脚本。**
+
+❌ **错误做法**:
 ```bash
-# 不要使用 V1 DDL (已废弃)
-psql < migrations/V1/ddl.sql
+# 错误: 创建迁移脚本
+touch migrations/v3/05_add_new_table.sql
 ```
 
-✅ **正确**:
+✅ **正确做法**:
 ```bash
-# 使用 V2 主 DDL
-psql < migrations/v2/refactored_schema_v2.sql
+# 正确: 直接编辑主 Schema 文件
+vim migrations/v2/01_core_business.sql  # 在文件中添加新表定义
+git add migrations/v2/01_core_business.sql
+git commit -m "feat(db): add new table"
 ```
 
-### 1.4.2 Schema 同步规则
+### 1.4.2 变更提交流程
 
-当进行数据库变更时:
+```
+1. 确定变更类型
+   ├─ 核心业务表? → migrations/v2/01_core_business.sql
+   ├─ 平台服务表? → migrations/v2/02_platform_services.sql
+   └─ 基础设施表? → migrations/v2/03_infrastructure.sql
 
-1. **创建增量迁移文件**
-   ```
-   migrations/v3/XXX_description.sql
-   ```
+2. 直接在文件中编辑
+   ├─ 添加新表定义
+   ├─ 修改现有表
+   ├─ 添加索引
+   └─ 添加 RPC 函数
 
-2. **同步到主 DDL**
-   ```
-   更新 migrations/v2/refactored_schema_v2.sql
-   ```
+3. Git 提交
+   └─ git add migrations/v2/*.sql
+   └─ git commit -m "feat(db): description"
+   └─ git push
 
-3. **更新版本号**
-   ```sql
-   -- 文件头部
-   -- Make Decodables - Refactored Database Schema (vX.X)
-   ```
-
-4. **提交 Git**
-   ```bash
-   git add migrations/v2/refactored_schema_v2.sql migrations/v3/*.sql
-   git commit -m "feat(db): description"
-   ```
+4. 生产环境部署
+   └─ 手动执行 SQL 或使用 Supabase Migration
+```
 
 ---
 
 ## 1.5 相关文档
 
-### V2 数据库文档
+### 主 Schema 文档
 
-- [refactored_schema_v2.sql](../../migrations/v2/refactored_schema_v2.sql) - 完整 DDL (v4.0)
+- [01_core_business.sql](../../migrations/v2/01_core_business.sql) - 核心业务表 ⭐
+- [02_platform_services.sql](../../migrations/v2/02_platform_services.sql) - 平台服务表 ⭐
+- [03_infrastructure.sql](../../migrations/v2/03_infrastructure.sql) - 基础设施表 ⭐
 - [V2/docs/README.md](../../migrations/v2/docs/README.md) - V2 文档索引
-- [V2/docs/REFACTORING_REPORT.md](../../migrations/v2/docs/REFACTORING_REPORT.md) - 重构报告
 
-### Phase 3 软删除文档
+### Asset-Category 系统文档
 
-- [SOFT-DELETE-UNIFICATION-PLAN.md](../tmp/SOFT-DELETE-UNIFICATION-PLAN.md) - 软删除统一化计划
-- [PHASE-3.1-COMPLETION-REPORT.md](../tmp/PHASE-3.1-COMPLETION-REPORT.md) - Phase 3.1 完成报告
+- [Asset-Category-System-Design.md](../shared/[重构后]Asset-Category-System-Design.md) - 素材分类系统设计
+- Asset-Category API 实现:
+  - [domains/content/category_repository.py](../../domains/content/category_repository.py) - Repository 接口
+  - [domains/content/category_service.py](../../domains/content/category_service.py) - 业务逻辑
+  - [api/admin/asset_categories.py](../../api/admin/asset_categories.py) - Admin API (7 endpoints)
+
+### System-Resources 系统文档
+
+- system_resources 表定义: `migrations/v2/01_core_business.sql` Lines 828-901
+- 关联表: asset_tags, asset_tag_relations, user_recent_assets, user_favorite_assets
 
 ### 业务逻辑文档
 
 - [后台业务逻辑说明.md](后台业务逻辑说明.md) - 后端架构和业务规则
+- [BACKEND-ARCHITECTURE.md](BACKEND-ARCHITECTURE.md) - DDD 架构指南
 
 ---
 
 ## 1.6 维护者信息
 
 **责任人**: 开发团队
-**最后更新**: 2026-01-10
-**版本**: v2.0
+**最后更新**: 2026-01-11
+**版本**: v2.1
+
+**重要更新 (2026-01-11)**:
+- ✅ Schema 管理规范更新: 直接编辑主文件，不再创建迁移脚本
+- ✅ system_resources 表完整实现 (25 字段, 7 索引)
+- ✅ asset_categories LTREE 层级支持 + 4 RPC 函数
+- ✅ Asset-Category 管理 API (7 endpoints)
 
 如有疑问,请参考:
-- V2 重构报告: `migrations/v2/docs/REFACTORING_REPORT.md`
-- 提交 Issue: GitHub Issues
+- Schema 文件: `migrations/v2/01_core_business.sql`
+- DDD 架构指南: `docs/main/BACKEND-ARCHITECTURE.md`
 
 ---
 
 **快速链接**:
-- [主 DDL 文件](../../migrations/v2/refactored_schema_v2.sql) ⭐
-- [V2 文档目录](../../migrations/v2/docs/)
-- [Phase 3 迁移目录](../../migrations/v3/)
+- [核心业务 Schema](../../migrations/v2/01_core_business.sql) ⭐
+- [平台服务 Schema](../../migrations/v2/02_platform_services.sql) ⭐
+- [基础设施 Schema](../../migrations/v2/03_infrastructure.sql) ⭐
+- [Asset-Category 设计文档](../shared/[重构后]Asset-Category-System-Design.md)
 
 ---
 
