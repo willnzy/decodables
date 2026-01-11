@@ -3860,7 +3860,136 @@ Make Decodables 使用 Clerk 作为认证提供商。用户 ID 格式如下:
 
 ---
 
-## 附录 B: 速率限制
+### 用户代码 (user_code) 格式
+
+系统使用**双重用户标识符**机制:
+
+| 标识符 | 格式示例 | 用途 | 来源 |
+|--------|----------|------|------|
+| **user_id** | `user_2abc3def...` | 系统内部使用,数据库主键 | Clerk 自动生成 |
+| **user_code** | `26010914305278900123456789` | 用户反馈/管理员搜索 | 注册时生成 |
+
+**user_code 格式** (26位):
+
+```
+260109 143052 7890 0123456 789
+------+------+----+-------+---
+日期  时间  毫秒 序号    随机
+```
+
+| 部分 | 位数 | 说明 | 示例 |
+|------|------|------|------|
+| 日期 | 6位 | YYMMDD (UTC) | `260109` = 2026-01-09 |
+| 时间 | 6位 | HHMMSS (UTC) | `143052` = 14:30:52 |
+| 毫秒 | 4位 | 毫秒数 | `7890` |
+| 用户序号 | 7位 | 总注册人数 | `0123456` = 第123,456个用户 |
+| 随机数 | 3位 | 额外唯一性保证 | `789` |
+
+**完整示例解读**:
+```
+user_code: 26010914305278900123456789
+
+解析:
+- 注册日期: 2026-01-09
+- 注册时间: 14:30:52.7890 (UTC)
+- 用户序号: 第 123,456 个注册用户
+- 随机后缀: 789
+```
+
+**使用场景**:
+- ✅ 用户反馈时提供 user_code 给客服
+- ✅ 管理员通过 user_code 搜索用户 (Admin API)
+- ✅ 敏感操作的双因素验证 (user_id + user_code)
+
+**API 支持**:
+```bash
+# Admin API - 通过 user_code 搜索用户
+GET /api/v2/admin/users?search=26010914305278900123456789
+
+# 返回匹配的用户
+{
+  "users": [{
+    "user_id": "user_2abc...",
+    "user_code": "26010914305278900123456789",
+    "username": "john_doe",
+    ...
+  }],
+  "total": 1
+}
+```
+
+**📍 详细文档**: 完整的 user_code 生成逻辑、数据分析应用等详见 `docs/shared/USER-ID-SYSTEM.md`
+
+---
+
+## 附录 B: Tier 命名规范
+
+### 系统代码 vs 显示名称
+
+Make Decodables 使用**三层 Tier 命名系统**:
+
+| 系统代码 (tier) | 固定简称 | 显示名称 (可配置) | 月度积分 | 价格 |
+|-----------------|----------|------------------|----------|------|
+| `t1` | First Tier | Free Plan | 0 | $0 |
+| `t2` | Second Tier | Starter Plan | 200 | $9.9/月 |
+| `t3` | Third Tier | Pro Plan | 500 | $19.9/月 |
+
+**设计原则**:
+- **系统代码** (`t1`/`t2`/`t3`) - 数据库字段、代码逻辑使用，**永不改变**
+- **固定简称** (First/Second/Third Tier) - 描述性名称，文档使用
+- **显示名称** (Free/Starter/Pro Plan) - 用户看到的名称，**可通过 Admin 配置修改**
+
+**为什么使用 t1/t2/t3**:
+- ✅ **简洁**: 比 `free`/`starter`/`pro` 更短
+- ✅ **中立**: 不包含业务语义,方便未来调整名称
+- ✅ **可扩展**: 未来可轻松添加 t4、t5 等更高等级
+- ✅ **国际化**: 系统代码无需翻译,只需翻译显示名称
+
+**使用规范**:
+
+```python
+# ✅ 正确: 使用系统代码
+if user.tier == "t2":
+    credits = TIER_MONTHLY_CREDITS["t2"]  # 200
+
+# ✅ 正确: 获取显示名称
+tier_name = await tier_service.get_tier_display_name(user.tier)
+# 返回: "Starter Plan" (可能被 Admin 修改为 "Growth Plan")
+
+# ❌ 错误: 硬编码显示名称
+plan_name = "Starter Plan"  # 将来可能改名!
+```
+
+**API 返回格式**:
+
+```json
+// GET /api/v2/user/me
+{
+  "tier": "t2",                    // 系统代码
+  "tier_label": "Second Tier",     // 固定简称
+  "tier_name": "Starter Plan",     // 显示名称 (可配置)
+  "credits_monthly": 200,
+  "credits_permanent": 150
+}
+```
+
+**Admin API - 修改显示名称**:
+
+```bash
+# 将 t2 显示名称从 "Starter Plan" 改为 "Growth Plan"
+PUT /api/v2/admin/config/tier.t2.display_name
+{
+  "value": "Growth Plan"
+}
+```
+
+**📍 实施状态**: Tier 命名统一 (t1/t2/t3) 已于 2026-01-10 完成实施 (Commit: c0906a2, 67文件/245处修改)
+
+**📍 详细文档**: 完整的 TierService 实现、前端 Hook、迁移计划等详见 `docs/shared/TIER-NAMING-SYSTEM.md`
+
+---
+
+## 附录 C: 速率限制
 
 | 端点 | 限制 |
 |------|------|
