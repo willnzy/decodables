@@ -1,8 +1,8 @@
 # Admin API 完整参考
 
 > **状态**: ✅ Complete (已评审 149 个，实际代码 150 个)
-> **版本**: 3.34
-> **最后更新**: 2026-01-11
+> **版本**: 3.35
+> **最后更新**: 2026-01-12
 > **总端点数**: 149 个 (已评审) / 150 个 (实际代码)
 
 本文档记录已评审的 149 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
@@ -3557,11 +3557,13 @@
 ```
 
 **value_type 可选值** (VALID_VALUE_TYPES):
-- `text` - 文本
-- `number` - 数字
+- `text` - 短文本
+- `number` - 浮点数字
+- `integer` - 整数
 - `boolean` - 布尔值
 - `json` - JSON 对象
-- `list` - 列表
+- `array` - JSON 数组 (CMS-Lite: 用于 Landing 页面内容、定价功能列表等)
+- `richtext` - Markdown/HTML 富文本 (CMS-Lite: 用于长文本内容)
 
 **响应**:
 ```json

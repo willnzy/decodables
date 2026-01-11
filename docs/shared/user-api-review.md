@@ -1,8 +1,8 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.33
-> **最后更新**: 2026-01-11
+> **版本**: 3.34
+> **最后更新**: 2026-01-12
 > **总端点数**: 127 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
@@ -497,9 +497,18 @@
 
 ## 5. Config 配置
 
+> **CMS-Lite 功能 (v3.33+)**: 支持 `array` 和 `richtext` 类型，用于 Landing 页面内容管理
+
 ### GET `/config`
 
 获取所有公开配置
+
+**公开配置白名单** (PUBLIC_CONFIG_PATTERNS):
+- `FEATURE_*` - Feature Flags 功能开关
+- `UI_*` - UI 配置
+- `LANDING_*` - Landing 页面内容 (CMS-Lite)
+- `SITE_*` - 网站公共信息 (名称、联系方式、社交媒体)
+- `PRICING_*` - 定价展示信息 (功能列表、档位)
 
 **参数**:
 | 参数 | 类型 | 说明 |
@@ -511,14 +520,30 @@
 {
   "configs": [
     {
-      "key": "feature.new_editor.enabled",
+      "key": "FEATURE_NEW_EDITOR",
       "value": true,
+      "value_type": "boolean",
       "category": "feature"
+    },
+    {
+      "key": "LANDING_EXAMPLE_PROMPTS",
+      "value": "[{\"emoji\":\"🦕\",\"text\":\"Dinosaur adventure\"}]",
+      "value_type": "array",
+      "category": "page_content"
     }
   ],
-  "total": 15
+  "total": 25
 }
 ```
+
+**value_type 类型**:
+- `text` - 短文本
+- `number` - 浮点数字
+- `integer` - 整数
+- `boolean` - 布尔值
+- `json` - JSON 对象
+- `array` - JSON 数组 (前端需 JSON.parse)
+- `richtext` - Markdown/HTML 富文本
 
 ---
 
