@@ -547,7 +547,7 @@ checkout.session 需要携带的 metadata:
 
 **详细文档**: 完整的 143 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
-> **说明**: admin-api-review.md 记录了已评审的 135 个端点，另有 8 个端点待补充评审文档（主要是部分模块的扩展功能）。
+> **说明**: admin-api-review.md 记录了已评审的 142 个端点，另有 1 个端点待补充评审文档（PUT /config/admin 占位符功能）。
 
 ---
 
@@ -822,7 +822,7 @@ credits_monthly → credits_permanent
 
 ### 文档现状
 
-本文档当前记录了 **User API 123 个端点** 和 **Admin API 143 个端点** (已评审 135 个)。
+本文档当前记录了 **User API 123 个端点** 和 **Admin API 143 个端点** (已评审 142 个)。
 
 ### 详细端点文档
 
@@ -834,8 +834,8 @@ credits_monthly → credits_permanent
 - ✅ 测试覆盖率: 65%+
 
 **Admin API 详细文档**: [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
-- ✅ 143 个 Admin API 端点（135 个已有完整文档，8 个待补充）
-- ✅ 17 个模块分类组织
+- ✅ 143 个 Admin API 端点（142 个已有完整文档，1 个待补充：PUT /config/admin 占位符）
+- ✅ 18 个模块分类组织（AI Insights、AI Models、Asset Categories、Campaigns、Config、Events、Experiments、Feature Flags、Logs、Metrics、Moderation、Notifications、Stats、Subscriptions、System、Tasks、Users、Webhooks）
 - ✅ 每个端点的请求参数、请求体示例、响应示例
 - ✅ 验证规则、限流配置、错误码说明
 - ✅ DDD 架构合规性验证

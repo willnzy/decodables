@@ -74,14 +74,14 @@
   - 健康检查 API
   - Webhooks (Clerk/Stripe)
   - 用户 API (123 个端点) - 链接到 shared/user-api-review.md
-  - 管理员 API (143 个端点，已评审 135 个) - 链接到 shared/admin-api-review.md
+  - 管理员 API (143 个端点，已评审 142 个) - 链接到 shared/admin-api-review.md
 - 业务规则速查
 - 错误码说明
 - 附录 (认证系统、Tier 命名、积分系统、速率限制)
 
 **详细端点文档** (移至 shared/):
 - user-api-review.md: 123 个 User API 端点完整文档
-- admin-api-review.md: 135 个 Admin API 端点完整文档 (实际代码 143 个)
+- admin-api-review.md: 142 个 Admin API 端点完整文档 (实际代码 143 个)
 
 **使用场景**:
 - 🔌 前端集成
@@ -344,9 +344,9 @@
 **最新更新** (2026-01-11):
 - ✅ 重构 API 文档结构 - 拆分为规范文档和详细文档
 - ✅ `api-reference.md` - 精简为规范和总览 (863 行)
-- ✅ 新增 `shared/admin-api-review.md` - 135 个 Admin API 端点详细文档
+- ✅ 新增 `shared/admin-api-review.md` - 142 个 Admin API 端点详细文档
 - ✅ 新增 `shared/user-api-review.md` - 123 个 User API 端点详细文档
-- ✅ Admin API 端点总数: 143 个 (已评审 135，待补充 8)
+- ✅ Admin API 端点总数: 143 个 (已评审 142，待补充 1: PUT /config/admin 占位符)
 - ✅ User API 端点总数: 123 个 (已全部评审)
 
 📚 **后端专用文档 - 前端不需要关注，专注后端架构和数据库开发！**

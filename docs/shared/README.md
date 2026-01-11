@@ -151,13 +151,13 @@
 
 | 文档 | 大小 | 用途 | 前端关注点 | 状态 |
 |------|------|------|----------|------|
-| [admin-api-review.md](admin-api-review.md) | ~120KB | ⭐ Admin API 完整参考 (135 个端点详细文档) | ✅ 管理后台开发 | 🟢 完整 |
+| [admin-api-review.md](admin-api-review.md) | ~120KB | ⭐ Admin API 完整参考 (142 个端点详细文档) | ✅ 管理后台开发 | 🟢 完整 |
 | [user-api-review.md](user-api-review.md) | ~85KB | ⭐ User API 完整参考 (123 个端点详细文档) | ✅ 前端业务逻辑开发 | 🟢 完整 |
 
 **内容覆盖**:
 - **admin-api-review.md**:
-  - 135 个 Admin API 端点 (实际代码 143 个，8 个待补充)
-  - 17 个模块分类: Users、Stats、Campaigns、Config、Events、Experiments、Feature Flags 等
+  - 142 个 Admin API 端点 (实际代码 143 个，1 个待补充)
+  - 18 个模块分类: AI Insights、AI Models、Users、Stats、Campaigns、Config、Events、Experiments、Feature Flags 等
   - 每个端点: HTTP 方法、路径、请求参数、请求体、响应格式、限流配置、验证规则
   - DDD 架构合规性说明
 
