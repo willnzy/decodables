@@ -24,16 +24,20 @@ Make Decodables is a powerful yet easy-to-use tool for creating 8-page foldable 
 - **Monthly Credits:** None
 - **Features:** Basic creation, PDF export
 
-### Starter ($14.9/month)
-- **Monthly Credits:** 500 (reset monthly)
-- **Features:** 
+### Starter ($9.9/month)
+- **Regular Price:** ~~$14.9/month~~
+- **Current Price:** $9.9/month (promotional pricing)
+- **Monthly Credits:** 200 (reset monthly)
+- **Features:**
   - ZIP export
   - Full sticker library
   - Marketplace access
   - Publish free assets
 
-### Pro ($29.9/month)
-- **Monthly Credits:** 1,000 (reset monthly)
+### Pro ($19.9/month)
+- **Regular Price:** ~~$29.9/month~~
+- **Current Price:** $19.9/month (promotional pricing)
+- **Monthly Credits:** 500 (reset monthly)
 - **Features:**
   - Everything in Starter
   - OCR / Smart Scan
@@ -47,13 +51,14 @@ Make Decodables is a powerful yet easy-to-use tool for creating 8-page foldable 
 
 ### Credit Types
 1. **Monthly Credits** - Included with Starter/Pro plans, reset at start of each billing cycle, do NOT roll over
-2. **Permanent Credits** - Purchased via Credit Booster ($4.99 = 100 credits) or earned from Marketplace sales, never expire
+2. **Permanent Credits** - Purchased via Credit Booster or earned from Marketplace sales, never expire
 
 ### Credit Costs
 | Feature | Cost |
 |---------|------|
 | AI Image Generation | 5 credits/image |
-| OCR / Smart Scan | 5 credits/scan |
+| AI Text Generation | 1 credit/generation |
+| OCR / Smart Scan | 10 credits/scan |
 | PDF Download | Free |
 | ZIP Export | Free (Starter/Pro) |
 
@@ -80,7 +85,7 @@ Your very first AI-generated image is free.
 
 ### 3. OCR / Smart Scan (Pro Plan)
 - Extract text from images and handwritten notes
-- Cost: 5 credits per scan
+- Cost: 10 credits per scan
 - Best results with: good lighting, high contrast, printed text or neat handwriting
 - Supported formats: JPG, PNG, WEBP (max 5MB)
 - Also supports PDF documents
@@ -148,8 +153,17 @@ Your very first AI-generated image is free.
 - Downgrade: Takes effect at end of billing period
 - Cancel: Access continues until period ends
 
-### Credit Booster
-- $4.99 = 100 permanent credits (one-time purchase)
+### Credit Booster Packs
+
+Purchase permanent credits that never expire:
+
+| Pack Size | Credits | Regular Price | Current Price | Savings |
+|-----------|---------|---------------|---------------|---------|
+| **Small** | 100 | $2.99 | $2.99 | - |
+| **Medium** | 500 | $14.99 | $13.49 | 10% off |
+| **Large** | 2,000 | $60.00 | $48.00 | 20% off |
+
+All credit packs are one-time purchases and credits never expire.
 
 ## Contact Information
 

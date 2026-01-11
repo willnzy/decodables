@@ -2394,13 +2394,371 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ---
 
-## 附录: 速率限制
+### 4.19 新手引导 `/onboarding`
+
+#### GET `/onboarding/steps`
+
+获取新手引导步骤
+
+**响应**:
+```json
+{
+  "steps": [
+    {
+      "id": "create_first_project",
+      "title": "创建你的第一个项目",
+      "description": "体验 Make Decodables 强大的编辑器",
+      "completed": false,
+      "order": 1
+    }
+  ]
+}
+```
+
+#### POST `/onboarding/steps/{step_id}/complete`
+
+标记步骤为已完成
+
+**响应**:
+```json
+{
+  "success": true,
+  "next_step_id": "upload_first_asset"
+}
+```
+
+---
+
+### 4.20 推荐系统 `/referrals`
+
+#### GET `/referrals/code`
+
+获取用户推荐码
+
+**响应**:
+```json
+{
+  "referral_code": "ABC123",
+  "referral_count": 5,
+  "bonus_credits_earned": 250
+}
+```
+
+#### GET `/referrals/stats`
+
+获取推荐统计
+
+**响应**:
+```json
+{
+  "total_referrals": 5,
+  "successful_conversions": 3,
+  "pending_referrals": 2,
+  "total_credits_earned": 250
+}
+```
+
+---
+
+### 4.21 工具 `/tools`
+
+#### POST `/tools/color-picker`
+
+颜色选择器工具
+
+**请求**:
+```json
+{
+  "image_url": "https://...",
+  "x": 100,
+  "y": 150
+}
+```
+
+**响应**:
+```json
+{
+  "hex": "#FF5733",
+  "rgb": {"r": 255, "g": 87, "b": 51}
+}
+```
+
+---
+
+### 4.22 日志 `/logs`
+
+#### GET `/logs/activities`
+
+获取用户活动日志
+
+**参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `limit` | int | 返回数量 (默认: 20) |
+| `offset` | int | 偏移量 (默认: 0) |
+| `activity_type` | string | 活动类型过滤 |
+
+**响应**:
+```json
+{
+  "logs": [
+    {
+      "id": "log_xxx",
+      "activity_type": "project_created",
+      "description": "创建项目: 我的第一本书",
+      "created_at": "2024-01-01T12:00:00Z"
+    }
+  ],
+  "total": 100
+}
+```
+
+---
+
+### 4.23 用户档案 `/user_profile`
+
+#### GET `/user_profile/settings`
+
+获取用户设置
+
+**响应**:
+```json
+{
+  "language": "en",
+  "timezone": "America/New_York",
+  "email_notifications": true,
+  "auto_save": true
+}
+```
+
+#### PATCH `/user_profile/settings`
+
+更新用户设置
+
+**请求**:
+```json
+{
+  "language": "zh-CN",
+  "auto_save": false
+}
+```
+
+---
+
+### 4.24 用户资源 `/user_assets`
+
+#### GET `/user_assets`
+
+获取用户上传的资源列表
+
+**参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 资源类型 (image/sticker/background) |
+| `limit` | int | 返回数量 |
+| `offset` | int | 偏移量 |
+
+**响应**:
+```json
+{
+  "assets": [
+    {
+      "id": "asset_xxx",
+      "type": "sticker",
+      "url": "https://...",
+      "filename": "my_sticker.png",
+      "uploaded_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 50
+}
+```
+
+---
+
+### 4.25 AI 图片生成 `/generation_images`
+
+#### POST `/generation_images/generate`
+
+生成 AI 图片
+
+**请求**:
+```json
+{
+  "prompt": "A cute cat sitting on a windowsill",
+  "style": "cartoon",
+  "model": "flux-schnell"
+}
+```
+
+**响应**:
+```json
+{
+  "task_id": "task_xxx",
+  "status": "processing",
+  "estimated_time": 10
+}
+```
+
+#### GET `/generation_images/status/{task_id}`
+
+查询生成状态
+
+**响应**:
+```json
+{
+  "status": "completed",
+  "image_url": "https://...",
+  "credits_used": 5
+}
+```
+
+---
+
+### 4.26 PDF 生成 `/generation_pdf`
+
+#### POST `/generation_pdf/export`
+
+导出项目为 PDF
+
+**请求**:
+```json
+{
+  "project_id": "proj_xxx",
+  "quality": "high"
+}
+```
+
+**响应**:
+```json
+{
+  "pdf_url": "https://...",
+  "download_expires_at": "2024-01-02T00:00:00Z"
+}
+```
+
+---
+
+### 4.27 故事生成 `/generation_story`
+
+#### POST `/generation_story/create`
+
+生成 AI 故事
+
+**请求**:
+```json
+{
+  "theme": "adventure",
+  "characters": ["a brave knight", "a wise dragon"],
+  "pages": 8
+}
+```
+
+**响应**:
+```json
+{
+  "story_id": "story_xxx",
+  "status": "processing"
+}
+```
+
+---
+
+### 4.28 系统资源 `/system_resources`
+
+#### GET `/system_resources/backgrounds`
+
+获取系统背景库
+
+**响应**:
+```json
+{
+  "backgrounds": [
+    {
+      "id": "bg_xxx",
+      "url": "https://...",
+      "category": "nature",
+      "tier_required": "t1"
+    }
+  ]
+}
+```
+
+#### GET `/system_resources/stickers`
+
+获取系统贴纸库
+
+**响应**:
+```json
+{
+  "stickers": [
+    {
+      "id": "sticker_xxx",
+      "url": "https://...",
+      "category": "animals",
+      "tier_required": "t2"
+    }
+  ]
+}
+```
+
+---
+
+## 附录 A: 认证系统
+
+### Clerk 用户 ID 格式
+
+Make Decodables 使用 Clerk 作为认证提供商。用户 ID 格式如下:
+
+**格式**: `user_{base58_characters}`
+
+**示例**: `user_2NNEqL2nrIRdJ194ndJqAHwEfxC`
+
+**特征**:
+- 前缀: 固定为 `user_`
+- 字符集: 大小写字母 + 数字 (Base58)
+- 长度: 总计 25-35 个字符 (前缀 5 个 + 标识符 20-30 个)
+
+**验证规则** (Regex):
+```regex
+^user_[a-zA-Z0-9]{20,30}$
+```
+
+**⚠️ 重要提示**:
+- Clerk user ID **不是** UUID 格式
+- 不要尝试使用 UUID 验证规则验证 Clerk ID
+- API 调用时必须使用完整的 `user_` 前缀
+
+**错误示例**:
+```
+❌ 550e8400-e29b-41d4-a716-446655440000  (UUID 格式)
+❌ 2NNEqL2nrIRdJ194ndJqAHwEfxC          (缺少前缀)
+```
+
+**正确示例**:
+```
+✅ user_2NNEqL2nrIRdJ194ndJqAHwEfxC
+```
+
+### 认证流程
+
+1. 用户在前端通过 Clerk 登录
+2. Clerk 返回 JWT token
+3. 前端在 API 请求中携带 token (Authorization header)
+4. 后端验证 token 并提取 user_id
+5. 使用 user_id 执行业务逻辑
+
+---
+
+## 附录 B: 速率限制
 
 | 端点 | 限制 |
 |------|------|
 | `/payment/checkout` | 5/分钟 |
 | `/payment/portal` | 10/分钟 |
 | `/generate/images` | 10/分钟 |
+| `/generation_images/generate` | 10/分钟 |
+| `/generation_story/create` | 5/分钟 |
 | `/projects` (POST) | 20/分钟 |
 | `/assets` (POST) | 20/分钟 |
 | `/marketplace/purchase` | 10/分钟 |
@@ -2409,4 +2767,6 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ---
 
-*文档由 Claude Code 自动生成*
+*文档版本: v3.25*
+*最后更新: 2026-01-11*
+*更新内容: 补充 9 个缺失的 API 端点章节, 添加 Clerk ID 格式说明*
