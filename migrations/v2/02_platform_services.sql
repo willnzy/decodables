@@ -567,7 +567,10 @@ CREATE TABLE content_reports (
 );
 
 -- P0-6: 创建 marketplace_reports 视图供 Repository 使用
-CREATE OR REPLACE VIEW marketplace_reports AS
+-- 注意: 如果之前存在同名表，需要先删除
+DROP TABLE IF EXISTS marketplace_reports CASCADE;
+DROP VIEW IF EXISTS marketplace_reports CASCADE;
+CREATE VIEW marketplace_reports AS
 SELECT * FROM content_reports;
 
 -- P0-6: 允许通过视图插入
