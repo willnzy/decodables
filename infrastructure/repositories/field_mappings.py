@@ -595,17 +595,34 @@ DAILY_THEMES_DB_TO_DOMAIN: Dict[str, str] = {
     'recovery_expires_at': 'recovery_expires_at',
 }
 
-# error_logs 表
+# error_logs 表 (支持前端和后端错误)
 ERROR_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'id',
     'user_id': 'user_id',
     'error_type': 'error_type',
+    # 前端错误字段 (2026-01-12 新增)
+    'error_id': 'error_id',                   # 前端生成的唯一错误 ID
+    'error_code': 'error_code',               # 错误代码
+    'message': 'message',                     # 前端错误消息
+    'status_code': 'status_code',             # HTTP 状态码
+    'endpoint': 'endpoint',                   # API 端点
+    'method': 'method',                       # HTTP 方法
+    'stack_trace': 'stack_trace',             # 前端堆栈跟踪
+    'page_url': 'page_url',                   # 发生错误的页面 URL
+    'user_agent': 'user_agent',               # 浏览器 User-Agent
+    'session_id': 'session_id',               # 前端会话 ID
+    'user_code': 'user_code',                 # 用户代码 (26位)
+    'context': 'context',                     # 上下文信息 (JSONB)
+    'client_timestamp': 'client_timestamp',   # 前端时间戳
+    'source': 'source',                       # 来源: frontend/backend
+    # 后端错误字段 (保留兼容)
     'error_message': 'error_message',
     'error_stack': 'error_stack',
     'request_path': 'request_path',
     'request_method': 'request_method',
     'request_body': 'request_body',
     'response_status': 'response_status',
+    # 元数据
     'environment': 'environment',
     'severity': 'severity',
     'level': 'level',                         # TEXT (P0-9: 与 severity 同步)
