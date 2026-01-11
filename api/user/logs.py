@@ -1,9 +1,11 @@
 """Logs API - Error logs endpoint (v3).
 
 @module api.user.logs
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0: Added request_id field for backend tracing
+
 - v3.0.0: DDD architecture upgrade - CQRS pattern
   - Created LoggingService with error logging business logic
   - Added 2 Command Handlers (CreateErrorLog, CreateErrorLogBatch)
@@ -75,6 +77,8 @@ class ErrorLogRequest(BaseModel):
     status_code: Optional[int] = Field(None, ge=100, le=599)
     endpoint: Optional[str] = Field(None, max_length=1000)
     method: Optional[str] = Field(None, max_length=10)
+    # v3.1.0: Added request_id for backend tracing
+    request_id: Optional[str] = Field(None, max_length=100)
     user_code: Optional[str] = Field(None, max_length=50)
     session_id: Optional[str] = Field(None, max_length=100)
     page_url: Optional[str] = Field(None, max_length=2000)

@@ -72,7 +72,7 @@ class AnalyticsEvent(BaseModel):
     """Single analytics event."""
     event_type: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9_]+$")
     event_id: Optional[str] = Field(None, max_length=100)
-    event_level: Optional[str] = Field(None, pattern="^(info|warning|error|debug)$")
+    event_level: Optional[str] = Field(None, pattern="^(critical|important|normal|debug)$")
     timestamp: Optional[str] = Field(None, max_length=50)
     session_id: Optional[str] = Field(None, max_length=100)
     properties: Dict[str, Any] = Field(default_factory=dict)
