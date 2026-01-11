@@ -267,6 +267,12 @@ git commit -m "feat(db): add new table"
 **最后更新**: 2026-01-11
 **版本**: v2.1
 
+**重要更新 (2026-01-12)**:
+- ✅ **error_logs 表扩展** - 新增 14 个前端错误日志字段 (支持 errorLogger.ts)
+  - 新字段: error_id, error_code, message, status_code, endpoint, method, stack_trace, page_url, user_agent, session_id, user_code, context, client_timestamp, source
+  - 索引: idx_error_logs_error_id, idx_error_logs_session_id
+  - 迁移脚本: `scripts/migrations/add_frontend_error_log_fields.sql`
+
 **重要更新 (2026-01-11)**:
 - ✅ Schema 管理规范更新: 直接编辑主文件，不再创建迁移脚本
 - ✅ system_resources 表完整实现 (25 字段, 7 索引)
@@ -340,7 +346,7 @@ git commit -m "feat(db): add new table"
 
 | 映射表 | 数据库表 | 领域对象 | 软删除 |
 |--------|----------|----------|--------|
-| `ERROR_LOGS_DB_TO_DOMAIN` | error_logs | ErrorLog | ❌ |
+| `ERROR_LOGS_DB_TO_DOMAIN` | error_logs | ErrorLog | ❌ | ⭐ v3.1.0 前端字段支持 |
 | `API_LOGS_DB_TO_DOMAIN` | api_logs | ApiLog | ❌ |
 | `ADMIN_OPERATIONS_DB_TO_DOMAIN` | admin_operations | AdminOperation | ❌ |
 | `AGGREGATED_STATS_DB_TO_DOMAIN` | aggregated_stats | AggregatedStat | ❌ |
@@ -950,6 +956,6 @@ USING (is_public = true AND status = 'published');
 
 ---
 
-**文档版本**: v2.1
+**文档版本**: v2.2
 **最后更新**: 2026-01-12
 **维护者**: 后端团队

@@ -964,26 +964,48 @@
 
 ## 12. Logs 日志
 
+> **更新 (v3.1.0, 2026-01-12)**: 完整支持前端 errorLogger.ts 的错误上报格式
+
 ### POST `/logs/error`
 
-单条错误上报
+单条错误上报 (无需认证)
+
+**限流**: 30/分钟
 
 **请求体**:
 ```json
 {
-  "level": "error",
+  "error_id": "api_err_1736690412345",
+  "error_type": "api_error",
+  "error_code": "FETCH_FAILED",
   "message": "Failed to load resource",
-  "stacktrace": "...",
+  "status_code": 500,
+  "endpoint": "/api/v2/user/projects",
+  "method": "GET",
+  "request_id": "req_abc123",
+  "user_code": "26010914305278900123456789",
+  "session_id": "sess_xxx",
+  "page_url": "https://app.makedecodables.com/editor",
   "user_agent": "Mozilla/5.0...",
-  "url": "/editor"
+  "stack_trace": "Error: Failed to fetch...",
+  "context": { "attempt": 1 },
+  "client_timestamp": "2026-01-12T10:30:00.000Z"
 }
 ```
+
+**验证规则**:
+| 字段 | 验证 | 说明 |
+|------|------|------|
+| `error_id` | 必填, 1-100 字符, `[a-zA-Z0-9_-]+` | 前端生成的唯一 ID |
+| `error_type` | 必填, 1-50 字符 | 错误类型 (api_error/network_error/react_error/promise_error) |
+| `status_code` | 可选, 100-599 | HTTP 状态码 (网络错误时传 null) |
+| `method` | 可选, GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS | HTTP 方法 |
+| `context` | 可选, 最大 10KB | 附加上下文信息 |
 
 **响应**:
 ```json
 {
-  "success": true,
-  "log_id": "log_xxx"
+  "status": "ok"
 }
 ```
 
@@ -991,27 +1013,46 @@
 
 ### POST `/logs/errors`
 
-批量错误上报
+批量错误上报 (无需认证)
+
+**限流**: 10/分钟
 
 **请求体**:
 ```json
 {
   "errors": [
     {
-      "level": "error",
-      "message": "..."
+      "error_id": "api_err_1",
+      "error_type": "api_error",
+      "message": "Error 1"
+    },
+    {
+      "error_id": "api_err_2",
+      "error_type": "network_error",
+      "message": "Error 2"
     }
   ]
 }
 ```
 
+**验证规则**:
+- `errors` 数组最多 50 条 (超过需拆分批次)
+- 每条记录的验证规则同单条上报
+
 **响应**:
 ```json
 {
-  "success": true,
-  "logged_count": 2
+  "status": "ok",
+  "errors_received": 2
 }
 ```
+
+**前端实现注意事项** (errorLogger.ts):
+- 网络错误时 `status_code` 应传 `null` (不传 0)
+- 上传失败时自动存入 localStorage 队列
+- 队列最大 200 条，超出时丢弃最旧的
+- 连续失败 5 次后自动清空队列
+- 批量上传时自动拆分为 50 条/批
 
 ---
 
