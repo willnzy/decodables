@@ -3814,6 +3814,233 @@ Content-Disposition: attachment; filename="minibook.pdf"
 
 ---
 
+### 5.16 Asset Categories (素材分类管理) - 7个端点
+
+> ✅ **实现状态**: 已完成 (2026-01-11)
+> **文件**: `api/admin/asset_categories.py`
+> **DDD 架构**: 完整的 Domain/Application/Infrastructure/API 分层
+> **LTREE 支持**: PostgreSQL LTREE 层级结构 + 4 个 RPC 函数
+
+| 方法 | 端点 | 描述 | Rate Limit | Handler |
+|---|---|---|---|---|
+| GET | `/asset-categories/` | 列出所有分类 | 60/分钟 | `list_categories` |
+| GET | `/asset-categories/tree` | 获取分类树 | 60/分钟 | `get_category_tree` |
+| POST | `/asset-categories/` | 创建新分类 | 10/分钟 | `create_category` |
+| PATCH | `/asset-categories/{slug}` | 更新分类信息 | 20/分钟 | `update_category` |
+| PUT | `/asset-categories/{slug}/move` | 移动分类到新父级 | 10/分钟 | `move_category` |
+| DELETE | `/asset-categories/{slug}` | 删除分类 (软删除) | 10/分钟 | `delete_category` |
+| GET | `/asset-categories/{slug}/resources` | 获取分类下的资源 | 60/分钟 | `get_category_resources` |
+
+#### GET `/admin/asset-categories/`
+
+列出所有分类，支持多种过滤条件。
+
+**查询参数**:
+- `asset_type` (可选): 按资产类型过滤 (text/image/shape/table/sticker/icon/frame)
+- `parent_id` (可选): 按父分类过滤
+- `is_visible` (可选): 按可见性过滤 (true/false)
+- `min_tier` (可选): 按最低等级过滤 (t1/t2/t3)
+- `limit` (可选): 最大结果数 (1-500，默认 100)
+- `offset` (可选): 偏移量 (默认 0)
+
+**响应**:
+```json
+[
+  {
+    "id": "uuid",
+    "parent_id": "uuid" | null,
+    "path": "graphics.stickers.animals",
+    "level": 3,
+    "slug": "animals",
+    "name": "Animals",
+    "name_i18n": {"en": "Animals", "zh": "动物"},
+    "description": "Animal stickers for educational content",
+    "icon": "🐶",
+    "asset_type": "sticker",
+    "is_visible": true,
+    "is_featured": false,
+    "display_order": 10,
+    "min_tier": "t1",
+    "visible_from": null,
+    "visible_until": null,
+    "asset_count": 150,
+    "usage_count": 1200,
+    "metadata": {},
+    "created_at": "2026-01-11T00:00:00Z",
+    "updated_at": "2026-01-11T00:00:00Z"
+  }
+]
+```
+
+#### GET `/admin/asset-categories/tree`
+
+获取分类树形结构，按 LTREE 路径排序。
+
+**查询参数**:
+- `asset_type` (可选): 按资产类型过滤
+- `include_hidden` (可选): 是否包含隐藏分类 (默认 false)
+
+**响应**: 同上，返回树形排序的分类列表
+
+#### POST `/admin/asset-categories/`
+
+创建新分类。路径和层级自动计算。
+
+**请求体**:
+```json
+{
+  "slug": "animals",
+  "name": "Animals",
+  "asset_type": "sticker",
+  "parent_slug": "stickers",
+  "name_i18n": {"en": "Animals", "zh": "动物"},
+  "description": "Animal stickers",
+  "icon": "🐶",
+  "min_tier": "t1",
+  "is_visible": true,
+  "is_featured": false,
+  "display_order": 10,
+  "metadata": {}
+}
+```
+
+**响应**: 创建的分类对象 (同 GET 响应)
+
+**错误码**:
+- `400`: Slug 已存在、父分类不存在、超过最大层级 (3)
+- `500`: 创建失败
+
+#### PATCH `/admin/asset-categories/{slug}`
+
+更新分类元数据。注意: 不能用此接口修改层级关系，使用 PUT `/move` 代替。
+
+**路径参数**:
+- `slug`: 分类标识符
+
+**请求体** (所有字段可选):
+```json
+{
+  "name": "Updated Name",
+  "name_i18n": {"en": "Updated", "zh": "更新"},
+  "description": "New description",
+  "icon": "🐱",
+  "asset_type": "sticker",
+  "min_tier": "t2",
+  "is_visible": false,
+  "is_featured": true,
+  "display_order": 20,
+  "metadata": {"color": "blue"}
+}
+```
+
+**响应**: 更新后的分类对象
+
+**错误码**:
+- `400`: 无字段更新、尝试更新受保护字段
+- `404`: 分类不存在
+
+#### PUT `/admin/asset-categories/{slug}/move`
+
+移动分类到新父级。自动更新路径、层级和所有子分类。
+
+**路径参数**:
+- `slug`: 要移动的分类标识符
+
+**请求体**:
+```json
+{
+  "new_parent_slug": "new-parent" // 或 null 移到根级
+}
+```
+
+**响应**: 更新后的分类对象
+
+**错误码**:
+- `400`: 会创建循环引用、超过最大层级
+- `404`: 分类或新父分类不存在
+
+#### DELETE `/admin/asset-categories/{slug}`
+
+软删除分类 (30天恢复期)。
+
+**路径参数**:
+- `slug`: 分类标识符
+
+**查询参数**:
+- `cascade` (可选): 是否级联删除子分类 (默认 false)
+
+**响应**:
+```json
+{
+  "message": "Category deleted successfully",
+  "slug": "animals"
+}
+```
+
+**错误码**:
+- `400`: cascade=false 但分类有子分类
+- `404`: 分类不存在
+
+#### GET `/admin/asset-categories/{slug}/resources`
+
+获取分类下的系统资源 (system_resources 表)。
+
+**路径参数**:
+- `slug`: 分类标识符
+
+**查询参数**:
+- `limit` (可选): 最大结果数 (1-200，默认 50)
+- `offset` (可选): 偏移量 (默认 0)
+
+**响应**:
+```json
+{
+  "category_slug": "animals",
+  "category_name": "Animals",
+  "total_resources": 150,
+  "resources": [
+    {
+      "id": "uuid",
+      "resource_type": "sticker",
+      "category_id": "uuid",
+      "url": "https://...",
+      "thumbnail_url": "https://...",
+      "name": "Cute Cat",
+      "description": "A cute cat sticker",
+      "tags": ["cat", "animal", "pet"],
+      "metadata": {},
+      "is_active": true,
+      "is_featured": false,
+      "min_tier": "t1",
+      "display_order": 10,
+      "created_at": "2026-01-11T00:00:00Z",
+      "updated_at": "2026-01-11T00:00:00Z"
+    }
+  ]
+}
+```
+
+**错误码**:
+- `404`: 分类不存在
+
+---
+
+**技术实现细节**:
+
+1. **LTREE 层级结构**: 使用 PostgreSQL LTREE 类型存储物化路径，支持高效的树查询
+2. **4 个 RPC 函数**:
+   - `get_category_descendants(path)` - 获取所有后代分类
+   - `get_category_ancestors(path)` - 获取所有祖先分类
+   - `get_category_siblings(path)` - 获取同级分类
+   - `move_category(category_id, new_parent_id)` - 移动分类并更新子树
+3. **DDD 架构**:
+   - Domain: `domains/content/category_repository.py` (接口), `category_service.py` (业务逻辑)
+   - Application: `application/queries/categories.py` (5 Query), `application/commands/categories.py` (7 Command)
+   - Infrastructure: `infrastructure/repositories/category_repository_impl.py` (Supabase 实现)
+   - API: `api/admin/asset_categories.py` (7 endpoints)
+
+---
+
 ## 附录 A: 认证系统
 
 ### Clerk 用户 ID 格式
