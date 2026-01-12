@@ -2,10 +2,15 @@
 Base Repository - Abstract base class for all Supabase repositories.
 
 @module infrastructure.repositories.base_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient Migration - Phase 4)
 
 Provides common functionality for soft delete, hard delete, and automatic filtering.
 All concrete repositories should inherit from this class.
+
+v2.0 Changes:
+- Now requires AsyncClient via dependency injection (no lazy loading)
+- All operations use native async/await
+- Updated retry decorators to async version
 """
 
 from abc import ABC, abstractmethod
@@ -13,7 +18,7 @@ from typing import Optional, List, Dict, Any, TypeVar, Generic
 from datetime import datetime, timezone, timedelta
 import logging
 
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error_async
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +43,36 @@ class BaseRepository(ABC, Generic[T]):
     - _map_to_row(entity: T) -> Dict
     """
 
-    def __init__(self, client=None):
+    def __init__(self, client):
         """
-        Initialize repository with optional Supabase client.
+        Initialize repository with AsyncClient.
+
+        v2.0: Client is now REQUIRED (no lazy loading).
+        Must be injected via FastAPI dependency.
 
         Args:
-            client: Supabase client instance (optional, will lazy load if None)
+            client: Supabase AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
+
+        Example:
+            from core.database.dependencies import get_async_db
+            from fastapi import Depends
+
+            async def some_endpoint(db = Depends(get_async_db)):
+                repo = SomeRepository(client=db)
         """
+        if client is None:
+            raise ValueError(
+                "AsyncClient is required for BaseRepository v2.0. "
+                "Use FastAPI dependency injection: Depends(get_async_db)"
+            )
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     @property
@@ -110,7 +131,7 @@ class BaseRepository(ABC, Generic[T]):
                 .select("value") \
                 .eq("key", "soft_delete.recovery_period_days") \
                 .single() \
-                .execute()
+                await .execute()
 
             if result.data and result.data.get("value"):
                 return int(result.data["value"])
@@ -121,7 +142,7 @@ class BaseRepository(ABC, Generic[T]):
 
         return 30  # 默认值
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def soft_delete(self, id: str, user_id: Optional[str] = None) -> bool:
         """
         Soft delete a record (mark as deleted).
@@ -157,7 +178,7 @@ class BaseRepository(ABC, Generic[T]):
             if user_id:
                 query = query.eq("user_id", user_id)
 
-            result = query.execute()
+            result = await query.execute()
 
             if result.data:
                 logger.info(
@@ -173,7 +194,7 @@ class BaseRepository(ABC, Generic[T]):
             logger.error(f"Error soft deleting {self.table_name} record {id}: {e}")
             raise
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def restore(self, id: str, user_id: Optional[str] = None) -> bool:
         """
         Restore a soft-deleted record.
@@ -199,7 +220,7 @@ class BaseRepository(ABC, Generic[T]):
             if user_id:
                 query = query.eq("user_id", user_id)
 
-            result = query.execute()
+            result = await query.execute()
 
             if result.data:
                 logger.info(f"Restored {self.table_name} record: {id}")
@@ -212,7 +233,7 @@ class BaseRepository(ABC, Generic[T]):
             logger.error(f"Error restoring {self.table_name} record {id}: {e}")
             raise
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def list_deleted_recoverable(
         self,
         user_id: str,
@@ -246,7 +267,7 @@ class BaseRepository(ABC, Generic[T]):
                 .order("deleted_at", desc=True) \
                 .range(offset, offset + limit - 1)
 
-            result = query.execute()
+            result = await query.execute()
 
             entities = [self._map_to_entity(row) for row in result.data]
             total = result.count or 0
@@ -261,7 +282,7 @@ class BaseRepository(ABC, Generic[T]):
     # Hard Delete Operations
     # ============================================================
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def hard_delete(
         self,
         id: str,
@@ -304,7 +325,7 @@ class BaseRepository(ABC, Generic[T]):
                 if user_id:
                     query = query.eq("user_id", user_id)
 
-                result = query.execute()
+                result = await query.execute()
 
                 if result.data:
                     logger.info(f"Permanently deleted (Stage 2) {self.table_name} record: {id}")
@@ -322,7 +343,7 @@ class BaseRepository(ABC, Generic[T]):
                 if user_id:
                     query = query.eq("user_id", user_id)
 
-                result = query.execute()
+                result = await query.execute()
 
                 if result.data:
                     logger.info(f"Physically deleted {self.table_name} record: {id}")
@@ -351,7 +372,7 @@ class BaseRepository(ABC, Generic[T]):
             # If column doesn't exist, query raises exception
             self.client.table(self.table_name).select(
                 "is_permanently_deleted"
-            ).eq("id", "00000000-0000-0000-0000-000000000000").limit(1).execute()
+            await ).eq("id", "00000000-0000-0000-0000-000000000000").limit(1).execute()
             return True
         except Exception:
             # Column doesn't exist
@@ -401,7 +422,7 @@ class BaseRepository(ABC, Generic[T]):
     # Common CRUD Operations
     # ============================================================
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def get_by_id(
         self,
         id: str,
@@ -423,7 +444,7 @@ class BaseRepository(ABC, Generic[T]):
             else:
                 query = self._query_active_only()
 
-            result = query.eq("id", id).single().execute()
+            result = await query.eq("id", id).single().execute()
 
             if not result.data:
                 return None
@@ -434,7 +455,7 @@ class BaseRepository(ABC, Generic[T]):
             logger.error(f"Failed to get {self.table_name} by ID {id}: {e}")
             return None
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def exists(self, id: str) -> bool:
         """
         Check if record exists (excluding deleted).
@@ -446,13 +467,13 @@ class BaseRepository(ABC, Generic[T]):
             True if exists and not deleted
         """
         try:
-            result = self._query_active_only("id").eq("id", id).limit(1).execute()
+            result = await self._query_active_only("id").eq("id", id).limit(1).execute()
             return bool(result.data)
         except Exception as e:
             logger.error(f"Error checking existence of {self.table_name} {id}: {e}")
             return False
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def count(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -479,7 +500,7 @@ class BaseRepository(ABC, Generic[T]):
                 for key, value in filters.items():
                     query = query.eq(key, value)
 
-            result = query.execute()
+            result = await query.execute()
             return len(result.data) if result.data else 0
 
         except Exception as e:
@@ -490,7 +511,7 @@ class BaseRepository(ABC, Generic[T]):
     # Bulk Operations
     # ============================================================
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def get_deleted_by_user(
         self,
         user_id: str,
@@ -513,7 +534,7 @@ class BaseRepository(ABC, Generic[T]):
                 "id, created_at, deleted_at"
             ).eq("user_id", user_id).order(
                 "deleted_at", desc=True
-            ).range(offset, offset + limit - 1).execute()
+            await ).range(offset, offset + limit - 1).execute()
 
             return result.data or []
 
@@ -521,7 +542,7 @@ class BaseRepository(ABC, Generic[T]):
             logger.error(f"Error getting deleted {self.table_name} for user {user_id}: {e}")
             return []
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def permanently_hide(
         self,
         id: str,
@@ -548,7 +569,7 @@ class BaseRepository(ABC, Generic[T]):
             if user_id:
                 query = query.eq("user_id", user_id)
 
-            result = query.execute()
+            result = await query.execute()
 
             if result.data:
                 logger.info(f"Permanently hid {self.table_name} record: {id}")
