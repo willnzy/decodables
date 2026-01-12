@@ -39,7 +39,7 @@ from infrastructure.repositories import (
     SupabaseNotificationRepository,
 )
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,8 @@ router = APIRouter(prefix="/profile", tags=["user-profile-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_user_profile_service() -> UserProfileService:
-    """Dependency injection factory for UserProfileService."""
-    db = get_database_client()
+async def get_user_profile_service(db = Depends(get_async_db)) -> UserProfileService:
+    """Dependency injection factory for UserProfileService (AsyncClient)."""
     user_repo = SupabaseUserRepository(db)
     credit_repo = SupabaseCreditRepository(db)
     listing_repo = SupabaseListingRepository(db)
