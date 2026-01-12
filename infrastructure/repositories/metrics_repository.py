@@ -2,7 +2,11 @@
 Metrics Repository - Data access layer for system metrics and analytics
 
 @module infrastructure.repositories.metrics_repository
-@version 3.28
+@version 3.29 (AsyncClient migration)
+
+Changes in v3.29:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 v3.28: Created for Metrics module DDD refactoring (MET-CRITICAL-1)
 - Extracted all database access from API layer
@@ -132,7 +136,7 @@ class SupabaseMetricsRepository:
             List of daily metric records
         """
         try:
-            result = self.db.table("daily_metrics")\
+            result = await self.db.table("daily_metrics")\
                 .select("*")\
                 .gte("date", start_date)\
                 .lte("date", end_date)\
@@ -160,7 +164,7 @@ class SupabaseMetricsRepository:
             List of monthly metric records
         """
         try:
-            result = self.db.table("monthly_metrics")\
+            result = await self.db.table("monthly_metrics")\
                 .select("*")\
                 .order("month", desc=True)\
                 .limit(months)\
@@ -183,7 +187,7 @@ class SupabaseMetricsRepository:
             Retention data dict or None if not found
         """
         try:
-            result = self.db.table("aggregated_stats")\
+            result = await self.db.table("aggregated_stats")\
                 .select("data")\
                 .eq("stat_type", "user_retention_30d")\
                 .order("date", desc=True)\
@@ -224,7 +228,7 @@ class SupabaseMetricsRepository:
             # 或者分别查询但添加时间过滤
             counts = {}
             for event_type in event_types:
-                result = self.db.table("user_events")\
+                result = await self.db.table("user_events")\
                     .select("id", count="exact")\
                     .eq("event_type", event_type)\
                     .gte("created_at", cutoff_date)\
@@ -266,7 +270,7 @@ class SupabaseMetricsRepository:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
             # v3.28: Added limit for OOM protection
-            result = self.db.table("error_logs")\
+            result = await self.db.table("error_logs")\
                 .select("error_type, status_code")\
                 .gte("created_at", cutoff)\
                 .limit(limit)\
@@ -309,7 +313,7 @@ class SupabaseMetricsRepository:
             List of records with date and dau fields
         """
         try:
-            result = self.db.table("daily_metrics")\
+            result = await self.db.table("daily_metrics")\
                 .select("date, dau")\
                 .order("date", desc=True)\
                 .limit(days)\

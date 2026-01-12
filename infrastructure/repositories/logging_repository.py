@@ -2,7 +2,11 @@
 Supabase Logging Repository Implementation.
 
 @module infrastructure.repositories.logging_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 """
 
 import logging
@@ -37,7 +41,7 @@ class SupabaseLoggingRepository:
             Exception: If Supabase insert fails
         """
         try:
-            response = self.supabase.table("error_logs").insert(error_data).execute()
+            response = await self.supabase.table("error_logs").insert(error_data).execute()
 
             if response.data and len(response.data) > 0:
                 return response.data[0]
@@ -66,7 +70,7 @@ class SupabaseLoggingRepository:
             return 0
 
         try:
-            response = self.supabase.table("error_logs").insert(errors).execute()
+            response = await self.supabase.table("error_logs").insert(errors).execute()
 
             # Return the number of records created
             if response.data:

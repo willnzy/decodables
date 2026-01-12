@@ -2,7 +2,11 @@
 Error Logs Repository - Data access layer for error logs management.
 
 @module infrastructure.repositories.error_logs_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 This module provides database access methods for error logs,
 following DDD architecture and Repository pattern.
@@ -90,7 +94,7 @@ class SupabaseErrorLogsRepository(ErrorLogsRepository):
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        result = await query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         total = result.count or 0
 
         return {
@@ -120,7 +124,7 @@ class SupabaseErrorLogsRepository(ErrorLogsRepository):
         start_date = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
         # LOG-HIGH-1: Added .limit(100000) to prevent OOM
-        result = self.client.table("error_logs").select(
+        result = await self.client.table("error_logs").select(
             "level, error_type, created_at"
         ).gte("created_at", start_date).limit(100000).execute()
 
@@ -189,5 +193,5 @@ class SupabaseErrorLogsRepository(ErrorLogsRepository):
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.order("created_at", desc=True).limit(limit).execute()
+        result = await query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
