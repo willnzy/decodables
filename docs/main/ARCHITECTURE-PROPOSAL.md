@@ -1,8 +1,9 @@
 # Make Decodables 系统重构方案 v2
 
-> **版本**: v2.0  
-> **日期**: 2026-01-06  
+> **版本**: v2.1
+> **日期**: 2026-01-12
 > **架构**: 三层架构 + 轻量级 DDD 融合
+> **更新**: v2.1 更新 Feature Flag 章节至 v1.2 规范
 
 ---
 
@@ -433,12 +434,78 @@ decodables-fe/
 
 ## 4. Feature Flag 系统
 
-> 详细设计见: `Feature-Flag-Experiments-Unified-Design.md`
+> **版本**: v1.2 (2026-01-12)
+> **详细设计**: [feature-flag-design.md](../shared/feature-flag-design.md)
 
-**核心决策**:
-- 方案 C: Feature Flag 为基础，Experiments 扩展
-- 统一评估引擎
-- 可切换 Provider (自建/GrowthBook/Unleash)
+### 4.1 核心决策
+
+| 决策 | 选择 | 说明 |
+|------|------|------|
+| 架构方案 | 方案 C | Feature Flag 为基础，Experiments 扩展 |
+| 评估引擎 | 统一引擎 | 共享分配算法、曝光追踪 |
+| Provider | 自建 | 支持未来切换 (GrowthBook/Unleash) |
+
+### 4.2 Flag 类型
+
+| 类型 | flag_type | 变体数 | 统计分析 | 使用场景 |
+|------|-----------|--------|----------|----------|
+| 布尔开关 | `boolean` | 2 (on/off) | ❌ | 功能灰度、紧急关闭 |
+| 多变体 | `multivariate` | N | ❌ | 配置切换、UI 变体 |
+| A/B 实验 | `experiment` | N | ✅ | 转化优化、假设验证 |
+
+### 4.3 评估引擎流程
+
+```
+1. Check enabled           → Flag 是否启用
+2. Check time window       → 时间窗口
+3. Check environment       → 环境检查
+4. Check allowed_tiers     → Tier 分层筛选 (v1.2)
+5. Check blacklist         → 黑名单
+6. Check whitelist         → 白名单 (优先)
+7. Evaluate targeting      → 定向规则 (支持规则级 tiers)
+8. Assign variant          → 确定性哈希分配
+9. Track exposure          → 曝光追踪
+```
+
+### 4.4 v1.2 新增功能
+
+**Tier 分层筛选**:
+```json
+{
+  "allowed_tiers": ["t2", "t3"],  // 仅 Starter/Pro 可见
+  "targeting_rules": [
+    {
+      "id": "rule1",
+      "tiers": ["t3"],           // 规则级 Tier 筛选
+      "conditions": [...],
+      "variant": "treatment"
+    }
+  ]
+}
+```
+
+### 4.5 数据库表
+
+| 表名 | 用途 |
+|------|------|
+| `feature_flags` | Flag 核心配置 |
+| `experiment_configs` | A/B 实验扩展配置 |
+| `flag_exposures` | 曝光事件记录 |
+| `experiment_results` | 实验结果聚合 |
+
+### 4.6 API 端点
+
+**User API**:
+- `GET /api/experiments/flags` - 批量获取 Flag 状态
+- `GET /api/experiments/{key}/variant` - 获取单个变体
+- `POST /api/experiments/{key}/convert` - 记录转化
+
+**Admin API**:
+- `GET /api/v2/admin/feature-flags` - 列表
+- `POST /api/v2/admin/feature-flags` - 创建
+- `PUT /api/v2/admin/feature-flags/{id}` - 更新
+- `DELETE /api/v2/admin/feature-flags/{id}` - 删除
+- `GET /api/v2/admin/experiments/{key}/stats` - 实验统计
 
 ---
 
