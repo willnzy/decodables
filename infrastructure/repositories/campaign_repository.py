@@ -2,9 +2,13 @@
 Campaign Repository Implementation - Supabase implementation of campaign data access.
 
 @module infrastructure.repositories.campaign_repository
-@version 1.0.1
+@version 2.0.0 (AsyncClient migration)
 
-Changes:
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
+
+Changes in v1.0:
 - v1.0.1: Fix time range query logic (gte → gt for end_at)
 """
 
@@ -18,15 +22,24 @@ logger = logging.getLogger(__name__)
 
 
 class SupabaseCampaignRepository(ICampaignRepository):
-    """Supabase implementation of campaign repository."""
+    """
+    Supabase implementation of campaign repository.
+
+    v2.0: AsyncClient required.
+    """
 
     def __init__(self, client):
         """
-        Initialize repository with Supabase client.
+        Initialize repository with AsyncClient.
 
         Args:
-            client: Supabase client instance
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
         """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseCampaignRepository")
         self.client = client
 
     async def get_active_campaigns(self) -> List[CampaignData]:
@@ -34,7 +47,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
         now = datetime.now(timezone.utc)
 
         # v1.0.1: Use gt (strictly greater) for end_at to exclude expired campaigns
-        result = self.client.table("campaigns").select("*").eq(
+        result = await self.client.table("campaigns").select("*").eq(
             "status", "active",
         ).eq("is_active", True).lte(
             "start_at", now.isoformat(),  # Campaign has started
@@ -46,7 +59,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
     async def get_by_id(self, campaign_id: str) -> Optional[CampaignData]:
         """Get campaign by ID."""
-        result = self.client.table("campaigns").select("*").eq(
+        result = await self.client.table("campaigns").select("*").eq(
             "id", campaign_id,
         ).execute()
 
@@ -66,7 +79,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
         # Batch query claims
         try:
-            claims_result = self.client.table("campaign_participations").select(
+            claims_result = await self.client.table("campaign_participations").select(
                 "campaign_id"
             ).eq("user_id", user_id).in_("campaign_id", campaign_ids).execute()
 
@@ -76,7 +89,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
         # Batch query dismissals
         try:
-            dismissals_result = self.client.table("campaign_dismissals").select(
+            dismissals_result = await self.client.table("campaign_dismissals").select(
                 "campaign_id, channel"
             ).eq("user_id", user_id).in_("campaign_id", campaign_ids).execute()
 
@@ -100,7 +113,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
         Returns False if claim already exists.
         """
         try:
-            self.client.table("campaign_participations").insert({
+            await self.client.table("campaign_participations").insert({
                 "campaign_id": campaign_id,
                 "user_id": user_id,
                 "credits_received": credits_received,
@@ -113,7 +126,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
 
     async def delete_claim(self, campaign_id: str, user_id: str) -> None:
         """Delete a campaign claim for rollback purposes."""
-        self.client.table("campaign_participations").delete().eq(
+        await self.client.table("campaign_participations").delete().eq(
             "campaign_id", campaign_id
         ).eq("user_id", user_id).execute()
 
@@ -125,7 +138,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
         Returns False if usage limit reached.
         """
         try:
-            result = self.client.rpc("increment_campaign_usage", {
+            result = await self.client.rpc("increment_campaign_usage", {
                 "p_campaign_id": campaign_id,
             }).execute()
 
@@ -140,7 +153,7 @@ class SupabaseCampaignRepository(ICampaignRepository):
         self, campaign_id: str, user_id: str, channel: str
     ) -> None:
         """Record notification dismissal using upsert."""
-        self.client.table("campaign_dismissals").upsert({
+        await self.client.table("campaign_dismissals").upsert({
             "campaign_id": campaign_id,
             "user_id": user_id,
             "channel": channel,
