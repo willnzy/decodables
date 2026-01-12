@@ -41,7 +41,8 @@ from dependencies import optional_user, get_current_user
 from infrastructure.repositories.credit_repository import SupabaseCreditRepository
 from infrastructure.repositories.campaign_repository import SupabaseCampaignRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_supabase_client, get_database_client
+from core.database import get_async_db_client
+from core.database.dependencies import get_async_db
 from domains.marketing import CampaignService, ClaimResult, CampaignWithStatus
 from domains.marketing.repository import CampaignData
 
@@ -64,14 +65,13 @@ router = APIRouter(prefix="/campaigns", tags=["user-campaigns-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_campaign_service() -> CampaignService:
+async def get_campaign_service(db = Depends(get_async_db)) -> CampaignService:
     """
-    Dependency injection factory for CampaignService.
+    Dependency injection factory for CampaignService (AsyncClient).
 
     Creates a CampaignService with the SupabaseCampaignRepository.
     """
-    supabase = get_supabase_client()
-    campaign_repo = SupabaseCampaignRepository(supabase)
+    campaign_repo = SupabaseCampaignRepository(db)
     return CampaignService(campaign_repo)
 
 
@@ -81,7 +81,8 @@ async def get_grant_credits_fn(user_id: str, amount: int, description: str) -> N
 
     This bridges the campaign service to the credit repository.
     """
-    credit_repo = SupabaseCreditRepository(get_database_client())
+    db_client = await get_async_db_client()
+    credit_repo = SupabaseCreditRepository(db_client)
     await credit_repo.add_credits_permanent(
         user_id,
         amount,

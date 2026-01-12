@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from domains.articles.entities import ArticleCategory
 from domains.articles.service import ArticleService
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from infrastructure.repositories.article_repository import SupabaseArticleRepository
 
 logger = logging.getLogger(__name__)
@@ -88,9 +88,8 @@ class CategoriesResponse(BaseModel):
 # Helper Functions
 # ==========================================
 
-def _get_article_service() -> ArticleService:
-    """Get ArticleService instance with injected repository."""
-    db = get_database_client()
+async def _get_article_service(db = Depends(get_async_db)) -> ArticleService:
+    """Get ArticleService instance with injected repository (AsyncClient)."""
     repo = SupabaseArticleRepository(db)
     return ArticleService(repo)
 

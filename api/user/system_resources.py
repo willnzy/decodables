@@ -481,10 +481,11 @@ async def delete_resource(
 
     # ✅ Task 9 - Phase 2: Log resource deletion to audit trail
     try:
-        from core.database import get_database_client
+        from core.database import get_async_db_client
         from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        db_client = await get_async_db_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
             admin_id=admin["id"],
             operation_type="resource_delete",
