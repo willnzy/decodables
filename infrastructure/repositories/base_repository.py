@@ -127,11 +127,11 @@ class BaseRepository(ABC, Generic[T]):
             恢复期天数 (默认 30)
         """
         try:
-            result = self.client.table("system_configs") \
+            result = await self.client.table("system_configs") \
                 .select("value") \
                 .eq("key", "soft_delete.recovery_period_days") \
                 .single() \
-                await .execute()
+                .execute()
 
             if result.data and result.data.get("value"):
                 return int(result.data["value"])
@@ -370,9 +370,9 @@ class BaseRepository(ABC, Generic[T]):
             # Try selecting is_permanently_deleted from a non-existent ID
             # If column exists, query succeeds (returns empty)
             # If column doesn't exist, query raises exception
-            self.client.table(self.table_name).select(
+            await self.client.table(self.table_name).select(
                 "is_permanently_deleted"
-            await ).eq("id", "00000000-0000-0000-0000-000000000000").limit(1).execute()
+            ).eq("id", "00000000-0000-0000-0000-000000000000").limit(1).execute()
             return True
         except Exception:
             # Column doesn't exist
@@ -530,11 +530,11 @@ class BaseRepository(ABC, Generic[T]):
             List of deleted record dicts (not mapped to entities)
         """
         try:
-            result = self._query_deleted_only(
+            result = await self._query_deleted_only(
                 "id, created_at, deleted_at"
             ).eq("user_id", user_id).order(
                 "deleted_at", desc=True
-            await ).range(offset, offset + limit - 1).execute()
+            ).range(offset, offset + limit - 1).execute()
 
             return result.data or []
 
