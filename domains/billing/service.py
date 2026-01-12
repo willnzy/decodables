@@ -2,13 +2,16 @@
 Billing Domain Service - Orchestrates credit operations within the domain.
 
 @module domains.billing.service
-@version 1.0.0
+@version 2.0.0
 
 This service handles domain logic that doesn't naturally belong to aggregates.
 It coordinates operations but delegates persistence to the repository.
+
+All credit configurations (costs, allowances, signup bonus) are now fetched from
+TierService (system_configs) instead of hardcoded values.
 """
 
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 import logging
 
@@ -21,6 +24,9 @@ from .exceptions import (
     CreditOperationFailedException,
 )
 
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,39 +37,23 @@ class BillingService:
     This service:
     - Validates business rules
     - Coordinates credit operations
-    - Calculates costs for different operations
+    - Calculates costs for different operations (from TierService configuration)
     """
 
-    # Emergency fallback costs (only used if database is completely unavailable)
-    # ⚠️ WARNING: These are EMERGENCY fallbacks only!
-    # Primary source: system_configs table in database
-    EMERGENCY_FALLBACK_COSTS = {
-        "image_generation": 5,
-        "text_generation": 0,  # Currently free
-        "smart_scan": 10,
-        "ocr": 10,  # Same as smart_scan (no distinction)
-    }
-
-    # Monthly allowances by tier (fallback)
-    TIER_ALLOWANCES = {
-        "t1": 0,
-        "t2": 500,
-        "t3": 1000,
-    }
-
-    # Signup bonus (fallback)
-    SIGNUP_BONUS = 50
-
-    def __init__(self, repository: ICreditRepository, config_service: 'ConfigService' = None):
+    def __init__(
+        self,
+        repository: ICreditRepository,
+        tier_service: "TierService" = None
+    ):
         """
-        Initialize billing service with repository and config service.
+        Initialize billing service with repository and tier service.
 
         Args:
             repository: Credit repository implementation
-            config_service: Optional ConfigService instance for dynamic configuration (async)
+            tier_service: TierService for fetching credit configurations
         """
         self._repository = repository
-        self._config_service = config_service
+        self._tier_service = tier_service
 
     async def get_user_credits(self, user_id: str) -> Optional[UserCredits]:
         """
@@ -115,52 +105,27 @@ class BillingService:
         """
         Get the cost for a specific operation.
 
-        Priority:
-        1. Database system_configs (primary source)
-        2. Emergency fallback (if database unavailable)
+        Uses TierService to fetch from system_configs, with emergency fallback.
 
         Args:
-            operation: Operation name
+            operation: Operation name (image_generation, page_generation, ocr, smart_scan, text_generation)
 
         Returns:
             Credit cost as integer
-
-        Raises:
-            ValueError: If operation is unknown
         """
-        # Try to get from database config first
-        if self._config_service:
-            try:
-                config_key = f"credits.cost.{operation}"
-                config_value = await self._config_service.get_config(config_key, use_cache=True)
+        if self._tier_service:
+            return await self._tier_service.get_operation_cost(operation)
 
-                if config_value is not None:
-                    # Handle different value formats
-                    if isinstance(config_value, dict):
-                        return int(config_value.get('amount', config_value.get('value', 0)))
-                    return int(config_value)
-                else:
-                    logger.error(
-                        f"[CRITICAL] Credit cost for '{operation}' not found in database!",
-                        extra={"operation": operation, "config_key": config_key}
-                    )
-            except Exception as e:
-                logger.error(
-                    f"[CRITICAL] Failed to load credit cost from database: {e}",
-                    extra={"operation": operation, "error": str(e)}
-                )
-
-        # Use emergency fallback
-        logger.warning(
-            f"Using EMERGENCY fallback cost for '{operation}'. "
-            f"Database config should be added to system_configs table!",
-            extra={"operation": operation}
-        )
-
-        if operation not in self.EMERGENCY_FALLBACK_COSTS:
-            raise ValueError(f"Unknown operation: {operation}")
-
-        return self.EMERGENCY_FALLBACK_COSTS[operation]
+        # Emergency fallback if tier_service not available
+        fallback_costs = {
+            "image_generation": 5,
+            "page_generation": 5,
+            "ocr": 5,
+            "smart_scan": 5,
+            "text_generation": 0,
+        }
+        logger.warning(f"Using fallback cost for '{operation}' - tier_service not available")
+        return fallback_costs.get(operation, 5)
 
     async def deduct_for_operation(
         self,
@@ -273,6 +238,8 @@ class BillingService:
         """
         Grant signup bonus to new user.
 
+        Bonus amount is fetched from TierService (system_configs).
+
         Args:
             user_id: User ID
             idempotency_key: Optional idempotency key (recommend: user_id)
@@ -280,9 +247,15 @@ class BillingService:
         Returns:
             CreditTransaction record
         """
+        # Get signup bonus from configuration
+        if self._tier_service:
+            bonus_amount = await self._tier_service.get_signup_bonus()
+        else:
+            bonus_amount = 100  # Default fallback
+
         return await self.add_credits(
             user_id=user_id,
-            amount=self.SIGNUP_BONUS,
+            amount=bonus_amount,
             bucket=CreditBucket.PERMANENT,
             tx_type=TransactionType.SIGNUP_BONUS,
             description="Welcome bonus for new users",
@@ -297,7 +270,7 @@ class BillingService:
         """
         Process monthly subscription renewal.
 
-        Resets monthly credits based on tier.
+        Monthly credit allowance is fetched from TierService (system_configs).
 
         Args:
             user_id: User ID
@@ -306,7 +279,14 @@ class BillingService:
         Returns:
             Updated UserCredits aggregate
         """
-        allowance = self.TIER_ALLOWANCES.get(tier, 0)
+        # Get monthly credits from configuration
+        if self._tier_service:
+            allowance = await self._tier_service.get_monthly_credits(tier)
+        else:
+            # Emergency fallback
+            from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
+            allowance = EMERGENCY_TIER_CONFIGS.get(tier, {}).get("monthly_credits", 0)
+
         return await self._repository.reset_monthly_credits(user_id, allowance)
 
     async def get_transaction_history(

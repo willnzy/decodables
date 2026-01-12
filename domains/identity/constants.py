@@ -13,22 +13,17 @@ Display names are configurable via system_configs and should be fetched via Tier
 TIER_T1 = "t1"  # First Tier
 TIER_T2 = "t2"  # Second Tier
 TIER_T3 = "t3"  # Third Tier
+TIER_T4 = "t4"  # Fourth Tier (预留)
 
 # Valid tier codes set
-VALID_TIERS = {TIER_T1, TIER_T2, TIER_T3}
+VALID_TIERS = {TIER_T1, TIER_T2, TIER_T3, TIER_T4}
 
 # Fixed descriptive labels (for documentation and logs)
 TIER_LABELS = {
     TIER_T1: "First Tier",
     TIER_T2: "Second Tier",
     TIER_T3: "Third Tier",
-}
-
-# Default monthly credits (can also be configured via system_configs)
-TIER_MONTHLY_CREDITS = {
-    TIER_T1: 0,    # Free tier gets 0 monthly credits
-    TIER_T2: 200,  # Starter tier gets 200 monthly credits
-    TIER_T3: 500,  # Pro tier gets 500 monthly credits
+    TIER_T4: "Fourth Tier",
 }
 
 # Tier levels for comparison (higher = better tier)
@@ -36,6 +31,7 @@ TIER_LEVELS = {
     TIER_T1: 1,  # First Tier (Free)
     TIER_T2: 2,  # Second Tier (Starter)
     TIER_T3: 3,  # Third Tier (Pro)
+    TIER_T4: 4,  # Fourth Tier (Enterprise)
 }
 
 # Default display names (can be overridden via system_configs)
@@ -44,13 +40,7 @@ DEFAULT_TIER_DISPLAY_NAMES = {
     TIER_T1: "Free Plan",
     TIER_T2: "Starter Plan",
     TIER_T3: "Pro Plan",
-}
-
-# Monthly prices (original prices before discounts)
-TIER_MONTHLY_PRICES = {
-    TIER_T1: 0.0,
-    TIER_T2: 14.9,
-    TIER_T3: 29.9,
+    TIER_T4: "Enterprise Plan",
 }
 
 # Trial period configuration (can be overridden via system_configs)
@@ -88,8 +78,8 @@ def compare_tiers(tier1: str, tier2: str) -> int:
 
 
 def is_premium_tier(tier: str) -> bool:
-    """Check if tier is a paid/premium tier (t2 or t3)."""
-    return tier in {TIER_T2, TIER_T3}
+    """Check if tier is a paid/premium tier (t2, t3, or t4)."""
+    return tier in {TIER_T2, TIER_T3, TIER_T4}
 
 
 def normalize_tier(tier: str) -> str:
@@ -119,10 +109,16 @@ def normalize_tier(tier: str) -> str:
     legacy_mappings = {
         "t1": TIER_T1,
         "free plan": TIER_T1,
+        "free": TIER_T1,
         "t2": TIER_T2,
         "starter plan": TIER_T2,
+        "starter": TIER_T2,
         "t3": TIER_T3,
         "pro plan": TIER_T3,
+        "pro": TIER_T3,
+        "t4": TIER_T4,
+        "enterprise plan": TIER_T4,
+        "enterprise": TIER_T4,
     }
 
     # Check legacy mappings first
@@ -133,4 +129,4 @@ def normalize_tier(tier: str) -> str:
     if tier_lower in VALID_TIERS:
         return tier_lower
 
-    raise ValueError(f"Invalid tier: {tier}. Must be one of: t1, t2, t3 (or legacy: free, starter, pro)")
+    raise ValueError(f"Invalid tier: {tier}. Must be one of: t1, t2, t3, t4")

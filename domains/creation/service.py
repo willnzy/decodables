@@ -2,13 +2,15 @@
 Creation Domain Service - Orchestrates project operations.
 
 @module domains.creation.service
-@version 1.0.0
+@version 2.0.0
 
 This service handles domain logic that doesn't naturally belong to aggregates.
 It coordinates operations but delegates persistence to the repository.
+
+Project limits are now fetched from TierService (system_configs) instead of hardcoded.
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from .aggregates.project import Project, Page
 from .repository import IProjectRepository
@@ -20,6 +22,9 @@ from .exceptions import (
     ProjectLimitExceededException,
 )
 
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
+
 
 class CreationService:
     """
@@ -28,24 +33,23 @@ class CreationService:
     This service:
     - Manages project lifecycle
     - Enforces access control
-    - Handles project limits
+    - Handles project limits (from TierService configuration)
     """
 
-    # Project limits by tier
-    PROJECT_LIMITS = {
-        "t1": 5,
-        "t2": 50,
-        "t3": 500,
-    }
-
-    def __init__(self, repository: IProjectRepository):
+    def __init__(
+        self,
+        repository: IProjectRepository,
+        tier_service: "TierService" = None
+    ):
         """
-        Initialize creation service with repository.
+        Initialize creation service with repository and tier service.
 
         Args:
             repository: Project repository implementation
+            tier_service: TierService for fetching tier-based limits
         """
         self._repository = repository
+        self._tier_service = tier_service
 
     async def get_project(self, project_id: str) -> Optional[Project]:
         """
@@ -143,7 +147,13 @@ class CreationService:
         if not title or not title.strip():
             raise InvalidProjectDataException("title", "Title is required")
 
-        limit = self.PROJECT_LIMITS.get(user_tier, 5)
+        # Get project limit from TierService (configurable)
+        if self._tier_service:
+            limit = await self._tier_service.get_max_projects(user_tier)
+        else:
+            # Fallback if tier_service not injected
+            from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
+            limit = EMERGENCY_TIER_CONFIGS.get(user_tier, {}).get("max_projects", 1)
 
         # Pre-check (optimistic, may have race condition)
         current_count = await self._repository.count_by_owner(owner_id)
