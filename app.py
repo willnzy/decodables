@@ -199,16 +199,24 @@ async def lifespan(app: FastAPI):
     # ===== SHUTDOWN =====
     logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
 
-    # Stop scheduler
+    # Stop scheduler (no new tasks)
     shutdown_scheduler()
 
-    # Close async database client
+    # Close async database client (v3.28+)
     from core.database import close_async_db_client
     try:
         await close_async_db_client()
         logger.info("✅ Async database client closed")
     except Exception as e:
         logger.error(f"❌ Failed to close async database client: {e}")
+
+    # Close sync database client (legacy, for backward compatibility)
+    from core.database import close_db_client
+    try:
+        close_db_client()
+        logger.info("✅ Sync database client closed")
+    except Exception as e:
+        logger.error(f"❌ Failed to close sync database client: {e}")
 
     # Gracefully close Redis connection
     from core.cache import close_redis
@@ -608,9 +616,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 def health():
     return {
         "status": "ok",
-        "version": "3.27",
+        "version": "3.28",
         "api_version": "v2",
-        "migration_status": "complete"
+        "migration_status": "complete",
+        "async_client": "enabled"
     }
 
 # --- Webhooks (v3.24: moved to routers/webhooks.py) ---
