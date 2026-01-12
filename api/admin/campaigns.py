@@ -244,10 +244,10 @@ async def delete_campaign_endpoint(
 
         # ✅ Task 9 - Phase 2: Log campaign deletion to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="campaign_delete",

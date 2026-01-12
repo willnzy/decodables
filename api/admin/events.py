@@ -51,7 +51,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories.events_repository import SupabaseEventsRepository
 from application.services.events_service import EventsService
 from infrastructure.rate_limiter import limiter
@@ -160,7 +160,7 @@ async def adm_get_user_events(
         )
 
         # Initialize Service layer
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         repository = SupabaseEventsRepository(db_client)
         service = EventsService(repository)
 
@@ -275,7 +275,7 @@ async def adm_get_event_stats(
         )
 
         # Initialize Service layer
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         repository = SupabaseEventsRepository(db_client)
         service = EventsService(repository)
 
@@ -328,7 +328,7 @@ async def adm_get_aggregated_stats(
         )
 
         # Initialize Service layer
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         repository = SupabaseEventsRepository(db_client)
         service = EventsService(repository)
 
@@ -374,7 +374,7 @@ async def adm_get_aggregated_stats_range(
         )
 
         # Initialize Service layer
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         repository = SupabaseEventsRepository(db_client)
         service = EventsService(repository)
 

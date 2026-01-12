@@ -38,7 +38,7 @@ import stripe  # v3.27: Moved to module level (SUB-MEDIUM-4)
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories import (
     SupabaseAdminUsersRepository,
     SupabasePaymentRepository,
@@ -153,7 +153,7 @@ async def adm_refund(
 
     v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-1).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     users_repo = SupabaseUserRepository(db)
     payment_repo = SupabasePaymentRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)
@@ -184,7 +184,7 @@ async def adm_cancel_subscription(
 
     v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-2).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     users_repo = SupabaseUserRepository(db)
     payment_repo = SupabasePaymentRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)
@@ -215,7 +215,7 @@ async def adm_downgrade_subscription(
 
     v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-3/7).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     users_repo = SupabaseUserRepository(db)
     payment_repo = SupabasePaymentRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)

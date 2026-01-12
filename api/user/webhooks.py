@@ -33,7 +33,7 @@ from fastapi import APIRouter, Request, Header, HTTPException, Depends
 
 from svix.webhooks import WebhookVerificationError
 
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from infrastructure.repositories import (
     SupabaseUserRepository,
     SupabaseCreditRepository,
@@ -52,7 +52,7 @@ router = APIRouter(prefix="/webhooks", tags=["user-webhooks-v2"])
 
 def get_clerk_webhook_service() -> ClerkWebhookService:
     """Dependency injection factory for ClerkWebhookService."""
-    db = get_supabase_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     credit_repo = SupabaseCreditRepository(db)
     return ClerkWebhookService(user_repo, credit_repo)
@@ -60,7 +60,7 @@ def get_clerk_webhook_service() -> ClerkWebhookService:
 
 def get_stripe_webhook_service() -> StripeWebhookService:
     """Dependency injection factory for StripeWebhookService."""
-    db = get_supabase_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     credit_repo = SupabaseCreditRepository(db)
     payment_repo = SupabasePaymentRepository(db)

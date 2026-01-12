@@ -31,7 +31,7 @@ Endpoints:
 import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from infrastructure.repositories import SupabaseAssetRepository
 from container import get_container
 from domains.generation import GenerationService
@@ -66,7 +66,7 @@ router = APIRouter(prefix="/generate/images", tags=["generation-images-v2"])
 def get_generation_service() -> GenerationService:
     """Dependency injection factory for GenerationService."""
     container = get_container()
-    db = get_supabase_client()
+    db = await get_async_db_client()
     asset_repo = SupabaseAssetRepository(db)
     return GenerationService(
         billing_service=container.billing_service,

@@ -34,7 +34,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 
 from dependencies import require_admin
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories import SupabaseTasksRepository
 from infrastructure.rate_limiter import limiter
 from .tasks_models import (
@@ -72,7 +72,7 @@ async def get_tasks_status(
 ):
     """Get status of all scheduled tasks."""
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         tasks_repo = SupabaseTasksRepository(db_client)
         task_status = await tasks_repo.get_task_status()
         return {"tasks": task_status}
@@ -102,7 +102,7 @@ async def get_task_logs(
         raise HTTPException(400, f"Invalid task_name. Must be one of: {', '.join(VALID_TASK_NAMES)}")
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         tasks_repo = SupabaseTasksRepository(db_client)
         logs = await tasks_repo.get_task_logs(task_name, status, limit)
         return {"logs": logs}
@@ -120,7 +120,7 @@ async def get_tasks_health(
 ):
     """Get overall task health status."""
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         tasks_repo = SupabaseTasksRepository(db_client)
         health_metrics = await tasks_repo.get_tasks_health()
 

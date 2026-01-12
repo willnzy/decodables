@@ -349,7 +349,7 @@ async def clear_all_cache_endpoint(
     """
     from core.cache import get_cache_provider
     from infrastructure.repositories.admin_repository import AdminRepository
-    from core.database import get_database_client
+    from core.database import get_async_db_client
 
     try:
         # P0-013 fix: Verify confirmation token
@@ -371,7 +371,7 @@ async def clear_all_cache_endpoint(
             raise HTTPException(500, "Failed to clear cache")
 
         # P0-013 fix: Audit logging
-        db = get_database_client()
+        db = await get_async_db_client()
         admin_repo = AdminRepository(db)
         await admin_repo.admin_log_operation(
             admin_id=admin["id"],

@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories import (
     SupabaseWebhookRepository,
@@ -76,7 +76,7 @@ class FailedWebhooksResponse(BaseModel):
 
 def get_webhook_retry_service() -> WebhookRetryService:
     """Dependency injection for WebhookRetryService."""
-    db = get_supabase_client()
+    db = await get_async_db_client()
 
     # Repositories
     webhook_repo = SupabaseWebhookRepository(db)
@@ -192,7 +192,7 @@ async def get_failed_webhooks(
         }
     """
     try:
-        db = get_supabase_client()
+        db = await get_async_db_client()
         webhook_repo = SupabaseWebhookRepository(db)
 
         # Get failed events

@@ -42,7 +42,7 @@ from pydantic import BaseModel, Field, field_validator
 from domains.platform.config_service import RATE_LIMIT_PRESETS, ConfigService
 from domains.platform.config_repository import ConfigRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database import get_async_db_client
 from dependencies import require_admin
 
 # Import response models
@@ -101,7 +101,7 @@ class RateLimitPresetRequest(BaseModel):
 def _get_config_service() -> ConfigService:
     """Get ConfigService instance with injected repository."""
     from infrastructure.repositories.config_repository import SupabaseConfigRepository
-    db = get_database_client()
+    db = await get_async_db_client()
     config_repo = SupabaseConfigRepository(db)
     return ConfigService(config_repo)
 
@@ -326,10 +326,10 @@ async def update_config(
 
         # ✅ Phase 3 - Task 9: Log configuration change to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="config_update",
@@ -385,10 +385,10 @@ async def batch_update_configs_endpoint(
 
         # ✅ Phase 3 - Task 9: Log each successful config change to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
 
             for update in data.updates:
                 config_key = update.get("config_key")
@@ -510,10 +510,10 @@ async def apply_rate_limit_preset_endpoint(
 
         # ✅ Phase 3 - Task 9: Log rate limit preset change to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="rate_limit_preset_apply",
@@ -595,10 +595,10 @@ async def clear_cache(
 
         # ✅ Phase 3 - Task 9: Log cache clear operation to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="cache_clear",

@@ -18,7 +18,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends
 from pydantic import BaseModel, Field
 
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from infrastructure.repositories.category_repository_impl import SupabaseCategoryRepository
 from domains.content.category_service import CategoryService
 from application.queries.categories import (
@@ -120,7 +120,7 @@ router = APIRouter(prefix="/asset-categories", tags=["admin-categories"])
 
 def get_category_handlers():
     """Dependency to get category query and command handlers."""
-    db_client = get_supabase_client()
+    db_client = await get_async_db_client()
     repository = SupabaseCategoryRepository(db_client)
     service = CategoryService(repository)
     query_handlers = CategoryQueryHandlers(service)
@@ -422,7 +422,7 @@ async def get_category_resources(
         raise HTTPException(status_code=404, detail=f"Category not found: {slug}")
 
     # Query system_resources by category_id
-    db_client = get_supabase_client()
+    db_client = await get_async_db_client()
     result = db_client.table("system_resources")\
         .select("*")\
         .eq("category_id", category["id"])\

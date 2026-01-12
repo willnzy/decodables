@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from dependencies import require_admin
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database import get_async_db_client
 
 from domains.themes import ThemesService
 from domains.themes.constants import (
@@ -53,7 +53,7 @@ router = APIRouter(prefix="/themes", tags=["admin-themes-v2"])
 
 def _get_themes_service() -> ThemesService:
     """Get ThemesService instance."""
-    return ThemesService(get_database_client())
+    return ThemesService(await get_async_db_client())
 
 
 # ==========================================

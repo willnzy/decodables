@@ -42,7 +42,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from fastapi.responses import StreamingResponse
 
 from dependencies import require_admin
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories import SupabaseAdminUsersRepository, SupabaseErrorLogsRepository
 from infrastructure.rate_limiter import limiter
 from .logs_models import (
@@ -97,7 +97,7 @@ async def get_error_logs(
 
     try:
         # v3.26: LOG-CRITICAL-1 - Use ErrorLogsRepository (DDD compliance)
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         error_logs_repo = SupabaseErrorLogsRepository(db_client)
 
         # v3.26: LOG-LOW-1 - Add audit logging
@@ -127,7 +127,7 @@ async def get_error_stats(
     """Get error statistics for the specified time period."""
     try:
         # v3.26: LOG-CRITICAL-2 - Use ErrorLogsRepository (DDD compliance)
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         error_logs_repo = SupabaseErrorLogsRepository(db_client)
 
         # v3.26: LOG-LOW-1 - Add audit logging
@@ -164,7 +164,7 @@ async def get_operation_logs(
     validate_date_format(end_date, "end_date")
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
         # v3.26: LOG-LOW-1 - Add audit logging
@@ -200,7 +200,7 @@ async def export_operation_logs(
     validate_date_format(end_date, "end_date")
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
         # v3.26: LOG-LOW-1 - Add audit logging
@@ -305,7 +305,7 @@ async def get_audit_logs(
     validate_date_format(end_date, "end_date")
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         admin_repo = SupabaseAdminUsersRepository(db_client)
 
         logger.info(

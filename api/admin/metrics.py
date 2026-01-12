@@ -42,7 +42,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 
 from dependencies import require_admin
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories import SupabaseMetricsRepository
 from infrastructure.rate_limiter import limiter
 from api.admin.metrics_models import (
@@ -126,7 +126,7 @@ async def get_daily_metrics(
     if not end_date:
         end_date = date.today().isoformat()
 
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:
@@ -153,7 +153,7 @@ async def get_monthly_metrics(
     v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
     v3.28: Added Response Model (MET-HIGH-2).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:
@@ -177,7 +177,7 @@ async def get_retention_metrics(
     v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
     v3.28: Added Response Model (MET-HIGH-2).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:
@@ -233,7 +233,7 @@ async def get_funnel_metrics(
         "payment",
     ]
 
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:
@@ -268,7 +268,7 @@ async def get_error_metrics(
     v3.28: Added Response Model (MET-HIGH-2).
     v3.28: Added query limit via Repository (MET-HIGH-1).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:
@@ -298,7 +298,7 @@ async def get_dau_trend(
     v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
     v3.28: Added Response Model (MET-HIGH-2).
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     metrics_repo = SupabaseMetricsRepository(db)
 
     try:

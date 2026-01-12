@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from domains.referrals import ReferralService, ReferralRepository
 from dependencies import get_current_user
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class CreateReferralRequest(BaseModel):
 # ==================== 依赖注入 ====================
 
 def get_referral_service(
-    supabase = Depends(get_supabase_client)
+    supabase = Depends(get_async_db_client)
 ) -> ReferralService:
     """获取Referral Service"""
     repository = ReferralRepository(supabase)

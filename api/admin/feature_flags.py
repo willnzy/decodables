@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from core.feature_flag import feature_service, EvaluationContext
 from domains.feature_flags import FeatureFlagService, FeatureFlagRepository
 from dependencies import require_admin
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def validate_allowed_tiers(tiers: Optional[List[str]]) -> None:
 # ==================== 依赖注入 ====================
 
 def get_feature_flag_service(
-    supabase = Depends(get_supabase_client)
+    supabase = Depends(get_async_db_client)
 ) -> FeatureFlagService:
     """获取Feature Flag Service"""
     repository = FeatureFlagRepository(supabase)
@@ -486,10 +486,10 @@ async def archive_flag(
     # ✅ Task 9 - Phase 2: Log feature flag deletion to audit trail
     if success:
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["user_id"],
                 operation_type="feature_flag_delete",
@@ -635,7 +635,7 @@ async def get_audit_logs(
 
 @router.get("/client/flags")
 async def get_client_flags(
-    user: dict = Depends(get_supabase_client)
+    user: dict = Depends(get_async_db_client)
 ):
     """
     Get all feature flag states for the current user (client-side evaluation).

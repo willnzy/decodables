@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Request
 
 from dependencies import require_admin
 from core.cache.redis_provider import is_redis_available, get_redis_info
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from infrastructure.rate_limiter import limiter
 from config import API_VERSION, ENV
 
@@ -124,7 +124,7 @@ async def detailed_health_check(request: Request, admin: dict = Depends(require_
 def check_supabase_connection() -> bool:
     """Check if Supabase is accessible."""
     try:
-        supabase = get_supabase_client()
+        supabase = await get_async_db_client()
         # Try a simple query
         result = supabase.table("profiles").select("id").limit(1).execute()
         return True

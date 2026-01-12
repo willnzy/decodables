@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, field_validator
 from domains.articles.entities import ArticleCategory
 from domains.articles.service import ArticleService
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database import get_async_db_client
 from infrastructure.repositories.article_repository import SupabaseArticleRepository
 from dependencies import require_admin
 
@@ -164,7 +164,7 @@ class ArticlePublishResponse(BaseModel):
 
 def _get_article_service() -> ArticleService:
     """Get ArticleService instance with injected repository."""
-    db = get_database_client()
+    db = await get_async_db_client()
     repo = SupabaseArticleRepository(db)
     return ArticleService(repo)
 
@@ -378,7 +378,7 @@ async def create_article(
         # Log to audit trail
         try:
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_create",
@@ -471,7 +471,7 @@ async def update_article(
         # Log to audit trail
         try:
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_update",
@@ -554,7 +554,7 @@ async def delete_article(
         # Log to audit trail
         try:
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_delete",
@@ -630,7 +630,7 @@ async def publish_article(
         # Log to audit trail
         try:
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_publish",
@@ -699,7 +699,7 @@ async def unpublish_article(
         # Log to audit trail
         try:
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_unpublish",

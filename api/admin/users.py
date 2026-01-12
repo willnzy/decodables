@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from core.database import get_supabase_client, get_database_client
+from core.database import get_async_db_client
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories import (
     SupabaseAdminUsersRepository,
@@ -153,7 +153,7 @@ async def search_users_api(
             "limit": 50
         }
     """
-    db = get_database_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     users = await user_repo.search_users(query, limit=limit)
     return {"users": users, "count": len(users), "limit": limit}
@@ -245,7 +245,7 @@ async def get_users_by_tier_api(
     if tier_lower not in VALID_TIERS:
         raise HTTPException(400, f"Invalid tier. Must be one of: {', '.join(VALID_TIERS)}")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     # v3.26: Pass pagination parameters
     users = await user_repo.get_users_by_tier(tier_lower, offset=offset, limit=limit)
@@ -271,7 +271,7 @@ async def get_user_audit(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     admin_repo = SupabaseAdminUsersRepository(db)
     return await admin_repo.get_full_user_audit(uid)
 
@@ -289,7 +289,7 @@ async def adjust_user_credits(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     admin_repo = SupabaseAdminUsersRepository(db)
 
     await admin_repo.admin_adjust_credits(uid, req.amount, req.bucket, req.reason)
@@ -320,7 +320,7 @@ async def update_user(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)
 
@@ -386,7 +386,7 @@ async def create_user_discount_api(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     admin_repo = SupabaseAdminUsersRepository(db)
 
@@ -421,7 +421,7 @@ async def get_user_payments(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
 
     profile = await user_repo.get_profile(uid)
@@ -457,7 +457,7 @@ async def get_user_projects(
     if len(uid) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     admin_repo = SupabaseAdminUsersRepository(db)
     return await admin_repo.admin_get_user_projects(uid, offset, limit, include_deleted)
 
@@ -486,9 +486,9 @@ async def get_user_asset_usage(
     try:
         # v3.26: Use Repository layer (fixes DDD violation)
         from infrastructure.repositories import SupabaseAssetRepository
-        from core.database import get_database_client
+        from core.database import get_async_db_client
 
-        db = get_database_client()
+        db = await get_async_db_client()
         asset_repo = SupabaseAssetRepository(db)
 
         # Repository handles query limit, retry logic, and aggregation
@@ -529,9 +529,9 @@ async def get_user_env_stats(
     try:
         # v3.26: Use Repository layer (fixes DDD violation)
         from infrastructure.repositories import SupabaseAnalyticsRepository
-        from core.database import get_database_client
+        from core.database import get_async_db_client
 
-        db = get_database_client()
+        db = await get_async_db_client()
         analytics_repo = SupabaseAnalyticsRepository(db)
 
         # Repository handles query limit, retry logic, safe parsing, and aggregation
@@ -568,7 +568,7 @@ async def restore_project_api(
     if len(project_id) > 100:
         raise HTTPException(400, "Project ID too long (max 100 characters)")
 
-    db = get_database_client()
+    db = await get_async_db_client()
     project_repo = SupabaseProjectRepository(db)
 
     project = await project_repo.restore_project(project_id)
@@ -587,7 +587,7 @@ async def get_projects_feed(
     admin: dict = Depends(require_admin),
 ):
     """Fetch the site-wide project feed."""
-    db = get_database_client()
+    db = await get_async_db_client()
     project_repo = SupabaseProjectRepository(db)
     items = await project_repo.get_all_projects_feed(offset, limit)
     return {"items": items, "total": len(items), "offset": offset, "limit": limit}

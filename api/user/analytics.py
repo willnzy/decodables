@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 from domains.analytics import AnalyticsService
 from infrastructure.repositories.analytics_events_repository import SupabaseAnalyticsEventsRepository
 
@@ -59,7 +59,7 @@ def get_analytics_service() -> AnalyticsService:
 
     Creates AnalyticsService with SupabaseAnalyticsEventsRepository.
     """
-    supabase = get_supabase_client()
+    supabase = await get_async_db_client()
     analytics_repo = SupabaseAnalyticsEventsRepository(supabase)
     return AnalyticsService(analytics_repo)
 

@@ -78,7 +78,7 @@ from domains.platform import experiments  # v3.29: Keep for legacy functions (an
 from domains.platform import experiment_ai_service  # EXP-HIGH-4: Moved import to top
 from infrastructure.repositories.experiment_repository import SupabaseExperimentRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_supabase_client
+from core.database import get_async_db_client
 
 # Import response models (EXP-HIGH-1)
 from api.admin.experiments_models import (
@@ -105,7 +105,7 @@ def get_experiment_service() -> ExperimentService:
     Returns:
         ExperimentService instance with Repository injected
     """
-    db = get_supabase_client()
+    db = await get_async_db_client()
     experiment_repo = SupabaseExperimentRepository(client=db)
     return ExperimentService(experiment_repo)
 
@@ -444,10 +444,10 @@ async def delete_experiment(
 
         # ✅ Task 9 - Phase 2: Log experiment deletion to audit trail
         try:
-            from core.database import get_database_client
+            from core.database import get_async_db_client
             from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-            admin_repo = SupabaseAdminUsersRepository(get_database_client())
+            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
             await admin_repo.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="experiment_delete",
