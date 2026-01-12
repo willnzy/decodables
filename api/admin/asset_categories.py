@@ -118,7 +118,7 @@ class CategoryResponse(BaseModel):
 router = APIRouter(prefix="/asset-categories", tags=["admin-categories"])
 
 
-def get_category_handlers():
+async def get_category_handlers():
     """Dependency to get category query and command handlers."""
     db_client = await get_async_db_client()
     repository = SupabaseCategoryRepository(db_client)

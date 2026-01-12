@@ -53,7 +53,7 @@ router = APIRouter(prefix="/analytics", tags=["user-analytics-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_analytics_service() -> AnalyticsService:
+async def get_analytics_service() -> AnalyticsService:
     """
     Dependency injection factory for AnalyticsService.
 

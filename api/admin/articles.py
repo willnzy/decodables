@@ -162,7 +162,7 @@ class ArticlePublishResponse(BaseModel):
 # Helper Functions
 # ==========================================
 
-def _get_article_service() -> ArticleService:
+async def _get_article_service() -> ArticleService:
     """Get ArticleService instance with injected repository."""
     db = await get_async_db_client()
     repo = SupabaseArticleRepository(db)

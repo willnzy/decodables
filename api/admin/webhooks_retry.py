@@ -74,7 +74,7 @@ class FailedWebhooksResponse(BaseModel):
 # Dependency Injection
 # ==========================================
 
-def get_webhook_retry_service() -> WebhookRetryService:
+async def get_webhook_retry_service() -> WebhookRetryService:
     """Dependency injection for WebhookRetryService."""
     db = await get_async_db_client()
 

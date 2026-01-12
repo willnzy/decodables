@@ -98,7 +98,7 @@ class RateLimitPresetRequest(BaseModel):
 # Helper Functions
 # ==========================================
 
-def _get_config_service() -> ConfigService:
+async def _get_config_service() -> ConfigService:
     """Get ConfigService instance with injected repository."""
     from infrastructure.repositories.config_repository import SupabaseConfigRepository
     db = await get_async_db_client()

@@ -63,7 +63,7 @@ router = APIRouter(prefix="/generate/images", tags=["generation-images-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_generation_service() -> GenerationService:
+async def get_generation_service() -> GenerationService:
     """Dependency injection factory for GenerationService."""
     container = get_container()
     db = await get_async_db_client()

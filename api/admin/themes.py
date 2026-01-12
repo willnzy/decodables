@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/themes", tags=["admin-themes-v2"])
 
 
-def _get_themes_service() -> ThemesService:
+async def _get_themes_service() -> ThemesService:
     """Get ThemesService instance."""
     return ThemesService(await get_async_db_client())
 

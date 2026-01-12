@@ -98,7 +98,7 @@ router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_experiment_service() -> ExperimentService:
+async def get_experiment_service() -> ExperimentService:
     """
     Dependency injection factory for ExperimentService.
 

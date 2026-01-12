@@ -121,7 +121,7 @@ async def detailed_health_check(request: Request, admin: dict = Depends(require_
 # Helper Functions
 # ==========================================
 
-def check_supabase_connection() -> bool:
+async def check_supabase_connection() -> bool:
     """Check if Supabase is accessible."""
     try:
         supabase = await get_async_db_client()
