@@ -16,11 +16,11 @@ BEGIN;
 -- Layer 1: 无依赖 (仅依赖 profiles)
 --   - activity_logs, aggregated_stats, ai_usage_daily, analytics_aggregation
 --   - analytics_events, clerk_webhook_events, config_audit_logs, daily_metrics
---   - daily_themes, feature_flags, holidays, monthly_metrics, notifications
---   - stripe_webhook_events, system_resource_audit_logs, user_events
+--   - campaigns (依赖 profiles - MOVED HERE because daily_themes depends on it)
+--   - daily_themes (依赖 campaigns), feature_flags, holidays, monthly_metrics
+--   - notifications, stripe_webhook_events, system_resource_audit_logs, user_events
 --
 -- Layer 2: 依赖 Layer 1 或 01_core_business.sql 的表
---   - campaigns (依赖 profiles)
 --   - content_reports (依赖 profiles, marketplace_listings)
 --   - experiments (独立)
 --   - onboarding_steps (独立)
@@ -235,7 +235,45 @@ CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
--- 9. daily_themes (also supports holiday themes)
+-- 9. campaigns (依赖 profiles) - MOVED HERE: daily_themes depends on it
+-- ----------------------------------------------------------------------------
+CREATE TABLE campaigns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL CHECK (type IN ('credits_reward', 'discount', 'trial_extension', 'bonus')),
+    config JSONB NOT NULL DEFAULT '{}',
+    target_type TEXT NOT NULL DEFAULT 'all' CHECK (target_type IN ('all', 'tier', 'cohort', 'user_list')),
+    target_config JSONB DEFAULT '{}',
+    notification_channels TEXT[] DEFAULT ARRAY['banner'],
+    notification_config JSONB DEFAULT '{}',
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    timezone TEXT DEFAULT 'America/New_York',
+    usage_limit INTEGER,
+    usage_per_user INTEGER DEFAULT 1,
+    usage_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by TEXT REFERENCES profiles(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
+    is_permanently_deleted BOOLEAN DEFAULT false,
+    CONSTRAINT chk_campaigns_deleted_at_consistency
+        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
+    CONSTRAINT chk_campaigns_recovery_expires_at_consistency
+    CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 10. daily_themes (also supports holiday themes)
 -- v2.1: Added category, i18n, AI generation, review workflow fields
 -- ----------------------------------------------------------------------------
 CREATE TABLE daily_themes (
@@ -595,46 +633,10 @@ CREATE INDEX idx_user_events_session ON user_events(session_id) WHERE session_id
 -- Layer 2: 依赖 Layer 1 的表
 -- ============================================================================
 
--- ----------------------------------------------------------------------------
--- 17. campaigns (依赖 profiles)
--- ----------------------------------------------------------------------------
-CREATE TABLE campaigns (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    description TEXT,
-    type TEXT NOT NULL CHECK (type IN ('credits_reward', 'discount', 'trial_extension', 'bonus')),
-    config JSONB NOT NULL DEFAULT '{}',
-    target_type TEXT NOT NULL DEFAULT 'all' CHECK (target_type IN ('all', 'tier', 'cohort', 'user_list')),
-    target_config JSONB DEFAULT '{}',
-    notification_channels TEXT[] DEFAULT ARRAY['banner'],
-    notification_config JSONB DEFAULT '{}',
-    start_at TIMESTAMPTZ NOT NULL,
-    end_at TIMESTAMPTZ NOT NULL,
-    timezone TEXT DEFAULT 'America/New_York',
-    usage_limit INTEGER,
-    usage_per_user INTEGER DEFAULT 1,
-    usage_count INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_by TEXT REFERENCES profiles(id),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN DEFAULT false,
-    deleted_at TIMESTAMPTZ,
-    recovery_expires_at TIMESTAMPTZ,
-    is_permanently_deleted BOOLEAN DEFAULT false,
-    CONSTRAINT chk_campaigns_deleted_at_consistency
-        CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
-    CONSTRAINT chk_campaigns_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
-);
-
+-- Note: campaigns table was moved to before daily_themes (line ~237) due to FK dependency
 
 -- ----------------------------------------------------------------------------
--- 18. content_reports (依赖 profiles, marketplace_listings)
+-- 17. content_reports (依赖 profiles, marketplace_listings)
 -- P0-6: Repository 使用 marketplace_reports 表名，创建别名视图
 -- ----------------------------------------------------------------------------
 CREATE TABLE content_reports (
