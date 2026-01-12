@@ -261,7 +261,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         result = await self.client.table("profiles").select("*").eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
-    def generate_user_code(self) -> str:
+    async def generate_user_code(self) -> str:
         """
         Generate unique 26-digit user code with registration timestamp and user count.
 
@@ -298,7 +298,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         ms_part = f"{now.microsecond // 100:04d}"
 
         # Get total user count (7 digits, zero-padded)
-        result = self.client.table("profiles").select("id", count="exact").execute()
+        result = await self.client.table("profiles").select("id", count="exact").execute()
         user_count = (result.count or 0) if hasattr(result, 'count') else 0
         count_part = f"{user_count + 1:07d}"  # +1 for the user being created
 
@@ -309,10 +309,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         code = f"{date_part}{time_part}{ms_part}{count_part}{random_part}"
 
         # Verify uniqueness (extremely rare collision, but check anyway)
-        existing = self.client.table("profiles").select("id").eq("user_code", code).execute()
+        existing = await self.client.table("profiles").select("id").eq("user_code", code).execute()
         if existing.data:
             # Recursive retry with new random suffix (collision is near-impossible)
-            return self.generate_user_code()
+            return await self.generate_user_code()
 
         return code
 
@@ -342,7 +342,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         Returns:
             Created profile dict
         """
-        user_code = self.generate_user_code()
+        user_code = await self.generate_user_code()
 
         data = {
             "id": user_id,
