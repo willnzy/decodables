@@ -2,7 +2,11 @@
 Supabase Article Repository Implementation.
 
 @module infrastructure.repositories.article_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 """
 
 import json
@@ -38,7 +42,7 @@ class SupabaseArticleRepository(ArticleRepository):
     async def get_by_id(self, article_id: UUID) -> Optional[Article]:
         """Get article by ID."""
         try:
-            response = self.db.table(self.table).select("*").eq("id", str(article_id)).single().execute()
+            response = await self.db.table(self.table).select("*").eq("id", str(article_id)).single().execute()
             if response.data:
                 return Article.from_dict(response.data)
             return None
@@ -49,7 +53,7 @@ class SupabaseArticleRepository(ArticleRepository):
     async def get_by_slug(self, slug: str) -> Optional[Article]:
         """Get article by slug."""
         try:
-            response = self.db.table(self.table).select("*").eq("slug", slug).single().execute()
+            response = await self.db.table(self.table).select("*").eq("slug", slug).single().execute()
             if response.data:
                 return Article.from_dict(response.data)
             return None
@@ -74,7 +78,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if category:
                 query = query.eq("category", category.value)
 
-            response = query.range(offset, offset + limit - 1).execute()
+            response = await query.range(offset, offset + limit - 1).execute()
 
             return [ArticleSummary.from_dict(item) for item in response.data or []]
         except Exception as e:
@@ -101,7 +105,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if category:
                 query = query.eq("category", category.value)
 
-            response = query.range(offset, offset + limit - 1).execute()
+            response = await query.range(offset, offset + limit - 1).execute()
 
             return [ArticleSummary.from_dict(item) for item in response.data or []]
         except Exception as e:
@@ -123,7 +127,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if category:
                 query = query.eq("category", category.value)
 
-            response = query.execute()
+            response = await query.execute()
             return response.count or 0
         except Exception as e:
             logger.error(f"[ArticleRepo] Error counting articles: {e}")
@@ -136,11 +140,11 @@ class SupabaseArticleRepository(ArticleRepository):
             results = []
             for cat in ArticleCategory:
                 # Total count
-                total_response = self.db.table(self.table).select("id", count="exact").eq("category", cat.value).execute()
+                total_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).execute()
                 total = total_response.count or 0
 
                 # Published count
-                pub_response = self.db.table(self.table).select("id", count="exact").eq("category", cat.value).eq("is_published", True).execute()
+                pub_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).eq("is_published", True).execute()
                 published = pub_response.count or 0
 
                 results.append({
@@ -169,7 +173,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if category:
                 query = query.eq("category", category.value)
 
-            response = query.limit(limit).execute()
+            response = await query.limit(limit).execute()
 
             return [ArticleSummary.from_dict(item) for item in response.data or []]
         except Exception as e:
@@ -201,7 +205,7 @@ class SupabaseArticleRepository(ArticleRepository):
                 "updated_at": article.updated_at.isoformat() if article.updated_at else None,
             }
 
-            response = self.db.table(self.table).insert(data).execute()
+            response = await self.db.table(self.table).insert(data).execute()
 
             if response.data:
                 return Article.from_dict(response.data[0])
@@ -227,7 +231,7 @@ class SupabaseArticleRepository(ArticleRepository):
                 "updated_at": article.updated_at.isoformat() if article.updated_at else None,
             }
 
-            response = self.db.table(self.table).update(data).eq("id", str(article.id)).execute()
+            response = await self.db.table(self.table).update(data).eq("id", str(article.id)).execute()
 
             if response.data:
                 return Article.from_dict(response.data[0])
@@ -239,7 +243,7 @@ class SupabaseArticleRepository(ArticleRepository):
     async def delete(self, article_id: UUID) -> bool:
         """Delete an article."""
         try:
-            response = self.db.table(self.table).delete().eq("id", str(article_id)).execute()
+            response = await self.db.table(self.table).delete().eq("id", str(article_id)).execute()
             return len(response.data or []) > 0
         except Exception as e:
             logger.error(f"[ArticleRepo] Error deleting article: {e}")
@@ -250,10 +254,10 @@ class SupabaseArticleRepository(ArticleRepository):
         try:
             # Use RPC or raw SQL for atomic increment
             # For now, use read-modify-write (not ideal but works)
-            response = self.db.table(self.table).select("view_count").eq("id", str(article_id)).single().execute()
+            response = await self.db.table(self.table).select("view_count").eq("id", str(article_id)).single().execute()
             if response.data:
                 new_count = (response.data.get("view_count") or 0) + 1
-                self.db.table(self.table).update({"view_count": new_count}).eq("id", str(article_id)).execute()
+                await self.db.table(self.table).update({"view_count": new_count}).eq("id", str(article_id)).execute()
                 return True
             return False
         except Exception as e:
@@ -288,7 +292,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if category:
                 db_query = db_query.eq("category", category.value)
 
-            response = db_query.order("published_at", desc=True).range(offset, offset + limit - 1).execute()
+            response = await db_query.order("published_at", desc=True).range(offset, offset + limit - 1).execute()
 
             return [ArticleSummary.from_dict(item) for item in response.data or []]
         except Exception as e:
@@ -303,7 +307,7 @@ class SupabaseArticleRepository(ArticleRepository):
             if exclude_id:
                 query = query.neq("id", str(exclude_id))
 
-            response = query.execute()
+            response = await query.execute()
             return len(response.data or []) > 0
         except Exception as e:
             logger.error(f"[ArticleRepo] Error checking slug existence: {e}")
