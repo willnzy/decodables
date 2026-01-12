@@ -2,17 +2,35 @@
 Dependency Injection Container - Centralized service instantiation.
 
 @module container
-@version 1.0.0
+@version 2.0.0 - AsyncClient Migration
 
-This module provides a simple dependency injection container that:
+This module provides a dependency injection container that:
 - Creates and caches service instances
 - Manages repository and service dependencies
-- Supports lazy initialization
+- Supports async initialization with AsyncClient
+- Lazy initialization with async context
+
+BREAKING CHANGES in v2.0:
+- All repository properties are now async methods
+- Repositories require AsyncClient parameter
+- Container must be initialized with async context
+
+Migration Guide:
+    # OLD:
+    container = get_container()
+    repo = container.user_repository  # Sync property
+
+    # NEW:
+    container = get_container()
+    repo = await container.get_user_repository()  # Async method
 """
 
 from typing import Optional, TypeVar, Type
 from functools import lru_cache
 import logging
+
+# Core Database
+from core.database import get_async_db_client
 
 # Infrastructure - Repositories
 from infrastructure.repositories import (
@@ -96,10 +114,16 @@ T = TypeVar('T')
 
 class Container:
     """
-    Dependency Injection Container.
+    Dependency Injection Container (v2.0 - Async).
 
-    Provides centralized service instantiation with lazy initialization.
-    All instances are cached as singletons.
+    Provides centralized service instantiation with async initialization.
+    All repository getters are now async methods that require AsyncClient.
+
+    CRITICAL CHANGES in v2.0:
+    - Repositories require AsyncClient (mandatory parameter)
+    - All repository getters are async methods (not properties)
+    - Services are created lazily with async repositories
+    - Handlers are created lazily with async services
     """
 
     _instance: Optional['Container'] = None
@@ -122,861 +146,803 @@ class Container:
         self._services = {}
         self._handlers = {}
         self._initialized = True
-        logger.info("[Container] Dependency injection container initialized")
+        logger.info("[Container v2.0] Async dependency injection container initialized")
 
-    # ========== Repositories ==========
+    # ========== Repositories (v2.0 - Async Methods) ==========
 
-    @property
-    def credit_repository(self) -> ICreditRepository:
-        """Get credit repository instance."""
+    async def get_credit_repository(self) -> ICreditRepository:
+        """Get credit repository instance (async)."""
         if 'credit' not in self._repositories:
-            self._repositories['credit'] = SupabaseCreditRepository()
+            db = await get_async_db_client()
+            self._repositories['credit'] = SupabaseCreditRepository(db)
         return self._repositories['credit']
 
-    @property
-    def user_repository(self) -> IUserRepository:
-        """Get user repository instance."""
+    async def get_user_repository(self) -> IUserRepository:
+        """Get user repository instance (async)."""
         if 'user' not in self._repositories:
-            self._repositories['user'] = SupabaseUserRepository()
+            db = await get_async_db_client()
+            self._repositories['user'] = SupabaseUserRepository(db)
         return self._repositories['user']
 
-    @property
-    def project_repository(self) -> IProjectRepository:
-        """Get project repository instance."""
+    async def get_project_repository(self) -> IProjectRepository:
+        """Get project repository instance (async)."""
         if 'project' not in self._repositories:
-            self._repositories['project'] = SupabaseProjectRepository()
+            db = await get_async_db_client()
+            self._repositories['project'] = SupabaseProjectRepository(db)
         return self._repositories['project']
 
-    @property
-    def listing_repository(self) -> IListingRepository:
-        """Get listing repository instance."""
+    async def get_listing_repository(self) -> IListingRepository:
+        """Get listing repository instance (async)."""
         if 'listing' not in self._repositories:
-            self._repositories['listing'] = SupabaseListingRepository()
+            db = await get_async_db_client()
+            self._repositories['listing'] = SupabaseListingRepository(db)
         return self._repositories['listing']
 
-    @property
-    def feature_flag_repository(self) -> IFeatureFlagRepository:
-        """Get feature flag repository instance."""
+    async def get_feature_flag_repository(self) -> IFeatureFlagRepository:
+        """Get feature flag repository instance (async)."""
         if 'feature_flag' not in self._repositories:
-            self._repositories['feature_flag'] = SupabaseFeatureFlagRepository()
+            db = await get_async_db_client()
+            self._repositories['feature_flag'] = SupabaseFeatureFlagRepository(db)
         return self._repositories['feature_flag']
 
-    @property
-    def experiment_repository(self) -> IExperimentRepository:
-        """Get experiment repository instance."""
+    async def get_experiment_repository(self) -> IExperimentRepository:
+        """Get experiment repository instance (async)."""
         if 'experiment' not in self._repositories:
-            self._repositories['experiment'] = SupabaseExperimentRepository()
+            db = await get_async_db_client()
+            self._repositories['experiment'] = SupabaseExperimentRepository(db)
         return self._repositories['experiment']
 
-    # ========== Domain Services ==========
+    # ========== Domain Services (v2.0 - Async Methods) ==========
 
-    @property
-    def billing_service(self) -> BillingService:
-        """Get billing service instance."""
+    async def get_billing_service(self) -> BillingService:
+        """Get billing service instance (async)."""
         if 'billing' not in self._services:
-            self._services['billing'] = BillingService(self.credit_repository)
+            credit_repo = await self.get_credit_repository()
+            self._services['billing'] = BillingService(credit_repo)
         return self._services['billing']
 
-    @property
-    def identity_service(self) -> IdentityService:
-        """Get identity service instance."""
+    async def get_identity_service(self) -> IdentityService:
+        """Get identity service instance (async)."""
         if 'identity' not in self._services:
-            self._services['identity'] = IdentityService(self.user_repository)
+            user_repo = await self.get_user_repository()
+            self._services['identity'] = IdentityService(user_repo)
         return self._services['identity']
 
-    @property
-    def creation_service(self) -> CreationService:
-        """Get creation service instance."""
+    async def get_creation_service(self) -> CreationService:
+        """Get creation service instance (async)."""
         if 'creation' not in self._services:
-            self._services['creation'] = CreationService(self.project_repository)
+            project_repo = await self.get_project_repository()
+            self._services['creation'] = CreationService(project_repo)
         return self._services['creation']
 
-    @property
-    def marketplace_service(self) -> MarketplaceService:
-        """Get marketplace service instance."""
+    async def get_marketplace_service(self) -> MarketplaceService:
+        """Get marketplace service instance (async)."""
         if 'marketplace' not in self._services:
-            self._services['marketplace'] = MarketplaceService(self.listing_repository)
+            listing_repo = await self.get_listing_repository()
+            self._services['marketplace'] = MarketplaceService(listing_repo)
         return self._services['marketplace']
 
-    @property
-    def platform_service(self) -> PlatformService:
-        """Get platform service instance."""
+    async def get_platform_service(self) -> PlatformService:
+        """Get platform service instance (async)."""
         if 'platform' not in self._services:
+            flag_repo = await self.get_feature_flag_repository()
+            experiment_repo = await self.get_experiment_repository()
             self._services['platform'] = PlatformService(
-                flag_repository=self.feature_flag_repository,
-                experiment_repository=self.experiment_repository,
+                flag_repository=flag_repo,
+                experiment_repository=experiment_repo,
             )
         return self._services['platform']
 
-    @property
-    def support_service(self) -> SupportService:
-        """Get support service instance (v3.0.0)."""
-        from core.database import get_database_client
+    async def get_support_service(self) -> SupportService:
+        """Get support service instance (v3.0.0, async)."""
         if 'support' not in self._services:
-            self._services['support'] = SupportService(get_database_client())
+            db = await get_async_db_client()
+            self._services['support'] = SupportService(db)
         return self._services['support']
 
-    @property
-    def logging_service(self):
-        """Get logging service instance (v3.0.0)."""
-        from core.database import get_database_client
+    async def get_logging_service(self):
+        """Get logging service instance (v3.0.0, async)."""
         from domains.logging import LoggingService
         if 'logging' not in self._services:
-            self._services['logging'] = LoggingService(get_database_client())
+            db = await get_async_db_client()
+            self._services['logging'] = LoggingService(db)
         return self._services['logging']
 
-    @property
-    def themes_service(self):
-        """Get themes service instance (v3.0.0)."""
-        from core.database import get_database_client
+    async def get_themes_service(self):
+        """Get themes service instance (v3.0.0, async)."""
         from domains.themes import ThemesService
         if 'themes' not in self._services:
-            self._services['themes'] = ThemesService(get_database_client())
+            db = await get_async_db_client()
+            self._services['themes'] = ThemesService(db)
         return self._services['themes']
 
-    @property
-    def user_tasks_service(self):
-        """Get user tasks service instance (v3.0.0)."""
-        from core.database import get_database_client
+    async def get_user_tasks_service(self):
+        """Get user tasks service instance (v3.0.0, async)."""
         from domains.tasks import TasksService
         from infrastructure.repositories.tasks_repository import SupabaseUserTasksRepository
-        from infrastructure.repositories.credit_repository import SupabaseCreditRepository
         if 'user_tasks' not in self._services:
-            tasks_repo = SupabaseUserTasksRepository(get_database_client())
-            credit_repo = SupabaseCreditRepository(get_database_client())
+            db = await get_async_db_client()
+            tasks_repo = SupabaseUserTasksRepository(db)
+            credit_repo = await self.get_credit_repository()
             self._services['user_tasks'] = TasksService(tasks_repo, credit_repo)
         return self._services['user_tasks']
 
-    @property
-    def tools_service(self):
-        """Get tools service instance (v3.0.0)."""
-        from core.database import get_database_client, get_supabase_client
+    async def get_tools_service(self):
+        """Get tools service instance (v3.0.0, async)."""
         from domains.tools import ToolsService
-        from infrastructure.repositories.credit_repository import SupabaseCreditRepository
         from infrastructure.repositories.asset_repository import SupabaseAssetRepository
         from shared.ai.ocr_service import process_ocr
         from domains.shared.access_control import AccessControl
         if 'tools' not in self._services:
-            credit_repo = SupabaseCreditRepository(get_database_client())
-            asset_repo = SupabaseAssetRepository(get_database_client())
-            storage_client = get_supabase_client()
-            # Note: process_ocr is a function, not a class
+            db = await get_async_db_client()
+            credit_repo = await self.get_credit_repository()
+            asset_repo = SupabaseAssetRepository(db)
+            # Note: AsyncClient also has storage methods
             self._services['tools'] = ToolsService(
                 credit_repo,
                 asset_repo,
-                storage_client,
+                db,  # AsyncClient for storage
                 process_ocr,  # OCR processor function
                 AccessControl,  # Access control class
             )
         return self._services['tools']
 
-    @property
-    def system_resources_admin_service(self):
-        """Get system resources admin service instance (v3.0.0)."""
-        from core.database import get_database_client, get_supabase_client
+    async def get_system_resources_admin_service(self):
+        """Get system resources admin service instance (v3.0.0, async)."""
         from domains.content.system_resources_service import SystemResourcesService
         from infrastructure.repositories.system_resources_admin_repository import (
             SupabaseSystemResourcesAdminRepository
         )
         if 'system_resources_admin' not in self._services:
-            repository = SupabaseSystemResourcesAdminRepository(get_database_client())
-            storage_client = get_supabase_client()
+            db = await get_async_db_client()
+            repository = SupabaseSystemResourcesAdminRepository(db)
             self._services['system_resources_admin'] = SystemResourcesService(
                 repository=repository,
-                storage_client=storage_client,
+                storage_client=db,  # AsyncClient for storage
             )
         return self._services['system_resources_admin']
 
-    @property
-    def templates_service(self):
-        """Get templates service instance (v3.0.0)."""
-        from core.database import get_database_client
+    async def get_templates_service(self):
+        """Get templates service instance (v3.0.0, async)."""
         from domains.templates.templates_service import TemplatesService
         from infrastructure.repositories.templates_repository import SupabaseTemplatesRepository
         if 'templates' not in self._services:
-            repository = SupabaseTemplatesRepository(get_database_client())
+            db = await get_async_db_client()
+            repository = SupabaseTemplatesRepository(db)
             self._services['templates'] = TemplatesService(repository)
         return self._services['templates']
 
-    @property
-    def assets_service(self):
-        """Get assets service instance (v3.0.0)."""
-        from core.database import get_database_client, get_supabase_client
+    async def get_assets_service(self):
+        """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService
         from infrastructure.repositories.asset_repository import SupabaseAssetRepository
         if 'assets' not in self._services:
-            repository = SupabaseAssetRepository(get_database_client())
-            storage_client = get_supabase_client()
-            self._services['assets'] = AssetsService(repository, storage_client)
+            db = await get_async_db_client()
+            repository = SupabaseAssetRepository(db)
+            self._services['assets'] = AssetsService(repository, db)  # AsyncClient for storage
         return self._services['assets']
 
-    # ========== Command Handlers ==========
+    # ========== Command Handlers (v2.0 - Async Methods) ==========
 
-    @property
-    def deduct_credits_handler(self) -> DeductCreditsHandler:
-        """Get deduct credits handler."""
+    async def get_deduct_credits_handler(self) -> DeductCreditsHandler:
+        """Get deduct credits handler (async)."""
         if 'deduct_credits' not in self._handlers:
-            self._handlers['deduct_credits'] = DeductCreditsHandler(self.billing_service)
+            billing_service = await self.get_billing_service()
+            self._handlers['deduct_credits'] = DeductCreditsHandler(billing_service)
         return self._handlers['deduct_credits']
 
-    @property
-    def add_credits_handler(self) -> AddCreditsHandler:
-        """Get add credits handler."""
+    async def get_add_credits_handler(self) -> AddCreditsHandler:
+        """Get add credits handler (async)."""
         if 'add_credits' not in self._handlers:
-            self._handlers['add_credits'] = AddCreditsHandler(self.billing_service)
+            billing_service = await self.get_billing_service()
+            self._handlers['add_credits'] = AddCreditsHandler(billing_service)
         return self._handlers['add_credits']
 
-    @property
-    def grant_signup_bonus_handler(self) -> GrantSignupBonusHandler:
-        """Get grant signup bonus handler."""
+    async def get_grant_signup_bonus_handler(self) -> GrantSignupBonusHandler:
+        """Get grant signup bonus handler (async)."""
         if 'grant_signup_bonus' not in self._handlers:
-            self._handlers['grant_signup_bonus'] = GrantSignupBonusHandler(self.billing_service)
+            billing_service = await self.get_billing_service()
+            self._handlers['grant_signup_bonus'] = GrantSignupBonusHandler(billing_service)
         return self._handlers['grant_signup_bonus']
 
-    @property
-    def create_user_handler(self) -> CreateUserHandler:
-        """Get create user handler."""
+    async def get_create_user_handler(self) -> CreateUserHandler:
+        """Get create user handler (async)."""
         if 'create_user' not in self._handlers:
-            self._handlers['create_user'] = CreateUserHandler(self.identity_service)
+            identity_service = await self.get_identity_service()
+            self._handlers['create_user'] = CreateUserHandler(identity_service)
         return self._handlers['create_user']
 
-    @property
-    def update_user_profile_handler(self) -> UpdateUserProfileHandler:
-        """Get update user profile handler."""
+    async def get_update_user_profile_handler(self) -> UpdateUserProfileHandler:
+        """Get update user profile handler (async)."""
         if 'update_user_profile' not in self._handlers:
-            self._handlers['update_user_profile'] = UpdateUserProfileHandler(self.identity_service)
+            identity_service = await self.get_identity_service()
+            self._handlers['update_user_profile'] = UpdateUserProfileHandler(identity_service)
         return self._handlers['update_user_profile']
 
-    @property
-    def update_user_tier_handler(self) -> UpdateUserTierHandler:
-        """Get update user tier handler."""
+    async def get_update_user_tier_handler(self) -> UpdateUserTierHandler:
+        """Get update user tier handler (async)."""
         if 'update_user_tier' not in self._handlers:
-            self._handlers['update_user_tier'] = UpdateUserTierHandler(self.identity_service)
+            identity_service = await self.get_identity_service()
+            self._handlers['update_user_tier'] = UpdateUserTierHandler(identity_service)
         return self._handlers['update_user_tier']
 
-    @property
-    def create_project_handler(self) -> CreateProjectHandler:
-        """Get create project handler."""
+    async def get_create_project_handler(self) -> CreateProjectHandler:
+        """Get create project handler (async)."""
         if 'create_project' not in self._handlers:
-            self._handlers['create_project'] = CreateProjectHandler(self.creation_service)
+            creation_service = await self.get_creation_service()
+            self._handlers['create_project'] = CreateProjectHandler(creation_service)
         return self._handlers['create_project']
 
-    @property
-    def update_project_handler(self) -> UpdateProjectHandler:
-        """Get update project handler (P1-013: now includes listing_repository for locked elements check)."""
+    async def get_update_project_handler(self) -> UpdateProjectHandler:
+        """Get update project handler (async, P1-013: includes listing_repository)."""
         if 'update_project' not in self._handlers:
+            creation_service = await self.get_creation_service()
+            listing_repo = await self.get_listing_repository()
             self._handlers['update_project'] = UpdateProjectHandler(
-                self.creation_service,
-                self.listing_repository  # P1-013: For locked elements check
+                creation_service,
+                listing_repo  # P1-013: For locked elements check
             )
         return self._handlers['update_project']
 
-    @property
-    def delete_project_handler(self) -> DeleteProjectHandler:
-        """Get delete project handler."""
+    async def get_delete_project_handler(self) -> DeleteProjectHandler:
+        """Get delete project handler (async)."""
         if 'delete_project' not in self._handlers:
-            self._handlers['delete_project'] = DeleteProjectHandler(self.creation_service)
+            creation_service = await self.get_creation_service()
+            self._handlers['delete_project'] = DeleteProjectHandler(creation_service)
         return self._handlers['delete_project']
 
-    @property
-    def restore_project_handler(self) -> RestoreProjectHandler:
-        """Get restore project handler."""
+    async def get_restore_project_handler(self) -> RestoreProjectHandler:
+        """Get restore project handler (async)."""
         if 'restore_project' not in self._handlers:
-            self._handlers['restore_project'] = RestoreProjectHandler(self.creation_service)
+            creation_service = await self.get_creation_service()
+            self._handlers['restore_project'] = RestoreProjectHandler(creation_service)
         return self._handlers['restore_project']
 
-    @property
-    def create_listing_handler(self) -> CreateListingHandler:
-        """Get create listing handler."""
+    async def get_create_listing_handler(self) -> CreateListingHandler:
+        """Get create listing handler (async)."""
         if 'create_listing' not in self._handlers:
-            self._handlers['create_listing'] = CreateListingHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['create_listing'] = CreateListingHandler(marketplace_service)
         return self._handlers['create_listing']
 
-    @property
-    def update_listing_handler(self) -> UpdateListingHandler:
-        """Get update listing handler."""
+    async def get_update_listing_handler(self) -> UpdateListingHandler:
+        """Get update listing handler (async)."""
         if 'update_listing' not in self._handlers:
-            self._handlers['update_listing'] = UpdateListingHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['update_listing'] = UpdateListingHandler(marketplace_service)
         return self._handlers['update_listing']
 
-    @property
-    def unpublish_listing_handler(self) -> UnpublishListingHandler:
-        """Get unpublish listing handler."""
+    async def get_unpublish_listing_handler(self) -> UnpublishListingHandler:
+        """Get unpublish listing handler (async)."""
         if 'unpublish_listing' not in self._handlers:
-            self._handlers['unpublish_listing'] = UnpublishListingHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['unpublish_listing'] = UnpublishListingHandler(marketplace_service)
         return self._handlers['unpublish_listing']
 
-    @property
-    def purchase_listing_handler(self) -> PurchaseListingHandler:
-        """Get purchase listing handler (cross-domain)."""
+    async def get_purchase_listing_handler(self) -> PurchaseListingHandler:
+        """Get purchase listing handler (async, cross-domain)."""
         if 'purchase_listing' not in self._handlers:
+            marketplace_service = await self.get_marketplace_service()
+            billing_service = await self.get_billing_service()
             self._handlers['purchase_listing'] = PurchaseListingHandler(
-                marketplace_service=self.marketplace_service,
-                billing_service=self.billing_service,
+                marketplace_service=marketplace_service,
+                billing_service=billing_service,
             )
         return self._handlers['purchase_listing']
 
-    @property
-    def create_feature_flag_handler(self) -> CreateFeatureFlagHandler:
-        """Get create feature flag handler."""
+    async def get_create_feature_flag_handler(self) -> CreateFeatureFlagHandler:
+        """Get create feature flag handler (async)."""
         if 'create_feature_flag' not in self._handlers:
-            self._handlers['create_feature_flag'] = CreateFeatureFlagHandler(self.platform_service)
+            platform_service = await self.get_platform_service()
+            self._handlers['create_feature_flag'] = CreateFeatureFlagHandler(platform_service)
         return self._handlers['create_feature_flag']
 
-    @property
-    def create_experiment_handler(self) -> CreateExperimentHandler:
-        """Get create experiment handler."""
+    async def get_create_experiment_handler(self) -> CreateExperimentHandler:
+        """Get create experiment handler (async)."""
         if 'create_experiment' not in self._handlers:
-            self._handlers['create_experiment'] = CreateExperimentHandler(self.platform_service)
+            platform_service = await self.get_platform_service()
+            self._handlers['create_experiment'] = CreateExperimentHandler(platform_service)
         return self._handlers['create_experiment']
 
-    @property
-    def create_report_handler(self) -> CreateReportHandler:
-        """Get create report handler (v3.0.0)."""
+    async def get_create_report_handler(self) -> CreateReportHandler:
+        """Get create report handler (v3.0.0, async)."""
         if 'create_report' not in self._handlers:
-            self._handlers['create_report'] = CreateReportHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['create_report'] = CreateReportHandler(support_service)
         return self._handlers['create_report']
 
-    @property
-    def create_support_ticket_handler(self):
-        """Get create support ticket handler (v3.1.0)."""
+    async def get_create_support_ticket_handler(self):
+        """Get create support ticket handler (v3.1.0, async)."""
         from application.commands.support import CreateSupportTicketHandler
         if 'create_support_ticket' not in self._handlers:
-            self._handlers['create_support_ticket'] = CreateSupportTicketHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['create_support_ticket'] = CreateSupportTicketHandler(support_service)
         return self._handlers['create_support_ticket']
 
-    @property
-    def ai_chat_support_handler(self):
-        """Get AI chat support handler (v3.1.0)."""
+    async def get_ai_chat_support_handler(self):
+        """Get AI chat support handler (v3.1.0, async)."""
         from application.commands.support import AiChatSupportHandler
         if 'ai_chat_support' not in self._handlers:
-            self._handlers['ai_chat_support'] = AiChatSupportHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['ai_chat_support'] = AiChatSupportHandler(support_service)
         return self._handlers['ai_chat_support']
 
-    @property
-    def send_contact_message_handler(self):
-        """Get send contact message handler (v3.1.0)."""
+    async def get_send_contact_message_handler(self):
+        """Get send contact message handler (v3.1.0, async)."""
         from application.commands.support import SendContactMessageHandler
         if 'send_contact_message' not in self._handlers:
-            self._handlers['send_contact_message'] = SendContactMessageHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['send_contact_message'] = SendContactMessageHandler(support_service)
         return self._handlers['send_contact_message']
 
-    @property
-    def submit_feedback_handler(self):
-        """Get submit feedback handler (v3.1.0)."""
+    async def get_submit_feedback_handler(self):
+        """Get submit feedback handler (v3.1.0, async)."""
         from application.commands.support import SubmitFeedbackHandler
         if 'submit_feedback' not in self._handlers:
-            self._handlers['submit_feedback'] = SubmitFeedbackHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['submit_feedback'] = SubmitFeedbackHandler(support_service)
         return self._handlers['submit_feedback']
 
-    @property
-    def create_error_log_handler(self):
-        """Get create error log handler (v3.0.0)."""
+    async def get_create_error_log_handler(self):
+        """Get create error log handler (v3.0.0, async)."""
         from application.commands.logging import CreateErrorLogHandler
         if 'create_error_log' not in self._handlers:
-            self._handlers['create_error_log'] = CreateErrorLogHandler(self.logging_service)
+            logging_service = await self.get_logging_service()
+            self._handlers['create_error_log'] = CreateErrorLogHandler(logging_service)
         return self._handlers['create_error_log']
 
-    @property
-    def create_error_log_batch_handler(self):
-        """Get create error log batch handler (v3.0.0)."""
+    async def get_create_error_log_batch_handler(self):
+        """Get create error log batch handler (v3.0.0, async)."""
         from application.commands.logging import CreateErrorLogBatchHandler
         if 'create_error_log_batch' not in self._handlers:
-            self._handlers['create_error_log_batch'] = CreateErrorLogBatchHandler(self.logging_service)
+            logging_service = await self.get_logging_service()
+            self._handlers['create_error_log_batch'] = CreateErrorLogBatchHandler(logging_service)
         return self._handlers['create_error_log_batch']
 
-    # System Resources Command Handlers (v3.0.0)
-    @property
-    def create_system_resource_handler(self):
-        """Get create system resource handler (v3.0.0)."""
+    # System Resources Command Handlers (v3.0.0, async)
+    async def get_create_system_resource_handler(self):
+        """Get create system resource handler (v3.0.0, async)."""
         from application.commands.system_resources import CreateSystemResourceHandler
         if 'create_system_resource' not in self._handlers:
-            self._handlers['create_system_resource'] = CreateSystemResourceHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['create_system_resource'] = CreateSystemResourceHandler(service)
         return self._handlers['create_system_resource']
 
-    @property
-    def update_system_resource_handler(self):
-        """Get update system resource handler (v3.0.0)."""
+    async def get_update_system_resource_handler(self):
+        """Get update system resource handler (v3.0.0, async)."""
         from application.commands.system_resources import UpdateSystemResourceHandler
         if 'update_system_resource' not in self._handlers:
-            self._handlers['update_system_resource'] = UpdateSystemResourceHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['update_system_resource'] = UpdateSystemResourceHandler(service)
         return self._handlers['update_system_resource']
 
-    @property
-    def replace_resource_file_handler(self):
-        """Get replace resource file handler (v3.0.0)."""
+    async def get_replace_resource_file_handler(self):
+        """Get replace resource file handler (v3.0.0, async)."""
         from application.commands.system_resources import ReplaceResourceFileHandler
         if 'replace_resource_file' not in self._handlers:
-            self._handlers['replace_resource_file'] = ReplaceResourceFileHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['replace_resource_file'] = ReplaceResourceFileHandler(service)
         return self._handlers['replace_resource_file']
 
-    @property
-    def delete_system_resource_handler(self):
-        """Get delete system resource handler (v3.0.0)."""
+    async def get_delete_system_resource_handler(self):
+        """Get delete system resource handler (v3.0.0, async)."""
         from application.commands.system_resources import DeleteSystemResourceHandler
         if 'delete_system_resource' not in self._handlers:
-            self._handlers['delete_system_resource'] = DeleteSystemResourceHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['delete_system_resource'] = DeleteSystemResourceHandler(service)
         return self._handlers['delete_system_resource']
 
-    @property
-    def batch_operation_handler(self):
-        """Get batch operation handler (v3.0.0)."""
+    async def get_batch_operation_handler(self):
+        """Get batch operation handler (v3.0.0, async)."""
         from application.commands.system_resources import BatchOperationHandler
         if 'batch_operation' not in self._handlers:
-            self._handlers['batch_operation'] = BatchOperationHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['batch_operation'] = BatchOperationHandler(service)
         return self._handlers['batch_operation']
 
-    # ========== Query Handlers ==========
+    # ========== Query Handlers (v2.0 - Async Methods) ==========
 
-    @property
-    def get_user_credits_handler(self) -> GetUserCreditsHandler:
-        """Get user credits query handler."""
+    async def get_user_credits_handler(self) -> GetUserCreditsHandler:
+        """Get user credits query handler (async)."""
         if 'get_user_credits' not in self._handlers:
-            self._handlers['get_user_credits'] = GetUserCreditsHandler(self.billing_service)
+            billing_service = await self.get_billing_service()
+            self._handlers['get_user_credits'] = GetUserCreditsHandler(billing_service)
         return self._handlers['get_user_credits']
 
-    @property
-    def get_transaction_history_handler(self) -> GetTransactionHistoryHandler:
-        """Get transaction history query handler."""
+    async def get_transaction_history_handler(self) -> GetTransactionHistoryHandler:
+        """Get transaction history query handler (async)."""
         if 'get_transaction_history' not in self._handlers:
-            self._handlers['get_transaction_history'] = GetTransactionHistoryHandler(self.billing_service)
+            billing_service = await self.get_billing_service()
+            self._handlers['get_transaction_history'] = GetTransactionHistoryHandler(billing_service)
         return self._handlers['get_transaction_history']
 
-    @property
-    def get_user_profile_handler(self) -> GetUserProfileHandler:
-        """Get user profile query handler."""
+    async def get_user_profile_handler(self) -> GetUserProfileHandler:
+        """Get user profile query handler (async)."""
         if 'get_user_profile' not in self._handlers:
-            self._handlers['get_user_profile'] = GetUserProfileHandler(self.identity_service)
+            identity_service = await self.get_identity_service()
+            self._handlers['get_user_profile'] = GetUserProfileHandler(identity_service)
         return self._handlers['get_user_profile']
 
-    @property
-    def get_project_handler(self) -> GetProjectHandler:
-        """Get project query handler."""
+    async def get_project_handler(self) -> GetProjectHandler:
+        """Get project query handler (async)."""
         if 'get_project' not in self._handlers:
-            self._handlers['get_project'] = GetProjectHandler(self.creation_service)
+            creation_service = await self.get_creation_service()
+            self._handlers['get_project'] = GetProjectHandler(creation_service)
         return self._handlers['get_project']
 
-    @property
-    def get_current_theme_handler(self):
-        """Get current theme query handler (v3.0.0)."""
+    async def get_current_theme_handler(self):
+        """Get current theme query handler (v3.0.0, async)."""
         from application.queries.themes import GetCurrentThemeHandler
         if 'get_current_theme' not in self._handlers:
-            self._handlers['get_current_theme'] = GetCurrentThemeHandler(self.themes_service)
+            themes_service = await self.get_themes_service()
+            self._handlers['get_current_theme'] = GetCurrentThemeHandler(themes_service)
         return self._handlers['get_current_theme']
 
-    @property
-    def get_task_status_handler(self):
-        """Get task status query handler (v3.0.0)."""
+    async def get_task_status_handler(self):
+        """Get task status query handler (v3.0.0, async)."""
         from application.queries.tasks import GetTaskStatusHandler
         if 'get_task_status' not in self._handlers:
-            self._handlers['get_task_status'] = GetTaskStatusHandler(self.user_tasks_service)
+            user_tasks_service = await self.get_user_tasks_service()
+            self._handlers['get_task_status'] = GetTaskStatusHandler(user_tasks_service)
         return self._handlers['get_task_status']
 
-    @property
-    def cancel_task_handler(self):
-        """Cancel task command handler (v3.0.0)."""
+    async def get_cancel_task_handler(self):
+        """Cancel task command handler (v3.0.0, async)."""
         from application.queries.tasks import CancelTaskHandler
         if 'cancel_task' not in self._handlers:
-            self._handlers['cancel_task'] = CancelTaskHandler(self.user_tasks_service)
+            user_tasks_service = await self.get_user_tasks_service()
+            self._handlers['cancel_task'] = CancelTaskHandler(user_tasks_service)
         return self._handlers['cancel_task']
 
-    @property
-    def pdf_preview_handler(self):
-        """PDF preview command handler (v3.0.0)."""
+    async def get_pdf_preview_handler(self):
+        """PDF preview command handler (v3.0.0, async)."""
         from application.commands.tools import PdfPreviewHandler
         if 'pdf_preview' not in self._handlers:
-            self._handlers['pdf_preview'] = PdfPreviewHandler(self.tools_service)
+            tools_service = await self.get_tools_service()
+            self._handlers['pdf_preview'] = PdfPreviewHandler(tools_service)
         return self._handlers['pdf_preview']
 
-    @property
-    def ocr_handler(self):
-        """OCR command handler (v3.0.0)."""
+    async def get_ocr_handler(self):
+        """OCR command handler (v3.0.0, async)."""
         from application.commands.tools import OcrHandler
         if 'ocr' not in self._handlers:
-            self._handlers['ocr'] = OcrHandler(self.tools_service)
+            tools_service = await self.get_tools_service()
+            self._handlers['ocr'] = OcrHandler(tools_service)
         return self._handlers['ocr']
 
-    @property
-    def get_user_projects_handler(self) -> GetUserProjectsHandler:
-        """Get user projects query handler."""
+    async def get_user_projects_handler(self) -> GetUserProjectsHandler:
+        """Get user projects query handler (async)."""
         if 'get_user_projects' not in self._handlers:
-            self._handlers['get_user_projects'] = GetUserProjectsHandler(self.creation_service)
+            creation_service = await self.get_creation_service()
+            self._handlers['get_user_projects'] = GetUserProjectsHandler(creation_service)
         return self._handlers['get_user_projects']
 
-    @property
-    def get_dashboard_projects_handler(self) -> GetDashboardProjectsHandler:
-        """Get dashboard projects query handler."""
+    async def get_dashboard_projects_handler(self) -> GetDashboardProjectsHandler:
+        """Get dashboard projects query handler (async)."""
         if 'get_dashboard_projects' not in self._handlers:
-            self._handlers['get_dashboard_projects'] = GetDashboardProjectsHandler(self.project_repository)
+            project_repo = await self.get_project_repository()
+            self._handlers['get_dashboard_projects'] = GetDashboardProjectsHandler(project_repo)
         return self._handlers['get_dashboard_projects']
 
-    @property
-    def get_listing_handler(self) -> GetListingHandler:
-        """Get listing query handler."""
+    async def get_listing_handler(self) -> GetListingHandler:
+        """Get listing query handler (async)."""
         if 'get_listing' not in self._handlers:
-            self._handlers['get_listing'] = GetListingHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['get_listing'] = GetListingHandler(marketplace_service)
         return self._handlers['get_listing']
 
-    @property
-    def search_listings_handler(self) -> SearchListingsHandler:
-        """Get search listings query handler."""
+    async def get_search_listings_handler(self) -> SearchListingsHandler:
+        """Get search listings query handler (async)."""
         if 'search_listings' not in self._handlers:
-            self._handlers['search_listings'] = SearchListingsHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['search_listings'] = SearchListingsHandler(marketplace_service)
         return self._handlers['search_listings']
 
-    @property
-    def evaluate_feature_flag_handler(self) -> EvaluateFeatureFlagHandler:
-        """Get evaluate feature flag query handler."""
+    async def get_evaluate_feature_flag_handler(self) -> EvaluateFeatureFlagHandler:
+        """Get evaluate feature flag query handler (async)."""
         if 'evaluate_feature_flag' not in self._handlers:
-            self._handlers['evaluate_feature_flag'] = EvaluateFeatureFlagHandler(self.platform_service)
+            platform_service = await self.get_platform_service()
+            self._handlers['evaluate_feature_flag'] = EvaluateFeatureFlagHandler(platform_service)
         return self._handlers['evaluate_feature_flag']
 
-    @property
-    def get_experiment_variant_handler(self) -> GetExperimentVariantHandler:
-        """Get experiment variant query handler."""
+    async def get_experiment_variant_handler(self) -> GetExperimentVariantHandler:
+        """Get experiment variant query handler (async)."""
         if 'get_experiment_variant' not in self._handlers:
-            self._handlers['get_experiment_variant'] = GetExperimentVariantHandler(self.platform_service)
+            platform_service = await self.get_platform_service()
+            self._handlers['get_experiment_variant'] = GetExperimentVariantHandler(platform_service)
         return self._handlers['get_experiment_variant']
 
-    @property
-    def get_my_listings_handler(self) -> GetMyListingsHandler:
-        """Get my listings query handler (v3.0.0)."""
+    async def get_my_listings_handler(self) -> GetMyListingsHandler:
+        """Get my listings query handler (v3.0.0, async)."""
         if 'get_my_listings' not in self._handlers:
-            self._handlers['get_my_listings'] = GetMyListingsHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['get_my_listings'] = GetMyListingsHandler(marketplace_service)
         return self._handlers['get_my_listings']
 
-    @property
-    def get_seller_stats_handler(self) -> GetSellerStatsHandler:
-        """Get seller stats query handler (v3.0.0)."""
+    async def get_seller_stats_handler(self) -> GetSellerStatsHandler:
+        """Get seller stats query handler (v3.0.0, async)."""
         if 'get_seller_stats' not in self._handlers:
-            self._handlers['get_seller_stats'] = GetSellerStatsHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['get_seller_stats'] = GetSellerStatsHandler(marketplace_service)
         return self._handlers['get_seller_stats']
 
-    @property
-    def get_leaderboard_handler(self) -> GetLeaderboardHandler:
-        """Get leaderboard query handler (v3.0.0)."""
+    async def get_leaderboard_handler(self) -> GetLeaderboardHandler:
+        """Get leaderboard query handler (v3.0.0, async)."""
         if 'get_leaderboard' not in self._handlers:
-            self._handlers['get_leaderboard'] = GetLeaderboardHandler(self.marketplace_service)
+            marketplace_service = await self.get_marketplace_service()
+            self._handlers['get_leaderboard'] = GetLeaderboardHandler(marketplace_service)
         return self._handlers['get_leaderboard']
 
-    @property
-    def get_my_reports_handler(self) -> GetMyReportsHandler:
-        """Get my reports query handler (v3.0.0)."""
+    async def get_my_reports_handler(self) -> GetMyReportsHandler:
+        """Get my reports query handler (v3.0.0, async)."""
         if 'get_my_reports' not in self._handlers:
-            self._handlers['get_my_reports'] = GetMyReportsHandler(self.support_service)
+            support_service = await self.get_support_service()
+            self._handlers['get_my_reports'] = GetMyReportsHandler(support_service)
         return self._handlers['get_my_reports']
 
-    # ========== Resources Query Handlers (v3.0.0) ==========
+    # ========== Content/Resources Handlers (v3.0.0, async) ==========
 
-    @property
-    def get_resources_handler(self):
-        """Get resources query handler (v3.0.0)."""
+    async def get_content_service(self):
+        """Get content service instance (v3.0.0, async)."""
+        from domains.content.content_service import ContentService
+        from infrastructure.repositories.content_repository import SupabaseContentRepository
+        if 'content' not in self._services:
+            db = await get_async_db_client()
+            repository = SupabaseContentRepository(db)
+            self._services['content'] = ContentService(repository)
+        return self._services['content']
+
+    async def get_resources_handler(self):
+        """Get resources query handler (v3.0.0, async)."""
         from application.queries.content import GetResourcesHandler
         if 'get_resources' not in self._handlers:
-            self._handlers['get_resources'] = GetResourcesHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_resources'] = GetResourcesHandler(content_service)
         return self._handlers['get_resources']
 
-    @property
-    def get_resource_by_id_handler(self):
-        """Get resource by ID query handler (v3.0.0)."""
+    async def get_resource_by_id_handler(self):
+        """Get resource by ID query handler (v3.0.0, async)."""
         from application.queries.content import GetResourceByIdHandler
         if 'get_resource_by_id' not in self._handlers:
-            self._handlers['get_resource_by_id'] = GetResourceByIdHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_resource_by_id'] = GetResourceByIdHandler(content_service)
         return self._handlers['get_resource_by_id']
 
-    @property
-    def get_stickers_handler(self):
-        """Get stickers query handler (v3.0.0)."""
+    async def get_stickers_handler(self):
+        """Get stickers query handler (v3.0.0, async)."""
         from application.queries.content import GetStickersHandler
         if 'get_stickers' not in self._handlers:
-            self._handlers['get_stickers'] = GetStickersHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_stickers'] = GetStickersHandler(content_service)
         return self._handlers['get_stickers']
 
-    @property
-    def get_backgrounds_handler(self):
-        """Get backgrounds query handler (v3.0.0)."""
+    async def get_backgrounds_handler(self):
+        """Get backgrounds query handler (v3.0.0, async)."""
         from application.queries.content import GetBackgroundsHandler
         if 'get_backgrounds' not in self._handlers:
-            self._handlers['get_backgrounds'] = GetBackgroundsHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_backgrounds'] = GetBackgroundsHandler(content_service)
         return self._handlers['get_backgrounds']
 
-    @property
-    def get_project_templates_handler(self):
-        """Get project templates query handler (v3.0.0)."""
+    async def get_project_templates_handler(self):
+        """Get project templates query handler (v3.0.0, async)."""
         from application.queries.content import GetProjectTemplatesHandler
         if 'get_project_templates' not in self._handlers:
-            self._handlers['get_project_templates'] = GetProjectTemplatesHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_project_templates'] = GetProjectTemplatesHandler(content_service)
         return self._handlers['get_project_templates']
 
-    @property
-    def get_categories_handler(self):
-        """Get categories query handler (v3.0.0)."""
+    async def get_categories_handler(self):
+        """Get categories query handler (v3.0.0, async)."""
         from application.queries.content import GetCategoriesHandler
         if 'get_categories' not in self._handlers:
-            self._handlers['get_categories'] = GetCategoriesHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_categories'] = GetCategoriesHandler(content_service)
         return self._handlers['get_categories']
 
-    @property
-    def get_resource_stats_handler(self):
-        """Get resource stats query handler (v3.0.0)."""
+    async def get_resource_stats_handler(self):
+        """Get resource stats query handler (v3.0.0, async)."""
         from application.queries.content import GetResourceStatsHandler
         if 'get_resource_stats' not in self._handlers:
-            self._handlers['get_resource_stats'] = GetResourceStatsHandler(self.content_service)
+            content_service = await self.get_content_service()
+            self._handlers['get_resource_stats'] = GetResourceStatsHandler(content_service)
         return self._handlers['get_resource_stats']
 
-    # System Resources Query Handlers (v3.0.0)
-    @property
-    def list_system_resources_handler(self):
-        """Get list system resources handler (v3.0.0)."""
+    # System Resources Query Handlers (v3.0.0, async)
+    async def get_list_system_resources_handler(self):
+        """Get list system resources handler (v3.0.0, async)."""
         from application.queries.system_resources import ListSystemResourcesHandler
         if 'list_system_resources' not in self._handlers:
-            self._handlers['list_system_resources'] = ListSystemResourcesHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['list_system_resources'] = ListSystemResourcesHandler(service)
         return self._handlers['list_system_resources']
 
-    @property
-    def get_system_resource_handler(self):
-        """Get system resource by ID handler (v3.0.0)."""
+    async def get_system_resource_handler(self):
+        """Get system resource by ID handler (v3.0.0, async)."""
         from application.queries.system_resources import GetSystemResourceHandler
         if 'get_system_resource' not in self._handlers:
-            self._handlers['get_system_resource'] = GetSystemResourceHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['get_system_resource'] = GetSystemResourceHandler(service)
         return self._handlers['get_system_resource']
 
-    @property
-    def get_system_resource_stats_handler(self):
-        """Get system resource stats handler (v3.0.0)."""
+    async def get_system_resource_stats_handler(self):
+        """Get system resource stats handler (v3.0.0, async)."""
         from application.queries.system_resources import GetResourceStatsHandler
         if 'get_system_resource_stats' not in self._handlers:
-            self._handlers['get_system_resource_stats'] = GetResourceStatsHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['get_system_resource_stats'] = GetResourceStatsHandler(service)
         return self._handlers['get_system_resource_stats']
 
-    @property
-    def get_audit_log_handler(self):
-        """Get audit log handler (v3.0.0)."""
+    async def get_audit_log_handler(self):
+        """Get audit log handler (v3.0.0, async)."""
         from application.queries.system_resources import GetAuditLogHandler
         if 'get_audit_log' not in self._handlers:
-            self._handlers['get_audit_log'] = GetAuditLogHandler(
-                self.system_resources_admin_service
-            )
+            service = await self.get_system_resources_admin_service()
+            self._handlers['get_audit_log'] = GetAuditLogHandler(service)
         return self._handlers['get_audit_log']
 
-    # Templates Query Handlers (v3.0.0)
-    @property
-    def list_asset_templates_handler(self):
-        """Get list asset templates handler (v3.0.0)."""
+    # Templates Query Handlers (v3.0.0, async)
+    async def get_list_asset_templates_handler(self):
+        """Get list asset templates handler (v3.0.0, async)."""
         from application.queries.templates import ListAssetTemplatesHandler
         if 'list_asset_templates' not in self._handlers:
-            self._handlers['list_asset_templates'] = ListAssetTemplatesHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['list_asset_templates'] = ListAssetTemplatesHandler(templates_service)
         return self._handlers['list_asset_templates']
 
-    @property
-    def list_page_templates_handler(self):
-        """Get list page templates handler (v3.0.0)."""
+    async def get_list_page_templates_handler(self):
+        """Get list page templates handler (v3.0.0, async)."""
         from application.queries.templates import ListPageTemplatesHandler
         if 'list_page_templates' not in self._handlers:
-            self._handlers['list_page_templates'] = ListPageTemplatesHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['list_page_templates'] = ListPageTemplatesHandler(templates_service)
         return self._handlers['list_page_templates']
 
-    # Templates Command Handlers (v3.0.0)
-    @property
-    def create_asset_template_handler(self):
-        """Get create asset template handler (v3.0.0)."""
+    # Templates Command Handlers (v3.0.0, async)
+    async def get_create_asset_template_handler(self):
+        """Get create asset template handler (v3.0.0, async)."""
         from application.commands.templates import CreateAssetTemplateHandler
         if 'create_asset_template' not in self._handlers:
-            self._handlers['create_asset_template'] = CreateAssetTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['create_asset_template'] = CreateAssetTemplateHandler(templates_service)
         return self._handlers['create_asset_template']
 
-    @property
-    def update_asset_template_handler(self):
-        """Get update asset template handler (v3.0.0)."""
+    async def get_update_asset_template_handler(self):
+        """Get update asset template handler (v3.0.0, async)."""
         from application.commands.templates import UpdateAssetTemplateHandler
         if 'update_asset_template' not in self._handlers:
-            self._handlers['update_asset_template'] = UpdateAssetTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['update_asset_template'] = UpdateAssetTemplateHandler(templates_service)
         return self._handlers['update_asset_template']
 
-    @property
-    def delete_asset_template_handler(self):
-        """Get delete asset template handler (v3.0.0)."""
+    async def get_delete_asset_template_handler(self):
+        """Get delete asset template handler (v3.0.0, async)."""
         from application.commands.templates import DeleteAssetTemplateHandler
         if 'delete_asset_template' not in self._handlers:
-            self._handlers['delete_asset_template'] = DeleteAssetTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['delete_asset_template'] = DeleteAssetTemplateHandler(templates_service)
         return self._handlers['delete_asset_template']
 
-    @property
-    def use_asset_template_handler(self):
-        """Get use asset template handler (v3.0.0)."""
+    async def get_use_asset_template_handler(self):
+        """Get use asset template handler (v3.0.0, async)."""
         from application.commands.templates import UseAssetTemplateHandler
         if 'use_asset_template' not in self._handlers:
-            self._handlers['use_asset_template'] = UseAssetTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['use_asset_template'] = UseAssetTemplateHandler(templates_service)
         return self._handlers['use_asset_template']
 
-    @property
-    def create_page_template_handler(self):
-        """Get create page template handler (v3.0.0)."""
+    async def get_create_page_template_handler(self):
+        """Get create page template handler (v3.0.0, async)."""
         from application.commands.templates import CreatePageTemplateHandler
         if 'create_page_template' not in self._handlers:
-            self._handlers['create_page_template'] = CreatePageTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['create_page_template'] = CreatePageTemplateHandler(templates_service)
         return self._handlers['create_page_template']
 
-    @property
-    def update_page_template_handler(self):
-        """Get update page template handler (v3.0.0)."""
+    async def get_update_page_template_handler(self):
+        """Get update page template handler (v3.0.0, async)."""
         from application.commands.templates import UpdatePageTemplateHandler
         if 'update_page_template' not in self._handlers:
-            self._handlers['update_page_template'] = UpdatePageTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['update_page_template'] = UpdatePageTemplateHandler(templates_service)
         return self._handlers['update_page_template']
 
-    @property
-    def delete_page_template_handler(self):
-        """Get delete page template handler (v3.0.0)."""
+    async def get_delete_page_template_handler(self):
+        """Get delete page template handler (v3.0.0, async)."""
         from application.commands.templates import DeletePageTemplateHandler
         if 'delete_page_template' not in self._handlers:
-            self._handlers['delete_page_template'] = DeletePageTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['delete_page_template'] = DeletePageTemplateHandler(templates_service)
         return self._handlers['delete_page_template']
 
-    @property
-    def use_page_template_handler(self):
-        """Get use page template handler (v3.0.0)."""
+    async def get_use_page_template_handler(self):
+        """Get use page template handler (v3.0.0, async)."""
         from application.commands.templates import UsePageTemplateHandler
         if 'use_page_template' not in self._handlers:
-            self._handlers['use_page_template'] = UsePageTemplateHandler(
-                self.templates_service
-            )
+            templates_service = await self.get_templates_service()
+            self._handlers['use_page_template'] = UsePageTemplateHandler(templates_service)
         return self._handlers['use_page_template']
 
-    # Assets Query Handlers (v3.0.0)
-    @property
-    def get_user_assets_handler(self):
-        """Get user assets handler (v3.0.0)."""
+    # Assets Query Handlers (v3.0.0, async)
+    async def get_user_assets_handler(self):
+        """Get user assets handler (v3.0.0, async)."""
         from application.queries.assets import GetUserAssetsHandler
         if 'get_user_assets' not in self._handlers:
-            self._handlers['get_user_assets'] = GetUserAssetsHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['get_user_assets'] = GetUserAssetsHandler(assets_service)
         return self._handlers['get_user_assets']
 
-    @property
-    def check_url_handler(self):
-        """Get check URL handler (v3.0.0)."""
+    async def get_check_url_handler(self):
+        """Get check URL handler (v3.0.0, async)."""
         from application.queries.assets import CheckURLHandler
         if 'check_url' not in self._handlers:
-            self._handlers['check_url'] = CheckURLHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['check_url'] = CheckURLHandler(assets_service)
         return self._handlers['check_url']
 
-    @property
-    def get_dashboard_stats_handler(self):
-        """Get dashboard stats handler (v3.0.0)."""
+    async def get_dashboard_stats_handler(self):
+        """Get dashboard stats handler (v3.0.0, async)."""
         from application.queries.assets import GetDashboardStatsHandler
         if 'get_dashboard_stats' not in self._handlers:
-            self._handlers['get_dashboard_stats'] = GetDashboardStatsHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['get_dashboard_stats'] = GetDashboardStatsHandler(assets_service)
         return self._handlers['get_dashboard_stats']
 
-    @property
-    def get_seller_stats_handler(self):
-        """Get seller stats handler (v3.0.0)."""
+    async def get_assets_seller_stats_handler(self):
+        """Get seller stats handler (v3.0.0, async)."""
         from application.queries.assets import GetSellerStatsHandler
-        if 'get_seller_stats' not in self._handlers:
-            self._handlers['get_seller_stats'] = GetSellerStatsHandler(
-                self.assets_service
-            )
-        return self._handlers['get_seller_stats']
+        if 'get_assets_seller_stats' not in self._handlers:
+            assets_service = await self.get_assets_service()
+            self._handlers['get_assets_seller_stats'] = GetSellerStatsHandler(assets_service)
+        return self._handlers['get_assets_seller_stats']
 
-    @property
-    def get_deleted_assets_handler(self):
-        """Get deleted assets handler (v3.0.0)."""
+    async def get_deleted_assets_handler(self):
+        """Get deleted assets handler (v3.0.0, async)."""
         from application.queries.assets import GetDeletedAssetsHandler
         if 'get_deleted_assets' not in self._handlers:
-            self._handlers['get_deleted_assets'] = GetDeletedAssetsHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['get_deleted_assets'] = GetDeletedAssetsHandler(assets_service)
         return self._handlers['get_deleted_assets']
 
-    # Assets Command Handlers (v3.0.0)
-    @property
-    def upload_asset_handler(self):
-        """Get upload asset handler (v3.0.0)."""
+    # Assets Command Handlers (v3.0.0, async)
+    async def get_upload_asset_handler(self):
+        """Get upload asset handler (v3.0.0, async)."""
         from application.commands.assets import UploadAssetHandler
         if 'upload_asset' not in self._handlers:
-            self._handlers['upload_asset'] = UploadAssetHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['upload_asset'] = UploadAssetHandler(assets_service)
         return self._handlers['upload_asset']
 
-    @property
-    def add_asset_from_url_handler(self):
-        """Get add asset from URL handler (v3.0.0)."""
+    async def get_add_asset_from_url_handler(self):
+        """Get add asset from URL handler (v3.0.0, async)."""
         from application.commands.assets import AddAssetFromURLHandler
         if 'add_asset_from_url' not in self._handlers:
-            self._handlers['add_asset_from_url'] = AddAssetFromURLHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['add_asset_from_url'] = AddAssetFromURLHandler(assets_service)
         return self._handlers['add_asset_from_url']
 
-    @property
-    def delete_asset_handler(self):
-        """Get delete asset handler (v3.0.0)."""
+    async def get_delete_asset_handler(self):
+        """Get delete asset handler (v3.0.0, async)."""
         from application.commands.assets import DeleteAssetHandler
         if 'delete_asset' not in self._handlers:
-            self._handlers['delete_asset'] = DeleteAssetHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['delete_asset'] = DeleteAssetHandler(assets_service)
         return self._handlers['delete_asset']
 
-    @property
-    def increment_asset_usage_handler(self):
-        """Get increment asset usage handler (v3.0.0)."""
+    async def get_increment_asset_usage_handler(self):
+        """Get increment asset usage handler (v3.0.0, async)."""
         from application.commands.assets import IncrementAssetUsageHandler
         if 'increment_asset_usage' not in self._handlers:
-            self._handlers['increment_asset_usage'] = IncrementAssetUsageHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['increment_asset_usage'] = IncrementAssetUsageHandler(assets_service)
         return self._handlers['increment_asset_usage']
 
-    @property
-    def restore_asset_handler(self):
-        """Get restore asset handler (v3.0.0)."""
+    async def get_restore_asset_handler(self):
+        """Get restore asset handler (v3.0.0, async)."""
         from application.commands.assets import RestoreAssetHandler
         if 'restore_asset' not in self._handlers:
-            self._handlers['restore_asset'] = RestoreAssetHandler(
-                self.assets_service
-            )
+            assets_service = await self.get_assets_service()
+            self._handlers['restore_asset'] = RestoreAssetHandler(assets_service)
         return self._handlers['restore_asset']
 
     # ========== Utility Methods ==========
@@ -986,7 +952,7 @@ class Container:
         self._repositories.clear()
         self._services.clear()
         self._handlers.clear()
-        logger.info("[Container] All instances reset")
+        logger.info("[Container v2.0] All instances reset")
 
 
 # Module-level singleton accessor
@@ -996,27 +962,35 @@ def get_container() -> Container:
     return Container()
 
 
-# Convenience functions for FastAPI dependency injection
-def get_billing_service() -> BillingService:
-    """FastAPI dependency for billing service."""
-    return get_container().billing_service
+# ========== FastAPI Dependency Injection (v2.0 - Async) ==========
+# WARNING: These are convenience wrappers but should NOT be used directly
+# in production code. Use FastAPI Depends(get_async_db) pattern instead.
+
+async def get_billing_service() -> BillingService:
+    """FastAPI dependency for billing service (async)."""
+    container = get_container()
+    return await container.get_billing_service()
 
 
-def get_identity_service() -> IdentityService:
-    """FastAPI dependency for identity service."""
-    return get_container().identity_service
+async def get_identity_service() -> IdentityService:
+    """FastAPI dependency for identity service (async)."""
+    container = get_container()
+    return await container.get_identity_service()
 
 
-def get_creation_service() -> CreationService:
-    """FastAPI dependency for creation service."""
-    return get_container().creation_service
+async def get_creation_service() -> CreationService:
+    """FastAPI dependency for creation service (async)."""
+    container = get_container()
+    return await container.get_creation_service()
 
 
-def get_marketplace_service() -> MarketplaceService:
-    """FastAPI dependency for marketplace service."""
-    return get_container().marketplace_service
+async def get_marketplace_service() -> MarketplaceService:
+    """FastAPI dependency for marketplace service (async)."""
+    container = get_container()
+    return await container.get_marketplace_service()
 
 
-def get_platform_service() -> PlatformService:
-    """FastAPI dependency for platform service."""
-    return get_container().platform_service
+async def get_platform_service() -> PlatformService:
+    """FastAPI dependency for platform service (async)."""
+    container = get_container()
+    return await container.get_platform_service()

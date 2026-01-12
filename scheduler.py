@@ -106,11 +106,14 @@ def run_storage_cleanup():
 
 
 def run_webhook_retry():
-    """Run webhook retry task (P3-022)"""
+    """Run webhook retry task (P3-022, v2.0 AsyncClient)"""
     logger.info(f"[{datetime.now()}] 🔄 Starting webhook retry task...")
 
-    try:
-        from core.database import get_supabase_client
+    import asyncio
+
+    async def _async_webhook_retry():
+        """Async wrapper for webhook retry with AsyncClient"""
+        from core.database import get_async_db_client
         from infrastructure.repositories import (
             SupabaseWebhookRepository,
             SupabaseUserRepository,
@@ -119,22 +122,28 @@ def run_webhook_retry():
         )
         from domains.webhooks import ClerkWebhookService, StripeWebhookService
         from domains.webhooks.webhook_retry_service import WebhookRetryService
-        import asyncio
 
-        db = get_supabase_client()
+        # Get AsyncClient
+        db = await get_async_db_client()
 
-        # Initialize services
+        # Initialize repositories with AsyncClient
         webhook_repo = SupabaseWebhookRepository(db)
         user_repo = SupabaseUserRepository(db)
         credit_repo = SupabaseCreditRepository(db)
         payment_repo = SupabasePaymentRepository(db)
 
+        # Initialize services
         clerk_service = ClerkWebhookService(user_repo, credit_repo)
         stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
         retry_service = WebhookRetryService(webhook_repo, clerk_service, stripe_service)
 
-        # Run retry task (synchronously wrap async function)
-        result = asyncio.run(retry_service.retry_all_failed_webhooks())
+        # Run retry task
+        result = await retry_service.retry_all_failed_webhooks()
+        return result
+
+    try:
+        # Run async function
+        result = asyncio.run(_async_webhook_retry())
 
         total = result["total"]
         logger.info(
