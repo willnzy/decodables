@@ -21,6 +21,7 @@ Endpoints:
 - /api/v2/admin/experiments/* - A/B testing experiments
 - /api/v2/admin/webhooks/* - Webhook retry management
 - /api/v2/admin/asset-categories/* - Asset category management
+- /api/v2/admin/themes/* - Theme management (v2.1)
 """
 
 from fastapi import APIRouter
@@ -45,6 +46,7 @@ from .feature_flags import router as feature_flags_router
 from .webhooks_retry import router as webhooks_retry_router
 from .asset_categories import router as asset_categories_router
 from .articles import router as articles_router
+from .themes import router as themes_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -69,5 +71,6 @@ admin_router.include_router(feature_flags_router)
 admin_router.include_router(webhooks_retry_router)
 admin_router.include_router(asset_categories_router)
 admin_router.include_router(articles_router)
+admin_router.include_router(themes_router)
 
 __all__ = ['admin_router']
