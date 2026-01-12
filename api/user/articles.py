@@ -66,7 +66,7 @@ class ArticleDetailResponse(BaseModel):
 
 class ArticlesListResponse(BaseModel):
     """Response for article list endpoint."""
-    articles: List[ArticleSummaryResponse]
+    items: List[ArticleSummaryResponse]  # Changed from 'articles' to 'items' for frontend consistency
     total: int = Field(..., description="Total count (for pagination)")
     offset: int = Field(0, description="Current offset")
     limit: int = Field(20, description="Current limit")
@@ -158,7 +158,7 @@ async def list_articles(
         total = await service.get_article_count(category=category)
 
         return ArticlesListResponse(
-            articles=[
+            items=[
                 ArticleSummaryResponse(
                     id=str(a.id),
                     slug=a.slug,
@@ -275,7 +275,7 @@ async def search_articles(
         )
 
         return ArticlesListResponse(
-            articles=[
+            items=[
                 ArticleSummaryResponse(
                     id=str(a.id),
                     slug=a.slug,
@@ -346,7 +346,7 @@ async def get_featured_articles(
         )
 
         return ArticlesListResponse(
-            articles=[
+            items=[
                 ArticleSummaryResponse(
                     id=str(a.id),
                     slug=a.slug,
