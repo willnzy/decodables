@@ -1,7 +1,7 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.36
+> **版本**: 3.37
 > **最后更新**: 2026-01-12
 > **总端点数**: 133 个
 > **DDD 合规**: 100%
@@ -434,9 +434,9 @@
 {
   "success": true,
   "new_balance": {
-    "monthly": 200,
+    "monthly": 100,
     "permanent": 150,
-    "total": 350
+    "total": 250
   }
 }
 ```

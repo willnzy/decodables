@@ -1,7 +1,7 @@
 # Admin API 完整参考
 
 > **状态**: ✅ Complete (已评审 159 个，实际代码 160 个)
-> **版本**: 3.37
+> **版本**: 3.38
 > **最后更新**: 2026-01-12
 > **总端点数**: 159 个 (已评审) / 160 个 (实际代码)
 
@@ -1003,7 +1003,7 @@
 - `slug`: 1-50 字符，只能包含小写字母、数字、连字符、下划线 (`^[a-z0-9\-_]+$`)
 - `name`: 1-100 字符
 - `asset_type`: 必须是有效值 (见上)
-- `min_tier`: 必须是 `t1`/`t2`/`t3`
+- `min_tier`: 必须是 `t1`/`t2`/`t3`/`t4`
 - `parent_slug`: 可选，父分类 slug
 
 **响应**:
@@ -4296,7 +4296,7 @@
       "username": "john_doe",
       "email": "john@example.com",
       "tier": "t2",
-      "credits_monthly": 200,
+      "credits_monthly": 100,
       "credits_permanent": 150,
       "created_at": "2026-01-09T14:30:52Z"
     }
@@ -4340,7 +4340,7 @@
     "username": "john_doe",
     "email": "john@example.com",
     "tier": "t2",
-    "credits_monthly": 200,
+    "credits_monthly": 100,
     "credits_permanent": 150
   },
   "projects": {
@@ -4378,9 +4378,9 @@
 {
   "success": true,
   "new_balance": {
-    "monthly": 200,
+    "monthly": 100,
     "permanent": 250,
-    "total": 450
+    "total": 350
   }
 }
 ```
