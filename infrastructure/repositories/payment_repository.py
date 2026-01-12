@@ -2,7 +2,11 @@
 Payment Repository Implementation - Payment records data access.
 
 @module infrastructure.repositories.payment_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 """
 
 import logging
@@ -52,7 +56,7 @@ class SupabasePaymentRepository:
         Returns:
             Created payment record
         """
-        result = self.client.table("payment_records").insert({
+        result = await self.client.table("payment_records").insert({
             "user_id": user_id,
             "amount": amount,
             "currency": currency,
@@ -84,7 +88,7 @@ class SupabasePaymentRepository:
             List of payment records
         """
         offset = (page - 1) * limit
-        result = self.client.table("payment_records").select("*").eq(
+        result = await self.client.table("payment_records").select("*").eq(
             "user_id", user_id
         ).order("created_at", desc=True).range(
             offset, offset + limit - 1
@@ -122,7 +126,7 @@ class SupabasePaymentRepository:
         if payment_type:
             query = query.eq("payment_type", payment_type)
 
-        result = query.order("created_at", desc=True).range(
+        result = await query.order("created_at", desc=True).range(
             offset, offset + limit - 1
         ).execute()
 
@@ -145,7 +149,7 @@ class SupabasePaymentRepository:
         Returns:
             Payment record or None
         """
-        result = self.client.table("payment_records").select("*").eq(
+        result = await self.client.table("payment_records").select("*").eq(
             "stripe_payment_id", stripe_payment_id
         ).execute()
 
@@ -177,7 +181,7 @@ class SupabasePaymentRepository:
         if metadata:
             update_data["metadata"] = metadata
 
-        result = self.client.table("payment_records").update(update_data).eq(
+        result = await self.client.table("payment_records").update(update_data).eq(
             "id", payment_id
         ).execute()
 
@@ -206,7 +210,7 @@ class SupabasePaymentRepository:
         if not end_date:
             end_date = datetime.now(timezone.utc).isoformat()
 
-        result = self.client.table("payment_records").select(
+        result = await self.client.table("payment_records").select(
             "amount, created_at, payment_type"
         ).gte("created_at", start_date).lte(
             "created_at", end_date
