@@ -44,8 +44,9 @@ class DatabaseConfig:
         return bool(self.url and self.key)
 
 
-# Module-level singleton
-_db_client: Optional[Any] = None
+# Module-level singletons
+_db_client: Optional[Any] = None  # Sync client
+_async_db_client: Optional[Any] = None  # Async client
 _config: Optional[DatabaseConfig] = None
 
 
@@ -106,6 +107,49 @@ def is_db_available() -> bool:
         return False
 
 
+async def get_async_db_client(config: DatabaseConfig = None) -> Optional[Any]:
+    """
+    Get async database client (singleton).
+
+    This is the new async-native client for FastAPI.
+    Uses Supabase AsyncClient for native async/await operations.
+
+    Args:
+        config: Optional configuration, uses environment if not provided
+
+    Returns:
+        Supabase AsyncClient instance, or None if not configured
+
+    Example:
+        async_client = await get_async_db_client()
+        result = await async_client.table("users").select("*").execute()
+    """
+    global _async_db_client, _config
+
+    if _async_db_client is not None:
+        return _async_db_client
+
+    # Use provided config or load from environment
+    cfg = config or DatabaseConfig.from_env()
+
+    if not cfg.is_valid:
+        logger.warning("[DB] Async database not initialized - missing URL or KEY")
+        return None
+
+    try:
+        from supabase import acreate_client
+        _async_db_client = await acreate_client(cfg.url, cfg.key)
+        _config = cfg
+        logger.info("[DB] Async database client initialized")
+        return _async_db_client
+    except ImportError:
+        logger.error("[DB] supabase package not installed or AsyncClient not available")
+        return None
+    except Exception as e:
+        logger.error(f"[DB] Failed to initialize async client: {e}")
+        return None
+
+
 def close_db_client():
     """
     Close database client (for graceful shutdown).
@@ -114,6 +158,17 @@ def close_db_client():
     _db_client = None
     _config = None
     logger.info("[DB] Database client closed")
+
+
+async def close_async_db_client():
+    """
+    Close async database client (for graceful shutdown).
+    """
+    global _async_db_client
+    if _async_db_client is not None:
+        # AsyncClient may have cleanup methods in the future
+        _async_db_client = None
+        logger.info("[DB] Async database client closed")
 
 
 def get_db_info() -> dict:
