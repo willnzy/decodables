@@ -2,17 +2,20 @@
 User Repository Implementation - Supabase data access for identity domain.
 
 @module infrastructure.repositories.user_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient Migration - Phase 5)
 
 Implements IUserRepository using Supabase PostgreSQL.
 Inherits from BaseRepository for soft/hard delete support.
+
+v2.0 Changes:
+- Removed run_in_threadpool wrappers
+- All database calls now use native async/await with AsyncClient
+- Updated retry decorators to async version
 """
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import logging
-
-from fastapi.concurrency import run_in_threadpool
 
 from domains.identity.repository import IUserRepository
 from domains.identity.aggregates.user_profile import UserProfile
@@ -21,7 +24,7 @@ from domains.identity.exceptions import (
     UserNotFoundException,
     UserAlreadyExistsException,
 )
-from core.database import retry_on_network_error
+from core.database import retry_on_network_error_async
 from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -42,9 +45,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     async def get_by_id(self, user_id: str) -> Optional[UserProfile]:
         """Get user profile by user ID."""
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").select("*").eq("id", user_id).single().execute()
-            )
+            result = await self.client.table("profiles").select("*").eq("id", user_id).single().execute()
 
             if not result.data:
                 return None
@@ -58,9 +59,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     async def get_by_email(self, email: str) -> Optional[UserProfile]:
         """Get user profile by email."""
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").select("*").eq("email", email).single().execute()
-            )
+            result = await self.client.table("profiles").select("*").eq("email", email).single().execute()
 
             if not result.data:
                 return None
@@ -75,9 +74,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         """Persist user profile (upsert)."""
         try:
             data = self._map_to_row(user_profile)
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").upsert(data, on_conflict="id").select("*").single().execute()
-            )
+            result = await self.client.table("profiles").upsert(data, on_conflict="id").select("*").single().execute()
 
             return self._map_to_entity(result.data)
 
@@ -93,9 +90,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
         try:
             data = self._map_to_row(user_profile)
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").insert(data).select("*").single().execute()
-            )
+            result = await self.client.table("profiles").insert(data).select("*").single().execute()
 
             return self._map_to_entity(result.data)
 
@@ -109,9 +104,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             data = self._map_to_row(user_profile)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").update(data).eq("user_id", user_profile.user_id).select("*").single().execute()
-            )
+            result = await self.client.table("profiles").update(data).eq("user_id", user_profile.user_id).select("*").single().execute()
 
             if not result.data:
                 raise UserNotFoundException(user_profile.user_id)
@@ -143,9 +136,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     ) -> List[UserProfile]:
         """Get users by subscription tier."""
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").select("*").eq("tier", tier.value).range(offset, offset + limit - 1).execute()
-            )
+            result = await self.client.table("profiles").select("*").eq("tier", tier.value).range(offset, offset + limit - 1).execute()
 
             return [self._map_to_entity(row) for row in result.data]
 
@@ -159,9 +150,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     ) -> List[UserProfile]:
         """Get users who haven't completed onboarding."""
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").select("*").neq("onboarding_step", OnboardingStep.COMPLETED.value).limit(limit).execute()
-            )
+            result = await self.client.table("profiles").select("*").neq("onboarding_step", OnboardingStep.COMPLETED.value).limit(limit).execute()
 
             return [self._map_to_entity(row) for row in result.data]
 
@@ -184,9 +173,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             if stripe_customer_id:
                 update_data["stripe_customer_id"] = stripe_customer_id
 
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").update(update_data).eq("user_id", user_id).select("*").single().execute()
-            )
+            result = await self.client.table("profiles").update(update_data).eq("user_id", user_id).select("*").single().execute()
 
             if not result.data:
                 raise UserNotFoundException(user_id)
@@ -206,12 +193,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     ) -> UserProfile:
         """Update user's onboarding progress."""
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").update({
-                    "onboarding_step": step.value,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }).eq("id", user_id).select("*").single().execute()
-            )
+            result = await self.client.table("profiles").update({
+                "onboarding_step": step.value,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("id", user_id).select("*").single().execute()
 
             if not result.data:
                 raise UserNotFoundException(user_id)
@@ -259,7 +244,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
     # Extended Methods
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def get_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Get user profile by ID.
@@ -273,9 +258,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         if not user_id:
             return None
 
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").select("*").eq("id", user_id).execute()
-        )
+        result = await self.client.table("profiles").select("*").eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
     def generate_user_code(self) -> str:
@@ -333,7 +316,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
         return code
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def create_profile(
         self,
         user_id: str,
@@ -375,14 +358,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             "timezone": timezone_str,
         }
 
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").insert(data).execute()
-        )
+        result = await self.client.table("profiles").insert(data).execute()
 
         # Note: Credit transaction logging should be done by caller
         return result.data[0] if result.data else None
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def update_subscription_tier(
         self,
         user_id: str,
@@ -412,12 +393,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         if tier == "t1" or tier == "t1":
             update_data["credits_monthly"] = 0
 
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").update(update_data).eq("id", user_id).execute()
-        )
+        result = await self.client.table("profiles").update(update_data).eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def update_profile(
         self,
         user_id: str,
@@ -456,12 +435,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         if not update_data:
             return None
 
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").update(update_data).eq("id", user_id).execute()
-        )
+        result = await self.client.table("profiles").update(update_data).eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def update_timezone(self, user_id: str, tz: str) -> Optional[Dict[str, Any]]:
         """
         Update user timezone.
@@ -473,9 +450,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         Returns:
             Updated profile dict
         """
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").update({"timezone": tz}).eq("id", user_id).execute()
-        )
+        result = await self.client.table("profiles").update({"timezone": tz}).eq("id", user_id).execute()
         return result.data[0] if result.data else None
 
     async def get_timezone(self, user_id: str) -> str:
@@ -491,16 +466,14 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         if not user_id:
             return "UTC"
         try:
-            result = await run_in_threadpool(
-                lambda: self.client.table("profiles").select("timezone").eq("id", user_id).execute()
-            )
+            result = await self.client.table("profiles").select("timezone").eq("id", user_id).execute()
             if result.data:
                 return result.data[0].get("timezone") or "UTC"
         except:
             pass
         return "UTC"
 
-    @retry_on_network_error()  # v3.26 (REPO-HIGH-1): Added retry decorator
+    @retry_on_network_error_async()  # v3.26 (REPO-HIGH-1): Added retry decorator
     async def search_users(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Search users by email, username, or user_code.
@@ -515,14 +488,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
         v3.26 (USER-MEDIUM-1): Added configurable limit parameter
         """
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").select("id, email, username, user_code, tier").or_(
-                f"email.ilike.%{query}%,username.ilike.%{query}%,user_code.ilike.%{query}%"
-            ).limit(limit).execute()
-        )
+        result = await self.client.table("profiles").select("id, email, username, user_code, tier").or_(
+            f"email.ilike.%{query}%,username.ilike.%{query}%,user_code.ilike.%{query}%"
+        ).limit(limit).execute()
         return result.data or []
 
-    @retry_on_network_error()  # v3.26 (REPO-HIGH-3): Added retry decorator + pagination
+    @retry_on_network_error_async()  # v3.26 (REPO-HIGH-3): Added retry decorator + pagination
     async def get_users_by_tier(self, tier: str, offset: int = 0, limit: int = 100) -> List[str]:
         """
         Get user IDs for a specific tier with pagination.
@@ -538,9 +509,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         v3.26 (REPO-HIGH-3): Added pagination support (offset/limit) to prevent OOM
         v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
         """
-        result = await run_in_threadpool(
-            lambda: self.client.table("profiles").select("id").eq("tier", tier).range(offset, offset + limit - 1).execute()
-        )
+        result = await self.client.table("profiles").select("id").eq("tier", tier).range(offset, offset + limit - 1).execute()
         return [u["id"] for u in (result.data or [])]
 
     async def get_user_discount(
@@ -558,20 +527,17 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         Returns:
             Active discount or None
         """
-        def _query():
-            q = self.client.table("user_discounts").select("*").eq(
-                "user_id", user_id
-            ).eq("is_used", False).gte("expires_at", datetime.now(timezone.utc).isoformat())
+        q = self.client.table("user_discounts").select("*").eq(
+            "user_id", user_id
+        ).eq("is_used", False).gte("expires_at", datetime.now(timezone.utc).isoformat())
 
-            if target_plan:
-                q = q.eq("target_plan", target_plan)
+        if target_plan:
+            q = q.eq("target_plan", target_plan)
 
-            return q.order("discount_percent", desc=True).limit(1).execute()
-
-        result = await run_in_threadpool(_query)
+        result = await q.order("discount_percent", desc=True).limit(1).execute()
         return result.data[0] if result.data else None
 
-    @retry_on_network_error()  # v3.26 (REPO-HIGH-2): Added retry decorator
+    @retry_on_network_error_async()  # v3.26 (REPO-HIGH-2): Added retry decorator
     async def create_user_discount(
         self,
         user_id: str,
@@ -596,14 +562,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         from datetime import timedelta
         expires_at = datetime.now(timezone.utc) + timedelta(days=valid_days)
 
-        result = await run_in_threadpool(
-            lambda: self.client.table("user_discounts").insert({
-                "user_id": user_id,
-                "discount_percent": discount_percent,
-                "expires_at": expires_at.isoformat(),
-                "target_plan": target_plan,
-            }).execute()
-        )
+        result = await self.client.table("user_discounts").insert({
+            "user_id": user_id,
+            "discount_percent": discount_percent,
+            "expires_at": expires_at.isoformat(),
+            "target_plan": target_plan,
+        }).execute()
 
         return result.data[0] if result.data else None
 
@@ -617,16 +581,14 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         Returns:
             True if successfully marked, False otherwise
         """
-        result = await run_in_threadpool(
-            lambda: self.client.table("user_discounts").update({
-                "is_used": True,
-                "used_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", discount_id).execute()
-        )
+        result = await self.client.table("user_discounts").update({
+            "is_used": True,
+            "used_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", discount_id).execute()
 
         return len(result.data) > 0 if result.data else False
 
-    @retry_on_network_error()
+    @retry_on_network_error_async()
     async def update_monthly_credits(self, user_id: str, credits: int) -> None:
         """
         Update user's monthly credits.
@@ -638,8 +600,6 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         Raises:
             Exception if update fails
         """
-        await run_in_threadpool(
-            lambda: self.client.table("profiles").update({
-                "credits_monthly": credits
-            }).eq("id", user_id).execute()
-        )
+        await self.client.table("profiles").update({
+            "credits_monthly": credits
+        }).eq("id", user_id).execute()
