@@ -25,7 +25,6 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
-from core.database import get_supabase_client
 from infrastructure.repositories import SupabaseAssetRepository
 from shared.ai.image_generator import generate_8_images
 from infrastructure.task_queue import task_queue
@@ -84,6 +83,7 @@ class GenerationService:
         billing_service,  # BillingService (injected via DI)
         asset_repository: SupabaseAssetRepository,  # Asset storage
         tier_service: "TierService" = None,  # TierService for queue priority
+        db_client = None,  # AsyncClient for direct database operations
     ):
         """
         Initialize Generation Service.
@@ -92,11 +92,12 @@ class GenerationService:
             billing_service: BillingService for credit operations
             asset_repository: Repository for asset storage
             tier_service: TierService for queue priority configuration
+            db_client: AsyncClient for direct database operations (RPC calls, generation history)
         """
         self.billing_service = billing_service
         self.asset_repo = asset_repository
         self._tier_service = tier_service
-        self.supabase = get_supabase_client()
+        self.db_client = db_client or asset_repository.client  # Use repo's client if not provided
 
     async def generate_images_sync(
         self,
@@ -392,7 +393,7 @@ class GenerationService:
 
         # Save task to database
         try:
-            self.supabase.rpc("create_generation_task", {
+            self.db_client.rpc("create_generation_task", {
                 "p_task_id": task_id,
                 "p_user_id": user_id,
                 "p_task_type": "image_generation",
@@ -580,7 +581,7 @@ class GenerationService:
                     generation_time_ms=generation_time_ms // len(urls) if len(urls) > 1 else generation_time_ms,
                     timezone=timezone,
                 )
-                self.supabase.table("user_generations").insert(generation_record).execute()
+                self.db_client.table("user_generations").insert(generation_record).execute()
             except Exception as e:
                 logger.warning(f"Failed to save generation history: {e}")
 

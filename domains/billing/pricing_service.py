@@ -139,7 +139,9 @@ class PricingService:
     """
 
     def __init__(self):
-        self.supabase = get_supabase_client()
+        # AsyncClient should be passed via dependency injection
+
+        self.db_client = None  # Set by caller
         self._cache: Dict[str, PricingPlan] = {}
         self._cache_timestamp: Optional[datetime] = None
         self._cache_ttl_seconds = 300  # 5 minutes
@@ -154,7 +156,7 @@ class PricingService:
     async def _fetch_all_plans(self) -> List[PricingPlan]:
         """Fetch all active pricing plans from database."""
         try:
-            response = self.supabase.table("pricing_plans")\
+            response = self.db_client.table("pricing_plans")\
                 .select("*")\
                 .eq("is_active", True)\
                 .order("sort_order")\
@@ -193,7 +195,7 @@ class PricingService:
 
         # Fetch from database
         try:
-            response = self.supabase.table("pricing_plans")\
+            response = self.db_client.table("pricing_plans")\
                 .select("*")\
                 .eq("plan_code", plan_code)\
                 .eq("is_active", True)\
@@ -282,7 +284,7 @@ class PricingService:
         """
         # Check for user-specific override first
         try:
-            override_response = self.supabase.table("user_price_overrides")\
+            override_response = self.db_client.table("user_price_overrides")\
                 .select("*, pricing_plans!inner(plan_code)")\
                 .eq("user_id", user_id)\
                 .eq("pricing_plans.plan_code", plan_code)\

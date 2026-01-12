@@ -22,7 +22,6 @@ from typing import Optional, Dict, List
 
 # v3.28: DDD Migration - Use Repository only
 from infrastructure.repositories.experiment_repository import SupabaseExperimentRepository
-from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
 

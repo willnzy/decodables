@@ -19,7 +19,7 @@ Architecture:
 import logging
 from typing import Optional, Dict, List, Any
 
-from core.database import get_database_client, get_supabase_client
+from core.database import get_database_client
 from core.database.retry import retry_on_network_error_async
 from infrastructure.repositories import SupabaseAdminStatsRepository
 
@@ -33,7 +33,7 @@ def _get_repos():
     v3.29: DDD Migration helper.
     Returns stats repository used by stats service.
     """
-    db_client = get_database_client()
+    # TODO: db_client should be passed as parameter (AsyncClient)
     stats_repo = SupabaseAdminStatsRepository(db_client)
     return stats_repo
 
