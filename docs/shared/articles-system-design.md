@@ -1,8 +1,8 @@
 # Articles CMS 系统设计
 
 > **状态**: ✅ 已实现
-> **版本**: 1.1.0
-> **最后更新**: 2026-01-12
+> **版本**: 1.2.0
+> **最后更新**: 2026-01-13
 > **关联计划**: Part D of Landing 页面优化计划
 
 ---
@@ -185,6 +185,7 @@ class ArticleService:
 | GET | `/api/v2/user/articles/categories` | 获取分类及文章数 | 60/min |
 | GET | `/api/v2/user/articles/search` | 搜索文章 | 30/min |
 | GET | `/api/v2/user/articles/{slug}` | 获取文章详情 | 60/min |
+| GET | `/api/v2/user/articles/{slug}/related` | 获取相关文章 (v1.2.0) | 60/min |
 
 #### GET `/articles`
 
@@ -200,7 +201,7 @@ class ArticleService:
 **响应**:
 ```json
 {
-  "articles": [
+  "items": [
     {
       "id": "uuid",
       "slug": "how-to-add-images",
@@ -233,7 +234,7 @@ class ArticleService:
 **响应**:
 ```json
 {
-  "articles": [
+  "items": [
     {
       "id": "uuid",
       "slug": "new-ai-feature",
@@ -247,7 +248,9 @@ class ArticleService:
       "view_count": 250
     }
   ],
-  "total": 3
+  "total": 3,
+  "offset": 0,
+  "limit": 4
 }
 ```
 
@@ -312,6 +315,43 @@ class ArticleService:
   "created_at": "2026-01-10T08:00:00Z",
   "updated_at": "2026-01-11T10:00:00Z"
 }
+```
+
+#### GET `/articles/{slug}/related` (v1.2.0 新增)
+
+获取与指定文章相关的其他文章。返回同类别的已发布文章（排除当前文章）。
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `limit` | int | 3 | 最大数量 (max 10) |
+
+**响应**:
+```json
+[
+  {
+    "id": "uuid",
+    "slug": "working-with-text",
+    "title": "Working with Text in Your Project",
+    "summary": "Learn how to add and format text...",
+    "category": "manual",
+    "tags": ["text", "tutorial"],
+    "cover_image": "https://...",
+    "published_at": "2026-01-10T10:00:00Z",
+    "view_count": 98
+  },
+  {
+    "id": "uuid",
+    "slug": "advanced-editing-tips",
+    "title": "Advanced Editing Tips",
+    "summary": "Master advanced editing techniques...",
+    "category": "manual",
+    "tags": ["advanced", "tips"],
+    "cover_image": "https://...",
+    "published_at": "2026-01-09T10:00:00Z",
+    "view_count": 156
+  }
+]
 ```
 
 ### 4.2 Admin API (管理端)
@@ -584,12 +624,13 @@ export default async function sitemap() {
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0.0 | 2026-01-11 | 初始版本 |
-| **1.1.0** | **2026-01-12** | **新增 `is_featured` 字段和索引**；新增 `GET /articles/featured` API 端点；支持精选文章功能 (Manual/News Featured 区块) |
+| 1.1.0 | 2026-01-12 | 新增 `is_featured` 字段和索引；新增 `GET /articles/featured` API 端点；支持精选文章功能 (Manual/News Featured 区块) |
+| **1.2.0** | **2026-01-13** | **新增 `GET /articles/{slug}/related` 端点**；修正响应数据结构 (`articles` → `items`)；修复 DateTime 解析错误 (Supabase ISO 字符串处理) |
 
 ---
 
-**文档版本**: 1.1.0
-**最后更新**: 2026-01-12
+**文档版本**: 1.2.0
+**最后更新**: 2026-01-13
 **相关文档**:
 - [user-api-review.md](user-api-review.md) - User API 完整参考
 - [admin-api-review.md](admin-api-review.md) - Admin API 完整参考
