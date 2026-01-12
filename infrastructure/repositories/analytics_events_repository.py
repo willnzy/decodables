@@ -2,18 +2,20 @@
 Analytics Events Repository - Data access for analytics events batch insertion.
 
 @module infrastructure.repositories.analytics_events_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient Migration - Phase 6)
 
 Handles batch insertion of analytics events to multiple tables:
 - user_events
 - analytics_events
 - activity_logs
+
+v2.0 Changes:
+- Removed run_in_threadpool wrappers
+- All database calls now use native async/await with AsyncClient
 """
 
 import logging
 from typing import List, Dict, Any, Tuple
-
-from fastapi.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +53,7 @@ class SupabaseAnalyticsEventsRepository:
             return 0
 
         try:
-            await run_in_threadpool(
-                lambda: self.client.table("user_events").insert(event_rows).execute()
-            )
+            await self.client.table("user_events").insert(event_rows).execute()
             return len(event_rows)
         except Exception as e:
             logger.warning(
@@ -78,9 +78,7 @@ class SupabaseAnalyticsEventsRepository:
             return 0
 
         try:
-            await run_in_threadpool(
-                lambda: self.client.table("analytics_events").insert(event_rows).execute()
-            )
+            await self.client.table("analytics_events").insert(event_rows).execute()
             return len(event_rows)
         except Exception as e:
             logger.warning(
@@ -105,9 +103,7 @@ class SupabaseAnalyticsEventsRepository:
             return 0
 
         try:
-            await run_in_threadpool(
-                lambda: self.client.table("activity_logs").insert(activity_rows).execute()
-            )
+            await self.client.table("activity_logs").insert(activity_rows).execute()
             return len(activity_rows)
         except Exception as e:
             logger.warning(
