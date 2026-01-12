@@ -746,7 +746,7 @@ CREATE TABLE articles (
     title VARCHAR(500) NOT NULL,
     summary TEXT,
     content TEXT NOT NULL,
-    category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog')),
+    category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog', 'faq', 'troubleshooting')),
     tags JSONB DEFAULT '[]'::jsonb,
     cover_image VARCHAR(500),
 

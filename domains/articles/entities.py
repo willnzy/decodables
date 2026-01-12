@@ -14,9 +14,11 @@ from uuid import UUID
 
 class ArticleCategory(str, Enum):
     """Article category enumeration."""
-    MANUAL = "manual"       # Help documentation, FAQ
-    NEWS = "news"           # Announcements, updates
-    CHANGELOG = "changelog" # Release notes
+    MANUAL = "manual"               # Help documentation, tutorials
+    NEWS = "news"                   # Announcements, updates
+    CHANGELOG = "changelog"         # Release notes
+    FAQ = "faq"                     # Frequently asked questions
+    TROUBLESHOOTING = "troubleshooting"  # Common issues & solutions
 
 
 @dataclass
