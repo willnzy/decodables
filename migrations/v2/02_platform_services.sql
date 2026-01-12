@@ -236,45 +236,107 @@ CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
 
 -- ----------------------------------------------------------------------------
 -- 9. daily_themes (also supports holiday themes)
+-- v2.1: Added category, i18n, AI generation, review workflow fields
 -- ----------------------------------------------------------------------------
 CREATE TABLE daily_themes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    -- Basic info
+
+    -- ========== Basic Info ==========
     name TEXT NOT NULL,                                    -- Theme display name (used by code)
     title TEXT,                                            -- Alias for name (backward compat)
-    description TEXT,
-    -- Activation control
+    description TEXT,                                      -- Theme description (primary language)
+
+    -- ========== Category (v2.1) ==========
+    category TEXT DEFAULT 'holiday',                       -- Theme category
+    -- Values: holiday, memorial, historical, notable, campaign, special
+
+    -- ========== i18n Support (v2.1) ==========
+    name_i18n JSONB DEFAULT '{}',                          -- Multi-language name {"en": "...", "zh": "..."}
+    slogan TEXT,                                           -- Theme slogan (primary language)
+    slogan_i18n JSONB DEFAULT '{}',                        -- Multi-language slogan
+    description_i18n JSONB DEFAULT '{}',                   -- Multi-language description
+
+    -- ========== Region Control (v2.1) ==========
+    regions TEXT[] DEFAULT ARRAY[]::TEXT[],                -- Target regions ['US', 'CN', 'GLOBAL']
+
+    -- ========== Activation Control ==========
     is_active BOOLEAN DEFAULT true,                        -- Whether theme is enabled
     priority INTEGER DEFAULT 0,                            -- Higher priority = shown first
     date DATE,                                             -- Specific date (for daily themes)
     date_rule JSONB,                                       -- Date rule for holiday themes
-    -- Content
+
+    -- ========== Campaign Linkage (v2.1) ==========
+    linked_campaign_id UUID,                               -- Linked marketing campaign (FK)
+
+    -- ========== Content ==========
     thumbnail_url TEXT,
     preview_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     featured_asset_ids UUID[] DEFAULT ARRAY[]::UUID[],
     recommended_categories TEXT[] DEFAULT ARRAY[]::TEXT[],
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
-    theme_config JSONB DEFAULT '{}',                       -- Colors, badges, etc.
-    -- Status
+    theme_config JSONB DEFAULT '{}',                       -- Colors, badges, decorations, etc.
+
+    -- ========== AI Generation (v2.1) ==========
+    ai_generated BOOLEAN DEFAULT false,                    -- Whether AI generated this theme
+    ai_alternatives JSONB DEFAULT '[]',                    -- AI alternative options [{id, name, config, created_at}]
+    selected_alternative_id TEXT,                          -- Currently selected alternative ID
+    ai_recommended_id TEXT,                                -- AI recommended alternative ID
+
+    -- ========== External Links (v2.1) ==========
+    source_url TEXT,                                       -- Information source URL
+    learn_more_url TEXT,                                   -- Learn more URL for users
+
+    -- ========== Review Workflow (v2.1) ==========
+    review_status TEXT DEFAULT 'pending',                  -- Review status
+    -- Values: pending, auto_approved, reviewed, rejected
+    reviewed_by TEXT,                                      -- Reviewer user_id
+    reviewed_at TIMESTAMPTZ,                               -- Review timestamp
+    review_notes TEXT,                                     -- Review notes/comments
+
+    -- ========== Regeneration History (v2.1) ==========
+    generation_history JSONB DEFAULT '[]',                 -- History [{timestamp, reason, by, snapshot}]
+    regenerate_count INTEGER DEFAULT 0,                    -- Number of regenerations
+
+    -- ========== Status ==========
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'archived')),
     metadata JSONB DEFAULT '{}',
-    -- Timestamps
+
+    -- ========== Timestamps ==========
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    -- Soft delete
+
+    -- ========== Soft Delete ==========
     is_deleted BOOLEAN DEFAULT false,
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,
+
+    -- ========== Constraints ==========
     CONSTRAINT chk_daily_themes_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
     CONSTRAINT chk_daily_themes_recovery_expires_at_consistency
-    CHECK (
-        recovery_expires_at IS NULL OR
-        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
-    )
+        CHECK (
+            recovery_expires_at IS NULL OR
+            (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+        ),
+    -- v2.1 constraints
+    CONSTRAINT chk_daily_themes_category
+        CHECK (category IN ('holiday', 'memorial', 'historical', 'notable', 'campaign', 'special')),
+    CONSTRAINT chk_daily_themes_review_status
+        CHECK (review_status IN ('pending', 'auto_approved', 'reviewed', 'rejected')),
+    -- Foreign key (campaigns table must exist)
+    CONSTRAINT fk_daily_themes_campaign
+        FOREIGN KEY (linked_campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
 );
--- Index for active themes lookup
+
+-- ========== Indexes ==========
+-- Original index
 CREATE INDEX idx_daily_themes_is_active_priority ON daily_themes (is_active, priority DESC) WHERE is_deleted = false;
+-- v2.1 indexes
+CREATE INDEX idx_daily_themes_category ON daily_themes (category) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_regions ON daily_themes USING GIN (regions) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_review_status ON daily_themes (review_status) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_date ON daily_themes (date) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_ai_generated ON daily_themes (ai_generated) WHERE is_deleted = false AND ai_generated = true;
 
 
 -- ----------------------------------------------------------------------------
