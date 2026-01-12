@@ -51,9 +51,11 @@ logger = logging.getLogger(__name__)
 # Repository Factory Functions
 # ==========================================
 
-def _get_config_repo(repo: Optional[IAIModelConfigRepository] = None) -> IAIModelConfigRepository:
+async def _get_config_repo(repo: Optional[IAIModelConfigRepository] = None) -> IAIModelConfigRepository:
     """
     获取 AIModelConfigRepository 实例 (依赖注入或默认实例).
+
+    v3.31: Fixed async function declaration (SyntaxError fix).
 
     Args:
         repo: 可选的 Repository 实例 (用于依赖注入/测试)
@@ -64,7 +66,7 @@ def _get_config_repo(repo: Optional[IAIModelConfigRepository] = None) -> IAIMode
     if repo:
         return repo
 
-        from infrastructure.repositories import SupabaseConfigRepository
+    from infrastructure.repositories import SupabaseConfigRepository
 
     db_client = await get_async_db_client()
     return SupabaseConfigRepository(db_client)
@@ -153,7 +155,7 @@ async def update_text_model_config(
         更新后的配置或 None
     """
     try:
-        repo = _get_config_repo(config_repo)
+        repo = await _get_config_repo(config_repo)
 
         # 读取当前配置
         current = await repo.get_by_key(CONFIG_KEY_TEXT_MODEL)
@@ -242,7 +244,7 @@ async def update_image_model_config(
         更新后的配置或 None
     """
     try:
-        repo = _get_config_repo(config_repo)
+        repo = await _get_config_repo(config_repo)
 
         # 读取当前配置
         current = await repo.get_by_key(CONFIG_KEY_IMAGE_MODEL)
@@ -338,7 +340,7 @@ async def update_canary_config(
         更新后的配置或 None
     """
     try:
-        repo = _get_config_repo(config_repo)
+        repo = await _get_config_repo(config_repo)
 
         # 读取当前配置
         current = await repo.get_by_key(CONFIG_KEY_CANARY)
@@ -413,7 +415,7 @@ async def toggle_ai_provider(
         更新后的状态或 None
     """
     try:
-        repo = _get_config_repo(config_repo)
+        repo = await _get_config_repo(config_repo)
 
         # 读取当前提供商状态
         current = await repo.get_by_key(CONFIG_KEY_ENABLED_PROVIDERS)

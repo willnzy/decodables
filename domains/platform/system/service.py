@@ -26,11 +26,12 @@ from domains.platform.config_service import ConfigService
 logger = logging.getLogger(__name__)
 
 
-def _get_config_service() -> ConfigService:
+async def _get_config_service() -> ConfigService:
     """
     Get ConfigService instance.
 
     v3.30: DDD Migration helper.
+    v3.31: Fixed async function declaration (SyntaxError fix).
     Returns ConfigService used by system service.
     """
     db_client = await get_async_db_client()

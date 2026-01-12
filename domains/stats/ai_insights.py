@@ -32,9 +32,11 @@ from infrastructure.repositories import SupabaseAdminStatsRepository
 logger = logging.getLogger(__name__)
 
 
-def _get_stats_repo():
+async def _get_stats_repo():
     """
     Get SupabaseAdminStatsRepository instance.
+
+    v1.0.1: Fixed async function declaration (SyntaxError fix).
 
     Returns:
         SupabaseAdminStatsRepository instance
@@ -80,7 +82,7 @@ async def get_ai_insights(insight_type: str = "all") -> List[Dict[str, Any]]:
         - Empty list returned on errors
     """
     try:
-        stats_repo = _get_stats_repo()
+        stats_repo = await _get_stats_repo()
         insights = await stats_repo.admin_get_ai_insights(insight_type)
         return insights
     except Exception as e:
@@ -131,7 +133,7 @@ async def get_ai_recommendations(area: str = "all") -> List[Dict[str, Any]]:
         - Empty list returned on errors
     """
     try:
-        stats_repo = _get_stats_repo()
+        stats_repo = await _get_stats_repo()
         recommendations = await stats_repo.admin_get_ai_recommendations(area)
         return recommendations
     except Exception as e:
@@ -192,7 +194,7 @@ async def get_behavior_analysis(
         - Empty result returned on errors
     """
     try:
-        stats_repo = _get_stats_repo()
+        stats_repo = await _get_stats_repo()
         analysis = await stats_repo.admin_get_behavior_analysis(start_date, end_date)
         return analysis
     except Exception as e:

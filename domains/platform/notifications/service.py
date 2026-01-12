@@ -41,9 +41,11 @@ logger = logging.getLogger(__name__)
 # Repository Factory Functions
 # ==========================================
 
-def _get_notification_repo(repo: Optional[INotificationRepository] = None) -> INotificationRepository:
+async def _get_notification_repo(repo: Optional[INotificationRepository] = None) -> INotificationRepository:
     """
     获取 NotificationRepository 实例 (依赖注入或默认实例).
+
+    v3.33: Fixed async function declaration (SyntaxError fix).
 
     Args:
         repo: 可选的 Repository 实例 (用于依赖注入/测试)
@@ -54,15 +56,17 @@ def _get_notification_repo(repo: Optional[INotificationRepository] = None) -> IN
     if repo:
         return repo
 
-        from infrastructure.repositories import SupabaseNotificationRepository
+    from infrastructure.repositories import SupabaseNotificationRepository
 
     db_client = await get_async_db_client()
     return SupabaseNotificationRepository(db_client)
 
 
-def _get_stats_repo(repo=None):
+async def _get_stats_repo(repo=None):
     """
     获取 AdminStatsRepository 实例 (依赖注入或默认实例).
+
+    v3.33: Fixed async function declaration (SyntaxError fix).
 
     Args:
         repo: 可选的 Repository 实例 (用于依赖注入/测试)
@@ -73,15 +77,17 @@ def _get_stats_repo(repo=None):
     if repo:
         return repo
 
-        from infrastructure.repositories import SupabaseAdminStatsRepository
+    from infrastructure.repositories import SupabaseAdminStatsRepository
 
     db_client = await get_async_db_client()
     return SupabaseAdminStatsRepository(db_client)
 
 
-def _get_admin_users_repo(repo=None):
+async def _get_admin_users_repo(repo=None):
     """
     获取 AdminUsersRepository 实例 (依赖注入或默认实例).
+
+    v3.33: Fixed async function declaration (SyntaxError fix).
 
     Args:
         repo: 可选的 Repository 实例 (用于依赖注入/测试)
@@ -92,7 +98,7 @@ def _get_admin_users_repo(repo=None):
     if repo:
         return repo
 
-        from infrastructure.repositories import SupabaseAdminUsersRepository
+    from infrastructure.repositories import SupabaseAdminUsersRepository
 
     db_client = await get_async_db_client()
     return SupabaseAdminUsersRepository(db_client)
@@ -133,7 +139,7 @@ async def send_broadcast(
     Returns:
         广播结果
     """
-    repo = _get_notification_repo(notification_repo)
+    repo = await _get_notification_repo(notification_repo)
 
     
     db_client = await get_async_db_client()
@@ -204,7 +210,7 @@ async def send_to_user(
     Returns:
         发送结果
     """
-    repo = _get_notification_repo(notification_repo)
+    repo = await _get_notification_repo(notification_repo)
 
     notification = await repo.send_notification_to_user(
         user_id=user_id,
@@ -251,7 +257,7 @@ async def send_to_users(
     Returns:
         发送结果
     """
-    repo = _get_notification_repo(notification_repo)
+    repo = await _get_notification_repo(notification_repo)
 
     notifications = await repo.send_notification_to_users(
         user_ids=user_ids,
@@ -279,7 +285,7 @@ async def get_stats(
     Returns:
         统计数据
     """
-    repo = _get_notification_repo(notification_repo)
+    repo = await _get_notification_repo(notification_repo)
     return await repo.get_all_notification_stats()
 
 
@@ -302,5 +308,5 @@ async def get_history(
     Returns:
         通知历史记录
     """
-    repo = _get_notification_repo(notification_repo)
+    repo = await _get_notification_repo(notification_repo)
     return await repo.get_notification_history(offset=offset, limit=limit)

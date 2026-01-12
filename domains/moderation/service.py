@@ -43,10 +43,11 @@ from domains.moderation.constants import (
 logger = logging.getLogger(__name__)
 
 
-def _get_repos() -> Tuple[SupabaseAdminModerationRepository, SupabaseAdminStatsRepository, SupabaseAdminUsersRepository]:
+async def _get_repos() -> Tuple[SupabaseAdminModerationRepository, SupabaseAdminStatsRepository, SupabaseAdminUsersRepository]:
     """
     Get repository instances.
 
+    v3.29: Fixed async function declaration (SyntaxError fix).
     v3.28: DDD Migration helper.
     Returns all 3 repositories used by moderation service.
     """
@@ -83,7 +84,7 @@ async def get_moderation_list(
         Tuple of (items list, total count)
     """
     try:
-        moderation_repo, _, _ = _get_repos()
+        moderation_repo, _, _ = await _get_repos()
         items, total = await moderation_repo.admin_get_moderation_list(
             status=status,
             resource_type=resource_type,
@@ -110,7 +111,7 @@ async def get_moderation_detail(listing_id: str) -> Optional[Dict]:
         Listing dict or None if not found
     """
     try:
-        moderation_repo, _, _ = _get_repos()
+        moderation_repo, _, _ = await _get_repos()
         item = await moderation_repo.admin_get_moderation_detail(listing_id)
         return item
 
@@ -133,7 +134,7 @@ async def approve_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = _get_repos()
+        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
 
         # Approve listing
         result = await moderation_repo.admin_approve_listing(listing_id, admin_id)
@@ -179,7 +180,7 @@ async def reject_listing(listing_id: str, admin_id: str, reason: str) -> Optiona
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = _get_repos()
+        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
 
         # Reject listing
         result = await moderation_repo.admin_reject_listing(listing_id, admin_id, reason)
@@ -224,7 +225,7 @@ async def delete_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, _ = _get_repos()
+        moderation_repo, stats_repo, _ = await _get_repos()
 
         # Delete listing
         result = await moderation_repo.admin_delete_listing(listing_id)
@@ -260,7 +261,7 @@ async def unpublish_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, _ = _get_repos()
+        moderation_repo, stats_repo, _ = await _get_repos()
 
         # Unpublish listing
         result = await moderation_repo.admin_unpublish_listing(listing_id)
@@ -306,7 +307,7 @@ async def get_reports(
         Tuple of (reports list, total count, has_more flag)
     """
     try:
-        moderation_repo, _, _ = _get_repos()
+        moderation_repo, _, _ = await _get_repos()
 
         # v3.28: Single query returns both items and total
         reports, total = await moderation_repo.admin_get_reports(
@@ -335,7 +336,7 @@ async def get_reports_stats() -> Dict[str, int]:
         Dict with counts by status
     """
     try:
-        moderation_repo, _, _ = _get_repos()
+        moderation_repo, _, _ = await _get_repos()
         stats = await moderation_repo.admin_get_reports_stats()
         return stats
 
@@ -363,7 +364,7 @@ async def get_report_detail(report_id: str) -> Optional[Dict]:
         Report dict or None if not found
     """
     try:
-        moderation_repo, _, _ = _get_repos()
+        moderation_repo, _, _ = await _get_repos()
         report = await moderation_repo.admin_get_report_detail(report_id)
         return report
 
@@ -394,7 +395,7 @@ async def respond_to_report(
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = _get_repos()
+        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
 
         # Respond to report
         result = await moderation_repo.admin_respond_to_report(

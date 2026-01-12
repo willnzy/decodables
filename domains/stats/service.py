@@ -2,7 +2,11 @@
 Stats Service - Business logic for statistics and analytics.
 
 @module domains.stats.service
-@version 3.29 (DDD Compliant)
+@version 3.30 (DDD Compliant)
+
+Changes in v3.30:
+- Fixed _get_repos() async function declaration (SyntaxError fix)
+- Added missing get_async_db_client() import and call
 
 Changes in v3.29:
 - Complete DDD Migration from api/admin/stats.py (STAT-CRITICAL-1)
@@ -19,20 +23,22 @@ Architecture:
 import logging
 from typing import Optional, Dict, List, Any
 
+from core.database import get_async_db_client
 from core.database.retry import retry_on_network_error_async
 from infrastructure.repositories import SupabaseAdminStatsRepository
 
 logger = logging.getLogger(__name__)
 
 
-def _get_repos():
+async def _get_repos():
     """
     Get repository instances.
 
+    v3.30: Fixed async function + added get_async_db_client() call.
     v3.29: DDD Migration helper.
     Returns stats repository used by stats service.
     """
-    # TODO: db_client should be passed as parameter (AsyncClient)
+    db_client = await get_async_db_client()
     stats_repo = SupabaseAdminStatsRepository(db_client)
     return stats_repo
 
@@ -54,7 +60,7 @@ async def get_dashboard_stats(period: str = "month") -> Dict[str, Any]:
         Dict with total_users, new_users, total_projects, paying_users
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         stats = await stats_repo.admin_get_dashboard_stats(period)
         return stats
     except Exception as e:
@@ -81,7 +87,7 @@ async def get_user_growth_stats(
         List of growth stats by date
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         stats = await stats_repo.admin_get_user_growth_stats(start_date, end_date, group_by)
         return stats
     except Exception as e:
@@ -108,7 +114,7 @@ async def get_revenue_stats(
         List of revenue stats by date
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         stats = await stats_repo.admin_get_revenue_stats(start_date, end_date, group_by)
         return stats
     except Exception as e:
@@ -133,7 +139,7 @@ async def get_project_stats(
         Dict with total and new_in_period counts
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         stats = await stats_repo.admin_get_project_stats(start_date, end_date)
         return stats
     except Exception as e:
@@ -158,7 +164,7 @@ async def get_credit_usage_stats(
         Dict with total_used and by_type breakdown
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         stats = await stats_repo.admin_get_credit_usage_stats(start_date, end_date)
         return stats
     except Exception as e:
@@ -176,7 +182,7 @@ async def get_tier_distribution() -> Dict[str, Any]:
         Dict with free, starter, pro counts
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         distribution = await stats_repo.admin_get_tier_distribution()
         return distribution
     except Exception as e:
@@ -197,7 +203,7 @@ async def get_conversion_funnel(period: str = "month") -> Dict[str, Any]:
         Dict with signups, created_project, converted counts
     """
     try:
-        stats_repo = _get_repos()
+        stats_repo = await _get_repos()
         funnel = await stats_repo.admin_get_conversion_funnel(period)
         return funnel
     except Exception as e:
