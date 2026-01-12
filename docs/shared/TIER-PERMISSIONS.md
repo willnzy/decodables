@@ -46,11 +46,11 @@
 
 ## 积分充值价格
 
-| 档位 | 积分 | 原价 | 现价 | t3 专享 (9折) |
-|:-----|:----:|:----:|:----:|:-------------:|
-| 小包 | 100 | $2.99 | $2.99 | $2.69 |
-| 中包 | 500 | $14.95 | $13.49 | $12.14 |
-| 大包 | 2000 | $59.80 | $47.49 | $42.74 |
+| 档位 | 积分 | 原价 | 现价 |
+|:-----|:----:|:----:|:----:|
+| 小包 | 100 | $2.99 | $2.99 |
+| 中包 | 500 | $14.95 | $13.46 |
+| 大包 | 2000 | $59.80 | $47.84 |
 
 > 💡 **充值积分永久有效，不会过期**
 
@@ -97,7 +97,6 @@
 | +AI 功能 (普通队列) | +保存/历史素材 |
 | | +购买市场内容 |
 | | +AI 高速队列 |
-| | +充值 9 折 |
 
 ---
 
@@ -185,11 +184,11 @@ credits.topup.{package_name}
 ('tier.t3.ai_queue_priority', 'high', 'text', 'tier'),
 ('tier.t4.ai_queue_priority', 'high', 'text', 'tier'),
 
--- 充值折扣
+-- 充值折扣 (已取消 t3 折扣)
 ('tier.t1.topup_discount', '1.0', 'decimal', 'tier'),
 ('tier.t2.topup_discount', '1.0', 'decimal', 'tier'),
-('tier.t3.topup_discount', '0.9', 'decimal', 'tier'),
-('tier.t4.topup_discount', '0.8', 'decimal', 'tier'),
+('tier.t3.topup_discount', '1.0', 'decimal', 'tier'),
+('tier.t4.topup_discount', '1.0', 'decimal', 'tier'),
 
 -- ==========================================
 -- 功能权限 (JSON 格式)
@@ -289,11 +288,11 @@ credits.topup.{package_name}
 
 ('credits.topup.medium.credits', '500', 'integer', 'credits'),
 ('credits.topup.medium.price_original', '14.95', 'decimal', 'credits'),
-('credits.topup.medium.price_current', '13.49', 'decimal', 'credits'),
+('credits.topup.medium.price_current', '13.46', 'decimal', 'credits'),
 
 ('credits.topup.large.credits', '2000', 'integer', 'credits'),
 ('credits.topup.large.price_original', '59.80', 'decimal', 'credits'),
-('credits.topup.large.price_current', '47.49', 'decimal', 'credits'),
+('credits.topup.large.price_current', '47.84', 'decimal', 'credits'),
 
 -- ==========================================
 -- 其他配置
