@@ -2,7 +2,10 @@
 Feature Flag Entity
 
 @module domains.feature_flags.entity
-@version 1.0.0
+@version 1.2.0
+
+Changes in v1.2.0:
+- 添加 allowed_tiers 字段支持 Tier 分层筛选
 """
 
 from pydantic import BaseModel, Field
@@ -55,6 +58,12 @@ class FeatureFlagEntity(BaseModel):
     rollout_percentage: int = Field(0, ge=0, le=100, description="灰度百分比")
     whitelist_user_ids: List[str] = Field(default_factory=list)
     blacklist_user_ids: List[str] = Field(default_factory=list)
+
+    # v1.2: Tier 分层筛选
+    allowed_tiers: List[str] = Field(
+        default_factory=list,
+        description="允许的 Tier 列表，空数组表示不限制"
+    )
 
     # 规则和变体
     targeting_rules: List[Dict[str, Any]] = Field(default_factory=list)

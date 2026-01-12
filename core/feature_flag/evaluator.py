@@ -2,21 +2,27 @@
 Unified Feature Flag Evaluation Engine
 
 @module core.feature_flag.evaluator
-@version 1.0.0
+@version 1.2.0
 
 统一评估引擎,处理所有类型的Flag:
 - boolean (简单开关)
 - multivariate (多变体)
 - experiment (A/B实验)
 
-评估流程 (7步):
+评估流程 (8步):
 1. 检查enabled
 2. 检查时间窗口
 3. 检查环境
-4. 检查黑名单
-5. 检查白名单 (命中立即返回)
-6. 评估定向规则
-7. 计算变体分配 (百分比灰度)
+4. 检查Tier限制 (v1.2新增)
+5. 检查黑名单
+6. 检查白名单 (命中立即返回)
+7. 评估定向规则 (支持规则级tiers)
+8. 计算变体分配 (百分比灰度)
+
+Changes in v1.2.0:
+- 添加 allowed_tiers 顶层 Tier 过滤
+- 添加规则级 tiers 条件支持
+- 新增 TIER_MISMATCH 评估原因
 """
 
 import logging
@@ -74,23 +80,27 @@ class UnifiedEvaluator:
             if not self._check_environment(flag, context):
                 return self._result(flag, False, EvaluationReason.ENVIRONMENT)
 
-            # 4. 检查黑名单
+            # 4. 检查 Tier 限制 (v1.2)
+            if not self._check_allowed_tiers(flag, context):
+                return self._result(flag, False, EvaluationReason.TIER_MISMATCH)
+
+            # 5. 检查黑名单
             if self._in_blacklist(flag, context):
                 return self._result(flag, False, EvaluationReason.BLACKLIST)
 
-            # 5. 检查白名单 (命中则立即返回treatment)
+            # 6. 检查白名单 (命中则立即返回treatment)
             if self._in_whitelist(flag, context):
                 return self._result(
                     flag, True, EvaluationReason.WHITELIST,
                     variant=self._get_first_treatment_variant(flag)
                 )
 
-            # 6. 评估定向规则
+            # 7. 评估定向规则
             rule_result = self._evaluate_rules(flag, context)
             if rule_result:
                 return rule_result
 
-            # 7. 计算变体分配 (百分比灰度)
+            # 8. 计算变体分配 (百分比灰度)
             return self._assign_variant(flag, context)
 
         except Exception as e:
@@ -129,6 +139,34 @@ class UnifiedEvaluator:
         if not environments:
             return True
         return context.environment in environments
+
+    def _check_allowed_tiers(self, flag: Dict, context: EvaluationContext) -> bool:
+        """
+        检查 Tier 限制 (v1.2 新增)
+
+        - 空数组 = 不限制 Tier (所有用户都允许)
+        - 非空数组 = 用户 Tier 必须在列表中
+
+        Args:
+            flag: Flag 配置
+            context: 评估上下文
+
+        Returns:
+            True 如果 Tier 匹配或不限制
+        """
+        allowed_tiers = flag.get("allowed_tiers", [])
+
+        # 空数组表示不限制
+        if not allowed_tiers:
+            return True
+
+        user_tier = context.tier
+        if not user_tier:
+            # 无 Tier 信息时，仅当 allowed_tiers 为空才允许
+            return False
+
+        # 忽略大小写比较
+        return user_tier.lower() in [t.lower() for t in allowed_tiers]
 
     def _in_blacklist(self, flag: Dict, context: EvaluationContext) -> bool:
         """检查黑名单"""
@@ -176,9 +214,22 @@ class UnifiedEvaluator:
         rule: Dict,
         context: EvaluationContext
     ) -> bool:
-        """匹配规则条件 (所有条件必须满足)"""
-        conditions = rule.get("conditions", [])
+        """
+        匹配规则条件 (所有条件必须满足)
 
+        v1.2: 支持规则级 tiers 条件
+        """
+        # v1.2: 检查规则级 Tier 限制
+        rule_tiers = rule.get("tiers", [])
+        if rule_tiers:
+            user_tier = context.tier
+            if not user_tier:
+                return False
+            if user_tier.lower() not in [t.lower() for t in rule_tiers]:
+                return False
+
+        # 检查 conditions
+        conditions = rule.get("conditions", [])
         for condition in conditions:
             if not self._match_condition(condition, context):
                 return False

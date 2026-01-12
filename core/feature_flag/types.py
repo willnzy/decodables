@@ -26,6 +26,7 @@ class EvaluationReason(str, Enum):
     DISABLED = "disabled"  # Flag 未启用
     TIME_WINDOW = "time_window"  # 不在时间窗口内
     ENVIRONMENT = "environment"  # 环境不匹配
+    TIER_MISMATCH = "tier_mismatch"  # v1.2: Tier 不匹配
     BLACKLIST = "blacklist"  # 在黑名单中
     WHITELIST = "whitelist"  # 在白名单中
     RULE = "rule"  # 命中定向规则

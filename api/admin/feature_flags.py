@@ -2,13 +2,17 @@
 Admin Feature Flags API
 
 @module api.admin.feature_flags
-@version 1.0.0
+@version 1.2.0
 
 Admin端点用于管理Feature Flags:
 - CRUD操作
 - 开关控制
 - 审计日志
 - 测试评估
+
+Changes in v1.2.0:
+- 添加 allowed_tiers 参数支持 Tier 分层筛选
+- 添加 Tier 验证逻辑
 """
 
 import logging
@@ -41,6 +45,11 @@ class CreateFlagRequest(BaseModel):
     targeting_rules: Optional[List[dict]] = None
     tags: Optional[List[str]] = None
     owner: Optional[str] = None
+    # v1.2: Tier 分层筛选
+    allowed_tiers: Optional[List[str]] = Field(
+        default=None,
+        description="允许的 Tier 列表，空数组或 null 表示不限制"
+    )
 
 
 class UpdateFlagRequest(BaseModel):
@@ -58,6 +67,11 @@ class UpdateFlagRequest(BaseModel):
     end_at: Optional[str] = None
     tags: Optional[List[str]] = None
     owner: Optional[str] = None
+    # v1.2: Tier 分层筛选
+    allowed_tiers: Optional[List[str]] = Field(
+        default=None,
+        description="允许的 Tier 列表，空数组表示不限制"
+    )
 
 
 class TestEvaluationRequest(BaseModel):
@@ -68,6 +82,33 @@ class TestEvaluationRequest(BaseModel):
     email: Optional[str] = None
     environment: str = "production"
     custom: Optional[dict] = None
+
+
+# ==================== 验证函数 ====================
+
+# v1.2: 有效的 Tier 代码
+VALID_TIERS = {"t1", "t2", "t3", "t4"}
+
+
+def validate_allowed_tiers(tiers: Optional[List[str]]) -> None:
+    """
+    验证 allowed_tiers 列表
+
+    Args:
+        tiers: Tier 列表
+
+    Raises:
+        HTTPException: 如果包含无效的 Tier 代码
+    """
+    if not tiers:
+        return  # None 或空数组是有效的
+
+    invalid = set(t.lower() for t in tiers) - VALID_TIERS
+    if invalid:
+        raise HTTPException(
+            400,
+            f"Invalid tiers: {list(invalid)}. Valid values: {sorted(VALID_TIERS)}"
+        )
 
 
 # ==================== 依赖注入 ====================
@@ -205,6 +246,9 @@ async def create_flag(
             "tags": ["frontend", "beta"]
         }
     """
+    # v1.2: 验证 allowed_tiers
+    validate_allowed_tiers(request.allowed_tiers)
+
     flag = await service.create_flag(
         key=request.key,
         name=request.name,
@@ -217,7 +261,8 @@ async def create_flag(
         variants=request.variants,
         targeting_rules=request.targeting_rules,
         tags=request.tags,
-        owner=request.owner
+        owner=request.owner,
+        allowed_tiers=request.allowed_tiers or []  # v1.2: Tier 分层筛选
     )
 
     if not flag:
@@ -329,6 +374,10 @@ async def update_flag(
             "tags": ["frontend", "stable"]
         }
     """
+    # v1.2: 验证 allowed_tiers (如果提供)
+    if request.allowed_tiers is not None:
+        validate_allowed_tiers(request.allowed_tiers)
+
     # 只传递非None的字段
     updates = {k: v for k, v in request.dict().items() if v is not None}
 

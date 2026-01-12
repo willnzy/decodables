@@ -2,9 +2,12 @@
 Feature Flag Domain Service
 
 @module domains.feature_flags.service
-@version 1.0.0
+@version 1.2.0
 
 领域服务,处理Flag管理业务逻辑
+
+Changes in v1.2.0:
+- 支持 allowed_tiers 字段 (通过 **kwargs 自动传递)
 """
 
 import logging

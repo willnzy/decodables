@@ -2,7 +2,10 @@
 Feature Flag Repository
 
 @module domains.feature_flags.repository
-@version 1.0.0
+@version 1.2.0
+
+Changes in v1.2.0:
+- 支持 allowed_tiers 字段 (通过 Entity 自动包含)
 """
 
 import logging

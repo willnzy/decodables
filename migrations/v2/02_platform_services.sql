@@ -305,6 +305,11 @@ CREATE TABLE feature_flags (
     whitelist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
     blacklist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
 
+    -- v1.2 Tier 分层筛选
+    -- 允许的 Tier 列表，空数组表示不限制 (所有 Tier 都允许)
+    -- 格式: ["t2", "t3"] 表示仅 Starter 和 Pro 用户可见
+    allowed_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
+
     -- 定向规则 (JSON数组)
     -- 格式: [{"id": "rule1", "priority": 1, "conditions": [...], "variant": "treatment"}]
     targeting_rules JSONB DEFAULT '[]',
@@ -338,9 +343,10 @@ CREATE INDEX idx_ff_tags ON feature_flags USING GIN(tags);
 CREATE INDEX idx_ff_parent_flags ON feature_flags USING GIN(parent_flags);  -- v1.1: 父级关系查询
 
 -- 注释
-COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型,v1.1支持树状结构';
+COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型,v1.1支持树状结构,v1.2支持Tier分层筛选';
 COMMENT ON COLUMN feature_flags.key IS 'Flag唯一标识 (如 feat_new_editor)';
 COMMENT ON COLUMN feature_flags.flag_type IS 'Flag类型: boolean(开关), multivariate(多变体), experiment(实验)';
+COMMENT ON COLUMN feature_flags.allowed_tiers IS 'v1.2: 允许的Tier列表,空数组表示不限制,格式["t2","t3"]';
 COMMENT ON COLUMN feature_flags.parent_flags IS 'v1.1: 父级Flag keys数组,父级禁用时子级自动返回disabled';
 
 
