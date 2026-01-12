@@ -132,7 +132,98 @@ CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
 # Import Redis-backed limiter from rate_limiter module
 from infrastructure.rate_limiter import limiter
 
-app = FastAPI(title="MagicZine AI API v3.27 - Full v2 Migration (Production)")
+# ===========================================
+# Background scheduler
+# ===========================================
+from scheduler import init_scheduler, shutdown_scheduler, run_aggregation_now
+
+# ==========================================
+# Instance Identification (for multi-instance deployment)
+# ==========================================
+# [Why]: When scaling to multiple instances, each instance needs a unique ID
+# for log tracing and debugging. This helps identify which instance handled a request.
+import uuid
+from contextlib import asynccontextmanager
+
+INSTANCE_ID = os.environ.get("RAILWAY_REPLICA_ID", uuid.uuid4().hex[:8])
+logger.info(f"🚀 Starting instance: {INSTANCE_ID}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI lifespan context manager (replaces @app.on_event).
+
+    This manages startup and shutdown operations including:
+    - Async database client initialization (v3.28+)
+    - Scheduler initialization
+    - Stripe configuration validation
+    - Redis connection management
+
+    MULTI-INSTANCE NOTE:
+    - Scheduler is controlled by ENABLE_SCHEDULER env var (default: true)
+    - When deploying multiple instances, set ENABLE_SCHEDULER=false for all
+      except ONE instance to prevent duplicate task execution.
+    - Railway deployment: Set env var in only one replica.
+    """
+    # ===== STARTUP =====
+    logger.info(f"📅 Instance {INSTANCE_ID} starting...")
+
+    # v3.28: Initialize async database client
+    from core.database import get_async_db_client
+    try:
+        async_db = await get_async_db_client()
+        if async_db:
+            logger.info("✅ Async database client initialized")
+        else:
+            logger.warning("⚠️ Async database client not configured (missing env vars)")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize async database client: {e}")
+
+    # Initialize scheduler
+    init_scheduler()
+
+    # v3.24: Validate Stripe configuration at startup
+    from domains.billing.payment_service import validate_config as validate_stripe_config
+    stripe_status = validate_stripe_config()
+    if not stripe_status["valid"]:
+        logger.warning(f"⚠️ Stripe configuration incomplete. Payment features may not work.")
+    else:
+        logger.info("✅ Stripe configuration validated")
+
+    logger.info(f"🎉 Instance {INSTANCE_ID} started successfully")
+
+    # Application runs here
+    yield
+
+    # ===== SHUTDOWN =====
+    logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
+
+    # Stop scheduler
+    shutdown_scheduler()
+
+    # Close async database client
+    from core.database import close_async_db_client
+    try:
+        await close_async_db_client()
+        logger.info("✅ Async database client closed")
+    except Exception as e:
+        logger.error(f"❌ Failed to close async database client: {e}")
+
+    # Gracefully close Redis connection
+    from core.cache import close_redis
+    close_redis()
+
+    logger.info(f"✅ Instance {INSTANCE_ID} shutdown complete")
+
+
+# ==========================================
+# FastAPI Application (v3.28 with lifespan)
+# ==========================================
+app = FastAPI(
+    title="MagicZine AI API v3.28 - AsyncClient Migration",
+    lifespan=lifespan
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -508,53 +599,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         response.headers["X-Request-ID"] = request_id
     
     return response
-
-# ===========================================
-# Background scheduler
-# ===========================================
-from scheduler import init_scheduler, shutdown_scheduler, run_aggregation_now
-
-# ==========================================
-# Instance Identification (for multi-instance deployment)
-# ==========================================
-# [Why]: When scaling to multiple instances, each instance needs a unique ID
-# for log tracing and debugging. This helps identify which instance handled a request.
-import uuid
-INSTANCE_ID = os.environ.get("RAILWAY_REPLICA_ID", uuid.uuid4().hex[:8])
-logger.info(f"🚀 Starting instance: {INSTANCE_ID}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Initialize scheduled jobs when FastAPI starts.
-
-    MULTI-INSTANCE NOTE:
-    - Scheduler is controlled by ENABLE_SCHEDULER env var (default: true)
-    - When deploying multiple instances, set ENABLE_SCHEDULER=false for all
-      except ONE instance to prevent duplicate task execution.
-    - Railway deployment: Set env var in only one replica.
-    """
-    logger.info(f"📅 Instance {INSTANCE_ID} starting scheduler check...")
-    init_scheduler()
-
-    # v3.24: Validate Stripe configuration at startup
-    from domains.billing.payment_service import validate_config as validate_stripe_config
-    stripe_status = validate_stripe_config()
-    if not stripe_status["valid"]:
-        logger.warning(f"⚠️ Stripe configuration incomplete. Payment features may not work.")
-    else:
-        logger.info("✅ Stripe configuration validated")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Stop scheduled jobs and close connections when FastAPI shuts down."""
-    logger.info(f"👋 Instance {INSTANCE_ID} shutting down...")
-    shutdown_scheduler()
-
-    # Gracefully close Redis connection
-    from core.cache import close_redis
-    close_redis()
 
 # ==========================================
 # 3. Routes
