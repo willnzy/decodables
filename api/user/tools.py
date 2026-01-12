@@ -101,7 +101,7 @@ async def pdf_preview(
     Pro only feature. Returns thumbnail URLs for each page.
     """
     container = get_container()
-    handler = container.pdf_preview_handler
+    handler = await container.pdf_preview_handler()
 
     command = PdfPreviewCommand(
         file=file,
@@ -135,7 +135,7 @@ async def ocr_tool(
     timezone = get_request_timezone(request, user_id=user.get("id"))
 
     container = get_container()
-    handler = container.ocr_handler
+    handler = await container.ocr_handler()
 
     command = OcrCommand(
         file=file,

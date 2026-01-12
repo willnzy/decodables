@@ -223,7 +223,7 @@ async def list_listings(
         ListingsResponse with paginated listings
     """
     container = get_container()
-    handler = container.search_listings_handler
+    handler = await container.search_listings_handler()
 
     
 
@@ -267,7 +267,7 @@ async def get_listing(
         Listing details with is_purchased, seller_username, seller_avatar_url
     """
     container = get_container()
-    handler = container.get_listing_handler
+    handler = await container.get_listing_handler()
 
     query = GetListingQuery(
         listing_id=listing_id,
@@ -303,7 +303,7 @@ async def create_listing(
         Created listing with moderation_status='pending'
     """
     container = get_container()
-    handler = container.create_listing_handler
+    handler = await container.create_listing_handler()
 
     user_tier = (user.get("tier") or "t1").lower()
 
@@ -373,7 +373,7 @@ async def update_listing(
         Update status
     """
     container = get_container()
-    handler = container.update_listing_handler
+    handler = await container.update_listing_handler()
 
     command = UpdateListingCommand(
         listing_id=listing_id,
@@ -417,7 +417,7 @@ async def unpublish_listing(
         Status
     """
     container = get_container()
-    handler = container.unpublish_listing_handler
+    handler = await container.unpublish_listing_handler()
 
     command = UnpublishListingCommand(
         listing_id=listing_id,
@@ -459,7 +459,7 @@ async def purchase_listing(
         Purchase result
     """
     container = get_container()
-    handler = container.purchase_listing_handler
+    handler = await container.purchase_listing_handler()
 
     # PurchaseListingCommand expects: listing_id, buyer_id, buyer_tier
     # Note: idempotency_key is generated internally by the handler
@@ -513,7 +513,7 @@ async def get_my_listings(
         Own listings with moderation info
     """
     container = get_container()
-    handler = container.get_my_listings_handler
+    handler = await container.get_my_listings_handler()
 
     # Convert page to offset
     
@@ -551,7 +551,7 @@ async def get_seller_stats(
         total_earned_credits, listings_count, total_sales, total_usage
     """
     container = get_container()
-    handler = container.get_seller_stats_handler
+    handler = await container.get_seller_stats_handler()
 
     query = GetSellerStatsQuery(seller_id=user["id"])
 
@@ -610,7 +610,7 @@ async def get_leaderboard(
         Top listings by usage_count
     """
     container = get_container()
-    handler = container.get_leaderboard_handler
+    handler = await container.get_leaderboard_handler()
 
     query = GetLeaderboardQuery(
         period=period,
@@ -687,7 +687,7 @@ async def submit_report(
         HTTPException: 400 if already reported, 500 if failed
     """
     container = get_container()
-    handler = container.create_report_handler
+    handler = await container.create_report_handler()
 
     command = CreateReportCommand(
         user_id=user["id"],
@@ -732,7 +732,7 @@ async def get_my_reports(
         List of user's reports
     """
     container = get_container()
-    handler = container.get_my_reports_handler
+    handler = await container.get_my_reports_handler()
 
     query = GetMyReportsQuery(
         user_id=user["id"],

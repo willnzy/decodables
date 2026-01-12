@@ -127,7 +127,7 @@ async def my_assets(
     target_proj = project_id if scope != "all" else None
 
     container = get_container()
-    handler = container.get_user_assets_handler
+    handler = await container.get_user_assets_handler()
 
     query = GetUserAssetsQuery(user_id=user["id"], project_id=target_proj)
     result = await handler.handle(query)
@@ -157,7 +157,7 @@ async def upload_asset(
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     container = get_container()
-    handler = container.upload_asset_handler
+    handler = await container.upload_asset_handler()
 
     command = UploadAssetCommand(
         user_id=user["id"],
@@ -188,7 +188,7 @@ async def delete_asset(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = container.delete_asset_handler
+    handler = await container.delete_asset_handler()
 
     command = DeleteAssetCommand(
         asset_id=asset_id,
@@ -222,7 +222,7 @@ async def add_asset_from_url(
     tz = get_request_timezone(request, user_id=user.get("id"))
 
     container = get_container()
-    handler = container.add_asset_from_url_handler
+    handler = await container.add_asset_from_url_handler()
 
     command = AddAssetFromURLCommand(
         user_id=user["id"],
@@ -255,7 +255,7 @@ async def check_url(
     Business logic (SSRF check, URL validation) moved to Service layer.
     """
     container = get_container()
-    handler = container.check_url_handler
+    handler = await container.check_url_handler()
 
     query = CheckURLQuery(url=url)
     result = await handler.handle(query)
@@ -279,7 +279,7 @@ async def increment_usage(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = container.increment_asset_usage_handler
+    handler = await container.increment_asset_usage_handler()
 
     command = IncrementAssetUsageCommand(
         asset_id=asset_id,
@@ -303,7 +303,7 @@ async def get_asset_dashboard(
     Eliminated direct Supabase calls - statistics aggregation moved to Repository/Service.
     """
     container = get_container()
-    handler = container.get_dashboard_stats_handler
+    handler = await container.get_dashboard_stats_handler()
 
     query = GetDashboardStatsQuery(user_id=user["id"])
     result = await handler.handle(query)
@@ -324,7 +324,7 @@ async def get_seller_stats(
     Eliminated direct Supabase calls - statistics aggregation moved to Repository/Service.
     """
     container = get_container()
-    handler = container.get_seller_stats_handler
+    handler = await container.get_seller_stats_handler()
 
     query = GetSellerStatsQuery(user_id=user["id"])
     result = await handler.handle(query)
@@ -344,7 +344,7 @@ async def get_deleted(
     v3.0.0: Now uses GetDeletedAssetsHandler (Container pattern).
     """
     container = get_container()
-    handler = container.get_deleted_assets_handler
+    handler = await container.get_deleted_assets_handler()
 
     query = GetDeletedAssetsQuery(user_id=user["id"])
     result = await handler.handle(query)
@@ -368,7 +368,7 @@ async def restore(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = container.restore_asset_handler
+    handler = await container.restore_asset_handler()
 
     command = RestoreAssetCommand(
         asset_id=asset_id,

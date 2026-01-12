@@ -193,7 +193,7 @@ async def get_credits(request: Request, user: dict = Depends(get_current_user)):
         }
     """
     container = get_container()
-    handler = container.get_user_credits_handler
+    handler = await container.get_user_credits_handler()
 
     query = GetUserCreditsQuery(user_id=user["id"])
     result = await handler.handle(query)
@@ -310,7 +310,7 @@ async def get_transactions(
         }
     """
     container = get_container()
-    handler = container.get_transaction_history_handler
+    handler = await container.get_transaction_history_handler()
 
     query = GetTransactionHistoryQuery(
         user_id=user["id"],
@@ -370,7 +370,7 @@ async def check_can_afford(
         raise HTTPException(400, "Invalid operation name")
 
     container = get_container()
-    handler = container.get_user_credits_handler
+    handler = await container.get_user_credits_handler()
 
     # Get current credits
     credits_query = GetUserCreditsQuery(user_id=user["id"])
@@ -427,7 +427,7 @@ async def add_credits(
         Updated credit balance
     """
     container = get_container()
-    handler = container.add_credits_handler
+    handler = await container.add_credits_handler()
 
     # Map credit_type to CreditBucket and TransactionType
     from domains.billing.value_objects import CreditBucket, TransactionType

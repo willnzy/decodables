@@ -179,7 +179,7 @@ async def list_resources(
     user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
-    handler = container.get_resources_handler
+    handler = await container.get_resources_handler()
 
     query = GetResourcesQuery(
         user_tier=user_tier,
@@ -237,7 +237,7 @@ async def get_categories(
         return CategoriesResponse(categories=[])  # Return empty for invalid type
 
     container = get_container()
-    handler = container.get_categories_handler
+    handler = await container.get_categories_handler()
 
     query = GetCategoriesQuery(resource_type=resource_type)
     result = await handler.handle(query)
@@ -269,7 +269,7 @@ async def get_stickers(
     user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
-    handler = container.get_stickers_handler
+    handler = await container.get_stickers_handler()
 
     query = GetStickersQuery(
         user_tier=user_tier,
@@ -313,7 +313,7 @@ async def get_backgrounds(
     user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
-    handler = container.get_backgrounds_handler
+    handler = await container.get_backgrounds_handler()
 
     query = GetBackgroundsQuery(
         user_tier=user_tier,
@@ -357,7 +357,7 @@ async def get_templates(
     user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
-    handler = container.get_project_templates_handler
+    handler = await container.get_project_templates_handler()
 
     query = GetProjectTemplatesQuery(
         user_tier=user_tier,
@@ -397,7 +397,7 @@ async def get_resource(
     user_tier = user.get("tier", "t1") if user else "t1"
 
     container = get_container()
-    handler = container.get_resource_by_id_handler
+    handler = await container.get_resource_by_id_handler()
 
     query = GetResourceByIdQuery(
         resource_id=resource_id,

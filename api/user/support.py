@@ -203,7 +203,7 @@ async def create_ticket(
         }
     """
     container = get_container()
-    handler = container.create_support_ticket_handler
+    handler = await container.create_support_ticket_handler()
 
     email = req.email or user.get("email", "unknown@user.com")
 
@@ -291,7 +291,7 @@ async def chat_support(
     from shared.ai.story_generator import client as openai_client
 
     container = get_container()
-    handler = container.ai_chat_support_handler
+    handler = await container.ai_chat_support_handler()
 
     command = AiChatSupportCommand(
         user_id=user["id"],
@@ -370,7 +370,7 @@ async def contact(
         }
     """
     container = get_container()
-    handler = container.send_contact_message_handler
+    handler = await container.send_contact_message_handler()
 
     command = SendContactMessageCommand(
         user_id=user["id"],
@@ -449,7 +449,7 @@ async def feedback(
         }
     """
     container = get_container()
-    handler = container.submit_feedback_handler
+    handler = await container.submit_feedback_handler()
 
     email = req.email or user.get("email", "unknown@user.com")
 

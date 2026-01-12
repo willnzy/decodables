@@ -168,7 +168,7 @@ async def get_task_status(
         }
     """
     container = get_container()
-    handler = container.get_task_status_handler
+    handler = await container.get_task_status_handler()
 
     query = GetTaskStatusQuery(
         task_id=task_id,
@@ -251,7 +251,7 @@ async def cancel_task(
         }
     """
     container = get_container()
-    handler = container.cancel_task_handler
+    handler = await container.cancel_task_handler()
 
     command = CancelTaskCommand(
         task_id=task_id,

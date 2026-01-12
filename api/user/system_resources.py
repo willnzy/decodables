@@ -191,7 +191,7 @@ async def list_system_resources(
     safe_search = sanitize_search(search) if search else None
 
     container = get_container()
-    handler = container.list_system_resources_handler
+    handler = await container.list_system_resources_handler()
 
     query = ListSystemResourcesQuery(
         resource_type=type,
@@ -226,7 +226,7 @@ async def get_resource_stats(
     v3.25: Added rate limiting.
     """
     container = get_container()
-    handler = container.get_system_resource_stats_handler
+    handler = await container.get_system_resource_stats_handler()
 
     query = GetResourceStatsQuery()
     result = await handler.handle(query)
@@ -251,7 +251,7 @@ async def get_resource(
     validate_resource_id(resource_id)
 
     container = get_container()
-    handler = container.get_system_resource_handler
+    handler = await container.get_system_resource_handler()
 
     query = GetSystemResourceQuery(resource_id=resource_id)
     result = await handler.handle(query)
@@ -360,7 +360,7 @@ async def create_resource(
         }
     """
     container = get_container()
-    handler = container.create_system_resource_handler
+    handler = await container.create_system_resource_handler()
 
     command = CreateSystemResourceCommand(
         file=file,
@@ -397,7 +397,7 @@ async def update_resource(
     validate_resource_id(resource_id)
 
     container = get_container()
-    handler = container.update_system_resource_handler
+    handler = await container.update_system_resource_handler()
 
     command = UpdateSystemResourceCommand(
         resource_id=resource_id,
@@ -436,7 +436,7 @@ async def replace_resource_file(
     validate_resource_id(resource_id)
 
     container = get_container()
-    handler = container.replace_resource_file_handler
+    handler = await container.replace_resource_file_handler()
 
     command = ReplaceResourceFileCommand(
         resource_id=resource_id,
@@ -470,7 +470,7 @@ async def delete_resource(
     validate_resource_id(resource_id)
 
     container = get_container()
-    handler = container.delete_system_resource_handler
+    handler = await container.delete_system_resource_handler()
 
     command = DeleteSystemResourceCommand(
         resource_id=resource_id,
@@ -524,7 +524,7 @@ async def batch_action(
             raise HTTPException(400, f"Invalid resource ID format: {rid}")
 
     container = get_container()
-    handler = container.batch_operation_handler
+    handler = await container.batch_operation_handler()
 
     command = BatchOperationCommand(
         operation=action.action,
@@ -555,7 +555,7 @@ async def get_resource_audit_log(
     validate_resource_id(resource_id)
 
     container = get_container()
-    handler = container.get_audit_log_handler
+    handler = await container.get_audit_log_handler()
 
     query = GetAuditLogQuery(
         resource_id=resource_id,

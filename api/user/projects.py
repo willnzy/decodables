@@ -169,7 +169,7 @@ async def list_projects(
         ProjectListResponse with items, total, offset, limit
     """
     container = get_container()
-    handler = container.get_user_projects_handler
+    handler = await container.get_user_projects_handler()
 
     query = GetUserProjectsQuery(
         user_id=user["id"],
@@ -227,7 +227,7 @@ async def dashboard_projects(
         DashboardProjectsResponse with projects list and view info
     """
     container = get_container()
-    handler = container.get_dashboard_projects_handler
+    handler = await container.get_dashboard_projects_handler()
 
     query = GetDashboardProjectsQuery(
         user_id=user["id"],
@@ -345,7 +345,7 @@ async def create_project(
         raise HTTPException(400, f"Invalid canvas data: {error}")
 
     container = get_container()
-    handler = container.create_project_handler
+    handler = await container.create_project_handler()
 
     tier = (user.get("tier") or "t1").lower()
 
@@ -385,7 +385,7 @@ async def get_project(
         ProjectResponse with project details
     """
     container = get_container()
-    handler = container.get_project_handler
+    handler = await container.get_project_handler()
 
     query = GetProjectQuery(
         project_id=project_id,
@@ -440,7 +440,7 @@ async def update_project(
         raise HTTPException(400, f"Invalid thumbnail URL: {error}")
 
     container = get_container()
-    handler = container.update_project_handler
+    handler = await container.update_project_handler()
 
     command = UpdateProjectCommand(
         project_id=project_id,
@@ -486,7 +486,7 @@ async def delete_project(
         Deletion status with stage info
     """
     container = get_container()
-    handler = container.delete_project_handler
+    handler = await container.delete_project_handler()
 
     command = DeleteProjectCommand(
         project_id=project_id,
@@ -540,7 +540,7 @@ async def restore_project(
         Restored project details
     """
     container = get_container()
-    handler = container.restore_project_handler
+    handler = await container.restore_project_handler()
 
     command = RestoreProjectCommand(
         project_id=project_id,
