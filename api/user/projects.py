@@ -505,10 +505,11 @@ async def delete_project(
 
     # ✅ Phase 4 - Task 9: Log project deletion to audit trail
     try:
-        from core.database import get_database_client
+        from core.database import get_async_db_client
         from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        db_client = await get_async_db_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
             admin_id=user["id"],  # User deleting their own project
             operation_type="project_delete_permanent" if permanent else "project_delete_soft",
@@ -558,10 +559,11 @@ async def restore_project(
 
     # ✅ Phase 4 - Task 9: Log project restoration to audit trail
     try:
-        from core.database import get_database_client
+        from core.database import get_async_db_client
         from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        db_client = await get_async_db_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
             admin_id=user["id"],
             operation_type="project_restore",
