@@ -4,7 +4,7 @@
 -- 分类: 平台服务
 -- 说明: Feature Flag、Analytics、Webhooks、审计、主题、营销
 -- 执行顺序: 第 2 个执行 (依赖 01_core_business.sql 中的 profiles, marketplace_listings)
--- 生成时间: 2026-01-12 (修复版)
+-- 生成时间: 2026-01-12 (Feature Flag v1.1 树状结构支持)
 -- ============================================================================
 
 -- 开始事务
@@ -318,6 +318,11 @@ CREATE TABLE feature_flags (
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
     owner TEXT,
 
+    -- v1.1 树状结构支持
+    -- 父级 Flag keys，用于实现 Flag 依赖关系
+    -- 当任何父级 Flag 禁用时，当前 Flag 自动返回 disabled (评估原因: PARENT_DISABLED)
+    parent_flags TEXT[] DEFAULT ARRAY[]::TEXT[],
+
     -- 审计字段
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -330,11 +335,13 @@ CREATE INDEX idx_ff_key ON feature_flags(key);
 CREATE INDEX idx_ff_enabled ON feature_flags(enabled) WHERE enabled = true AND archived = false;
 CREATE INDEX idx_ff_type ON feature_flags(flag_type);
 CREATE INDEX idx_ff_tags ON feature_flags USING GIN(tags);
+CREATE INDEX idx_ff_parent_flags ON feature_flags USING GIN(parent_flags);  -- v1.1: 父级关系查询
 
 -- 注释
-COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型';
+COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型,v1.1支持树状结构';
 COMMENT ON COLUMN feature_flags.key IS 'Flag唯一标识 (如 feat_new_editor)';
 COMMENT ON COLUMN feature_flags.flag_type IS 'Flag类型: boolean(开关), multivariate(多变体), experiment(实验)';
+COMMENT ON COLUMN feature_flags.parent_flags IS 'v1.1: 父级Flag keys数组,父级禁用时子级自动返回disabled';
 
 
 -- ----------------------------------------------------------------------------
