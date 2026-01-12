@@ -42,6 +42,12 @@ from .async_utils import (
     async_wrap,
     run_sync_safe,
 )
+from .dependencies import (
+    get_async_db,  # FastAPI dependency for async client
+    require_async_db,  # FastAPI dependency (required)
+    get_db,  # Alias for backward compatibility
+    require_db,  # Alias for backward compatibility
+)
 
 # Alias for compatibility with infrastructure layer
 get_supabase_client = get_db_client
@@ -59,6 +65,11 @@ __all__ = [
     # Client (Async - NEW, recommended)
     'get_async_db_client',
     'close_async_db_client',
+    # FastAPI Dependencies (NEW, recommended for route handlers)
+    'get_async_db',
+    'require_async_db',
+    'get_db',  # Alias for backward compatibility
+    'require_db',  # Alias for backward compatibility
     # Client utilities
     'is_db_available',
     'DatabaseConfig',
