@@ -1,9 +1,9 @@
 # Theme 主题系统设计 - Daily Doodle 风格
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **日期**: 2026-01-12
 > **灵感**: Google Doodle - 根据日期自动变化的动态主题
-> **更新**: v2.0 增加全站视觉变化、Campaign 联动、Admin 管理、AI 辅助生成
+> **更新**: v2.1 批量预生成 300 天主题、AI 自动选择默认方案、Review 工作流、重新生成支持
 
 ---
 
@@ -13,12 +13,14 @@
 2. [优先级规则](#2-优先级规则)
 3. [数据结构设计](#3-数据结构设计)
 4. [AI 辅助生成](#4-ai-辅助生成)
-5. [后端实现](#5-后端实现)
-6. [前端实现](#6-前端实现)
-7. [Campaign 联动](#7-campaign-联动)
-8. [Admin 管理界面](#8-admin-管理界面)
-9. [主题内容规划](#9-主题内容规划)
-10. [实施计划](#10-实施计划)
+5. [批量预生成 (v2.1)](#5-批量预生成-v21)
+6. [Review 工作流 (v2.1)](#6-review-工作流-v21)
+7. [后端实现](#7-后端实现)
+8. [前端实现](#8-前端实现)
+9. [Campaign 联动](#9-campaign-联动)
+10. [Admin 管理界面](#10-admin-管理界面)
+11. [主题内容规划](#11-主题内容规划)
+12. [实施计划](#12-实施计划)
 
 ---
 
@@ -236,14 +238,32 @@ linked_campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
 ai_generated BOOLEAN DEFAULT false,      -- 是否 AI 生成
 ai_alternatives JSONB DEFAULT '[]',      -- AI 生成的备选方案
 selected_alternative_id TEXT,            -- 选中的备选方案 ID
+ai_recommended_id TEXT,                  -- v2.1: AI 推荐的默认方案 ID
 
 -- 10. 资源 URL
 source_url TEXT,                         -- 参考来源
 learn_more_url TEXT,                     -- "了解更多" 链接
 
+-- 11. Review 工作流 (v2.1 新增)
+review_status TEXT DEFAULT 'pending' CHECK (review_status IN (
+    'pending',       -- 待审核 (AI 刚生成，还没人看)
+    'auto_approved', -- 自动批准 (使用 AI 默认选择)
+    'reviewed',      -- 已审核 (Admin 确认或修改过)
+    'rejected'       -- 已拒绝 (需要重新生成)
+)),
+reviewed_by TEXT,                        -- 审核人 user_id
+reviewed_at TIMESTAMPTZ,                 -- 审核时间
+review_notes TEXT,                       -- 审核备注
+
+-- 12. 生成历史 (v2.1 新增)
+generation_history JSONB DEFAULT '[]',   -- 历史生成记录 [{generated_at, alternatives, selected_id, reason}]
+regenerate_count INTEGER DEFAULT 0,      -- 重新生成次数
+
 -- 添加索引
 CREATE INDEX idx_daily_themes_category ON daily_themes (category) WHERE is_deleted = false;
 CREATE INDEX idx_daily_themes_regions ON daily_themes USING GIN (regions) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_review_status ON daily_themes (review_status) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_date ON daily_themes (date) WHERE is_deleted = false;
 ```
 
 ### 3.2 theme_config 完整结构
@@ -740,9 +760,569 @@ async def auto_generate_theme_suggestions():
 
 ---
 
-## 5. 后端实现
+## 5. 批量预生成 (v2.1)
 
-### 5.1 目录结构
+### 5.1 核心设计
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 批量预生成 300 天主题 (v2.1)                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  核心理念:                                                       │
+│  "一次生成，持续使用，AI 默认选择，Admin 按需调整"                │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Step 1: 批量生成任务触发                                │   │
+│  │  • 首次部署时一次性生成 300 天                           │   │
+│  │  • 每周自动补充，保持 300 天库存                         │   │
+│  │  • 支持手动触发补充                                      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                          ↓                                      │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Step 2: AI 批量分析和生成                               │   │
+│  │  • 每个日期生成 3 个备选方案                             │   │
+│  │  • AI 自动选择一个作为默认方案 (ai_recommended_id)       │   │
+│  │  • 选择标准: 与教育/儿童产品最相关 + 视觉吸引力          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                          ↓                                      │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Step 3: 自动应用默认方案                                │   │
+│  │  • selected_alternative_id = ai_recommended_id           │   │
+│  │  • review_status = 'auto_approved'                       │   │
+│  │  • 主题立即可用，无需 Admin 干预                         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                          ↓                                      │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Step 4: Admin 可选审核                                  │   │
+│  │  • 在日历视图中查看所有主题                              │   │
+│  │  • 对不满意的日期进行调整                                │   │
+│  │  • 选择其他备选方案或重新生成                            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 5.2 批量生成 API
+
+```python
+# api/admin/themes.py
+
+@router.post("/batch-generate")
+async def batch_generate_themes(
+    start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
+    days: int = Query(300, ge=1, le=365, description="生成天数"),
+    overwrite: bool = Query(False, description="是否覆盖已存在的主题"),
+    admin_user = Depends(require_admin)
+):
+    """
+    批量生成未来 N 天的主题 (v2.1)
+
+    特点:
+    - 每个日期生成 3 个备选方案
+    - AI 自动选择一个默认方案
+    - review_status = 'auto_approved'
+    - Admin 可后续调整
+    """
+    from datetime import datetime, timedelta
+
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    results = {
+        "generated": 0,
+        "skipped": 0,
+        "failed": 0,
+        "details": []
+    }
+
+    for i in range(days):
+        target_date = start + timedelta(days=i)
+
+        # 检查是否已存在
+        existing = await themes_repository.get_by_date(target_date)
+        if existing and not overwrite:
+            results["skipped"] += 1
+            continue
+
+        try:
+            # 调用 AI 生成
+            suggestions = await ai_service.generate_theme_suggestions(target_date)
+
+            # AI 自动选择默认方案 (第一个为推荐方案)
+            recommended = suggestions["alternatives"][0]
+            recommended_id = recommended["id"]
+
+            # 创建主题记录
+            theme = await themes_service.create_theme(
+                date=target_date,
+                name=recommended["name"],
+                name_i18n=recommended.get("name_i18n", {}),
+                category=recommended["category"],
+                priority=recommended["priority"],
+                theme_config=recommended["theme_config"],
+                slogan=recommended.get("slogan"),
+                slogan_i18n=recommended.get("slogan_i18n", {}),
+                description=recommended.get("description"),
+                # AI 生成相关
+                ai_generated=True,
+                ai_alternatives=suggestions["alternatives"],
+                ai_recommended_id=recommended_id,
+                selected_alternative_id=recommended_id,  # 使用 AI 推荐
+                # Review 状态
+                review_status="auto_approved",
+                created_by=admin_user.user_id
+            )
+
+            results["generated"] += 1
+            results["details"].append({
+                "date": target_date.isoformat(),
+                "theme_id": str(theme["id"]),
+                "name": recommended["name"],
+                "status": "success"
+            })
+
+        except Exception as e:
+            results["failed"] += 1
+            results["details"].append({
+                "date": target_date.isoformat(),
+                "status": "failed",
+                "error": str(e)
+            })
+
+    return results
+
+
+@router.get("/generation-status")
+async def get_generation_status(
+    admin_user = Depends(require_admin)
+):
+    """
+    获取主题生成状态概览 (v2.1)
+
+    返回:
+    - 已生成天数
+    - 待审核数量
+    - 空白日期列表
+    - 建议补充天数
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    end_date = today + timedelta(days=300)
+
+    # 统计各状态数量
+    stats = await themes_repository.get_review_status_stats(today, end_date)
+
+    # 找出空白日期
+    existing_dates = await themes_repository.get_existing_dates(today, end_date)
+    all_dates = set((today + timedelta(days=i)) for i in range(300))
+    missing_dates = sorted(all_dates - existing_dates)
+
+    return {
+        "total_days": 300,
+        "generated": len(existing_dates),
+        "missing": len(missing_dates),
+        "review_status": stats,
+        "missing_dates": [d.isoformat() for d in missing_dates[:30]],  # 最近 30 个
+        "recommendation": "full" if len(missing_dates) > 100 else "partial" if missing_dates else "complete"
+    }
+```
+
+### 5.3 自动补充调度
+
+```python
+# 定时任务: 每周日凌晨自动补充主题
+
+async def auto_replenish_themes():
+    """
+    自动补充主题，保持 300 天库存 (v2.1)
+
+    运行频率: 每周日凌晨 3:00
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    end_date = today + timedelta(days=300)
+
+    # 获取缺失的日期
+    existing_dates = await themes_repository.get_existing_dates(today, end_date)
+    all_dates = set((today + timedelta(days=i)) for i in range(300))
+    missing_dates = sorted(all_dates - existing_dates)
+
+    if not missing_dates:
+        logger.info("All 300 days have themes, no replenishment needed")
+        return
+
+    logger.info(f"Found {len(missing_dates)} missing dates, starting replenishment")
+
+    for target_date in missing_dates:
+        try:
+            suggestions = await ai_service.generate_theme_suggestions(target_date)
+            recommended = suggestions["alternatives"][0]
+
+            await themes_service.create_theme(
+                date=target_date,
+                name=recommended["name"],
+                ai_generated=True,
+                ai_alternatives=suggestions["alternatives"],
+                ai_recommended_id=recommended["id"],
+                selected_alternative_id=recommended["id"],
+                review_status="auto_approved",
+                # ... 其他字段
+            )
+
+            logger.info(f"Generated theme for {target_date}: {recommended['name']}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate theme for {target_date}: {e}")
+
+    # 发送汇总通知
+    await notification_service.notify_admins(
+        title="主题自动补充完成",
+        message=f"已为 {len(missing_dates)} 个日期生成主题，请登录后台查看",
+        link="/admin/themes/calendar"
+    )
+```
+
+### 5.4 AI 默认选择 Prompt 增强
+
+```python
+# AI 生成时增加默认选择说明
+
+THEME_GENERATION_PROMPT_V21 = """
+你是 Make Decodables 的主题设计师。Make Decodables 是一个帮助教师为儿童创建可解码小书的平台。
+
+今天的日期是: {date}
+
+请分析这个日期在历史上的重要意义，并生成 3 个主题设计方案。
+
+## 输出要求
+
+返回 JSON 格式，包含:
+1. `analysis`: 日期分析
+2. `alternatives`: 3 个备选方案
+3. `recommendation`: 推荐方案说明
+
+## 方案选择标准 (请用这个标准选择方案 A)
+
+方案 A 必须是最推荐的方案，选择标准:
+1. **教育相关性** (40%): 与教育、儿童、阅读、学习的关联度
+2. **视觉吸引力** (30%): 适合儿童的友好设计
+3. **节日重要性** (20%): 节日/纪念日的全球认知度
+4. **品牌契合度** (10%): 与 Make Decodables 品牌调性的匹配
+
+在 `recommendation` 字段中解释为什么选择方案 A 作为默认推荐。
+
+## 输出格式
+
+```json
+{
+  "analysis": {...},
+  "alternatives": [
+    {"id": "A", "recommendation": "primary", ...},
+    {"id": "B", "recommendation": "secondary", ...},
+    {"id": "C", "recommendation": "creative", ...}
+  ],
+  "recommendation": {
+    "selected_id": "A",
+    "reason": "方案 A 最适合的原因...",
+    "scores": {
+      "education_relevance": 85,
+      "visual_appeal": 90,
+      "holiday_importance": 70,
+      "brand_fit": 80
+    }
+  }
+}
+```
+"""
+```
+
+---
+
+## 6. Review 工作流 (v2.1)
+
+### 6.1 Review 状态机
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Review 状态流转 (v2.1)                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│                    ┌─────────────┐                              │
+│                    │   pending   │ ← 手动创建 (无 AI)            │
+│                    └──────┬──────┘                              │
+│                           │                                     │
+│                           ▼                                     │
+│   ┌─────────────┐   AI 生成   ┌───────────────┐                │
+│   │   rejected  │ ◄────────── │ auto_approved │ ← AI 批量生成   │
+│   └──────┬──────┘   重新生成   └───────┬───────┘                │
+│          │                            │                         │
+│          │                            │ Admin 确认/修改          │
+│          │                            ▼                         │
+│          │                    ┌─────────────┐                   │
+│          └──────────────────► │  reviewed   │                   │
+│               重新生成后审核    └─────────────┘                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+状态说明:
+- pending: 手动创建的主题，等待完善
+- auto_approved: AI 生成并自动选择默认方案，可直接使用
+- reviewed: Admin 已确认或修改过，不会被自动覆盖
+- rejected: Admin 拒绝当前方案，需要重新生成
+```
+
+### 6.2 Review API
+
+```python
+# api/admin/themes.py
+
+@router.post("/{theme_id}/review")
+async def review_theme(
+    theme_id: str,
+    action: str = Query(..., description="approve | reject | switch"),
+    alternative_id: Optional[str] = None,  # switch 时需要
+    notes: Optional[str] = None,
+    admin_user = Depends(require_admin)
+):
+    """
+    审核主题 (v2.1)
+
+    Actions:
+    - approve: 确认当前选择，状态变为 reviewed
+    - reject: 拒绝当前方案，状态变为 rejected
+    - switch: 切换到其他备选方案，状态变为 reviewed
+    """
+    theme = await themes_repository.get_by_id(theme_id)
+    if not theme:
+        raise HTTPException(404, "Theme not found")
+
+    update_data = {
+        "reviewed_by": admin_user.user_id,
+        "reviewed_at": datetime.now(timezone.utc),
+        "review_notes": notes
+    }
+
+    if action == "approve":
+        # 确认当前选择
+        update_data["review_status"] = "reviewed"
+
+    elif action == "reject":
+        # 拒绝当前方案
+        update_data["review_status"] = "rejected"
+
+    elif action == "switch":
+        # 切换到其他备选方案
+        if not alternative_id:
+            raise HTTPException(400, "alternative_id required for switch action")
+
+        alternatives = theme.get("ai_alternatives", [])
+        selected = None
+        for alt in alternatives:
+            if alt["id"] == alternative_id:
+                selected = alt
+                break
+
+        if not selected:
+            raise HTTPException(400, f"Alternative {alternative_id} not found")
+
+        # 更新主题内容为选中的方案
+        update_data.update({
+            "name": selected["name"],
+            "name_i18n": selected.get("name_i18n", {}),
+            "category": selected.get("category"),
+            "priority": selected.get("priority"),
+            "theme_config": selected.get("theme_config"),
+            "slogan": selected.get("slogan"),
+            "selected_alternative_id": alternative_id,
+            "review_status": "reviewed"
+        })
+
+    else:
+        raise HTTPException(400, f"Unknown action: {action}")
+
+    updated = await themes_repository.update(theme_id, update_data)
+    return {"theme": updated, "message": f"Theme {action}d successfully"}
+
+
+@router.post("/{theme_id}/regenerate")
+async def regenerate_theme(
+    theme_id: str,
+    reason: Optional[str] = None,
+    admin_user = Depends(require_admin)
+):
+    """
+    重新生成主题 (v2.1)
+
+    保留历史记录，生成新的备选方案
+    """
+    theme = await themes_repository.get_by_id(theme_id)
+    if not theme:
+        raise HTTPException(404, "Theme not found")
+
+    target_date = theme.get("date")
+    if not target_date:
+        raise HTTPException(400, "Theme has no date, cannot regenerate")
+
+    # 保存当前方案到历史记录
+    history_entry = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "alternatives": theme.get("ai_alternatives", []),
+        "selected_id": theme.get("selected_alternative_id"),
+        "reason": reason or "manual_regenerate"
+    }
+
+    generation_history = theme.get("generation_history", [])
+    generation_history.append(history_entry)
+
+    # 生成新的备选方案
+    suggestions = await ai_service.generate_theme_suggestions(target_date)
+    recommended = suggestions["alternatives"][0]
+
+    # 更新主题
+    update_data = {
+        "name": recommended["name"],
+        "name_i18n": recommended.get("name_i18n", {}),
+        "category": recommended["category"],
+        "priority": recommended["priority"],
+        "theme_config": recommended["theme_config"],
+        "slogan": recommended.get("slogan"),
+        "ai_alternatives": suggestions["alternatives"],
+        "ai_recommended_id": recommended["id"],
+        "selected_alternative_id": recommended["id"],
+        "review_status": "auto_approved",  # 重置为自动批准
+        "generation_history": generation_history,
+        "regenerate_count": theme.get("regenerate_count", 0) + 1
+    }
+
+    updated = await themes_repository.update(theme_id, update_data)
+
+    return {
+        "theme": updated,
+        "message": "Theme regenerated successfully",
+        "history_count": len(generation_history)
+    }
+
+
+@router.get("/{theme_id}/history")
+async def get_theme_history(
+    theme_id: str,
+    admin_user = Depends(require_admin)
+):
+    """
+    获取主题生成历史 (v2.1)
+    """
+    theme = await themes_repository.get_by_id(theme_id)
+    if not theme:
+        raise HTTPException(404, "Theme not found")
+
+    return {
+        "theme_id": theme_id,
+        "current": {
+            "alternatives": theme.get("ai_alternatives", []),
+            "selected_id": theme.get("selected_alternative_id"),
+            "recommended_id": theme.get("ai_recommended_id")
+        },
+        "history": theme.get("generation_history", []),
+        "regenerate_count": theme.get("regenerate_count", 0)
+    }
+```
+
+### 6.3 批量 Review API
+
+```python
+@router.get("/review/pending")
+async def get_pending_reviews(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None, description="pending | auto_approved | rejected"),
+    admin_user = Depends(require_admin)
+):
+    """
+    获取待审核主题列表 (v2.1)
+    """
+    filters = {"review_status": status} if status else {}
+    themes = await themes_repository.list_for_review(
+        filters=filters,
+        limit=limit,
+        offset=offset
+    )
+
+    return {
+        "themes": themes,
+        "total": await themes_repository.count_for_review(filters)
+    }
+
+
+@router.post("/review/batch-approve")
+async def batch_approve_themes(
+    theme_ids: List[str],
+    admin_user = Depends(require_admin)
+):
+    """
+    批量审核通过 (v2.1)
+    """
+    results = {"approved": 0, "failed": 0}
+
+    for theme_id in theme_ids:
+        try:
+            await themes_repository.update(theme_id, {
+                "review_status": "reviewed",
+                "reviewed_by": admin_user.user_id,
+                "reviewed_at": datetime.now(timezone.utc)
+            })
+            results["approved"] += 1
+        except Exception as e:
+            results["failed"] += 1
+
+    return results
+```
+
+### 6.4 Admin UI - Review 视图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  主题 Review (v2.1)                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [Tab: 全部] [Tab: 待审核(12)] [Tab: 自动批准(288)] [Tab: 已拒绝] │
+│                                                                 │
+│  ┌─ 筛选 ──────────────────────────────────────────────────────┐ │
+│  │ 日期范围: [2026-01-12] ~ [2026-10-12]   [批量审核通过]      │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌─ 2026-03-14 (周六) - Pi Day ─────────────────────────────┐   │
+│  │                                                          │   │
+│  │  状态: 🟡 auto_approved (AI 自动选择)                    │   │
+│  │                                                          │   │
+│  │  ┌─ 当前方案 (A) ──────────────────────────────────────┐ │   │
+│  │  │  🔵 π Day + Einstein Birthday                       │ │   │
+│  │  │  "Imagination is more important than knowledge"     │ │   │
+│  │  │  [预览效果]                                          │ │   │
+│  │  └─────────────────────────────────────────────────────┘ │   │
+│  │                                                          │   │
+│  │  其他备选:                                               │   │
+│  │  ○ (B) Math Celebration Day                              │   │
+│  │  ○ (C) Science Heroes Day                                │   │
+│  │                                                          │   │
+│  │  [✓ 确认] [切换方案 ▾] [🔄 重新生成] [❌ 拒绝]           │   │
+│  │                                                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌─ 2026-04-23 (周四) - 世界读书日 ─────────────────────────┐   │
+│  │  状态: 🟢 reviewed (已审核)                              │   │
+│  │  审核人: admin@example.com @ 2026-01-10                  │   │
+│  │  ...                                                     │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. 后端实现
+
+### 7.1 目录结构
 
 ```
 domains/themes/
@@ -765,7 +1345,7 @@ api/admin/
 └── themes.py                   # Admin API (v2.0 新增)
 ```
 
-### 5.2 Theme Service 升级
+### 7.2 Theme Service 升级
 
 ```python
 # domains/themes/themes_service.py (v2.0)
@@ -815,9 +1395,9 @@ class ThemesService:
 
 ---
 
-## 6. 前端实现
+## 8. 前端实现
 
-### 6.1 目录结构
+### 8.1 目录结构
 
 ```
 @core/theme/
@@ -844,7 +1424,7 @@ class ThemesService:
     └── dateUtils.ts            # 日期工具
 ```
 
-### 6.2 CSS 变量注入
+### 8.2 CSS 变量注入
 
 ```typescript
 // @core/theme/utils/cssVariables.ts
@@ -878,9 +1458,9 @@ export function injectCSSVariables(colors: ThemeColors): void {
 
 ---
 
-## 7. Campaign 联动
+## 9. Campaign 联动
 
-### 7.1 联动原则
+### 9.1 联动原则
 
 ```
 Theme 与 Campaign 的关系: 联动但独立
@@ -891,7 +1471,7 @@ Theme 与 Campaign 的关系: 联动但独立
 • Theme 和 Campaign 可以相互关联
 ```
 
-### 7.2 联动字段
+### 9.2 联动字段
 
 ```sql
 -- Theme 关联 Campaign
@@ -903,9 +1483,9 @@ ALTER TABLE campaigns ADD COLUMN linked_theme_id UUID REFERENCES daily_themes(id
 
 ---
 
-## 8. Admin 管理界面
+## 10. Admin 管理界面
 
-### 8.1 功能概览
+### 10.1 功能概览
 
 ```
 Admin > Themes 管理
@@ -932,7 +1512,7 @@ Admin > Themes 管理
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 8.2 AI 建议 Tab
+### 10.2 AI 建议 Tab
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -956,9 +1536,9 @@ Admin > Themes 管理
 
 ---
 
-## 9. 主题内容规划
+## 11. 主题内容规划
 
-### 9.1 年度主题日历
+### 11.1 年度主题日历
 
 | 日期 | 类型 | 主题名称 | 优先级 | 视觉效果 |
 |------|------|----------|--------|----------|
@@ -992,9 +1572,9 @@ Admin > Themes 管理
 
 ---
 
-## 10. 实施计划
+## 12. 实施计划
 
-### 10.1 阶段划分
+### 12.1 阶段划分
 
 ```
 Phase 1: 数据库 + 后端 API (P0)
@@ -1038,7 +1618,7 @@ Phase 6: 内容填充 (P2)
 └─ 测试验证
 ```
 
-### 10.2 关键验收标准
+### 12.2 关键验收标准
 
 | 功能 | 验收标准 |
 |------|----------|
@@ -1058,6 +1638,7 @@ Phase 6: 内容填充 (P2)
 |------|------|------|
 | v1.0 | 2026-01-06 | 初始版本 |
 | v2.0 | 2026-01-12 | 增加全站视觉变化、AI 辅助生成、Campaign 联动、Admin 管理 |
+| v2.1 | 2026-01-12 | 增加批量预生成 300 天主题、AI 自动选择默认方案、Review 工作流、重新生成支持 |
 
 ---
 
