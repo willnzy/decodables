@@ -1,8 +1,9 @@
 # 静态页面 CMS 系统设计
 
 > **状态**: 📋 设计中
-> **版本**: 0.1.0
+> **版本**: 0.2.0
 > **创建日期**: 2026-01-12
+> **最后更新**: 2026-01-12
 > **关联文档**: [pricing-system-design.md](pricing-system-design.md) (Config 系统)
 
 ---
@@ -20,14 +21,36 @@
 
 ### 1.2 涉及页面
 
-| 页面 | 路由 | 当前文件 | 内容类型 |
-|------|------|----------|----------|
-| About Us | `/about-us` | `app/about-us/page.js` | 公司介绍、愿景、团队 |
-| Contact Us | `/contact-us` | `app/contact-us/page.js` | 联系方式、表单配置 |
-| Privacy Policy | `/privacy-policy` | `app/privacy-policy/page.js` | 隐私条款 (14 章节) |
-| Terms of Service | `/term-of-service` | `app/term-of-service/page.js` | 服务条款 (18 章节) |
-| Billing Policy | `/billing-policy` | `app/billing-policy/page.js` | 计费政策、订阅规则 |
-| Marketplace Guidelines | `/marketplace-guidelines` | `app/marketplace-guidelines/page.js` | 发布规则 (8 章节) |
+#### 页面类型分类
+
+| 类型 | 说明 | CMS 范围 |
+|------|------|----------|
+| **Static** (纯静态) | 纯内容展示，无交互逻辑 | 全部内容可 CMS 配置 |
+| **Hybrid** (混合型) | 内容展示 + 动态功能 | 静态部分 CMS 配置，动态功能代码控制 |
+
+#### 页面清单
+
+| 页面 | 路由 | 类型 | 内容类型 | CMS 说明 |
+|------|------|------|----------|----------|
+| About Us | `/about-us` | **Static** | 公司介绍、愿景、特色 | 全部区块可配置 |
+| Privacy Policy | `/privacy-policy` | **Static** | 隐私条款 (14 章节) | 全部章节可配置 |
+| Terms of Service | `/term-of-service` | **Static** | 服务条款 (18 章节) | 全部章节可配置 |
+| Billing Policy | `/billing-policy` | **Static** | 计费政策、订阅规则 | 全部区块可配置 |
+| Marketplace Guidelines | `/marketplace-guidelines` | **Static** | 发布规则 (8 章节) | 全部章节可配置 |
+| Contact Us | `/contact-us` | **Hybrid** | 联系方式 + 表单 | Hero/联系信息/FAQ 可配置，**表单逻辑代码控制** |
+
+#### Hybrid 页面详细说明
+
+**Contact Us** 页面包含两部分:
+
+| 部分 | 类型 | CMS 配置 | 说明 |
+|------|------|----------|------|
+| Hero 区块 | 静态内容 | ✅ 可配置 | 标题、描述文案 |
+| 联系方式卡片 | 静态内容 | ✅ 可配置 | Email、WhatsApp、社交链接 |
+| FAQ 区块 | 静态内容 | ✅ 可配置 | 问答列表 |
+| **联系表单** | **动态功能** | ❌ 代码控制 | 表单字段、验证、提交逻辑、API 调用 |
+
+> **设计原则**: 混合型页面的静态内容部分通过 CMS 配置，动态功能部分（表单、状态管理、API 调用）保持代码控制，确保功能稳定性。
 
 ### 1.3 设计原则
 
@@ -627,6 +650,7 @@ system_configs 表
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 0.1.0 | 2026-01-12 | 初始设计 |
+| **0.2.0** | **2026-01-12** | **页面分类**: 新增 1.2 节页面类型分类 (Static/Hybrid)；明确 Contact Us 为混合型页面；详细说明 Hybrid 页面各部分的 CMS 配置范围 |
 
 ---
 
