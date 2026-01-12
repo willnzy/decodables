@@ -127,7 +127,7 @@ class SupabaseSystemResourcesAdminRepository:
         Raises:
             Exception: If creation fails
         """
-        result = self.client.table("system_resources").insert(data).execute()
+        await result = self.client.table("system_resources").insert(data).execute()
 
         if not result.data:
             raise Exception("Failed to create resource record")

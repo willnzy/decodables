@@ -266,7 +266,7 @@ class SupabaseEventsRepository(IEventsRepository):
                 "user_agent": event.user_agent,
             }
 
-            result = self.client.table("user_events").insert(data).execute()
+            await result = self.client.table("user_events").insert(data).execute()
 
             if result.data:
                 return UserEvent.from_dict(result.data[0])
