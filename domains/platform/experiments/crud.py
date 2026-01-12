@@ -28,11 +28,12 @@ from infrastructure.repositories.experiment_repository import SupabaseExperiment
 logger = logging.getLogger(__name__)
 
 
-def _get_repo() -> SupabaseExperimentRepository:
+async def _get_repo() -> SupabaseExperimentRepository:
     """
     Get experiment repository instance.
 
     v3.28: DDD Migration helper (EXP-CRITICAL-1).
+    v3.29: Fixed to async function for AsyncClient.
     """
     db_client = await get_async_db_client()
     return SupabaseExperimentRepository(client=db_client)
@@ -48,6 +49,7 @@ def list_experiments(
     List experiments with filters.
 
     v3.28: DDD Migration - Uses Repository with retry + OOM protection.
+    v3.29: Fixed async wrapper pattern.
 
     Args:
         status: Filter by experiment status
@@ -58,14 +60,17 @@ def list_experiments(
     Returns:
         Tuple of (experiments list, total count)
     """
-    try:
-        repo = _get_repo()
-        experiments, total = asyncio.run(repo.list_experiments(
+    async def _async_list():
+        repo = await _get_repo()
+        return await repo.list_experiments(
             status=status,
             experiment_type=experiment_type,
             offset=offset,
             limit=limit
-        ))
+        )
+
+    try:
+        experiments, total = asyncio.run(_async_list())
         return (experiments, total)
 
     except Exception as e:
@@ -78,6 +83,7 @@ def get_experiment(experiment_key: str, use_cache: bool = True) -> Optional[Dict
     Get experiment by key.
 
     v3.28: DDD Migration - Uses Repository. Cache removed for DDD compliance.
+    v3.29: Fixed async wrapper pattern.
 
     Args:
         experiment_key: Experiment identifier
@@ -86,9 +92,12 @@ def get_experiment(experiment_key: str, use_cache: bool = True) -> Optional[Dict
     Returns:
         Experiment dict or None
     """
+    async def _async_get():
+        repo = await _get_repo()
+        return await repo.get_by_key(experiment_key)
+
     try:
-        repo = _get_repo()
-        experiment = asyncio.run(repo.get_by_key(experiment_key))
+        experiment = asyncio.run(_async_get())
         return experiment
 
     except Exception as e:
@@ -117,15 +126,13 @@ def get_active_experiments() -> List[Dict]:
     Get all active (running) experiments.
 
     v3.28: DDD Migration - Uses Repository with limit.
+    v3.29: Simplified to use list_experiments (already has async wrapper).
 
     Returns:
         List of running experiments
     """
     try:
-        repo = _get_repo()
-        experiments = asyncio.run(repo.get_running())
-        # Repository returns Aggregates, need to convert to Dict
-        # For now, using list_experiments with status filter
+        # list_experiments already handles async properly
         exps, _ = list_experiments(status="running", limit=1000)
         return exps
 
@@ -143,6 +150,7 @@ def delete_experiment(experiment_key: str) -> bool:
     Delete experiment.
 
     v3.28: Migrated to Repository pattern.
+    v3.29: Fixed async wrapper pattern.
 
     Args:
         experiment_key: Experiment identifier
@@ -150,9 +158,10 @@ def delete_experiment(experiment_key: str) -> bool:
     Returns:
         True if deleted successfully
     """
-    try:
+    async def _async_delete():
         # First get the experiment to find its ID
-        experiment = get_experiment(experiment_key, use_cache=False)
+        repo = await _get_repo()
+        experiment = await repo.get_by_key(experiment_key)
         if not experiment:
             logger.error(f"[Experiment] Cannot delete {experiment_key}: not found")
             return False
@@ -162,8 +171,10 @@ def delete_experiment(experiment_key: str) -> bool:
             logger.error(f"[Experiment] Cannot delete {experiment_key}: missing ID")
             return False
 
-        repo = _get_repo()
-        success = asyncio.run(repo.delete(experiment_id))
+        return await repo.delete(experiment_id)
+
+    try:
+        success = asyncio.run(_async_delete())
         return success
 
     except Exception as e:
