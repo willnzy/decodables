@@ -129,14 +129,15 @@ class TestTierService:
     async def test_get_all_tier_configs(self, tier_service, mock_config_repo):
         """Should return all tier configurations."""
         mock_config_repo.get_by_key.side_effect = [
-            "Free Plan",    # t1
-            "Starter Plan", # t2
-            "Pro Plan",     # t3
+            "Free Plan",       # t1
+            "Starter Plan",    # t2
+            "Pro Plan",        # t3
+            "Enterprise Plan", # t4
         ]
 
         configs = await tier_service.get_all_tier_configs()
 
-        assert len(configs) == 3
+        assert len(configs) == 4  # Updated from 3 to 4
         assert configs[0] == {
             "tier": "t1",
             "tier_label": "First Tier",
@@ -151,6 +152,11 @@ class TestTierService:
             "tier": "t3",
             "tier_label": "Third Tier",
             "display_name": "Pro Plan",
+        }
+        assert configs[3] == {
+            "tier": "t4",
+            "tier_label": "Fourth Tier",
+            "display_name": "Enterprise Plan",
         }
 
     def test_clear_cache(self, tier_service):

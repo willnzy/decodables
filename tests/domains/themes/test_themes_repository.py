@@ -31,8 +31,31 @@ SupabaseThemesRepository = _module.SupabaseThemesRepository
 
 @pytest.fixture
 def mock_supabase():
-    """Create mock Supabase client."""
+    """Create mock Supabase client for AsyncClient."""
+    # Use MagicMock for synchronous query building, AsyncMock only for .execute()
     client = MagicMock()
+
+    # Create a mock query builder that returns itself for chaining
+    mock_query = MagicMock()
+    mock_query.select.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.order.return_value = mock_query
+    mock_query.limit.return_value = mock_query
+    mock_query.range.return_value = mock_query
+    mock_query.gte.return_value = mock_query
+    mock_query.lte.return_value = mock_query
+    mock_query.contains.return_value = mock_query
+    mock_query.single.return_value = mock_query
+    mock_query.insert.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.delete.return_value = mock_query
+
+    # Only .execute() should be async
+    mock_query.execute = AsyncMock()
+
+    # Table returns the query builder (synchronously)
+    client.table.return_value = mock_query
+
     return client
 
 
@@ -160,16 +183,9 @@ class TestListAll:
         mock_result = MagicMock()
         mock_result.data = [sample_theme_data]
 
-        # Build mock chain
-        mock_query = MagicMock()
-        mock_query.eq.return_value = mock_query
-        mock_query.gte.return_value = mock_query
-        mock_query.lte.return_value = mock_query
-        mock_query.order.return_value = mock_query
-        mock_query.range.return_value = mock_query
-        mock_query.execute.return_value = mock_result
-
-        mock_supabase.table.return_value.select.return_value.eq.return_value = mock_query
+        # The fixture already sets up query building properly
+        # Just set the execute return value
+        mock_supabase.table.return_value.execute.return_value = mock_result
 
         # Act
         result = await repository.list_all(
@@ -225,11 +241,9 @@ class TestCountAll:
         mock_result = MagicMock()
         mock_result.count = 10
 
-        mock_query = MagicMock()
-        mock_query.eq.return_value = mock_query
-        mock_query.execute.return_value = mock_result
-
-        mock_supabase.table.return_value.select.return_value.eq.return_value = mock_query
+        # The fixture already sets up query building properly
+        # Just set the execute return value
+        mock_supabase.table.return_value.execute.return_value = mock_result
 
         # Act
         result = await repository.count_all(filters={"category": "holiday"})

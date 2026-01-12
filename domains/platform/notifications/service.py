@@ -146,9 +146,9 @@ async def send_broadcast(
 
     # Business Logic: Query target users based on group
     if target_group == "all":
-        users_result = db_client.table("profiles").select("id").execute()
+        users_result = await db_client.table("profiles").select("id").execute()
     else:
-        users_result = db_client.table("profiles").select("id").eq(
+        users_result = await db_client.table("profiles").select("id").eq(
             "tier", target_group
         ).execute()
 

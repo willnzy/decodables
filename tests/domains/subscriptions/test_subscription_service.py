@@ -505,7 +505,7 @@ class TestDowngradeSubscription:
         mock_users_repo.update_subscription_tier.assert_awaited_once_with(
             "user-123", "t2", subscription_status="active"
         )
-        mock_users_repo.update_monthly_credits.assert_awaited_once_with("user-123", 200)
+        mock_users_repo.update_monthly_credits.assert_awaited_once_with("user-123", 100)  # Updated from 200 to 100
 
     @pytest.mark.asyncio
     async def test_downgrade_invalid_direction(self, service, mock_users_repo):

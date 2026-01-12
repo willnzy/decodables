@@ -610,7 +610,7 @@ async def _log_config_change(
         db_client = await get_async_db_client()
 
         import json
-        db_client.table("config_audit_logs").insert({
+        await db_client.table("config_audit_logs").insert({
             "config_key": config_key,
             "action": action,
             "old_value": json.dumps(old_value) if old_value else None,
