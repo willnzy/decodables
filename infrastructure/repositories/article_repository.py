@@ -154,6 +154,28 @@ class SupabaseArticleRepository(ArticleRepository):
             logger.error(f"[ArticleRepo] Error getting categories: {e}")
             return []
 
+    async def list_featured(
+        self,
+        category: Optional[ArticleCategory] = None,
+        limit: int = 4,
+    ) -> List[ArticleSummary]:
+        """List featured published articles."""
+        try:
+            query = self.db.table(self.table).select(
+                "id, slug, title, summary, category, tags, cover_image, "
+                "is_published, published_at, view_count, created_at, updated_at"
+            ).eq("is_published", True).eq("is_featured", True).order("published_at", desc=True)
+
+            if category:
+                query = query.eq("category", category.value)
+
+            response = query.limit(limit).execute()
+
+            return [ArticleSummary.from_dict(item) for item in response.data or []]
+        except Exception as e:
+            logger.error(f"[ArticleRepo] Error listing featured articles: {e}")
+            return []
+
     # ==========================================
     # Write Operations
     # ==========================================

@@ -121,6 +121,24 @@ class ArticleRepository(ABC):
         """
         pass
 
+    @abstractmethod
+    async def list_featured(
+        self,
+        category: Optional[ArticleCategory] = None,
+        limit: int = 4,
+    ) -> List[ArticleSummary]:
+        """
+        List featured published articles.
+
+        Args:
+            category: Optional category filter
+            limit: Maximum number of results
+
+        Returns:
+            List of featured ArticleSummary (is_featured=true, is_published=true)
+        """
+        pass
+
     # ==========================================
     # Write Operations
     # ==========================================

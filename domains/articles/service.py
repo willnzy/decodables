@@ -138,6 +138,27 @@ class ArticleService:
             limit=limit,
         )
 
+    async def get_featured_articles(
+        self,
+        category: Optional[str] = None,
+        limit: int = 4,
+    ) -> List[ArticleSummary]:
+        """
+        Get featured published articles.
+
+        Args:
+            category: Optional category filter (string)
+            limit: Maximum results
+
+        Returns:
+            List of featured ArticleSummary
+        """
+        cat = ArticleCategory(category) if category else None
+        return await self.repository.list_featured(
+            category=cat,
+            limit=limit,
+        )
+
     # ==========================================
     # Admin Read Operations
     # ==========================================

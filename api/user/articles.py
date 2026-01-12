@@ -301,6 +301,77 @@ async def search_articles(
         raise HTTPException(500, "Failed to search articles")
 
 
+@router.get("/featured", response_model=ArticlesListResponse)
+@limiter.limit("60/minute")
+async def get_featured_articles(
+    request: Request,
+    category: Optional[str] = Query(
+        None,
+        description="Filter by category (manual, news, changelog, faq, troubleshooting)"
+    ),
+    limit: int = Query(4, ge=1, le=20, description="Number of featured articles"),
+):
+    """
+    Get featured articles.
+
+    Returns a list of featured (is_featured=true) published articles,
+    optionally filtered by category.
+
+    Args:
+        category: Optional category filter
+        limit: Maximum number of articles to return (default: 4, max: 20)
+
+    Returns:
+        ArticlesListResponse with featured articles
+
+    Example:
+        GET /api/v2/user/articles/featured?category=manual&limit=4
+    """
+    try:
+        # Validate category if provided
+        if category:
+            valid_categories = [c.value for c in ArticleCategory]
+            if category not in valid_categories:
+                raise HTTPException(
+                    400,
+                    f"Invalid category. Must be one of: {', '.join(valid_categories)}"
+                )
+
+        service = _get_article_service()
+
+        # Get featured articles
+        articles = await service.get_featured_articles(
+            category=category,
+            limit=limit,
+        )
+
+        return ArticlesListResponse(
+            articles=[
+                ArticleSummaryResponse(
+                    id=str(a.id),
+                    slug=a.slug,
+                    title=a.title,
+                    summary=a.summary,
+                    category=a.category.value if hasattr(a.category, 'value') else a.category,
+                    tags=a.tags,
+                    cover_image=a.cover_image,
+                    published_at=a.published_at.isoformat() if a.published_at else None,
+                    view_count=a.view_count,
+                )
+                for a in articles
+            ],
+            total=len(articles),
+            offset=0,
+            limit=limit,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Articles] Get featured failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to retrieve featured articles")
+
+
 @router.get("/{slug}", response_model=ArticleDetailResponse)
 @limiter.limit("60/minute")
 async def get_article(

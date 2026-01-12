@@ -8,8 +8,30 @@ Article Domain Entities.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 from uuid import UUID
+
+
+def _parse_datetime(value: Union[str, datetime, None]) -> Optional[datetime]:
+    """Parse datetime from string or return as-is if already datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # Handle ISO format with timezone (e.g., "2026-01-12T20:55:43.192958+00:00")
+        try:
+            # Remove 'Z' suffix if present and handle timezone
+            if value.endswith('Z'):
+                value = value[:-1] + '+00:00'
+            return datetime.fromisoformat(value)
+        except ValueError:
+            # Fallback: try without timezone
+            try:
+                return datetime.fromisoformat(value.replace('+00:00', '').replace('+00', ''))
+            except ValueError:
+                return None
+    return None
 
 
 class ArticleCategory(str, Enum):
@@ -93,12 +115,12 @@ class Article:
             tags=tags if isinstance(tags, list) else [],
             cover_image=data.get("cover_image"),
             is_published=data.get("is_published", False),
-            published_at=data.get("published_at"),
+            published_at=_parse_datetime(data.get("published_at")),
             author_id=data.get("author_id"),
             sort_order=data.get("sort_order", 0),
             view_count=data.get("view_count", 0),
-            created_at=data.get("created_at"),
-            updated_at=data.get("updated_at"),
+            created_at=_parse_datetime(data.get("created_at")),
+            updated_at=_parse_datetime(data.get("updated_at")),
         )
 
     def to_dict(self) -> dict:
@@ -166,10 +188,10 @@ class ArticleSummary:
             tags=tags if isinstance(tags, list) else [],
             cover_image=data.get("cover_image"),
             is_published=data.get("is_published", False),
-            published_at=data.get("published_at"),
+            published_at=_parse_datetime(data.get("published_at")),
             view_count=data.get("view_count", 0),
-            created_at=data.get("created_at"),
-            updated_at=data.get("updated_at"),
+            created_at=_parse_datetime(data.get("created_at")),
+            updated_at=_parse_datetime(data.get("updated_at")),
         )
 
     def to_dict(self) -> dict:
