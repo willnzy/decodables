@@ -1,19 +1,24 @@
 # Theme 主题系统设计 - Daily Doodle 风格
 
-> **版本**: v1.0  
-> **日期**: 2026-01-06  
+> **版本**: v2.0
+> **日期**: 2026-01-12
 > **灵感**: Google Doodle - 根据日期自动变化的动态主题
+> **更新**: v2.0 增加全站视觉变化、Campaign 联动、Admin 管理、AI 辅助生成
 
 ---
 
 ## 目录
 
 1. [设计概览](#1-设计概览)
-2. [数据结构设计](#2-数据结构设计)
-3. [后端实现](#3-后端实现)
-4. [前端实现](#4-前端实现)
-5. [主题内容规划](#5-主题内容规划)
-6. [实施计划](#6-实施计划)
+2. [优先级规则](#2-优先级规则)
+3. [数据结构设计](#3-数据结构设计)
+4. [AI 辅助生成](#4-ai-辅助生成)
+5. [后端实现](#5-后端实现)
+6. [前端实现](#6-前端实现)
+7. [Campaign 联动](#7-campaign-联动)
+8. [Admin 管理界面](#8-admin-管理界面)
+9. [主题内容规划](#9-主题内容规划)
+10. [实施计划](#10-实施计划)
 
 ---
 
@@ -23,44 +28,86 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Daily Doodle 主题系统                         │
+│                    Daily Doodle 主题系统 v2.0                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  "每一天都值得纪念，每一个主题都讲述故事"                          │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  类型 1: 固定日期事件                                    │   │
-│  │  • 新年 (1月1日)                                         │   │
-│  │  • 春节 (农历新年)                                       │   │
-│  │  • 教师节 (各国不同)                                     │   │
-│  │  • 圣诞节 (12月25日)                                     │   │
+│  │  优先级 1: 世界级节日 (Priority 90-100)                   │   │
+│  │  • 新年 (1月1日) - 全球庆祝                               │   │
+│  │  • 春节 (农历新年) - 亚洲地区                             │   │
+│  │  • 圣诞节 (12月25日) - 西方国家                           │   │
+│  │  • 复活节 (动态日期) - 宗教节日                           │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  类型 2: 伟人纪念日                                      │   │
-│  │  • 爱因斯坦诞辰 (3月14日)                                │   │
-│  │  • 居里夫人诞辰 (11月7日)                                │   │
-│  │  • 马丁·路德·金纪念日 (1月第三个周一)                     │   │
+│  │  优先级 2: 重要纪念日 (Priority 70-89)                    │   │
+│  │  • 世界读书日 (4月23日) - 与产品相关                      │   │
+│  │  • 地球日 (4月22日) - 环保主题                            │   │
+│  │  • 国际妇女节 (3月8日) - 社会意义                         │   │
+│  │  • 世界教师日 (10月5日) - 教育主题                        │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  类型 3: 世界纪念日                                      │   │
-│  │  • 世界读书日 (4月23日)                                  │   │
-│  │  • 地球日 (4月22日)                                      │   │
-│  │  • 国际妇女节 (3月8日)                                   │   │
+│  │  优先级 3: 伟人/历史纪念 (Priority 50-69)                 │   │
+│  │  • 爱因斯坦诞辰 (3月14日) - Pi Day                        │   │
+│  │  • 阿波罗11号登月 (7月20日)                               │   │
+│  │  • 万维网诞生 (3月12日)                                   │   │
+│  │  • 居里夫人诞辰 (11月7日)                                 │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  类型 4: 历史今日                                        │   │
-│  │  • 阿波罗11号登月 (7月20日)                              │   │
-│  │  • 万维网诞生 (3月12日)                                  │   │
-│  │  • 第一张照片 (某日)                                     │   │
+│  │  优先级 4: Campaign 营销活动 (Priority 40-59)             │   │
+│  │  • 黑五促销 (11月第4周五)                                 │   │
+│  │  • 返校季 (8-9月)                                         │   │
+│  │  • 周年庆活动                                              │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 用户体验流程
+### 1.2 全站视觉变化范围
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      全站视觉变化架构                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─ Navbar ─────────────────────────────────────────────────┐  │
+│  │  • Logo 装饰 (emoji/图标/动画)                            │  │
+│  │  • 背景色/渐变                                            │  │
+│  │  • 节日 Badge 展示                                        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─ 页面背景 ───────────────────────────────────────────────┐  │
+│  │  • 背景色/渐变/图案                                       │  │
+│  │  • 装饰动画 (雪花/心形/彩带/烟花)                         │  │
+│  │  • 边角装饰图案                                           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─ 按钮/交互元素 ──────────────────────────────────────────┐  │
+│  │  • Primary Button 颜色                                    │  │
+│  │  • Hover 效果                                             │  │
+│  │  • 链接颜色                                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─ Footer ─────────────────────────────────────────────────┐  │
+│  │  • 背景色/图案                                            │  │
+│  │  • 节日祝福语                                             │  │
+│  │  • 装饰元素                                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─ 编辑器区域 (可选) ───────────────────────────────────────┐  │
+│  │  • 侧边栏节日提示                                         │  │
+│  │  • 节日模板推荐                                           │  │
+│  │  • 保持编辑器核心区域稳定                                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 1.3 用户体验流程
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -70,70 +117,39 @@
 │  用户访问网站                                                    │
 │       │                                                         │
 │       ▼                                                         │
-│  检测用户本地时间 + 时区                                         │
+│  检测用户本地时间 + 时区 + 地区                                  │
 │       │                                                         │
 │       ▼                                                         │
 │  查询当日主题 (按优先级)                                         │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  1. 检查是否有该用户时区的节日                           │   │
-│  │  2. 检查是否有全球通用的纪念日                           │   │
-│  │  3. 检查是否有历史今日事件                               │   │
-│  │  4. 使用默认主题                                         │   │
+│  │  1. 检查是否有世界级节日 (priority 90+)                  │   │
+│  │  2. 检查是否有地区特定节日 (用户时区)                    │   │
+│  │  3. 检查是否有重要纪念日 (priority 70-89)                │   │
+│  │  4. 检查是否有历史/伟人纪念 (priority 50-69)             │   │
+│  │  5. 检查是否有 Campaign 活动 (priority 40-59)            │   │
+│  │  6. 使用默认主题                                         │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │       │                                                         │
 │       ▼                                                         │
-│  应用主题                                                        │
+│  应用全站视觉变化                                                │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  • Logo 变化 (Doodle 风格)                               │   │
-│  │  • 背景色/背景图变化                                     │   │
-│  │  • Slogan 显示                                           │   │
-│  │  • 可选: 动画效果                                        │   │
+│  │  • CSS 变量注入 (颜色/间距)                              │   │
+│  │  • Logo 装饰渲染                                         │   │
+│  │  • 背景效果应用                                          │   │
+│  │  • 装饰动画启动                                          │   │
+│  │  • 节日 Badge 显示                                       │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │       │                                                         │
 │       ▼                                                         │
-│  用户点击 Logo/Slogan                                           │
+│  用户点击 Logo/Badge                                             │
 │       │                                                         │
 │       ▼                                                         │
-│  显示主题详情弹窗 (今日是什么日子?)                              │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 1.3 主题效果示例
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      主题效果示例                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
+│  显示主题详情弹窗                                                │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  默认主题                                                │   │
-│  │  Logo: Make Decodables (标准)                           │   │
-│  │  Slogan: "Create magical mini-books in 30 seconds"      │   │
-│  │  背景: 白色                                              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  圣诞节 (12月25日)                                       │   │
-│  │  Logo: 🎄 Make Decodables ❄️ (带圣诞装饰)                │   │
-│  │  Slogan: "Merry Christmas! Create holiday stories 🎁"   │   │
-│  │  背景: 淡红色 + 雪花动画                                  │   │
-│  │  动画: 雪花飘落效果                                      │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  世界读书日 (4月23日)                                    │   │
-│  │  Logo: 📚 Make Decodables 📖 (书本装饰)                  │   │
-│  │  Slogan: "World Book Day - Every child deserves a story"│   │
-│  │  背景: 温暖的米色                                        │   │
-│  │  动画: 翻书页效果                                        │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  爱因斯坦诞辰 (3月14日)                                  │   │
-│  │  Logo: ⚛️ Make Decodables 🧠 (科学元素)                  │   │
-│  │  Slogan: "Happy Birthday Einstein! Imagination > Knowledge"│
-│  │  背景: 星空蓝                                            │   │
+│  │  • 今日是什么日子?                                       │   │
+│  │  • 相关故事/历史                                         │   │
+│  │  • 相关 Campaign 活动 (如有)                             │   │
+│  │  • 分享按钮                                              │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -141,1145 +157,908 @@
 
 ---
 
-## 2. 数据结构设计
+## 2. 优先级规则
 
-### 2.1 数据库表结构
+### 2.1 优先级层级
+
+| 层级 | 优先级范围 | 类型 | 示例 |
+|------|------------|------|------|
+| **L1** | 95-100 | 世界级节日 | 新年、圣诞节、春节 |
+| **L2** | 85-94 | 产品相关纪念日 | 世界读书日、教师节 |
+| **L3** | 70-84 | 重要国际日 | 地球日、妇女节 |
+| **L4** | 50-69 | 伟人/历史纪念 | 爱因斯坦诞辰、Pi Day |
+| **L5** | 40-49 | 营销活动 | 黑五、返校季 |
+| **L6** | 0-39 | 轻量级/趣味 | 程序员节、Pi Day |
+
+### 2.2 同日多主题规则
+
+```python
+# 规则 1: 优先级最高者胜出
+if multiple_themes_same_day:
+    active_theme = max(themes, key=lambda t: t.priority)
+
+# 规则 2: 同优先级时，更具体的胜出
+if same_priority:
+    # 固定日期 > 动态日期 > 范围日期
+    active_theme = select_most_specific()
+
+# 规则 3: 地区特定主题优先于全球主题
+if same_priority_same_specificity:
+    if user_region_theme_exists:
+        active_theme = user_region_theme
+    else:
+        active_theme = global_theme
+```
+
+---
+
+## 3. 数据结构设计
+
+### 3.1 数据库表结构
 
 ```sql
 -- ============================================================
--- 主题定义表
+-- daily_themes 表升级 (v2.0)
+-- 位置: migrations/v2/02_platform_services.sql
 -- ============================================================
-CREATE TABLE themes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    
-    -- 基础信息
-    key VARCHAR(100) NOT NULL UNIQUE,           -- 唯一标识 (如 christmas_2026)
-    name VARCHAR(255) NOT NULL,                 -- 显示名称
-    name_i18n JSONB DEFAULT '{}',               -- 多语言名称 {"zh": "圣诞节", "en": "Christmas"}
-    
-    -- 分类
-    category VARCHAR(50) NOT NULL,              -- holiday, memorial, history, special
-    
-    -- 日期规则
-    date_rule JSONB NOT NULL,                   -- 日期规则 (见下方详解)
-    
-    -- 主题内容
-    slogan VARCHAR(500),                        -- 标语
-    slogan_i18n JSONB DEFAULT '{}',             -- 多语言标语
-    description TEXT,                           -- 详细描述
-    description_i18n JSONB DEFAULT '{}',        -- 多语言描述
-    
-    -- 视觉效果
-    logo_variant JSONB,                         -- Logo 变体配置
-    colors JSONB NOT NULL,                      -- 颜色配置
-    background JSONB,                           -- 背景配置
-    animations JSONB DEFAULT '[]',              -- 动画效果列表
-    
-    -- 适用范围
-    regions TEXT[] DEFAULT ARRAY['global'],     -- 适用地区 ['global', 'CN', 'US', ...]
-    
-    -- 优先级 (同一天多个主题时)
-    priority INTEGER DEFAULT 50,                -- 0-100, 越高越优先
-    
-    -- 状态
-    enabled BOOLEAN DEFAULT true,
-    archived BOOLEAN DEFAULT false,
-    
-    -- 元数据
-    source_url VARCHAR(500),                    -- 参考来源
-    created_by VARCHAR(100),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
 
--- ============================================================
--- 主题资源表 (Logo 变体、背景图等)
--- ============================================================
-CREATE TABLE theme_assets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    theme_id UUID REFERENCES themes(id) ON DELETE CASCADE,
-    
-    asset_type VARCHAR(50) NOT NULL,            -- logo, background, icon, animation
-    file_url VARCHAR(500) NOT NULL,
-    file_type VARCHAR(50),                      -- svg, png, lottie, css
-    
-    -- 变体
-    variant VARCHAR(50) DEFAULT 'default',      -- default, dark, mobile
-    
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 在现有 daily_themes 表基础上添加字段:
 
--- ============================================================
--- 主题展示日志 (分析用)
--- ============================================================
-CREATE TABLE theme_impressions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    theme_id UUID REFERENCES themes(id),
-    theme_key VARCHAR(100) NOT NULL,
-    
-    user_id VARCHAR(100),
-    user_timezone VARCHAR(50),
-    user_region VARCHAR(10),
-    local_date DATE NOT NULL,
-    
-    -- 交互
-    clicked BOOLEAN DEFAULT false,
-    
-    timestamp TIMESTAMPTZ DEFAULT NOW()
-);
+-- 1. 分类字段
+category TEXT NOT NULL DEFAULT 'holiday'
+    CHECK (category IN (
+        'holiday',      -- 节日 (圣诞、新年、春节)
+        'memorial',     -- 纪念日 (地球日、读书日)
+        'historical',   -- 历史今日 (登月、WWW诞生)
+        'notable',      -- 伟人诞辰 (爱因斯坦、居里夫人)
+        'campaign',     -- 营销活动 (黑五、返校季)
+        'special'       -- 特殊事件 (一次性)
+    )),
 
--- 索引
-CREATE INDEX idx_themes_enabled ON themes(enabled) WHERE enabled = true;
-CREATE INDEX idx_themes_category ON themes(category);
-CREATE INDEX idx_impressions_date ON theme_impressions(local_date);
+-- 2. 多语言支持
+name_i18n JSONB DEFAULT '{}',           -- {"zh": "圣诞节", "en": "Christmas"}
+slogan TEXT,                             -- 主要标语
+slogan_i18n JSONB DEFAULT '{}',          -- {"zh": "圣诞快乐!", "en": "Merry Christmas!"}
+description_i18n JSONB DEFAULT '{}',     -- 多语言详细描述
+
+-- 3. Logo 变体配置 (在 theme_config 中)
+-- 4. 全站颜色配置 (在 theme_config 中)
+-- 5. 背景配置 (在 theme_config 中)
+-- 6. 动画配置 (在 theme_config 中)
+
+-- 7. 地区限制
+regions TEXT[] DEFAULT ARRAY['global'],  -- 适用地区
+
+-- 8. Campaign 关联 (v2.0 新增)
+linked_campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+
+-- 9. AI 生成相关 (v2.0 新增)
+ai_generated BOOLEAN DEFAULT false,      -- 是否 AI 生成
+ai_alternatives JSONB DEFAULT '[]',      -- AI 生成的备选方案
+selected_alternative_id TEXT,            -- 选中的备选方案 ID
+
+-- 10. 资源 URL
+source_url TEXT,                         -- 参考来源
+learn_more_url TEXT,                     -- "了解更多" 链接
+
+-- 添加索引
+CREATE INDEX idx_daily_themes_category ON daily_themes (category) WHERE is_deleted = false;
+CREATE INDEX idx_daily_themes_regions ON daily_themes USING GIN (regions) WHERE is_deleted = false;
 ```
 
-### 2.2 日期规则 (date_rule) 格式
+### 3.2 theme_config 完整结构
 
 ```typescript
-// 日期规则类型定义
+interface ThemeConfig {
+  // ==================== Logo 变体 ====================
+  logo_variant?: {
+    type: 'decorated' | 'replaced' | 'animated';
+    decorations?: {
+      prefix?: string;      // 前缀 emoji/图标
+      suffix?: string;      // 后缀 emoji/图标
+      overlay_url?: string; // 叠加图层 URL
+    };
+    custom_logo?: {
+      url: string;
+      width?: number;
+      height?: number;
+    };
+    animation?: {
+      type: 'bounce' | 'pulse' | 'glow' | 'shake' | 'custom';
+      duration?: number;
+      css?: string;
+    };
+  };
+
+  // ==================== 全站颜色 (v2.0) ====================
+  colors?: {
+    primary: string;
+    primary_hover: string;
+    primary_light: string;
+    accent: string;
+    accent_hover: string;
+    background: string;
+    background_secondary: string;
+    text: string;
+    text_secondary: string;
+    text_inverse: string;
+    overrides?: {
+      navbar?: { background: string; text: string };
+      footer?: { background: string; text: string };
+      button_primary?: { background: string; text: string };
+    };
+  };
+
+  // ==================== 背景效果 ====================
+  background?: {
+    type: 'solid' | 'gradient' | 'image' | 'pattern';
+    color?: string;
+    gradient?: {
+      type: 'linear' | 'radial';
+      angle?: number;
+      colors: string[];
+      positions?: number[];
+    };
+    image?: {
+      url: string;
+      position?: string;
+      size?: string;
+      repeat?: string;
+      opacity?: number;
+    };
+    pattern?: {
+      url: string;
+      scale?: number;
+    };
+  };
+
+  // ==================== 装饰动画 ====================
+  animations?: Array<{
+    id: string;
+    type: 'snowflakes' | 'hearts' | 'confetti' | 'fireworks' | 'stars' | 'leaves' | 'bubbles' | 'custom';
+    enabled: boolean;
+    intensity: 'light' | 'medium' | 'heavy';
+    particles?: {
+      count: number;
+      colors: string[];
+      size: { min: number; max: number };
+      speed: { min: number; max: number };
+      opacity?: { min: number; max: number };
+    };
+    zones?: ('full' | 'top' | 'bottom' | 'sides')[];
+    performance?: {
+      mobile_enabled: boolean;
+      mobile_intensity: 'light' | 'off';
+      reduce_motion_disable: boolean;
+    };
+  }>;
+
+  // ==================== 徽章配置 ====================
+  badge?: {
+    text: string;
+    text_i18n?: Record<string, string>;
+    style?: 'default' | 'festive' | 'minimal';
+    position?: 'navbar' | 'logo' | 'banner';
+    link_to_detail?: boolean;
+  };
+
+  // ==================== 页脚配置 ====================
+  footer?: {
+    greeting?: string;
+    greeting_i18n?: Record<string, string>;
+    decorations?: {
+      left?: string;
+      right?: string;
+    };
+  };
+
+  // ==================== 弹窗配置 ====================
+  detail_modal?: {
+    title: string;
+    title_i18n?: Record<string, string>;
+    content: string;
+    content_i18n?: Record<string, string>;
+    image_url?: string;
+    learn_more_url?: string;
+    share_enabled?: boolean;
+  };
+}
+```
+
+### 3.3 日期规则格式
+
+```typescript
 interface DateRule {
-  type: 'fixed' | 'lunar' | 'relative' | 'range';
-  
-  // 固定日期 (type: 'fixed')
-  // 每年的固定日期
-  month?: number;      // 1-12
-  day?: number;        // 1-31
-  
-  // 农历日期 (type: 'lunar')
-  // 用于春节等农历节日
-  lunarMonth?: number;
-  lunarDay?: number;
-  
-  // 相对日期 (type: 'relative')
-  // 如: 1月第三个周一 (马丁·路德·金纪念日)
-  weekOfMonth?: number;  // 1-5, -1 表示最后一周
-  dayOfWeek?: number;    // 0-6, 0=周日
-  
-  // 日期范围 (type: 'range')
-  // 用于持续多天的节日
-  startMonth?: number;
-  startDay?: number;
-  endMonth?: number;
-  endDay?: number;
-  
-  // 可选: 特定年份
-  years?: number[];     // 仅在特定年份生效
-  excludeYears?: number[]; // 排除特定年份
+  type: 'fixed' | 'dynamic' | 'lunar' | 'range';
+
+  // 固定日期: "MM-DD" 格式
+  start?: string;
+  end?: string;
+
+  // 动态日期
+  rule?: string;  // "us_thanksgiving", "mothers_day", etc.
+  offset_start?: number;
+  offset_end?: number;
+
+  // 农历日期
+  lunar_month?: number;
+  lunar_day?: number;
+  lunar_offset_start?: number;
+  lunar_offset_end?: number;
+
+  // 日期范围
+  start_month?: number;
+  start_day?: number;
+  end_month?: number;
+  end_day?: number;
+
+  // 通用选项
+  years?: number[];
+  exclude_years?: number[];
 }
-
-// 示例
-const examples = {
-  // 圣诞节: 每年12月25日
-  christmas: {
-    type: 'fixed',
-    month: 12,
-    day: 25
-  },
-  
-  // 春节: 农历正月初一
-  chineseNewYear: {
-    type: 'lunar',
-    lunarMonth: 1,
-    lunarDay: 1
-  },
-  
-  // 马丁·路德·金纪念日: 1月第三个周一
-  mlkDay: {
-    type: 'relative',
-    month: 1,
-    weekOfMonth: 3,
-    dayOfWeek: 1  // 周一
-  },
-  
-  // 感恩节: 11月第四个周四
-  thanksgiving: {
-    type: 'relative',
-    month: 11,
-    weekOfMonth: 4,
-    dayOfWeek: 4  // 周四
-  },
-  
-  // 圣诞季: 12月20日-26日
-  christmasSeason: {
-    type: 'range',
-    startMonth: 12,
-    startDay: 20,
-    endMonth: 12,
-    endDay: 26
-  }
-};
-```
-
-### 2.3 颜色配置 (colors) 格式
-
-```typescript
-interface ThemeColors {
-  // 主色调
-  primary: string;
-  primaryHover: string;
-  primaryLight: string;
-  
-  // 背景色
-  background: string;
-  backgroundSecondary: string;
-  
-  // 文字色
-  text: string;
-  textSecondary: string;
-  
-  // 强调色
-  accent: string;
-  
-  // 可选: 覆盖特定组件
-  overrides?: {
-    navbar?: { background: string; text: string };
-    footer?: { background: string; text: string };
-    button?: { background: string; text: string };
-  };
-}
-
-// 示例: 圣诞主题
-const christmasColors: ThemeColors = {
-  primary: '#C41E3A',      // 圣诞红
-  primaryHover: '#A01830',
-  primaryLight: '#FFE4E8',
-  
-  background: '#FFF9F9',   // 淡红白
-  backgroundSecondary: '#FFE4E8',
-  
-  text: '#2D3748',
-  textSecondary: '#718096',
-  
-  accent: '#165B33',       // 圣诞绿
-  
-  overrides: {
-    navbar: {
-      background: '#165B33',
-      text: '#FFFFFF'
-    }
-  }
-};
-```
-
-### 2.4 Logo 变体 (logo_variant) 格式
-
-```typescript
-interface LogoVariant {
-  // 类型
-  type: 'decorated' | 'replaced' | 'animated';
-  
-  // 装饰模式 (在原 Logo 基础上添加装饰)
-  decorations?: {
-    prefix?: string;    // Logo 前缀 (如 emoji)
-    suffix?: string;    // Logo 后缀
-    overlay?: string;   // 叠加图层 URL
-  };
-  
-  // 替换模式 (使用自定义 Logo)
-  customLogo?: {
-    url: string;
-    width?: number;
-    height?: number;
-  };
-  
-  // 动画模式
-  animation?: {
-    type: 'bounce' | 'shake' | 'glow' | 'custom';
-    duration?: number;
-    customCss?: string;
-  };
-}
-
-// 示例
-const christmasLogo: LogoVariant = {
-  type: 'decorated',
-  decorations: {
-    prefix: '🎄',
-    suffix: '❄️'
-  },
-  animation: {
-    type: 'glow',
-    duration: 2000
-  }
-};
-```
-
-### 2.5 背景配置 (background) 格式
-
-```typescript
-interface ThemeBackground {
-  // 背景类型
-  type: 'solid' | 'gradient' | 'image' | 'pattern';
-  
-  // 纯色
-  color?: string;
-  
-  // 渐变
-  gradient?: {
-    type: 'linear' | 'radial';
-    angle?: number;
-    colors: string[];
-  };
-  
-  // 图片
-  image?: {
-    url: string;
-    position?: string;
-    size?: string;
-    repeat?: string;
-    opacity?: number;
-  };
-  
-  // 图案
-  pattern?: {
-    url: string;
-    scale?: number;
-  };
-}
-```
-
-### 2.6 动画效果 (animations) 格式
-
-```typescript
-interface ThemeAnimation {
-  id: string;
-  type: 'snowfall' | 'confetti' | 'fireworks' | 'particles' | 'custom';
-  
-  // 通用配置
-  enabled: boolean;
-  intensity?: number;       // 0-100
-  duration?: number;        // 持续时间 (ms), 0=无限
-  
-  // 粒子配置 (snowfall, confetti, particles)
-  particles?: {
-    count: number;
-    color: string | string[];
-    size: { min: number; max: number };
-    speed: { min: number; max: number };
-  };
-  
-  // 自定义动画
-  customCss?: string;
-  customJs?: string;        // 仅限受信任的预定义动画
-}
-
-// 示例: 雪花效果
-const snowfallAnimation: ThemeAnimation = {
-  id: 'christmas_snow',
-  type: 'snowfall',
-  enabled: true,
-  intensity: 50,
-  particles: {
-    count: 50,
-    color: '#FFFFFF',
-    size: { min: 5, max: 15 },
-    speed: { min: 1, max: 3 }
-  }
-};
 ```
 
 ---
 
-## 3. 后端实现
+## 4. AI 辅助生成
 
-### 3.1 目录结构
+### 4.1 核心流程
 
 ```
-core/theme/
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI 辅助主题生成流程                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─ Step 1: 触发生成 ───────────────────────────────────────┐  │
+│  │  • Admin 点击 "AI 生成建议" 按钮                          │  │
+│  │  • 或系统自动在无主题日期前 N 天触发                      │  │
+│  │  • 输入: 日期 + 上下文 (产品定位、目标用户)               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─ Step 2: AI 分析日期意义 ────────────────────────────────┐  │
+│  │  • 查询历史今日事件                                       │  │
+│  │  • 查询国际纪念日                                         │  │
+│  │  • 查询伟人诞辰/忌日                                      │  │
+│  │  • 分析与教育/儿童/阅读的关联度                           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─ Step 3: 生成 3 个备选方案 ──────────────────────────────┐  │
+│  │                                                           │  │
+│  │  备选 A: 推荐方案 (最匹配产品定位)                        │  │
+│  │  ├─ 主题名称 + 标语                                       │  │
+│  │  ├─ Logo 装饰建议                                         │  │
+│  │  ├─ 配色方案                                              │  │
+│  │  ├─ 动画效果建议                                          │  │
+│  │  └─ 详情内容                                              │  │
+│  │                                                           │  │
+│  │  备选 B: 备选方案 (不同风格)                              │  │
+│  │  └─ ...                                                   │  │
+│  │                                                           │  │
+│  │  备选 C: 创意方案 (独特视角)                              │  │
+│  │  └─ ...                                                   │  │
+│  │                                                           │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─ Step 4: Admin 审核选择 ─────────────────────────────────┐  │
+│  │  • 预览每个方案的实际效果                                 │  │
+│  │  • 选择一个方案                                           │  │
+│  │  • 可以微调后发布                                         │  │
+│  │  • 或完全拒绝重新生成                                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│       │                                                         │
+│       ▼                                                         │
+│  ┌─ Step 5: 发布主题 ───────────────────────────────────────┐  │
+│  │  • 保存选中的方案                                         │  │
+│  │  • 记录 AI 生成来源 (ai_generated = true)                 │  │
+│  │  • 保存其他备选供参考 (ai_alternatives)                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 AI Prompt 设计
+
+```python
+# 主题生成 Prompt
+
+THEME_GENERATION_PROMPT = """
+你是 Make Decodables 的主题设计师。Make Decodables 是一个帮助教师为儿童创建可解码小书的平台。
+
+今天的日期是: {date}
+
+请分析这个日期在历史上的重要意义，并生成 3 个主题设计方案。
+
+关于这个日期:
+1. 有哪些世界性节日或纪念日?
+2. 有哪些著名人物在这一天出生或去世?
+3. 历史上这一天发生过什么重大事件?
+4. 这些事件与教育、儿童、阅读、学习有什么关联?
+
+请按以下格式返回 3 个备选方案:
+
+```json
+{
+  "analysis": {
+    "date": "YYYY-MM-DD",
+    "events": [
+      {"type": "holiday|memorial|historical|notable", "name": "...", "relevance_score": 0-100}
+    ],
+    "recommended_category": "holiday|memorial|historical|notable|special"
+  },
+  "alternatives": [
+    {
+      "id": "A",
+      "recommendation": "primary",  // primary | secondary | creative
+      "name": "主题名称",
+      "name_i18n": {"zh": "中文名称", "en": "English Name"},
+      "category": "memorial",
+      "priority": 75,
+      "slogan": "主题标语",
+      "slogan_i18n": {"zh": "...", "en": "..."},
+      "description": "详细描述 (50-100字)",
+      "theme_config": {
+        "logo_variant": {
+          "type": "decorated",
+          "decorations": {
+            "prefix": "emoji",
+            "suffix": "emoji"
+          }
+        },
+        "colors": {
+          "primary": "#hex",
+          "accent": "#hex",
+          "background": "#hex"
+        },
+        "animations": [
+          {
+            "type": "snowflakes|hearts|confetti|fireworks|stars|leaves",
+            "intensity": "light|medium"
+          }
+        ],
+        "badge": {
+          "text": "🎄 Badge Text"
+        }
+      },
+      "rationale": "为什么推荐这个方案 (50字)"
+    },
+    // ... 备选 B, C
+  ]
+}
+```
+
+生成方案时请遵循:
+1. 方案 A (推荐): 最匹配教育/儿童产品定位
+2. 方案 B (备选): 不同的视觉风格
+3. 方案 C (创意): 独特或有趣的视角
+
+颜色选择原则:
+- 适合儿童的明亮、友好色调
+- 避免过于刺眼或阴暗的颜色
+- 配色要和谐、舒适
+
+动画选择原则:
+- 轻量化，不影响性能
+- 有趣但不分散注意力
+- 与主题氛围匹配
+"""
+```
+
+### 4.3 AI 生成 API
+
+```python
+# api/admin/themes.py
+
+@router.post("/generate-suggestions")
+async def generate_theme_suggestions(
+    target_date: str = Query(..., description="目标日期 YYYY-MM-DD"),
+    admin_user = Depends(require_admin)
+):
+    """
+    使用 AI 生成主题建议
+
+    返回 3 个备选方案供 Admin 选择
+    """
+    from shared.ai.openai_service import OpenAIService
+
+    ai_service = OpenAIService()
+
+    # 构建 Prompt
+    prompt = THEME_GENERATION_PROMPT.format(date=target_date)
+
+    # 调用 AI
+    response = await ai_service.chat_completion(
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        temperature=0.7,
+        max_tokens=2000
+    )
+
+    # 解析结果
+    suggestions = json.loads(response.content)
+
+    # 存储到临时表或缓存
+    cache_key = f"theme_suggestions:{target_date}"
+    await cache_service.set(cache_key, suggestions, ttl=3600)
+
+    return {
+        "date": target_date,
+        "suggestions": suggestions,
+        "expires_in": 3600
+    }
+
+
+@router.post("/apply-suggestion")
+async def apply_theme_suggestion(
+    target_date: str,
+    alternative_id: str,  # "A", "B", or "C"
+    modifications: Optional[dict] = None,  # Admin 的修改
+    admin_user = Depends(require_admin)
+):
+    """
+    应用 AI 生成的主题建议
+
+    - alternative_id: 选中的备选方案
+    - modifications: Admin 的自定义修改
+    """
+    # 获取缓存的建议
+    cache_key = f"theme_suggestions:{target_date}"
+    suggestions = await cache_service.get(cache_key)
+
+    if not suggestions:
+        raise HTTPException(404, "Suggestions expired, please regenerate")
+
+    # 找到选中的方案
+    selected = None
+    for alt in suggestions["alternatives"]:
+        if alt["id"] == alternative_id:
+            selected = alt
+            break
+
+    if not selected:
+        raise HTTPException(400, f"Alternative {alternative_id} not found")
+
+    # 应用修改
+    if modifications:
+        selected = {**selected, **modifications}
+
+    # 创建主题
+    theme = await themes_service.create_theme(
+        name=selected["name"],
+        name_i18n=selected.get("name_i18n", {}),
+        category=selected["category"],
+        priority=selected["priority"],
+        date_rule={"type": "fixed", "start": target_date[5:], "end": target_date[5:]},
+        theme_config=selected["theme_config"],
+        slogan=selected.get("slogan"),
+        slogan_i18n=selected.get("slogan_i18n", {}),
+        description=selected.get("description"),
+        ai_generated=True,
+        ai_alternatives=suggestions["alternatives"],
+        selected_alternative_id=alternative_id,
+        created_by=admin_user.user_id
+    )
+
+    return {"theme": theme, "message": "Theme created successfully"}
+```
+
+### 4.4 Admin UI - AI 生成界面
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AI 主题生成                                          [X 关闭] │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  目标日期: 2026-03-14 (周六)                                     │
+│                                                                 │
+│  [正在分析日期意义...]                                           │
+│                                                                 │
+│  ══════════════════════════════════════════════════════════════ │
+│                                                                 │
+│  📅 日期分析:                                                    │
+│  • π Day (圆周率日) - 国际纪念日                                 │
+│  • 爱因斯坦诞辰 (1879) - 伟人纪念                                │
+│  • 与教育/科学高度相关 (评分: 95)                                │
+│                                                                 │
+│  ══════════════════════════════════════════════════════════════ │
+│                                                                 │
+│  备选方案:                                                       │
+│                                                                 │
+│  ┌─ 方案 A (推荐) ───────────────────────────────────────────┐ │
+│  │  π Pi Day + Einstein Birthday                             │ │
+│  │  "Imagination is more important than knowledge"           │ │
+│  │                                                           │ │
+│  │  预览: [π Make Decodables 🧠]                              │ │
+│  │  配色: 蓝色科技风格                                        │ │
+│  │  动画: 星星粒子                                            │ │
+│  │                                                           │ │
+│  │  [实时预览]                              [✓ 选择此方案]   │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌─ 方案 B (备选) ───────────────────────────────────────────┐ │
+│  │  Math Celebration Day                                      │ │
+│  │  "Make learning math fun!"                                 │ │
+│  │  ...                                                       │ │
+│  │  [实时预览]                              [ ] 选择此方案   │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌─ 方案 C (创意) ───────────────────────────────────────────┐ │
+│  │  Science Heroes Day                                        │ │
+│  │  "Celebrate the minds that changed the world"              │ │
+│  │  ...                                                       │ │
+│  │  [实时预览]                              [ ] 选择此方案   │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  [重新生成]                              [取消] [应用选中方案] │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 4.5 自动生成调度
+
+```python
+# 定时任务: 每天检查未来 7 天是否有空白日期
+
+async def auto_generate_theme_suggestions():
+    """
+    自动为未来 7 天无主题的日期生成建议
+
+    运行频率: 每天凌晨 2:00
+    """
+    today = date.today()
+
+    for i in range(1, 8):
+        check_date = today + timedelta(days=i)
+
+        # 检查是否已有主题
+        existing = await themes_service.get_theme_for_date(check_date)
+        if existing:
+            continue
+
+        # 检查是否已有待审核建议
+        cache_key = f"theme_suggestions:{check_date.isoformat()}"
+        existing_suggestions = await cache_service.get(cache_key)
+        if existing_suggestions:
+            continue
+
+        # 生成建议
+        try:
+            suggestions = await ai_service.generate_theme_suggestions(check_date)
+            await cache_service.set(cache_key, suggestions, ttl=86400 * 7)
+
+            # 通知 Admin
+            await notification_service.notify_admins(
+                title="新的主题建议待审核",
+                message=f"{check_date.isoformat()} 的主题建议已生成，请登录后台审核",
+                link=f"/admin/themes/suggestions?date={check_date.isoformat()}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate suggestions for {check_date}: {e}")
+```
+
+---
+
+## 5. 后端实现
+
+### 5.1 目录结构
+
+```
+domains/themes/
 ├── __init__.py
-├── types.py                    # 类型定义 (<150 行)
-├── date_matcher.py             # 日期匹配器 (<200 行)
-├── service.py                  # 主题服务 (<200 行)
-├── repository.py               # 仓储接口 (<80 行)
-└── lunar_calendar.py           # 农历转换 (<150 行)
+├── entity.py                   # ThemeEntity 定义
+├── repository.py               # Repository 接口
+├── themes_service.py           # 业务逻辑 (已存在，需升级)
+└── date_matcher.py             # 日期匹配器 (v2.0 新增)
+
+shared/ai/
+└── theme_generator.py          # AI 主题生成服务
 
 infrastructure/repositories/
-└── supabase_theme_repo.py      # 仓储实现 (<200 行)
+└── themes_repository.py        # Supabase 实现
 
-api/routers/
-└── themes.py                   # API 路由 (<150 行)
+api/user/
+└── themes.py                   # 用户 API (已存在)
+
+api/admin/
+└── themes.py                   # Admin API (v2.0 新增)
 ```
 
-### 3.2 日期匹配器
+### 5.2 Theme Service 升级
 
 ```python
-# core/theme/date_matcher.py
+# domains/themes/themes_service.py (v2.0)
 
-from datetime import date, datetime
-from typing import Optional, List
-from dataclasses import dataclass
-from enum import Enum
+class ThemesService:
+    """Theme 服务 - v2.0"""
 
-from .lunar_calendar import lunar_to_solar
-
-
-class DateRuleType(Enum):
-    FIXED = "fixed"
-    LUNAR = "lunar"
-    RELATIVE = "relative"
-    RANGE = "range"
-
-
-@dataclass
-class DateRule:
-    type: DateRuleType
-    month: Optional[int] = None
-    day: Optional[int] = None
-    lunar_month: Optional[int] = None
-    lunar_day: Optional[int] = None
-    week_of_month: Optional[int] = None
-    day_of_week: Optional[int] = None
-    start_month: Optional[int] = None
-    start_day: Optional[int] = None
-    end_month: Optional[int] = None
-    end_day: Optional[int] = None
-    years: Optional[List[int]] = None
-    exclude_years: Optional[List[int]] = None
-
-
-class DateMatcher:
-    """日期匹配器 - 判断某个日期是否匹配规则"""
-    
-    def matches(self, rule: DateRule, target_date: date) -> bool:
-        """检查目标日期是否匹配规则"""
-        
-        # 检查年份限制
-        if rule.years and target_date.year not in rule.years:
-            return False
-        if rule.exclude_years and target_date.year in rule.exclude_years:
-            return False
-        
-        if rule.type == DateRuleType.FIXED:
-            return self._match_fixed(rule, target_date)
-        elif rule.type == DateRuleType.LUNAR:
-            return self._match_lunar(rule, target_date)
-        elif rule.type == DateRuleType.RELATIVE:
-            return self._match_relative(rule, target_date)
-        elif rule.type == DateRuleType.RANGE:
-            return self._match_range(rule, target_date)
-        
-        return False
-    
-    def _match_fixed(self, rule: DateRule, target_date: date) -> bool:
-        """固定日期匹配"""
-        return target_date.month == rule.month and target_date.day == rule.day
-    
-    def _match_lunar(self, rule: DateRule, target_date: date) -> bool:
-        """农历日期匹配"""
-        # 将农历转换为公历
-        solar_date = lunar_to_solar(
-            target_date.year,
-            rule.lunar_month,
-            rule.lunar_day
-        )
-        return target_date == solar_date
-    
-    def _match_relative(self, rule: DateRule, target_date: date) -> bool:
-        """相对日期匹配 (如: 第三个周一)"""
-        if target_date.month != rule.month:
-            return False
-        
-        if target_date.weekday() != rule.day_of_week:
-            return False
-        
-        # 计算是第几周
-        day = target_date.day
-        week = (day - 1) // 7 + 1
-        
-        if rule.week_of_month == -1:
-            # 最后一周
-            next_week_day = day + 7
-            if next_week_day > self._days_in_month(target_date.year, target_date.month):
-                return True
-        else:
-            return week == rule.week_of_month
-        
-        return False
-    
-    def _match_range(self, rule: DateRule, target_date: date) -> bool:
-        """日期范围匹配"""
-        start = date(target_date.year, rule.start_month, rule.start_day)
-        end = date(target_date.year, rule.end_month, rule.end_day)
-        
-        # 处理跨年情况 (如 12月-1月)
-        if end < start:
-            return target_date >= start or target_date <= end
-        
-        return start <= target_date <= end
-    
-    def _days_in_month(self, year: int, month: int) -> int:
-        """获取某月的天数"""
-        if month in [1, 3, 5, 7, 8, 10, 12]:
-            return 31
-        elif month in [4, 6, 9, 11]:
-            return 30
-        elif month == 2:
-            if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
-                return 29
-            return 28
-```
-
-### 3.3 主题服务
-
-```python
-# core/theme/service.py
-
-from datetime import date, datetime
-from typing import Optional, List
-from dataclasses import dataclass
-
-from .types import Theme, ThemeColors, ThemeBackground
-from .date_matcher import DateMatcher, DateRule
-from .repository import IThemeRepository
-from core.cache import cache_service
-
-
-@dataclass
-class ResolvedTheme:
-    """解析后的主题 (用于前端)"""
-    key: str
-    name: str
-    slogan: str
-    description: Optional[str]
-    colors: ThemeColors
-    logo_variant: Optional[dict]
-    background: Optional[ThemeBackground]
-    animations: List[dict]
-    is_default: bool = False
-
-
-class ThemeService:
-    """主题服务"""
-    
-    CACHE_TTL = 3600  # 1 小时缓存
-    DEFAULT_THEME_KEY = "default"
-    
-    def __init__(self, repository: IThemeRepository):
-        self._repository = repository
-        self._matcher = DateMatcher()
-    
-    async def get_theme_for_date(
+    async def get_current_theme(
         self,
-        target_date: date,
-        user_timezone: str = "UTC",
+        check_date: date,
         user_region: str = "global",
         locale: str = "en"
-    ) -> ResolvedTheme:
-        """
-        获取指定日期的主题
-        
-        Args:
-            target_date: 目标日期 (用户本地日期)
-            user_timezone: 用户时区
-            user_region: 用户地区 (用于地区特定节日)
-            locale: 语言偏好
-        
-        Returns:
-            ResolvedTheme: 解析后的主题
-        """
-        cache_key = f"theme:{target_date}:{user_region}:{locale}"
-        
-        # 尝试从缓存获取
-        cached = await cache_service.get(cache_key)
-        if cached:
-            return ResolvedTheme(**cached)
-        
-        # 获取所有启用的主题
-        themes = await self._repository.get_enabled_themes()
-        
-        # 筛选匹配的主题
+    ) -> Optional[Dict[str, Any]]:
+        """获取当前活跃主题"""
+        themes = await self.repository.list_active_themes()
+
+        if not themes:
+            return None
+
         matching_themes = []
+
         for theme in themes:
-            # 检查地区
-            if not self._region_matches(theme.regions, user_region):
+            if not self._is_theme_active(theme["date_rule"], check_date):
                 continue
-            
-            # 检查日期
-            rule = DateRule(**theme.date_rule)
-            if self._matcher.matches(rule, target_date):
-                matching_themes.append(theme)
-        
-        # 按优先级排序
-        matching_themes.sort(key=lambda t: t.priority, reverse=True)
-        
-        # 选择最高优先级的主题
-        if matching_themes:
-            theme = matching_themes[0]
-            resolved = self._resolve_theme(theme, locale)
-        else:
-            # 使用默认主题
-            default_theme = await self._repository.get_by_key(self.DEFAULT_THEME_KEY)
-            resolved = self._resolve_theme(default_theme, locale)
-            resolved.is_default = True
-        
-        # 缓存
-        await cache_service.set(cache_key, resolved.__dict__, self.CACHE_TTL)
-        
-        return resolved
-    
-    def _region_matches(self, theme_regions: List[str], user_region: str) -> bool:
-        """检查地区是否匹配"""
-        if "global" in theme_regions:
-            return True
-        return user_region in theme_regions
-    
-    def _resolve_theme(self, theme: Theme, locale: str) -> ResolvedTheme:
-        """解析主题 (处理多语言)"""
-        return ResolvedTheme(
-            key=theme.key,
-            name=theme.name_i18n.get(locale, theme.name),
-            slogan=theme.slogan_i18n.get(locale, theme.slogan or ""),
-            description=theme.description_i18n.get(locale, theme.description),
-            colors=ThemeColors(**theme.colors),
-            logo_variant=theme.logo_variant,
-            background=ThemeBackground(**theme.background) if theme.background else None,
-            animations=theme.animations or [],
+
+            regions = theme.get("regions", ["global"])
+            is_region_specific = user_region in regions
+            is_global = "global" in regions
+
+            if is_region_specific or is_global:
+                matching_themes.append({
+                    **theme,
+                    "_is_region_specific": is_region_specific
+                })
+
+        if not matching_themes:
+            return None
+
+        # 排序: 地区特定 > 全球 > 优先级高
+        matching_themes.sort(
+            key=lambda t: (t["_is_region_specific"], t.get("priority", 0)),
+            reverse=True
         )
-    
-    async def get_upcoming_themes(
-        self,
-        start_date: date,
-        days: int = 30,
-        user_region: str = "global"
-    ) -> List[dict]:
-        """获取未来几天的主题预览"""
-        themes = await self._repository.get_enabled_themes()
-        upcoming = []
-        
-        for i in range(days):
-            check_date = date(
-                start_date.year,
-                start_date.month,
-                start_date.day
-            )
-            check_date = check_date.replace(day=start_date.day + i)
-            
-            for theme in themes:
-                if not self._region_matches(theme.regions, user_region):
-                    continue
-                
-                rule = DateRule(**theme.date_rule)
-                if self._matcher.matches(rule, check_date):
-                    upcoming.append({
-                        "date": check_date.isoformat(),
-                        "theme_key": theme.key,
-                        "theme_name": theme.name,
-                    })
-        
-        return upcoming
-```
 
-### 3.4 API 路由
-
-```python
-# api/routers/themes.py
-
-from fastapi import APIRouter, Query
-from datetime import date, datetime
-from typing import Optional
-
-from core.theme.service import ThemeService
-from dependencies import get_theme_service
-
-router = APIRouter(prefix="/api/themes", tags=["Themes"])
-
-
-@router.get("/current")
-async def get_current_theme(
-    timezone: str = Query("UTC", description="用户时区"),
-    region: str = Query("global", description="用户地区"),
-    locale: str = Query("en", description="语言"),
-    theme_service: ThemeService = Depends(get_theme_service)
-):
-    """
-    获取当前主题
-    
-    根据用户的本地时间、地区返回适合的主题
-    """
-    # 计算用户本地日期
-    from datetime import timezone as tz
-    import pytz
-    
-    user_tz = pytz.timezone(timezone)
-    user_now = datetime.now(user_tz)
-    user_date = user_now.date()
-    
-    theme = await theme_service.get_theme_for_date(
-        target_date=user_date,
-        user_timezone=timezone,
-        user_region=region,
-        locale=locale
-    )
-    
-    return {
-        "theme": theme.__dict__,
-        "user_date": user_date.isoformat(),
-        "user_timezone": timezone,
-    }
-
-
-@router.get("/upcoming")
-async def get_upcoming_themes(
-    days: int = Query(30, ge=1, le=365),
-    region: str = Query("global"),
-    theme_service: ThemeService = Depends(get_theme_service)
-):
-    """获取未来的主题预览"""
-    today = date.today()
-    upcoming = await theme_service.get_upcoming_themes(today, days, region)
-    return {"upcoming": upcoming}
-
-
-@router.get("/{theme_key}")
-async def get_theme_detail(
-    theme_key: str,
-    locale: str = Query("en"),
-    theme_service: ThemeService = Depends(get_theme_service)
-):
-    """获取主题详情"""
-    theme = await theme_service.get_theme_by_key(theme_key, locale)
-    return {"theme": theme}
+        return self._resolve_i18n(matching_themes[0], locale)
 ```
 
 ---
 
-## 4. 前端实现
+## 6. 前端实现
 
-### 4.1 目录结构
+### 6.1 目录结构
 
 ```
 @core/theme/
 ├── index.ts                    # 导出
-├── types.ts                    # 类型定义 (<150 行)
-├── context.tsx                 # ThemeProvider (<250 行)
-├── hooks.ts                    # Hooks (<100 行)
+├── types.ts                    # 类型定义
+├── ThemeProvider.tsx           # 主题上下文 Provider
+├── useTheme.ts                 # 主 Hook
 ├── components/
-│   ├── ThemeLogo.tsx          # 主题 Logo (<150 行)
-│   ├── ThemeSlogan.tsx        # 主题标语 (<80 行)
-│   ├── ThemeBackground.tsx    # 背景效果 (<100 行)
-│   ├── ThemeAnimations.tsx    # 动画效果 (<200 行)
-│   └── ThemeDetailModal.tsx   # 详情弹窗 (<150 行)
+│   ├── ThemeLogo.tsx           # 主题 Logo
+│   ├── ThemeBadge.tsx          # 主题徽章
+│   ├── ThemeBackground.tsx     # 背景效果
+│   ├── ThemeAnimationLayer.tsx # 动画层
+│   ├── ThemeDetailModal.tsx    # 详情弹窗
+│   └── ThemeFooter.tsx         # 主题页脚
 ├── animations/
-│   ├── Snowfall.tsx           # 雪花动画 (<100 行)
-│   ├── Confetti.tsx           # 彩带动画 (<100 行)
-│   └── Particles.tsx          # 粒子动画 (<100 行)
-└── utils.ts                    # 工具函数 (<80 行)
+│   ├── Snowflakes.tsx          # 雪花动画
+│   ├── Hearts.tsx              # 心形动画
+│   ├── Confetti.tsx            # 彩带动画
+│   ├── Fireworks.tsx           # 烟花动画
+│   └── Stars.tsx               # 星星动画
+└── utils/
+    ├── colorUtils.ts           # 颜色工具
+    ├── cssVariables.ts         # CSS 变量注入
+    └── dateUtils.ts            # 日期工具
 ```
 
-### 4.2 ThemeProvider
+### 6.2 CSS 变量注入
 
 ```typescript
-// @core/theme/context.tsx
+// @core/theme/utils/cssVariables.ts
 
-"use client";
+export function injectCSSVariables(colors: ThemeColors): void {
+  const root = document.documentElement;
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-} from 'react';
+  root.style.setProperty('--theme-primary', colors.primary);
+  root.style.setProperty('--theme-primary-hover', colors.primary_hover);
+  root.style.setProperty('--theme-primary-light', colors.primary_light);
+  root.style.setProperty('--theme-accent', colors.accent);
+  root.style.setProperty('--theme-accent-hover', colors.accent_hover);
+  root.style.setProperty('--theme-background', colors.background);
+  root.style.setProperty('--theme-background-secondary', colors.background_secondary);
+  root.style.setProperty('--theme-text', colors.text);
+  root.style.setProperty('--theme-text-secondary', colors.text_secondary);
+  root.style.setProperty('--theme-text-inverse', colors.text_inverse);
 
-import { ResolvedTheme, ThemeColors } from './types';
-import { applyThemeToDOM, getUserTimezone, getUserRegion } from './utils';
-
-interface ThemeContextType {
-  theme: ResolvedTheme | null;
-  isLoading: boolean;
-  isDefault: boolean;
-  showDetailModal: () => void;
-  refresh: () => Promise<void>;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
-
-const DEFAULT_THEME: ResolvedTheme = {
-  key: 'default',
-  name: 'Make Decodables',
-  slogan: 'Create magical mini-books in 30 seconds',
-  description: null,
-  colors: {
-    primary: '#4F46E5',
-    primaryHover: '#4338CA',
-    primaryLight: '#EEF2FF',
-    background: '#FFFFFF',
-    backgroundSecondary: '#F8FAFC',
-    text: '#1E293B',
-    textSecondary: '#64748B',
-    accent: '#4F46E5',
-  },
-  logo_variant: null,
-  background: null,
-  animations: [],
-  is_default: true,
-};
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<ResolvedTheme | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  
-  const fetchTheme = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const timezone = getUserTimezone();
-      const region = getUserRegion();
-      const locale = navigator.language.split('-')[0] || 'en';
-      
-      const response = await fetch(
-        `/api/themes/current?timezone=${encodeURIComponent(timezone)}&region=${region}&locale=${locale}`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTheme(data.theme);
-        applyThemeToDOM(data.theme.colors);
-      } else {
-        setTheme(DEFAULT_THEME);
-        applyThemeToDOM(DEFAULT_THEME.colors);
-      }
-    } catch (error) {
-      console.error('Failed to fetch theme:', error);
-      setTheme(DEFAULT_THEME);
-      applyThemeToDOM(DEFAULT_THEME.colors);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-  
-  useEffect(() => {
-    fetchTheme();
-    
-    // 每小时检查一次 (处理跨天)
-    const interval = setInterval(fetchTheme, 3600000);
-    return () => clearInterval(interval);
-  }, [fetchTheme]);
-  
-  const value = useMemo<ThemeContextType>(() => ({
-    theme,
-    isLoading,
-    isDefault: theme?.is_default ?? true,
-    showDetailModal: () => setShowModal(true),
-    refresh: fetchTheme,
-  }), [theme, isLoading, fetchTheme]);
-  
-  return (
-    <ThemeContext.Provider value={value}>
-      {children}
-      {showModal && theme && !theme.is_default && (
-        <ThemeDetailModal
-          theme={theme}
-          onClose={() => setShowModal(false)}
-        />
-      )}
-    </ThemeContext.Provider>
-  );
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider');
+  // 组件覆盖
+  if (colors.overrides?.navbar) {
+    root.style.setProperty('--theme-navbar-bg', colors.overrides.navbar.background);
+    root.style.setProperty('--theme-navbar-text', colors.overrides.navbar.text);
   }
-  return context;
-}
-```
 
-### 4.3 主题 Logo 组件
-
-```typescript
-// @core/theme/components/ThemeLogo.tsx
-
-"use client";
-
-import React from 'react';
-import { useTheme } from '../context';
-import { cn } from '@core/utils';
-
-interface ThemeLogoProps {
-  className?: string;
-  onClick?: () => void;
-}
-
-export function ThemeLogo({ className, onClick }: ThemeLogoProps) {
-  const { theme, isDefault, showDetailModal } = useTheme();
-  
-  if (!theme) return null;
-  
-  const logoVariant = theme.logo_variant;
-  const hasVariant = logoVariant && !isDefault;
-  
-  const handleClick = () => {
-    if (hasVariant) {
-      showDetailModal();
-    }
-    onClick?.();
-  };
-  
-  // 动画类
-  const animationClass = hasVariant && logoVariant.animation
-    ? getAnimationClass(logoVariant.animation.type)
-    : '';
-  
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1 cursor-pointer transition-transform hover:scale-105",
-        hasVariant && "cursor-pointer",
-        animationClass,
-        className
-      )}
-      onClick={handleClick}
-      title={hasVariant ? "Click to learn more about today" : undefined}
-    >
-      {/* 前缀装饰 */}
-      {hasVariant && logoVariant.decorations?.prefix && (
-        <span className="text-2xl">{logoVariant.decorations.prefix}</span>
-      )}
-      
-      {/* Logo */}
-      {hasVariant && logoVariant.customLogo ? (
-        <img
-          src={logoVariant.customLogo.url}
-          alt="Make Decodables"
-          width={logoVariant.customLogo.width || 150}
-          height={logoVariant.customLogo.height || 40}
-        />
-      ) : (
-        <span className="font-bold text-xl text-primary">
-          Make Decodables
-        </span>
-      )}
-      
-      {/* 后缀装饰 */}
-      {hasVariant && logoVariant.decorations?.suffix && (
-        <span className="text-2xl">{logoVariant.decorations.suffix}</span>
-      )}
-    </div>
-  );
-}
-
-function getAnimationClass(type: string): string {
-  const animations: Record<string, string> = {
-    bounce: 'animate-bounce',
-    shake: 'animate-pulse',
-    glow: 'animate-glow',
-  };
-  return animations[type] || '';
-}
-```
-
-### 4.4 雪花动画组件
-
-```typescript
-// @core/theme/animations/Snowfall.tsx
-
-"use client";
-
-import React, { useEffect, useRef } from 'react';
-
-interface SnowfallProps {
-  intensity?: number;  // 0-100
-  particleCount?: number;
-  colors?: string[];
-}
-
-export function Snowfall({
-  intensity = 50,
-  particleCount = 50,
-  colors = ['#FFFFFF', '#E8E8E8'],
-}: SnowfallProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // 设置画布大小
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    
-    // 创建雪花
-    const actualCount = Math.floor(particleCount * (intensity / 100));
-    const snowflakes = Array.from({ length: actualCount }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      radius: Math.random() * 3 + 2,
-      speed: Math.random() * 2 + 1,
-      wind: Math.random() * 0.5 - 0.25,
-      color: colors[Math.floor(Math.random() * colors.length)],
-    }));
-    
-    // 动画循环
-    let animationId: number;
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      snowflakes.forEach(flake => {
-        // 绘制雪花
-        ctx.beginPath();
-        ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-        ctx.fillStyle = flake.color;
-        ctx.fill();
-        
-        // 更新位置
-        flake.y += flake.speed;
-        flake.x += flake.wind;
-        
-        // 重置到顶部
-        if (flake.y > canvas.height) {
-          flake.y = -flake.radius;
-          flake.x = Math.random() * canvas.width;
-        }
-        
-        // 水平循环
-        if (flake.x > canvas.width) flake.x = 0;
-        if (flake.x < 0) flake.x = canvas.width;
-      });
-      
-      animationId = requestAnimationFrame(animate);
-    };
-    
-    animate();
-    
-    return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener('resize', resizeCanvas);
-    };
-  }, [intensity, particleCount, colors]);
-  
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-50"
-      style={{ opacity: 0.8 }}
-    />
-  );
+  if (colors.overrides?.footer) {
+    root.style.setProperty('--theme-footer-bg', colors.overrides.footer.background);
+    root.style.setProperty('--theme-footer-text', colors.overrides.footer.text);
+  }
 }
 ```
 
 ---
 
-## 5. 主题内容规划
+## 7. Campaign 联动
 
-### 5.1 年度主题日历
+### 7.1 联动原则
 
-| 日期 | 类型 | 主题名称 | 优先级 |
-|------|------|----------|--------|
-| **1月** | | | |
-| 1月1日 | 节日 | 新年 New Year | 90 |
-| 1月第3周一 | 纪念日 | 马丁·路德·金日 | 70 |
-| 农历正月初一 | 节日 | 春节 Chinese New Year | 95 |
-| **2月** | | | |
-| 2月14日 | 节日 | 情人节 Valentine's Day | 60 |
-| **3月** | | | |
-| 3月8日 | 纪念日 | 国际妇女节 | 75 |
-| 3月12日 | 历史 | 万维网诞生 (1989) | 50 |
-| 3月14日 | 伟人 | 爱因斯坦诞辰 / Pi Day | 70 |
-| **4月** | | | |
-| 4月22日 | 纪念日 | 地球日 Earth Day | 80 |
-| 4月23日 | 纪念日 | 世界读书日 | 85 |
-| **5月** | | | |
-| 5月第2周日 | 节日 | 母亲节 | 75 |
-| **6月** | | | |
-| 6月第3周日 | 节日 | 父亲节 | 75 |
-| **7月** | | | |
-| 7月20日 | 历史 | 阿波罗11号登月 (1969) | 60 |
-| **8月** | | | |
-| - | - | - | - |
-| **9月** | | | |
-| 9月8日 | 纪念日 | 国际扫盲日 | 80 |
-| **10月** | | | |
-| 10月5日 | 纪念日 | 世界教师日 | 85 |
-| 10月31日 | 节日 | 万圣节 Halloween | 70 |
-| **11月** | | | |
-| 11月7日 | 伟人 | 居里夫人诞辰 | 60 |
-| 11月第4周四 | 节日 | 感恩节 (US) | 70 |
-| **12月** | | | |
-| 12月20-26日 | 节日 | 圣诞季 Christmas | 90 |
+```
+Theme 与 Campaign 的关系: 联动但独立
 
-### 5.2 伟人纪念日列表
+• Theme 控制视觉展示
+• Campaign 控制业务逻辑 (积分、折扣)
+• 同一节日可以有 Theme 无 Campaign
+• Theme 和 Campaign 可以相互关联
+```
 
-| 日期 | 人物 | Slogan 示例 |
-|------|------|-------------|
-| 1月15日 | 马丁·路德·金 | "I have a dream..." |
-| 3月14日 | 爱因斯坦 | "Imagination is more important than knowledge" |
-| 4月15日 | 达·芬奇 | "Learning never exhausts the mind" |
-| 7月18日 | 曼德拉 | "Education is the most powerful weapon" |
-| 11月7日 | 居里夫人 | "Nothing in life is to be feared, only understood" |
-| 12月5日 | 沃尔特·迪士尼 | "All our dreams can come true..." |
+### 7.2 联动字段
 
-### 5.3 世界纪念日列表
+```sql
+-- Theme 关联 Campaign
+ALTER TABLE daily_themes ADD COLUMN linked_campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL;
 
-| 日期 | 纪念日 | Slogan 示例 |
-|------|--------|-------------|
-| 2月21日 | 国际母语日 | "Every language tells a story" |
-| 3月8日 | 国际妇女节 | "Empowering women, empowering the world" |
-| 4月22日 | 世界地球日 | "There is no Planet B" |
-| 4月23日 | 世界读书日 | "A book is a dream you hold in your hand" |
-| 5月15日 | 国际家庭日 | "Family: Where life begins and love never ends" |
-| 9月8日 | 国际扫盲日 | "Literacy lights up life" |
-| 10月5日 | 世界教师日 | "Teachers: Lighting the way to the future" |
-| 11月20日 | 世界儿童日 | "Every child deserves a childhood" |
+-- Campaign 关联 Theme
+ALTER TABLE campaigns ADD COLUMN linked_theme_id UUID REFERENCES daily_themes(id) ON DELETE SET NULL;
+```
 
 ---
 
-## 6. 实施计划
+## 8. Admin 管理界面
 
-### 6.1 阶段划分
+### 8.1 功能概览
 
 ```
-Phase 1: 基础设施 (3 天)
-├─ 数据库表创建
-├─ 后端服务实现
-├─ API 路由
-└─ 前端 ThemeProvider
+Admin > Themes 管理
 
-Phase 2: 核心功能 (3 天)
-├─ 日期匹配器 (含农历)
-├─ Logo 组件
-├─ 背景效果
-└─ Slogan 显示
-
-Phase 3: 动画效果 (2 天)
-├─ 雪花动画
-├─ 彩带动画
-├─ 粒子效果
-└─ 详情弹窗
-
-Phase 4: 内容填充 (2 天)
-├─ 默认主题
-├─ 主要节日主题 (5-10个)
-├─ 测试验证
-└─ 文档
-
-总计: ~10 天
+┌─────────────────────────────────────────────────────────────────┐
+│  Themes 主题管理                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [Tab: 列表视图] [Tab: 日历视图] [Tab: AI 建议] [Tab: 设置]     │
+│                                                                 │
+│  ┌─ 工具栏 ──────────────────────────────────────────────────┐ │
+│  │ [+ 创建主题] [🤖 AI 生成] [导入] [导出]                   │ │
+│  │ 筛选: [分类 ▾] [状态 ▾] [地区 ▾]  搜索: [________]       │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌─ 主题列表 ────────────────────────────────────────────────┐ │
+│  │ ☐ | 名称           | 分类     | 日期规则    | 优先级 | AI │ │
+│  │───────────────────────────────────────────────────────────│ │
+│  │ ☐ | 🎄 Christmas   | holiday  | 12-20~12-26 | 95    |    │ │
+│  │ ☐ | 📚 World Book  | memorial | 04-23       | 85    |    │ │
+│  │ ☐ | π Pi Day       | notable  | 03-14       | 55    | 🤖 │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 检查清单
+### 8.2 AI 建议 Tab
 
-| 任务 | 验收标准 |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AI 待审核建议                                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  未来 7 天待填充日期:                                            │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │ 📅 2026-03-14 (周六)                           [查看建议] │ │
+│  │    AI 已生成 3 个备选方案                                 │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │ 📅 2026-03-15 (周日)                           [生成建议] │ │
+│  │    暂无建议，点击生成                                     │ │
+│  └───────────────────────────────────────────────────────────┘ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. 主题内容规划
+
+### 9.1 年度主题日历
+
+| 日期 | 类型 | 主题名称 | 优先级 | 视觉效果 |
+|------|------|----------|--------|----------|
+| **1月** | | | | |
+| 1月1日 | 节日 | 🎊 New Year | 95 | 彩带 + 烟花 |
+| 1月第3周一 | 纪念日 | 🦅 MLK Day | 70 | US only |
+| 农历正月 | 节日 | 🐲 春节 | 98 | 红色 + 烟花 |
+| **2月** | | | | |
+| 2月14日 | 节日 | ❤️ Valentine's Day | 60 | 心形动画 |
+| **3月** | | | | |
+| 3月8日 | 纪念日 | 👩 妇女节 | 75 | 紫色主题 |
+| 3月14日 | 伟人 | π Pi Day | 55 | 蓝色科技 |
+| **4月** | | | | |
+| 4月22日 | 纪念日 | 🌍 地球日 | 80 | 绿色 + 树叶 |
+| 4月23日 | 纪念日 | 📚 世界读书日 | 85 | 暖色 + 书本 |
+| **5月** | | | | |
+| 5月第2周日 | 节日 | 💐 母亲节 | 75 | 粉色 + 花朵 |
+| **6月** | | | | |
+| 6月第3周日 | 节日 | 👔 父亲节 | 75 | 蓝色稳重 |
+| **7月** | | | | |
+| 7月20日 | 历史 | 🌙 登月日 | 60 | 星空背景 |
+| **9月** | | | | |
+| 9月8日 | 纪念日 | ✏️ 扫盲日 | 80 | 教育主题 |
+| **10月** | | | | |
+| 10月5日 | 纪念日 | 👩‍🏫 教师日 | 85 | 温暖配色 |
+| 10月31日 | 节日 | 🎃 万圣节 | 70 | 橙黑 + 蝙蝠 |
+| **11月** | | | | |
+| 11月第4周四 | 节日 | 🦃 感恩节 | 70 | US only |
+| **12月** | | | | |
+| 12月20-26日 | 节日 | 🎄 圣诞季 | 95 | 雪花 + 红绿 |
+
+---
+
+## 10. 实施计划
+
+### 10.1 阶段划分
+
+```
+Phase 1: 数据库 + 后端 API (P0)
+├─ 更新 daily_themes 表结构
+├─ 实现 DateMatcher 日期匹配器
+├─ 升级 ThemesService
+├─ 添加 Admin API
+└─ 单元测试
+
+Phase 2: AI 辅助生成 (P0)
+├─ AI 主题生成服务
+├─ 生成 API 端点
+├─ 自动调度任务
+└─ 缓存机制
+
+Phase 3: 前端核心组件 (P1)
+├─ ThemeProvider 升级
+├─ CSS 变量系统
+├─ ThemeLogo 组件
+├─ ThemeBadge 组件
+└─ ThemeDetailModal 组件
+
+Phase 4: 动画效果 (P1)
+├─ ThemeAnimationLayer
+├─ Snowflakes 动画
+├─ Hearts 动画
+├─ Confetti 动画
+└─ 性能优化
+
+Phase 5: Admin 管理界面 (P2)
+├─ 主题列表页
+├─ AI 建议审核页
+├─ 创建/编辑表单
+├─ 日历视图
+└─ 预览功能
+
+Phase 6: 内容填充 (P2)
+├─ 创建年度主题日历
+├─ 配置视觉效果
+├─ 多语言支持
+└─ 测试验证
+```
+
+### 10.2 关键验收标准
+
+| 功能 | 验收标准 |
 |------|----------|
-| 日期匹配 | 固定/农历/相对日期正确 |
-| 时区处理 | 用户本地时间正确 |
-| Logo 变化 | 装饰/替换/动画正常 |
-| 背景效果 | 颜色/渐变/图片正常 |
-| 动画效果 | 雪花/彩带流畅 |
-| 多语言 | 中英文切换正常 |
-| 详情弹窗 | 点击显示正常 |
-| 缓存 | 1小时缓存有效 |
+| AI 生成 | 能生成 3 个合理的备选方案 |
+| 日期匹配 | 固定/动态/农历/范围日期正确 |
+| 优先级 | 同日多主题按优先级正确选择 |
+| CSS 变量 | 全站颜色正确应用 |
+| 动画效果 | 流畅不卡顿 |
+| 移动端 | 降级方案正常工作 |
+| Admin | AI 建议审核流程顺畅 |
 
 ---
 
-**主题系统设计完成！接下来我会继续设计 Onboarding 和 Editor Media Library。**
+## 修订历史
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.0 | 2026-01-06 | 初始版本 |
+| v2.0 | 2026-01-12 | 增加全站视觉变化、AI 辅助生成、Campaign 联动、Admin 管理 |
+
+---
+
+**END OF DOCUMENT**
