@@ -2,7 +2,11 @@
 SystemResource Repository Implementation - Supabase.
 
 @module infrastructure.repositories.system_resource_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 """
 
 from typing import Optional, List
@@ -33,7 +37,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
 
     async def get_by_id(self, resource_id: str) -> Optional[SystemResource]:
         """Get resource by ID."""
-        result = self.client.table("system_resources").select("*").eq(
+        result = await self.client.table("system_resources").select("*").eq(
             "id", resource_id
         ).single().execute()
 
@@ -66,7 +70,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
         query = query.order("created_at", desc=True)
         query = query.range(offset, offset + limit - 1)
 
-        result = query.execute()
+        result = await query.execute()
 
         return [self._map_to_domain(row) for row in (result.data or [])]
 
@@ -83,7 +87,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
             "created_at": resource.created_at.isoformat() if resource.created_at else None,
         }
 
-        result = self.client.table("system_resources").insert(data).execute()
+        result = await self.client.table("system_resources").insert(data).execute()
 
         if result.data:
             return self._map_to_domain(result.data[0])
@@ -100,7 +104,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        result = self.client.table("system_resources").update(data).eq(
+        result = await self.client.table("system_resources").update(data).eq(
             "id", resource.resource_id
         ).execute()
 
@@ -111,7 +115,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
 
     async def delete(self, resource_id: str) -> bool:
         """Delete a resource."""
-        result = self.client.table("system_resources").delete().eq(
+        result = await self.client.table("system_resources").delete().eq(
             "id", resource_id
         ).execute()
 
@@ -119,7 +123,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
 
     async def count_by_type(self) -> dict:
         """Count resources by type."""
-        result = self.client.table("system_resources").select("resource_type").execute()
+        result = await self.client.table("system_resources").select("resource_type").execute()
 
         counts = {}
         for row in (result.data or []):
@@ -130,7 +134,7 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
 
     async def count_by_tier(self) -> dict:
         """Count resources by tier requirement."""
-        result = self.client.table("system_resources").select("allowed_tiers").execute()
+        result = await self.client.table("system_resources").select("allowed_tiers").execute()
 
         counts = {"t1": 0, "t2": 0, "t3": 0}
 

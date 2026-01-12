@@ -2,11 +2,15 @@
 Tasks Repository - Data access layer for tasks management.
 
 @module infrastructure.repositories.tasks_repository
-@version 2.0.0
+@version 2.1.0 (AsyncClient migration)
+
+Changes in v2.1.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 Changes in v2.0.0:
 - Added SupabaseUserTasksRepository for user background tasks
-- Existing SupabaseTasksRepository for admin scheduled tasks (unchanged)
+- Existing SupabaseTasksRepository for admin scheduled tasks
 
 This module provides database access methods for:
 1. Admin scheduled tasks (cron jobs, monitoring)
@@ -77,7 +81,7 @@ class SupabaseTasksRepository(TasksRepository):
             }
         """
         # TASK-MEDIUM-2: Added .limit(50) to prevent excessive data
-        result = self.client.table("scheduled_task_logs")\
+        result = await self.client.table("scheduled_task_logs")\
             .select("*")\
             .order("started_at", desc=True)\
             .limit(50)\
@@ -129,7 +133,7 @@ class SupabaseTasksRepository(TasksRepository):
         if status:
             query = query.eq("status", status)
 
-        result = query.order("started_at", desc=True).limit(limit).execute()
+        result = await query.order("started_at", desc=True).limit(limit).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -150,7 +154,7 @@ class SupabaseTasksRepository(TasksRepository):
         last_hour = (now - timedelta(hours=1)).isoformat()
 
         # TASK-MEDIUM-2: Added .limit(1000) to prevent OOM
-        result = self.client.table("scheduled_task_logs")\
+        result = await self.client.table("scheduled_task_logs")\
             .select("task_name, status")\
             .gte("started_at", last_hour)\
             .limit(1000)\
@@ -208,7 +212,7 @@ class SupabaseUserTasksRepository:
             Task details dict or None if not found/unsuccessful
         """
         try:
-            result = self.supabase.rpc("get_task_details", {
+            result = await self.supabase.rpc("get_task_details", {
                 "p_task_id": task_id,
                 "p_user_id": user_id,
             }).execute()
@@ -239,7 +243,7 @@ class SupabaseUserTasksRepository:
             Task params dict or None if not found
         """
         try:
-            result = self.supabase.table("generation_tasks").select("params").eq(
+            result = await self.supabase.table("generation_tasks").select("params").eq(
                 "task_id", task_id,
             ).eq("user_id", user_id).single().execute()
 

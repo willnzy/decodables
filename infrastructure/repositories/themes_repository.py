@@ -1,7 +1,11 @@
 """Supabase implementation of ThemesRepository.
 
 @module infrastructure.repositories.themes_repository
-@version 2.1.0
+@version 2.2.0 (AsyncClient migration)
+
+Changes in v2.2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 v2.1.0: Added CRUD, review workflow, and batch operations
 """
@@ -35,7 +39,7 @@ class SupabaseThemesRepository:
     async def get_by_id(self, theme_id: str) -> Optional[Dict[str, Any]]:
         """Get a theme by its ID."""
         try:
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .select("*")
                 .eq("id", theme_id)
@@ -54,7 +58,7 @@ class SupabaseThemesRepository:
     async def get_by_date(self, target_date: date) -> Optional[Dict[str, Any]]:
         """Get a theme for a specific date."""
         try:
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .select("*")
                 .eq("date", target_date.isoformat())
@@ -73,7 +77,7 @@ class SupabaseThemesRepository:
     async def list_active_themes(self) -> List[Dict[str, Any]]:
         """Get all active themes ordered by priority (descending)."""
         try:
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .select("*")
                 .eq("is_active", True)
@@ -118,7 +122,7 @@ class SupabaseThemesRepository:
             # Apply pagination and ordering
             query = query.order("date", desc=False).range(offset, offset + limit - 1)
 
-            result = query.execute()
+            result = await query.execute()
             return result.data or []
 
         except Exception as e:
@@ -149,7 +153,7 @@ class SupabaseThemesRepository:
                 if "date_to" in filters and filters["date_to"]:
                     query = query.lte("date", filters["date_to"])
 
-            result = query.execute()
+            result = await query.execute()
             return result.count or 0
 
         except Exception as e:
@@ -168,7 +172,7 @@ class SupabaseThemesRepository:
             data["created_at"] = now
             data["updated_at"] = now
 
-            result = self.supabase.table(TABLE_NAME).insert(data).execute()
+            result = await self.supabase.table(TABLE_NAME).insert(data).execute()
 
             if not result.data:
                 raise Exception("Failed to create theme - no data returned")
@@ -187,7 +191,7 @@ class SupabaseThemesRepository:
             # Add updated timestamp
             data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .update(data)
                 .eq("id", theme_id)
@@ -207,7 +211,7 @@ class SupabaseThemesRepository:
         """Soft delete a theme."""
         try:
             now = datetime.now(timezone.utc).isoformat()
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .update({
                     "is_deleted": True,
@@ -255,7 +259,7 @@ class SupabaseThemesRepository:
             # Order by date ascending (nearest first)
             query = query.order("date", desc=False).range(offset, offset + limit - 1)
 
-            result = query.execute()
+            result = await query.execute()
             return result.data or []
 
         except Exception as e:
@@ -280,7 +284,7 @@ class SupabaseThemesRepository:
                 if "date_to" in filters and filters["date_to"]:
                     query = query.lte("date", filters["date_to"])
 
-            result = query.execute()
+            result = await query.execute()
             return result.count or 0
 
         except Exception as e:
@@ -299,7 +303,7 @@ class SupabaseThemesRepository:
             updated_count = 0
 
             for theme_id in theme_ids:
-                result = (
+                result = await (
                     self.supabase.table(TABLE_NAME)
                     .update({
                         "review_status": review_status,
@@ -329,7 +333,7 @@ class SupabaseThemesRepository:
     ) -> Set[date]:
         """Get dates that already have themes."""
         try:
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .select("date")
                 .eq("is_deleted", False)
@@ -354,7 +358,7 @@ class SupabaseThemesRepository:
     ) -> Dict[str, int]:
         """Get statistics of review statuses in date range."""
         try:
-            result = (
+            result = await (
                 self.supabase.table(TABLE_NAME)
                 .select("review_status")
                 .eq("is_deleted", False)
