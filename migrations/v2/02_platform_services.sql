@@ -682,6 +682,9 @@ CREATE TABLE articles (
     tags JSONB DEFAULT '[]'::jsonb,
     cover_image VARCHAR(500),
 
+    -- 精选 (v1.1.0 新增)
+    is_featured BOOLEAN DEFAULT false,
+
     -- 发布状态
     is_published BOOLEAN DEFAULT false,
     published_at TIMESTAMPTZ,
@@ -699,6 +702,7 @@ CREATE TABLE articles (
 -- 索引
 CREATE INDEX idx_articles_category ON articles(category);
 CREATE INDEX idx_articles_published ON articles(is_published, published_at DESC);
+CREATE INDEX idx_articles_featured ON articles(is_featured, published_at DESC) WHERE is_featured = true;  -- v1.1.0 新增
 CREATE INDEX idx_articles_slug ON articles(slug);
 CREATE INDEX idx_articles_author ON articles(author_id);
 

@@ -50,9 +50,10 @@
 |------|------|------|------|--------|------|------|
 | 1 | Analytics | POST | /analytics/events | log_analytics_events | api/user/analytics.py | 批量记录分析事件 |
 | 2 | Articles | GET | /articles | list_articles | api/user/articles.py | 获取已发布文章列表 |
-| 3 | Articles | GET | /articles/categories | get_categories | api/user/articles.py | 获取分类及文章数 |
-| 4 | Articles | GET | /articles/search | search_articles | api/user/articles.py | 搜索已发布文章 |
-| 5 | Articles | GET | /articles/{slug} | get_article | api/user/articles.py | 获取文章详情 |
+| 3 | Articles | GET | /articles/featured | get_featured_articles | api/user/articles.py | 获取精选文章 (v1.1.0) |
+| 4 | Articles | GET | /articles/categories | get_categories | api/user/articles.py | 获取分类及文章数 |
+| 5 | Articles | GET | /articles/search | search_articles | api/user/articles.py | 搜索已发布文章 |
+| 6 | Articles | GET | /articles/{slug} | get_article | api/user/articles.py | 获取文章详情 |
 | 6 | Billing | GET | /billing/credits | get_credits | api/user/billing.py | 获取积分余额 |
 | 7 | Billing | GET | /billing/transactions | get_transactions | api/user/billing.py | 获取交易历史 |
 | 8 | Billing | GET | /billing/can-afford | check_can_afford | api/user/billing.py | 检查是否能负担操作 |
@@ -254,6 +255,41 @@
   "total": 45,
   "offset": 0,
   "limit": 20
+}
+```
+
+---
+
+### GET `/articles/featured` (v1.1.0 新增)
+
+获取精选文章列表
+
+**限流**: 60 req/min
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `category` | string | - | 分类筛选 (manual/news/changelog) |
+| `limit` | int | 3 | 最大数量 (1-10) |
+
+**响应**:
+```json
+{
+  "articles": [
+    {
+      "id": "uuid",
+      "slug": "new-ai-feature",
+      "title": "New Feature: AI Design Assistant",
+      "summary": "Introducing our new AI-powered...",
+      "category": "news",
+      "tags": ["feature", "update"],
+      "cover_image": "https://...",
+      "is_featured": true,
+      "published_at": "2026-01-12T10:00:00Z",
+      "view_count": 250
+    }
+  ],
+  "total": 3
 }
 ```
 
