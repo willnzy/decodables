@@ -25,7 +25,7 @@ Endpoints:
 import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from infrastructure.repositories.user_repository import SupabaseUserRepository
 from infrastructure.rate_limiter import limiter
 from domains.billing import BillingService
@@ -44,9 +44,8 @@ router = APIRouter(prefix="/generate/story", tags=["generation-story-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_story_service() -> StoryGenerationService:
-    """Dependency injection factory for StoryGenerationService."""
-    db = get_database_client()
+async def get_story_service(db = Depends(get_async_db)) -> StoryGenerationService:
+    """Dependency injection factory for StoryGenerationService (AsyncClient)."""
     user_repo = SupabaseUserRepository(db)
     billing_service = BillingService(user_repository=user_repo)
     return StoryGenerationService(billing_service=billing_service)
