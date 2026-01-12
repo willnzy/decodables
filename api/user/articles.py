@@ -17,7 +17,7 @@ Endpoints:
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Request, Query, Path
+from fastapi import APIRouter, HTTPException, Request, Query, Path, Depends
 from pydantic import BaseModel, Field
 
 from domains.articles.entities import ArticleCategory
