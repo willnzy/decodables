@@ -35,6 +35,7 @@
 | domains/marketplace/ | ~10 | ~2,000 | P1 - 高 | 市场交易 |
 | domains/platform/ | ~8 | ~1,000 | P2 - 中 | Feature Flags |
 | domains/content/ | ~6 | ~700 | P2 - 中 | 系统资源 |
+| domains/themes/ | ~4 | ~600 | P2 - 中 | 主题管理 (67 tests ✅) |
 | application/commands/ | ~15 | ~2,000 | P1 - 高 | 写操作 |
 | application/queries/ | ~15 | ~2,000 | P1 - 高 | 读操作 |
 | application/services/ | ~20 | ~2,500 | P2 - 中 | 定时任务 |
@@ -66,7 +67,7 @@
   - 修复 MagicMock 返回值设置
 
 - [ ] **0.3** 修复测试收集错误 (152 个)
-  - `test_themes.py`: 添加 python-multipart 依赖检查
+  - ~~`test_themes.py`: 添加 python-multipart 依赖检查~~ ✅ 已完成 (2026-01-12)
   - 其他导入问题
 
 **验收标准**: `pytest tests/ -q` 无失败和错误
