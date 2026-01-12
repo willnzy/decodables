@@ -2,7 +2,10 @@
 Pricing Service - Manages pricing plans and configurations.
 
 @module domains.billing.pricing_service
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed unused get_supabase_client import (AsyncClient passed via DI)
 
 This service provides centralized access to pricing configurations from the database,
 replacing hard-coded prices in constants and environment variables.
@@ -12,8 +15,6 @@ import logging
 import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
-
-from infrastructure.database.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
