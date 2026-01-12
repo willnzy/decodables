@@ -1,8 +1,9 @@
 # Feature Flag 与 Experiments 统一架构设计
 
-> **版本**: v1.0  
-> **日期**: 2026-01-06  
+> **版本**: v1.1
+> **日期**: 2026-01-12
 > **决策**: 方案C - Feature Flag 为基础，Experiments 扩展
+> **更新**: 添加树状依赖支持 (parent_flags)
 
 ---
 
@@ -16,6 +17,7 @@
 6. [Admin 管理界面](#6-admin-管理界面)
 7. [监控与分析](#7-监控与分析)
 8. [实施检查清单](#8-实施检查清单)
+9. [修订历史](#9-修订历史)
 
 ---
 
@@ -153,6 +155,11 @@ CREATE TABLE feature_flags (
     ]'::JSONB,
     default_variant VARCHAR(100) DEFAULT 'control',
     
+    -- 树状依赖 (v1.1 新增)
+    -- 父级 Flag keys，子 Flag 仅在所有父级都启用时才生效
+    -- 例如: ['editor', 'editor.toolbar'] 表示需要 editor 和 editor.toolbar 都启用
+    parent_flags TEXT[] DEFAULT ARRAY[]::TEXT[],
+
     -- 元数据
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],
     owner VARCHAR(100),
@@ -423,6 +430,7 @@ class FlagType(Enum):
 class EvaluationReason(Enum):
     """评估原因"""
     DISABLED = "disabled"
+    PARENT_DISABLED = "parent_disabled"  # v1.1: 父级 Flag 未启用
     TIME_WINDOW = "time_window"
     ENVIRONMENT = "environment"
     BLACKLIST = "blacklist"
@@ -540,59 +548,136 @@ class UnifiedEvaluator:
         self,
         flag: Dict[str, Any],
         context: EvaluationContext,
+        all_flags: Dict[str, Dict] = None,  # v1.1: 传入所有 flags 用于层级评估
     ) -> EvaluationResult:
         """
         评估 Flag
-        
-        评估流程：
+
+        评估流程 (v1.1 更新):
         1. 检查 enabled
-        2. 检查时间窗口
-        3. 检查环境
-        4. 检查黑名单
-        5. 检查白名单（命中则立即返回）
-        6. 评估定向规则
-        7. 计算变体分配（百分比灰度）
-        8. 返回默认值
+        2. 检查父级 Flag (树状依赖) ← v1.1 新增
+        3. 检查时间窗口
+        4. 检查环境
+        5. 检查黑名单
+        6. 检查白名单（命中则立即返回）
+        7. 评估定向规则
+        8. 计算变体分配（百分比灰度）
+        9. 返回默认值
         """
         flag_key = flag.get("key", "unknown")
         flag_type = FlagType(flag.get("flag_type", "boolean"))
-        
+
         try:
             # 1. 检查总开关
             if not flag.get("enabled", False):
                 return self._result(flag, False, EvaluationReason.DISABLED)
-            
-            # 2. 检查时间窗口
+
+            # 2. 检查父级 Flag (v1.1 新增)
+            if not self._check_parent_flags(flag, context, all_flags):
+                return self._result(flag, False, EvaluationReason.PARENT_DISABLED)
+
+            # 3. 检查时间窗口
             if not self._check_time_window(flag):
                 return self._result(flag, False, EvaluationReason.TIME_WINDOW)
-            
-            # 3. 检查环境
+
+            # 4. 检查环境
             if not self._check_environment(flag, context):
                 return self._result(flag, False, EvaluationReason.ENVIRONMENT)
-            
-            # 4. 检查黑名单
+
+            # 5. 检查黑名单
             if self._in_blacklist(flag, context):
                 return self._result(flag, False, EvaluationReason.BLACKLIST)
-            
-            # 5. 检查白名单
+
+            # 6. 检查白名单
             if self._in_whitelist(flag, context):
                 return self._result(
                     flag, True, EvaluationReason.WHITELIST,
                     variant=self._get_first_treatment_variant(flag)
                 )
-            
-            # 6. 评估定向规则
+
+            # 7. 评估定向规则
             rule_result = self._evaluate_rules(flag, context)
             if rule_result:
                 return rule_result
-            
-            # 7. 计算变体分配
+
+            # 8. 计算变体分配
             return self._assign_variant(flag, context)
             
         except Exception as e:
             logger.error(f"Flag evaluation error: {flag_key}, {e}")
             return self._result(flag, False, EvaluationReason.ERROR)
-    
+
+    # ==================== v1.1 新增: 层级评估 ====================
+
+    def _check_parent_flags(
+        self,
+        flag: Dict,
+        context: EvaluationContext,
+        all_flags: Dict[str, Dict] = None,
+    ) -> bool:
+        """
+        检查父级 Flag 是否都已启用 (v1.1 新增)
+
+        树状依赖规则:
+        - 子 Flag 仅在所有父级 Flag 都启用时才生效
+        - 父级 Flag 的评估是递归的（父级的父级也必须启用）
+        - 如果 parent_flags 为空，则无依赖，直接返回 True
+
+        示例:
+        - editor.toolbar.bold 依赖 ['editor', 'editor.toolbar']
+        - 如果 editor 关闭，则 editor.toolbar.bold 自动关闭
+        """
+        parent_keys = flag.get("parent_flags", [])
+
+        # 无依赖，直接通过
+        if not parent_keys:
+            return True
+
+        # 未传入 all_flags，无法检查父级
+        if all_flags is None:
+            logger.warning(
+                f"Cannot check parent flags for {flag.get('key')}: "
+                "all_flags not provided"
+            )
+            return True
+
+        # 检查每个父级
+        for parent_key in parent_keys:
+            parent_flag = all_flags.get(parent_key)
+
+            # 父级不存在，视为未启用
+            if not parent_flag:
+                logger.warning(f"Parent flag not found: {parent_key}")
+                return False
+
+            # 递归评估父级 (使用简化评估，只检查 enabled 和 parent_flags)
+            parent_result = self._evaluate_parent(parent_flag, context, all_flags)
+            if not parent_result:
+                return False
+
+        return True
+
+    def _evaluate_parent(
+        self,
+        parent_flag: Dict,
+        context: EvaluationContext,
+        all_flags: Dict[str, Dict],
+    ) -> bool:
+        """
+        简化评估父级 Flag (仅检查 enabled 和递归依赖)
+
+        注意: 父级评估不检查白名单/黑名单/规则/百分比，
+        只检查 enabled 状态和递归父级依赖
+        """
+        # 检查 enabled
+        if not parent_flag.get("enabled", False):
+            return False
+
+        # 递归检查父级的父级
+        return self._check_parent_flags(parent_flag, context, all_flags)
+
+    # ==================== 时间窗口和环境检查 ====================
+
     def _check_time_window(self, flag: Dict) -> bool:
         """检查时间窗口"""
         now = datetime.now(timezone.utc)
@@ -1028,6 +1113,7 @@ class CreateFlagRequest(BaseModel):
     rollout_percentage: int = 0
     variants: Optional[List[dict]] = None
     targeting_rules: Optional[List[dict]] = None
+    parent_flags: Optional[List[str]] = None  # v1.1: 父级 Flag keys
     tags: Optional[List[str]] = None
     owner: Optional[str] = None
 
@@ -1042,6 +1128,7 @@ class UpdateFlagRequest(BaseModel):
     targeting_rules: Optional[List[dict]] = None
     whitelist_user_ids: Optional[List[str]] = None
     blacklist_user_ids: Optional[List[str]] = None
+    parent_flags: Optional[List[str]] = None  # v1.1: 父级 Flag keys
     start_at: Optional[str] = None
     end_at: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -1173,14 +1260,123 @@ async def get_client_flags(
         tier=user.get("tier"),
         email=user.get("email"),
     )
-    
+
     flags = feature_service.get_all_flags(context)
     variants = feature_service.get_all_variants(context)
-    
+
     return {
         "flags": flags,
         "variants": variants,
     }
+
+
+# ==================== v1.1 新增端点 ====================
+
+@router.get("/tree")
+async def get_flags_tree(
+    root_prefix: Optional[str] = None,  # 如 "editor" 只获取 editor.* 的树
+    admin = Depends(require_admin)
+):
+    """
+    获取 Flag 树状结构 (v1.1 新增)
+
+    返回格式:
+    {
+        "editor": {
+            "key": "editor",
+            "enabled": true,
+            "children": {
+                "toolbar": {
+                    "key": "editor.toolbar",
+                    "enabled": true,
+                    "children": {
+                        "bold": { "key": "editor.toolbar.bold", ... }
+                    }
+                }
+            }
+        }
+    }
+    """
+    # 实现略...
+    pass
+
+
+@router.get("/{key}/children")
+async def get_flag_children(
+    key: str,
+    admin = Depends(require_admin)
+):
+    """获取 Flag 的所有子级 (v1.1 新增)"""
+    # 实现略...
+    pass
+
+
+@router.get("/{key}/parents")
+async def get_flag_parents(
+    key: str,
+    admin = Depends(require_admin)
+):
+    """获取 Flag 的所有父级 (v1.1 新增)"""
+    # 实现略...
+    pass
+
+
+@router.post("/{key}/batch-toggle")
+async def batch_toggle_children(
+    key: str,
+    enabled: bool,
+    include_children: bool = True,
+    admin = Depends(require_admin)
+):
+    """
+    批量开关 Flag 及其子级 (v1.1 新增)
+
+    当关闭父级时，可选择是否同时关闭所有子级
+    """
+    # 实现略...
+    pass
+
+
+@router.get("/{key}/exposures")
+async def get_flag_exposures(
+    key: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    admin = Depends(require_admin)
+):
+    """获取 Flag 曝光记录"""
+    # 实现略...
+    pass
+
+
+@router.get("/{key}/exposures/stats")
+async def get_exposure_stats(
+    key: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin = Depends(require_admin)
+):
+    """
+    获取 Flag 曝光统计
+
+    返回:
+    {
+        "total_exposures": 12345,
+        "unique_users": 5678,
+        "variant_distribution": {
+            "control": {"count": 6000, "percentage": 48.6},
+            "treatment": {"count": 6345, "percentage": 51.4}
+        },
+        "daily_trend": [
+            {"date": "2026-01-10", "exposures": 1234, "unique_users": 567},
+            ...
+        ]
+    }
+    """
+    # 实现略...
+    pass
 ```
 
 ---
@@ -1211,8 +1407,9 @@ async def get_client_flags(
 
 export type FlagType = 'boolean' | 'multivariate' | 'experiment';
 
-export type EvaluationReason = 
+export type EvaluationReason =
   | 'disabled'
+  | 'parent_disabled'  // v1.1: 父级 Flag 未启用
   | 'time_window'
   | 'environment'
   | 'blacklist'
@@ -2022,6 +2219,42 @@ def rollback():
 | 旧表下线 | ⬜ | 重命名完成 |
 | 旧代码删除 | ⬜ | 代码清理完成 |
 | 文档更新 | ⬜ | 文档同步 |
+
+---
+
+## 9. 修订历史
+
+| 版本 | 日期 | 作者 | 变更内容 |
+|------|------|------|----------|
+| v1.0 | 2026-01-06 | - | 初始版本：Feature Flag + Experiments 统一架构 |
+| v1.1 | 2026-01-12 | - | 添加树状依赖支持：`parent_flags` 字段、层级评估逻辑、树状查询 API |
+
+### v1.1 变更详情
+
+**数据库变更**:
+- `feature_flags` 表添加 `parent_flags TEXT[]` 字段
+
+**类型变更**:
+- `EvaluationReason` 枚举添加 `PARENT_DISABLED`
+
+**评估引擎变更**:
+- `evaluate()` 方法添加 `all_flags` 参数用于层级评估
+- 新增 `_check_parent_flags()` 方法
+- 新增 `_evaluate_parent()` 方法
+- 评估流程更新为 9 步（插入第 2 步：检查父级 Flag）
+
+**API 变更**:
+- `CreateFlagRequest` / `UpdateFlagRequest` 添加 `parent_flags` 字段
+- 新增端点：
+  - `GET /tree` - 获取 Flag 树状结构
+  - `GET /{key}/children` - 获取子级 Flags
+  - `GET /{key}/parents` - 获取父级 Flags
+  - `POST /{key}/batch-toggle` - 批量开关 Flag 及子级
+  - `GET /{key}/exposures` - 获取曝光记录
+  - `GET /{key}/exposures/stats` - 获取曝光统计
+
+**前端变更**:
+- TypeScript `EvaluationReason` 类型添加 `parent_disabled`
 
 ---
 
