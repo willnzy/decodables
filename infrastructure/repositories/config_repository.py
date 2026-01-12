@@ -2,7 +2,11 @@
 Config Repository Implementation - System configuration data access.
 
 @module infrastructure.repositories.config_repository
-@version 1.1.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 """
 
 import logging
@@ -44,7 +48,7 @@ class SupabaseConfigRepository(ConfigRepository):
         Returns:
             Configuration value or default_value
         """
-        result = self.client.table("system_configs").select("value").eq(
+        result = await self.client.table("system_configs").select("value").eq(
             "key", key
         ).eq("is_active", True).execute()
 
@@ -77,7 +81,7 @@ class SupabaseConfigRepository(ConfigRepository):
             query = query.eq("is_active", True)
 
         # Add limit to prevent OOM (CFG-HIGH-2)
-        result = query.order("config_group").order("key").limit(10000).execute()
+        result = await query.order("config_group").order("key").limit(10000).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -91,7 +95,7 @@ class SupabaseConfigRepository(ConfigRepository):
         Returns:
             Dict of key-value pairs
         """
-        result = self.client.table("system_configs").select("key, value").eq(
+        result = await self.client.table("system_configs").select("key, value").eq(
             "config_group", group
         ).eq("is_active", True).execute()
 
@@ -120,7 +124,7 @@ class SupabaseConfigRepository(ConfigRepository):
         if group:
             query = query.eq("config_group", group)
 
-        result = query.order("config_group").order("key").range(
+        result = await query.order("config_group").order("key").range(
             offset, offset + limit - 1
         ).execute()
 
@@ -139,7 +143,7 @@ class SupabaseConfigRepository(ConfigRepository):
         Returns:
             List of group names
         """
-        result = self.client.table("system_configs").select("config_group").limit(10000).execute()
+        result = await self.client.table("system_configs").select("config_group").limit(10000).execute()
         groups = set(
             row.get("config_group")
             for row in (result.data or [])
@@ -171,7 +175,7 @@ class SupabaseConfigRepository(ConfigRepository):
         Returns:
             Created config record
         """
-        result = self.client.table("system_configs").insert({
+        result = await self.client.table("system_configs").insert({
             "key": key,
             "value": value,
             "config_group": group,
@@ -214,7 +218,7 @@ class SupabaseConfigRepository(ConfigRepository):
         old_config = None
         if admin_id and value is not None:
             try:
-                old_result = self.client.table("system_configs").select("value").eq("key", key).execute()
+                old_result = await self.client.table("system_configs").select("value").eq("key", key).execute()
                 if old_result.data:
                     old_config = old_result.data[0]
             except Exception as e:
@@ -231,7 +235,7 @@ class SupabaseConfigRepository(ConfigRepository):
         if admin_id:
             update_data["updated_by"] = admin_id
 
-        result = self.client.table("system_configs").update(update_data).eq(
+        result = await self.client.table("system_configs").update(update_data).eq(
             "key", key
         ).execute()
 
@@ -258,7 +262,7 @@ class SupabaseConfigRepository(ConfigRepository):
         if admin_id:
             await self._log_audit(key, "delete", None, None, admin_id)
 
-        result = self.client.table("system_configs").delete().eq("key", key).execute()
+        result = await self.client.table("system_configs").delete().eq("key", key).execute()
 
         return len(result.data) > 0 if result.data else False
 
@@ -285,7 +289,7 @@ class SupabaseConfigRepository(ConfigRepository):
         if config_key:
             query = query.eq("config_key", config_key)
 
-        result = query.order("created_at", desc=True).range(
+        result = await query.order("created_at", desc=True).range(
             offset, offset + limit - 1
         ).execute()
 
@@ -315,7 +319,7 @@ class SupabaseConfigRepository(ConfigRepository):
             Table schema uses 'changed_by' not 'admin_id'
         """
         try:
-            self.client.table("config_audit_logs").insert({
+            await self.client.table("config_audit_logs").insert({
                 "config_key": key,
                 "action": action,
                 "old_value": str(old_value) if old_value else None,
