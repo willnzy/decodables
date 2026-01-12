@@ -20,9 +20,10 @@ Architecture:
 
 import asyncio
 import logging
+
+from core.database import get_async_db_client
 from typing import Optional, Dict, List, Tuple
 
-from core.database import get_database_client
 from infrastructure.repositories import (
     SupabaseAdminModerationRepository,
     SupabaseAdminUsersRepository,
@@ -49,7 +50,7 @@ def _get_repos() -> Tuple[SupabaseAdminModerationRepository, SupabaseAdminStatsR
     v3.28: DDD Migration helper.
     Returns all 3 repositories used by moderation service.
     """
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     moderation_repo = SupabaseAdminModerationRepository(db_client)
     stats_repo = SupabaseAdminStatsRepository(db_client)
     admin_users_repo = SupabaseAdminUsersRepository(db_client)

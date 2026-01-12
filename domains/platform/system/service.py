@@ -16,9 +16,10 @@ Architecture:
 """
 
 import logging
+
+from core.database import get_async_db_client
 from typing import Optional, Dict, List, Any
 
-from core.database import get_database_client
 from infrastructure.repositories import SupabaseConfigRepository
 from domains.platform.config_service import ConfigService
 
@@ -32,7 +33,7 @@ def _get_config_service() -> ConfigService:
     v3.30: DDD Migration helper.
     Returns ConfigService used by system service.
     """
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     config_repo = SupabaseConfigRepository(db_client)
     return ConfigService(config_repo)
 
@@ -62,7 +63,7 @@ async def get_configs(
         Dict with items, total, offset, limit
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         result = await config_repo.get_paginated(group=group, offset=offset, limit=limit)
@@ -87,7 +88,7 @@ async def get_config_groups() -> List[str]:
         List of group names
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         groups = await config_repo.get_groups()
@@ -122,7 +123,7 @@ async def create_config(
         Created config record or None
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         result = await config_repo.create(
@@ -162,7 +163,7 @@ async def update_config(
         Updated config record or None
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         result = await config_repo.update(
@@ -192,7 +193,7 @@ async def delete_config(key: str, admin_id: Optional[str] = None) -> bool:
         True if deleted successfully
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         result = await config_repo.delete(key, admin_id)
@@ -221,7 +222,7 @@ async def get_config_audit(
         List of audit log records
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         logs = await config_repo.get_audit_logs(config_key=config_key, offset=offset, limit=limit)
@@ -244,7 +245,7 @@ async def invalidate_config_cache(key: Optional[str] = None) -> bool:
         True if successful
     """
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         config_repo = SupabaseConfigRepository(db_client)
 
         config_repo.invalidate_cache(key)

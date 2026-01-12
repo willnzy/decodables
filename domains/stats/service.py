@@ -19,7 +19,6 @@ Architecture:
 import logging
 from typing import Optional, Dict, List, Any
 
-from core.database import get_database_client
 from core.database.retry import retry_on_network_error_async
 from infrastructure.repositories import SupabaseAdminStatsRepository
 
@@ -229,7 +228,7 @@ async def get_aggregated_stat(stat_type: str, default: Dict[str, Any]) -> Dict[s
     try:
         @retry_on_network_error_async()
         async def _fetch():
-            result = get_supabase_client().table("aggregated_stats") \
+            result = (await get_async_db_client()).table("aggregated_stats") \
                 .select("data") \
                 .eq("stat_type", stat_type) \
                 .order("date", desc=True) \

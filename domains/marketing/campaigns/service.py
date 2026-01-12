@@ -16,6 +16,8 @@ Architecture:
 """
 
 import logging
+
+from core.database import get_async_db_client
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
@@ -51,10 +53,9 @@ async def list_campaigns(
     Returns:
         Dict with campaigns, offset, limit
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         query = db_client.table("campaigns").select("*").order("created_at", desc=True)
 
         if status:
@@ -84,10 +85,9 @@ async def get_campaign(campaign_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Campaign data or None
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         result = db_client.table("campaigns").select("*").eq("id", campaign_id).execute()
 
         if not result.data:
@@ -141,8 +141,7 @@ async def create_campaign(
     Returns:
         创建的 Campaign 或 None
     """
-    from core.database import get_database_client
-
+    
     campaign_data = {
         "name": name,
         "description": description,
@@ -163,7 +162,7 @@ async def create_campaign(
     }
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
         result = db_client.table("campaigns").insert(campaign_data).execute()
 
         if not result.data:
@@ -208,13 +207,12 @@ async def update_campaign(
     Returns:
         更新后的 Campaign 或 None
     """
-    from core.database import get_database_client
-
+    
     if not update_data:
         return None
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         # 获取旧值 (for audit)
         old_campaign = await get_campaign(campaign_id)
@@ -266,10 +264,9 @@ async def delete_campaign(
     Returns:
         是否成功
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         # 获取旧值 (for audit)
         old_campaign = await get_campaign(campaign_id)
@@ -319,10 +316,9 @@ async def activate_campaign(
     Returns:
         是否成功
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         # 获取旧值 (for audit)
         old_campaign = await get_campaign(campaign_id)
@@ -372,10 +368,9 @@ async def pause_campaign(
     Returns:
         是否成功
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         # 获取旧值 (for audit)
         old_campaign = await get_campaign(campaign_id)
@@ -419,10 +414,9 @@ async def get_campaign_stats(campaign_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         统计数据或 None
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         # 获取 Campaign
         campaign = await get_campaign(campaign_id)
@@ -475,10 +469,9 @@ async def _log_campaign_change(
         new_value: 新值
         admin_id: 管理员 ID
     """
-    from core.database import get_database_client
-
+    
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         import json
         db_client.table("campaign_audit_logs").insert({

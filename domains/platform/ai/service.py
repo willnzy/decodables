@@ -26,6 +26,8 @@ Architecture:
 
 import logging
 import asyncio
+
+from core.database import get_async_db_client
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -62,10 +64,9 @@ def _get_config_repo(repo: Optional[IAIModelConfigRepository] = None) -> IAIMode
     if repo:
         return repo
 
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseConfigRepository
+        from infrastructure.repositories import SupabaseConfigRepository
 
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     return SupabaseConfigRepository(db_client)
 
 
@@ -599,13 +600,12 @@ async def _log_config_change(
         new_value: 新值
         admin_id: 管理员 ID
     """
-    from core.database import get_database_client
-
+    
     if not admin_id:
         return
 
     try:
-        db_client = get_database_client()
+        db_client = await get_async_db_client()
 
         import json
         db_client.table("config_audit_logs").insert({

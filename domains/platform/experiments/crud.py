@@ -18,6 +18,8 @@ Changes in v3.25:
 
 import asyncio
 import logging
+
+from core.database import get_async_db_client
 from typing import Optional, Dict, List
 
 # v3.28: DDD Migration - Use Repository only
@@ -32,7 +34,7 @@ def _get_repo() -> SupabaseExperimentRepository:
 
     v3.28: DDD Migration helper (EXP-CRITICAL-1).
     """
-    db_client = get_supabase_client()
+    db_client = await get_async_db_client()
     return SupabaseExperimentRepository(client=db_client)
 
 

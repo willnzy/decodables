@@ -27,6 +27,8 @@ Architecture:
 """
 
 import logging
+
+from core.database import get_async_db_client
 from typing import Optional, List, Dict, Any
 
 from core.audit import audit_log
@@ -52,10 +54,9 @@ def _get_notification_repo(repo: Optional[INotificationRepository] = None) -> IN
     if repo:
         return repo
 
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseNotificationRepository
+        from infrastructure.repositories import SupabaseNotificationRepository
 
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     return SupabaseNotificationRepository(db_client)
 
 
@@ -72,10 +73,9 @@ def _get_stats_repo(repo=None):
     if repo:
         return repo
 
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseAdminStatsRepository
+        from infrastructure.repositories import SupabaseAdminStatsRepository
 
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     return SupabaseAdminStatsRepository(db_client)
 
 
@@ -92,10 +92,9 @@ def _get_admin_users_repo(repo=None):
     if repo:
         return repo
 
-    from core.database import get_database_client
-    from infrastructure.repositories import SupabaseAdminUsersRepository
+        from infrastructure.repositories import SupabaseAdminUsersRepository
 
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     return SupabaseAdminUsersRepository(db_client)
 
 
@@ -136,9 +135,8 @@ async def send_broadcast(
     """
     repo = _get_notification_repo(notification_repo)
 
-    from core.database import get_database_client
-
-    db_client = get_database_client()
+    
+    db_client = await get_async_db_client()
 
     # Business Logic: Query target users based on group
     if target_group == "all":

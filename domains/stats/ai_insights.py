@@ -23,9 +23,10 @@ Note:
 """
 
 import logging
+
+from core.database import get_async_db_client
 from typing import List, Dict, Any, Optional
 
-from core.database import get_database_client
 from infrastructure.repositories import SupabaseAdminStatsRepository
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def _get_stats_repo():
     Returns:
         SupabaseAdminStatsRepository instance
     """
-    db_client = get_database_client()
+    db_client = await get_async_db_client()
     return SupabaseAdminStatsRepository(db_client)
 
 
