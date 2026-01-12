@@ -537,7 +537,7 @@ checkout.session 需要携带的 metadata:
 | **系统配置** | `/api/v2/admin/config` | 8 | 配置 CRUD、限流预设 |
 | **系统管理** | `/api/v2/admin/system` | 11 | 缓存、系统配置 |
 | **实验管理** | `/api/v2/admin/experiments` | 14 | AB 测试、AI 分析 |
-| **Feature Flags** | `/api/v2/admin/feature-flags` | 9 | 功能开关管理 |
+| **Feature Flags** | `/api/v2/admin/feature-flags` | 15 | 功能开关管理 (v1.1 含树状结构) |
 | **事件管理** | `/api/v2/admin/events` | 5 | 事件、聚合 |
 | **日志与审计** | `/api/v2/admin/logs` | 5 | 错误日志、操作日志 |
 | **指标** | `/api/v2/admin/metrics` | 7 | 日/月指标、留存 |
@@ -545,9 +545,9 @@ checkout.session 需要携带的 metadata:
 | **营销活动** | `/api/v2/admin/campaigns` | 8 | 活动 CRUD、统计 |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 143 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 155 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
-> **说明**: admin-api-review.md 记录了已评审的 142 个端点，另有 1 个端点待补充评审文档（PUT /config/admin 占位符功能）。
+> **说明**: admin-api-review.md 记录了已评审的 155 个端点 (v3.36)，另有 1 个端点待补充评审文档（PUT /config/admin 占位符功能）。v3.36 新增 Feature Flags v1.1 树状结构 6 个端点。
 
 ---
 
@@ -858,9 +858,10 @@ credits_monthly → credits_permanent
 
 ---
 
-*文档版本: v3.27*
-*最后更新: 2026-01-11*
+*文档版本: v3.28*
+*最后更新: 2026-01-12*
 *更新内容:
+- v3.28: Feature Flags v1.1 树状结构支持 (Admin 15 个端点, User 4 个端点)
 - v3.27: 重构 API 文档结构,分离 User/Admin API 详细文档
 - v3.26: 新增完整的 Admin API 文档 (15个模块), 包含 DDD 架构说明和审计日志机制
 - v3.25: 补充 9 个缺失的 User API 端点章节, 添加 Clerk ID 格式说明*

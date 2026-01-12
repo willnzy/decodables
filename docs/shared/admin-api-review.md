@@ -1,13 +1,13 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 149 个，实际代码 150 个)
-> **版本**: 3.35
+> **状态**: ✅ Complete (已评审 155 个，实际代码 156 个)
+> **版本**: 3.36
 > **最后更新**: 2026-01-12
-> **总端点数**: 149 个 (已评审) / 150 个 (实际代码)
+> **总端点数**: 155 个 (已评审) / 156 个 (实际代码)
 
-本文档记录已评审的 149 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 155 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
-**注意**: 实际代码中有 150 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
+**注意**: 实际代码中有 156 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
 
 ---
 
@@ -21,7 +21,7 @@
 6. [Config 系统配置 (8个)](#6-config-系统配置)
 7. [Events 事件管理 (5个)](#7-events-事件管理)
 8. [Experiments 实验管理 (14个)](#8-experiments-实验管理)
-9. [Feature Flags 功能开关 (9个)](#9-feature-flags-功能开关)
+9. [Feature Flags 功能开关 (15个)](#9-feature-flags-功能开关)
 10. [Logs 日志审计 (5个)](#10-logs-日志审计)
 11. [Metrics 系统指标 (7个)](#11-metrics-系统指标)
 12. [Moderation 内容审核 (10个)](#12-moderation-内容审核)
@@ -35,7 +35,7 @@
 
 ---
 
-## 📋 接口总览 (149个)
+## 📋 接口总览 (155个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -109,7 +109,7 @@
 | 60 | Experiments | GET | /experiments/{experiment_key}/quick-recommendation | - | api/admin/experiments.py | 获取快速决策建议 |
 | 61 | Experiments | GET | /experiments/{experiment_key}/trend | - | api/admin/experiments.py | 获取每日趋势 |
 | 62 | Experiments | GET | /experiments/{experiment_key}/hourly-trend | - | api/admin/experiments.py | 获取每小时趋势 |
-| **Feature Flags (9个)** |
+| **Feature Flags (15个)** |
 | 63 | Feature Flags | GET | /feature-flags | - | api/admin/feature_flags.py | 列出所有 Feature Flags |
 | 64 | Feature Flags | POST | /feature-flags | - | api/admin/feature_flags.py | 创建新 Feature Flag |
 | 65 | Feature Flags | GET | /feature-flags/{key} | - | api/admin/feature_flags.py | 获取 Feature Flag 详情 |
@@ -119,96 +119,102 @@
 | 69 | Feature Flags | POST | /feature-flags/test-evaluation | - | api/admin/feature_flags.py | 测试 Feature Flag 评估逻辑 |
 | 70 | Feature Flags | GET | /feature-flags/{key}/audit | - | api/admin/feature_flags.py | 获取 Feature Flag 审计日志 |
 | 71 | Feature Flags | GET | /feature-flags/client/flags | - | api/admin/feature_flags.py | 客户端 Feature Flags 评估 |
+| 72 | Feature Flags | GET | /feature-flags/tree | - | api/admin/feature_flags.py | 获取 Flag 树状结构 (v1.1) |
+| 73 | Feature Flags | GET | /feature-flags/{key}/children | - | api/admin/feature_flags.py | 获取子级 Flags (v1.1) |
+| 74 | Feature Flags | GET | /feature-flags/{key}/parents | - | api/admin/feature_flags.py | 获取父级 Flags (v1.1) |
+| 75 | Feature Flags | POST | /feature-flags/{key}/batch-toggle | - | api/admin/feature_flags.py | 批量开关 Flag 及子级 (v1.1) |
+| 76 | Feature Flags | GET | /feature-flags/{key}/exposures | - | api/admin/feature_flags.py | 获取 Flag 曝光记录 (v1.1) |
+| 77 | Feature Flags | GET | /feature-flags/{key}/exposures/stats | - | api/admin/feature_flags.py | 获取曝光统计 (v1.1) |
 | **Logs (5个)** |
-| 72 | Logs | GET | /logs/errors | - | api/admin/logs.py | 获取错误日志 |
-| 73 | Logs | GET | /logs/errors/stats | - | api/admin/logs.py | 获取错误统计 |
-| 74 | Logs | GET | /logs/operations | - | api/admin/logs.py | 获取操作日志 |
-| 75 | Logs | GET | /logs/operations/export | - | api/admin/logs.py | 导出操作日志 |
-| 76 | Logs | GET | /logs/audit | - | api/admin/logs.py | 统一审计日志查询 |
+| 78 | Logs | GET | /logs/errors | - | api/admin/logs.py | 获取错误日志 |
+| 79 | Logs | GET | /logs/errors/stats | - | api/admin/logs.py | 获取错误统计 |
+| 80 | Logs | GET | /logs/operations | - | api/admin/logs.py | 获取操作日志 |
+| 81 | Logs | GET | /logs/operations/export | - | api/admin/logs.py | 导出操作日志 |
+| 82 | Logs | GET | /logs/audit | - | api/admin/logs.py | 统一审计日志查询 |
 | **Metrics (7个)** |
-| 77 | Metrics | GET | /metrics/daily | - | api/admin/metrics.py | 获取每日指标 |
-| 78 | Metrics | GET | /metrics/monthly | - | api/admin/metrics.py | 获取每月指标 |
-| 79 | Metrics | GET | /metrics/retention | - | api/admin/metrics.py | 获取留存指标 |
-| 80 | Metrics | GET | /metrics/funnel | - | api/admin/metrics.py | 获取转化漏斗 |
-| 81 | Metrics | GET | /metrics/errors | - | api/admin/metrics.py | 获取错误指标 |
-| 82 | Metrics | GET | /metrics/dau-trend | - | api/admin/metrics.py | 获取 DAU 趋势 |
-| 83 | Metrics | POST | /metrics/refresh | - | api/admin/metrics.py | 刷新指标缓存 |
+| 83 | Metrics | GET | /metrics/daily | - | api/admin/metrics.py | 获取每日指标 |
+| 84 | Metrics | GET | /metrics/monthly | - | api/admin/metrics.py | 获取每月指标 |
+| 85 | Metrics | GET | /metrics/retention | - | api/admin/metrics.py | 获取留存指标 |
+| 86 | Metrics | GET | /metrics/funnel | - | api/admin/metrics.py | 获取转化漏斗 |
+| 87 | Metrics | GET | /metrics/errors | - | api/admin/metrics.py | 获取错误指标 |
+| 88 | Metrics | GET | /metrics/dau-trend | - | api/admin/metrics.py | 获取 DAU 趋势 |
+| 89 | Metrics | POST | /metrics/refresh | - | api/admin/metrics.py | 刷新指标缓存 |
 | **Moderation (10个)** |
-| 84 | Moderation | GET | /moderation/marketplace/moderation/list | - | api/admin/moderation.py | 获取待审核商品列表 |
-| 85 | Moderation | GET | /moderation/marketplace/moderation/{listing_id} | - | api/admin/moderation.py | 获取商品审核详情 |
-| 86 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/approve | - | api/admin/moderation.py | 批准商品上架 |
-| 87 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/reject | - | api/admin/moderation.py | 拒绝商品上架 |
-| 88 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/delete | - | api/admin/moderation.py | 软删除商品 |
-| 89 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/unpublish | - | api/admin/moderation.py | 强制下架商品 |
-| 90 | Moderation | GET | /moderation/reports | - | api/admin/moderation.py | 获取所有内容举报 |
-| 91 | Moderation | GET | /moderation/reports/stats | - | api/admin/moderation.py | 获取举报统计 |
-| 92 | Moderation | GET | /moderation/reports/{report_id} | - | api/admin/moderation.py | 获取举报详情 |
-| 93 | Moderation | POST | /moderation/reports/{report_id}/respond | - | api/admin/moderation.py | 处理举报 |
+| 90 | Moderation | GET | /moderation/marketplace/moderation/list | - | api/admin/moderation.py | 获取待审核商品列表 |
+| 91 | Moderation | GET | /moderation/marketplace/moderation/{listing_id} | - | api/admin/moderation.py | 获取商品审核详情 |
+| 92 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/approve | - | api/admin/moderation.py | 批准商品上架 |
+| 93 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/reject | - | api/admin/moderation.py | 拒绝商品上架 |
+| 94 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/delete | - | api/admin/moderation.py | 软删除商品 |
+| 95 | Moderation | POST | /moderation/marketplace/moderation/{listing_id}/unpublish | - | api/admin/moderation.py | 强制下架商品 |
+| 96 | Moderation | GET | /moderation/reports | - | api/admin/moderation.py | 获取所有内容举报 |
+| 97 | Moderation | GET | /moderation/reports/stats | - | api/admin/moderation.py | 获取举报统计 |
+| 98 | Moderation | GET | /moderation/reports/{report_id} | - | api/admin/moderation.py | 获取举报详情 |
+| 99 | Moderation | POST | /moderation/reports/{report_id}/respond | - | api/admin/moderation.py | 处理举报 |
 | **Notifications (5个)** |
-| 94 | Notifications | POST | /notifications/broadcast | - | api/admin/notifications.py | 发送系统广播通知 |
-| 95 | Notifications | POST | /notifications/notification/send | - | api/admin/notifications.py | 发送通知给单个用户 |
-| 96 | Notifications | POST | /notifications/notification/batch | - | api/admin/notifications.py | 批量发送通知 |
-| 97 | Notifications | GET | /notifications/notification/stats | - | api/admin/notifications.py | 获取通知统计 |
-| 98 | Notifications | GET | /notifications/notification/history | - | api/admin/notifications.py | 获取通知发送历史 |
+| 100 | Notifications | POST | /notifications/broadcast | - | api/admin/notifications.py | 发送系统广播通知 |
+| 101 | Notifications | POST | /notifications/notification/send | - | api/admin/notifications.py | 发送通知给单个用户 |
+| 102 | Notifications | POST | /notifications/notification/batch | - | api/admin/notifications.py | 批量发送通知 |
+| 103 | Notifications | GET | /notifications/notification/stats | - | api/admin/notifications.py | 获取通知统计 |
+| 104 | Notifications | GET | /notifications/notification/history | - | api/admin/notifications.py | 获取通知发送历史 |
 | **Stats (18个)** |
-| 99 | Stats | GET | /stats/dashboard | - | api/admin/stats.py | 获取仪表板 KPI |
-| 100 | Stats | GET | /stats/user-growth | - | api/admin/stats.py | 获取用户增长统计 |
-| 101 | Stats | GET | /stats/revenue | - | api/admin/stats.py | 获取收入统计 |
-| 102 | Stats | GET | /stats/projects | - | api/admin/stats.py | 获取项目统计 |
-| 103 | Stats | GET | /stats/credits | - | api/admin/stats.py | 获取积分使用统计 |
-| 104 | Stats | GET | /stats/tier-distribution | - | api/admin/stats.py | 获取 Tier 分布 |
-| 105 | Stats | GET | /stats/conversion-funnel | - | api/admin/stats.py | 获取转化漏斗 |
-| 106 | Stats | GET | /stats/exports | - | api/admin/stats.py | 获取导出统计 |
-| 107 | Stats | GET | /stats/assets | - | api/admin/stats.py | 获取素材统计 |
-| 108 | Stats | GET | /stats/tier-activity | - | api/admin/stats.py | 获取 Tier 活跃度 |
-| 109 | Stats | GET | /stats/subscription-events | - | api/admin/stats.py | 获取订阅事件统计 |
-| 110 | Stats | GET | /stats/page-views | - | api/admin/stats.py | 获取页面浏览统计 |
-| 111 | Stats | GET | /stats/project-details | - | api/admin/stats.py | 获取项目详细统计 |
-| 112 | Stats | GET | /stats/returning-users | - | api/admin/stats.py | 获取回访用户统计 |
-| 113 | Stats | GET | /stats/tier-trend | - | api/admin/stats.py | 获取 Tier 趋势 |
-| 114 | Stats | GET | /stats/tier-conversion | - | api/admin/stats.py | 获取 Tier 转化统计 |
-| 115 | Stats | GET | /stats/performance | - | api/admin/stats.py | 获取 Core Web Vitals 性能指标 |
-| 116 | Stats | GET | /stats/user-distribution | - | api/admin/stats.py | 获取用户分布统计 |
+| 105 | Stats | GET | /stats/dashboard | - | api/admin/stats.py | 获取仪表板 KPI |
+| 106 | Stats | GET | /stats/user-growth | - | api/admin/stats.py | 获取用户增长统计 |
+| 107 | Stats | GET | /stats/revenue | - | api/admin/stats.py | 获取收入统计 |
+| 108 | Stats | GET | /stats/projects | - | api/admin/stats.py | 获取项目统计 |
+| 109 | Stats | GET | /stats/credits | - | api/admin/stats.py | 获取积分使用统计 |
+| 110 | Stats | GET | /stats/tier-distribution | - | api/admin/stats.py | 获取 Tier 分布 |
+| 111 | Stats | GET | /stats/conversion-funnel | - | api/admin/stats.py | 获取转化漏斗 |
+| 112 | Stats | GET | /stats/exports | - | api/admin/stats.py | 获取导出统计 |
+| 113 | Stats | GET | /stats/assets | - | api/admin/stats.py | 获取素材统计 |
+| 114 | Stats | GET | /stats/tier-activity | - | api/admin/stats.py | 获取 Tier 活跃度 |
+| 115 | Stats | GET | /stats/subscription-events | - | api/admin/stats.py | 获取订阅事件统计 |
+| 116 | Stats | GET | /stats/page-views | - | api/admin/stats.py | 获取页面浏览统计 |
+| 117 | Stats | GET | /stats/project-details | - | api/admin/stats.py | 获取项目详细统计 |
+| 118 | Stats | GET | /stats/returning-users | - | api/admin/stats.py | 获取回访用户统计 |
+| 119 | Stats | GET | /stats/tier-trend | - | api/admin/stats.py | 获取 Tier 趋势 |
+| 120 | Stats | GET | /stats/tier-conversion | - | api/admin/stats.py | 获取 Tier 转化统计 |
+| 121 | Stats | GET | /stats/performance | - | api/admin/stats.py | 获取 Core Web Vitals 性能指标 |
+| 122 | Stats | GET | /stats/user-distribution | - | api/admin/stats.py | 获取用户分布统计 |
 | **Subscriptions (3个)** |
-| 117 | Subscriptions | POST | /subscriptions/refund | - | api/admin/subscriptions.py | 处理退款 |
-| 118 | Subscriptions | POST | /subscriptions/subscription/cancel | - | api/admin/subscriptions.py | 取消订阅 |
-| 119 | Subscriptions | POST | /subscriptions/subscription/downgrade | - | api/admin/subscriptions.py | 降级订阅 |
+| 123 | Subscriptions | POST | /subscriptions/refund | - | api/admin/subscriptions.py | 处理退款 |
+| 124 | Subscriptions | POST | /subscriptions/subscription/cancel | - | api/admin/subscriptions.py | 取消订阅 |
+| 125 | Subscriptions | POST | /subscriptions/subscription/downgrade | - | api/admin/subscriptions.py | 降级订阅 |
 | **System (12个)** |
-| 120 | System | GET | /system/configs | get_configs_endpoint | api/admin/system.py | 获取系统配置列表 |
-| 121 | System | GET | /system/configs/groups | get_config_groups_endpoint | api/admin/system.py | 获取配置组列表 |
-| 122 | System | POST | /system/configs | create_config_endpoint | api/admin/system.py | 创建系统配置 |
-| 123 | System | PUT | /system/configs/{key:path} | update_config_endpoint | api/admin/system.py | 更新系统配置 |
-| 124 | System | DELETE | /system/configs/{key:path} | delete_config_endpoint | api/admin/system.py | 软删除配置 |
-| 125 | System | GET | /system/configs/audit | get_config_audit_endpoint | api/admin/system.py | 获取配置变更审计日志 |
-| 126 | System | POST | /system/configs/cache/invalidate | invalidate_cache_endpoint | api/admin/system.py | 清空配置缓存 |
-| 127 | System | GET | /system/system/cache/status | get_cache_status_endpoint | api/admin/system.py | 获取 Redis 缓存状态 |
-| 128 | System | GET | /system/system/cache/keys | list_cache_keys_endpoint | api/admin/system.py | 列出缓存键 |
-| 129 | System | DELETE | /system/system/cache/key/{key:path} | delete_cache_key_endpoint | api/admin/system.py | 删除单个缓存键 |
-| 130 | System | POST | /system/system/cache/clear-all/confirm | request_clear_all_confirmation | api/admin/system.py | 请求清空所有缓存的确认 Token |
-| 131 | System | POST | /system/system/cache/clear-all | clear_all_cache_endpoint | api/admin/system.py | 清空所有缓存 |
+| 126 | System | GET | /system/configs | get_configs_endpoint | api/admin/system.py | 获取系统配置列表 |
+| 127 | System | GET | /system/configs/groups | get_config_groups_endpoint | api/admin/system.py | 获取配置组列表 |
+| 128 | System | POST | /system/configs | create_config_endpoint | api/admin/system.py | 创建系统配置 |
+| 129 | System | PUT | /system/configs/{key:path} | update_config_endpoint | api/admin/system.py | 更新系统配置 |
+| 130 | System | DELETE | /system/configs/{key:path} | delete_config_endpoint | api/admin/system.py | 软删除配置 |
+| 131 | System | GET | /system/configs/audit | get_config_audit_endpoint | api/admin/system.py | 获取配置变更审计日志 |
+| 132 | System | POST | /system/configs/cache/invalidate | invalidate_cache_endpoint | api/admin/system.py | 清空配置缓存 |
+| 133 | System | GET | /system/system/cache/status | get_cache_status_endpoint | api/admin/system.py | 获取 Redis 缓存状态 |
+| 134 | System | GET | /system/system/cache/keys | list_cache_keys_endpoint | api/admin/system.py | 列出缓存键 |
+| 135 | System | DELETE | /system/system/cache/key/{key:path} | delete_cache_key_endpoint | api/admin/system.py | 删除单个缓存键 |
+| 136 | System | POST | /system/system/cache/clear-all/confirm | request_clear_all_confirmation | api/admin/system.py | 请求清空所有缓存的确认 Token |
+| 137 | System | POST | /system/system/cache/clear-all | clear_all_cache_endpoint | api/admin/system.py | 清空所有缓存 |
 | **Tasks (4个)** |
-| 132 | Tasks | GET | /tasks/management/status | - | api/admin/tasks_mgmt.py | 获取任务状态 |
-| 133 | Tasks | GET | /tasks/management/logs | - | api/admin/tasks_mgmt.py | 获取任务日志 |
-| 134 | Tasks | GET | /tasks/management/health | - | api/admin/tasks_mgmt.py | 获取任务健康状态 |
-| 135 | Tasks | POST | /tasks/management/{task_name}/run | - | api/admin/tasks_mgmt.py | 手动触发任务 |
+| 138 | Tasks | GET | /tasks/management/status | - | api/admin/tasks_mgmt.py | 获取任务状态 |
+| 139 | Tasks | GET | /tasks/management/logs | - | api/admin/tasks_mgmt.py | 获取任务日志 |
+| 140 | Tasks | GET | /tasks/management/health | - | api/admin/tasks_mgmt.py | 获取任务健康状态 |
+| 141 | Tasks | POST | /tasks/management/{task_name}/run | - | api/admin/tasks_mgmt.py | 手动触发任务 |
 | **Users (13个)** |
-| 136 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
-| 137 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
-| 138 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
-| 139 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
-| 140 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
-| 141 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
-| 142 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
-| 143 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
-| 144 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
-| 145 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
-| 146 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
-| 147 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
+| 142 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
+| 143 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
+| 144 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
+| 145 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
+| 146 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
+| 147 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
+| 148 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
+| 149 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
+| 150 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
+| 151 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
+| 152 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
+| 153 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
 | **Webhooks (2个)** |
-| 148 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
-| 149 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
+| 154 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
+| 155 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
 
-**注**: 文档共记录 149 个接口（1-149 连续序号，无缺失）。v3.34 新增 Articles 文章管理 7 个端点。
+**注**: 文档共记录 155 个接口（1-155 连续序号，无缺失）。v3.36 新增 Feature Flags v1.1 树状结构 6 个端点。
 
 ---
 
@@ -2303,6 +2309,212 @@
     "new_editor_ui": true,
     "dark_mode": false
   }
+}
+```
+
+---
+
+### GET `/feature-flags/tree` (v1.1 新增)
+
+获取 Flag 树状结构
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `root_prefix` | string | - | 可选，只获取指定前缀的树 (如 "editor") |
+
+**响应**:
+```json
+{
+  "editor": {
+    "key": "editor",
+    "enabled": true,
+    "children": {
+      "toolbar": {
+        "key": "editor_toolbar",
+        "enabled": true,
+        "children": {
+          "drawing": {
+            "key": "editor_toolbar_drawing",
+            "enabled": true,
+            "children": {}
+          }
+        }
+      }
+    }
+  },
+  "dashboard": {
+    "key": "dashboard",
+    "enabled": true,
+    "children": {}
+  }
+}
+```
+
+---
+
+### GET `/feature-flags/{key}/children` (v1.1 新增)
+
+获取 Flag 的所有子级
+
+**限流**: 无限流
+
+**响应**:
+```json
+{
+  "flag_key": "editor_toolbar",
+  "children": [
+    {
+      "key": "editor_toolbar_drawing",
+      "name": "Drawing Tools",
+      "enabled": true,
+      "parent_flags": ["editor", "editor_toolbar"]
+    },
+    {
+      "key": "editor_toolbar_shapes",
+      "name": "Shape Tools",
+      "enabled": true,
+      "parent_flags": ["editor", "editor_toolbar"]
+    }
+  ],
+  "total": 2
+}
+```
+
+---
+
+### GET `/feature-flags/{key}/parents` (v1.1 新增)
+
+获取 Flag 的所有父级
+
+**限流**: 无限流
+
+**响应**:
+```json
+{
+  "flag_key": "editor_toolbar_drawing",
+  "parents": [
+    {
+      "key": "editor",
+      "name": "Editor",
+      "enabled": true
+    },
+    {
+      "key": "editor_toolbar",
+      "name": "Editor Toolbar",
+      "enabled": true
+    }
+  ],
+  "total": 2
+}
+```
+
+---
+
+### POST `/feature-flags/{key}/batch-toggle` (v1.1 新增)
+
+批量开关 Flag 及其子级
+
+**限流**: 无限流
+
+**请求体**:
+```json
+{
+  "enabled": false,
+  "include_children": true,
+  "reason": "暂时关闭 toolbar 及所有子功能"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "toggled_flags": [
+    {"key": "editor_toolbar", "enabled": false},
+    {"key": "editor_toolbar_drawing", "enabled": false},
+    {"key": "editor_toolbar_shapes", "enabled": false}
+  ],
+  "total_toggled": 3
+}
+```
+
+**审计日志**: 自动记录到 `flag_audit_logs` 表
+
+---
+
+### GET `/feature-flags/{key}/exposures` (v1.1 新增)
+
+获取 Flag 曝光记录
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `start_date` | string | - | 开始日期 (ISO 8601) |
+| `end_date` | string | - | 结束日期 (ISO 8601) |
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 (最大 100) |
+
+**响应**:
+```json
+{
+  "flag_key": "editor_toolbar_drawing",
+  "exposures": [
+    {
+      "id": "uuid-xxx",
+      "user_id": "user_123",
+      "variant": "treatment",
+      "enabled": true,
+      "reason": "percentage",
+      "timestamp": "2026-01-12T10:30:00Z"
+    }
+  ],
+  "pagination": {
+    "offset": 0,
+    "limit": 50,
+    "total": 1250
+  }
+}
+```
+
+---
+
+### GET `/feature-flags/{key}/exposures/stats` (v1.1 新增)
+
+获取 Flag 曝光统计
+
+**限流**: 无限流
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `start_date` | string | - | 开始日期 |
+| `end_date` | string | - | 结束日期 |
+
+**响应**:
+```json
+{
+  "flag_key": "editor_toolbar_drawing",
+  "total_exposures": 12345,
+  "unique_users": 5678,
+  "variant_distribution": {
+    "control": {"count": 6000, "percentage": 48.6},
+    "treatment": {"count": 6345, "percentage": 51.4}
+  },
+  "reason_distribution": {
+    "percentage": 11000,
+    "whitelist": 500,
+    "rule": 845,
+    "parent_disabled": 0
+  },
+  "daily_trend": [
+    {"date": "2026-01-12", "exposures": 1234, "unique_users": 567},
+    {"date": "2026-01-11", "exposures": 1180, "unique_users": 532}
+  ]
 }
 ```
 
