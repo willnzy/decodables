@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from domains.platform.config_service import ConfigService
 from infrastructure.repositories import SupabaseConfigRepository
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +39,13 @@ router = APIRouter(prefix="/config", tags=["user-config-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_config_service() -> ConfigService:
+async def get_config_service(db = Depends(get_async_db)) -> ConfigService:
     """
-    Dependency injection factory for ConfigService.
+    Dependency injection factory for ConfigService (AsyncClient).
 
     Returns:
         ConfigService instance with Repository injected
     """
-    db = get_database_client()
     config_repo = SupabaseConfigRepository(db)
     return ConfigService(config_repo)
 

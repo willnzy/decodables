@@ -34,7 +34,8 @@ from typing import List, Dict, Any
 
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
+from core.database import get_async_db_client
 from domains.generation import GenerationHistoryService
 from domains.generation.history_service import GenerationNotFoundException
 
@@ -88,9 +89,8 @@ class BatchDeleteResponse(BaseModel):
 # Dependency Injection
 # ==========================================
 
-def get_generation_history_service() -> GenerationHistoryService:
-    """Dependency injection factory for GenerationHistoryService."""
-    db = get_database_client()
+async def get_generation_history_service(db = Depends(get_async_db)) -> GenerationHistoryService:
+    """Dependency injection factory for GenerationHistoryService (AsyncClient)."""
     return GenerationHistoryService(db_client=db)
 
 
@@ -338,10 +338,10 @@ async def delete_generation(
 
     # ✅ Task 9 - Phase 2: Log generation deletion to audit trail
     try:
-        from core.database import get_database_client
         from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        db_client = await get_async_db_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
             admin_id=user["id"],
             operation_type="generation_delete",
@@ -435,10 +435,10 @@ async def batch_delete_generations(
 
     # ✅ Task 9 - Phase 2: Log batch deletion to audit trail
     try:
-        from core.database import get_database_client
         from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
 
-        admin_repo = SupabaseAdminUsersRepository(get_database_client())
+        db_client = await get_async_db_client()
+        admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
             admin_id=user["id"],
             operation_type="generation_batch_delete",
