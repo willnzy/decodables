@@ -4,7 +4,11 @@ Webhook Events Repository
 Repository for webhook event storage and retry management (P3-022).
 
 @module infrastructure.repositories.webhook_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 Architecture: Service → Repository → Database
 """
@@ -57,7 +61,7 @@ class SupabaseWebhookRepository:
             Uses INSERT ... ON CONFLICT to handle duplicate events (idempotency)
         """
         try:
-            result = self.client.table("stripe_webhook_events").insert({
+            result = await self.client.table("stripe_webhook_events").insert({
                 "event_id": event_id,
                 "event_type": event_type,
                 "payload": payload,
@@ -102,18 +106,18 @@ class SupabaseWebhookRepository:
 
             if increment_retry:
                 # Fetch current retry_count and increment
-                current = self.client.table("stripe_webhook_events").select("retry_count").eq(
+                current = await self.client.table("stripe_webhook_events").select("retry_count").eq(
                     "event_id", event_id
                 ).single().execute()
 
                 current_count = current.data.get("retry_count", 0) if current.data else 0
 
-                result = self.client.table("stripe_webhook_events").update({
+                result = await self.client.table("stripe_webhook_events").update({
                     **update_data,
                     "retry_count": current_count + 1,
                 }).eq("event_id", event_id).execute()
             else:
-                result = self.client.table("stripe_webhook_events").update(
+                result = await self.client.table("stripe_webhook_events").update(
                     update_data
                 ).eq("event_id", event_id).execute()
 
@@ -143,7 +147,7 @@ class SupabaseWebhookRepository:
         try:
             cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=hours_since_created)).isoformat()
 
-            result = self.client.table("stripe_webhook_events").select("*").eq(
+            result = await self.client.table("stripe_webhook_events").select("*").eq(
                 "processed", False
             ).lt("retry_count", max_retry_count).gte(
                 "created_at", cutoff_time
@@ -177,7 +181,7 @@ class SupabaseWebhookRepository:
             Created event record or None if failed
         """
         try:
-            result = self.client.table("clerk_webhook_events").insert({
+            result = await self.client.table("clerk_webhook_events").insert({
                 "event_id": event_id,
                 "event_type": event_type,
                 "payload": payload,
@@ -222,18 +226,18 @@ class SupabaseWebhookRepository:
 
             if increment_retry:
                 # Fetch current retry_count and increment
-                current = self.client.table("clerk_webhook_events").select("retry_count").eq(
+                current = await self.client.table("clerk_webhook_events").select("retry_count").eq(
                     "event_id", event_id
                 ).single().execute()
 
                 current_count = current.data.get("retry_count", 0) if current.data else 0
 
-                result = self.client.table("clerk_webhook_events").update({
+                result = await self.client.table("clerk_webhook_events").update({
                     **update_data,
                     "retry_count": current_count + 1,
                 }).eq("event_id", event_id).execute()
             else:
-                result = self.client.table("clerk_webhook_events").update(
+                result = await self.client.table("clerk_webhook_events").update(
                     update_data
                 ).eq("event_id", event_id).execute()
 
@@ -263,7 +267,7 @@ class SupabaseWebhookRepository:
         try:
             cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=hours_since_created)).isoformat()
 
-            result = self.client.table("clerk_webhook_events").select("*").eq(
+            result = await self.client.table("clerk_webhook_events").select("*").eq(
                 "processed", False
             ).lt("retry_count", max_retry_count).gte(
                 "created_at", cutoff_time
