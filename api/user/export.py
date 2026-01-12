@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field, field_validator
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories.project_repository import SupabaseProjectRepository
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from domains.export import ExportService
 from domains.export.export_service import (
     ProjectNotFoundException,
@@ -153,9 +153,8 @@ def _is_allowed_url(url: str) -> bool:
 # Dependency Injection
 # ==========================================
 
-def get_export_service() -> ExportService:
-    """Dependency injection factory for ExportService."""
-    db = get_database_client()
+async def get_export_service(db = Depends(get_async_db)) -> ExportService:
+    """Dependency injection factory for ExportService (AsyncClient)."""
     project_repo = SupabaseProjectRepository(db)
     return ExportService(project_repository=project_repo)
 
