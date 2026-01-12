@@ -1,8 +1,8 @@
 # Articles CMS 系统设计
 
 > **状态**: ✅ 已实现
-> **版本**: 1.0.0
-> **最后更新**: 2026-01-11
+> **版本**: 1.1.0
+> **最后更新**: 2026-01-12
 > **关联计划**: Part D of Landing 页面优化计划
 
 ---
@@ -43,6 +43,7 @@ CREATE TABLE articles (
     category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog')),
     tags JSONB DEFAULT '[]'::jsonb,        -- 标签数组
     cover_image VARCHAR(500),              -- 封面图 URL
+    is_featured BOOLEAN DEFAULT false,     -- 是否精选 (v1.1.0 新增)
     is_published BOOLEAN DEFAULT false,    -- 发布状态
     published_at TIMESTAMPTZ,              -- 发布时间
     author_id TEXT REFERENCES profiles(id), -- 作者 (Clerk user_id)
@@ -55,6 +56,7 @@ CREATE TABLE articles (
 -- 索引
 CREATE INDEX idx_articles_category ON articles(category);
 CREATE INDEX idx_articles_published ON articles(is_published, published_at DESC);
+CREATE INDEX idx_articles_featured ON articles(is_featured, published_at DESC) WHERE is_featured = true;  -- v1.1.0 新增
 CREATE INDEX idx_articles_slug ON articles(slug);
 ```
 
@@ -70,6 +72,7 @@ CREATE INDEX idx_articles_slug ON articles(slug);
 | `category` | VARCHAR(50) | ✅ | 分类: manual/news/changelog |
 | `tags` | JSONB | - | 标签数组，如 `["images", "tutorial"]` |
 | `cover_image` | VARCHAR(500) | - | 封面图 URL |
+| `is_featured` | BOOLEAN | 自动 | 是否精选 (默认 false, v1.1.0 新增) |
 | `is_published` | BOOLEAN | 自动 | 是否已发布 (默认 false) |
 | `published_at` | TIMESTAMPTZ | - | 发布时间 (发布时自动设置) |
 | `author_id` | TEXT | - | 作者的 Clerk user_id |
@@ -116,6 +119,7 @@ class Article:
     summary: Optional[str] = None
     tags: List[str] = field(default_factory=list)
     cover_image: Optional[str] = None
+    is_featured: bool = False  # v1.1.0 新增
     is_published: bool = False
     published_at: Optional[datetime] = None
     author_id: Optional[str] = None
@@ -134,6 +138,7 @@ class ArticleSummary:
     category: ArticleCategory
     tags: List[str]
     cover_image: Optional[str]
+    is_featured: bool  # v1.1.0 新增
     is_published: bool
     published_at: Optional[datetime]
     view_count: int
@@ -176,6 +181,7 @@ class ArticleService:
 | 方法 | 路径 | 说明 | 限流 |
 |------|------|------|------|
 | GET | `/api/v2/user/articles` | 列出已发布文章 | 60/min |
+| GET | `/api/v2/user/articles/featured` | 获取精选文章 (v1.1.0) | 60/min |
 | GET | `/api/v2/user/articles/categories` | 获取分类及文章数 | 60/min |
 | GET | `/api/v2/user/articles/search` | 搜索文章 | 30/min |
 | GET | `/api/v2/user/articles/{slug}` | 获取文章详情 | 60/min |
@@ -203,6 +209,7 @@ class ArticleService:
       "category": "manual",
       "tags": ["images", "tutorial"],
       "cover_image": "https://...",
+      "is_featured": false,
       "published_at": "2026-01-11T10:00:00Z",
       "view_count": 125
     }
@@ -210,6 +217,37 @@ class ArticleService:
   "total": 15,
   "offset": 0,
   "limit": 20
+}
+```
+
+#### GET `/articles/featured` (v1.1.0 新增)
+
+获取精选文章列表。
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `category` | string | - | 筛选分类 (manual/news/changelog) |
+| `limit` | int | 3 | 最大数量 (max 10) |
+
+**响应**:
+```json
+{
+  "articles": [
+    {
+      "id": "uuid",
+      "slug": "new-ai-feature",
+      "title": "New Feature: AI Design Assistant",
+      "summary": "Introducing our new AI-powered...",
+      "category": "news",
+      "tags": ["feature", "update"],
+      "cover_image": "https://...",
+      "is_featured": true,
+      "published_at": "2026-01-12T10:00:00Z",
+      "view_count": 250
+    }
+  ],
+  "total": 3
 }
 ```
 
@@ -541,8 +579,17 @@ export default async function sitemap() {
 
 ---
 
-**文档版本**: 1.0.0
-**最后更新**: 2026-01-11
+## 10. 版本历史
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0.0 | 2026-01-11 | 初始版本 |
+| **1.1.0** | **2026-01-12** | **新增 `is_featured` 字段和索引**；新增 `GET /articles/featured` API 端点；支持精选文章功能 (Manual/News Featured 区块) |
+
+---
+
+**文档版本**: 1.1.0
+**最后更新**: 2026-01-12
 **相关文档**:
 - [user-api-review.md](user-api-review.md) - User API 完整参考
 - [admin-api-review.md](admin-api-review.md) - Admin API 完整参考
