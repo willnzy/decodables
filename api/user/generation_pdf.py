@@ -25,7 +25,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from infrastructure.repositories.project_repository import SupabaseProjectRepository
 from infrastructure.rate_limiter import limiter
 from domains.generation import PdfGenerationService
@@ -45,9 +45,8 @@ router = APIRouter(prefix="/generate/pdf", tags=["generation-pdf-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_pdf_service() -> PdfGenerationService:
-    """Dependency injection factory for PdfGenerationService."""
-    db = get_database_client()
+async def get_pdf_service(db = Depends(get_async_db)) -> PdfGenerationService:
+    """Dependency injection factory for PdfGenerationService (AsyncClient)."""
     project_repo = SupabaseProjectRepository(db)
     return PdfGenerationService(project_repository=project_repo)
 
