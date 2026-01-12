@@ -2,7 +2,12 @@
 Feature Flag Repository Implementation - Supabase data access for platform domain.
 
 @module infrastructure.repositories.feature_flag_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Implements IFeatureFlagRepository using Supabase PostgreSQL.
 """
@@ -19,7 +24,6 @@ from domains.platform.value_objects import (
     TargetingRule,
     TargetType,
 )
-from core.database import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +31,27 @@ logger = logging.getLogger(__name__)
 class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     """
     Supabase implementation of feature flag repository.
+
+    v2.0: AsyncClient required (no lazy loading).
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
+    def __init__(self, client):
+        """
+        Initialize repository with AsyncClient.
+
+        Args:
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
+        """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseFeatureFlagRepository")
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     async def get_by_key(self, key: str) -> Optional[FeatureFlag]:

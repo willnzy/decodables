@@ -2,7 +2,12 @@
 Events Repository Implementation - Supabase data access.
 
 @module infrastructure.repositories.events_repository
-@version 1.0.0 (created for v3.27 refactor)
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Implements IEventsRepository using Supabase PostgreSQL.
 """
@@ -14,7 +19,6 @@ import logging
 from domains.events.repository import IEventsRepository
 from domains.events.entities import UserEvent, AggregatedStats
 from domains.events.constants import MAX_QUERY_LIMIT, DEFAULT_STATS_DAYS
-from core.database import get_supabase_client
 from core.database.retry import retry_on_network_error
 
 logger = logging.getLogger(__name__)
@@ -23,17 +27,27 @@ logger = logging.getLogger(__name__)
 class SupabaseEventsRepository(IEventsRepository):
     """
     Supabase implementation of Events repository.
+
+    v2.0: AsyncClient required (no lazy loading).
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
+    def __init__(self, client):
+        """
+        Initialize repository with AsyncClient.
+
+        Args:
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
+        """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseEventsRepository")
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     @retry_on_network_error()

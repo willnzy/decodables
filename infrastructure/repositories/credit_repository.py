@@ -2,7 +2,12 @@
 Credit Repository Implementation - Supabase data access for billing domain.
 
 @module infrastructure.repositories.credit_repository
-@version 1.0.1
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Changes in v1.0.1:
 - Fixed bucket detection to use RPC 'bucket' field instead of non-existent 'from_monthly'
@@ -23,7 +28,7 @@ from domains.billing.exceptions import (
     InsufficientCreditsException,
     CreditOperationFailedException,
 )
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -32,23 +37,28 @@ class SupabaseCreditRepository(ICreditRepository):
     """
     Supabase implementation of credit repository.
 
+    v2.0: AsyncClient required (no lazy loading).
+
     Uses PostgreSQL RPC functions for atomic credit operations.
     """
 
-    def __init__(self, client=None):
+    def __init__(self, client):
         """
-        Initialize repository with Supabase client.
+        Initialize repository with AsyncClient.
 
         Args:
-            client: Optional Supabase client (uses default if not provided)
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
         """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseCreditRepository")
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     async def get_by_user_id(self, user_id: str) -> Optional[UserCredits]:

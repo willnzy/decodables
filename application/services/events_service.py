@@ -30,7 +30,7 @@ from domains.events import (
 logger = logging.getLogger(__name__)
 
 
-# Phase 4: Audit logging helper
+# Phase 4: Audit logging helper (v2.0 AsyncClient)
 async def _log_admin_operation(
     admin_id: str,
     operation_type: str,
@@ -39,16 +39,19 @@ async def _log_admin_operation(
     """
     Log admin operation to admin_operations table.
 
+    v2.0: Uses AsyncClient instead of sync client.
+
     Args:
         admin_id: Admin user ID
         operation_type: Type of operation (e.g., "get_user_events", "get_event_stats")
         details: Additional operation details (filters, parameters, etc.)
     """
     try:
-        from core.database import get_supabase_client
+        from core.database import get_async_db_client
         import json
 
-        client = get_supabase_client()
+        # Get AsyncClient
+        client = await get_async_db_client()
 
         # Prepare log entry
         log_entry = {
@@ -59,7 +62,7 @@ async def _log_admin_operation(
         }
 
         # Write to admin_operations table
-        client.table("admin_operations").insert(log_entry).execute()
+        await client.table("admin_operations").insert(log_entry).execute()
 
         logger.info(
             f"[Audit] Admin {admin_id} performed {operation_type} "

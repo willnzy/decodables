@@ -2,9 +2,12 @@
 Admin Repository - Unified admin operations repository.
 
 @module infrastructure.repositories.admin_repository
-@version 1.2.0
+@version 2.0.0 (AsyncClient migration)
 
 Changes:
+- v2.0.0: AsyncClient migration (2026-01-13)
+  - Removed get_supabase_client import (unused sync client)
+  - All methods use AsyncClient via constructor
 - v1.2.0: Moderation module DDD migration (2026-01-09)
   - MOD-CRITICAL-1: All moderation methods ready for Service layer
   - MOD-HIGH-1: Fixed return type to Tuple[List, int] for list methods
@@ -27,7 +30,7 @@ import logging
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone, timedelta
 
-from core.database import DatabaseClient, retry_on_network_error, get_supabase_client
+from core.database import DatabaseClient, retry_on_network_error
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,12 @@
 Templates Repository - Data access for user prompt templates.
 
 @module infrastructure.repositories.templates_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Purpose:
 - Data access for asset_prompt_templates and page_prompt_templates tables
@@ -20,6 +25,8 @@ class SupabaseTemplatesRepository:
     """
     Supabase implementation for Templates data access.
 
+    v2.0: AsyncClient required (no lazy loading).
+
     Handles two tables:
     - asset_prompt_templates (5W1H templates)
     - page_prompt_templates (AI Design Page templates)
@@ -27,19 +34,21 @@ class SupabaseTemplatesRepository:
 
     def __init__(self, db_client: DatabaseClient):
         """
-        Initialize repository with database client.
+        Initialize repository with AsyncClient.
 
         Args:
-            db_client: Supabase database client
+            db_client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If db_client is None
         """
+        if db_client is None:
+            raise ValueError("AsyncClient required for SupabaseTemplatesRepository")
         self._client = db_client
 
     @property
     def client(self):
-        """Get database client."""
-        if self._client is None:
-            from core.database import get_supabase_client
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     # ==========================================

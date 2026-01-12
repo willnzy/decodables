@@ -2,7 +2,12 @@
 SystemResources Admin Repository - Data access for Admin System Resources API.
 
 @module infrastructure.repositories.system_resources_admin_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Purpose:
 - Admin-specific data access for system_resources table
@@ -21,25 +26,29 @@ class SupabaseSystemResourcesAdminRepository:
     """
     Supabase implementation for Admin System Resources data access.
 
+    v2.0: AsyncClient required (no lazy loading).
+
     Unlike SupabaseSystemResourceRepository (user-facing),
     this repository is for admin CRUD operations returning raw data.
     """
 
     def __init__(self, db_client: DatabaseClient):
         """
-        Initialize repository with database client.
+        Initialize repository with AsyncClient.
 
         Args:
-            db_client: Supabase database client
+            db_client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If db_client is None
         """
+        if db_client is None:
+            raise ValueError("AsyncClient required for SupabaseSystemResourcesAdminRepository")
         self._client = db_client
 
     @property
     def client(self):
-        """Get database client."""
-        if self._client is None:
-            from core.database import get_supabase_client
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     @retry_on_network_error()

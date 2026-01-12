@@ -2,7 +2,12 @@
 Support Repository - Support ticket management operations.
 
 @module infrastructure.repositories.support_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
 
 Provides support ticket CRUD operations.
 """
@@ -11,7 +16,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
-from core.database import get_supabase_client, retry_on_network_error
+from core.database import retry_on_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -19,17 +24,27 @@ logger = logging.getLogger(__name__)
 class SupabaseSupportRepository:
     """
     Support repository for support tickets table operations.
+
+    v2.0: AsyncClient required (no lazy loading).
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with database client."""
+    def __init__(self, client):
+        """
+        Initialize repository with AsyncClient.
+
+        Args:
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
+        """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseSupportRepository")
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     @retry_on_network_error()

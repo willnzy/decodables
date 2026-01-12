@@ -2,11 +2,16 @@
 Experiment Repository Implementation - Supabase data access for platform domain.
 
 @module infrastructure.repositories.experiment_repository
-@version 2.0.0 (v3.28)
+@version 3.0.0 (AsyncClient migration)
 
 Implements IExperimentRepository using Supabase PostgreSQL.
 
-Changes in v3.28:
+Changes in v3.0:
+- Removed lazy loading (client parameter now mandatory)
+- All methods use AsyncClient
+- Removed get_supabase_client() import (sync client)
+
+Changes in v2.0 (v3.28):
 - Added @retry_on_network_error_async to all async methods (EXP-HIGH-1)
 - Added OOM protection with .limit(10000) to all queries (EXP-HIGH-2)
 - Added list_experiments() method returning tuple (EXP-CRITICAL-1)
@@ -27,7 +32,6 @@ from domains.platform.value_objects import (
     TargetingRule,
     TargetType,
 )
-from core.database import get_supabase_client
 from core.database.retry import retry_on_network_error_async
 
 logger = logging.getLogger(__name__)
@@ -36,17 +40,27 @@ logger = logging.getLogger(__name__)
 class SupabaseExperimentRepository(IExperimentRepository):
     """
     Supabase implementation of experiment repository.
+
+    v3.0: AsyncClient required (no lazy loading).
     """
 
-    def __init__(self, client=None):
-        """Initialize repository with Supabase client."""
+    def __init__(self, client):
+        """
+        Initialize repository with AsyncClient.
+
+        Args:
+            client: AsyncClient instance (required)
+
+        Raises:
+            ValueError: If client is None
+        """
+        if client is None:
+            raise ValueError("AsyncClient required for SupabaseExperimentRepository")
         self._client = client
 
     @property
     def client(self):
-        """Lazy load Supabase client."""
-        if self._client is None:
-            self._client = get_supabase_client()
+        """Get AsyncClient instance."""
         return self._client
 
     @retry_on_network_error_async(max_retries=3, delay=1.0)
