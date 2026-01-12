@@ -1,13 +1,13 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 159 个，实际代码 160 个)
-> **版本**: 3.38
+> **状态**: ✅ Complete (已评审 171 个，实际代码 172 个)
+> **版本**: 3.39
 > **最后更新**: 2026-01-12
-> **总端点数**: 159 个 (已评审) / 160 个 (实际代码)
+> **总端点数**: 171 个 (已评审) / 172 个 (实际代码)
 
-本文档记录已评审的 159 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 171 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
-**注意**: 实际代码中有 160 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
+**注意**: 实际代码中有 172 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
 
 ---
 
@@ -31,12 +31,13 @@
 16. [Subscriptions 订阅管理 (3个)](#16-subscriptions-订阅管理)
 17. [System 系统管理 (12个)](#17-system-系统管理)
 18. [Tasks 任务管理 (4个)](#18-tasks-任务管理)
-19. [Users 用户管理 (13个)](#19-users-用户管理)
-20. [Webhooks 重试管理 (2个)](#20-webhooks-重试管理)
+19. [Themes 主题管理 (12个)](#19-themes-主题管理) **NEW**
+20. [Users 用户管理 (13个)](#20-users-用户管理)
+21. [Webhooks 重试管理 (2个)](#21-webhooks-重试管理)
 
 ---
 
-## 📋 接口总览 (159个)
+## 📋 接口总览 (171个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -198,24 +199,38 @@
 | 139 | Tasks | GET | /tasks/management/logs | - | api/admin/tasks_mgmt.py | 获取任务日志 |
 | 140 | Tasks | GET | /tasks/management/health | - | api/admin/tasks_mgmt.py | 获取任务健康状态 |
 | 141 | Tasks | POST | /tasks/management/{task_name}/run | - | api/admin/tasks_mgmt.py | 手动触发任务 |
+| **Themes (12个)** **NEW** |
+| 142 | Themes | GET | /themes | list_themes | api/admin/themes.py | 列出所有主题 |
+| 143 | Themes | GET | /themes/generation-status | get_generation_status | api/admin/themes.py | 获取主题生成状态 |
+| 144 | Themes | GET | /themes/calendar | get_calendar_view | api/admin/themes.py | 获取主题日历视图 |
+| 145 | Themes | GET | /themes/review/pending | get_pending_reviews | api/admin/themes.py | 获取待审核主题 |
+| 146 | Themes | GET | /themes/{theme_id} | get_theme | api/admin/themes.py | 获取主题详情 |
+| 147 | Themes | GET | /themes/{theme_id}/history | get_theme_history | api/admin/themes.py | 获取主题生成历史 |
+| 148 | Themes | POST | /themes | create_theme | api/admin/themes.py | 创建新主题 |
+| 149 | Themes | PUT | /themes/{theme_id} | update_theme | api/admin/themes.py | 更新主题 |
+| 150 | Themes | DELETE | /themes/{theme_id} | delete_theme | api/admin/themes.py | 删除主题 |
+| 151 | Themes | POST | /themes/batch-generate | batch_generate_themes | api/admin/themes.py | 批量生成主题 |
+| 152 | Themes | POST | /themes/{theme_id}/review | review_theme | api/admin/themes.py | 审核主题 |
+| 153 | Themes | POST | /themes/{theme_id}/regenerate | regenerate_theme | api/admin/themes.py | 重新生成主题 |
+| 154 | Themes | POST | /themes/review/batch-approve | batch_approve_themes | api/admin/themes.py | 批量审核通过 |
 | **Users (13个)** |
-| 142 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
-| 143 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
-| 144 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
-| 145 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
-| 146 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
-| 147 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
-| 148 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
-| 149 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
-| 150 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
-| 151 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
-| 152 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
-| 153 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
+| 155 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
+| 156 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
+| 157 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
+| 158 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
+| 159 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
+| 160 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
+| 161 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
+| 162 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
+| 163 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
+| 164 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
+| 165 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
+| 166 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
 | **Webhooks (2个)** |
-| 154 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
-| 155 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
+| 167 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
+| 168 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
 
-**注**: 文档共记录 155 个接口（1-155 连续序号，无缺失）。v3.36 新增 Feature Flags v1.1 树状结构 6 个端点。
+**注**: 文档共记录 168 个接口（1-168 连续序号，无缺失）。v3.39 新增 Themes v2.1 主题管理 12 个端点。
 
 ---
 
@@ -4270,7 +4285,360 @@
 
 ---
 
-## 19. Users 用户管理
+## 19. Themes 主题管理 **NEW**
+
+Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史追踪。
+
+### GET `/themes`
+
+列出所有主题（支持分页和筛选）
+
+**限流**: 60 req/min
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 (max: 200) |
+| `category` | string | - | 分类: holiday, memorial, historical, notable, campaign, special |
+| `status` | string | - | 状态: draft, active, archived |
+| `review_status` | string | - | 审核状态: pending, auto_approved, reviewed, rejected |
+| `date_from` | string | - | 日期范围开始 (YYYY-MM-DD) |
+| `date_to` | string | - | 日期范围结束 (YYYY-MM-DD) |
+| `ai_generated` | bool | - | 是否 AI 生成 |
+
+**响应**:
+```json
+{
+  "themes": [
+    {
+      "id": "theme_xxx",
+      "name": "World Book Day",
+      "date": "2026-04-23",
+      "category": "notable",
+      "priority": 75,
+      "review_status": "auto_approved",
+      "ai_generated": true
+    }
+  ],
+  "total": 365,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+---
+
+### GET `/themes/generation-status`
+
+获取主题生成状态概览
+
+**限流**: 30 req/min
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `days` | int | 300 | 检查天数 (1-365) |
+
+**响应**:
+```json
+{
+  "total_days": 300,
+  "generated": 250,
+  "missing": 50,
+  "review_status": {
+    "pending": 10,
+    "auto_approved": 200,
+    "reviewed": 40,
+    "rejected": 0
+  },
+  "missing_dates": ["2026-11-01", "2026-11-02"],
+  "recommendation": "partial"
+}
+```
+
+---
+
+### GET `/themes/calendar`
+
+获取主题日历视图
+
+**限流**: 30 req/min
+
+**参数**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `start_date` | string | ✅ | 开始日期 (YYYY-MM-DD) |
+| `end_date` | string | ✅ | 结束日期 (YYYY-MM-DD) |
+
+**响应**:
+```json
+{
+  "start_date": "2026-04-01",
+  "end_date": "2026-04-30",
+  "themes": {
+    "2026-04-23": {
+      "id": "theme_xxx",
+      "name": "World Book Day",
+      "category": "notable"
+    }
+  },
+  "total": 15
+}
+```
+
+---
+
+### GET `/themes/review/pending`
+
+获取待审核主题
+
+**限流**: 30 req/min
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 |
+| `review_status` | string | - | 审核状态筛选 |
+
+**响应**: 同 GET `/themes`
+
+---
+
+### GET `/themes/{theme_id}`
+
+获取主题详情
+
+**限流**: 60 req/min
+
+**响应**:
+```json
+{
+  "id": "theme_xxx",
+  "name": "World Book Day",
+  "name_i18n": {"en": "World Book Day", "zh": "世界读书日"},
+  "date": "2026-04-23",
+  "category": "notable",
+  "priority": 75,
+  "slogan": "Read, Dream, Grow",
+  "description": "Celebrating reading",
+  "theme_config": {
+    "colors": {"primary": "#3B82F6"},
+    "badge": {"icon": "book", "text": "Book Day"}
+  },
+  "ai_generated": true,
+  "ai_alternatives": [
+    {"id": "A", "name": "World Book Day"},
+    {"id": "B", "name": "Reading Festival"}
+  ],
+  "selected_alternative_id": "A",
+  "review_status": "reviewed",
+  "reviewed_by": "admin_xxx",
+  "reviewed_at": "2026-01-12T10:00:00Z"
+}
+```
+
+---
+
+### GET `/themes/{theme_id}/history`
+
+获取主题生成历史
+
+**限流**: 30 req/min
+
+**响应**:
+```json
+{
+  "theme_id": "theme_xxx",
+  "current": {
+    "alternatives": [...],
+    "selected_id": "A",
+    "recommended_id": "A"
+  },
+  "history": [
+    {
+      "generated_at": "2026-01-10T10:00:00Z",
+      "alternatives": [...],
+      "selected_id": "B",
+      "reason": "manual_regenerate",
+      "regenerated_by": "admin_xxx"
+    }
+  ],
+  "regenerate_count": 1
+}
+```
+
+---
+
+### POST `/themes`
+
+创建新主题
+
+**限流**: 30 req/min
+
+**请求体**:
+```json
+{
+  "name": "Custom Theme",
+  "date": "2026-05-01",
+  "category": "special",
+  "priority": 60,
+  "description": "A custom theme",
+  "slogan": "Your slogan",
+  "theme_config": {...}
+}
+```
+
+**响应**: 返回创建的主题对象
+
+---
+
+### PUT `/themes/{theme_id}`
+
+更新主题
+
+**限流**: 30 req/min
+
+**请求体**:
+```json
+{
+  "name": "Updated Theme Name",
+  "priority": 80
+}
+```
+
+**响应**: 返回更新后的主题对象
+
+---
+
+### DELETE `/themes/{theme_id}`
+
+删除主题（软删除）
+
+**限流**: 20 req/min
+
+**响应**:
+```json
+{
+  "status": "deleted",
+  "theme_id": "theme_xxx"
+}
+```
+
+---
+
+### POST `/themes/batch-generate`
+
+批量生成主题（AI 自动选择最佳方案）
+
+**限流**: 5 req/min
+
+**请求体**:
+```json
+{
+  "start_date": "2026-01-01",
+  "days": 30,
+  "overwrite": false
+}
+```
+
+**响应**:
+```json
+{
+  "generated": 25,
+  "skipped": 5,
+  "failed": 0,
+  "details": [
+    {
+      "date": "2026-01-01",
+      "theme_id": "theme_xxx",
+      "name": "New Year",
+      "status": "success"
+    }
+  ]
+}
+```
+
+---
+
+### POST `/themes/{theme_id}/review`
+
+审核主题
+
+**限流**: 30 req/min
+
+**请求体**:
+```json
+{
+  "action": "approve",
+  "notes": "Looks good"
+}
+```
+
+**Action 类型**:
+- `approve` - 批准当前选择
+- `reject` - 拒绝主题
+- `switch` - 切换到其他备选方案（需要 `alternative_id`）
+
+**响应**:
+```json
+{
+  "theme": {...},
+  "message": "Theme approved successfully"
+}
+```
+
+---
+
+### POST `/themes/{theme_id}/regenerate`
+
+重新生成主题（保留历史）
+
+**限流**: 10 req/min
+
+**请求体**:
+```json
+{
+  "reason": "Need better alternatives"
+}
+```
+
+**响应**:
+```json
+{
+  "theme": {...},
+  "message": "Theme regenerated successfully",
+  "history_count": 2
+}
+```
+
+---
+
+### POST `/themes/review/batch-approve`
+
+批量审核通过
+
+**限流**: 10 req/min
+
+**请求体**:
+```json
+{
+  "theme_ids": ["theme_1", "theme_2", "theme_3"]
+}
+```
+
+**响应**:
+```json
+{
+  "approved": 3,
+  "failed": 0
+}
+```
+
+---
+
+## 20. Users 用户管理
 
 ### GET `/users`
 
@@ -4572,7 +4940,7 @@
 
 ---
 
-## 20. Webhooks 重试管理
+## 21. Webhooks 重试管理
 
 ### POST `/webhooks/retry`
 
@@ -4621,8 +4989,18 @@
 
 ---
 
-*文档版本: v3.37*
+*文档版本: v3.39*
 *最后更新: 2026-01-12*
+
+**更新内容** (v3.39):
+- ✅ 新增 "Themes 主题管理" 模块 (12个接口)，Theme System v2.1
+  - 完整 CRUD 操作 (list/get/create/update/delete)
+  - AI 批量预生成 (batch-generate)
+  - 审核工作流 (review/batch-approve)
+  - 主题历史追踪 (regenerate/history)
+  - 日历视图和生成状态
+- ✅ 总模块数: 21 个
+- ✅ 总接口数: 171 个
 
 **更新内容** (v3.37):
 - ✅ 新增 "Pages 静态页面管理" 模块 (4个接口)，支持 CMS 动态内容管理

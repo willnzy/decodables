@@ -1,6 +1,6 @@
 # MagicZine AI (Make Decodables) 后台业务逻辑说明
 
-> **当前版本**: v3.5.0
+> **当前版本**: v3.6.0
 > **发布日期**: 2026-01-12
 > **产品**: MagicZine AI / Make Decodables - AI 驱动的 8 页可折叠迷你书创作平台
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修改内容 | 作者 |
 |------|------|----------|------|
+| v3.6.0 | 2026-01-12 | 🎨 **新增主题管理系统**：Themes v2.1 (AI 批量生成、审核工作流、主题切换、12 个 Admin API 端点) | - |
 | v3.5.0 | 2026-01-12 | 🔒 **数据库安全增强**：69 表启用 RLS、视图命名规范 `v_` 前缀、field_mappings 审计修复 | - |
 | v3.4.0 | 2026-01-11 | 📝 **新增文章管理系统**：Articles CMS (Manual/News/Changelog)、DDD 架构、Markdown 支持、发布/取消发布工作流 | - |
 | v3.3.0 | 2026-01-10 | 🗑️ **新增统一删除机制**：BaseRepository 三阶段删除 (软删除/永久标记/物理删除)、自动过滤、Repository 模式更新 | - |
@@ -63,6 +64,7 @@
 15. [分析与追踪](#15-分析与追踪)
 16. [支付系统](#16-支付系统)
 17. [文章管理系统](#17-文章管理系统) ⭐ **v3.4 新增**
+18. [主题管理系统](#18-主题管理系统) ⭐ **v3.6 新增**
 
 ---
 
@@ -1861,6 +1863,152 @@ CREATE TABLE articles (
 
 ---
 
+## 18. 主题管理系统
+
+> **版本**: v3.6.0 (2026-01-12 新增)
+
+主题管理系统 (Themes v2.1) 为平台提供每日主题管理功能，支持 AI 批量预生成、人工审核、主题切换等能力，用于首页展示和用户创作灵感激发。
+
+### 18.1 架构设计
+
+**DDD 分层**:
+```
+api/admin/themes.py           → Admin API (require_admin)
+domains/themes/               → 领域层
+  ├── entities.py             → DailyTheme, ThemeCategory, ReviewStatus
+  ├── repository.py           → 接口定义 (ThemesRepository)
+  └── themes_service.py       → ThemesService (业务逻辑)
+infrastructure/repositories/
+  └── themes_repository.py    → SupabaseThemesRepository (实现)
+```
+
+**调用链**: API → ThemesService → ThemesRepository
+
+### 18.2 核心概念
+
+**主题分类 (ThemeCategory)**:
+
+| 分类 | 说明 | 示例 |
+|------|------|------|
+| `holiday` | 节日主题 | 圣诞节、复活节 |
+| `notable` | 纪念日/名人日 | 世界读书日、地球日 |
+| `seasonal` | 季节主题 | 春季、夏季开学 |
+| `special` | 特别活动 | 开学季、毕业季 |
+| `evergreen` | 常青主题 | 友谊、家庭、冒险 |
+
+**审核状态 (ReviewStatus)**:
+
+| 状态 | 说明 | 触发条件 |
+|------|------|----------|
+| `pending` | 待审核 | AI 生成后默认状态 |
+| `auto_approved` | 自动批准 | priority ≥ 80 自动批准 |
+| `reviewed` | 已审核 | 管理员手动批准 |
+| `rejected` | 已拒绝 | 管理员拒绝 |
+
+### 18.3 数据模型
+
+**daily_themes 表**:
+```sql
+CREATE TABLE daily_themes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE NOT NULL,                          -- 主题日期
+  name VARCHAR(200) NOT NULL,                  -- 主题名称
+  slogan VARCHAR(500),                         -- 标语
+  description TEXT,                            -- 描述
+  category VARCHAR(50) DEFAULT 'evergreen',    -- 分类
+  priority INTEGER DEFAULT 50,                 -- 优先级 (0-100)
+  is_active BOOLEAN DEFAULT true,              -- 是否激活
+  is_deleted BOOLEAN DEFAULT false,            -- 软删除标记
+  deleted_at TIMESTAMPTZ,                      -- 删除时间
+
+  -- AI 生成相关
+  ai_generated BOOLEAN DEFAULT false,          -- 是否 AI 生成
+  ai_alternatives JSONB DEFAULT '[]',          -- AI 备选方案
+  selected_alternative_id VARCHAR(50),         -- 选中的方案 ID
+
+  -- 审核相关
+  review_status VARCHAR(50) DEFAULT 'pending', -- 审核状态
+  reviewed_by VARCHAR(50),                     -- 审核人 user_id
+  reviewed_at TIMESTAMPTZ,                     -- 审核时间
+
+  -- 时间戳
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 索引
+CREATE UNIQUE INDEX idx_daily_themes_date_active
+  ON daily_themes(date) WHERE is_deleted = false AND is_active = true;
+CREATE INDEX idx_daily_themes_review_status
+  ON daily_themes(review_status) WHERE is_deleted = false;
+```
+
+### 18.4 API 端点
+
+**Admin API** (require_admin):
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/themes` | GET | 列表 (分页、筛选) |
+| `/themes` | POST | 创建单个主题 |
+| `/themes/{theme_id}` | GET | 获取详情 |
+| `/themes/{theme_id}` | PUT | 更新主题 |
+| `/themes/{theme_id}` | DELETE | 删除主题 (软删除) |
+| `/themes/by-date/{date}` | GET | 按日期查询 |
+| `/themes/date-range` | GET | 批量查询日期范围 |
+| `/themes/ai/batch-generate` | POST | AI 批量生成 |
+| `/themes/{theme_id}/review` | POST | 审核 (approve/reject/switch) |
+| `/themes/batch-review` | POST | 批量审核 |
+| `/themes/review-queue` | GET | 审核队列 |
+| `/themes/stats` | GET | 统计信息 |
+
+### 18.5 业务规则
+
+**AI 批量生成**:
+1. 指定日期范围和生成数量
+2. 跳过已有主题的日期 (可配置是否覆盖)
+3. 每个日期生成多个备选方案 (ai_alternatives)
+4. 自动选择最佳方案作为默认 (selected_alternative_id)
+5. priority ≥ 80 的主题自动批准
+
+**审核工作流**:
+```
+AI 生成 → pending
+         ↓
+   ┌─────┼─────┐
+   ↓     ↓     ↓
+approve reject switch
+   ↓     ↓     ↓
+reviewed rejected reviewed (切换方案)
+```
+
+**主题切换 (switch)**:
+- 从 ai_alternatives 中选择另一个方案
+- 更新 name, slogan, description 等字段
+- 更新 selected_alternative_id
+- 状态变为 reviewed
+
+**优先级规则**:
+- 同一日期多个主题时，使用最高优先级的
+- priority ≥ 80: 自动批准
+- priority < 80: 需要人工审核
+
+### 18.6 公共 API
+
+**Public API** (无认证):
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/themes/today` | GET | 获取今日主题 |
+| `/themes/upcoming` | GET | 获取即将到来的主题列表 |
+
+### 18.7 相关文档
+
+- API 详情: [admin-api-review.md](shared/admin-api-review.md) § 19. Themes
+- 设计文档: [shared/theme-system-design.md](shared/theme-system-design.md)
+
+---
+
 ## 附录
 
 ### A. 配置常量
@@ -1897,6 +2045,7 @@ TRIAL_DAYS = 30
 | `notifications` | 用户通知 |
 | `user_generations` | 用户生成历史 |
 | `articles` | 文章 (Manual/News/Changelog) |
+| `daily_themes` | 每日主题 (AI 生成、审核) |
 
 ### C. API 端点汇总
 
@@ -1908,8 +2057,9 @@ TRIAL_DAYS = 30
 | 市场 | `/api/marketplace` | `/items`, `/purchase`, `/publish`, `/leaderboard` |
 | 资源 | `/api/resources` | `/stickers`, `/backgrounds`, `/templates` |
 | 文章 | `/api/articles` | 列表, 详情, 搜索, 分类 (Public) |
+| 主题 | `/api/themes` | `/today`, `/upcoming` (Public) |
 | 实验 | `/api/experiments` | `/variant`, `/track` |
-| 管理 | `/api/admin` | `/users`, `/credits/adjust`, `/marketplace/moderation`, `/configs`, `/metrics`, `/articles` |
+| 管理 | `/api/admin` | `/users`, `/credits/adjust`, `/marketplace/moderation`, `/configs`, `/metrics`, `/articles`, `/themes` |
 
 ### D. 错误代码
 

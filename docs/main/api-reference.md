@@ -521,9 +521,9 @@ checkout.session 需要携带的 metadata:
 
 ---
 
-### Admin API (143个端点)
+### Admin API (171个端点)
 
-> **注意**: 实际代码中有 143 个 Admin API 端点。本表格汇总了已完整评审的端点模块。
+> **注意**: 实际代码中有 172 个 Admin API 端点。本表格汇总了已完整评审的端点模块。
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
@@ -535,7 +535,7 @@ checkout.session 需要携带的 metadata:
 | **内容审核** | `/api/v2/admin/moderation` | 10 | Marketplace 审核、举报 |
 | **通知管理** | `/api/v2/admin/notifications` | 5 | 广播、批量发送 |
 | **系统配置** | `/api/v2/admin/config` | 8 | 配置 CRUD、限流预设 |
-| **系统管理** | `/api/v2/admin/system` | 11 | 缓存、系统配置 |
+| **系统管理** | `/api/v2/admin/system` | 12 | 缓存、系统配置 |
 | **实验管理** | `/api/v2/admin/experiments` | 14 | AB 测试、AI 分析 |
 | **Feature Flags** | `/api/v2/admin/feature-flags` | 15 | 功能开关管理 (v1.2 含 Tier 分层筛选) |
 | **事件管理** | `/api/v2/admin/events` | 5 | 事件、聚合 |
@@ -543,9 +543,10 @@ checkout.session 需要携带的 metadata:
 | **指标** | `/api/v2/admin/metrics` | 7 | 日/月指标、留存 |
 | **任务管理** | `/api/v2/admin/tasks/management` | 4 | 任务状态、手动触发 |
 | **营销活动** | `/api/v2/admin/campaigns` | 8 | 活动 CRUD、统计 |
+| **主题管理** | `/api/v2/admin/themes` | 12 | 主题 CRUD、AI 批量生成、审核 **NEW** |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 155 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 171 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
 > **说明**: admin-api-review.md 记录了已评审的 155 个端点 (v3.36)，另有 1 个端点待补充评审文档（PUT /config/admin 占位符功能）。v3.36 新增 Feature Flags v1.1 树状结构 6 个端点；v1.2 新增 allowed_tiers Tier 分层筛选支持。
 
