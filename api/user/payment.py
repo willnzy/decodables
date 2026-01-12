@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories.user_repository import SupabaseUserRepository
-from core.database import get_database_client
+from core.database.dependencies import get_async_db
 from domains.billing.payment_service import PaymentService
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,7 @@ async def create_checkout(
     req: CheckoutRequest,
     user: dict = Depends(get_current_user),
     payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
+    db = Depends(get_async_db),  # AsyncClient DI
 ) -> CheckoutResponse:
     """
     Create a Stripe checkout session.
@@ -102,7 +103,7 @@ async def create_checkout(
         CheckoutResponse with checkout URL and discount info
     """
     try:
-        user_repo = SupabaseUserRepository(get_database_client())
+        user_repo = SupabaseUserRepository(db)
 
         # v2.2.0: Get and validate discount
         discount = await user_repo.get_user_discount(user["id"], req.plan_type)
