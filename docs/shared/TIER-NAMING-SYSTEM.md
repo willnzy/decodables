@@ -1,12 +1,13 @@
 # Tier 命名系统 (可配置化)
 
-> **版本**: 2.0.0 (实施完成)
-> **最后更新**: 2026-01-11
+> **版本**: 2.1.0 (Tier 权限配置化完成)
+> **最后更新**: 2026-01-12
 > **实施状态**: ✅ 已完成
-> **Commit**: c0906a2
-> **实施日期**: 2026-01-10
-> **覆盖范围**: 67文件, 245处修改
+> **Commit**: b7844be
+> **实施日期**: 2026-01-12
+> **覆盖范围**: 67文件, 245处修改 (v2.0.0) + Tier 权限配置化 (v2.1.0)
 > **相关API**: api-reference.md v3.26 § 5.2 (System Config), § 1.9 (DDD架构)
+> **权限文档**: TIER-PERMISSIONS.md (会员权益汇总表)
 
 ## 概述
 
@@ -18,18 +19,21 @@ Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制，�
 
 ## 系统架构
 
-### 三层等级系统
+### 四层等级系统
 
 | 系统代码 (tier) | 简称 | 当前显示名称 (可配置) | 月度积分 | 价格 | 主题色 |
 |-----------------|------|---------------------|----------|------|--------|
 | `t1` | First Tier | Free Plan | 0 | $0 | 🟢 Emerald |
-| `t2` | Second Tier | Starter Plan | 200 | $9.9/月 | 🔵 Blue |
-| `t3` | Third Tier | Pro Plan | 500 | $19.9/月 | 🟣 Violet |
+| `t2` | Second Tier | Starter Plan | 100 | ~~$9.9~~ $6.9/月 | 🔵 Blue |
+| `t3` | Third Tier | Pro Plan | 200 | ~~$15.9~~ $9.9/月 | 🟣 Violet |
+| `t4` | Fourth Tier | Enterprise Plan | 500 | 待定 | 🟠 Orange |
+
+> ⚠️ **t4 (Enterprise)** 目前预留，尚未启用。详见 [TIER-PERMISSIONS.md](./TIER-PERMISSIONS.md)
 
 **设计原则**:
-- **系统代码** (`t1`/`t2`/`t3`) - 数据库字段、代码逻辑使用，**永不改变**
-- **简称** (First Tier/Second Tier/Third Tier) - 固定的描述性名称，便于理解层级
-- **显示名称** (Free Plan/Starter Plan/Pro Plan) - 用户看到的名称，**可通过 Admin 配置**，存储在 system_configs 表
+- **系统代码** (`t1`/`t2`/`t3`/`t4`) - 数据库字段、代码逻辑使用，**永不改变**
+- **简称** (First Tier/Second Tier/Third Tier/Fourth Tier) - 固定的描述性名称，便于理解层级
+- **显示名称** (Free Plan/Starter Plan/Pro Plan/Enterprise Plan) - 用户看到的名称，**可通过 Admin 配置**，存储在 system_configs 表
 
 **为什么使用 t1/t2/t3**:
 - ✅ **简洁**: 比 `free`/`starter`/`pro` 更短，减少输入和存储
@@ -133,13 +137,15 @@ logger.info(f"User upgraded to {tier} ({TIER_LABELS[tier]})")
 INSERT INTO system_configs (key, value, value_type, category, description, is_user_visible) VALUES
 ('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称', FALSE),
 ('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称', FALSE),
-('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称', FALSE);
+('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称', FALSE),
+('tier.t4.display_name', 'Enterprise Plan', 'text', 'tier', 'Fourth Tier 显示名称', FALSE);
 
 -- Tier 月度积分配置 (也可配置)
 INSERT INTO system_configs (key, value, value_type, category, description, is_user_visible) VALUES
 ('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', FALSE),
-('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', FALSE),
-('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', FALSE);
+('tier.t2.monthly_credits', '100', 'integer', 'tier', 'Second Tier 月度积分', FALSE),
+('tier.t3.monthly_credits', '200', 'integer', 'tier', 'Third Tier 月度积分', FALSE),
+('tier.t4.monthly_credits', '500', 'integer', 'tier', 'Fourth Tier 月度积分', FALSE);
 ```
 
 ### profiles 表
@@ -152,7 +158,7 @@ CREATE TABLE profiles (
     email TEXT NOT NULL UNIQUE,
 
     -- 用户等级 (系统代码)
-    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3')),
+    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3', 't4')),
     tier_changed_at TIMESTAMPTZ,
 
     -- 积分余额
@@ -181,22 +187,25 @@ CREATE INDEX idx_profiles_tier ON profiles(tier);
 TIER_T1 = "t1"  # First Tier
 TIER_T2 = "t2"  # Second Tier
 TIER_T3 = "t3"  # Third Tier
+TIER_T4 = "t4"  # Fourth Tier (Enterprise, 预留)
 
 # 有效的 tier 代码
-VALID_TIERS = {TIER_T1, TIER_T2, TIER_T3}
+VALID_TIERS = {TIER_T1, TIER_T2, TIER_T3, TIER_T4}
 
 # 简称 (固定描述)
 TIER_LABELS = {
     TIER_T1: "First Tier",
     TIER_T2: "Second Tier",
     TIER_T3: "Third Tier",
+    TIER_T4: "Fourth Tier",
 }
 
 # 默认月度积分 (也可从 system_configs 读取)
 TIER_MONTHLY_CREDITS = {
     TIER_T1: 0,
-    TIER_T2: 200,
-    TIER_T3: 500,
+    TIER_T2: 100,
+    TIER_T3: 200,
+    TIER_T4: 500,
 }
 
 # Tier 等级 (用于比较)
@@ -204,6 +213,7 @@ TIER_LEVELS = {
     TIER_T1: 1,
     TIER_T2: 2,
     TIER_T3: 3,
+    TIER_T4: 4,
 }
 ```
 
@@ -642,15 +652,23 @@ async def test_update_tier_display_name_api():
 | **存储位置** | profiles.tier + 代码常量 | 代码常量 | system_configs 表 |
 
 **最佳实践**:
-- ✅ 业务逻辑使用 **系统代码** (`t1`/`t2`/`t3`)
-- ✅ 文档和日志使用 **固定简称** (First Tier/Second Tier/Third Tier)
+- ✅ 业务逻辑使用 **系统代码** (`t1`/`t2`/`t3`/`t4`)
+- ✅ 文档和日志使用 **固定简称** (First Tier/Second Tier/Third Tier/Fourth Tier)
 - ✅ UI 显示使用 **显示名称** (从 TierService 获取)
-- ✅ 代码中使用常量 (`TIER_T1`, `TIER_T2`, `TIER_T3`)，不硬编码字符串
+- ✅ 代码中使用常量 (`TIER_T1`, `TIER_T2`, `TIER_T3`, `TIER_T4`)，不硬编码字符串
 - ✅ 等级比较使用 `TIER_LEVELS` 字典，不使用字符串比较
 - ✅ 修改名称只需通过 Admin API，无需改代码
+- ✅ 功能权限通过 TierService.can_use_feature() 检查，支持 "trial" 值
 
 ---
 
-**最后更新**: 2026-01-09
+## 相关文档
+
+- [TIER-PERMISSIONS.md](./TIER-PERMISSIONS.md) - 会员权益汇总表 (完整的功能权限配置)
+- `docs/tmp/TIER-PERMISSIONS-BACKEND-IMPLEMENTATION.md` - 后端实现说明
+
+---
+
+**最后更新**: 2026-01-12
 **维护人**: 后端团队
-**状态**: 设计完成，待实施
+**状态**: ✅ v2.1.0 实施完成
