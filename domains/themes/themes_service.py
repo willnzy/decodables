@@ -340,9 +340,17 @@ class ThemesService:
 
         updated = await self.repository.update(theme_id, update_data)
 
+        # Generate proper past tense message
+        action_messages = {
+            REVIEW_ACTION_APPROVE: "approved",
+            REVIEW_ACTION_REJECT: "rejected",
+            REVIEW_ACTION_SWITCH: "switched",
+        }
+        action_past = action_messages.get(action, f"{action}ed")
+
         return {
             "theme": updated,
-            "message": f"Theme {action}d successfully",
+            "message": f"Theme {action_past} successfully",
         }
 
     async def regenerate_theme(
