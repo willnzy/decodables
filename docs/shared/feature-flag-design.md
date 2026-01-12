@@ -1,9 +1,9 @@
 # Feature Flag 与 Experiments 统一架构设计
 
-> **版本**: v1.1
+> **版本**: v1.2
 > **日期**: 2026-01-12
 > **决策**: 方案C - Feature Flag 为基础，Experiments 扩展
-> **更新**: 添加树状依赖支持 (parent_flags)
+> **更新**: v1.2 添加 Tier 分层筛选支持 (allowed_tiers)
 
 ---
 
@@ -68,10 +68,11 @@
 │  │  1. Check enabled                                        │    │
 │  │  2. Check time window                                    │    │
 │  │  3. Check environment                                    │    │
-│  │  4. Check blacklist → whitelist                          │    │
-│  │  5. Evaluate targeting rules                             │    │
-│  │  6. Assign variant (deterministic hash)                  │    │
-│  │  7. Track exposure                                       │    │
+│  │  4. Check allowed_tiers (v1.2)                           │    │
+│  │  5. Check blacklist → whitelist                          │    │
+│  │  6. Evaluate targeting rules (支持规则级 tiers)          │    │
+│  │  7. Assign variant (deterministic hash)                  │    │
+│  │  8. Track exposure                                       │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └───────────────────────────────────────────────────────────────────┘
                                                 │
@@ -142,9 +143,15 @@ CREATE TABLE feature_flags (
     -- 名单控制
     whitelist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
     blacklist_user_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
-    
+
+    -- v1.2 Tier 分层筛选
+    -- 允许的 Tier 列表，空数组表示不限制 (所有 Tier 都允许)
+    -- 格式: ["t2", "t3"] 表示仅 Starter 和 Pro 用户可见
+    allowed_tiers TEXT[] DEFAULT ARRAY[]::TEXT[],
+
     -- 定向规则 (JSON)
-    -- 格式: [{"id": "rule1", "priority": 1, "conditions": [...], "variant": "treatment"}]
+    -- 格式: [{"id": "rule1", "priority": 1, "tiers": ["t3"], "conditions": [...], "variant": "treatment"}]
+    -- v1.2: 支持规则级 tiers 字段，实现 "先选 Tier，再选用户特征"
     targeting_rules JSONB DEFAULT '[]',
     
     -- 变体配置 (JSON)
@@ -433,6 +440,7 @@ class EvaluationReason(Enum):
     PARENT_DISABLED = "parent_disabled"  # v1.1: 父级 Flag 未启用
     TIME_WINDOW = "time_window"
     ENVIRONMENT = "environment"
+    TIER_MISMATCH = "tier_mismatch"      # v1.2: Tier 不匹配
     BLACKLIST = "blacklist"
     WHITELIST = "whitelist"
     RULE = "rule"
@@ -553,16 +561,17 @@ class UnifiedEvaluator:
         """
         评估 Flag
 
-        评估流程 (v1.1 更新):
+        评估流程 (v1.2 更新):
         1. 检查 enabled
-        2. 检查父级 Flag (树状依赖) ← v1.1 新增
+        2. 检查父级 Flag (树状依赖) ← v1.1
         3. 检查时间窗口
         4. 检查环境
-        5. 检查黑名单
-        6. 检查白名单（命中则立即返回）
-        7. 评估定向规则
-        8. 计算变体分配（百分比灰度）
-        9. 返回默认值
+        5. 检查 Tier 限制 (allowed_tiers) ← v1.2 新增
+        6. 检查黑名单
+        7. 检查白名单（命中则立即返回）
+        8. 评估定向规则 (支持规则级 tiers) ← v1.2 增强
+        9. 计算变体分配（百分比灰度）
+        10. 返回默认值
         """
         flag_key = flag.get("key", "unknown")
         flag_type = FlagType(flag.get("flag_type", "boolean"))
@@ -584,23 +593,27 @@ class UnifiedEvaluator:
             if not self._check_environment(flag, context):
                 return self._result(flag, False, EvaluationReason.ENVIRONMENT)
 
-            # 5. 检查黑名单
+            # 5. 检查 Tier 限制 (v1.2 新增)
+            if not self._check_allowed_tiers(flag, context):
+                return self._result(flag, False, EvaluationReason.TIER_MISMATCH)
+
+            # 6. 检查黑名单
             if self._in_blacklist(flag, context):
                 return self._result(flag, False, EvaluationReason.BLACKLIST)
 
-            # 6. 检查白名单
+            # 7. 检查白名单
             if self._in_whitelist(flag, context):
                 return self._result(
                     flag, True, EvaluationReason.WHITELIST,
                     variant=self._get_first_treatment_variant(flag)
                 )
 
-            # 7. 评估定向规则
+            # 8. 评估定向规则 (v1.2: 支持规则级 tiers)
             rule_result = self._evaluate_rules(flag, context)
             if rule_result:
                 return rule_result
 
-            # 8. 计算变体分配
+            # 9. 计算变体分配
             return self._assign_variant(flag, context)
             
         except Exception as e:
@@ -676,6 +689,34 @@ class UnifiedEvaluator:
         # 递归检查父级的父级
         return self._check_parent_flags(parent_flag, context, all_flags)
 
+    # ==================== v1.2 新增: Tier 分层筛选 ====================
+
+    def _check_allowed_tiers(self, flag: Dict, context: EvaluationContext) -> bool:
+        """
+        检查 Tier 限制 (v1.2 新增)
+
+        - 空数组 = 不限制 Tier (所有用户都允许)
+        - 非空数组 = 用户 Tier 必须在列表中
+
+        示例:
+        - allowed_tiers = [] → 所有用户可见
+        - allowed_tiers = ["t3"] → 仅 Pro 用户可见
+        - allowed_tiers = ["t2", "t3"] → Starter 和 Pro 用户可见
+        """
+        allowed_tiers = flag.get("allowed_tiers", [])
+
+        # 空数组表示不限制
+        if not allowed_tiers:
+            return True
+
+        user_tier = context.tier
+        if not user_tier:
+            # 无 Tier 信息时，仅当 allowed_tiers 为空才允许
+            return False
+
+        # 忽略大小写比较
+        return user_tier.lower() in [t.lower() for t in allowed_tiers]
+
     # ==================== 时间窗口和环境检查 ====================
 
     def _check_time_window(self, flag: Dict) -> bool:
@@ -745,11 +786,25 @@ class UnifiedEvaluator:
         return None
     
     def _match_rule_conditions(
-        self, 
-        rule: Dict, 
+        self,
+        rule: Dict,
         context: EvaluationContext
     ) -> bool:
-        """匹配规则条件"""
+        """
+        匹配规则条件 (所有条件必须满足)
+
+        v1.2: 支持规则级 tiers 条件
+        """
+        # v1.2: 检查规则级 Tier 限制
+        rule_tiers = rule.get("tiers", [])
+        if rule_tiers:
+            user_tier = context.tier
+            if not user_tier:
+                return False
+            if user_tier.lower() not in [t.lower() for t in rule_tiers]:
+                return False
+
+        # 检查 conditions
         conditions = rule.get("conditions", [])
         
         for condition in conditions:
@@ -1114,6 +1169,7 @@ class CreateFlagRequest(BaseModel):
     variants: Optional[List[dict]] = None
     targeting_rules: Optional[List[dict]] = None
     parent_flags: Optional[List[str]] = None  # v1.1: 父级 Flag keys
+    allowed_tiers: Optional[List[str]] = None  # v1.2: Tier 限制 (空 = 不限制)
     tags: Optional[List[str]] = None
     owner: Optional[str] = None
 
@@ -1129,6 +1185,7 @@ class UpdateFlagRequest(BaseModel):
     whitelist_user_ids: Optional[List[str]] = None
     blacklist_user_ids: Optional[List[str]] = None
     parent_flags: Optional[List[str]] = None  # v1.1: 父级 Flag keys
+    allowed_tiers: Optional[List[str]] = None  # v1.2: Tier 限制
     start_at: Optional[str] = None
     end_at: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -1412,6 +1469,7 @@ export type EvaluationReason =
   | 'parent_disabled'  // v1.1: 父级 Flag 未启用
   | 'time_window'
   | 'environment'
+  | 'tier_mismatch'    // v1.2: Tier 不匹配
   | 'blacklist'
   | 'whitelist'
   | 'rule'
@@ -2228,6 +2286,56 @@ def rollback():
 |------|------|------|----------|
 | v1.0 | 2026-01-06 | - | 初始版本：Feature Flag + Experiments 统一架构 |
 | v1.1 | 2026-01-12 | - | 添加树状依赖支持：`parent_flags` 字段、层级评估逻辑、树状查询 API |
+| v1.2 | 2026-01-12 | - | 添加 Tier 分层筛选：`allowed_tiers` 字段、规则级 `tiers` 条件、`TIER_MISMATCH` 原因 |
+
+### v1.2 变更详情 (Tier 分层筛选)
+
+**需求背景**:
+- 用户需求："先选择 tier 层级，然后再选择用户特征或者分类"
+- 实现 "Tier 优先" 的分层筛选策略
+
+**数据库变更**:
+- `feature_flags` 表添加 `allowed_tiers TEXT[]` 字段
+- `targeting_rules` JSON 支持 `tiers` 数组字段
+
+**类型变更**:
+- `EvaluationReason` 枚举添加 `TIER_MISMATCH`
+
+**评估引擎变更**:
+- 新增 `_check_allowed_tiers()` 方法 (顶层 Tier 过滤)
+- 更新 `_match_rule_conditions()` 支持规则级 `tiers`
+- 评估流程更新为 10 步 (插入第 5 步：检查 Tier 限制)
+
+**API 变更**:
+- `CreateFlagRequest` / `UpdateFlagRequest` 添加 `allowed_tiers` 字段
+- 添加 Tier 验证 (仅允许 t1/t2/t3/t4)
+
+**使用示例**:
+
+```json
+// 顶层 Tier 限制：仅 Pro 用户可见
+{
+  "key": "pro_feature",
+  "allowed_tiers": ["t3"],
+  "rollout_percentage": 100
+}
+
+// 规则级 Tier 限制：Pro 用户 + 美国地区
+{
+  "key": "regional_feature",
+  "allowed_tiers": [],  // 顶层不限制
+  "targeting_rules": [
+    {
+      "id": "rule_1",
+      "tiers": ["t3"],  // 规则级限制
+      "conditions": [
+        {"attribute": "country", "operator": "eq", "value": "US"}
+      ],
+      "variant": "treatment"
+    }
+  ]
+}
+```
 
 ### v1.1 变更详情
 
