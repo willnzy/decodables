@@ -2,7 +2,11 @@
 Listing Repository Implementation - Supabase data access for marketplace domain.
 
 @module infrastructure.repositories.listing_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 Implements IListingRepository using Supabase PostgreSQL.
 Inherits from BaseRepository for soft/hard delete support.
@@ -46,7 +50,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def get_by_id(self, listing_id: str) -> Optional[Listing]:
         """Get listing by ID."""
         try:
-            result = self.client.table("marketplace_listings").select("*").eq(
+            result = await self.client.table("marketplace_listings").select("*").eq(
                 "listing_id", listing_id
             ).single().execute()
 
@@ -63,7 +67,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """Persist listing (upsert)."""
         try:
             data = self._map_to_row(listing)
-            self.client.table("marketplace_listings").upsert(
+            await self.client.table("marketplace_listings").upsert(
                 data, on_conflict="listing_id"
             ).execute()
 
@@ -77,7 +81,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """Create a new listing."""
         try:
             data = self._map_to_row(listing)
-            self.client.table("marketplace_listings").insert(data).execute()
+            await self.client.table("marketplace_listings").insert(data).execute()
 
             return listing
 
@@ -91,7 +95,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             data = self._map_to_row(listing)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = self.client.table("marketplace_listings").update(data).eq(
+            result = await self.client.table("marketplace_listings").update(data).eq(
                 "listing_id", listing.listing_id
             ).select("*").single().execute()
 
@@ -114,7 +118,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         For hard delete (physical removal), use hard_delete() method.
         """
         # Get listing UUID first
-        result = self.client.table("marketplace_listings").select("id").eq(
+        result = await self.client.table("marketplace_listings").select("id").eq(
             "listing_id", listing_id
         ).single().execute()
 
@@ -139,7 +143,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if status:
                 query = query.eq("status", status.value)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_listing(row) for row in result.data]
 
@@ -167,7 +171,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if status:
                 query = query.eq("status", status.value)
 
-            result = query.range(offset, offset + limit - 1).execute()
+            result = await query.range(offset, offset + limit - 1).execute()
 
             listings = [self._map_to_listing(row) for row in result.data]
             total_count = result.count if result.count is not None else len(listings)
@@ -199,7 +203,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if tags:
                 query = query.contains("tags", tags)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_listing(row) for row in result.data]
 
@@ -293,7 +297,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
                     sort_by=sort_by,
                 )
 
-                result = self.client.rpc("p_get_marketplace_listings", {
+                result = await self.client.rpc("p_get_marketplace_listings", {
                     "p_category": rpc_params["category"],
                     "p_price_filter": rpc_params["price_filter"],
                     "p_sort_by": rpc_params["sort_by"],
@@ -361,7 +365,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             # Pagination
             db_query = db_query.range(offset, offset + limit - 1)
 
-            result = db_query.execute()
+            result = await db_query.execute()
 
             # Get total count from response
             total_count = result.count if result.count is not None else len(result.data)
@@ -394,7 +398,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if category:
                 query = query.eq("category", category.value)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_listing(row) for row in result.data]
 
@@ -423,7 +427,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             # Use upsert with ON CONFLICT DO NOTHING to handle race condition
             # The unique constraint on (listing_id, buyer_id) prevents duplicates
-            result = self.client.table("marketplace_purchases").upsert(
+            result = await self.client.table("marketplace_purchases").upsert(
                 {
                     "listing_id": listing_id,
                     "buyer_id": buyer_id,
@@ -441,7 +445,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if is_new_purchase:
                 # Only increment stats for new purchases
                 try:
-                    self.client.rpc("increment_listing_stat", {
+                    await self.client.rpc("increment_listing_stat", {
                         "p_listing_id": listing_id,
                         "p_stat": "purchase_count",
                     }).execute()
@@ -467,7 +471,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         which could lead to double-charging in purchase flow.
         """
         try:
-            result = self.client.table("marketplace_purchases").select(
+            result = await self.client.table("marketplace_purchases").select(
                 "id"
             ).eq("listing_id", listing_id).eq("buyer_id", user_id).maybe_single().execute()
 
@@ -487,7 +491,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """Get listings purchased by user."""
         try:
             # Get purchase records
-            purchases = self.client.table("marketplace_purchases").select(
+            purchases = await self.client.table("marketplace_purchases").select(
                 "listing_id"
             ).eq("buyer_id", user_id).order(
                 "purchased_at", desc=True
@@ -499,7 +503,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             listing_ids = [p["listing_id"] for p in purchases.data]
 
             # Get listings
-            result = self.client.table("marketplace_listings").select("*").in_(
+            result = await self.client.table("marketplace_listings").select("*").in_(
                 "listing_id", listing_ids
             ).execute()
 
@@ -636,7 +640,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         Seller earns 90% of revenue (platform takes 10% fee).
         """
         try:
-            listings = self.client.table("marketplace_listings").select(
+            listings = await self.client.table("marketplace_listings").select(
                 "id, price_credits, sales_count, usage_count"
             ).eq("seller_id", seller_id).eq("is_deleted", False).execute()
 
@@ -675,7 +679,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     ) -> bool:
         """Record listing usage."""
         try:
-            self.client.table("listing_usages").insert({
+            await self.client.table("listing_usages").insert({
                 "listing_id": listing_id,
                 "used_by_user_id": used_by_user_id,
                 "project_id": project_id,
@@ -701,7 +705,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
 
         query = query.order("usage_count", desc=True).limit(limit)
 
-        result = query.execute()
+        result = await query.execute()
         items = result.data or []
 
         for i, item in enumerate(items):
@@ -712,7 +716,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def get_seller_info(self, seller_id: str) -> Optional[dict]:
         """Get seller profile info."""
         try:
-            result = self.client.table("profiles").select(
+            result = await self.client.table("profiles").select(
                 "username, avatar_url"
             ).eq("id", seller_id).single().execute()
 
@@ -740,7 +744,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """
         try:
             # Query listing with seller profile join
-            result = self.client.table("marketplace_listings").select(
+            result = await self.client.table("marketplace_listings").select(
                 "*, profiles!marketplace_listings_seller_id_fkey(username, avatar_url)"
             ).eq("listing_id", listing_id).single().execute()
 
