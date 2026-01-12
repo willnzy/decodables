@@ -43,6 +43,25 @@ DEFAULT_TIER_DISPLAY_NAMES = {
     TIER_T4: "Enterprise Plan",
 }
 
+# Monthly credits per tier (as per TIER-PERMISSIONS.md)
+# - t1: 0 monthly credits (100 bonus credits on registration, permanent)
+# - t2: 100 monthly credits
+# - t3: 200 monthly credits
+TIER_MONTHLY_CREDITS = {
+    TIER_T1: 0,    # Free Plan - no monthly credits
+    TIER_T2: 100,  # Starter Plan - 100 monthly credits
+    TIER_T3: 200,  # Pro Plan - 200 monthly credits
+    TIER_T4: 500,  # Enterprise Plan - TBD, placeholder
+}
+
+# Monthly prices per tier in USD (as per TIER-PERMISSIONS.md)
+TIER_MONTHLY_PRICES = {
+    TIER_T1: 0.0,   # Free Plan
+    TIER_T2: 6.9,   # Starter Plan - $6.9/month
+    TIER_T3: 9.9,   # Pro Plan - $9.9/month
+    TIER_T4: 0.0,   # Enterprise Plan - custom pricing
+}
+
 # Trial period configuration (can be overridden via system_configs)
 DEFAULT_TRIAL_DURATION_DAYS = 30  # Free tier users get 30-day trial with full access
 
