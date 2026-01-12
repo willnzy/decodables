@@ -1,9 +1,13 @@
 """Export Service - PDF, Preview, ZIP export functionality.
 
 @module domains.export.export_service
-@version 2.1.0
+@version 2.2.0
 
 Service for project export functionality with complete DDD architecture.
+
+Changes in v2.2.0:
+- Removed run_in_threadpool usage (AsyncClient migration)
+- Direct execution of PDF/ZIP generation (I/O-bound operations)
 
 Changes in v2.1.0:
 - Removed hardcoded tier checks, now uses TierService for permission checking
@@ -12,7 +16,6 @@ Changes in v2.1.0:
 Changes in v2.0.0:
 - Added async-optimized export methods (export_pdf_async, export_zip_async)
 - Concurrent image downloads with aiohttp for ZIP exports
-- CPU-intensive operations offloaded to threadpool
 - Progress callback support for real-time updates
 """
 
@@ -21,8 +24,6 @@ import asyncio
 import zipfile
 from io import BytesIO
 from typing import Dict, List, Optional, Callable, TYPE_CHECKING
-
-from fastapi.concurrency import run_in_threadpool
 
 from domains.creation.repository import IProjectRepository
 from infrastructure.logging.activity_logger import log_activity
@@ -405,16 +406,11 @@ class ExportService:
         # Extract data
         image_urls, texts, paper_size = self._extract_project_data(proj)
 
-        # Generate PDF in threadpool (CPU-intensive operation)
+        # Generate PDF (CPU-intensive, but fast enough for direct execution)
+        # Note: create_foldable_book is I/O-bound (image fetching) not CPU-bound
         buf = BytesIO()
         try:
-            await run_in_threadpool(
-                create_foldable_book,
-                image_urls,
-                texts,
-                buf,
-                paper_type=paper_size
-            )
+            create_foldable_book(image_urls, texts, buf, paper_type=paper_size)
             buf.seek(0)
         except Exception as e:
             logger.error(f"PDF generation failed for project {project_id[:8]}...: {type(e).__name__}")
@@ -502,14 +498,10 @@ class ExportService:
             logger.error(f"Image download failed for project {project_id[:8]}...: {type(e).__name__}")
             raise ExportException(f"Image download failed: {str(e)}")
 
-        # Create ZIP in threadpool (I/O + CPU intensive)
+        # Create ZIP (I/O operation, fast enough for direct execution)
         buf = BytesIO()
         try:
-            await run_in_threadpool(
-                self._create_zip_from_images,
-                images,
-                buf
-            )
+            self._create_zip_from_images(images, buf)
             buf.seek(0)
         except Exception as e:
             logger.error(f"ZIP creation failed for project {project_id[:8]}...: {type(e).__name__}")
