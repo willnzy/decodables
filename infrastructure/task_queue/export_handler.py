@@ -387,25 +387,30 @@ def execute_export_task(
     logger.info(f"[Export:{task_id}] Starting {export_type} export for user {user_id[:8]}...")
 
     # Import dependencies (avoid circular imports)
-    from core.database import get_database_client
+    from core.database import get_async_db_client
     from shared.storage import get_storage_service
     from infrastructure.repositories.project_repository import SupabaseProjectRepository
     from domains.export import ExportService
     from infrastructure.task_queue.progress_tracker import progress_tracker
+    import asyncio
 
-    # Initialize services
-    db_client = get_database_client()
-    project_repo = SupabaseProjectRepository(db_client)
-    export_service = ExportService(project_repository=project_repo)
-    storage_service = get_storage_service()
+    # Initialize services (need async wrapper for AsyncClient)
+    async def _initialize_services():
+        db_client = await get_async_db_client()
+        project_repo = SupabaseProjectRepository(db_client)
+        export_service = ExportService(project_repository=project_repo)
+        storage_service = get_storage_service()
 
-    # Create handler
-    handler = ExportTaskHandler(
-        export_service=export_service,
-        storage_service=storage_service,
-        progress_tracker=progress_tracker,
-        db_client=db_client
-    )
+        # Create handler
+        handler = ExportTaskHandler(
+            export_service=export_service,
+            storage_service=storage_service,
+            progress_tracker=progress_tracker,
+            db_client=db_client
+        )
+        return handler
+
+    handler = asyncio.run(_initialize_services())
 
     # Run async method in event loop
     loop = asyncio.new_event_loop()

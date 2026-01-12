@@ -77,13 +77,13 @@ def audit_log(
 
             # Log to both systems
             try:
-                from core.database import get_database_client
+                from core.database import get_async_db_client
                 from infrastructure.repositories import (
                     SupabaseAdminStatsRepository,
                     SupabaseAdminUsersRepository,
                 )
 
-                db_client = get_database_client()
+                db_client = await get_async_db_client()
                 stats_repo = SupabaseAdminStatsRepository(db_client)
                 admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
@@ -155,13 +155,13 @@ def audit_log_simple(operation_type: str, detail_template: str = None):
                     details = f"{operation_type} completed"
 
             try:
-                from core.database import get_database_client
+                from core.database import get_async_db_client
                 from infrastructure.repositories import (
                     SupabaseAdminStatsRepository,
                     SupabaseAdminUsersRepository,
                 )
 
-                db_client = get_database_client()
+                db_client = await get_async_db_client()
                 stats_repo = SupabaseAdminStatsRepository(db_client)
                 admin_users_repo = SupabaseAdminUsersRepository(db_client)
 
