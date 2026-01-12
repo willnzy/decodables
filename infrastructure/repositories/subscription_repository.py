@@ -2,7 +2,11 @@
 Subscription Repository - Data access layer for subscription-related operations
 
 @module infrastructure.repositories.subscription_repository
-@version 3.28
+@version 3.29 (AsyncClient migration)
+
+Changes in v3.29:
+- Confirmed AsyncClient compatibility (delegates to other async repositories)
+- No direct database operations (uses UserRepository and PaymentRepository)
 
 Note: Subscription data primarily lives in Stripe. This repository provides
 convenience methods for subscription-related operations on local data.
