@@ -2,7 +2,11 @@
 Asset Repository - Asset management operations.
 
 @module infrastructure.repositories.asset_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 Provides all asset CRUD operations.
 Inherits from BaseRepository for soft/hard delete support.
@@ -73,7 +77,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Created asset dict
         """
-        result = self.client.table("assets").insert({
+        result = await self.client.table("assets").insert({
             "user_id": user_id,
             "url": url,
             "source": asset_type,
@@ -105,7 +109,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         if project_id:
             query = query.eq("project_id", project_id)
 
-        result = query.order("created_at", desc=True).execute()
+        result = await query.order("created_at", desc=True).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -156,7 +160,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
         try:
             # Query assets with limit to prevent OOM
-            result = self.client.table("assets").select("*").eq(
+            result = await self.client.table("assets").select("*").eq(
                 "user_id", user_id
             ).limit(limit).execute()
 
@@ -219,7 +223,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             True if deleted
         """
-        result = self.client.table("assets").update({
+        result = await self.client.table("assets").update({
             "is_deleted": True
         }).eq("id", asset_id).eq("user_id", user_id).execute()
 
@@ -237,7 +241,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             True if deleted
         """
-        result = self.client.table("assets").delete().eq(
+        result = await self.client.table("assets").delete().eq(
             "id", asset_id
         ).eq("user_id", user_id).execute()
 
@@ -256,7 +260,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             Updated asset dict with new usage_count
         """
         # Get current asset
-        get_result = self.client.table("assets").select("usage_count").eq(
+        get_result = await self.client.table("assets").select("usage_count").eq(
             "id", asset_id
         ).eq("user_id", user_id).single().execute()
 
@@ -267,7 +271,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         new_count = current_count + 1
 
         # Update usage count
-        update_result = self.client.table("assets").update({
+        update_result = await self.client.table("assets").update({
             "usage_count": new_count
         }).eq("id", asset_id).eq("user_id", user_id).execute()
 
@@ -288,7 +292,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Restored asset dict
         """
-        result = self.client.table("assets").update({
+        result = await self.client.table("assets").update({
             "is_deleted": False
         }).eq("id", asset_id).eq("user_id", user_id).eq("is_deleted", True).execute()
 
@@ -305,7 +309,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Dashboard stats dict with total_assets, total_usage, by_source, recent
         """
-        result = self.client.table("assets").select("*").eq("user_id", user_id).execute()
+        result = await self.client.table("assets").select("*").eq("user_id", user_id).execute()
         assets_data = result.data or []
 
         total_assets = len(assets_data)
@@ -342,7 +346,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Seller stats dict with total_listings, total_sales, total_revenue, listings
         """
-        result = self.client.table("marketplace_listings").select(
+        result = await self.client.table("marketplace_listings").select(
             "id, title, price, sales_count, created_at"
         ).eq("user_id", user_id).eq("is_deleted", False).execute()
 
