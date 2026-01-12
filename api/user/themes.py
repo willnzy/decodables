@@ -67,7 +67,7 @@ async def get_current_theme(request: Request) -> CurrentThemeResponse:
     or null values if no theme is active.
     """
     container = get_container()
-    handler = container.get_current_theme_handler()
+    handler = await container.get_current_theme_handler()
 
     query = GetCurrentThemeQuery(check_date=date.today())
     result = await handler.handle(query)
