@@ -152,7 +152,9 @@ async def require_pro(user: dict = Depends(get_current_user)):
     Returns:
         dict: User profile (confirmed Pro)
     """
-    if not access_control.is_member(user) or user.get("tier") != "pro":
+    tier = user.get("tier", "t1")
+    # Accept both t3 (Pro) and t4 (Enterprise)
+    if not access_control.is_member(user) or tier not in ("t3", "t4"):
         raise MembershipRequiredException("Pro features")
     return user
 

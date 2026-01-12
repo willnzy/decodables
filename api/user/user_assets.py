@@ -118,8 +118,9 @@ async def my_assets(
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
 
-    # Pro tier check for cross-project scope
-    if scope == "all" and user["tier"] != "t3":
+    # Pro tier check for cross-project scope (t3/t4 only)
+    user_tier = user.get("tier", "t1")
+    if scope == "all" and user_tier not in ("t3", "t4"):
         from fastapi import HTTPException
         raise HTTPException(403, "Pro required for cross-project history")
 

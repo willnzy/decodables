@@ -4,17 +4,23 @@ Shared Domain - Access Control Rules.
 Business rules for user permissions, tier-based access, and marketplace visibility.
 
 @module domains.shared.access_control
-@version 1.0.0
+@version 1.1.0
+
+Changes in v1.1.0:
+- Deprecated can_use_ocr() - use TierService.can_use_feature() instead
+- AccessControl class now uses TierService for permission checks
+- Added tier hierarchy for t4 (Enterprise)
 """
 
+import warnings
 from typing import Dict, List, Any, Optional
 
 
 def is_member(user: Dict[str, Any]) -> bool:
     """
-    Check if user is an active member (Starter/Pro).
+    Check if user is an active member (Starter/Pro/Enterprise).
 
-    Business Rule: User must have starter/pro tier AND active/trialing subscription status.
+    Business Rule: User must have t2/t3/t4 tier AND active/trialing subscription status.
 
     Args:
         user: User profile dict with tier and subscription_status
@@ -28,7 +34,7 @@ def is_member(user: Dict[str, Any]) -> bool:
     tier = user.get("tier", "t1")
     subscription_status = user.get("subscription_status", "inactive")
 
-    if tier in ["t2", "t3"]:
+    if tier in ["t2", "t3", "t4"]:
         return subscription_status in ["active", "trialing"]
 
     return False
@@ -41,7 +47,7 @@ def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
     Business Rule:
     - "all" in allowed_tiers → everyone can access
     - User tier must be in allowed_tiers OR higher in hierarchy
-    - Hierarchy: free(0) < starter(1) < pro(2)
+    - Hierarchy: free(0) < starter(1) < pro(2) < enterprise(3)
 
     Args:
         user: User profile dict with tier
@@ -60,7 +66,7 @@ def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
         return True
 
     # Check tier hierarchy
-    tier_hierarchy = {"t1": 0, "t2": 1, "t3": 2}
+    tier_hierarchy = {"t1": 0, "t2": 1, "t3": 2, "t4": 3}
     user_level = tier_hierarchy.get(user_tier, 0)
 
     for allowed in allowed_tiers:
@@ -121,7 +127,7 @@ def validate_allowed_tiers(allowed_tiers: List[str]) -> Dict[str, Any]:
     Returns:
         Dict with valid (bool), tiers (list), and optional reason (str)
     """
-    valid_tiers = ["t1", "t2", "t3", "all"]
+    valid_tiers = ["t1", "t2", "t3", "t4", "all"]
 
     if not allowed_tiers:
         return {"valid": True, "tiers": ["all"]}
@@ -165,6 +171,9 @@ class AccessControl:
 
     This class provides static methods for checking user permissions
     based on tier and trial status.
+
+    DEPRECATED: For new code, use TierService.can_use_feature() instead.
+    This class is kept for backward compatibility.
     """
 
     @staticmethod
@@ -172,8 +181,10 @@ class AccessControl:
         """
         Check if user can use OCR/Smart Scan feature.
 
+        DEPRECATED: Use TierService.can_use_feature(tier, FeatureKey.AI_FEATURES, is_trial) instead.
+
         Business Rule: OCR is available to:
-        - Pro tier users
+        - Pro/Enterprise tier users
         - Free tier users during trial period
 
         Args:
@@ -183,13 +194,20 @@ class AccessControl:
         Returns:
             True if user can use OCR
         """
+        warnings.warn(
+            "AccessControl.can_use_ocr() is deprecated. "
+            "Use TierService.can_use_feature() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         if not user:
             return False
 
         tier = (user.get("tier") or "t1").lower()
 
-        # Pro users always have access
-        if tier == "t3":
+        # Pro/Enterprise users always have access
+        if tier in ("t3", "t4"):
             return True
 
         # Free users can use during trial

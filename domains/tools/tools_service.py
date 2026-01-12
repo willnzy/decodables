@@ -1,9 +1,13 @@
-"""Tools Service - Business logic for utility tools (v3.0.0).
+"""Tools Service - Business logic for utility tools (v3.1.0).
 
 @module domains.tools.tools_service
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0: Removed hardcoded tier checks
+  - Uses TierService for permission checking
+  - PDF preview and OCR permissions checked via tier_service.can_use_feature()
+
 - v3.0.0: DDD architecture upgrade - Service layer extraction
   - Migrated all business logic from API layer to Service
   - Added project_id validation
@@ -15,9 +19,12 @@ Changes:
 import logging
 import re
 import uuid
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
 from fastapi import HTTPException, UploadFile
+
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +57,7 @@ ALLOWED_OCR_TYPES = [
 # ==========================================
 
 class ToolsService:
-    """Service for utility tools business logic (v3.0.0)."""
+    """Service for utility tools business logic (v3.1.0)."""
 
     def __init__(
         self,
@@ -58,7 +65,7 @@ class ToolsService:
         asset_repository,
         storage_client,
         ocr_processor,
-        access_control,
+        tier_service: "TierService" = None,
     ):
         """
         Initialize ToolsService.
@@ -68,13 +75,13 @@ class ToolsService:
             asset_repository: Asset operations repository
             storage_client: Storage client (Supabase)
             ocr_processor: OCR processing service
-            access_control: Access control service
+            tier_service: TierService for permission checking
         """
         self.credit_repository = credit_repository
         self.asset_repository = asset_repository
         self.storage = storage_client
         self.ocr_processor = ocr_processor
-        self.access_control = access_control
+        self._tier_service = tier_service
 
     # ==========================================
     # Validation
@@ -101,24 +108,28 @@ class ToolsService:
         self,
         file: UploadFile,
         user: dict,
+        is_trial_active: bool = False,
     ) -> Dict[str, Any]:
         """
         Convert PDF to page preview images.
 
-        Pro only feature. Returns thumbnail URLs for each page.
+        Pro only feature (or t1 during trial). Returns thumbnail URLs for each page.
 
         Args:
             file: Uploaded PDF file
             user: User dict with id, tier
+            is_trial_active: Whether t1 user is in trial period
 
         Returns:
             Dict with success, preview_id, total_pages, pages
 
         Raises:
-            HTTPException: 403 if not Pro, 400 if invalid file, 500 if processing fails
+            HTTPException: 403 if no permission, 400 if invalid file, 500 if processing fails
         """
-        # Check tier access
-        if user.get("tier", "t1").lower() != "t3":
+        # Check tier access via TierService
+        tier = user.get("tier", "t1")
+        can_use = await self._check_smart_scan_permission(tier, is_trial_active)
+        if not can_use:
             raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan")
 
         # Validate file type
@@ -226,7 +237,7 @@ class ToolsService:
         project_id: Optional[str],
         user: dict,
         timezone: str,
-        is_trial: bool,
+        is_trial_active: bool = False,
     ) -> Dict[str, Any]:
         """
         Advanced OCR endpoint - detects tables, text, and images.
@@ -238,7 +249,7 @@ class ToolsService:
             project_id: Optional project UUID
             user: User dict with id, tier
             timezone: User timezone
-            is_trial: Whether user is in trial period
+            is_trial_active: Whether t1 user is in trial period
 
         Returns:
             Dict with success, text, tables, images, credits_used, balance
@@ -250,8 +261,10 @@ class ToolsService:
         # Validate project_id format
         self.validate_project_id(project_id)
 
-        # Check OCR permission
-        if not self.access_control.can_use_ocr(user, is_trial=is_trial):
+        # Check OCR permission via TierService
+        tier = user.get("tier", "t1")
+        can_use = await self._check_smart_scan_permission(tier, is_trial_active)
+        if not can_use:
             raise HTTPException(
                 403,
                 "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)"
@@ -338,3 +351,36 @@ class ToolsService:
             logger.info(f"Refunded {OCR_COST} credits for failed OCR: {user_id}")
         except Exception as refund_error:
             logger.error(f"Failed to refund credits: {refund_error}")
+
+    async def _check_smart_scan_permission(
+        self,
+        tier: str,
+        is_trial_active: bool = False
+    ) -> bool:
+        """
+        Check if user has Smart Scan / OCR permission.
+
+        Uses TierService to check permission dynamically.
+        Falls back to tier-based check if tier_service not available.
+
+        Args:
+            tier: User tier code (t1/t2/t3/t4)
+            is_trial_active: Whether t1 user is in trial period
+
+        Returns:
+            True if user can use Smart Scan / OCR
+        """
+        if self._tier_service:
+            from domains.identity.tier_service import FeatureKey
+            # Smart Scan uses AI_FEATURES permission
+            return await self._tier_service.can_use_feature(
+                tier, FeatureKey.AI_FEATURES, is_trial_active
+            )
+
+        # Fallback: t3/t4 always allowed, t1 only during trial
+        tier_lower = tier.lower()
+        if tier_lower in ("t3", "t4"):
+            return True
+        if tier_lower == "t1" and is_trial_active:
+            return True
+        return False

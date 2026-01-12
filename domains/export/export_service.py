@@ -1,9 +1,13 @@
 """Export Service - PDF, Preview, ZIP export functionality.
 
 @module domains.export.export_service
-@version 2.0.0
+@version 2.1.0
 
 Service for project export functionality with complete DDD architecture.
+
+Changes in v2.1.0:
+- Removed hardcoded tier checks, now uses TierService for permission checking
+- ZIP export permission is checked via tier_service.can_use_feature()
 
 Changes in v2.0.0:
 - Added async-optimized export methods (export_pdf_async, export_zip_async)
@@ -16,13 +20,16 @@ import logging
 import asyncio
 import zipfile
 from io import BytesIO
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, TYPE_CHECKING
 
 from fastapi.concurrency import run_in_threadpool
 
 from domains.creation.repository import IProjectRepository
 from infrastructure.logging.activity_logger import log_activity
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
+
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +71,20 @@ class ExportService:
     - Error handling with user-friendly messages
     """
 
-    def __init__(self, project_repository: IProjectRepository):
+    def __init__(
+        self,
+        project_repository: IProjectRepository,
+        tier_service: "TierService" = None
+    ):
         """
         Initialize ExportService.
 
         Args:
             project_repository: Repository for project data access
+            tier_service: TierService for permission checking
         """
         self.project_repository = project_repository
+        self._tier_service = tier_service
 
     # ==========================================
     # Public Methods
@@ -181,6 +194,7 @@ class ExportService:
         user_id: str,
         project_id: str,
         tier: str,
+        is_trial_active: bool = False,
     ) -> tuple[BytesIO, str]:
         """
         Export project assets as ZIP.
@@ -188,18 +202,20 @@ class ExportService:
         Args:
             user_id: User ID for ownership verification
             project_id: Project ID to export
-            tier: User tier (must be "t3")
+            tier: User tier
+            is_trial_active: Whether t1 user is in trial period
 
         Returns:
             tuple: (ZIP buffer, sanitized filename)
 
         Raises:
-            InsufficientPermissionException: If tier is not "t3"
+            InsufficientPermissionException: If user doesn't have ZIP export permission
             ProjectNotFoundException: If project not found or access denied
             ExportException: If no valid URLs or ZIP generation fails
         """
-        # Verify Pro tier
-        if tier.lower() != "t3":
+        # Check ZIP export permission via TierService
+        can_export = await self._check_zip_permission(tier, is_trial_active)
+        if not can_export:
             raise InsufficientPermissionException("ZIP export requires Pro plan")
 
         # Get and verify project
@@ -238,6 +254,7 @@ class ExportService:
         image_urls: List[str],
         tier: str,
         project_id: Optional[str] = None,
+        is_trial_active: bool = False,
     ) -> BytesIO:
         """
         Export custom URLs as ZIP (deprecated endpoint support).
@@ -245,18 +262,20 @@ class ExportService:
         Args:
             user_id: User ID for logging
             image_urls: List of image URLs (already validated by Pydantic)
-            tier: User tier (must be "t3")
+            tier: User tier
             project_id: Optional project ID for logging
+            is_trial_active: Whether t1 user is in trial period
 
         Returns:
             BytesIO: ZIP buffer
 
         Raises:
-            InsufficientPermissionException: If tier is not "t3"
+            InsufficientPermissionException: If user doesn't have ZIP export permission
             ExportException: If ZIP generation fails
         """
-        # Verify Pro tier
-        if tier.lower() != "t3":
+        # Check ZIP export permission via TierService
+        can_export = await self._check_zip_permission(tier, is_trial_active)
+        if not can_export:
             raise InsufficientPermissionException("ZIP export requires Pro plan")
 
         # Create ZIP
@@ -415,6 +434,7 @@ class ExportService:
         project_id: str,
         tier: str,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        is_trial_active: bool = False,
     ) -> tuple[BytesIO, str]:
         """
         Async-optimized ZIP export with concurrent image downloads.
@@ -422,19 +442,21 @@ class ExportService:
         Args:
             user_id: User ID for ownership verification
             project_id: Project ID to export
-            tier: User tier (must be "t3")
+            tier: User tier
             progress_callback: Optional callback(current, total, message) for progress updates
+            is_trial_active: Whether t1 user is in trial period
 
         Returns:
             tuple: (ZIP buffer, sanitized filename)
 
         Raises:
-            InsufficientPermissionException: If tier is not "t3"
+            InsufficientPermissionException: If user doesn't have ZIP export permission
             ProjectNotFoundException: If project not found or access denied
             ExportException: If no valid URLs or ZIP generation fails
         """
-        # Verify Pro tier
-        if tier.lower() != "t3":
+        # Check ZIP export permission via TierService
+        can_export = await self._check_zip_permission(tier, is_trial_active)
+        if not can_export:
             raise InsufficientPermissionException("ZIP export requires Pro plan")
 
         # Get and verify project
@@ -555,3 +577,30 @@ class ExportService:
                     logger.debug(f"Added {filename} to ZIP ({len(data)} bytes)")
 
         logger.info(f"Created ZIP with {len([d for _, d in images if d])} images")
+
+    async def _check_zip_permission(
+        self,
+        tier: str,
+        is_trial_active: bool = False
+    ) -> bool:
+        """
+        Check if user has ZIP export permission.
+
+        Uses TierService to check permission dynamically.
+        Falls back to t3-only check if tier_service not available.
+
+        Args:
+            tier: User tier code (t1/t2/t3/t4)
+            is_trial_active: Whether t1 user is in trial period
+
+        Returns:
+            True if user can use ZIP export
+        """
+        if self._tier_service:
+            from domains.identity.tier_service import FeatureKey
+            return await self._tier_service.can_use_feature(
+                tier, FeatureKey.ZIP_EXPORT, is_trial_active
+            )
+
+        # Fallback: only t3 and t4 can export ZIP
+        return tier.lower() in ("t3", "t4")

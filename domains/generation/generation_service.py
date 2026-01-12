@@ -2,7 +2,7 @@
 Generation Service - AI Image Generation Workflow Orchestration
 
 @module domains.generation.generation_service
-@version 1.0.0 (DDD Architecture - 5 Star)
+@version 1.1.0 (DDD Architecture - 5 Star)
 
 Architecture: API → GenerationService → Repositories + External Services
 
@@ -12,6 +12,10 @@ This service orchestrates the complete AI image generation workflow:
 - Asset storage via AssetRepository
 - Generation history tracking
 - Analytics tracking
+
+Changes in v1.1.0:
+- Added TierService for dynamic queue priority
+- Removed hardcoded priority values, now uses tier_service.get_ai_queue_priority_value()
 """
 
 import logging
@@ -19,7 +23,7 @@ import uuid
 import time
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 from core.database import get_supabase_client
 from infrastructure.repositories import SupabaseAssetRepository
@@ -33,6 +37,9 @@ from application.services.generation_helpers import (
     get_base_cost,
     build_generation_record,
 )
+
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
 
 # Generation timeout in seconds (prevent DoS)
 GENERATION_TIMEOUT_SECONDS = 120
@@ -76,6 +83,7 @@ class GenerationService:
         self,
         billing_service,  # BillingService (injected via DI)
         asset_repository: SupabaseAssetRepository,  # Asset storage
+        tier_service: "TierService" = None,  # TierService for queue priority
     ):
         """
         Initialize Generation Service.
@@ -83,9 +91,11 @@ class GenerationService:
         Args:
             billing_service: BillingService for credit operations
             asset_repository: Repository for asset storage
+            tier_service: TierService for queue priority configuration
         """
         self.billing_service = billing_service
         self.asset_repo = asset_repository
+        self._tier_service = tier_service
         self.supabase = get_supabase_client()
 
     async def generate_images_sync(
@@ -377,6 +387,9 @@ class GenerationService:
             "credits_charged": cost,
         }
 
+        # Get queue priority from TierService
+        priority_value = await self._get_queue_priority(tier)
+
         # Save task to database
         try:
             self.supabase.rpc("create_generation_task", {
@@ -384,7 +397,7 @@ class GenerationService:
                 "p_user_id": user_id,
                 "p_task_type": "image_generation",
                 "p_params": task_params,
-                "p_priority": 2 if tier == "t3" else (1 if tier == "t2" else 0),
+                "p_priority": priority_value,
                 "p_total_steps": len(final_prompts) * num_images,
             }).execute()
         except Exception as e:
@@ -420,6 +433,9 @@ class GenerationService:
             }
         )
 
+        # Get priority string from TierService
+        priority_str = await self._get_queue_priority_str(tier)
+
         response = {
             "task_id": task_id,
             "status": "queued",
@@ -431,7 +447,7 @@ class GenerationService:
             "websocket_url": f"/ws/task/{task_id}",
             "poll_url": f"/api/tasks/{task_id}",
             "model_used": model,
-            "priority": "high" if tier == "t3" else ("normal" if tier == "t2" else "low"),
+            "priority": priority_str,
         }
 
         if enhanced_prompt_text:
@@ -567,3 +583,43 @@ class GenerationService:
                 self.supabase.table("user_generations").insert(generation_record).execute()
             except Exception as e:
                 logger.warning(f"Failed to save generation history: {e}")
+
+    async def _get_queue_priority(self, tier: str) -> int:
+        """
+        Get queue priority value for a tier.
+
+        Uses TierService to get dynamic priority.
+        Falls back to hardcoded values if tier_service not available.
+
+        Args:
+            tier: User tier code (t1/t2/t3/t4)
+
+        Returns:
+            Priority value (0=low, 1=normal, 2=high)
+        """
+        if self._tier_service:
+            return await self._tier_service.get_ai_queue_priority_value(tier)
+
+        # Fallback: hardcoded priority values
+        priority_map = {"t1": 0, "t2": 1, "t3": 2, "t4": 2}
+        return priority_map.get(tier.lower(), 0)
+
+    async def _get_queue_priority_str(self, tier: str) -> str:
+        """
+        Get queue priority string for a tier.
+
+        Uses TierService to get dynamic priority.
+        Falls back to hardcoded values if tier_service not available.
+
+        Args:
+            tier: User tier code (t1/t2/t3/t4)
+
+        Returns:
+            Priority string (low/normal/high)
+        """
+        if self._tier_service:
+            return await self._tier_service.get_ai_queue_priority(tier)
+
+        # Fallback: hardcoded priority strings
+        priority_map = {"t1": "low", "t2": "normal", "t3": "high", "t4": "high"}
+        return priority_map.get(tier.lower(), "low")
