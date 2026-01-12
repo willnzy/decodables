@@ -2,7 +2,11 @@
 Analytics Repository - Analytics events data access.
 
 @module infrastructure.repositories.analytics_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
+
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
 
 Provides analytics event aggregation for admin dashboards.
 """
@@ -61,7 +65,7 @@ class SupabaseAnalyticsRepository:
         """
         try:
             # Query analytics events with limit
-            result = self.client.table("analytics_events").select(
+            result = await self.client.table("analytics_events").select(
                 "user_agent, device_type, os, referrer"
             ).eq("user_id", user_id).eq("event_type", "page_view").limit(limit).execute()
 
