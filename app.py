@@ -210,13 +210,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to close async database client: {e}")
 
-    # Close sync database client (legacy, for backward compatibility)
-    from core.database import close_db_client
-    try:
-        close_db_client()
-        logger.info("✅ Sync database client closed")
-    except Exception as e:
-        logger.error(f"❌ Failed to close sync database client: {e}")
+    # Sync database client cleanup not needed (no global sync client instance in v2.0)
 
     # Gracefully close Redis connection
     from core.cache import close_redis
