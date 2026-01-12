@@ -2,10 +2,15 @@
 Project Repository Implementation - Supabase data access for creation domain.
 
 @module infrastructure.repositories.project_repository
-@version 1.0.0
+@version 2.0.0 (AsyncClient migration)
 
-Implements IProjectRepository using Supabase PostgreSQL.
-Inherits from BaseRepository for soft/hard delete support.
+Changes in v2.0:
+- Migrated all methods to use AsyncClient with await
+- All .execute() calls now properly awaited
+
+Changes in v1.0:
+- Implements IProjectRepository using Supabase PostgreSQL
+- Inherits from BaseRepository for soft/hard delete support
 """
 
 from typing import Optional, List, Dict, Any
@@ -42,7 +47,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     async def get_by_id(self, project_id: str) -> Optional[Project]:
         """Get project by ID."""
         try:
-            result = self.client.table("projects").select("*").eq(
+            result = await self.client.table("projects").select("*").eq(
                 "project_id", project_id
             ).single().execute()
 
@@ -52,7 +57,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             project = self._map_to_project(result.data)
 
             # Load pages
-            pages_result = self.client.table("project_pages").select("*").eq(
+            pages_result = await self.client.table("project_pages").select("*").eq(
                 "project_id", project_id
             ).order("page_number").execute()
 
@@ -68,7 +73,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Persist project (upsert)."""
         try:
             data = self._map_to_row(project)
-            self.client.table("projects").upsert(
+            await self.client.table("projects").upsert(
                 data, on_conflict="project_id"
             ).execute()
 
@@ -86,7 +91,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Create a new project."""
         try:
             data = self._map_to_row(project)
-            self.client.table("projects").insert(data).execute()
+            await self.client.table("projects").insert(data).execute()
 
             # Create initial pages
             for page in project.pages:
@@ -104,7 +109,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             data = self._map_to_row(project)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = self.client.table("projects").update(data).eq(
+            result = await self.client.table("projects").update(data).eq(
                 "project_id", project.project_id
             ).select("*").single().execute()
 
@@ -131,7 +136,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """
         # Use 'id' field (UUID) for BaseRepository compatibility
         # Get project first to find its UUID
-        result = self.client.table("projects").select("id").eq(
+        result = await self.client.table("projects").select("id").eq(
             "project_id", project_id
         ).single().execute()
 
@@ -174,7 +179,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             if status:
                 query = query.eq("status", status.value)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_project(row) for row in result.data]
 
@@ -190,7 +195,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     ) -> List[Project]:
         """Get projects shared with a user."""
         try:
-            result = self.client.table("projects").select("*").contains(
+            result = await self.client.table("projects").select("*").contains(
                 "collaborators", [user_id]
             ).neq("status", ProjectStatus.DELETED.value).order(
                 "updated_at", desc=True
@@ -219,7 +224,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             if tags:
                 query = query.contains("tags", tags)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_project(row) for row in result.data]
 
@@ -241,7 +246,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             if status:
                 query = query.eq("status", status.value)
 
-            result = query.execute()
+            result = await query.execute()
 
             return result.count if result.count else 0
 
@@ -261,7 +266,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 "updated_at": datetime.utcnow().isoformat(),
             }
 
-            self.client.table("project_pages").upsert(
+            await self.client.table("project_pages").upsert(
                 data, on_conflict="page_id"
             ).execute()
 
@@ -274,7 +279,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     async def get_page(self, project_id: str, page_id: str) -> Optional[Page]:
         """Get a specific page."""
         try:
-            result = self.client.table("project_pages").select("*").eq(
+            result = await self.client.table("project_pages").select("*").eq(
                 "project_id", project_id
             ).eq("page_id", page_id).single().execute()
 
@@ -311,7 +316,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             elif include_public:
                 db_query = db_query.eq("is_public", True)
 
-            result = db_query.execute()
+            result = await db_query.execute()
 
             return [self._map_to_project(row) for row in result.data]
 
@@ -432,7 +437,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if search:
             query = query.ilike("title", f"%{search}%")
 
-        result = query.order("updated_at", desc=True).range(offset, offset + limit - 1).execute()
+        result = await query.order("updated_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -458,7 +463,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if search:
             query = query.ilike("title", f"%{search}%")
 
-        result = query.execute()
+        result = await query.execute()
         return result.count or 0
 
     @retry_on_network_error()
@@ -483,7 +488,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             to prevent information disclosure about project existence)
         """
         # First try: Owner access (query-level filtering)
-        owner_result = self.client.table("projects").select("*").eq(
+        owner_result = await self.client.table("projects").select("*").eq(
             "id", project_id
         ).eq("user_id", user_id).execute()
 
@@ -492,7 +497,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
         # Second try: Check if user has purchased this project
         # Use a single query with join to verify both project existence AND purchase
-        purchase_result = self.client.table("marketplace_purchases").select(
+        purchase_result = await self.client.table("marketplace_purchases").select(
             "id, projects!inner(id, user_id, title, canvas_data, thumbnail_url, created_at, updated_at, is_deleted)"
         ).eq("buyer_id", user_id).eq("project_id", project_id).execute()
 
@@ -525,7 +530,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Created project dict
         """
-        result = self.client.table("projects").insert({
+        result = await self.client.table("projects").insert({
             "user_id": user_id,
             "title": title or "Untitled Project",
             "canvas_data": canvas_data or {},
@@ -558,7 +563,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
         new_title = f"{original.get('title', 'Project')} (Copy)"
 
-        result = self.client.table("projects").insert({
+        result = await self.client.table("projects").insert({
             "user_id": user_id,
             "title": new_title,
             "canvas_data": original.get("canvas_data", {}),
@@ -598,7 +603,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if title is not None:
             update_data["title"] = title
 
-        result = self.client.table("projects").update(update_data).eq(
+        result = await self.client.table("projects").update(update_data).eq(
             "id", project_id
         ).eq("user_id", user_id).execute()
 
@@ -620,7 +625,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Updated project dict
         """
-        result = self.client.table("projects").update({
+        result = await self.client.table("projects").update({
             "is_deleted": True,
             "deleted_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", project_id).eq("user_id", user_id).execute()
@@ -641,7 +646,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Updated project dict
         """
-        result = self.client.table("projects").update({
+        result = await self.client.table("projects").update({
             "is_deleted": False,
             "deleted_at": None
         }).eq("id", project_id).execute()
@@ -664,7 +669,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Updated project dict
         """
-        result = self.client.table("projects").update({
+        result = await self.client.table("projects").update({
             "is_deleted": False,
             "deleted_at": None
         }).eq("id", project_id).eq("user_id", user_id).execute()
@@ -690,7 +695,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Updated project dict
         """
-        result = self.client.table("projects").update({
+        result = await self.client.table("projects").update({
             "is_permanently_deleted": True
         }).eq("id", project_id).eq("user_id", user_id).eq("is_deleted", True).execute()
 
@@ -708,7 +713,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             project_id: Project ID
             new_hash: New content hash
         """
-        self.client.table("projects").update({"content_hash": new_hash}).eq(
+        await self.client.table("projects").update({"content_hash": new_hash}).eq(
             "id", project_id
         ).execute()
 
@@ -728,7 +733,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             List of project dicts with user info
         """
-        result = self.client.table("projects").select(
+        result = await self.client.table("projects").select(
             "id, title, thumbnail_url, created_at, user_id, profiles(username, avatar_url)"
         ).eq("is_deleted", False).order("created_at", desc=True).range(
             offset, offset + limit - 1
@@ -784,7 +789,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             query = query.ilike("title", f"%{search.strip()}%")
 
         # Execute query
-        result = query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
+        result = await query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
         items = result.data or []
 
         # Get total count with same filters
@@ -800,7 +805,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if search and search.strip():
             count_query = count_query.ilike("title", f"%{search.strip()}%")
 
-        count_result = count_query.execute()
+        count_result = await count_query.execute()
         total = count_result.count or len(items)
 
         # Enrich with marketplace listing data if present
@@ -812,7 +817,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             ]
 
             if marketplace_listing_ids:
-                listings_res = self.client.table("marketplace_listings").select(
+                listings_res = await self.client.table("marketplace_listings").select(
                     "id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, usage_count, version, changelog"
                 ).in_("id", marketplace_listing_ids).execute()
 
@@ -839,7 +844,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Returns:
             Dict with total_listings, total_sales, total_revenue
         """
-        listings = self.client.table("marketplace_listings").select(
+        listings = await self.client.table("marketplace_listings").select(
             "id, price, sales_count"
         ).eq("user_id", user_id).eq("resource_type", "project").execute()
 
