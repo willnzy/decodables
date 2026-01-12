@@ -372,6 +372,69 @@ async def get_featured_articles(
         raise HTTPException(500, "Failed to retrieve featured articles")
 
 
+@router.get("/{slug}/related", response_model=List[ArticleSummaryResponse])
+@limiter.limit("60/minute")
+async def get_related_articles(
+    request: Request,
+    slug: str = Path(..., min_length=1, max_length=200, description="Article slug"),
+    limit: int = Query(3, ge=1, le=10, description="Number of related articles"),
+):
+    """
+    Get related articles for a given article.
+
+    Returns articles in the same category, excluding the current article.
+    Ordered by published_at descending.
+
+    Args:
+        slug: Current article slug
+        limit: Maximum number of articles to return (default: 3, max: 10)
+
+    Returns:
+        List of related ArticleSummaryResponse
+
+    Example:
+        GET /api/v2/user/articles/getting-started/related?limit=3
+    """
+    try:
+        service = _get_article_service()
+
+        # Get current article to know its category
+        current_article = await service.get_article(slug)
+        if not current_article:
+            raise HTTPException(404, f"Article '{slug}' not found")
+
+        # Get articles in same category
+        articles = await service.list_articles(
+            category=current_article.category.value if hasattr(current_article.category, 'value') else current_article.category,
+            offset=0,
+            limit=limit + 10,  # Get more to filter out current article
+        )
+
+        # Filter out current article and limit results
+        related = [a for a in articles if a.slug != slug][:limit]
+
+        return [
+            ArticleSummaryResponse(
+                id=str(a.id),
+                slug=a.slug,
+                title=a.title,
+                summary=a.summary,
+                category=a.category.value if hasattr(a.category, 'value') else a.category,
+                tags=a.tags,
+                cover_image=a.cover_image,
+                published_at=a.published_at.isoformat() if a.published_at else None,
+                view_count=a.view_count,
+            )
+            for a in related
+        ]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Articles] Get related articles failed: {type(e).__name__} - {e}")
+        raise HTTPException(500, "Failed to retrieve related articles")
+
+
 @router.get("/{slug}", response_model=ArticleDetailResponse)
 @limiter.limit("60/minute")
 async def get_article(
