@@ -3,15 +3,19 @@ Stripe Webhook Service
 
 Handles Stripe payment webhook events.
 
-@version 1.0.0 (DDD Architecture - 5 Star)
+@version 2.0.0 (AsyncClient Migration - Phase 10)
 
 Architecture: API → StripeWebhookService → Repositories
+
+v2.0.0 Changes:
+- Migrated to AsyncClient for all database operations
+- Removed get_supabase_client() usage
+- All direct DB calls now use self.db_client (AsyncClient)
 """
 
 import logging
 from typing import Dict, Any, Optional
 
-from core.database import get_supabase_client
 from infrastructure.repositories import (
     SupabaseUserRepository,
     SupabaseCreditRepository,
@@ -36,6 +40,7 @@ class StripeWebhookService:
 
     Architecture: API → StripeWebhookService → Repositories
 
+    v2.0.0: Migrated to AsyncClient
     v1.0.0: Created for DDD compliance
     """
 
@@ -44,6 +49,7 @@ class StripeWebhookService:
         user_repo: SupabaseUserRepository,
         credit_repo: SupabaseCreditRepository,
         payment_repo: SupabasePaymentRepository,
+        db_client = None,  # AsyncClient for direct database operations
     ):
         """
         Initialize Stripe Webhook Service.
@@ -52,11 +58,12 @@ class StripeWebhookService:
             user_repo: User repository for subscription tier updates
             credit_repo: Credit repository for credits operations
             payment_repo: Payment repository for payment records
+            db_client: AsyncClient for direct database operations (activity logs, RPC calls)
         """
         self.user_repo = user_repo
         self.credit_repo = credit_repo
         self.payment_repo = payment_repo
-        self.supabase = get_supabase_client()
+        self.db_client = db_client or user_repo.client  # Use repo's client if not provided
 
     def verify_signature(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         """
@@ -92,7 +99,7 @@ class StripeWebhookService:
             Exception: If idempotency check fails for critical events
         """
         try:
-            result = self.supabase.rpc("check_webhook_idempotency", {
+            result = self.db_client.rpc("check_webhook_idempotency", {
                 "p_event_id": event_id,
                 "p_event_type": event_type,
                 "p_payload": event
@@ -124,7 +131,7 @@ class StripeWebhookService:
             result: Processing result dictionary
         """
         try:
-            self.supabase.rpc("update_webhook_result", {
+            self.db_client.rpc("update_webhook_result", {
                 "p_event_id": event_id,
                 "p_result": result
             }).execute()
@@ -273,7 +280,7 @@ class StripeWebhookService:
 
         # Step 3: Log activity (non-critical)
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": uid,
                 "action": "credits_purchase",
                 "metadata": {
@@ -352,7 +359,7 @@ class StripeWebhookService:
 
         # Try atomic RPC for subscription creation
         try:
-            result = self.supabase.rpc("process_subscription_start", {
+            result = self.db_client.rpc("process_subscription_start", {
                 "p_user_id": uid,
                 "p_plan": plan,
                 "p_stripe_customer_id": stripe_customer_id,
@@ -392,7 +399,7 @@ class StripeWebhookService:
 
         # Log activity (non-critical)
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": uid,
                 "action": "subscription_started",
                 "metadata": {"plan": plan, "payment": amount_total, "session_id": session_id},
@@ -455,7 +462,7 @@ class StripeWebhookService:
             return {"status": "error", "error": "missing_customer_id", "invoice_id": invoice_id}
 
         # Look up user by stripe_customer_id
-        user_res = self.supabase.table("profiles").select("id, tier, subscription_status")\
+        user_res = self.db_client.table("profiles").select("id, tier, subscription_status")\
             .eq("stripe_customer_id", customer_id).execute()
 
         if not user_res.data:
@@ -477,7 +484,7 @@ class StripeWebhookService:
         if billing_reason == "subscription_create" and tier in ["t2", "t3"]:
             if current_status != "active":
                 try:
-                    self.supabase.table("profiles").update({
+                    self.db_client.table("profiles").update({
                         "subscription_status": "active"
                     }).eq("id", uid).execute()
                     logger.info(f"[Webhook] Confirmed subscription active for user {uid}")
@@ -527,7 +534,7 @@ class StripeWebhookService:
         # Step 2: Ensure subscription status is active
         if current_status != "active":
             try:
-                self.supabase.table("profiles").update({
+                self.db_client.table("profiles").update({
                     "subscription_status": "active"
                 }).eq("id", uid).execute()
                 logger.info(f"[Webhook] Reactivated subscription for user {uid}")
@@ -548,7 +555,7 @@ class StripeWebhookService:
 
         # Step 4: Log activity (non-critical)
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": uid,
                 "action": "monthly_credits_refreshed",
                 "metadata": {"tier": tier, "payment": amount_paid, "invoice_id": invoice_id},
@@ -606,7 +613,7 @@ class StripeWebhookService:
         logger.info(f"[Webhook] Processing subscription change: sub={subscription_id}, status={status}, event={event_type}")
 
         # Look up user
-        user_res = self.supabase.table("profiles").select("id, tier")\
+        user_res = self.db_client.table("profiles").select("id, tier")\
             .eq("stripe_customer_id", customer_id).execute()
 
         if not user_res.data:
@@ -665,7 +672,7 @@ class StripeWebhookService:
 
         # Log activity (non-critical)
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": uid,
                 "action": "subscription_ended",
                 "metadata": {
@@ -742,7 +749,7 @@ class StripeWebhookService:
         # Log activity if tier changed
         if new_tier != current_tier:
             try:
-                self.supabase.table("activity_logs").insert({
+                self.db_client.table("activity_logs").insert({
                     "user_id": uid,
                     "action": "subscription_changed",
                     "metadata": {
@@ -906,7 +913,7 @@ class StripeWebhookService:
         if admin_id:
             try:
                 from infrastructure.repositories.admin_repository import AdminRepository
-                admin_repo = AdminRepository(self.supabase)
+                admin_repo = AdminRepository(self.db_client)
                 await admin_repo.admin_log_operation(
                     admin_id=admin_id,
                     operation_type="refund_processed",

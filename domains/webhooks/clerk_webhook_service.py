@@ -3,9 +3,14 @@ Clerk Webhook Service
 
 Handles Clerk authentication webhook events.
 
-@version 1.0.0 (DDD Architecture - 5 Star)
+@version 2.0.0 (AsyncClient Migration - Phase 10)
 
 Architecture: API → ClerkWebhookService → Repositories
+
+v2.0.0 Changes:
+- Migrated to AsyncClient for all database operations
+- Removed get_supabase_client() usage
+- All direct DB calls now use self.db_client (AsyncClient)
 """
 
 import logging
@@ -13,7 +18,6 @@ from typing import Dict, Any
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from config import CLERK_WEBHOOK_SECRET
-from core.database import get_supabase_client
 from infrastructure.repositories import (
     SupabaseUserRepository,
     SupabaseCreditRepository,
@@ -31,6 +35,7 @@ class ClerkWebhookService:
 
     Architecture: API → ClerkWebhookService → Repositories
 
+    v2.0.0: Migrated to AsyncClient
     v1.0.0: Created for DDD compliance
     """
 
@@ -38,6 +43,7 @@ class ClerkWebhookService:
         self,
         user_repo: SupabaseUserRepository,
         credit_repo: SupabaseCreditRepository,
+        db_client = None,  # AsyncClient for direct database operations
     ):
         """
         Initialize Clerk Webhook Service.
@@ -45,10 +51,11 @@ class ClerkWebhookService:
         Args:
             user_repo: User repository for profile operations
             credit_repo: Credit repository for signup bonus
+            db_client: AsyncClient for direct database operations (activity logs, RPC calls)
         """
         self.user_repo = user_repo
         self.credit_repo = credit_repo
-        self.supabase = get_supabase_client()
+        self.db_client = db_client or user_repo.client  # Use repo's client if not provided
 
     def verify_signature(self, payload: bytes, headers: Dict[str, str]) -> Dict[str, Any]:
         """
@@ -127,7 +134,7 @@ class ClerkWebhookService:
             )
             # If email is missing, update it separately
             if not existing_profile.get("email") and email:
-                self.supabase.table("profiles").update({"email": email}).eq("id", user_id).execute()
+                self.db_client.table("profiles").update({"email": email}).eq("id", user_id).execute()
             logger.info(f"✅ User {user_id} already exists (JIT created), updated profile info")
             return {"status": "updated", "reason": "jit_created"}
 
@@ -148,7 +155,7 @@ class ClerkWebhookService:
 
         # Log signup event
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": user_id,
                 "action": "user_signup",
                 "metadata": {
@@ -192,7 +199,7 @@ class ClerkWebhookService:
         """
         try:
             idempotency_key = f"signup_bonus_{user_id}"
-            result = self.supabase.rpc("grant_signup_bonus_atomic", {
+            result = self.db_client.rpc("grant_signup_bonus_atomic", {
                 "p_user_id": user_id,
                 "p_amount": 50,
                 "p_idempotency_key": idempotency_key
@@ -221,7 +228,7 @@ class ClerkWebhookService:
                     )
                     # Best effort to update idempotency key
                     try:
-                        self.supabase.table("credit_transactions").update({
+                        self.db_client.table("credit_transactions").update({
                             "idempotency_key": idempotency_key
                         }).eq("user_id", user_id).eq("type", "signup_bonus").execute()
                     except Exception:
@@ -271,7 +278,7 @@ class ClerkWebhookService:
 
         # Log profile update
         try:
-            self.supabase.table("activity_logs").insert({
+            self.db_client.table("activity_logs").insert({
                 "user_id": user_id,
                 "action": "profile_updated",
                 "metadata": {
@@ -304,7 +311,7 @@ class ClerkWebhookService:
         user_id = data.get("user_id")
         if user_id:
             try:
-                self.supabase.table("activity_logs").insert({
+                self.db_client.table("activity_logs").insert({
                     "user_id": user_id,
                     "action": "user_login",
                     "metadata": {
@@ -335,7 +342,7 @@ class ClerkWebhookService:
         user_id = data.get("user_id")
         if user_id:
             try:
-                self.supabase.table("activity_logs").insert({
+                self.db_client.table("activity_logs").insert({
                     "user_id": user_id,
                     "action": "user_logout",
                     "metadata": {"reason": event_type},
