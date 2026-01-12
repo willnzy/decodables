@@ -1,13 +1,13 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 155 个，实际代码 156 个)
-> **版本**: 3.36
+> **状态**: ✅ Complete (已评审 159 个，实际代码 160 个)
+> **版本**: 3.37
 > **最后更新**: 2026-01-12
-> **总端点数**: 155 个 (已评审) / 156 个 (实际代码)
+> **总端点数**: 159 个 (已评审) / 160 个 (实际代码)
 
-本文档记录已评审的 155 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 159 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
-**注意**: 实际代码中有 156 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
+**注意**: 实际代码中有 160 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
 
 ---
 
@@ -26,16 +26,17 @@
 11. [Metrics 系统指标 (7个)](#11-metrics-系统指标)
 12. [Moderation 内容审核 (10个)](#12-moderation-内容审核)
 13. [Notifications 通知管理 (5个)](#13-notifications-通知管理)
-14. [Stats 统计仪表板 (18个)](#14-stats-统计仪表板)
-15. [Subscriptions 订阅管理 (3个)](#15-subscriptions-订阅管理)
-16. [System 系统管理 (12个)](#16-system-系统管理)
-17. [Tasks 任务管理 (4个)](#17-tasks-任务管理)
-18. [Users 用户管理 (13个)](#18-users-用户管理)
-19. [Webhooks 重试管理 (2个)](#19-webhooks-重试管理)
+14. [Pages 静态页面管理 (4个)](#14-pages-静态页面管理) **NEW**
+15. [Stats 统计仪表板 (18个)](#15-stats-统计仪表板)
+16. [Subscriptions 订阅管理 (3个)](#16-subscriptions-订阅管理)
+17. [System 系统管理 (12个)](#17-system-系统管理)
+18. [Tasks 任务管理 (4个)](#18-tasks-任务管理)
+19. [Users 用户管理 (13个)](#19-users-用户管理)
+20. [Webhooks 重试管理 (2个)](#20-webhooks-重试管理)
 
 ---
 
-## 📋 接口总览 (155个)
+## 📋 接口总览 (159个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -3199,7 +3200,162 @@
 
 ---
 
-## 14. Stats 统计仪表板
+## 14. Pages 静态页面管理 **NEW**
+
+> v3.37 新增：静态页面 CMS 管理端点，用于配置 About Us、Contact Us、Privacy Policy 等页面内容。
+> 设计文档：[static-pages-cms-design.md](static-pages-cms-design.md)
+
+### GET `/pages`
+
+列出所有可配置页面
+
+**限流**: 60 req/min
+
+**响应**:
+```json
+{
+  "pages": [
+    {
+      "page_name": "about-us",
+      "display_name": "About Us",
+      "type": "static",
+      "sections_count": 5,
+      "last_updated": "2026-01-12T10:00:00Z"
+    },
+    {
+      "page_name": "contact-us",
+      "display_name": "Contact Us",
+      "type": "hybrid",
+      "sections_count": 4,
+      "last_updated": "2026-01-12T09:30:00Z"
+    },
+    {
+      "page_name": "privacy-policy",
+      "display_name": "Privacy Policy",
+      "type": "static",
+      "sections_count": 16,
+      "last_updated": "2026-01-03T00:00:00Z"
+    }
+  ]
+}
+```
+
+**页面类型**:
+- `static` - 纯静态内容页面（全部内容可 CMS 配置）
+- `hybrid` - 混合型页面（静态内容 + 动态功能如表单）
+
+---
+
+### GET `/pages/{page_name}`
+
+获取页面所有区块（含未启用）
+
+**限流**: 60 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page_name` | string | 页面标识符 |
+
+**响应**:
+```json
+{
+  "page": "about-us",
+  "display_name": "About Us",
+  "type": "static",
+  "sections": {
+    "hero": {
+      "title": "About {{GLOBAL_COMPANY_NAME}}",
+      "subtitle": "Our Mission",
+      "description": "We're on a mission to empower educators...",
+      "enabled": true,
+      "order": 1
+    },
+    "features": {
+      "title": "Why Choose Us",
+      "items": [...],
+      "enabled": true,
+      "order": 2
+    },
+    "cta": {
+      "title": "Ready to Create?",
+      "enabled": false,
+      "order": 3
+    }
+  },
+  "available_params": [
+    "{{GLOBAL_COMPANY_NAME}}",
+    "{{GLOBAL_COMPANY_EMAIL}}",
+    "{{GLOBAL_COMPANY_WHATSAPP}}"
+  ],
+  "last_updated": "2026-01-12T10:00:00Z"
+}
+```
+
+**说明**:
+- 返回所有区块（包括 `enabled: false`）
+- 参数引用保持原样（不替换），方便管理员编辑
+- `available_params` 列出该页面可用的参数引用
+
+---
+
+### PUT `/pages/{page_name}/{section}`
+
+更新单个区块
+
+**限流**: 30 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page_name` | string | 页面标识符 |
+| `section` | string | 区块名称 |
+
+**请求体**:
+```json
+{
+  "title": "About Make Decodables",
+  "subtitle": "Our Mission",
+  "description": "We're on a mission to empower educators...",
+  "enabled": true,
+  "order": 1
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "section": "hero",
+  "updated_at": "2026-01-12T10:30:00Z"
+}
+```
+
+**验证规则**:
+- 参数引用格式必须正确（`{{PARAM_NAME}}`）
+- `order` 必须为正整数
+- 内容长度限制根据区块类型不同
+
+**审计**: 自动记录到配置审计日志
+
+---
+
+### POST `/pages/{page_name}/preview`
+
+预览页面（含参数替换）
+
+**限流**: 60 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page_name` | string | 页面标识符 |
+
+**响应**: 与 User API `/pages/{page_name}` 相同（参数已替换为实际值）
+
+---
+
+## 15. Stats 统计仪表板
 
 ### GET `/stats/dashboard`
 
@@ -3597,7 +3753,7 @@
 
 ---
 
-## 15. Subscriptions 订阅管理
+## 16. Subscriptions 订阅管理
 
 ### POST `/subscriptions/refund`
 
@@ -3674,7 +3830,7 @@
 
 ---
 
-## 16. System 系统管理
+## 17. System 系统管理
 
 ### GET `/system/configs`
 
@@ -4018,7 +4174,7 @@
 
 ---
 
-## 17. Tasks 任务管理
+## 18. Tasks 任务管理
 
 ### GET `/tasks/management/status`
 
@@ -4114,7 +4270,7 @@
 
 ---
 
-## 18. Users 用户管理
+## 19. Users 用户管理
 
 ### GET `/users`
 
@@ -4416,7 +4572,7 @@
 
 ---
 
-## 19. Webhooks 重试管理
+## 20. Webhooks 重试管理
 
 ### POST `/webhooks/retry`
 
@@ -4465,8 +4621,15 @@
 
 ---
 
-*文档版本: v3.33*
-*最后更新: 2026-01-11*
+*文档版本: v3.37*
+*最后更新: 2026-01-12*
+
+**更新内容** (v3.37):
+- ✅ 新增 "Pages 静态页面管理" 模块 (4个接口)，支持 CMS 动态内容管理
+- ✅ 总模块数: 20 个
+
+**更新内容** (v3.36):
+- ✅ 新增 Feature Flags 相关端点
 
 **更新内容** (v3.33):
 - 🚨 删除虚构的 "AI Models 管理" 模块 (8个不存在的接口)
@@ -4476,4 +4639,3 @@
 - ✅ 更新 "AI Insights" 模块接口细节 (基于实际代码 v3.27)
 - ✅ 所有接口信息从实际代码中提取，确保准确性
 - ✅ 包含所有请求参数、响应格式、验证规则和限流配置
-- ✅ 按 17 个模块分类组织（原 17 个 - 1 虚构 + 1 补充 = 17 个）

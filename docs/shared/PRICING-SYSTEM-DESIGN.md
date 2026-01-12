@@ -1,8 +1,9 @@
 # Pricing System Design - 价格配置系统设计
 
-> 版本: 1.0.0
+> 版本: 1.1.0
 > 作者: Claude + Team
-> 日期: 2026-01-09
+> 创建日期: 2026-01-09
+> 最后更新: 2026-01-12
 
 ## 1. 当前问题分析
 
@@ -562,11 +563,72 @@ await pricing_service.set_user_override(
 
 ---
 
-## 6. 参考资料
+## 6. 与静态页面 CMS 的关系
+
+> 详见: [static-pages-cms-design.md](static-pages-cms-design.md)
+
+### 6.1 配置类型分类
+
+`system_configs` 表承载多种配置类型:
+
+| 前缀 | 配置类型 | 用途 | 示例 |
+|------|----------|------|------|
+| `PRICING_*` | 价格配置 | 订阅价格、积分包价格 | `PRICING_STARTER`, `PRICING_PRO` |
+| `CREDITS_*` | 积分配置 | AI 消耗、月度积分 | `CREDITS_AI_IMAGE`, `CREDITS_STARTER_MONTHLY` |
+| `FEATURE_*` | 功能开关 | Feature Flags | `FEATURE_NEW_EDITOR` |
+| `GLOBAL_*` | 全局变量 | 公司信息、联系方式 | `GLOBAL_COMPANY_EMAIL`, `GLOBAL_COMPANY_WHATSAPP` |
+| `PAGE_*` | 页面内容 | 静态页面区块配置 | `PAGE_ABOUT_US_HERO`, `PAGE_PRIVACY_SECTION_1` |
+
+### 6.2 页面内容配置
+
+静态页面内容配置存储在 `system_configs` 表:
+
+```sql
+-- 示例: About Us 页面 Hero 区块
+INSERT INTO system_configs (key, value, category, description, is_public) VALUES (
+    'PAGE_ABOUT_US_HERO',
+    '{"title": "About {{GLOBAL_COMPANY_NAME}}", "subtitle": "Our Mission", "enabled": true}',
+    'page_content',
+    'About Us page hero section',
+    true
+);
+```
+
+**设计原则**:
+- ✅ 复用现有 `system_configs` 表，无需新建表
+- ✅ 支持参数引用 (`{{GLOBAL_*}}`, `{{PRICING_*}}`)，避免硬编码
+- ✅ `is_public=true` 允许前端直接获取
+- ✅ 配置变更自动记录到审计日志
+
+### 6.3 与 pricing_plans 表的关系
+
+| 场景 | 使用 `system_configs` | 使用 `pricing_plans` |
+|------|----------------------|---------------------|
+| 价格展示 (Landing/Billing Policy) | ✅ `PRICING_*` 配置 | - |
+| Stripe 支付 | - | ✅ `stripe_price_id` |
+| 用户专属价格 | - | ✅ `user_price_overrides` |
+| 价格变更审计 | - | ✅ `pricing_history` |
+| 静态页面内容 | ✅ `PAGE_*` 配置 | - |
+| Feature Flags | ✅ `FEATURE_*` 配置 | - |
+
+**总结**: `system_configs` 用于轻量级配置（价格展示、页面内容），`pricing_plans` 用于支付核心逻辑（Stripe 集成、价格审计）。
+
+---
+
+## 7. 参考资料
 
 - Stripe Pricing Best Practices: https://stripe.com/docs/products-prices/pricing-models
 - Shopify Price Rules: https://shopify.dev/docs/api/admin-rest/2024-01/resources/pricerule
 - AWS Pricing Versioning: https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html
+
+---
+
+## 8. 版本历史
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| 1.0.0 | 2026-01-09 | 初始设计 |
+| **1.1.0** | **2026-01-12** | **新增第 6 节**: 与静态页面 CMS 的关系；配置类型分类；`PAGE_*` 配置说明 |
 
 ---
 

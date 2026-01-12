@@ -1,9 +1,9 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.35
+> **版本**: 3.36
 > **最后更新**: 2026-01-12
-> **总端点数**: 131 个
+> **总端点数**: 133 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
 
@@ -29,31 +29,31 @@
 14. [Marketplace 市场 (11个)](#14-marketplace-市场)
 15. [Onboarding 新手引导 (6个)](#15-onboarding-新手引导)
 16. [Payment 支付 (2个)](#16-payment-支付)
-17. [Projects 项目管理 (10个)](#17-projects-项目管理)
-18. [Referrals 推荐系统 (6个)](#18-referrals-推荐系统)
-19. [Resources 系统资源 (7个)](#19-resources-系统资源)
-20. [Support 客服支持 (4个)](#20-support-客服支持)
-21. [System Resources 系统资源管理 (9个)](#21-system-resources-系统资源管理)
-22. [Tasks 任务 (2个)](#22-tasks-任务)
-23. [Templates 模板 (10个)](#23-templates-模板)
-24. [Themes 主题 (1个)](#24-themes-主题)
-25. [Tools 工具 (2个)](#25-tools-工具)
-26. [User Assets 用户资产 (10个)](#26-user-assets-用户资产)
-27. [User Profile 用户档案 (7个)](#27-user-profile-用户档案)
-28. [Webhooks (2个)](#28-webhooks)
+17. [Pages 静态页面内容 (2个)](#17-pages-静态页面内容) **NEW**
+18. [Projects 项目管理 (10个)](#18-projects-项目管理)
+19. [Referrals 推荐系统 (6个)](#19-referrals-推荐系统)
+20. [Resources 系统资源 (7个)](#20-resources-系统资源)
+21. [Support 客服支持 (4个)](#21-support-客服支持)
+22. [System Resources 系统资源管理 (9个)](#22-system-resources-系统资源管理)
+23. [Tasks 任务 (2个)](#23-tasks-任务)
+24. [Templates 模板 (10个)](#24-templates-模板)
+25. [Themes 主题 (1个)](#25-themes-主题)
+26. [Tools 工具 (2个)](#26-tools-工具)
+27. [User Assets 用户资产 (10个)](#27-user-assets-用户资产)
+28. [User Profile 用户档案 (7个)](#28-user-profile-用户档案)
+29. [Webhooks (2个)](#29-webhooks)
 
 ---
 
-## 📋 接口总览 (131个)
+## 📋 接口总览 (133个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
 | 1 | Analytics | POST | /analytics/events | log_analytics_events | api/user/analytics.py | 批量记录分析事件 |
 | 2 | Articles | GET | /articles | list_articles | api/user/articles.py | 获取已发布文章列表 |
-| 3 | Articles | GET | /articles/featured | get_featured_articles | api/user/articles.py | 获取精选文章 (v1.1.0) |
-| 4 | Articles | GET | /articles/categories | get_categories | api/user/articles.py | 获取分类及文章数 |
-| 5 | Articles | GET | /articles/search | search_articles | api/user/articles.py | 搜索已发布文章 |
-| 6 | Articles | GET | /articles/{slug} | get_article | api/user/articles.py | 获取文章详情 |
+| 3 | Articles | GET | /articles/categories | get_categories | api/user/articles.py | 获取分类及文章数 |
+| 4 | Articles | GET | /articles/search | search_articles | api/user/articles.py | 搜索已发布文章 |
+| 5 | Articles | GET | /articles/{slug} | get_article | api/user/articles.py | 获取文章详情 |
 | 6 | Billing | GET | /billing/credits | get_credits | api/user/billing.py | 获取积分余额 |
 | 7 | Billing | GET | /billing/transactions | get_transactions | api/user/billing.py | 获取交易历史 |
 | 8 | Billing | GET | /billing/can-afford | check_can_afford | api/user/billing.py | 检查是否能负担操作 |
@@ -255,41 +255,6 @@
   "total": 45,
   "offset": 0,
   "limit": 20
-}
-```
-
----
-
-### GET `/articles/featured` (v1.1.0 新增)
-
-获取精选文章列表
-
-**限流**: 60 req/min
-
-**参数**:
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `category` | string | - | 分类筛选 (manual/news/changelog) |
-| `limit` | int | 3 | 最大数量 (1-10) |
-
-**响应**:
-```json
-{
-  "articles": [
-    {
-      "id": "uuid",
-      "slug": "new-ai-feature",
-      "title": "New Feature: AI Design Assistant",
-      "summary": "Introducing our new AI-powered...",
-      "category": "news",
-      "tags": ["feature", "update"],
-      "cover_image": "https://...",
-      "is_featured": true,
-      "published_at": "2026-01-12T10:00:00Z",
-      "view_count": 250
-    }
-  ],
-  "total": 3
 }
 ```
 
@@ -1644,7 +1609,118 @@
 
 ---
 
-## 17. Projects 项目管理
+## 17. Pages 静态页面内容 **NEW**
+
+> v3.36 新增：静态页面 CMS 系统，用于动态管理 About Us、Contact Us、Privacy Policy 等页面内容。
+> 设计文档：[static-pages-cms-design.md](static-pages-cms-design.md)
+
+**无需认证** - 所有端点均为公开访问。
+
+### GET `/pages/{page_name}`
+
+获取页面所有区块内容（参数已替换）
+
+**限流**: 60 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page_name` | string | 页面标识符 |
+
+**有效 page_name 值**:
+- `about-us` - 关于我们
+- `contact-us` - 联系我们 (Hybrid: 静态内容 + 表单)
+- `privacy-policy` - 隐私政策
+- `term-of-service` - 服务条款
+- `billing-policy` - 计费政策
+- `marketplace-guidelines` - 市场指南
+
+**响应**:
+```json
+{
+  "page": "about-us",
+  "sections": {
+    "hero": {
+      "title": "About Make Decodables",
+      "subtitle": "Our Mission",
+      "description": "We're on a mission to empower educators...",
+      "enabled": true
+    },
+    "features": {
+      "title": "Why Choose Us",
+      "items": [
+        {
+          "icon": "BookOpen",
+          "title": "Easy Book Creation",
+          "description": "Create foldable mini-books in minutes..."
+        }
+      ],
+      "enabled": true
+    },
+    "cta": {
+      "title": "Ready to Create?",
+      "description": "Join thousands of educators...",
+      "cta": {
+        "text": "Start Creating Now",
+        "href": "/dashboard",
+        "variant": "primary"
+      },
+      "enabled": true
+    }
+  },
+  "globals": {
+    "company_name": "Make Decodables",
+    "company_email": "info@makedecodables.com",
+    "company_whatsapp": "+1 (725) 290 0525"
+  },
+  "lastUpdated": "2026-01-12T10:00:00Z"
+}
+```
+
+**说明**:
+- 参数引用 (`{{GLOBAL_*}}`) 在后端已替换为实际值
+- 只返回 `enabled: true` 的区块
+- 缓存: 60 秒
+
+**错误**:
+- `404`: 页面不存在
+
+---
+
+### GET `/pages/{page_name}/{section}`
+
+获取单个区块内容
+
+**限流**: 60 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `page_name` | string | 页面标识符 |
+| `section` | string | 区块名称 (如 `hero`, `features`, `cta`) |
+
+**响应**:
+```json
+{
+  "section": "hero",
+  "data": {
+    "title": "About Make Decodables",
+    "subtitle": "Our Mission",
+    "description": "We're on a mission to empower educators...",
+    "enabled": true
+  },
+  "globals": {
+    "company_name": "Make Decodables"
+  }
+}
+```
+
+**错误**:
+- `404`: 页面或区块不存在
+
+---
+
+## 18. Projects 项目管理
 
 ### GET `/projects`
 
@@ -2920,7 +2996,7 @@ URL检查
 
 ---
 
-## 28. Webhooks
+## 29. Webhooks
 
 ### POST `/webhooks/clerk`
 
@@ -2974,12 +3050,14 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.33*
-*最后更新: 2026-01-11*
+*文档版本: v3.36*
+*最后更新: 2026-01-12*
 *更新内容:
+- v3.36: 新增 Pages 静态页面内容模块 (2个公开端点)，支持 CMS 动态内容管理
+- v3.35: 新增 Feature Flags 客户端端点 (4个)
 - v3.33: 新增 Articles 文章模块 (4个公开端点)
 - v3.32: 完整记录 123 个 User API 端点
 - 包含所有请求参数、响应格式、验证规则和限流配置
-- 按 27 个模块分类组织
+- 按 29 个模块分类组织
 - DDD 架构合规: 100%
 - 测试覆盖率: 65%+*
