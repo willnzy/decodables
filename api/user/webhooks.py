@@ -50,16 +50,16 @@ router = APIRouter(prefix="/webhooks", tags=["user-webhooks-v2"])
 # Dependency Injection
 # ==========================================
 
-def get_clerk_webhook_service() -> ClerkWebhookService:
-    """Dependency injection factory for ClerkWebhookService."""
+async def get_clerk_webhook_service() -> ClerkWebhookService:
+    """Dependency injection factory for ClerkWebhookService (AsyncClient)."""
     db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     credit_repo = SupabaseCreditRepository(db)
     return ClerkWebhookService(user_repo, credit_repo)
 
 
-def get_stripe_webhook_service() -> StripeWebhookService:
-    """Dependency injection factory for StripeWebhookService."""
+async def get_stripe_webhook_service() -> StripeWebhookService:
+    """Dependency injection factory for StripeWebhookService (AsyncClient)."""
     db = await get_async_db_client()
     user_repo = SupabaseUserRepository(db)
     credit_repo = SupabaseCreditRepository(db)
