@@ -42,6 +42,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user, require_member
 from core.utils.validation import validate_thumbnail_url
 from container import get_container
@@ -205,7 +206,7 @@ async def list_listings(
     price: Optional[str] = None,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ListingsResponse:
     """
     Get marketplace listings with filters.
@@ -254,7 +255,7 @@ async def list_listings(
 @router.get("/listings/{listing_id}")
 async def get_listing(
     listing_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Get single listing details.
@@ -271,7 +272,7 @@ async def get_listing(
 
     query = GetListingQuery(
         listing_id=listing_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(query)
@@ -325,7 +326,7 @@ async def create_listing(
     price_type = "t1" if req.price_credits == 0 else "credits"
 
     command = CreateListingCommand(
-        seller_id=user["id"],
+        seller_id=user.user_id,
         resource_type=req.resource_type,  # "asset" or "project"
         category=category,  # Specific content type
         title=req.title,
@@ -358,7 +359,7 @@ async def create_listing(
 async def update_listing(
     listing_id: str,
     req: ListingUpdateRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> UpdateListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
     Update a listing (seller only).
@@ -377,7 +378,7 @@ async def update_listing(
 
     command = UpdateListingCommand(
         listing_id=listing_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         title=req.title,
         description=req.description,
         price_credits=req.price_credits,
@@ -405,7 +406,7 @@ async def update_listing(
 @router.delete("/listings/{listing_id}")
 async def unpublish_listing(
     listing_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> Dict[str, str]:
     """
     Unpublish a listing (archive it).
@@ -421,7 +422,7 @@ async def unpublish_listing(
 
     command = UnpublishListingCommand(
         listing_id=listing_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(command)
@@ -444,7 +445,7 @@ async def unpublish_listing(
 async def purchase_listing(
     request: Request,
     req: PurchaseRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> PurchaseResponse:
     """
     Purchase a marketplace item.
@@ -465,7 +466,7 @@ async def purchase_listing(
     # Note: idempotency_key is generated internally by the handler
     command = PurchaseListingCommand(
         listing_id=req.listing_id,
-        buyer_id=user["id"],
+        buyer_id=user.user_id,
         buyer_tier=user.get("tier", "t1"),
     )
 
@@ -497,7 +498,7 @@ async def get_my_listings(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None, pattern="^(draft|pending_review|published|rejected|suspended|archived)$"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ListingsResponse:
     """
     Get user's own listings (all moderation states).
@@ -519,7 +520,7 @@ async def get_my_listings(
     
 
     query = GetMyListingsQuery(
-        seller_id=user["id"],
+        seller_id=user.user_id,
         status=status,
         limit=limit,
         offset=offset,
@@ -540,7 +541,7 @@ async def get_my_listings(
 
 @router.get("/seller/stats", response_model=SellerStatsResponse)
 async def get_seller_stats(
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> SellerStatsResponse:
     """
     Get seller statistics.
@@ -553,7 +554,7 @@ async def get_seller_stats(
     container = get_container()
     handler = await container.get_seller_stats_handler()
 
-    query = GetSellerStatsQuery(seller_id=user["id"])
+    query = GetSellerStatsQuery(seller_id=user.user_id)
 
     result = await handler.handle(query)
 
@@ -593,7 +594,7 @@ class LeaderboardResponse(BaseModel):
 async def get_leaderboard(
     period: str = Query("monthly", pattern="^(monthly|all_time)$"),
     type: str = Query("all", pattern="^(all|project|asset)$"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> LeaderboardResponse:
     """
     Get marketplace leaderboard.
@@ -668,7 +669,7 @@ class MyReportsResponse(BaseModel):
 async def submit_report(
     request: Request,
     req: ReportRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ReportResponse:
     """
     Submit a content report for a marketplace listing.
@@ -690,7 +691,7 @@ async def submit_report(
     handler = await container.create_report_handler()
 
     command = CreateReportCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         listing_id=req.listing_id,
         reason=req.reason,
     )
@@ -717,7 +718,7 @@ async def submit_report(
 async def get_my_reports(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> MyReportsResponse:
     """
     Get reports submitted by the current user.
@@ -735,7 +736,7 @@ async def get_my_reports(
     handler = await container.get_my_reports_handler()
 
     query = GetMyReportsQuery(
-        user_id=user["id"],
+        user_id=user.user_id,
         page=page,
         limit=limit,
     )

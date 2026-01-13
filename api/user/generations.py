@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from core.database.dependencies import get_async_db
@@ -105,7 +106,7 @@ async def get_generation_history(
     limit: int = Query(20, ge=1, le=100, description="Maximum number of generations to return (1-100, default: 20)"),
     offset: int = Query(0, ge=0, description="Number of generations to skip for pagination"),
     favorites_only: bool = Query(False, description="If true, only return favorited generations"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> GenerationHistoryResponse:
     """
@@ -182,7 +183,7 @@ async def get_generation_history(
     # v3.0.0: Get history via Service (DDD compliant)
     try:
         generations, total = await history_service.get_history(
-            user["id"], limit, offset, favorites_only
+            user.user_id, limit, offset, favorites_only
         )
     except Exception as e:
         logger.error(f"Get history failed for user {user['id'][:8]}...: {e}")
@@ -202,7 +203,7 @@ async def update_generation(
     request: Request,
     generation_id: str,
     req: FavoriteRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> FavoriteResponse:
     """
@@ -221,7 +222,7 @@ async def update_generation(
     # v3.0.0: Update via Service (DDD compliant)
     try:
         await history_service.update_generation(
-            user["id"],
+            user.user_id,
             generation_id,
             {"is_favorited": req.is_favorited}
         )
@@ -240,7 +241,7 @@ async def toggle_favorite(
     request: Request,
     generation_id: str,
     req: FavoriteRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> FavoriteResponse:
     """
@@ -260,7 +261,7 @@ async def toggle_favorite(
     # v3.0.0: Call Service (same logic as PATCH)
     try:
         await history_service.update_generation(
-            user["id"],
+            user.user_id,
             generation_id,
             {"is_favorited": req.is_favorited}
         )
@@ -278,7 +279,7 @@ async def toggle_favorite(
 async def clear_generation_history(
     request: Request,
     keep_favorites: bool = True,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> BatchDeleteResponse:
     """
@@ -296,7 +297,7 @@ async def clear_generation_history(
     """
     # v3.0.0: Batch delete via Service (DDD compliant)
     try:
-        deleted_count = await history_service.batch_delete(user["id"], keep_favorites)
+        deleted_count = await history_service.batch_delete(user.user_id, keep_favorites)
     except Exception as e:
         logger.error(f"Batch delete failed: {e}")
         raise HTTPException(500, "Failed to clear history")
@@ -312,7 +313,7 @@ async def clear_generation_history(
 async def delete_generation(
     request: Request,
     generation_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> DeleteResponse:
     """
@@ -329,7 +330,7 @@ async def delete_generation(
 
     # v3.0.0: Delete via Service (DDD compliant)
     try:
-        deleted_id = await history_service.delete_generation(user["id"], generation_id)
+        deleted_id = await history_service.delete_generation(user.user_id, generation_id)
     except GenerationNotFoundException:
         raise HTTPException(404, "Generation not found")
     except Exception as e:
@@ -343,7 +344,7 @@ async def delete_generation(
         db_client = await get_async_db_client()
         admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],
+            admin_id=user.user_id,
             operation_type="generation_delete",
             target_type="generation",
             target_id=generation_id,
@@ -361,7 +362,7 @@ async def delete_generation(
 async def batch_delete_generations(
     request: Request,
     keep_favorites: bool = Query(True, description="If true, preserve favorited generations (default: true)"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
 ) -> BatchDeleteResponse:
     """
@@ -428,7 +429,7 @@ async def batch_delete_generations(
     """
     # v3.0.0: Batch delete via Service (DDD compliant)
     try:
-        deleted_count = await history_service.batch_delete(user["id"], keep_favorites)
+        deleted_count = await history_service.batch_delete(user.user_id, keep_favorites)
     except Exception as e:
         logger.error(f"Batch delete failed: {e}")
         raise HTTPException(500, "Failed to clear history")
@@ -440,7 +441,7 @@ async def batch_delete_generations(
         db_client = await get_async_db_client()
         admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],
+            admin_id=user.user_id,
             operation_type="generation_batch_delete",
             target_type="generation",
             details=f"Batch deleted {deleted_count} generations (keep_favorites={keep_favorites})",
