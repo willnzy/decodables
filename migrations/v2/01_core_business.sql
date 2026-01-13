@@ -117,6 +117,9 @@ CREATE TABLE profiles (
     preferences JSONB DEFAULT '{}'::jsonb,
     ext_json JSONB DEFAULT '{}'::jsonb,
 
+    -- 创建来源追踪 (用于监控 Webhook vs JIT 创建)
+    created_by TEXT DEFAULT 'legacy' CHECK (created_by IN ('webhook', 'jit', 'legacy', 'manual')),
+    
     -- 标准审计字段
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1367,6 +1370,418 @@ BEGIN
     WHERE id = category_id_input AND deleted_at IS NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- ============================================================================
+-- User Creation Monitoring (幂等用户创建监控)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- user_creation_logs - 用户创建日志表
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_creation_logs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('webhook', 'jit', 'manual')),
+    action TEXT NOT NULL CHECK (action IN ('created', 'duplicate_attempt', 'error')),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX idx_user_creation_logs_user_id ON user_creation_logs(user_id);
+CREATE INDEX idx_user_creation_logs_created_at ON user_creation_logs(created_at DESC);
+CREATE INDEX idx_user_creation_logs_source ON user_creation_logs(source);
+CREATE INDEX idx_user_creation_logs_action ON user_creation_logs(action);
+
+COMMENT ON TABLE user_creation_logs IS '用户创建日志表，用于监控 Webhook vs JIT 创建健康度';
+COMMENT ON COLUMN user_creation_logs.source IS '创建源：webhook（Clerk webhook）、jit（API JIT 创建）、manual（手动）';
+COMMENT ON COLUMN user_creation_logs.action IS '操作类型：created（成功创建）、duplicate_attempt（重复尝试）、error（错误）';
+
+-- ----------------------------------------------------------------------------
+-- profiles 索引增强
+-- ----------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_profiles_created_by ON profiles(created_by);
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username) WHERE username IS NOT NULL;
+
+
+-- ============================================================================
+-- Helper Sequences and Functions
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- user_code_seq - 用户码序列（避免并发冲突）
+-- ----------------------------------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS user_code_seq START 1;
+
+COMMENT ON SEQUENCE user_code_seq IS '用户码序列，用于生成唯一的 user_code（原子递增，避免并发冲突）';
+
+
+-- ----------------------------------------------------------------------------
+-- generate_user_code - 生成唯一的 26 位用户码
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION generate_user_code()
+RETURNS TEXT AS $$
+DECLARE
+    new_user_code TEXT;
+    current_timestamp_str TEXT;
+    sequence_number BIGINT;
+BEGIN
+    -- 时间戳 (YYMMDDHHMMSS) - 12 位
+    current_timestamp_str := TO_CHAR(NOW(), 'YYMMDDHH24MISS');
+    
+    -- ✅ 使用序列（原子递增，无并发冲突）- 10 位
+    sequence_number := nextval('user_code_seq');
+    
+    -- 组合成 26 位用户码
+    -- 格式: [时间12位][序列10位][随机4位]
+    new_user_code := 
+        current_timestamp_str ||                           -- 12 位: 时间戳
+        LPAD(sequence_number::TEXT, 10, '0') ||           -- 10 位: 序列号
+        LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');      --  4 位: 随机数
+    
+    RETURN new_user_code;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION generate_user_code() IS 
+'生成 26 位唯一用户码（HOTFIX: 使用序列避免并发冲突）
+格式: YYMMDDHHMMSS(12位) + 序列号(10位) + 随机数(4位)';
+
+
+-- ----------------------------------------------------------------------------
+-- error_logs - 系统错误日志表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS error_logs (
+    id BIGSERIAL PRIMARY KEY,
+    operation TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_operation ON error_logs(operation);
+
+COMMENT ON TABLE error_logs IS '系统错误日志表（用于追踪 RPC 函数异常和系统错误）';
+COMMENT ON COLUMN error_logs.operation IS '操作名称（如 create_user_idempotent）';
+COMMENT ON COLUMN error_logs.error_message IS '错误信息（SQLERRM）';
+COMMENT ON COLUMN error_logs.details IS '详细信息（JSONB 格式，包含 user_id、参数等）';
+
+
+-- ============================================================================
+-- RPC Functions - 幂等用户创建
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- create_user_idempotent - 幂等的用户创建函数（HOTFIX: 使用 UPSERT）
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION create_user_idempotent(
+    p_user_id TEXT,
+    p_email TEXT,
+    p_source TEXT,  -- 'webhook' or 'jit'
+    
+    -- Optional fields
+    p_username TEXT DEFAULT NULL,
+    p_first_name TEXT DEFAULT NULL,
+    p_last_name TEXT DEFAULT NULL,
+    p_avatar_url TEXT DEFAULT NULL,
+    p_display_name TEXT DEFAULT NULL
+)
+RETURNS TABLE(
+    user_profile JSONB,
+    was_created BOOLEAN,
+    created_by TEXT
+) 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_existing_profile profiles%ROWTYPE;
+    v_new_user_code TEXT;
+    v_was_created BOOLEAN;
+    v_display_name_final TEXT;
+BEGIN
+    -- ✅ HOTFIX: 使用 UPSERT 模式（原子操作，无 race condition）
+    
+    -- Step 1: 准备数据
+    v_new_user_code := generate_user_code();
+    
+    v_display_name_final := COALESCE(
+        p_display_name,
+        p_username,
+        p_first_name,
+        split_part(p_email, '@', 1)
+    );
+    
+    -- Step 2: 原子插入（如果已存在则忽略）
+    INSERT INTO profiles (
+        id,
+        email,
+        user_code,
+        username,
+        first_name,
+        last_name,
+        avatar_url,
+        display_name,
+        tier,
+        credits_permanent,
+        created_by,
+        created_at,
+        updated_at
+    ) VALUES (
+        p_user_id,
+        p_email,
+        v_new_user_code,
+        p_username,
+        p_first_name,
+        p_last_name,
+        p_avatar_url,
+        v_display_name_final,
+        't1',
+        50,  -- 注册奖励（仅在创建时发放一次）
+        p_source,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    )
+    ON CONFLICT (id) DO NOTHING  -- ✅ 如果已存在，不做任何操作
+    RETURNING * INTO v_existing_profile;
+    
+    -- Step 3: 判断是新创建还是已存在
+    IF v_existing_profile.id IS NOT NULL THEN
+        -- ✅ 新创建成功
+        v_was_created := TRUE;
+        
+        -- 记录创建事件
+        INSERT INTO user_creation_logs (
+            user_id,
+            source,
+            action,
+            metadata,
+            created_at
+        ) VALUES (
+            p_user_id,
+            p_source,
+            'created',
+            jsonb_build_object(
+                'email', p_email,
+                'username', p_username,
+                'has_avatar', (p_avatar_url IS NOT NULL)
+            ),
+            CURRENT_TIMESTAMP
+        );
+        
+        -- 返回新创建的用户
+        RETURN QUERY
+        SELECT 
+            row_to_json(v_existing_profile)::jsonb,
+            v_was_created,
+            p_source;
+        RETURN;
+    ELSE
+        -- ✅ 用户已存在（被其他进程创建）
+        v_was_created := FALSE;
+        
+        -- 读取现有用户
+        SELECT * INTO v_existing_profile
+        FROM profiles
+        WHERE id = p_user_id;
+        
+        -- 记录重复创建尝试
+        INSERT INTO user_creation_logs (
+            user_id,
+            source,
+            action,
+            metadata,
+            created_at
+        ) VALUES (
+            p_user_id,
+            p_source,
+            'duplicate_attempt',
+            jsonb_build_object(
+                'existing_created_by', v_existing_profile.created_by,
+                'existing_created_at', v_existing_profile.created_at,
+                'attempted_with_email', p_email
+            ),
+            CURRENT_TIMESTAMP
+        );
+        
+        -- 返回现有用户
+        RETURN QUERY
+        SELECT 
+            row_to_json(v_existing_profile)::jsonb,
+            v_was_created,
+            v_existing_profile.created_by;
+        RETURN;
+    END IF;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        -- 记录错误（但不影响事务回滚）
+        BEGIN
+            INSERT INTO error_logs (
+                operation,
+                error_message,
+                details,
+                created_at
+            ) VALUES (
+                'create_user_idempotent',
+                SQLERRM,
+                jsonb_build_object(
+                    'user_id', p_user_id,
+                    'source', p_source,
+                    'email', p_email
+                ),
+                CURRENT_TIMESTAMP
+            );
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- 即使记录错误失败也不影响主流程
+                NULL;
+        END;
+        
+        -- 重新抛出原始异常
+        RAISE;
+END;
+$$;
+
+COMMENT ON FUNCTION create_user_idempotent IS '幂等的用户创建函数，支持 Webhook 和 JIT 并发创建而无 race condition';
+
+
+-- ----------------------------------------------------------------------------
+-- get_user_creation_stats - 获取用户创建统计
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION get_user_creation_stats(p_days INTEGER DEFAULT 7)
+RETURNS TABLE(
+    total_users BIGINT,
+    webhook_created BIGINT,
+    jit_created BIGINT,
+    webhook_success_rate NUMERIC,
+    jit_fallback_rate NUMERIC,
+    avg_creation_duration_ms NUMERIC,
+    duplicate_attempts BIGINT,
+    errors BIGINT
+) 
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH recent_users AS (
+        SELECT 
+            id,
+            created_by,
+            created_at
+        FROM profiles
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
+    ),
+    creation_events AS (
+        -- ✅ HOTFIX: 使用 DISTINCT ON 避免重复计数
+        SELECT DISTINCT ON (user_id)
+            user_id,
+            source,
+            action,
+            created_at
+        FROM user_creation_logs
+        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
+          AND action = 'created'
+        ORDER BY user_id, created_at ASC
+    ),
+    stats AS (
+        SELECT
+            COUNT(DISTINCT ru.id) AS total_users,
+            COUNT(DISTINCT CASE WHEN ru.created_by = 'webhook' THEN ru.id END) AS webhook_created,
+            COUNT(DISTINCT CASE WHEN ru.created_by = 'jit' THEN ru.id END) AS jit_created,
+            (
+                SELECT COUNT(*) 
+                FROM user_creation_logs 
+                WHERE action = 'duplicate_attempt'
+                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
+            ) AS duplicate_attempts,
+            (
+                SELECT COUNT(*) 
+                FROM user_creation_logs 
+                WHERE action = 'error'
+                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
+            ) AS errors
+        FROM recent_users ru
+        LEFT JOIN creation_events ce ON ru.id = ce.user_id
+    )
+    SELECT
+        s.total_users,
+        s.webhook_created,
+        s.jit_created,
+        -- ✅ HOTFIX: 使用 COALESCE 和 NULLIF 避免除以 0
+        ROUND(
+            COALESCE(
+                s.webhook_created::NUMERIC / NULLIF(s.total_users, 0) * 100,
+                0
+            ), 
+            2
+        ) AS webhook_success_rate,
+        ROUND(
+            COALESCE(
+                s.jit_created::NUMERIC / NULLIF(s.total_users, 0) * 100,
+                0
+            ), 
+            2
+        ) AS jit_fallback_rate,
+        0.0 AS avg_creation_duration_ms,
+        s.duplicate_attempts,
+        s.errors
+    FROM stats s;
+END;
+$$;
+
+COMMENT ON FUNCTION get_user_creation_stats IS '获取用户创建统计数据，用于监控 Webhook 健康度';
+
+
+-- ----------------------------------------------------------------------------
+-- cleanup_old_user_creation_logs - 清理旧日志
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION cleanup_old_user_creation_logs(p_retention_days INTEGER DEFAULT 90)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_deleted_count INTEGER;
+BEGIN
+    DELETE FROM user_creation_logs
+    WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days;
+    
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+    
+    RETURN v_deleted_count;
+END;
+$$;
+
+COMMENT ON FUNCTION cleanup_old_user_creation_logs IS '清理旧的用户创建日志，默认保留 90 天';
+
+
+-- ============================================================================
+-- Views - 用户创建监控视图
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- v_user_creation_events - 用户创建事件视图
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_user_creation_events AS
+SELECT 
+    p.id AS user_id,
+    p.email,
+    p.username,
+    p.created_by AS created_by_source,
+    p.created_at AS user_created_at,
+    ucl.source AS log_source,
+    ucl.action AS log_action,
+    ucl.metadata AS log_metadata,
+    ucl.created_at AS log_created_at,
+    EXTRACT(EPOCH FROM (ucl.created_at - p.created_at)) AS delay_seconds
+FROM profiles p
+LEFT JOIN user_creation_logs ucl ON p.id = ucl.user_id
+WHERE ucl.action IN ('created', 'duplicate_attempt')
+ORDER BY p.created_at DESC;
+
+COMMENT ON VIEW v_user_creation_events IS '用户创建事件视图，包含延迟分析';
 
 
 -- ============================================================================

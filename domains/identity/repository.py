@@ -9,7 +9,7 @@ Concrete implementations live in infrastructure/repositories/.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from .aggregates.user_profile import UserProfile
 from .value_objects import UserTier, OnboardingStep
@@ -77,6 +77,40 @@ class IUserRepository(ABC):
 
         Raises:
             UserAlreadyExistsException: If user already exists
+        """
+        pass
+
+    @abstractmethod
+    async def create_or_get(
+        self,
+        user_profile: UserProfile,
+        source: str
+    ) -> Tuple[UserProfile, bool]:
+        """
+        Create user or get existing (idempotent operation).
+
+        This method is designed to handle concurrent user creation from
+        multiple sources (e.g., Webhook and JIT) without race conditions.
+
+        Business Pattern:
+        - Stripe: Idempotent Requests
+        - AWS: Idempotent APIs
+        - Kubernetes: Declarative Apply
+
+        Args:
+            user_profile: The UserProfile to create
+            source: Creation source ('webhook' or 'jit')
+
+        Returns:
+            Tuple of (UserProfile, was_created)
+            - was_created=True: User was newly created
+            - was_created=False: User already existed
+
+        Implementation Notes:
+        - Uses database-level atomic operations (RPC)
+        - First-come-first-served: whoever creates first wins
+        - Safe for concurrent calls with same user_id
+        - Logs all creation attempts for monitoring
         """
         pass
 

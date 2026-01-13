@@ -29,13 +29,26 @@ class UserProfile:
     user_id: str
     email: str
     user_code: Optional[str] = None  # 26-digit unique user code
+    
+    # Auth provider fields (from Clerk)
+    username: Optional[str] = None       # Clerk username
+    first_name: Optional[str] = None     # User's first name
+    last_name: Optional[str] = None      # User's last name
+    
+    # User-managed fields
+    display_name: Optional[str] = None   # Display name (can be customized by user)
+    avatar_url: Optional[str] = None
+    
+    # Subscription and billing
     tier: UserTier = UserTier.T1
     subscription_status: Optional[str] = None  # active, canceled, past_due, incomplete, trialing
+    stripe_customer_id: Optional[str] = None
+    
+    # Onboarding and preferences
     onboarding_step: OnboardingStep = OnboardingStep.NOT_STARTED
     preferences: UserPreferences = field(default_factory=UserPreferences)
-    display_name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    stripe_customer_id: Optional[str] = None
+    
+    # Timestamps
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -44,6 +57,10 @@ class UserProfile:
         cls,
         user_id: str,
         email: str,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        avatar_url: Optional[str] = None,
         display_name: Optional[str] = None
     ) -> "UserProfile":
         """
@@ -52,7 +69,11 @@ class UserProfile:
         Args:
             user_id: Clerk user ID
             email: User email
-            display_name: Optional display name
+            username: Clerk username
+            first_name: User's first name
+            last_name: User's last name
+            avatar_url: Avatar URL
+            display_name: Display name (defaults to username if not provided)
 
         Returns:
             New UserProfile instance
@@ -60,7 +81,11 @@ class UserProfile:
         return cls(
             user_id=user_id,
             email=email,
-            display_name=display_name,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=avatar_url,
+            display_name=display_name or username or first_name,
             tier=UserTier.T1,
             onboarding_step=OnboardingStep.NOT_STARTED,
             preferences=UserPreferences(),
@@ -145,6 +170,9 @@ class UserProfile:
 
     def update_profile(
         self,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
         display_name: Optional[str] = None,
         avatar_url: Optional[str] = None
     ):
@@ -152,9 +180,18 @@ class UserProfile:
         Update basic profile information.
 
         Args:
+            username: New username
+            first_name: New first name
+            last_name: New last name
             display_name: New display name
             avatar_url: New avatar URL
         """
+        if username is not None:
+            self.username = username
+        if first_name is not None:
+            self.first_name = first_name
+        if last_name is not None:
+            self.last_name = last_name
         if display_name is not None:
             self.display_name = display_name
         if avatar_url is not None:
@@ -166,6 +203,9 @@ class UserProfile:
         return {
             "user_id": self.user_id,
             "email": self.email,
+            "username": self.username,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
             "display_name": self.display_name,
             "avatar_url": self.avatar_url,
             "tier": self.tier.value,

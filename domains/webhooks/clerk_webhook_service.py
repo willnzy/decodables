@@ -104,15 +104,19 @@ class ClerkWebhookService:
 
     async def _handle_user_created(self, data: Dict[str, Any]) -> Dict[str, str]:
         """
-        Handle user.created event.
+        Handle user.created event (Primary Path for User Creation).
 
-        Creates user profile and grants signup bonus.
+        Architecture: Webhook-First Pattern
+        - This is the preferred way to create users (95% of cases)
+        - Uses idempotent create_or_get() to handle JIT race conditions
+        - ✅ Signup bonus (50 credits) is granted by the RPC function
+        - ❌ DO NOT call _grant_signup_bonus() here (would duplicate credits)
 
         Args:
             data: User data from Clerk
 
         Returns:
-            Dict with status ('processed', 'updated', 'skipped') and optional reason
+            Dict with status ('processed', 'duplicate') and was_created flag
         """
         user_id = data["id"]
         email = data["email_addresses"][0]["email_address"]
@@ -121,37 +125,49 @@ class ClerkWebhookService:
         first_name = data.get("first_name")
         last_name = data.get("last_name")
 
-        # Check whether the user already exists (may have been created via JIT)
-        existing_profile = await self.user_repo.get_profile(user_id)
-        if existing_profile:
-            # Update missing info for the existing JIT-created user
-            await self.user_repo.update_profile(
-                user_id,
-                avatar_url=image_url,
-                username=username,
-                first_name=first_name,
-                last_name=last_name
-            )
-            # If email is missing, update it separately
-            if not existing_profile.get("email") and email:
-                await self.db_client.table("profiles").update({"email": email}).eq("id", user_id).execute()
-            logger.info(f"✅ User {user_id} already exists (JIT created), updated profile info")
-            return {"status": "updated", "reason": "jit_created"}
-
-        # Ensure email uniqueness (avoid duplicate accounts)
-        existing_by_email = await self.user_repo.search_users(email)
-        if existing_by_email:
-            logger.warning(f"⚠️ User with email {email} already exists, skipping creation")
-            return {"status": "skipped", "reason": "email_exists"}
-
-        # Create a full profile (including names)
-        await self.user_repo.create_profile(
-            user_id, email, username, image_url,
-            first_name=first_name, last_name=last_name
+        # Create UserProfile using DDD aggregate (complete data from Clerk)
+        from domains.identity.aggregates import UserProfile
+        
+        user_profile = UserProfile.create_new(
+            user_id=user_id,
+            email=email,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=image_url,
+            display_name=username or first_name or email.split("@")[0]
         )
-
-        # Grant signup bonus with atomic idempotency
-        await self._grant_signup_bonus(user_id)
+        
+        # Idempotent create: safe even if JIT already created the user
+        # Returns (profile, was_created) - was_created=False if JIT beat us
+        profile, was_created = await self.user_repo.create_or_get(
+            user_profile,
+            source='webhook'
+        )
+        
+        if was_created:
+            # Webhook successfully created user (normal case)
+            logger.info(
+                f"✅ Webhook created user {user_id}. "
+                f"Signup bonus (50 credits) was granted by RPC."
+            )
+            
+            # ✅ HOTFIX: 注册奖励已在 create_user_idempotent() RPC 中发放
+            # 无需再次调用 _grant_signup_bonus()（会导致重复发放 100 credits）
+            
+            status_result = {"status": "processed", "was_created": True}
+        else:
+            # User already existed (JIT created first in race condition)
+            # This is fine - the race condition was handled gracefully
+            logger.info(
+                f"ℹ️ User {user_id} already exists (likely JIT created first). "
+                f"Signup bonus was already granted by JIT path."
+            )
+            
+            status_result = {"status": "duplicate", "was_created": False, "reason": "jit_created"}
+        
+        # Note: Signup bonus is granted in create_user_idempotent() RPC
+        # by setting credits_permanent=50, so no need to grant again
 
         # Log signup event
         try:

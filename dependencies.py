@@ -82,44 +82,87 @@ async def get_current_user(authorization: str = Header(None)):
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
     # This ensures new users get their 50 signup bonus credits instantly,
     # without waiting for the Clerk webhook to be processed
+    #
+    # Architecture: Webhook-First with Graceful Fallback
+    # - Primary path: Webhook creates user (95% of cases)
+    # - Fallback path: JIT creates user if webhook hasn't arrived yet (5% safety net)
+    # - Uses idempotent create_or_get() to handle race conditions safely
     if not profile:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Log JIT fallback trigger (helps monitor webhook health)
+        logger.warning(
+            f"⚠️ User {user_id} not found in database, triggering JIT fallback. "
+            f"This indicates potential webhook delivery issue.",
+            extra={
+                "user_id": user_id,
+                "action": "jit_fallback_triggered",
+                "email": payload.get("email", "unknown")
+            }
+        )
+        
         # Extract user info from JWT payload
         # Clerk JWT typically includes these fields in sessionClaims
         email = payload.get("email") or payload.get("primary_email") or ""
-        username = payload.get("username") or payload.get("name") or ""
-        avatar_url = payload.get("image_url") or payload.get("picture") or ""
-        first_name = payload.get("first_name") or ""
-        last_name = payload.get("last_name") or ""
+        username = payload.get("username")
+        first_name = payload.get("first_name")
+        last_name = payload.get("last_name")
+        avatar_url = payload.get("image_url") or payload.get("picture")
 
-        # Create user profile with factory method
+        # Create user profile with factory method (includes all fields now)
         from domains.identity.aggregates import UserProfile
-        from domains.identity.exceptions import UserAlreadyExistsException
         
-        # Construct display_name from available info
-        display_name = username or f"{first_name} {last_name}".strip() or email.split("@")[0]
         user_profile = UserProfile.create_new(
             user_id=user_id,
             email=email,
-            display_name=display_name or None
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=avatar_url,
+            display_name=username or first_name or email.split("@")[0] if email else None
         )
-        # Set avatar_url if available
-        if avatar_url:
-            user_profile.avatar_url = avatar_url
         
-        # Use try-except to handle race condition with webhook
-        # If webhook already created the user, just fetch it
-        try:
-            await user_repo.create(user_profile)
-        except UserAlreadyExistsException:
-            # User was created by webhook between our check and create
-            # This is expected in race conditions, just continue
-            pass
-
-        # Fetch the profile (either newly created or existing)
-        profile = await user_repo.get_by_id(user_id)
-
-        if not profile:
-            raise UserNotFoundException(user_id)
+        # Idempotent create: safe even if webhook creates user simultaneously
+        # Returns (profile, was_created) - was_created=True if we created it
+        profile, was_created = await user_repo.create_or_get(user_profile, source='jit')
+        
+        if was_created:
+            # JIT successfully created user (webhook hadn't arrived)
+            logger.info(
+                f"✅ JIT created user {user_id} (webhook fallback worked)",
+                extra={
+                    "user_id": user_id,
+                    "source": "jit",
+                    "action": "created",
+                    "email": email
+                }
+            )
+            
+            # Optional: Send alert to monitor webhook health
+            # This helps track if webhooks are consistently delayed
+            try:
+                # You can integrate with Sentry/PagerDuty/Slack here
+                logger.warning(
+                    f"[ALERT] JIT Fallback Triggered for user {user_id}",
+                    extra={
+                        "severity": "warning",
+                        "user_id": user_id,
+                        "email": email
+                    }
+                )
+            except Exception:
+                pass  # Don't fail user request if alerting fails
+        else:
+            # Webhook created user while we were preparing JIT create
+            # This is the happy path - race condition handled gracefully
+            logger.info(
+                f"ℹ️ User {user_id} was created by webhook during JIT attempt",
+                extra={
+                    "user_id": user_id,
+                    "action": "race_handled_gracefully"
+                }
+            )
 
     return profile
 

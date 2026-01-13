@@ -13,7 +13,7 @@ v2.0 Changes:
 - Updated retry decorators to async version
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 import logging
 
@@ -106,6 +106,94 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
         except Exception as e:
             logger.error(f"Failed to create user {user_profile.user_id}: {e}")
+            raise
+
+    async def create_or_get(
+        self,
+        user_profile: UserProfile,
+        source: str
+    ) -> Tuple[UserProfile, bool]:
+        """
+        Create user or get existing (idempotent operation).
+        
+        Uses database-level atomic operation (RPC) to ensure thread-safety
+        and avoid race conditions between Webhook and JIT creation.
+        
+        Business Pattern: Stripe Idempotency Pattern
+        Reference: https://stripe.com/docs/api/idempotent_requests
+        
+        Args:
+            user_profile: The UserProfile to create
+            source: Creation source ('webhook' or 'jit')
+        
+        Returns:
+            Tuple of (UserProfile, was_created)
+            - was_created=True: User was newly created by this call
+            - was_created=False: User already existed
+        
+        Implementation:
+        - Calls PostgreSQL RPC function create_user_idempotent()
+        - RPC uses SELECT FOR UPDATE to prevent race conditions
+        - First call wins, subsequent calls return existing user
+        - All attempts are logged to user_creation_logs table
+        """
+        try:
+            # Call idempotent RPC function
+            result = await self.client.rpc('create_user_idempotent', {
+                'p_user_id': user_profile.user_id,
+                'p_email': user_profile.email,
+                'p_source': source,
+                'p_username': user_profile.username,
+                'p_first_name': user_profile.first_name,
+                'p_last_name': user_profile.last_name,
+                'p_avatar_url': user_profile.avatar_url,
+                'p_display_name': user_profile.display_name,
+            }).execute()
+            
+            if not result.data:
+                raise Exception("RPC create_user_idempotent returned no data")
+            
+            # Parse result
+            row = result.data[0]
+            profile = self._map_to_entity(row['user_profile'])
+            was_created = row['was_created']
+            created_by = row['created_by']
+            
+            # Log result
+            if was_created:
+                logger.info(
+                    f"✅ User {user_profile.user_id} created via {source}",
+                    extra={
+                        "user_id": user_profile.user_id,
+                        "source": source,
+                        "action": "created",
+                        "email": user_profile.email
+                    }
+                )
+            else:
+                logger.info(
+                    f"ℹ️ User {user_profile.user_id} already exists "
+                    f"(created by {created_by}, attempted via {source})",
+                    extra={
+                        "user_id": user_profile.user_id,
+                        "source": source,
+                        "created_by": created_by,
+                        "action": "duplicate_attempt"
+                    }
+                )
+            
+            return profile, was_created
+            
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to create/get user {user_profile.user_id} via {source}: {e}",
+                extra={
+                    "user_id": user_profile.user_id,
+                    "source": source,
+                    "error": str(e)
+                },
+                exc_info=True
+            )
             raise
 
     async def update(self, user_profile: UserProfile) -> UserProfile:
@@ -228,12 +316,15 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             user_id=row["id"],  # profiles.id is the Clerk user_id
             email=row["email"],
             user_code=row.get("user_code"),
+            username=row.get("username"),
+            first_name=row.get("first_name"),
+            last_name=row.get("last_name"),
+            display_name=row.get("display_name"),
+            avatar_url=row.get("avatar_url"),
             tier=UserTier(row.get("tier", "t1")),
             subscription_status=row.get("subscription_status"),
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
             preferences=preferences,
-            display_name=row.get("display_name"),
-            avatar_url=row.get("avatar_url"),
             stripe_customer_id=row.get("stripe_customer_id"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
                 if row.get("created_at") else datetime.utcnow(),
@@ -247,12 +338,15 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             "id": profile.user_id,  # profiles.id is the primary key
             "email": profile.email,
             "user_code": profile.user_code,
+            "username": profile.username,
+            "first_name": profile.first_name,
+            "last_name": profile.last_name,
+            "display_name": profile.display_name,
+            "avatar_url": profile.avatar_url,
             "tier": profile.tier.value,
             "subscription_status": profile.subscription_status,
             "onboarding_step": profile.onboarding_step.value,
             "preferences": profile.preferences.to_dict(),
-            "display_name": profile.display_name,
-            "avatar_url": profile.avatar_url,
             "stripe_customer_id": profile.stripe_customer_id,
         }
 
