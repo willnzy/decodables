@@ -31,6 +31,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
+from domains.identity.aggregates.user_profile import UserProfile
 from domains.identity.user_profile_service import UserProfileService
 from infrastructure.repositories import (
     SupabaseUserRepository,
@@ -76,11 +77,11 @@ class TimezoneUpdateRequest(BaseModel):
 @limiter.limit("100/minute")  # v2.2.0: Added rate limiting
 async def get_me(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Get current user info (PRD v3.2)."""
-    profile = await profile_service.get_user_profile(user["id"])
+    profile = await profile_service.get_user_profile(user.user_id)
     if not profile:
         # Fallback to basic user data
         profile = user
@@ -95,22 +96,22 @@ async def get_history(
     request: Request,
     offset: int = 0,  # v2.1.0: UP-P0-3 fix - use offset/limit per DDD standards
     limit: int = 20,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Get credit history."""
-    return await profile_service.get_credit_history(user["id"], offset, limit)
+    return await profile_service.get_credit_history(user.user_id, offset, limit)
 
 
 @router.get("/purchases")
 @limiter.limit("50/minute")  # v2.2.0: Added rate limiting
 async def get_purchases(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Get user's marketplace purchases."""
-    return await profile_service.get_purchases(user["id"])
+    return await profile_service.get_purchases(user.user_id)
 
 
 @router.get("/notifications")
@@ -118,7 +119,7 @@ async def get_purchases(
 async def get_notifications(
     request: Request,
     unread_only: bool = False,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """
@@ -127,7 +128,7 @@ async def get_notifications(
     Args:
         unread_only: If True, return only unread notifications
     """
-    return await profile_service.get_notifications(user["id"], unread_only=unread_only)
+    return await profile_service.get_notifications(user.user_id, unread_only=unread_only)
 
 
 @router.post("/notifications/{id}/read")
@@ -135,11 +136,11 @@ async def get_notifications(
 async def mark_read(
     request: Request,
     id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Mark a notification as read."""
-    success = await profile_service.mark_notification_read(id, user["id"])
+    success = await profile_service.mark_notification_read(id, user.user_id)
     if not success:
         raise HTTPException(404, "Notification not found")
     return {"status": "ok"}
@@ -149,11 +150,11 @@ async def mark_read(
 @limiter.limit("20/minute")  # v2.2.0: Added rate limiting
 async def mark_all_read(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Mark all notifications as read."""
-    await profile_service.mark_all_notifications_read(user["id"])
+    await profile_service.mark_all_notifications_read(user.user_id)
     return {"status": "ok"}
 
 
@@ -162,7 +163,7 @@ async def mark_all_read(
 async def update_timezone(
     request: Request,
     req: TimezoneUpdateRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """Update user's timezone preference."""
@@ -176,7 +177,7 @@ async def update_timezone(
         raise HTTPException(400, f"Invalid timezone: {req.timezone}")
 
     # Update via service
-    success = await profile_service.update_timezone(user["id"], req.timezone)
+    success = await profile_service.update_timezone(user.user_id, req.timezone)
     if not success:
         raise HTTPException(500, "Failed to update timezone")
 

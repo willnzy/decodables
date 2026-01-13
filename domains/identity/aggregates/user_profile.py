@@ -30,6 +30,7 @@ class UserProfile:
     email: str
     user_code: Optional[str] = None  # 26-digit unique user code
     tier: UserTier = UserTier.T1
+    subscription_status: Optional[str] = None  # active, canceled, past_due, incomplete, trialing
     onboarding_step: OnboardingStep = OnboardingStep.NOT_STARTED
     preferences: UserPreferences = field(default_factory=UserPreferences)
     display_name: Optional[str] = None

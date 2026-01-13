@@ -114,22 +114,24 @@ async def get_current_user(authorization: str = Header(None)):
     return profile
 
 
-async def require_admin(user: dict = Depends(get_current_user)):
+async def require_admin(user = Depends(get_current_user)):
     """
     Admin permission guard.
-    
+
+    Note: Admin system is not fully implemented in UserProfile.
+    This function currently rejects all requests.
+
     Raises:
-        AdminRequiredException: If user is not admin
-    
+        AdminRequiredException: Always raised (admin not implemented)
+
     Returns:
-        dict: User profile (confirmed admin)
+        UserProfile: User profile (never returns)
     """
-    if user.get("role") != "admin":
-        raise AdminRequiredException()
-    return user
+    # TODO: Implement proper admin check via UserProfile or separate admin table
+    raise AdminRequiredException()
 
 
-async def require_member(user: dict = Depends(get_current_user)):
+async def require_member(user = Depends(get_current_user)):
     """
     Member permission guard (Starter/Pro only).
 
@@ -137,14 +139,19 @@ async def require_member(user: dict = Depends(get_current_user)):
         MembershipRequiredException: If user is not a member
 
     Returns:
-        dict: User profile (confirmed member)
+        UserProfile: User profile (confirmed member)
     """
-    if not access_control.is_member(user):
+    # Convert UserProfile to dict for access_control check
+    user_dict = {
+        "tier": user.tier.value if hasattr(user.tier, 'value') else user.tier,
+        "subscription_status": user.subscription_status,
+    }
+    if not access_control.is_member(user_dict):
         raise MembershipRequiredException()
     return user
 
 
-async def require_pro(user: dict = Depends(get_current_user)):
+async def require_pro(user = Depends(get_current_user)):
     """
     Pro tier permission guard.
 
@@ -152,11 +159,16 @@ async def require_pro(user: dict = Depends(get_current_user)):
         MembershipRequiredException: If user is not Pro
 
     Returns:
-        dict: User profile (confirmed Pro)
+        UserProfile: User profile (confirmed Pro)
     """
-    tier = user.get("tier", "t1")
+    # Convert UserProfile to dict for access_control check
+    tier_value = user.tier.value if hasattr(user.tier, 'value') else user.tier
+    user_dict = {
+        "tier": tier_value,
+        "subscription_status": user.subscription_status,
+    }
     # Accept both t3 (Pro) and t4 (Enterprise)
-    if not access_control.is_member(user) or tier not in ("t3", "t4"):
+    if not access_control.is_member(user_dict) or tier_value not in ("t3", "t4"):
         raise MembershipRequiredException("Pro features")
     return user
 
