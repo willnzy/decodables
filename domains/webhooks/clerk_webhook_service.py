@@ -317,6 +317,9 @@ class ClerkWebhookService:
         """
         Handle session.created event (user login).
 
+        v3.31: 先检查用户是否存在，避免外键约束失败
+        (session.created 可能在 user.created 完成之前到达)
+
         Args:
             event: Full event data
             data: Session data
@@ -327,6 +330,12 @@ class ClerkWebhookService:
         user_id = data.get("user_id")
         if user_id:
             try:
+                # v3.31: 先检查用户是否存在，避免外键约束失败
+                user_check = await self.db_client.table("profiles").select("id").eq("id", user_id).execute()
+                if not user_check.data:
+                    logger.info(f"User {user_id} not found in profiles, skipping login log (user.created may still be processing)")
+                    return {"status": "processed"}
+                
                 await self.db_client.table("activity_logs").insert({
                     "user_id": user_id,
                     "action": "user_login",

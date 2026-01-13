@@ -76,6 +76,7 @@ async def log_webhook_operation(
     target_user_id: Optional[str] = None,
     details: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    target_type: str = "user",  # v3.31: 添加默认值以满足数据库 NOT NULL 约束
 ) -> None:
     """
     Log webhook-driven operations to admin_operations table.
@@ -84,6 +85,7 @@ async def log_webhook_operation(
     Added in Phase 4 - Task 9 (Activity Logging).
 
     v2.0: Now uses AsyncClient for repository operations.
+    v3.31: Added target_type parameter with default "user" to satisfy NOT NULL constraint.
 
     Args:
         operation_type: Type of webhook operation (webhook_subscription_create, etc.)
@@ -91,6 +93,7 @@ async def log_webhook_operation(
         target_user_id: Affected user ID
         details: Human-readable description
         metadata: Event data (subscription_id, amount, etc.)
+        target_type: Resource type (default: "user")
 
     Example:
         await log_webhook_operation(
@@ -121,6 +124,7 @@ async def log_webhook_operation(
             admin_id=WEBHOOK_SYSTEM_ADMIN_ID,
             operation_type=operation_type,
             target_user_id=target_user_id,
+            target_type=target_type,  # v3.31: 传递 target_type 参数
             source=source,
             details=details,
             metadata=metadata,

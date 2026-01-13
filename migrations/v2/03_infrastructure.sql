@@ -54,10 +54,21 @@ CREATE TABLE IF NOT EXISTS admin_operations (
 
     CONSTRAINT check_operation_type CHECK (
         operation_type IN (
+            -- 原有操作类型
             'create', 'update', 'delete', 'restore',
             'approve', 'reject', 'ban', 'unban',
             'grant_credits', 'refund', 'adjust_tier',
-            'force_delete', 'export_data', 'import_data'
+            'force_delete', 'export_data', 'import_data',
+            -- 扩展操作类型 (Phase 4 - Task 9)
+            'project_delete_soft', 'project_delete_permanent', 'project_restore',
+            'template_delete', 'generation_delete', 'generation_batch_delete',
+            'resource_delete', 'feature_flag_delete', 'campaign_delete', 'experiment_delete',
+            'config_update', 'config_delete', 'rate_limit_preset_apply', 'cache_clear',
+            'broadcast',
+            -- Webhook 操作类型 (v3.31)
+            'webhook_subscription_create', 'webhook_subscription_update', 'webhook_subscription_cancel',
+            'webhook_invoice_paid', 'webhook_refund_process', 'webhook_credits_purchase',
+            'webhook_user_create', 'webhook_tier_update'
         )
     ),
     CONSTRAINT check_target_type CHECK (
