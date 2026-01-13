@@ -22,6 +22,7 @@ Endpoints:
 - /api/v2/admin/webhooks/* - Webhook retry management
 - /api/v2/admin/asset-categories/* - Asset category management
 - /api/v2/admin/themes/* - Theme management (v2.1)
+- /api/v2/admin/monitoring/* - User creation monitoring (Webhook health)
 """
 
 from fastapi import APIRouter
@@ -47,6 +48,7 @@ from .webhooks_retry import router as webhooks_retry_router
 from .asset_categories import router as asset_categories_router
 from .articles import router as articles_router
 from .themes import router as themes_router
+from .user_creation_monitoring import router as user_creation_monitoring_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -72,5 +74,6 @@ admin_router.include_router(webhooks_retry_router)
 admin_router.include_router(asset_categories_router)
 admin_router.include_router(articles_router)
 admin_router.include_router(themes_router)
+admin_router.include_router(user_creation_monitoring_router)
 
 __all__ = ['admin_router']
