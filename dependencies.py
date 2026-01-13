@@ -93,6 +93,8 @@ async def get_current_user(authorization: str = Header(None)):
 
         # Create user profile with factory method
         from domains.identity.aggregates import UserProfile
+        from domains.identity.exceptions import UserAlreadyExistsException
+        
         # Construct display_name from available info
         display_name = username or f"{first_name} {last_name}".strip() or email.split("@")[0]
         user_profile = UserProfile.create_new(
@@ -103,9 +105,17 @@ async def get_current_user(authorization: str = Header(None)):
         # Set avatar_url if available
         if avatar_url:
             user_profile.avatar_url = avatar_url
-        await user_repo.create(user_profile)
+        
+        # Use try-except to handle race condition with webhook
+        # If webhook already created the user, just fetch it
+        try:
+            await user_repo.create(user_profile)
+        except UserAlreadyExistsException:
+            # User was created by webhook between our check and create
+            # This is expected in race conditions, just continue
+            pass
 
-        # Fetch the newly created profile
+        # Fetch the profile (either newly created or existing)
         profile = await user_repo.get_by_id(user_id)
 
         if not profile:
