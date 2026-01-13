@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS admin_operations (
     operation_type TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT,
+    target_user_id TEXT,  -- 专门用于记录操作影响的用户ID（可为空）
     action_details JSONB DEFAULT '{}',
     -- P0-13, P0-14: Repository 使用的额外字段
     source TEXT,  -- 操作来源
