@@ -14,6 +14,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from domains.referrals import ReferralService, ReferralRepository
 from dependencies import get_current_user
 from core.database import get_async_db_client
@@ -46,7 +47,7 @@ def get_referral_service(
 @router.post("")
 async def create_referral(
     request: CreateReferralRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: ReferralService = Depends(get_referral_service)
 ):
     """
@@ -55,11 +56,11 @@ async def create_referral(
     当用户推荐新用户注册时调用
     """
     # 防止自我推荐
-    if user["id"] == request.referee_id:
+    if user.user_id == request.referee_id:
         raise HTTPException(400, "Cannot refer yourself")
 
     referral = await service.create_referral(
-        referrer_id=user["id"],
+        referrer_id=user.user_id,
         referee_id=request.referee_id,
         reward_amount=request.reward_amount
     )
@@ -67,7 +68,7 @@ async def create_referral(
     if not referral:
         raise HTTPException(500, "Failed to create referral")
 
-    logger.info(f"User {user['id'][:8]}... created referral for {request.referee_id[:8]}...")
+    logger.info(f"User {user.user_id[:8]}... created referral for {request.referee_id[:8]}...")
 
     return {
         "success": True,
@@ -80,7 +81,7 @@ async def create_referral(
 async def get_referrals(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: ReferralService = Depends(get_referral_service)
 ):
     """
@@ -89,7 +90,7 @@ async def get_referrals(
     返回该用户创建的所有推荐记录
     """
     referrals, total = await service.get_user_referrals(
-        user_id=user["id"],
+        user_id=user.user_id,
         offset=offset,
         limit=limit
     )
@@ -106,7 +107,7 @@ async def get_referrals(
 
 @router.get("/stats")
 async def get_referral_stats(
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: ReferralService = Depends(get_referral_service)
 ):
     """
@@ -118,7 +119,7 @@ async def get_referral_stats(
     - 待定数
     - 总奖励积分
     """
-    stats = await service.get_referral_stats(user["id"])
+    stats = await service.get_referral_stats(user.user_id)
 
     return {
         "data": stats
@@ -128,7 +129,7 @@ async def get_referral_stats(
 @router.get("/code/{referral_code}")
 async def get_referral_by_code(
     referral_code: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: ReferralService = Depends(get_referral_service)
 ):
     """
@@ -149,7 +150,7 @@ async def get_referral_by_code(
 @router.post("/{referral_id}/complete")
 async def complete_referral(
     referral_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: ReferralService = Depends(get_referral_service)
 ):
     """
