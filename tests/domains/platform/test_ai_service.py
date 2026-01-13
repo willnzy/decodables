@@ -243,7 +243,7 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_factory_creates_repository_with_correct_client(self):
         """Factory function creates Repository with correct database client."""
-        with patch("core.database.get_async_db_client") as mock_get_db:
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
