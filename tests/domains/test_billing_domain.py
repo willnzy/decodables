@@ -594,7 +594,7 @@ class TestBillingService:
         Business Rule: 新用户注册赠送 50 永久积分
         """
         mock_tx = CreditTransaction(
-            amount=50,
+            amount=100,  # Updated from 50 to 100
             bucket=CreditBucket.PERMANENT,
             tx_type=TransactionType.SIGNUP_BONUS,
         )

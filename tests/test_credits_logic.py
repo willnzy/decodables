@@ -24,8 +24,27 @@ from infrastructure.repositories.credit_repository import SupabaseCreditReposito
 
 @pytest.fixture
 def mock_supabase_client():
-    """Mock Supabase client for repository."""
-    return MagicMock()
+    """Mock Supabase client for repository with AsyncMock for .execute()."""
+    client = MagicMock()
+
+    # Create query builder that returns itself for chaining (synchronous)
+    mock_query = MagicMock()
+    mock_query.table.return_value = mock_query
+    mock_query.select.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.insert.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.single.return_value = mock_query
+    mock_query.rpc.return_value = mock_query
+
+    # Only .execute() should be async
+    mock_query.execute = AsyncMock()
+
+    # RPC and table methods
+    client.table.return_value = mock_query
+    client.rpc.return_value = mock_query
+
+    return client
 
 
 @pytest.fixture
@@ -47,8 +66,9 @@ class TestMonthlyCreditsReset:
         # Arrange: User has 100 monthly + 200 permanent
         user_id = "user_123"
 
-        # Mock database response
-        mock_supabase_client.table.return_value.update.return_value.eq.return_value.select.return_value.single.return_value.execute.return_value = MagicMock(
+        # Mock database response - AsyncMock returns a MagicMock with data attribute
+        mock_query = mock_supabase_client.table.return_value
+        mock_query.execute.return_value = MagicMock(
             data={
                 "id": user_id,
                 "credits_monthly": 500,  # Reset to tier allowance
