@@ -1,229 +1,121 @@
-# docs/tmp - 临时文档目录
+# 临时文档目录 (docs/tmp)
 
-**最后整理**: 2026-01-11 (第六次清理 - 最终清理)
-**剩余文档**: 7 个 (6 个归档报告 + 1 个 README)
-
----
-
-## 📋 目录说明
-
-此目录**仅存放已归档的分析报告**，所有待执行任务已完成：
-- ✅ 已完成的任务分析报告 (6个归档文档)
-- ✅ 所有 API 评审任务已全部完成
-
-**清理原则**: 归档文档保留 30 天后可删除 (2026-02-10)
+> **更新日期**: 2026-01-13  
+> **状态**: 已清理完成
 
 ---
 
-## 📁 当前文档 (7个)
+## 📋 目录用途
 
-### 📊 已归档的分析报告 (6个)
+此目录用于存放**临时的技术文档**，包括：
+- ✅ **待实施的计划文档**
+- ✅ **技术调研和分析**
+- ✅ **重构方案和执行记录**
 
-| 文档 | 用途 | 日期 | 接口数 | 状态 |
-|------|------|------|--------|------|
-| [archived]api-db-audit-2026-01-10.md | API-数据库一致性审计 | 2026-01-10 | - | ✅ 已完成 |
-| [archived]api-db-fix-progress-2026-01-10.md | 修复进度跟踪 | 2026-01-10 | - | ✅ 已完成 |
-| [archived]backend-analysis-2026-01-11.md | 后端综合分析 | 2026-01-11 | - | ✅ 已完成 |
-| [archived]admin-api-review-2026-01-11.md | 管理员 API 评审 | 2026-01-11 | 135 | ✅ 已完成 |
-| [archived]user-api-review-2026-01-11.md | 用户 API 评审 | 2026-01-11 | 123 | ✅ 已完成 |
-| [archived]refactoring-plan-phase-a-2026-01-11.md | 重构实施计划 Phase A (PC 桌面端) | 2026-01-11 | - | ✅ 已完成 |
-
-**删除建议**: 这些归档文档可在 30 天后删除 (2026-02-10)
-
-**API 评审总结**:
-- ✅ 管理员 API: 135 个接口评审完成 (实际代码: 143 个端点)
-- ✅ 用户 API: 123 个接口评审完成 (实际代码: 123 个端点)
-- ✅ **总计**: 258 个接口评审完成 (实际代码: 266 个端点)
-
-### 📝 临时验证报告 (1个) - 不计入统计
-
-| 文档 | 用途 | 日期 |
-|------|------|------|
-| README.md | 目录说明 | 2026-01-11 |
+**重要规则**:
+- ❌ **不要存放长期文档**：完成后应同步到 `docs/main/` 或 `docs/shared/`
+- ❌ **不要存放过时文档**：定期清理已归档和已完成的文档
+- ✅ **命名规范**：使用 `[状态]标题-日期.md` 或 `标题-plan.md` 格式
 
 ---
 
-## 📊 清理历史
+## 📂 当前文件状态
 
-### 第一次整理 (2026-01-10 上午)
+### 待实施计划 (6个)
 
-**整理前**: 54 个文档
+| 文件名 | 状态 | 优先级 | 说明 |
+|--------|------|--------|------|
+| `async-client-migration-plan.md` | 📋 待审核 | P2 | Supabase 异步客户端迁移计划 |
+| `daily_themes_schema_update_plan.md` | 📋 待实施 | P2 | 日常主题 Schema 更新计划 |
+| `repository-sql-audit-plan.md` | 📋 待实施 | P2 | Repository SQL 审计计划 |
+| `themes_backend_implementation_plan.md` | 📋 待实施 | P2 | 主题系统后端实施计划 |
+| `TIER-FEATURE-FLAG-INTEGRATION-PLAN.md` | 📋 待实施 | P1 | Tier 和 Feature Flag 集成计划 |
+| `TIER-PERMISSIONS-BACKEND-IMPLEMENTATION.md` | 📋 待实施 | P1 | Tier 权限后端实施计划 |
 
-**操作**:
-- ✅ 创建 4 个汇总文档到 `docs/main/`
-- ✅ 移动 2 个实用文档到 `docs/main/`
-- ✅ 删除 30 个已完成的临时文档
+### 说明文档 (1个)
 
-**整理后**: 24 个文档
-
-### 第二次清理 (2026-01-10 下午) - 激进清理
-
-**整理前**: 24 个文档
-
-**操作**:
-- ✅ 删除 16 个已完成评审的详细文档（关键结论已汇总）
-- ✅ 删除 2 个整理计划文档（任务已完成）
-
-**整理后**: 7 个文档 (**仅保留待执行任务**)
-
-### 第三次清理 (2026-01-10 下午) - 代码验证清理
-
-**整理前**: 7 个文档
-
-**操作**:
-- ✅ **通过检查实际代码文件验证任务状态** (非依赖文档状态)
-- ✅ 删除 4 个已完成的 V3 升级计划文档
-  - RESOURCES-UPGRADE-v3.0.0-PLAN.md → ✅ 已完成 (api/user/resources.py @version 3.0.0)
-  - USER-ASSETS-V3.0.0-PLAN.md → ✅ 已完成 (api/user/user_assets.py @version 3.0.0)
-  - TEMPLATES-V3.0.0-PLAN.md → ✅ 已完成 (api/user/templates.py @version 3.0.0)
-  - SYSTEM-RESOURCES-V3.0.0-PLAN.md → ✅ 已完成 (api/user/system_resources.py @version 3.0.0)
-- ✅ 更新 `docs/main/V3-UPGRADE-ROADMAP.md` - 标记所有模块已完成
-
-**整理后**: 3 个文档 (**只保留真正待执行的任务**)
-
-**验证结论**:
-- 4 个 V3 升级计划文档标注为"待执行"，但实际代码已全部升级到 v3.0.0
-- 说明文档与代码状态不同步，需要通过代码验证
-- 只有 2 个 API Review 文档是真正待执行的任务
-
-### 第四次重组 (2026-01-11 上午) - 文档重组
-
-**整理前**: 3 个文档
-
-**操作**:
-- ✅ 从 `docs/main/` 移入 2 个 API 评审文档
-- ✅ 从 `docs/shared/` 移入 3 个功能设计文档
-- ✅ 移除 `TMP-DOCS-STATUS-CHECK.md`
-
-**整理后**: 9 个文档
-
-### 第五次清理 (2026-01-11 下午) - 代码验证清理
-
-**整理前**: 9 个文档
-
-**操作**:
-- ✅ 归档 2 个已完成的文档
-- ✅ 移动 2 个设计文档到 shared/
-
-**整理后**: 5 个文档
-
-### 第六次清理 (2026-01-11 下午) - 最终清理 ⭐ 完成
-
-**整理前**: 5 个文档
-
-**操作**:
-- ✅ **归档最后 1 个待执行任务**:
-  - [wip]user-api-review.md → [archived]user-api-review-2026-01-11.md (123 接口评审完成)
-
-**整理后**: 7 个文档 (**6 个归档报告 + 1 个 README**)
-
-**验证结论**:
-- User API Review: 文档显示 123/123 接口已完成 (100%),已归档
-- ✅ **所有 API 评审任务已全部完成** (258 个接口)
-- ✅ **tmp/ 目录清理完成,仅保留归档报告**
+| 文件名 | 状态 | 说明 |
+|--------|------|------|
+| `README.md` | ✅ 当前文档 | 临时目录使用指南 |
 
 ---
 
-## 📊 整理统计
+## 🗑️ 已清理文档 (15个)
 
-| 阶段 | 文档数 | 变化 | 说明 |
-|------|--------|------|------|
-| **原始状态** | 54 | - | Phase 报告、评审、升级计划 |
-| **第一次整理** | 24 | -30 (-55%) | 删除临时文档，创建汇总 |
-| **激进清理** | 7 | -17 (-71%) | 只保留待执行任务 |
-| **代码验证清理 (第三次)** | 3 | -4 (-57%) | 删除已完成的 V3 升级文档 |
-| **文档重组 (第四次)** | 9 | +6 | 从 main/shared/ 移入临时文档 |
-| **代码验证清理 (第五次)** | 5 | -4 | 归档已完成文档,移出设计文档 |
-| **最终清理 (第六次)** | **7** | -1 | **归档最后 1 个 API 评审** |
+### 2026-01-13 清理记录
 
-**总变化**: 54 → 7 (**减少 87%**)
+**已归档** (4个):
+- `[archived]api-db-audit-2026-01-10.md`
+- `[archived]api-db-fix-progress-2026-01-10.md`
+- `[archived]backend-analysis-2026-01-11.md`
+- `[archived]refactoring-plan-phase-a-2026-01-11.md`
 
-**API 评审成果**:
-- ✅ 管理员 API: 135 个接口评审 (实际: 143 个端点)
-- ✅ 用户 API: 123 个接口评审 (实际: 123 个端点)
-- ✅ **总计**: 258 个接口评审完成 (实际: 266 个端点)
+**日常修复记录** (4个):
+- `2026-01-13-async-handler-fixes.md`
+- `2026-01-13-final-async-fixes-summary.md`
+- `2026-01-13-repository-analysis-findings.md`
+- `2026-01-13-test-fixes-summary.md`
+
+**已完成并同步到固定文档** (7个):
+- `P0-HOTFIX-EXECUTION-SUMMARY.md` → `docs/main/deployment-scaling.md`
+- `P1-P2-EXECUTION-SUMMARY.md` → `docs/main/deployment-scaling.md`
+- `P1-P2-ARCHITECTURE-REVIEW.md` → `docs/main/backend-architecture.md`
+- `HOTFIX-APPLICATION-LAYER.md` → `docs/main/deployment-scaling.md`
+- `REMAINING-TASKS-CHECKLIST.md` → 已完成
+- `IDEMPOTENT-USER-CREATION-IMPLEMENTATION.md` → `docs/main/deployment-scaling.md`
+- `IDEMPOTENT-USER-CREATION-RISK-ANALYSIS.md` → `docs/main/deployment-scaling.md`
 
 ---
 
-## 🔄 维护规则
+## 📚 固定文档位置
 
-### tmp/ 目录原则
+**完成的临时文档内容已迁移到以下固定文档:**
 
-**用途**: **仅存放待执行任务的计划文档**
+| 固定文档 | 内容 | 更新日期 |
+|----------|------|----------|
+| `docs/main/deployment-scaling.md` | Part 3: 维护与监控 | 2026-01-13 |
+| `docs/main/backend-architecture.md` | infrastructure/tasks/, infrastructure/monitoring/ | 2026-01-13 |
+| `docs/main/database-guide.md` | Part 4: 数据库维护任务 | 2026-01-13 |
 
-**严格规则**:
-- ✅ 任务开始前：创建计划文档放在 tmp/
-- ✅ 任务进行中：可创建临时进度文档
-- ✅ 任务完成后：立即删除，关键结论合并到 main/
-- ❌ **禁止保留已完成任务的详细文档**
+---
 
-### 文档生命周期
+## 🔄 文档生命周期
 
 ```
-创建任务计划 (tmp/)
+1. 创建临时文档 (docs/tmp/)
    ↓
-执行任务
+2. 实施和验证
    ↓
-任务完成
+3. 同步到固定文档 (docs/main/ 或 docs/shared/)
    ↓
-提取关键结论 → 合并到 main/ 汇总文档
-   ↓
-删除 tmp/ 中的所有相关文档 (不保留详细版)
+4. 删除临时文档 ✅
 ```
 
-### 定期检查 ⭐ 重要
+**示例流程**:
 
-- **每周一**: 检查 tmp/ 目录，删除已完成任务的文档
-- **验证方式**: **通过检查实际代码文件验证状态**，而非仅依赖文档标注
-- **原则**: tmp/ 目录应该始终保持在 **5 个文档以内**
+```bash
+# 1. 创建计划文档
+docs/tmp/feature-x-implementation-plan.md
 
-**关键教训** (2026-01-10):
-- ❌ 不能只看文档里的"待执行"标记
-- ✅ 必须检查实际代码版本号和实现
-- ✅ 避免文档与代码不同步
+# 2. 实施完成后，同步到固定文档
+# 编辑: docs/main/backend-architecture.md (添加架构说明)
+# 编辑: docs/main/api-reference.md (添加 API 说明)
 
----
-
-## 📚 相关文档
-
-### 汇总文档 (在 docs/main/)
-
-已完成任务的所有关键信息都在这里：
-
-| 文档 | 内容 | 来源 |
-|------|------|------|
-| [SOFT-DELETE-SYSTEM.md](../main/SOFT-DELETE-SYSTEM.md) | 软删除系统完整文档 | Phase 3 所有文档 |
-| [SOFT-DELETE-HISTORY.md](../main/SOFT-DELETE-HISTORY.md) | 实施历史 | Phase 1/2/3 报告 |
-| [MODULE-QUALITY-REVIEWS.md](../main/MODULE-QUALITY-REVIEWS.md) | 质量评审汇总 | 12 个评审文档 |
-| [V3-UPGRADE-ROADMAP.md](../main/V3-UPGRADE-ROADMAP.md) | V3 升级路线图 | 4 个升级计划 ✅ 已更新为完成状态 |
-
-### 其他重要文档
-
-- [docs/main/](../main/) - 主文档目录（长期保留的架构和设计文档）
-- [docs/shared/](../shared/) - 前后端共用文档
-- [.claude/guides/](../../.claude/guides/) - 开发指南和最佳实践
+# 3. 删除临时文档
+git rm docs/tmp/feature-x-implementation-plan.md
+```
 
 ---
 
-## ✅ 当前状态
+## ⚠️ 注意事项
 
-**tmp/ 目录状态**: 🟢 **完全清理完成**
-
-- ✅ 只包含 7 个文件 (6 个归档报告 + 1 个 README)
-- ✅ 所有待执行任务已全部完成并归档
-- ✅ 所有已完成任务的关键结论已汇总到 main/
-- ✅ 设计文档已移至 shared/ 供前端参考
-- ✅ 无冗余、无过时、无待执行文档
-- ✅ **通过代码验证确保文档与代码同步**
-
-**258 个 API 接口评审成果** (实际代码: 266 个端点):
-- ✅ 管理员 API: 135 个接口评审完成 (实际: 143 个端点)
-- ✅ 用户 API: 123 个接口评审完成 (实际: 123 个端点)
+1. **定期清理**: 建议每月清理一次已完成的临时文档
+2. **命名规范**: 使用描述性文件名，避免 `doc1.md`, `temp.md` 等
+3. **归档标记**: 使用 `[archived]` 前缀标记已归档的文档
+4. **状态标记**: 使用 emoji 标记文档状态（📋 待实施，✅ 已完成，❌ 已废弃）
 
 ---
 
-**Last Updated**: 2026-01-11 (第六次最终清理)
-**Total Files**: 7 (从 54 个减少到 7 个，减少 87%)
-**Status**: 🎉 **清理完成** - 6 个归档报告 (30天后可删除) + 0 个待执行任务
-
-🎉 **tmp/ 目录：所有任务已完成，仅保留归档报告！**
+**最后清理**: 2026-01-13  
+**下次清理**: 2026-02-13（建议）  
+**维护者**: 后端团队

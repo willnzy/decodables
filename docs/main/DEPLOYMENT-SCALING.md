@@ -812,5 +812,369 @@ curl https://main-decodables.up.railway.app/health
 
 ---
 
-*文档版本: v2.0*
-*最后更新: 2026-01-10*
+# Part 3: 维护与监控
+
+> **更新日期**: 2026-01-13  
+> **版本**: v3.30
+
+## 3.1 自动化维护任务
+
+### 维护任务配置
+
+项目使用 **APScheduler** 实现自动化维护任务，防止日志表无限增长。
+
+#### 任务调度
+
+```python
+# scheduler.py
+
+# 每天 4:00 AM UTC - 清理日志
+scheduler.add_job(
+    run_daily_maintenance,
+    CronTrigger(hour=4, minute=0),
+    id="daily_maintenance"
+)
+
+# 每周日 5:00 AM UTC - 清理活动日志
+scheduler.add_job(
+    run_weekly_maintenance,
+    CronTrigger(day_of_week='sun', hour=5, minute=0),
+    id="weekly_maintenance"
+)
+```
+
+#### 维护任务实现
+
+```
+infrastructure/tasks/
+├── storage_cleanup.py          ← 存储清理（已存在）
+└── maintenance_scheduler.py    ← 数据库维护（新增）
+```
+
+**清理策略**:
+- `user_creation_logs`: 保留 90 天
+- `error_logs`: 保留 30 天
+- `activity_logs`: 保留 180 天（关键事件永久保留）
+
+#### 数据库函数
+
+```sql
+-- migrations/v2/03_infrastructure.sql
+
+-- 清理函数
+cleanup_old_error_logs(p_retention_days)
+cleanup_old_activity_logs(p_retention_days)
+cleanup_old_user_creation_logs(p_retention_days)
+
+-- 监控函数
+get_log_tables_stats()  -- 获取日志表统计
+
+-- 监控视图
+v_table_sizes  -- 查看所有表大小
+```
+
+---
+
+## 3.2 监控与告警
+
+### 3.2.1 Admin 监控 API（已实现）
+
+**适用场景**: Railway 单实例或小团队
+
+```bash
+# 获取用户创建统计
+GET /api/admin/monitoring/user-creation/stats?days=7
+
+# 获取健康状态
+GET /api/admin/monitoring/user-creation/health?days=7
+```
+
+**监控指标**:
+- `webhook_success_rate`: Webhook 成功率（目标 >95%）
+- `jit_fallback_rate`: JIT 回退率（目标 <5%）
+- `errors`: 错误数量（目标 0）
+
+### 3.2.2 Sentry 集成（已增强）
+
+**事件追踪**:
+
+```
+infrastructure/monitoring/sentry_helpers.py  ← 统一的 Sentry 辅助函数
+
+自动捕获的事件:
+✅ JIT Fallback 触发（WARNING 级别）
+✅ 用户创建成功/失败（INFO/ERROR 级别）
+✅ 重复创建尝试（INFO 级别）
+✅ 维护任务完成（INFO 级别）
+✅ RPC 错误和降级（ERROR 级别）
+```
+
+**结构化标签**:
+- `component`: user-creation, maintenance, webhook
+- `source`: webhook, jit
+- `event_type`: created, duplicate, fallback, error
+
+### 3.2.3 Grafana Dashboard（可选配置）
+
+**适用场景**: 需要可视化监控和自动告警的团队
+
+配置文件位置:
+```
+docs/monitoring/
+├── grafana-dashboard-user-creation.json  ← Dashboard 配置
+├── GRAFANA-SETUP-GUIDE.md               ← 配置指南
+└── alert-rules.yaml                     ← 告警规则
+```
+
+**10 个监控面板**:
+1. Webhook Success Rate（进度条）
+2. JIT Fallback Rate（进度条）
+3. Total Users（统计卡片）
+4. Errors（统计卡片）
+5. User Creation Trend（折线图）
+6. Creation Source Distribution（饼图）
+7. Duplicate Attempts（柱状图）
+8. Recent Error Logs（表格）
+9. System Health Score（仪表盘）
+10. Log Tables Statistics（表格）
+
+**告警规则** (5 个):
+1. Low Webhook Success Rate (<90%)
+2. High JIT Fallback Rate (>10%)
+3. User Creation Errors (>0)
+4. Low System Health Score (<80)
+5. Large Log Table Size (>100k rows)
+
+**部署方式**:
+- **Grafana Cloud**: 免费版，5-10 分钟配置
+- **Docker 自托管**: 需要额外服务器
+- **暂不部署**: Admin API 已满足基本需求
+
+---
+
+## 3.3 Railway 环境配置
+
+### 环境变量
+
+```bash
+# Railway Dashboard > Environment Variables
+
+# Scheduler 控制（多实例部署）
+ENABLE_SCHEDULER=true   # 只在 1 个实例启用
+
+# Sentry 配置
+SENTRY_DSN=https://xxx@sentry.io/xxx
+SENTRY_TRACES_SAMPLE_RATE=0.1
+SENTRY_PROFILES_SAMPLE_RATE=0.1
+
+# 数据库（Supabase）
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_KEY=xxx
+```
+
+### 多实例部署注意事项
+
+**调度器配置**:
+```
+Instance 1: ENABLE_SCHEDULER=true   ← 只有这个运行定时任务
+Instance 2: ENABLE_SCHEDULER=false
+Instance 3: ENABLE_SCHEDULER=false
+```
+
+**原因**: 防止重复执行清理任务
+
+---
+
+## 3.4 监控最佳实践
+
+### 日常监控（业务团队）
+
+**使用 Admin API**:
+1. 每周查看一次用户创建健康度
+2. 关注 Webhook 成功率（应 >95%）
+3. 检查错误数量（应为 0）
+
+```bash
+# 前端页面调用
+fetch('/api/admin/monitoring/user-creation/stats?days=7')
+```
+
+### 深度监控（技术团队）
+
+**使用 Sentry**:
+1. 设置告警通知（Slack/Email）
+2. 定期查看错误趋势
+3. 监控 JIT Fallback 频率
+
+**使用 Grafana（可选）**:
+1. 查看可视化趋势图
+2. 配置自动告警
+3. 历史数据分析
+
+### 告警响应
+
+| 告警 | 严重级别 | 响应时间 | 处理方式 |
+|------|----------|----------|----------|
+| Webhook Success Rate <90% | WARNING | 1 小时 | 检查 Clerk Webhook 配置 |
+| JIT Fallback Rate >10% | WARNING | 1 小时 | 检查 Webhook 延迟 |
+| User Creation Errors >0 | CRITICAL | 立即 | 查看错误日志，修复问题 |
+| Log Table >100k rows | INFO | 1 天 | 调整清理策略 |
+
+---
+
+## 3.5 维护操作
+
+### 日常操作
+
+**自动执行**（无需人工干预）:
+- ✅ 每天 4:00 AM - 清理日志
+- ✅ 每周日 5:00 AM - 清理活动日志
+
+**手动操作**（按需）:
+```bash
+# 手动触发清理
+POST /api/admin/tasks/cleanup/run
+
+# 查看任务状态
+GET /api/admin/tasks/health
+```
+
+### 数据库维护
+
+**每月检查**:
+```sql
+-- 查看表大小
+SELECT * FROM v_table_sizes;
+
+-- 查看日志统计
+SELECT * FROM get_log_tables_stats();
+
+-- 手动清理（如果需要）
+SELECT cleanup_old_error_logs(30);
+SELECT cleanup_old_activity_logs(180);
+```
+
+### 日志查看
+
+**Railway 日志**:
+```bash
+# 查看调度器日志
+railway logs --filter "maintenance"
+
+# 查看清理结果
+railway logs --filter "cleanup"
+```
+
+**预期日志**:
+```
+[2026-01-14 04:00] 🔧 Starting daily maintenance tasks...
+[2026-01-14 04:00] ✅ Cleaned up 1250 old user creation logs
+[2026-01-14 04:00] ✅ Cleaned up 340 old error logs
+[2026-01-14 04:00] ✅ Daily maintenance complete. Total deleted: 1590 records
+```
+
+---
+
+## 3.6 故障排查
+
+### 问题 1: 维护任务未运行
+
+**症状**: 日志表持续增长，没有清理
+
+**检查**:
+```bash
+# 1. 检查 Scheduler 是否启用
+railway logs --filter "Scheduler started"
+
+# 2. 检查环境变量
+railway variables | grep ENABLE_SCHEDULER
+
+# 3. 检查任务注册
+railway logs --filter "daily_maintenance"
+```
+
+**解决方案**:
+- 确保至少有 1 个实例 `ENABLE_SCHEDULER=true`
+- 检查 Railway 实例是否正常运行
+- 查看错误日志
+
+### 问题 2: 监控 API 返回空数据
+
+**症状**: `/api/admin/monitoring/user-creation/stats` 返回空或错误
+
+**检查**:
+```sql
+-- 检查 RPC 函数是否存在
+SELECT routine_name FROM information_schema.routines 
+WHERE routine_name = 'get_user_creation_stats';
+
+-- 检查表是否存在
+SELECT table_name FROM information_schema.tables 
+WHERE table_name IN ('user_creation_logs', 'error_logs');
+```
+
+**解决方案**:
+- 执行数据库迁移 `migrations/v2/01_core_business.sql`
+- 执行维护配置 `migrations/v2/03_infrastructure.sql`
+
+### 问题 3: Sentry 事件未上报
+
+**症状**: Sentry Dashboard 没有看到用户创建事件
+
+**检查**:
+```bash
+# 1. 检查 SENTRY_DSN 是否配置
+railway variables | grep SENTRY_DSN
+
+# 2. 检查 Sentry 初始化日志
+railway logs --filter "Sentry"
+```
+
+**解决方案**:
+- 配置 `SENTRY_DSN` 环境变量
+- 确认 `sentry-sdk[fastapi,openai]>=2.44.0` 已安装
+- 重启 Railway 实例
+
+---
+
+## 3.7 性能监控
+
+### 资源使用监控
+
+**Railway Dashboard**:
+- CPU 使用率
+- 内存使用率
+- 网络流量
+
+**建议阈值**:
+| 指标 | 警告阈值 | 危险阈值 | 处理方式 |
+|------|----------|----------|----------|
+| CPU | >70% | >85% | 考虑扩展实例 |
+| Memory | >75% | >90% | 检查内存泄漏 |
+| Response Time | >500ms | >1000ms | 优化查询 |
+
+### 数据库性能
+
+**Supabase Dashboard**:
+- 查询性能
+- 连接池使用
+- 存储空间
+
+**优化建议**:
+```sql
+-- 定期运行 VACUUM ANALYZE（手动或 Supabase Cron）
+VACUUM ANALYZE;
+
+-- 检查慢查询
+SELECT * FROM pg_stat_statements 
+ORDER BY total_time DESC LIMIT 10;
+```
+
+---
+
+**结论**: 当前代码与 Railway 多服务架构**完全兼容**，可以直接部署。DDD 架构的清晰分层和依赖注入设计，使得服务拆分非常自然，无需大规模重构。维护和监控系统已完整实施，支持 Admin API、Sentry 和可选的 Grafana 配置。
+
+---
+
+*文档版本: v3.30*
+*最后更新: 2026-01-13*

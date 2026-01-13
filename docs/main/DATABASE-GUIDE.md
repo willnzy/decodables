@@ -956,6 +956,283 @@ USING (is_public = true AND status = 'published');
 
 ---
 
-**文档版本**: v2.2
-**最后更新**: 2026-01-12
+# Part 4: 数据库维护任务
+
+> **版本**: v3.30  
+> **更新日期**: 2026-01-13
+
+## 4.1 维护任务概述
+
+### 问题背景
+
+日志表（`user_creation_logs`, `error_logs`, `activity_logs`）会随着系统运行不断增长，如果不定期清理，会导致：
+
+- ❌ 数据库存储空间不断增长
+- ❌ 查询性能下降
+- ❌ 备份时间延长
+- ❌ 成本增加
+
+### 解决方案
+
+**自动化清理任务** + **监控视图**
+
+---
+
+## 4.2 清理函数
+
+### 位置
+
+```
+decodables/migrations/v2/03_infrastructure.sql
+```
+
+### 可用函数
+
+| 函数名 | 功能 | 默认保留天数 | 调用方式 |
+|--------|------|--------------|----------|
+| `cleanup_old_user_creation_logs()` | 清理用户创建日志 | 90 天 | 应用层定时任务 |
+| `cleanup_old_error_logs()` | 清理错误日志 | 30 天 | 应用层定时任务 |
+| `cleanup_old_activity_logs()` | 清理活动日志 | 180 天 | 应用层定时任务 |
+
+### 使用示例
+
+```sql
+-- 手动执行清理
+SELECT cleanup_old_user_creation_logs(90);  -- 清理 90 天前的日志
+SELECT cleanup_old_error_logs(30);          -- 清理 30 天前的日志
+SELECT cleanup_old_activity_logs(180);      -- 清理 180 天前的日志（保留关键事件）
+
+-- 查看清理结果
+SELECT * FROM get_log_tables_stats();
+```
+
+---
+
+## 4.3 监控视图
+
+### v_table_sizes
+
+**用途**: 监控所有表的大小
+
+```sql
+SELECT * FROM v_table_sizes 
+WHERE tablename IN ('user_creation_logs', 'error_logs', 'activity_logs');
+```
+
+**输出示例**:
+| schemaname | tablename | total_size | table_size | indexes_size |
+|------------|-----------|------------|------------|--------------|
+| public | user_creation_logs | 2.5 MB | 1.8 MB | 700 KB |
+| public | error_logs | 1.2 MB | 900 KB | 300 KB |
+| public | activity_logs | 15 MB | 12 MB | 3 MB |
+
+### get_log_tables_stats()
+
+**用途**: 获取日志表详细统计
+
+```sql
+SELECT * FROM get_log_tables_stats();
+```
+
+**输出示例**:
+| table_name | total_rows | old_rows | retention_days | next_cleanup_count | table_size |
+|------------|------------|----------|----------------|--------------------| -----------|
+| user_creation_logs | 50000 | 12000 | 90 | 12000 | 2.5 MB |
+| error_logs | 8000 | 3000 | 30 | 3000 | 1.2 MB |
+| activity_logs | 250000 | 80000 | 180 | 80000 | 15 MB |
+
+---
+
+## 4.4 调度策略
+
+### 方式 1: 应用层定时任务（推荐）
+
+**位置**: `infrastructure/tasks/maintenance_scheduler.py`  
+**调度器**: `scheduler.py` (APScheduler)
+
+```python
+# 每天 4:00 AM UTC
+scheduler.add_job(
+    run_daily_maintenance,
+    CronTrigger(hour=4, minute=0),
+    id="daily_maintenance"
+)
+
+# 每周日 5:00 AM UTC
+scheduler.add_job(
+    run_weekly_maintenance,
+    CronTrigger(day_of_week='sun', hour=5, minute=0),
+    id="weekly_maintenance"
+)
+```
+
+**优点**:
+- ✅ 与应用代码统一管理
+- ✅ 易于测试和监控
+- ✅ 支持 Sentry 告警
+- ✅ Railway 原生支持
+
+**缺点**:
+- ⚠️ 多实例部署时需要环境变量控制（`ENABLE_SCHEDULER=true` 只在 1 个实例）
+
+### 方式 2: Supabase Cron（可选）
+
+**位置**: Supabase Dashboard > Database > Cron Jobs
+
+```sql
+-- 任务 1: 每天 3:00 AM 清理用户创建日志
+Schedule: 0 3 * * *
+SQL: SELECT cleanup_old_user_creation_logs(90);
+
+-- 任务 2: 每天 4:00 AM 清理错误日志
+Schedule: 0 4 * * *
+SQL: SELECT cleanup_old_error_logs(30);
+
+-- 任务 3: 每周日 5:00 AM 清理活动日志
+Schedule: 0 5 * * 0
+SQL: SELECT cleanup_old_activity_logs(180);
+```
+
+**优点**:
+- ✅ 不依赖应用实例
+- ✅ 数据库层面保证执行
+
+**缺点**:
+- ⚠️ Supabase 免费版可能不支持 Cron
+- ⚠️ 无法集成 Sentry 告警
+- ⚠️ 需要手动配置
+
+---
+
+## 4.5 最佳实践
+
+### 1. 定期检查表大小
+
+**频率**: 每月 1 次
+
+```sql
+-- 查看所有表大小
+SELECT * FROM v_table_sizes ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC LIMIT 20;
+
+-- 查看日志表统计
+SELECT * FROM get_log_tables_stats();
+```
+
+### 2. 告警阈值
+
+| 日志表 | 警告阈值 | 处理方式 |
+|--------|----------|----------|
+| user_creation_logs | >100 MB | 减少保留天数（90→60） |
+| error_logs | >50 MB | 检查错误频率，解决根本问题 |
+| activity_logs | >500 MB | 考虑分区或归档到 S3 |
+
+### 3. 关键事件永久保留
+
+```sql
+-- cleanup_old_activity_logs() 会自动排除这些关键事件
+WHERE action NOT IN ('user_signup', 'subscription_purchase');
+```
+
+### 4. 手动干预
+
+如果自动清理失效，手动执行：
+
+```sql
+-- 1. 备份关键数据（可选）
+CREATE TABLE activity_logs_backup AS 
+SELECT * FROM activity_logs WHERE action IN ('user_signup', 'subscription_purchase');
+
+-- 2. 执行清理
+SELECT cleanup_old_activity_logs(180);
+
+-- 3. 验证结果
+SELECT COUNT(*) FROM activity_logs;
+SELECT * FROM get_log_tables_stats();
+
+-- 4. 优化表
+VACUUM ANALYZE activity_logs;
+```
+
+---
+
+## 4.6 故障排查
+
+### 问题 1: 清理任务未运行
+
+**症状**: 日志表持续增长，`get_log_tables_stats()` 显示 `old_rows` 数量不断增加
+
+**排查步骤**:
+
+```bash
+# 1. 检查调度器日志
+railway logs --filter "maintenance"
+
+# 2. 检查环境变量
+railway variables | grep ENABLE_SCHEDULER
+
+# 3. 手动测试清理函数
+psql -c "SELECT cleanup_old_error_logs(30);"
+```
+
+**解决方案**:
+- 确保至少有 1 个实例 `ENABLE_SCHEDULER=true`
+- 检查 `scheduler.py` 是否正确配置
+- 验证数据库函数是否存在
+
+### 问题 2: 清理效率低
+
+**症状**: 清理任务执行时间过长（>5 分钟）
+
+**排查步骤**:
+
+```sql
+-- 查看索引
+SELECT * FROM pg_indexes 
+WHERE tablename IN ('user_creation_logs', 'error_logs', 'activity_logs');
+
+-- 查看表统计
+SELECT * FROM pg_stat_user_tables 
+WHERE relname IN ('user_creation_logs', 'error_logs', 'activity_logs');
+```
+
+**解决方案**:
+```sql
+-- 1. 重建索引
+REINDEX TABLE user_creation_logs;
+
+-- 2. 更新统计
+ANALYZE user_creation_logs;
+
+-- 3. 分批删除（对大表）
+DELETE FROM activity_logs 
+WHERE created_at < NOW() - INTERVAL '180 days' 
+  AND action NOT IN ('user_signup', 'subscription_purchase')
+LIMIT 10000;  -- 分批删除
+```
+
+---
+
+## 4.7 未来增强
+
+### 潜在优化方向
+
+1. **日志归档到 S3**（长期存储）
+   - 保留 90 天在数据库
+   - 归档到 Supabase Storage
+   - 提供归档查询接口
+
+2. **表分区** (PostgreSQL Partitioning)
+   - 按月分区 `activity_logs`
+   - 自动清理旧分区
+   - 提升查询性能
+
+3. **Grafana 可视化**
+   - 实时监控表增长趋势
+   - 告警通知（Slack/Email）
+   - 历史数据分析
+
+---
+
+**文档版本**: v3.30
+**最后更新**: 2026-01-13
 **维护者**: 后端团队

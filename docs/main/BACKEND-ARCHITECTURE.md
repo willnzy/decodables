@@ -716,6 +716,15 @@ decodables/
 │   │   ├── interface.py             # IEventBus
 │   │   └── simple_bus.py            # 简单实现
 │   │
+│   ├── tasks/                       # 后台任务 (v3.30+)
+│   │   ├── __init__.py
+│   │   ├── storage_cleanup.py       # 存储清理任务
+│   │   └── maintenance_scheduler.py # 数据库维护任务
+│   │
+│   ├── monitoring/                  # 监控集成 (v3.30+)
+│   │   ├── __init__.py
+│   │   └── sentry_helpers.py        # Sentry 事件追踪辅助函数
+│   │
 │   └── unit_of_work/                # 工作单元
 │       ├── __init__.py
 │       └── supabase_uow.py          # Supabase UoW
@@ -796,6 +805,8 @@ decodables/
              │      ├─ 实现仓储接口?       → infrastructure/repositories/
              │      ├─ 业务相关缓存键?     → infrastructure/cache/keys.py
              │      ├─ 事件总线?           → infrastructure/event_bus/
+             │      ├─ 后台任务?           → infrastructure/tasks/
+             │      ├─ 监控集成?           → infrastructure/monitoring/
              │      └─ 工作单元?           → infrastructure/unit_of_work/
              │
              └─ HTTP 路由、API 端点
