@@ -45,13 +45,13 @@ class SupabaseAdminUsersRepository:
     @retry_on_network_error()
     async def get_full_user_audit(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get complete user audit information."""
-        await profile = self.client.table("profiles").select("*").eq("id", user_id).execute()
+        profile = await self.client.table("profiles").select("*").eq("id", user_id).execute()
         if not profile.data:
             return None
-        
-        await projects = self.client.table("projects").select("id, title, created_at").eq("user_id", user_id).execute()
-        await transactions = self.client.table("credit_transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
-        await purchases = self.client.table("marketplace_purchases").select("*").eq("buyer_id", user_id).execute()
+
+        projects = await self.client.table("projects").select("id, title, created_at").eq("user_id", user_id).execute()
+        transactions = await self.client.table("credit_transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+        purchases = await self.client.table("marketplace_purchases").select("*").eq("buyer_id", user_id).execute()
         
         return {
             "profile": profile.data[0],
@@ -63,8 +63,8 @@ class SupabaseAdminUsersRepository:
     @retry_on_network_error()
     async def admin_adjust_credits(self, user_id: str, amount: int, bucket: str, reason: str) -> Optional[Dict[str, Any]]:
         """Admin adjust user credits."""
-        await profile = self.client.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).execute()
-        
+        profile = await self.client.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).execute()
+
         if not profile.data:
             return None
         
@@ -78,16 +78,16 @@ class SupabaseAdminUsersRepository:
             update = {"credits_permanent": new_value}
         
         await self.client.table("profiles").update(update).eq("id", user_id).execute()
-        
+
         # Log transaction
-        self.client.table("credit_transactions").insert({
+        await self.client.table("credit_transactions").insert({
             "user_id": user_id,
             "amount": abs(amount),
             "bucket": bucket,
             "type": "admin_add" if amount > 0 else "admin_deduct",
             "description": reason,
         }).execute()
-        
+
         return {"success": True, "new_value": new_value}
 
     @retry_on_network_error()
@@ -98,7 +98,7 @@ class SupabaseAdminUsersRepository:
         if not include_deleted:
             query = query.eq("is_deleted", False)
 
-        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        result = await query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -143,7 +143,7 @@ class SupabaseAdminUsersRepository:
             Created log entry or None if failed (graceful degradation)
         """
         try:
-            result = self.client.table("admin_operations").insert({
+            result = await self.client.table("admin_operations").insert({
                 "admin_id": admin_id,
                 "operation_type": operation_type,
                 "target_user_id": target_user_id,
@@ -249,12 +249,12 @@ class SupabaseAdminStatsRepository:
     async def admin_get_dashboard_stats(self, period: str = "month") -> Dict[str, Any]:
         """Get dashboard statistics."""
         start_date = self._get_period_start(period).isoformat()
-        
-        await total_users = self.client.table("profiles").select("id", count="exact").execute()
-        await new_users = self.client.table("profiles").select("id", count="exact").gte("created_at", start_date).execute()
-        await total_projects = self.client.table("projects").select("id", count="exact").eq("is_deleted", False).execute()
-        await paying = self.client.table("profiles").select("id", count="exact").neq("tier", "t1").eq("subscription_status", "active").execute()
-        
+
+        total_users = await self.client.table("profiles").select("id", count="exact").execute()
+        new_users = await self.client.table("profiles").select("id", count="exact").gte("created_at", start_date).execute()
+        total_projects = await self.client.table("projects").select("id", count="exact").eq("is_deleted", False).execute()
+        paying = await self.client.table("profiles").select("id", count="exact").neq("tier", "t1").eq("subscription_status", "active").execute()
+
         return {
             "total_users": total_users.count or 0,
             "new_users": new_users.count or 0,
@@ -271,7 +271,7 @@ class SupabaseAdminStatsRepository:
             end_date = datetime.now(timezone.utc).isoformat()
 
         # STAT-MEDIUM-6: Added limit to prevent OOM
-        await result = self.client.table("profiles").select("created_at").gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(100000).execute()
+        result = await self.client.table("profiles").select("created_at").gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(100000).execute()
 
         stats = {}
         for row in (result.data or []):
@@ -289,7 +289,7 @@ class SupabaseAdminStatsRepository:
         STAT-MEDIUM-9: Added .limit(100000) for OOM protection.
         Performance: 3x faster (1 DB roundtrip instead of 3).
         """
-        await result = self.client.table("profiles").select("tier").limit(100000).execute()
+        result = await self.client.table("profiles").select("tier").limit(100000).execute()
 
         distribution = {"t1": 0, "t2": 0, "t3": 0}
         total_fetched = len(result.data or [])
@@ -312,10 +312,10 @@ class SupabaseAdminStatsRepository:
             start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         if not end_date:
             end_date = datetime.now(timezone.utc).isoformat()
-        
-        await total = self.client.table("projects").select("id", count="exact").eq("is_deleted", False).execute()
-        await new_in_period = self.client.table("projects").select("id", count="exact").gte("created_at", start_date).lte("created_at", end_date).eq("is_deleted", False).execute()
-        
+
+        total = await self.client.table("projects").select("id", count="exact").eq("is_deleted", False).execute()
+        new_in_period = await self.client.table("projects").select("id", count="exact").gte("created_at", start_date).lte("created_at", end_date).eq("is_deleted", False).execute()
+
         return {"total": total.count or 0, "new_in_period": new_in_period.count or 0}
 
     @retry_on_network_error()
@@ -325,7 +325,7 @@ class SupabaseAdminStatsRepository:
             start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
         # STAT-MEDIUM-7: Added limit to prevent OOM
-        await result = self.client.table("credit_transactions").select("amount, type").gte("created_at", start_date).limit(100000).execute()
+        result = await self.client.table("credit_transactions").select("amount, type").gte("created_at", start_date).limit(100000).execute()
 
         total_used = 0
         by_type = {}
@@ -357,7 +357,7 @@ class SupabaseAdminStatsRepository:
         """
         try:
             # ✅ P2-012: Use optimized RPC function
-            await result = self.client.rpc("p_get_conversion_funnel", {"p_period": period}).execute()
+            result = await self.client.rpc("p_get_conversion_funnel", {"p_period": period}).execute()
 
             if result.data and len(result.data) > 0:
                 row = result.data[0]
@@ -376,13 +376,13 @@ class SupabaseAdminStatsRepository:
 
             start_date = self._get_period_start(period).isoformat()
 
-            await signups = self.client.table("profiles").select("id", count="exact").gte("created_at", start_date).execute()
+            signups = await self.client.table("profiles").select("id", count="exact").gte("created_at", start_date).execute()
 
             # STAT-MEDIUM-5: Added limit to prevent OOM (only need unique user_ids)
-            await created_project = self.client.table("projects").select("user_id").gte("created_at", start_date).limit(100000).execute()
+            created_project = await self.client.table("projects").select("user_id").gte("created_at", start_date).limit(100000).execute()
             unique_creators = len(set(p["user_id"] for p in (created_project.data or [])))
 
-            await converted = self.client.table("profiles").select("id", count="exact").neq("tier", "t1").gte("created_at", start_date).execute()
+            converted = await self.client.table("profiles").select("id", count="exact").neq("tier", "t1").gte("created_at", start_date).execute()
 
             return {"signups": signups.count or 0, "created_project": unique_creators, "converted": converted.count or 0}
 
@@ -465,7 +465,7 @@ class SupabaseAdminStatsRepository:
         if not events:
             return []
 
-        await result = self.client.table("user_events").insert(events).execute()
+        result = await self.client.table("user_events").insert(events).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -587,16 +587,16 @@ class SupabaseAdminStatsRepository:
     async def get_aggregated_stats(self, stat_type: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """Get aggregated statistics."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        await result = self.client.table("aggregated_stats").select("*").eq("stat_type", stat_type).eq("date", today).execute()
-        
+        result = await self.client.table("aggregated_stats").select("*").eq("stat_type", stat_type).eq("date", today).execute()
+
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
     async def get_aggregated_stats_range(self, stat_type: str, days: int = 30) -> List[Dict[str, Any]]:
         """Get aggregated stats for date range."""
         start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-        await result = self.client.table("aggregated_stats").select("*").eq("stat_type", stat_type).gte("date", start).order("date", desc=True).execute()
-        
+        result = await self.client.table("aggregated_stats").select("*").eq("stat_type", stat_type).gte("date", start).order("date", desc=True).execute()
+
         return result.data or []
 
     @retry_on_network_error()
@@ -721,7 +721,7 @@ class SupabaseAdminStatsRepository:
         # Retention recommendations
         if area in ("all", "retention"):
             # Optimized: Use count queries instead of fetching all data
-            await total_users = self.client.table("profiles").select("id", count="exact").execute()
+            total_users = await self.client.table("profiles").select("id", count="exact").execute()
 
             # Count distinct users who have created projects (more efficient)
             # Note: Supabase doesn't support COUNT(DISTINCT), so we still need to fetch user_ids
@@ -752,7 +752,7 @@ class SupabaseAdminStatsRepository:
                 total = locals()['total']
                 total_users_count = total
             else:
-                await total_users = self.client.table("profiles").select("id", count="exact").execute()
+                total_users = await self.client.table("profiles").select("id", count="exact").execute()
                 total_users_count = total_users.count or 0
 
             paying_users = self.client.table("profiles").select("id", count="exact").neq(
@@ -1038,7 +1038,7 @@ class SupabaseAdminModerationRepository:
         Returns:
             Dict with counts by status (pending, reviewed, resolved, dismissed, total)
         """
-        await result = self.client.table("reports").select("status").execute()
+        result = await self.client.table("reports").select("status").execute()
 
         stats = {
             "pending": 0,

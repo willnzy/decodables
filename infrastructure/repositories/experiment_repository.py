@@ -100,7 +100,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
         """Create a new experiment."""
         try:
             data = self._map_to_row(experiment)
-            await self.client.table("experiments").insert(data).execute()
+            result = await self.client.table("experiments").insert(data).execute()
 
             return experiment
 

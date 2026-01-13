@@ -88,7 +88,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
         """Create a new feature flag."""
         try:
             data = self._map_to_row(flag)
-            await self.client.table("feature_flags").insert(data).execute()
+            result = await self.client.table("feature_flags").insert(data).execute()
 
             return flag
 
