@@ -148,18 +148,26 @@ class UserProfileService:
             logger.error(f"[UserProfileService] Failed to get purchases for {user_id}: {e}")
             raise
 
-    async def get_notifications(self, user_id: str) -> List[Dict]:
+    async def get_notifications(
+        self,
+        user_id: str,
+        unread_only: bool = False
+    ) -> List[Dict]:
         """
         Get user notifications.
 
         Args:
             user_id: User ID
+            unread_only: If True, return only unread notifications
 
         Returns:
             List of notification records
         """
         try:
-            return await self._notif_repo.get_user_notifications(user_id)
+            return await self._notif_repo.get_user_notifications(
+                user_id,
+                unread_only=unread_only
+            )
 
         except Exception as e:
             logger.error(f"[UserProfileService] Failed to get notifications for {user_id}: {e}")

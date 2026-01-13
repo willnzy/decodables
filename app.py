@@ -397,8 +397,10 @@ app.add_middleware(RequestIDMiddleware)
 from api.user import user_router
 from api.admin import admin_router
 from api.health import router as health_router
+from api.compatibility import router as compatibility_router
 
 app.include_router(health_router)  # Health check (no prefix, Railway monitoring)
+app.include_router(compatibility_router)  # v1 backward compatibility (DEPRECATED)
 app.include_router(user_router)
 app.include_router(admin_router)
 

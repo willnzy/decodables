@@ -39,13 +39,17 @@ def mock_notification_repo():
 
 @pytest.fixture
 def mock_db_client():
-    """Create mock database client."""
+    """Create mock database client (async compatible)."""
     client = MagicMock()
     # Mock profiles table query result
     profiles_result = MagicMock()
     profiles_result.data = [{"id": "user-1"}, {"id": "user-2"}]
-    client.table.return_value.select.return_value.execute.return_value = profiles_result
-    client.table.return_value.select.return_value.eq.return_value.execute.return_value = profiles_result
+
+    # Fix: Make execute() async-compatible
+    execute_mock = AsyncMock(return_value=profiles_result)
+
+    client.table.return_value.select.return_value.execute = execute_mock
+    client.table.return_value.select.return_value.eq.return_value.execute = execute_mock
     return client
 
 

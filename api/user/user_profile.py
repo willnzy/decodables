@@ -117,11 +117,17 @@ async def get_purchases(
 @limiter.limit("50/minute")  # v2.2.0: Added rate limiting
 async def get_notifications(
     request: Request,
+    unread_only: bool = False,
     user: dict = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
-    """Get user notifications."""
-    return await profile_service.get_notifications(user["id"])
+    """
+    Get user notifications.
+
+    Args:
+        unread_only: If True, return only unread notifications
+    """
+    return await profile_service.get_notifications(user["id"], unread_only=unread_only)
 
 
 @router.post("/notifications/{id}/read")

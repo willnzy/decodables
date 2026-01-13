@@ -136,7 +136,8 @@ class TestRepositoryDependencyInjection:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                mock_get_db.return_value = mock_db
+                # Fix: get_async_db_client() is async, must return coroutine
+                mock_get_db.return_value = mock_db  # AsyncMock wraps it automatically
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
@@ -191,6 +192,7 @@ class TestBackwardCompatibility:
         with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 mock_db = MagicMock()
+                # Fix: AsyncMock wraps return value automatically
                 mock_get_db.return_value = mock_db
 
                 mock_repo_instance = AsyncMock()
@@ -247,6 +249,7 @@ class TestFactoryFunctions:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
+                # Fix: AsyncMock wraps return value automatically
                 mock_get_db.return_value = mock_db
 
                 mock_repo_instance = AsyncMock()
