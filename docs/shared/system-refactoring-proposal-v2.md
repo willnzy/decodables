@@ -1,8 +1,12 @@
 # Make Decodables 系统重构方案 v2
 
-> **版本**: v2.0  
-> **日期**: 2026-01-06  
+> **版本**: v2.2
+> **日期**: 2026-01-13
 > **架构**: 三层架构 + 轻量级 DDD 融合
+>
+> **实施状态**:
+> - 后端: ✅ 已实施 (DDD 架构)
+> - 前端: ⚠️ 部分实施 (使用 Colocation 模式，非 @core/@shared/@business)
 
 ---
 
@@ -382,7 +386,147 @@ decodables/
 
 ## 3. 前端架构设计
 
-### 3.1 目录结构
+### 3.1 当前架构 (实际使用)
+
+> ⚠️ **重要**: 前端目前使用扁平化结构 + Colocation 模式，而非 `@core/@shared/@business` 三层架构。
+> 详见 [frontend-development-guide.md](../main/frontend-development-guide.md) 第 12 章 (含完整目录结构)。
+
+#### 3.1.1 顶层结构
+
+```
+decodables-fe/
+├── app/                          # 🔵 Next.js App Router (页面路由)
+├── components/                   # 🟢 React 组件库 (公共/业务)
+├── hooks/                        # 🟡 全局 Hooks (跨页面)
+├── lib/                          # 🟣 Store + 工具函数
+├── services/                     # 🔴 API 服务层
+├── __tests__/                    # 🟤 单元测试 (Jest)
+└── public/                       # 静态资源
+```
+
+#### 3.1.2 app/ 详细结构
+
+```
+app/
+├── page.tsx                      # 首页 (Landing) ✅ TS
+├── layout.js                     # Root Layout
+├── _components/landing/          # Landing 页面组件 (Colocation)
+│
+├── dashboard/                    # 📊 Dashboard ✅ TS (Colocation 示例)
+│   ├── page.tsx                  # 页面入口 (~200 行)
+│   ├── _components/
+│   │   ├── sections/             # ProjectsSection, AssetsSection, FeaturedSection
+│   │   ├── cards/                # ProjectCard, AssetCard, ProjectListItem
+│   │   ├── modals/               # DeleteConfirmModal, PreviewModal, RestoreModal
+│   │   ├── shared/               # Pagination, ViewTabs, ViewToggle, SearchInput
+│   │   └── skeletons/            # DashboardSkeleton, ProjectCardSkeleton
+│   ├── _hooks/                   # useDashboardProjects, useProjectActions
+│   ├── _types/                   # DashboardProject, ViewTab, SortOption
+│   └── _constants/               # STORAGE_KEYS, THROTTLE_TIMES
+│
+├── create/page.js                # 🎨 Editor (待 Colocation 迁移)
+├── marketplace/page.js           # 🛒 Marketplace (待 Colocation 迁移)
+├── admin/page.js                 # ⚙️ Admin (待 Colocation 迁移)
+├── manual/[slug]/page.js         # 📖 用户手册
+├── news/[slug]/page.js           # 📰 新闻公告
+├── notifications/page.js         # 🔔 通知中心
+├── transaction-history/page.js   # 💳 交易历史
+├── sign-in/[[...sign-in]]/       # 🔐 登录 (Clerk)
+├── sign-up/[[...sign-up]]/       # 🔐 注册 (Clerk)
+└── [静态页面]/                   # about-us, privacy-policy, etc.
+```
+
+#### 3.1.3 components/ 详细结构
+
+```
+components/
+├── ui/                           # 🔷 基础 UI (shadcn/ui 风格)
+│   ├── button.tsx                # ✅ TS
+│   ├── dialog.jsx + .d.ts        # JSX + 类型声明
+│   ├── input.jsx + .d.ts
+│   ├── select.jsx + .d.ts
+│   ├── popover.jsx + .d.ts
+│   └── ...                       # 27 个基础组件
+│
+├── common/                       # 🔸 全站通用
+│   ├── Navbar.tsx                # ✅ TS
+│   ├── Footer.tsx                # ✅ TS
+│   ├── Toast.tsx                 # ✅ TS
+│   ├── TierBadge.jsx             # Tier 徽章
+│   ├── TierCreditsDisplay.jsx    # Tier + 积分显示
+│   └── ...                       # 24 个通用组件
+│
+├── editor/                       # 🔶 Editor 专用 (待迁移到 app/create/_components/)
+│   ├── FabricCanvas.jsx          # 核心 Canvas
+│   ├── LayerPanel.jsx            # 图层面板
+│   ├── PropertiesPanel.jsx       # 属性面板
+│   ├── MediaLibrary.jsx          # 媒体库
+│   └── hooks/                    # Editor 内部 Hooks
+│
+├── dashboard/                    # 🔶 Dashboard 旧文件 (正在迁移)
+│   ├── ProjectCard.jsx           # → app/dashboard/_components/cards/
+│   ├── AssetCard.jsx             # → app/dashboard/_components/cards/
+│   └── ...                       # 迁移中
+│
+├── marketplace/                  # 🔶 Marketplace 专用 (待迁移)
+├── admin/                        # 🔶 Admin 专用 (待迁移)
+├── holiday/                      # 🔸 节日主题
+├── campaign/                     # 🔸 营销活动
+├── analytics/                    # 🔷 埋点组件
+└── seo/                          # 🔷 SEO 组件
+```
+
+#### 3.1.4 hooks/ / lib/ / services/
+
+```
+hooks/                            # 全局 Hooks (11 个 .ts 文件)
+├── useApiCall.ts                 # 🔷 API 调用封装
+├── useAnalytics.ts               # 🔷 埋点
+├── useExperiment.ts              # 🔷 A/B 测试
+├── useTierFeature.ts             # 🔸 Tier 权限
+├── useCredits.ts                 # 🔸 积分操作
+├── useProjects.ts                # 🔸 项目列表
+├── useAsyncGeneration.ts         # 🔸 异步生成
+└── ...
+
+lib/                              # Store + 工具 (20 个文件)
+├── useUserStore.ts               # 🔸 用户状态 (Zustand)
+├── useZineStore.ts               # 🔶 编辑器状态 (Zustand)
+├── useConfigStore.ts             # 🔷 动态配置 (Zustand)
+├── utils.ts                      # 🔷 通用工具
+├── errorHandler.ts               # 🔷 错误处理
+└── ...
+
+services/                         # API 服务 (16 个 .ts 文件)
+├── api.ts                        # 🔷 基础客户端
+├── userService.ts                # 🔶 用户 API
+├── projectService.ts             # 🔶 项目 API
+├── marketplaceService.ts         # 🔶 市场 API
+├── adminService.ts               # 🔶 Admin API
+└── ...
+```
+
+#### 3.1.5 组件位置规则
+
+| 使用范围 | 位置 | 示例 |
+|----------|------|------|
+| **仅 1 个页面** | `app/[route]/_components/` | `app/dashboard/_components/` |
+| **2+ 页面共享** | `components/[feature]/` | `components/marketplace/` |
+| **全站通用** | `components/common/` | Navbar, Footer |
+| **基础 UI** | `components/ui/` | Button, Dialog |
+
+#### 3.1.6 重构优先级
+
+| 优先级 | 页面 | 状态 | 说明 |
+|--------|------|------|------|
+| P0 | Dashboard | ✅ 完成 | Colocation 模式示例 |
+| P1 | Marketplace | 待开始 | 迁移到 `app/marketplace/_components/` |
+| P1 | Editor | 待开始 | 迁移到 `app/create/_components/` |
+| P2 | Admin | 待开始 | 迁移到 `app/admin/_components/` |
+
+### 3.2 目标架构 (长期规划)
+
+> 以下三层架构为**长期目标**，当前暂不实施。
 
 ```
 decodables-fe/
@@ -421,7 +565,7 @@ decodables-fe/
 └── app/                                # Next.js App Router
 ```
 
-### 3.2 Store 拆分原则
+### 3.3 Store 拆分原则
 
 | 原则 | 说明 |
 |------|------|

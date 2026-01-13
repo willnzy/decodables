@@ -95,7 +95,7 @@
 │                                                                 │
 │  🎨 Theme 系统                                                   │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  📄 Theme-Daily-Doodle-Design.md                         │   │
+│  │  📄 theme-system-design.md                               │   │
 │  │     Google Doodle 风格每日主题系统                        │   │
 │  │     工时: 10 天 | 状态: ✅ 完成                           │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -621,7 +621,7 @@ if (isTouchDevice) {
 |------|------|------|
 | 架构方案 | System-Refactoring-Proposal-v2.md | - |
 | Feature Flag | Feature-Flag-Experiments-Unified-Design.md | 2周 |
-| Theme | Theme-Daily-Doodle-Design.md | 10天 |
+| Theme | theme-system-design.md | 10天 |
 | Onboarding | Onboarding-System-Design.md | 9天 |
 | Editor 面板 | Editor-Media-Properties-Redesign.md | 14天 |
 | 画布架构 | Canvas-Architecture-Design.md | 8周 |
