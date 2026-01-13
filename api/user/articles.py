@@ -85,11 +85,15 @@ class CategoriesResponse(BaseModel):
 
 
 # ==========================================
-# Helper Functions
+# Dependencies
 # ==========================================
 
-async def _get_article_service(db = Depends(get_async_db)) -> ArticleService:
-    """Get ArticleService instance with injected repository (AsyncClient)."""
+async def get_article_service(db = Depends(get_async_db)) -> ArticleService:
+    """
+    FastAPI dependency for ArticleService.
+    
+    v3.31: 修复依赖注入问题 - 必须通过 Depends() 使用，不能直接调用
+    """
     repo = SupabaseArticleRepository(db)
     return ArticleService(repo)
 
@@ -118,6 +122,7 @@ async def list_articles(
     ),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
     List published articles.
@@ -145,8 +150,6 @@ async def list_articles(
                     400,
                     f"Invalid category. Must be one of: {', '.join(valid_categories)}"
                 )
-
-        service = _get_article_service()
 
         # Get articles and total count
         articles = await service.list_articles(
@@ -185,7 +188,10 @@ async def list_articles(
 
 @router.get("/categories", response_model=CategoriesResponse)
 @limiter.limit("60/minute")
-async def get_categories(request: Request):
+async def get_categories(
+    request: Request,
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
+):
     """
     Get article categories with published counts.
 
@@ -208,7 +214,6 @@ async def get_categories(request: Request):
         }
     """
     try:
-        service = _get_article_service()
         categories = await service.get_categories()
 
         return CategoriesResponse(
@@ -235,6 +240,7 @@ async def search_articles(
     category: Optional[str] = Query(None, description="Filter by category"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
     Search published articles.
@@ -263,8 +269,6 @@ async def search_articles(
                     400,
                     f"Invalid category. Must be one of: {', '.join(valid_categories)}"
                 )
-
-        service = _get_article_service()
 
         articles = await service.search_articles(
             query=q,
@@ -309,6 +313,7 @@ async def get_featured_articles(
         description="Filter by category (manual, news, changelog, faq, troubleshooting)"
     ),
     limit: int = Query(4, ge=1, le=20, description="Number of featured articles"),
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
     Get featured articles.
@@ -335,8 +340,6 @@ async def get_featured_articles(
                     400,
                     f"Invalid category. Must be one of: {', '.join(valid_categories)}"
                 )
-
-        service = _get_article_service()
 
         # Get featured articles
         articles = await service.get_featured_articles(
@@ -377,6 +380,7 @@ async def get_related_articles(
     request: Request,
     slug: str = Path(..., min_length=1, max_length=200, description="Article slug"),
     limit: int = Query(3, ge=1, le=10, description="Number of related articles"),
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
     Get related articles for a given article.
@@ -395,8 +399,6 @@ async def get_related_articles(
         GET /api/v2/user/articles/getting-started/related?limit=3
     """
     try:
-        service = _get_article_service()
-
         # Get current article to know its category
         current_article = await service.get_article(slug)
         if not current_article:
@@ -439,6 +441,7 @@ async def get_related_articles(
 async def get_article(
     request: Request,
     slug: str = Path(..., min_length=1, max_length=200, description="Article slug"),
+    service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
     Get a single published article by slug.
@@ -459,7 +462,6 @@ async def get_article(
         GET /api/v2/user/articles/how-to-add-images
     """
     try:
-        service = _get_article_service()
         article = await service.get_article(slug)
 
         if not article:
