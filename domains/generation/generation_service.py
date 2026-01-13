@@ -28,7 +28,7 @@ from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from infrastructure.repositories import SupabaseAssetRepository
 from shared.ai.image_generator import generate_8_images
 from infrastructure.task_queue import task_queue
-from domains.platform.analytics_service import track_ai_generation
+from infrastructure.monitoring.analytics_tracker import track_ai_generation
 from domains.billing.value_objects import TransactionType, CreditBucket
 from domains.billing.exceptions import InsufficientCreditsException
 from application.services.generation_helpers import (

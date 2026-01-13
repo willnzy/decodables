@@ -118,10 +118,8 @@ from infrastructure.websocket import ws_manager
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 from shared.ai.story_generator import generate_story_json, client as openai_client # reuse client
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI prompt enhancement
-from domains.platform.analytics_service import (
-    track_event, track_ai_generation, track_payment, 
-    track_marketplace_action, track_project_action, AnalyticsEvents
-)
+# Note: Analytics tracking moved to infrastructure/monitoring/analytics_tracker.py
+# Import only when needed to avoid circular dependencies
 
 # Environment variables
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")

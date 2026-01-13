@@ -26,7 +26,7 @@ from domains.billing.payment_service import (
     get_tier_from_price_id,
     get_credits_amount,
 )
-from domains.platform.analytics_service import AnalyticsEvents, track_payment
+from infrastructure.monitoring.analytics_tracker import AnalyticsEvents, track_payment
 
 logger = logging.getLogger(__name__)
 

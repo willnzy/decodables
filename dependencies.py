@@ -262,3 +262,67 @@ async def optional_user(authorization: str = Header(None)):
 # Alias for backward compatibility
 get_current_user_optional = optional_user
 
+
+# ============================================================================
+# Analytics Service Dependency
+# ============================================================================
+
+from functools import lru_cache
+from domains.analytics import AnalyticsService, IAnalyticsRepository
+from infrastructure.repositories.analytics_events_repository import (
+    SupabaseAnalyticsEventsRepository
+)
+
+
+@lru_cache()
+def get_analytics_service() -> AnalyticsService:
+    """
+    Get Analytics Service singleton instance.
+    
+    This service provides a unified interface for analytics event tracking:
+    - Frontend batch events (process_and_save_events)
+    - Backend server-side tracking (track_event, track_ai_generation, etc.)
+    
+    Uses dependency injection with Repository pattern for clean architecture.
+    
+    Returns:
+        AnalyticsService: Singleton instance
+    """
+    import asyncio
+    
+    # Get async db client
+    # Note: We need to handle the async client initialization
+    try:
+        db_client = asyncio.run(get_async_db_client())
+    except RuntimeError:
+        # If event loop is already running, get client synchronously
+        from core.database import supabase
+        db_client = supabase
+    
+    repository: IAnalyticsRepository = SupabaseAnalyticsEventsRepository(db_client)
+    return AnalyticsService(repository)
+
+
+# Global singleton for non-FastAPI contexts
+# (e.g., background tasks, webhooks, domain services)
+analytics_service = None
+
+def get_global_analytics_service() -> AnalyticsService:
+    """
+    Get global analytics service instance (non-async initialization).
+    
+    Use this in contexts where FastAPI dependency injection is not available:
+    - Background tasks
+    - Webhook handlers
+    - Domain services
+    
+    Returns:
+        AnalyticsService: Global singleton instance
+    """
+    global analytics_service
+    if analytics_service is None:
+        from core.database import supabase
+        repository = SupabaseAnalyticsEventsRepository(supabase)
+        analytics_service = AnalyticsService(repository)
+    return analytics_service
+
