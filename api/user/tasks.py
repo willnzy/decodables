@@ -26,6 +26,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, Request, Path
 from pydantic import BaseModel
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from container import get_container
 from application.queries.tasks import GetTaskStatusQuery, CancelTaskCommand
@@ -72,7 +73,7 @@ class TaskCancelResponse(BaseModel):
 async def get_task_status(
     request: Request,
     task_id: str = Path(..., description="Task ID to query (UUID format)"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TaskStatusResponse:
     """
     Get background task status and progress.
@@ -172,7 +173,7 @@ async def get_task_status(
 
     query = GetTaskStatusQuery(
         task_id=task_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(query)
@@ -185,7 +186,7 @@ async def get_task_status(
 async def cancel_task(
     request: Request,
     task_id: str = Path(..., description="Task ID to cancel (UUID format)"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TaskCancelResponse:
     """
     Cancel a pending or queued background task.
@@ -255,7 +256,7 @@ async def cancel_task(
 
     command = CancelTaskCommand(
         task_id=task_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(command)

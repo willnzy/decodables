@@ -36,6 +36,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from container import get_container
 from application.commands.support import (
@@ -152,7 +153,7 @@ class ChatResponse(BaseModel):
 async def create_ticket(
     request: Request,
     req: SupportTicketRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> SupportResponse:
     """
     Create a support ticket for customer assistance.
@@ -205,10 +206,10 @@ async def create_ticket(
     container = get_container()
     handler = await container.create_support_ticket_handler()
 
-    email = req.email or user.get("email", "unknown@user.com")
+    email = req.email or user.email or "unknown@user.com"
 
     command = CreateSupportTicketCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         user_email=email,
         message=req.message,
     )
@@ -223,7 +224,7 @@ async def create_ticket(
 async def chat_support(
     request: Request,
     req: ChatSupportRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ChatResponse:
     """
     AI-powered support chat for instant assistance.
@@ -294,7 +295,7 @@ async def chat_support(
     handler = await container.ai_chat_support_handler()
 
     command = AiChatSupportCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         message=req.message,
         images=req.images,
         conversation_history=req.conversation_history,
@@ -314,7 +315,7 @@ async def chat_support(
 async def contact(
     request: Request,
     req: ContactRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> SupportResponse:
     """
     Submit contact form for general inquiries or business requests.
@@ -373,7 +374,7 @@ async def contact(
     handler = await container.send_contact_message_handler()
 
     command = SendContactMessageCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         name=req.name,
         email=req.email,
         message=req.message,
@@ -390,7 +391,7 @@ async def contact(
 async def feedback(
     request: Request,
     req: FeedbackRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> SupportResponse:
     """
     Submit user feedback for product improvement.
@@ -451,10 +452,10 @@ async def feedback(
     container = get_container()
     handler = await container.submit_feedback_handler()
 
-    email = req.email or user.get("email", "unknown@user.com")
+    email = req.email or user.email or "unknown@user.com"
 
     command = SubmitFeedbackCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         user_email=email,
         message=req.message,
         images=req.images,
