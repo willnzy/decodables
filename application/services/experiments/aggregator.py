@@ -244,8 +244,10 @@ def check_experiment_schedules():
     """
     检查并执行实验自动调度
     
-    - 自动启动到达 start_at 时间的实验
-    - 自动结束到达 end_at 时间的实验
+    - 自动启动到达 start_date 时间的实验
+    - 自动结束到达 end_date 时间的实验
+    
+    v3.31: 修复字段名 start_at/end_at → start_date/end_date (匹配数据库定义)
     """
     log("⏰ Checking experiment schedules...")
     
@@ -254,8 +256,8 @@ def check_experiment_schedules():
     # 1. 自动启动到期的实验
     pending_start = supabase.table("experiments").select("*")\
         .eq("status", "draft")\
-        .not_.is_("start_at", "null")\
-        .lte("start_at", now.isoformat()).execute()
+        .not_.is_("start_date", "null")\
+        .lte("start_date", now.isoformat()).execute()
     
     for experiment in pending_start.data or []:
         experiment_key = experiment.get("experiment_key")
@@ -272,8 +274,8 @@ def check_experiment_schedules():
     # 2. 自动结束到期的实验
     pending_end = supabase.table("experiments").select("*")\
         .eq("status", "running")\
-        .not_.is_("end_at", "null")\
-        .lte("end_at", now.isoformat()).execute()
+        .not_.is_("end_date", "null")\
+        .lte("end_date", now.isoformat()).execute()
     
     for experiment in pending_end.data or []:
         experiment_key = experiment.get("experiment_key")
@@ -306,9 +308,10 @@ def cleanup_old_assignments():
     cutoff_date = now - timedelta(days=90)
     
     # 获取已完成超过90天的实验
+    # v3.31: 修复字段名 end_at → end_date (匹配数据库定义)
     old_experiments = supabase.table("experiments").select("id, experiment_key")\
         .eq("status", "completed")\
-        .lt("end_at", cutoff_date.isoformat()).execute()
+        .lt("end_date", cutoff_date.isoformat()).execute()
     
     if not old_experiments.data:
         log("   No old experiments to clean up")

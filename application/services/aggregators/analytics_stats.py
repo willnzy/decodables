@@ -98,14 +98,15 @@ def aggregate_page_views():
         next_date = date + timedelta(days=1)
         
         # Count page_view events
-        views = supabase.table("user_events").select("properties")\
+        # v3.31: 修复字段名 properties → event_data (匹配数据库定义)
+        views = supabase.table("user_events").select("event_data")\
             .eq("event_type", "page_view")\
             .gte("created_at", date.isoformat())\
             .lt("created_at", next_date.isoformat()).execute()
         
         page_counts = defaultdict(int)
         for v in views.data or []:
-            props = v.get("properties") or {}
+            props = v.get("event_data") or {}
             page = props.get("page", "unknown")
             page_counts[page] += 1
         
@@ -171,7 +172,8 @@ def aggregate_performance_metrics():
     
     try:
         # Pull performance_metrics events from user_events
-        events = supabase.table("user_events").select("properties")\
+        # v3.31: 修复字段名 properties → event_data (匹配数据库定义)
+        events = supabase.table("user_events").select("event_data")\
             .eq("event_type", "performance_metrics")\
             .gte("created_at", start_date).execute()
         
@@ -193,7 +195,7 @@ def aggregate_performance_metrics():
         page_metrics = defaultdict(lambda: {"count": 0, "lcp_sum": 0, "fcp_sum": 0})
         
         for event in events.data or []:
-            props = event.get("properties", {})
+            props = event.get("event_data", {})
             page_url = props.get("page_url", "/")
             
             # Aggregate each metric value and capture rating buckets
