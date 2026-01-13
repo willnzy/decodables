@@ -57,7 +57,7 @@ class SupabaseSupportRepository:
         category: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Create a new support ticket."""
-        result = self.client.table("support_tickets").insert({
+        result = await self.client.table("support_tickets").insert({
             "user_id": user_id,
             "subject": subject,
             "message": message,
@@ -83,7 +83,7 @@ class SupabaseSupportRepository:
         if status:
             query = query.eq("status", status)
 
-        result = query.order("created_at", desc=True).limit(limit).execute()
+        result = await query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -98,7 +98,7 @@ class SupabaseSupportRepository:
         if admin_note:
             update_data["admin_note"] = admin_note
 
-        result = self.client.table("support_tickets").update(update_data).eq(
+        result = await self.client.table("support_tickets").update(update_data).eq(
             "id", ticket_id
         ).execute()
 
@@ -113,7 +113,7 @@ class SupabaseSupportRepository:
         is_admin: bool = False
     ) -> Optional[Dict[str, Any]]:
         """Add a reply to a ticket."""
-        result = self.client.table("support_replies").insert({
+        result = await self.client.table("support_replies").insert({
             "ticket_id": ticket_id,
             "user_id": user_id,
             "message": message,
@@ -144,14 +144,14 @@ class SupabaseSupportRepository:
             Exception: If user already reported this listing
         """
         # Check if user already reported this listing
-        existing = self.client.table("v_marketplace_reports").select("id").eq(
+        existing = await self.client.table("v_marketplace_reports").select("id").eq(
             "reporter_id", user_id
         ).eq("listing_id", listing_id).execute()
 
         if existing.data:
             raise Exception("You have already reported this listing")
 
-        result = self.client.table("v_marketplace_reports").insert({
+        result = await self.client.table("v_marketplace_reports").insert({
             "reporter_id": user_id,
             "listing_id": listing_id,
             "reason": reason,
@@ -182,7 +182,7 @@ class SupabaseSupportRepository:
         start = (page - 1) * limit
         end = start + limit - 1
 
-        result = self.client.table("v_marketplace_reports").select("*").eq(
+        result = await self.client.table("v_marketplace_reports").select("*").eq(
             "reporter_id", user_id
         ).order("created_at", desc=True).range(start, end).execute()
 
@@ -211,7 +211,7 @@ class SupabaseSupportRepository:
         start = (page - 1) * limit
         end = start + limit - 1
 
-        result = self.client.table("v_marketplace_reports").select(
+        result = await self.client.table("v_marketplace_reports").select(
             "*", count="exact"
         ).eq("reporter_id", user_id).order(
             "created_at", desc=True
