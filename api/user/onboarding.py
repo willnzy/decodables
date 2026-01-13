@@ -15,6 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from domains.onboarding import OnboardingService, OnboardingRepository
 from dependencies import get_current_user
 from core.database import get_async_db_client
@@ -45,7 +46,7 @@ def get_onboarding_service(
 
 @router.get("/steps")
 async def get_available_steps(
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: OnboardingService = Depends(get_onboarding_service)
 ):
     """
@@ -53,10 +54,10 @@ async def get_available_steps(
 
     返回所有符合用户层级的引导步骤及其进度
     """
-    user_tier = user.get("tier", "free")
+    user_tier = user.tier.value if hasattr(user.tier, 'value') else user.tier
 
     steps = await service.get_available_steps(
-        user_id=user["id"],
+        user_id=user.user_id,
         user_tier=user_tier
     )
 
@@ -69,7 +70,7 @@ async def get_available_steps(
 @router.post("/steps/start")
 async def start_step(
     request: StepActionRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: OnboardingService = Depends(get_onboarding_service)
 ):
     """
@@ -78,7 +79,7 @@ async def start_step(
     创建进度记录,标记为pending状态
     """
     progress = await service.start_step(
-        user_id=user["id"],
+        user_id=user.user_id,
         step_key=request.step_key
     )
 
@@ -94,7 +95,7 @@ async def start_step(
 @router.post("/steps/complete")
 async def complete_step(
     request: StepActionRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: OnboardingService = Depends(get_onboarding_service)
 ):
     """
@@ -103,7 +104,7 @@ async def complete_step(
     更新进度为completed,记录完成时间
     """
     progress = await service.complete_step(
-        user_id=user["id"],
+        user_id=user.user_id,
         step_key=request.step_key
     )
 
@@ -122,7 +123,7 @@ async def complete_step(
 @router.post("/steps/skip")
 async def skip_step(
     request: StepActionRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: OnboardingService = Depends(get_onboarding_service)
 ):
     """
@@ -131,7 +132,7 @@ async def skip_step(
     更新进度为skipped,记录跳过时间
     """
     progress = await service.skip_step(
-        user_id=user["id"],
+        user_id=user.user_id,
         step_key=request.step_key
     )
 
@@ -149,7 +150,7 @@ async def skip_step(
 
 @router.get("/checklist")
 async def get_checklist_progress(
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     service: OnboardingService = Depends(get_onboarding_service)
 ):
     """
@@ -161,10 +162,10 @@ async def get_checklist_progress(
     - 完成百分比
     - 各步骤详情
     """
-    user_tier = user.get("tier", "free")
+    user_tier = user.tier.value if hasattr(user.tier, 'value') else user.tier
 
     checklist = await service.get_checklist_progress(
-        user_id=user["id"],
+        user_id=user.user_id,
         user_tier=user_tier
     )
 

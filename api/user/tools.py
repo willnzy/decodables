@@ -28,6 +28,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from pydantic import BaseModel
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from container import get_container
 from application.commands.tools import PdfPreviewCommand, OcrCommand
@@ -90,7 +91,7 @@ class OcrResponse(BaseModel):
 async def pdf_preview(
     request: Request,
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> PdfPreviewResponse:
     """
     Convert PDF to page preview images.
@@ -119,7 +120,7 @@ async def ocr_tool(
     request: Request,
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> OcrResponse:
     """
     Advanced OCR endpoint - detects tables, text, and images.
@@ -132,7 +133,7 @@ async def ocr_tool(
     is_trial = is_user_in_trial(user, trial_days=TRIAL_DAYS)
 
     # Get timezone for asset storage
-    timezone = get_request_timezone(request, user_id=user.get("id"))
+    timezone = get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
     handler = await container.ocr_handler()
@@ -148,7 +149,7 @@ async def ocr_tool(
     result = await handler.handle(command)
 
     # Log activity
-    log_activity(user["id"], "ocr_process", {
+    log_activity(user.user_id, "ocr_process", {
         "filename": file.filename,
         "project_id": project_id,
     })
