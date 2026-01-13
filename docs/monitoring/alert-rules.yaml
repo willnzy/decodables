@@ -1,0 +1,323 @@
+# Grafana Alert Rules for User Creation Monitoring
+# 用户创建监控告警规则
+#
+# 使用方式：
+# 1. 在 Grafana > Alerting > Alert rules 中导入
+# 2. 或使用 Grafana API 自动部署
+# 3. 配置通知渠道（Slack/Email/PagerDuty）
+#
+# 参考：https://grafana.com/docs/grafana/latest/alerting/
+
+apiVersion: 1
+
+groups:
+  - name: user_creation_health
+    interval: 1m
+    rules:
+      # 告警 1: Webhook 成功率低
+      - uid: webhook_success_rate_low
+        title: "⚠️ Webhook Success Rate Low"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: postgresql_datasource
+            model:
+              rawSql: "SELECT webhook_success_rate FROM get_user_creation_stats(7);"
+              format: table
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    params: [90]
+                    type: lt
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          description: "Webhook 创建成功率低于 90%。当前值: {{ humanize $values.B.Value }}%"
+          summary: "Webhook 健康度下降，可能影响用户注册体验"
+          runbook_url: "https://docs.example.com/runbooks/webhook-success-rate-low"
+        labels:
+          severity: warning
+          team: backend
+          component: user-creation
+        isPaused: false
+      
+      # 告警 2: JIT Fallback 率高
+      - uid: jit_fallback_rate_high
+        title: "⚠️ JIT Fallback Rate High"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: postgresql_datasource
+            model:
+              rawSql: "SELECT jit_fallback_rate FROM get_user_creation_stats(7);"
+              format: table
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    params: [10]
+                    type: gt
+        noDataState: NoData
+        execErrState: Alerting
+        for: 10m
+        annotations:
+          description: "JIT Fallback 率超过 10%。当前值: {{ humanize $values.B.Value }}%"
+          summary: "Webhook 延迟严重，大量请求触发 JIT 安全网"
+          runbook_url: "https://docs.example.com/runbooks/jit-fallback-rate-high"
+        labels:
+          severity: warning
+          team: backend
+          component: user-creation
+        isPaused: false
+      
+      # 告警 3: 用户创建错误
+      - uid: user_creation_errors
+        title: "🔴 User Creation Errors Detected"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: postgresql_datasource
+            model:
+              rawSql: "SELECT errors FROM get_user_creation_stats(7);"
+              format: table
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+        noDataState: OK
+        execErrState: Alerting
+        for: 1m
+        annotations:
+          description: "检测到用户创建错误。错误数: {{ humanize $values.B.Value }}"
+          summary: "用户创建失败，需要立即调查"
+          runbook_url: "https://docs.example.com/runbooks/user-creation-errors"
+        labels:
+          severity: critical
+          team: backend
+          component: user-creation
+        isPaused: false
+      
+      # 告警 4: 系统健康评分低
+      - uid: system_health_score_low
+        title: "⚠️ System Health Score Low"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: postgresql_datasource
+            model:
+              rawSql: |
+                WITH stats AS (
+                  SELECT webhook_success_rate, jit_fallback_rate 
+                  FROM get_user_creation_stats(7)
+                )
+                SELECT 
+                  CASE 
+                    WHEN webhook_success_rate > 95 AND jit_fallback_rate < 5 THEN 100
+                    WHEN webhook_success_rate > 90 AND jit_fallback_rate < 10 THEN 80
+                    WHEN webhook_success_rate > 85 THEN 60
+                    ELSE 40
+                  END as health_score
+                FROM stats;
+              format: table
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    params: [80]
+                    type: lt
+        noDataState: NoData
+        execErrState: Alerting
+        for: 15m
+        annotations:
+          description: "系统健康评分低于 80。当前评分: {{ humanize $values.B.Value }}"
+          summary: "用户创建系统整体健康度下降"
+          runbook_url: "https://docs.example.com/runbooks/system-health-low"
+        labels:
+          severity: warning
+          team: backend
+          component: user-creation
+        isPaused: false
+      
+      # 告警 5: 日志表过大
+      - uid: log_table_size_large
+        title: "⚠️ Log Table Size Large"
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: postgresql_datasource
+            model:
+              rawSql: |
+                SELECT 
+                  total_rows
+                FROM get_log_tables_stats()
+                WHERE table_name = 'user_creation_logs';
+              format: table
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    params: [100000]  # 10万行
+                    type: gt
+        noDataState: OK
+        execErrState: OK
+        for: 1h
+        annotations:
+          description: "user_creation_logs 表超过 10 万行。当前行数: {{ humanize $values.B.Value }}"
+          summary: "日志表增长过快，需要检查清理任务"
+          runbook_url: "https://docs.example.com/runbooks/log-table-size-large"
+        labels:
+          severity: info
+          team: backend
+          component: maintenance
+        isPaused: false
+
+# 通知渠道配置
+contactPoints:
+  - name: slack-backend-alerts
+    type: slack
+    settings:
+      url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+      title: "{{ .GroupLabels.alertname }}"
+      text: "{{ .Annotations.summary }}\n\n{{ .Annotations.description }}"
+    disableResolveMessage: false
+  
+  - name: email-dev-team
+    type: email
+    settings:
+      addresses: "dev-team@example.com"
+      singleEmail: true
+    disableResolveMessage: false
+  
+  - name: pagerduty-oncall
+    type: pagerduty
+    settings:
+      integrationKey: "YOUR_PAGERDUTY_INTEGRATION_KEY"
+      severity: "critical"
+    disableResolveMessage: false
+
+# 通知策略
+policies:
+  - match:
+      severity: critical
+    continue: true
+    group_by: ["alertname", "component"]
+    group_wait: 10s
+    group_interval: 5m
+    repeat_interval: 4h
+    receiver: pagerduty-oncall
+    routes:
+      - match:
+          team: backend
+        receiver: slack-backend-alerts
+  
+  - match:
+      severity: warning
+    continue: false
+    group_by: ["alertname", "component"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 12h
+    receiver: slack-backend-alerts
+  
+  - match:
+      severity: info
+    continue: false
+    group_by: ["alertname"]
+    group_wait: 5m
+    group_interval: 1h
+    repeat_interval: 24h
+    receiver: email-dev-team

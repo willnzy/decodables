@@ -170,6 +170,19 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                         "email": user_profile.email
                     }
                 )
+                
+                # ✅ Sentry: 捕获成功创建事件（INFO 级别）
+                try:
+                    from core.monitoring.sentry_helpers import SentryMonitoring, SentryLevel
+                    SentryMonitoring.capture_user_creation_event(
+                        event_type="created",
+                        user_id=user_profile.user_id,
+                        source=source,
+                        level=SentryLevel.INFO,
+                        extra_context={"email": user_profile.email}
+                    )
+                except Exception:
+                    pass
             else:
                 logger.info(
                     f"ℹ️ User {user_profile.user_id} already exists "
@@ -181,20 +194,105 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                         "action": "duplicate_attempt"
                     }
                 )
+                
+                # ✅ Sentry: 捕获重复创建尝试（INFO 级别）
+                try:
+                    from core.monitoring.sentry_helpers import capture_duplicate_creation
+                    capture_duplicate_creation(user_profile.user_id, source, created_by)
+                except Exception:
+                    pass
             
             return profile, was_created
             
-        except Exception as e:
+        except Exception as rpc_error:
             logger.error(
-                f"❌ Failed to create/get user {user_profile.user_id} via {source}: {e}",
+                f"❌ RPC create_user_idempotent failed for {user_profile.user_id}: {rpc_error}",
                 extra={
                     "user_id": user_profile.user_id,
                     "source": source,
-                    "error": str(e)
+                    "error": str(rpc_error),
+                    "fallback": "attempting_graceful_degradation"
                 },
                 exc_info=True
             )
-            raise
+            
+            # ✅ Graceful Degradation: Fallback to application-level logic
+            try:
+                logger.info(
+                    f"🔄 Attempting fallback for user {user_profile.user_id}...",
+                    extra={"user_id": user_profile.user_id, "source": source}
+                )
+                
+                # 1. Try to get existing user
+                existing = await self.get_by_id(user_profile.user_id)
+                if existing:
+                    logger.info(
+                        f"✅ Fallback: User {user_profile.user_id} found (already exists)",
+                        extra={
+                            "user_id": user_profile.user_id,
+                            "fallback": "get_by_id_success"
+                        }
+                    )
+                    return existing, False  # User already exists
+                
+                # 2. Try to create user
+                try:
+                    # Generate user_code if not provided
+                    if not user_profile.user_code:
+                        user_profile.user_code = await self.generate_user_code()
+                    
+                    created = await self.create(user_profile)
+                    logger.info(
+                        f"✅ Fallback: User {user_profile.user_id} created successfully",
+                        extra={
+                            "user_id": user_profile.user_id,
+                            "fallback": "create_success"
+                        }
+                    )
+                    return created, True  # User newly created
+                    
+                except UserAlreadyExistsException:
+                    # Race condition: user was created between get_by_id and create
+                    logger.info(
+                        f"ℹ️ Fallback: User {user_profile.user_id} created by another process",
+                        extra={
+                            "user_id": user_profile.user_id,
+                            "fallback": "race_condition_handled"
+                        }
+                    )
+                    existing = await self.get_by_id(user_profile.user_id)
+                    if existing:
+                        return existing, False
+                    else:
+                        raise Exception("User exists but could not be retrieved")
+                
+            except Exception as fallback_error:
+                logger.error(
+                    f"❌ Fallback also failed for {user_profile.user_id}: {fallback_error}",
+                    extra={
+                        "user_id": user_profile.user_id,
+                        "source": source,
+                        "rpc_error": str(rpc_error),
+                        "fallback_error": str(fallback_error)
+                    },
+                    exc_info=True
+                )
+                
+                # ✅ Sentry: 捕获关键错误（使用统一的辅助函数）
+                try:
+                    from core.monitoring.sentry_helpers import capture_creation_error
+                    capture_creation_error(
+                        user_id=user_profile.user_id,
+                        source=source,
+                        error=rpc_error,
+                        fallback_attempted=True,
+                        fallback_success=False
+                    )
+                except Exception:
+                    pass  # Don't let Sentry errors break the flow
+                
+                # Re-raise original RPC error
+                raise rpc_error
 
     async def update(self, user_profile: UserProfile) -> UserProfile:
         """Update existing user profile."""

@@ -102,6 +102,14 @@ async def get_current_user(authorization: str = Header(None)):
             }
         )
         
+        # ✅ Sentry: 捕获 JIT Fallback 事件（需要关注）
+        try:
+            from core.monitoring.sentry_helpers import capture_jit_fallback
+            email = payload.get("email") or payload.get("primary_email") or "unknown"
+            capture_jit_fallback(user_id, email, reason="webhook_not_arrived")
+        except Exception:
+            pass  # Don't let Sentry errors break the flow
+        
         # Extract user info from JWT payload
         # Clerk JWT typically includes these fields in sessionClaims
         email = payload.get("email") or payload.get("primary_email") or ""

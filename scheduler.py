@@ -93,6 +93,36 @@ def run_daily_aggregation():
         logger.error(f"[{datetime.now()}] ❌ Experiment daily tasks failed: {e}")
 
 
+def run_daily_maintenance():
+    """Run daily database maintenance tasks (v3.30)"""
+    logger.info(f"[{datetime.now()}] 🔧 Starting daily maintenance tasks...")
+    
+    try:
+        import asyncio
+        from application.services.maintenance_scheduler import MaintenanceScheduler
+        
+        # Run maintenance in async context
+        asyncio.run(MaintenanceScheduler.run_daily_maintenance())
+        logger.info(f"[{datetime.now()}] ✅ Daily maintenance complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Daily maintenance failed: {e}")
+
+
+def run_weekly_maintenance():
+    """Run weekly database maintenance tasks (v3.30)"""
+    logger.info(f"[{datetime.now()}] 🔧 Starting weekly maintenance tasks...")
+    
+    try:
+        import asyncio
+        from application.services.maintenance_scheduler import MaintenanceScheduler
+        
+        # Run maintenance in async context
+        asyncio.run(MaintenanceScheduler.run_weekly_maintenance())
+        logger.info(f"[{datetime.now()}] ✅ Weekly maintenance complete")
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Weekly maintenance failed: {e}")
+
+
 def run_storage_cleanup():
     """Run storage cleanup task (v3.18)"""
     logger.info(f"[{datetime.now()}] 🧹 Starting storage cleanup...")
@@ -200,6 +230,24 @@ def init_scheduler():
         replace_existing=True,
         misfire_grace_time=600  # 10 minutes grace period
     )
+    
+    # v3.30: Daily maintenance task - run at 4:00 AM UTC
+    scheduler.add_job(
+        run_daily_maintenance,
+        CronTrigger(hour=4, minute=0),  # 4:00 AM UTC
+        id="daily_maintenance",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+    
+    # v3.30: Weekly maintenance task - run every Sunday at 5:00 AM UTC
+    scheduler.add_job(
+        run_weekly_maintenance,
+        CronTrigger(day_of_week='sun', hour=5, minute=0),  # Sunday 5:00 AM UTC
+        id="weekly_maintenance",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
 
     # Start the scheduler
     scheduler.start()
@@ -207,6 +255,8 @@ def init_scheduler():
     logger.info("   - Hourly aggregation: every hour at :05")
     logger.info("   - Daily aggregation: 2:00 AM UTC")
     logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
+    logger.info("   - Daily maintenance: 4:00 AM UTC (v3.30)")
+    logger.info("   - Weekly maintenance: Sunday 5:00 AM UTC (v3.30)")
     logger.info("   - Webhook retry: every hour at :15 (P3-022)")
 
 def shutdown_scheduler():

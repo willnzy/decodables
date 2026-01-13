@@ -1,0 +1,227 @@
+{
+  "dashboard": {
+    "title": "User Creation Monitoring (Webhook Health)",
+    "tags": ["user-creation", "webhooks", "monitoring"],
+    "timezone": "utc",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-7d",
+      "to": "now"
+    },
+    "refresh": "1m",
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat",
+        "title": "Webhook Success Rate (7 Days)",
+        "description": "目标: >95%",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT webhook_success_rate FROM get_user_creation_stats(7);",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 90, "color": "yellow" },
+                { "value": 95, "color": "green" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "JIT Fallback Rate (7 Days)",
+        "description": "目标: <5%",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT jit_fallback_rate FROM get_user_creation_stats(7);",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 }
+      },
+      {
+        "id": 3,
+        "type": "stat",
+        "title": "Total Users (7 Days)",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT total_users FROM get_user_creation_stats(7);",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 }
+      },
+      {
+        "id": 4,
+        "type": "stat",
+        "title": "Errors (7 Days)",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT errors FROM get_user_creation_stats(7);",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 }
+      },
+      {
+        "id": 5,
+        "type": "timeseries",
+        "title": "User Creation Trend (By Day)",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT DATE(created_at) as time, created_by, COUNT(*) as value FROM profiles WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY DATE(created_at), created_by ORDER BY time;",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 }
+      },
+      {
+        "id": 6,
+        "type": "piechart",
+        "title": "Creation Source Distribution",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT created_by as metric, COUNT(*) as value FROM profiles WHERE created_at >= NOW() - INTERVAL '7 days' GROUP BY created_by;",
+            "format": "table"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 4, "w": 8, "h": 8 }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "Duplicate Creation Attempts",
+        "description": "重复尝试次数（race condition 频率）",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT DATE(created_at) as time, COUNT(*) as value FROM user_creation_logs WHERE action = 'duplicate_attempt' AND created_at >= NOW() - INTERVAL '30 days' GROUP BY DATE(created_at) ORDER BY time;",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars"
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 }
+      },
+      {
+        "id": 8,
+        "type": "table",
+        "title": "Recent Error Logs (Last 24h)",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT created_at as time, operation, error_message, details FROM error_logs WHERE created_at >= NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 50;",
+            "format": "table"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 }
+      },
+      {
+        "id": 9,
+        "type": "gauge",
+        "title": "System Health Score",
+        "description": "基于 Webhook 成功率和 JIT 回退率计算",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "WITH stats AS (SELECT webhook_success_rate, jit_fallback_rate FROM get_user_creation_stats(7)) SELECT CASE WHEN webhook_success_rate > 95 AND jit_fallback_rate < 5 THEN 100 WHEN webhook_success_rate > 90 AND jit_fallback_rate < 10 THEN 80 WHEN webhook_success_rate > 85 THEN 60 ELSE 40 END as health_score FROM stats;",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 60, "color": "yellow" },
+                { "value": 80, "color": "light-green" },
+                { "value": 95, "color": "green" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "x": 0, "y": 18, "w": 6, "h": 6 }
+      },
+      {
+        "id": 10,
+        "type": "table",
+        "title": "Log Tables Statistics",
+        "targets": [
+          {
+            "datasource": "PostgreSQL",
+            "rawSql": "SELECT * FROM get_log_tables_stats();",
+            "format": "table"
+          }
+        ],
+        "gridPos": { "x": 6, "y": 18, "w": 14, "h": 6 }
+      }
+    ]
+  },
+  "description": "监控用户创建健康度，包括 Webhook 成功率、JIT 回退率、错误日志等关键指标。",
+  "version": 1
+}
