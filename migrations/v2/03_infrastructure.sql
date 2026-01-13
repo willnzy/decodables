@@ -1847,7 +1847,7 @@ $$ LANGUAGE plpgsql;
 -- - 这提供了安全深度防御：即使 anon key 泄露，也无法访问数据
 -- ============================================================================
 
--- 01_core_business.sql 中的表 (26个)
+-- 01_core_business.sql 中的表 (28个，包含监控日志表)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asset_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asset_tags ENABLE ROW LEVEL SECURITY;
@@ -1874,6 +1874,9 @@ ALTER TABLE system_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_discounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_generations ENABLE ROW LEVEL SECURITY;
+-- 监控日志表（RPC 和用户创建）
+ALTER TABLE system_error_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_creation_logs ENABLE ROW LEVEL SECURITY;
 
 -- 02_platform_services.sql 中的表 (31个)
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
