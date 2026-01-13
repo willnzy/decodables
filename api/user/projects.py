@@ -246,10 +246,12 @@ async def dashboard_projects(
         raise HTTPException(500, "Failed to get dashboard projects")
 
     # P2-002: Return Pydantic model
+    # v3.31: 计算 offset 以保持响应格式兼容
+    calculated_offset = (page - 1) * limit
     return DashboardProjectsResponse(
         items=result.data.get("items", []),
         total=result.data.get("total", 0),
-        offset=result.data.get("offset", offset),
+        offset=result.data.get("offset", calculated_offset),
         limit=result.data.get("limit", limit),
         view=view,
     )
