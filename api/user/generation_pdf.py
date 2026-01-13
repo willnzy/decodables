@@ -25,6 +25,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 
+from domains.identity.aggregates.user_profile import UserProfile
 from core.database.dependencies import get_async_db
 from infrastructure.repositories.project_repository import SupabaseProjectRepository
 from infrastructure.rate_limiter import limiter
@@ -60,7 +61,7 @@ async def get_pdf_service(db = Depends(get_async_db)) -> PdfGenerationService:
 async def gen_pdf(
     request: Request,
     req: PdfGenRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     pdf_service: PdfGenerationService = Depends(get_pdf_service),  # v3.26: DI
 ):
     """
@@ -81,7 +82,7 @@ async def gen_pdf(
     # v3.26: Generate PDF via Service (DDD compliant)
     try:
         buf = await pdf_service.generate_pdf(
-            user_id=user["id"],
+            user_id=user.user_id,
             project_id=req.project_id,
             current_hash=req.current_hash,
             image_urls=req.image_urls,

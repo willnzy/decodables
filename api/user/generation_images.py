@@ -31,6 +31,7 @@ Endpoints:
 import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
+from domains.identity.aggregates.user_profile import UserProfile
 from core.database import get_async_db_client
 from infrastructure.repositories import SupabaseAssetRepository
 from container import get_container
@@ -83,7 +84,7 @@ async def get_generation_service() -> GenerationService:
 async def gen_images(
     request: Request,
     req: ImageGenRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     generation_service: GenerationService = Depends(get_generation_service),  # v3.28: DI
 ):
     """
@@ -130,7 +131,7 @@ async def gen_images(
         style=req.style or "cartoon",
         mode=generation_mode,
         creativity_level=creativity_level,
-        user_id=user["id"],
+        user_id=user.user_id,
         tier=tier,
         who=req.who,
         what=req.what,
@@ -146,7 +147,7 @@ async def gen_images(
     # v3.28: Generate images via Service (DDD compliant)
     try:
         result = await generation_service.generate_images_sync(
-            user_id=user["id"],
+            user_id=user.user_id,
             prompts=req.prompts,
             num_images=num_images,
             model=model,
@@ -196,7 +197,7 @@ async def gen_images(
 async def gen_images_async(
     request: Request,
     req: ImageGenRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     generation_service: GenerationService = Depends(get_generation_service),  # v3.28: DI
 ):
     """
@@ -234,7 +235,7 @@ async def gen_images_async(
         style=req.style or "cartoon",
         mode=generation_mode,
         creativity_level=creativity_level,
-        user_id=user["id"],
+        user_id=user.user_id,
         tier=tier,
         who=req.who,
         what=req.what,
@@ -249,7 +250,7 @@ async def gen_images_async(
     # v3.28: Async generation via Service (DDD compliant)
     try:
         result = await generation_service.generate_images_async(
-            user_id=user["id"],
+            user_id=user.user_id,
             prompts=req.prompts,
             num_images=num_images,
             model=model,
