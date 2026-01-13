@@ -49,7 +49,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
     @retry_on_network_error()
     async def get_by_id(self, category_id: str) -> Optional[Dict[str, Any]]:
         """Get category by ID."""
-        result = self.client.table("asset_categories")\
+        result = await self.client.table("asset_categories")\
             .select("*")\
             .eq("id", category_id)\
             .is_("deleted_at", "null")\
@@ -61,7 +61,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
     @retry_on_network_error()
     async def get_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         """Get category by slug."""
-        result = self.client.table("asset_categories")\
+        result = await self.client.table("asset_categories")\
             .select("*")\
             .eq("slug", slug)\
             .is_("deleted_at", "null")\
@@ -98,7 +98,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
                      .order("display_order", desc=False)\
                      .range(offset, offset + limit - 1)
 
-        result = query.execute()
+        result = await query.execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -124,7 +124,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
         query = query.order("path", desc=False)\
                      .order("display_order", desc=False)
 
-        result = query.execute()
+        result = await query.execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -150,14 +150,14 @@ class SupabaseCategoryRepository(ICategoryRepository):
         if recursive:
             # Get all descendants using LTREE <@ operator
             # This uses PostgreSQL RPC for LTREE queries
-            result = self.client.rpc(
+            result = await self.client.rpc(
                 "get_category_descendants",
                 {"parent_path_input": parent_path}
             ).execute()
             return result.data or []
         else:
             # Get only direct children
-            result = self.client.table("asset_categories")\
+            result = await self.client.table("asset_categories")\
                 .select("*")\
                 .eq("parent_id", parent["id"])\
                 .is_("deleted_at", "null")\
@@ -185,7 +185,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
         # Add updated_at timestamp
         updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        result = self.client.table("asset_categories")\
+        result = await self.client.table("asset_categories")\
             .update(updates)\
             .eq("id", category_id)\
             .execute()
@@ -228,7 +228,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
 
-        result = self.client.table("asset_categories")\
+        result = await self.client.table("asset_categories")\
             .update(updates)\
             .eq("id", category["id"])\
             .execute()
@@ -249,7 +249,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
 
         Uses PostgreSQL RPC function for efficient LTREE path updates.
         """
-        result = self.client.rpc(
+        result = await self.client.rpc(
             "update_category_descendants_path",
             {
                 "old_path_input": old_path,
@@ -265,7 +265,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
         """Delete a category (soft delete)."""
         if not cascade:
             # Check if category has children
-            result = self.client.table("asset_categories")\
+            result = await self.client.table("asset_categories")\
                 .select("id")\
                 .eq("parent_id", category_id)\
                 .is_("deleted_at", "null")\
@@ -286,7 +286,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
             "updated_at": now.isoformat()
         }
 
-        self.client.table("asset_categories")\
+        await self.client.table("asset_categories")\
             .update(updates)\
             .eq("id", category_id)\
             .execute()
@@ -296,7 +296,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
             category = await self.get_by_id(category_id)
             if category:
                 # Use RPC to delete all descendants
-                self.client.rpc(
+                await self.client.rpc(
                     "soft_delete_category_descendants",
                     {"parent_path_input": category["path"]}
                 ).execute()
@@ -306,7 +306,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
     @retry_on_network_error()
     async def count_by_asset_type(self) -> Dict[str, int]:
         """Count categories grouped by asset type."""
-        result = self.client.table("asset_categories")\
+        result = await self.client.table("asset_categories")\
             .select("asset_type")\
             .is_("deleted_at", "null")\
             .execute()
@@ -321,7 +321,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
     @retry_on_network_error()
     async def update_asset_count(self, category_id: str, count: int) -> bool:
         """Update the asset_count field for a category."""
-        self.client.table("asset_categories")\
+        await self.client.table("asset_categories")\
             .update({
                 "asset_count": count,
                 "updated_at": datetime.now(timezone.utc).isoformat()
@@ -335,7 +335,7 @@ class SupabaseCategoryRepository(ICategoryRepository):
     async def increment_usage_count(self, category_id: str) -> bool:
         """Increment the usage_count field by 1."""
         # Use PostgreSQL increment RPC
-        self.client.rpc(
+        await self.client.rpc(
             "increment_category_usage",
             {"category_id_input": category_id}
         ).execute()
