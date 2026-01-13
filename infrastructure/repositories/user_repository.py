@@ -90,9 +90,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
         try:
             data = self._map_to_row(user_profile)
-            result = await self.client.table("profiles").insert(data).select("*").single().execute()
+            result = await self.client.table("profiles").insert(data).execute()
 
-            return self._map_to_entity(result.data)
+            if not result.data:
+                raise Exception("Failed to create user - no data returned")
+
+            return self._map_to_entity(result.data[0])
 
         except Exception as e:
             logger.error(f"Failed to create user {user_profile.user_id}: {e}")
