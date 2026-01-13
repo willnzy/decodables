@@ -173,7 +173,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                 
                 # ✅ Sentry: 捕获成功创建事件（INFO 级别）
                 try:
-                    from core.monitoring.sentry_helpers import SentryMonitoring, SentryLevel
+                    from infrastructure.monitoring.sentry_helpers import SentryMonitoring, SentryLevel
                     SentryMonitoring.capture_user_creation_event(
                         event_type="created",
                         user_id=user_profile.user_id,
@@ -197,7 +197,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                 
                 # ✅ Sentry: 捕获重复创建尝试（INFO 级别）
                 try:
-                    from core.monitoring.sentry_helpers import capture_duplicate_creation
+                    from infrastructure.monitoring.sentry_helpers import capture_duplicate_creation
                     capture_duplicate_creation(user_profile.user_id, source, created_by)
                 except Exception:
                     pass
@@ -280,7 +280,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                 
                 # ✅ Sentry: 捕获关键错误（使用统一的辅助函数）
                 try:
-                    from core.monitoring.sentry_helpers import capture_creation_error
+                    from infrastructure.monitoring.sentry_helpers import capture_creation_error
                     capture_creation_error(
                         user_id=user_profile.user_id,
                         source=source,

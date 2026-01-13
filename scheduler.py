@@ -99,7 +99,7 @@ def run_daily_maintenance():
     
     try:
         import asyncio
-        from application.services.maintenance_scheduler import MaintenanceScheduler
+        from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
         
         # Run maintenance in async context
         asyncio.run(MaintenanceScheduler.run_daily_maintenance())
@@ -114,7 +114,7 @@ def run_weekly_maintenance():
     
     try:
         import asyncio
-        from application.services.maintenance_scheduler import MaintenanceScheduler
+        from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
         
         # Run maintenance in async context
         asyncio.run(MaintenanceScheduler.run_weekly_maintenance())

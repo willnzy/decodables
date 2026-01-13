@@ -243,7 +243,7 @@ class MaintenanceScheduler:
         
         # ✅ Sentry: 捕获维护任务完成事件
         try:
-            from core.monitoring.sentry_helpers import SentryMonitoring, SentryLevel
+            from infrastructure.monitoring.sentry_helpers import SentryMonitoring, SentryLevel
             SentryMonitoring.capture_maintenance_event(
                 task_name="daily_maintenance",
                 result={
