@@ -190,6 +190,29 @@ WHERE table_schema = 'public'
 
 ---
 
+## 🔧 HOTFIX 脚本
+
+在已部署的数据库上应用增量修复（按需执行）：
+
+| 脚本文件 | 问题描述 | 执行时机 |
+|---------|---------|----------|
+| `HOTFIX_enable_rls_missing_tables.sql` | 为 system_error_logs 和 user_creation_logs 启用 RLS | 如果在 Supabase 中看到 UNRESTRICTED 警告 |
+| `HOTFIX_add_target_user_id.sql` | 为 admin_operations 添加 target_user_id 列 | 如果看到 PGRST204 错误（找不到 target_user_id 列） |
+
+**执行方法**:
+```bash
+# 连接数据库并执行 HOTFIX
+psql -h your-host -U postgres -d your-database -f HOTFIX_enable_rls_missing_tables.sql
+psql -h your-host -U postgres -d your-database -f HOTFIX_add_target_user_id.sql
+```
+
+**特点**:
+- ✅ 所有 HOTFIX 脚本都是幂等的，可以安全地重复执行
+- ✅ 包含验证步骤，执行后会显示验证结果
+- ✅ 不会影响现有数据
+
+---
+
 ## 🔄 事务控制
 
 每个文件都包含完整的事务控制：
