@@ -54,7 +54,7 @@ decodables/migrations/v2/
 
 | 文件 | 表数量 | 内容 | 状态 |
 |------|--------|------|------|
-| **01_core_business.sql** | 25 | profiles, projects, credits, marketplace, system_resources, asset_categories | ✅ 主文件 |
+| **01_core_business.sql** | 26 | profiles, projects, credits, marketplace, system_resources, asset_categories, system_error_logs | ✅ 主文件 |
 | **02_platform_services.sql** | 32 | system_configs, feature_flags, experiments, events, notifications | ✅ 主文件 |
 | **03_infrastructure.sql** | 12 | error_logs, task_queues, analytics, support_tickets | ✅ 主文件 |
 
@@ -266,6 +266,17 @@ git commit -m "feat(db): add new table"
 **责任人**: 开发团队
 **最后更新**: 2026-01-11
 **版本**: v2.1
+
+**重要更新 (2026-01-13)**:
+- ✅ **错误日志表分离** - 拆分为两个独立的表，各司其职
+  - `error_logs` (03_infrastructure.sql) - **应用层错误日志**（30+ 字段）
+    - 用途: 前端/后端 API 错误、网络错误、JS 错误
+    - 主键: UUID
+    - 字段: error_id, error_type, message, stack_trace, page_url, user_agent, session_id 等
+  - `system_error_logs` (01_core_business.sql) - **数据库层系统错误**（5 字段）
+    - 用途: RPC 函数内部异常记录（如 `create_user_idempotent` 失败）
+    - 主键: BIGSERIAL
+    - 字段: operation, error_message, details
 
 **重要更新 (2026-01-12)**:
 - ✅ **error_logs 表扩展** - 新增 14 个前端错误日志字段 (支持 errorLogger.ts)
@@ -965,7 +976,7 @@ USING (is_public = true AND status = 'published');
 
 ### 问题背景
 
-日志表（`user_creation_logs`, `error_logs`, `activity_logs`）会随着系统运行不断增长，如果不定期清理，会导致：
+日志表（`user_creation_logs`, `error_logs`, `system_error_logs`, `activity_logs`）会随着系统运行不断增长，如果不定期清理，会导致：
 
 - ❌ 数据库存储空间不断增长
 - ❌ 查询性能下降

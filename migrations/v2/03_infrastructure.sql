@@ -34,7 +34,7 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 -- 1. admin_operations
 -- ----------------------------------------------------------------------------
-CREATE TABLE admin_operations (
+CREATE TABLE IF NOT EXISTS admin_operations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     admin_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     operation_type TEXT NOT NULL,
@@ -70,17 +70,17 @@ CREATE TABLE admin_operations (
     )
 );
 
-CREATE INDEX idx_admin_operations_admin_id ON admin_operations(admin_id, created_at DESC);
-CREATE INDEX idx_admin_operations_operation_type ON admin_operations(operation_type, created_at DESC);
-CREATE INDEX idx_admin_operations_target ON admin_operations(target_type, target_id);
-CREATE INDEX idx_admin_operations_created_at ON admin_operations(created_at DESC);
-CREATE INDEX idx_admin_operations_failed ON admin_operations(created_at DESC) WHERE status = 'failed';
+CREATE INDEX IF NOT EXISTS idx_admin_operations_admin_id ON admin_operations(admin_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_operation_type ON admin_operations(operation_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_target ON admin_operations(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_created_at ON admin_operations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_operations_failed ON admin_operations(created_at DESC) WHERE status = 'failed';
 
 
 -- ----------------------------------------------------------------------------
 -- 2. ai_call_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE ai_call_logs (
+CREATE TABLE IF NOT EXISTS ai_call_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT REFERENCES profiles(id),
 
@@ -120,7 +120,7 @@ CREATE TABLE ai_call_logs (
 -- ----------------------------------------------------------------------------
 -- 3. api_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE api_logs (
+CREATE TABLE IF NOT EXISTS api_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT REFERENCES profiles(id),
     endpoint TEXT NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE api_logs (
 -- 4. error_logs
 -- ----------------------------------------------------------------------------
 -- 支持前端错误日志和后端错误日志
-CREATE TABLE error_logs (
+CREATE TABLE IF NOT EXISTS error_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     -- 前端错误字段
     error_id TEXT,                          -- 前端生成的唯一错误 ID
@@ -180,11 +180,11 @@ CREATE TABLE error_logs (
 );
 
 -- 索引
-CREATE INDEX idx_error_logs_error_id ON error_logs(error_id) WHERE error_id IS NOT NULL;
-CREATE INDEX idx_error_logs_user_id ON error_logs(user_id) WHERE user_id IS NOT NULL;
-CREATE INDEX idx_error_logs_session_id ON error_logs(session_id) WHERE session_id IS NOT NULL;
-CREATE INDEX idx_error_logs_error_type ON error_logs(error_type);
-CREATE INDEX idx_error_logs_created_at ON error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_error_id ON error_logs(error_id) WHERE error_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_error_logs_user_id ON error_logs(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_error_logs_session_id ON error_logs(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_error_logs_error_type ON error_logs(error_type);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at DESC);
 
 -- P0-9: 触发器同步 level 和 severity
 CREATE OR REPLACE FUNCTION sync_error_level()
@@ -199,19 +199,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_error_logs_sync_level ON error_logs;
 CREATE TRIGGER trg_error_logs_sync_level
     BEFORE INSERT OR UPDATE ON error_logs
     FOR EACH ROW
     EXECUTE FUNCTION sync_error_level();
 
-CREATE INDEX idx_error_logs_severity ON error_logs(severity, created_at DESC);
-CREATE INDEX idx_error_logs_unresolved ON error_logs(created_at DESC) WHERE resolved = FALSE;
+CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_unresolved ON error_logs(created_at DESC) WHERE resolved = FALSE;
 
 
 -- ----------------------------------------------------------------------------
 -- 5. payment_records
 -- ----------------------------------------------------------------------------
-CREATE TABLE payment_records (
+CREATE TABLE IF NOT EXISTS payment_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     payment_type TEXT NOT NULL,
@@ -249,18 +250,18 @@ CREATE TABLE payment_records (
     CONSTRAINT check_refunded_amount CHECK (refunded_amount >= 0 AND refunded_amount <= amount_usd)
 );
 
-CREATE INDEX idx_payment_records_user_id ON payment_records(user_id, created_at DESC);
-CREATE INDEX idx_payment_records_stripe_payment_intent ON payment_records(stripe_payment_intent_id);
-CREATE INDEX idx_payment_records_status ON payment_records(status, created_at DESC);
-CREATE INDEX idx_payment_records_payment_type ON payment_records(payment_type, created_at DESC);
-CREATE INDEX idx_payment_records_created_at ON payment_records(created_at DESC);
-CREATE INDEX idx_payment_records_succeeded ON payment_records(created_at DESC) WHERE status = 'succeeded';
+CREATE INDEX IF NOT EXISTS idx_payment_records_user_id ON payment_records(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_records_stripe_payment_intent ON payment_records(stripe_payment_intent_id);
+CREATE INDEX IF NOT EXISTS idx_payment_records_status ON payment_records(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_records_payment_type ON payment_records(payment_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_records_created_at ON payment_records(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_records_succeeded ON payment_records(created_at DESC) WHERE status = 'succeeded';
 
 
 -- ----------------------------------------------------------------------------
 -- 6. pricing_plans (必须在 pricing_history 之前创建)
 -- ----------------------------------------------------------------------------
-CREATE TABLE pricing_plans (
+CREATE TABLE IF NOT EXISTS pricing_plans (
     id SERIAL PRIMARY KEY,
 
     -- 基础信息
@@ -330,7 +331,7 @@ CREATE TABLE pricing_plans (
 -- ----------------------------------------------------------------------------
 -- 7. scheduled_task_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE scheduled_task_logs (
+CREATE TABLE IF NOT EXISTS scheduled_task_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     task_name TEXT NOT NULL,
     task_type TEXT NOT NULL,
@@ -350,7 +351,7 @@ CREATE TABLE scheduled_task_logs (
 -- ----------------------------------------------------------------------------
 -- 8. system_configs
 -- ----------------------------------------------------------------------------
-CREATE TABLE system_configs (
+CREATE TABLE IF NOT EXISTS system_configs (
     -- 主键 (保持 V1 兼容性)
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -386,7 +387,7 @@ CREATE TABLE system_configs (
 -- ----------------------------------------------------------------------------
 -- 9. pricing_history (依赖 pricing_plans)
 -- ----------------------------------------------------------------------------
-CREATE TABLE pricing_history (
+CREATE TABLE IF NOT EXISTS pricing_history (
     id SERIAL PRIMARY KEY,
     plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
     plan_code VARCHAR(50) NOT NULL,
@@ -405,7 +406,7 @@ CREATE TABLE pricing_history (
 -- ----------------------------------------------------------------------------
 -- 10. support_tickets (依赖 profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE support_tickets (
+CREATE TABLE IF NOT EXISTS support_tickets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     ticket_number TEXT NOT NULL UNIQUE,
@@ -449,13 +450,13 @@ CREATE TABLE support_tickets (
     )
 );
 
-CREATE INDEX idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id, created_at DESC) WHERE is_deleted = false;
 
 
 -- ----------------------------------------------------------------------------
 -- 11. user_price_overrides (依赖 pricing_plans)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_price_overrides (
+CREATE TABLE IF NOT EXISTS user_price_overrides (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     pricing_plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
@@ -486,7 +487,7 @@ CREATE TABLE user_price_overrides (
 -- ----------------------------------------------------------------------------
 -- 12. support_replies (依赖 support_tickets, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE support_replies (
+CREATE TABLE IF NOT EXISTS support_replies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -511,7 +512,7 @@ CREATE TABLE support_replies (
     )
 );
 
-CREATE INDEX idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_support_replies_ticket_id ON support_replies(ticket_id, created_at ASC) WHERE is_deleted = false;
 
 
 -- ============================================================================

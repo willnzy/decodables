@@ -1450,9 +1450,9 @@ COMMENT ON FUNCTION generate_user_code() IS
 
 
 -- ----------------------------------------------------------------------------
--- error_logs - 系统错误日志表
+-- system_error_logs - 系统错误日志表（RPC 函数专用）
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS error_logs (
+CREATE TABLE IF NOT EXISTS system_error_logs (
     id BIGSERIAL PRIMARY KEY,
     operation TEXT NOT NULL,
     error_message TEXT NOT NULL,
@@ -1460,13 +1460,13 @@ CREATE TABLE IF NOT EXISTS error_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_error_logs_created_at ON error_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_error_logs_operation ON error_logs(operation);
+CREATE INDEX IF NOT EXISTS idx_system_error_logs_created_at ON system_error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_error_logs_operation ON system_error_logs(operation);
 
-COMMENT ON TABLE error_logs IS '系统错误日志表（用于追踪 RPC 函数异常和系统错误）';
-COMMENT ON COLUMN error_logs.operation IS '操作名称（如 create_user_idempotent）';
-COMMENT ON COLUMN error_logs.error_message IS '错误信息（SQLERRM）';
-COMMENT ON COLUMN error_logs.details IS '详细信息（JSONB 格式，包含 user_id、参数等）';
+COMMENT ON TABLE system_error_logs IS '系统错误日志表（用于追踪 RPC 函数异常和数据库层错误）';
+COMMENT ON COLUMN system_error_logs.operation IS '操作名称（如 create_user_idempotent）';
+COMMENT ON COLUMN system_error_logs.error_message IS '错误信息（SQLERRM）';
+COMMENT ON COLUMN system_error_logs.details IS '详细信息（JSONB 格式，包含 user_id、参数等）';
 
 
 -- ============================================================================
@@ -1619,7 +1619,7 @@ EXCEPTION
     WHEN OTHERS THEN
         -- 记录错误（但不影响事务回滚）
         BEGIN
-            INSERT INTO error_logs (
+            INSERT INTO system_error_logs (
                 operation,
                 error_message,
                 details,

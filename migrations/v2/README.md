@@ -6,12 +6,11 @@
 
 | 文件 | 大小 | 内容 | 执行顺序 |
 |------|------|------|----------|
-| `01_core_business.sql` | 31KB | 核心业务表（20张） | ① |
+| `01_core_business.sql` | 31KB | 核心业务表（21张）+ system_error_logs | ① |
 | `02_platform_services.sql` | 26KB | 平台服务表（28张） | ② |
 | `03_infrastructure.sql` | 52KB | 基础设施表（12张）+ 函数 + 数据 | ③ |
-| `OPTIMIZATIONS.sql` ⭐ | 8KB | **性能与安全优化补丁** | ④ (可选但推荐) |
 
-**总计**: 60 张表 + 17 个函数 + 1 个视图 + 初始数据 + 优化补丁
+**总计**: 61 张表 + 20 个函数 + 2 个视图 + 初始数据 + 维护任务
 
 ---
 
@@ -60,7 +59,7 @@ echo "✅ 迁移完成（包含优化补丁）"
 
 ### 1️⃣ 核心业务层 (01_core_business.sql)
 
-**20 张表**: 用户、积分、项目、素材、市场
+**21 张表**: 用户、积分、项目、素材、市场、系统日志
 
 ```
 用户相关 (2):
@@ -94,6 +93,9 @@ AI 生成 (3):
   - user_generations (生成记录)
   - generation_tasks (生成任务)
   - page_prompt_templates (页面模板)
+
+系统日志 (1):
+  - system_error_logs (RPC 函数内部错误日志)
 ```
 
 ### 2️⃣ 平台服务层 (02_platform_services.sql)
