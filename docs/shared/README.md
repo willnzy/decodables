@@ -256,17 +256,62 @@
 
 ### 同步规则
 
-**重要**: shared/ 目录下的文档需要在**前后端两个仓库**都保持同步！
+**🚨 强制要求**: `docs/shared/` 目录下的所有文档必须在**前后端两个项目**中保持完全同步！
 
 ```
-decodables/docs/shared/          # 后端仓库
-decodables-fe/docs/shared/       # 前端仓库
+decodables/docs/shared/          # 后端项目
+decodables-fe/docs/shared/       # 前端项目
 ```
 
-**同步时机**:
-- ✅ 文档更新后，同时提交到两个仓库
-- ✅ 重大变更前，先在团队会议中确认
-- ✅ 每周检查一次两边是否同步
+#### 📋 同步流程 (必须遵守)
+
+**无论在哪个项目更新了 `docs/shared/` 下的文件，都必须同步到另一个项目！**
+
+```
+步骤 1: 更新文档 (在任意项目中)
+  ├─ decodables/docs/shared/xxx.md
+  └─ 或 decodables-fe/docs/shared/xxx.md
+
+步骤 2: 复制到另一个项目
+  └─ 使用 cp 命令或手动复制确保内容一致
+
+步骤 3: 验证同步
+  └─ diff -q decodables/docs/shared/ decodables-fe/docs/shared/
+
+步骤 4: 提交到两个项目
+  ├─ cd decodables && git add docs/shared/ && git commit && git push
+  └─ cd decodables-fe && git add docs/shared/ && git commit && git push
+```
+
+#### ⚡ 快速同步命令
+
+```bash
+# 从后端同步到前端
+cp -f decodables/docs/shared/*.md decodables-fe/docs/shared/
+
+# 从前端同步到后端
+cp -f decodables-fe/docs/shared/*.md decodables/docs/shared/
+
+# 验证两边是否一致
+diff -q decodables/docs/shared/ decodables-fe/docs/shared/
+```
+
+#### 🎯 同步时机
+
+| 场景 | 操作 |
+|------|------|
+| 📝 **新增文档** | 立即复制到另一个项目，双方同时提交 |
+| 🔄 **更新文档** | 立即复制到另一个项目，双方同时提交 |
+| 🗑️ **删除文档** | 立即删除另一个项目的对应文件，双方同时提交 |
+| 📊 **重大变更** | 先在团队会议中确认，再执行同步 |
+| ✅ **每周检查** | 运行 `diff` 命令确保两边完全一致 |
+
+#### ⚠️ 注意事项
+
+- **不要**只在一个项目中更新而忘记同步
+- **不要**等到"有空再同步"，必须立即同步
+- **不要**假设别人会帮你同步，更新者必须自己负责同步
+- **验证**每次同步后运行 `diff` 命令确认无差异
 
 ---
 
