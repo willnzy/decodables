@@ -50,16 +50,12 @@ import threading
 _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analytics_")
 _logger = logging.getLogger(__name__)
 
-# Import Supabase client
+# Import Supabase client (符合 DDD 架构规范)
 try:
-    from .db_service import supabase
+    from core.database import get_async_db_client, supabase
 except ImportError:
-    try:
-        # Fallback for direct script execution
-        from infrastructure.db_compat import supabase
-    except ImportError:
-        supabase = None
-        _logger.warning("Supabase client not available for analytics")
+    supabase = None
+    _logger.warning("Supabase client not available for analytics; analytics tracking will be disabled")
 
 
 # ==========================================
