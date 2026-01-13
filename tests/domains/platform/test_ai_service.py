@@ -132,12 +132,18 @@ class TestRepositoryDependencyInjection:
     @pytest.mark.asyncio
     async def test_update_text_config_uses_default_repo_when_none_provided(self):
         """update_text_model_config uses default Repository when none provided."""
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch both get_async_db_client calls (in _get_config_repo and _log_config_change)
+        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                # Fix: get_async_db_client() is async, must return coroutine
                 mock_get_db.return_value = mock_db  # AsyncMock wraps it automatically
+
+                # Mock table().insert() for audit logging
+                insert_result = MagicMock()
+                insert_result.data = []
+                execute_mock = AsyncMock(return_value=insert_result)
+                mock_db.table.return_value.insert.return_value.execute = execute_mock
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
@@ -189,11 +195,17 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_all_functions_accept_optional_config_repo(self):
         """All write functions accept optional config_repo parameter."""
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client (covers both _get_config_repo and _log_config_change)
+        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 mock_db = MagicMock()
-                # Fix: AsyncMock wraps return value automatically
                 mock_get_db.return_value = mock_db
+
+                # Mock table().insert() for audit logging
+                insert_result = MagicMock()
+                insert_result.data = []
+                execute_mock = AsyncMock(return_value=insert_result)
+                mock_db.table.return_value.insert.return_value.execute = execute_mock
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
@@ -245,12 +257,18 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_factory_creates_repository_with_correct_client(self):
         """Factory function creates Repository with correct database client."""
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client
+        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                # Fix: AsyncMock wraps return value automatically
                 mock_get_db.return_value = mock_db
+
+                # Mock table().insert() for audit logging
+                insert_result = MagicMock()
+                insert_result.data = []
+                execute_mock = AsyncMock(return_value=insert_result)
+                mock_db.table.return_value.insert.return_value.execute = execute_mock
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None

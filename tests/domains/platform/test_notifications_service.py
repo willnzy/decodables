@@ -66,7 +66,10 @@ class TestRepositoryDependencyInjection:
         # Arrange
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        with patch("core.database.get_database_client", return_value=mock_db_client):
+        # Fix: Use get_async_db_client (not get_database_client) and make it AsyncMock
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+            mock_get_db.return_value = mock_db_client
+
             # Act
             result = await send_broadcast(
                 title="Test Broadcast",
@@ -185,116 +188,121 @@ class TestAuditLogDecorator:
     """Tests for @audit_log decorator integration."""
 
     @pytest.mark.asyncio
-    @patch("core.database.get_database_client")
-    async def test_send_broadcast_creates_audit_logs(self, mock_get_db, mock_notification_repo):
+    async def test_send_broadcast_creates_audit_logs(self, mock_notification_repo):
         """send_broadcast creates audit logs via decorator."""
         # Arrange
+        # Fix: Create async-compatible mock db client
         mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-
-        # Mock profiles query
         profiles_result = MagicMock()
         profiles_result.data = [{"id": "user-1"}]
-        mock_db.table.return_value.select.return_value.execute.return_value = profiles_result
+        execute_mock = AsyncMock(return_value=profiles_result)
+        mock_db.table.return_value.select.return_value.execute = execute_mock
 
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        # Mock audit repositories
-        with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
-            with patch("infrastructure.repositories.SupabaseAdminUsersRepository") as MockAdminRepo:
-                    mock_stats_instance = AsyncMock()
-                    mock_admin_instance = AsyncMock()
-                    MockStatsRepo.return_value = mock_stats_instance
-                    MockAdminRepo.return_value = mock_admin_instance
+        # Fix: Use get_async_db_client and make it AsyncMock
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+            mock_get_db.return_value = mock_db
 
-                    # Act
-                    result = await send_broadcast(
-                        title="Test",
-                        content="Content",
-                        target_group="all",
-                        admin_id="admin-123",
-                        notification_repo=mock_notification_repo,
-                    )
+            # Mock audit repositories
+            with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
+                with patch("infrastructure.repositories.SupabaseAdminUsersRepository") as MockAdminRepo:
+                        mock_stats_instance = AsyncMock()
+                        mock_admin_instance = AsyncMock()
+                        MockStatsRepo.return_value = mock_stats_instance
+                        MockAdminRepo.return_value = mock_admin_instance
 
-                    # Assert - Audit logging was called
-                    mock_stats_instance.log_user_event.assert_called_once()
-                    mock_admin_instance.admin_log_operation.assert_called_once()
+                        # Act
+                        result = await send_broadcast(
+                            title="Test",
+                            content="Content",
+                            target_group="all",
+                            admin_id="admin-123",
+                            notification_repo=mock_notification_repo,
+                        )
 
-                    # Check audit log arguments
-                    stats_call = mock_stats_instance.log_user_event.call_args
-                    assert stats_call[0][0] == "admin-123"  # admin_id
-                    assert stats_call[0][1] == "admin_broadcast"  # event_type
+                        # Assert - Audit logging was called
+                        mock_stats_instance.log_user_event.assert_called_once()
+                        mock_admin_instance.admin_log_operation.assert_called_once()
 
-                    admin_call = mock_admin_instance.admin_log_operation.call_args
-                    assert admin_call[1]["admin_id"] == "admin-123"
-                    assert admin_call[1]["operation_type"] == "broadcast"
+                        # Check audit log arguments
+                        stats_call = mock_stats_instance.log_user_event.call_args
+                        assert stats_call[0][0] == "admin-123"  # admin_id
+                        assert stats_call[0][1] == "admin_broadcast"  # event_type
+
+                        admin_call = mock_admin_instance.admin_log_operation.call_args
+                        assert admin_call[1]["admin_id"] == "admin-123"
+                        assert admin_call[1]["operation_type"] == "broadcast"
 
     @pytest.mark.asyncio
-    @patch("core.database.get_database_client")
     async def test_send_to_user_creates_audit_logs_with_target(
-        self, mock_get_db, mock_notification_repo
+        self, mock_notification_repo
     ):
         """send_to_user creates audit logs with target_user_id."""
         # Arrange
-        mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-
         mock_notification_repo.send_notification_to_user.return_value = {"id": "notif-1"}
 
-        # Mock audit repositories
-        with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
-            with patch("infrastructure.repositories.SupabaseAdminUsersRepository") as MockAdminRepo:
-                    mock_stats_instance = AsyncMock()
-                    mock_admin_instance = AsyncMock()
-                    MockStatsRepo.return_value = mock_stats_instance
-                    MockAdminRepo.return_value = mock_admin_instance
+        # Fix: Use get_async_db_client with AsyncMock
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+            mock_db = MagicMock()
+            mock_get_db.return_value = mock_db
 
-                    # Act
-                    result = await send_to_user(
-                        user_id="user-456",
-                        title="Test",
-                        content="Content",
-                        notification_type="system",
-                        admin_id="admin-123",
-                        notification_repo=mock_notification_repo,
-                    )
+            # Mock audit repositories
+            with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
+                with patch("infrastructure.repositories.SupabaseAdminUsersRepository") as MockAdminRepo:
+                        mock_stats_instance = AsyncMock()
+                        mock_admin_instance = AsyncMock()
+                        MockStatsRepo.return_value = mock_stats_instance
+                        MockAdminRepo.return_value = mock_admin_instance
 
-                    # Assert - target_user_id was set
-                    admin_call = mock_admin_instance.admin_log_operation.call_args
-                    assert admin_call[1]["target_user_id"] == "user-456"
+                        # Act
+                        result = await send_to_user(
+                            user_id="user-456",
+                            title="Test",
+                            content="Content",
+                            notification_type="system",
+                            admin_id="admin-123",
+                            notification_repo=mock_notification_repo,
+                        )
+
+                        # Assert - target_user_id was set
+                        admin_call = mock_admin_instance.admin_log_operation.call_args
+                        assert admin_call[1]["target_user_id"] == "user-456"
 
     @pytest.mark.asyncio
-    @patch("core.database.get_database_client")
     async def test_audit_log_failure_does_not_break_operation(
-        self, mock_get_db, mock_notification_repo
+        self, mock_notification_repo
     ):
         """Audit log failure does not prevent operation success."""
         # Arrange
+        # Fix: Create async-compatible mock db client
         mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-
-        # Mock profiles query
         profiles_result = MagicMock()
         profiles_result.data = [{"id": "user-1"}]
-        mock_db.table.return_value.select.return_value.execute.return_value = profiles_result
+        execute_mock = AsyncMock(return_value=profiles_result)
+        mock_db.table.return_value.select.return_value.execute = execute_mock
 
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        # Mock audit repositories to raise exception
-        with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
-            MockStatsRepo.side_effect = Exception("Audit log failed")
+        # Fix: Use get_async_db_client with AsyncMock
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+            mock_get_db.return_value = mock_db
 
-            # Act - Should not raise exception
-            result = await send_broadcast(
-                title="Test",
-                content="Content",
-                target_group="all",
-                admin_id="admin-123",
-                notification_repo=mock_notification_repo,
-            )
+            # Mock audit repositories to raise exception
+            with patch("infrastructure.repositories.SupabaseAdminStatsRepository") as MockStatsRepo:
+                MockStatsRepo.side_effect = Exception("Audit log failed")
 
-            # Assert - Operation succeeded despite audit failure
-            assert result["notification_count"] == 1
+                # Act - Should not raise exception
+                result = await send_broadcast(
+                    title="Test",
+                    content="Content",
+                    target_group="all",
+                    admin_id="admin-123",
+                    notification_repo=mock_notification_repo,
+                )
+
+                # Assert - Operation succeeded despite audit failure
+                assert result["notification_count"] == 1
 
 
 # ==========================================
@@ -307,7 +315,10 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_send_broadcast_uses_default_repo_when_none_provided(self, mock_db_client):
         """send_broadcast uses default Repository when none provided."""
-        with patch("core.database.get_database_client", return_value=mock_db_client):
+        # Fix: Use get_async_db_client with AsyncMock
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+            mock_get_db.return_value = mock_db_client
+
             with patch(
                 "infrastructure.repositories.SupabaseNotificationRepository"
             ) as MockRepo:
