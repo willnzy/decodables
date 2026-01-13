@@ -195,7 +195,7 @@ async def export_project_pdf(
     except ProjectNotFoundException:
         raise HTTPException(404, "Project not found")
     except ExportException as e:
-        logger.error(f"PDF export failed for user {user['id'][:8]}...: {e}")
+        logger.error(f"PDF export failed for user {user.user_id[:8]}...: {e}")
         raise HTTPException(500, "PDF generation failed")
 
     return StreamingResponse(
@@ -391,7 +391,7 @@ async def export_project_pdf_async(
 
     # Enqueue task with idempotency
     tier = (user.tier.value if hasattr(user.tier, 'value') else user.tier or "t1").lower()
-    idempotency_key = f"export:pdf:{user['id']}:{project_id}"
+    idempotency_key = f"export:pdf:{user.user_id}:{project_id}"
 
     task_id = task_queue.enqueue_export_task(
         user_id=user.user_id,
@@ -402,10 +402,10 @@ async def export_project_pdf_async(
     )
 
     if not task_id:
-        logger.error(f"Failed to enqueue PDF export for user {user['id'][:8]}...")
+        logger.error(f"Failed to enqueue PDF export for user {user.user_id[:8]}...")
         raise HTTPException(503, "Export service temporarily unavailable")
 
-    logger.info(f"Enqueued PDF export task {task_id} for user {user['id'][:8]}...")
+    logger.info(f"Enqueued PDF export task {task_id} for user {user.user_id[:8]}...")
 
     return TaskResponse(
         task_id=task_id,
@@ -459,7 +459,7 @@ async def export_project_zip_async(
     from infrastructure.task_queue.queue_service import task_queue
 
     # Enqueue task with idempotency
-    idempotency_key = f"export:zip:{user['id']}:{project_id}"
+    idempotency_key = f"export:zip:{user.user_id}:{project_id}"
 
     task_id = task_queue.enqueue_export_task(
         user_id=user.user_id,
@@ -470,10 +470,10 @@ async def export_project_zip_async(
     )
 
     if not task_id:
-        logger.error(f"Failed to enqueue ZIP export for user {user['id'][:8]}...")
+        logger.error(f"Failed to enqueue ZIP export for user {user.user_id[:8]}...")
         raise HTTPException(503, "Export service temporarily unavailable")
 
-    logger.info(f"Enqueued ZIP export task {task_id} for user {user['id'][:8]}...")
+    logger.info(f"Enqueued ZIP export task {task_id} for user {user.user_id[:8]}...")
 
     return TaskResponse(
         task_id=task_id,

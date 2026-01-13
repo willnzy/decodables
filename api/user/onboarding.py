@@ -111,7 +111,7 @@ async def complete_step(
     if not progress:
         raise HTTPException(404, f"Step not found: {request.step_key}")
 
-    logger.info(f"User {user['id'][:8]}... completed step: {request.step_key}")
+    logger.info(f"User {user.user_id[:8]}... completed step: {request.step_key}")
 
     return {
         "success": True,
@@ -139,7 +139,7 @@ async def skip_step(
     if not progress:
         raise HTTPException(404, f"Step not found: {request.step_key}")
 
-    logger.info(f"User {user['id'][:8]}... skipped step: {request.step_key}")
+    logger.info(f"User {user.user_id[:8]}... skipped step: {request.step_key}")
 
     return {
         "success": True,
