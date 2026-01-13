@@ -90,7 +90,7 @@ class SupabaseSystemResourcesAdminRepository:
         query = query.order("sort_order", desc=False).order("created_at", desc=True)
         query = query.range(offset, offset + limit - 1)
 
-        result = query.execute()
+        result = await query.execute()
 
         return (result.data or [], result.count or 0)
 
@@ -105,7 +105,7 @@ class SupabaseSystemResourcesAdminRepository:
         Returns:
             Resource dict or None if not found
         """
-        result = self.client.table("system_resources")\
+        result = await self.client.table("system_resources")\
             .select("*")\
             .eq("id", resource_id)\
             .single()\
@@ -153,7 +153,7 @@ class SupabaseSystemResourcesAdminRepository:
         Raises:
             Exception: If update fails
         """
-        result = self.client.table("system_resources")\
+        result = await self.client.table("system_resources")\
             .update(updates)\
             .eq("id", resource_id)\
             .execute()
@@ -175,7 +175,7 @@ class SupabaseSystemResourcesAdminRepository:
         Returns:
             True if successful
         """
-        self.client.table("system_resources")\
+        await self.client.table("system_resources")\
             .update({
                 "is_active": False,
                 "updated_by": admin_id,
@@ -195,18 +195,18 @@ class SupabaseSystemResourcesAdminRepository:
             Dict with total, active, inactive, and by_type breakdown
         """
         # Count active vs inactive
-        active_count = self.client.table("system_resources")\
+        active_count = await self.client.table("system_resources")\
             .select("id", count="exact")\
             .eq("is_active", True)\
             .execute()
 
-        inactive_count = self.client.table("system_resources")\
+        inactive_count = await self.client.table("system_resources")\
             .select("id", count="exact")\
             .eq("is_active", False)\
             .execute()
 
         # Group by type
-        all_resources = self.client.table("system_resources")\
+        all_resources = await self.client.table("system_resources")\
             .select("resource_type, is_active")\
             .execute()
 
@@ -244,7 +244,7 @@ class SupabaseSystemResourcesAdminRepository:
         Returns:
             List of audit log entries
         """
-        result = self.client.table("system_resource_audit_logs")\
+        result = await self.client.table("system_resource_audit_logs")\
             .select("*")\
             .eq("resource_id", resource_id)\
             .order("changed_at", desc=True)\
@@ -269,7 +269,7 @@ class SupabaseSystemResourcesAdminRepository:
         Returns:
             Number of updated resources
         """
-        self.client.table("system_resources")\
+        await self.client.table("system_resources")\
             .update(updates)\
             .in_("id", resource_ids)\
             .execute()
