@@ -1924,6 +1924,134 @@ ALTER TABLE support_replies ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================================
+-- 维护任务配置 (v3.30)
+-- ============================================================================
+-- 说明: 定期清理和优化配置，防止日志表无限增长
+-- ============================================================================
+
+-- 查看表大小监控视图
+CREATE OR REPLACE VIEW v_table_sizes AS
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size,
+    pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) AS table_size,
+    pg_size_pretty(pg_indexes_size(schemaname||'.'||tablename)) AS indexes_size,
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = tablename) AS row_count_estimate
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+
+COMMENT ON VIEW v_table_sizes IS '数据库表大小监控视图';
+
+
+-- 查看日志表统计函数
+CREATE OR REPLACE FUNCTION get_log_tables_stats()
+RETURNS TABLE(
+    table_name TEXT,
+    total_rows BIGINT,
+    old_rows BIGINT,
+    retention_days INTEGER,
+    next_cleanup_count BIGINT,
+    table_size TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        'user_creation_logs'::TEXT,
+        COUNT(*)::BIGINT AS total_rows,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '90 days')::BIGINT AS old_rows,
+        90 AS retention_days,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '90 days')::BIGINT AS next_cleanup_count,
+        pg_size_pretty(pg_total_relation_size('user_creation_logs'))::TEXT AS table_size
+    FROM user_creation_logs
+    
+    UNION ALL
+    
+    SELECT 
+        'error_logs'::TEXT,
+        COUNT(*)::BIGINT,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '30 days')::BIGINT,
+        30,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '30 days')::BIGINT,
+        pg_size_pretty(pg_total_relation_size('error_logs'))::TEXT
+    FROM error_logs
+    
+    UNION ALL
+    
+    SELECT 
+        'activity_logs'::TEXT,
+        COUNT(*)::BIGINT,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '180 days')::BIGINT,
+        180,
+        COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '180 days')::BIGINT,
+        pg_size_pretty(pg_total_relation_size('activity_logs'))::TEXT
+    FROM activity_logs;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_log_tables_stats() IS '获取日志表统计信息（用于监控清理效果）';
+
+
+-- 清理错误日志函数
+CREATE OR REPLACE FUNCTION cleanup_old_error_logs(p_retention_days INTEGER DEFAULT 30)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_deleted_count INTEGER;
+BEGIN
+    DELETE FROM error_logs
+    WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days;
+    
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+    
+    -- 记录清理操作
+    INSERT INTO activity_logs (
+        user_id,
+        action,
+        metadata,
+        created_at
+    ) VALUES (
+        'system',
+        'cleanup_error_logs',
+        jsonb_build_object(
+            'deleted_count', v_deleted_count,
+            'retention_days', p_retention_days,
+            'execution_time', CURRENT_TIMESTAMP
+        ),
+        CURRENT_TIMESTAMP
+    );
+    
+    RETURN v_deleted_count;
+END;
+$$;
+
+COMMENT ON FUNCTION cleanup_old_error_logs IS '清理旧的错误日志（保留 N 天）';
+
+
+-- 清理活动日志函数
+CREATE OR REPLACE FUNCTION cleanup_old_activity_logs(p_retention_days INTEGER DEFAULT 180)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_deleted_count INTEGER;
+BEGIN
+    DELETE FROM activity_logs
+    WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days
+      AND action NOT IN ('user_signup', 'subscription_purchase');  -- 保留关键事件
+    
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+    
+    RETURN v_deleted_count;
+END;
+$$;
+
+COMMENT ON FUNCTION cleanup_old_activity_logs IS '清理旧的活动日志（保留 N 天，排除关键事件）';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;

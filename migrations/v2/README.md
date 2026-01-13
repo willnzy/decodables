@@ -130,7 +130,7 @@ Webhooks (2):
 
 ### 3️⃣ 基础设施层 (03_infrastructure.sql)
 
-**12 张表 + 函数 + 视图 + 初始数据**
+**12 张表 + 函数 + 视图 + 初始数据 + 维护任务配置**
 
 ```
 配置 (4):
@@ -155,7 +155,8 @@ Webhooks (2):
 
 额外内容:
   - 11 个数据库函数 (p_* 前缀)
-  - 1 个视图定义
+  - 2 个视图定义 (v_table_sizes 用于监控)
+  - 4 个维护任务函数 (cleanup_* 前缀，get_log_tables_stats)
   - 所有初始数据 INSERT
 ```
 
@@ -168,11 +169,21 @@ Webhooks (2):
 SELECT COUNT(*) FROM information_schema.tables
 WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
 
--- 检查函数数量 (期望: 11)
+-- 检查数据库函数数量 (期望: 11)
 SELECT COUNT(*) FROM pg_proc WHERE proname LIKE 'p_%';
 
--- 检查视图数量 (期望: 1)
-SELECT COUNT(*) FROM information_schema.views WHERE table_schema = 'public';
+-- 检查维护函数数量 (期望: 4)
+SELECT COUNT(*) FROM pg_proc WHERE proname IN (
+    'cleanup_old_user_creation_logs', 
+    'cleanup_old_error_logs', 
+    'cleanup_old_activity_logs', 
+    'get_log_tables_stats'
+);
+
+-- 检查视图数量 (期望: 2)
+SELECT COUNT(*) FROM information_schema.views 
+WHERE table_schema = 'public' 
+  AND table_name IN ('v_user_creation_events', 'v_table_sizes');
 ```
 
 ---
