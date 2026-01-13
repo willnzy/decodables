@@ -159,7 +159,7 @@ def validate_config() -> Dict[str, Any]:
         value = PRICE_MAP.get(plan)
         if not value:
             # Debug: Show whether it's None or empty string
-            logger.debug(f"[Stripe] {plan} price ID is {'None' if value is None else 'empty string'}")
+            logger.info(f"[Stripe] {plan} price ID is {'None' if value is None else 'empty string'}")
             warnings.append(f"STRIPE_PRICE_{plan.upper()} (optional)")
 
     # Log results
