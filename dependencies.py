@@ -73,11 +73,42 @@ async def get_current_user(authorization: str = Header(None)):
     
     if not user_id:
         raise UnauthorizedException(message="Invalid token: no user_id")
+    
+    # ✅ 修复：验证 user_id 格式（Clerk user_id 应该以 "user_" 开头）
+    import logging
+    import asyncio
+    logger = logging.getLogger(__name__)
+    
+    if not user_id.startswith("user_"):
+        logger.warning(
+            f"⚠️ Unexpected user_id format: {user_id}. "
+            f"Expected Clerk format 'user_xxx'. This may indicate a configuration issue.",
+            extra={
+                "user_id": user_id,
+                "action": "unexpected_user_id_format",
+                "jwt_claims_keys": list(payload.keys()) if payload else []
+            }
+        )
 
     # Get user profile from database using repository
     db_client = await get_async_db_client()
     user_repo = SupabaseUserRepository(db_client)
+    
+    # ✅ 修复：增加重试机制，防止偶发的连接问题导致误触发 JIT
     profile = await user_repo.get_by_id(user_id)
+    
+    if profile is None:
+        # 第一次查询返回 None，可能是真的不存在，也可能是连接问题
+        # 短暂等待后重试一次
+        await asyncio.sleep(0.1)
+        profile = await user_repo.get_by_id(user_id)
+        
+        if profile is not None:
+            # 重试成功，说明之前可能是连接问题
+            logger.info(
+                f"ℹ️ User {user_id} found on retry (initial query may have had connection issue)",
+                extra={"user_id": user_id, "action": "found_on_retry"}
+            )
 
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
     # This ensures new users get their 50 signup bonus credits instantly,
@@ -88,19 +119,28 @@ async def get_current_user(authorization: str = Header(None)):
     # - Fallback path: JIT creates user if webhook hasn't arrived yet (5% safety net)
     # - Uses idempotent create_or_get() to handle race conditions safely
     if not profile:
-        import logging
-        logger = logging.getLogger(__name__)
+        # ✅ 修复：增强日志，记录 JWT 中的字段信息，帮助诊断问题
+        jwt_email = payload.get("email") or payload.get("primary_email")
+        jwt_username = payload.get("username")
         
-        # Log JIT fallback trigger (helps monitor webhook health)
         logger.warning(
-            f"⚠️ User {user_id} not found in database, triggering JIT fallback. "
-            f"This indicates potential webhook delivery issue.",
+            f"⚠️ User {user_id} not found in database after retry, triggering JIT fallback.",
             extra={
                 "user_id": user_id,
                 "action": "jit_fallback_triggered",
-                "email": payload.get("email", "unknown")
+                "jwt_has_email": bool(jwt_email),
+                "jwt_has_username": bool(jwt_username),
+                "jwt_claims_keys": list(payload.keys()) if payload else [],
             }
         )
+        
+        # ✅ 修复：如果 JWT 中缺少 email，记录更严重的警告
+        if not jwt_email:
+            logger.error(
+                f"🚨 JIT creating user {user_id} WITHOUT email! "
+                f"Please configure Clerk sessionClaims to include 'email' field. "
+                f"Available JWT claims: {list(payload.keys()) if payload else []}"
+            )
         
         # ✅ Sentry: 捕获 JIT Fallback 事件（需要关注）
         try:
