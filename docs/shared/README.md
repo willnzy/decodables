@@ -1,7 +1,7 @@
 # docs/shared - 前后端共用文档
 
-**文档总数**: 13 个 (11 个共享 + 2 个前端规划)
-**最后整理**: 2026-01-11 (文档同步与整合)
+**文档总数**: 14 个 (12 个共享 + 2 个前端规划)
+**最后整理**: 2026-01-13 (Analytics 统一架构)
 **维护**: Make Decodables 全栈团队
 
 **目录用途**: 系统性文档、业务规范、API 详细文档、项目规划，**前后端开发都需要关注**
@@ -147,6 +147,37 @@
 
 ---
 
+### 📊 数据分析系统 (1个)
+
+| 文档 | 大小 | 用途 | 前端关注点 | 状态 |
+|------|------|------|----------|------|
+| [analytics-system-design.md](analytics-system-design.md) | ~25KB | ⭐ 统一事件追踪系统设计 (前端批处理 + 后端服务端追踪) | ✅ 前端事件上报 API、事件类型规范 | 🟢 已实现 (v2.0) |
+
+**内容覆盖**:
+- **analytics-system-design.md**:
+  - 统一的事件追踪系统 (前端批处理 + 后端服务端追踪)
+  - DDD 架构设计 (Repository Pattern + Dependency Injection)
+  - 标准事件类型定义 (用户行为、AI 生成、支付、项目、市场)
+  - 前端批处理 API: `POST /api/v2/user/analytics/events`
+  - 数据库表结构: `analytics_events`, `user_events`, `activity_logs`
+  - 性能优化策略 (批量写入、Fire-and-Forget)
+
+**使用场景**:
+- 📤 实现前端事件批处理上报 → analytics-system-design.md
+- 📊 了解标准事件类型规范 → StandardEventTypes 定义
+- 🔍 查询事件追踪 API 文档 → API 设计章节
+- 🎯 理解事件数据结构 → 数据模型章节
+
+**实现状态** (后端已完成):
+- ✅ Analytics API: `api/user/analytics.py` + `domains/analytics/`
+- ✅ DDD 架构: Repository Pattern + Entity + Value Objects
+- ✅ 前端批处理 API: `POST /api/v2/user/analytics/events`
+- ✅ 后端服务端追踪: `track_ai_generation`, `track_payment`, `track_project_action`
+- ✅ 数据库表: `analytics_events`, `user_events`, `activity_logs`
+- 📋 前端集成: 参考设计文档 "5.1 前端批处理 API" 章节
+
+---
+
 ### 🔌 API 详细文档 (2个)
 
 | 文档 | 大小 | 用途 | 前端关注点 | 状态 |
@@ -192,6 +223,7 @@
 | **A/B 测试** | feature-flag-design.md | 用户分组 + 实验跟踪 |
 | **新手引导** | onboarding-design.md | Welcome Tour + Editor Tour + Checklist |
 | **节日主题** | theme-system-design.md | Daily Theme 切换展示 |
+| **事件追踪上报** | analytics-system-design.md | 批处理 API + 标准事件类型 |
 
 ### 按开发阶段查找
 
@@ -356,21 +388,22 @@ diff -q decodables/docs/shared/ decodables-fe/docs/shared/
 
 | 分类 | 文档数 | 占比 |
 |------|--------|------|
-| 用户与权限系统 | 2 | 15% |
-| 定价与计费系统 | 1 | 8% |
-| Canvas 系统 | 1 | 8% |
-| 素材与内容系统 | 1 | 8% |
-| 功能控制系统 | 1 | 8% |
-| 用户体验设计 | 2 | 15% |
-| API 详细文档 | 2 | 15% |
-| 项目规划文档 | 2 | 15% |
-| 导航索引 | 1 | 8% |
-| **总计** | **13** | **100%** |
+| 用户与权限系统 | 2 | 14% |
+| 定价与计费系统 | 1 | 7% |
+| Canvas 系统 | 1 | 7% |
+| 素材与内容系统 | 1 | 7% |
+| 功能控制系统 | 1 | 7% |
+| 用户体验设计 | 2 | 14% |
+| 数据分析系统 | 1 | 7% |
+| API 详细文档 | 2 | 14% |
+| 项目规划文档 | 2 | 14% |
+| 导航索引 | 1 | 7% |
+| **总计** | **14** | **100%** |
 
 ---
 
-**Last Updated**: 2026-01-11
-**Total Documents**: 13
-**Status**: 🟢 完整文档库 - 包含业务规范、数据契约、用户体验设计、项目规划
+**Last Updated**: 2026-01-13
+**Total Documents**: 14
+**Status**: 🟢 完整文档库 - 包含业务规范、数据契约、用户体验设计、数据分析、项目规划
 
 📚 **前后端协作的桥梁 - 业务规范、数据契约、UX 设计与项目规划！**
