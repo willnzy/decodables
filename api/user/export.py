@@ -40,6 +40,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories.project_repository import SupabaseProjectRepository
@@ -168,7 +169,7 @@ async def get_export_service(db = Depends(get_async_db)) -> ExportService:
 async def export_project_pdf(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     export_service: ExportService = Depends(get_export_service),  # v3.0.0: DI
 ):
     """
@@ -190,7 +191,7 @@ async def export_project_pdf(
 
     # v3.0.0: Export PDF via Service (DDD compliant)
     try:
-        buf, title = await export_service.export_pdf(user["id"], project_id)
+        buf, title = await export_service.export_pdf(user.user_id, project_id)
     except ProjectNotFoundException:
         raise HTTPException(404, "Project not found")
     except ExportException as e:
@@ -213,7 +214,7 @@ async def export_project_pdf(
 async def export_project_preview(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     export_service: ExportService = Depends(get_export_service),  # v3.0.0: DI
 ):
     """
@@ -232,7 +233,7 @@ async def export_project_preview(
 
     # v3.0.0: Export preview via Service (DDD compliant)
     try:
-        img_buffer = await export_service.export_preview(user["id"], project_id)
+        img_buffer = await export_service.export_preview(user.user_id, project_id)
     except ProjectNotFoundException:
         raise HTTPException(404, "Project not found")
     except ExportException:
@@ -254,7 +255,7 @@ async def export_project_preview(
 async def export_zip(
     request: Request,
     req: ZipExportRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     export_service: ExportService = Depends(get_export_service),  # v3.0.0: DI
 ):
     """
@@ -278,9 +279,9 @@ async def export_zip(
     # v3.0.0: Export custom ZIP via Service (DDD compliant)
     try:
         buf = await export_service.export_custom_zip(
-            user_id=user["id"],
+            user_id=user.user_id,
             image_urls=req.image_urls,
-            tier=(user.get("tier") or "").lower(),
+            tier=(user.tier.value if hasattr(user.tier, 'value') else user.tier or "").lower(),
             project_id=req.project_id,
         )
     except InsufficientPermissionException:
@@ -301,7 +302,7 @@ async def export_zip(
 async def export_project_zip(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     export_service: ExportService = Depends(get_export_service),  # v3.0.0: DI
 ):
     """
@@ -328,9 +329,9 @@ async def export_project_zip(
     # v3.0.0: Export project ZIP via Service (DDD compliant)
     try:
         buf, title = await export_service.export_project_zip(
-            user_id=user["id"],
+            user_id=user.user_id,
             project_id=project_id,
-            tier=(user.get("tier") or "").lower(),
+            tier=(user.tier.value if hasattr(user.tier, 'value') else user.tier or "").lower(),
         )
     except InsufficientPermissionException:
         raise HTTPException(403, "ZIP export requires Pro plan.")
@@ -359,7 +360,7 @@ async def export_project_zip(
 async def export_project_pdf_async(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ):
     """
     Enqueue PDF export task for background processing.
@@ -389,11 +390,11 @@ async def export_project_pdf_async(
     from infrastructure.task_queue.queue_service import task_queue
 
     # Enqueue task with idempotency
-    tier = (user.get("tier") or "t1").lower()
+    tier = (user.tier.value if hasattr(user.tier, 'value') else user.tier or "t1").lower()
     idempotency_key = f"export:pdf:{user['id']}:{project_id}"
 
     task_id = task_queue.enqueue_export_task(
-        user_id=user["id"],
+        user_id=user.user_id,
         project_id=project_id,
         export_type="pdf",
         tier=tier,
@@ -419,7 +420,7 @@ async def export_project_pdf_async(
 async def export_project_zip_async(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ):
     """
     Enqueue ZIP export task for background processing.
@@ -450,7 +451,7 @@ async def export_project_zip_async(
         raise HTTPException(400, "Invalid project ID format")
 
     # Verify Pro tier
-    tier = (user.get("tier") or "t1").lower()
+    tier = (user.tier.value if hasattr(user.tier, 'value') else user.tier or "t1").lower()
     if tier != "t3":
         raise HTTPException(403, "ZIP export requires Pro plan")
 
@@ -461,7 +462,7 @@ async def export_project_zip_async(
     idempotency_key = f"export:zip:{user['id']}:{project_id}"
 
     task_id = task_queue.enqueue_export_task(
-        user_id=user["id"],
+        user_id=user.user_id,
         project_id=project_id,
         export_type="zip",
         tier=tier,

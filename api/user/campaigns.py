@@ -37,6 +37,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import optional_user, get_current_user
 from infrastructure.repositories.credit_repository import SupabaseCreditRepository
 from infrastructure.repositories.campaign_repository import SupabaseCampaignRepository
@@ -235,7 +236,7 @@ async def get_active_campaigns(
 async def claim_campaign(
     request: Request,
     campaign_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     campaign_service: CampaignService = Depends(get_campaign_service),
 ) -> ClaimResponse:
     """
@@ -289,7 +290,7 @@ async def dismiss_notification(
     request: Request,
     campaign_id: str,
     req: DismissRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     campaign_service: CampaignService = Depends(get_campaign_service),
 ) -> DismissResponse:
     """
@@ -305,7 +306,7 @@ async def dismiss_notification(
     if not campaign_service.is_valid_notification_channel(req.channel):
         raise HTTPException(400, "Invalid notification channel")
 
-    await campaign_service.dismiss_notification(campaign_id, user["id"], req.channel)
+    await campaign_service.dismiss_notification(campaign_id, user.user_id, req.channel)
 
     return DismissResponse(success=True)
 
