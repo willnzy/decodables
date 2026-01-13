@@ -92,6 +92,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             raise UserAlreadyExistsException(user_profile.user_id)
 
         try:
+            # Generate user_code if not provided
+            if not user_profile.user_code:
+                user_profile.user_code = await self.generate_user_code()
+
             data = self._map_to_row(user_profile)
             result = await self.client.table("profiles").insert(data).execute()
 
@@ -223,6 +227,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         return UserProfile(
             user_id=row["id"],  # profiles.id is the Clerk user_id
             email=row["email"],
+            user_code=row.get("user_code"),
             tier=UserTier(row.get("tier", "t1")),
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
             preferences=preferences,
@@ -240,6 +245,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         return {
             "id": profile.user_id,  # profiles.id is the primary key
             "email": profile.email,
+            "user_code": profile.user_code,
             "tier": profile.tier.value,
             "onboarding_step": profile.onboarding_step.value,
             "preferences": profile.preferences.to_dict(),

@@ -28,6 +28,7 @@ class UserProfile:
     """
     user_id: str
     email: str
+    user_code: Optional[str] = None  # 26-digit unique user code
     tier: UserTier = UserTier.T1
     onboarding_step: OnboardingStep = OnboardingStep.NOT_STARTED
     preferences: UserPreferences = field(default_factory=UserPreferences)
