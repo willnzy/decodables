@@ -41,6 +41,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, Depends, UploadFile, File, Form
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
@@ -108,7 +109,7 @@ async def my_assets(
     request: Request,
     project_id: Optional[str] = None,
     scope: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Fetch user assets.
@@ -119,7 +120,7 @@ async def my_assets(
     validate_optional_uuid(project_id, "project ID")
 
     # Pro tier check for cross-project scope (t3/t4 only)
-    user_tier = user.get("tier", "t1")
+    user_tier = user.tier.value if hasattr(user.tier, 'value') else user.tier
     if scope == "all" and user_tier not in ("t3", "t4"):
         from fastapi import HTTPException
         raise HTTPException(403, "Pro required for cross-project history")
@@ -129,7 +130,7 @@ async def my_assets(
     container = get_container()
     handler = await container.get_user_assets_handler()
 
-    query = GetUserAssetsQuery(user_id=user["id"], project_id=target_proj)
+    query = GetUserAssetsQuery(user_id=user.user_id, project_id=target_proj)
     result = await handler.handle(query)
 
     return result.assets
@@ -141,7 +142,7 @@ async def upload_asset(
     request: Request,
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Upload personal assets (Pro only, PRD v3.2).
@@ -154,14 +155,14 @@ async def upload_asset(
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
 
-    tz = get_request_timezone(request, user_id=user.get("id"))
+    tz = get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
     handler = await container.upload_asset_handler()
 
     command = UploadAssetCommand(
-        user_id=user["id"],
-        user_tier=user.get("tier", ""),
+        user_id=user.user_id,
+        user_tier=user.tier.value if hasattr(user.tier, 'value') else str(user.tier),
         file=file,
         project_id=project_id,
         timezone=tz
@@ -177,7 +178,7 @@ async def delete_asset(
     request: Request,
     asset_id: str,
     permanent: bool = False,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Delete a user asset (PRD v3.3).
@@ -192,16 +193,16 @@ async def delete_asset(
 
     command = DeleteAssetCommand(
         asset_id=asset_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         permanent=permanent
     )
     result = await handler.handle(command)
 
     # Log activity
     if permanent:
-        log_activity(user["id"], "permanent_delete_asset", {"asset_id": asset_id})
+        log_activity(user.user_id, "permanent_delete_asset", {"asset_id": asset_id})
     else:
-        log_activity(user["id"], "delete_asset", {"asset_id": asset_id})
+        log_activity(user.user_id, "delete_asset", {"asset_id": asset_id})
 
     return result.result
 
@@ -211,7 +212,7 @@ async def delete_asset(
 async def add_asset_from_url(
     request: Request,
     req: AssetFromUrlRequest,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Add an asset from external URL.
@@ -219,13 +220,13 @@ async def add_asset_from_url(
     v3.0.0: Now uses AddAssetFromURLHandler (Container pattern).
     Business logic (SSRF protection, URL validation) moved to Service layer.
     """
-    tz = get_request_timezone(request, user_id=user.get("id"))
+    tz = get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
     handler = await container.add_asset_from_url_handler()
 
     command = AddAssetFromURLCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         url=req.url,
         project_id=req.project_id,
         timezone=tz
@@ -234,7 +235,7 @@ async def add_asset_from_url(
 
     # Log activity
     if result.result.get("asset"):
-        log_activity(user["id"], "create_asset_from_url", {
+        log_activity(user.user_id, "create_asset_from_url", {
             "asset_id": result.result["asset"].get("id")
         })
 
@@ -246,7 +247,7 @@ async def add_asset_from_url(
 async def check_url(
     request: Request,
     url: str,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Check if a URL points to a valid image.
@@ -268,7 +269,7 @@ async def check_url(
 async def increment_usage(
     request: Request,
     asset_id: str,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Increment usage count for an asset.
@@ -283,7 +284,7 @@ async def increment_usage(
 
     command = IncrementAssetUsageCommand(
         asset_id=asset_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
@@ -294,7 +295,7 @@ async def increment_usage(
 @limiter.limit("30/minute")
 async def get_asset_dashboard(
     request: Request,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Get asset usage dashboard data.
@@ -305,7 +306,7 @@ async def get_asset_dashboard(
     container = get_container()
     handler = await container.get_dashboard_stats_handler()
 
-    query = GetDashboardStatsQuery(user_id=user["id"])
+    query = GetDashboardStatsQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return result.stats
@@ -315,7 +316,7 @@ async def get_asset_dashboard(
 @limiter.limit("30/minute")
 async def get_seller_stats(
     request: Request,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Get seller statistics for marketplace assets.
@@ -326,7 +327,7 @@ async def get_seller_stats(
     container = get_container()
     handler = await container.get_seller_stats_handler()
 
-    query = GetSellerStatsQuery(user_id=user["id"])
+    query = GetSellerStatsQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return result.stats
@@ -336,7 +337,7 @@ async def get_seller_stats(
 @limiter.limit("30/minute")
 async def get_deleted(
     request: Request,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Get soft-deleted assets (trash).
@@ -346,7 +347,7 @@ async def get_deleted(
     container = get_container()
     handler = await container.get_deleted_assets_handler()
 
-    query = GetDeletedAssetsQuery(user_id=user["id"])
+    query = GetDeletedAssetsQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return result.assets
@@ -357,7 +358,7 @@ async def get_deleted(
 async def restore(
     request: Request,
     asset_id: str,
-    user: dict = Depends(get_current_user)
+    user: UserProfile = Depends(get_current_user)
 ):
     """
     Restore a soft-deleted asset.
@@ -372,11 +373,11 @@ async def restore(
 
     command = RestoreAssetCommand(
         asset_id=asset_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
     # Log activity
-    log_activity(user["id"], "restore_asset", {"asset_id": asset_id})
+    log_activity(user.user_id, "restore_asset", {"asset_id": asset_id})
 
     return {"status": "ok", "asset": result.asset}
