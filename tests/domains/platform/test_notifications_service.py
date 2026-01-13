@@ -66,8 +66,8 @@ class TestRepositoryDependencyInjection:
         # Arrange
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        # Fix: Use get_async_db_client (not get_database_client) and make it AsyncMock
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client (for querying users)
+        with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             mock_get_db.return_value = mock_db_client
 
             # Act
@@ -200,8 +200,8 @@ class TestAuditLogDecorator:
 
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        # Fix: Use get_async_db_client and make it AsyncMock
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client (for querying users)
+        with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             mock_get_db.return_value = mock_db
 
             # Mock audit repositories
@@ -284,8 +284,8 @@ class TestAuditLogDecorator:
 
         mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
 
-        # Fix: Use get_async_db_client with AsyncMock
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client (for querying users)
+        with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             mock_get_db.return_value = mock_db
 
             # Mock audit repositories to raise exception
@@ -315,8 +315,8 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_send_broadcast_uses_default_repo_when_none_provided(self, mock_db_client):
         """send_broadcast uses default Repository when none provided."""
-        # Fix: Use get_async_db_client with AsyncMock
-        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
+        # Fix: Patch service's get_async_db_client (for querying users)
+        with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             mock_get_db.return_value = mock_db_client
 
             with patch(

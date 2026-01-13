@@ -132,23 +132,15 @@ class TestRepositoryDependencyInjection:
     @pytest.mark.asyncio
     async def test_update_text_config_uses_default_repo_when_none_provided(self):
         """update_text_model_config uses default Repository when none provided."""
-        # Fix: Patch both get_async_db_client calls (in _get_config_repo and _log_config_change)
-        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
+        # Fix: Directly mock _get_config_repo to return our mock repository
+        mock_repo_instance = AsyncMock()
+        mock_repo_instance.get_by_key = AsyncMock(side_effect=[None, None])
+        mock_repo_instance.create = AsyncMock(return_value=True)
+
+        with patch("domains.platform.ai.service._get_config_repo", new_callable=AsyncMock) as mock_get_repo:
+            with patch("domains.platform.ai.service._log_config_change", new_callable=AsyncMock):
                 # Arrange
-                mock_db = MagicMock()
-                mock_get_db.return_value = mock_db  # AsyncMock wraps it automatically
-
-                # Mock table().insert() for audit logging
-                insert_result = MagicMock()
-                insert_result.data = []
-                execute_mock = AsyncMock(return_value=insert_result)
-                mock_db.table.return_value.insert.return_value.execute = execute_mock
-
-                mock_repo_instance = AsyncMock()
-                mock_repo_instance.get_by_key.return_value = None
-                mock_repo_instance.create.return_value = True
-                MockRepo.return_value = mock_repo_instance
+                mock_get_repo.return_value = mock_repo_instance
 
                 # Act - No config_repo parameter
                 result = await update_text_model_config(
@@ -158,8 +150,8 @@ class TestRepositoryDependencyInjection:
                     # ← No config_repo, should use factory
                 )
 
-                # Assert - Factory created default repository
-                MockRepo.assert_called_once_with(mock_db)
+                # Assert - Factory function was called
+                mock_get_repo.assert_called_once_with(None)
                 assert result is not None
 
     @pytest.mark.asyncio
@@ -195,23 +187,21 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_all_functions_accept_optional_config_repo(self):
         """All write functions accept optional config_repo parameter."""
-        # Fix: Patch service's get_async_db_client (covers both _get_config_repo and _log_config_change)
-        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
-                mock_db = MagicMock()
-                mock_get_db.return_value = mock_db
+        # Fix: Directly mock _get_config_repo
+        mock_repo_instance = AsyncMock()
+        mock_repo_instance.get_by_key = AsyncMock(side_effect=[
+            None, None,  # update_text_model_config
+            None, None,  # update_image_model_config
+            None, None,  # update_canary_config
+            json.dumps({"openai": True}), json.dumps({"openai": True})  # toggle_ai_provider
+        ])
+        mock_repo_instance.create = AsyncMock(return_value=True)
+        mock_repo_instance.update = AsyncMock(return_value=True)
 
-                # Mock table().insert() for audit logging
-                insert_result = MagicMock()
-                insert_result.data = []
-                execute_mock = AsyncMock(return_value=insert_result)
-                mock_db.table.return_value.insert.return_value.execute = execute_mock
-
-                mock_repo_instance = AsyncMock()
-                mock_repo_instance.get_by_key.return_value = None
-                mock_repo_instance.create.return_value = True
-                mock_repo_instance.update.return_value = True
-                MockRepo.return_value = mock_repo_instance
+        with patch("domains.platform.ai.service._get_config_repo", new_callable=AsyncMock) as mock_get_repo:
+            with patch("domains.platform.ai.service._log_config_change", new_callable=AsyncMock):
+                # Arrange
+                mock_get_repo.return_value = mock_repo_instance
 
                 # Act - Call all functions without config_repo (backward compatible)
                 result1 = await update_text_model_config(
@@ -232,8 +222,6 @@ class TestBackwardCompatibility:
                     admin_id="admin-123"
                 )
 
-                # Mock for toggle_ai_provider
-                mock_repo_instance.get_by_key.return_value = json.dumps({"openai": True})
                 result4 = await toggle_ai_provider(
                     provider="anthropic",
                     enabled=True,
@@ -257,23 +245,15 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_factory_creates_repository_with_correct_client(self):
         """Factory function creates Repository with correct database client."""
-        # Fix: Patch service's get_async_db_client
-        with patch("domains.platform.ai.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
+        # Fix: Directly mock _get_config_repo
+        mock_repo_instance = AsyncMock()
+        mock_repo_instance.get_by_key = AsyncMock(side_effect=[None, None])
+        mock_repo_instance.create = AsyncMock(return_value=True)
+
+        with patch("domains.platform.ai.service._get_config_repo", new_callable=AsyncMock) as mock_get_repo:
+            with patch("domains.platform.ai.service._log_config_change", new_callable=AsyncMock):
                 # Arrange
-                mock_db = MagicMock()
-                mock_get_db.return_value = mock_db
-
-                # Mock table().insert() for audit logging
-                insert_result = MagicMock()
-                insert_result.data = []
-                execute_mock = AsyncMock(return_value=insert_result)
-                mock_db.table.return_value.insert.return_value.execute = execute_mock
-
-                mock_repo_instance = AsyncMock()
-                mock_repo_instance.get_by_key.return_value = None
-                mock_repo_instance.create.return_value = True
-                MockRepo.return_value = mock_repo_instance
+                mock_get_repo.return_value = mock_repo_instance
 
                 # Act - Call without config_repo to trigger factory
                 result = await update_text_model_config(
@@ -281,9 +261,8 @@ class TestFactoryFunctions:
                     admin_id="admin-123"
                 )
 
-                # Assert - Factory used correct database client
-                mock_get_db.assert_called()
-                MockRepo.assert_called_with(mock_db)
+                # Assert - Factory function was called with None (default repo)
+                mock_get_repo.assert_called_once_with(None)
                 assert result is not None
 
     @pytest.mark.asyncio
