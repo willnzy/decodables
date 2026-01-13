@@ -154,7 +154,7 @@ SELECT
     operation, 
     error_message, 
     details 
-FROM error_logs 
+FROM system_error_logs 
 WHERE created_at >= NOW() - INTERVAL '24 hours' 
 ORDER BY created_at DESC 
 LIMIT 50;
@@ -294,7 +294,7 @@ SELECT * FROM get_user_creation_stats(7);
 
 -- 2. 验证表大小视图
 SELECT * FROM v_table_sizes 
-WHERE tablename IN ('user_creation_logs', 'error_logs', 'profiles');
+WHERE tablename IN ('user_creation_logs', 'system_error_logs', 'error_logs', 'profiles');
 
 -- 3. 验证日志统计
 SELECT * FROM get_log_tables_stats();
