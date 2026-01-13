@@ -39,6 +39,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user, require_admin
 from infrastructure.rate_limiter import limiter
 from container import get_container
@@ -142,7 +143,7 @@ class AddCreditsRequest(BaseModel):
 
 @router.get("/credits", response_model=CreditsResponse)
 @limiter.limit("60/minute")  # v1.2.0: B-MEDIUM-1 - Rate limiting
-async def get_credits(request: Request, user: dict = Depends(get_current_user)):
+async def get_credits(request: Request, user: UserProfile = Depends(get_current_user)):
     """
     Get current user's credit balance and tier information.
 
@@ -195,7 +196,7 @@ async def get_credits(request: Request, user: dict = Depends(get_current_user)):
     container = get_container()
     handler = await container.get_user_credits_handler()
 
-    query = GetUserCreditsQuery(user_id=user["id"])
+    query = GetUserCreditsQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     if not result.success:
@@ -220,7 +221,7 @@ async def get_transactions(
     tx_type: Optional[str] = Query(None, description="Filter by transaction type (e.g., 'credit_purchase', 'ai_generation')"),
     start_date: Optional[datetime] = Query(None, description="Filter transactions from this date onwards (ISO 8601 format)"),
     end_date: Optional[datetime] = Query(None, description="Filter transactions up to this date (ISO 8601 format)"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ):
     """
     Get user's transaction history with optional filtering and pagination.
@@ -313,7 +314,7 @@ async def get_transactions(
     handler = await container.get_transaction_history_handler()
 
     query = GetTransactionHistoryQuery(
-        user_id=user["id"],
+        user_id=user.user_id,
         limit=limit,
         offset=offset,
         tx_type=tx_type,
@@ -350,7 +351,7 @@ async def check_can_afford(
     request: Request,
     amount: Optional[int] = Query(None, ge=0, le=100000),  # v1.2.0: Added max limit
     operation: Optional[str] = Query(None, max_length=50),  # v1.2.0: Added max_length
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ):
     """
     Check if user can afford an operation or amount.
@@ -373,7 +374,7 @@ async def check_can_afford(
     handler = await container.get_user_credits_handler()
 
     # Get current credits
-    credits_query = GetUserCreditsQuery(user_id=user["id"])
+    credits_query = GetUserCreditsQuery(user_id=user.user_id)
     credits_result = await handler.handle(credits_query)
 
     if not credits_result.success:

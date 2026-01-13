@@ -23,6 +23,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from container import get_container
 from infrastructure.rate_limiter import limiter
@@ -152,7 +153,7 @@ async def list_projects(
     limit: int = Query(6, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas_data: bool = True,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectListResponse:
     """
     Get user's projects with pagination.
@@ -172,7 +173,7 @@ async def list_projects(
     handler = await container.get_user_projects_handler()
 
     query = GetUserProjectsQuery(
-        user_id=user["id"],
+        user_id=user.user_id,
         limit=limit,
         offset=offset,
     )
@@ -208,7 +209,7 @@ async def dashboard_projects(
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> DashboardProjectsResponse:
     """
     Get projects for dashboard with view type filtering.
@@ -230,7 +231,7 @@ async def dashboard_projects(
     handler = await container.get_dashboard_projects_handler()
 
     query = GetDashboardProjectsQuery(
-        user_id=user["id"],
+        user_id=user.user_id,
         view_type=view,
         offset=offset,
         limit=limit,
@@ -258,7 +259,7 @@ async def dashboard_projects(
 async def list_deleted_projects(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectListResponse:
     """
     Retrieve the user's deleted projects.
@@ -273,7 +274,7 @@ async def list_deleted_projects(
     container = get_container()
     creation_service = container.creation_service
     items = await creation_service.get_user_deleted_projects(
-        user_id=user["id"],
+        user_id=user.user_id,
         limit=limit,
         offset=offset,
     )
@@ -290,7 +291,7 @@ async def list_deleted_projects(
 
 @router.get("/seller-stats")
 async def get_project_seller_stats(
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> SellerStatsResponse:
     """
     Get seller statistics for projects.
@@ -303,7 +304,7 @@ async def get_project_seller_stats(
     container = get_container()
     creation_service = container.creation_service
 
-    stats = await creation_service.get_seller_project_stats(user["id"])
+    stats = await creation_service.get_seller_project_stats(user.user_id)
 
     # P2-002: Return Pydantic model with default values for missing fields
     return SellerStatsResponse(
@@ -319,7 +320,7 @@ async def get_project_seller_stats(
 async def create_project(
     request: Request,
     req: ProjectCreateRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectResponse:
     """
     Create a new project.
@@ -350,7 +351,7 @@ async def create_project(
     tier = (user.get("tier") or "t1").lower()
 
     command = CreateProjectCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         title=req.title or "Untitled",
         canvas_data=req.canvas_data,
         tier=tier,
@@ -372,7 +373,7 @@ async def create_project(
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectResponse:
     """
     Get single project details.
@@ -389,7 +390,7 @@ async def get_project(
 
     query = GetProjectQuery(
         project_id=project_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(query)
@@ -409,7 +410,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     req: ProjectUpdateRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectUpdateResponse:
     """
     Update a project.
@@ -444,7 +445,7 @@ async def update_project(
 
     command = UpdateProjectCommand(
         project_id=project_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         title=req.title,
         canvas_data=req.canvas_data,
         thumbnail_url=req.thumbnail_url,
@@ -472,7 +473,7 @@ async def update_project(
 async def delete_project(
     project_id: str,
     permanent: bool = False,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectDeleteResponse:
     """
     Delete a project.
@@ -490,7 +491,7 @@ async def delete_project(
 
     command = DeleteProjectCommand(
         project_id=project_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         permanent=permanent,
     )
 
@@ -511,7 +512,7 @@ async def delete_project(
         db_client = await get_async_db_client()
         admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],  # User deleting their own project
+            admin_id=user.user_id,  # User deleting their own project
             operation_type="project_delete_permanent" if permanent else "project_delete_soft",
             target_type="project",
             target_id=project_id,
@@ -531,7 +532,7 @@ async def delete_project(
 @router.post("/{project_id}/restore")
 async def restore_project(
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectRestoreResponse:
     """
     Restore a deleted project from trash.
@@ -544,7 +545,7 @@ async def restore_project(
 
     command = RestoreProjectCommand(
         project_id=project_id,
-        user_id=user["id"],
+        user_id=user.user_id,
     )
 
     result = await handler.handle(command)
@@ -565,7 +566,7 @@ async def restore_project(
         db_client = await get_async_db_client()
         admin_repo = SupabaseAdminUsersRepository(db_client)
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],
+            admin_id=user.user_id,
             operation_type="project_restore",
             target_type="project",
             target_id=project_id,
@@ -587,7 +588,7 @@ async def restore_project(
 async def duplicate_project(
     request: Request,
     project_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> ProjectResponse:
     """
     Duplicate a project.
@@ -608,7 +609,7 @@ async def duplicate_project(
         # Service returns Project directly, not a Result object
         project = await creation_service.duplicate_project(
             project_id=project_id,
-            user_id=user["id"],
+            user_id=user.user_id,
             tier=tier,
         )
 
