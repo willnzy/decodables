@@ -67,7 +67,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
     async def get_by_id(self, experiment_id: str) -> Optional[Experiment]:
         """Get experiment by ID."""
         try:
-            result = self.client.table("experiments").select("*").eq(
+            result = await self.client.table("experiments").select("*").eq(
                 "experiment_id", experiment_id
             ).limit(1).single().execute()
 
@@ -85,7 +85,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
         """Persist experiment (upsert)."""
         try:
             data = self._map_to_row(experiment)
-            self.client.table("experiments").upsert(
+            await self.client.table("experiments").upsert(
                 data, on_conflict="experiment_id"
             ).execute()
 
@@ -115,7 +115,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
             data = self._map_to_row(experiment)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            self.client.table("experiments").update(data).eq(
+            await self.client.table("experiments").update(data).eq(
                 "experiment_id", experiment.experiment_id
             ).execute()
 
@@ -130,12 +130,12 @@ class SupabaseExperimentRepository(IExperimentRepository):
         """Delete an experiment."""
         try:
             # Delete assignments first (limit for safety)
-            self.client.table("experiment_assignments").delete().eq(
+            await self.client.table("experiment_assignments").delete().eq(
                 "experiment_id", experiment_id
             ).limit(10000).execute()
 
             # Delete experiment
-            result = self.client.table("experiments").delete().eq(
+            result = await self.client.table("experiments").delete().eq(
                 "experiment_id", experiment_id
             ).limit(1).execute()
 
@@ -159,7 +159,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
             if status:
                 query = query.eq("status", status.value)
 
-            result = query.limit(10000).execute()  # OOM protection
+            result = await query.limit(10000).execute()  # OOM protection
 
             return [self._map_to_experiment(row) for row in result.data]
 
@@ -171,7 +171,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
     async def get_running(self) -> List[Experiment]:
         """Get all running experiments (with OOM protection)."""
         try:
-            result = self.client.table("experiments").select("*").eq(
+            result = await self.client.table("experiments").select("*").eq(
                 "status", ExperimentStatus.RUNNING.value
             ).limit(1000).execute()  # OOM protection (fewer running experiments expected)
 
@@ -190,7 +190,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
     ) -> bool:
         """Record a user's variant assignment."""
         try:
-            self.client.table("experiment_assignments").upsert({
+            await self.client.table("experiment_assignments").upsert({
                 "experiment_id": experiment_id,
                 "user_id": user_id,
                 "variant_id": variant_id,
@@ -211,7 +211,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
     ) -> Optional[str]:
         """Get user's assigned variant."""
         try:
-            result = self.client.table("experiment_assignments").select(
+            result = await self.client.table("experiment_assignments").select(
                 "variant_id"
             ).eq("experiment_id", experiment_id).eq(
                 "user_id", user_id
@@ -302,7 +302,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
         Returns dict (not Aggregate) for compatibility with current API.
         """
         try:
-            result = self.client.table("experiments").select("*").eq(
+            result = await self.client.table("experiments").select("*").eq(
                 "experiment_key", experiment_key
             ).limit(1).single().execute()
 
@@ -346,7 +346,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
             if experiment_type:
                 query = query.eq("experiment_type", experiment_type)
 
-            result = query.order("created_at", desc=True)\
+            result = await query.order("created_at", desc=True)\
                 .range(offset, offset + limit - 1)\
                 .limit(10000)\
                 .execute()
@@ -382,7 +382,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
             List of daily result records
         """
         try:
-            result = self.client.table("experiment_results").select("*")\
+            result = await self.client.table("experiment_results").select("*")\
                 .eq("experiment_id", experiment_id)\
                 .gte("date", start_date)\
                 .order("date")\
@@ -417,7 +417,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
             List of hourly result records
         """
         try:
-            result = self.client.table("experiment_results").select("*")\
+            result = await self.client.table("experiment_results").select("*")\
                 .eq("experiment_id", experiment_id)\
                 .gte("date", start_date)\
                 .order("date").order("hour")\
