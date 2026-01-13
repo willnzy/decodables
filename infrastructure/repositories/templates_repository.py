@@ -66,7 +66,7 @@ class SupabaseTemplatesRepository:
         Returns:
             List of template dicts
         """
-        result = self.client.table("asset_prompt_templates") \
+        result = await self.client.table("asset_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
             .order("use_count", desc=True) \
@@ -90,7 +90,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template dict or None
         """
-        result = self.client.table("asset_prompt_templates") \
+        result = await self.client.table("asset_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -113,7 +113,7 @@ class SupabaseTemplatesRepository:
         Raises:
             Exception: If creation fails
         """
-        result = self.client.table("asset_prompt_templates") \
+        result = await self.client.table("asset_prompt_templates") \
             .insert(data) \
             .execute()
 
@@ -140,7 +140,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Updated template dict or None if not found
         """
-        result = self.client.table("asset_prompt_templates") \
+        result = await self.client.table("asset_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -164,7 +164,7 @@ class SupabaseTemplatesRepository:
         Returns:
             True if deleted
         """
-        self.client.table("asset_prompt_templates") \
+        await self.client.table("asset_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -183,7 +183,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template count
         """
-        result = self.client.table("asset_prompt_templates") \
+        result = await self.client.table("asset_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user_id) \
             .execute()
@@ -205,7 +205,7 @@ class SupabaseTemplatesRepository:
         Returns:
             List of template dicts
         """
-        result = self.client.table("page_prompt_templates") \
+        result = await self.client.table("page_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
             .order("use_count", desc=True) \
@@ -229,7 +229,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template dict or None
         """
-        result = self.client.table("page_prompt_templates") \
+        result = await self.client.table("page_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -252,7 +252,7 @@ class SupabaseTemplatesRepository:
         Raises:
             Exception: If creation fails
         """
-        result = self.client.table("page_prompt_templates") \
+        result = await self.client.table("page_prompt_templates") \
             .insert(data) \
             .execute()
 
@@ -279,7 +279,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Updated template dict or None if not found
         """
-        result = self.client.table("page_prompt_templates") \
+        result = await self.client.table("page_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -303,7 +303,7 @@ class SupabaseTemplatesRepository:
         Returns:
             True if deleted
         """
-        self.client.table("page_prompt_templates") \
+        await self.client.table("page_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -322,7 +322,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template count
         """
-        result = self.client.table("page_prompt_templates") \
+        result = await self.client.table("page_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user_id) \
             .execute()
