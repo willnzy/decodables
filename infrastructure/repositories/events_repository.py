@@ -73,7 +73,7 @@ class SupabaseEventsRepository(IEventsRepository):
             if end_date:
                 query = query.lte("created_at", end_date)
 
-            result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+            result = await query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
             total = result.count or 0
 
             return {
@@ -117,7 +117,7 @@ class SupabaseEventsRepository(IEventsRepository):
 
             # Call PostgreSQL RPC function
             try:
-                result = self.client.rpc(
+                result = await self.client.rpc(
                     function_name,
                     {
                         "p_start_date": start_date,
@@ -187,7 +187,7 @@ class SupabaseEventsRepository(IEventsRepository):
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.execute()
+        result = await query.execute()
 
         # Application-level aggregation
         stats = {}
@@ -218,7 +218,7 @@ class SupabaseEventsRepository(IEventsRepository):
         """Get today's aggregated statistics."""
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            result = self.client.table("aggregated_stats").select("*")\
+            result = await self.client.table("aggregated_stats").select("*")\
                 .eq("stat_type", stat_type)\
                 .eq("date", today)\
                 .execute()
@@ -241,7 +241,7 @@ class SupabaseEventsRepository(IEventsRepository):
         """Get aggregated statistics for a date range."""
         try:
             start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-            result = self.client.table("aggregated_stats").select("*")\
+            result = await self.client.table("aggregated_stats").select("*")\
                 .eq("stat_type", stat_type)\
                 .gte("date", start)\
                 .order("date", desc=True)\
@@ -283,7 +283,7 @@ class SupabaseEventsRepository(IEventsRepository):
         try:
             cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
-            result = self.client.table("user_events").delete()\
+            result = await self.client.table("user_events").delete()\
                 .lt("created_at", cutoff_date)\
                 .execute()
 
