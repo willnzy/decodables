@@ -74,9 +74,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         """Persist user profile (upsert)."""
         try:
             data = self._map_to_row(user_profile)
-            result = await self.client.table("profiles").upsert(data, on_conflict="id").select("*").single().execute()
+            result = await self.client.table("profiles").upsert(data, on_conflict="id").execute()
 
-            return self._map_to_entity(result.data)
+            if not result.data:
+                raise Exception("Failed to save user - no data returned")
+
+            return self._map_to_entity(result.data[0])
 
         except Exception as e:
             logger.error(f"Failed to save user {user_profile.user_id}: {e}")
@@ -107,12 +110,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             data = self._map_to_row(user_profile)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = await self.client.table("profiles").update(data).eq("user_id", user_profile.user_id).select("*").single().execute()
+            result = await self.client.table("profiles").update(data).eq("user_id", user_profile.user_id).execute()
 
             if not result.data:
                 raise UserNotFoundException(user_profile.user_id)
 
-            return self._map_to_entity(result.data)
+            return self._map_to_entity(result.data[0])
 
         except UserNotFoundException:
             raise
@@ -176,12 +179,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             if stripe_customer_id:
                 update_data["stripe_customer_id"] = stripe_customer_id
 
-            result = await self.client.table("profiles").update(update_data).eq("user_id", user_id).select("*").single().execute()
+            result = await self.client.table("profiles").update(update_data).eq("user_id", user_id).execute()
 
             if not result.data:
                 raise UserNotFoundException(user_id)
 
-            return self._map_to_entity(result.data)
+            return self._map_to_entity(result.data[0])
 
         except UserNotFoundException:
             raise
