@@ -212,7 +212,7 @@ class SupabaseAdminUsersRepository:
             query = query.lte("created_at", end_date)
 
         # Pagination with OOM protection
-        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).limit(100000).execute()
+        result = await query.order("created_at", desc=True).range(offset, offset + limit - 1).limit(100000).execute()
         total = result.count or 0
 
         return {
@@ -411,7 +411,7 @@ class SupabaseAdminStatsRepository:
 
         # Query payment records (exclude refunds by filtering amount > 0)
         # STAT-MEDIUM-8: Added limit to prevent OOM
-        result = self.client.table("payment_records").select(
+        result = await self.client.table("payment_records").select(
             "amount, currency, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).gt("amount", 0).order("created_at").limit(100000).execute()
 
@@ -437,7 +437,7 @@ class SupabaseAdminStatsRepository:
     async def log_user_event(self, user_id: str, event_type: str, properties: Optional[dict] = None,
                        session_id: Optional[str] = None, event_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Log user event."""
-        result = self.client.table("user_events").insert({
+        result = await self.client.table("user_events").insert({
             "user_id": user_id,
             "event_type": event_type,
             "properties": properties or {},
@@ -508,7 +508,7 @@ class SupabaseAdminStatsRepository:
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+        result = await query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
         total = result.count or 0
 
         return {
@@ -561,7 +561,7 @@ class SupabaseAdminStatsRepository:
         if end_date:
             query = query.lte("created_at", end_date)
 
-        result = query.execute()
+        result = await query.execute()
 
         # Aggregate based on group_by
         stats = {}
@@ -602,13 +602,13 @@ class SupabaseAdminStatsRepository:
     @retry_on_network_error()
     async def upsert_aggregated_stats(self, date_str: str, stat_type: str, data: dict) -> Optional[Dict[str, Any]]:
         """Upsert aggregated statistics."""
-        result = self.client.table("aggregated_stats").upsert({
+        result = await self.client.table("aggregated_stats").upsert({
             "date": date_str,
             "stat_type": stat_type,
             "data": data,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="date,stat_type").execute()
-        
+
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
@@ -632,7 +632,7 @@ class SupabaseAdminStatsRepository:
 
         # Get user growth insight
         if insight_type in ("all", "growth"):
-            user_stats = self.client.table("profiles").select("id", count="exact").gte(
+            user_stats = await self.client.table("profiles").select("id", count="exact").gte(
                 "created_at", week_ago
             ).execute()
             new_users = user_stats.count or 0
@@ -647,7 +647,7 @@ class SupabaseAdminStatsRepository:
 
         # Get engagement insight
         if insight_type in ("all", "engagement"):
-            project_stats = self.client.table("projects").select("id", count="exact").gte(
+            project_stats = await self.client.table("projects").select("id", count="exact").gte(
                 "created_at", week_ago
             ).eq("is_deleted", False).execute()
             new_projects = project_stats.count or 0
@@ -662,7 +662,7 @@ class SupabaseAdminStatsRepository:
 
         # Get revenue insight
         if insight_type in ("all", "revenue"):
-            paying_stats = self.client.table("profiles").select("id", count="exact").neq(
+            paying_stats = await self.client.table("profiles").select("id", count="exact").neq(
                 "tier", "t1"
             ).eq("subscription_status", "active").execute()
             paying_users = paying_stats.count or 0
@@ -698,10 +698,10 @@ class SupabaseAdminStatsRepository:
 
         # Growth recommendations
         if area in ("all", "growth"):
-            new_users_week = self.client.table("profiles").select("id", count="exact").gte(
+            new_users_week = await self.client.table("profiles").select("id", count="exact").gte(
                 "created_at", week_ago
             ).execute()
-            new_users_month = self.client.table("profiles").select("id", count="exact").gte(
+            new_users_month = await self.client.table("profiles").select("id", count="exact").gte(
                 "created_at", month_ago
             ).execute()
 
@@ -726,7 +726,7 @@ class SupabaseAdminStatsRepository:
             # Count distinct users who have created projects (more efficient)
             # Note: Supabase doesn't support COUNT(DISTINCT), so we still need to fetch user_ids
             # but we can limit the query
-            users_with_projects_result = self.client.table("projects").select(
+            users_with_projects_result = await self.client.table("projects").select(
                 "user_id"
             ).limit(100000).execute()  # Limit to prevent OOM
 
@@ -755,7 +755,7 @@ class SupabaseAdminStatsRepository:
                 total_users = await self.client.table("profiles").select("id", count="exact").execute()
                 total_users_count = total_users.count or 0
 
-            paying_users = self.client.table("profiles").select("id", count="exact").neq(
+            paying_users = await self.client.table("profiles").select("id", count="exact").neq(
                 "tier", "t1"
             ).execute()
 
@@ -803,7 +803,7 @@ class SupabaseAdminStatsRepository:
             end_date = datetime.now(timezone.utc).isoformat()
 
         # Get user activity patterns (limited to prevent OOM)
-        events = self.client.table("user_events").select(
+        events = await self.client.table("user_events").select(
             "event_type, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).limit(MAX_USER_EVENTS_BEHAVIOR_ANALYSIS).execute()
 
@@ -829,7 +829,7 @@ class SupabaseAdminStatsRepository:
         peak_hour = max(hourly_activity, key=hourly_activity.get) if hourly_activity else 12
 
         # Get user segments (use count aggregation for efficiency)
-        tier_dist = self.client.table("profiles").select("tier").execute()
+        tier_dist = await self.client.table("profiles").select("tier").execute()
         segments = {"t1": 0, "t2": 0, "t3": 0}
         for profile in (tier_dist.data or []):
             tier = profile.get("tier", "t1")
@@ -898,7 +898,7 @@ class SupabaseAdminModerationRepository:
             query = query.eq("resource_type", resource_type)
 
         # v3.28: Added OOM protection + count="exact"
-        result = query.order("submitted_at", desc=True)\
+        result = await query.order("submitted_at", desc=True)\
             .range(offset, offset + limit - 1)\
             .limit(10000)\
             .execute()
@@ -911,10 +911,10 @@ class SupabaseAdminModerationRepository:
     @retry_on_network_error()
     async def admin_get_moderation_detail(self, listing_id: str) -> Optional[Dict[str, Any]]:
         """Get listing detail for moderation."""
-        result = self.client.table("marketplace_listings").select(
+        result = await self.client.table("marketplace_listings").select(
             "*, profiles(username, email, tier)"
         ).eq("id", listing_id).execute()
-        
+
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
@@ -924,7 +924,7 @@ class SupabaseAdminModerationRepository:
 
         v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
         """
-        result = self.client.table("marketplace_listings").update({
+        result = await self.client.table("marketplace_listings").update({
             "moderation_status": "approved",
             "is_public": True,
             "moderated_at": datetime.now(timezone.utc).isoformat(),
@@ -940,7 +940,7 @@ class SupabaseAdminModerationRepository:
 
         v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
         """
-        result = self.client.table("marketplace_listings").update({
+        result = await self.client.table("marketplace_listings").update({
             "moderation_status": "rejected",
             "is_public": False,
             "rejection_reason": reason,
@@ -957,7 +957,7 @@ class SupabaseAdminModerationRepository:
 
         v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
         """
-        result = self.client.table("marketplace_listings").update({
+        result = await self.client.table("marketplace_listings").update({
             "is_deleted": True,
             "deleted_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", listing_id).limit(1).execute()
@@ -971,7 +971,7 @@ class SupabaseAdminModerationRepository:
 
         v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
         """
-        result = self.client.table("marketplace_listings").update({
+        result = await self.client.table("marketplace_listings").update({
             "is_public": False,
         }).eq("id", listing_id).limit(1).execute()
 
@@ -1001,7 +1001,7 @@ class SupabaseAdminModerationRepository:
             query = query.eq("status", status)
 
         # v3.28: Added OOM protection + count="exact"
-        result = query.order("created_at", desc=True)\
+        result = await query.order("created_at", desc=True)\
             .range(offset, offset + limit - 1)\
             .limit(10000)\
             .execute()
@@ -1024,7 +1024,7 @@ class SupabaseAdminModerationRepository:
         if status:
             query = query.eq("status", status)
 
-        result = query.execute()
+        result = await query.execute()
         return result.count or 0
 
     @retry_on_network_error()
@@ -1071,7 +1071,7 @@ class SupabaseAdminModerationRepository:
         v3.28: MOD-MEDIUM-3 Fix - Renamed parameter 'response' to 'admin_response' for clarity.
         v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
         """
-        result = self.client.table("reports").update({
+        result = await self.client.table("reports").update({
             "status": new_status,
             "admin_response": admin_response,
             "responded_by": admin_id,
@@ -1083,10 +1083,10 @@ class SupabaseAdminModerationRepository:
     @retry_on_network_error()
     async def admin_get_report_detail(self, report_id: str) -> Optional[Dict[str, Any]]:
         """Get report detail."""
-        result = self.client.table("reports").select(
+        result = await self.client.table("reports").select(
             "*, profiles!reporter_id(username, email), marketplace_listings(*)"
         ).eq("id", report_id).execute()
-        
+
         return result.data[0] if result.data else None
 
 
