@@ -25,6 +25,7 @@ Endpoints:
 import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
+from domains.identity.aggregates.user_profile import UserProfile
 from core.database.dependencies import get_async_db
 from infrastructure.repositories.user_repository import SupabaseUserRepository
 from infrastructure.rate_limiter import limiter
@@ -65,7 +66,7 @@ def get_inspiration_service() -> InspirationService:
 async def gen_story(
     request: Request,
     req: StoryGenRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     story_service: StoryGenerationService = Depends(get_story_service),  # v3.28: DI
 ):
     """
@@ -85,8 +86,8 @@ async def gen_story(
     # v3.28: Generate story via Service (DDD compliant)
     try:
         result = await story_service.generate_story(
-            user_id=user["id"],
-            tier=(user.get("tier") or "t1").lower(),
+            user_id=user.user_id,
+            tier=(user.tier.value if hasattr(user.tier, 'value') else user.tier).lower(),
             topic=req.topic,
         )
         return result
@@ -109,7 +110,7 @@ async def gen_story(
 async def gen_inspiration(
     request: Request,
     req: InspirationRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     inspiration_service: InspirationService = Depends(get_inspiration_service),  # v3.28: DI
 ):
     """
@@ -128,7 +129,7 @@ async def gen_inspiration(
     """
     # v3.28: Generate inspiration via Service (DDD compliant)
     result = await inspiration_service.generate_inspiration(
-        user_id=user["id"],
+        user_id=user.user_id,
         category=req.category,
     )
     return result
