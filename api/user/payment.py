@@ -33,6 +33,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from infrastructure.repositories.user_repository import SupabaseUserRepository
@@ -87,7 +88,7 @@ class PortalResponse(BaseModel):
 async def create_checkout(
     request: Request,
     req: CheckoutRequest,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
     db = Depends(get_async_db),  # AsyncClient DI
 ) -> CheckoutResponse:
@@ -106,7 +107,7 @@ async def create_checkout(
         user_repo = SupabaseUserRepository(db)
 
         # v2.2.0: Get and validate discount
-        discount = await user_repo.get_user_discount(user["id"], req.plan_type)
+        discount = await user_repo.get_user_discount(user.user_id, req.plan_type)
         discount_percent = 0
         discount_id = None
 
@@ -134,7 +135,7 @@ async def create_checkout(
                 discount_id = None
 
         # v2.3.0: Use PaymentService via DI
-        url = payment_service.create_checkout_session(user["id"], req.plan_type, discount_percent)
+        url = payment_service.create_checkout_session(user.user_id, req.plan_type, discount_percent)
 
         if not url:
             raise HTTPException(500, "Failed to create checkout session")
@@ -170,7 +171,7 @@ async def create_checkout(
 @limiter.limit("10/minute")  # v2.2.0: Added rate limiting
 async def get_portal(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
     payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
 ) -> PortalResponse:
     """
@@ -195,7 +196,7 @@ async def get_portal(
 
     try:
         # v2.3.0: Use PaymentService via DI
-        url = payment_service.create_portal_session(user["id"], stripe_customer_id)
+        url = payment_service.create_portal_session(user.user_id, stripe_customer_id)
 
         if not url:
             raise HTTPException(500, "Failed to create portal session")

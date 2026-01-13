@@ -43,6 +43,7 @@ from typing import Optional, List, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from container import get_container
@@ -184,7 +185,7 @@ class TemplateUseResponse(BaseModel):
 @limiter.limit("60/minute")
 async def list_asset_templates(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateListResponse:
     """
     Get user's saved asset prompt templates (5W1H).
@@ -194,7 +195,7 @@ async def list_asset_templates(
     container = get_container()
     handler = await container.list_asset_templates_handler()
 
-    query = ListAssetTemplatesQuery(user_id=user["id"])
+    query = ListAssetTemplatesQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return TemplateListResponse(templates=result.templates)
@@ -205,7 +206,7 @@ async def list_asset_templates(
 async def create_asset_template(
     request: Request,
     req: AssetTemplateCreate,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Create a new asset prompt template.
@@ -233,7 +234,7 @@ async def create_asset_template(
     }
 
     command = CreateAssetTemplateCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         template_data=template_data
     )
     result = await handler.handle(command)
@@ -247,7 +248,7 @@ async def update_asset_template(
     request: Request,
     template_id: str,
     req: AssetTemplateUpdate,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Update an existing asset prompt template.
@@ -267,7 +268,7 @@ async def update_asset_template(
 
     command = UpdateAssetTemplateCommand(
         template_id=template_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         updates=update_data
     )
     result = await handler.handle(command)
@@ -280,7 +281,7 @@ async def update_asset_template(
 async def delete_asset_template(
     request: Request,
     template_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Delete an asset prompt template.
@@ -295,7 +296,7 @@ async def delete_asset_template(
 
     command = DeleteAssetTemplateCommand(
         template_id=template_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
@@ -306,7 +307,7 @@ async def delete_asset_template(
 
         admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],
+            admin_id=user.user_id,
             operation_type="template_delete",
             target_type="template",
             target_id=template_id,
@@ -324,7 +325,7 @@ async def delete_asset_template(
 async def use_asset_template(
     request: Request,
     template_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateUseResponse:
     """
     Mark an asset template as used (increments use_count).
@@ -340,7 +341,7 @@ async def use_asset_template(
 
     command = UseAssetTemplateCommand(
         template_id=template_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
@@ -355,7 +356,7 @@ async def use_asset_template(
 @limiter.limit("60/minute")
 async def list_page_templates(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateListResponse:
     """
     Get user's saved page prompt templates.
@@ -365,7 +366,7 @@ async def list_page_templates(
     container = get_container()
     handler = await container.list_page_templates_handler()
 
-    query = ListPageTemplatesQuery(user_id=user["id"])
+    query = ListPageTemplatesQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return TemplateListResponse(templates=result.templates)
@@ -376,7 +377,7 @@ async def list_page_templates(
 async def create_page_template(
     request: Request,
     req: PageTemplateCreate,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Create a new page prompt template.
@@ -399,7 +400,7 @@ async def create_page_template(
     }
 
     command = CreatePageTemplateCommand(
-        user_id=user["id"],
+        user_id=user.user_id,
         template_data=template_data
     )
     result = await handler.handle(command)
@@ -413,7 +414,7 @@ async def update_page_template(
     request: Request,
     template_id: str,
     req: PageTemplateUpdate,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Update an existing page prompt template.
@@ -433,7 +434,7 @@ async def update_page_template(
 
     command = UpdatePageTemplateCommand(
         template_id=template_id,
-        user_id=user["id"],
+        user_id=user.user_id,
         updates=update_data
     )
     result = await handler.handle(command)
@@ -446,7 +447,7 @@ async def update_page_template(
 async def delete_page_template(
     request: Request,
     template_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateResponse:
     """
     Delete a page prompt template.
@@ -461,7 +462,7 @@ async def delete_page_template(
 
     command = DeletePageTemplateCommand(
         template_id=template_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
@@ -472,7 +473,7 @@ async def delete_page_template(
 
         admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
         await admin_repo.admin_log_operation(
-            admin_id=user["id"],
+            admin_id=user.user_id,
             operation_type="template_delete",
             target_type="template",
             target_id=template_id,
@@ -490,7 +491,7 @@ async def delete_page_template(
 async def use_page_template(
     request: Request,
     template_id: str,
-    user: dict = Depends(get_current_user),
+    user: UserProfile = Depends(get_current_user),
 ) -> TemplateUseResponse:
     """
     Mark a page template as used (increments use_count).
@@ -506,7 +507,7 @@ async def use_page_template(
 
     command = UsePageTemplateCommand(
         template_id=template_id,
-        user_id=user["id"]
+        user_id=user.user_id
     )
     result = await handler.handle(command)
 
