@@ -134,7 +134,7 @@ class ClerkWebhookService:
             )
             # If email is missing, update it separately
             if not existing_profile.get("email") and email:
-                self.db_client.table("profiles").update({"email": email}).eq("id", user_id).execute()
+                await self.db_client.table("profiles").update({"email": email}).eq("id", user_id).execute()
             logger.info(f"✅ User {user_id} already exists (JIT created), updated profile info")
             return {"status": "updated", "reason": "jit_created"}
 
@@ -155,7 +155,7 @@ class ClerkWebhookService:
 
         # Log signup event
         try:
-            self.db_client.table("activity_logs").insert({
+            await self.db_client.table("activity_logs").insert({
                 "user_id": user_id,
                 "action": "user_signup",
                 "metadata": {
@@ -199,7 +199,7 @@ class ClerkWebhookService:
         """
         try:
             idempotency_key = f"signup_bonus_{user_id}"
-            result = self.db_client.rpc("grant_signup_bonus_atomic", {
+            result = await self.db_client.rpc("grant_signup_bonus_atomic", {
                 "p_user_id": user_id,
                 "p_amount": 50,
                 "p_idempotency_key": idempotency_key
@@ -228,7 +228,7 @@ class ClerkWebhookService:
                     )
                     # Best effort to update idempotency key
                     try:
-                        self.db_client.table("credit_transactions").update({
+                        await self.db_client.table("credit_transactions").update({
                             "idempotency_key": idempotency_key
                         }).eq("user_id", user_id).eq("type", "signup_bonus").execute()
                     except Exception:
@@ -278,7 +278,7 @@ class ClerkWebhookService:
 
         # Log profile update
         try:
-            self.db_client.table("activity_logs").insert({
+            await self.db_client.table("activity_logs").insert({
                 "user_id": user_id,
                 "action": "profile_updated",
                 "metadata": {
@@ -311,7 +311,7 @@ class ClerkWebhookService:
         user_id = data.get("user_id")
         if user_id:
             try:
-                self.db_client.table("activity_logs").insert({
+                await self.db_client.table("activity_logs").insert({
                     "user_id": user_id,
                     "action": "user_login",
                     "metadata": {
@@ -342,7 +342,7 @@ class ClerkWebhookService:
         user_id = data.get("user_id")
         if user_id:
             try:
-                self.db_client.table("activity_logs").insert({
+                await self.db_client.table("activity_logs").insert({
                     "user_id": user_id,
                     "action": "user_logout",
                     "metadata": {"reason": event_type},

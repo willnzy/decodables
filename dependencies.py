@@ -8,6 +8,7 @@ FastAPI dependency injection functions
 import jwt
 from fastapi import Header, Depends
 from infrastructure.repositories import SupabaseUserRepository
+from core.database import get_async_db_client
 from config import CLERK_PEM_PUBLIC_KEY
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
@@ -74,7 +75,8 @@ async def get_current_user(authorization: str = Header(None)):
         raise UnauthorizedException(message="Invalid token: no user_id")
 
     # Get user profile from database using repository
-    user_repo = SupabaseUserRepository()
+    db_client = await get_async_db_client()
+    user_repo = SupabaseUserRepository(db_client)
     profile = await user_repo.get_by_id(user_id)
 
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
