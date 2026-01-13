@@ -64,7 +64,7 @@ class SupabaseCreditRepository(ICreditRepository):
     async def get_by_user_id(self, user_id: str) -> Optional[UserCredits]:
         """Get user credits by user ID."""
         try:
-            result = self.client.table("profiles").select(
+            result = await self.client.table("profiles").select(
                 "id, credits_monthly, credits_permanent, tier"
             ).eq("id", user_id).single().execute()
 
@@ -86,7 +86,7 @@ class SupabaseCreditRepository(ICreditRepository):
         """Persist user credits and pending transactions."""
         try:
             # Update user credits in profiles table
-            self.client.table("profiles").update({
+            await self.client.table("profiles").update({
                 "credits_monthly": user_credits.monthly_credits,
                 "credits_permanent": user_credits.permanent_credits,
                 "tier": user_credits.tier,
@@ -124,7 +124,7 @@ class SupabaseCreditRepository(ICreditRepository):
 
         try:
             # Call atomic deduction RPC
-            result = self.client.rpc("deduct_credits_atomic", {
+            result = await self.client.rpc("deduct_credits_atomic", {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_description": description or f"{tx_type.value} operation",
@@ -215,7 +215,7 @@ class SupabaseCreditRepository(ICreditRepository):
             column = "credits_monthly" if bucket == CreditBucket.MONTHLY else "credits_permanent"
 
             # Call atomic addition RPC
-            result = self.client.rpc("add_credits_atomic", {
+            result = await self.client.rpc("add_credits_atomic", {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_bucket": bucket.value,
@@ -294,7 +294,7 @@ class SupabaseCreditRepository(ICreditRepository):
             if end_date:
                 query = query.lte("created_at", end_date.isoformat())
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_transaction(row) for row in result.data]
 
@@ -323,7 +323,7 @@ class SupabaseCreditRepository(ICreditRepository):
             if end_date:
                 query = query.lte("created_at", end_date.isoformat())
 
-            result = query.execute()
+            result = await query.execute()
 
             # Supabase returns count in result.count when count="exact"
             return result.count if result.count is not None else 0
@@ -343,7 +343,7 @@ class SupabaseCreditRepository(ICreditRepository):
     ) -> Optional[CreditTransaction]:
         """Check if a transaction with this idempotency key exists."""
         try:
-            result = self.client.table("credit_transactions").select("*").eq(
+            result = await self.client.table("credit_transactions").select("*").eq(
                 "idempotency_key", idempotency_key
             ).single().execute()
 
@@ -361,7 +361,7 @@ class SupabaseCreditRepository(ICreditRepository):
     ) -> UserCredits:
         """Reset monthly credits for a user."""
         try:
-            result = self.client.table("profiles").update({
+            result = await self.client.table("profiles").update({
                 "credits_monthly": new_amount
             }).eq("id", user_id).select(
                 "id, credits_monthly, credits_permanent, tier"
@@ -392,7 +392,7 @@ class SupabaseCreditRepository(ICreditRepository):
     async def _save_transaction(self, user_id: str, tx: CreditTransaction):
         """Save a transaction record."""
         try:
-            self.client.table("credit_transactions").insert({
+            await self.client.table("credit_transactions").insert({
                 "user_id": user_id,
                 "amount": tx.amount,
                 "bucket": tx.bucket.value,
@@ -423,7 +423,7 @@ class SupabaseCreditRepository(ICreditRepository):
 
     # Extended Methods
 
-    def log_transaction(
+    async def log_transaction(
         self,
         user_id: str,
         amount: int,
@@ -444,7 +444,7 @@ class SupabaseCreditRepository(ICreditRepository):
             tz: Timezone
         """
         try:
-            self.client.table("credit_transactions").insert({
+            await self.client.table("credit_transactions").insert({
                 "user_id": user_id,
                 "amount": amount,
                 "bucket": bucket,
@@ -480,7 +480,7 @@ class SupabaseCreditRepository(ICreditRepository):
             Result dict with success status and balances
         """
         try:
-            result = self.client.rpc("deduct_credits_atomic", {
+            result = await self.client.rpc("deduct_credits_atomic", {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_type": tx_type,
@@ -527,7 +527,7 @@ class SupabaseCreditRepository(ICreditRepository):
             RPC result or None
         """
         try:
-            result = self.client.rpc("add_credits_atomic", {
+            result = await self.client.rpc("add_credits_atomic", {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_bucket": "permanent",
@@ -563,7 +563,7 @@ class SupabaseCreditRepository(ICreditRepository):
             RPC result or None
         """
         try:
-            result = self.client.rpc("add_credits_atomic", {
+            result = await self.client.rpc("add_credits_atomic", {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_bucket": "monthly",
@@ -618,7 +618,7 @@ class SupabaseCreditRepository(ICreditRepository):
             Dict with items and total count
         """
         offset = (page - 1) * limit
-        result = self.client.table("credit_transactions").select("*", count="exact").eq(
+        result = await self.client.table("credit_transactions").select("*", count="exact").eq(
             "user_id", user_id
         ).order("created_at", desc=True).range(offset, offset + limit - 1).execute()
 
@@ -647,12 +647,12 @@ class SupabaseCreditRepository(ICreditRepository):
         if amount == 0:
             return None
 
-        self.client.table("profiles").update({
+        await self.client.table("profiles").update({
             "credits_monthly": amount,
             "credits_reset_at": datetime.now(timezone.utc).isoformat()
         }).eq("id", user_id).execute()
 
-        self.log_transaction(
+        await self.log_transaction(
             user_id, amount, "monthly", "monthly_reset",
             f"{tier} monthly refresh"
         )
