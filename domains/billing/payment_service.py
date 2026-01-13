@@ -42,6 +42,14 @@ PRICE_MAP = {
     "t3": os.environ.get("STRIPE_PRICE_SUB_PRO")
 }
 
+# Debug: Log loaded Stripe Price IDs (only log presence/absence, not actual values)
+logger.info(f"[Stripe] Loaded Price IDs: "
+            f"credits_100={'✓' if PRICE_MAP.get('credits_100') else '✗'}, "
+            f"credits_500={'✓' if PRICE_MAP.get('credits_500') else '✗'}, "
+            f"credits_2000={'✓' if PRICE_MAP.get('credits_2000') else '✗'}, "
+            f"t2={'✓' if PRICE_MAP.get('t2') else '✗'}, "
+            f"t3={'✓' if PRICE_MAP.get('t3') else '✗'}")
+
 # Credit amounts for each plan
 CREDITS_AMOUNT_MAP = {
     "credits_100": 100,
@@ -148,7 +156,10 @@ def validate_config() -> Dict[str, Any]:
             missing_keys.append(f"STRIPE_PRICE_{plan.upper()}" if plan.startswith("credits") else f"STRIPE_PRICE_SUB_{plan.upper()}")
 
     for plan in optional_prices:
-        if not PRICE_MAP.get(plan):
+        value = PRICE_MAP.get(plan)
+        if not value:
+            # Debug: Show whether it's None or empty string
+            logger.debug(f"[Stripe] {plan} price ID is {'None' if value is None else 'empty string'}")
             warnings.append(f"STRIPE_PRICE_{plan.upper()} (optional)")
 
     # Log results
