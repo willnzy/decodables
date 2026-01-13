@@ -57,7 +57,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     async def get_by_key(self, key: str) -> Optional[FeatureFlag]:
         """Get feature flag by key."""
         try:
-            result = self.client.table("feature_flags").select("*").eq(
+            result = await self.client.table("feature_flags").select("*").eq(
                 "key", key
             ).single().execute()
 
@@ -74,7 +74,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
         """Persist feature flag (upsert)."""
         try:
             data = self._map_to_row(flag)
-            self.client.table("feature_flags").upsert(
+            await self.client.table("feature_flags").upsert(
                 data, on_conflict="key"
             ).execute()
 
@@ -102,7 +102,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
             data = self._map_to_row(flag)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            self.client.table("feature_flags").update(data).eq(
+            await self.client.table("feature_flags").update(data).eq(
                 "key", flag.key
             ).execute()
 
@@ -115,7 +115,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     async def delete(self, key: str) -> bool:
         """Delete a feature flag."""
         try:
-            result = self.client.table("feature_flags").delete().eq(
+            result = await self.client.table("feature_flags").delete().eq(
                 "key", key
             ).execute()
 
@@ -139,7 +139,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
             if tags:
                 query = query.contains("tags", tags)
 
-            result = query.execute()
+            result = await query.execute()
 
             return [self._map_to_flag(row) for row in result.data]
 
@@ -150,7 +150,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     async def get_active(self) -> List[FeatureFlag]:
         """Get all active feature flags."""
         try:
-            result = self.client.table("feature_flags").select("*").in_(
+            result = await self.client.table("feature_flags").select("*").in_(
                 "status", [FlagStatus.ACTIVE.value, FlagStatus.DEPRECATED.value]
             ).order("key").execute()
 
