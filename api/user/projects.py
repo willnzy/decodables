@@ -205,7 +205,7 @@ async def list_projects(
 @router.get("/dashboard")
 async def dashboard_projects(
     view: str = Query("all", pattern="^(all|bought|selling)$"),
-    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
@@ -214,12 +214,12 @@ async def dashboard_projects(
     """
     Get projects for dashboard with view type filtering.
 
-    P1-002 fix: Migrated to offset-based pagination.
+    P1-002 fix: Migrated to page-based pagination (aligned with frontend).
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
-        offset: Number of records to skip (default: 0)
+        page: Page number (1-indexed, default: 1)
         limit: Number of records to return (default: 20, max: 100)
         search: Search query
         include_canvas: Whether to include canvas_data
@@ -229,11 +229,11 @@ async def dashboard_projects(
     """
     container = get_container()
     handler = await container.get_dashboard_projects_handler()
-
+    
     query = GetDashboardProjectsQuery(
         user_id=user.user_id,
         view_type=view,
-        offset=offset,
+        page=page,
         limit=limit,
         search=search,
         include_canvas_data=include_canvas,
