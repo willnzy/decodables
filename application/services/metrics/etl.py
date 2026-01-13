@@ -2,14 +2,61 @@
 Metrics ETL - Extract, Transform, Load operations
 
 @module scheduled_tasks.metrics_etl.etl
-@version 3.24
+@version 3.31
+
+v3.31: 添加网络重试机制，解决 DNS 解析临时失败问题
 """
 
 from datetime import datetime, timedelta, timezone, date
 from typing import Dict, Optional
+import time
 
 from .utils import get_supabase, log
 from .calculator import MetricsCalculator
+
+# 网络重试配置
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0  # 秒
+
+
+def _retry_on_network_error(func):
+    """
+    网络错误重试装饰器（同步版本）
+    
+    处理常见的网络临时错误：
+    - DNS 解析失败 ([Errno -2] Name or service not known)
+    - 连接超时
+    - 连接被重置
+    """
+    def wrapper(*args, **kwargs):
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                error_str = str(e).lower()
+                # 检查是否为可重试的网络错误
+                is_retryable = any([
+                    "name or service not known" in error_str,
+                    "errno -2" in error_str,
+                    "connection" in error_str,
+                    "timeout" in error_str,
+                    "temporary failure" in error_str,
+                ])
+                
+                if is_retryable and attempt < MAX_RETRIES - 1:
+                    log(f"⚠️ Network error (attempt {attempt + 1}/{MAX_RETRIES}): {e}", "WARNING")
+                    time.sleep(RETRY_DELAY * (attempt + 1))  # 指数退避
+                    last_error = e
+                    continue
+                else:
+                    raise e
+        
+        # 不应该到这里，但为了安全
+        if last_error:
+            raise last_error
+    
+    return wrapper
 
 
 class MetricsETL:
@@ -19,6 +66,7 @@ class MetricsETL:
         self.supabase = get_supabase()
         self.calculator = MetricsCalculator()
     
+    @_retry_on_network_error
     def run_daily(self, target_date: Optional[date] = None):
         """Run daily ETL for all metrics."""
         if target_date is None:
@@ -51,6 +99,7 @@ class MetricsETL:
             log(f"❌ Daily ETL failed: {e}", "ERROR")
             return None
     
+    @_retry_on_network_error
     def run_hourly(self):
         """Run hourly quick metrics."""
         log("⏰ Starting hourly ETL")
