@@ -57,7 +57,7 @@ class SupabaseNotificationRepository:
         action_url: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Create a new notification."""
-        result = self.client.table("notifications").insert({
+        result = await self.client.table("notifications").insert({
             "user_id": user_id,
             "title": title,
             "message": message,
@@ -83,13 +83,13 @@ class SupabaseNotificationRepository:
         if unread_only:
             query = query.eq("is_read", False)
 
-        result = query.order("created_at", desc=True).limit(limit).execute()
+        result = await query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
     @retry_on_network_error()
     async def mark_as_read(self, notification_id: str, user_id: str) -> bool:
         """Mark notification as read."""
-        result = self.client.table("notifications").update({
+        result = await self.client.table("notifications").update({
             "is_read": True
         }).eq("id", notification_id).eq("user_id", user_id).execute()
 
@@ -98,7 +98,7 @@ class SupabaseNotificationRepository:
     @retry_on_network_error()
     async def mark_all_as_read(self, user_id: str) -> bool:
         """Mark all notifications as read."""
-        result = self.client.table("notifications").update({
+        result = await self.client.table("notifications").update({
             "is_read": True
         }).eq("user_id", user_id).eq("is_read", False).execute()
 
@@ -107,7 +107,7 @@ class SupabaseNotificationRepository:
     @retry_on_network_error()
     async def delete_notification(self, notification_id: str, user_id: str) -> bool:
         """Delete a notification."""
-        result = self.client.table("notifications").delete().eq(
+        result = await self.client.table("notifications").delete().eq(
             "id", notification_id
         ).eq("user_id", user_id).execute()
 
@@ -137,9 +137,9 @@ class SupabaseNotificationRepository:
         """
         # Get target users based on group
         if target_group == "all":
-            users_result = self.client.table("profiles").select("id").execute()
+            users_result = await self.client.table("profiles").select("id").execute()
         else:
-            users_result = self.client.table("profiles").select("id").eq(
+            users_result = await self.client.table("profiles").select("id").eq(
                 "tier", target_group
             ).execute()
 
@@ -206,17 +206,17 @@ class SupabaseNotificationRepository:
     async def get_all_notification_stats(self) -> Dict[str, Any]:
         """Get overall notification statistics."""
         # Total notifications
-        total_result = self.client.table("notifications").select(
+        total_result = await self.client.table("notifications").select(
             "id", count="exact"
         ).execute()
 
         # Unread notifications
-        unread_result = self.client.table("notifications").select(
+        unread_result = await self.client.table("notifications").select(
             "id", count="exact"
         ).eq("is_read", False).execute()
 
         # Notifications by type
-        by_type_result = self.client.table("notifications").select(
+        by_type_result = await self.client.table("notifications").select(
             "type"
         ).execute()
 
@@ -239,7 +239,7 @@ class SupabaseNotificationRepository:
         limit: int = 50
     ) -> Dict[str, Any]:
         """Get paginated notification history using offset pagination."""
-        result = self.client.table("notifications").select(
+        result = await self.client.table("notifications").select(
             "*, profiles(email, username)", count="exact"
         ).order("created_at", desc=True).range(
             offset, offset + limit - 1
