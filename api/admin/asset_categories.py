@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends
 from pydantic import BaseModel, Field
 
 from core.database import get_async_db_client
-from infrastructure.repositories.category_repository_impl import SupabaseCategoryRepository
+from infrastructure.repositories.category_repository import SupabaseCategoryRepository
 from domains.content.category_service import CategoryService
 from application.queries.categories import (
     CategoryQueryHandlers,

@@ -1,13 +1,15 @@
 """
 Category Repository Implementation using Supabase.
 
-@module infrastructure.repositories.category_repository_impl
+@module infrastructure.repositories.category_repository
 @version 2.0.0 (AsyncClient migration)
 
 Changes in v2.0:
 - Removed lazy loading (client parameter now mandatory)
 - All methods use AsyncClient
 - Removed get_supabase_client() import (sync client)
+
+Implements ICategoryRepository using Supabase PostgreSQL.
 """
 
 from typing import Optional, List, Dict, Any
@@ -15,7 +17,7 @@ from datetime import datetime, timezone
 
 from core.database import DatabaseClient
 from core.database.retry import retry_on_network_error
-from domains.content.category_repository import ICategoryRepository
+from domains.content.repository import ICategoryRepository
 
 
 class SupabaseCategoryRepository(ICategoryRepository):

@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 
-from domains.content.category_repository import ICategoryRepository
+from domains.content.repository import ICategoryRepository
 
 
 class CategoryService:
