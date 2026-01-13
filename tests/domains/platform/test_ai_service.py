@@ -133,7 +133,7 @@ class TestRepositoryDependencyInjection:
     async def test_update_text_config_uses_default_repo_when_none_provided(self):
         """update_text_model_config uses default Repository when none provided."""
         with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
+            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
                 mock_get_db.return_value = mock_db
@@ -162,7 +162,7 @@ class TestRepositoryDependencyInjection:
         mock_config_repo.get_by_key.return_value = None
         mock_config_repo.create.return_value = True
 
-        with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
+        with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
             # Act - Provide config_repo
             result = await update_image_model_config(
                 tier="free",
@@ -189,7 +189,7 @@ class TestBackwardCompatibility:
     async def test_all_functions_accept_optional_config_repo(self):
         """All write functions accept optional config_repo parameter."""
         with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
+            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 mock_db = MagicMock()
                 mock_get_db.return_value = mock_db
 
@@ -244,7 +244,7 @@ class TestFactoryFunctions:
     async def test_factory_creates_repository_with_correct_client(self):
         """Factory function creates Repository with correct database client."""
         with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
-            with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
+            with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
                 mock_get_db.return_value = mock_db
@@ -272,7 +272,7 @@ class TestFactoryFunctions:
         mock_config_repo.get_by_key.return_value = None
         mock_config_repo.create.return_value = True
 
-        with patch("domains.platform.ai.service.SupabaseConfigRepository") as MockRepo:
+        with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
             # Act - Provide config_repo
             result = await update_text_model_config(
                 provider="openai",
