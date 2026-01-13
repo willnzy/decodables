@@ -132,14 +132,11 @@ class TestRepositoryDependencyInjection:
     @pytest.mark.asyncio
     async def test_update_text_config_uses_default_repo_when_none_provided(self):
         """update_text_model_config uses default Repository when none provided."""
-        with patch("core.database.get_async_db_client") as mock_get_db:
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                # get_async_db_client is async, so we need to make it return a coroutine
-                async def mock_get_db_func(*args, **kwargs):
-                    return mock_db
-                mock_get_db.side_effect = mock_get_db_func
+                mock_get_db.return_value = mock_db
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
@@ -191,12 +188,10 @@ class TestBackwardCompatibility:
     @pytest.mark.asyncio
     async def test_all_functions_accept_optional_config_repo(self):
         """All write functions accept optional config_repo parameter."""
-        with patch("core.database.get_async_db_client") as mock_get_db:
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 mock_db = MagicMock()
-                async def mock_get_db_func(*args, **kwargs):
-                    return mock_db
-                mock_get_db.side_effect = mock_get_db_func
+                mock_get_db.return_value = mock_db
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
@@ -248,13 +243,11 @@ class TestFactoryFunctions:
     @pytest.mark.asyncio
     async def test_factory_creates_repository_with_correct_client(self):
         """Factory function creates Repository with correct database client."""
-        with patch("core.database.get_async_db_client") as mock_get_db:
+        with patch("core.database.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                async def mock_get_db_func(*args, **kwargs):
-                    return mock_db
-                mock_get_db.side_effect = mock_get_db_func
+                mock_get_db.return_value = mock_db
 
                 mock_repo_instance = AsyncMock()
                 mock_repo_instance.get_by_key.return_value = None
