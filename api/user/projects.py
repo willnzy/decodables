@@ -15,9 +15,12 @@ Endpoints:
 - DELETE /api/v2/user/projects/{id} - Delete project
 - POST /api/v2/user/projects/{id}/restore - Restore deleted project
 - POST /api/v2/user/projects/{id}/duplicate - Duplicate project
+
+v3.31: 添加重试机制处理 Supabase 临时故障
 """
 
 import logging
+import asyncio
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +30,10 @@ from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from container import get_container
 from infrastructure.rate_limiter import limiter
+
+# v3.31: 重试配置
+MAX_RETRIES = 2
+RETRY_DELAY = 1.0  # 秒
 
 from application.commands.creation import (
     CreateProjectCommand,
@@ -216,6 +223,7 @@ async def dashboard_projects(
 
     P1-002 fix: Migrated to page-based pagination (aligned with Query class).
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    v3.31: 添加重试机制处理 Supabase 临时故障 (502/503)
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
@@ -239,22 +247,48 @@ async def dashboard_projects(
         include_canvas_data=include_canvas,
     )
 
-    result = await handler.handle(query)
-
-    if not result.success:
-        logger.error(f"Failed to get dashboard projects for user {user.user_id}: {result.error}")
-        raise HTTPException(500, "Failed to get dashboard projects")
-
-    # P2-002: Return Pydantic model
-    # v3.31: 计算 offset 以保持响应格式兼容
-    calculated_offset = (page - 1) * limit
-    return DashboardProjectsResponse(
-        items=result.data.get("items", []),
-        total=result.data.get("total", 0),
-        offset=result.data.get("offset", calculated_offset),
-        limit=result.data.get("limit", limit),
-        view=view,
-    )
+    # v3.31: 添加重试机制处理 Supabase 临时故障
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        result = await handler.handle(query)
+        
+        if result.success:
+            # P2-002: Return Pydantic model
+            # v3.31: 计算 offset 以保持响应格式兼容
+            calculated_offset = (page - 1) * limit
+            return DashboardProjectsResponse(
+                items=result.data.get("items", []),
+                total=result.data.get("total", 0),
+                offset=result.data.get("offset", calculated_offset),
+                limit=result.data.get("limit", limit),
+                view=view,
+            )
+        
+        # 检查是否为可重试的错误 (502, 503, 网络错误)
+        error_str = str(result.error).lower() if result.error else ""
+        is_retryable = any([
+            "502" in error_str,
+            "503" in error_str,
+            "bad gateway" in error_str,
+            "service unavailable" in error_str,
+            "cloudflare" in error_str,
+            "internal server error" in error_str,
+        ])
+        
+        if is_retryable and attempt < MAX_RETRIES:
+            logger.warning(
+                f"Retrying dashboard_projects (attempt {attempt + 1}/{MAX_RETRIES}) "
+                f"for user {user.user_id}: {result.error}"
+            )
+            await asyncio.sleep(RETRY_DELAY * (attempt + 1))  # 指数退避
+            last_error = result.error
+            continue
+        else:
+            last_error = result.error
+            break
+    
+    logger.error(f"Failed to get dashboard projects for user {user.user_id}: {last_error}")
+    raise HTTPException(500, "Failed to get dashboard projects")
 
 
 @router.get("/deleted")
