@@ -181,7 +181,7 @@ async def list_projects(
     result = await handler.handle(query)
 
     if not result.success:
-        logger.error(f"Failed to get projects for user {user['id']}: {result.error}")
+        logger.error(f"Failed to get projects for user {user.user_id}: {result.error}")
         raise HTTPException(500, "Failed to get projects")
 
     # Filter by search if provided
@@ -242,7 +242,7 @@ async def dashboard_projects(
     result = await handler.handle(query)
 
     if not result.success:
-        logger.error(f"Failed to get dashboard projects for user {user['id']}: {result.error}")
+        logger.error(f"Failed to get dashboard projects for user {user.user_id}: {result.error}")
         raise HTTPException(500, "Failed to get dashboard projects")
 
     # P2-002: Return Pydantic model
