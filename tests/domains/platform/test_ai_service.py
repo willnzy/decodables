@@ -137,7 +137,7 @@ class TestRepositoryDependencyInjection:
                 # Arrange
                 mock_db = MagicMock()
                 # get_async_db_client is async, so we need to make it return a coroutine
-                async def mock_get_db_func():
+                async def mock_get_db_func(*args, **kwargs):
                     return mock_db
                 mock_get_db.side_effect = mock_get_db_func
 
@@ -194,7 +194,7 @@ class TestBackwardCompatibility:
         with patch("core.database.get_async_db_client") as mock_get_db:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 mock_db = MagicMock()
-                async def mock_get_db_func():
+                async def mock_get_db_func(*args, **kwargs):
                     return mock_db
                 mock_get_db.side_effect = mock_get_db_func
 
@@ -252,7 +252,7 @@ class TestFactoryFunctions:
             with patch("infrastructure.repositories.config_repository.SupabaseConfigRepository") as MockRepo:
                 # Arrange
                 mock_db = MagicMock()
-                async def mock_get_db_func():
+                async def mock_get_db_func(*args, **kwargs):
                     return mock_db
                 mock_get_db.side_effect = mock_get_db_func
 
