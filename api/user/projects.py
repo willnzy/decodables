@@ -309,7 +309,9 @@ async def list_deleted_projects(
     """
     container = get_container()
     creation_service = await container.get_creation_service()
-    items = await creation_service.get_user_deleted_projects(
+    
+    # Note: get_user_deleted_projects returns tuple (items, total)
+    items, total = await creation_service.get_user_deleted_projects(
         user_id=user.user_id,
         limit=limit,
         offset=offset,
@@ -319,7 +321,7 @@ async def list_deleted_projects(
     # P2-003: Fixed bug - use 'offset' instead of 'page'
     return ProjectListResponse(
         items=items,
-        total=len(items),
+        total=total,
         offset=offset,
         limit=limit,
     )
