@@ -69,8 +69,9 @@ async def get_generation_service() -> GenerationService:
     container = get_container()
     db = await get_async_db_client()
     asset_repo = SupabaseAssetRepository(db)
+    billing_service = await container.get_billing_service()
     return GenerationService(
-        billing_service=container.billing_service,
+        billing_service=billing_service,
         asset_repository=asset_repo,
     )
 

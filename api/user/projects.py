@@ -308,7 +308,7 @@ async def list_deleted_projects(
         ProjectListResponse with deleted projects that can be restored
     """
     container = get_container()
-    creation_service = container.creation_service
+    creation_service = await container.get_creation_service()
     items = await creation_service.get_user_deleted_projects(
         user_id=user.user_id,
         limit=limit,
@@ -338,7 +338,7 @@ async def get_project_seller_stats(
         SellerStatsResponse with total_selling, total_sales, unique_buyers, etc.
     """
     container = get_container()
-    creation_service = container.creation_service
+    creation_service = await container.get_creation_service()
 
     stats = await creation_service.get_seller_project_stats(user.user_id)
 
@@ -637,7 +637,7 @@ async def duplicate_project(
         ProjectResponse with new duplicated project
     """
     container = get_container()
-    creation_service = container.creation_service
+    creation_service = await container.get_creation_service()
 
     tier = (user.get("tier") or "t1").lower()
 
