@@ -93,9 +93,13 @@ async def get_article_service() -> ArticleService:
     
     v3.31: 修复依赖注入问题
     - 直接获取数据库客户端，避免嵌套 Depends 的复杂性
+    - 补充 db 为 None 的安全检查
     """
     from core.database.client import get_async_db_client
     db = await get_async_db_client()
+    if db is None:
+        logger.error("[Articles] Database client not available")
+        raise HTTPException(503, "Database service unavailable")
     repo = SupabaseArticleRepository(db)
     return ArticleService(repo)
 
