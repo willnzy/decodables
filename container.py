@@ -240,6 +240,18 @@ class Container:
             self._services['support'] = SupportService(db)
         return self._services['support']
 
+    async def get_article_service(self):
+        """Get article service instance (v3.31, async)."""
+        from domains.articles.service import ArticleService
+        from infrastructure.repositories.article_repository import SupabaseArticleRepository
+        if 'article' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+            repository = SupabaseArticleRepository(db)
+            self._services['article'] = ArticleService(repository)
+        return self._services['article']
+
     async def get_logging_service(self):
         """Get logging service instance (v3.0.0, async)."""
         from domains.logging import LoggingService

@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from domains.articles.entities import ArticleCategory
 from domains.articles.service import ArticleService
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.article_repository import SupabaseArticleRepository
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -91,17 +91,17 @@ async def get_article_service() -> ArticleService:
     """
     FastAPI dependency for ArticleService.
     
-    v3.31: 修复依赖注入问题
-    - 直接获取数据库客户端，避免嵌套 Depends 的复杂性
-    - 补充 db 为 None 的安全检查
+    v3.31: 使用 Container 单例模式（项目标准）
+    - 通过 Container 获取服务实例
+    - 实例缓存，避免重复创建
+    - 与项目其他模块保持一致
     """
-    from core.database.client import get_async_db_client
-    db = await get_async_db_client()
-    if db is None:
-        logger.error("[Articles] Database client not available")
+    try:
+        container = get_container()
+        return await container.get_article_service()
+    except RuntimeError as e:
+        logger.error(f"[Articles] Failed to get service: {e}")
         raise HTTPException(503, "Database service unavailable")
-    repo = SupabaseArticleRepository(db)
-    return ArticleService(repo)
 
 
 def _get_category_display_name(category: str) -> str:
