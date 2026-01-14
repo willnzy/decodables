@@ -448,7 +448,7 @@ class SupabaseCreditRepository(ICreditRepository):
                 "user_id": user_id,
                 "amount": amount,
                 "bucket": bucket,
-                "type": tx_type,
+                "tx_type": tx_type,
                 "description": description,
                 "timezone": tz,
             }).execute()
