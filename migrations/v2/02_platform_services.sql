@@ -47,7 +47,7 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 -- 1. activity_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE activity_logs (
+CREATE TABLE IF NOT EXISTS activity_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id),
     action TEXT NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE activity_logs (
 -- 2. aggregated_stats
 -- P0-15, P0-16, P0-17: Repository 使用 date 和 data 字段
 -- ----------------------------------------------------------------------------
-CREATE TABLE aggregated_stats (
+CREATE TABLE IF NOT EXISTS aggregated_stats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     stat_type TEXT NOT NULL,
     stat_key TEXT NOT NULL,
@@ -87,16 +87,16 @@ CREATE TABLE aggregated_stats (
     CONSTRAINT unique_aggregated_stat UNIQUE (stat_type, stat_key, period_start)
 );
 
-CREATE INDEX idx_aggregated_stats_period ON aggregated_stats(period_start DESC, period_end DESC);
-CREATE INDEX idx_aggregated_stats_type_key ON aggregated_stats(stat_type, stat_key);
-CREATE INDEX idx_aggregated_stats_key_period ON aggregated_stats(stat_key, period_start DESC);
-CREATE INDEX idx_aggregated_stats_date ON aggregated_stats(date) WHERE date IS NOT NULL;  -- P0-15: 日期索引
+CREATE INDEX IF NOT EXISTS idx_aggregated_stats_period ON aggregated_stats(period_start DESC, period_end DESC);
+CREATE INDEX IF NOT EXISTS idx_aggregated_stats_type_key ON aggregated_stats(stat_type, stat_key);
+CREATE INDEX IF NOT EXISTS idx_aggregated_stats_key_period ON aggregated_stats(stat_key, period_start DESC);
+CREATE INDEX IF NOT EXISTS idx_aggregated_stats_date ON aggregated_stats(date) WHERE date IS NOT NULL;  -- P0-15: 日期索引
 
 
 -- ----------------------------------------------------------------------------
 -- 3. ai_usage_daily
 -- ----------------------------------------------------------------------------
-CREATE TABLE ai_usage_daily (
+CREATE TABLE IF NOT EXISTS ai_usage_daily (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     date DATE NOT NULL,
     provider TEXT NOT NULL,
@@ -132,7 +132,7 @@ CREATE TABLE ai_usage_daily (
 -- ----------------------------------------------------------------------------
 -- 4. analytics_aggregation
 -- ----------------------------------------------------------------------------
-CREATE TABLE analytics_aggregation (
+CREATE TABLE IF NOT EXISTS analytics_aggregation (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     date DATE NOT NULL,
     granularity TEXT NOT NULL CHECK (granularity IN ('daily', 'weekly', 'monthly')),
@@ -148,7 +148,7 @@ CREATE TABLE analytics_aggregation (
 -- ----------------------------------------------------------------------------
 -- 5. analytics_events
 -- ----------------------------------------------------------------------------
-CREATE TABLE analytics_events (
+CREATE TABLE IF NOT EXISTS analytics_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT REFERENCES profiles(id),
     session_id TEXT,
@@ -165,7 +165,7 @@ CREATE TABLE analytics_events (
 -- ----------------------------------------------------------------------------
 -- 6. clerk_webhook_events
 -- ----------------------------------------------------------------------------
-CREATE TABLE clerk_webhook_events (
+CREATE TABLE IF NOT EXISTS clerk_webhook_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id TEXT UNIQUE NOT NULL,
     event_type TEXT NOT NULL,
@@ -181,7 +181,7 @@ CREATE TABLE clerk_webhook_events (
 -- ----------------------------------------------------------------------------
 -- 7. config_audit_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE config_audit_logs (
+CREATE TABLE IF NOT EXISTS config_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     config_key TEXT NOT NULL,
     old_value TEXT,
@@ -195,7 +195,7 @@ CREATE TABLE config_audit_logs (
 -- ----------------------------------------------------------------------------
 -- 8. daily_metrics
 -- ----------------------------------------------------------------------------
-CREATE TABLE daily_metrics (
+CREATE TABLE IF NOT EXISTS daily_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     metric_date DATE NOT NULL UNIQUE,
     total_users INTEGER DEFAULT 0,
@@ -230,14 +230,14 @@ CREATE TABLE daily_metrics (
     )
 );
 
-CREATE INDEX idx_daily_metrics_metric_date ON daily_metrics(metric_date DESC);
-CREATE INDEX idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_metric_date ON daily_metrics(metric_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
 -- 9. campaigns (依赖 profiles) - MOVED HERE: daily_themes depends on it
 -- ----------------------------------------------------------------------------
-CREATE TABLE campaigns (
+CREATE TABLE IF NOT EXISTS campaigns (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     description TEXT,
@@ -276,7 +276,7 @@ CREATE TABLE campaigns (
 -- 10. daily_themes (also supports holiday themes)
 -- v2.1: Added category, i18n, AI generation, review workflow fields
 -- ----------------------------------------------------------------------------
-CREATE TABLE daily_themes (
+CREATE TABLE IF NOT EXISTS daily_themes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- ========== Basic Info ==========
@@ -368,19 +368,19 @@ CREATE TABLE daily_themes (
 
 -- ========== Indexes ==========
 -- Original index
-CREATE INDEX idx_daily_themes_is_active_priority ON daily_themes (is_active, priority DESC) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_is_active_priority ON daily_themes (is_active, priority DESC) WHERE is_deleted = false;
 -- v2.1 indexes
-CREATE INDEX idx_daily_themes_category ON daily_themes (category) WHERE is_deleted = false;
-CREATE INDEX idx_daily_themes_regions ON daily_themes USING GIN (regions) WHERE is_deleted = false;
-CREATE INDEX idx_daily_themes_review_status ON daily_themes (review_status) WHERE is_deleted = false;
-CREATE INDEX idx_daily_themes_date ON daily_themes (date) WHERE is_deleted = false;
-CREATE INDEX idx_daily_themes_ai_generated ON daily_themes (ai_generated) WHERE is_deleted = false AND ai_generated = true;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_category ON daily_themes (category) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_regions ON daily_themes USING GIN (regions) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_review_status ON daily_themes (review_status) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_date ON daily_themes (date) WHERE is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_daily_themes_ai_generated ON daily_themes (ai_generated) WHERE is_deleted = false AND ai_generated = true;
 
 
 -- ----------------------------------------------------------------------------
 -- 10. feature_flags
 -- ----------------------------------------------------------------------------
-CREATE TABLE feature_flags (
+CREATE TABLE IF NOT EXISTS feature_flags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     key TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
@@ -436,11 +436,11 @@ CREATE TABLE feature_flags (
 );
 
 -- 索引
-CREATE INDEX idx_ff_key ON feature_flags(key);
-CREATE INDEX idx_ff_enabled ON feature_flags(enabled) WHERE enabled = true AND archived = false;
-CREATE INDEX idx_ff_type ON feature_flags(flag_type);
-CREATE INDEX idx_ff_tags ON feature_flags USING GIN(tags);
-CREATE INDEX idx_ff_parent_flags ON feature_flags USING GIN(parent_flags);  -- v1.1: 父级关系查询
+CREATE INDEX IF NOT EXISTS idx_ff_key ON feature_flags(key);
+CREATE INDEX IF NOT EXISTS idx_ff_enabled ON feature_flags(enabled) WHERE enabled = true AND archived = false;
+CREATE INDEX IF NOT EXISTS idx_ff_type ON feature_flags(flag_type);
+CREATE INDEX IF NOT EXISTS idx_ff_tags ON feature_flags USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_ff_parent_flags ON feature_flags USING GIN(parent_flags);  -- v1.1: 父级关系查询
 
 -- 注释
 COMMENT ON TABLE feature_flags IS 'Feature Flags统一表,支持boolean/multivariate/experiment三种类型,v1.1支持树状结构,v1.2支持Tier分层筛选';
@@ -453,7 +453,7 @@ COMMENT ON COLUMN feature_flags.parent_flags IS 'v1.1: 父级Flag keys数组,父
 -- ----------------------------------------------------------------------------
 -- 11. holidays
 -- ----------------------------------------------------------------------------
-CREATE TABLE holidays (
+CREATE TABLE IF NOT EXISTS holidays (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     name_i18n JSONB DEFAULT '{}',
@@ -486,7 +486,7 @@ CREATE TABLE holidays (
 -- ----------------------------------------------------------------------------
 -- 12. monthly_metrics
 -- ----------------------------------------------------------------------------
-CREATE TABLE monthly_metrics (
+CREATE TABLE IF NOT EXISTS monthly_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     metric_year INTEGER NOT NULL,
     metric_month INTEGER NOT NULL,
@@ -526,14 +526,14 @@ CREATE TABLE monthly_metrics (
     )
 );
 
-CREATE INDEX idx_monthly_metrics_year_month ON monthly_metrics(metric_year DESC, metric_month DESC);
-CREATE INDEX idx_monthly_metrics_created_at ON monthly_metrics(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_monthly_metrics_year_month ON monthly_metrics(metric_year DESC, metric_month DESC);
+CREATE INDEX IF NOT EXISTS idx_monthly_metrics_created_at ON monthly_metrics(created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
 -- 13. notifications (无软删除,只追加)
 -- ----------------------------------------------------------------------------
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     notification_type TEXT NOT NULL,  -- SQL 标准字段
@@ -560,6 +560,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_notifications_sync_type ON notifications;
 CREATE TRIGGER trg_notifications_sync_type
     BEFORE INSERT OR UPDATE ON notifications
     FOR EACH ROW
@@ -569,7 +570,7 @@ CREATE TRIGGER trg_notifications_sync_type
 -- ----------------------------------------------------------------------------
 -- 14. stripe_webhook_events
 -- ----------------------------------------------------------------------------
-CREATE TABLE stripe_webhook_events (
+CREATE TABLE IF NOT EXISTS stripe_webhook_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id TEXT UNIQUE NOT NULL,
     event_type TEXT NOT NULL,
@@ -585,7 +586,7 @@ CREATE TABLE stripe_webhook_events (
 -- ----------------------------------------------------------------------------
 -- 15. system_resource_audit_logs
 -- ----------------------------------------------------------------------------
-CREATE TABLE system_resource_audit_logs (
+CREATE TABLE IF NOT EXISTS system_resource_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     resource_id UUID,
     action TEXT NOT NULL,
@@ -601,7 +602,7 @@ CREATE TABLE system_resource_audit_logs (
 -- ----------------------------------------------------------------------------
 -- 16. user_events
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_events (
+CREATE TABLE IF NOT EXISTS user_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
@@ -623,10 +624,10 @@ CREATE TABLE user_events (
     )
 );
 
-CREATE INDEX idx_user_events_user_id ON user_events(user_id, created_at DESC);
-CREATE INDEX idx_user_events_event_type ON user_events(event_type, created_at DESC);
-CREATE INDEX idx_user_events_created_at ON user_events(created_at DESC);
-CREATE INDEX idx_user_events_session ON user_events(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_user_events_user_id ON user_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_event_type ON user_events(event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_created_at ON user_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id) WHERE session_id IS NOT NULL;
 
 
 -- ============================================================================
@@ -639,7 +640,7 @@ CREATE INDEX idx_user_events_session ON user_events(session_id) WHERE session_id
 -- 17. content_reports (依赖 profiles, marketplace_listings)
 -- P0-6: Repository 使用 marketplace_reports 表名，创建别名视图
 -- ----------------------------------------------------------------------------
-CREATE TABLE content_reports (
+CREATE TABLE IF NOT EXISTS content_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     reporter_id TEXT NOT NULL REFERENCES profiles(id),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id),
@@ -662,7 +663,7 @@ CREATE TABLE content_reports (
 DROP TABLE IF EXISTS marketplace_reports CASCADE;
 DROP VIEW IF EXISTS marketplace_reports CASCADE;
 DROP VIEW IF EXISTS v_marketplace_reports CASCADE;
-CREATE VIEW v_marketplace_reports AS
+CREATE OR REPLACE VIEW v_marketplace_reports AS
 SELECT * FROM content_reports;
 
 -- P0-6: 允许通过视图插入
@@ -676,6 +677,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_v_marketplace_reports_insert ON v_marketplace_reports;
 CREATE TRIGGER trg_v_marketplace_reports_insert
     INSTEAD OF INSERT ON v_marketplace_reports
     FOR EACH ROW
@@ -685,7 +687,7 @@ CREATE TRIGGER trg_v_marketplace_reports_insert
 -- ----------------------------------------------------------------------------
 -- 19. experiments (独立)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiments (
+CREATE TABLE IF NOT EXISTS experiments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id TEXT UNIQUE,  -- P0-4: Repository 使用的业务 ID (自动生成)
     experiment_key TEXT UNIQUE NOT NULL,
@@ -715,6 +717,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_experiments_generate_id ON experiments;
 CREATE TRIGGER trg_experiments_generate_id
     BEFORE INSERT ON experiments
     FOR EACH ROW
@@ -724,7 +727,7 @@ CREATE TRIGGER trg_experiments_generate_id
 -- ----------------------------------------------------------------------------
 -- 20. onboarding_steps (独立,无软删除)
 -- ----------------------------------------------------------------------------
-CREATE TABLE onboarding_steps (
+CREATE TABLE IF NOT EXISTS onboarding_steps (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     step_key TEXT UNIQUE NOT NULL,
     step_name TEXT NOT NULL,
@@ -742,7 +745,7 @@ CREATE TABLE onboarding_steps (
 -- ----------------------------------------------------------------------------
 -- 21. articles (CMS - Manual, News, Changelog)
 -- ----------------------------------------------------------------------------
-CREATE TABLE articles (
+CREATE TABLE IF NOT EXISTS articles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug VARCHAR(200) UNIQUE NOT NULL,
     title VARCHAR(500) NOT NULL,
@@ -770,17 +773,17 @@ CREATE TABLE articles (
 );
 
 -- 索引
-CREATE INDEX idx_articles_category ON articles(category);
-CREATE INDEX idx_articles_published ON articles(is_published, published_at DESC);
-CREATE INDEX idx_articles_featured ON articles(is_featured, published_at DESC) WHERE is_featured = true;  -- v1.1.0 新增
-CREATE INDEX idx_articles_slug ON articles(slug);
-CREATE INDEX idx_articles_author ON articles(author_id);
+CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
+CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(is_published, published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_featured ON articles(is_featured, published_at DESC) WHERE is_featured = true;  -- v1.1.0 新增
+CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug);
+CREATE INDEX IF NOT EXISTS idx_articles_author ON articles(author_id);
 
 
 -- ----------------------------------------------------------------------------
 -- 22. experiment_configs (依赖 feature_flags)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiment_configs (
+CREATE TABLE IF NOT EXISTS experiment_configs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     flag_key TEXT NOT NULL UNIQUE REFERENCES feature_flags(key) ON DELETE CASCADE,
 
@@ -818,14 +821,14 @@ CREATE TABLE experiment_configs (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_exp_status ON experiment_configs(status);
-CREATE INDEX idx_exp_dates ON experiment_configs(planned_start_date, planned_end_date);
+CREATE INDEX IF NOT EXISTS idx_exp_status ON experiment_configs(status);
+CREATE INDEX IF NOT EXISTS idx_exp_dates ON experiment_configs(planned_start_date, planned_end_date);
 
 
 -- ----------------------------------------------------------------------------
 -- 23. flag_exposures (曝光事件,无外键依赖)
 -- ----------------------------------------------------------------------------
-CREATE TABLE flag_exposures (
+CREATE TABLE IF NOT EXISTS flag_exposures (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     flag_key TEXT NOT NULL,
@@ -845,15 +848,15 @@ CREATE TABLE flag_exposures (
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_exp_flag_time ON flag_exposures(flag_key, timestamp DESC);
-CREATE INDEX idx_exp_user ON flag_exposures(user_id) WHERE user_id IS NOT NULL;
-CREATE INDEX idx_exp_time ON flag_exposures(timestamp);
+CREATE INDEX IF NOT EXISTS idx_exp_flag_time ON flag_exposures(flag_key, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_exp_user ON flag_exposures(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_exp_time ON flag_exposures(timestamp);
 
 
 -- ----------------------------------------------------------------------------
 -- 24. flag_audit_logs (依赖 feature_flags)
 -- ----------------------------------------------------------------------------
-CREATE TABLE flag_audit_logs (
+CREATE TABLE IF NOT EXISTS flag_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     flag_id UUID REFERENCES feature_flags(id) ON DELETE SET NULL,
@@ -869,8 +872,8 @@ CREATE TABLE flag_audit_logs (
     changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_audit_flag ON flag_audit_logs(flag_key);
-CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_flag ON flag_audit_logs(flag_key);
+CREATE INDEX IF NOT EXISTS idx_audit_time ON flag_audit_logs(changed_at DESC);
 
 
 -- ============================================================================
@@ -880,7 +883,7 @@ CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
 -- ----------------------------------------------------------------------------
 -- 25. campaign_dismissals (依赖 campaigns, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE campaign_dismissals (
+CREATE TABLE IF NOT EXISTS campaign_dismissals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -893,7 +896,7 @@ CREATE TABLE campaign_dismissals (
 -- ----------------------------------------------------------------------------
 -- 26. campaign_participations (依赖 campaigns, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE campaign_participations (
+CREATE TABLE IF NOT EXISTS campaign_participations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -906,7 +909,7 @@ CREATE TABLE campaign_participations (
 -- ----------------------------------------------------------------------------
 -- 27. experiment_assignments (依赖 experiments, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiment_assignments (
+CREATE TABLE IF NOT EXISTS experiment_assignments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -919,7 +922,7 @@ CREATE TABLE experiment_assignments (
 -- ----------------------------------------------------------------------------
 -- 28. experiment_conversions (依赖 experiments, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiment_conversions (
+CREATE TABLE IF NOT EXISTS experiment_conversions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -934,7 +937,7 @@ CREATE TABLE experiment_conversions (
 -- ----------------------------------------------------------------------------
 -- 29. experiment_exposures (依赖 experiments, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiment_exposures (
+CREATE TABLE IF NOT EXISTS experiment_exposures (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -947,7 +950,7 @@ CREATE TABLE experiment_exposures (
 -- ----------------------------------------------------------------------------
 -- 30. experiment_results (依赖 feature_flags - 统一版本)
 -- ----------------------------------------------------------------------------
-CREATE TABLE experiment_results (
+CREATE TABLE IF NOT EXISTS experiment_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     flag_key TEXT NOT NULL REFERENCES feature_flags(key) ON DELETE CASCADE,
@@ -979,14 +982,14 @@ CREATE TABLE experiment_results (
     UNIQUE(flag_key, variant, metric, date)
 );
 
-CREATE INDEX idx_results_flag ON experiment_results(flag_key);
-CREATE INDEX idx_results_date ON experiment_results(date DESC);
+CREATE INDEX IF NOT EXISTS idx_results_flag ON experiment_results(flag_key);
+CREATE INDEX IF NOT EXISTS idx_results_date ON experiment_results(date DESC);
 
 
 -- ----------------------------------------------------------------------------
 -- 31. referrals (依赖 profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE referrals (
+CREATE TABLE IF NOT EXISTS referrals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     referrer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     referee_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -1003,7 +1006,7 @@ CREATE TABLE referrals (
 -- ----------------------------------------------------------------------------
 -- 32. user_onboarding_progress (依赖 onboarding_steps, profiles)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_onboarding_progress (
+CREATE TABLE IF NOT EXISTS user_onboarding_progress (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     step_id UUID NOT NULL REFERENCES onboarding_steps(id) ON DELETE CASCADE,

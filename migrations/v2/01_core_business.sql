@@ -53,7 +53,7 @@ $$ LANGUAGE plpgsql;
 -- ----------------------------------------------------------------------------
 -- 1. profiles (用户表 - 最基础的表)
 -- ----------------------------------------------------------------------------
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
     -- 主键 (Clerk ID，TEXT 类型!)
     id TEXT PRIMARY KEY,
 
@@ -152,7 +152,7 @@ CREATE TABLE profiles (
 -- ----------------------------------------------------------------------------
 -- 2. asset_categories (素材分类 - 自引用)
 -- ----------------------------------------------------------------------------
-CREATE TABLE asset_categories (
+CREATE TABLE IF NOT EXISTS asset_categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 层级关系
@@ -206,7 +206,7 @@ CREATE TABLE asset_categories (
 -- ----------------------------------------------------------------------------
 -- 3. asset_tags (标签 - 无外键依赖)
 -- ----------------------------------------------------------------------------
-CREATE TABLE asset_tags (
+CREATE TABLE IF NOT EXISTS asset_tags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     slug VARCHAR(50) UNIQUE NOT NULL,
@@ -217,10 +217,11 @@ CREATE TABLE asset_tags (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_asset_tags_type ON asset_tags(tag_type);
-CREATE INDEX idx_asset_tags_usage ON asset_tags(usage_count DESC);
-CREATE INDEX idx_asset_tags_name ON asset_tags(name);
+CREATE INDEX IF NOT EXISTS idx_asset_tags_type ON asset_tags(tag_type);
+CREATE INDEX IF NOT EXISTS idx_asset_tags_usage ON asset_tags(usage_count DESC);
+CREATE INDEX IF NOT EXISTS idx_asset_tags_name ON asset_tags(name);
 
+DROP TRIGGER IF EXISTS update_asset_tags_updated_at ON asset_tags;
 CREATE TRIGGER update_asset_tags_updated_at
     BEFORE UPDATE ON asset_tags
     FOR EACH ROW
@@ -234,7 +235,7 @@ CREATE TRIGGER update_asset_tags_updated_at
 -- ----------------------------------------------------------------------------
 -- 4. projects (项目表)
 -- ----------------------------------------------------------------------------
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 用户ID (P0-8: Repository 同时使用 user_id 和 owner_id)
@@ -317,7 +318,7 @@ FROM projects;
 -- ----------------------------------------------------------------------------
 -- 4.1 project_pages (项目页面 - P0-9: Repository 使用但之前缺失的表)
 -- ----------------------------------------------------------------------------
-CREATE TABLE project_pages (
+CREATE TABLE IF NOT EXISTS project_pages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     page_id TEXT NOT NULL UNIQUE,  -- P0-9: Repository 使用的业务 ID
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -335,13 +336,13 @@ CREATE TABLE project_pages (
     UNIQUE(project_id, page_number)
 );
 
-CREATE INDEX idx_project_pages_project ON project_pages(project_id, page_number);
+CREATE INDEX IF NOT EXISTS idx_project_pages_project ON project_pages(project_id, page_number);
 
 
 -- ----------------------------------------------------------------------------
 -- 5. marketplace_listings (市场列表)
 -- ----------------------------------------------------------------------------
-CREATE TABLE marketplace_listings (
+CREATE TABLE IF NOT EXISTS marketplace_listings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     seller_id TEXT REFERENCES profiles(id),
 
@@ -438,7 +439,7 @@ CREATE TABLE marketplace_listings (
 -- ----------------------------------------------------------------------------
 -- 6. assets (用户素材)
 -- ----------------------------------------------------------------------------
-CREATE TABLE assets (
+CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id),
@@ -477,21 +478,21 @@ CREATE TABLE assets (
 -- ----------------------------------------------------------------------------
 -- 7. asset_tag_relations (素材-标签关联)
 -- ----------------------------------------------------------------------------
-CREATE TABLE asset_tag_relations (
+CREATE TABLE IF NOT EXISTS asset_tag_relations (
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES asset_tags(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (asset_id, tag_id)
 );
 
-CREATE INDEX idx_asset_tag_rel_asset ON asset_tag_relations(asset_id);
-CREATE INDEX idx_asset_tag_rel_tag ON asset_tag_relations(tag_id);
+CREATE INDEX IF NOT EXISTS idx_asset_tag_rel_asset ON asset_tag_relations(asset_id);
+CREATE INDEX IF NOT EXISTS idx_asset_tag_rel_tag ON asset_tag_relations(tag_id);
 
 
 -- ----------------------------------------------------------------------------
 -- 8. user_recent_assets (用户最近使用素材)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_recent_assets (
+CREATE TABLE IF NOT EXISTS user_recent_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -499,14 +500,14 @@ CREATE TABLE user_recent_assets (
     CONSTRAINT uq_user_recent_asset UNIQUE(user_id, asset_id)
 );
 
-CREATE INDEX idx_user_recent_user ON user_recent_assets(user_id, used_at DESC);
-CREATE INDEX idx_user_recent_asset ON user_recent_assets(asset_id);
+CREATE INDEX IF NOT EXISTS idx_user_recent_user ON user_recent_assets(user_id, used_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_recent_asset ON user_recent_assets(asset_id);
 
 
 -- ----------------------------------------------------------------------------
 -- 9. user_favorite_assets (用户收藏素材)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_favorite_assets (
+CREATE TABLE IF NOT EXISTS user_favorite_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
@@ -514,14 +515,14 @@ CREATE TABLE user_favorite_assets (
     CONSTRAINT uq_user_favorite_asset UNIQUE(user_id, asset_id)
 );
 
-CREATE INDEX idx_user_favorite_user ON user_favorite_assets(user_id, created_at DESC);
-CREATE INDEX idx_user_favorite_asset ON user_favorite_assets(asset_id);
+CREATE INDEX IF NOT EXISTS idx_user_favorite_user ON user_favorite_assets(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_favorite_asset ON user_favorite_assets(asset_id);
 
 
 -- ----------------------------------------------------------------------------
 -- 10. project_versions (项目版本)
 -- ----------------------------------------------------------------------------
-CREATE TABLE project_versions (
+CREATE TABLE IF NOT EXISTS project_versions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
@@ -537,7 +538,7 @@ CREATE TABLE project_versions (
 -- ----------------------------------------------------------------------------
 -- 11. asset_prompt_templates (AI提示词模板)
 -- ----------------------------------------------------------------------------
-CREATE TABLE asset_prompt_templates (
+CREATE TABLE IF NOT EXISTS asset_prompt_templates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id),
     name TEXT NOT NULL,
@@ -573,7 +574,7 @@ CREATE TABLE asset_prompt_templates (
 -- ----------------------------------------------------------------------------
 -- 12. credit_purchases (积分购买记录)
 -- ----------------------------------------------------------------------------
-CREATE TABLE credit_purchases (
+CREATE TABLE IF NOT EXISTS credit_purchases (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     plan_type TEXT NOT NULL CHECK (plan_type IN ('credits_100', 'credits_500', 'credits_2000')),
@@ -594,7 +595,7 @@ CREATE TABLE credit_purchases (
 -- ----------------------------------------------------------------------------
 -- 13. credit_transactions (积分交易流水)
 -- ----------------------------------------------------------------------------
-CREATE TABLE credit_transactions (
+CREATE TABLE IF NOT EXISTS credit_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
@@ -655,6 +656,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_sync_credit_transaction_type ON credit_transactions;
 CREATE TRIGGER trg_sync_credit_transaction_type
     BEFORE INSERT OR UPDATE ON credit_transactions
     FOR EACH ROW
@@ -664,7 +666,7 @@ CREATE TRIGGER trg_sync_credit_transaction_type
 -- ----------------------------------------------------------------------------
 -- 14. generation_tasks (AI生成任务)
 -- ----------------------------------------------------------------------------
-CREATE TABLE generation_tasks (
+CREATE TABLE IF NOT EXISTS generation_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -697,18 +699,18 @@ CREATE TABLE generation_tasks (
     CONSTRAINT check_retry_count CHECK (retry_count >= 0 AND retry_count <= 5)
 );
 
-CREATE INDEX idx_generation_tasks_user_id ON generation_tasks(user_id, created_at DESC);
-CREATE INDEX idx_generation_tasks_project_id ON generation_tasks(project_id) WHERE project_id IS NOT NULL;
-CREATE INDEX idx_generation_tasks_status ON generation_tasks(status, created_at DESC);
-CREATE INDEX idx_generation_tasks_task_type ON generation_tasks(task_type, created_at DESC);
-CREATE INDEX idx_generation_tasks_created_at ON generation_tasks(created_at DESC);
-CREATE INDEX idx_generation_tasks_pending ON generation_tasks(created_at ASC) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_user_id ON generation_tasks(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_project_id ON generation_tasks(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_status ON generation_tasks(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_task_type ON generation_tasks(task_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_created_at ON generation_tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_tasks_pending ON generation_tasks(created_at ASC) WHERE status = 'pending';
 
 
 -- ----------------------------------------------------------------------------
 -- 15. listing_usages (市场使用记录)
 -- ----------------------------------------------------------------------------
-CREATE TABLE listing_usages (
+CREATE TABLE IF NOT EXISTS listing_usages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -727,17 +729,17 @@ CREATE TABLE listing_usages (
     CONSTRAINT check_usage_count CHECK (usage_count > 0)
 );
 
-CREATE INDEX idx_listing_usages_listing_id ON listing_usages(listing_id, created_at DESC);
-CREATE INDEX idx_listing_usages_user_id ON listing_usages(user_id, created_at DESC);
-CREATE INDEX idx_listing_usages_project_id ON listing_usages(project_id) WHERE project_id IS NOT NULL;
-CREATE INDEX idx_listing_usages_usage_type ON listing_usages(usage_type, created_at DESC);
-CREATE INDEX idx_listing_usages_created_at ON listing_usages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_usages_listing_id ON listing_usages(listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_usages_user_id ON listing_usages(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_usages_project_id ON listing_usages(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_listing_usages_usage_type ON listing_usages(usage_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_usages_created_at ON listing_usages(created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
 -- 16. marketplace_favorites (市场收藏)
 -- ----------------------------------------------------------------------------
-CREATE TABLE marketplace_favorites (
+CREATE TABLE IF NOT EXISTS marketplace_favorites (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
@@ -759,7 +761,7 @@ CREATE TABLE marketplace_favorites (
 -- ----------------------------------------------------------------------------
 -- 17. marketplace_purchases (市场购买记录)
 -- ----------------------------------------------------------------------------
-CREATE TABLE marketplace_purchases (
+CREATE TABLE IF NOT EXISTS marketplace_purchases (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
@@ -792,7 +794,7 @@ CREATE TABLE marketplace_purchases (
 -- ----------------------------------------------------------------------------
 -- 18. marketplace_reports (市场举报)
 -- ----------------------------------------------------------------------------
-CREATE TABLE marketplace_reports (
+CREATE TABLE IF NOT EXISTS marketplace_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     reporter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -825,17 +827,17 @@ CREATE TABLE marketplace_reports (
     CONSTRAINT check_description_not_empty CHECK (LENGTH(TRIM(description)) > 0)
 );
 
-CREATE INDEX idx_marketplace_reports_listing_id ON marketplace_reports(listing_id, created_at DESC);
-CREATE INDEX idx_marketplace_reports_reporter_id ON marketplace_reports(reporter_id, created_at DESC);
-CREATE INDEX idx_marketplace_reports_status ON marketplace_reports(status, created_at DESC);
-CREATE INDEX idx_marketplace_reports_reviewed_by ON marketplace_reports(reviewed_by, reviewed_at DESC);
-CREATE INDEX idx_marketplace_reports_pending ON marketplace_reports(created_at DESC) WHERE status IN ('pending', 'under_review');
+CREATE INDEX IF NOT EXISTS idx_marketplace_reports_listing_id ON marketplace_reports(listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marketplace_reports_reporter_id ON marketplace_reports(reporter_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marketplace_reports_status ON marketplace_reports(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marketplace_reports_reviewed_by ON marketplace_reports(reviewed_by, reviewed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marketplace_reports_pending ON marketplace_reports(created_at DESC) WHERE status IN ('pending', 'under_review');
 
 
 -- ----------------------------------------------------------------------------
 -- 19. marketplace_reviews (市场评价)
 -- ----------------------------------------------------------------------------
-CREATE TABLE marketplace_reviews (
+CREATE TABLE IF NOT EXISTS marketplace_reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     reviewer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -861,7 +863,7 @@ CREATE TABLE marketplace_reviews (
 -- ----------------------------------------------------------------------------
 -- 20. page_prompt_templates (页面提示词模板)
 -- ----------------------------------------------------------------------------
-CREATE TABLE page_prompt_templates (
+CREATE TABLE IF NOT EXISTS page_prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     template_name TEXT NOT NULL UNIQUE,
     template_category TEXT NOT NULL,
@@ -887,16 +889,16 @@ CREATE TABLE page_prompt_templates (
     CONSTRAINT check_usage_count CHECK (usage_count >= 0)
 );
 
-CREATE INDEX idx_page_prompt_templates_category ON page_prompt_templates(template_category);
-CREATE INDEX idx_page_prompt_templates_active ON page_prompt_templates(is_active, usage_count DESC);
-CREATE INDEX idx_page_prompt_templates_template_name ON page_prompt_templates(template_name);
-CREATE INDEX idx_page_prompt_templates_created_by ON page_prompt_templates(created_by) WHERE created_by IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_category ON page_prompt_templates(template_category);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_active ON page_prompt_templates(is_active, usage_count DESC);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_template_name ON page_prompt_templates(template_name);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_created_by ON page_prompt_templates(created_by) WHERE created_by IS NOT NULL;
 
 
 -- ----------------------------------------------------------------------------
 -- 21. subscription_history (订阅历史)
 -- ----------------------------------------------------------------------------
-CREATE TABLE subscription_history (
+CREATE TABLE IF NOT EXISTS subscription_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     tier TEXT NOT NULL CHECK (tier IN ('t1', 't2', 't3')),
@@ -912,7 +914,7 @@ CREATE TABLE subscription_history (
 -- ----------------------------------------------------------------------------
 -- 22. system_assets (系统素材)
 -- ----------------------------------------------------------------------------
-CREATE TABLE system_assets (
+CREATE TABLE IF NOT EXISTS system_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     category_id UUID NOT NULL REFERENCES asset_categories(id),
 
@@ -966,7 +968,7 @@ CREATE TABLE system_assets (
 -- ----------------------------------------------------------------------------
 -- 23. system_resources (系统资源表)
 -- ----------------------------------------------------------------------------
-CREATE TABLE system_resources (
+CREATE TABLE IF NOT EXISTS system_resources (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     resource_type TEXT NOT NULL CHECK (resource_type IN (
@@ -1014,14 +1016,15 @@ CREATE TABLE system_resources (
 
 COMMENT ON TABLE system_resources IS '系统资源表: stickers, templates, fonts等系统素材';
 
-CREATE INDEX idx_sr_type ON system_resources(resource_type) WHERE deleted_at IS NULL;
-CREATE INDEX idx_sr_category ON system_resources(category_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_sr_active_type ON system_resources(is_active, resource_type) WHERE deleted_at IS NULL AND is_active = true;
-CREATE INDEX idx_sr_tier ON system_resources(min_tier) WHERE deleted_at IS NULL;
-CREATE INDEX idx_sr_tags ON system_resources USING GIN(tags) WHERE deleted_at IS NULL;
-CREATE INDEX idx_sr_created ON system_resources(created_at DESC) WHERE deleted_at IS NULL;
-CREATE INDEX idx_sr_featured ON system_resources(is_featured, display_order) WHERE deleted_at IS NULL AND is_featured = true;
+CREATE INDEX IF NOT EXISTS idx_sr_type ON system_resources(resource_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sr_category ON system_resources(category_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sr_active_type ON system_resources(is_active, resource_type) WHERE deleted_at IS NULL AND is_active = true;
+CREATE INDEX IF NOT EXISTS idx_sr_tier ON system_resources(min_tier) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sr_tags ON system_resources USING GIN(tags) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sr_created ON system_resources(created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_sr_featured ON system_resources(is_featured, display_order) WHERE deleted_at IS NULL AND is_featured = true;
 
+DROP TRIGGER IF EXISTS update_system_resources_updated_at ON system_resources;
 CREATE TRIGGER update_system_resources_updated_at
     BEFORE UPDATE ON system_resources
     FOR EACH ROW
@@ -1031,7 +1034,7 @@ CREATE TRIGGER update_system_resources_updated_at
 -- ----------------------------------------------------------------------------
 -- 24. user_discounts (用户折扣)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_discounts (
+CREATE TABLE IF NOT EXISTS user_discounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
@@ -1059,7 +1062,7 @@ CREATE TABLE user_discounts (
 -- ----------------------------------------------------------------------------
 -- 25. user_generations (用户生成记录)
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_generations (
+CREATE TABLE IF NOT EXISTS user_generations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     generation_type TEXT NOT NULL CHECK (generation_type IN ('image', 'text', 'story', 'design')),
@@ -1081,34 +1084,34 @@ CREATE TABLE user_generations (
 -- Performance Indexes
 -- ============================================================================
 
-CREATE INDEX idx_listings_moderation_status
+CREATE INDEX IF NOT EXISTS idx_listings_moderation_status
 ON marketplace_listings(moderation_status)
 WHERE is_deleted = false;
 
-CREATE INDEX idx_listings_category_public
+CREATE INDEX IF NOT EXISTS idx_listings_category_public
 ON marketplace_listings(category, is_public)
 WHERE is_deleted = false;
 
-CREATE INDEX idx_profiles_user_code
+CREATE INDEX IF NOT EXISTS idx_profiles_user_code
 ON profiles(user_code)
 WHERE user_code IS NOT NULL;
 
-CREATE INDEX idx_credit_tx_user_type_date
+CREATE INDEX IF NOT EXISTS idx_credit_tx_user_type_date
 ON credit_transactions(user_id, transaction_type, created_at DESC);
 
-CREATE INDEX idx_credit_tx_idempotency
+CREATE INDEX IF NOT EXISTS idx_credit_tx_idempotency
 ON credit_transactions(idempotency_key)
 WHERE idempotency_key IS NOT NULL;
 
-CREATE INDEX idx_profiles_created_at
+CREATE INDEX IF NOT EXISTS idx_profiles_created_at
 ON profiles(created_at DESC)
 WHERE is_deleted = false;
 
-CREATE INDEX idx_profiles_tier_created_at
+CREATE INDEX IF NOT EXISTS idx_profiles_tier_created_at
 ON profiles(tier, created_at DESC)
 WHERE is_deleted = false AND tier IN ('t2', 't3');
 
-CREATE INDEX idx_projects_user_created_at
+CREATE INDEX IF NOT EXISTS idx_projects_user_created_at
 ON projects(user_id, created_at DESC)
 WHERE is_deleted = false;
 
@@ -1382,7 +1385,7 @@ $$ LANGUAGE plpgsql;
 -- ----------------------------------------------------------------------------
 -- user_creation_logs - 用户创建日志表
 -- ----------------------------------------------------------------------------
-CREATE TABLE user_creation_logs (
+CREATE TABLE IF NOT EXISTS user_creation_logs (
     id BIGSERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     source TEXT NOT NULL CHECK (source IN ('webhook', 'jit', 'manual')),
@@ -1392,10 +1395,10 @@ CREATE TABLE user_creation_logs (
 );
 
 -- 索引
-CREATE INDEX idx_user_creation_logs_user_id ON user_creation_logs(user_id);
-CREATE INDEX idx_user_creation_logs_created_at ON user_creation_logs(created_at DESC);
-CREATE INDEX idx_user_creation_logs_source ON user_creation_logs(source);
-CREATE INDEX idx_user_creation_logs_action ON user_creation_logs(action);
+CREATE INDEX IF NOT EXISTS idx_user_creation_logs_user_id ON user_creation_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_creation_logs_created_at ON user_creation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_creation_logs_source ON user_creation_logs(source);
+CREATE INDEX IF NOT EXISTS idx_user_creation_logs_action ON user_creation_logs(action);
 
 COMMENT ON TABLE user_creation_logs IS '用户创建日志表，用于监控 Webhook vs JIT 创建健康度';
 COMMENT ON COLUMN user_creation_logs.source IS '创建源：webhook（Clerk webhook）、jit（API JIT 创建）、manual（手动）';
