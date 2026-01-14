@@ -23,7 +23,6 @@ from pydantic import BaseModel, Field
 from domains.articles.entities import ArticleCategory
 from domains.articles.service import ArticleService
 from infrastructure.rate_limiter import limiter
-from core.database.dependencies import get_async_db
 from infrastructure.repositories.article_repository import SupabaseArticleRepository
 
 logger = logging.getLogger(__name__)
@@ -88,12 +87,15 @@ class CategoriesResponse(BaseModel):
 # Dependencies
 # ==========================================
 
-async def get_article_service(db = Depends(get_async_db)) -> ArticleService:
+async def get_article_service() -> ArticleService:
     """
     FastAPI dependency for ArticleService.
     
-    v3.31: 修复依赖注入问题 - 必须通过 Depends() 使用，不能直接调用
+    v3.31: 修复依赖注入问题
+    - 直接获取数据库客户端，避免嵌套 Depends 的复杂性
     """
+    from core.database.client import get_async_db_client
+    db = await get_async_db_client()
     repo = SupabaseArticleRepository(db)
     return ArticleService(repo)
 
