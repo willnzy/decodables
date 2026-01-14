@@ -103,6 +103,9 @@ CREATE TABLE profiles (
         'not_started', 'welcome', 'profile_setup', 'first_project', 'completed'
     )),
 
+    -- 用户角色 (v3.32: 用于区分普通用户和管理员)
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+
     -- 本地化时间字段
     created_at_local TIMESTAMP,
 
