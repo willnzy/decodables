@@ -49,13 +49,13 @@ def aggregate_marketplace_stats():
     
     total_revenue = sum(s.get("price_paid", 0) for s in (sales.data or []))
     
-    # Top sellers
-    listings = supabase.table("marketplace_listings").select("user_id, sales_count")\
+    # Top sellers (Note: marketplace_listings uses seller_id, not user_id)
+    listings = supabase.table("marketplace_listings").select("seller_id, sales_count")\
         .eq("is_deleted", False).order("sales_count", desc=True).limit(10).execute()
     
     seller_sales = {}
     for l in listings.data or []:
-        uid = l.get("user_id")
+        uid = l.get("seller_id")
         seller_sales[uid] = seller_sales.get(uid, 0) + l.get("sales_count", 0)
     
     top_sellers = sorted(seller_sales.items(), key=lambda x: -x[1])[:5]

@@ -341,22 +341,23 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Get seller marketplace statistics.
 
         Args:
-            user_id: User ID
+            user_id: User ID (maps to seller_id in marketplace_listings)
 
         Returns:
             Seller stats dict with total_listings, total_sales, total_revenue, listings
         """
+        # Note: marketplace_listings uses seller_id (not user_id) and price_credits (not price)
         result = await self.client.table("marketplace_listings").select(
-            "id, title, price, sales_count, created_at"
-        ).eq("user_id", user_id).eq("is_deleted", False).execute()
+            "id, title, price_credits, sales_count, created_at"
+        ).eq("seller_id", user_id).eq("is_deleted", False).execute()
 
         listings_data = result.data or []
         total_sales = sum(l.get("sales_count", 0) for l in listings_data)
-        total_revenue = sum(l.get("price", 0) * l.get("sales_count", 0) for l in listings_data)
+        total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in listings_data)
 
         return {
             "total_listings": len(listings_data),
             "total_sales": total_sales,
-            "total_revenue": total_revenue,
+            "total_revenue": float(total_revenue),
             "listings": listings_data
         }

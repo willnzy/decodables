@@ -839,21 +839,24 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Get seller statistics for projects.
 
         Args:
-            user_id: User ID
+            user_id: User ID (maps to seller_id in marketplace_listings)
 
         Returns:
-            Dict with total_listings, total_sales, total_revenue
+            Dict with total_selling, total_sales, unique_buyers, total_revenue
         """
+        # Note: marketplace_listings uses seller_id (not user_id) and price_credits (not price)
         listings = await self.client.table("marketplace_listings").select(
-            "id, price, sales_count"
-        ).eq("user_id", user_id).eq("resource_type", "project").execute()
+            "id, price_credits, sales_count, unique_buyers_count"
+        ).eq("seller_id", user_id).eq("resource_type", "project").eq("is_deleted", False).execute()
 
         data = listings.data or []
         total_sales = sum(l.get("sales_count", 0) for l in data)
-        total_revenue = sum(l.get("price", 0) * l.get("sales_count", 0) for l in data)
+        unique_buyers = sum(l.get("unique_buyers_count", 0) for l in data)
+        total_revenue = sum(l.get("price_credits", 0) * l.get("sales_count", 0) for l in data)
 
         return {
-            "total_listings": len(data),
+            "total_selling": len(data),  # Matches SellerStatsResponse field name
             "total_sales": total_sales,
-            "total_revenue": total_revenue
+            "unique_buyers": unique_buyers,
+            "total_revenue": float(total_revenue)
         }
