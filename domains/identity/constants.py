@@ -43,14 +43,19 @@ DEFAULT_TIER_DISPLAY_NAMES = {
     TIER_T4: "Enterprise Plan",
 }
 
-# Monthly credits per tier (as per TIER-PERMISSIONS.md)
-# - t1: 0 monthly credits (100 bonus credits on registration, permanent)
-# - t2: 100 monthly credits
-# - t3: 200 monthly credits
+# ==========================================
+# DEPRECATED: Use TierService.get_monthly_credits() instead
+# ==========================================
+# These values are only kept as emergency fallback.
+# The authoritative source is database system_configs table:
+#   - tier.t1.monthly_credits = 0
+#   - tier.t2.monthly_credits = 200
+#   - tier.t3.monthly_credits = 500
+# ==========================================
 TIER_MONTHLY_CREDITS = {
     TIER_T1: 0,    # Free Plan - no monthly credits
-    TIER_T2: 200,  # Starter Plan - aligned with database system_configs
-    TIER_T3: 500,  # Pro Plan - aligned with database system_configs
+    TIER_T2: 200,  # Starter Plan (database: tier.t2.monthly_credits)
+    TIER_T3: 500,  # Pro Plan (database: tier.t3.monthly_credits)
     TIER_T4: 1000, # Enterprise Plan - TBD, placeholder
 }
 

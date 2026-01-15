@@ -39,8 +39,8 @@ UUID_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-# OCR cost in credits
-OCR_COST = 5
+# OCR cost fallback (actual cost read from TierService → system_configs)
+OCR_COST_FALLBACK = 10
 
 # Allowed file types for OCR
 ALLOWED_OCR_TYPES = [
@@ -82,6 +82,22 @@ class ToolsService:
         self.storage = storage_client
         self.ocr_processor = ocr_processor
         self._tier_service = tier_service
+
+    # ==========================================
+    # Cost Configuration
+    # ==========================================
+
+    async def _get_ocr_cost(self) -> int:
+        """
+        Get OCR operation cost from TierService (system_configs).
+        Falls back to OCR_COST_FALLBACK if TierService unavailable.
+        """
+        if self._tier_service:
+            try:
+                return await self._tier_service.get_operation_cost("ocr")
+            except Exception as e:
+                logger.warning(f"Failed to get OCR cost from TierService: {e}")
+        return OCR_COST_FALLBACK
 
     # ==========================================
     # Validation
@@ -261,6 +277,9 @@ class ToolsService:
         # Validate project_id format
         self.validate_project_id(project_id)
 
+        # Get OCR cost from TierService (dynamic config)
+        ocr_cost = await self._get_ocr_cost()
+
         # Check OCR permission via TierService
         tier = user.get("tier", "t1")
         can_use = await self._check_smart_scan_permission(tier, is_trial_active)
@@ -284,10 +303,10 @@ class ToolsService:
         if len(contents) > 10 * 1024 * 1024:
             raise HTTPException(400, "File too large. Maximum size is 10MB")
 
-        # Deduct credits after all validations pass
+        # Deduct credits after all validations pass (using dynamic cost)
         result = await self.credit_repository.deduct_credits(
             user["id"],
-            OCR_COST,
+            ocr_cost,
             "ocr",
             "OCR processing"
         )
@@ -319,13 +338,13 @@ class ToolsService:
                 "text": ocr_result.get("text", ""),
                 "tables": ocr_result.get("tables", []),
                 "images": ocr_result.get("images", []),
-                "credits_used": OCR_COST,
+                "credits_used": ocr_cost,
                 "balance": result.get("total", 0),
             }
 
         except Exception as e:
             # Refund credits on OCR processing failure
-            await self._refund_ocr_credits(user["id"], e)
+            await self._refund_ocr_credits(user["id"], e, ocr_cost)
             logger.error(f"OCR Error: {e}")
             raise HTTPException(500, f"OCR processing failed: {str(e)}")
 
@@ -333,6 +352,7 @@ class ToolsService:
         self,
         user_id: str,
         error: Exception,
+        ocr_cost: int = None,
     ) -> None:
         """
         Refund credits on OCR processing failure.
@@ -340,15 +360,18 @@ class ToolsService:
         Args:
             user_id: User ID
             error: Exception that caused the failure
+            ocr_cost: Cost to refund (uses fallback if not provided)
         """
+        if ocr_cost is None:
+            ocr_cost = OCR_COST_FALLBACK
         try:
             await self.credit_repository.add_credits(
                 user_id,
-                OCR_COST,
+                ocr_cost,
                 f"OCR failed: {str(error)[:50]}",
                 "refund"
             )
-            logger.info(f"Refunded {OCR_COST} credits for failed OCR: {user_id}")
+            logger.info(f"Refunded {ocr_cost} credits for failed OCR: {user_id}")
         except Exception as refund_error:
             logger.error(f"Failed to refund credits: {refund_error}")
 

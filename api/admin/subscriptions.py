@@ -60,11 +60,16 @@ router = APIRouter(prefix="/subscriptions", tags=["admin-subscriptions-v2"])
 # v3.25: SUB-MEDIUM-2 - Valid target tiers for downgrade
 VALID_TARGET_TIERS = {"t1", "t2"}
 
-# v3.25: Monthly credits by tier (from CLAUDE.md business rules)
+# ==========================================
+# DEPRECATED: Use TierService.get_monthly_credits() instead
+# ==========================================
+# These values are emergency fallback only.
+# Authoritative source: database system_configs table
+# ==========================================
 TIER_MONTHLY_CREDITS = {
     "t1": 0,
-    "t2": 200,
-    "t3": 500,
+    "t2": 200,  # database: tier.t2.monthly_credits
+    "t3": 500,  # database: tier.t3.monthly_credits
 }
 
 

@@ -11,6 +11,17 @@ from typing import Optional, List
 from datetime import datetime
 
 
+class UserRole(str, Enum):
+    """
+    User role for access control.
+
+    - user: Regular user (default)
+    - admin: Administrator with full access
+    """
+    USER = "user"
+    ADMIN = "admin"
+
+
 class UserTier(str, Enum):
     """
     User subscription tier.

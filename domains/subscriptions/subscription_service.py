@@ -28,7 +28,6 @@ from domains.identity.constants import (
     TIER_T2,
     TIER_T3,
     TIER_LEVELS,
-    TIER_MONTHLY_CREDITS,
     normalize_tier,
 )
 from infrastructure.repositories import (
@@ -36,18 +35,22 @@ from infrastructure.repositories import (
     SupabasePaymentRepository,
     SupabaseAdminUsersRepository,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
 
 logger = logging.getLogger(__name__)
 
 
 # ==========================================
-# Deprecated constants (use domains.identity.constants instead)
+# Monthly credits fallback (use TierService for actual values)
 # ==========================================
-# These are imported above:
-# - TIER_T1, TIER_T2, TIER_T3
-# - TIER_LEVELS
-# - TIER_MONTHLY_CREDITS
-# - normalize_tier()
+TIER_MONTHLY_CREDITS_FALLBACK = {
+    TIER_T1: 0,
+    TIER_T2: 200,
+    TIER_T3: 500,
+}
 
 
 class SubscriptionService:
@@ -55,17 +58,29 @@ class SubscriptionService:
     Subscription management service.
 
     v3.28: Created to extract business logic from API layer (SUB-MEDIUM-1/2/3).
+    v3.32: Use TierService for monthly credits configuration.
     """
 
     def __init__(
         self,
         users_repo: SupabaseUserRepository,
         payment_repo: SupabasePaymentRepository,
-        admin_repo: SupabaseAdminUsersRepository
+        admin_repo: SupabaseAdminUsersRepository,
+        tier_service: "TierService" = None,
     ):
         self.users_repo = users_repo
         self.payment_repo = payment_repo
         self.admin_repo = admin_repo
+        self._tier_service = tier_service
+
+    async def _get_monthly_credits(self, tier: str) -> int:
+        """Get monthly credits for tier from TierService or fallback."""
+        if self._tier_service:
+            try:
+                return await self._tier_service.get_monthly_credits(tier)
+            except Exception as e:
+                logger.warning(f"Failed to get monthly credits from TierService: {e}")
+        return TIER_MONTHLY_CREDITS_FALLBACK.get(tier, 0)
 
     # ==========================================
     # Validation Helpers (SUB-MEDIUM-8: Extract common logic)
@@ -401,7 +416,8 @@ class SubscriptionService:
         # Case 1: No Stripe customer (already free or never subscribed)
         if not customer_id:
             await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
+            monthly_credits = await self._get_monthly_credits("t1")
+            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -425,7 +441,8 @@ class SubscriptionService:
         if not active_sub:
             # No active subscription - just update tier
             await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
+            monthly_credits = await self._get_monthly_credits("t1")
+            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -449,7 +466,8 @@ class SubscriptionService:
                 raise HTTPException(400, "Failed to cancel subscription")
 
             await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="canceled")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t1"])
+            monthly_credits = await self._get_monthly_credits("t1")
+            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -536,7 +554,8 @@ class SubscriptionService:
         # Update database
         if immediate:
             await self.users_repo.update_subscription_tier(user_id, "t2", subscription_status="active")
-            await self.users_repo.update_monthly_credits(user_id, TIER_MONTHLY_CREDITS["t2"])
+            monthly_credits = await self._get_monthly_credits("t2")
+            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
 
             await self.payment_repo.create(
                 user_id=user_id,

@@ -43,12 +43,18 @@ RATE_LIMIT_DEFAULT = "100/minute"
 RATE_LIMIT_GENERATE = "10/minute"
 RATE_LIMIT_OCR = "10/minute"
 
-# Credits Configuration
-CREDITS_PER_IMAGE = 5
-CREDITS_PER_OCR = 5
-CREDITS_SIGNUP_BONUS = 50
-CREDITS_MONTHLY_STARTER = 500
-CREDITS_MONTHLY_PRO = 1000
+# ==========================================
+# DEPRECATED: Credits Configuration
+# ==========================================
+# Use TierService for dynamic configuration from database.
+# These values are EMERGENCY FALLBACK only.
+# Authoritative source: database system_configs table
+# ==========================================
+CREDITS_PER_IMAGE = 5           # database: credits.cost.image_generation = 5
+CREDITS_PER_OCR = 10            # database: credits.cost.ocr = 10
+CREDITS_SIGNUP_BONUS = 50       # database: SIGNUP_BONUS_CREDITS = 50
+CREDITS_MONTHLY_STARTER = 200   # database: tier.t2.monthly_credits = 200
+CREDITS_MONTHLY_PRO = 500       # database: tier.t3.monthly_credits = 500
 
 # Marketplace
 MAX_LISTING_PRICE = 500

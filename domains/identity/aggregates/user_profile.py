@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from ..value_objects import UserTier, OnboardingStep, UserPreferences
+from ..value_objects import UserTier, UserRole, OnboardingStep, UserPreferences
 
 
 @dataclass
@@ -39,7 +39,8 @@ class UserProfile:
     display_name: Optional[str] = None   # Display name (can be customized by user)
     avatar_url: Optional[str] = None
     
-    # Subscription and billing
+    # Role and subscription
+    role: UserRole = UserRole.USER  # user or admin
     tier: UserTier = UserTier.T1
     subscription_status: Optional[str] = None  # active, canceled, past_due, incomplete, trialing
     stripe_customer_id: Optional[str] = None

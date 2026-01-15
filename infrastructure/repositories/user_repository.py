@@ -407,8 +407,17 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
 
     def _map_to_entity(self, row: dict) -> UserProfile:
         """Map database row to UserProfile."""
+        from domains.identity.value_objects import UserRole
+        
         preferences = UserPreferences.from_dict(row.get("preferences", {})) \
             if row.get("preferences") else UserPreferences()
+
+        # Parse role with fallback to 'user'
+        role_value = row.get("role", "user")
+        try:
+            role = UserRole(role_value)
+        except ValueError:
+            role = UserRole.USER
 
         return UserProfile(
             user_id=row["id"],  # profiles.id is the Clerk user_id
@@ -419,6 +428,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             last_name=row.get("last_name"),
             display_name=row.get("display_name"),
             avatar_url=row.get("avatar_url"),
+            role=role,  # User role (user/admin)
             tier=UserTier(row.get("tier", "t1")),
             subscription_status=row.get("subscription_status"),
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
@@ -441,6 +451,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             "last_name": profile.last_name,
             "display_name": profile.display_name,
             "avatar_url": profile.avatar_url,
+            "role": profile.role.value if hasattr(profile.role, 'value') else profile.role,  # user/admin
             "tier": profile.tier.value,
             "subscription_status": profile.subscription_status,
             "onboarding_step": profile.onboarding_step.value,

@@ -217,19 +217,32 @@ async def get_current_user(authorization: str = Header(None)):
 
 async def require_admin(user = Depends(get_current_user)):
     """
-    Admin permission guard.
-
-    Note: Admin system is not fully implemented in UserProfile.
-    This function currently rejects all requests.
+    Admin permission guard - checks profiles.role = 'admin'.
 
     Raises:
-        AdminRequiredException: Always raised (admin not implemented)
+        AdminRequiredException: If user is not an admin
 
     Returns:
-        UserProfile: User profile (never returns)
+        dict: User info dict for admin operations
     """
-    # TODO: Implement proper admin check via UserProfile or separate admin table
-    raise AdminRequiredException()
+    # Check role from UserProfile
+    user_role = getattr(user, 'role', None)
+    
+    # Handle both UserRole enum and string
+    if user_role is None:
+        raise AdminRequiredException()
+    
+    role_value = user_role.value if hasattr(user_role, 'value') else str(user_role)
+    
+    if role_value != 'admin':
+        raise AdminRequiredException()
+    
+    # Return dict for compatibility with existing admin endpoints
+    return {
+        "id": user.user_id,
+        "email": user.email,
+        "role": role_value,
+    }
 
 
 async def require_member(user = Depends(get_current_user)):
