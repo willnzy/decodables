@@ -10,8 +10,8 @@
 -- 
 -- 权威配置 (保留):
 --   - tier.t1.monthly_credits = 0
---   - tier.t2.monthly_credits = 200
---   - tier.t3.monthly_credits = 500
+--   - tier.t2.monthly_credits = 100
+--   - tier.t3.monthly_credits = 200
 --   - credits.cost.image_generation = 5
 --   - credits.cost.ocr = 10
 --   - credits.cost.smart_scan = 10
@@ -54,5 +54,5 @@ ORDER BY config_group, config_key;
 -- | credits.cost.smart_scan       | 10           | credits      |
 -- | credits.cost.text_generation  | 0            | credits      |
 -- | tier.t1.monthly_credits       | 0            | tier         |
--- | tier.t2.monthly_credits       | 200          | tier         |
--- | tier.t3.monthly_credits       | 500          | tier         |
+-- | tier.t2.monthly_credits       | 100          | tier         |
+-- | tier.t3.monthly_credits       | 200          | tier         |

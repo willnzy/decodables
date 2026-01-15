@@ -54,9 +54,9 @@ DEFAULT_TIER_DISPLAY_NAMES = {
 # ==========================================
 TIER_MONTHLY_CREDITS = {
     TIER_T1: 0,    # Free Plan - no monthly credits
-    TIER_T2: 200,  # Starter Plan (database: tier.t2.monthly_credits)
-    TIER_T3: 500,  # Pro Plan (database: tier.t3.monthly_credits)
-    TIER_T4: 1000, # Enterprise Plan - TBD, placeholder
+    TIER_T2: 100,  # Starter Plan (database: tier.t2.monthly_credits)
+    TIER_T3: 200,  # Pro Plan (database: tier.t3.monthly_credits)
+    TIER_T4: 500,  # Enterprise Plan - TBD, placeholder
 }
 
 # Monthly prices per tier in USD (as per TIER-PERMISSIONS.md)

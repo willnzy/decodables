@@ -2817,8 +2817,8 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称 (可通过 Admin API 修改)', true, true),
 ('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可通过 Admin API 修改)', true, true),
 ('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', true, false),
-('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', true, false),
-('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false),
+('tier.t2.monthly_credits', '100', 'integer', 'tier', 'Second Tier 月度积分', true, false),
+('tier.t3.monthly_credits', '200', 'integer', 'tier', 'Third Tier 月度积分', true, false),
 
 -- ========== Trial Period (1条) ==========
 ('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true),

@@ -53,8 +53,8 @@ RATE_LIMIT_OCR = "10/minute"
 CREDITS_PER_IMAGE = 5           # database: credits.cost.image_generation = 5
 CREDITS_PER_OCR = 10            # database: credits.cost.ocr = 10
 CREDITS_SIGNUP_BONUS = 50       # database: SIGNUP_BONUS_CREDITS = 50
-CREDITS_MONTHLY_STARTER = 200   # database: tier.t2.monthly_credits = 200
-CREDITS_MONTHLY_PRO = 500       # database: tier.t3.monthly_credits = 500
+CREDITS_MONTHLY_STARTER = 100   # database: tier.t2.monthly_credits = 100
+CREDITS_MONTHLY_PRO = 200       # database: tier.t3.monthly_credits = 200
 
 # Marketplace
 MAX_LISTING_PRICE = 500

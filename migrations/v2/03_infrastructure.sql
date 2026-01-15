@@ -1379,10 +1379,10 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 -- Subscription Plans
 ('STARTER_PLAN_PRICE', '14.9', 'number', 'pricing', 'Starter monthly price', true, true),
 ('STARTER_PLAN_ORIGINAL_PRICE', '24.95', 'number', 'pricing', 'Starter original price (for display)', true, true),
-('STARTER_MONTHLY_CREDITS', '200', 'number', 'pricing', 'Starter monthly credits (sync with tier.t2.monthly_credits)', true, true),
+('STARTER_MONTHLY_CREDITS', '100', 'number', 'pricing', 'Starter monthly credits (sync with tier.t2.monthly_credits)', true, true),
 ('PRO_PLAN_PRICE', '29.9', 'number', 'pricing', 'Pro monthly price', true, true),
 ('PRO_PLAN_ORIGINAL_PRICE', '59.9', 'number', 'pricing', 'Pro original price (for display)', true, true),
-('PRO_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Pro monthly credits (sync with tier.t3.monthly_credits)', true, true),
+('PRO_MONTHLY_CREDITS', '200', 'number', 'pricing', 'Pro monthly credits (sync with tier.t3.monthly_credits)', true, true),
 ('PRO_CREDITS_DISCOUNT_PERCENT', '20', 'number', 'pricing', 'Pro discount on credit purchases', true, true),
 
 -- Credits Tiers (JSON array)
@@ -1422,8 +1422,8 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称 (可通过 Admin API 修改)', true, true),
 ('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可通过 Admin API 修改)', true, true),
 ('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', true, false),
-('tier.t2.monthly_credits', '200', 'integer', 'tier', 'Second Tier 月度积分', true, false),
-('tier.t3.monthly_credits', '500', 'integer', 'tier', 'Third Tier 月度积分', true, false),
+('tier.t2.monthly_credits', '100', 'integer', 'tier', 'Second Tier 月度积分', true, false),
+('tier.t3.monthly_credits', '200', 'integer', 'tier', 'Third Tier 月度积分', true, false),
 
 -- ========== Trial Period (1条) ==========
 ('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true),

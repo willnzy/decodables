@@ -93,7 +93,7 @@ EMERGENCY_TIER_CONFIGS = {
         }
     },
     TIER_T2: {
-        "monthly_credits": 200,  # Aligned with database system_configs
+        "monthly_credits": 100,  # Aligned with database system_configs
         "max_projects": 10,
         "ai_queue_priority": "normal",
         "topup_discount": 1.0,
@@ -116,7 +116,7 @@ EMERGENCY_TIER_CONFIGS = {
         }
     },
     TIER_T3: {
-        "monthly_credits": 500,  # Aligned with database system_configs
+        "monthly_credits": 200,  # Aligned with database system_configs
         "max_projects": 200,
         "ai_queue_priority": "high",
         "topup_discount": 0.9,
@@ -139,7 +139,7 @@ EMERGENCY_TIER_CONFIGS = {
         }
     },
     TIER_T4: {
-        "monthly_credits": 1000,  # Enterprise tier placeholder
+        "monthly_credits": 500,  # Enterprise tier placeholder
         "max_projects": 1000,
         "ai_queue_priority": "high",
         "topup_discount": 0.8,

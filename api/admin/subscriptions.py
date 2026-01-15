@@ -68,8 +68,8 @@ VALID_TARGET_TIERS = {"t1", "t2"}
 # ==========================================
 TIER_MONTHLY_CREDITS = {
     "t1": 0,
-    "t2": 200,  # database: tier.t2.monthly_credits
-    "t3": 500,  # database: tier.t3.monthly_credits
+    "t2": 100,  # database: tier.t2.monthly_credits
+    "t3": 200,  # database: tier.t3.monthly_credits
 }
 
 

@@ -48,8 +48,8 @@ logger = logging.getLogger(__name__)
 # ==========================================
 TIER_MONTHLY_CREDITS_FALLBACK = {
     TIER_T1: 0,
-    TIER_T2: 200,
-    TIER_T3: 500,
+    TIER_T2: 100,  # Aligned with database: tier.t2.monthly_credits
+    TIER_T3: 200,  # Aligned with database: tier.t3.monthly_credits
 }
 
 

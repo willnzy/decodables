@@ -59,11 +59,11 @@ class UserTier(str, Enum):
 
     @property
     def monthly_credits(self) -> int:
-        """Monthly credit allowance for this tier."""
+        """Monthly credit allowance for this tier (fallback, use TierService for dynamic config)."""
         allowances = {
             UserTier.T1: 0,
-            UserTier.T2: 200,
-            UserTier.T3: 500,
+            UserTier.T2: 100,  # database: tier.t2.monthly_credits
+            UserTier.T3: 200,  # database: tier.t3.monthly_credits
         }
         return allowances[self]
 

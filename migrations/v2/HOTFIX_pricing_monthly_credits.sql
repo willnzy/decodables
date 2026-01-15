@@ -5,23 +5,35 @@
 -- 修复: 将 PRICING 配置与 TIER 配置同步
 -- 
 -- 配置值对照:
---   tier.t2.monthly_credits = 200 → STARTER_MONTHLY_CREDITS = 200
---   tier.t3.monthly_credits = 500 → PRO_MONTHLY_CREDITS = 500
+--   tier.t2.monthly_credits = 100 → STARTER_MONTHLY_CREDITS = 100
+--   tier.t3.monthly_credits = 200 → PRO_MONTHLY_CREDITS = 200
 -- =============================================================================
 
--- 1. 更新 STARTER_MONTHLY_CREDITS (500 → 200)
+-- 1. 更新 STARTER_MONTHLY_CREDITS → 100
 UPDATE system_configs 
-SET config_value = '200',
+SET config_value = '100',
     description = 'Starter monthly credits (sync with tier.t2.monthly_credits)',
     updated_at = NOW()
 WHERE config_key = 'STARTER_MONTHLY_CREDITS';
 
--- 2. 更新 PRO_MONTHLY_CREDITS (1000 → 500)
+-- 2. 更新 PRO_MONTHLY_CREDITS → 200
 UPDATE system_configs 
-SET config_value = '500',
+SET config_value = '200',
     description = 'Pro monthly credits (sync with tier.t3.monthly_credits)',
     updated_at = NOW()
 WHERE config_key = 'PRO_MONTHLY_CREDITS';
+
+-- 3. 更新 tier.t2.monthly_credits → 100
+UPDATE system_configs 
+SET config_value = '100',
+    updated_at = NOW()
+WHERE config_key = 'tier.t2.monthly_credits';
+
+-- 4. 更新 tier.t3.monthly_credits → 200
+UPDATE system_configs 
+SET config_value = '200',
+    updated_at = NOW()
+WHERE config_key = 'tier.t3.monthly_credits';
 
 -- 3. 验证修改
 SELECT config_key, config_value, description 
