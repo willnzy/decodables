@@ -200,6 +200,7 @@ WHERE table_schema = 'public'
 | `HOTFIX_add_target_user_id.sql` | 为 admin_operations 添加 target_user_id 列 | 如果看到 PGRST204 错误（找不到 target_user_id 列） |
 | `HOTFIX_add_role_column.sql` | 为 profiles 添加 role 列 (user/admin) | 需要支持管理员角色功能时 |
 | `HOTFIX_add_hourly_metrics.sql` | 添加 hourly_metrics 表（ETL 使用） | 如果看到 PGRST205 错误（找不到 hourly_metrics 表） |
+| `HOTFIX_daily_metrics_fields.sql` | 为 daily_metrics 添加 date 和 dau 列 | 如果看到 daily_metrics 查询失败（字段不存在） |
 
 **执行方法**:
 ```bash

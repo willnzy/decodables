@@ -194,12 +194,15 @@ CREATE TABLE IF NOT EXISTS config_audit_logs (
 
 -- ----------------------------------------------------------------------------
 -- 8. daily_metrics
+-- P0-18: Repository 使用 date 和 dau 字段，添加别名列
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS daily_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     metric_date DATE NOT NULL UNIQUE,
+    date DATE,  -- P0-18: metric_date 的别名，供 Repository 使用
     total_users INTEGER DEFAULT 0,
     active_users INTEGER DEFAULT 0,
+    dau INTEGER DEFAULT 0,  -- P0-18: DAU (Daily Active Users)，供 Repository 使用
     new_users INTEGER DEFAULT 0,
     total_projects INTEGER DEFAULT 0,
     new_projects INTEGER DEFAULT 0,
@@ -231,7 +234,39 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
 );
 
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_metric_date ON daily_metrics(metric_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics(date DESC) WHERE date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_daily_metrics_dau ON daily_metrics(dau DESC) WHERE dau IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_daily_metrics_created_at ON daily_metrics(created_at DESC);
+
+-- P0-18: 触发器保持 date 和 metric_date 同步
+CREATE OR REPLACE FUNCTION sync_daily_metrics_date()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.date IS NULL AND NEW.metric_date IS NOT NULL THEN
+            NEW.date := NEW.metric_date;
+        ELSIF NEW.metric_date IS NULL AND NEW.date IS NOT NULL THEN
+            NEW.metric_date := NEW.date;
+        END IF;
+    END IF;
+    
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.metric_date IS DISTINCT FROM OLD.metric_date THEN
+            NEW.date := NEW.metric_date;
+        ELSIF NEW.date IS DISTINCT FROM OLD.date THEN
+            NEW.metric_date := NEW.date;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sync_daily_metrics_date ON daily_metrics;
+CREATE TRIGGER trg_sync_daily_metrics_date
+    BEFORE INSERT OR UPDATE ON daily_metrics
+    FOR EACH ROW
+    EXECUTE FUNCTION sync_daily_metrics_date();
 
 
 -- ----------------------------------------------------------------------------
