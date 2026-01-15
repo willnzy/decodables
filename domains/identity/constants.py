@@ -49,9 +49,9 @@ DEFAULT_TIER_DISPLAY_NAMES = {
 # - t3: 200 monthly credits
 TIER_MONTHLY_CREDITS = {
     TIER_T1: 0,    # Free Plan - no monthly credits
-    TIER_T2: 100,  # Starter Plan - 100 monthly credits
-    TIER_T3: 200,  # Pro Plan - 200 monthly credits
-    TIER_T4: 500,  # Enterprise Plan - TBD, placeholder
+    TIER_T2: 200,  # Starter Plan - aligned with database system_configs
+    TIER_T3: 500,  # Pro Plan - aligned with database system_configs
+    TIER_T4: 1000, # Enterprise Plan - TBD, placeholder
 }
 
 # Monthly prices per tier in USD (as per TIER-PERMISSIONS.md)
