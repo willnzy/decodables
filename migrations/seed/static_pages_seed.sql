@@ -621,7 +621,7 @@ INSERT INTO static_pages (
     meta_title, meta_description, extra_data, is_published, published_at, last_updated_display, sort_order
 ) VALUES (
     'about-us',
-    'Meet the Team Behind Make Decodables',
+    'Meet Our Team',
     'AI-powered tools for educators, built in Singapore.',
     '',
     'company',
@@ -632,7 +632,7 @@ INSERT INTO static_pages (
     '{
       "hero": {
         "badge": "About Us",
-        "title": "Meet the Team Behind Make Decodables",
+        "title": "Meet Our Team",
         "subtitle": "AI-powered tools for educators, built in Singapore."
       },
       "story": {
