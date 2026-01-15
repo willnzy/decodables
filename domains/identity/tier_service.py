@@ -66,8 +66,13 @@ class FeatureKey(str, Enum):
     API_ACCESS = "api_access"
 
 
-# Emergency fallback - 仅在数据库完全不可用时使用
-# 与 TIER-PERMISSIONS.md 保持一致
+# ==========================================
+# ⚠️ EMERGENCY FALLBACK - 仅在数据库完全不可用时使用
+# ==========================================
+# 正常情况下所有配置都从 database system_configs 读取。
+# 这些值仅在数据库查询失败时作为最后的备选方案。
+# 与 TIER-PERMISSIONS.md 保持一致。
+# ==========================================
 EMERGENCY_TIER_CONFIGS = {
     TIER_T1: {
         "monthly_credits": 0,  # Aligned with database system_configs

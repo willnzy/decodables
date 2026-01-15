@@ -64,11 +64,13 @@ VALID_TARGET_TIERS = {"t1", "t2"}
 # DEPRECATED: Use TierService.get_monthly_credits() instead
 # ==========================================
 # These values are emergency fallback only.
+# ⚠️ DEPRECATED - EMERGENCY FALLBACK ONLY
+# All values should be read from database via TierService.
 # Authoritative source: database system_configs table
 # ==========================================
 TIER_MONTHLY_CREDITS = {
-    "t1": 0,
-    "t2": 100,  # database: tier.t2.monthly_credits
+    "t1": 0,      # FALLBACK: use tier_service.get_monthly_credits("t1")
+    "t2": 100,    # FALLBACK: use tier_service.get_monthly_credits("t2")
     "t3": 200,  # database: tier.t3.monthly_credits
 }
 

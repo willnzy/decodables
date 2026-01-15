@@ -44,17 +44,24 @@ RATE_LIMIT_GENERATE = "10/minute"
 RATE_LIMIT_OCR = "10/minute"
 
 # ==========================================
-# DEPRECATED: Credits Configuration
+# ⚠️ DEPRECATED - DO NOT USE IN BUSINESS LOGIC
 # ==========================================
-# Use TierService for dynamic configuration from database.
-# These values are EMERGENCY FALLBACK only.
+# These constants are EMERGENCY FALLBACK ONLY.
+# All values MUST be read from database via TierService/ConfigService.
+#
+# ✅ Correct usage:
+#    cost = await tier_service.get_operation_cost("image_generation")
+#
+# ❌ Wrong usage:
+#    cost = CREDITS_PER_IMAGE  # Never do this!
+#
 # Authoritative source: database system_configs table
 # ==========================================
-CREDITS_PER_IMAGE = 5           # database: credits.cost.image_generation = 5
-CREDITS_PER_OCR = 10            # database: credits.cost.ocr = 10
-CREDITS_SIGNUP_BONUS = 50       # database: SIGNUP_BONUS_CREDITS = 50
-CREDITS_MONTHLY_T2 = 100        # database: tier.t2.monthly_credits = 100
-CREDITS_MONTHLY_T3 = 200        # database: tier.t3.monthly_credits = 200
+# CREDITS_PER_IMAGE = 5        # ❌ REMOVED - use tier_service.get_operation_cost("image_generation")
+# CREDITS_PER_OCR = 10         # ❌ REMOVED - use tier_service.get_operation_cost("ocr")
+# CREDITS_SIGNUP_BONUS = 50    # ❌ REMOVED - use tier_service.get_signup_bonus()
+# CREDITS_MONTHLY_T2 = 100     # ❌ REMOVED - use tier_service.get_monthly_credits("t2")
+# CREDITS_MONTHLY_T3 = 200     # ❌ REMOVED - use tier_service.get_monthly_credits("t3")
 
 # Marketplace
 MAX_LISTING_PRICE = 500

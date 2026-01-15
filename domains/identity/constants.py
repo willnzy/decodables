@@ -44,19 +44,21 @@ DEFAULT_TIER_DISPLAY_NAMES = {
 }
 
 # ==========================================
-# DEPRECATED: Use TierService.get_monthly_credits() instead
+# ⚠️ DEPRECATED - EMERGENCY FALLBACK ONLY
 # ==========================================
-# These values are only kept as emergency fallback.
-# The authoritative source is database system_configs table:
-#   - tier.t1.monthly_credits = 0
-#   - tier.t2.monthly_credits = 100
-#   - tier.t3.monthly_credits = 200
+# All values MUST be read from database via TierService.
+#
+# ✅ Correct: credits = await tier_service.get_monthly_credits("t2")
+# ❌ Wrong:   credits = TIER_MONTHLY_CREDITS[TIER_T2]
+#
+# This dict is kept for backward compatibility and emergency fallback.
+# Authoritative source: database system_configs table
 # ==========================================
 TIER_MONTHLY_CREDITS = {
-    TIER_T1: 0,    # Free Plan - no monthly credits
-    TIER_T2: 100,  # Starter Plan (database: tier.t2.monthly_credits)
-    TIER_T3: 200,  # Pro Plan (database: tier.t3.monthly_credits)
-    TIER_T4: 500,  # Enterprise Plan - TBD, placeholder
+    TIER_T1: 0,    # FALLBACK: use tier_service.get_monthly_credits("t1")
+    TIER_T2: 100,  # FALLBACK: use tier_service.get_monthly_credits("t2")
+    TIER_T3: 200,  # FALLBACK: use tier_service.get_monthly_credits("t3")
+    TIER_T4: 500,  # FALLBACK: use tier_service.get_monthly_credits("t4")
 }
 
 # Monthly prices per tier in USD (as per TIER-PERMISSIONS.md)
