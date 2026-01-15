@@ -199,6 +199,7 @@ WHERE table_schema = 'public'
 | `HOTFIX_enable_rls_missing_tables.sql` | 为 system_error_logs 和 user_creation_logs 启用 RLS | 如果在 Supabase 中看到 UNRESTRICTED 警告 |
 | `HOTFIX_add_target_user_id.sql` | 为 admin_operations 添加 target_user_id 列 | 如果看到 PGRST204 错误（找不到 target_user_id 列） |
 | `HOTFIX_add_role_column.sql` | 为 profiles 添加 role 列 (user/admin) | 需要支持管理员角色功能时 |
+| `HOTFIX_add_hourly_metrics.sql` | 添加 hourly_metrics 表（ETL 使用） | 如果看到 PGRST205 错误（找不到 hourly_metrics 表） |
 
 **执行方法**:
 ```bash
@@ -206,6 +207,7 @@ WHERE table_schema = 'public'
 psql -h your-host -U postgres -d your-database -f HOTFIX_enable_rls_missing_tables.sql
 psql -h your-host -U postgres -d your-database -f HOTFIX_add_target_user_id.sql
 psql -h your-host -U postgres -d your-database -f HOTFIX_add_role_column.sql
+psql -h your-host -U postgres -d your-database -f HOTFIX_add_hourly_metrics.sql
 ```
 
 **特点**:
