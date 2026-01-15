@@ -531,7 +531,43 @@ CREATE INDEX IF NOT EXISTS idx_monthly_metrics_created_at ON monthly_metrics(cre
 
 
 -- ----------------------------------------------------------------------------
--- 13. notifications (无软删除,只追加)
+-- 13. hourly_metrics (小时级指标)
+-- ----------------------------------------------------------------------------
+-- 用途: 存储每小时的快速指标统计
+-- 写入: scheduler.py 中的 hourly ETL 任务
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS hourly_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    -- 时间标识 (小时精度)
+    hour TIMESTAMPTZ NOT NULL,
+    
+    -- 指标数据
+    events INTEGER DEFAULT 0 CHECK (events >= 0),
+    
+    -- 扩展字段 (预留)
+    active_users INTEGER DEFAULT 0 CHECK (active_users >= 0),
+    new_projects INTEGER DEFAULT 0 CHECK (new_projects >= 0),
+    ai_generations INTEGER DEFAULT 0 CHECK (ai_generations >= 0),
+    
+    -- 元数据
+    metadata JSONB DEFAULT '{}',
+    
+    -- 审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- 唯一约束: 每小时只有一条记录
+    CONSTRAINT unique_hourly_metric UNIQUE (hour)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hourly_metrics_hour ON hourly_metrics(hour DESC);
+CREATE INDEX IF NOT EXISTS idx_hourly_metrics_created_at ON hourly_metrics(created_at DESC);
+
+COMMENT ON TABLE hourly_metrics IS '小时级指标存储表，由 ETL 定时任务写入';
+
+
+-- ----------------------------------------------------------------------------
+-- 14. notifications (无软删除,只追加)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

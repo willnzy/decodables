@@ -7,10 +7,10 @@
 | 文件 | 大小 | 内容 | 执行顺序 |
 |------|------|------|----------|
 | `01_core_business.sql` | 31KB | 核心业务表（21张）+ system_error_logs | ① |
-| `02_platform_services.sql` | 26KB | 平台服务表（28张） | ② |
+| `02_platform_services.sql` | 26KB | 平台服务表（29张） | ② |
 | `03_infrastructure.sql` | 52KB | 基础设施表（12张）+ 函数 + 数据 | ③ |
 
-**总计**: 61 张表 + 20 个函数 + 2 个视图 + 初始数据 + 维护任务
+**总计**: 62 张表 + 20 个函数 + 2 个视图 + 初始数据 + 维护任务
 
 ---
 
@@ -126,8 +126,8 @@ Webhooks (2):
 新手引导 (3):
   - notifications, onboarding_steps, user_onboarding_progress
 
-其他 (3):
-  - referrals, daily_metrics, monthly_metrics
+其他 (4):
+  - referrals, daily_metrics, monthly_metrics, hourly_metrics
 ```
 
 ### 3️⃣ 基础设施层 (03_infrastructure.sql)
