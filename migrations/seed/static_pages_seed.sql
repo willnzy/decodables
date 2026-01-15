@@ -188,7 +188,20 @@ If you have questions about this Privacy Policy:
     CURRENT_TIMESTAMP,
     'January 2026',
     10
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Terms of Service
 INSERT INTO static_pages (
@@ -386,7 +399,20 @@ For questions about these Terms:
     CURRENT_TIMESTAMP,
     'January 2026',
     20
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Billing Policy
 INSERT INTO static_pages (
@@ -569,7 +595,20 @@ For billing questions or issues:
     CURRENT_TIMESTAMP,
     'January 2026',
     30
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================
@@ -730,7 +769,21 @@ INSERT INTO static_pages (
     CURRENT_TIMESTAMP,
     'January 2026',
     10
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    extra_data = EXCLUDED.extra_data,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Contact Us
 INSERT INTO static_pages (
@@ -840,7 +893,20 @@ Follow us for updates, tips, and inspiration:
     CURRENT_TIMESTAMP,
     'January 2026',
     20
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================
@@ -1061,7 +1127,20 @@ Contact us at {{site.email}} for marketplace questions or concerns.
     CURRENT_TIMESTAMP,
     'January 2026',
     10
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    subtitle = EXCLUDED.subtitle,
+    content = EXCLUDED.content,
+    page_type = EXCLUDED.page_type,
+    icon = EXCLUDED.icon,
+    hero_gradient = EXCLUDED.hero_gradient,
+    meta_title = EXCLUDED.meta_title,
+    meta_description = EXCLUDED.meta_description,
+    is_published = EXCLUDED.is_published,
+    last_updated_display = EXCLUDED.last_updated_display,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================
