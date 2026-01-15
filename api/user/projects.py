@@ -350,7 +350,7 @@ async def create_project(
         raise HTTPException(400, f"Invalid canvas data: {error}")
 
     container = get_container()
-    handler = await container.create_project_handler()
+    handler = await container.get_create_project_handler()
 
     tier = (user.get("tier") or "t1").lower()
 
@@ -445,7 +445,7 @@ async def update_project(
         raise HTTPException(400, f"Invalid thumbnail URL: {error}")
 
     container = get_container()
-    handler = await container.update_project_handler()
+    handler = await container.get_update_project_handler()
 
     command = UpdateProjectCommand(
         project_id=project_id,
@@ -491,7 +491,7 @@ async def delete_project(
         Deletion status with stage info
     """
     container = get_container()
-    handler = await container.delete_project_handler()
+    handler = await container.get_delete_project_handler()
 
     command = DeleteProjectCommand(
         project_id=project_id,
@@ -545,7 +545,7 @@ async def restore_project(
         Restored project details
     """
     container = get_container()
-    handler = await container.restore_project_handler()
+    handler = await container.get_restore_project_handler()
 
     command = RestoreProjectCommand(
         project_id=project_id,
