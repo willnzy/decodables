@@ -899,6 +899,20 @@ CREATE INDEX IF NOT EXISTS idx_static_pages_slug ON static_pages(slug);
 CREATE INDEX IF NOT EXISTS idx_static_pages_type ON static_pages(page_type);
 CREATE INDEX IF NOT EXISTS idx_static_pages_published ON static_pages(is_published);
 
+-- RLS
+ALTER TABLE static_pages ENABLE ROW LEVEL SECURITY;
+
+-- 公开读取已发布的页面
+CREATE POLICY "static_pages_public_read" ON static_pages
+    FOR SELECT
+    USING (is_published = true);
+
+-- Admin 完全访问 (通过 service_role)
+CREATE POLICY "static_pages_admin_all" ON static_pages
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
+
 
 -- ----------------------------------------------------------------------------
 -- 23. experiment_configs (依赖 feature_flags)
