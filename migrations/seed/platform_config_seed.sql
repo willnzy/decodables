@@ -6,7 +6,7 @@
 --
 -- Tables seeded:
 --   - pricing_plans (6 records: 3 subscriptions + 3 credit packs)
---   - system_configs (68 records across 14 config groups)
+--   - system_configs (77 records across 14 config groups)
 --
 -- Usage:
 --   psql $DATABASE_URL -f migrations/seed/platform_config_seed.sql
@@ -383,14 +383,28 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('marketplace.trial_duration_days', '7', 'number', 'marketplace', 'Trial duration in days', true, true),
 
 -- ============================================================================
--- TIER SYSTEM (6 records)
+-- TIER SYSTEM (15 records)
 -- ============================================================================
-('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称 (可通过 Admin API 修改)', true, true),
-('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称 (可通过 Admin API 修改)', true, true),
-('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称 (可通过 Admin API 修改)', true, true),
+-- Display names
+('tier.t1.display_name', 'Free Plan', 'text', 'tier', 'First Tier 显示名称', true, true),
+('tier.t2.display_name', 'Starter Plan', 'text', 'tier', 'Second Tier 显示名称', true, true),
+('tier.t3.display_name', 'Pro Plan', 'text', 'tier', 'Third Tier 显示名称', true, true),
+-- Monthly credits
 ('tier.t1.monthly_credits', '0', 'integer', 'tier', 'First Tier 月度积分', true, false),
 ('tier.t2.monthly_credits', '100', 'integer', 'tier', 'Second Tier 月度积分', true, false),
 ('tier.t3.monthly_credits', '200', 'integer', 'tier', 'Third Tier 月度积分', true, false),
+-- Original prices (for display strikethrough)
+('tier.t1.original_price', '0', 'number', 'tier', 'First Tier 原价', true, true),
+('tier.t2.original_price', '9.9', 'number', 'tier', 'Second Tier 原价', true, true),
+('tier.t3.original_price', '15.9', 'number', 'tier', 'Third Tier 原价', true, true),
+-- Current prices
+('tier.t1.current_price', '0', 'number', 'tier', 'First Tier 现价', true, true),
+('tier.t2.current_price', '6.9', 'number', 'tier', 'Second Tier 现价', true, true),
+('tier.t3.current_price', '9.9', 'number', 'tier', 'Third Tier 现价', true, true),
+-- Max projects
+('tier.t1.max_projects', '1', 'integer', 'tier', 'First Tier 最大项目数', true, true),
+('tier.t2.max_projects', '20', 'integer', 'tier', 'Second Tier 最大项目数', true, true),
+('tier.t3.max_projects', '200', 'integer', 'tier', 'Third Tier 最大项目数', true, true),
 
 -- ============================================================================
 -- TRIAL PERIOD (1 record)
