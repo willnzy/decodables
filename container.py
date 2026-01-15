@@ -253,15 +253,35 @@ class Container:
         return self._services['article']
 
     async def get_static_page_service(self):
-        """Get static page service instance (v3.32, async)."""
+        """
+        Get static page service instance (v3.32, async).
+
+        v2.1.0: Now injects TierService and ConfigRepository for dynamic
+        template variable replacement from database instead of hardcoded values.
+        """
         from domains.static_pages.service import StaticPageService
         from infrastructure.repositories.static_page_repository import SupabaseStaticPageRepository
+        from infrastructure.repositories.config_repository import SupabaseConfigRepository
+        from domains.identity.tier_service import TierService
+
         if 'static_page' not in self._services:
             db = await get_async_db_client()
             if db is None:
                 raise RuntimeError("Database client not available")
+
+            # Create repositories
             repository = SupabaseStaticPageRepository(db)
-            self._services['static_page'] = StaticPageService(repository)
+            config_repo = SupabaseConfigRepository(db)
+
+            # Create TierService for tier-related configs
+            tier_service = TierService(config_repo)
+
+            # Create service with all dependencies
+            self._services['static_page'] = StaticPageService(
+                repository=repository,
+                tier_service=tier_service,
+                config_repo=config_repo,
+            )
         return self._services['static_page']
 
     async def get_logging_service(self):

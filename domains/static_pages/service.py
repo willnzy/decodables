@@ -2,94 +2,96 @@
 Static Pages Domain Service
 
 Business logic for static page management.
+
+@version 2.1.0
+- Removed hardcoded configurations
+- Now fetches all config values from database (system_configs)
+- Uses TierService for tier-related configurations
+- Uses ConfigRepository for other configurations
 """
 
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, Dict, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from .entities import StaticPage, StaticPageSummary, StaticPageType
 from .repository import StaticPageRepository
 
+if TYPE_CHECKING:
+    from domains.identity.tier_service import TierService
+    from domains.platform.config_repository import ConfigRepository
+
 logger = logging.getLogger(__name__)
 
 
 # ==========================================
-# Template Variable Configuration
+# Emergency Fallback Configuration
+# ==========================================
+# These values are ONLY used when database is completely unavailable.
+# Normal operation reads all values from system_configs table.
 # ==========================================
 
-# Site configuration
-SITE_CONFIG = {
-    "name": "Make Decodables",
-    "email": "support@makedecodables.com",
-    "whatsapp": "+1 (555) 123-4567",
-    "privacy_updated": "January 2026",
-    "terms_updated": "January 2026",
-    "billing_updated": "January 2026",
-}
-
-# Tier configuration
-TIER_CONFIG = {
-    "t1": {
-        "displayName": "Free Plan",
-        "monthlyPrice": "0",
-        "originalPrice": "0",
-        "monthlyCredits": "0",
-        "signupBonus": "100",
-        "maxProjects": "1",
+EMERGENCY_FALLBACK = {
+    "site": {
+        "name": "Make Decodables",
+        "email": "support@makedecodables.com",
+        "whatsapp": "+1 (555) 123-4567",
+        "privacy_updated": "January 2026",
+        "terms_updated": "January 2026",
+        "billing_updated": "January 2026",
     },
-    "t2": {
-        "displayName": "Starter Plan",
-        "monthlyPrice": "6.9",
-        "originalPrice": "9.9",
-        "monthlyCredits": "100",
-        "signupBonus": "0",
-        "maxProjects": "10",
+    "tiers": {
+        "t1": {
+            "displayName": "Free Plan",
+            "monthlyPrice": "0",
+            "originalPrice": "0",
+            "monthlyCredits": "0",
+            "signupBonus": "100",
+            "maxProjects": "1",
+        },
+        "t2": {
+            "displayName": "Starter Plan",
+            "monthlyPrice": "6.9",
+            "originalPrice": "9.9",
+            "monthlyCredits": "100",
+            "signupBonus": "0",
+            "maxProjects": "10",
+        },
+        "t3": {
+            "displayName": "Pro Plan",
+            "monthlyPrice": "9.9",
+            "originalPrice": "15.9",
+            "monthlyCredits": "200",
+            "signupBonus": "0",
+            "maxProjects": "200",
+        },
     },
-    "t3": {
-        "displayName": "Pro Plan",
-        "monthlyPrice": "9.9",
-        "originalPrice": "15.9",
-        "monthlyCredits": "200",
-        "signupBonus": "0",
-        "maxProjects": "200",
+    "creditCosts": {
+        "ai_image": "5",
+        "ai_page": "5",
+        "ocr": "10",
     },
-}
-
-# Credit costs
-CREDIT_COSTS = {
-    "ai_image": "5",
-    "ai_page": "5",
-    "ocr": "5",
-}
-
-# Pricing (credits packages)
-PRICING_CONFIG = {
-    "credits_100": {"amount": "100", "price": "2.99", "original_price": "2.99"},
-    "credits_500": {"amount": "500", "price": "13.46", "original_price": "14.95"},
-    "credits_2000": {"amount": "2000", "price": "47.84", "original_price": "59.80"},
-}
-
-# Support configuration
-SUPPORT_CONFIG = {
-    "response_hours": "24",
-}
-
-# Marketplace configuration
-MARKETPLACE_CONFIG = {
-    "seller_share_percent": "90",
-    "platform_fee_percent": "10",
-    "max_listing_price": "500",
-    "review_hours": "48",
-    "example_earning_30": "27",
-    "example_fee_30": "3",
-}
-
-# Trial configuration
-TRIAL_CONFIG = {
-    "duration_days": "30",
+    "pricing": {
+        "credits_100": {"amount": "100", "price": "2.99", "original_price": "2.99"},
+        "credits_500": {"amount": "500", "price": "13.46", "original_price": "14.95"},
+        "credits_2000": {"amount": "2000", "price": "47.84", "original_price": "59.80"},
+    },
+    "support": {
+        "response_hours": "24",
+    },
+    "marketplace": {
+        "seller_share_percent": "90",
+        "platform_fee_percent": "10",
+        "max_listing_price": "500",
+        "review_hours": "48",
+        "example_earning_30": "27",
+        "example_fee_30": "3",
+    },
+    "trial": {
+        "duration_days": "30",
+    },
 }
 
 
@@ -98,10 +100,31 @@ class StaticPageService:
     Static page management service.
 
     Handles business logic for static pages CMS.
+
+    @version 2.1.0
+    - Now fetches template variable values from database
+    - Injected TierService for tier configurations
+    - Injected ConfigRepository for other configurations
     """
 
-    def __init__(self, repository: StaticPageRepository):
+    def __init__(
+        self,
+        repository: StaticPageRepository,
+        tier_service: Optional["TierService"] = None,
+        config_repo: Optional["ConfigRepository"] = None,
+    ):
+        """
+        Initialize StaticPageService.
+
+        Args:
+            repository: Static page repository
+            tier_service: TierService for tier-related configs (optional, for backward compatibility)
+            config_repo: ConfigRepository for other configs (optional, for backward compatibility)
+        """
         self._repository = repository
+        self._tier_service = tier_service
+        self._config_repo = config_repo
+        self._template_config_cache: Optional[Dict[str, Any]] = None
 
     # ==========================================
     # Public Operations
@@ -126,13 +149,13 @@ class StaticPageService:
 
         # Replace template variables in content
         if page.content:
-            page.content = self._replace_template_variables(page.content)
+            page.content = await self._replace_template_variables(page.content)
 
         # Replace template variables in meta fields
         if page.meta_title:
-            page.meta_title = self._replace_template_variables(page.meta_title)
+            page.meta_title = await self._replace_template_variables(page.meta_title)
         if page.meta_description:
-            page.meta_description = self._replace_template_variables(page.meta_description)
+            page.meta_description = await self._replace_template_variables(page.meta_description)
 
         return page
 
@@ -468,9 +491,218 @@ class StaticPageService:
     # Template Variable Replacement
     # ==========================================
 
-    def _replace_template_variables(self, content: str) -> str:
+    async def _get_template_config(self) -> Dict[str, Any]:
         """
-        Replace template variables in content with actual values.
+        Get all template variable configurations from database.
+
+        Returns:
+            Dict with all template variable values
+
+        Note:
+            Results are cached for performance. Call clear_template_cache()
+            to refresh values from database.
+        """
+        if self._template_config_cache is not None:
+            return self._template_config_cache
+
+        config: Dict[str, Any] = {
+            "site": {},
+            "tiers": {"t1": {}, "t2": {}, "t3": {}},
+            "creditCosts": {},
+            "pricing": {},
+            "support": {},
+            "marketplace": {},
+            "trial": {},
+        }
+
+        try:
+            # Fetch site config
+            config["site"] = await self._get_site_config()
+
+            # Fetch tier config (from TierService)
+            config["tiers"] = await self._get_tiers_config()
+
+            # Fetch credit costs
+            config["creditCosts"] = await self._get_credit_costs_config()
+
+            # Fetch pricing config
+            config["pricing"] = await self._get_pricing_config()
+
+            # Fetch support config
+            config["support"] = await self._get_support_config()
+
+            # Fetch marketplace config
+            config["marketplace"] = await self._get_marketplace_config()
+
+            # Fetch trial config
+            config["trial"] = await self._get_trial_config()
+
+            self._template_config_cache = config
+            return config
+
+        except Exception as e:
+            logger.error(f"[StaticPageService] Failed to fetch template config from database: {e}")
+            logger.warning("[StaticPageService] Using emergency fallback configuration")
+            return EMERGENCY_FALLBACK
+
+    async def _get_site_config(self) -> Dict[str, str]:
+        """Fetch site configuration from database."""
+        fallback = EMERGENCY_FALLBACK["site"]
+
+        if not self._config_repo:
+            return fallback
+
+        try:
+            result = {}
+            for key in ["name", "email", "whatsapp", "privacy_updated", "terms_updated", "billing_updated"]:
+                value = await self._config_repo.get_by_key(f"site.{key}")
+                result[key] = value if value else fallback.get(key, "")
+            return result
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch site config: {e}")
+            return fallback
+
+    async def _get_tiers_config(self) -> Dict[str, Dict[str, str]]:
+        """Fetch tier configurations from TierService."""
+        fallback = EMERGENCY_FALLBACK["tiers"]
+
+        if not self._tier_service:
+            return fallback
+
+        try:
+            result = {}
+            for tier in ["t1", "t2", "t3"]:
+                tier_config = await self._tier_service.get_tier_config(tier)
+                display_name = await self._tier_service.get_tier_display_name(tier)
+
+                result[tier] = {
+                    "displayName": display_name,
+                    "monthlyCredits": str(tier_config.get("monthly_credits", 0)),
+                    "maxProjects": str(tier_config.get("max_projects", 1)),
+                }
+
+                # Fetch price from config_repo (tier prices are stored separately)
+                if self._config_repo:
+                    monthly_price = await self._config_repo.get_by_key(f"tier.{tier}.monthly_price")
+                    original_price = await self._config_repo.get_by_key(f"tier.{tier}.original_price")
+                    signup_bonus = await self._config_repo.get_by_key(f"tier.{tier}.signup_bonus")
+
+                    result[tier]["monthlyPrice"] = monthly_price or fallback[tier].get("monthlyPrice", "0")
+                    result[tier]["originalPrice"] = original_price or fallback[tier].get("originalPrice", "0")
+                    result[tier]["signupBonus"] = signup_bonus or fallback[tier].get("signupBonus", "0")
+                else:
+                    result[tier].update({
+                        "monthlyPrice": fallback[tier].get("monthlyPrice", "0"),
+                        "originalPrice": fallback[tier].get("originalPrice", "0"),
+                        "signupBonus": fallback[tier].get("signupBonus", "0"),
+                    })
+
+            return result
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch tier config: {e}")
+            return fallback
+
+    async def _get_credit_costs_config(self) -> Dict[str, str]:
+        """Fetch credit costs from database."""
+        fallback = EMERGENCY_FALLBACK["creditCosts"]
+
+        if not self._tier_service:
+            return fallback
+
+        try:
+            result = {}
+            for operation in ["ai_image", "ai_page", "ocr"]:
+                # Map template variable names to operation names
+                op_name = {
+                    "ai_image": "image_generation",
+                    "ai_page": "page_generation",
+                    "ocr": "ocr",
+                }.get(operation, operation)
+
+                cost = await self._tier_service.get_operation_cost(op_name)
+                result[operation] = str(cost)
+            return result
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch credit costs: {e}")
+            return fallback
+
+    async def _get_pricing_config(self) -> Dict[str, Dict[str, str]]:
+        """Fetch credits package pricing from database."""
+        fallback = EMERGENCY_FALLBACK["pricing"]
+
+        if not self._config_repo:
+            return fallback
+
+        try:
+            result = {}
+            for package in ["credits_100", "credits_500", "credits_2000"]:
+                amount = await self._config_repo.get_by_key(f"pricing.{package}.amount")
+                price = await self._config_repo.get_by_key(f"pricing.{package}.price")
+                original_price = await self._config_repo.get_by_key(f"pricing.{package}.original_price")
+
+                result[package] = {
+                    "amount": amount or fallback[package].get("amount", "0"),
+                    "price": price or fallback[package].get("price", "0"),
+                    "original_price": original_price or fallback[package].get("original_price", "0"),
+                }
+            return result
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch pricing config: {e}")
+            return fallback
+
+    async def _get_support_config(self) -> Dict[str, str]:
+        """Fetch support configuration from database."""
+        fallback = EMERGENCY_FALLBACK["support"]
+
+        if not self._config_repo:
+            return fallback
+
+        try:
+            response_hours = await self._config_repo.get_by_key("support.response_hours")
+            return {
+                "response_hours": response_hours or fallback.get("response_hours", "24"),
+            }
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch support config: {e}")
+            return fallback
+
+    async def _get_marketplace_config(self) -> Dict[str, str]:
+        """Fetch marketplace configuration from database."""
+        fallback = EMERGENCY_FALLBACK["marketplace"]
+
+        if not self._config_repo:
+            return fallback
+
+        try:
+            result = {}
+            for key in ["seller_share_percent", "platform_fee_percent", "max_listing_price",
+                       "review_hours", "example_earning_30", "example_fee_30"]:
+                value = await self._config_repo.get_by_key(f"marketplace.{key}")
+                result[key] = value or fallback.get(key, "")
+            return result
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch marketplace config: {e}")
+            return fallback
+
+    async def _get_trial_config(self) -> Dict[str, str]:
+        """Fetch trial configuration from database."""
+        fallback = EMERGENCY_FALLBACK["trial"]
+
+        if not self._tier_service:
+            return fallback
+
+        try:
+            duration_days = await self._tier_service.get_trial_duration_days()
+            return {
+                "duration_days": str(duration_days),
+            }
+        except Exception as e:
+            logger.warning(f"[StaticPageService] Failed to fetch trial config: {e}")
+            return fallback
+
+    async def _replace_template_variables(self, content: str) -> str:
+        """
+        Replace template variables in content with actual values from database.
 
         Supports variables like:
         - {{site.name}} - Site configuration
@@ -490,41 +722,44 @@ class StaticPageService:
         if not content:
             return content
 
+        # Get config from database (cached)
+        config = await self._get_template_config()
+
         # Build replacement map
         replacements: dict[str, str] = {}
 
         # Site config
-        for key, value in SITE_CONFIG.items():
-            replacements[f"{{{{site.{key}}}}}"] = value
+        for key, value in config.get("site", {}).items():
+            replacements[f"{{{{site.{key}}}}}"] = str(value)
 
         # Tier config
-        for tier, config in TIER_CONFIG.items():
-            for key, value in config.items():
-                replacements[f"{{{{tiers.{tier}.{key}}}}}"] = value
+        for tier, tier_config in config.get("tiers", {}).items():
+            for key, value in tier_config.items():
+                replacements[f"{{{{tiers.{tier}.{key}}}}}"] = str(value)
 
         # Credit costs
-        for key, value in CREDIT_COSTS.items():
-            replacements[f"{{{{creditCosts.{key}}}}}"] = value
+        for key, value in config.get("creditCosts", {}).items():
+            replacements[f"{{{{creditCosts.{key}}}}}"] = str(value)
 
         # Pricing
-        for plan, config in PRICING_CONFIG.items():
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    replacements[f"{{{{pricing.{plan}.{key}}}}}"] = value
+        for plan, plan_config in config.get("pricing", {}).items():
+            if isinstance(plan_config, dict):
+                for key, value in plan_config.items():
+                    replacements[f"{{{{pricing.{plan}.{key}}}}}"] = str(value)
             else:
-                replacements[f"{{{{pricing.{plan}}}}}"] = config
+                replacements[f"{{{{pricing.{plan}}}}}"] = str(plan_config)
 
         # Support config
-        for key, value in SUPPORT_CONFIG.items():
-            replacements[f"{{{{support.{key}}}}}"] = value
+        for key, value in config.get("support", {}).items():
+            replacements[f"{{{{support.{key}}}}}"] = str(value)
 
         # Marketplace config
-        for key, value in MARKETPLACE_CONFIG.items():
-            replacements[f"{{{{marketplace.{key}}}}}"] = value
+        for key, value in config.get("marketplace", {}).items():
+            replacements[f"{{{{marketplace.{key}}}}}"] = str(value)
 
         # Trial config
-        for key, value in TRIAL_CONFIG.items():
-            replacements[f"{{{{trial.{key}}}}}"] = value
+        for key, value in config.get("trial", {}).items():
+            replacements[f"{{{{trial.{key}}}}}"] = str(value)
 
         # Perform replacements
         result = content
@@ -532,6 +767,11 @@ class StaticPageService:
             result = result.replace(pattern, replacement)
 
         return result
+
+    def clear_template_cache(self):
+        """Clear the template configuration cache."""
+        self._template_config_cache = None
+        logger.debug("[StaticPageService] Template config cache cleared")
 
     # ==========================================
     # Utility Methods
