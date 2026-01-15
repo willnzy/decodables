@@ -85,6 +85,7 @@ PUBLIC_CONFIG_PATTERNS = [
     r"^LANDING_",   # Landing page content (CMS-Lite)
     r"^SITE_",      # Site public info (name, contact, social)
     r"^PRICING_",   # Pricing display info (features, tiers)
+    r"^tier\.",     # Tier configuration (monthly_credits, features, etc.)
 ]
 
 

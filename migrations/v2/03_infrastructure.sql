@@ -1379,10 +1379,10 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 -- Subscription Plans
 ('STARTER_PLAN_PRICE', '14.9', 'number', 'pricing', 'Starter monthly price', true, true),
 ('STARTER_PLAN_ORIGINAL_PRICE', '24.95', 'number', 'pricing', 'Starter original price (for display)', true, true),
-('STARTER_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Starter monthly credits', true, true),
+('STARTER_MONTHLY_CREDITS', '200', 'number', 'pricing', 'Starter monthly credits (sync with tier.t2.monthly_credits)', true, true),
 ('PRO_PLAN_PRICE', '29.9', 'number', 'pricing', 'Pro monthly price', true, true),
 ('PRO_PLAN_ORIGINAL_PRICE', '59.9', 'number', 'pricing', 'Pro original price (for display)', true, true),
-('PRO_MONTHLY_CREDITS', '1000', 'number', 'pricing', 'Pro monthly credits', true, true),
+('PRO_MONTHLY_CREDITS', '500', 'number', 'pricing', 'Pro monthly credits (sync with tier.t3.monthly_credits)', true, true),
 ('PRO_CREDITS_DISCOUNT_PERCENT', '20', 'number', 'pricing', 'Pro discount on credit purchases', true, true),
 
 -- Credits Tiers (JSON array)
