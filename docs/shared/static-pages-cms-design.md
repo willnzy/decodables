@@ -1,9 +1,9 @@
 # 静态页面 CMS 系统设计
 
-> **状态**: 📋 设计中
-> **版本**: 0.2.0
+> **状态**: ✅ 实现中
+> **版本**: 0.3.0 (Hybrid Markdown + Embedded Components)
 > **创建日期**: 2026-01-12
-> **最后更新**: 2026-01-12
+> **最后更新**: 2026-01-15
 > **关联文档**: [pricing-system-design.md](pricing-system-design.md) (Config 系统)
 
 ---
@@ -645,12 +645,226 @@ system_configs 表
 
 ---
 
-## 10. 版本历史
+## 10. v0.3.0 实现方案 - Hybrid Markdown + Embedded Components
+
+> **实现日期**: 2026-01-15
+> **状态**: ✅ 已实现 (billing-policy, privacy-policy, term-of-service)
+
+### 10.1 设计理念
+
+v0.3.0 采用 **Hybrid Markdown + Embedded Components** 方案，结合 SEO 最佳实践：
+
+```
+Content = Markdown 内容 + 模板变量 + 嵌入组件
+         ↓                ↓              ↓
+       文字/链接      {{tiers.t1.xx}}   {{COMPONENT:planCards}}
+```
+
+**核心优势**:
+1. **SEO 友好**: ISR 静态生成 + Schema.org 结构化数据
+2. **内容与代码分离**: Markdown 内容可通过 Admin CMS 编辑
+3. **动态数据注入**: 模板变量自动替换为最新配置值
+4. **复杂 UI 支持**: 嵌入组件处理卡片、表格等复杂展示
+5. **构建安全**: 本地 fallback 保证 build 成功
+
+### 10.2 技术架构
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    静态页面渲染流程                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+│  │ 数据库 API   │    │ 本地 Fallback │    │ Template     │       │
+│  │ static_pages │───►│ FALLBACK_    │───►│ Context      │       │
+│  │              │    │ CONTENT      │    │ (tiers/costs)│       │
+│  └──────────────┘    └──────────────┘    └──────────────┘       │
+│         │                    │                    │              │
+│         └────────────────────┼────────────────────┘              │
+│                              ▼                                   │
+│                    ┌──────────────────┐                          │
+│                    │ StaticPageRenderer│                          │
+│                    │ • 解析 Markdown  │                          │
+│                    │ • 替换模板变量   │                          │
+│                    │ • 渲染嵌入组件   │                          │
+│                    └──────────────────┘                          │
+│                              │                                   │
+│                              ▼                                   │
+│                    ┌──────────────────┐                          │
+│                    │ StaticPageLayout │                          │
+│                    │ • Hero + Navbar  │                          │
+│                    │ • Footer + CTA   │                          │
+│                    └──────────────────┘                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 10.3 文件结构
+
+```
+components/static-pages/
+├── index.ts                    # 主导出
+├── types.ts                    # 类型定义
+├── registry.ts                 # 组件注册表
+├── getTemplateContext.ts       # 模板上下文获取
+├── StaticPageLayout.tsx        # 页面布局 (Client)
+├── StaticPageRenderer.tsx      # 内容渲染器 (Client)
+└── embedded/                   # 嵌入组件
+    ├── index.ts
+    ├── PlanCardsSection.tsx    # {{COMPONENT:planCards}}
+    ├── CreditPackagesGrid.tsx  # {{COMPONENT:creditPackages}}
+    ├── CreditUsageTable.tsx    # {{COMPONENT:creditUsageTable}}
+    ├── InfoBox.tsx             # {{COMPONENT:infoBox|type=info}}
+    ├── ContactInfo.tsx         # {{COMPONENT:contactInfo}}
+    └── QuickNav.tsx            # {{COMPONENT:quickNav}}
+
+lib/static-pages/
+├── index.ts                    # 主导出
+├── types.ts                    # API 类型
+└── server/
+    ├── index.ts
+    └── getStaticPage.ts        # Server-side 数据获取
+```
+
+### 10.4 Markdown 语法扩展
+
+#### 模板变量
+```markdown
+欢迎使用 {{site.name}}！
+
+我们的定价方案：
+- {{tiers.t1.displayName}}: 免费
+- {{tiers.t2.displayName}}: ${{tiers.t2.monthlyPrice}}/月
+- {{tiers.t3.displayName}}: ${{tiers.t3.monthlyPrice}}/月
+
+AI 生图消耗 {{creditCosts.ai_image}} 积分/张
+```
+
+#### 嵌入组件
+```markdown
+## 订阅方案
+
+{{COMPONENT:planCards|showPopular=true}}
+
+## 积分充值
+
+{{COMPONENT:creditPackages}}
+
+## 功能消耗
+
+{{COMPONENT:creditUsageTable}}
+
+## 重要提示
+
+{{COMPONENT:infoBox|type=warning|title=注意|content=这是警告内容}}
+
+## 联系我们
+
+{{COMPONENT:contactInfo}}
+```
+
+### 10.5 页面示例 (billing-policy)
+
+```typescript
+// app/billing-policy/page.tsx
+import { Metadata } from 'next';
+import {
+  StaticPageLayout,
+  StaticPageRenderer,
+  getTemplateContext,
+} from '@/components/static-pages';
+import { getServerStaticPageWithFallback } from '@/lib/static-pages/server';
+
+export const metadata: Metadata = {
+  title: 'Billing & Subscription Policy | Make Decodables',
+  description: '...',
+};
+
+// ISR: 每小时重新验证
+export const revalidate = 3600;
+
+// 本地 Fallback (构建时使用)
+const FALLBACK_CONTENT = {
+  title: 'Billing & Subscription',
+  subtitle: '...',
+  content: `# Billing Policy
+
+{{COMPONENT:infoBox|type=info|title=计费概览|content=...}}
+
+## 1. 订阅方案
+
+{{COMPONENT:planCards|showPopular=true}}
+
+...更多 Markdown 内容...
+`,
+  lastUpdated: 'January 2026',
+};
+
+export default async function BillingPolicyPage() {
+  // 并行获取页面数据和模板上下文
+  const [pageData, context] = await Promise.all([
+    getServerStaticPageWithFallback('billing-policy'),
+    getTemplateContext(),
+  ]);
+
+  // 使用 API 数据或本地 Fallback
+  const title = pageData?.title ?? FALLBACK_CONTENT.title;
+  const content = pageData?.content ?? FALLBACK_CONTENT.content;
+  // ...
+
+  return (
+    <StaticPageLayout
+      title={title}
+      badge="Transparent Pricing"
+      badgeIcon="credit-card"
+      heroGradient="from-indigo-600 to-purple-600"
+    >
+      <StaticPageRenderer content={content} context={context} />
+    </StaticPageLayout>
+  );
+}
+```
+
+### 10.6 数据源优先级
+
+```
+构建时 (npm run build):
+  NEXT_PUBLIC_API_URL 未设置 → 使用本地 FALLBACK_CONTENT
+
+运行时 (production):
+  1. 尝试调用 API: GET /api/v2/user/static-pages/{slug}
+  2. API 成功 → 使用数据库内容 (ISR 缓存 1 小时)
+  3. API 失败 → 使用本地 FALLBACK_CONTENT
+```
+
+### 10.7 SEO 优化要点
+
+1. **ISR 静态生成**: 每个页面都是 SSG，爬虫可直接获取完整 HTML
+2. **语义化 HTML**: `<main>`, `<section>`, `<article>` 结构
+3. **结构化数据**: Schema.org JSON-LD (AboutPage, FAQPage 等)
+4. **Meta 标签**: 每页独立的 title/description/og 标签
+5. **无限滚动替代**: 使用分页或 TOC 导航
+
+### 10.8 已实现页面
+
+| 页面 | 状态 | 行数 | 嵌入组件 |
+|------|------|------|----------|
+| `/billing-policy` | ✅ 已实现 | ~100 行 | planCards, creditPackages, creditUsageTable, infoBox, contactInfo |
+| `/privacy-policy` | ✅ 已实现 | ~230 行 | infoBox, contactInfo |
+| `/term-of-service` | ✅ 已实现 | ~300 行 | infoBox, contactInfo |
+| `/about-us` | 📋 待定 | 615 行 | 需要 TeamSection 组件 (复杂) |
+| `/marketplace-guidelines` | 📋 待定 | - | - |
+| `/contact-us` | 📋 待定 | - | Hybrid (表单逻辑保持代码控制) |
+
+---
+
+## 11. 版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 0.1.0 | 2026-01-12 | 初始设计 |
-| **0.2.0** | **2026-01-12** | **页面分类**: 新增 1.2 节页面类型分类 (Static/Hybrid)；明确 Contact Us 为混合型页面；详细说明 Hybrid 页面各部分的 CMS 配置范围 |
+| 0.2.0 | 2026-01-12 | **页面分类**: 新增 Static/Hybrid 分类；明确 Contact Us 为混合型页面 |
+| **0.3.0** | **2026-01-15** | **实现**: Hybrid Markdown + Embedded Components 方案；完成 billing-policy, privacy-policy, term-of-service 重构；ISR 静态生成；本地 Fallback 保证构建成功 |
 
 ---
 

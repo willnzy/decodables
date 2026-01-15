@@ -1,7 +1,7 @@
 # docs/shared - 前后端共用文档
 
-**文档总数**: 14 个 (12 个共享 + 2 个前端规划)
-**最后整理**: 2026-01-13 (Analytics 统一架构)
+**文档总数**: 15 个 (13 个共享 + 2 个前端规划)
+**最后整理**: 2026-01-16 (Phase 8: Articles CMS)
 **维护**: Make Decodables 全栈团队
 
 **目录用途**: 系统性文档、业务规范、API 详细文档、项目规划，**前后端开发都需要关注**
@@ -74,22 +74,34 @@
 
 ---
 
-### 📦 素材与内容系统 (1个)
+### 📦 素材与内容系统 (2个)
 
 | 文档 | 大小 | 用途 | 前端关注点 |
 |------|------|------|----------|
 | [asset-category-design.md](asset-category-design.md) | ~25KB | ⭐ 素材分类系统设计 (10 类 + 标签) | ✅ 素材库 UI、分类导航、标签筛选 |
+| [articles-system-design.md](articles-system-design.md) | ~20KB | ⭐ Articles CMS 系统设计 | ✅ 文章管理、Admin CMS、帮助文档 |
 
 **内容覆盖**:
-- 10 个素材分类 (Images/Icons/Illustrations/Patterns/...)
-- 层级结构 (父子分类)
-- 标签系统
-- 搜索与筛选逻辑
+
+- **asset-category-design.md**:
+  - 10 个素材分类 (Images/Icons/Illustrations/Patterns/...)
+  - 层级结构 (父子分类)
+  - 标签系统
+  - 搜索与筛选逻辑
+
+- **articles-system-design.md**:
+  - 5 类文章: manual/faq/troubleshooting/news/changelog
+  - 后端 DDD 架构 (domains/articles)
+  - Public API (6 端点) + Admin API (7 端点)
+  - Admin CMS UI (ArticlesPanel)
+  - Server-First 前端架构
 
 **使用场景**:
-- 📚 素材库浏览界面
-- 🔍 分类导航与筛选
-- 🏷️ 标签管理 UI
+- 📚 素材库浏览界面 → asset-category-design.md
+- 🔍 分类导航与筛选 → asset-category-design.md
+- 🏷️ 标签管理 UI → asset-category-design.md
+- 📝 帮助文档/新闻页面 → articles-system-design.md
+- 🔧 Admin 文章管理 → articles-system-design.md
 
 ---
 
@@ -221,6 +233,8 @@
 | **素材库** | asset-category-design.md | 10 类分类 + 标签系统 |
 | **功能开关** | feature-flag-design.md | 条件渲染逻辑 |
 | **A/B 测试** | feature-flag-design.md | 用户分组 + 实验跟踪 |
+| **文章管理 (Admin CMS)** | articles-system-design.md | CRUD + 发布/取消发布 |
+| **帮助文档/新闻** | articles-system-design.md | Server-First + ISR |
 | **新手引导** | onboarding-design.md | Welcome Tour + Editor Tour + Checklist |
 | **节日主题** | theme-system-design.md | Daily Theme 切换展示 |
 | **事件追踪上报** | analytics-system-design.md | 批处理 API + 标准事件类型 |
@@ -391,19 +405,19 @@ diff -q decodables/docs/shared/ decodables-fe/docs/shared/
 | 用户与权限系统 | 2 | 14% |
 | 定价与计费系统 | 1 | 7% |
 | Canvas 系统 | 1 | 7% |
-| 素材与内容系统 | 1 | 7% |
+| 素材与内容系统 | 2 | 13% |
 | 功能控制系统 | 1 | 7% |
 | 用户体验设计 | 2 | 14% |
 | 数据分析系统 | 1 | 7% |
 | API 详细文档 | 2 | 14% |
 | 项目规划文档 | 2 | 14% |
 | 导航索引 | 1 | 7% |
-| **总计** | **14** | **100%** |
+| **总计** | **15** | **100%** |
 
 ---
 
-**Last Updated**: 2026-01-13
-**Total Documents**: 14
+**Last Updated**: 2026-01-16
+**Total Documents**: 15
 **Status**: 🟢 完整文档库 - 包含业务规范、数据契约、用户体验设计、数据分析、项目规划
 
 📚 **前后端协作的桥梁 - 业务规范、数据契约、UX 设计与项目规划！**

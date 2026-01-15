@@ -1,8 +1,8 @@
 # Articles CMS 系统设计
 
 > **状态**: ✅ 已实现
-> **版本**: 1.2.0
-> **最后更新**: 2026-01-13
+> **版本**: 2.1.0
+> **最后更新**: 2026-01-16
 > **关联计划**: Part D of Landing 页面优化计划
 
 ---
@@ -13,9 +13,11 @@ Articles CMS 系统用于管理网站的内容页面，包括：
 
 | 分类 | 用途 | 前端路由 |
 |------|------|----------|
-| `manual` | 帮助文档、FAQ、使用教程 | `/manual`, `/manual/[slug]` |
+| `manual` | 帮助文档、使用教程 | `/manual`, `/manual/[slug]` |
 | `news` | 新闻公告、功能更新、活动通知 | `/news`, `/news/[slug]` |
 | `changelog` | 更新日志、版本发布说明 | `/changelog` |
+| `faq` | 常见问题 (Quick Answers) | `/manual` (FAQ 区块) |
+| `troubleshooting` | 故障排除 (Common Issues) | `/manual` (Troubleshooting 区块) |
 
 **为什么不用 Config 系统?**
 
@@ -40,7 +42,7 @@ CREATE TABLE articles (
     title VARCHAR(500) NOT NULL,           -- 文章标题
     summary TEXT,                           -- 摘要 (用于列表展示)
     content TEXT NOT NULL,                  -- Markdown 内容
-    category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog')),
+    category VARCHAR(50) NOT NULL CHECK (category IN ('manual', 'news', 'changelog', 'faq', 'troubleshooting')),
     tags JSONB DEFAULT '[]'::jsonb,        -- 标签数组
     cover_image VARCHAR(500),              -- 封面图 URL
     is_featured BOOLEAN DEFAULT false,     -- 是否精选 (v1.1.0 新增)
@@ -69,7 +71,7 @@ CREATE INDEX idx_articles_slug ON articles(slug);
 | `title` | VARCHAR(500) | ✅ | 文章标题 |
 | `summary` | TEXT | - | 摘要，用于列表卡片展示 |
 | `content` | TEXT | ✅ | Markdown 格式的正文内容 |
-| `category` | VARCHAR(50) | ✅ | 分类: manual/news/changelog |
+| `category` | VARCHAR(50) | ✅ | 分类: manual/news/changelog/faq/troubleshooting |
 | `tags` | JSONB | - | 标签数组，如 `["images", "tutorial"]` |
 | `cover_image` | VARCHAR(500) | - | 封面图 URL |
 | `is_featured` | BOOLEAN | 自动 | 是否精选 (默认 false, v1.1.0 新增) |
@@ -105,9 +107,11 @@ decodables/
 # domains/articles/entities.py
 
 class ArticleCategory(str, Enum):
-    MANUAL = "manual"       # 帮助文档
-    NEWS = "news"           # 新闻公告
-    CHANGELOG = "changelog" # 更新日志
+    MANUAL = "manual"               # 帮助文档
+    NEWS = "news"                   # 新闻公告
+    CHANGELOG = "changelog"         # 更新日志
+    FAQ = "faq"                     # 常见问题 (v2.0)
+    TROUBLESHOOTING = "troubleshooting"  # 故障排除 (v2.0)
 
 @dataclass
 class Article:
@@ -416,12 +420,44 @@ class ArticleService:
 
 ## 5. 前端集成
 
+### 5.0 架构决策: Server-First (v2.0)
+
+**核心原则**: 所有 SEO 关键内容在 Server Component 中获取数据，通过 props 传递给 Client Component。
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Server Component (page.tsx)                                │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  await articlesServerService.getFaqArticlesServer()   │  │
+│  │  await articlesServerService.getArticleBySlugServer() │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                         ↓ props                             │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Client Component (accordion, interactions)           │  │
+│  │  - 接收 articles 数据作为 props                        │  │
+│  │  - 只处理用户交互 (展开/折叠/搜索)                      │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**服务分工**:
+
+| 服务 | 用途 | 使用场景 |
+|------|------|----------|
+| `articlesServerService.ts` | **PRIMARY** - 服务端数据获取 | Server Components, ISR 页面 |
+| `articlesService.ts` | Types + 认证相关 API | Admin 页面, 需要认证的操作 |
+| `useArticles.ts` hooks | Client-side 数据获取 | 动态交互场景 (搜索, 分页) |
+
+**ISR 配置**:
+- `revalidate = 3600` (1 小时缓存)
+- `generateStaticParams()` 预渲染所有详情页
+
 ### 5.1 页面路由
 
 ```
 app/
 ├── manual/
-│   ├── page.tsx              # 帮助文档列表
+│   ├── page.tsx              # 帮助文档列表 + FAQ + Troubleshooting
 │   └── [slug]/
 │       └── page.tsx          # 文档详情
 ├── news/
@@ -432,41 +468,81 @@ app/
     └── page.tsx              # 更新日志 (单页展示所有)
 ```
 
-### 5.2 API 调用示例
+### 5.2 Server-Side 数据获取 (推荐)
 
 ```typescript
-// hooks/useArticles.ts
+// services/articlesServerService.ts (v2.0)
+// PRIMARY - 用于所有 SEO 关键页面
 
 // 获取文章列表
-export async function fetchArticles(category?: string, offset = 0, limit = 20) {
-  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  if (category) params.set('category', category);
-
-  const res = await fetch(`/api/v2/user/articles?${params}`);
-  return res.json();
-}
+export async function getArticlesServer(params: ListArticlesParams): Promise<ArticleListResponse | null>
 
 // 获取单篇文章
-export async function fetchArticle(slug: string) {
-  const res = await fetch(`/api/v2/user/articles/${slug}`);
-  if (!res.ok) throw new Error('Article not found');
-  return res.json();
-}
+export async function getArticleBySlugServer(slug: string): Promise<Article | null>
 
-// 获取分类
-export async function fetchCategories() {
-  const res = await fetch('/api/v2/user/articles/categories');
-  return res.json();
-}
+// 获取精选文章
+export async function getFeaturedArticlesServer(category?: ArticleCategory, limit?: number): Promise<ArticleListItem[]>
 
-// 搜索
-export async function searchArticles(query: string, category?: string) {
-  const params = new URLSearchParams({ q: query });
-  if (category) params.set('category', category);
+// 获取相关文章
+export async function getRelatedArticlesServer(slug: string, limit?: number): Promise<ArticleListItem[]>
 
-  const res = await fetch(`/api/v2/user/articles/search?${params}`);
-  return res.json();
+// 分类快捷方法
+export async function getManualArticlesServer(params?): Promise<ArticleListResponse | null>
+export async function getNewsArticlesServer(params?): Promise<ArticleListResponse | null>
+export async function getFaqArticlesServer(params?): Promise<ArticleListItem[]>           // v2.0 新增
+export async function getTroubleshootingArticlesServer(params?): Promise<ArticleListItem[]> // v2.0 新增
+export async function getChangelogArticlesServer(params?): Promise<ArticleListResponse | null>
+
+// 用于 generateStaticParams
+export async function getAllArticleSlugsServer(category?: ArticleCategory): Promise<string[]>
+```
+
+**使用示例 (Server Component)**:
+
+```tsx
+// app/manual/page.tsx
+import {
+  getManualArticlesServer,
+  getFaqArticlesServer,
+  getTroubleshootingArticlesServer
+} from '@/services/articlesServerService';
+
+export default async function ManualPage() {
+  // 并行获取所有数据
+  const [articles, faqArticles, troubleshootingArticles] = await Promise.all([
+    getManualArticlesServer({ limit: 50 }),
+    getFaqArticlesServer({ limit: 20 }),
+    getTroubleshootingArticlesServer({ limit: 20 }),
+  ]);
+
+  return (
+    <>
+      <ArticleList articles={articles?.items ?? []} />
+      <FAQSection articles={faqArticles} />           {/* 数据通过 props 传递 */}
+      <TroubleshootingSection articles={troubleshootingArticles} />
+    </>
+  );
 }
+```
+
+### 5.3 Client-Side Hooks (仅限交互场景)
+
+```typescript
+// hooks/useArticles.ts (v2.0)
+// 仅用于需要客户端数据获取的场景
+
+// ✅ 保留的 hooks (用于搜索、分页等动态交互)
+export function useArticleList(params?)    // 带分页的文章列表
+export function useArticle(slug)           // 单篇文章
+export function useFeaturedArticles()      // 精选文章
+export function useArticleSearch(query)    // 搜索
+export function useChangelogArticles()     // 更新日志
+
+// ❌ 已移除的 hooks (使用 Server-Side 替代)
+// - useFaqArticles → getFaqArticlesServer()
+// - useTroubleshootingArticles → getTroubleshootingArticlesServer()
+// - useNewsArticles → getNewsArticlesServer()
+// - useManualArticles → getManualArticlesServer()
 ```
 
 ### 5.3 Markdown 渲染
@@ -500,6 +576,34 @@ function ArticleContent({ content }: { content: string }) {
 ---
 
 ## 6. Admin 界面设计
+
+### 6.0 实现状态 (Phase 8)
+
+**已实现组件**:
+```
+components/admin/
+├── ArticlesPanel.tsx          # 主面板组件 (478 行)
+└── index.js                   # 导出文件 (已更新)
+
+services/
+└── adminService.ts            # 新增 Articles API 函数
+    ├── adminListArticles()
+    ├── adminGetArticle()
+    ├── adminCreateArticle()
+    ├── adminUpdateArticle()
+    ├── adminDeleteArticle()
+    ├── adminPublishArticle()
+    └── adminUnpublishArticle()
+```
+
+**功能特性**:
+- ✅ 文章列表 (分类筛选 + 搜索 + 分页)
+- ✅ 创建/编辑文章 (Markdown 编辑器)
+- ✅ 发布/取消发布
+- ✅ 删除 (带确认对话框)
+- ✅ 分类 Tab: All / Manual / FAQ / Troubleshooting / News / Changelog
+
+**详细文档**: [PED-Articles.md](../../tmp/refactor/3-Pages/Admin/PED-Articles.md)
 
 ### 6.1 文章列表
 
@@ -611,11 +715,13 @@ export default async function sitemap() {
 | 数据库 | ✅ 完成 | articles 表 + 索引 |
 | Domain 层 | ✅ 完成 | entities, repository, service |
 | Infrastructure | ✅ 完成 | SupabaseArticleRepository |
-| Public API | ✅ 完成 | 4 个端点 |
+| Public API | ✅ 完成 | 6 个端点 |
 | Admin API | ✅ 完成 | 7 个端点 |
-| 前端页面 | 🔲 待开发 | manual, news, changelog |
-| Admin UI | 🔲 待开发 | ArticlesManagementPanel |
-| SEO 优化 | 🔲 可选 | Meta tags, sitemap |
+| 前端 - Manual | ✅ 完成 | Server Component + ISR + FAQ/Troubleshooting 区块 |
+| 前端 - News | ✅ 完成 | Server Component + ISR |
+| 前端 - Changelog | 🔲 待开发 | changelog 页面 |
+| Admin UI | ✅ 完成 | ArticlesPanel (Phase 8) |
+| SEO 优化 | ✅ 完成 | Meta tags, Schema.org, ISR |
 
 ---
 
@@ -625,12 +731,14 @@ export default async function sitemap() {
 |------|------|------|
 | 1.0.0 | 2026-01-11 | 初始版本 |
 | 1.1.0 | 2026-01-12 | 新增 `is_featured` 字段和索引；新增 `GET /articles/featured` API 端点；支持精选文章功能 (Manual/News Featured 区块) |
-| **1.2.0** | **2026-01-13** | **新增 `GET /articles/{slug}/related` 端点**；修正响应数据结构 (`articles` → `items`)；修复 DateTime 解析错误 (Supabase ISO 字符串处理) |
+| 1.2.0 | 2026-01-13 | 新增 `GET /articles/{slug}/related` 端点；修正响应数据结构 (`articles` → `items`)；修复 DateTime 解析错误 (Supabase ISO 字符串处理) |
+| **2.0.0** | **2026-01-15** | **Server-First 架构重构**；新增 `faq` 和 `troubleshooting` 分类；`articlesServerService.ts` 升级为 v2.0 (PRIMARY 数据源)；重构 FAQAccordion 为 Server/Client 组件；清理废弃 hooks (useFaqArticles, useTroubleshootingArticles 等) |
+| **2.1.0** | **2026-01-16** | **Phase 8**: Admin Articles CMS 完成；新增 `ArticlesPanel.tsx` (478 行)；集成 Admin API (7 个端点)；支持 CRUD + 发布/取消发布 |
 
 ---
 
-**文档版本**: 1.2.0
-**最后更新**: 2026-01-13
+**文档版本**: 2.1.0
+**最后更新**: 2026-01-16
 **相关文档**:
 - [user-api-review.md](user-api-review.md) - User API 完整参考
 - [admin-api-review.md](admin-api-review.md) - Admin API 完整参考
