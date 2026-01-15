@@ -54,22 +54,22 @@ TIER_CONFIG = {
         "originalPrice": "15.9",
         "monthlyCredits": "200",
         "signupBonus": "0",
-        "maxProjects": "50",
+        "maxProjects": "200",
     },
 }
 
 # Credit costs
 CREDIT_COSTS = {
     "ai_image": "5",
+    "ai_page": "5",
     "ocr": "5",
 }
 
-# Pricing
+# Pricing (credits packages)
 PRICING_CONFIG = {
-    "credits_100": {"amount": "100", "price": "2.99"},
-    "credits_500": {"amount": "500", "price": "13.46"},
-    "credits_2000": {"amount": "2000", "price": "47.84"},
-    "pro_discount_percent": "20",
+    "credits_100": {"amount": "100", "price": "2.99", "original_price": "2.99"},
+    "credits_500": {"amount": "500", "price": "13.46", "original_price": "14.95"},
+    "credits_2000": {"amount": "2000", "price": "47.84", "original_price": "59.80"},
 }
 
 # Support configuration
@@ -89,7 +89,7 @@ MARKETPLACE_CONFIG = {
 
 # Trial configuration
 TRIAL_CONFIG = {
-    "duration_days": "7",
+    "duration_days": "30",
 }
 
 
