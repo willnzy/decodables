@@ -1,9 +1,11 @@
 """Export API - PDF, preview, and ZIP export endpoints.
 
 @module api.user.export
-@version 4.0.0
+@version 4.1.0
 
 Changes:
+- v4.1.0: Deprecated endpoints cleanup
+  - REMOVED: POST /zip (use GET /projects/{id}/zip instead)
 - v4.0.0: Async export implementation
   - Added async export endpoints: POST /projects/{id}/pdf/async and POST /projects/{id}/zip/async
   - Integrated with RQ task queue for background processing
@@ -19,26 +21,24 @@ Changes:
   - EX-P0-1/2: Added SSRF protection with URL whitelist validation
   - EX-HIGH-1: Added UUID validation for project_id
   - EX-HIGH-2: Fixed filename injection in Content-Disposition headers
-  - EX-MEDIUM-1/2: Added URL count limit and validation to ZipExportRequest
+  - EX-MEDIUM-1/2: Added URL count limit and validation (removed in v4.1.0)
   - EX-LOW-1: Sanitized user_id in logs (only first 8 chars)
 
 Endpoints:
-- GET /api/v2/user/export/projects/{project_id}/pdf - Generate PDF (sync, legacy)
+- GET /api/v2/user/export/projects/{project_id}/pdf - Generate PDF (sync)
 - POST /api/v2/user/export/projects/{project_id}/pdf/async - Generate PDF (async, recommended)
 - GET /api/v2/user/export/projects/{project_id}/preview - Generate preview image
-- POST /api/v2/user/export/zip - Export ZIP with provided URLs (deprecated)
-- GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP (sync, legacy)
+- GET /api/v2/user/export/projects/{project_id}/zip - Export project as ZIP (sync)
 - POST /api/v2/user/export/projects/{project_id}/zip/async - Export project as ZIP (async, recommended)
 """
 
 import logging
 import re
-from typing import List, Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
@@ -77,35 +77,6 @@ ALLOWED_URL_DOMAINS = {
     # AWS S3 (if used)
     "s3.amazonaws.com",
 }
-
-
-# ==========================================
-# Request Models
-# ==========================================
-
-class ZipExportRequest(BaseModel):
-    """ZIP export request.
-
-    v2.1.0: Added validation for SSRF protection and DoS prevention.
-    """
-    # v2.1.0: EX-MEDIUM-2 - Limit to max 20 URLs to prevent DoS
-    image_urls: List[str] = Field(..., min_length=1, max_length=20)
-    project_id: Optional[str] = Field(None, max_length=100)
-
-    @field_validator("image_urls")
-    @classmethod
-    def validate_urls(cls, v: List[str]) -> List[str]:
-        """Validate URLs are from allowed domains (SSRF protection)."""
-        validated = []
-        for url in v:
-            if not url or not url.strip():
-                continue
-            if not _is_allowed_url(url):
-                raise ValueError(f"URL domain not allowed: {url[:50]}...")
-            validated.append(url)
-        if not validated:
-            raise ValueError("At least one valid URL is required")
-        return validated
 
 
 # ==========================================
@@ -249,53 +220,6 @@ async def export_project_preview(
 # ==========================================
 # ZIP Export Endpoints
 # ==========================================
-
-@router.post("/zip", deprecated=True)
-@limiter.limit("5/minute")
-async def export_zip(
-    request: Request,
-    req: ZipExportRequest,
-    user: UserProfile = Depends(get_current_user),
-    export_service: ExportService = Depends(get_export_service),  # v3.0.0: DI
-):
-    """
-    Export images as ZIP archive.
-
-    **DEPRECATED**: Use `GET /projects/{project_id}/zip` instead.
-    This endpoint will be removed in v4.0.
-
-    Requires Pro plan.
-
-    v2.1.0: Added SSRF protection via URL domain whitelist validation.
-
-    Security:
-    - Tier verification (Pro required)
-    - URL validation via Pydantic (SSRF protection)
-    - URL count limit (max 20)
-
-    Returns:
-        StreamingResponse: ZIP file (application/zip)
-    """
-    # v3.0.0: Export custom ZIP via Service (DDD compliant)
-    try:
-        buf = await export_service.export_custom_zip(
-            user_id=user.user_id,
-            image_urls=req.image_urls,
-            tier=(user.tier.value if hasattr(user.tier, 'value') else user.tier or "").lower(),
-            project_id=req.project_id,
-        )
-    except InsufficientPermissionException:
-        raise HTTPException(403, "ZIP export requires Pro plan.")
-    except ExportException as e:
-        logger.error(f"Custom ZIP export failed: {e}")
-        raise HTTPException(500, "ZIP generation failed")
-
-    return StreamingResponse(
-        buf,
-        media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="assets.zip"'},
-    )
-
 
 @router.get("/projects/{project_id}/zip")
 @limiter.limit("5/minute")

@@ -1,9 +1,12 @@
 """Generations API - Generation history endpoints (v3).
 
 @module api.user.generations
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0: Deprecated endpoints cleanup
+  - REMOVED: POST /{id}/favorite (use PATCH /{id} instead)
+  - REMOVED: DELETE /batch (use POST /batch-delete instead)
 - v3.0.0: DDD architecture upgrade
   - Created GenerationHistoryService with complete business logic
   - Added dependency injection (get_generation_history_service)
@@ -18,11 +21,9 @@ Changes:
 
 Endpoints:
 - GET /api/v2/user/generations/history - Get generation history
-- PATCH /api/v2/user/generations/{id} - Update generation
-- POST /api/v2/user/generations/{id}/favorite - Toggle favorite (deprecated)
+- PATCH /api/v2/user/generations/{id} - Update generation (favorite, etc.)
 - DELETE /api/v2/user/generations/{id} - Delete single generation
-- POST /api/v2/user/generations/batch-delete - Clear history
-- DELETE /api/v2/user/generations/batch - Clear history (deprecated)
+- POST /api/v2/user/generations/batch-delete - Batch delete history
 """
 
 import logging
@@ -233,79 +234,6 @@ async def update_generation(
         raise HTTPException(500, "Failed to update generation")
 
     return FavoriteResponse(success=True, is_favorited=req.is_favorited)
-
-
-@router.post("/{generation_id}/favorite", deprecated=True)
-@limiter.limit("60/minute")
-async def toggle_favorite(
-    request: Request,
-    generation_id: str,
-    req: FavoriteRequest,
-    user: UserProfile = Depends(get_current_user),
-    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
-) -> FavoriteResponse:
-    """
-    Toggle favorite status of a generated image.
-
-    **DEPRECATED**: Use `PATCH /{generation_id}` instead.
-    This endpoint will be removed in v4.0.
-
-    Security:
-    - UUID validation for generation_id
-    - User ownership verified by Service
-    """
-    # v2.1.0: GEN-P0-1 - Validate generation_id format
-    if not UUID_PATTERN.match(generation_id):
-        raise HTTPException(400, "Invalid generation ID format")
-
-    # v3.0.0: Call Service (same logic as PATCH)
-    try:
-        await history_service.update_generation(
-            user.user_id,
-            generation_id,
-            {"is_favorited": req.is_favorited}
-        )
-    except GenerationNotFoundException:
-        raise HTTPException(404, "Generation not found")
-    except Exception as e:
-        logger.error(f"Toggle favorite failed: {e}")
-        raise HTTPException(500, "Failed to toggle favorite")
-
-    return FavoriteResponse(success=True, is_favorited=req.is_favorited)
-
-
-@router.delete("/batch", deprecated=True)
-@limiter.limit("10/minute")
-async def clear_generation_history(
-    request: Request,
-    keep_favorites: bool = True,
-    user: UserProfile = Depends(get_current_user),
-    history_service: GenerationHistoryService = Depends(get_generation_history_service),  # v3.0.0: DI
-) -> BatchDeleteResponse:
-    """
-    Clear all generation history, optionally keeping favorites.
-
-    **DEPRECATED**: Use `POST /batch-delete` instead.
-    This endpoint will be removed in v4.0.
-
-    **IMPORTANT**: This route must come BEFORE /{generation_id}
-    otherwise "batch" will be matched as a generation_id.
-
-    Security:
-    - User ownership enforced by Service
-    - Audit logging in Service
-    """
-    # v3.0.0: Batch delete via Service (DDD compliant)
-    try:
-        deleted_count = await history_service.batch_delete(user.user_id, keep_favorites)
-    except Exception as e:
-        logger.error(f"Batch delete failed: {e}")
-        raise HTTPException(500, "Failed to clear history")
-
-    return BatchDeleteResponse(
-        success=True,
-        deleted_count=deleted_count,
-    )
 
 
 @router.delete("/{generation_id}")
