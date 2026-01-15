@@ -2,21 +2,24 @@
 Projects API - Project management endpoints.
 
 @module api.user.projects
-@version 1.0.0
+@version 1.1.0
+
+Changes:
+- v1.1.0: API Consolidation Phase 3
+  - REMOVED: GET /api/v2/user/projects/seller-stats (use /seller/stats?include=projects)
+- v1.0.0: Initial version
+- v3.31: 添加重试机制处理 Supabase 临时故障
 
 Endpoints:
 - GET /api/v2/user/projects - List user projects
 - GET /api/v2/user/projects/dashboard - Dashboard view
 - GET /api/v2/user/projects/deleted - List deleted projects
-- GET /api/v2/user/projects/seller-stats - Seller statistics
 - POST /api/v2/user/projects - Create project
 - GET /api/v2/user/projects/{id} - Get project details
 - PUT /api/v2/user/projects/{id} - Update project
 - DELETE /api/v2/user/projects/{id} - Delete project
 - POST /api/v2/user/projects/{id}/restore - Restore deleted project
 - POST /api/v2/user/projects/{id}/duplicate - Duplicate project
-
-v3.31: 添加重试机制处理 Supabase 临时故障
 """
 
 import logging
@@ -127,17 +130,6 @@ class DashboardProjectsResponse(BaseModel):
     offset: int
     limit: int
     view: str
-
-    class Config:
-        extra = "allow"
-
-
-class SellerStatsResponse(BaseModel):
-    """Seller statistics response (P2-002)."""
-    total_selling: int = 0
-    total_sales: int = 0
-    unique_buyers: int = 0
-    total_revenue: float = 0.0
 
     class Config:
         extra = "allow"
@@ -324,32 +316,6 @@ async def list_deleted_projects(
         total=total,
         offset=offset,
         limit=limit,
-    )
-
-
-@router.get("/seller-stats")
-async def get_project_seller_stats(
-    user: UserProfile = Depends(get_current_user),
-) -> SellerStatsResponse:
-    """
-    Get seller statistics for projects.
-
-    P2-002 fix: Return Pydantic model instead of Dict[str, Any].
-
-    Returns:
-        SellerStatsResponse with total_selling, total_sales, unique_buyers, etc.
-    """
-    container = get_container()
-    creation_service = await container.get_creation_service()
-
-    stats = await creation_service.get_seller_project_stats(user.user_id)
-
-    # P2-002: Return Pydantic model with default values for missing fields
-    return SellerStatsResponse(
-        total_selling=stats.get("total_selling", 0),
-        total_sales=stats.get("total_sales", 0),
-        unique_buyers=stats.get("unique_buyers", 0),
-        total_revenue=stats.get("total_revenue", 0.0),
     )
 
 

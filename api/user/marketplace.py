@@ -2,9 +2,11 @@
 Marketplace API - Marketplace listings and purchases.
 
 @module api.user.marketplace
-@version 3.1.0
+@version 3.2.0
 
 Changes:
+- v3.2.0: API Consolidation Phase 3
+  - REMOVED: GET /seller/stats (use /api/v2/user/seller/stats?include=listings)
 - v3.1.0 (2026-01-10): P2-047 - SSRF protection for listing creation
   - Added field_validator for thumbnail_url and resource_url in ListingCreateRequest
   - URLs validated against allowed domains whitelist (Supabase, Fal.ai, etc.)
@@ -24,7 +26,6 @@ Endpoints:
 - DELETE /api/v2/user/marketplace/listings/{id} - Unpublish listing
 - POST /api/v2/user/marketplace/purchase - Purchase an item
 - GET /api/v2/user/marketplace/my-listings - Get user's listings
-- GET /api/v2/user/marketplace/seller/stats - Get seller statistics
 
 Security Fixes in v2.1.0:
 - M-P0-001: Purchase race condition - atomic record_purchase with ON CONFLICT
@@ -59,7 +60,6 @@ from application.queries.marketplace import (
     GetListingQuery,
     SearchListingsQuery,
     GetMyListingsQuery,  # v3.0.0
-    GetSellerStatsQuery,  # v3.0.0
     GetLeaderboardQuery,  # v3.0.0
     GetMyReportsQuery,  # v3.0.0
 )
@@ -181,14 +181,6 @@ class PurchaseResponse(BaseModel):
     project_id: Optional[str] = None
     already_owned: bool = False
     credits_deducted: int = 0
-
-
-class SellerStatsResponse(BaseModel):
-    """Seller statistics response."""
-    total_earned_credits: int = 0
-    listings_count: int = 0
-    total_sales: int = 0
-    total_usage: int = 0
 
 
 # ==========================================
@@ -536,37 +528,6 @@ async def get_my_listings(
         items=result.listings_list,
         total=result.total_count,
         page=page,
-    )
-
-
-@router.get("/seller/stats", response_model=SellerStatsResponse)
-async def get_seller_stats(
-    user: UserProfile = Depends(get_current_user),
-) -> SellerStatsResponse:
-    """
-    Get seller statistics.
-
-    v3.0.0: Now uses GetSellerStatsHandler (CQRS pattern).
-
-    Returns:
-        total_earned_credits, listings_count, total_sales, total_usage
-    """
-    container = get_container()
-    handler = await container.get_seller_stats_handler()
-
-    query = GetSellerStatsQuery(seller_id=user.user_id)
-
-    result = await handler.handle(query)
-
-    if not result.success:
-        logger.error(f"Failed to get seller stats: {result.error}")
-        raise HTTPException(500, "Failed to get stats")
-
-    return SellerStatsResponse(
-        total_earned_credits=result.stats.get("total_earned_credits", 0),
-        listings_count=result.stats.get("listings_count", 0),
-        total_sales=result.stats.get("total_sales", 0),
-        total_usage=result.stats.get("total_usage", 0),
     )
 
 

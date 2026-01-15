@@ -1,10 +1,12 @@
 """
-User Assets Router - User asset management endpoints (v3.0.0)
+User Assets Router - User asset management endpoints (v3.1.0)
 
 @module api.user.user_assets
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0: API Consolidation Phase 3
+  - REMOVED: GET /seller-stats (use /api/v2/user/seller/stats?include=assets)
 - v3.0.0: DDD architecture upgrade - Full CQRS pattern
   - Created AssetsService v1.0.0 with 10 business methods
   - Added 5 Query Handlers (GetUserAssets, CheckURL, DashboardStats, SellerStats, ListDeleted)
@@ -30,7 +32,6 @@ Endpoints:
 - GET /api/v3/user/assets/check-url - Check URL validity
 - POST /api/v3/user/assets/{asset_id}/increment-usage - Increment usage
 - GET /api/v3/user/assets/dashboard - Asset dashboard
-- GET /api/v3/user/assets/seller-stats - Seller stats
 - GET /api/v3/user/assets/deleted - Get deleted assets
 - POST /api/v3/user/assets/{asset_id}/restore - Restore asset
 """
@@ -52,7 +53,6 @@ from application.queries.assets import (
     GetUserAssetsQuery,
     CheckURLQuery,
     GetDashboardStatsQuery,
-    GetSellerStatsQuery,
     GetDeletedAssetsQuery,
 )
 from application.commands.assets import (
@@ -307,27 +307,6 @@ async def get_asset_dashboard(
     handler = await container.get_dashboard_stats_handler()
 
     query = GetDashboardStatsQuery(user_id=user.user_id)
-    result = await handler.handle(query)
-
-    return result.stats
-
-
-@router.get("/seller-stats")
-@limiter.limit("30/minute")
-async def get_seller_stats(
-    request: Request,
-    user: UserProfile = Depends(get_current_user)
-):
-    """
-    Get seller statistics for marketplace assets.
-
-    v3.0.0: Now uses GetSellerStatsHandler (Container pattern).
-    Eliminated direct Supabase calls - statistics aggregation moved to Repository/Service.
-    """
-    container = get_container()
-    handler = await container.get_seller_stats_handler()
-
-    query = GetSellerStatsQuery(user_id=user.user_id)
     result = await handler.handle(query)
 
     return result.stats

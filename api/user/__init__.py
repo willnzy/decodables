@@ -52,6 +52,7 @@ from .onboarding import router as onboarding_router
 from .referrals import router as referrals_router
 from .articles import router as articles_router
 from .static_pages import router as static_pages_router
+from .seller import router as seller_router  # v1.0.0: Unified seller stats
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -86,5 +87,6 @@ user_router.include_router(onboarding_router)
 user_router.include_router(referrals_router)
 user_router.include_router(articles_router)
 user_router.include_router(static_pages_router)
+user_router.include_router(seller_router)  # v1.0.0: Unified seller stats
 
 __all__ = ["user_router"]
