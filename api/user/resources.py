@@ -1,17 +1,20 @@
 """
-Resources API - System resources (stickers, backgrounds, templates) (v3).
+Resources API - System resources (stickers, backgrounds, templates) (v3.1).
 
 @module api.user.resources
-@version 3.0.0
+@version 3.1.0
 
 Changes:
+- v3.1.0: API Consolidation Phase 5
+  - REMOVED: GET /stickers (use GET /?type=sticker instead)
+  - REMOVED: GET /backgrounds (use GET /?type=background instead)
+  - REMOVED: GET /templates (use GET /?type=template instead)
 - v3.0.0: DDD architecture upgrade - CQRS Query pattern
   - Migrated from Inline Handler to Container pattern
   - All 7 Query Handlers now registered in Container
   - Removed Depends(get_content_service) from endpoints
   - Added Result objects for Stickers/Backgrounds/Templates
   - Improved architecture consistency with other v3 modules
-
 - v2.1.0: Security improvements
   - RES-MEDIUM-1: Added rate limiting to all endpoints
   - RES-MEDIUM-2: Added UUID validation for resource_id
@@ -20,12 +23,9 @@ Changes:
   - RES-LOW-2: Added category whitelist validation
 
 Endpoints:
-- GET /api/v2/user/resources - List system resources
+- GET /api/v2/user/resources - List system resources (use type param to filter)
 - GET /api/v2/user/resources/types - Get resource types
 - GET /api/v2/user/resources/categories/{type} - Get categories for type
-- GET /api/v2/user/resources/stickers - Get stickers
-- GET /api/v2/user/resources/backgrounds - Get backgrounds
-- GET /api/v2/user/resources/templates - Get project templates
 - GET /api/v2/user/resources/{id} - Get single resource
 """
 
@@ -43,9 +43,6 @@ from container import get_container
 from application.queries.content import (
     GetResourcesQuery,
     GetResourceByIdQuery,
-    GetStickersQuery,
-    GetBackgroundsQuery,
-    GetProjectTemplatesQuery,
     GetCategoriesQuery,
 )
 
@@ -243,138 +240,6 @@ async def get_categories(
     result = await handler.handle(query)
 
     return CategoriesResponse(categories=result.categories)
-
-
-@router.get("/stickers")
-@limiter.limit("60/minute")  # v2.1.0: RES-MEDIUM-1
-async def get_stickers(
-    request: Request,  # v2.1.0: Required for rate limiter
-    category: Optional[str] = Query(None, max_length=50),
-    page: int = Query(1, ge=1, le=1000),
-    limit: int = Query(100, ge=1, le=500),
-    user: dict = Depends(optional_user),
-) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
-    """
-    Get stickers for the editor.
-
-    Convenience endpoint that filters by sticker type.
-
-    v3.0.0: Now uses GetStickersHandler (Container pattern).
-    v2.1.0: Added rate limiting and parameter validation.
-    """
-    # v2.1.0: RES-LOW-2 - Validate category
-    if category and category not in VALID_CATEGORIES:
-        category = None
-
-    user_tier = user.get("tier", "t1") if user else "t1"
-
-    container = get_container()
-    handler = await container.get_stickers_handler()
-
-    query = GetStickersQuery(
-        user_tier=user_tier,
-        category=category,
-        page=page,
-        limit=limit,
-    )
-
-    result = await handler.handle(query)
-
-    # P2-002: Return Pydantic model instead of raw dict
-    return PaginatedResourcesResponse(
-        items=result.items,
-        total=result.total,
-        page=result.page,
-        limit=result.limit,
-    )
-
-
-@router.get("/backgrounds")
-@limiter.limit("60/minute")  # v2.1.0: RES-MEDIUM-1
-async def get_backgrounds(
-    request: Request,  # v2.1.0: Required for rate limiter
-    category: Optional[str] = Query(None, max_length=50),
-    page: int = Query(1, ge=1, le=1000),
-    limit: int = Query(50, ge=1, le=200),
-    user: dict = Depends(optional_user),
-) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
-    """
-    Get background images.
-
-    Convenience endpoint that filters by background type.
-
-    v3.0.0: Now uses GetBackgroundsHandler (Container pattern).
-    v2.1.0: Added rate limiting and parameter validation.
-    """
-    # v2.1.0: RES-LOW-2 - Validate category
-    if category and category not in VALID_CATEGORIES:
-        category = None
-
-    user_tier = user.get("tier", "t1") if user else "t1"
-
-    container = get_container()
-    handler = await container.get_backgrounds_handler()
-
-    query = GetBackgroundsQuery(
-        user_tier=user_tier,
-        category=category,
-        page=page,
-        limit=limit,
-    )
-
-    result = await handler.handle(query)
-
-    # P2-002: Return Pydantic model instead of raw dict
-    return PaginatedResourcesResponse(
-        items=result.items,
-        total=result.total,
-        page=result.page,
-        limit=result.limit,
-    )
-
-
-@router.get("/templates")
-@limiter.limit("60/minute")  # v2.1.0: RES-MEDIUM-1
-async def get_templates(
-    request: Request,  # v2.1.0: Required for rate limiter
-    category: Optional[str] = Query(None, max_length=50),
-    page: int = Query(1, ge=1, le=1000),
-    limit: int = Query(20, ge=1, le=100),
-    user: dict = Depends(optional_user),
-) -> PaginatedResourcesResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
-    """
-    Get project templates.
-
-    Convenience endpoint that filters by template/project type.
-
-    v3.0.0: Now uses GetProjectTemplatesHandler (Container pattern).
-    v2.1.0: Added rate limiting and parameter validation.
-    """
-    # v2.1.0: RES-LOW-2 - Validate category
-    if category and category not in VALID_CATEGORIES:
-        category = None
-
-    user_tier = user.get("tier", "t1") if user else "t1"
-
-    container = get_container()
-    handler = await container.get_project_templates_handler()
-
-    query = GetProjectTemplatesQuery(
-        user_tier=user_tier,
-        category=category,
-        page=page,
-        limit=limit,
-    )
-
-    result = await handler.handle(query)
-
-    # P2-002: Return Pydantic model instead of raw dict
-    return PaginatedResourcesResponse(
-        items=result.items,
-        total=result.total,
-        page=result.page,
-        limit=result.limit,
-    )
 
 
 @router.get("/{resource_id}")
