@@ -576,107 +576,156 @@ For billing questions or issues:
 -- COMPANY PAGES (page_type = 'company')
 -- ============================================================================
 
--- About Us
+-- About Us (Rich structured data in extra_data for custom page rendering)
 INSERT INTO static_pages (
     slug, title, subtitle, content, page_type, icon, hero_gradient,
     meta_title, meta_description, extra_data, is_published, published_at, last_updated_display, sort_order
 ) VALUES (
     'about-us',
-    'About Us',
-    'Empowering educators and storytellers to create beautiful mini-books',
-    E'# About {{site.name}}
-
-## Our Mission
-
-We believe every educator, parent, and storyteller should have the tools to create beautiful, engaging reading materials—without needing design skills or expensive software.
-
-**{{site.name}}** was built to make that vision a reality.
-
-## What We Do
-
-{{site.name}} is an AI-powered platform for creating **8-page foldable mini-books** (also known as zines). Our tools help you:
-
-- **Create** custom decodable readers and mini-books
-- **Design** with AI-generated illustrations
-- **Print** ready-to-fold pages on any home printer
-- **Share** your creations on our community marketplace
-
-## Who We Serve
-
-### Educators
-
-K-12 teachers use {{site.name}} to create:
-- Decodable readers aligned with phonics sequences
-- Classroom story books featuring students'' names
-- Educational content for any subject
-
-### Parents
-
-Families use {{site.name}} to create:
-- Personalized bedtime stories
-- Educational activity books
-- Memory books and keepsakes
-
-### Storytellers
-
-Writers and artists use {{site.name}} to:
-- Self-publish mini-comics and zines
-- Create handmade gifts
-- Prototype book ideas
-
-## Our Story
-
-{{site.name}} started with a simple observation: teachers spend countless hours searching for or creating reading materials that match their exact curriculum needs.
-
-We built {{site.name}} to solve this problem—combining modern AI technology with the timeless appeal of mini-books that kids love to hold, fold, and read.
-
-## Our Values
-
-### Simplicity First
-
-We believe tools should get out of the way. You should be able to create a mini-book in minutes, not hours.
-
-### AI for Good
-
-Our AI features are designed to be helpful, safe, and appropriate for all ages. We prioritize child-friendly content generation.
-
-### Community Driven
-
-Our marketplace enables creators to share their work and earn from their creativity. The best ideas come from our community.
-
-### Education Focused
-
-We design every feature with educators in mind. From decodable text patterns to classroom batch printing, we understand what teachers need.
-
-## Technology
-
-{{site.name}} is built with modern, secure technology:
-
-- **Frontend:** Next.js + React
-- **Backend:** FastAPI + Python
-- **Database:** Supabase (PostgreSQL)
-- **AI:** FAL.ai + OpenAI
-- **Payments:** Stripe
-- **Auth:** Clerk
-
-## Contact Us
-
-We love hearing from our users!
-
-- **Email:** {{site.email}}
-- **WhatsApp:** {{site.whatsapp}}
-
-Follow us on social media for updates, tips, and inspiration.
-
----
-
-*Thank you for being part of the {{site.name}} community!*',
+    'Meet the Team Behind Make Decodables',
+    'AI-powered tools for educators, built in Singapore.',
+    '',
     'company',
     'Users',
-    'from-violet-600 to-purple-600',
+    'from-indigo-600 to-purple-600',
     'About Us | {{site.name}}',
-    'Learn about {{site.name}} - our mission to empower educators and storytellers with AI-powered mini-book creation tools.',
-    '{}'::jsonb,
+    'Learn about the team behind Make Decodables - a Singapore-based startup building AI-powered tools for educators and creators.',
+    '{
+      "hero": {
+        "badge": "About Us",
+        "title": "Meet the Team Behind Make Decodables",
+        "subtitle": "AI-powered tools for educators, built in Singapore."
+      },
+      "story": {
+        "badge": "Our Story",
+        "title": "Why Was Make Decodables Created?",
+        "paragraphs": [
+          "We saw teachers and parents struggling to find engaging learning materials. Creating custom content was either too time-consuming or required skills most people don''t have.",
+          "So we built Make Decodables — a tool that uses AI to help anyone create foldable mini-books in minutes. No design skills needed, no complicated software to learn.",
+          "We''re still early in our journey, but we''re committed to making this tool better every day based on what our users tell us they need."
+        ],
+        "missionPoints": [
+          "Make content creation fast and easy",
+          "Keep improving based on user feedback",
+          "Stay affordable for educators and families"
+        ],
+        "productFeatures": [
+          "8-page foldable mini-books",
+          "AI-generated stories & images",
+          "Print-ready PDF output"
+        ]
+      },
+      "whoWeAre": {
+        "badge": "Who We Are",
+        "title": "A Small Team, A Shared Vision",
+        "description": "We''re a startup team based in Singapore, combining our different backgrounds to build something useful for educators and creators.",
+        "location": "Singapore"
+      },
+      "strengths": [
+        {
+          "icon": "Globe2",
+          "title": "Industry Experience",
+          "description": "Our team has worked at tech companies of various sizes, gaining hands-on experience in product development and user-focused design.",
+          "gradient": "from-blue-500 to-cyan-500"
+        },
+        {
+          "icon": "Cpu",
+          "title": "AI & Technology",
+          "description": "We have practical experience working with Large Language Models and modern AI technologies to build useful tools.",
+          "gradient": "from-purple-500 to-pink-500"
+        },
+        {
+          "icon": "Heart",
+          "title": "User-First Approach",
+          "description": "We listen to our users and iterate based on real feedback. Every feature is designed to solve actual problems.",
+          "gradient": "from-orange-500 to-red-500"
+        }
+      ],
+      "teamMembers": [
+        {
+          "image": "/assets/CEO.webp",
+          "name": "Yee Zang",
+          "nickname": "Yee",
+          "title": "CEO & Chief Product Architect",
+          "subtitle": "Product Strategy & Visual Design",
+          "description": "Brings years of experience in product planning and interaction design. Focuses on making every feature intuitive and enjoyable to use.",
+          "icon": "Palette",
+          "color": "from-purple-500 to-violet-500",
+          "borderColor": "border-purple-400"
+        },
+        {
+          "image": "/assets/CTO.webp",
+          "name": "Ryan Toh",
+          "nickname": "Dr. R",
+          "title": "CTO",
+          "subtitle": "R&D & AI Intelligence",
+          "description": "Experienced in large-scale systems and LLM applications. Leads our technical efforts to build reliable AI-powered features.",
+          "icon": "Brain",
+          "color": "from-blue-500 to-cyan-500",
+          "borderColor": "border-blue-400"
+        },
+        {
+          "image": "/assets/COO.webp",
+          "name": "Cheryl Liew",
+          "nickname": "Sherry",
+          "title": "COO",
+          "subtitle": "Operations & Market Growth",
+          "description": "Handles day-to-day operations and partnership development. Works to connect our product with the people who need it most.",
+          "icon": "TrendingUp",
+          "color": "from-emerald-500 to-teal-500",
+          "borderColor": "border-emerald-400"
+        },
+        {
+          "image": "/assets/CQO.webp",
+          "name": "Vidya Menon",
+          "nickname": "Vee",
+          "title": "CQO",
+          "subtitle": "Quality Assurance & Delivery",
+          "description": "Oversees the entire delivery process with attention to detail. Ensures that what we ship meets our quality standards.",
+          "icon": "ClipboardCheck",
+          "color": "from-orange-500 to-amber-500",
+          "borderColor": "border-orange-400"
+        },
+        {
+          "image": "/assets/CCO.webp",
+          "name": "Raymond Cheung",
+          "nickname": "Winston",
+          "title": "CCO",
+          "subtitle": "Legal & Compliance",
+          "description": "Manages legal frameworks and data privacy compliance. Keeps our platform safe, ethical, and aligned with regulations.",
+          "icon": "Scale",
+          "color": "from-pink-500 to-rose-500",
+          "borderColor": "border-pink-400"
+        }
+      ],
+      "values": [
+        {
+          "icon": "Lightbulb",
+          "title": "Practicality",
+          "description": "Building tools that genuinely help people, not just impressive demos."
+        },
+        {
+          "icon": "Target",
+          "title": "Simplicity",
+          "description": "Making AI accessible without requiring technical expertise."
+        },
+        {
+          "icon": "Shield",
+          "title": "Reliability",
+          "description": "Delivering consistent quality that users can count on."
+        },
+        {
+          "icon": "Users",
+          "title": "Community",
+          "description": "Growing together with our users and learning from their needs."
+        }
+      ],
+      "cta": {
+        "badge": "Get in Touch",
+        "title": "We''d Love to Hear From You",
+        "description": "Have questions, suggestions, or just want to say hi? We read every message and try to respond as quickly as we can."
+      }
+    }'::jsonb,
     true,
     CURRENT_TIMESTAMP,
     'January 2026',
