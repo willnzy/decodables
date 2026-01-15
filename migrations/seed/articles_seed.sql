@@ -1,14 +1,53 @@
 -- ============================================================================
 -- Articles Seed Data
 -- ============================================================================
--- Version: 1.0.0
--- Date: 2026-01-13
--- Description: Initial seed data for Manual and News articles
+-- Version: 2.0.0
+-- Date: 2026-01-16
+-- Description: Seed data for Manual, News, FAQ, and Troubleshooting articles
 --
 -- Categories:
---   - manual: Help documentation, tutorials, FAQ
+--   - manual: Help documentation, tutorials
 --   - news: Announcements, updates, user stories
+--   - faq: Frequently asked questions
+--   - troubleshooting: Error solutions
 --   - changelog: Release notes (future use)
+--
+-- Template Variables:
+--   Articles use {{variable.path}} placeholders for configurable values.
+--   These are resolved at runtime by the frontend from TemplateContext.
+--
+--   Variables used (aligned with TemplateContext):
+--     Tiers:
+--     - {{tiers.t1/t2/t3.monthlyPrice}}      - Current tier prices
+--     - {{tiers.t1/t2/t3.originalPrice}}     - Original tier prices
+--     - {{tiers.t1/t2/t3.monthlyCredits}}    - Monthly credit allowance
+--     - {{tiers.t1/t2/t3.maxProjects}}       - Project limits per tier
+--     - {{tiers.t1.signupBonus}}             - Signup bonus credits (t1 only)
+--
+--     Credit Costs:
+--     - {{creditCosts.ai_image}}             - AI image generation cost
+--     - {{creditCosts.ocr}}                  - OCR/Smart Scan cost
+--     - {{creditCosts.ai_page}}              - AI page generation cost
+--
+--     Pricing:
+--     - {{pricing.credits_100.amount/price}} - Small package
+--     - {{pricing.credits_500.amount/price}} - Medium package
+--     - {{pricing.credits_2000.amount/price}}- Large package
+--     - {{pricing.pro_discount_percent}}     - Pro discount percentage
+--
+--     Marketplace:
+--     - {{marketplace.seller_share_percent}} - Seller earnings percentage
+--     - {{marketplace.platform_fee_percent}} - Platform fee percentage
+--     - {{marketplace.max_listing_price}}    - Maximum listing price
+--     - {{marketplace.review_hours}}         - Review time (e.g., "24-48")
+--
+--     Other:
+--     - {{trial.duration_days}}              - Trial period days
+--     - {{site.email}}                       - Contact/support email
+--     - {{site.whatsapp}}                    - WhatsApp contact
+--     - {{support.response_hours}}           - Support response time
+--     - {{limits.upload_max_size_mb}}        - Max upload file size
+--     - {{limits.supported_image_formats}}   - Supported image formats
 --
 -- Usage:
 --   psql -d your_database -f migrations/seed/articles_seed.sql
@@ -116,7 +155,7 @@ Create beautiful, unique illustrations for your books using our AI image generat
 
 Our AI image generator uses advanced machine learning to create custom illustrations based on your text descriptions (prompts).
 
-**Cost**: 5 credits per image generated
+**Cost**: {{creditCosts.ai_image}} credits per image generated
 
 ## Writing Effective Prompts
 
@@ -185,7 +224,7 @@ Tell the AI what to avoid:
 
 ## Credits Usage
 
-- Each generation: 5 credits
+- Each generation: {{creditCosts.ai_image}} credits
 - Failed generations: No credits charged
 - Monthly subscribers: Credits included in plan
 
@@ -576,7 +615,7 @@ OCR technology reads text from images and converts it to editable digital text. 
 - Convert scanned documents
 - Import text from worksheets
 
-**Cost**: 5 credits per scan
+**Cost**: {{creditCosts.ocr}} credits per scan
 
 ## How to Use Smart Scan
 
@@ -751,15 +790,15 @@ To sell on the marketplace:
 ## Earning Credits
 
 When someone purchases your item:
-- You earn **70%** of the sale price
+- You earn **{{marketplace.seller_share_percent}}%** of the sale price
 - Credits are added to your permanent balance
 - Use credits for AI features or to buy other items
 
 ### Example
 
 If your template sells for 30 credits:
-- You earn: 21 credits
-- Platform fee: 9 credits
+- You earn: {{marketplace.example_earning_30}} credits
+- Platform fee: {{marketplace.example_fee_30}} credits
 
 ## Quality Guidelines
 
@@ -1137,16 +1176,16 @@ Learn about our subscription plans and how credits work.
 
 **Price**: $0/month
 
-- 100 bonus credits on signup (permanent)
+- {{tiers.t1.signupBonus}} bonus credits on signup (permanent)
 - Basic features
 - Community templates
 - Standard export quality
 
 ### Starter Plan
 
-**Price**: $6.90/month (was $9.90)
+**Price**: ${{tiers.t2.monthlyPrice}}/month (was ${{tiers.t2.originalPrice}})
 
-- 100 monthly credits
+- {{tiers.t2.monthlyCredits}} monthly credits
 - All Free features plus:
 - AI image generation
 - PDF export
@@ -1154,9 +1193,9 @@ Learn about our subscription plans and how credits work.
 
 ### Pro Plan
 
-**Price**: $9.90/month (was $15.90)
+**Price**: ${{tiers.t3.monthlyPrice}}/month (was ${{tiers.t3.originalPrice}})
 
-- 200 monthly credits
+- {{tiers.t3.monthlyCredits}} monthly credits
 - All Starter features plus:
 - Commercial license
 - Advanced templates
@@ -1170,9 +1209,9 @@ Credits are the currency for AI features:
 
 | Feature | Cost |
 |---------|------|
-| AI Image Generation | 5 credits |
-| Smart Scan (OCR) | 5 credits |
-| AI Page Generation | 5 credits |
+| AI Image Generation | {{creditCosts.ai_image}} credits |
+| Smart Scan (OCR) | {{creditCosts.ocr}} credits |
+| AI Page Generation | {{creditCosts.ai_page}} credits |
 
 ### Credit Types
 
@@ -1198,11 +1237,11 @@ Need more credits? Purchase permanent credits:
 
 | Package | Credits | Price |
 |---------|---------|-------|
-| Small | 100 | $2.99 |
-| Medium | 500 | $13.49 |
-| Large | 2000 | $47.49 |
+| Small | {{pricing.credits_100.amount}} | ${{pricing.credits_100.price}} |
+| Medium | {{pricing.credits_500.amount}} | ${{pricing.credits_500.price}} |
+| Large | {{pricing.credits_2000.amount}} | ${{pricing.credits_2000.price}} |
 
-Pro members receive 10% discount on credit purchases.
+Pro members receive {{pricing.pro_discount_percent}}% discount on credit purchases.
 
 ## Billing FAQ
 
@@ -1251,7 +1290,7 @@ Receipts are emailed automatically. Access past receipts in your billing portal.
 
 ## Getting Help
 
-- **Billing questions**: support@makedecodables.com
+- **Billing questions**: {{site.email}}
 - **Technical issues**: Use in-app support
 - **Account access**: Reset via email
 
@@ -1436,9 +1475,9 @@ Quick solutions for common issues you might encounter.
 
 ### Contact Support
 
-- **Email**: support@makedecodables.com
+- **Email**: {{site.email}}
 - **In-app**: Click "Help" button
-- **Response time**: Within 24 hours
+- **Response time**: Within {{support.response_hours}} hours
 
 ### When Contacting Support
 
@@ -1494,7 +1533,7 @@ Make Decodables is an online tool for creating foldable mini-books (8-page zines
 
 ### Is it free to use?
 
-Yes! We offer a free plan with 100 bonus credits. Paid plans provide additional credits and features.
+Yes! We offer a free plan with {{tiers.t1.signupBonus}} bonus credits. Paid plans provide additional credits and features.
 
 ### What browsers are supported?
 
@@ -1526,7 +1565,7 @@ Yes! Upload your own images in JPG, PNG, or PDF format (max 10MB each).
 
 ### How does AI image generation work?
 
-Describe what you want, select a style, and our AI creates a unique illustration. Each generation costs 5 credits.
+Describe what you want, select a style, and our AI creates a unique illustration. Each generation costs {{creditCosts.ai_image}} credits.
 
 ### Are AI-generated images unique?
 
@@ -1540,7 +1579,7 @@ OCR (Optical Character Recognition) converts images of text into editable text. 
 
 ### What are credits?
 
-Credits are the currency for AI features. Different features cost different amounts (usually 5 credits each).
+Credits are the currency for AI features. Different features cost different amounts (usually {{creditCosts.ai_image}} credits each).
 
 ### Do unused credits roll over?
 
@@ -1595,7 +1634,7 @@ Yes! Publish templates and assets to the marketplace and earn credits when other
 
 ### How much can I earn?
 
-You receive 70% of each sale in credits. Popular creators can earn significant credits.
+You receive {{marketplace.seller_share_percent}}% of each sale in credits. Popular creators can earn significant credits.
 
 ### What can I sell?
 
@@ -1620,7 +1659,7 @@ Ensure stable internet connection, try a different browser, or use a different q
 
 ---
 
-**Still have questions?** Contact us at support@makedecodables.com',
+**Still have questions?** Contact us at {{site.email}}',
     'manual',
     '["faq", "questions", "help", "answers", "general"]'::jsonb,
     NULL,
@@ -1682,7 +1721,7 @@ Designed with K-12 educators in mind:
 
 ## What''s Included Free
 
-- 100 bonus credits
+- {{tiers.t1.signupBonus}} bonus credits
 - Basic templates
 - Export to PDF
 - Community resources
@@ -1758,13 +1797,13 @@ Choose from multiple artistic styles:
 
 ## Credits System
 
-Each AI image generation costs **5 credits**. Failed generations don''t consume credits.
+Each AI image generation costs **{{creditCosts.ai_image}} credits**. Failed generations don''t consume credits.
 
 ### Getting Credits
 
-- Free accounts: 100 bonus credits on signup
-- Starter: 100 monthly credits
-- Pro: 200 monthly credits
+- Free accounts: {{tiers.t1.signupBonus}} bonus credits on signup
+- Starter: {{tiers.t2.monthlyCredits}} monthly credits
+- Pro: {{tiers.t3.monthlyCredits}} monthly credits
 - Buy more anytime
 
 ## Tips for Great Results
@@ -1848,7 +1887,7 @@ A community-driven store where you can:
 
 ### Earning Credits
 
-- You earn **70%** of each sale
+- You earn **{{marketplace.seller_share_percent}}%** of each sale
 - Credits go to your permanent balance
 - Use credits for AI features or purchases
 
@@ -2266,11 +2305,11 @@ INSERT INTO articles (
     'Questions about pricing plans and credit system',
     '## How much does it cost?
 
-Free: $0 (50 credits included). Starter: $6.9/month (100 monthly credits). Pro: $9.9/month (200 monthly credits). PDF export is always free!
+Free: $0 ({{tiers.t1.signupBonus}} credits included). Starter: ${{tiers.t2.monthlyPrice}}/month ({{tiers.t2.monthlyCredits}} monthly credits). Pro: ${{tiers.t3.monthlyPrice}}/month ({{tiers.t3.monthlyCredits}} monthly credits). PDF export is always free!
 
 ## What are credits used for?
 
-AI Image Generation costs 5 credits per image. OCR/Smart Scan costs 5 credits per scan. Your first AI image is free! PDF export, saving, and printing are always free.
+AI Image Generation costs {{creditCosts.ai_image}} credits per image. OCR/Smart Scan costs {{creditCosts.ocr}} credits per scan. Your first AI image is free! PDF export, saving, and printing are always free.
 
 ## Do unused monthly credits roll over?
 
@@ -2278,7 +2317,7 @@ No, monthly credits reset each billing cycle. However, permanent credits (purcha
 
 ## How do I get more credits?
 
-Buy Credit Booster ($2.99 = 100 credits, Pro gets 10% off), upgrade your plan, or earn credits by selling on the Marketplace (you keep 90% of each sale).',
+Buy Credit Booster (${{pricing.credits_100.price}} = {{pricing.credits_100.amount}} credits, Pro gets {{pricing.pro_discount_percent}}% off), upgrade your plan, or earn credits by selling on the Marketplace (you keep {{marketplace.seller_share_percent}}% of each sale).',
     'faq',
     '["credits", "pricing", "billing", "subscription"]'::jsonb,
     NULL,
@@ -2301,11 +2340,11 @@ INSERT INTO articles (
     'Questions about plan features and capabilities',
     '## What''s the difference between plans?
 
-Free: 1 project, basic features. Starter ($6.9/mo): 20 projects, full sticker library, marketplace access. Pro ($9.9/mo): 200 projects, ZIP export, OCR, high-quality AI, commercial license.
+Free: {{tiers.t1.maxProjects}} project, basic features. Starter (${{tiers.t2.monthlyPrice}}/mo): {{tiers.t2.maxProjects}} projects, full sticker library, marketplace access. Pro (${{tiers.t3.monthlyPrice}}/mo): {{tiers.t3.maxProjects}} projects, ZIP export, OCR, high-quality AI, commercial license.
 
-## What is the 7-day Free trial?
+## What is the {{trial.duration_days}}-day Free trial?
 
-New Free users can experience Pro features for 7 days. After the trial, projects become read-only until you upgrade.
+New Free users can experience Pro features for {{trial.duration_days}} days. After the trial, projects become read-only until you upgrade.
 
 ## Can I use my creations commercially?
 
@@ -2367,11 +2406,11 @@ Browse the Marketplace, click a listing, and click "Purchase". Credits are deduc
 
 ## How do I sell my work?
 
-Click "Publish" on your project, fill in details, and submit for review (24-48 hours). Free users cannot publish. Starter can publish free assets only. Pro can publish anything at 0-500 credits.
+Click "Publish" on your project, fill in details, and submit for review ({{marketplace.review_hours}} hours). Free users cannot publish. Starter can publish free assets only. Pro can publish anything at 0-{{marketplace.max_listing_price}} credits.
 
 ## How much do I earn from sales?
 
-You keep 90% of each sale as permanent credits. The platform takes a 10% fee. Earnings cannot be withdrawn as cash but can be used for all platform features.',
+You keep {{marketplace.seller_share_percent}}% of each sale as permanent credits. The platform takes a {{marketplace.platform_fee_percent}}% fee. Earnings cannot be withdrawn as cash but can be used for all platform features.',
     'faq',
     '["marketplace", "selling", "buying", "earnings"]'::jsonb,
     NULL,
@@ -2402,7 +2441,7 @@ Yes! We use Supabase with row-level security, and Stripe for payments. We never 
 
 ## How do I contact support?
 
-Email: info@makedecodables.com or WhatsApp: +1 (725) 290 0525. We typically respond within 24-48 hours. Pro users get priority support.',
+Email: {{site.email}} or WhatsApp: {{site.whatsapp}}. We typically respond within {{support.response_hours}} hours. Pro users get priority support.',
     'faq',
     '["account", "support", "security", "contact"]'::jsonb,
     NULL,
@@ -2439,13 +2478,13 @@ You don''t have enough credits to complete the AI generation, OCR scan, or marke
 
 ## Solution
 
-Your credit balance is too low. Click "Buy Credits" in the popup, or upgrade to Starter/Pro for monthly credits. Pro users get 10% discount on credit purchases.
+Your credit balance is too low. Click "Buy Credits" in the popup, or upgrade to Starter/Pro for monthly credits. Pro users get {{pricing.pro_discount_percent}}% discount on credit purchases.
 
 ## Tips
 
 - Check your current balance in the top-right corner of the dashboard
-- AI image generation costs 5 credits per image
-- OCR/Smart Scan costs 5 credits per scan
+- AI image generation costs {{creditCosts.ai_image}} credits per image
+- OCR/Smart Scan costs {{creditCosts.ocr}} credits per scan
 - Consider upgrading to a paid plan for monthly credit allowance',
     'troubleshooting',
     '["credits", "error", "payment"]'::jsonb,
@@ -2466,18 +2505,18 @@ INSERT INTO articles (
 ) VALUES (
     'troubleshooting-trial-expired',
     'Trial period expired',
-    'Your 7-day Free trial has ended',
+    'Your {{trial.duration_days}}-day Free trial has ended',
     '## Error Message
 
 "Trial period expired"
 
 ## Problem
 
-Your 7-day Free trial has ended and your projects are now in read-only mode.
+Your {{trial.duration_days}}-day Free trial has ended and your projects are now in read-only mode.
 
 ## Solution
 
-Your 7-day Free trial has ended. Projects are now read-only. Upgrade to Starter ($6.9/mo) or Pro ($9.9/mo) to continue editing.
+Your {{trial.duration_days}}-day Free trial has ended. Projects are now read-only. Upgrade to Starter (${{tiers.t2.monthlyPrice}}/mo) or Pro (${{tiers.t3.monthlyPrice}}/mo) to continue editing.
 
 ## What you can still do
 
@@ -2521,15 +2560,15 @@ You''ve created the maximum number of projects allowed for your subscription tie
 
 ## Solution
 
-You''ve hit the maximum projects for your tier (Free: 1, Starter: 20, Pro: 200). Delete unused projects or upgrade to a higher tier.
+You''ve hit the maximum projects for your tier (Free: {{tiers.t1.maxProjects}}, Starter: {{tiers.t2.maxProjects}}, Pro: {{tiers.t3.maxProjects}}). Delete unused projects or upgrade to a higher tier.
 
 ## Project Limits by Tier
 
 | Tier | Max Projects |
 |------|--------------|
-| Free | 1 |
-| Starter | 20 |
-| Pro | 200 |
+| Free | {{tiers.t1.maxProjects}} |
+| Starter | {{tiers.t2.maxProjects}} |
+| Pro | {{tiers.t3.maxProjects}} |
 
 ## How to free up space
 
@@ -2657,16 +2696,16 @@ Your file upload was rejected or failed to complete.
 
 ## Solution
 
-Check file size (max 5MB) and format (JPG, PNG, WEBP, GIF, PDF). Compress large images using tools like TinyPNG before uploading.
+Check file size (max {{limits.upload_max_size_mb}}MB) and format (JPG, PNG, WEBP, GIF, PDF). Compress large images using tools like TinyPNG before uploading.
 
 ## Supported formats
 
-- Images: JPG, PNG, WEBP, GIF
+- Images: {{limits.supported_image_formats}}
 - Documents: PDF
 
 ## File size limits
 
-- Maximum file size: 5MB
+- Maximum file size: {{limits.upload_max_size_mb}}MB
 - Recommended: Under 2MB for faster uploads
 
 ## How to reduce file size
@@ -2750,7 +2789,7 @@ You''re trying to export your project as a ZIP file, but this feature requires a
 
 ## Solution
 
-ZIP export is a Pro-only feature. Upgrade to Pro ($9.9/mo), or use the free PDF export available to all users.
+ZIP export is a Pro-only feature. Upgrade to Pro (${{tiers.t3.monthlyPrice}}/mo), or use the free PDF export available to all users.
 
 ## What''s included in ZIP export
 
