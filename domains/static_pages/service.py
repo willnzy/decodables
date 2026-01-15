@@ -16,6 +16,83 @@ from .repository import StaticPageRepository
 logger = logging.getLogger(__name__)
 
 
+# ==========================================
+# Template Variable Configuration
+# ==========================================
+
+# Site configuration
+SITE_CONFIG = {
+    "name": "Make Decodables",
+    "email": "support@makedecodables.com",
+    "whatsapp": "+1 (555) 123-4567",
+    "privacy_updated": "January 2026",
+    "terms_updated": "January 2026",
+    "billing_updated": "January 2026",
+}
+
+# Tier configuration
+TIER_CONFIG = {
+    "t1": {
+        "displayName": "Free Plan",
+        "monthlyPrice": "0",
+        "originalPrice": "0",
+        "monthlyCredits": "0",
+        "signupBonus": "100",
+        "maxProjects": "1",
+    },
+    "t2": {
+        "displayName": "Starter Plan",
+        "monthlyPrice": "6.9",
+        "originalPrice": "9.9",
+        "monthlyCredits": "100",
+        "signupBonus": "0",
+        "maxProjects": "10",
+    },
+    "t3": {
+        "displayName": "Pro Plan",
+        "monthlyPrice": "9.9",
+        "originalPrice": "15.9",
+        "monthlyCredits": "200",
+        "signupBonus": "0",
+        "maxProjects": "50",
+    },
+}
+
+# Credit costs
+CREDIT_COSTS = {
+    "ai_image": "5",
+    "ocr": "5",
+}
+
+# Pricing
+PRICING_CONFIG = {
+    "credits_100": {"amount": "100", "price": "2.99"},
+    "credits_500": {"amount": "500", "price": "13.46"},
+    "credits_2000": {"amount": "2000", "price": "47.84"},
+    "pro_discount_percent": "20",
+}
+
+# Support configuration
+SUPPORT_CONFIG = {
+    "response_hours": "24",
+}
+
+# Marketplace configuration
+MARKETPLACE_CONFIG = {
+    "seller_share_percent": "90",
+    "platform_fee_percent": "10",
+    "max_listing_price": "500",
+    "review_hours": "48",
+    "example_earning_30": "27",
+    "example_fee_30": "3",
+}
+
+# Trial configuration
+TRIAL_CONFIG = {
+    "duration_days": "7",
+}
+
+
 class StaticPageService:
     """
     Static page management service.
@@ -46,6 +123,16 @@ class StaticPageService:
         if not page:
             logger.warning(f"[StaticPageService] Static page not found: {slug}")
             return None
+
+        # Replace template variables in content
+        if page.content:
+            page.content = self._replace_template_variables(page.content)
+
+        # Replace template variables in meta fields
+        if page.meta_title:
+            page.meta_title = self._replace_template_variables(page.meta_title)
+        if page.meta_description:
+            page.meta_description = self._replace_template_variables(page.meta_description)
 
         return page
 
@@ -374,6 +461,75 @@ class StaticPageService:
             logger.info(f"[StaticPageService] Static page deleted: {page_id}")
         else:
             logger.warning(f"[StaticPageService] Static page not found for delete: {page_id}")
+
+        return result
+
+    # ==========================================
+    # Template Variable Replacement
+    # ==========================================
+
+    def _replace_template_variables(self, content: str) -> str:
+        """
+        Replace template variables in content with actual values.
+
+        Supports variables like:
+        - {{site.name}} - Site configuration
+        - {{tiers.t2.displayName}} - Tier configuration
+        - {{creditCosts.ai_image}} - Credit costs
+        - {{pricing.credits_100.price}} - Pricing
+        - {{support.response_hours}} - Support config
+        - {{marketplace.seller_share_percent}} - Marketplace config
+        - {{trial.duration_days}} - Trial config
+
+        Args:
+            content: Content with template variables
+
+        Returns:
+            Content with variables replaced
+        """
+        if not content:
+            return content
+
+        # Build replacement map
+        replacements: dict[str, str] = {}
+
+        # Site config
+        for key, value in SITE_CONFIG.items():
+            replacements[f"{{{{site.{key}}}}}"] = value
+
+        # Tier config
+        for tier, config in TIER_CONFIG.items():
+            for key, value in config.items():
+                replacements[f"{{{{tiers.{tier}.{key}}}}}"] = value
+
+        # Credit costs
+        for key, value in CREDIT_COSTS.items():
+            replacements[f"{{{{creditCosts.{key}}}}}"] = value
+
+        # Pricing
+        for plan, config in PRICING_CONFIG.items():
+            if isinstance(config, dict):
+                for key, value in config.items():
+                    replacements[f"{{{{pricing.{plan}.{key}}}}}"] = value
+            else:
+                replacements[f"{{{{pricing.{plan}}}}}"] = config
+
+        # Support config
+        for key, value in SUPPORT_CONFIG.items():
+            replacements[f"{{{{support.{key}}}}}"] = value
+
+        # Marketplace config
+        for key, value in MARKETPLACE_CONFIG.items():
+            replacements[f"{{{{marketplace.{key}}}}}"] = value
+
+        # Trial config
+        for key, value in TRIAL_CONFIG.items():
+            replacements[f"{{{{trial.{key}}}}}"] = value
+
+        # Perform replacements
+        result = content
+        for pattern, replacement in replacements.items():
+            result = result.replace(pattern, replacement)
 
         return result
 
