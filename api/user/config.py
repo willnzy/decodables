@@ -2,7 +2,12 @@
 Config API - Public configuration endpoints (v2).
 
 @module api.user.config
-@version 2.2.0
+@version 2.3.0
+
+Changes in v2.3.0:
+- GET /group/{group_name} now returns nested JSON structure
+- Example: tier.t1.display_name -> configs.t1.display_name
+- No query parameter needed, this is the new default format
 
 Changes in v2.2.0:
 - Added dependency injection for ConfigService (DDD compliance)
@@ -16,7 +21,7 @@ Changes in v2.1.0:
 Endpoints:
 - GET /api/v2/user/config - Get all public configs
 - GET /api/v2/user/config/{key} - Get single public config
-- GET /api/v2/user/config/group/{group_name} - Get public config group
+- GET /api/v2/user/config/group/{group_name} - Get public config group (nested JSON)
 """
 
 import logging
@@ -115,9 +120,13 @@ class ConfigResponse(BaseModel):
 
 
 class ConfigGroupResponse(BaseModel):
-    """Config group response."""
+    """Config group response - nested JSON format.
+
+    v2.3.0: Changed from flat array to nested object.
+    Example: tier.t1.display_name -> configs.t1.display_name
+    """
     group: str
-    configs: List[Dict[str, Any]]
+    configs: Dict[str, Any]  # Nested structure instead of flat list
 
 
 class AllConfigsResponse(BaseModel):
@@ -168,7 +177,10 @@ async def get_group(
     config_service: ConfigService = Depends(get_config_service),
 ) -> ConfigGroupResponse:
     """
-    Get all configurations in a group.
+    Get all configurations in a group as nested JSON.
+
+    v2.3.0: Returns nested structure instead of flat array.
+    Example: tier.t1.display_name -> configs.t1.display_name
 
     Only returns configs in the public whitelist.
     """
@@ -177,7 +189,31 @@ async def get_group(
 
     # v2.1.0: Filter to only public configs
     public_configs = [c for c in configs if is_config_public(c.get("key", ""))]
-    return ConfigGroupResponse(group=group_name, configs=public_configs)
+
+    # v2.3.0: Convert flat list to nested JSON structure
+    # tier.t1.display_name -> { t1: { display_name: value } }
+    nested_configs: Dict[str, Any] = {}
+    for config in public_configs:
+        key = config.get("key", "")
+        value = config.get("value")
+
+        # Remove group prefix (e.g., "tier." from "tier.t1.display_name")
+        if key.startswith(f"{group_name}."):
+            key = key[len(group_name) + 1:]
+
+        # Split remaining key by dots and build nested structure
+        parts = key.split(".")
+        current = nested_configs
+        for i, part in enumerate(parts[:-1]):
+            if part not in current:
+                current[part] = {}
+            current = current[part]
+
+        # Set the final value
+        if parts:
+            current[parts[-1]] = value
+
+    return ConfigGroupResponse(group=group_name, configs=nested_configs)
 
 
 @router.get("/{key}")
