@@ -1,9 +1,9 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.38
-> **最后更新**: 2026-01-13
-> **总端点数**: 135 个
+> **版本**: 3.39
+> **最后更新**: 2026-01-16
+> **总端点数**: 128 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
 
@@ -30,22 +30,23 @@
 15. [Onboarding 新手引导 (6个)](#15-onboarding-新手引导)
 16. [Payment 支付 (2个)](#16-payment-支付)
 17. [Pages 静态页面内容 (2个)](#17-pages-静态页面内容) **NEW**
-18. [Projects 项目管理 (10个)](#18-projects-项目管理)
+18. [Projects 项目管理 (9个)](#18-projects-项目管理)
 19. [Referrals 推荐系统 (6个)](#19-referrals-推荐系统)
-20. [Resources 系统资源 (7个)](#20-resources-系统资源)
-21. [Support 客服支持 (4个)](#21-support-客服支持)
-22. [System Resources 系统资源管理 (9个)](#22-system-resources-系统资源管理)
-23. [Tasks 任务 (2个)](#23-tasks-任务)
-24. [Templates 模板 (10个)](#24-templates-模板)
-25. [Themes 主题 (1个)](#25-themes-主题)
-26. [Tools 工具 (2个)](#26-tools-工具)
-27. [User Assets 用户资产 (10个)](#27-user-assets-用户资产)
-28. [User Profile 用户档案 (7个)](#28-user-profile-用户档案)
-29. [Webhooks (2个)](#29-webhooks)
+20. [Resources 系统资源 (4个)](#20-resources-系统资源)
+21. [Seller 卖家统计 (1个)](#21-seller-卖家统计) **NEW**
+22. [Support 客服支持 (4个)](#22-support-客服支持)
+23. [System Resources 系统资源管理 (9个)](#23-system-resources-系统资源管理)
+24. [Tasks 任务 (2个)](#24-tasks-任务)
+25. [Templates 模板 (10个)](#25-templates-模板)
+26. [Themes 主题 (1个)](#26-themes-主题)
+27. [Tools 工具 (2个)](#27-tools-工具)
+28. [User Assets 用户资产 (9个)](#28-user-assets-用户资产)
+29. [User Profile 用户档案 (7个)](#29-user-profile-用户档案)
+30. [Webhooks (2个)](#30-webhooks)
 
 ---
 
-## 📋 接口总览 (135个)
+## 📋 接口总览 (128个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -80,7 +81,6 @@
 | 29 | Export | GET | /export/projects/{project_id}/zip | export_zip | api/user/export.py | 同步导出ZIP |
 | 30 | Export | POST | /export/projects/{project_id}/pdf/async | export_pdf_async | api/user/export.py | 异步导出PDF |
 | 31 | Export | POST | /export/projects/{project_id}/zip/async | export_zip_async | api/user/export.py | 异步导出ZIP |
-| 32 | Export | POST | /export/zip | batch_export_zip | api/user/export.py | 批量打包导出 (废弃) |
 | 33 | Generation Images | POST | /generate/images | generate_images | api/user/generation_images.py | 同步生成图像 |
 | 34 | Generation Images | POST | /generate/images/async | generate_images_async | api/user/generation_images.py | 异步生成图像 |
 | 35 | Generation PDF | POST | /generate/pdf | generate_minibook_pdf | api/user/generation_pdf.py | 生成折叠式迷你书PDF |
@@ -88,8 +88,6 @@
 | 37 | Generation Story | POST | /generate/inspiration | get_inspiration | api/user/generation_story.py | 获取创意灵感 |
 | 38 | Generations | GET | /generations/history | get_history | api/user/generations.py | 获取生成历史 |
 | 39 | Generations | PATCH | /generations/{generation_id} | update_generation | api/user/generations.py | 更新生成属性 |
-| 40 | Generations | POST | /generations/{generation_id}/favorite | toggle_favorite | api/user/generations.py | 切换收藏状态 (废弃) |
-| 41 | Generations | DELETE | /generations/batch | clear_history | api/user/generations.py | 清空历史 (废弃) |
 | 42 | Generations | DELETE | /generations/{generation_id} | delete_generation | api/user/generations.py | 删除单条生成记录 |
 | 43 | Generations | POST | /generations/batch-delete | batch_delete | api/user/generations.py | 批量删除 |
 | 44 | Logs | POST | /logs/error | log_error | api/user/logs.py | 单条错误上报 |
@@ -101,7 +99,6 @@
 | 50 | Marketplace | DELETE | /marketplace/listings/{listing_id} | delete_listing | api/user/marketplace.py | 下架商品 |
 | 51 | Marketplace | POST | /marketplace/purchase | purchase_listing | api/user/marketplace.py | 购买商品 |
 | 52 | Marketplace | GET | /marketplace/my-listings | get_my_listings | api/user/marketplace.py | 获取我的商品列表 |
-| 53 | Marketplace | GET | /marketplace/seller/stats | get_seller_stats | api/user/marketplace.py | 获取卖家统计 |
 | 54 | Marketplace | GET | /marketplace/leaderboard | get_leaderboard | api/user/marketplace.py | 获取排行榜 |
 | 55 | Marketplace | POST | /marketplace/report | report_listing | api/user/marketplace.py | 举报商品 |
 | 56 | Marketplace | GET | /marketplace/my-reports | get_my_reports | api/user/marketplace.py | 获取我的举报记录 |
@@ -116,7 +113,6 @@
 | 65 | Projects | GET | /projects | get_projects | api/user/projects.py | 获取项目列表 |
 | 66 | Projects | GET | /projects/dashboard | get_dashboard | api/user/projects.py | 仪表板项目视图 |
 | 67 | Projects | GET | /projects/deleted | get_deleted | api/user/projects.py | 获取已删除项目 |
-| 68 | Projects | GET | /projects/seller-stats | get_seller_stats | api/user/projects.py | 获取卖家统计 |
 | 69 | Projects | POST | /projects | create_project | api/user/projects.py | 创建新项目 |
 | 70 | Projects | GET | /projects/{project_id} | get_project | api/user/projects.py | 获取项目详情 |
 | 71 | Projects | PUT | /projects/{project_id} | update_project | api/user/projects.py | 更新项目 |
@@ -132,9 +128,6 @@
 | 81 | Resources | GET | /resources | list_resources | api/user/resources.py | 获取资源列表 |
 | 82 | Resources | GET | /resources/types | get_types | api/user/resources.py | 获取资源类型 |
 | 83 | Resources | GET | /resources/categories/{type} | get_categories | api/user/resources.py | 获取分类 |
-| 84 | Resources | GET | /resources/stickers | get_stickers | api/user/resources.py | 获取贴纸资源 |
-| 85 | Resources | GET | /resources/backgrounds | get_backgrounds | api/user/resources.py | 获取背景资源 |
-| 86 | Resources | GET | /resources/templates | get_templates | api/user/resources.py | 获取模板资源 |
 | 87 | Resources | GET | /resources/{resource_id} | get_resource | api/user/resources.py | 获取单个资源 |
 | 88 | Support | POST | /support/ticket | create_ticket | api/user/support.py | 创建工单 |
 | 89 | Support | POST | /support/chat | chat | api/user/support.py | AI客服对话 |
@@ -171,7 +164,6 @@
 | 120 | User Assets | GET | /user_assets/check-url | check_url | api/user/user_assets.py | URL检查 |
 | 121 | User Assets | POST | /user_assets/{asset_id}/increment-usage | increment_usage | api/user/user_assets.py | 使用次数增加 |
 | 122 | User Assets | GET | /user_assets/dashboard | get_dashboard | api/user/user_assets.py | 资产Dashboard |
-| 123 | User Assets | GET | /user_assets/seller-stats | get_seller_stats | api/user/user_assets.py | 卖家统计 |
 | 124 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
 | 125 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
 | 126 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
@@ -918,12 +910,6 @@
 
 ---
 
-### POST `/export/zip` (废弃)
-
-批量打包导出 (已废弃,建议使用 async 版本)
-
----
-
 ## 9. Generation Images AI图片生成
 
 ### POST `/generate/images`
@@ -1116,18 +1102,6 @@
   "is_favorited": true
 }
 ```
-
----
-
-### POST `/generations/{generation_id}/favorite` (废弃)
-
-切换收藏状态 (建议使用 PATCH)
-
----
-
-### DELETE `/generations/batch` (废弃)
-
-清空历史 (已废弃,建议使用 batch-delete)
 
 ---
 
@@ -1438,22 +1412,6 @@
   "total": 5,
   "offset": 0,
   "limit": 20
-}
-```
-
----
-
-### GET `/marketplace/seller/stats`
-
-获取卖家统计
-
-**响应**:
-```json
-{
-  "total_listings": 5,
-  "total_sales": 120,
-  "total_revenue": 6000,
-  "unique_buyers": 85
 }
 ```
 
@@ -1892,21 +1850,6 @@
 
 ---
 
-### GET `/projects/seller-stats`
-
-获取卖家统计
-
-**响应**:
-```json
-{
-  "total_selling": 5,
-  "total_sales": 120,
-  "unique_buyers": 45
-}
-```
-
----
-
 ### POST `/projects`
 
 创建新项目
@@ -2196,36 +2139,6 @@
 
 ---
 
-### GET `/resources/stickers`
-
-获取贴纸资源
-
-**参数**: 同 `/resources`
-
-**响应**: 同 `/resources`
-
----
-
-### GET `/resources/backgrounds`
-
-获取背景资源
-
-**参数**: 同 `/resources`
-
-**响应**: 同 `/resources`
-
----
-
-### GET `/resources/templates`
-
-获取模板资源
-
-**参数**: 同 `/resources`
-
-**响应**: 同 `/resources`
-
----
-
 ### GET `/resources/{resource_id}`
 
 获取单个资源
@@ -2243,7 +2156,68 @@
 
 ---
 
-## 20. Support 客服支持
+## 21. Seller 卖家统计 **NEW**
+
+> v3.39 新增：统一的卖家统计端点，整合了 projects、marketplace、assets 三个模块的卖家数据。
+>
+> **整合的端点** (已废弃):
+> - `GET /projects/seller-stats` → 使用 `?include=projects`
+> - `GET /marketplace/seller/stats` → 使用 `?include=listings`
+> - `GET /user_assets/seller-stats` → 使用 `?include=assets`
+
+### GET `/seller/stats`
+
+获取统一的卖家统计数据
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `include` | string | 全部 | 逗号分隔的数据类型: projects, listings, assets |
+
+**示例请求**:
+```
+GET /api/v2/user/seller/stats?include=projects,listings
+```
+
+**响应**:
+```json
+{
+  "projects": {
+    "total_selling": 5,
+    "total_sales": 120,
+    "unique_buyers": 45,
+    "total_revenue": 6000.0
+  },
+  "listings": {
+    "total_earned_credits": 2500,
+    "listings_count": 10,
+    "total_sales": 80,
+    "total_usage": 520
+  },
+  "assets": {
+    "total_assets": 25,
+    "total_downloads": 340,
+    "total_revenue": 1700.0
+  },
+  "summary": {
+    "total_revenue": 7825.0,
+    "total_sales": 540,
+    "total_items": 40
+  }
+}
+```
+
+**说明**:
+- `include` 参数可选，不传则返回所有数据
+- 各模块字段说明:
+  - `projects`: 项目销售数据
+  - `listings`: 市场商品数据 (credits 按 0.05 美元/积分换算)
+  - `assets`: 素材销售数据
+  - `summary`: 汇总数据 (始终返回)
+
+---
+
+## 22. Support 客服支持
 
 ### POST `/support/ticket`
 
@@ -2334,7 +2308,7 @@ AI客服对话
 
 ---
 
-## 21. System Resources 系统资源管理
+## 23. System Resources 系统资源管理
 
 ### GET `/system_resources`
 
@@ -2508,7 +2482,7 @@ AI客服对话
 
 ---
 
-## 22. Tasks 任务
+## 24. Tasks 任务
 
 ### GET `/tasks/{task_id}`
 
@@ -2545,7 +2519,7 @@ AI客服对话
 
 ---
 
-## 23. Templates 模板
+## 25. Templates 模板
 
 ### GET `/templates/asset`
 
@@ -2684,7 +2658,7 @@ AI客服对话
 
 ---
 
-## 24. Themes 主题
+## 26. Themes 主题
 
 ### GET `/themes/current`
 
@@ -2708,7 +2682,7 @@ AI客服对话
 
 ---
 
-## 25. Tools 工具
+## 27. Tools 工具
 
 ### POST `/tools/pdf-preview`
 
@@ -2742,7 +2716,7 @@ OCR文字识别
 
 ---
 
-## 26. User Assets 用户资产
+## 28. User Assets 用户资产
 
 ### GET `/user_assets`
 
@@ -2888,20 +2862,6 @@ URL检查
 
 ---
 
-### GET `/user_assets/seller-stats`
-
-卖家统计
-
-**响应**:
-```json
-{
-  "total_downloads": 520,
-  "total_revenue": 2600
-}
-```
-
----
-
 ### GET `/user_assets/deleted`
 
 已删除资产
@@ -2935,7 +2895,7 @@ URL检查
 
 ---
 
-## 27. User Profile 用户档案
+## 29. User Profile 用户档案
 
 ### GET `/user_profile/me`
 
@@ -3085,7 +3045,7 @@ URL检查
 
 ---
 
-## 29. Webhooks
+## 30. Webhooks
 
 ### POST `/webhooks/clerk`
 
@@ -3139,14 +3099,19 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.36*
-*最后更新: 2026-01-12*
+*文档版本: v3.39*
+*最后更新: 2026-01-16*
 *更新内容:
+- v3.39: API 整合优化 - 新增统一 Seller 模块 (1个端点)，删除 7 个冗余端点
+  - 新增: `GET /seller/stats` 统一卖家统计 (整合 projects/marketplace/assets)
+  - 删除: `GET /projects/seller-stats`, `GET /marketplace/seller/stats`, `GET /user_assets/seller-stats`
+  - 删除: `GET /resources/stickers`, `GET /resources/backgrounds`, `GET /resources/templates` (使用 `?resource_type=` 参数)
+  - 删除: `POST /generations/{id}/favorite`, `DELETE /generations/batch`, `POST /export/zip` (废弃端点)
 - v3.36: 新增 Pages 静态页面内容模块 (2个公开端点)，支持 CMS 动态内容管理
 - v3.35: 新增 Feature Flags 客户端端点 (4个)
 - v3.33: 新增 Articles 文章模块 (4个公开端点)
 - v3.32: 完整记录 123 个 User API 端点
 - 包含所有请求参数、响应格式、验证规则和限流配置
-- 按 29 个模块分类组织
+- 按 30 个模块分类组织
 - DDD 架构合规: 100%
 - 测试覆盖率: 65%+*
