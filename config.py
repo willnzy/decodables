@@ -53,8 +53,8 @@ RATE_LIMIT_OCR = "10/minute"
 CREDITS_PER_IMAGE = 5           # database: credits.cost.image_generation = 5
 CREDITS_PER_OCR = 10            # database: credits.cost.ocr = 10
 CREDITS_SIGNUP_BONUS = 50       # database: SIGNUP_BONUS_CREDITS = 50
-CREDITS_MONTHLY_STARTER = 100   # database: tier.t2.monthly_credits = 100
-CREDITS_MONTHLY_PRO = 200       # database: tier.t3.monthly_credits = 200
+CREDITS_MONTHLY_T2 = 100        # database: tier.t2.monthly_credits = 100
+CREDITS_MONTHLY_T3 = 200        # database: tier.t3.monthly_credits = 200
 
 # Marketplace
 MAX_LISTING_PRICE = 500
@@ -64,15 +64,15 @@ SELLER_REVENUE_PERCENT = 90  # Seller gets 90%, platform gets 10%
 # This is kept for backward compatibility but should be migrated to system_configs
 TRIAL_DAYS = 30  # Default: Free users get 30-day trial with full access
 
-# Tiers
-VALID_TIERS = ["free", "starter", "pro"]
-MEMBER_TIERS = ["starter", "pro"]
+# Tiers (使用 t1/t2/t3 内部命名，display_name 从 database 读取)
+VALID_TIERS = ["t1", "t2", "t3"]
+MEMBER_TIERS = ["t2", "t3"]  # 付费会员
 
 # Allowed Tiers Whitelist (PRD v3.2)
 ALLOWED_TIERS_WHITELIST = [
-    ["free"],
-    ["starter", "pro"],
-    ["pro"],
+    ["t1"],           # t1 only
+    ["t2", "t3"],     # t2 and above
+    ["t3"],           # t3 only
 ]
 
 # ==========================================

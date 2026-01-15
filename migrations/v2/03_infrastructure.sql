@@ -1376,14 +1376,14 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('credits.cost.ocr', '10', 'integer', 'credits', 'OCR recognition cost', true, true),
 
 -- ========== Pricing (10条) ==========
--- Subscription Plans
-('STARTER_PLAN_PRICE', '14.9', 'number', 'pricing', 'Starter monthly price', true, true),
-('STARTER_PLAN_ORIGINAL_PRICE', '24.95', 'number', 'pricing', 'Starter original price (for display)', true, true),
-('STARTER_MONTHLY_CREDITS', '100', 'number', 'pricing', 'Starter monthly credits (sync with tier.t2.monthly_credits)', true, true),
-('PRO_PLAN_PRICE', '29.9', 'number', 'pricing', 'Pro monthly price', true, true),
-('PRO_PLAN_ORIGINAL_PRICE', '59.9', 'number', 'pricing', 'Pro original price (for display)', true, true),
-('PRO_MONTHLY_CREDITS', '200', 'number', 'pricing', 'Pro monthly credits (sync with tier.t3.monthly_credits)', true, true),
-('PRO_CREDITS_DISCOUNT_PERCENT', '20', 'number', 'pricing', 'Pro discount on credit purchases', true, true),
+-- Subscription Plans (使用 t1/t2/t3 命名，display_name 在 tier 组配置)
+('T2_PLAN_PRICE', '14.9', 'number', 'pricing', 't2 monthly price', true, true),
+('T2_PLAN_ORIGINAL_PRICE', '24.95', 'number', 'pricing', 't2 original price (for display)', true, true),
+('T2_MONTHLY_CREDITS', '100', 'number', 'pricing', 't2 monthly credits (sync with tier.t2.monthly_credits)', true, true),
+('T3_PLAN_PRICE', '29.9', 'number', 'pricing', 't3 monthly price', true, true),
+('T3_PLAN_ORIGINAL_PRICE', '59.9', 'number', 'pricing', 't3 original price (for display)', true, true),
+('T3_MONTHLY_CREDITS', '200', 'number', 'pricing', 't3 monthly credits (sync with tier.t3.monthly_credits)', true, true),
+('T3_CREDITS_DISCOUNT_PERCENT', '20', 'number', 'pricing', 't3 discount on credit purchases', true, true),
 
 -- Credits Tiers (JSON array)
 ('CREDITS_TIERS', '[{"id":"credits_100","credits":100,"originalPrice":2.99,"currentPrice":2.99,"discount":null,"proDiscount":20},{"id":"credits_500","credits":500,"originalPrice":14.99,"currentPrice":13.49,"discount":10,"proDiscount":20,"popular":true},{"id":"credits_2000","credits":2000,"originalPrice":60.0,"currentPrice":48.0,"discount":20,"proDiscount":20}]', 'json', 'pricing', 'Credits purchase tiers', true, true),
@@ -1391,7 +1391,7 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 -- ========== AI Providers (8条) ==========
 ('ai_providers.enabled', '{"openai": true, "fal": true, "qwen": false, "wanx": false, "gemini": false, "grok": false, "jimeng": false, "anthropic": false}', 'json', 'ai_providers', 'Enable/disable AI providers', true, true),
 ('ai_model.user.text_reasoning', '{"provider": "openai", "model": "gpt-4o-mini", "fallback": {"provider": "openai", "model": "gpt-4o-mini"}, "show_provider": false}', 'json', 'ai_models', 'User text reasoning model', true, true),
-('ai_model.user.image_generation', '{"provider": "fal", "models": {"free": "flux-schnell", "starter": "flux-schnell", "pro": "flux-dev"}, "fallback": {"provider": "fal", "model": "flux-schnell"}, "show_provider": false}', 'json', 'ai_models', 'User image generation model by tier', true, true),
+('ai_model.user.image_generation', '{"provider": "fal", "models": {"t1": "flux-schnell", "t2": "flux-schnell", "t3": "flux-dev"}, "fallback": {"provider": "fal", "model": "flux-schnell"}, "show_provider": false}', 'json', 'ai_models', 'User image generation model by tier', true, true),
 ('ai_model.admin.analysis', '{"provider": "openai", "model": "gpt-4o", "fallback": {"provider": "openai", "model": "gpt-4o-mini"}}', 'json', 'ai_models', 'Admin analysis model', true, true),
 ('ai_model.canary', '{"enabled": false, "text_reasoning": {"canary_provider": "qwen", "canary_model": "qwen-plus", "traffic_percent": 10}, "image_generation": {"canary_provider": "jimeng", "canary_model": "jimeng-2.1", "traffic_percent": 5}}', 'json', 'ai_models', 'Canary release for A/B testing', true, true),
 ('ai_providers.models', '{"openai": {"text": ["gpt-4o-mini", "gpt-4o", "o1-mini", "o1"], "image": ["dall-e-3"]}, "fal": {"image": ["flux-schnell", "flux-dev", "flux-pro"]}, "qwen": {"text": ["qwen-turbo", "qwen-plus", "qwen-max"]}}', 'json', 'ai_providers', 'Available models per provider', true, true),

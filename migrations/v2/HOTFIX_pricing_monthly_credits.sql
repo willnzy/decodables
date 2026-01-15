@@ -1,45 +1,44 @@
 -- =============================================================================
--- HOTFIX: 统一 PRICING 和 TIER 配置的 monthly_credits 值
+-- HOTFIX: 重命名 PRICING 配置键 (STARTER/PRO → T2/T3)
 -- =============================================================================
--- 问题: STARTER_MONTHLY_CREDITS/PRO_MONTHLY_CREDITS 与 tier.*.monthly_credits 不一致
--- 修复: 将 PRICING 配置与 TIER 配置同步
+-- 问题: 配置键使用 STARTER/PRO 命名，应统一为 T2/T3
+-- 修复: 重命名所有 PRICING 组中的配置键
 -- 
--- 配置值对照:
---   tier.t2.monthly_credits = 100 → STARTER_MONTHLY_CREDITS = 100
---   tier.t3.monthly_credits = 200 → PRO_MONTHLY_CREDITS = 200
+-- 重命名映射:
+--   STARTER_PLAN_PRICE → T2_PLAN_PRICE
+--   STARTER_PLAN_ORIGINAL_PRICE → T2_PLAN_ORIGINAL_PRICE
+--   STARTER_MONTHLY_CREDITS → T2_MONTHLY_CREDITS
+--   PRO_PLAN_PRICE → T3_PLAN_PRICE
+--   PRO_PLAN_ORIGINAL_PRICE → T3_PLAN_ORIGINAL_PRICE
+--   PRO_MONTHLY_CREDITS → T3_MONTHLY_CREDITS
+--   PRO_CREDITS_DISCOUNT_PERCENT → T3_CREDITS_DISCOUNT_PERCENT
 -- =============================================================================
 
--- 1. 更新 STARTER_MONTHLY_CREDITS → 100
-UPDATE system_configs 
-SET config_value = '100',
-    description = 'Starter monthly credits (sync with tier.t2.monthly_credits)',
-    updated_at = NOW()
+-- 重命名 STARTER → T2
+UPDATE system_configs SET config_key = 'T2_PLAN_PRICE', description = 't2 monthly price' 
+WHERE config_key = 'STARTER_PLAN_PRICE';
+
+UPDATE system_configs SET config_key = 'T2_PLAN_ORIGINAL_PRICE', description = 't2 original price (for display)' 
+WHERE config_key = 'STARTER_PLAN_ORIGINAL_PRICE';
+
+UPDATE system_configs SET config_key = 'T2_MONTHLY_CREDITS', description = 't2 monthly credits (sync with tier.t2.monthly_credits)' 
 WHERE config_key = 'STARTER_MONTHLY_CREDITS';
 
--- 2. 更新 PRO_MONTHLY_CREDITS → 200
-UPDATE system_configs 
-SET config_value = '200',
-    description = 'Pro monthly credits (sync with tier.t3.monthly_credits)',
-    updated_at = NOW()
+-- 重命名 PRO → T3
+UPDATE system_configs SET config_key = 'T3_PLAN_PRICE', description = 't3 monthly price' 
+WHERE config_key = 'PRO_PLAN_PRICE';
+
+UPDATE system_configs SET config_key = 'T3_PLAN_ORIGINAL_PRICE', description = 't3 original price (for display)' 
+WHERE config_key = 'PRO_PLAN_ORIGINAL_PRICE';
+
+UPDATE system_configs SET config_key = 'T3_MONTHLY_CREDITS', description = 't3 monthly credits (sync with tier.t3.monthly_credits)' 
 WHERE config_key = 'PRO_MONTHLY_CREDITS';
 
--- 3. 更新 tier.t2.monthly_credits → 100
-UPDATE system_configs 
-SET config_value = '100',
-    updated_at = NOW()
-WHERE config_key = 'tier.t2.monthly_credits';
+UPDATE system_configs SET config_key = 'T3_CREDITS_DISCOUNT_PERCENT', description = 't3 discount on credit purchases' 
+WHERE config_key = 'PRO_CREDITS_DISCOUNT_PERCENT';
 
--- 4. 更新 tier.t3.monthly_credits → 200
-UPDATE system_configs 
-SET config_value = '200',
-    updated_at = NOW()
-WHERE config_key = 'tier.t3.monthly_credits';
-
--- 3. 验证修改
+-- 验证修改
 SELECT config_key, config_value, description 
 FROM system_configs 
-WHERE config_key IN ('STARTER_MONTHLY_CREDITS', 'PRO_MONTHLY_CREDITS', 
-                     'tier.t2.monthly_credits', 'tier.t3.monthly_credits')
+WHERE config_key LIKE 'T2_%' OR config_key LIKE 'T3_%'
 ORDER BY config_key;
-
--- 说明: 此脚本的修改已合并到 03_infrastructure.sql

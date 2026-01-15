@@ -1,58 +1,45 @@
 -- =============================================================================
--- HOTFIX: 清理重复的配置项，统一使用 tier.* 和 credits.cost.* 格式
+-- HOTFIX: 清理 system_configs 表中的重复/过时 Credits 配置
 -- =============================================================================
--- 问题: 存在多套配置，导致不一致
---   - STARTER_MONTHLY_CREDITS vs tier.t2.monthly_credits
---   - PRO_MONTHLY_CREDITS vs tier.t3.monthly_credits
---   - CREDITS_PER_OCR vs credits.cost.ocr
--- 
--- 解决方案: 删除重复配置，保留规范的配置键
--- 
--- 权威配置 (保留):
---   - tier.t1.monthly_credits = 0
---   - tier.t2.monthly_credits = 100
---   - tier.t3.monthly_credits = 200
---   - credits.cost.image_generation = 5
---   - credits.cost.ocr = 10
---   - credits.cost.smart_scan = 10
+-- 背景:
+-- 1. system_configs 中曾存在重复的月度积分配置
+-- 2. 配置键已从 STARTER_*/PRO_* 重命名为 T2_*/T3_*
+-- 3. 此脚本清理旧的配置键
+--
+-- 删除的配置键:
+--   - STARTER_MONTHLY_CREDITS (已重命名为 T2_MONTHLY_CREDITS)
+--   - PRO_MONTHLY_CREDITS (已重命名为 T3_MONTHLY_CREDITS)
+--   - STARTER_PLAN_PRICE (已重命名为 T2_PLAN_PRICE)
+--   - PRO_PLAN_PRICE (已重命名为 T3_PLAN_PRICE)
+--   - CREDITS_PER_OCR (使用 credits.cost.ocr)
+--
+-- 当前正确配置 (数据库权威):
+-- | config_key                | config_value | config_group |
+-- |---------------------------|--------------|--------------|
+-- | tier.t2.monthly_credits   | 100          | tier         |
+-- | tier.t3.monthly_credits   | 200          | tier         |
+-- | T2_MONTHLY_CREDITS        | 100          | pricing      |
+-- | T3_MONTHLY_CREDITS        | 200          | pricing      |
 -- =============================================================================
 
--- Step 1: 删除重复的 PRICING 组月度积分配置
--- (这些已被 tier.*.monthly_credits 替代)
+-- 删除旧的 STARTER/PRO 配置键 (如果存在)
 DELETE FROM system_configs 
-WHERE config_key IN ('STARTER_MONTHLY_CREDITS', 'PRO_MONTHLY_CREDITS');
+WHERE config_key IN (
+    'STARTER_MONTHLY_CREDITS',
+    'PRO_MONTHLY_CREDITS',
+    'STARTER_PLAN_PRICE',
+    'STARTER_PLAN_ORIGINAL_PRICE',
+    'PRO_PLAN_PRICE',
+    'PRO_PLAN_ORIGINAL_PRICE',
+    'PRO_CREDITS_DISCOUNT_PERCENT',
+    'CREDITS_PER_OCR'
+);
 
--- Step 2: 删除旧格式的 CREDITS_PER_* 配置
--- (这些已被 credits.cost.* 替代)
-DELETE FROM system_configs 
-WHERE config_key IN ('CREDITS_PER_OCR');
+-- 验证清理结果
+SELECT config_key, config_value, config_group
+FROM system_configs 
+WHERE config_key LIKE '%STARTER%' 
+   OR config_key LIKE '%PRO_%'
+   OR config_key = 'CREDITS_PER_OCR';
 
--- Step 3: 确保 credits.cost.* 配置存在且正确
--- OCR cost
-INSERT INTO system_configs (config_key, config_value, value_type, config_group, description, is_public, is_editable)
-VALUES ('credits.cost.ocr', '10', 'integer', 'credits', 'OCR recognition cost', true, true)
-ON CONFLICT (config_key) DO UPDATE SET config_value = '10';
-
--- Smart scan cost
-INSERT INTO system_configs (config_key, config_value, value_type, config_group, description, is_public, is_editable)
-VALUES ('credits.cost.smart_scan', '10', 'integer', 'credits', 'Smart Scan/OCR cost', true, true)
-ON CONFLICT (config_key) DO UPDATE SET config_value = '10';
-
--- Step 4: 验证清理结果
-SELECT config_key, config_value, config_group, description
-FROM system_configs
-WHERE config_key LIKE 'tier.%monthly_credits%'
-   OR config_key LIKE 'credits.cost.%'
-   OR config_key IN ('STARTER_MONTHLY_CREDITS', 'PRO_MONTHLY_CREDITS', 'CREDITS_PER_OCR')
-ORDER BY config_group, config_key;
-
--- 预期结果:
--- | config_key                     | config_value | config_group |
--- |-------------------------------|--------------|--------------|
--- | credits.cost.image_generation | 5            | credits      |
--- | credits.cost.ocr              | 10           | credits      |
--- | credits.cost.smart_scan       | 10           | credits      |
--- | credits.cost.text_generation  | 0            | credits      |
--- | tier.t1.monthly_credits       | 0            | tier         |
--- | tier.t2.monthly_credits       | 100          | tier         |
--- | tier.t3.monthly_credits       | 200          | tier         |
+-- 预期结果: 空 (所有旧配置已删除)

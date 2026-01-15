@@ -356,7 +356,7 @@ class SubscriptionService:
             user_id: User ID
             user_code: User code for verification
             user_email: User email for verification
-            target_tier: Target tier ('free' or 'starter')
+            target_tier: Target tier ('t1' or 't2')
             immediate: True = apply now, False = apply at period end
             reason: Admin reason for downgrade
             admin_id: Admin performing operation
@@ -395,7 +395,7 @@ class SubscriptionService:
                 user_id, customer_id, current_tier, immediate, reason, admin_id
             )
         elif current_tier == "t3" and target_tier == "t2":
-            return await self._downgrade_pro_to_starter(
+            return await self._downgrade_t3_to_t2(
                 user_id, customer_id, current_tier, immediate, reason, admin_id
             )
         else:
@@ -511,7 +511,7 @@ class SubscriptionService:
             "subscription_id": active_sub.id
         }
 
-    async def _downgrade_pro_to_starter(
+    async def _downgrade_t3_to_t2(
         self,
         user_id: str,
         customer_id: Optional[str],
@@ -520,7 +520,7 @@ class SubscriptionService:
         reason: str,
         admin_id: str
     ) -> Dict[str, Any]:
-        """Handle downgrade from Pro to Starter."""
+        """Handle downgrade from t3 to t2."""
         from fastapi import HTTPException
 
         if not customer_id:
@@ -532,16 +532,17 @@ class SubscriptionService:
         if not active_sub:
             raise HTTPException(400, "No active subscription found to downgrade")
 
-        starter_price_id = os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
-        if not starter_price_id:
-            raise HTTPException(500, "Starter price ID not configured")
+        # Stripe Price ID for t2 plan (environment variable)
+        t2_price_id = os.environ.get("STRIPE_T2_MONTHLY_PRICE_ID") or os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
+        if not t2_price_id:
+            raise HTTPException(500, "t2 price ID not configured")
 
-        # Modify subscription to Starter plan
+        # Modify subscription to t2 plan
         updated_sub = modify_subscription(
             active_sub.id,
             items=[{
                 "id": active_sub.items.data[0].id,
-                "price": starter_price_id
+                "price": t2_price_id
             }],
             proration_behavior='create_prorations' if immediate else 'none',
             billing_cycle_anchor='unchanged' if not immediate else 'now'
@@ -592,7 +593,7 @@ class SubscriptionService:
             admin_id=admin_id,
             operation_type="subscription_downgrade",
             target_user_id=user_id,
-            details=f"Pro → Starter ({'immediate' if immediate else 'at period end'})",
+            details=f"t3 → t2 ({'immediate' if immediate else 'at period end'})",
             reason=reason
         )
 
@@ -608,13 +609,18 @@ class SubscriptionService:
     # ==========================================
 
     def _extract_plan_name(self, subscription_detail) -> str:
-        """Extract plan name from subscription details."""
+        """Extract plan tier from subscription details.
+        
+        Returns tier code (t2/t3) based on Stripe Price ID.
+        Display name should be fetched from TierService for user-facing output.
+        """
         if not subscription_detail.items.data:
             return "Unknown"
 
-        price_id = subscription_detail.items.data[0].price.id
-        if 'starter' in price_id.lower():
-            return "Starter"
-        elif 'pro' in price_id.lower():
-            return "Pro"
+        price_id = subscription_detail.items.data[0].price.id.lower()
+        # Map Stripe Price ID patterns to tier codes
+        if 'starter' in price_id or 't2' in price_id:
+            return "t2"
+        elif 'pro' in price_id or 't3' in price_id:
+            return "t3"
         return "Unknown"
