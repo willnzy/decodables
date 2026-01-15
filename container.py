@@ -252,6 +252,18 @@ class Container:
             self._services['article'] = ArticleService(repository)
         return self._services['article']
 
+    async def get_static_page_service(self):
+        """Get static page service instance (v3.32, async)."""
+        from domains.static_pages.service import StaticPageService
+        from infrastructure.repositories.static_page_repository import SupabaseStaticPageRepository
+        if 'static_page' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+            repository = SupabaseStaticPageRepository(db)
+            self._services['static_page'] = StaticPageService(repository)
+        return self._services['static_page']
+
     async def get_logging_service(self):
         """Get logging service instance (v3.0.0, async)."""
         from domains.logging import LoggingService

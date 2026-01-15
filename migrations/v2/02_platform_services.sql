@@ -852,7 +852,56 @@ CREATE INDEX IF NOT EXISTS idx_articles_author ON articles(author_id);
 
 
 -- ----------------------------------------------------------------------------
--- 22. experiment_configs (依赖 feature_flags)
+-- 22. static_pages (静态页面内容 CMS)
+-- ----------------------------------------------------------------------------
+-- 用于管理静态页面内容 (法律政策、公司信息、指南等)
+-- 区别于 articles (动态文章内容)
+-- 区别于 project 的 8 页 (book pages)
+CREATE TABLE IF NOT EXISTS static_pages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- 标识
+    slug VARCHAR(100) UNIQUE NOT NULL,        -- 路由标识: billing-policy, about-us
+
+    -- 内容
+    title VARCHAR(200) NOT NULL,              -- 页面标题
+    subtitle VARCHAR(500),                    -- 副标题/描述
+    content TEXT NOT NULL,                    -- Markdown 内容 (支持模板变量)
+
+    -- 元数据
+    page_type VARCHAR(50) NOT NULL CHECK (page_type IN ('legal', 'company', 'guide', 'other')),
+    icon VARCHAR(50),                         -- Lucide 图标名: Shield, FileText, CreditCard
+    hero_gradient VARCHAR(100),               -- Hero 背景渐变 CSS: from-indigo-600 to-purple-600
+
+    -- SEO
+    meta_title VARCHAR(200),                  -- SEO 标题 (可选, 默认用 title)
+    meta_description VARCHAR(500),            -- SEO 描述
+    schema_data JSONB,                        -- JSON-LD Schema (可选)
+
+    -- 额外数据 (用于复杂页面如 about-us 的团队信息)
+    extra_data JSONB DEFAULT '{}'::jsonb,
+
+    -- 状态
+    is_published BOOLEAN DEFAULT false,
+    published_at TIMESTAMPTZ,
+    last_updated_display VARCHAR(50),         -- 显示用: "December 30, 2024"
+
+    -- 排序
+    sort_order INTEGER DEFAULT 0,
+
+    -- 审计
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_static_pages_slug ON static_pages(slug);
+CREATE INDEX IF NOT EXISTS idx_static_pages_type ON static_pages(page_type);
+CREATE INDEX IF NOT EXISTS idx_static_pages_published ON static_pages(is_published);
+
+
+-- ----------------------------------------------------------------------------
+-- 23. experiment_configs (依赖 feature_flags)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS experiment_configs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

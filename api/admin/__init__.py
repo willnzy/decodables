@@ -49,6 +49,7 @@ from .asset_categories import router as asset_categories_router
 from .articles import router as articles_router
 from .themes import router as themes_router
 from .user_creation_monitoring import router as user_creation_monitoring_router
+from .static_pages import router as static_pages_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -75,5 +76,6 @@ admin_router.include_router(asset_categories_router)
 admin_router.include_router(articles_router)
 admin_router.include_router(themes_router)
 admin_router.include_router(user_creation_monitoring_router)
+admin_router.include_router(static_pages_router)
 
 __all__ = ['admin_router']
