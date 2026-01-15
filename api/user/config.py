@@ -91,6 +91,9 @@ PUBLIC_CONFIG_PATTERNS = [
     r"^SITE_",      # Site public info (name, contact, social)
     r"^PRICING_",   # Pricing display info (features, tiers)
     r"^tier\.",     # Tier configuration (monthly_credits, features, etc.)
+    r"^credits\.",  # Credit costs configuration
+    r"^CREDITS_",   # Credit-related uppercase configs
+    r"^T[23]_",     # T2/T3 plan configs (pricing, credits)
 ]
 
 
