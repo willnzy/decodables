@@ -6,10 +6,13 @@ Request/Response models organized by domain (DDD compliant)
 @version 3.24
 """
 
-# Base schemas
+# Base schemas (v2.0.0)
 from .base import (
-    ApiResponse,
     PaginatedResponse,
+    DataResponse,
+    OperationResponse,
+    ErrorDetail,
+    ErrorResponse,
 )
 
 # User schemas (from user subpackage)
@@ -112,9 +115,12 @@ from .admin.system_resources import (
 )
 
 __all__ = [
-    # Base
-    'ApiResponse',
+    # Base (v2.0.0)
     'PaginatedResponse',
+    'DataResponse',
+    'OperationResponse',
+    'ErrorDetail',
+    'ErrorResponse',
     # Users
     'UserProfile',
     'CreditTransaction',
