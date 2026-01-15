@@ -38,7 +38,8 @@ class SupabaseStaticPageRepository(StaticPageRepository):
                 'slug', slug
             ).eq('is_published', True).maybe_single().execute()
 
-            if not result.data:
+            # Handle case where result is None or has no data
+            if result is None or not result.data:
                 return None
 
             return self._to_static_page(result.data)
@@ -104,7 +105,8 @@ class SupabaseStaticPageRepository(StaticPageRepository):
                 'id', str(page_id)
             ).maybe_single().execute()
 
-            if not result.data:
+            # Handle case where result is None or has no data
+            if result is None or not result.data:
                 return None
 
             return self._to_static_page(result.data)

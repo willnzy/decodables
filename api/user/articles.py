@@ -127,7 +127,7 @@ async def list_articles(
         description="Filter by category (manual, news, changelog)"
     ),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    limit: int = Query(20, ge=1, le=200, description="Results per page (max 200 for static generation)"),
     service: ArticleService = Depends(get_article_service),  # v3.31: 修复依赖注入
 ):
     """
@@ -139,7 +139,7 @@ async def list_articles(
     Args:
         category: Optional category filter (manual, news, changelog)
         offset: Pagination offset (default: 0)
-        limit: Results per page (default: 20, max: 100)
+        limit: Results per page (default: 20, max: 200)
 
     Returns:
         ArticlesListResponse with articles, total count, and pagination info
