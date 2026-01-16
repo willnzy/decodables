@@ -839,6 +839,142 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- 函数 6b: 原子积分购买处理 (v3.27 - Phase 5 Part C)
+-- 将支付记录 + 积分增加 + 交易记录合并为单一原子操作
+CREATE OR REPLACE FUNCTION process_credit_purchase(
+    p_user_id TEXT,
+    p_credits_amount INT,
+    p_payment_amount INT,      -- 金额（美分）
+    p_currency TEXT,
+    p_session_id TEXT,
+    p_idempotency_key TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    payment_id UUID,
+    balance_monthly INT,
+    balance_permanent INT,
+    error_message TEXT
+) AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_payment_id UUID;
+    v_existing_payment UUID;
+BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid user_id'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_credits_amount <= 0 OR p_credits_amount > 100000 THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid credits_amount (must be 1-100000)'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_payment_amount <= 0 THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid payment_amount'::TEXT;
+        RETURN;
+    END IF;
+
+    IF p_session_id IS NULL OR length(p_session_id) = 0 THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid session_id'::TEXT;
+        RETURN;
+    END IF;
+
+    -- 幂等性检查：检查 session_id 是否已处理过
+    SELECT id INTO v_existing_payment
+    FROM payment_records
+    WHERE metadata->>'session_id' = p_session_id
+    LIMIT 1;
+
+    IF v_existing_payment IS NOT NULL THEN
+        -- 已处理过，返回现有记录
+        SELECT credits_monthly, credits_permanent INTO v_monthly, v_permanent
+        FROM profiles WHERE id = p_user_id;
+
+        RETURN QUERY SELECT TRUE, v_existing_payment, COALESCE(v_monthly, 0), COALESCE(v_permanent, 0), NULL::TEXT;
+        RETURN;
+    END IF;
+
+    -- 加锁获取用户当前余额
+    SELECT credits_monthly, credits_permanent
+    INTO v_monthly, v_permanent
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'User not found'::TEXT;
+        RETURN;
+    END IF;
+
+    -- 步骤 1: 创建支付记录
+    INSERT INTO payment_records (
+        user_id,
+        payment_type,
+        payment_method,
+        amount_usd,
+        amount_credits,
+        currency,
+        status,
+        metadata,
+        created_at
+    ) VALUES (
+        p_user_id,
+        'credit_purchase',
+        'stripe',
+        p_payment_amount / 100.0,  -- 转换为美元
+        p_credits_amount,
+        UPPER(p_currency),
+        'succeeded',
+        jsonb_build_object(
+            'session_id', p_session_id,
+            'description', format('Purchase %s Credits - $%s', p_credits_amount, (p_payment_amount / 100.0)::TEXT)
+        ),
+        NOW()
+    )
+    RETURNING id INTO v_payment_id;
+
+    -- 步骤 2: 增加永久积分
+    UPDATE profiles
+    SET credits_permanent = credits_permanent + p_credits_amount,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    v_permanent := v_permanent + p_credits_amount;
+
+    -- 步骤 3: 记录积分交易
+    INSERT INTO credit_transactions (
+        user_id,
+        transaction_type,
+        bucket,
+        amount,
+        balance_monthly_after,
+        balance_permanent_after,
+        description,
+        idempotency_key,
+        created_at
+    ) VALUES (
+        p_user_id,
+        'topup_purchase',
+        'permanent',
+        p_credits_amount,
+        v_monthly,
+        v_permanent,
+        format('Purchase %s Credits', p_credits_amount),
+        COALESCE(p_idempotency_key, 'credit_purchase_' || p_session_id),
+        NOW()
+    );
+
+    RETURN QUERY SELECT TRUE, v_payment_id, v_monthly, v_permanent, NULL::TEXT;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION process_credit_purchase IS 'v3.27: 原子性处理积分购买（支付记录+积分增加+交易记录在同一事务中）';
+
+
 -- 函数 7
 CREATE OR REPLACE FUNCTION execute_marketplace_purchase(
     p_user_id TEXT,

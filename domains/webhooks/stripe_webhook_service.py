@@ -3,9 +3,14 @@ Stripe Webhook Service
 
 Handles Stripe payment webhook events.
 
-@version 2.0.0 (AsyncClient Migration - Phase 10)
+@version 2.1.0 (Phase 5 Part C - True Atomicity)
 
-Architecture: API → StripeWebhookService → Repositories
+Architecture: API → StripeWebhookService → Repositories/RPC
+
+v2.1.0 Changes:
+- Credits purchase now uses atomic RPC (process_credit_purchase)
+- Payment record + credits addition in single transaction
+- Eliminates half-failure state in credit purchases
 
 v2.0.0 Changes:
 - Migrated to AsyncClient for all database operations
@@ -234,9 +239,12 @@ class StripeWebhookService:
         session_id: str
     ) -> Dict[str, Any]:
         """
-        Process credits purchase.
+        Process credits purchase using atomic RPC.
 
-        v2.4.0: W-P0-3 fix - Payment record FIRST (audit trail before benefit)
+        v2.1.0: Phase 5 Part C - True Atomicity
+        - Uses process_credit_purchase RPC for atomic operation
+        - Payment record + credits addition in single transaction
+        - Eliminates half-failure state
 
         Args:
             uid: User ID
@@ -248,51 +256,67 @@ class StripeWebhookService:
         Returns:
             Dict with status and action details
         """
-        # Step 1: Log payment FIRST (audit trail)
+        # ============================================
+        # ATOMIC OPERATION: Payment + Credits + Transaction
+        # All three operations in a single database transaction
+        # ============================================
         try:
-            await self.payment_repo.create(
-                uid, amount_total, currency, "credits_purchase",
-                metadata={
-                    "description": f"Purchase {credits_amount} Credits - ${amount_total/100:.2f}",
-                    "session_id": session_id
-                }
-            )
-        except Exception as e:
-            logger.error(f"[Webhook] Failed to record payment for user {uid}: {e}")
-            return {"status": "error", "error": "payment_record_failed", "session_id": session_id}
+            result = await self.db_client.rpc("process_credit_purchase", {
+                "p_user_id": uid,
+                "p_credits_amount": credits_amount,
+                "p_payment_amount": amount_total,
+                "p_currency": currency,
+                "p_session_id": session_id,
+                "p_idempotency_key": f"credit_purchase_{session_id}",
+            }).execute()
 
-        # Step 2: Add credits (only after payment is recorded)
-        try:
-            await self.credit_repo.add_credits_permanent(
-                uid,
-                credits_amount,
-                f"Purchase {credits_amount} Credits",
-                "topup_purchase"
-            )
-        except Exception as e:
-            logger.error(f"[Webhook] CRITICAL: Payment recorded but credits failed for user {uid}: {e}")
-            return {
-                "status": "partial_error",
-                "error": "credits_add_failed",
-                "session_id": session_id,
-                "user_id": uid
-            }
+            # Validate RPC response
+            if not result.data:
+                logger.error(f"[Webhook] RPC process_credit_purchase returned no data for user {uid}")
+                return {"status": "error", "error": "rpc_no_data", "session_id": session_id}
 
-        # Step 3: Log activity (non-critical)
+            # Handle list response (PostgreSQL returns array)
+            data = result.data[0] if isinstance(result.data, list) else result.data
+
+            if not data.get("success"):
+                error_msg = data.get("error_message", "Unknown error")
+                logger.error(f"[Webhook] RPC process_credit_purchase failed for user {uid}: {error_msg}")
+                return {"status": "error", "error": error_msg, "session_id": session_id}
+
+            payment_id = data.get("payment_id")
+            balance_permanent = data.get("balance_permanent", 0)
+
+            logger.info(
+                f"[Webhook] Credits purchase completed atomically: "
+                f"user={uid[:8]}..., credits={credits_amount}, "
+                f"payment_id={payment_id}, new_balance={balance_permanent}"
+            )
+
+        except Exception as e:
+            logger.error(f"[Webhook] Atomic credit purchase failed for user {uid}: {e}")
+            return {"status": "error", "error": "atomic_operation_failed", "session_id": session_id}
+
+        # ============================================
+        # NON-CRITICAL: Analytics & Logging (best-effort)
+        # These can fail without affecting the core transaction
+        # ============================================
+
+        # Log activity (non-critical)
         try:
-            self.db_client.table("activity_logs").insert({
+            await self.db_client.table("activity_logs").insert({
                 "user_id": uid,
                 "action": "credits_purchase",
                 "metadata": {
                     "amount": credits_amount,
                     "payment": amount_total,
-                    "session_id": session_id
+                    "session_id": session_id,
+                    "payment_id": str(payment_id) if payment_id else None,
                 },
             }).execute()
         except Exception as e:
             logger.warning(f"Failed to log activity: {e}")
 
-        # Step 4: Track analytics (non-critical)
+        # Track analytics (non-critical)
         try:
             track_payment(
                 uid,
@@ -304,7 +328,7 @@ class StripeWebhookService:
         except Exception as e:
             logger.warning(f"Failed to track analytics: {e}")
 
-        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        # Log webhook operation to audit trail (non-critical)
         try:
             from infrastructure.logging.activity_logger import log_webhook_operation
             await log_webhook_operation(
@@ -317,6 +341,7 @@ class StripeWebhookService:
                     "credits_amount": credits_amount,
                     "amount_paid": amount_total,
                     "currency": currency,
+                    "payment_id": str(payment_id) if payment_id else None,
                 },
             )
         except Exception as e:
