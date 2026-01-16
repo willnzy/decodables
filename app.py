@@ -475,15 +475,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # 3. Routes
 # ==========================================
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "version": "3.28",
-        "api_version": "v2",
-        "migration_status": "complete",
-        "async_client": "enabled"
-    }
+# v3.26: Removed duplicate /health endpoint
+# The main health check is now in api/health.py with:
+# - Rate limiting (60/minute)
+# - Async database connection check with timeout
+# - Redis connection check
+# - Proper status reporting (healthy/degraded/unhealthy)
 
 # --- Webhooks (v3.24: moved to routers/webhooks.py) ---
 

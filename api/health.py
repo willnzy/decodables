@@ -3,9 +3,13 @@ Health Check Router - Railway deployment monitoring
 健康检查路由 - 用于 Railway 部署监控
 
 @module api.health
-@version 3.25
+@version 3.26 (Container DI Migration)
 
 Changes:
+- v3.26: Container DI Migration
+  - Fixed async/sync mismatch in check_supabase_connection()
+  - Added timeout protection for health checks
+  - Properly awaits database connection check
 - v3.25: Security improvements
   - HEALTH-MEDIUM-1: Added rate limiting to both endpoints
   - HEALTH-LOW-1: Limited error exposure in helper functions
@@ -16,6 +20,7 @@ Endpoints:
 - GET /health/detailed - Detailed health with queue status (admin only)
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -31,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
+# Health check timeout (seconds)
+HEALTH_CHECK_TIMEOUT = 5.0
+
 
 # ==========================================
 # Health Check Endpoints
@@ -42,6 +50,8 @@ async def health_check(request: Request):
     """
     Basic health check for Railway monitoring.
 
+    v3.26: Fixed async/sync mismatch, added timeout protection.
+
     Returns:
         - status: healthy/degraded/unhealthy
         - version: API version
@@ -49,7 +59,16 @@ async def health_check(request: Request):
         - services: Status of dependencies
     """
     redis_ok = is_redis_available()
-    supabase_ok = check_supabase_connection()
+
+    # v3.26: Properly await async database check with timeout
+    try:
+        supabase_ok = await asyncio.wait_for(
+            check_supabase_connection_async(),
+            timeout=HEALTH_CHECK_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[Health] Supabase connection check timed out")
+        supabase_ok = False
 
     # Overall status
     if redis_ok and supabase_ok:
@@ -78,6 +97,8 @@ async def detailed_health_check(request: Request, admin: dict = Depends(require_
 
     **Requires admin authentication** (v3.25: HEALTH-LOW-2)
 
+    v3.26: Fixed async/sync mismatch, added timeout protection.
+
     Provides:
     - Redis connection info
     - Queue lengths (high/default/low)
@@ -85,7 +106,16 @@ async def detailed_health_check(request: Request, admin: dict = Depends(require_
     - Supabase status
     """
     redis_ok = is_redis_available()
-    supabase_ok = check_supabase_connection()
+
+    # v3.26: Properly await async database check with timeout
+    try:
+        supabase_ok = await asyncio.wait_for(
+            check_supabase_connection_async(),
+            timeout=HEALTH_CHECK_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[Health] Supabase connection check timed out")
+        supabase_ok = False
 
     # Get Redis detailed info
     redis_info = get_redis_info()
@@ -121,12 +151,24 @@ async def detailed_health_check(request: Request, admin: dict = Depends(require_
 # Helper Functions
 # ==========================================
 
-async def check_supabase_connection() -> bool:
-    """Check if Supabase is accessible."""
+async def check_supabase_connection_async() -> bool:
+    """
+    Check if Supabase is accessible (async).
+
+    v3.26: Renamed to _async suffix, properly awaits AsyncClient operations.
+
+    WHY async?
+    - get_async_db_client() returns AsyncClient
+    - Database operations should not block the event loop
+    - Enables timeout protection via asyncio.wait_for()
+    """
     try:
         supabase = await get_async_db_client()
-        # Try a simple query
-        result = supabase.table("profiles").select("id").limit(1).execute()
+        if supabase is None:
+            logger.warning("[Health] Database client not configured")
+            return False
+        # Try a simple query - uses AsyncClient
+        result = await supabase.table("profiles").select("id").limit(1).execute()
         return True
     except Exception as e:
         # v3.25: HEALTH-LOW-1 - Limited error exposure
