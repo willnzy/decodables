@@ -660,156 +660,40 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ---
 
-## 附录 B: Tier 命名规范
+## 附录 B: 业务规则参考
 
-### 系统代码 vs 显示名称
+> 📍 **Tier 命名系统和积分系统的完整文档已迁移到专用文档，避免重复维护**
 
-Make Decodables 使用**四层 Tier 命名系统**:
+### Tier 命名规范
 
-| 系统代码 (tier) | 固定简称 | 显示名称 (可配置) | 月度积分 | 价格 |
-|-----------------|----------|------------------|----------|------|
-| `t1` | First Tier | Free Plan | 0 | $0 |
-| `t2` | Second Tier | Starter Plan | 100 | ~~$9.9~~ $6.9/月 |
-| `t3` | Third Tier | Pro Plan | 200 | ~~$15.9~~ $9.9/月 |
-| `t4` | Fourth Tier | Enterprise Plan | 500 | 待定 |
+详见: [backend-business-logic.md](backend-business-logic.md) 第 5 章
 
-> ⚠️ **t4 (Enterprise)** 目前预留，尚未启用。详见 [TIER-PERMISSIONS.md](../shared/TIER-PERMISSIONS.md)
+**快速参考**:
+| 系统代码 | 显示名称 | 月度积分 |
+|----------|----------|----------|
+| `t1` | Free Plan | 0 |
+| `t2` | Starter Plan | 100 |
+| `t3` | Pro Plan | 200 |
+| `t4` | Enterprise (预留) | 500 |
 
-**设计原则**:
-- **系统代码** (`t1`/`t2`/`t3`/`t4`) - 数据库字段、代码逻辑使用，**永不改变**
-- **固定简称** (First/Second/Third/Fourth Tier) - 描述性名称，文档使用
-- **显示名称** (Free/Starter/Pro/Enterprise Plan) - 用户看到的名称，**可通过 Admin 配置修改**
+### 积分系统
 
-**为什么使用 t1/t2/t3/t4**:
-- ✅ **简洁**: 比 `free`/`starter`/`pro` 更短
-- ✅ **中立**: 不包含业务语义,方便未来调整名称
-- ✅ **可扩展**: 支持 t4、t5 等更高等级
-- ✅ **国际化**: 系统代码无需翻译,只需翻译显示名称
+详见: [backend-business-logic.md](backend-business-logic.md) 第 6 章
 
-**使用规范**:
+**快速参考**:
+- **扣费顺序**: 先月度积分 → 后永久积分
+- **注册赠送**: 100 永久积分
+- **AI 消耗**: 5 积分/图片
 
-```python
-# ✅ 正确: 使用系统代码
-if user.tier == "t2":
-    credits = TIER_MONTHLY_CREDITS["t2"]  # 100
+### 相关文档
 
-# ✅ 正确: 获取显示名称
-tier_name = await tier_service.get_tier_display_name(user.tier)
-# 返回: "Starter Plan" (可能被 Admin 修改为 "Growth Plan")
-
-# ✅ 正确: 检查功能权限 (v2.1.0+)
-can_use = await tier_service.can_use_feature(user.tier, FeatureKey.ZIP_EXPORT, is_trial_active)
-# 返回: True/False (权限可通过 Admin 配置修改)
-
-# ❌ 错误: 硬编码显示名称
-plan_name = "Starter Plan"  # 将来可能改名!
-
-# ❌ 错误: 硬编码权限判断
-if user.tier == "t3":  # 应使用 tier_service.can_use_feature()
-```
-
-**API 返回格式**:
-
-```json
-// GET /api/v2/user/profile/me
-{
-  "tier": "t2",                    // 系统代码
-  "tier_label": "Second Tier",     // 固定简称
-  "tier_name": "Starter Plan",     // 显示名称 (可配置)
-  "credits_monthly": 100,
-  "credits_permanent": 150
-}
-```
-
-**Admin API - 修改显示名称**:
-
-```bash
-# 将 t2 显示名称从 "Starter Plan" 改为 "Growth Plan"
-PUT /api/v2/admin/config
-{
-  "config_key": "tier.t2.display_name",
-  "config_value": "Growth Plan"
-}
-```
-
-**📍 实施状态**:
-- Tier 命名统一 (t1/t2/t3/t4) 已于 2026-01-10 完成实施 (Commit: c0906a2, 67文件/245处修改)
-- Tier 权限配置化已于 2026-01-12 完成实施 (Commit: b7844be)
-
-**📍 详细文档**:
-- [TIER-NAMING-SYSTEM.md](../shared/TIER-NAMING-SYSTEM.md) - Tier 命名系统
-- [TIER-PERMISSIONS.md](../shared/TIER-PERMISSIONS.md) - 会员权益汇总表 (功能权限配置)
+- [TIER-NAMING-SYSTEM.md](../shared/tier-naming-system.md) - Tier 命名系统详解
+- [tier-permissions.md](../shared/tier-permissions.md) - 会员权益汇总表
+- [backend-business-logic.md](backend-business-logic.md) - 完整业务规则
 
 ---
 
-## 附录 C: 积分系统
-
-### 积分类型
-
-| 类型 | 字段名 | 说明 | 获取方式 | 过期 |
-|------|--------|------|----------|------|
-| 月度积分 | `credits_monthly` | 订阅附赠,每月重置 | 订阅续费 | 每月 |
-| 永久积分 | `credits_permanent` | 永久有效,不过期 | 购买、赠送、奖励 | 永不 |
-
-### 月度积分配额
-
-| Tier | 月度积分 | 价格 |
-|------|----------|------|
-| t1 (Free) | 0 | $0 |
-| t2 (Starter) | 100 | ~~$9.9~~ $6.9/月 |
-| t3 (Pro) | 200 | ~~$15.9~~ $9.9/月 |
-| t4 (Enterprise) | 500 | 待定 |
-
-> ⚠️ t4 目前预留，尚未启用
-
-**特别说明**:
-- 注册赠送: 100 永久积分 (仅一次)
-- 月度积分: 每月 1 号重置,**不累积**
-- 积分总额: `credits_total = credits_monthly + credits_permanent`
-
-### 积分购买档位
-
-| 档位 | 积分 | 原价 | 现价 | 折扣 | Plan Type |
-|------|------|------|------|------|-----------|
-| 小包 | 100 | $2.99 | $2.99 | - | `credits_100` |
-| 中包 | 500 | $14.99 | $13.49 | 9折 | `credits_500` |
-| 大包 | 2000 | $60.00 | $48.00 | 8折 | `credits_2000` |
-
-### 积分消耗
-
-| 功能 | 基础消耗 | 附加消耗 | 说明 |
-|------|----------|----------|------|
-| AI 图片生成 | 5 积分/张 | +2 积分 (参考图) | 从配置读取 |
-| AI 文字生成 | 1 积分 | - | 故事生成 |
-| Smart Scan | 10 积分 | - | OCR 扫描 |
-
-### 积分扣费顺序
-
-```
-先扣月度积分 → 再扣永久积分
-credits_monthly → credits_permanent
-```
-
-**示例**:
-```
-用户余额: 月度 50, 永久 100
-消费 60 积分:
-  → 扣除月度 50
-  → 扣除永久 10
-最终余额: 月度 0, 永久 90
-```
-
-### 积分退款规则
-
-| 场景 | 退款规则 |
-|------|----------|
-| AI 生成失败 | 全额退款到原账户 |
-| 订阅退款 (Stripe) | 扣除已使用积分,退还剩余 |
-| 积分包退款 | 扣除已使用积分,退还剩余 |
-
----
-
-## 附录 D: 速率限制
+## 附录 C: 速率限制
 
 ### User API 限流
 
@@ -836,7 +720,7 @@ credits_monthly → credits_permanent
 
 ---
 
-## 附录 E: 端点文档补充说明
+## 附录 D: 端点文档补充说明
 
 ### 文档现状
 
@@ -876,9 +760,10 @@ credits_monthly → credits_permanent
 
 ---
 
-*文档版本: v3.29*
-*最后更新: 2026-01-12*
+*文档版本: v3.30*
+*最后更新: 2026-01-16*
 *更新内容:
+- v3.30: 精简附录 B/C，Tier 和积分系统详细内容移至 backend-business-logic.md
 - v3.29: Feature Flags v1.2 Tier 分层筛选支持 (allowed_tiers 字段, 规则级 tiers)
 - v3.28: Feature Flags v1.1 树状结构支持 (Admin 15 个端点, User 4 个端点)
 - v3.27: 重构 API 文档结构,分离 User/Admin API 详细文档
