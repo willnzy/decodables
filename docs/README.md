@@ -2,7 +2,7 @@
 
 > Make Decodables 后端文档导航
 
-**最后更新**: 2026-01-07
+**最后更新**: 2026-01-16
 
 ---
 
@@ -12,38 +12,47 @@
 
 | 文档 | 说明 | 大小 |
 |------|------|------|
-| [BACKEND_ARCHITECTURE_GUIDE.md](./BACKEND_ARCHITECTURE_GUIDE.md) | **DDD 架构设计指南** - 三层架构、依赖注入、分层职责 | 42KB |
-| [后台业务逻辑说明.md](./后台业务逻辑说明.md) | **业务规则和数据库设计** - 积分系统、用户等级、支付流程 | 55KB |
-| [DDD-Migration-Guide.md](./DDD-Migration-Guide.md) | **DDD 迁移指南** - 如何将旧代码迁移到新架构 | 17KB |
+| [main/backend-architecture.md](./main/backend-architecture.md) | **DDD 架构设计指南** - 三层架构、依赖注入、分层职责 | 82KB |
+| [main/backend-business-logic.md](./main/backend-business-logic.md) | **业务规则和数据库设计** - 积分系统、用户等级、支付流程 | 80KB |
+| [main/api-reference.md](./main/api-reference.md) | **API 参考** - API 设计规范和端点列表 | 28KB |
 
 ### 2. 开发规范 (团队协作)
 
 | 文档 | 说明 | 大小 |
 |------|------|------|
-| [BACKEND-DEVELOPMENT-SOP.md](./BACKEND-DEVELOPMENT-SOP.md) | **开发标准操作流程** - Phase 执行、Git 规范、Code Review | 22KB |
-| [API-HTTP-METHODS-GUIDELINES.md](./API-HTTP-METHODS-GUIDELINES.md) | **API 方法规范** - RESTful 设计、HTTP 动词使用 | 8KB |
+| [main/testing-guide.md](./main/testing-guide.md) | **测试指南** - 单元测试、集成测试、测试策略 | 34KB |
+| [main/deployment-scaling.md](./main/deployment-scaling.md) | **部署与扩展** - 部署流程、扩展策略 | 31KB |
+| [NAMING-CONVENTIONS.md](./NAMING-CONVENTIONS.md) | **命名规范** - 代码命名、文件命名规范 | 9KB |
 
-### 3. 测试和质量
+### 3. 数据库架构
 
 | 文档 | 说明 | 大小 |
 |------|------|------|
-| [TEST_COVERAGE_PLAN.md](./TEST_COVERAGE_PLAN.md) | **测试覆盖计划** - 单元测试、集成测试、测试策略 | 10KB |
-| [CI-TESTING-LIMITATIONS.md](./CI-TESTING-LIMITATIONS.md) | **CI 测试限制说明** - GitHub Actions 限制和解决方案 | 13KB |
+| [main/database-guide.md](./main/database-guide.md) | **数据库指南** - Schema 设计、RPC 函数 | 80KB |
 
 ---
 
 ## 🤝 前后端共享文档
 
-这些文档在前端和后端仓库都有一份副本，修改时需要同步。
+这些文档在前端和后端仓库都有一份副本，修改时需要同步。详见 [shared/README.md](./shared/README.md)
 
 | 文档 | 说明 |
 |------|------|
-| [shared/architecture-proposal.md](./shared/architecture-proposal.md) | 系统重构方案 v2 |
-| [shared/[wip]refactoring-plan.md](./shared/[wip]refactoring-plan.md) | 重构实施计划 |
+| [shared/system-refactoring-proposal-v2.md](./shared/system-refactoring-proposal-v2.md) | 系统重构方案 v2 |
+| [shared/project-implementation-plan.md](./shared/project-implementation-plan.md) | 项目实施计划 |
 | [shared/feature-flag-design.md](./shared/feature-flag-design.md) | Feature Flag 系统设计 |
 | [shared/asset-category-design.md](./shared/asset-category-design.md) | 素材分类系统设计 (10 类) |
-| [shared/[draft]onboarding-design.md](./shared/[draft]onboarding-design.md) | 新手引导系统设计 |
-| [shared/[draft]theme-system-design.md](./shared/[draft]theme-system-design.md) | 主题系统设计 |
+| [shared/onboarding-design.md](./shared/onboarding-design.md) | 新手引导系统设计 |
+| [shared/theme-system-design.md](./shared/theme-system-design.md) | 主题系统设计 |
+| [shared/tier-naming-system.md](./shared/tier-naming-system.md) | Tier 命名规范 |
+| [shared/user-id-system.md](./shared/user-id-system.md) | 用户 ID 系统 |
+| [shared/pricing-system-design.md](./shared/pricing-system-design.md) | 定价系统设计 |
+| [shared/canvas-data-schema.md](./shared/canvas-data-schema.md) | Canvas 数据结构 |
+| [shared/analytics-system-design.md](./shared/analytics-system-design.md) | Analytics 系统设计 |
+| [shared/articles-system-design.md](./shared/articles-system-design.md) | 文章系统设计 |
+| [shared/static-pages-cms-design.md](./shared/static-pages-cms-design.md) | 静态页面 CMS 设计 |
+| [shared/user-api-review.md](./shared/user-api-review.md) | User API 完整参考 (128 端点) |
+| [shared/admin-api-review.md](./shared/admin-api-review.md) | Admin API 完整参考 (171 端点) |
 
 ---
 
@@ -78,41 +87,41 @@
 ### 我是新成员，应该先读什么？
 
 1. **必读三件套** (按顺序):
-   - [后台业务逻辑说明.md](./后台业务逻辑说明.md) - 了解业务规则
-   - [BACKEND_ARCHITECTURE_GUIDE.md](./BACKEND_ARCHITECTURE_GUIDE.md) - 了解架构设计
-   - [BACKEND-DEVELOPMENT-SOP.md](./BACKEND-DEVELOPMENT-SOP.md) - 了解开发流程
+   - [main/backend-business-logic.md](./main/backend-business-logic.md) - 了解业务规则
+   - [main/backend-architecture.md](./main/backend-architecture.md) - 了解架构设计
+   - [main/testing-guide.md](./main/testing-guide.md) - 了解测试策略
 
 2. **开始开发前**:
-   - [DDD-Migration-Guide.md](./DDD-Migration-Guide.md) - 学习如何写新代码
-   - [API-HTTP-METHODS-GUIDELINES.md](./API-HTTP-METHODS-GUIDELINES.md) - API 设计规范
+   - [main/api-reference.md](./main/api-reference.md) - API 设计规范
+   - [NAMING-CONVENTIONS.md](./NAMING-CONVENTIONS.md) - 命名规范
 
 3. **写测试前**:
-   - [TEST_COVERAGE_PLAN.md](./TEST_COVERAGE_PLAN.md) - 测试策略和覆盖要求
+   - [main/testing-guide.md](./main/testing-guide.md) - 测试策略和覆盖要求
 
 ### 我要开发新功能，应该参考什么？
 
 1. **确定功能归属**:
-   - 查看 [BACKEND_ARCHITECTURE_GUIDE.md](./BACKEND_ARCHITECTURE_GUIDE.md) 确定属于哪个 Domain
+   - 查看 [main/backend-architecture.md](./main/backend-architecture.md) 确定属于哪个 Domain
 
 2. **参考设计文档**:
    - 如果涉及前端，查看 [shared/](./shared/) 中的设计文档
    - 如果是新的架构决策，考虑创建新的 ADR
 
 3. **遵循开发流程**:
-   - 按照 [BACKEND-DEVELOPMENT-SOP.md](./BACKEND-DEVELOPMENT-SOP.md) 的 Phase 流程执行
+   - 查看 [main/backend-architecture.md](./main/backend-architecture.md) 了解分层规则
 
 ### 我要修复 Bug，应该怎么做？
 
 1. **定位问题**:
-   - 查看 [后台业务逻辑说明.md](./后台业务逻辑说明.md) 确认业务规则
-   - 查看 [BACKEND_ARCHITECTURE_GUIDE.md](./BACKEND_ARCHITECTURE_GUIDE.md) 确认代码位置
+   - 查看 [main/backend-business-logic.md](./main/backend-business-logic.md) 确认业务规则
+   - 查看 [main/backend-architecture.md](./main/backend-architecture.md) 确认代码位置
 
 2. **修复和测试**:
-   - 按照 [TEST_COVERAGE_PLAN.md](./TEST_COVERAGE_PLAN.md) 编写测试
+   - 按照 [main/testing-guide.md](./main/testing-guide.md) 编写测试
    - 确保测试覆盖 Bug 场景
 
 3. **提交代码**:
-   - 遵循 [BACKEND-DEVELOPMENT-SOP.md](./BACKEND-DEVELOPMENT-SOP.md) 的 Git 规范
+   - 遵循 Git 规范，确保 commit message 清晰
 
 ---
 
@@ -120,11 +129,11 @@
 
 ### 何时更新文档？
 
-1. **业务规则变更** → 更新 `后台业务逻辑说明.md`
-2. **架构调整** → 更新 `BACKEND_ARCHITECTURE_GUIDE.md` 并考虑创建 ADR
-3. **开发流程优化** → 更新 `BACKEND-DEVELOPMENT-SOP.md`
-4. **API 规范变更** → 更新 `API-HTTP-METHODS-GUIDELINES.md`
-5. **测试策略变更** → 更新 `TEST_COVERAGE_PLAN.md`
+1. **业务规则变更** → 更新 `main/backend-business-logic.md`
+2. **架构调整** → 更新 `main/backend-architecture.md` 并考虑创建 ADR
+3. **API 变更** → 更新 `main/api-reference.md` 和 `shared/user-api-review.md` 或 `shared/admin-api-review.md`
+4. **数据库变更** → 更新 `main/database-guide.md`
+5. **测试策略变更** → 更新 `main/testing-guide.md`
 
 ### 如何管理临时文档？
 
@@ -179,8 +188,9 @@
 
 - **前端文档**: `decodables-fe/docs/`
 - **共享设计**: `docs/shared/` (两边同步)
-- **数据库 DDL**: `database/ddl.sql`
-- **数据库迁移**: `database/migrations/`
+- **数据库 Schema**: `migrations/v2/` (3 个主文件)
+- **Claude 指南**: 根目录 `.claude/guides/` (7 个专项指南)
+- **Claude Skills**: 根目录 `.claude/skills/` (4 个开发规范)
 
 ---
 
@@ -193,6 +203,6 @@
 
 ---
 
-**文档版本**: 1.0.0
-**最后更新**: 2026-01-07
+**文档版本**: 2.0.0
+**最后更新**: 2026-01-16
 **维护者**: 开发团队
