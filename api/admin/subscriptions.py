@@ -2,26 +2,29 @@
 Admin Subscriptions Router - Subscription management endpoints for admins
 
 @module api.admin.subscriptions
-@version 3.28
+@version 3.29 (Container-based DI)
 
-Changes:
-- v3.28: P1/P2 Architecture refactoring
-  - SUB-MEDIUM-1/2/3: Extracted business logic to SubscriptionService
-  - SUB-MEDIUM-5: Created SubscriptionRepository
-  - SUB-MEDIUM-6: Added Response Models (RefundResponse, etc.)
-  - SUB-MEDIUM-7: Split complex downgrade logic into smaller methods
-  - SUB-MEDIUM-8: Extracted common user_code validation to Service layer
-  - Endpoints now delegate to Service layer (DDD pattern)
-- v3.27: P0 Security fixes
-  - SUB-CRITICAL-1: Replaced direct stripe.Subscription.retrieve() with service wrapper
-  - SUB-CRITICAL-2: Replaced direct stripe.Subscription.modify() with service wrapper
-  - SUB-HIGH-1/2/3/5: Added timeout to all Stripe API calls
-  - SUB-HIGH-4: Removed unused get_supabase_client() call
-  - SUB-MEDIUM-4: Removed function-level stripe imports (already at module level)
-- v3.25: Security improvements
-  - SUB-MEDIUM-1: Added field length limits to request models
-  - SUB-MEDIUM-2: Added target_tier enum validation
-  - SUB-LOW-1: Limited Stripe error exposure
+Changes in v3.29:
+- SUB-ARCH-1: Migrated to Container-based dependency injection
+- SUB-ARCH-2: Removed direct repository imports from API layer
+- Architecture: API → Container → Service → Repository (Strict DIP)
+
+Changes in v3.28:
+- SUB-MEDIUM-1/2/3: Extracted business logic to SubscriptionService
+- SUB-MEDIUM-5: Created SubscriptionRepository
+- SUB-MEDIUM-6: Added Response Models (RefundResponse, etc.)
+- SUB-MEDIUM-7: Split complex downgrade logic into smaller methods
+- SUB-MEDIUM-8: Extracted common user_code validation to Service layer
+
+Changes in v3.27:
+- SUB-CRITICAL-1: Replaced direct stripe.Subscription.retrieve() with service wrapper
+- SUB-CRITICAL-2: Replaced direct stripe.Subscription.modify() with service wrapper
+- SUB-HIGH-1/2/3/5: Added timeout to all Stripe API calls
+
+Changes in v3.25:
+- SUB-MEDIUM-1: Added field length limits to request models
+- SUB-MEDIUM-2: Added target_tier enum validation
+- SUB-LOW-1: Limited Stripe error exposure
 
 Endpoints:
 - POST /api/admin/refund - Process refund
@@ -29,24 +32,18 @@ Endpoints:
 - POST /api/admin/subscription/downgrade - Downgrade subscription
 """
 
-import os
 import logging
 from typing import Optional
-
-import stripe  # v3.27: Moved to module level (SUB-MEDIUM-4)
 
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from core.database import get_async_db_client
-from infrastructure.repositories import (
-    SupabaseAdminUsersRepository,
-    SupabasePaymentRepository,
-    SupabaseUserRepository,
-)
-from domains.subscriptions import SubscriptionService  # v3.28: Service layer
 from infrastructure.rate_limiter import limiter
 from dependencies import require_admin
+
+# v3.29: Container-based DI
+# WHY: API layer should not know about concrete repository implementations
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -54,59 +51,58 @@ router = APIRouter(prefix="/subscriptions", tags=["admin-subscriptions-v2"])
 
 
 # ==========================================
-# Constants (v3.25)
+# Dependency Injection (v3.29: Container-based)
 # ==========================================
 
-# v3.25: SUB-MEDIUM-2 - Valid target tiers for downgrade
+async def get_subscription_service():
+    """
+    Get SubscriptionService from Container.
+
+    WHY Container-based DI?
+    1. Decouples API layer from infrastructure implementations
+    2. Enables easy testing with mock services
+    3. Centralizes dependency management
+    4. Supports future provider switches
+    """
+    container = get_container()
+    return await container.get_subscription_service()
+
+
+# ==========================================
+# Constants
+# ==========================================
+
 VALID_TARGET_TIERS = {"t1", "t2"}
 
-# ==========================================
-# DEPRECATED: Use TierService.get_monthly_credits() instead
-# ==========================================
-# These values are emergency fallback only.
-# ⚠️ DEPRECATED - EMERGENCY FALLBACK ONLY
-# All values should be read from database via TierService.
-# Authoritative source: database system_configs table
-# ==========================================
-TIER_MONTHLY_CREDITS = {
-    "t1": 0,      # FALLBACK: use tier_service.get_monthly_credits("t1")
-    "t2": 100,    # FALLBACK: use tier_service.get_monthly_credits("t2")
-    "t3": 200,  # database: tier.t3.monthly_credits
-}
-
 
 # ==========================================
-# Request Models (v3.25: Added field validation)
+# Request Models
 # ==========================================
 
 class AdminRefundRequest(BaseModel):
-    # v3.25: SUB-MEDIUM-1 - Field length limits
     user_id: str = Field(..., min_length=1, max_length=100)
-    user_code: str = Field(..., min_length=1, max_length=50)  # Must match for verification
+    user_code: str = Field(..., min_length=1, max_length=50)
     payment_intent_id: str = Field(..., min_length=1, max_length=100)
-    amount_cents: Optional[int] = Field(None, ge=1, le=100000000)  # None = full refund, max $1M
+    amount_cents: Optional[int] = Field(None, ge=1, le=100000000)
     reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class AdminCancelSubscriptionRequest(BaseModel):
-    # v3.25: SUB-MEDIUM-1 - Field length limits
     user_id: str = Field(..., min_length=1, max_length=100)
-    user_code: str = Field(..., min_length=1, max_length=50)  # Must match for verification
+    user_code: str = Field(..., min_length=1, max_length=50)
     subscription_id: str = Field(..., min_length=1, max_length=100)
-    immediate: bool = False  # True = cancel now, False = cancel at period end
+    immediate: bool = False
     reason: str = Field(..., min_length=1, max_length=1000)
 
 
 class AdminDowngradeRequest(BaseModel):
-    # v3.25: SUB-MEDIUM-1 - Field length limits
     user_id: str = Field(..., min_length=1, max_length=100)
-    user_code: str = Field(..., min_length=1, max_length=50)  # For verification
-    user_email: str = Field(..., min_length=1, max_length=255)  # For verification
-    target_tier: str = Field(..., max_length=20)  # 't2' | 't1'
-    immediate: bool = False  # True = immediate, False = apply at period end
+    user_code: str = Field(..., min_length=1, max_length=50)
+    user_email: str = Field(..., min_length=1, max_length=255)
+    target_tier: str = Field(..., max_length=20)
+    immediate: bool = False
     reason: str = Field(..., min_length=1, max_length=1000)
 
-    # v3.25: SUB-MEDIUM-2 - target_tier enum validation
     @field_validator("target_tier")
     @classmethod
     def validate_target_tier(cls, v: str) -> str:
@@ -117,31 +113,31 @@ class AdminDowngradeRequest(BaseModel):
 
 
 # ==========================================
-# Response Models (v3.28: SUB-MEDIUM-6)
+# Response Models
 # ==========================================
 
 class RefundResponse(BaseModel):
     """Response model for refund operation."""
     status: str = "refunded"
     refund_id: str
-    amount: int  # Amount in cents
+    amount: int
     currency: str
 
 
 class CancelSubscriptionResponse(BaseModel):
     """Response model for subscription cancellation."""
-    status: str  # "canceled" or "cancel_scheduled"
+    status: str
     subscription_id: str
     cancel_at_period_end: bool
-    current_period_end: int  # Unix timestamp
+    current_period_end: int
 
 
 class DowngradeSubscriptionResponse(BaseModel):
     """Response model for subscription downgrade."""
-    status: str  # "downgraded" or "downgrade_scheduled"
+    status: str
     from_tier: str
     to_tier: str
-    subscription_id: Optional[str] = None  # None if downgrading to free without subscription
+    subscription_id: Optional[str] = None
 
 
 # ==========================================
@@ -153,20 +149,14 @@ class DowngradeSubscriptionResponse(BaseModel):
 async def adm_refund(
     request: Request,
     req: AdminRefundRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service = Depends(get_subscription_service),
 ) -> RefundResponse:
     """
     Admin refund operation (full or partial) with safety checks.
 
-    v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-1).
+    v3.29: Refactored to use Container-based SubscriptionService.
     """
-    db = await get_async_db_client()
-    users_repo = SupabaseUserRepository(db)
-    payment_repo = SupabasePaymentRepository(db)
-    admin_repo = SupabaseAdminUsersRepository(db)
-
-    service = SubscriptionService(users_repo, payment_repo, admin_repo)
-
     result = await service.process_refund(
         user_id=req.user_id,
         user_code=req.user_code,
@@ -175,7 +165,6 @@ async def adm_refund(
         reason=req.reason,
         admin_id=admin["id"]
     )
-
     return RefundResponse(**result)
 
 
@@ -184,20 +173,14 @@ async def adm_refund(
 async def adm_cancel_subscription(
     request: Request,
     req: AdminCancelSubscriptionRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service = Depends(get_subscription_service),
 ) -> CancelSubscriptionResponse:
     """
     Admin-initiated subscription cancellation.
 
-    v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-2).
+    v3.29: Refactored to use Container-based SubscriptionService.
     """
-    db = await get_async_db_client()
-    users_repo = SupabaseUserRepository(db)
-    payment_repo = SupabasePaymentRepository(db)
-    admin_repo = SupabaseAdminUsersRepository(db)
-
-    service = SubscriptionService(users_repo, payment_repo, admin_repo)
-
     result = await service.cancel_user_subscription(
         user_id=req.user_id,
         user_code=req.user_code,
@@ -206,7 +189,6 @@ async def adm_cancel_subscription(
         reason=req.reason,
         admin_id=admin["id"]
     )
-
     return CancelSubscriptionResponse(**result)
 
 
@@ -215,20 +197,14 @@ async def adm_cancel_subscription(
 async def adm_downgrade_subscription(
     request: Request,
     req: AdminDowngradeRequest,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service = Depends(get_subscription_service),
 ) -> DowngradeSubscriptionResponse:
     """
     Admin-assisted subscription downgrade.
 
-    v3.28: Refactored to use SubscriptionService (SUB-MEDIUM-3/7).
+    v3.29: Refactored to use Container-based SubscriptionService.
     """
-    db = await get_async_db_client()
-    users_repo = SupabaseUserRepository(db)
-    payment_repo = SupabasePaymentRepository(db)
-    admin_repo = SupabaseAdminUsersRepository(db)
-
-    service = SubscriptionService(users_repo, payment_repo, admin_repo)
-
     result = await service.downgrade_user_subscription(
         user_id=req.user_id,
         user_code=req.user_code,
@@ -238,5 +214,4 @@ async def adm_downgrade_subscription(
         reason=req.reason,
         admin_id=admin["id"]
     )
-
     return DowngradeSubscriptionResponse(**result)

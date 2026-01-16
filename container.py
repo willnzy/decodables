@@ -396,6 +396,76 @@ class Container:
             self._services['templates'] = TemplatesService(repository)
         return self._services['templates']
 
+    async def get_subscription_service(self):
+        """
+        Get subscription service instance (v3.28, async).
+
+        WHY separate from BillingService?
+        - SubscriptionService handles Stripe subscription lifecycle (cancel, downgrade, refund)
+        - BillingService handles credits and internal transactions
+        - Different external dependencies (Stripe vs internal DB)
+        """
+        from domains.subscriptions import SubscriptionService
+        from infrastructure.repositories import (
+            SupabaseUserRepository,
+            SupabasePaymentRepository,
+            SupabaseAdminUsersRepository,
+        )
+
+        if 'subscription' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            users_repo = SupabaseUserRepository(db)
+            payment_repo = SupabasePaymentRepository(db)
+            admin_repo = SupabaseAdminUsersRepository(db)
+
+            self._services['subscription'] = SubscriptionService(
+                users_repo=users_repo,
+                payment_repo=payment_repo,
+                admin_repo=admin_repo,
+            )
+        return self._services['subscription']
+
+    async def get_admin_users_service(self):
+        """
+        Get admin users service instance (v3.28, async).
+
+        WHY AdminUsersService?
+        - Encapsulates admin-specific user operations (audit, credit adjust, tier change)
+        - Separates admin operations from regular user operations (IdentityService)
+        - Provides audit logging for all admin actions
+        """
+        from domains.admin.admin_users_service import AdminUsersService
+        from infrastructure.repositories import (
+            SupabaseUserRepository,
+            SupabaseAdminUsersRepository,
+            SupabaseProjectRepository,
+            SupabaseAssetRepository,
+            SupabaseAnalyticsRepository,
+        )
+
+        if 'admin_users' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            user_repo = SupabaseUserRepository(db)
+            admin_repo = SupabaseAdminUsersRepository(db)
+            project_repo = SupabaseProjectRepository(db)
+            asset_repo = SupabaseAssetRepository(db)
+            analytics_repo = SupabaseAnalyticsRepository(db)
+
+            self._services['admin_users'] = AdminUsersService(
+                user_repo=user_repo,
+                admin_repo=admin_repo,
+                project_repo=project_repo,
+                asset_repo=asset_repo,
+                analytics_repo=analytics_repo,
+            )
+        return self._services['admin_users']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService
