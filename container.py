@@ -466,6 +466,142 @@ class Container:
             )
         return self._services['admin_users']
 
+    async def get_admin_logs_service(self):
+        """
+        Get admin logs service instance (v3.29, async).
+
+        WHY AdminLogsService?
+        - Encapsulates admin-specific log query operations
+        - Separates log reads (AdminLogsService) from log writes (LoggingService)
+        - Combines ErrorLogs + OperationLogs under unified interface
+        """
+        from domains.admin.admin_logs_service import AdminLogsService
+        from infrastructure.repositories import (
+            SupabaseAdminUsersRepository,
+            SupabaseErrorLogsRepository,
+        )
+
+        if 'admin_logs' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            error_logs_repo = SupabaseErrorLogsRepository(db)
+            admin_repo = SupabaseAdminUsersRepository(db)
+
+            self._services['admin_logs'] = AdminLogsService(
+                error_logs_repo=error_logs_repo,
+                admin_repo=admin_repo,
+            )
+        return self._services['admin_logs']
+
+    async def get_admin_metrics_service(self):
+        """
+        Get admin metrics service instance (v3.29, async).
+
+        WHY AdminMetricsService?
+        - Encapsulates metrics calculation and aggregation logic
+        - Decouples API layer from repository implementations
+        - Provides unified interface for all metrics operations
+        """
+        from domains.admin.admin_metrics_service import AdminMetricsService
+        from infrastructure.repositories import SupabaseMetricsRepository
+
+        if 'admin_metrics' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            metrics_repo = SupabaseMetricsRepository(db)
+
+            self._services['admin_metrics'] = AdminMetricsService(
+                metrics_repo=metrics_repo,
+            )
+        return self._services['admin_metrics']
+
+    async def get_admin_tasks_service(self):
+        """
+        Get admin tasks service instance (v3.29, async).
+
+        WHY AdminTasksService?
+        - Encapsulates task management operations (status, logs, health, run)
+        - Decouples API layer from repository and scheduler
+        - Provides unified interface for task monitoring
+        """
+        from domains.admin.admin_tasks_service import AdminTasksService
+        from infrastructure.repositories import SupabaseTasksRepository
+
+        if 'admin_tasks' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            tasks_repo = SupabaseTasksRepository(db)
+
+            self._services['admin_tasks'] = AdminTasksService(
+                tasks_repo=tasks_repo,
+            )
+        return self._services['admin_tasks']
+
+    async def get_webhook_retry_service(self):
+        """
+        Get webhook retry service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes complex service construction (requires 4 repositories + 2 services)
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from domains.webhooks import ClerkWebhookService, StripeWebhookService
+        from domains.webhooks.webhook_retry_service import WebhookRetryService
+        from infrastructure.repositories import (
+            SupabaseWebhookRepository,
+            SupabaseUserRepository,
+            SupabaseCreditRepository,
+            SupabasePaymentRepository,
+        )
+
+        if 'webhook_retry' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            # Repositories
+            webhook_repo = SupabaseWebhookRepository(db)
+            user_repo = SupabaseUserRepository(db)
+            credit_repo = SupabaseCreditRepository(db)
+            payment_repo = SupabasePaymentRepository(db)
+
+            # Webhook Services
+            clerk_service = ClerkWebhookService(user_repo, credit_repo)
+            stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
+
+            self._services['webhook_retry'] = WebhookRetryService(
+                webhook_repo, clerk_service, stripe_service
+            )
+        return self._services['webhook_retry']
+
+    async def get_events_service(self):
+        """
+        Get events service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from application.services.events_service import EventsService
+        from infrastructure.repositories.events_repository import SupabaseEventsRepository
+
+        if 'events' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseEventsRepository(db)
+            self._services['events'] = EventsService(repository)
+        return self._services['events']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService

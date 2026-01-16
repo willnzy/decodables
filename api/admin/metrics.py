@@ -2,27 +2,22 @@
 Admin Metrics API - System metrics and analytics.
 
 @module api.admin.metrics
-@version 3.28
+@version 3.29 (Container-based DI)
 
-Changes:
-- v3.28: P0/P1/P2 Architecture refactoring
-  - MET-CRITICAL-1: Extracted all database access to MetricsRepository
-  - MET-HIGH-1: Added query limits to prevent OOM (daily, errors)
-  - MET-HIGH-2: Added Pydantic Response Models
-  - MET-HIGH-3: Optimized Funnel queries (6 queries → time-filtered queries)
-  - MET-HIGH-4: Fixed Funnel period parameter usage (now applies time filter)
-  - MET-HIGH-5: Fixed refresh metric_type validation (all/hourly/daily)
-  - MET-MEDIUM-1: Added @retry_on_network_error via Repository layer
-  - All endpoints now use DDD pattern (API → Repository → Database)
-- v3.25: Security improvements
-  - MET-MEDIUM-1: Added rate limiting to all endpoints
-  - MET-MEDIUM-2: Added date format validation
-  - MET-MEDIUM-3: Added months range validation (1-24)
-  - MET-MEDIUM-4: Added period enum validation
-  - MET-MEDIUM-5: Added hours range validation (1-168)
-  - MET-MEDIUM-6: Added days range validation (1-365)
-  - MET-MEDIUM-7: Added metric_type enum validation
-  - MET-LOW-1: Limited error message exposure
+Changes in v3.29:
+- MET-ARCH-1: Migrated to Container-based dependency injection
+- MET-ARCH-2: Created AdminMetricsService for business logic
+- MET-ARCH-3: Removed direct repository imports from API layer
+- Architecture: API → Container → Service → Repository (Strict DIP)
+
+Changes in v3.28:
+- MET-CRITICAL-1: Extracted all database access to MetricsRepository
+- MET-HIGH-1: Added query limits to prevent OOM (daily, errors)
+- MET-HIGH-2: Added Pydantic Response Models
+- MET-HIGH-3: Optimized Funnel queries (6 queries → time-filtered queries)
+- MET-HIGH-4: Fixed Funnel period parameter usage (now applies time filter)
+- MET-HIGH-5: Fixed refresh metric_type validation (all/hourly/daily)
+- MET-MEDIUM-1: Added @retry_on_network_error via Repository layer
 
 Endpoints:
 - GET /metrics/daily - Daily metrics
@@ -37,14 +32,16 @@ Endpoints:
 import logging
 import re
 from typing import Optional
-from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 
 from dependencies import require_admin
-from core.database import get_async_db_client
-from infrastructure.repositories import SupabaseMetricsRepository
 from infrastructure.rate_limiter import limiter
+
+# v3.29: Container-based DI
+# WHY: API layer should not know about concrete repository implementations
+from container import get_container
+
 from api.admin.metrics_models import (
     DailyMetricsResponse,
     DailyMetricItem,
@@ -66,30 +63,39 @@ router = APIRouter(prefix="/metrics", tags=["admin-metrics-v2"])
 
 
 # ==========================================
-# Constants (v3.28: Updated for v3.28 fixes)
+# Dependency Injection (v3.29: Container-based)
 # ==========================================
 
-# v3.25: MET-MEDIUM-2 - Date format pattern
+async def get_admin_metrics_service():
+    """
+    Get AdminMetricsService from Container.
+
+    WHY Container-based DI?
+    1. Decouples API layer from infrastructure implementations
+    2. Enables easy testing with mock services
+    3. Centralizes dependency management
+    4. Supports future provider switches
+    """
+    container = get_container()
+    return await container.get_admin_metrics_service()
+
+
+# ==========================================
+# Constants
+# ==========================================
+
+# Date format pattern
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?")
 
-# v3.25: MET-MEDIUM-4 - Valid period values
+# Valid period values
 VALID_PERIODS = {"7d", "14d", "30d", "60d", "90d"}
 
-# v3.28: MET-HIGH-5 - Fixed metric types to match scheduler.py
+# Valid metric types for refresh
 VALID_METRIC_TYPES = {"all", "hourly", "daily"}
-
-# v3.28: MET-HIGH-4 - Period to days mapping
-PERIOD_TO_DAYS = {
-    "7d": 7,
-    "14d": 14,
-    "30d": 30,
-    "60d": 60,
-    "90d": 90,
-}
 
 
 # ==========================================
-# Validation Functions (v3.25)
+# Validation Functions
 # ==========================================
 
 def validate_date_format(date_str: Optional[str], field_name: str) -> None:
@@ -99,7 +105,7 @@ def validate_date_format(date_str: Optional[str], field_name: str) -> None:
 
 
 # ==========================================
-# Metrics Routes (v3.28: DDD refactored)
+# Metrics Routes
 # ==========================================
 
 @router.get("/daily", response_model=DailyMetricsResponse)
@@ -108,57 +114,51 @@ async def get_daily_metrics(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> DailyMetricsResponse:
     """
     Get daily metrics for dashboard.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
-    v3.28: Added query limit via Repository (MET-HIGH-1).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    # v3.25: MET-MEDIUM-2 - Validate date formats
+    # Validate date formats
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
-    if not start_date:
-        start_date = (date.today() - timedelta(days=30)).isoformat()
-    if not end_date:
-        end_date = date.today().isoformat()
-
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        metrics_data = await metrics_repo.get_daily_metrics(start_date, end_date)
-        metrics = [DailyMetricItem(**item) for item in metrics_data]
-        return DailyMetricsResponse(metrics=metrics, start_date=start_date, end_date=end_date)
+        result = await service.get_daily_metrics(start_date, end_date)
+        metrics = [DailyMetricItem(**item) for item in result["metrics"]]
+        return DailyMetricsResponse(
+            metrics=metrics,
+            start_date=result["start_date"],
+            end_date=result["end_date"]
+        )
     except Exception as e:
-        # v3.25: MET-LOW-1 - Limit error exposure
         logger.error(f"[Admin] Error fetching daily metrics: {e}")
-        return DailyMetricsResponse(metrics=[], start_date=start_date, end_date=end_date)
+        return DailyMetricsResponse(
+            metrics=[],
+            start_date=start_date or "",
+            end_date=end_date or ""
+        )
 
 
 @router.get("/monthly", response_model=MonthlyMetricsResponse)
 @limiter.limit("30/minute")
 async def get_monthly_metrics(
     request: Request,
-    # v3.25: MET-MEDIUM-3 - Added months range validation
     months: int = Query(6, ge=1, le=24, description="Number of months (1-24)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> MonthlyMetricsResponse:
     """
     Get monthly aggregated metrics.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        metrics_data = await metrics_repo.get_monthly_metrics(months)
-        metrics = [MonthlyMetricItem(**item) for item in metrics_data]
+        result = await service.get_monthly_metrics(months)
+        metrics = [MonthlyMetricItem(**item) for item in result["metrics"]]
         return MonthlyMetricsResponse(metrics=metrics, months=months)
     except Exception as e:
         logger.error(f"[Admin] Error fetching monthly metrics: {e}")
@@ -169,19 +169,16 @@ async def get_monthly_metrics(
 @limiter.limit("30/minute")
 async def get_retention_metrics(
     request: Request,
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> RetentionMetricsResponse:
     """
     Get user retention metrics.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        data = await metrics_repo.get_retention_metrics()
+        data = await service.get_retention_metrics()
         if data:
             return RetentionMetricsResponse(**data)
         return RetentionMetricsResponse()
@@ -194,60 +191,25 @@ async def get_retention_metrics(
 @limiter.limit("30/minute")
 async def get_funnel_metrics(
     request: Request,
-    # v3.25: MET-MEDIUM-4 - Added period enum validation
     period: str = Query("30d", max_length=10),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> FunnelMetricsResponse:
     """
     Get conversion funnel metrics.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
-    v3.28: Fixed period parameter usage - now applies time filter (MET-HIGH-4).
-    v3.28: Optimized queries with time range filter (MET-HIGH-3).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    # v3.25: MET-MEDIUM-4 - Validate period
+    # Validate period
     if period not in VALID_PERIODS:
         raise HTTPException(400, f"Invalid period. Must be one of: {', '.join(VALID_PERIODS)}")
 
-    # v3.28: MET-HIGH-4 - Calculate time range based on period
-    days = PERIOD_TO_DAYS.get(period, 30)
-    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-
-    # Define funnel steps
-    event_types = [
-        "page_view",
-        "user_created",
-        "project_create",
-        "ai_generate",
-        "download_pdf",
-        "payment_success",
-    ]
-
-    step_names = [
-        "visitors",
-        "signups",
-        "first_project",
-        "first_generation",
-        "first_export",
-        "payment",
-    ]
-
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        # v3.28: Get counts with time range filter
-        counts = await metrics_repo.get_funnel_counts(event_types, cutoff_date)
-
-        funnel_data = []
-        for event_type, step_name in zip(event_types, step_names):
-            funnel_data.append(FunnelStepData(
-                step=step_name,
-                count=counts.get(event_type, 0)
-            ))
-
+        result = await service.get_funnel_metrics(period)
+        funnel_data = [FunnelStepData(**item) for item in result["funnel"]]
         return FunnelMetricsResponse(funnel=funnel_data, period=period)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin] Error fetching funnel metrics: {e}")
         return FunnelMetricsResponse(funnel=[], period=period)
@@ -257,27 +219,22 @@ async def get_funnel_metrics(
 @limiter.limit("30/minute")
 async def get_error_metrics(
     request: Request,
-    # v3.25: MET-MEDIUM-5 - Added hours range validation
     hours: int = Query(24, ge=1, le=168, description="Time range in hours (1-168)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> ErrorMetricsResponse:
     """
     Get error metrics summary.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
-    v3.28: Added query limit via Repository (MET-HIGH-1).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        stats = await metrics_repo.get_error_stats(hours)
+        result = await service.get_error_metrics(hours)
         return ErrorMetricsResponse(
-            total=stats["total"],
+            total=result["total"],
             hours=hours,
-            by_type=stats["by_type"],
-            by_status=stats["by_status"]
+            by_type=result["by_type"],
+            by_status=result["by_status"]
         )
     except Exception as e:
         logger.error(f"[Admin] Error fetching error metrics: {e}")
@@ -288,22 +245,18 @@ async def get_error_metrics(
 @limiter.limit("30/minute")
 async def get_dau_trend(
     request: Request,
-    # v3.25: MET-MEDIUM-6 - Added days range validation
     days: int = Query(30, ge=1, le=365, description="Number of days (1-365)"),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
+    service=Depends(get_admin_metrics_service),
 ) -> DAUTrendResponse:
     """
     Get DAU trend.
 
-    v3.28: Refactored to use MetricsRepository (MET-CRITICAL-1).
-    v3.28: Added Response Model (MET-HIGH-2).
+    v3.29: Refactored to use AdminMetricsService via Container.
     """
-    db = await get_async_db_client()
-    metrics_repo = SupabaseMetricsRepository(db)
-
     try:
-        trend_data = await metrics_repo.get_dau_trend(days)
-        trend = [DAUTrendItem(**item) for item in trend_data]
+        result = await service.get_dau_trend(days)
+        trend = [DAUTrendItem(**item) for item in result["trend"]]
         return DAUTrendResponse(trend=trend, days=days)
     except Exception as e:
         logger.error(f"[Admin] Error fetching DAU trend: {e}")
@@ -314,17 +267,16 @@ async def get_dau_trend(
 @limiter.limit("5/minute")
 async def refresh_metrics(
     request: Request,
-    # v3.28: MET-HIGH-5 - Fixed metric_type validation to match scheduler.py
     metric_type: str = Query("all", max_length=50),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_admin),
 ) -> RefreshMetricsResponse:
     """
     Manually refresh metrics aggregation.
 
-    v3.28: Fixed metric_type validation (MET-HIGH-5).
-    v3.28: Added Response Model (MET-MEDIUM-4).
+    Note: This endpoint directly calls scheduler, not via service,
+    as it's a system operation rather than data retrieval.
     """
-    # v3.28: MET-HIGH-5 - Validate metric_type (updated to match scheduler.py)
+    # Validate metric_type
     if metric_type not in VALID_METRIC_TYPES:
         raise HTTPException(400, f"Invalid metric_type. Must be one of: {', '.join(VALID_METRIC_TYPES)}")
 

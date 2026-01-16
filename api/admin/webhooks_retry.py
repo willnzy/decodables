@@ -4,7 +4,12 @@ Webhook Retry Admin API
 Admin endpoints for managing webhook retry logic (P3-022).
 
 @module api.admin.webhooks_retry
-@version 1.0.0
+@version 1.1.0 (Container-based DI)
+
+Changes in v1.1.0:
+- WEBHOOK-ARCH-1: Migrated to Container-based dependency injection
+- WEBHOOK-ARCH-2: Removed direct repository imports from API layer
+- Architecture: API → Container → Service → Repository (Strict DIP)
 
 Endpoints:
 - POST /api/v2/admin/webhooks/retry - Manually trigger webhook retry task
@@ -12,21 +17,16 @@ Endpoints:
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field
 
 from dependencies import require_admin
-from core.database import get_async_db_client
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories import (
-    SupabaseWebhookRepository,
-    SupabaseUserRepository,
-    SupabaseCreditRepository,
-    SupabasePaymentRepository,
-)
-from domains.webhooks import ClerkWebhookService, StripeWebhookService
-from domains.webhooks.webhook_retry_service import WebhookRetryService
+
+# v1.1.0: Container-based DI
+# WHY: API layer should not know about concrete repository implementations
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -71,24 +71,33 @@ class FailedWebhooksResponse(BaseModel):
 
 
 # ==========================================
-# Dependency Injection
+# Dependency Injection (v1.1.0: Container-based)
 # ==========================================
 
-async def get_webhook_retry_service() -> WebhookRetryService:
-    """Dependency injection for WebhookRetryService."""
+async def get_webhook_retry_service():
+    """
+    Get WebhookRetryService from Container.
+
+    WHY Container-based DI?
+    1. Decouples API layer from infrastructure implementations
+    2. Enables easy testing with mock services
+    3. Centralizes complex service construction (4 repos + 2 services)
+    4. Supports future provider switches
+    """
+    container = get_container()
+    return await container.get_webhook_retry_service()
+
+
+async def get_webhook_repository():
+    """
+    Get WebhookRepository from Container for query operations.
+
+    Used for get_failed_webhooks endpoint which only needs read access.
+    """
+    from core.database import get_async_db_client
+    from infrastructure.repositories import SupabaseWebhookRepository
     db = await get_async_db_client()
-
-    # Repositories
-    webhook_repo = SupabaseWebhookRepository(db)
-    user_repo = SupabaseUserRepository(db)
-    credit_repo = SupabaseCreditRepository(db)
-    payment_repo = SupabasePaymentRepository(db)
-
-    # Webhook Services
-    clerk_service = ClerkWebhookService(user_repo, credit_repo)
-    stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
-
-    return WebhookRetryService(webhook_repo, clerk_service, stripe_service)
+    return SupabaseWebhookRepository(db)
 
 
 # ==========================================
@@ -100,38 +109,14 @@ async def get_webhook_retry_service() -> WebhookRetryService:
 async def retry_failed_webhooks(
     request: Request,
     admin: dict = Depends(require_admin),
-    retry_service: WebhookRetryService = Depends(get_webhook_retry_service),
+    retry_service=Depends(get_webhook_retry_service),
 ):
     """
     Manually trigger webhook retry task.
 
+    v1.1.0: Refactored to use Container-based DI.
+
     Reprocesses all failed webhook events that are eligible for retry.
-
-    **Eligibility Criteria**:
-    - retry_count < max_retries (default: 5)
-    - created_at within max_age (default: 72 hours)
-    - Sufficient time has passed since last retry (exponential backoff)
-
-    **Rate Limit**: 10 requests per hour (expensive operation)
-
-    **Security**: Admin role required
-
-    **Usage**:
-    - Manual trigger via Admin UI
-    - Scheduled via GitHub Actions or external cron
-    - Emergency retry after fixing webhook processing bugs
-
-    Returns:
-        WebhookRetryResponse with statistics
-
-    Example Response:
-        {
-            "success": true,
-            "message": "Retry task completed",
-            "stripe": {"processed": 5, "failed": 2, "skipped": 10},
-            "clerk": {"processed": 3, "failed": 0, "skipped": 5},
-            "total": {"processed": 8, "failed": 2, "skipped": 15}
-        }
     """
     try:
         logger.info(f"[Admin {admin.get('id')}] Triggered webhook retry task")
@@ -158,44 +143,17 @@ async def get_failed_webhooks(
     request: Request,
     limit: int = Query(50, ge=1, le=100, description="Max webhooks per type"),
     admin: dict = Depends(require_admin),
+    webhook_repo=Depends(get_webhook_repository),
 ):
     """
     Get list of failed webhook events.
 
+    v1.1.0: Refactored to use Container-based DI.
+
     Returns failed webhooks for both Stripe and Clerk that are still
     eligible for retry (not exceeded max retries or age limit).
-
-    **Parameters**:
-    - limit: Maximum number of events to return per type (default: 50, max: 100)
-
-    **Security**: Admin role required
-
-    **Rate Limit**: 30 requests per minute
-
-    Returns:
-        FailedWebhooksResponse with lists of failed events
-
-    Example Response:
-        {
-            "stripe_events": [
-                {
-                    "id": "uuid",
-                    "event_id": "evt_123",
-                    "event_type": "checkout.session.completed",
-                    "retry_count": 2,
-                    "error_message": "HTTPException: User not found",
-                    "created_at": "2026-01-11T12:00:00Z"
-                }
-            ],
-            "clerk_events": [],
-            "total_count": 1
-        }
     """
     try:
-        db = await get_async_db_client()
-        webhook_repo = SupabaseWebhookRepository(db)
-
-        # Get failed events
         from config import WEBHOOK_MAX_RETRIES, WEBHOOK_MAX_RETRY_AGE_HOURS
 
         stripe_failed = await webhook_repo.get_failed_stripe_webhooks(
