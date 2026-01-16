@@ -722,6 +722,27 @@ class Container:
             self._services['webhook_repository'] = SupabaseWebhookRepository(db)
         return self._services['webhook_repository']
 
+    async def get_system_resource_repository(self):
+        """
+        Get system resource repository instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes repository construction
+        - Enables testing with mock repositories
+        - Used by admin asset category resources endpoint
+        """
+        from infrastructure.repositories.system_resource_repository import (
+            SupabaseSystemResourceRepository
+        )
+
+        if 'system_resource_repository' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            self._services['system_resource_repository'] = SupabaseSystemResourceRepository(db)
+        return self._services['system_resource_repository']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService

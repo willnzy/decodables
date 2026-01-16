@@ -2,13 +2,18 @@
 Admin Feature Flags API
 
 @module api.admin.feature_flags
-@version 3.29 (Container DI Migration)
+@version 3.30 (Parking Lot Fix)
 
 Admin端点用于管理Feature Flags:
 - CRUD操作
 - 开关控制
 - 审计日志
 - 测试评估
+
+Changes in v3.30:
+- Fixed parking lot item: get_client_flags now uses correct user dependency
+- Changed from buggy Depends(get_async_db_client) to Depends(get_current_user_optional)
+- Handle unauthenticated users with empty context
 
 Changes in v3.29:
 - Migrated to Container-based dependency injection
@@ -29,7 +34,7 @@ from pydantic import BaseModel, Field
 
 from core.feature_flag import feature_service, EvaluationContext
 from domains.feature_flags import FeatureFlagService, FeatureFlagRepository
-from dependencies import require_admin
+from dependencies import require_admin, get_current_user_optional
 from container import get_container
 
 logger = logging.getLogger(__name__)
@@ -644,19 +649,22 @@ async def get_audit_logs(
 
 @router.get("/client/flags")
 async def get_client_flags(
-    user: dict = Depends(get_async_db_client)
+    user: dict = Depends(get_current_user_optional)
 ):
     """
     Get all feature flag states for the current user (client-side evaluation).
 
+    v3.30: Fixed wrong dependency injection (was using get_async_db_client).
+
     Returns all active flags and their evaluation results based on user context.
     This endpoint is for client-side flag evaluation and doesn't require admin privileges.
+    Unauthenticated users will receive flags evaluated with empty context.
 
     Note: In production, prefer server-side evaluation to avoid exposing
     targeting rules and rollout percentages.
 
     Args:
-        user: Authenticated user (from token)
+        user: Authenticated user (optional, from token)
 
     Returns:
         Dict containing:
@@ -664,11 +672,10 @@ async def get_client_flags(
             - variants: Object mapping flag keys to variant strings
 
     Raises:
-        401: Unauthorized (invalid or missing token)
         500: Evaluation error
 
     Security:
-        - User authentication required (not admin)
+        - User authentication optional
         - Returns only evaluated results (not full config)
         - No rate limit currently (consider adding in production)
 
@@ -685,10 +692,11 @@ async def get_client_flags(
             }
         }
     """
+    # v3.30: Handle unauthenticated users
     context = EvaluationContext(
-        user_id=user.get("id"),
-        tier=user.get("tier"),
-        email=user.get("email"),
+        user_id=user.get("id") if user else None,
+        tier=user.get("tier") if user else None,
+        email=user.get("email") if user else None,
     )
 
     flags = feature_service.get_all_flags(context)

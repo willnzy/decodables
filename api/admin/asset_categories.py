@@ -2,16 +2,21 @@
 Admin API for Asset Category Management.
 
 @module api.admin.asset_categories
-@version 1.1.0 (Container DI Migration)
+@version 1.2.0 (Complete Container DI Migration)
 
 Provides 7 endpoints for category CRUD and hierarchy operations:
+
+Changes in v1.2.0:
+- Fixed parking lot item: get_category_resources now uses Container pattern
+- Added get_system_resource_repository() via Container
+- Removed all direct get_async_db_client() calls
+- Architecture: API → Container → Repository
 
 Changes in v1.1.0:
 - Migrated to Container-based dependency injection
 - Removed direct get_async_db_client() calls in DI
 - Added get_category_handlers() using Container pattern
 - Architecture: API → Container → Service → Repository
-- NOTE: get_category_resources endpoint still uses direct DB access (parking lot)
 - GET /api/v2/admin/categories - List all categories
 - GET /api/v2/admin/categories/tree - Get category tree
 - POST /api/v2/admin/categories - Create category
@@ -26,7 +31,6 @@ from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends
 from pydantic import BaseModel, Field
 
 from container import get_container
-from core.database import get_async_db_client  # Keep for get_category_resources (parking lot)
 from domains.content.category_service import CategoryService
 from application.queries.categories import (
     CategoryQueryHandlers,
@@ -434,18 +438,15 @@ async def get_category_resources(
     if not category:
         raise HTTPException(status_code=404, detail=f"Category not found: {slug}")
 
-    # Query system_resources by category_id
-    db_client = await get_async_db_client()
-    result = db_client.table("system_resources")\
-        .select("*")\
-        .eq("category_id", category["id"])\
-        .is_("deleted_at", "null")\
-        .order("display_order", desc=False)\
-        .order("created_at", desc=True)\
-        .range(offset, offset + limit - 1)\
-        .execute()
+    # v1.2.0: Query system_resources via Container (parking lot fix)
+    container = get_container()
+    resource_repo = await container.get_system_resource_repository()
+    resources = await resource_repo.get_by_category_id(
+        category_id=category["id"],
+        limit=limit,
+        offset=offset,
+    )
 
-    resources = result.data or []
     return {
         "category_slug": slug,
         "category_name": category["name"],

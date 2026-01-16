@@ -2,7 +2,11 @@
 SystemResource Repository Implementation - Supabase.
 
 @module infrastructure.repositories.system_resource_repository
-@version 2.0.0 (AsyncClient migration)
+@version 2.1.0 (Add get_by_category_id)
+
+Changes in v2.1.0:
+- Added get_by_category_id() for admin asset category resources endpoint
+- Returns raw dict for admin API compatibility
 
 Changes in v2.0:
 - Migrated all methods to use AsyncClient with await
@@ -148,6 +152,38 @@ class SupabaseSystemResourceRepository(ISystemResourceRepository):
                 counts["t3"] += 1
 
         return counts
+
+    async def get_by_category_id(
+        self,
+        category_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[dict]:
+        """
+        Get resources by category ID for admin API.
+
+        v2.1.0: Added for admin asset category resources endpoint.
+
+        Args:
+            category_id: Category UUID
+            limit: Maximum results (default 50)
+            offset: Results to skip (default 0)
+
+        Returns:
+            List of resource dicts (raw data for admin API)
+        """
+        result = await (
+            self.client.table("system_resources")
+            .select("*")
+            .eq("category_id", category_id)
+            .is_("deleted_at", "null")
+            .order("display_order", desc=False)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+
+        return result.data or []
 
     def _map_to_domain(self, row: dict) -> SystemResource:
         """
