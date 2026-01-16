@@ -1277,52 +1277,91 @@ application/
 - [.claude/guides/MODULE-REFACTOR-SOP.md](.claude/guides/MODULE-REFACTOR-SOP.md) - 模块重构指南
 - [migrations/v2/README.md](../migrations/v2/README.md) - 数据库架构说明
 
-### D. 待实施计划文档
+### D. 已完成的计划 ✅
 
-以下计划文档包含详细的实施方案，建议在解决审计问题时参考：
+以下计划已完成实施，临时文档已删除：
 
-| 文档 | 优先级 | 说明 | 状态 |
-|------|--------|------|------|
-| [API-CONSOLIDATION-RESTRUCTURE-PLAN.md](./API-CONSOLIDATION-RESTRUCTURE-PLAN.md) | P1 | API 整合重构方案 - 减少 18 个冗余端点 | 📋 待实施 |
-| [async-client-migration-plan.md](./async-client-migration-plan.md) | P2 | Supabase AsyncClient 迁移 - 解决 ASYNC-001 问题 | 📋 待实施 |
-| [themes_backend_implementation_plan.md](./themes_backend_implementation_plan.md) | P2 | 主题系统后端完整实施计划 | 📋 待实施 |
+#### D.1 AsyncClient 迁移 ✅ 已完成 (2026-01-16 验证)
 
-#### D.1 API 整合计划摘要
+**原计划**: `async-client-migration-plan.md` (已删除)
 
-**目标**: 将 306 个端点整合优化到 288 个 (减少 ~6%)
+**实施结果**:
+- ✅ `core/database/client.py` - 已添加 `get_async_db_client()` 函数
+- ✅ `core/database/dependencies.py` - 已创建 FastAPI 依赖注入 (115 行)
+- ✅ 所有 30 个 Repository 文件已迁移，`run_in_threadpool` 使用量: **0**
+- ✅ 性能提升: 原生异步，无线程池开销
 
-**关键整合点**:
-- 资源模块整合 (节省 ~10 个接口)
-- 模板接口整合 (节省 5 个接口)
-- 卖家统计接口整合 (节省 2 个接口)
-- 响应格式统一 (100% Pydantic response_model)
+**关键文件**:
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `core/database/dependencies.py` | 115 | FastAPI 依赖注入 |
+| `infrastructure/repositories/base_repository.py` | 更新 | 支持 AsyncClient |
 
-#### D.2 AsyncClient 迁移计划摘要
+**注意**: 审计中的 CRITICAL-ASYNC-001 问题可能已解决，需重新验证 `dependencies.py:349`
 
-**目标**: 将所有同步 Supabase 调用迁移到原生异步 AsyncClient
+---
 
-**关键收益**:
-- 移除 326+ 处 `run_in_threadpool` 包装
-- 代码减少 ~30%
-- 性能提升 20-50%
-- 解决 `asyncio.run()` 在事件循环中调用的问题 (CRITICAL-ASYNC-001)
+#### D.2 主题系统后端 ✅ 已完成 (2026-01-16 验证)
 
-**预计时间**: 8-11 小时
+**原计划**: `themes_backend_implementation_plan.md` (已删除)
 
-#### D.3 主题系统实施计划摘要
+**实施结果**:
+- ✅ Repository 层: 12/12 方法已实现
+- ✅ Service 层: 8/8 方法已实现 (678 行)
+- ✅ AI 生成服务: 2/2 方法已实现 (299 行)
+- ✅ Admin API: 12/12 端点已实现 (552 行)
 
-**目标**: 完善主题系统后端 API
+**关键文件**:
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `api/admin/themes.py` | 552 | 完整 Admin API |
+| `api/admin/themes_models.py` | 167 | Request/Response 模型 |
+| `domains/themes/themes_service.py` | 678 | 业务逻辑 |
+| `shared/ai/theme_generator.py` | 299 | AI 生成服务 |
+| `infrastructure/repositories/themes_repository.py` | ~200 | 数据访问 |
 
-**关键功能**:
-- Repository 层: 12 个方法 (CRUD + 批量操作)
-- Service 层: 8 个方法
-- AI 生成服务: 2 个方法
-- Admin API: 12 个端点
+---
+
+### E. 待完成的计划 📋
+
+#### E.1 API 整合重构 🔶 部分完成 (~40%)
+
+**状态**: 保留在 `API-CONSOLIDATION-RESTRUCTURE-PLAN.md`
+
+**已完成部分**:
+- ✅ Phase 3: 卖家统计整合 - `api/user/seller.py` (235 行)
+  - 统一端点: `GET /api/v2/user/seller/stats`
+  - 合并了 3 个独立端点
+- ✅ Phase 1 (部分): 响应模型基础设施
+  - `api/schemas/base.py` - `PaginatedResponse`, `DataResponse`, `OperationResponse`
+
+**待完成部分**:
+- ❌ Phase 1: 响应格式全面统一 (~45% → 100%)
+- ❌ Phase 2: 废弃接口清理 (3 个接口)
+- ❌ Phase 4: 模板接口整合 (10 → 5 个接口)
+- ❌ Phase 5: 资源模块整合 (26 → ~16 个接口)
+
+---
+
+### F. 文档命名规范遵守情况
+
+**规范文档**: `docs/NAMING-CONVENTIONS.md` (规范文档，保留)
+
+**遵守率**: 90% (36/40 文件合规)
+
+**不合规文件** (需修复):
+
+| 文件 | 问题 | 建议修改 |
+|------|------|----------|
+| `docs/NAMING-CONVENTIONS.md` | 全大写 | `naming-conventions.md` |
+| `docs/shared/TIER-PERMISSIONS.md` | 全大写 | `tier-permissions.md` |
+| `docs/monitoring/GRAFANA-SETUP-GUIDE.md` | 全大写 | `grafana-setup-guide.md` |
+| `docs/tmp/API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 全大写+下划线 | `api-consolidation-plan.md` |
 
 ---
 
 **审计完成日期**: 2026-01-16
-**文档版本**: v1.1
+**文档版本**: v1.2
 **下次审计建议**: 2026-02-16 (每月一次)
-**总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危)
+**总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危) + 4 个命名规范问题
 

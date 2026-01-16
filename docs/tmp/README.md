@@ -27,13 +27,11 @@
 |--------|------|--------|------|
 | `backend-comprehensive-audit.md` | 📋 活跃 | P0 | 后端综合审计报告 (57 个问题) |
 
-### 待实施计划 (3个)
+### 待实施计划 (1个)
 
 | 文件名 | 状态 | 优先级 | 说明 |
 |--------|------|--------|------|
-| `API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 📋 待审核 | P1 | API 整合重构方案 |
-| `async-client-migration-plan.md` | 📋 待审核 | P2 | Supabase 异步客户端迁移计划 |
-| `themes_backend_implementation_plan.md` | 📋 待实施 | P2 | 主题系统后端实施计划 |
+| `api-consolidation-plan.md` | 📋 待实施 | P1 | API 整合重构方案 (~40% 完成) |
 
 ### 说明文档 (1个)
 
@@ -45,7 +43,7 @@
 
 ## 🗑️ 清理记录
 
-### 2026-01-16 清理 (6个)
+### 2026-01-16 清理 (8个)
 
 **已删除 - 已完成或已合并**:
 - `backend-documentation-audit-report.md` → 已合并到 `backend-comprehensive-audit.md`
@@ -54,6 +52,14 @@
 - `TIER-PERMISSIONS-BACKEND-IMPLEMENTATION.md` → 状态"已完成"
 - `daily_themes_schema_update_plan.md` → 状态"已完成"
 - `repository-sql-audit-plan.md` → 已过时
+- `async-client-migration-plan.md` → ✅ 已实施 (100% 完成，结论同步到审计报告)
+- `themes_backend_implementation_plan.md` → ✅ 已实施 (100% 完成，结论同步到审计报告)
+
+**已重命名 - 符合命名规范** (4个):
+- `API-CONSOLIDATION-RESTRUCTURE-PLAN.md` → `api-consolidation-plan.md`
+- `docs/NAMING-CONVENTIONS.md` → `docs/naming-conventions.md`
+- `docs/shared/TIER-PERMISSIONS.md` → `docs/shared/tier-permissions.md`
+- `docs/monitoring/GRAFANA-SETUP-GUIDE.md` → `docs/monitoring/grafana-setup-guide.md`
 
 ### 2026-01-13 清理 (15个)
 
