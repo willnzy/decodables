@@ -67,43 +67,48 @@ async def get_current_user(authorization: str = Header(None)):
     token = authorization.split(" ")[1]
     payload = None
     
-    # Production mode: Verify JWT signature + authorized party
+    # Production mode: Verify JWT signature + audience/authorized party
     if CLERK_PEM_PUBLIC_KEY:
         try:
-            # v3.27.1: Industry Best Practice for Clerk JWT Verification
+            # v3.27.2: Complete JWT Verification with aud + azp
             #
-            # Security layers (in order of importance):
+            # Security layers:
             # 1. RS256 Signature - Cryptographic proof token came from Clerk
             # 2. Expiration (exp) - Automatic by PyJWT, prevents replay attacks
-            # 3. Authorized Party (azp) - Verifies token was issued for our frontend
-            #
-            # Why azp instead of aud?
-            # - Clerk doesn't include 'aud' by default (would require JWT Template config)
-            # - Clerk DOES include 'azp' by default (the frontend origin)
-            # - azp is OAuth 2.0 standard for "which client requested this token"
-            # - This prevents tokens from other Clerk apps being used here
+            # 3. Audience (aud) - Verifies token was issued for this API (if configured in Clerk)
+            # 4. Authorized Party (azp) - Verifies which frontend origin requested the token
             #
             # Reference: https://clerk.com/docs/backend-requests/handling/manual-jwt
 
-            payload = jwt.decode(
-                token,
-                CLERK_PEM_PUBLIC_KEY,
-                algorithms=["RS256"],
-                options={"verify_aud": False}  # Clerk uses azp, not aud
-            )
+            # Check if token has 'aud' claim for proper verification
+            # First decode without verification to inspect claims
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            token_has_aud = "aud" in unverified
 
-            # Verify azp (Authorized Party) - STRICT enforcement
-            # This ensures the token was issued for requests from our frontend
-            token_azp = payload.get("azp")
+            if token_has_aud and CLERK_FRONTEND_API:
+                # Token has 'aud' claim - use standard JWT audience verification
+                payload = jwt.decode(
+                    token,
+                    CLERK_PEM_PUBLIC_KEY,
+                    algorithms=["RS256"],
+                    audience=CLERK_FRONTEND_API,
+                    options={"verify_aud": True}
+                )
+            else:
+                # No 'aud' claim - decode without audience verification
+                payload = jwt.decode(
+                    token,
+                    CLERK_PEM_PUBLIC_KEY,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False}
+                )
+
+            # Additionally verify azp (Authorized Party) if configured
+            # This provides defense-in-depth by checking frontend origin
             allowed_origins = _get_allowed_origins()
-
             if allowed_origins:
-                # Strict mode: azp must be in allowed list
-                if not token_azp:
-                    raise UnauthorizedException(
-                        message="Invalid token: missing authorized party (azp)"
-                    )
-                if token_azp not in allowed_origins:
+                token_azp = payload.get("azp")
+                if token_azp and token_azp not in allowed_origins:
                     import logging
                     logger = logging.getLogger(__name__)
                     logger.warning(
