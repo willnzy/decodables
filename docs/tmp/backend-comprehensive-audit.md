@@ -1324,44 +1324,123 @@ application/
 
 ### E. 待完成的计划 📋
 
-#### E.1 API 整合重构 🔶 部分完成 (~40%)
+#### E.1 API 整合重构方案 🔶 部分完成 (~40%)
 
-**状态**: 保留在 `API-CONSOLIDATION-RESTRUCTURE-PLAN.md`
+> 原文档: `api-consolidation-plan.md` (已合并删除)
 
-**已完成部分**:
-- ✅ Phase 3: 卖家统计整合 - `api/user/seller.py` (235 行)
-  - 统一端点: `GET /api/v2/user/seller/stats`
-  - 合并了 3 个独立端点
-- ✅ Phase 1 (部分): 响应模型基础设施
-  - `api/schemas/base.py` - `PaginatedResponse`, `DataResponse`, `OperationResponse`
+##### E.1.1 现状分析
 
-**待完成部分**:
-- ❌ Phase 1: 响应格式全面统一 (~45% → 100%)
-- ❌ Phase 2: 废弃接口清理 (3 个接口)
-- ❌ Phase 4: 模板接口整合 (10 → 5 个接口)
-- ❌ Phase 5: 资源模块整合 (26 → ~16 个接口)
+**API 端点统计**:
+
+| 分类 | 端点数量 | 文件数量 |
+|------|----------|----------|
+| User API | 135 | 29 模块 |
+| Admin API | 171 | 21 模块 |
+| **总计** | **306** | **50 模块** |
+
+**发现的问题**:
+
+| 问题类型 | 描述 | 涉及模块 |
+|----------|------|----------|
+| 功能重叠 | 三套相似的资源列表/获取接口 | Resources + System Resources + User Assets |
+| 功能重叠 | 三处都有 `seller-stats` 接口 | Projects + Marketplace + User Assets |
+| 响应格式不一致 | ~45% 使用 response_model, ~37% 返回 raw dict | 全局 |
+| 接口粒度过细 | 3 个资源类型接口可合并为 1 个 | Resources |
+| 废弃接口未清理 | 3 个已标记废弃的接口 | Generations, Export |
+
+##### E.1.2 整合原则
+
+1. **不影响前端调用**: 保持现有 API 路径兼容，新增整合接口
+2. **渐进式迁移**: 先新增，后标记废弃，最后清理
+3. **保持高性能**: 整合不能降低接口响应速度
+4. **统一响应格式**: 全部采用 JSON + Pydantic response_model
+
+##### E.1.3 实施阶段与进度
+
+| Phase | 描述 | 风险 | 状态 | 说明 |
+|-------|------|------|------|------|
+| Phase 1 | 响应格式统一 | 低 | 🔶 45% | `api/schemas/base.py` 已创建基础模型 |
+| Phase 2 | 废弃接口清理 | 低 | ❌ 0% | 待确认前端未使用后清理 3 个接口 |
+| Phase 3 | 卖家统计整合 | 中 | ✅ 100% | `api/user/seller.py` (235 行) |
+| Phase 4 | 模板接口整合 | 中 | ❌ 0% | 10 → 5 个接口 |
+| Phase 5 | 资源模块整合 | 高 | ❌ 0% | 26 → ~16 个接口 (需独立设计) |
+
+##### E.1.4 待清理的废弃接口
+
+| 接口 | 模块 | 替代方案 |
+|------|------|----------|
+| `POST /generations/{id}/favorite` | Generations | `PATCH /generations/{id}` |
+| `DELETE /generations/batch` | Generations | `POST /generations/batch-delete` |
+| `POST /export/zip` | Export | `POST /export/zip/async` |
+
+##### E.1.5 整合方案摘要
+
+**方案 A: 资源模块整合** (节省 ~10 个接口)
+- 当前: 3 个模块, 26 个接口
+- 目标: 1 个通用查询 + 2 个特化操作接口
+
+**方案 B: 模板接口整合** (节省 5 个接口)
+- 当前: 2 类型 × 5 操作 = 10 个接口
+- 目标: 5 个通用接口 (type 参数区分)
+
+**方案 C: 卖家统计整合** ✅ 已完成
+- 原来: 3 个独立接口
+- 现在: `GET /api/v2/user/seller/stats?include=projects,listings,assets`
+
+**方案 D: 通知接口整合** (节省 1 个接口)
+- 当前: `read` + `read-all` 两个接口
+- 目标: 1 个 `mark-read` 接口 (支持 ids 或 all 参数)
+
+##### E.1.6 预期收益
+
+| 阶段 | 减少数量 | 累计减少 |
+|------|----------|----------|
+| Phase 2 | -3 | -3 |
+| Phase 3 | -2 | -5 (✅ 已完成) |
+| Phase 4 | -5 | -10 |
+| Phase 5 | -8 | -18 |
+
+**最终目标**: 306 → 288 端点 (减少 ~6%)
+
+##### E.1.7 不建议整合的模块
+
+| 模块 | 原因 |
+|------|------|
+| Billing | 核心计费逻辑，独立更安全 |
+| Payment | Stripe 集成，独立更清晰 |
+| Webhooks | 第三方回调，必须独立 |
+| Analytics | 数据分析专用 |
+| Experiments | A/B 测试专用 |
+| Feature Flags | 功能开关专用 |
+| Generation * | AI 生成专用，已按功能分类 |
+
+##### E.1.8 下一步行动
+
+1. **[P0]** Phase 1 + 2: 响应格式统一 + 废弃清理 (低风险，高收益)
+2. **[P2]** Phase 4: 模板接口整合 (需评估前端改动量)
+3. **[P3]** Phase 5: 资源模块整合 (需独立设计文档)
 
 ---
 
-### F. 文档命名规范遵守情况
+### F. 文档命名规范遵守情况 ✅ 已修复
 
-**规范文档**: `docs/NAMING-CONVENTIONS.md` (规范文档，保留)
+**规范文档**: `docs/main/naming-conventions.md`
 
-**遵守率**: 90% (36/40 文件合规)
+**遵守率**: 100% (所有文件已合规)
 
-**不合规文件** (需修复):
+**已修复文件** (2026-01-16):
 
-| 文件 | 问题 | 建议修改 |
-|------|------|----------|
-| `docs/NAMING-CONVENTIONS.md` | 全大写 | `naming-conventions.md` |
-| `docs/shared/TIER-PERMISSIONS.md` | 全大写 | `tier-permissions.md` |
-| `docs/monitoring/GRAFANA-SETUP-GUIDE.md` | 全大写 | `grafana-setup-guide.md` |
-| `docs/tmp/API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 全大写+下划线 | `api-consolidation-plan.md` |
+| 原文件 | 新文件 |
+|--------|--------|
+| `docs/NAMING-CONVENTIONS.md` | `docs/main/naming-conventions.md` |
+| `docs/shared/TIER-PERMISSIONS.md` | `docs/shared/tier-permissions.md` |
+| `docs/monitoring/GRAFANA-SETUP-GUIDE.md` | `docs/monitoring/grafana-setup-guide.md` |
+| `docs/tmp/API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 已合并到本文档 |
 
 ---
 
 **审计完成日期**: 2026-01-16
-**文档版本**: v1.2
+**文档版本**: v1.3
 **下次审计建议**: 2026-02-16 (每月一次)
-**总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危) + 4 个命名规范问题
+**总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危)
 
