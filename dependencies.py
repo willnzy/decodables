@@ -9,7 +9,7 @@ import jwt
 from fastapi import Header, Depends
 from infrastructure.repositories import SupabaseUserRepository
 from core.database import get_async_db_client
-from config import CLERK_PEM_PUBLIC_KEY
+from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
 from domains.shared import access_control
@@ -44,15 +44,22 @@ async def get_current_user(authorization: str = Header(None)):
     # Production mode: Verify JWT signature
     if CLERK_PEM_PUBLIC_KEY:
         try:
-            payload = jwt.decode(
-                token, 
-                CLERK_PEM_PUBLIC_KEY, 
-                algorithms=["RS256"], 
-                options={"verify_aud": False}
-            )
+            # v3.26: Enable audience verification if CLERK_FRONTEND_API is configured
+            decode_options = {"verify_aud": bool(CLERK_FRONTEND_API)}
+            decode_kwargs = {
+                "algorithms": ["RS256"],
+                "options": decode_options,
+            }
+            # Only add audience if configured (enables strict validation)
+            if CLERK_FRONTEND_API:
+                decode_kwargs["audience"] = CLERK_FRONTEND_API
+
+            payload = jwt.decode(token, CLERK_PEM_PUBLIC_KEY, **decode_kwargs)
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:
             raise UnauthorizedException(message="Token expired")
+        except jwt.InvalidAudienceError:
+            raise UnauthorizedException(message="Invalid token audience")
         except jwt.InvalidTokenError as e:
             raise UnauthorizedException(message=f"Invalid token: {str(e)}")
     else:
@@ -331,28 +338,22 @@ from infrastructure.repositories.analytics_events_repository import (
 def get_analytics_service() -> AnalyticsService:
     """
     Get Analytics Service singleton instance.
-    
+
     This service provides a unified interface for analytics event tracking:
     - Frontend batch events (process_and_save_events)
     - Backend server-side tracking (track_event, track_ai_generation, etc.)
-    
+
     Uses dependency injection with Repository pattern for clean architecture.
-    
+
+    v3.26: Simplified to use sync client directly (removed asyncio.run).
+    For async contexts, the Repository handles async operations internally.
+
     Returns:
         AnalyticsService: Singleton instance
     """
-    import asyncio
-    
-    # Get async db client
-    # Note: We need to handle the async client initialization
-    try:
-        db_client = asyncio.run(get_async_db_client())
-    except RuntimeError:
-        # If event loop is already running, get client synchronously
-        from core.database import supabase
-        db_client = supabase
-    
-    repository: IAnalyticsRepository = SupabaseAnalyticsEventsRepository(db_client)
+    # Use sync client for initialization (Repository handles async internally)
+    from core.database import supabase
+    repository: IAnalyticsRepository = SupabaseAnalyticsEventsRepository(supabase)
     return AnalyticsService(repository)
 
 

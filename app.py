@@ -36,7 +36,7 @@ if SENTRY_DSN:
                 ),
                 # AI Agents: Monitor OpenAI/LLM calls (token usage, costs, latency)
                 OpenAIIntegration(
-                    include_prompts=True,  # Capture prompts for debugging
+                    include_prompts=False,  # v3.26: Disabled for production privacy
                     tiktoken_encoding_name="cl100k_base",
                 ),
             ],
@@ -243,8 +243,18 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID", "X-Response-Time", "*"],
+    # v3.26: Explicit headers list (security hardening - no wildcard)
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-Request-ID",
+        "X-Timezone",
+        "Cache-Control",
+    ],
+    expose_headers=["X-Request-ID", "X-Response-Time", "Content-Disposition"],
     max_age=3600,  # Preflight cache duration (seconds)
 )
 

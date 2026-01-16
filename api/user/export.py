@@ -39,7 +39,6 @@ Endpoints:
 
 import logging
 import re
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -67,20 +66,12 @@ router = APIRouter(prefix="/export", tags=["user-export-v2"])
 # v2.1.0: EX-HIGH-1 - UUID validation pattern
 UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
-# v2.1.0: EX-P0-1/2 - SSRF Protection: Allowed URL domains whitelist
-# Only allow URLs from our known storage providers
-ALLOWED_URL_DOMAINS = {
-    # Supabase storage
-    "supabase.co",
-    "supabase.com",
-    # Fal.ai (AI image generation)
-    "fal.media",
-    "fal.ai",
-    # Cloudflare R2 (if used)
-    "r2.cloudflarestorage.com",
-    # AWS S3 (if used)
-    "s3.amazonaws.com",
-}
+# v3.26: SSRF Protection moved to core.validators for DDD compliance
+# Import from core layer for proper architecture
+from core.validators import ALLOWED_URL_DOMAINS, is_allowed_url
+
+# Backward compatibility alias
+_is_allowed_url = is_allowed_url
 
 
 # ==========================================
@@ -96,33 +87,6 @@ class TaskResponse(BaseModel):
     status: str = Field(..., description="Task status (pending/queued/processing/completed/failed)")
     message: str = Field(..., description="Human-readable status message")
     estimated_time_seconds: int = Field(..., description="Estimated completion time in seconds")
-
-
-# ==========================================
-# Helper Functions
-# ==========================================
-
-def _is_allowed_url(url: str) -> bool:
-    """
-    Check if URL is from an allowed domain (SSRF protection).
-
-    v2.1.0: EX-P0-1/2 - Only allow URLs from trusted storage providers.
-    """
-    if not url or not url.startswith("http"):
-        return False
-
-    try:
-        parsed = urlparse(url)
-        host = parsed.netloc.lower()
-
-        # Check if host matches any allowed domain (or subdomain)
-        for allowed in ALLOWED_URL_DOMAINS:
-            if host == allowed or host.endswith(f".{allowed}"):
-                return True
-
-        return False
-    except Exception:
-        return False
 
 
 # ==========================================

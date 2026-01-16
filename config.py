@@ -19,6 +19,10 @@ API_VERSION = "3.2.0"
 # Clerk Authentication
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
+# v3.26: JWT audience verification (Clerk Frontend API URL)
+# Format: https://<clerk-frontend-api>.clerk.accounts.dev or your custom domain
+# Set this in production for secure JWT validation
+CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API")
 
 # Stripe
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")

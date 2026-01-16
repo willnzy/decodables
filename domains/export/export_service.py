@@ -226,8 +226,8 @@ class ExportService:
         image_urls, _, _ = self._extract_project_data(proj)
 
         # Filter allowed URLs (SSRF protection)
-        from api.user.export import _is_allowed_url
-        valid_urls = [url for url in image_urls if _is_allowed_url(url)]
+        from core.validators import is_allowed_url
+        valid_urls = [url for url in image_urls if is_allowed_url(url)]
 
         if not valid_urls:
             raise ExportException("No valid image URLs found in project")
@@ -462,8 +462,8 @@ class ExportService:
         image_urls, _, _ = self._extract_project_data(proj)
 
         # Filter allowed URLs (SSRF protection)
-        from api.user.export import _is_allowed_url
-        valid_urls = [url for url in image_urls if _is_allowed_url(url) and url]
+        from core.validators import is_allowed_url
+        valid_urls = [url for url in image_urls if is_allowed_url(url) and url]
 
         if not valid_urls:
             raise ExportException("No valid image URLs found in project")
