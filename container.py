@@ -240,6 +240,46 @@ class Container:
             self._services['support'] = SupportService(db)
         return self._services['support']
 
+    async def get_user_profile_service(self):
+        """
+        Get user profile service instance (v2.3.0, async).
+
+        WHY separate from IdentityService?
+        - UserProfileService handles cross-domain operations (user + credits + listings + notifications)
+        - IdentityService handles core identity operations (CRUD, tier management)
+        - Separation of concerns: profile aggregation vs identity management
+
+        Returns:
+            UserProfileService with all required repositories injected
+        """
+        from domains.identity.user_profile_service import UserProfileService
+        from infrastructure.repositories import (
+            SupabaseUserRepository,
+            SupabaseCreditRepository,
+            SupabaseListingRepository,
+            SupabaseNotificationRepository,
+        )
+
+        if 'user_profile' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            # Create all required repositories
+            user_repo = SupabaseUserRepository(db)
+            credit_repo = SupabaseCreditRepository(db)
+            listing_repo = SupabaseListingRepository(db)
+            notif_repo = SupabaseNotificationRepository(db)
+
+            # Create service with dependencies
+            self._services['user_profile'] = UserProfileService(
+                user_repo=user_repo,
+                credit_repo=credit_repo,
+                listing_repo=listing_repo,
+                notif_repo=notif_repo,
+            )
+        return self._services['user_profile']
+
     async def get_article_service(self):
         """Get article service instance (v3.31, async)."""
         from domains.articles.service import ArticleService

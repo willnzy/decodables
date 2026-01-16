@@ -2,7 +2,7 @@
 User Profile Service - Business logic for user profile operations.
 
 @module domains.identity.user_profile_service
-@version 1.0.0
+@version 1.1.0 (DIP Compliance)
 
 This Service encapsulates user profile-related business logic:
 - User profile retrieval with credit calculations
@@ -11,20 +11,54 @@ This Service encapsulates user profile-related business logic:
 - Notification management
 - User preferences (timezone)
 
-Architecture: Service → Repository → Database
+v1.1.0 Changes:
+- Migrated from concrete repository types to interface types (DIP)
+- Service now depends on abstractions, not implementations
+- Enables easy mocking in tests and provider switching
+
+Architecture: Service → Interface → Repository → Database
 """
 
 import logging
-from typing import Dict, List, Optional
-
-from infrastructure.repositories import (
-    SupabaseUserRepository,
-    SupabaseCreditRepository,
-    SupabaseListingRepository,
-    SupabaseNotificationRepository,
-)
+from typing import Dict, List, Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Repository Interfaces (Protocol-based for structural typing)
+# =============================================================================
+# WHY Protocol instead of ABC?
+# - More flexible: works with any class that has the required methods
+# - Better for duck typing: doesn't require explicit inheritance
+# - Easier testing: mock objects just need matching methods
+
+@runtime_checkable
+class UserRepositoryProtocol(Protocol):
+    """Protocol for user repository operations."""
+    async def get_profile(self, user_id: str) -> Optional[Dict]: ...
+    async def update_timezone(self, user_id: str, timezone: str) -> Optional[Dict]: ...
+
+
+@runtime_checkable
+class CreditRepositoryProtocol(Protocol):
+    """Protocol for credit repository operations."""
+    async def check_and_reset_monthly_credits_if_needed(self, user_id: str) -> None: ...
+    async def get_credit_history(self, user_id: str, page: int, limit: int) -> Dict: ...
+
+
+@runtime_checkable
+class ListingRepositoryProtocol(Protocol):
+    """Protocol for listing repository operations."""
+    async def get_user_purchases(self, user_id: str) -> List[Dict]: ...
+
+
+@runtime_checkable
+class NotificationRepositoryProtocol(Protocol):
+    """Protocol for notification repository operations."""
+    async def get_user_notifications(self, user_id: str, unread_only: bool = False) -> List[Dict]: ...
+    async def mark_as_read(self, notification_id: str, user_id: str) -> Optional[Dict]: ...
+    async def mark_all_as_read(self, user_id: str) -> None: ...
 
 
 class UserProfileService:
@@ -33,23 +67,34 @@ class UserProfileService:
 
     Handles all user profile-related operations including credits, purchases,
     notifications, and preferences.
+
+    v1.1.0: Depends on Protocol interfaces, not concrete implementations.
+    This enables:
+    - Easy mocking in unit tests
+    - Provider switching (Supabase -> other DB)
+    - Loose coupling between layers
     """
 
     def __init__(
         self,
-        user_repo: SupabaseUserRepository,
-        credit_repo: SupabaseCreditRepository,
-        listing_repo: SupabaseListingRepository,
-        notif_repo: SupabaseNotificationRepository,
+        user_repo: UserRepositoryProtocol,
+        credit_repo: CreditRepositoryProtocol,
+        listing_repo: ListingRepositoryProtocol,
+        notif_repo: NotificationRepositoryProtocol,
     ):
         """
-        Initialize User Profile Service.
+        Initialize User Profile Service with interface dependencies.
+
+        WHY interface injection?
+        - Dependency Inversion Principle (DIP): High-level modules should not
+          depend on low-level modules. Both should depend on abstractions.
+        - Enables constructor injection pattern (testable, explicit dependencies)
 
         Args:
-            user_repo: User repository
-            credit_repo: Credit repository
-            listing_repo: Listing repository
-            notif_repo: Notification repository
+            user_repo: User repository (must implement UserRepositoryProtocol)
+            credit_repo: Credit repository (must implement CreditRepositoryProtocol)
+            listing_repo: Listing repository (must implement ListingRepositoryProtocol)
+            notif_repo: Notification repository (must implement NotificationRepositoryProtocol)
         """
         self._user_repo = user_repo
         self._credit_repo = credit_repo

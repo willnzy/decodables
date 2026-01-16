@@ -2,7 +2,13 @@
 User Profile API - User profile and account endpoints (v2).
 
 @module api.user.user_profile
-@version 2.2.0 (DDD Architecture Upgrade - 5 Star)
+@version 2.3.0 (Container-based DI)
+
+Changes in v2.3.0:
+- UP-ARCH-1: Migrated to Container-based dependency injection
+- UP-ARCH-2: Removed direct infrastructure imports in API layer
+- UP-ARCH-3: API layer now only depends on Container, not repositories
+- Architecture: API → Container → Service → Repository (Strict DIP)
 
 Changes in v2.2.0:
 - UP-CRITICAL-1: Added UserProfileService layer (DDD compliance)
@@ -33,15 +39,13 @@ from pydantic import BaseModel
 
 from domains.identity.aggregates.user_profile import UserProfile
 from domains.identity.user_profile_service import UserProfileService
-from infrastructure.repositories import (
-    SupabaseUserRepository,
-    SupabaseCreditRepository,
-    SupabaseListingRepository,
-    SupabaseNotificationRepository,
-)
 from infrastructure.rate_limiter import limiter
-from core.database.dependencies import get_async_db
 from dependencies import get_current_user
+
+# v2.3.0: Import Container instead of individual repositories
+# WHY: Dependency Inversion Principle (DIP) - API layer should not know about
+# concrete repository implementations. Container handles all wiring.
+from container import get_container, Container
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +53,26 @@ router = APIRouter(prefix="/profile", tags=["user-profile-v2"])
 
 
 # ==========================================
-# Dependency Injection
+# Dependency Injection (v2.3.0: Container-based)
 # ==========================================
 
-async def get_user_profile_service(db = Depends(get_async_db)) -> UserProfileService:
-    """Dependency injection factory for UserProfileService (AsyncClient)."""
-    user_repo = SupabaseUserRepository(db)
-    credit_repo = SupabaseCreditRepository(db)
-    listing_repo = SupabaseListingRepository(db)
-    notif_repo = SupabaseNotificationRepository(db)
-    return UserProfileService(user_repo, credit_repo, listing_repo, notif_repo)
+async def get_user_profile_service() -> UserProfileService:
+    """
+    Dependency injection factory for UserProfileService.
+
+    v2.3.0: Uses Container pattern instead of direct repository instantiation.
+
+    WHY Container-based DI?
+    1. Decouples API layer from infrastructure implementations
+    2. Enables easy testing with mock services
+    3. Centralizes dependency management
+    4. Supports future provider switches (Supabase -> other DB)
+
+    Returns:
+        UserProfileService instance from Container
+    """
+    container = get_container()
+    return await container.get_user_profile_service()
 
 
 # ==========================================
