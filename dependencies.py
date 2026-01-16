@@ -44,22 +44,44 @@ async def get_current_user(authorization: str = Header(None)):
     # Production mode: Verify JWT signature
     if CLERK_PEM_PUBLIC_KEY:
         try:
-            # v3.26: Enable audience verification if CLERK_FRONTEND_API is configured
-            decode_options = {"verify_aud": bool(CLERK_FRONTEND_API)}
-            decode_kwargs = {
-                "algorithms": ["RS256"],
-                "options": decode_options,
-            }
-            # Only add audience if configured (enables strict validation)
-            if CLERK_FRONTEND_API:
-                decode_kwargs["audience"] = CLERK_FRONTEND_API
+            # v3.27: Graceful audience verification
+            # - First decode without aud verification to check if token has 'aud' claim
+            # - If token has 'aud' AND CLERK_FRONTEND_API is configured, verify it
+            # - If token lacks 'aud' claim, allow but log warning
 
-            payload = jwt.decode(token, CLERK_PEM_PUBLIC_KEY, **decode_kwargs)
+            # Step 1: Decode without audience verification first
+            payload = jwt.decode(
+                token,
+                CLERK_PEM_PUBLIC_KEY,
+                algorithms=["RS256"],
+                options={"verify_aud": False}
+            )
+
+            # Step 2: If token has 'aud' claim and we have CLERK_FRONTEND_API, verify it
+            token_aud = payload.get("aud")
+            if token_aud and CLERK_FRONTEND_API:
+                # Token has audience, verify it matches
+                expected_aud = CLERK_FRONTEND_API
+                # Handle both string and list audience formats
+                if isinstance(token_aud, list):
+                    if expected_aud not in token_aud:
+                        raise UnauthorizedException(message="Invalid token audience")
+                elif token_aud != expected_aud:
+                    raise UnauthorizedException(message="Invalid token audience")
+            elif not token_aud and CLERK_FRONTEND_API:
+                # Token lacks 'aud' claim but we have CLERK_FRONTEND_API configured
+                # This is a security gap - log warning but allow (for backwards compatibility)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "[Security] JWT token missing 'aud' claim. "
+                    "Configure Clerk JWT Template to include audience for stricter validation. "
+                    "See: https://clerk.com/docs/backend-requests/making/jwt-templates"
+                )
+
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:
             raise UnauthorizedException(message="Token expired")
-        except jwt.InvalidAudienceError:
-            raise UnauthorizedException(message="Invalid token audience")
         except jwt.InvalidTokenError as e:
             raise UnauthorizedException(message=f"Invalid token: {str(e)}")
     else:
