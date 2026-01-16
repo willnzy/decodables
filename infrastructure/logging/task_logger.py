@@ -1,9 +1,13 @@
 """
-Task Logger Module (v3.15)
+Task Logger Module (v3.16 Log Hygiene)
 
 Provides unified logging for scheduled tasks to enable monitoring.
 
 @module infrastructure.logging.task_logger
+
+Changes:
+- v3.16: Replaced print with proper logging
+- v3.15: Initial implementation
 
 Usage:
     from infrastructure.logging.task_logger import TaskLogger
@@ -13,6 +17,7 @@ Usage:
         logger.set_result({'campaigns_activated': 5})
 """
 
+import logging
 import os
 import socket
 import traceback
@@ -21,6 +26,8 @@ from typing import Optional, Dict, Any
 from contextlib import contextmanager
 
 from core.database import supabase
+
+_logger = logging.getLogger(__name__)
 
 
 class TaskLogger:
@@ -69,7 +76,7 @@ class TaskLogger:
                 self.log_id = result.data[0]['id']
         except Exception as e:
             # Don't fail the task if logging fails
-            print(f"[TaskLogger] Warning: Failed to create log entry: {e}")
+            _logger.warning(f"Failed to create log entry: {e}")
         
         return self
     
@@ -99,7 +106,7 @@ class TaskLogger:
                     'error_stack': error_stack,
                 }).eq('id', self.log_id).execute()
             except Exception as e:
-                print(f"[TaskLogger] Warning: Failed to update log entry: {e}")
+                _logger.warning(f"Failed to update log entry: {e}")
         
         # Don't suppress exceptions
         return False
@@ -178,7 +185,7 @@ def log_task_run(
             'pid': os.getpid(),
         }).execute()
     except Exception as e:
-        print(f"[TaskLogger] Warning: Failed to log task run: {e}")
+        _logger.warning(f"Failed to log task run: {e}")
 
 
 # Import timedelta for the function above

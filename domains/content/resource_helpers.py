@@ -3,11 +3,18 @@ System Resource Helpers
 Helper functions for system resource management
 
 @module services.system_resource_helpers
-@version 3.24
+@version 3.25 (Log Hygiene)
+
+Changes:
+- v3.25: Replaced print with logger
+- v3.24: Initial implementation
 """
 
+import logging
 from typing import Optional
 from core.database import supabase
+
+logger = logging.getLogger(__name__)
 
 
 # =====================================================
@@ -42,7 +49,7 @@ def log_resource_audit(
             "changed_by": changed_by
         }).execute()
     except Exception as e:
-        print(f"[AUDIT] Failed to log: {e}")
+        logger.warning(f"Failed to log audit entry: {e}")
 
 
 def get_image_dimensions(file_bytes: bytes) -> Optional[dict]:

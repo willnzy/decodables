@@ -1,5 +1,5 @@
 """
-Storage Cleanup Task (v3.18)
+Storage Cleanup Task (v3.19 - Log Hygiene)
 
 Cleans up temporary AI-generated files from Supabase Storage.
 
@@ -13,13 +13,19 @@ The date-based folder structure makes cleanup extremely efficient:
 - Simply delete entire date folders that are past retention
 
 Run frequency: Daily at 3:00 AM UTC
+
+Changes:
+- v3.19: Replaced print statements with proper logging
 """
 
+import logging
 import os
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
 
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 # Storage configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -53,7 +59,7 @@ def get_expired_date_folders() -> List[Dict[str, Any]]:
         List of expired folder info: [{'user_id': ..., 'date': ..., 'path': ...}, ...]
     """
     if not supabase:
-        print("❌ Supabase client not configured")
+        logger.error("Supabase client not configured")
         return []
     
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=TEMP_RETENTION_DAYS)
@@ -96,7 +102,7 @@ def get_expired_date_folders() -> List[Dict[str, Any]]:
                     pass
                     
     except Exception as e:
-        print(f"❌ Error listing bucket: {e}")
+        logger.error(f"Error listing bucket: {e}")
     
     return expired_folders
 
@@ -132,7 +138,7 @@ def get_all_files_in_folder(folder_path: str) -> List[str]:
                 all_files.extend(get_all_files_in_folder(full_path))
                 
     except Exception as e:
-        print(f"⚠️ Error listing folder {folder_path}: {e}")
+        logger.warning(f"Error listing folder {folder_path}: {e}")
     
     return all_files
 
@@ -169,7 +175,7 @@ def delete_date_folder(folder_info: Dict[str, Any]) -> Dict[str, Any]:
             supabase.storage.from_(BUCKET_NAME).remove(batch)
             deleted += len(batch)
         except Exception as e:
-            print(f"❌ Error deleting batch from {folder_path}: {e}")
+            logger.error(f"Error deleting batch from {folder_path}: {e}")
             failed += len(batch)
     
     return {
@@ -189,15 +195,15 @@ def run_storage_cleanup() -> Dict[str, Any]:
         Summary of cleanup results
     """
     from infrastructure.logging.task_logger import TaskLogger
-    
-    print(f"🧹 Starting storage cleanup (retention: {TEMP_RETENTION_DAYS} days)...")
-    print(f"   Cutoff date: {(datetime.now(timezone.utc) - timedelta(days=TEMP_RETENTION_DAYS)).strftime('%Y-%m-%d')}")
-    
-    with TaskLogger('storage_cleanup', 'daily') as logger:
+
+    cutoff_date_str = (datetime.now(timezone.utc) - timedelta(days=TEMP_RETENTION_DAYS)).strftime('%Y-%m-%d')
+    logger.info(f"Starting storage cleanup (retention: {TEMP_RETENTION_DAYS} days, cutoff: {cutoff_date_str})")
+
+    with TaskLogger('storage_cleanup', 'daily') as task_logger:
         # Step 1: Find expired date folders
-        print("📋 Scanning for expired date folders...")
+        logger.info("Scanning for expired date folders...")
         expired_folders = get_expired_date_folders()
-        print(f"   Found {len(expired_folders)} expired date folders")
+        logger.info(f"Found {len(expired_folders)} expired date folders")
         
         # Step 2: Delete each expired folder
         total_deleted = 0
@@ -205,7 +211,7 @@ def run_storage_cleanup() -> Dict[str, Any]:
         folders_cleaned = 0
         
         for folder_info in expired_folders:
-            print(f"   🗑️ Cleaning {folder_info['path']}...")
+            logger.debug(f"Cleaning {folder_info['path']}...")
             result = delete_date_folder(folder_info)
             total_deleted += result['deleted']
             total_failed += result['failed']
@@ -223,14 +229,12 @@ def run_storage_cleanup() -> Dict[str, Any]:
             'bucket': BUCKET_NAME
         }
         
-        logger.set_result(result)
-        
-        print(f"✅ Storage cleanup complete!")
-        print(f"   Folders cleaned: {folders_cleaned}")
-        print(f"   Files deleted: {total_deleted}")
+        task_logger.set_result(result)
+
+        logger.info(f"Storage cleanup complete: {folders_cleaned} folders cleaned, {total_deleted} files deleted")
         if total_failed > 0:
-            print(f"   Files failed: {total_failed}")
-        
+            logger.warning(f"Storage cleanup had {total_failed} failed file deletions")
+
         return result
 
 
@@ -242,25 +246,23 @@ def run_cleanup_dry_run() -> Dict[str, Any]:
         Summary of files that would be deleted
     """
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=TEMP_RETENTION_DAYS)
-    print(f"🔍 DRY RUN: Scanning for expired date folders...")
-    print(f"   Retention: {TEMP_RETENTION_DAYS} days")
-    print(f"   Cutoff date: {cutoff_date.strftime('%Y-%m-%d')}")
-    
+    logger.info(f"DRY RUN: Scanning for expired date folders (retention: {TEMP_RETENTION_DAYS} days, cutoff: {cutoff_date.strftime('%Y-%m-%d')})")
+
     expired_folders = get_expired_date_folders()
-    
+
     total_files = 0
-    
+
     if expired_folders:
-        print(f"\n📋 Folders that would be deleted ({len(expired_folders)} folders):")
+        logger.info(f"Folders that would be deleted ({len(expired_folders)} folders):")
         for folder_info in expired_folders:
             files = get_all_files_in_folder(folder_info['path'])
             file_count = len(files)
             total_files += file_count
-            print(f"   - {folder_info['path']} ({file_count} files)")
-        
-        print(f"\n   Total: {len(expired_folders)} folders, {total_files} files")
+            logger.info(f"  - {folder_info['path']} ({file_count} files)")
+
+        logger.info(f"Total: {len(expired_folders)} folders, {total_files} files")
     else:
-        print("   No expired folders found")
+        logger.info("No expired folders found")
     
     return {
         'folders_found': len(expired_folders),

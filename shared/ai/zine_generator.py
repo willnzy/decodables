@@ -1,3 +1,4 @@
+import logging
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import inch, mm
@@ -9,6 +10,8 @@ import zipfile
 import requests
 import base64
 import re
+
+logger = logging.getLogger(__name__)
 
 # 
 PAPER_CONFIG = {
@@ -36,7 +39,7 @@ def decode_base64_image(data_url):
             image_data = base64.b64decode(base64_data)
             return BytesIO(image_data)
     except Exception as e:
-        print(f"Base64 decode error: {e}")
+        logger.warning(f"Base64 decode error: {e}")
     return None
 
 def draw_smart_image(c, img_source, x, y, max_w, max_h):
@@ -73,7 +76,7 @@ def draw_smart_image(c, img_source, x, y, max_w, max_h):
         
         c.drawImage(img, draw_x, draw_y, width=new_w, height=new_h)
     except Exception as e:
-        print(f"Image Draw Error ({img_source[:50] if img_source else 'None'}...): {e}")
+        logger.warning(f"Image draw error ({img_source[:50] if img_source else 'None'}...): {e}")
         # 
         c.setStrokeColor(colors.red)
         c.rect(x, y, max_w, max_h)
@@ -253,4 +256,4 @@ def create_assets_zip(image_urls, output_buffer):
                     #  ZIP， Page_1.png 
                     zip_file.writestr(f"Page_{i+1}.png", resp.content)
             except Exception as e:
-                print(f"Zip Error {url}: {e}")
+                logger.warning(f"Zip error for {url}: {e}")

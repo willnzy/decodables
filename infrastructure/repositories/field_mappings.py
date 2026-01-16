@@ -5,12 +5,19 @@ This module defines the mappings between database table columns and domain objec
 All repository implementations MUST use these mappings to ensure consistency.
 
 @module infrastructure.repositories.field_mappings
-@version 1.0.0
+@version 1.0.1 (Log Hygiene)
 @created 2026-01-10
+
+Changes:
+- v1.0.1: Replaced print with proper logging in validate_mapping_consistency
+- v1.0.0: Initial implementation
 """
 
+import logging
 from typing import Dict, Any, List
 from dataclasses import asdict, is_dataclass
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # profiles 表 → UserProfile 聚合根
@@ -1418,11 +1425,11 @@ def validate_mapping_consistency(
     }
 
     if not result['valid']:
-        print(f"⚠️  映射表 {mapping_name} 与 Schema 不一致:")
+        logger.warning(f"映射表 {mapping_name} 与 Schema 不一致")
         if missing_in_mapping:
-            print(f"   缺失字段 (Schema 有但映射表无): {sorted(missing_in_mapping)}")
+            logger.warning(f"缺失字段 (Schema 有但映射表无): {sorted(missing_in_mapping)}")
         if extra_in_mapping:
-            print(f"   多余字段 (映射表有但 Schema 无): {sorted(extra_in_mapping)}")
+            logger.warning(f"多余字段 (映射表有但 Schema 无): {sorted(extra_in_mapping)}")
 
     return result
 

@@ -174,8 +174,7 @@ async def upload_reference_image(
         
         return supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
     except Exception as e:
-        logger.error(f"[ImageGenerator] Error uploading reference image: {e}")
-        print(f"❌ Error uploading reference image: {e}")
+        logger.error(f"Error uploading reference image: {e}")
         return None
 
 
@@ -283,7 +282,7 @@ async def generate_and_upload_single(
         use_img2img = reference_image_url is not None
         
         if use_img2img:
-            print(f"🎨 [{generation_mode}] Generating {index} with reference (strength={reference_strength})...")
+            logger.info(f"[{generation_mode}] Generating {index} with reference (strength={reference_strength})...")
             
             # Image-to-image using unified service
             response = await unified_image_service.image_to_image(
@@ -297,7 +296,7 @@ async def generate_and_upload_single(
             )
         else:
             neg_info = f", neg={len(full_negative)}chars" if full_negative else ""
-            print(f"🎨 [{generation_mode}] Generating {index} (steps={num_inference_steps}, cfg={guidance_scale:.1f}{neg_info})...")
+            logger.info(f"[{generation_mode}] Generating {index} (steps={num_inference_steps}, cfg={guidance_scale:.1f}{neg_info})...")
             
             # Text-to-image using unified service
             response = await unified_image_service.generate(
@@ -313,8 +312,7 @@ async def generate_and_upload_single(
         
         # Check response
         if not response.success:
-            logger.error(f"[ImageGenerator] Generation failed: {response.error}")
-            print(f"❌ Error generating image: {response.error}")
+            logger.error(f"Generation failed: {response.error}")
             return None
         
         # Get generated image URL from response
@@ -330,8 +328,7 @@ async def generate_and_upload_single(
         )
         
     except Exception as e:
-        logger.error(f"[ImageGenerator] Error generating image: {e}")
-        print(f"❌ Error generating image: {e}")
+        logger.error(f"Error generating image: {e}")
         return None
 
 
@@ -383,15 +380,15 @@ async def generate_8_images(
     num_images = max(1, min(4, num_images))
     
     neg_info = f", negative_prompt={len(negative_prompt) if negative_prompt else 0}chars" if negative_prompt else ""
-    print(f"🚀 Starting image generation: mode={generation_mode}, creativity={creativity_level:.2f}, "
-          f"prompts={len(prompts)}, variations={num_images}, tier={tier}{neg_info}")
+    logger.info(f"Starting image generation: mode={generation_mode}, creativity={creativity_level:.2f}, "
+                f"prompts={len(prompts)}, variations={num_images}, tier={tier}{neg_info}")
     
     async with aiohttp.ClientSession() as session:
         # Upload reference image if provided
         if reference_image:
             reference_image_url = await upload_reference_image(session, reference_image, task_id, user_id)
             if not reference_image_url:
-                print("⚠️ Failed to process reference image, falling back to text-only generation")
+                logger.warning("Failed to process reference image, falling back to text-only generation")
         
         # Generate images
         tasks = []
@@ -419,7 +416,7 @@ async def generate_8_images(
     
     success_count = len([u for u in image_urls if u])
     total_requested = len(prompts) * num_images
-    print(f"✅ Generation complete: {success_count}/{total_requested} images generated")
+    logger.info(f"Generation complete: {success_count}/{total_requested} images generated")
     
     return list(image_urls), task_id
 

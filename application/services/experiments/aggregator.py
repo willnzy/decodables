@@ -4,6 +4,11 @@ A/B Experiment Data Aggregation Task
 A/B 实验数据聚合任务
 
 @module application.services.experiments.aggregator
+@version 1.1.0 (Log Hygiene)
+
+Changes:
+- v1.1.0: Replaced print-based log function with proper logging
+- v1.0.0: Initial implementation
 
 Features:
 - 每小时聚合实验数据到 experiment_results 表
@@ -17,15 +22,17 @@ Usage:
 """
 
 import argparse
+import logging
 from datetime import datetime, timedelta, timezone
 
 from core.database import supabase
 
+logger = logging.getLogger(__name__)
 
-def log(message):
-    """Log with timestamp"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
+
+def log(message: str):
+    """Log message using standard logging."""
+    logger.info(message)
 
 
 # ==========================================

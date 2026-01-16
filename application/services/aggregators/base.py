@@ -2,14 +2,19 @@
 Aggregators Base - Common utilities for aggregation tasks
 
 @module application.services.aggregators.base
-@version 3.31
+@version 3.32 (Log Hygiene)
 
-v3.31: 修复 upsert_stats 以匹配数据库约束 UNIQUE(stat_type, stat_key, period_start)
+Changes:
+- v3.32: Replaced print-based log function with proper logging
+- v3.31: 修复 upsert_stats 以匹配数据库约束 UNIQUE(stat_type, stat_key, period_start)
 """
 
+import logging
 from datetime import datetime, timezone
 
 from core.database import supabase as _supabase_client
+
+logger = logging.getLogger(__name__)
 
 # Supabase client singleton
 _supabase = None
@@ -24,9 +29,8 @@ def get_supabase():
 
 
 def log(message: str):
-    """Log with timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
+    """Log using standard logging."""
+    logger.info(message)
 
 
 def upsert_stats(stat_type: str, data: dict, date: datetime = None):

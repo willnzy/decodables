@@ -2,14 +2,21 @@
 Metrics ETL Utils - Shared utilities
 
 @module application.services.metrics.utils
-@version 3.24
+@version 3.25 (Log Hygiene)
+
+Changes:
+- v3.25: Replaced print-based log function with proper logging
+- v3.24: Initial implementation
 """
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone, date
 from typing import Optional, Tuple
 
 from core.database import supabase
+
+logger = logging.getLogger(__name__)
 
 # Bot User-Agent patterns to filter
 BOT_PATTERNS = re.compile(
@@ -35,9 +42,16 @@ def get_supabase():
 
 
 def log(message: str, level: str = "INFO"):
-    """Structured logging with timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [{level}] {message}")
+    """Structured logging using standard logging."""
+    level_upper = level.upper()
+    if level_upper == "ERROR":
+        logger.error(message)
+    elif level_upper == "WARNING":
+        logger.warning(message)
+    elif level_upper == "DEBUG":
+        logger.debug(message)
+    else:
+        logger.info(message)
 
 
 def is_bot(user_agent: Optional[str]) -> bool:

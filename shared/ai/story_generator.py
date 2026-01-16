@@ -108,8 +108,8 @@ def generate_story_json(
         - 自动追踪使用量
         - 失败时自动 fallback 到备用模型
     """
-    print(f"🧠 Brainstorming story about: {topic}...")
-    
+    logger.info(f"Generating story about: {topic}")
+
     async def _generate_async():
         """异步生成故事"""
         response = await unified_text_service.chat(
@@ -144,8 +144,7 @@ def generate_story_json(
         
         # 处理响应
         if not response.success:
-            logger.error(f"[StoryGenerator] AI call failed: {response.error}")
-            print(f"❌ Story Generation Error: {response.error}")
+            logger.error(f"AI call failed: {response.error}")
             return None
         
         # 解析 JSON
@@ -155,18 +154,15 @@ def generate_story_json(
         # 记录成功信息
         title = story_data.get('title', 'Untitled')
         model_info = f"{response.provider}/{response.model}" if response.provider else "unknown"
-        print(f"✅ Story Generated: \"{title}\" (via {model_info})")
-        logger.info(f"[StoryGenerator] Story generated: {title}, model: {model_info}")
+        logger.info(f"Story generated: {title}, model: {model_info}")
         
         return story_data
         
     except json.JSONDecodeError as e:
-        logger.error(f"[StoryGenerator] JSON parse error: {e}")
-        print(f"❌ Story Generation Error: Invalid JSON response")
+        logger.error(f"JSON parse error: {e}")
         return None
     except Exception as e:
-        logger.error(f"[StoryGenerator] Unexpected error: {e}")
-        print(f"❌ Story Generation Error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
 
 
@@ -190,8 +186,8 @@ async def generate_story_json_async(
     Returns:
         故事数据字典，失败返回 None
     """
-    print(f"🧠 Brainstorming story about: {topic}...")
-    
+    logger.info(f"Generating story about: {topic}")
+
     try:
         response = await unified_text_service.chat(
             messages=[
@@ -206,26 +202,23 @@ async def generate_story_json_async(
         )
         
         if not response.success:
-            logger.error(f"[StoryGenerator] AI call failed: {response.error}")
-            print(f"❌ Story Generation Error: {response.error}")
+            logger.error(f"AI call failed: {response.error}")
             return None
-        
+
         content = response.content
         story_data = json.loads(content)
-        
+
         title = story_data.get('title', 'Untitled')
         model_info = f"{response.provider}/{response.model}" if response.provider else "unknown"
-        print(f"✅ Story Generated: \"{title}\" (via {model_info})")
-        
+        logger.info(f"Story generated: {title}, model: {model_info}")
+
         return story_data
-        
+
     except json.JSONDecodeError as e:
-        logger.error(f"[StoryGenerator] JSON parse error: {e}")
-        print(f"❌ Story Generation Error: Invalid JSON response")
+        logger.error(f"JSON parse error: {e}")
         return None
     except Exception as e:
-        logger.error(f"[StoryGenerator] Unexpected error: {e}")
-        print(f"❌ Story Generation Error: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
 
 
