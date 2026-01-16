@@ -9,7 +9,7 @@ import jwt
 from fastapi import Header, Depends
 from infrastructure.repositories import SupabaseUserRepository
 from core.database import get_async_db_client
-from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API
+from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API, CLERK_ALLOWED_ORIGINS
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
 from domains.shared import access_control
@@ -17,6 +17,32 @@ from domains.shared import access_control
 # Aliases for clarity in dependencies
 AdminRequiredException = ForbiddenException
 MembershipRequiredException = ForbiddenException
+
+
+def _get_allowed_origins() -> set:
+    """
+    Get the set of allowed origins for azp verification.
+
+    Combines CLERK_ALLOWED_ORIGINS (comma-separated) with CLERK_FRONTEND_API
+    for backwards compatibility.
+
+    Returns:
+        Set of allowed origin URLs, or empty set if not configured (permissive mode)
+    """
+    origins = set()
+
+    # Parse CLERK_ALLOWED_ORIGINS (comma-separated)
+    if CLERK_ALLOWED_ORIGINS:
+        for origin in CLERK_ALLOWED_ORIGINS.split(","):
+            origin = origin.strip()
+            if origin:
+                origins.add(origin)
+
+    # Legacy: Also accept CLERK_FRONTEND_API
+    if CLERK_FRONTEND_API:
+        origins.add(CLERK_FRONTEND_API)
+
+    return origins
 
 
 async def get_current_user(authorization: str = Header(None)):
@@ -41,43 +67,52 @@ async def get_current_user(authorization: str = Header(None)):
     token = authorization.split(" ")[1]
     payload = None
     
-    # Production mode: Verify JWT signature
+    # Production mode: Verify JWT signature + authorized party
     if CLERK_PEM_PUBLIC_KEY:
         try:
-            # v3.27: Graceful audience verification
-            # - First decode without aud verification to check if token has 'aud' claim
-            # - If token has 'aud' AND CLERK_FRONTEND_API is configured, verify it
-            # - If token lacks 'aud' claim, allow but log warning
+            # v3.27.1: Industry Best Practice for Clerk JWT Verification
+            #
+            # Security layers (in order of importance):
+            # 1. RS256 Signature - Cryptographic proof token came from Clerk
+            # 2. Expiration (exp) - Automatic by PyJWT, prevents replay attacks
+            # 3. Authorized Party (azp) - Verifies token was issued for our frontend
+            #
+            # Why azp instead of aud?
+            # - Clerk doesn't include 'aud' by default (would require JWT Template config)
+            # - Clerk DOES include 'azp' by default (the frontend origin)
+            # - azp is OAuth 2.0 standard for "which client requested this token"
+            # - This prevents tokens from other Clerk apps being used here
+            #
+            # Reference: https://clerk.com/docs/backend-requests/handling/manual-jwt
 
-            # Step 1: Decode without audience verification first
             payload = jwt.decode(
                 token,
                 CLERK_PEM_PUBLIC_KEY,
                 algorithms=["RS256"],
-                options={"verify_aud": False}
+                options={"verify_aud": False}  # Clerk uses azp, not aud
             )
 
-            # Step 2: If token has 'aud' claim and we have CLERK_FRONTEND_API, verify it
-            token_aud = payload.get("aud")
-            if token_aud and CLERK_FRONTEND_API:
-                # Token has audience, verify it matches
-                expected_aud = CLERK_FRONTEND_API
-                # Handle both string and list audience formats
-                if isinstance(token_aud, list):
-                    if expected_aud not in token_aud:
-                        raise UnauthorizedException(message="Invalid token audience")
-                elif token_aud != expected_aud:
-                    raise UnauthorizedException(message="Invalid token audience")
-            elif not token_aud and CLERK_FRONTEND_API:
-                # Token lacks 'aud' claim but we have CLERK_FRONTEND_API configured
-                # This is a security gap - log warning but allow (for backwards compatibility)
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    "[Security] JWT token missing 'aud' claim. "
-                    "Configure Clerk JWT Template to include audience for stricter validation. "
-                    "See: https://clerk.com/docs/backend-requests/making/jwt-templates"
-                )
+            # Verify azp (Authorized Party) - STRICT enforcement
+            # This ensures the token was issued for requests from our frontend
+            token_azp = payload.get("azp")
+            allowed_origins = _get_allowed_origins()
+
+            if allowed_origins:
+                # Strict mode: azp must be in allowed list
+                if not token_azp:
+                    raise UnauthorizedException(
+                        message="Invalid token: missing authorized party (azp)"
+                    )
+                if token_azp not in allowed_origins:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"[Security] Token azp '{token_azp}' not in allowed origins. "
+                        f"Allowed: {allowed_origins}"
+                    )
+                    raise UnauthorizedException(
+                        message="Invalid token: unauthorized origin"
+                    )
 
             user_id = payload.get("sub")
         except jwt.ExpiredSignatureError:

@@ -19,9 +19,13 @@ API_VERSION = "3.2.0"
 # Clerk Authentication
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
-# v3.26: JWT audience verification (Clerk Frontend API URL)
-# Format: https://<clerk-frontend-api>.clerk.accounts.dev or your custom domain
-# Set this in production for secure JWT validation
+# v3.27.1: Authorized Party (azp) verification
+# Clerk includes 'azp' in JWT by default (unlike 'aud')
+# This is the frontend origin that requested the token
+# Format: comma-separated list of allowed origins
+# Example: "https://makedecodables.com,https://www.makedecodables.com"
+CLERK_ALLOWED_ORIGINS = os.environ.get("CLERK_ALLOWED_ORIGINS", "")
+# Legacy: CLERK_FRONTEND_API (kept for backwards compatibility, prefer CLERK_ALLOWED_ORIGINS)
 CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API")
 
 # Stripe
