@@ -92,9 +92,12 @@ class SupabaseCreditRepository(ICreditRepository):
                 "tier": user_credits.tier,
             }).eq("id", user_credits.user_id).execute()
 
-            # Save pending transactions
-            for tx in user_credits.pending_transactions:
-                await self._save_transaction(user_credits.user_id, tx)
+            # v3.26: Batch save pending transactions (N+1 fix)
+            if user_credits.pending_transactions:
+                await self._save_transactions_batch(
+                    user_credits.user_id,
+                    user_credits.pending_transactions
+                )
 
             user_credits.clear_pending_transactions()
             return user_credits
@@ -405,6 +408,41 @@ class SupabaseCreditRepository(ICreditRepository):
             }).execute()
         except Exception as e:
             logger.warning(f"Failed to save transaction record: {e}")
+
+    async def _save_transactions_batch(
+        self,
+        user_id: str,
+        transactions: List[CreditTransaction]
+    ):
+        """
+        Save multiple transaction records in a single batch (v3.26 - N+1 fix).
+
+        Args:
+            user_id: User ID
+            transactions: List of transactions to save
+        """
+        if not transactions:
+            return
+
+        try:
+            batch_data = [
+                {
+                    "user_id": user_id,
+                    "amount": tx.amount,
+                    "bucket": tx.bucket.value,
+                    "tx_type": tx.tx_type.value,
+                    "description": tx.description,
+                    "balance_monthly_after": tx.balance_after.monthly if tx.balance_after else None,
+                    "balance_permanent_after": tx.balance_after.permanent if tx.balance_after else None,
+                    "idempotency_key": tx.idempotency_key,
+                    "created_at": tx.created_at.isoformat(),
+                }
+                for tx in transactions
+            ]
+
+            await self.client.table("credit_transactions").insert(batch_data).execute()
+        except Exception as e:
+            logger.warning(f"Failed to batch save {len(transactions)} transaction records: {e}")
 
     def _map_to_transaction(self, row: dict) -> CreditTransaction:
         """Map database row to CreditTransaction."""

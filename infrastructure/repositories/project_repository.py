@@ -77,9 +77,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 data, on_conflict="project_id"
             ).execute()
 
-            # Save pages
-            for page in project.pages:
-                await self.save_page(project.project_id, page)
+            # v3.26: Batch save pages (N+1 fix)
+            if project.pages:
+                await self.save_pages_batch(project.project_id, project.pages)
 
             return project
 
@@ -93,9 +93,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             data = self._map_to_row(project)
             await self.client.table("projects").insert(data).execute()
 
-            # Create initial pages
-            for page in project.pages:
-                await self.save_page(project.project_id, page)
+            # v3.26: Batch create pages (N+1 fix)
+            if project.pages:
+                await self.save_pages_batch(project.project_id, project.pages)
 
             return project
 
@@ -274,6 +274,46 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
         except Exception as e:
             logger.error(f"Failed to save page {page.page_id}: {e}")
+            raise
+
+    async def save_pages_batch(self, project_id: str, pages: List[Page]) -> List[Page]:
+        """
+        Save multiple pages in a single batch operation (v3.26 - N+1 fix).
+
+        Replaces N individual INSERT calls with 1 batch UPSERT.
+
+        Args:
+            project_id: Project ID
+            pages: List of pages to save
+
+        Returns:
+            List of saved pages
+        """
+        if not pages:
+            return []
+
+        try:
+            now = datetime.utcnow().isoformat()
+            batch_data = [
+                {
+                    "page_id": page.page_id,
+                    "project_id": project_id,
+                    "page_number": page.page_number,
+                    "canvas_data": json.dumps(page.canvas_data) if page.canvas_data else None,
+                    "thumbnail_url": page.thumbnail_url,
+                    "updated_at": now,
+                }
+                for page in pages
+            ]
+
+            await self.client.table("project_pages").upsert(
+                batch_data, on_conflict="page_id"
+            ).execute()
+
+            return pages
+
+        except Exception as e:
+            logger.error(f"Failed to batch save {len(pages)} pages for project {project_id}: {e}")
             raise
 
     async def get_page(self, project_id: str, page_id: str) -> Optional[Page]:
