@@ -2,7 +2,14 @@
 Config API - Public configuration endpoints (v2).
 
 @module api.user.config
-@version 2.3.0
+@version 2.4.0 (Container DI Migration)
+
+Changes in v2.4.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct infrastructure.repositories imports
+  - Removed get_async_db dependency from DI function
+  - Architecture: API → Container → Service → Repository
 
 Changes in v2.3.0:
 - GET /group/{group_name} now returns nested JSON structure
@@ -32,8 +39,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from domains.platform.config_service import ConfigService
-from infrastructure.repositories import SupabaseConfigRepository
-from core.database.dependencies import get_async_db
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +50,17 @@ router = APIRouter(prefix="/config", tags=["user-config-v2"])
 # Dependency Injection
 # ==========================================
 
-async def get_config_service(db = Depends(get_async_db)) -> ConfigService:
+async def get_config_service() -> ConfigService:
     """
-    Dependency injection factory for ConfigService (AsyncClient).
+    Dependency injection factory for ConfigService via Container.
 
-    Returns:
-        ConfigService instance with Repository injected
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
     """
-    config_repo = SupabaseConfigRepository(db)
-    return ConfigService(config_repo)
+    container = get_container()
+    return await container.get_config_service()
 
 
 # ==========================================

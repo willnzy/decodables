@@ -2,9 +2,14 @@
 Projects API - Project management endpoints.
 
 @module api.user.projects
-@version 1.1.0
+@version 1.2.0 (Container DI Migration)
 
 Changes:
+- v1.2.0: Container DI Migration
+  - Migrated audit logging to use Container's admin_audit_service
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
 - v1.1.0: API Consolidation Phase 3
   - REMOVED: GET /api/v2/user/projects/seller-stats (use /seller/stats?include=projects)
 - v1.0.0: Initial version
@@ -508,14 +513,10 @@ async def delete_project(
             raise HTTPException(403, "Access denied")
         raise HTTPException(400, result.error or "Failed to delete project")
 
-    # ✅ Phase 4 - Task 9: Log project deletion to audit trail
+    # ✅ v1.2.0: Audit logging via Container (DI migration)
     try:
-        from core.database import get_async_db_client
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        db_client = await get_async_db_client()
-        admin_repo = SupabaseAdminUsersRepository(db_client)
-        await admin_repo.admin_log_operation(
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,  # User deleting their own project
             operation_type="project_delete_permanent" if permanent else "project_delete_soft",
             target_type="project",
@@ -562,14 +563,10 @@ async def restore_project(
         logger.error(f"Failed to restore project {project_id}: {result.error}")
         raise HTTPException(400, result.error or "Failed to restore project")
 
-    # ✅ Phase 4 - Task 9: Log project restoration to audit trail
+    # ✅ v1.2.0: Audit logging via Container (DI migration)
     try:
-        from core.database import get_async_db_client
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        db_client = await get_async_db_client()
-        admin_repo = SupabaseAdminUsersRepository(db_client)
-        await admin_repo.admin_log_operation(
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,
             operation_type="project_restore",
             target_type="project",

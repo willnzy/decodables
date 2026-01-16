@@ -2,7 +2,15 @@
 Payment API - Payment and checkout endpoints (v2).
 
 @module api.user.payment
-@version 2.3.0 (DDD Architecture Upgrade - 5 Star)
+@version 2.4.0 (Container DI Migration)
+
+Changes in v2.4.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct infrastructure.repositories imports
+  - Removed get_async_db dependency from endpoints
+  - User repository accessed via Container pattern
+  - Architecture: API → Container → Service → Repository
 
 Changes in v2.3.0:
 - PAY-CRITICAL-1: Added dependency injection for PaymentService
@@ -36,8 +44,7 @@ from pydantic import BaseModel, Field
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.user_repository import SupabaseUserRepository
-from core.database.dependencies import get_async_db
+from container import get_container
 from domains.billing.payment_service import PaymentService
 
 logger = logging.getLogger(__name__)
@@ -90,7 +97,6 @@ async def create_checkout(
     req: CheckoutRequest,
     user: UserProfile = Depends(get_current_user),
     payment_service: PaymentService = Depends(get_payment_service),  # v2.3.0: DI
-    db = Depends(get_async_db),  # AsyncClient DI
 ) -> CheckoutResponse:
     """
     Create a Stripe checkout session.
@@ -104,7 +110,9 @@ async def create_checkout(
         CheckoutResponse with checkout URL and discount info
     """
     try:
-        user_repo = SupabaseUserRepository(db)
+        # v2.4.0: Get user repository via Container (DI migration)
+        container = get_container()
+        user_repo = await container.get_user_repository()
 
         # v2.2.0: Get and validate discount
         discount = await user_repo.get_user_discount(user.user_id, req.plan_type)

@@ -2,7 +2,14 @@
 Webhooks API - Third-party webhook handlers (v2).
 
 @module api.user.webhooks
-@version 2.5.0 (DDD Architecture Upgrade - 5 Star)
+@version 2.6.0 (Container DI Migration)
+
+Changes in v2.6.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
 
 Changes in v2.5.0:
 - WEBHOOKS-CRITICAL-1: Added dependency injection for webhook services
@@ -33,12 +40,7 @@ from fastapi import APIRouter, Request, Header, HTTPException, Depends
 
 from svix.webhooks import WebhookVerificationError
 
-from core.database import get_async_db_client
-from infrastructure.repositories import (
-    SupabaseUserRepository,
-    SupabaseCreditRepository,
-    SupabasePaymentRepository,
-)
+from container import get_container
 from domains.webhooks import ClerkWebhookService, StripeWebhookService
 
 logger = logging.getLogger(__name__)
@@ -51,20 +53,29 @@ router = APIRouter(prefix="/webhooks", tags=["user-webhooks-v2"])
 # ==========================================
 
 async def get_clerk_webhook_service() -> ClerkWebhookService:
-    """Dependency injection factory for ClerkWebhookService (AsyncClient)."""
-    db = await get_async_db_client()
-    user_repo = SupabaseUserRepository(db)
-    credit_repo = SupabaseCreditRepository(db)
-    return ClerkWebhookService(user_repo, credit_repo)
+    """
+    Dependency injection factory for ClerkWebhookService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_clerk_webhook_service()
 
 
 async def get_stripe_webhook_service() -> StripeWebhookService:
-    """Dependency injection factory for StripeWebhookService (AsyncClient)."""
-    db = await get_async_db_client()
-    user_repo = SupabaseUserRepository(db)
-    credit_repo = SupabaseCreditRepository(db)
-    payment_repo = SupabasePaymentRepository(db)
-    return StripeWebhookService(user_repo, credit_repo, payment_repo)
+    """
+    Dependency injection factory for StripeWebhookService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_stripe_webhook_service()
 
 
 # ==========================================

@@ -1,9 +1,14 @@
 """Export API - PDF, preview, and ZIP export endpoints.
 
 @module api.user.export
-@version 4.1.0
+@version 4.2.0 (Container DI Migration)
 
 Changes:
+- v4.2.0: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct infrastructure.repositories imports
+  - Removed get_async_db dependency from DI function
+  - Architecture: API → Container → Service → Repository
 - v4.1.0: Deprecated endpoints cleanup
   - REMOVED: POST /zip (use GET /projects/{id}/zip instead)
 - v4.0.0: Async export implementation
@@ -43,8 +48,7 @@ from pydantic import BaseModel, Field
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from infrastructure.repositories.project_repository import SupabaseProjectRepository
-from core.database.dependencies import get_async_db
+from container import get_container
 from domains.export import ExportService
 from domains.export.export_service import (
     ProjectNotFoundException,
@@ -125,10 +129,17 @@ def _is_allowed_url(url: str) -> bool:
 # Dependency Injection
 # ==========================================
 
-async def get_export_service(db = Depends(get_async_db)) -> ExportService:
-    """Dependency injection factory for ExportService (AsyncClient)."""
-    project_repo = SupabaseProjectRepository(db)
-    return ExportService(project_repository=project_repo)
+async def get_export_service() -> ExportService:
+    """
+    Dependency injection factory for ExportService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_export_service()
 
 
 # ==========================================

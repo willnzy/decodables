@@ -1,9 +1,14 @@
 """Generations API - Generation history endpoints (v3).
 
 @module api.user.generations
-@version 3.1.0
+@version 3.2.0 (Container DI Migration)
 
 Changes:
+- v3.2.0: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Migrated audit logging to use Container's admin_audit_service
+  - Architecture: API → Container → Service → Repository
 - v3.1.0: Deprecated endpoints cleanup
   - REMOVED: POST /{id}/favorite (use PATCH /{id} instead)
   - REMOVED: DELETE /batch (use POST /batch-delete instead)
@@ -36,8 +41,7 @@ from typing import List, Dict, Any
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
-from core.database.dependencies import get_async_db
-from core.database import get_async_db_client
+from container import get_container
 from domains.generation import GenerationHistoryService
 from domains.generation.history_service import GenerationNotFoundException
 
@@ -91,9 +95,17 @@ class BatchDeleteResponse(BaseModel):
 # Dependency Injection
 # ==========================================
 
-async def get_generation_history_service(db = Depends(get_async_db)) -> GenerationHistoryService:
-    """Dependency injection factory for GenerationHistoryService (AsyncClient)."""
-    return GenerationHistoryService(db_client=db)
+async def get_generation_history_service() -> GenerationHistoryService:
+    """
+    Dependency injection factory for GenerationHistoryService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_generation_history_service()
 
 
 # ==========================================
@@ -265,13 +277,11 @@ async def delete_generation(
         logger.error(f"Delete generation failed: {e}")
         raise HTTPException(500, "Failed to delete generation")
 
-    # ✅ Task 9 - Phase 2: Log generation deletion to audit trail
+    # ✅ v3.2.0: Audit logging via Container (DI migration)
     try:
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        db_client = await get_async_db_client()
-        admin_repo = SupabaseAdminUsersRepository(db_client)
-        await admin_repo.admin_log_operation(
+        container = get_container()
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,
             operation_type="generation_delete",
             target_type="generation",
@@ -362,13 +372,11 @@ async def batch_delete_generations(
         logger.error(f"Batch delete failed: {e}")
         raise HTTPException(500, "Failed to clear history")
 
-    # ✅ Task 9 - Phase 2: Log batch deletion to audit trail
+    # ✅ v3.2.0: Audit logging via Container (DI migration)
     try:
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        db_client = await get_async_db_client()
-        admin_repo = SupabaseAdminUsersRepository(db_client)
-        await admin_repo.admin_log_operation(
+        container = get_container()
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,
             operation_type="generation_batch_delete",
             target_type="generation",

@@ -2,7 +2,13 @@
 Referrals API
 
 @module api.user.referrals
-@version 1.0.0
+@version 1.1.0 (Container DI Migration)
+
+Changes in v1.1.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Architecture: API → Container → Service → Repository
 
 推荐系统API endpoints:
 - 创建推荐
@@ -15,9 +21,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
-from domains.referrals import ReferralService, ReferralRepository
+from domains.referrals import ReferralService
 from dependencies import get_current_user
-from core.database import get_async_db_client
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +40,17 @@ class CreateReferralRequest(BaseModel):
 
 # ==================== 依赖注入 ====================
 
-def get_referral_service(
-    supabase = Depends(get_async_db_client)
-) -> ReferralService:
-    """获取Referral Service"""
-    repository = ReferralRepository(supabase)
-    return ReferralService(repository)
+async def get_referral_service() -> ReferralService:
+    """
+    获取Referral Service via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_referral_service()
 
 
 # ==================== API Endpoints ====================

@@ -2,9 +2,14 @@
 Story Generation Router - AI story and inspiration endpoints
 
 @module api.user.generation_story
-@version 3.28
+@version 3.29 (Container DI Migration)
 
 Changes:
+- v3.29: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct infrastructure.repositories imports
+  - Removed get_async_db dependency from DI function
+  - Architecture: API → Container → Service → Repository
 - v3.28: GS-CRITICAL-1 fix - Added Service layers with DI
          - Created StoryGenerationService (domains/generation/story_service.py)
          - Created InspirationService (domains/generation/inspiration_service.py)
@@ -26,10 +31,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from domains.identity.aggregates.user_profile import UserProfile
-from core.database.dependencies import get_async_db
-from infrastructure.repositories.user_repository import SupabaseUserRepository
 from infrastructure.rate_limiter import limiter
-from domains.billing import BillingService
+from container import get_container
 from domains.generation import StoryGenerationService, InspirationService
 from domains.generation.story_service import StoryGenerationException
 from domains.billing.exceptions import InsufficientCreditsException
@@ -45,15 +48,21 @@ router = APIRouter(prefix="/generate/story", tags=["generation-story-v2"])
 # Dependency Injection
 # ==========================================
 
-async def get_story_service(db = Depends(get_async_db)) -> StoryGenerationService:
-    """Dependency injection factory for StoryGenerationService (AsyncClient)."""
-    user_repo = SupabaseUserRepository(db)
-    billing_service = BillingService(user_repository=user_repo)
-    return StoryGenerationService(billing_service=billing_service)
+async def get_story_service() -> StoryGenerationService:
+    """
+    Dependency injection factory for StoryGenerationService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_story_generation_service()
 
 
 def get_inspiration_service() -> InspirationService:
-    """Dependency injection factory for InspirationService."""
+    """Dependency injection factory for InspirationService (stateless)."""
     return InspirationService()
 
 

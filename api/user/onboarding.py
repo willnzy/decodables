@@ -2,7 +2,13 @@
 Onboarding API
 
 @module api.user.onboarding
-@version 1.0.0
+@version 1.1.0 (Container DI Migration)
+
+Changes in v1.1.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Architecture: API → Container → Service → Repository
 
 用户引导API endpoints:
 - 获取可用引导
@@ -16,9 +22,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
-from domains.onboarding import OnboardingService, OnboardingRepository
+from domains.onboarding import OnboardingService
 from dependencies import get_current_user
-from core.database import get_async_db_client
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +40,17 @@ class StepActionRequest(BaseModel):
 
 # ==================== 依赖注入 ====================
 
-def get_onboarding_service(
-    supabase = Depends(get_async_db_client)
-) -> OnboardingService:
-    """获取Onboarding Service"""
-    repository = OnboardingRepository(supabase)
-    return OnboardingService(repository)
+async def get_onboarding_service() -> OnboardingService:
+    """
+    获取Onboarding Service via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_onboarding_service()
 
 
 # ==================== API Endpoints ====================

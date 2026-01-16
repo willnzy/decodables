@@ -2,9 +2,16 @@
 Campaigns API - Marketing campaigns endpoints (v2).
 
 @module api.user.campaigns
-@version 2.2.0
+@version 2.3.0 (Container DI Migration)
 
 Changes:
+- v2.3.0: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - get_grant_credits_fn now uses BillingService via Container
+  - Architecture: API → Container → Service → Repository
+
 - v2.2.0: DDD architecture migration
   - CP-MEDIUM-3: Migrate to use CampaignService and Repository
   - API layer now uses dependency injection for CampaignService
@@ -39,11 +46,8 @@ from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import optional_user, get_current_user
-from infrastructure.repositories.credit_repository import SupabaseCreditRepository
-from infrastructure.repositories.campaign_repository import SupabaseCampaignRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
-from core.database.dependencies import get_async_db
+from container import get_container
 from domains.marketing import CampaignService, ClaimResult, CampaignWithStatus
 from domains.marketing.repository import CampaignData
 
@@ -66,29 +70,33 @@ router = APIRouter(prefix="/campaigns", tags=["user-campaigns-v2"])
 # Dependency Injection
 # ==========================================
 
-async def get_campaign_service(db = Depends(get_async_db)) -> CampaignService:
+async def get_campaign_service() -> CampaignService:
     """
-    Dependency injection factory for CampaignService (AsyncClient).
+    Dependency injection factory for CampaignService via Container.
 
-    Creates a CampaignService with the SupabaseCampaignRepository.
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
     """
-    campaign_repo = SupabaseCampaignRepository(db)
-    return CampaignService(campaign_repo)
+    container = get_container()
+    return await container.get_campaign_service()
 
 
 async def get_grant_credits_fn(user_id: str, amount: int, description: str) -> None:
     """
-    Helper function to grant credits via billing domain.
+    Helper function to grant credits via BillingService.
 
-    This bridges the campaign service to the credit repository.
+    v2.3.0: Now uses BillingService via Container instead of direct Repository access.
+    This maintains proper domain boundaries (campaigns don't directly access credits).
     """
-    db_client = await get_async_db_client()
-    credit_repo = SupabaseCreditRepository(db_client)
-    await credit_repo.add_credits_permanent(
-        user_id,
-        amount,
-        description,
-        "campaign_gift",
+    container = get_container()
+    billing_service = await container.get_billing_service()
+    await billing_service.add_permanent_credits(
+        user_id=user_id,
+        amount=amount,
+        description=description,
+        transaction_type="campaign_gift",
     )
 
 

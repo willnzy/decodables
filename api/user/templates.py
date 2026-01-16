@@ -2,9 +2,15 @@
 Templates API - User prompt templates management (v3.0.0).
 
 @module api.user.templates
-@version 3.0.0
+@version 3.1.0 (Container DI Migration)
 
 Changes:
+- v3.1.0: Container DI Migration
+  - Migrated audit logging to use Container's admin_audit_service
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
+
 - v3.0.0: DDD architecture upgrade - Full CQRS pattern
   - Created TemplatesService v1.0.0 with 10 business methods
   - Added 2 Query Handlers (ListAsset, ListPage)
@@ -300,13 +306,10 @@ async def delete_asset_template(
     )
     result = await handler.handle(command)
 
-    # ✅ Task 9 - Phase 2: Log template deletion to audit trail
+    # ✅ v3.1.0: Audit logging via Container (DI migration)
     try:
-        from core.database import get_async_db_client
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-        await admin_repo.admin_log_operation(
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,
             operation_type="template_delete",
             target_type="template",
@@ -466,13 +469,10 @@ async def delete_page_template(
     )
     result = await handler.handle(command)
 
-    # ✅ Task 9 - Phase 2: Log template deletion to audit trail
+    # ✅ v3.1.0: Audit logging via Container (DI migration)
     try:
-        from core.database import get_async_db_client
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-        await admin_repo.admin_log_operation(
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=user.user_id,
             operation_type="template_delete",
             target_type="template",

@@ -2,9 +2,14 @@
 PDF Generation Router - PDF export endpoint
 
 @module api.user.generation_pdf
-@version 3.26
+@version 3.27 (Container DI Migration)
 
 Changes:
+- v3.27: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct infrastructure.repositories imports
+  - Removed get_async_db dependency from DI function
+  - Architecture: API → Container → Service → Repository
 - v3.26: GP-CRITICAL-1 fix - Added PdfGenerationService with DI
          - Created domains/generation/pdf_service.py
          - Migrated to DDD architecture: API → Service → Repository
@@ -26,9 +31,8 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 
 from domains.identity.aggregates.user_profile import UserProfile
-from core.database.dependencies import get_async_db
-from infrastructure.repositories.project_repository import SupabaseProjectRepository
 from infrastructure.rate_limiter import limiter
+from container import get_container
 from domains.generation import PdfGenerationService
 from domains.generation.pdf_service import (
     ProjectNotFoundException,
@@ -46,10 +50,17 @@ router = APIRouter(prefix="/generate/pdf", tags=["generation-pdf-v2"])
 # Dependency Injection
 # ==========================================
 
-async def get_pdf_service(db = Depends(get_async_db)) -> PdfGenerationService:
-    """Dependency injection factory for PdfGenerationService (AsyncClient)."""
-    project_repo = SupabaseProjectRepository(db)
-    return PdfGenerationService(project_repository=project_repo)
+async def get_pdf_service() -> PdfGenerationService:
+    """
+    Dependency injection factory for PdfGenerationService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_pdf_generation_service()
 
 
 # ==========================================

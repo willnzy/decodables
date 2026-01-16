@@ -2,9 +2,14 @@
 Image Generation Router - AI image generation endpoints
 
 @module api.user.generation_images
-@version 3.28
+@version 3.29 (Container DI Migration)
 
 Changes:
+- v3.29: Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
 - v3.28: GI-CRITICAL-1 fix - Added GenerationService with DI
          - Created domains/generation/generation_service.py
          - Migrated to DDD architecture: API → Service → Repository
@@ -32,8 +37,6 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from domains.identity.aggregates.user_profile import UserProfile
-from core.database import get_async_db_client
-from infrastructure.repositories import SupabaseAssetRepository
 from container import get_container
 from domains.generation import GenerationService
 from domains.generation.generation_service import (
@@ -65,15 +68,16 @@ router = APIRouter(prefix="/generate/images", tags=["generation-images-v2"])
 # ==========================================
 
 async def get_generation_service() -> GenerationService:
-    """Dependency injection factory for GenerationService."""
+    """
+    Dependency injection factory for GenerationService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation with all dependencies
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
     container = get_container()
-    db = await get_async_db_client()
-    asset_repo = SupabaseAssetRepository(db)
-    billing_service = await container.get_billing_service()
-    return GenerationService(
-        billing_service=billing_service,
-        asset_repository=asset_repo,
-    )
+    return await container.get_generation_service()
 
 
 # ==========================================

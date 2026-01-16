@@ -743,6 +743,241 @@ class Container:
             self._services['system_resource_repository'] = SupabaseSystemResourceRepository(db)
         return self._services['system_resource_repository']
 
+    async def get_generation_history_service(self):
+        """
+        Get generation history service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Used by user generations API for history management
+        """
+        from domains.generation import GenerationHistoryService
+
+        if 'generation_history_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            self._services['generation_history_service'] = GenerationHistoryService(db_client=db)
+        return self._services['generation_history_service']
+
+    async def get_generation_service(self):
+        """
+        Get generation service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction with all dependencies
+        - GenerationService requires BillingService, AssetRepository, TierService
+        - Enables testing with mock services
+        - Used by user generate images API
+        """
+        from domains.generation import GenerationService
+        from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+        from domains.identity.tier_service import TierService
+
+        if 'generation_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            billing_service = await self.get_billing_service()
+            asset_repository = SupabaseAssetRepository(db)
+            tier_service = TierService()
+
+            self._services['generation_service'] = GenerationService(
+                billing_service=billing_service,
+                asset_repository=asset_repository,
+                tier_service=tier_service,
+                db_client=db,
+            )
+        return self._services['generation_service']
+
+    async def get_analytics_service(self):
+        """
+        Get analytics service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user analytics API for event tracking
+        """
+        from domains.analytics import AnalyticsService
+        from infrastructure.repositories.analytics_events_repository import SupabaseAnalyticsEventsRepository
+
+        if 'analytics_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            analytics_repo = SupabaseAnalyticsEventsRepository(db)
+            self._services['analytics_service'] = AnalyticsService(analytics_repo)
+        return self._services['analytics_service']
+
+    async def get_campaign_service(self):
+        """
+        Get campaign service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user campaigns API for marketing campaigns
+        """
+        from domains.marketing import CampaignService
+        from infrastructure.repositories.campaign_repository import SupabaseCampaignRepository
+
+        if 'campaign_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            campaign_repo = SupabaseCampaignRepository(db)
+            self._services['campaign_service'] = CampaignService(campaign_repo)
+        return self._services['campaign_service']
+
+    async def get_export_service(self):
+        """
+        Get export service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user export API for PDF/ZIP generation
+        """
+        from domains.export import ExportService
+        from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+        if 'export_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            project_repo = SupabaseProjectRepository(db)
+            self._services['export_service'] = ExportService(project_repository=project_repo)
+        return self._services['export_service']
+
+    async def get_pdf_generation_service(self):
+        """
+        Get PDF generation service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user PDF generation API
+        """
+        from domains.generation import PdfGenerationService
+        from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+        if 'pdf_generation_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            project_repo = SupabaseProjectRepository(db)
+            self._services['pdf_generation_service'] = PdfGenerationService(project_repository=project_repo)
+        return self._services['pdf_generation_service']
+
+    async def get_story_generation_service(self):
+        """
+        Get story generation service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction with all dependencies
+        - StoryGenerationService requires BillingService
+        - Used by user story generation API
+        """
+        from domains.generation import StoryGenerationService
+
+        if 'story_generation_service' not in self._services:
+            billing_service = await self.get_billing_service()
+            self._services['story_generation_service'] = StoryGenerationService(billing_service=billing_service)
+        return self._services['story_generation_service']
+
+    async def get_onboarding_service(self):
+        """
+        Get onboarding service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user onboarding API
+        """
+        from domains.onboarding import OnboardingService, OnboardingRepository
+
+        if 'onboarding_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = OnboardingRepository(db)
+            self._services['onboarding_service'] = OnboardingService(repository)
+        return self._services['onboarding_service']
+
+    async def get_referral_service(self):
+        """
+        Get referral service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by user referrals API
+        """
+        from domains.referrals import ReferralService, ReferralRepository
+
+        if 'referral_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = ReferralRepository(db)
+            self._services['referral_service'] = ReferralService(repository)
+        return self._services['referral_service']
+
+    async def get_clerk_webhook_service(self):
+        """
+        Get Clerk webhook service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction with all dependencies
+        - ClerkWebhookService requires UserRepository and CreditRepository
+        - Used by webhooks API for Clerk events
+        """
+        from domains.webhooks import ClerkWebhookService
+        from infrastructure.repositories import SupabaseUserRepository, SupabaseCreditRepository
+
+        if 'clerk_webhook_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            user_repo = SupabaseUserRepository(db)
+            credit_repo = SupabaseCreditRepository(db)
+            self._services['clerk_webhook_service'] = ClerkWebhookService(user_repo, credit_repo)
+        return self._services['clerk_webhook_service']
+
+    async def get_stripe_webhook_service(self):
+        """
+        Get Stripe webhook service instance (v1.2.0, async).
+
+        WHY in Container?
+        - Centralizes service construction with all dependencies
+        - StripeWebhookService requires UserRepository, CreditRepository, PaymentRepository
+        - Used by webhooks API for Stripe events
+        """
+        from domains.webhooks import StripeWebhookService
+        from infrastructure.repositories import (
+            SupabaseUserRepository,
+            SupabaseCreditRepository,
+            SupabasePaymentRepository,
+        )
+
+        if 'stripe_webhook_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            user_repo = SupabaseUserRepository(db)
+            credit_repo = SupabaseCreditRepository(db)
+            payment_repo = SupabasePaymentRepository(db)
+            self._services['stripe_webhook_service'] = StripeWebhookService(
+                user_repo, credit_repo, payment_repo
+            )
+        return self._services['stripe_webhook_service']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService

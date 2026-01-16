@@ -3,9 +3,15 @@ System Resources Management Router - Admin API (v3.0.0)
 Admin API for managing system assets (stickers, templates, etc.)
 
 @module api.user.system_resources
-@version 3.0.0
+@version 3.1.0 (Container DI Migration)
 
 Changes:
+- v3.1.0: Container DI Migration
+  - Migrated audit logging to use Container's admin_audit_service
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
+
 - v3.0.0: DDD architecture upgrade - Full CQRS pattern
   - Created SystemResourcesService v1.0.0 with 9 business methods
   - Added 4 Query Handlers (List, GetById, Stats, AuditLog)
@@ -479,14 +485,10 @@ async def delete_resource(
 
     result = await handler.handle(command)
 
-    # ✅ Task 9 - Phase 2: Log resource deletion to audit trail
+    # ✅ v3.1.0: Audit logging via Container (DI migration)
     try:
-        from core.database import get_async_db_client
-        from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-        db_client = await get_async_db_client()
-        admin_repo = SupabaseAdminUsersRepository(db_client)
-        await admin_repo.admin_log_operation(
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=admin["id"],
             operation_type="resource_delete",
             target_type="system_resource",

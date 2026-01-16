@@ -2,7 +2,14 @@
 Analytics API - Analytics events endpoint (v2).
 
 @module api.user.analytics
-@version 2.3.0
+@version 2.4.0 (Container DI Migration)
+
+Changes in v2.4.0:
+- Container DI Migration
+  - Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Removed direct infrastructure.repositories imports
+  - Architecture: API → Container → Service → Repository
 
 Endpoints:
 - POST /api/v2/user/analytics/events - Log analytics events (batch)
@@ -40,9 +47,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
+from container import get_container
 from domains.analytics import AnalyticsService
-from infrastructure.repositories.analytics_events_repository import SupabaseAnalyticsEventsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +61,15 @@ router = APIRouter(prefix="/analytics", tags=["user-analytics-v2"])
 
 async def get_analytics_service() -> AnalyticsService:
     """
-    Dependency injection factory for AnalyticsService.
+    Dependency injection factory for AnalyticsService via Container.
 
-    Creates AnalyticsService with SupabaseAnalyticsEventsRepository.
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
     """
-    supabase = await get_async_db_client()
-    analytics_repo = SupabaseAnalyticsEventsRepository(supabase)
-    return AnalyticsService(analytics_repo)
+    container = get_container()
+    return await container.get_analytics_service()
 
 
 # ==========================================
