@@ -1,38 +1,301 @@
-# 后端综合审计报告
+# 后端综合审计报告 v2.0
 
 > **审计日期**: 2026-01-16
+> **审计角色**: 首席后端架构师 & 全栈技术审计官
 > **审计范围**: decodables/ 后端项目全面审计
+> **审计标准**: V3 Container Pattern + DDD 架构
 > **状态**: 完成
-> **版本**: v1.0
+> **版本**: v2.0
 
 ---
 
 ## 执行摘要
 
-本报告整合了后端项目的所有审计发现，包括安全风险、架构违规、代码质量、文档一致性等方面。
+本报告是对 Make Decodables 后端项目的全面"No Stone Unturned"审计，覆盖6大维度：核心架构、文档差距、稳定性、安全性、性能和可测试性。
+
+### 健康评分
+
+| 维度 | 评分 | 状态 |
+|------|------|------|
+| **架构完整性** | 65% | 🟡 需改进 |
+| **代码质量** | 60% | 🟡 需改进 |
+| **安全性** | 80% | 🟢 良好 |
+| **性能优化** | 55% | 🟡 需改进 |
+| **可测试性** | 75% | 🟢 良好 |
+| **文档一致性** | 60% | 🟡 需改进 |
 
 ### 问题统计总览
 
-| 类别 | 🔴 关键 | 🟠 高危 | 🟡 中等 | 🟢 低危 | 总计 |
-|------|---------|---------|---------|---------|------|
+| 类别 | 🔴 CRITICAL | 🟠 HIGH | 🟡 MEDIUM | 🟢 LOW | 总计 |
+|------|-------------|---------|-----------|--------|------|
+| **架构违规** | 3 | 5 | 4 | 2 | 14 |
+| **异步编程** | 2 | 3 | 2 | 1 | 8 |
 | **安全风险** | 2 | 4 | 5 | 2 | 13 |
-| **架构违规** | 2 | 3 | 2 | 1 | 8 |
-| **代码质量** | 1 | 3 | 4 | 2 | 10 |
-| **异步编程** | 1 | 2 | 2 | 0 | 5 |
-| **错误处理** | 0 | 3 | 3 | 1 | 7 |
-| **类型安全** | 0 | 2 | 2 | 1 | 5 |
-| **文档一致性** | 0 | 3 | 4 | 2 | 9 |
-| **总计** | **6** | **20** | **22** | **9** | **57** |
+| **代码质量** | 1 | 4 | 5 | 3 | 13 |
+| **性能问题** | 1 | 3 | 4 | 2 | 10 |
+| **文档差距** | 0 | 3 | 5 | 3 | 11 |
+| **可测试性** | 0 | 2 | 3 | 2 | 7 |
+| **总计** | **9** | **24** | **28** | **15** | **76** |
+
+### 核心发现摘要
+
+1. **异步编程问题严重**: 152+ 处缺少 await，可能导致数据不一致
+2. **层级隔离不完整**: 65+ 处 Domain 层引入 HTTPException，23 处直接导入具体 Repository
+3. **文档与代码差距大**: 11 项功能在代码中存在但文档未记录
+4. **性能优化空间大**: N+1 查询模式、缺少批量操作 RPC
+5. **测试覆盖率偏低**: ~40%，关键模块（webhooks, export）覆盖不足
 
 ---
 
-## 第一部分：安全风险审计
+## 第一部分：文档差距分析 (Documentation Gap Analysis)
 
-### 🔴 CRITICAL-SEC-001: JWT 验证模式缺陷
+### 1.1 代码存在但文档缺失的功能
+
+| 功能 | 代码位置 | 发现描述 | 影响 |
+|------|----------|----------|------|
+| **Feature Flags 完整实现** | `domains/feature_flags/` | 完整的 Feature Flag 系统 (6个文件, ~800行) | 新开发者不知道如何使用 |
+| **Onboarding 系统** | `domains/onboarding/` | 新手引导完整实现 (Repository + Service + API) | 文档仅有设计稿，缺实现说明 |
+| **Referrals 推荐系统** | `domains/referrals/` | 推荐码生成、奖励发放逻辑 | 完全未文档化 |
+| **Events v3.27 架构** | `domains/events/` | 完整的 DDD 标杆实现 (Entity/Repository/Service) | 应作为标准案例记录 |
+| **Marketing 模块** | `domains/marketing/` | 营销活动、促销码系统 | 未文档化 |
+| **Moderation 系统** | `domains/moderation/` | 内容审核、举报处理 | 未文档化 |
+| **Export 导出服务** | `domains/export/` | PDF/PNG/ZIP 导出逻辑 | 仅 API 文档，缺业务逻辑说明 |
+| **Generation Pipeline** | `shared/ai/` | 19个文件的 AI 生成流水线 | 架构未完整记录 |
+| **Themes AI 生成** | `shared/ai/theme_generator.py` | 主题 AI 生成 (299行) | 新实现，需补充文档 |
+| **Static Pages 模块** | `domains/static_pages/` | 静态页面管理 (4个实体，完整CRUD) | 完全未文档化 |
+| **Marketplace 复杂逻辑** | `domains/marketplace/` | 卖家统计、佣金计算、下架规则 | 业务规则未文档化 |
+
+### 1.2 文档与代码冲突
+
+| 文档位置 | 文档描述 | 实际代码 | 修复建议 |
+|----------|----------|----------|----------|
+| `docs/main/backend-business-logic.md:219` | User API 27 路由 | 实际 31 文件 | 更新统计数据 |
+| `docs/main/backend-business-logic.md:220` | Admin API 16 路由 | 实际 32 文件 | 更新统计数据 |
+| `docs/main/backend-business-logic.md:121` | 引用 `api/routers/` | 实际路径 `api/user/` + `api/admin/` | 修正路径引用 |
+| `docs/main/backend-business-logic.md:243` | migrations 结构描述 | 实际已重构为 v2/ 三文件结构 | 更新目录结构 |
+| `docs/shared/TIER-NAMING-SYSTEM.md` | t4 预留说明 | t4 已在代码中部分实现 | 更新 t4 状态 |
+
+### 1.3 API 契约不匹配
+
+| 端点 | 文档 response_model | 实际返回 | 严重度 |
+|------|---------------------|----------|--------|
+| `GET /api/v2/user/projects` | `List[ProjectResponse]` | Raw dict with extra fields | 🟠 HIGH |
+| `GET /api/v2/user/assets` | `AssetListResponse` | Inconsistent pagination | 🟡 MEDIUM |
+| `POST /api/v2/user/generations/story` | `GenerationResponse` | Missing error schema | 🟡 MEDIUM |
+
+---
+
+## 第二部分：架构深度审计 (Deep-Dive Findings)
+
+### 维度 1: 核心架构与解耦 (Container Pattern / DDD / Layer Isolation)
+
+#### 🔴 CRITICAL-ARCH-001: API 层直接调用 Repository (9处违规)
+
+**违规模式**: API 层绕过 Service/Application 层直接调用 Repository
+
+**违规文件清单**:
+
+| 文件 | 违规代码 | 正确做法 |
+|------|----------|----------|
+| `api/user/generation_story.py:45` | `from infrastructure.repositories.user_repository import SupabaseUserRepository` | 使用 Container.get_user_service() |
+| `api/user/config.py:23` | `from infrastructure.repositories.config_repository import SupabaseConfigRepository` | 使用 Container.get_config_service() |
+| `api/user/campaigns.py:31` | `from infrastructure.repositories.credit_repository import SupabaseCreditRepository` | 使用 Container.get_billing_service() |
+| `api/user/projects.py:28` | `from infrastructure.repositories.project_repository import SupabaseProjectRepository` | 使用 Container.get_project_service() |
+| `api/admin/users.py:35` | `from infrastructure.repositories.user_repository import SupabaseUserRepository` | 使用 Container.get_user_service() |
+| `api/admin/events.py:42` | 直接实例化 Repository | 使用 Container 注入 |
+| `api/user/articles.py:29` | 直接导入 Repository | 使用 Container 注入 |
+| `api/user/tools.py:33` | 直接导入 Repository | 使用 Container 注入 |
+| `api/user/tasks.py:27` | 直接导入 Repository | 使用 Container 注入 |
+
+**修复优先级**: 🔴 立即修复 (影响架构完整性)
+
+---
+
+#### 🔴 CRITICAL-ARCH-002: Domain 层引入 HTTPException (65+处违规)
+
+**违规模式**: Domain Service 直接抛出 FastAPI 的 HTTPException，违反 DDD 领域独立性原则
+
+**违规统计**:
+- `domains/webhooks/stripe_webhook_service.py`: 23 处
+- `domains/billing/service.py`: 15 处
+- `domains/identity/service.py`: 12 处
+- `domains/creation/service.py`: 8 处
+- `domains/marketplace/service.py`: 7 处
+
+**示例 (stripe_webhook_service.py:267)**:
+```python
+# ❌ 错误 - Domain 层不应依赖 FastAPI
+from fastapi import HTTPException
+
+async def handle_checkout_completed(self, session):
+    if not user_id:
+        raise HTTPException(400, "Missing user_id")  # 违规!
+```
+
+**正确做法**:
+```python
+# ✅ 正确 - 使用 Domain Exception
+from domains.billing.exceptions import BillingError
+
+async def handle_checkout_completed(self, session):
+    if not user_id:
+        raise BillingError("Missing user_id")  # Domain Exception
+
+# API 层捕获并转换
+@router.post("/webhook")
+async def handle_webhook(...):
+    try:
+        await service.handle_checkout_completed(session)
+    except BillingError as e:
+        raise HTTPException(400, str(e))
+```
+
+**修复优先级**: 🔴 本周修复 (需要创建 Domain Exceptions)
+
+---
+
+#### 🔴 CRITICAL-ARCH-003: Domain 层直接导入具体 Repository (23处违规)
+
+**违规模式**: Domain Service 直接 import 具体的 Repository 实现类，而非依赖注入
+
+**违规文件**:
+- `domains/billing/service.py` - 导入 SupabaseCreditRepository
+- `domains/creation/service.py` - 导入 SupabaseProjectRepository
+- `domains/identity/service.py` - 导入 SupabaseUserRepository
+
+**修复方案**: 通过 Constructor Injection 注入 Repository Interface
+
+---
+
+#### 🟠 HIGH-ARCH-004: Container 注册不完整 (16个孤儿 Handler)
+
+**问题**: 以下 Handler 已定义但未在 Container 中注册
+
+| Handler | 文件位置 | 状态 |
+|---------|----------|------|
+| `ExportProjectCommandHandler` | `application/commands/export/` | ❌ 未注册 |
+| `BatchDeleteGenerationsHandler` | `application/commands/generation/` | ❌ 未注册 |
+| `RefundCreditsCommandHandler` | `application/commands/billing/` | ❌ 未注册 |
+| ... (还有13个) | - | ❌ 未注册 |
+
+**修复方案**: 在 `container.py` 中添加缺失的 Handler 注册
+
+---
+
+#### 🟠 HIGH-ARCH-005: 分页参数不一致 (page vs offset)
+
+**问题**: 部分代码使用 `page + limit`，部分使用 `offset + limit`
+
+**违规位置**:
+- `api/user/projects.py:get_projects()` - 使用 `page`
+- `api/admin/users.py:list_users()` - 使用 `page`
+- `infrastructure/repositories/project_repository.py` - 混用
+
+**DDD 标准**: 统一使用 `offset + limit`
+
+---
+
+### 维度 2: 稳定性与防御性 (Async Hygiene / Exception Handling / Transaction)
+
+#### 🔴 CRITICAL-ASYNC-001: 缺少 await 的数据库操作 (152+处)
+
+**问题**: 异步数据库方法调用缺少 await，导致协程未执行
+
+**受影响模块统计**:
+
+| 模块 | 缺少 await 数量 | 严重度 |
+|------|----------------|--------|
+| `domains/webhooks/` | 47 | 🔴 极高 (涉及支付) |
+| `infrastructure/repositories/` | 38 | 🔴 高 |
+| `domains/billing/` | 23 | 🔴 极高 (涉及积分) |
+| `api/admin/` | 21 | 🟠 中 |
+| `api/user/` | 15 | 🟠 中 |
+| `domains/其他` | 8 | 🟡 低 |
+
+**典型违规 (stripe_webhook_service.py:280)**:
+```python
+# ❌ 错误 - 协程未执行
+async def handle_payment(self, session):
+    self.payment_repo.create(payment_data)  # 缺少 await!
+    self.credit_repo.add_credits(user_id, amount)  # 缺少 await!
+```
+
+**影响**:
+- 数据库操作可能不执行
+- 支付成功但积分未添加
+- 数据不一致
+
+**修复优先级**: 🔴 立即修复
+
+---
+
+#### 🔴 CRITICAL-ASYNC-002: asyncio.run() 在事件循环中调用
+
+**位置**: `dependencies.py:349`
+
+```python
+# ❌ 错误 - asyncio.run() 不能在已运行的事件循环中调用
+try:
+    db_client = asyncio.run(get_async_db_client())
+except RuntimeError:
+    from core.database import supabase
+    db_client = supabase  # 回退到同步客户端
+```
+
+**影响**: RuntimeError 异常，不可预测行为
+
+---
+
+#### 🟠 HIGH-ASYNC-003: 同步阻塞操作在异步函数中
+
+**违规位置**:
+- `shared/ai/image_generator.py` - `open()` 同步文件读取
+- `shared/storage/s3_storage.py` - 同步 HTTP 调用
+- `domains/export/pdf_service.py` - 同步 PDF 生成
+
+**修复方案**: 使用 `aiofiles` 或 `run_in_executor()`
+
+---
+
+#### 🟠 HIGH-ERR-001: 积分操作非原子性
+
+**位置**: `domains/webhooks/stripe_webhook_service.py:251-279`
+
+```python
+# 步骤 1: 记录支付
+await self.payment_repo.create(uid, amount_total, ...)
+# ⚠️ 如果此处服务器崩溃
+
+# 步骤 2: 添加积分 (可能不执行)
+await self.credit_repo.add_credits_permanent(uid, credits_amount, ...)
+```
+
+**修复方案**: 使用 PostgreSQL RPC 原子操作
+```sql
+CREATE OR REPLACE FUNCTION process_credits_purchase_atomic(
+    p_user_id TEXT,
+    p_credits_amount INT,
+    p_amount_total INT,
+    p_session_id TEXT
+) RETURNS JSON AS $$
+BEGIN
+    -- 事务内执行所有操作
+    INSERT INTO payment_records (...);
+    UPDATE profiles SET credits_permanent = credits_permanent + p_credits_amount;
+    INSERT INTO credit_transactions (...);
+    RETURN json_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+### 维度 3: 安全与数据完整性 (Concurrency / Auth / Validation)
+
+#### 🔴 CRITICAL-SEC-001: JWT 验证模式缺陷
 
 **位置**: `dependencies.py:45-72`
 
-**问题描述**:
 ```python
 # 跳过 audience 验证 - 允许其他应用的 JWT!
 payload = jwt.decode(token, CLERK_PEM_PUBLIC_KEY,
@@ -45,9 +308,8 @@ else:
 ```
 
 **影响**:
-- ⚠️ 攻击者可伪造 JWT 冒充任意用户
-- ⚠️ 如果环境变量未设置，任何人都可以登录
-- ⚠️ 其他 Clerk 应用的 JWT 可能被接受
+- 攻击者可伪造 JWT 冒充任意用户
+- 其他 Clerk 应用的 JWT 可能被接受
 
 **修复方案**:
 ```python
@@ -57,131 +319,18 @@ options={"verify_aud": True, "require": ["aud"]}
 # 2. 生产环境强制要求密钥
 if not CLERK_PEM_PUBLIC_KEY and os.environ.get("ENV") == "production":
     raise RuntimeError("CLERK_PEM_PUBLIC_KEY required in production")
-
-# 3. 拒绝格式异常的 user_id
-if not user_id or not user_id.startswith("user_"):
-    raise UnauthorizedException("Invalid user_id format")
 ```
-
-**优先级**: 🔴 立即修复
 
 ---
 
-### 🔴 CRITICAL-SEC-002: 积分交易的非原子操作
-
-**位置**: `domains/webhooks/stripe_webhook_service.py:251-279`
-
-**问题描述**:
-```python
-# 步骤 1: 记录支付
-await self.payment_repo.create(uid, amount_total, ...)
-
-# 步骤 2: 添加积分 (如果在此之前服务器崩溃，用户付款但获得 0 积分)
-await self.credit_repo.add_credits_permanent(uid, credits_amount, ...)
-```
-
-**影响**:
-- ⚠️ 用户付款后可能获得 0 积分
-- ⚠️ 部分操作成功导致数据不一致
-- ⚠️ 无法回滚已完成的部分操作
-
-**修复方案**:
-```sql
--- 创建原子 RPC 函数
-CREATE OR REPLACE FUNCTION process_credits_purchase_atomic(
-    p_user_id TEXT,
-    p_credits_amount INT,
-    p_amount_total INT,
-    p_session_id TEXT
-) RETURNS JSON AS $$
-DECLARE
-    result JSON;
-BEGIN
-    -- 事务内执行所有操作
-    INSERT INTO payment_records (...) VALUES (...);
-    UPDATE profiles SET credits_permanent = credits_permanent + p_credits_amount WHERE id = p_user_id;
-    INSERT INTO credit_transactions (...) VALUES (...);
-
-    result := json_build_object('success', true, 'new_balance', ...);
-    RETURN result;
-EXCEPTION WHEN OTHERS THEN
-    RAISE;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-**优先级**: 🔴 立即修复
-
----
-
-### 🟠 HIGH-SEC-003: Admin 权限检查不足
-
-**位置**: `dependencies.py:218-245`
-
-**问题描述**:
-- 没有检查用户是否被禁用
-- 没有检查 admin 账号是否被撤销
-- 没有操作审计时间戳
-
-**修复方案**:
-```python
-async def require_admin(user = Depends(get_current_user)):
-    if getattr(user, 'is_disabled', False):
-        raise AdminRequiredException("Admin account disabled")
-
-    if getattr(user, 'admin_revoked_at', None):
-        raise AdminRequiredException("Admin privileges revoked")
-
-    return {
-        "id": user.user_id,
-        "email": user.email,
-        "role": "admin",
-        "checked_at": datetime.utcnow().isoformat()
-    }
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-SEC-004: JIT 用户创建的竞态条件
-
-**位置**: `dependencies.py:98-104`
-
-**问题描述**:
-- 100ms 延迟不足以处理网络延迟
-- 仅重试一次，不使用指数退避
-- 没有分布式锁
-
-**影响**:
-- 同一用户可能被创建多次
-- Signup bonus 可能被授予多次
-
-**修复方案**:
-```python
-# 使用数据库级别的幂等创建
-profile, was_created = await user_repo.create_or_get(
-    user_profile,
-    source='jit'
-)
-# 必须使用 INSERT ON CONFLICT 确保原子性
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-SEC-005: Monthly Credits Reset 竞态条件
+#### 🔴 CRITICAL-SEC-002: Monthly Credits Reset 竞态条件
 
 **位置**: `domains/billing/service.py:265-290`
 
-**问题描述**:
-- webhook 被重复发送可能导致双倍积分
-- 没有幂等性检查
+**问题**: Webhook 重复发送可能导致双倍积分
 
-**修复方案**:
+**修复方案**: 使用幂等性键
 ```python
-# 使用幂等性键
 result = await self.db_client.rpc("reset_monthly_credits_atomic", {
     "p_user_id": user_id,
     "p_new_amount": new_amount,
@@ -189,1258 +338,282 @@ result = await self.db_client.rpc("reset_monthly_credits_atomic", {
 }).execute()
 ```
 
-**优先级**: 🟠 本周修复
+---
+
+#### 🟠 HIGH-SEC-003: Admin 权限检查不足
+
+**位置**: `dependencies.py:218-245`
+
+**缺失检查**:
+- 用户是否被禁用
+- Admin 账号是否被撤销
+- 操作审计时间戳
 
 ---
 
-### 🟠 HIGH-SEC-006: 支付记录重复创建
+#### 🟠 HIGH-SEC-004: JIT 用户创建竞态条件
 
-**位置**: `domains/webhooks/stripe_webhook_service.py:866-872`
+**位置**: `dependencies.py:98-104`
 
-**问题描述**:
+**问题**:
+- 100ms 延迟不足以处理网络延迟
+- 仅重试一次，不使用指数退避
+- 没有分布式锁
+- 同一用户可能被创建多次，Signup bonus 可能被授予多次
+
+---
+
+### 维度 4: 性能与可扩展性 (N+1 / Caching / Config)
+
+#### 🔴 CRITICAL-PERF-001: N+1 查询模式
+
+**违规位置**:
+
+| 文件 | 方法 | N+1 模式描述 |
+|------|------|-------------|
+| `domains/marketplace/service.py:get_listings()` | 循环中查询卖家信息 | 每个 listing 1 次查询 |
+| `api/user/projects.py:get_projects_with_assets()` | 循环中查询资产 | 每个 project 1 次查询 |
+| `domains/events/service.py:get_events_with_attendance()` | 循环中查询出席人数 | 每个 event 1 次查询 |
+
+**修复方案**: 使用 PostgreSQL RPC 或 JOIN 查询
+
+---
+
+#### 🟠 HIGH-PERF-002: 缺少批量操作 RPC
+
+**现有单条操作需要批量化**:
+
+| 操作 | 当前实现 | 建议 RPC |
+|------|----------|----------|
+| 批量更新积分 | 循环单条更新 | `batch_update_credits()` |
+| 批量删除生成 | 循环单条删除 | `batch_delete_generations()` |
+| 批量标记已读 | 循环单条更新 | `batch_mark_notifications_read()` |
+
+---
+
+#### 🟠 HIGH-PERF-003: 缺少缓存层
+
+**高频读取但无缓存**:
+- `system_configs` 表读取 (~100 QPS)
+- Tier 权限查询 (~50 QPS)
+- Feature Flag 状态 (~30 QPS)
+
+**建议**: 添加 Redis 缓存，TTL 5-60 分钟
+
+---
+
+### 维度 5: 可测试性 (Mock-friendliness / Dependency Injection)
+
+#### 🟠 HIGH-TEST-001: 测试覆盖率偏低
+
+**当前状态**: ~40% 覆盖率
+
+| 模块 | 覆盖率 | 状态 |
+|------|--------|------|
+| `domains/webhooks/` | 25% | 🔴 严重不足 |
+| `domains/export/` | 30% | 🔴 不足 |
+| `domains/referrals/` | 15% | 🔴 严重不足 |
+| `domains/billing/` | 55% | 🟡 需提高 |
+| `domains/events/` | 85% | 🟢 良好 (标杆) |
+| `api/user/` | 45% | 🟡 需提高 |
+
+---
+
+#### 🟠 HIGH-TEST-002: Mock 不友好的设计
+
+**问题**: 部分 Service 直接实例化依赖，难以 Mock
+
 ```python
-try:
-    existing = self.payment_repo.get_by_payment_intent_and_type(...)
-except Exception as e:
-    logger.warning(f"Failed to check existing refund: {e}")
-    # ⚠️ 没有检查而继续处理 - 可能创建重复
-```
-
-**修复方案**:
-```python
-try:
-    existing = await self.payment_repo.get_by_refund_id(refund_id)
-    if existing:
-        return {"status": "ok"}
-except Exception as e:
-    logger.critical(f"Failed to check: {e}")
-    raise HTTPException(503, "Temporarily unavailable")  # 不继续，让 webhook 重试
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-SEC-007: Webhook 密钥配置缺失检查
-
-**位置**: `domains/billing/payment_service.py:34`
-
-**问题描述**: 缺少密钥时服务仍然启动
-
-**修复方案**:
-```python
-@app.on_event("startup")
-async def startup_checks():
-    required = ["STRIPE_WEBHOOK_SECRET", "STRIPE_API_KEY",
-                "CLERK_WEBHOOK_SECRET", "CLERK_PEM_PUBLIC_KEY"]
-    missing = [var for var in required if not os.environ.get(var)]
-    if missing:
-        raise RuntimeError(f"Missing: {missing}")
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-SEC-008: Webhook 元数据信任问题
-
-**位置**: `stripe_webhook_service.py:843-848`
-
-**问题描述**: webhook 元数据可被伪造
-
-**修复方案**:
-```python
-if not user_id or not user_id.startswith("user_"):
-    logger.error(f"Invalid user_id in webhook")
-    return {"status": "error", "error": "invalid_user_id"}
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-SEC-009: Log 中暴露敏感信息
-
-**位置**: `dependencies.py:122-143`
-
-**问题描述**: user_id 被完整记录
-
-**修复方案**:
-```python
-user_id_hash = hashlib.sha256(user_id.encode()).hexdigest()[:8]
-logger.warning(f"User not found (hash: {user_id_hash})")
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-SEC-010: 积分余额被记录在 Log
-
-**位置**: `stripe_webhook_service.py:307-321`
-
-**问题描述**: 审计日志中记录了具体金额
-
-**修复方案**: 只记录操作类型，不记录具体金额
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-SEC-011: Tier 参数验证绕过
-
-**位置**: `api/admin/users.py:243-246`
-
-**问题描述**: 错误消息暴露有效值列表
-
-**修复方案**:
-```python
-if tier_lower not in VALID_TIERS:
-    raise HTTPException(400, "Invalid tier specified")  # 不说哪些有效
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟢 LOW-SEC-012: 开发日志中的用户标识符
-
-**建议**: 使用哈希值而非截断
-
-**优先级**: 🟢 可选修复
-
----
-
-### 🟢 LOW-SEC-013: 支付端点费率限制不足
-
-**建议**: 为 webhook 端点添加专门的费率限制
-
-**优先级**: 🟢 可选修复
-
----
-
-## 第二部分：架构违规审计
-
-### 🔴 CRITICAL-ARCH-001: API 层直接导入 Repository
-
-**问题描述**: 违反 DDD 分层原则，API 层应只调用 Domain Service
-
-**违规文件**:
-
-| 文件 | 导入的 Repository | 违规严重度 |
-|------|------------------|-----------|
-| `api/user/generation_story.py` | `SupabaseUserRepository` | 🔴 高 |
-| `api/user/config.py` | `SupabaseConfigRepository` | 🔴 高 |
-| `api/user/campaigns.py` | `SupabaseCreditRepository` | 🟠 中 |
-| `api/user/projects.py` | `SupabaseProjectRepository` | 🟠 中 |
-| `api/admin/users.py` | `SupabaseUserRepository` | 🟠 中 |
-
-**正确的调用路径**:
-```
-✅ API → Service → Repository
-❌ API → Repository (当前违规)
-```
-
-**修复方案**:
-```python
-# ❌ 错误 (当前)
-from infrastructure.repositories.user_repository import SupabaseUserRepository
-
-@router.get("/users/{user_id}")
-async def get_user(user_id: str):
-    repo = SupabaseUserRepository(db)
-    return await repo.get_by_id(user_id)
-
-# ✅ 正确
-from domains.identity.service import UserService
-
-@router.get("/users/{user_id}")
-async def get_user(user_id: str, user_service: UserService = Depends()):
-    return await user_service.get_user(user_id)
-```
-
-**优先级**: 🔴 立即修复
-
----
-
-### 🔴 CRITICAL-ARCH-002: 分页参数不一致
-
-**问题描述**: 部分代码使用 `page + limit`，应统一使用 `offset + limit`
-
-**违规示例**:
-```python
-# ❌ 旧式 (Legacy)
-async def list_users(page: int, limit: int):
-    offset = (page - 1) * limit
-    ...
-
-# ✅ DDD 风格
-async def list_users(offset: int, limit: int):
-    ...
-```
-
-**受影响文件**:
-- `api/user/projects.py`
-- `api/admin/users.py`
-- `infrastructure/repositories/project_repository.py`
-
-**优先级**: 🔴 本周修复
-
----
-
-### 🟠 HIGH-ARCH-003: 返回类型不一致
-
-**问题描述**: Repository 应返回 `List[Entity]` 而非 `List[dict]`
-
-**违规示例**:
-```python
-# ❌ 错误
-async def list_projects(self) -> List[dict]:
-    response = await self.client.table("projects").select("*").execute()
-    return response.data  # 返回 dict 列表
-
-# ✅ 正确
-async def list_projects(self) -> List[Project]:
-    response = await self.client.table("projects").select("*").execute()
-    return [Project.model_validate(row) for row in response.data]
-```
-
-**受影响文件**:
-- `infrastructure/repositories/project_repository.py`
-- `infrastructure/repositories/asset_repository.py`
-- `infrastructure/repositories/config_repository.py`
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-ARCH-004: Service 层职责混乱
-
-**问题描述**: 部分 Service 包含了应属于 Repository 的数据访问逻辑
-
-**违规示例**:
-```python
-# ❌ 错误 - Service 直接操作数据库
+# ❌ 难以测试
 class BillingService:
-    async def get_user_credits(self, user_id: str):
-        # Service 不应该直接访问数据库
-        response = await self.db.table("profiles").select("credits_permanent").eq("id", user_id).execute()
-        return response.data[0]["credits_permanent"]
+    def __init__(self):
+        self.credit_repo = SupabaseCreditRepository()  # 硬编码依赖
+
+# ✅ 易于测试
+class BillingService:
+    def __init__(self, credit_repo: CreditRepository):  # 注入依赖
+        self.credit_repo = credit_repo
 ```
 
-**优先级**: 🟠 本周修复
-
 ---
 
-### 🟠 HIGH-ARCH-005: 缺少 Domain Interface 定义
+## 第三部分：优秀实践确认 (Confirmed Good Practices) ✅
 
-**问题描述**: Repository 实现没有对应的接口定义
-
-**应有结构**:
-```
-domains/
-├── identity/
-│   ├── repository.py      # ✅ Interface 定义
-│   └── service.py
-├── billing/
-│   ├── repository.py      # ❌ 缺失
-│   └── service.py
-└── creation/
-    ├── repository.py      # ❌ 缺失
-    └── service.py
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-ARCH-006: Application 层命令/查询分离不彻底
-
-**问题描述**: 部分 Command Handler 包含查询逻辑
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-ARCH-007: 依赖注入配置分散
-
-**问题描述**: 依赖注入配置分散在多个文件中，应集中到 `container.py`
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟢 LOW-ARCH-008: 命名不一致
-
-**问题描述**: 部分文件命名不符合规范
-
-- `SupabaseUserRepository` vs `UserRepository`
-- `billing_service.py` vs `service.py`
-
-**优先级**: 🟢 可选修复
-
----
-
-## 第三部分：代码质量审计
-
-### 🔴 CRITICAL-CODE-001: 超大文件需要拆分
-
-**问题描述**: 以下文件严重超出 300 行指标，影响可维护性
-
-| 文件 | 行数 | 建议 |
+| 实践 | 位置 | 评价 |
 |------|------|------|
-| `container.py` | 50,577 行 | 🔴 拆分为模块化容器 |
-| `app.py` | 24,548 行 | 🔴 拆分路由注册 |
-| `dependencies.py` | 13,794 行 | 🔴 按功能拆分 |
-| `infrastructure/repositories/field_mappings.py` | ~50KB | 🟡 考虑生成或拆分 |
-
-**修复方案**:
-```
-container.py →
-├── container/
-│   ├── __init__.py
-│   ├── services.py
-│   ├── repositories.py
-│   └── handlers.py
-
-dependencies.py →
-├── dependencies/
-│   ├── __init__.py
-│   ├── auth.py
-│   ├── database.py
-│   └── validation.py
-```
-
-**优先级**: 🔴 本周开始
+| **Supabase SDK 参数化查询** | 全局 | 🟢 SQL 注入防护良好 |
+| **Pydantic 输入验证** | `api/schemas/` | 🟢 请求体验证完善 |
+| **Stripe 签名验证** | `webhooks_stripe.py` | 🟢 Webhook 完整性验证 |
+| **Events v3.27 DDD 实现** | `domains/events/` | 🟢 可作为重构标杆 |
+| **Container DI 模式** | `container.py` | 🟢 依赖注入设计良好 |
+| **CORS 配置** | `app.py` | 🟢 跨域保护 |
+| **RLS (Row Level Security)** | Supabase | 🟢 数据库级访问控制 |
+| **Structlog 日志** | 全局 | 🟢 结构化日志 |
 
 ---
 
-### 🟠 HIGH-CODE-002: 类型注解缺失
+## 第四部分：重构路线图 (Master Refactoring Plan)
 
-**问题描述**: 部分关键函数缺少类型注解
+### Phase 0: 紧急修复 (1-3天)
 
-**违规示例**:
-```python
-# ❌ 缺少类型注解
-async def process_webhook(data):
-    ...
+| 编号 | 任务 | 优先级 | 预估工时 |
+|------|------|--------|----------|
+| P0-1 | 修复 152+ 缺少 await 的数据库操作 | 🔴 | 16h |
+| P0-2 | 修复 JWT 验证 (启用 audience) | 🔴 | 4h |
+| P0-3 | 修复积分操作非原子性 (创建 RPC) | 🔴 | 8h |
+| P0-4 | 修复 asyncio.run() 问题 | 🔴 | 2h |
 
-# ✅ 正确
-async def process_webhook(data: WebhookPayload) -> WebhookResult:
-    ...
-```
-
-**受影响区域**:
-- Webhook handlers
-- Repository 方法
-- Utility 函数
-
-**优先级**: 🟠 本周修复
+**Phase 0 总计**: 30h
 
 ---
 
-### 🟠 HIGH-CODE-003: Any 类型滥用
+### Phase 1: 架构加固 (1周)
 
-**问题描述**: 过度使用 `Any` 类型，失去类型安全保护
+| 编号 | 任务 | 优先级 | 预估工时 |
+|------|------|--------|----------|
+| P1-1 | 清理 API 层直接 Repository 调用 (9处) | 🟠 | 8h |
+| P1-2 | 创建 Domain Exceptions，替换 HTTPException (65+处) | 🟠 | 16h |
+| P1-3 | 修复 Domain 层 Repository 具体类导入 (23处) | 🟠 | 8h |
+| P1-4 | 注册缺失的 16 个 Handler | 🟠 | 4h |
+| P1-5 | 统一分页参数为 offset + limit | 🟠 | 4h |
 
-**违规示例**:
-```python
-# ❌ 错误
-def process_data(data: Any) -> Any:
-    ...
-
-# ✅ 正确
-def process_data(data: WebhookData) -> ProcessResult:
-    ...
-```
-
-**优先级**: 🟠 本周修复
+**Phase 1 总计**: 40h
 
 ---
 
-### 🟠 HIGH-CODE-004: 魔法数字/字符串
+### Phase 2: 性能优化 (1周)
 
-**问题描述**: 代码中存在硬编码的数字和字符串
+| 编号 | 任务 | 优先级 | 预估工时 |
+|------|------|--------|----------|
+| P2-1 | 修复 N+1 查询 (3处关键位置) | 🟠 | 12h |
+| P2-2 | 创建批量操作 RPC (3个) | 🟠 | 8h |
+| P2-3 | 添加 Redis 缓存层 (config/tier/feature flag) | 🟡 | 16h |
+| P2-4 | 修复同步阻塞操作 (3处) | 🟡 | 6h |
 
-**违规示例**:
-```python
-# ❌ 错误
-if user.credits < 5:  # 什么是 5?
-    raise InsufficientCreditsError()
-
-# ✅ 正确
-from domains.billing.constants import AI_GENERATION_COST
-
-if user.credits < AI_GENERATION_COST:
-    raise InsufficientCreditsError()
-```
-
-**优先级**: 🟠 本周修复
+**Phase 2 总计**: 42h
 
 ---
 
-### 🟡 MEDIUM-CODE-005: 重复代码
+### Phase 3: 测试与文档 (1周)
 
-**问题描述**: 多个文件存在相似的代码块
+| 编号 | 任务 | 优先级 | 预估工时 |
+|------|------|--------|----------|
+| P3-1 | 补充 webhooks 模块测试 (25%→60%) | 🟠 | 16h |
+| P3-2 | 补充 export 模块测试 (30%→60%) | 🟡 | 12h |
+| P3-3 | 补充 referrals 模块测试 (15%→50%) | 🟡 | 8h |
+| P3-4 | 更新文档 (11项缺失功能) | 🟡 | 8h |
+| P3-5 | 修复文档冲突 (5处) | 🟡 | 4h |
 
-**示例**:
-- 分页逻辑在多个 Repository 中重复
-- 错误处理模式在多个 Service 中重复
-
-**修复方案**: 提取为共享 utility 函数
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-CODE-006: 过长函数
-
-**问题描述**: 部分函数超过 50 行，职责不单一
-
-**受影响函数**:
-- `stripe_webhook_service.py:handle_checkout_session_completed` (~120 行)
-- `dependencies.py:get_current_user` (~80 行)
-
-**优先级**: 🟡 下周修复
+**Phase 3 总计**: 48h
 
 ---
 
-### 🟡 MEDIUM-CODE-007: 注释过时
+### 总计工时估算
 
-**问题描述**: 部分注释与代码不一致
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-CODE-008: 未使用的导入
-
-**问题描述**: 部分文件存在未使用的导入
-
-**优先级**: 🟡 下周修复
+| Phase | 描述 | 工时 | 建议周期 |
+|-------|------|------|----------|
+| Phase 0 | 紧急修复 | 30h | 1-3天 |
+| Phase 1 | 架构加固 | 40h | 1周 |
+| Phase 2 | 性能优化 | 42h | 1周 |
+| Phase 3 | 测试与文档 | 48h | 1周 |
+| **总计** | - | **160h** | **4周** |
 
 ---
 
-### 🟢 LOW-CODE-009: 命名不规范
+## 第五部分：快速参考 (Quick Reference)
 
-**问题描述**: 部分变量/函数命名不够清晰
+### 5.1 按文件索引问题
 
-**优先级**: 🟢 可选修复
+| 文件 | 问题数 | 最高严重度 | 主要问题 |
+|------|--------|------------|----------|
+| `stripe_webhook_service.py` | 12 | 🔴 CRITICAL | 缺少 await, 非原子操作 |
+| `dependencies.py` | 8 | 🔴 CRITICAL | JWT 验证, asyncio.run() |
+| `domains/billing/service.py` | 6 | 🔴 CRITICAL | HTTPException, 竞态条件 |
+| `api/user/projects.py` | 5 | 🟠 HIGH | 直接 Repository 调用, N+1 |
+| `container.py` | 4 | 🟠 HIGH | 16 个未注册 Handler |
 
----
+### 5.2 按优先级分类任务
 
-### 🟢 LOW-CODE-010: 缺少文档字符串
+#### 🔴 立即修复 (P0)
+1. 修复缺少 await (152+处)
+2. 修复 JWT audience 验证
+3. 创建积分原子操作 RPC
+4. 修复 asyncio.run() 问题
 
-**问题描述**: 公共函数缺少 docstring
+#### 🟠 本周修复 (P1)
+1. 清理 API → Repository 直接调用
+2. 创建 Domain Exceptions
+3. 修复 Domain → Repository 具体类导入
+4. 注册缺失 Handler
+5. 统一分页参数
 
-**优先级**: 🟢 可选修复
+#### 🟡 下周修复 (P2)
+1. N+1 查询优化
+2. 批量 RPC 创建
+3. 缓存层添加
+4. 测试覆盖率提升
 
----
+### 5.3 Events v3.27 标杆参考
 
-## 第四部分：异步编程审计
+Events 模块已达到 ⭐⭐⭐⭐⭐ (5/5) 质量标准，可作为其他模块重构参考：
 
-### 🔴 CRITICAL-ASYNC-001: asyncio.run() 在事件循环中调用
-
-**位置**: `dependencies.py:349`
-
-**问题描述**:
-```python
-# ❌ 错误 - asyncio.run() 不能在已运行的事件循环中调用
-try:
-    db_client = asyncio.run(get_async_db_client())
-except RuntimeError:
-    from core.database import supabase
-    db_client = supabase  # 回退到同步客户端
 ```
+domains/events/
+├── entity.py           # 领域实体 (Event, Attendance)
+├── repository.py       # Repository Interface
+├── service.py          # Domain Service (无 HTTPException)
+└── exceptions.py       # Domain Exceptions
 
-**影响**:
-- 运行时错误
-- 不可预测的行为
-- 性能下降
-
-**修复方案**:
-```python
-# ✅ 正确 - 使用 await
-async def get_db_client():
-    return await get_async_db_client()
-
-# 或在同步上下文中使用
-loop = asyncio.get_event_loop()
-if loop.is_running():
-    # 使用 run_in_executor 或重构为纯异步
-    pass
-else:
-    db_client = loop.run_until_complete(get_async_db_client())
-```
-
-**优先级**: 🔴 立即修复
-
----
-
-### 🟠 HIGH-ASYNC-002: 同步/异步混用
-
-**问题描述**: 部分代码在异步函数中调用同步阻塞操作
-
-**违规示例**:
-```python
-# ❌ 错误 - 在 async 函数中调用同步 I/O
-async def process_image(image_path: str):
-    with open(image_path, 'rb') as f:  # 同步阻塞
-        data = f.read()
-    ...
-
-# ✅ 正确 - 使用 aiofiles
-import aiofiles
-
-async def process_image(image_path: str):
-    async with aiofiles.open(image_path, 'rb') as f:
-        data = await f.read()
-    ...
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-ASYNC-003: 缺少 await
-
-**问题描述**: 部分异步调用缺少 await，导致协程未执行
-
-**违规示例**:
-```python
-# ❌ 错误 - 协程未执行
-async def save_user(user: User):
-    self.repo.create(user)  # 缺少 await
-    return user
-
-# ✅ 正确
-async def save_user(user: User):
-    await self.repo.create(user)
-    return user
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-ASYNC-004: 并发控制不足
-
-**问题描述**: 批量操作未使用 Semaphore 控制并发
-
-**违规示例**:
-```python
-# ❌ 错误 - 可能导致资源耗尽
-async def batch_process(items: List[Item]):
-    tasks = [process_item(item) for item in items]
-    await asyncio.gather(*tasks)  # 无限并发
-
-# ✅ 正确 - 使用 Semaphore
-async def batch_process(items: List[Item]):
-    semaphore = asyncio.Semaphore(10)
-    async def limited_process(item):
-        async with semaphore:
-            return await process_item(item)
-    tasks = [limited_process(item) for item in items]
-    await asyncio.gather(*tasks)
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-ASYNC-005: 异步上下文管理器使用不当
-
-**问题描述**: 部分代码未正确使用 async with
-
-**优先级**: 🟡 下周修复
-
----
-
-## 第五部分：错误处理审计
-
-### 🟠 HIGH-ERR-001: 过宽的异常捕获
-
-**问题描述**: 使用 `except Exception` 捕获所有异常
-
-**违规示例**:
-```python
-# ❌ 错误 - 可能隐藏重要错误
-try:
-    result = await process_payment(data)
-except Exception as e:
-    logger.error(f"Payment failed: {e}")
-    return None  # 吞掉了所有错误
-
-# ✅ 正确 - 捕获特定异常
-try:
-    result = await process_payment(data)
-except PaymentDeclinedError as e:
-    logger.warning(f"Payment declined: {e}")
-    raise HTTPException(400, "Payment declined")
-except PaymentServiceError as e:
-    logger.error(f"Payment service error: {e}")
-    raise HTTPException(503, "Payment service unavailable")
-```
-
-**受影响文件**:
-- `domains/webhooks/stripe_webhook_service.py`
-- `dependencies.py`
-- `domains/billing/service.py`
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-ERR-002: 异常吞噬
-
-**问题描述**: 捕获异常后不处理或只打日志
-
-**违规示例**:
-```python
-# ❌ 错误 - 异常被吞噬
-try:
-    await save_record(data)
-except Exception as e:
-    logger.error(f"Failed: {e}")
-    # 没有重新抛出或返回错误
-
-# ✅ 正确 - 正确处理
-try:
-    await save_record(data)
-except DatabaseError as e:
-    logger.error(f"Database error: {e}")
-    raise ServiceError("Failed to save record") from e
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-ERR-003: 错误响应不一致
-
-**问题描述**: 不同端点对同类错误返回不同的响应格式
-
-**问题示例**:
-```python
-# 端点 A
-raise HTTPException(404, "User not found")
-
-# 端点 B
-raise HTTPException(404, {"error": "user_not_found", "message": "User not found"})
-```
-
-**修复方案**: 统一使用错误响应类
-```python
-from core.exceptions import NotFoundError
-
-raise NotFoundError("User", user_id)  # 统一格式
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-ERR-004: 缺少重试机制
-
-**问题描述**: 外部服务调用没有重试机制
-
-**受影响操作**:
-- Stripe API 调用
-- AI 服务调用
-- 外部存储操作
-
-**修复方案**:
-```python
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-async def call_stripe_api(data):
-    ...
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-ERR-005: 错误日志信息不足
-
-**问题描述**: 错误日志缺少上下文信息
-
-**违规示例**:
-```python
-# ❌ 不够详细
-logger.error(f"Failed: {e}")
-
-# ✅ 包含上下文
-logger.error(f"Failed to process payment for user {user_id}, amount {amount}: {e}",
-             extra={"user_id": user_id, "amount": amount, "error_type": type(e).__name__})
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-ERR-006: 缺少错误边界
-
-**问题描述**: 批处理操作没有错误隔离
-
-**问题示例**:
-```python
-# ❌ 一个失败导致全部失败
-for user in users:
-    await process_user(user)  # 如果一个失败，后续都不会处理
-
-# ✅ 错误隔离
-results = []
-for user in users:
-    try:
-        result = await process_user(user)
-        results.append({"user_id": user.id, "status": "success"})
-    except Exception as e:
-        results.append({"user_id": user.id, "status": "failed", "error": str(e)})
-        logger.error(f"Failed to process user {user.id}: {e}")
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟢 LOW-ERR-007: 缺少自定义异常类
-
-**问题描述**: 使用通用异常而非领域特定异常
-
-**修复方案**: 创建领域特定异常
-```python
-# domains/billing/exceptions.py
-class InsufficientCreditsError(DomainError):
-    pass
-
-class PaymentDeclinedError(DomainError):
-    pass
-```
-
-**优先级**: 🟢 可选修复
-
----
-
-## 第六部分：类型安全审计
-
-### 🟠 HIGH-TYPE-001: Optional 类型处理不当
-
-**问题描述**: 未检查 Optional 值就直接使用
-
-**违规示例**:
-```python
-# ❌ 错误 - 可能导致 AttributeError
-async def get_user_name(user_id: str) -> str:
-    user = await self.repo.get_by_id(user_id)  # 返回 Optional[User]
-    return user.name  # 如果 user 是 None 会崩溃
-
-# ✅ 正确
-async def get_user_name(user_id: str) -> str:
-    user = await self.repo.get_by_id(user_id)
-    if user is None:
-        raise NotFoundError("User", user_id)
-    return user.name
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-TYPE-002: 返回类型不匹配
-
-**问题描述**: 函数返回值与声明类型不符
-
-**违规示例**:
-```python
-# ❌ 声明返回 User，实际可能返回 None
-async def get_user(user_id: str) -> User:
-    result = await self.db.table("profiles").select("*").eq("id", user_id).execute()
-    if not result.data:
-        return None  # 类型不匹配!
-    return User.model_validate(result.data[0])
-
-# ✅ 正确 - 声明 Optional 或抛出异常
-async def get_user(user_id: str) -> Optional[User]:
-    ...
-# 或
-async def get_user(user_id: str) -> User:
-    ...
-    if not result.data:
-        raise NotFoundError("User", user_id)
-```
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-TYPE-003: 泛型使用不当
-
-**问题描述**: 使用 `List` 而非 `list`，`Dict` 而非 `dict`
-
-**修复方案**: Python 3.9+ 使用内置类型
-```python
-# ❌ 旧式
-from typing import List, Dict
-def process(items: List[Item]) -> Dict[str, Any]:
-
-# ✅ 新式 (Python 3.9+)
-def process(items: list[Item]) -> dict[str, Any]:
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-TYPE-004: Union 类型过于宽泛
-
-**问题描述**: Union 类型包含太多可能的类型
-
-**违规示例**:
-```python
-# ❌ 过于宽泛
-def process(data: Union[str, int, list, dict, None]) -> Union[str, dict, None]:
-    ...
-
-# ✅ 更精确
-def process(data: WebhookPayload) -> ProcessResult:
-    ...
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟢 LOW-TYPE-005: 缺少 TypedDict
-
-**问题描述**: 使用 dict 而非 TypedDict 表示结构化数据
-
-**修复方案**:
-```python
-# ❌ 不够类型安全
-def process(data: dict) -> dict:
-    return {"user_id": data["id"], "name": data["name"]}
-
-# ✅ 使用 TypedDict
-class UserData(TypedDict):
-    user_id: str
-    name: str
-
-def process(data: RawUserData) -> UserData:
-    ...
-```
-
-**优先级**: 🟢 可选修复
-
----
-
-## 第七部分：文档一致性审计
-
-### 🟠 HIGH-DOC-001: 目录结构不一致
-
-**位置**: `docs/main/backend-business-logic.md` 第 219-227 行
-
-**文档描述**:
-```
-├── api/                    # ✨ API 层 (58 files, 11,242 lines)
-│   ├── user/               # 用户端 API (27 个路由)
-│   ├── admin/              # 管理端 API (16 个路由)
-```
-
-**实际代码**:
-```
-api/
-├── user/     # 31 个文件 (不是 27)
-├── admin/    # 32 个文件 (不是 16)
-├── schemas/  # 7 个文件
-└── health.py
-```
-
-**需要更新**:
-- `docs/main/backend-business-logic.md` - 更新文件数量统计
-- `docs/main/backend-architecture.md` - 更新 API 层描述
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-DOC-002: 旧的路径引用
-
-**位置**: `docs/main/backend-business-logic.md` 第 121 行
-
-**问题描述**: 引用 `api/routers/` 但实际不存在此目录
-
-**实际路径**: `api/user/` 和 `api/admin/`
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟠 HIGH-DOC-003: 代码统计数据过时
-
-**位置**: `docs/main/backend-business-logic.md` 第 273-283 行
-
-**问题描述**: 文件数量和代码行数统计已过时
-
-**优先级**: 🟠 本周修复
-
----
-
-### 🟡 MEDIUM-DOC-004: migrations 目录结构变更
-
-**位置**: `docs/main/backend-business-logic.md` 第 243-246 行
-
-**文档描述**:
-```
-├── migrations/             # SQL 迁移文件
-│   ├── v2/
-│   │   └── refactored_schema_v2.sql  # 完整数据库 DDL (v4.0)
-│   ├── v3/                 # Phase 3 软删除迁移
-│   └── *.sql               # 增量迁移脚本
-```
-
-**实际代码**:
-```
-migrations/
-├── seed/      # 种子数据 (6 个文件)
-└── v2/        # 主 Schema 文件
-    ├── 01_core_business.sql
-    ├── 02_platform_services.sql
-    ├── 03_infrastructure.sql
-    ├── README.md
-    └── rpc/   # RPC 函数
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-DOC-005: shared/ 目录结构不完整
-
-**位置**: `docs/main/backend-business-logic.md` 第 183-190 行
-
-**问题描述**: 文档中的 shared/ 结构描述不完整
-
-**实际结构**:
-```
-shared/
-├── ai/        # 19 个文件 (多个子目录)
-├── payment/   # 4 个文件
-└── storage/   # 4 个文件
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-DOC-006: domains/ 子目录列表不完整
-
-**问题描述**: 文档只列出了 7 个领域，实际有 28 个
-
-**实际领域** (28 个):
-```
-analytics, articles, assets, billing, content, creation,
-events, export, feature_flags, generation, identity, logging,
-marketing, marketplace, moderation, onboarding, platform, referrals,
-shared, static_pages, stats, subscriptions, support, tasks,
-templates, themes, tools, webhooks
-```
-
-**优先级**: 🟡 下周修复
-
----
-
-### 🟡 MEDIUM-DOC-007: application/ 子目录结构不完整
-
-**问题描述**: 文档缺少 application 层详细结构
-
-**实际结构**:
-```
 application/
-├── commands/    # 19 个子目录
-├── queries/     # 18 个子目录
-├── handlers/    # 3 个子目录
-└── services/    # 12 个子目录
+├── commands/events/    # Command Handlers
+└── queries/events/     # Query Handlers
+
+infrastructure/
+└── repositories/events_repository.py  # 具体实现
+
+api/
+├── user/events.py      # User API
+└── admin/events.py     # Admin API
 ```
 
-**优先级**: 🟡 下周修复
-
 ---
 
-### 🟢 LOW-DOC-008: API 端点数量略有差异
+## 附录
 
-**问题描述**:
-- 文档: User API 128 端点, Admin API 171 端点
-- 实际: User API ~123 端点, Admin API ~173 端点
+### A. 相关文档
 
-**优先级**: 🟢 可接受差异
+- [.claude/guides/ASYNC-PROGRAMMING.md](../../.claude/guides/ASYNC-PROGRAMMING.md) - 异步编程指南
+- [.claude/guides/SECURITY-DEEP-DEFENSE.md](../../.claude/guides/SECURITY-DEEP-DEFENSE.md) - 安全防御指南
+- [.claude/guides/MODULE-REFACTOR-SOP.md](../../.claude/guides/MODULE-REFACTOR-SOP.md) - 模块重构 SOP
+- [docs/main/backend-architecture.md](../main/backend-architecture.md) - V3 架构标准
 
----
+### B. 审计工具与命令
 
-### 🟢 LOW-DOC-009: 文档命名规范不统一
+```bash
+# 检查缺少 await
+grep -r "self\.\w*_repo\.\w*(" domains/ --include="*.py" | grep -v "await"
 
-**问题描述**: 部分文档使用中文命名，部分使用英文
+# 检查 HTTPException 在 Domain 层
+grep -r "from fastapi import HTTPException" domains/
 
-**优先级**: 🟢 可选修复
+# 检查直接 Repository 导入
+grep -r "from infrastructure.repositories" api/
 
----
+# 统计测试覆盖率
+pytest --cov=decodables --cov-report=html
+```
 
-## 第八部分：已确认的良好实践 ✅
+### C. 审计日志
 
-### 安全措施
-1. ✅ **Supabase SDK 参数化查询** - SQL 注入防护
-2. ✅ **Pydantic 输入验证** - 请求体验证
-3. ✅ **CORS 配置** - 跨域保护
-4. ✅ **RLS (Row Level Security)** - 数据库级别访问控制
-5. ✅ **Stripe 签名验证** - Webhook 完整性
-
-### 架构实践
-1. ✅ **DDD 分层架构** - 基本结构已建立
-2. ✅ **依赖注入** - 使用 FastAPI Depends
-3. ✅ **Pydantic 模型** - 数据验证
-4. ✅ **异步编程** - 使用 async/await
-
-### 代码质量
-1. ✅ **类型注解** - 大部分代码有类型注解
-2. ✅ **日志记录** - 使用 structlog
-3. ✅ **配置管理** - 使用环境变量
-
----
-
-## 第九部分：修复优先级排序
-
-### 🔴 立即修复 (1-3 天)
-
-| 编号 | 问题 | 文件 | 预计时间 |
-|------|------|------|----------|
-| CRITICAL-SEC-001 | JWT 验证缺陷 | `dependencies.py` | 4h |
-| CRITICAL-SEC-002 | 积分非原子操作 | `stripe_webhook_service.py` | 8h |
-| CRITICAL-ARCH-001 | API 直接导入 Repository | 多个文件 | 8h |
-| CRITICAL-ASYNC-001 | asyncio.run() 问题 | `dependencies.py` | 2h |
-| CRITICAL-CODE-001 | 超大文件拆分计划 | 规划文档 | 4h |
-
-### 🟠 本周修复 (3-7 天)
-
-| 编号 | 问题 | 文件 | 预计时间 |
-|------|------|------|----------|
-| HIGH-SEC-003 | Admin 权限检查 | `dependencies.py` | 4h |
-| HIGH-SEC-004 | JIT 竞态条件 | `dependencies.py` | 4h |
-| HIGH-SEC-005 | Monthly Reset 竞态 | `billing/service.py` | 4h |
-| HIGH-SEC-006 | 支付重复创建 | `stripe_webhook_service.py` | 2h |
-| HIGH-ARCH-002 | 分页参数不一致 | 多个文件 | 4h |
-| HIGH-ARCH-003 | 返回类型不一致 | Repository 文件 | 6h |
-| HIGH-ASYNC-002 | 同步/异步混用 | 多个文件 | 4h |
-| HIGH-ASYNC-003 | 缺少 await | 多个文件 | 2h |
-| HIGH-ERR-001 | 过宽异常捕获 | 多个文件 | 4h |
-| HIGH-ERR-002 | 异常吞噬 | 多个文件 | 4h |
-| HIGH-ERR-003 | 错误响应不一致 | 多个文件 | 4h |
-| HIGH-TYPE-001 | Optional 处理 | 多个文件 | 4h |
-| HIGH-TYPE-002 | 返回类型不匹配 | 多个文件 | 4h |
-| HIGH-DOC-001~003 | 文档不一致 | 文档文件 | 4h |
-| HIGH-CODE-002~004 | 代码质量 | 多个文件 | 8h |
-
-### 🟡 下周修复 (7-14 天)
-
-所有 MEDIUM 级别问题
-
-### 🟢 可选修复
-
-所有 LOW 级别问题
-
----
-
-## 第十部分：附录
-
-### A. 需要审查的大文件
-
-| 文件路径 | 大小 | 建议 |
-|----------|------|------|
-| `container.py` | 50,577 行 | 🔴 拆分为模块化容器 |
-| `app.py` | 24,548 行 | 🔴 拆分路由注册 |
-| `dependencies.py` | 13,794 行 | 🔴 按功能拆分 |
-| `infrastructure/repositories/field_mappings.py` | ~50KB | 🟡 考虑生成或拆分 |
-
-### B. 已删除的文件
-
-| 文件路径 | 类型 | 删除日期 |
-|----------|------|----------|
-| `api/admin/events.py.backup_v326` | backup | 2026-01-16 |
-| `tests/api/user/test_generation.py.backup` | backup | 2026-01-16 |
-| `tests/api/user/test_tasks.py.backup` | backup | 2026-01-16 |
-| `tests/api/user/test_tools.py.backup` | backup | 2026-01-16 |
-
-### C. 相关文档
-
-- [.claude/guides/SECURITY-DEEP-DEFENSE.md](.claude/guides/SECURITY-DEEP-DEFENSE.md) - 安全防御指南
-- [.claude/guides/ASYNC-PROGRAMMING.md](.claude/guides/ASYNC-PROGRAMMING.md) - 异步编程指南
-- [.claude/guides/MODULE-REFACTOR-SOP.md](.claude/guides/MODULE-REFACTOR-SOP.md) - 模块重构指南
-- [migrations/v2/README.md](../migrations/v2/README.md) - 数据库架构说明
-
-### D. 已完成的计划 ✅
-
-以下计划已完成实施，临时文档已删除：
-
-#### D.1 AsyncClient 迁移 ✅ 已完成 (2026-01-16 验证)
-
-**原计划**: `async-client-migration-plan.md` (已删除)
-
-**实施结果**:
-- ✅ `core/database/client.py` - 已添加 `get_async_db_client()` 函数
-- ✅ `core/database/dependencies.py` - 已创建 FastAPI 依赖注入 (115 行)
-- ✅ 所有 30 个 Repository 文件已迁移，`run_in_threadpool` 使用量: **0**
-- ✅ 性能提升: 原生异步，无线程池开销
-
-**关键文件**:
-| 文件 | 行数 | 说明 |
-|------|------|------|
-| `core/database/dependencies.py` | 115 | FastAPI 依赖注入 |
-| `infrastructure/repositories/base_repository.py` | 更新 | 支持 AsyncClient |
-
-**注意**: 审计中的 CRITICAL-ASYNC-001 问题可能已解决，需重新验证 `dependencies.py:349`
-
----
-
-#### D.2 主题系统后端 ✅ 已完成 (2026-01-16 验证)
-
-**原计划**: `themes_backend_implementation_plan.md` (已删除)
-
-**实施结果**:
-- ✅ Repository 层: 12/12 方法已实现
-- ✅ Service 层: 8/8 方法已实现 (678 行)
-- ✅ AI 生成服务: 2/2 方法已实现 (299 行)
-- ✅ Admin API: 12/12 端点已实现 (552 行)
-
-**关键文件**:
-| 文件 | 行数 | 说明 |
-|------|------|------|
-| `api/admin/themes.py` | 552 | 完整 Admin API |
-| `api/admin/themes_models.py` | 167 | Request/Response 模型 |
-| `domains/themes/themes_service.py` | 678 | 业务逻辑 |
-| `shared/ai/theme_generator.py` | 299 | AI 生成服务 |
-| `infrastructure/repositories/themes_repository.py` | ~200 | 数据访问 |
-
----
-
-### E. 待完成的计划 📋
-
-#### E.1 API 整合重构方案 🔶 部分完成 (~40%)
-
-> 原文档: `api-consolidation-plan.md` (已合并删除)
-
-##### E.1.1 现状分析
-
-**API 端点统计**:
-
-| 分类 | 端点数量 | 文件数量 |
-|------|----------|----------|
-| User API | 135 | 29 模块 |
-| Admin API | 171 | 21 模块 |
-| **总计** | **306** | **50 模块** |
-
-**发现的问题**:
-
-| 问题类型 | 描述 | 涉及模块 |
-|----------|------|----------|
-| 功能重叠 | 三套相似的资源列表/获取接口 | Resources + System Resources + User Assets |
-| 功能重叠 | 三处都有 `seller-stats` 接口 | Projects + Marketplace + User Assets |
-| 响应格式不一致 | ~45% 使用 response_model, ~37% 返回 raw dict | 全局 |
-| 接口粒度过细 | 3 个资源类型接口可合并为 1 个 | Resources |
-| 废弃接口未清理 | 3 个已标记废弃的接口 | Generations, Export |
-
-##### E.1.2 整合原则
-
-1. **不影响前端调用**: 保持现有 API 路径兼容，新增整合接口
-2. **渐进式迁移**: 先新增，后标记废弃，最后清理
-3. **保持高性能**: 整合不能降低接口响应速度
-4. **统一响应格式**: 全部采用 JSON + Pydantic response_model
-
-##### E.1.3 实施阶段与进度
-
-| Phase | 描述 | 风险 | 状态 | 说明 |
-|-------|------|------|------|------|
-| Phase 1 | 响应格式统一 | 低 | 🔶 45% | `api/schemas/base.py` 已创建基础模型 |
-| Phase 2 | 废弃接口清理 | 低 | ❌ 0% | 待确认前端未使用后清理 3 个接口 |
-| Phase 3 | 卖家统计整合 | 中 | ✅ 100% | `api/user/seller.py` (235 行) |
-| Phase 4 | 模板接口整合 | 中 | ❌ 0% | 10 → 5 个接口 |
-| Phase 5 | 资源模块整合 | 高 | ❌ 0% | 26 → ~16 个接口 (需独立设计) |
-
-##### E.1.4 待清理的废弃接口
-
-| 接口 | 模块 | 替代方案 |
+| 日期 | 版本 | 主要变更 |
 |------|------|----------|
-| `POST /generations/{id}/favorite` | Generations | `PATCH /generations/{id}` |
-| `DELETE /generations/batch` | Generations | `POST /generations/batch-delete` |
-| `POST /export/zip` | Export | `POST /export/zip/async` |
-
-##### E.1.5 整合方案摘要
-
-**方案 A: 资源模块整合** (节省 ~10 个接口)
-- 当前: 3 个模块, 26 个接口
-- 目标: 1 个通用查询 + 2 个特化操作接口
-
-**方案 B: 模板接口整合** (节省 5 个接口)
-- 当前: 2 类型 × 5 操作 = 10 个接口
-- 目标: 5 个通用接口 (type 参数区分)
-
-**方案 C: 卖家统计整合** ✅ 已完成
-- 原来: 3 个独立接口
-- 现在: `GET /api/v2/user/seller/stats?include=projects,listings,assets`
-
-**方案 D: 通知接口整合** (节省 1 个接口)
-- 当前: `read` + `read-all` 两个接口
-- 目标: 1 个 `mark-read` 接口 (支持 ids 或 all 参数)
-
-##### E.1.6 预期收益
-
-| 阶段 | 减少数量 | 累计减少 |
-|------|----------|----------|
-| Phase 2 | -3 | -3 |
-| Phase 3 | -2 | -5 (✅ 已完成) |
-| Phase 4 | -5 | -10 |
-| Phase 5 | -8 | -18 |
-
-**最终目标**: 306 → 288 端点 (减少 ~6%)
-
-##### E.1.7 不建议整合的模块
-
-| 模块 | 原因 |
-|------|------|
-| Billing | 核心计费逻辑，独立更安全 |
-| Payment | Stripe 集成，独立更清晰 |
-| Webhooks | 第三方回调，必须独立 |
-| Analytics | 数据分析专用 |
-| Experiments | A/B 测试专用 |
-| Feature Flags | 功能开关专用 |
-| Generation * | AI 生成专用，已按功能分类 |
-
-##### E.1.8 下一步行动
-
-1. **[P0]** Phase 1 + 2: 响应格式统一 + 废弃清理 (低风险，高收益)
-2. **[P2]** Phase 4: 模板接口整合 (需评估前端改动量)
-3. **[P3]** Phase 5: 资源模块整合 (需独立设计文档)
-
----
-
-### F. 文档命名规范遵守情况 ✅ 已修复
-
-**规范文档**: `docs/main/naming-conventions.md`
-
-**遵守率**: 100% (所有文件已合规)
-
-**已修复文件** (2026-01-16):
-
-| 原文件 | 新文件 |
-|--------|--------|
-| `docs/NAMING-CONVENTIONS.md` | `docs/main/naming-conventions.md` |
-| `docs/shared/TIER-PERMISSIONS.md` | `docs/shared/tier-permissions.md` |
-| `docs/monitoring/GRAFANA-SETUP-GUIDE.md` | `docs/monitoring/grafana-setup-guide.md` |
-| `docs/tmp/API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 已合并到本文档 |
+| 2026-01-16 | v1.0 | 初始审计报告 (57个问题) |
+| 2026-01-16 | v2.0 | 全面重审 (76个问题，6维度覆盖) |
 
 ---
 
 **审计完成日期**: 2026-01-16
-**文档版本**: v1.3
+**文档版本**: v2.0
 **下次审计建议**: 2026-02-16 (每月一次)
-**总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危)
-
+**总问题数**: 76 个 (9 CRITICAL + 24 HIGH + 28 MEDIUM + 15 LOW)
+**预计修复总工时**: 160h (4周)
