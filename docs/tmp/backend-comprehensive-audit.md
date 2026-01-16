@@ -1277,10 +1277,52 @@ application/
 - [.claude/guides/MODULE-REFACTOR-SOP.md](.claude/guides/MODULE-REFACTOR-SOP.md) - 模块重构指南
 - [migrations/v2/README.md](../migrations/v2/README.md) - 数据库架构说明
 
+### D. 待实施计划文档
+
+以下计划文档包含详细的实施方案，建议在解决审计问题时参考：
+
+| 文档 | 优先级 | 说明 | 状态 |
+|------|--------|------|------|
+| [API-CONSOLIDATION-RESTRUCTURE-PLAN.md](./API-CONSOLIDATION-RESTRUCTURE-PLAN.md) | P1 | API 整合重构方案 - 减少 18 个冗余端点 | 📋 待实施 |
+| [async-client-migration-plan.md](./async-client-migration-plan.md) | P2 | Supabase AsyncClient 迁移 - 解决 ASYNC-001 问题 | 📋 待实施 |
+| [themes_backend_implementation_plan.md](./themes_backend_implementation_plan.md) | P2 | 主题系统后端完整实施计划 | 📋 待实施 |
+
+#### D.1 API 整合计划摘要
+
+**目标**: 将 306 个端点整合优化到 288 个 (减少 ~6%)
+
+**关键整合点**:
+- 资源模块整合 (节省 ~10 个接口)
+- 模板接口整合 (节省 5 个接口)
+- 卖家统计接口整合 (节省 2 个接口)
+- 响应格式统一 (100% Pydantic response_model)
+
+#### D.2 AsyncClient 迁移计划摘要
+
+**目标**: 将所有同步 Supabase 调用迁移到原生异步 AsyncClient
+
+**关键收益**:
+- 移除 326+ 处 `run_in_threadpool` 包装
+- 代码减少 ~30%
+- 性能提升 20-50%
+- 解决 `asyncio.run()` 在事件循环中调用的问题 (CRITICAL-ASYNC-001)
+
+**预计时间**: 8-11 小时
+
+#### D.3 主题系统实施计划摘要
+
+**目标**: 完善主题系统后端 API
+
+**关键功能**:
+- Repository 层: 12 个方法 (CRUD + 批量操作)
+- Service 层: 8 个方法
+- AI 生成服务: 2 个方法
+- Admin API: 12 个端点
+
 ---
 
 **审计完成日期**: 2026-01-16
-**文档版本**: v1.0
+**文档版本**: v1.1
 **下次审计建议**: 2026-02-16 (每月一次)
 **总问题数**: 57 个 (6 关键 + 20 高危 + 22 中等 + 9 低危)
 

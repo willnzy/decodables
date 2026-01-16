@@ -1,6 +1,6 @@
 # 临时文档目录 (docs/tmp)
 
-> **更新日期**: 2026-01-13  
+> **更新日期**: 2026-01-16
 > **状态**: 已清理完成
 
 ---
@@ -21,16 +21,19 @@
 
 ## 📂 当前文件状态
 
-### 待实施计划 (6个)
+### 审计报告 (1个)
 
 | 文件名 | 状态 | 优先级 | 说明 |
 |--------|------|--------|------|
+| `backend-comprehensive-audit.md` | 📋 活跃 | P0 | 后端综合审计报告 (57 个问题) |
+
+### 待实施计划 (3个)
+
+| 文件名 | 状态 | 优先级 | 说明 |
+|--------|------|--------|------|
+| `API-CONSOLIDATION-RESTRUCTURE-PLAN.md` | 📋 待审核 | P1 | API 整合重构方案 |
 | `async-client-migration-plan.md` | 📋 待审核 | P2 | Supabase 异步客户端迁移计划 |
-| `daily_themes_schema_update_plan.md` | 📋 待实施 | P2 | 日常主题 Schema 更新计划 |
-| `repository-sql-audit-plan.md` | 📋 待实施 | P2 | Repository SQL 审计计划 |
 | `themes_backend_implementation_plan.md` | 📋 待实施 | P2 | 主题系统后端实施计划 |
-| `TIER-FEATURE-FLAG-INTEGRATION-PLAN.md` | 📋 待实施 | P1 | Tier 和 Feature Flag 集成计划 |
-| `TIER-PERMISSIONS-BACKEND-IMPLEMENTATION.md` | 📋 待实施 | P1 | Tier 权限后端实施计划 |
 
 ### 说明文档 (1个)
 
@@ -40,9 +43,19 @@
 
 ---
 
-## 🗑️ 已清理文档 (15个)
+## 🗑️ 清理记录
 
-### 2026-01-13 清理记录
+### 2026-01-16 清理 (6个)
+
+**已删除 - 已完成或已合并**:
+- `backend-documentation-audit-report.md` → 已合并到 `backend-comprehensive-audit.md`
+- `security-audit-report.md` → 已合并到 `backend-comprehensive-audit.md`
+- `TIER-FEATURE-FLAG-INTEGRATION-PLAN.md` → 状态"已完成"
+- `TIER-PERMISSIONS-BACKEND-IMPLEMENTATION.md` → 状态"已完成"
+- `daily_themes_schema_update_plan.md` → 状态"已完成"
+- `repository-sql-audit-plan.md` → 已过时
+
+### 2026-01-13 清理 (15个)
 
 **已归档** (4个):
 - `[archived]api-db-audit-2026-01-10.md`
@@ -91,20 +104,6 @@
 4. 删除临时文档 ✅
 ```
 
-**示例流程**:
-
-```bash
-# 1. 创建计划文档
-docs/tmp/feature-x-implementation-plan.md
-
-# 2. 实施完成后，同步到固定文档
-# 编辑: docs/main/backend-architecture.md (添加架构说明)
-# 编辑: docs/main/api-reference.md (添加 API 说明)
-
-# 3. 删除临时文档
-git rm docs/tmp/feature-x-implementation-plan.md
-```
-
 ---
 
 ## ⚠️ 注意事项
@@ -116,6 +115,6 @@ git rm docs/tmp/feature-x-implementation-plan.md
 
 ---
 
-**最后清理**: 2026-01-13  
-**下次清理**: 2026-02-13（建议）  
+**最后清理**: 2026-01-16
+**下次清理**: 2026-02-16（建议）
 **维护者**: 后端团队
