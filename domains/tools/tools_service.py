@@ -1,9 +1,13 @@
-"""Tools Service - Business logic for utility tools (v3.1.0).
+"""Tools Service - Business logic for utility tools (v3.2.0).
 
 @module domains.tools.tools_service
-@version 3.1.0
+@version 3.2.0 (DDD Exception Compliance)
 
 Changes:
+- v3.2.0: DDD-compliant exceptions
+  - Removed all HTTPException (replaced with domain exceptions)
+  - API layer now responsible for HTTP status code mapping
+
 - v3.1.0: Removed hardcoded tier checks
   - Uses TierService for permission checking
   - PDF preview and OCR permissions checked via tier_service.can_use_feature()
@@ -21,7 +25,21 @@ import re
 import uuid
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
+
+from domains.tools.exceptions import (
+    InvalidProjectIdException,
+    InvalidFileTypeException,
+    FileTooLargeException,
+    InvalidPdfException,
+    TooManyPagesException,
+    OnlyPdfSupportedException,
+    SmartScanPermissionDeniedException,
+    SmartScanTrialDeniedException,
+    InsufficientCreditsException,
+    PdfProcessingFailedException,
+    OcrProcessingFailedException,
+)
 
 if TYPE_CHECKING:
     from domains.identity.tier_service import TierService
@@ -111,10 +129,10 @@ class ToolsService:
             project_id: Optional project UUID string
 
         Raises:
-            HTTPException: 400 if project_id is invalid format
+            InvalidProjectIdException: If project_id is invalid format
         """
         if project_id is not None and not UUID_PATTERN.match(project_id):
-            raise HTTPException(400, "Invalid project ID format")
+            raise InvalidProjectIdException()
 
     # ==========================================
     # PDF Preview
@@ -140,17 +158,22 @@ class ToolsService:
             Dict with success, preview_id, total_pages, pages
 
         Raises:
-            HTTPException: 403 if no permission, 400 if invalid file, 500 if processing fails
+            SmartScanPermissionDeniedException: If user lacks permission
+            OnlyPdfSupportedException: If file is not a PDF
+            FileTooLargeException: If file exceeds size limit
+            TooManyPagesException: If PDF has too many pages
+            InvalidPdfException: If PDF is corrupted
+            PdfProcessingFailedException: If processing fails
         """
         # Check tier access via TierService
         tier = user.get("tier", "t1")
         can_use = await self._check_smart_scan_permission(tier, is_trial_active)
         if not can_use:
-            raise HTTPException(403, "Upgrade to Teacher Pro to use Smart Scan")
+            raise SmartScanPermissionDeniedException()
 
         # Validate file type
         if not file.filename or not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(400, "Only PDF files are supported")
+            raise OnlyPdfSupportedException()
 
         try:
             import fitz  # PyMuPDF
@@ -160,7 +183,7 @@ class ToolsService:
 
             # Check file size (5MB limit)
             if len(contents) > 5 * 1024 * 1024:
-                raise HTTPException(400, "File too large. Maximum size is 5MB")
+                raise FileTooLargeException(max_size_mb=5)
 
             # Open PDF
             pdf_doc = fitz.open(stream=contents, filetype="pdf")
@@ -168,10 +191,7 @@ class ToolsService:
 
             # Check page limit (20 pages)
             if total_pages > 20:
-                raise HTTPException(
-                    400,
-                    f"PDF has too many pages ({total_pages}). Maximum is 20"
-                )
+                raise TooManyPagesException(page_count=total_pages, max_pages=20)
 
             # Generate preview ID
             preview_id = uuid.uuid4().hex[:8]
@@ -208,12 +228,13 @@ class ToolsService:
             }
 
         except fitz.FileDataError:
-            raise HTTPException(400, "Invalid or corrupted PDF file")
-        except HTTPException:
+            raise InvalidPdfException()
+        except (SmartScanPermissionDeniedException, OnlyPdfSupportedException,
+                FileTooLargeException, TooManyPagesException, InvalidPdfException):
             raise
         except Exception as e:
             logger.error(f"PDF Preview Error: {e}")
-            raise HTTPException(500, f"Failed to process PDF: {str(e)}")
+            raise PdfProcessingFailedException(reason=str(e))
 
     async def _upload_preview_image(
         self,
@@ -271,8 +292,12 @@ class ToolsService:
             Dict with success, text, tables, images, credits_used, balance
 
         Raises:
-            HTTPException: 403 if no access, 400 if invalid file,
-                          402 if insufficient credits, 500 if processing fails
+            InvalidProjectIdException: If project_id format is invalid
+            SmartScanTrialDeniedException: If user lacks permission
+            InvalidFileTypeException: If file type not supported
+            FileTooLargeException: If file exceeds size limit
+            InsufficientCreditsException: If not enough credits
+            OcrProcessingFailedException: If processing fails
         """
         # Validate project_id format
         self.validate_project_id(project_id)
@@ -284,24 +309,18 @@ class ToolsService:
         tier = user.get("tier", "t1")
         can_use = await self._check_smart_scan_permission(tier, is_trial_active)
         if not can_use:
-            raise HTTPException(
-                403,
-                "Upgrade to Teacher Pro to use Smart Scan (or available during trial period)"
-            )
+            raise SmartScanTrialDeniedException()
 
         # Validate file type BEFORE charging credits
         if file.content_type not in ALLOWED_OCR_TYPES:
-            raise HTTPException(
-                400,
-                f"Unsupported file type: {file.content_type}"
-            )
+            raise InvalidFileTypeException(content_type=file.content_type)
 
         # Read file
         contents = await file.read()
 
         # Check file size (10MB limit)
         if len(contents) > 10 * 1024 * 1024:
-            raise HTTPException(400, "File too large. Maximum size is 10MB")
+            raise FileTooLargeException(max_size_mb=10)
 
         # Deduct credits after all validations pass (using dynamic cost)
         result = await self.credit_repository.deduct_credits(
@@ -312,7 +331,7 @@ class ToolsService:
         )
         if not result.get("success", True):
             if "INSUFFICIENT" in str(result.get("error", "")):
-                raise HTTPException(402, "Insufficient credits for OCR")
+                raise InsufficientCreditsException()
 
         try:
             # Process OCR
@@ -346,7 +365,7 @@ class ToolsService:
             # Refund credits on OCR processing failure
             await self._refund_ocr_credits(user["id"], e, ocr_cost)
             logger.error(f"OCR Error: {e}")
-            raise HTTPException(500, f"OCR processing failed: {str(e)}")
+            raise OcrProcessingFailedException(reason=str(e))
 
     async def _refund_ocr_credits(
         self,

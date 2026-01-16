@@ -2,7 +2,13 @@
 Templates Service - Business logic for user prompt templates.
 
 @module domains.templates.templates_service
-@version 1.0.0
+@version 1.1.0 (DDD Exception Compliance)
+
+Changes:
+- v1.1.0: DDD-compliant exceptions
+  - Removed all HTTPException (replaced with domain exceptions)
+  - API layer now responsible for HTTP status code mapping
+- v1.0.0: Initial implementation
 
 Purpose:
 - Template CRUD business logic
@@ -12,9 +18,12 @@ Purpose:
 
 from typing import Dict, Any, List
 from datetime import datetime, timezone
-from fastapi import HTTPException
 
 from infrastructure.repositories.templates_repository import SupabaseTemplatesRepository
+from domains.templates.exceptions import (
+    TemplateNotFoundException,
+    TemplateLimitExceededException,
+)
 
 # Maximum templates per user
 MAX_TEMPLATES_PER_USER = 20
@@ -72,15 +81,12 @@ class TemplatesService:
             Created template dict
 
         Raises:
-            HTTPException: If limit exceeded
+            TemplateLimitExceededException: If limit exceeded
         """
         # 1. Check template count limit
         count = await self.repository.count_asset_templates(user_id)
         if count >= MAX_TEMPLATES_PER_USER:
-            raise HTTPException(
-                400,
-                f"Maximum {MAX_TEMPLATES_PER_USER} templates allowed. Delete some first.",
-            )
+            raise TemplateLimitExceededException(max_templates=MAX_TEMPLATES_PER_USER)
 
         # 2. Add user_id to data
         data = {
@@ -109,7 +115,7 @@ class TemplatesService:
             Updated template dict
 
         Raises:
-            HTTPException: If template not found
+            TemplateNotFoundException: If template not found
         """
         result = await self.repository.update_asset_template(
             template_id,
@@ -118,7 +124,7 @@ class TemplatesService:
         )
 
         if not result:
-            raise HTTPException(404, "Template not found")
+            raise TemplateNotFoundException()
 
         return result
 
@@ -160,12 +166,12 @@ class TemplatesService:
             New use_count
 
         Raises:
-            HTTPException: If template not found
+            TemplateNotFoundException: If template not found
         """
         # 1. Get current template
         template = await self.repository.get_asset_template(template_id, user_id)
         if not template:
-            raise HTTPException(404, "Template not found")
+            raise TemplateNotFoundException()
 
         # 2. Increment use_count
         current_count = template.get("use_count", 0)
@@ -219,15 +225,12 @@ class TemplatesService:
             Created template dict
 
         Raises:
-            HTTPException: If limit exceeded
+            TemplateLimitExceededException: If limit exceeded
         """
         # 1. Check template count limit
         count = await self.repository.count_page_templates(user_id)
         if count >= MAX_TEMPLATES_PER_USER:
-            raise HTTPException(
-                400,
-                f"Maximum {MAX_TEMPLATES_PER_USER} templates allowed. Delete some first.",
-            )
+            raise TemplateLimitExceededException(max_templates=MAX_TEMPLATES_PER_USER)
 
         # 2. Add user_id to data
         data = {
@@ -256,7 +259,7 @@ class TemplatesService:
             Updated template dict
 
         Raises:
-            HTTPException: If template not found
+            TemplateNotFoundException: If template not found
         """
         result = await self.repository.update_page_template(
             template_id,
@@ -265,7 +268,7 @@ class TemplatesService:
         )
 
         if not result:
-            raise HTTPException(404, "Template not found")
+            raise TemplateNotFoundException()
 
         return result
 
@@ -307,12 +310,12 @@ class TemplatesService:
             New use_count
 
         Raises:
-            HTTPException: If template not found
+            TemplateNotFoundException: If template not found
         """
         # 1. Get current template
         template = await self.repository.get_page_template(template_id, user_id)
         if not template:
-            raise HTTPException(404, "Template not found")
+            raise TemplateNotFoundException()
 
         # 2. Increment use_count
         current_count = template.get("use_count", 0)

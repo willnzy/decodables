@@ -2,7 +2,13 @@
 Subscription Service - Subscription management business logic
 
 @module domains.subscriptions.subscription_service
-@version 3.28
+@version 3.29 (DDD Exception Compliance)
+
+Changes:
+- v3.29: DDD-compliant exceptions
+  - Removed all HTTPException (replaced with domain exceptions)
+  - API layer now responsible for HTTP status code mapping
+- v3.28: Created to extract business logic from API layer
 
 Business Logic:
 - Refund processing with safety checks
@@ -14,6 +20,30 @@ import os
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+from domains.subscriptions.exceptions import (
+    UserNotFoundException,
+    UserCodeMissingException,
+    UserCodeMismatchException,
+    UserEmailMismatchException,
+    NoStripeCustomerException,
+    PaymentNotFoundException,
+    PaymentOwnershipException,
+    PaymentStatusException,
+    AlreadyRefundedException,
+    InvalidRefundAmountException,
+    RefundFailedException,
+    SubscriptionNotFoundException,
+    SubscriptionOwnershipException,
+    SubscriptionStatusException,
+    AlreadyCancelScheduledException,
+    SubscriptionCancelFailedException,
+    SubscriptionModifyFailedException,
+    NoActiveSubscriptionException,
+    InvalidTierException,
+    InvalidDowngradePathException,
+    PriceIdNotConfiguredException,
+)
 
 from domains.billing.payment_service import (
     get_customer_subscriptions,
@@ -96,25 +126,26 @@ class SubscriptionService:
         Verify user identity using user_code (and optionally email).
 
         Returns user profile if verification successful.
-        Raises HTTPException if verification fails.
+
+        Raises:
+            UserNotFoundException: If user not found
+            UserCodeMissingException: If user has no user code
+            UserCodeMismatchException: If user code does not match
+            UserEmailMismatchException: If email does not match
         """
         user = await self.users_repo.get_profile(user_id)
         if not user:
-            from fastapi import HTTPException
-            raise HTTPException(404, "User not found")
+            raise UserNotFoundException()
 
         stored_user_code = user.get("user_code")
         if not stored_user_code:
-            from fastapi import HTTPException
-            raise HTTPException(400, "User has no user code assigned")
+            raise UserCodeMissingException()
         if stored_user_code != user_code:
-            from fastapi import HTTPException
-            raise HTTPException(403, "User code does not match. Please verify the user code.")
+            raise UserCodeMismatchException()
 
         if user_email is not None:
             if user.get("email") != user_email:
-                from fastapi import HTTPException
-                raise HTTPException(403, "User email does not match")
+                raise UserEmailMismatchException()
 
         return user
 
@@ -146,38 +177,43 @@ class SubscriptionService:
             Dict with status, refund_id, amount, currency
 
         Raises:
-            HTTPException: If validation fails
+            UserNotFoundException: If user not found
+            NoStripeCustomerException: If user has no Stripe customer ID
+            PaymentNotFoundException: If payment not found
+            PaymentOwnershipException: If payment does not belong to user
+            PaymentStatusException: If payment status does not allow refund
+            AlreadyRefundedException: If payment already fully refunded
+            InvalidRefundAmountException: If refund amount is invalid
+            RefundFailedException: If refund operation fails
         """
-        from fastapi import HTTPException
-
         # Verify user identity
         user = await self._verify_user_identity(user_id, user_code)
 
         customer_id = user.get("stripe_customer_id")
         if not customer_id:
-            raise HTTPException(400, "User has no Stripe customer ID")
+            raise NoStripeCustomerException()
 
         # Fetch PaymentIntent details
         pi = get_payment_intent_details(payment_intent_id)
         if not pi:
-            raise HTTPException(404, "Payment not found")
+            raise PaymentNotFoundException()
 
         if pi.customer != customer_id:
-            raise HTTPException(403, "Payment does not belong to this user")
+            raise PaymentOwnershipException()
 
         if pi.status != 'succeeded':
-            raise HTTPException(400, f"Cannot refund payment with status: {pi.status}")
+            raise PaymentStatusException(status=pi.status)
 
         refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
 
         if refundable_amount <= 0:
-            raise HTTPException(400, "Payment has already been fully refunded")
+            raise AlreadyRefundedException()
 
         if amount_cents is not None:
             if amount_cents <= 0:
-                raise HTTPException(400, "Refund amount must be positive")
+                raise InvalidRefundAmountException(amount=amount_cents)
             if amount_cents > refundable_amount:
-                raise HTTPException(400, f"Refund amount ({amount_cents}) exceeds refundable amount ({refundable_amount})")
+                raise InvalidRefundAmountException(amount=amount_cents, refundable=refundable_amount)
 
         # Execute refund with metadata for webhook processing (P0-010 fix)
         result = create_refund(
@@ -193,7 +229,7 @@ class SubscriptionService:
 
         if not result["success"]:
             logger.error(f"[Admin] Refund failed for PI {payment_intent_id}: {result['error']}")
-            raise HTTPException(400, "Refund operation failed")
+            raise RefundFailedException()
 
         refund = result["refund"]
         refund_amount = refund.amount
@@ -247,38 +283,42 @@ class SubscriptionService:
             Dict with status, subscription_id, cancel info
 
         Raises:
-            HTTPException: If validation fails
+            UserNotFoundException: If user not found
+            NoStripeCustomerException: If user has no Stripe customer ID
+            SubscriptionNotFoundException: If subscription not found
+            SubscriptionOwnershipException: If subscription does not belong to user
+            SubscriptionStatusException: If subscription status does not allow cancel
+            AlreadyCancelScheduledException: If already scheduled for cancel
+            SubscriptionCancelFailedException: If cancel operation fails
         """
-        from fastapi import HTTPException
-
         # Verify user identity
         user = await self._verify_user_identity(user_id, user_code)
 
         customer_id = user.get("stripe_customer_id")
         if not customer_id:
-            raise HTTPException(400, "User has no Stripe customer ID")
+            raise NoStripeCustomerException()
 
         # Get subscription details
         subscription_detail = get_subscription_details(subscription_id)
         if not subscription_detail:
             logger.error(f"[Admin] Subscription retrieve failed for {subscription_id}")
-            raise HTTPException(404, "Subscription not found or access denied")
+            raise SubscriptionNotFoundException()
 
         if subscription_detail.customer != customer_id:
-            raise HTTPException(403, "Subscription does not belong to this user")
+            raise SubscriptionOwnershipException()
 
         if subscription_detail.status not in ['active', 'trialing', 'past_due']:
-            raise HTTPException(400, f"Cannot cancel subscription with status: {subscription_detail.status}")
+            raise SubscriptionStatusException(status=subscription_detail.status, operation="cancel")
 
         if not immediate and subscription_detail.cancel_at_period_end:
-            raise HTTPException(400, "Subscription is already scheduled for cancellation")
+            raise AlreadyCancelScheduledException()
 
         # Cancel subscription via Stripe
         result = cancel_subscription(subscription_id, immediate=immediate)
 
         if not result["success"]:
             logger.error(f"[Admin] Cancel subscription failed for {subscription_id}: {result['error']}")
-            raise HTTPException(400, "Failed to cancel subscription")
+            raise SubscriptionCancelFailedException()
 
         subscription = result["subscription"]
 
@@ -365,10 +405,10 @@ class SubscriptionService:
             Dict with status, from_tier, to_tier, subscription_id
 
         Raises:
-            HTTPException: If validation fails
+            UserNotFoundException: If user not found
+            InvalidTierException: If tier is invalid
+            InvalidDowngradePathException: If downgrade path is invalid
         """
-        from fastapi import HTTPException
-
         # Verify user identity (including email)
         user = await self._verify_user_identity(user_id, user_code, user_email)
 
@@ -377,15 +417,15 @@ class SubscriptionService:
 
         # P0-012 fix: Validate target tier is valid
         if target_tier not in TIER_LEVELS:
-            raise HTTPException(400, f"Invalid target tier: {target_tier}. Must be one of: {', '.join(sorted(TIER_LEVELS.keys()))}")
+            raise InvalidTierException(tier=target_tier, valid_tiers=list(TIER_LEVELS.keys()))
 
         # P0-012 fix: Validate current tier is valid
         if current_tier not in TIER_LEVELS:
-            raise HTTPException(400, f"Invalid current tier: {current_tier}")
+            raise InvalidTierException(tier=current_tier)
 
         # Validate downgrade direction
         if TIER_LEVELS.get(target_tier, -1) >= TIER_LEVELS.get(current_tier, 0):
-            raise HTTPException(400, f"Cannot downgrade from {current_tier} to {target_tier}")
+            raise InvalidDowngradePathException(from_tier=current_tier, to_tier=target_tier)
 
         customer_id = user.get("stripe_customer_id")
 
@@ -399,7 +439,7 @@ class SubscriptionService:
                 user_id, customer_id, current_tier, immediate, reason, admin_id
             )
         else:
-            raise HTTPException(400, "Invalid downgrade path")
+            raise InvalidDowngradePathException(from_tier=current_tier, to_tier=target_tier)
 
     async def _downgrade_to_free(
         self,
@@ -411,7 +451,6 @@ class SubscriptionService:
         admin_id: str
     ) -> Dict[str, Any]:
         """Handle downgrade to Free tier."""
-        from fastapi import HTTPException
 
         # Case 1: No Stripe customer (already free or never subscribed)
         if not customer_id:
@@ -463,7 +502,7 @@ class SubscriptionService:
             result = cancel_subscription(active_sub.id, immediate=True)
             if not result["success"]:
                 logger.error(f"[Admin] Failed to cancel subscription {active_sub.id}: {result['error']}")
-                raise HTTPException(400, "Failed to cancel subscription")
+                raise SubscriptionCancelFailedException()
 
             await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="canceled")
             monthly_credits = await self._get_monthly_credits("t1")
@@ -487,7 +526,7 @@ class SubscriptionService:
             result = cancel_subscription(active_sub.id, immediate=False)
             if not result["success"]:
                 logger.error(f"[Admin] Failed to schedule cancellation for {active_sub.id}: {result['error']}")
-                raise HTTPException(400, "Failed to schedule cancellation")
+                raise SubscriptionCancelFailedException()
 
             await self.payment_repo.create(
                 user_id=user_id,
@@ -521,21 +560,19 @@ class SubscriptionService:
         admin_id: str
     ) -> Dict[str, Any]:
         """Handle downgrade from t3 to t2."""
-        from fastapi import HTTPException
-
         if not customer_id:
-            raise HTTPException(400, "User has no Stripe customer ID for subscription change")
+            raise NoStripeCustomerException()
 
         subscriptions = get_customer_subscriptions(customer_id)
         active_sub = next((sub for sub in subscriptions if sub.status in ['active', 'trialing']), None)
 
         if not active_sub:
-            raise HTTPException(400, "No active subscription found to downgrade")
+            raise NoActiveSubscriptionException()
 
         # Stripe Price ID for t2 plan (environment variable)
         t2_price_id = os.environ.get("STRIPE_T2_MONTHLY_PRICE_ID") or os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
         if not t2_price_id:
-            raise HTTPException(500, "t2 price ID not configured")
+            raise PriceIdNotConfiguredException(tier="t2")
 
         # Modify subscription to t2 plan
         updated_sub = modify_subscription(
@@ -550,7 +587,7 @@ class SubscriptionService:
 
         if not updated_sub:
             logger.error(f"[Admin] Subscription downgrade failed for {active_sub.id}")
-            raise HTTPException(400, "Subscription modification failed")
+            raise SubscriptionModifyFailedException()
 
         # Update database
         if immediate:

@@ -2,7 +2,13 @@
 Assets Service - Business logic for user assets management.
 
 @module domains.assets.assets_service
-@version 1.0.0
+@version 1.1.0 (DDD Exception Compliance)
+
+Changes:
+- v1.1.0: DDD-compliant exceptions
+  - Removed all HTTPException (replaced with domain exceptions)
+  - API layer now responsible for HTTP status code mapping
+- v1.0.0: Initial implementation
 
 Purpose:
 - Asset CRUD business logic
@@ -17,9 +23,21 @@ import logging
 import ipaddress
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 
 from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+from domains.assets.exceptions import (
+    InvalidUrlException,
+    SsrfException,
+    UrlNotAccessibleException,
+    InvalidFileTypeException,
+    FileTooLargeException,
+    NotImageException,
+    ProTierRequiredException,
+    AssetNotFoundException,
+    StorageNotConfiguredException,
+    UploadFailedException,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,31 +88,37 @@ class AssetsService:
             return True
 
     def _validate_url_safe(self, url: str) -> None:
-        """Validate URL is safe (no SSRF)."""
+        """
+        Validate URL is safe (no SSRF).
+
+        Raises:
+            InvalidUrlException: If URL format is invalid
+            SsrfException: If URL points to internal network
+        """
         if len(url) > MAX_URL_LENGTH:
-            raise HTTPException(400, "URL too long")
+            raise InvalidUrlException("URL too long")
 
         if not url.startswith(('http://', 'https://')):
-            raise HTTPException(400, "Invalid URL protocol")
+            raise InvalidUrlException("Invalid URL protocol")
 
         try:
             parsed = urlparse(url)
             hostname = parsed.hostname
 
             if not hostname:
-                raise HTTPException(400, "Invalid URL format")
+                raise InvalidUrlException("Invalid URL format")
 
             if self._is_private_ip(hostname):
-                raise HTTPException(400, "URL points to internal network")
+                raise SsrfException()
 
             blocked_hostnames = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
             if hostname.lower() in blocked_hostnames:
-                raise HTTPException(400, "URL points to internal network")
+                raise SsrfException()
 
-        except HTTPException:
+        except (InvalidUrlException, SsrfException):
             raise
         except Exception:
-            raise HTTPException(400, "Invalid URL format")
+            raise InvalidUrlException("Invalid URL format")
 
     # ==========================================
     # Query Methods
@@ -265,24 +289,28 @@ class AssetsService:
             Dict with url and filename
 
         Raises:
-            HTTPException: If validation fails
+            ProTierRequiredException: If user is not Pro tier
+            InvalidFileTypeException: If file type is not allowed
+            FileTooLargeException: If file exceeds size limit
+            StorageNotConfiguredException: If storage is not available
+            UploadFailedException: If upload fails
         """
         # 1. Pro tier check
         if user_tier.lower() != "t3":
-            raise HTTPException(403, "Personal asset upload requires Pro plan.")
+            raise ProTierRequiredException()
 
         # 2. File type validation
         if file.content_type not in ALLOWED_FILE_TYPES:
-            raise HTTPException(400, f"Unsupported file type: {file.content_type}")
+            raise InvalidFileTypeException(content_type=file.content_type)
 
         # 3. File size validation
         contents = await file.read()
         if len(contents) > MAX_FILE_SIZE:
-            raise HTTPException(400, "File too large. Maximum size is 5MB")
+            raise FileTooLargeException(max_size_mb=5)
 
         # 4. Storage check
         if not self.storage:
-            raise HTTPException(500, "Storage service not configured")
+            raise StorageNotConfiguredException()
 
         # 5. Generate unique filename
         ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
@@ -298,7 +326,7 @@ class AssetsService:
             url = self.storage.storage.from_(BUCKET_NAME).get_public_url(filename)
         except Exception as e:
             logger.error(f"Failed to upload file: {e}")
-            raise HTTPException(500, f"Failed to upload file: {str(e)}")
+            raise UploadFailedException(reason=str(e))
 
         # 7. Save to database
         await self.repository.save_asset(
@@ -337,7 +365,10 @@ class AssetsService:
             Dict with status and asset
 
         Raises:
-            HTTPException: If validation fails
+            InvalidUrlException: If URL format is invalid
+            SsrfException: If URL points to internal network
+            UrlNotAccessibleException: If URL cannot be accessed
+            NotImageException: If URL does not point to an image
         """
         import httpx
 
@@ -349,13 +380,13 @@ class AssetsService:
             with httpx.Client(timeout=10.0) as client:
                 response = client.head(url, follow_redirects=True)
                 if response.status_code != 200:
-                    raise HTTPException(400, f"URL not accessible: {response.status_code}")
+                    raise UrlNotAccessibleException(status_code_http=response.status_code)
 
                 content_type = response.headers.get('content-type', '')
                 if not content_type.startswith('image/'):
-                    raise HTTPException(400, "URL does not point to an image")
+                    raise NotImageException()
         except httpx.RequestError:
-            raise HTTPException(400, "Failed to access URL")
+            raise UrlNotAccessibleException(reason="Failed to access URL")
 
         # 3. Save to database
         asset = await self.repository.save_asset(
@@ -386,7 +417,7 @@ class AssetsService:
             Dict with status, action, asset_id
 
         Raises:
-            HTTPException: If asset not found
+            AssetNotFoundException: If asset not found or not owned by user
         """
         if permanent:
             result = await self.repository.permanently_hide_asset(asset_id, user_id)
@@ -396,7 +427,7 @@ class AssetsService:
             action = "moved to trash"
 
         if not result:
-            raise HTTPException(404, "Asset not found or not owned by user")
+            raise AssetNotFoundException(asset_id=asset_id)
 
         return {"status": "ok", "action": action, "asset_id": asset_id}
 
@@ -416,11 +447,11 @@ class AssetsService:
             New usage count
 
         Raises:
-            HTTPException: If asset not found
+            AssetNotFoundException: If asset not found
         """
         result = await self.repository.increment_asset_usage(asset_id, user_id)
         if not result:
-            raise HTTPException(404, "Asset not found")
+            raise AssetNotFoundException(asset_id=asset_id)
 
         return result.get("usage_count", 0)
 
@@ -440,10 +471,10 @@ class AssetsService:
             Restored asset dict
 
         Raises:
-            HTTPException: If asset not found in trash
+            AssetNotFoundException: If asset not found in trash
         """
         result = await self.repository.restore_asset(asset_id, user_id)
         if not result:
-            raise HTTPException(404, "Asset not found in trash")
+            raise AssetNotFoundException(asset_id=asset_id, in_trash=True)
 
         return result

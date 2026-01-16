@@ -2,7 +2,13 @@
 SystemResources Service - Business logic for Admin System Resources management.
 
 @module domains.content.system_resources_service
-@version 1.0.0
+@version 1.1.0 (DDD Exception Compliance)
+
+Changes:
+- v1.1.0: DDD-compliant exceptions
+  - Removed all HTTPException (replaced with domain exceptions)
+  - API layer now responsible for HTTP status code mapping
+- v1.0.0: Initial implementation
 
 Purpose:
 - System resource CRUD business logic
@@ -15,7 +21,16 @@ Purpose:
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile
+
+from domains.content.exceptions import (
+    SystemResourceNotFoundException,
+    InvalidResourceTypeException,
+    InvalidFileTypeException,
+    FileTooLargeException,
+    UploadFailedException,
+    InvalidOperationException,
+)
 
 from infrastructure.repositories.system_resources_admin_repository import (
     SupabaseSystemResourcesAdminRepository
@@ -155,26 +170,26 @@ class SystemResourcesService:
             Created resource dict
 
         Raises:
-            HTTPException: Validation or upload errors
+            InvalidResourceTypeException: If resource type is invalid
+            InvalidFileTypeException: If file type is not allowed
+            FileTooLargeException: If file exceeds size limit
+            UploadFailedException: If upload fails
         """
         resource_type = resource_data.get("type")
         category = resource_data.get("category")
 
         # 1. Validate type
         if resource_type not in ALLOWED_TYPES:
-            raise HTTPException(400, f"Invalid type. Allowed: {ALLOWED_TYPES}")
+            raise InvalidResourceTypeException(resource_type, allowed_types=list(ALLOWED_TYPES))
 
         # 2. Validate file type
         if file.content_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(400, f"Invalid file type. Allowed: {ALLOWED_MIME_TYPES}")
+            raise InvalidFileTypeException(content_type=file.content_type, allowed_types=list(ALLOWED_MIME_TYPES))
 
         # 3. Read and validate file size
         contents = await file.read()
         if len(contents) > MAX_FILE_SIZE:
-            raise HTTPException(
-                400,
-                f"File too large. Maximum: {MAX_FILE_SIZE // 1024 // 1024}MB"
-            )
+            raise FileTooLargeException(max_size_mb=MAX_FILE_SIZE // 1024 // 1024)
 
         # 4. Generate unique filename
         ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
@@ -189,7 +204,7 @@ class SystemResourcesService:
             )
             url = self.storage.storage.from_(SYSTEM_ASSETS_BUCKET).get_public_url(filename)
         except Exception as e:
-            raise HTTPException(500, f"Failed to upload file: {str(e)}")
+            raise UploadFailedException(reason=str(e))
 
         # 6. Get image dimensions
         dimensions = get_image_dimensions(contents)
@@ -255,12 +270,12 @@ class SystemResourcesService:
             Updated resource dict
 
         Raises:
-            HTTPException: If resource not found
+            SystemResourceNotFoundException: If resource not found
         """
         # Get current data for audit
         current = await self.repository.get_by_id(resource_id)
         if not current:
-            raise HTTPException(404, "Resource not found")
+            raise SystemResourceNotFoundException(resource_id=resource_id)
 
         # Add updated_by
         update_data = {k: v for k, v in updates.items() if v is not None}
@@ -305,23 +320,23 @@ class SystemResourcesService:
             Updated resource dict
 
         Raises:
-            HTTPException: Validation or not found errors
+            SystemResourceNotFoundException: If resource not found
+            InvalidFileTypeException: If file type is not allowed
+            FileTooLargeException: If file exceeds size limit
+            UploadFailedException: If upload fails
         """
         # 1. Get current resource
         current = await self.repository.get_by_id(resource_id)
         if not current:
-            raise HTTPException(404, "Resource not found")
+            raise SystemResourceNotFoundException(resource_id=resource_id)
 
         # 2. Validate file
         if new_file.content_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(400, f"Invalid file type. Allowed: {ALLOWED_MIME_TYPES}")
+            raise InvalidFileTypeException(content_type=new_file.content_type, allowed_types=list(ALLOWED_MIME_TYPES))
 
         contents = await new_file.read()
         if len(contents) > MAX_FILE_SIZE:
-            raise HTTPException(
-                400,
-                f"File too large. Maximum: {MAX_FILE_SIZE // 1024 // 1024}MB"
-            )
+            raise FileTooLargeException(max_size_mb=MAX_FILE_SIZE // 1024 // 1024)
 
         # 3. Get current metadata and version history
         current_metadata = current.get("metadata", {})
@@ -354,7 +369,7 @@ class SystemResourcesService:
             )
             url = self.storage.storage.from_(SYSTEM_ASSETS_BUCKET).get_public_url(filename)
         except Exception as e:
-            raise HTTPException(500, f"Failed to upload file: {str(e)}")
+            raise UploadFailedException(reason=str(e))
 
         # 6. Get new dimensions
         dimensions = get_image_dimensions(contents)
@@ -405,12 +420,12 @@ class SystemResourcesService:
             Status message dict
 
         Raises:
-            HTTPException: If resource not found
+            SystemResourceNotFoundException: If resource not found
         """
         # Check if exists
         current = await self.repository.get_by_id(resource_id)
         if not current:
-            raise HTTPException(404, "Resource not found")
+            raise SystemResourceNotFoundException(resource_id=resource_id)
 
         # Soft delete (deactivate)
         await self.repository.soft_delete(resource_id, admin_id)
@@ -444,7 +459,7 @@ class SystemResourcesService:
             Status message dict
 
         Raises:
-            HTTPException: Invalid operation
+            InvalidOperationException: If operation is not recognized
         """
         if operation == "activate":
             await self.repository.batch_update(
@@ -469,4 +484,4 @@ class SystemResourcesService:
             return {"message": f"Deleted {len(resource_ids)} resources"}
 
         else:
-            raise HTTPException(400, f"Unknown action: {operation}")
+            raise InvalidOperationException(operation=operation)
