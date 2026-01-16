@@ -2,9 +2,14 @@
 AI Chat Service - Support chat with OpenAI Assistants and Vision
 
 @module services.ai_chat_service
-@version 3.24
+@version 3.25 (Async Hygiene Fix)
+
+Changes:
+- v3.25: Fixed async blocking - replaced time.sleep() with asyncio.sleep()
+- v3.24: Initial implementation
 """
 
+import asyncio
 import time
 import logging
 from typing import List, Optional
@@ -80,7 +85,8 @@ async def chat_with_assistant(
             while run.status in ["queued", "in_progress"]:
                 if time.time() - start_time > max_wait:
                     raise TimeoutError("Assistant response timed out")
-                time.sleep(0.5)
+                # v3.25: Fixed async blocking - use asyncio.sleep instead of time.sleep
+                await asyncio.sleep(0.5)
                 run = openai_client.beta.threads.runs.retrieve(
                     thread_id=thread.id,
                     run_id=run.id
@@ -95,7 +101,8 @@ async def chat_with_assistant(
             last_error = e
             logger.warning(f"AI Chat attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
-                time.sleep(1 * (attempt + 1))
+                # v3.25: Fixed async blocking - use asyncio.sleep instead of time.sleep
+                await asyncio.sleep(1 * (attempt + 1))
             else:
                 raise last_error
     
@@ -176,6 +183,7 @@ async def chat_with_vision(
             last_error = e
             logger.warning(f"Vision chat attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
-                time.sleep(1 * (attempt + 1))
-    
+                # v3.25: Fixed async blocking - use asyncio.sleep instead of time.sleep
+                await asyncio.sleep(1 * (attempt + 1))
+
     raise last_error

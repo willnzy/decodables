@@ -1,19 +1,54 @@
 """Tasks Service - Business logic for user background tasks.
 
 @module domains.tasks.tasks_service
-@version 1.0.0
+@version 1.1.0 (DDD Error Handling)
+
+Changes:
+- v1.1.0: DDD-compliant error handling
+  - Replaced HTTPException with domain-specific exceptions
+  - API layer should catch and convert to HTTP responses
+- v1.0.0: Initial implementation
 """
 
 import logging
 import re
 from typing import Optional, Dict, Any
 
-from fastapi import HTTPException
-
 from infrastructure.task_queue import task_queue, progress_tracker
 from infrastructure.repositories.credit_repository import SupabaseCreditRepository
 
 logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Domain Exceptions (DDD-compliant)
+# ==========================================
+
+class TaskException(Exception):
+    """Base exception for task-related errors."""
+    pass
+
+
+class InvalidTaskIdException(TaskException):
+    """Raised when task ID format is invalid."""
+    pass
+
+
+class TaskNotFoundException(TaskException):
+    """Raised when task is not found."""
+    pass
+
+
+class TaskNotCancellableException(TaskException):
+    """Raised when task cannot be cancelled."""
+    def __init__(self, current_status: str):
+        self.current_status = current_status
+        super().__init__(f"Cannot cancel task in '{current_status}' status")
+
+
+class TaskCancellationFailedException(TaskException):
+    """Raised when task cancellation fails."""
+    pass
 
 
 # ==========================================
@@ -53,10 +88,10 @@ class TasksService:
             task_id: Task identifier to validate
 
         Raises:
-            HTTPException: If task_id format is invalid
+            InvalidTaskIdException: If task_id format is invalid
         """
         if not TASK_ID_PATTERN.match(task_id):
-            raise HTTPException(400, "Invalid task ID format")
+            raise InvalidTaskIdException("Invalid task ID format")
 
     # ==========================================
     # Query Operations
@@ -89,7 +124,8 @@ class TasksService:
             - error: error message if failed
 
         Raises:
-            HTTPException: 400 if invalid format, 404 if not found
+            InvalidTaskIdException: If task_id format is invalid
+            TaskNotFoundException: If task not found
         """
         # Validate format
         self.validate_task_id(task_id)
@@ -129,7 +165,7 @@ class TasksService:
             }
 
         # Task not found in cache or database
-        raise HTTPException(404, "Task not found")
+        raise TaskNotFoundException("Task not found")
 
     # ==========================================
     # Command Operations
@@ -163,9 +199,10 @@ class TasksService:
             - message: Success message
 
         Raises:
-            HTTPException:
-                - 400 if invalid format or cannot cancel
-                - 404 if task not found
+            InvalidTaskIdException: If task_id format is invalid
+            TaskNotFoundException: If task not found
+            TaskNotCancellableException: If task status doesn't allow cancellation
+            TaskCancellationFailedException: If cancellation operation fails
         """
         # Validate format
         self.validate_task_id(task_id)
@@ -174,19 +211,16 @@ class TasksService:
         status = progress_tracker.get_status(task_id)
 
         if not status:
-            raise HTTPException(404, "Task not found")
+            raise TaskNotFoundException("Task not found")
 
         # Verify task is cancellable
         current_status = status.get("status")
         if current_status not in CANCELLABLE_STATUSES:
-            raise HTTPException(
-                400,
-                f"Cannot cancel task in '{current_status}' status",
-            )
+            raise TaskNotCancellableException(current_status)
 
         # Attempt cancellation
         if not task_queue.cancel_task(task_id, user_id):
-            raise HTTPException(400, "Failed to cancel task")
+            raise TaskCancellationFailedException("Failed to cancel task")
 
         # Handle credit refund
         credits_refunded = await self._refund_task_credits(task_id, user_id)
