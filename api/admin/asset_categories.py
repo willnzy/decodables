@@ -2,9 +2,16 @@
 Admin API for Asset Category Management.
 
 @module api.admin.asset_categories
-@version 1.0.0
+@version 1.1.0 (Container DI Migration)
 
 Provides 7 endpoints for category CRUD and hierarchy operations:
+
+Changes in v1.1.0:
+- Migrated to Container-based dependency injection
+- Removed direct get_async_db_client() calls in DI
+- Added get_category_handlers() using Container pattern
+- Architecture: API → Container → Service → Repository
+- NOTE: get_category_resources endpoint still uses direct DB access (parking lot)
 - GET /api/v2/admin/categories - List all categories
 - GET /api/v2/admin/categories/tree - Get category tree
 - POST /api/v2/admin/categories - Create category
@@ -18,8 +25,8 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends
 from pydantic import BaseModel, Field
 
-from core.database import get_async_db_client
-from infrastructure.repositories.category_repository import SupabaseCategoryRepository
+from container import get_container
+from core.database import get_async_db_client  # Keep for get_category_resources (parking lot)
 from domains.content.category_service import CategoryService
 from application.queries.categories import (
     CategoryQueryHandlers,
@@ -119,10 +126,16 @@ router = APIRouter(prefix="/asset-categories", tags=["admin-categories"])
 
 
 async def get_category_handlers():
-    """Dependency to get category query and command handlers."""
-    db_client = await get_async_db_client()
-    repository = SupabaseCategoryRepository(db_client)
-    service = CategoryService(repository)
+    """
+    Dependency to get category query and command handlers via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    service = await container.get_category_service()
     query_handlers = CategoryQueryHandlers(service)
     command_handlers = CategoryCommandHandlers(service)
     return query_handlers, command_handlers
@@ -155,7 +168,7 @@ async def list_categories(
     Returns:
         List of categories
     """
-    query_handlers, _ = get_category_handlers()
+    query_handlers, _ = await get_category_handlers()
 
     query = ListCategoriesQuery(
         asset_type=asset_type,
@@ -187,7 +200,7 @@ async def get_category_tree(
     Returns:
         List of categories in tree order
     """
-    query_handlers, _ = get_category_handlers()
+    query_handlers, _ = await get_category_handlers()
 
     query = GetCategoryTreeQuery(
         asset_type=asset_type,
@@ -217,7 +230,7 @@ async def create_category(
         400: If validation fails (invalid data, slug exists, max level exceeded)
         404: If parent category not found
     """
-    _, command_handlers = get_category_handlers()
+    _, command_handlers = await get_category_handlers()
 
     command = CreateCategoryCommand(
         slug=request.slug,
@@ -264,7 +277,7 @@ async def update_category(
         400: If trying to update protected fields
         404: If category not found
     """
-    query_handlers, command_handlers = get_category_handlers()
+    query_handlers, command_handlers = await get_category_handlers()
 
     # Get category by slug
     get_query = GetCategoryQuery(slug=slug)
@@ -333,7 +346,7 @@ async def move_category(
         400: If would create circular reference or exceed max level
         404: If category or new parent not found
     """
-    _, command_handlers = get_category_handlers()
+    _, command_handlers = await get_category_handlers()
 
     command = MoveCategoryCommand(
         category_slug=slug,
@@ -371,7 +384,7 @@ async def delete_category(
         400: If cascade=False and category has children
         404: If category not found
     """
-    query_handlers, command_handlers = get_category_handlers()
+    query_handlers, command_handlers = await get_category_handlers()
 
     # Get category by slug
     get_query = GetCategoryQuery(slug=slug)
@@ -413,7 +426,7 @@ async def get_category_resources(
     Raises:
         404: If category not found
     """
-    query_handlers, _ = get_category_handlers()
+    query_handlers, _ = await get_category_handlers()
 
     # Get category by slug
     get_query = GetCategoryQuery(slug=slug)

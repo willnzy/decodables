@@ -98,10 +98,8 @@ async def get_webhook_repository():
     - This endpoint only needs read access (list failed webhooks)
     - Avoids overhead of constructing full retry service with Clerk/Stripe services
     """
-    from core.database import get_async_db_client
-    from infrastructure.repositories import SupabaseWebhookRepository
-    db = await get_async_db_client()
-    return SupabaseWebhookRepository(db)
+    container = get_container()
+    return await container.get_webhook_repository()
 
 
 # ==========================================

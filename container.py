@@ -683,6 +683,45 @@ class Container:
             self._services['admin_audit'] = SupabaseAdminUsersRepository(db)
         return self._services['admin_audit']
 
+    async def get_category_service(self):
+        """
+        Get category service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from domains.content.category_service import CategoryService
+        from infrastructure.repositories.category_repository import SupabaseCategoryRepository
+
+        if 'category_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseCategoryRepository(db)
+            self._services['category_service'] = CategoryService(repository)
+        return self._services['category_service']
+
+    async def get_webhook_repository(self):
+        """
+        Get webhook repository instance (v3.29, async).
+
+        WHY separate from get_webhook_retry_service?
+        - This is used for read-only queries (list failed webhooks)
+        - Avoids overhead of constructing full retry service with Clerk/Stripe
+        """
+        from infrastructure.repositories import SupabaseWebhookRepository
+
+        if 'webhook_repository' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            self._services['webhook_repository'] = SupabaseWebhookRepository(db)
+        return self._services['webhook_repository']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService

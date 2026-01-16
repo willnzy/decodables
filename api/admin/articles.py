@@ -2,10 +2,17 @@
 Admin Articles Router - Article management API.
 
 @module api.admin.articles
-@version 1.0.0
+@version 1.1.0 (Container DI Migration)
 
 Admin endpoints for full CRUD operations on articles.
 Requires admin authentication.
+
+Changes in v1.1.0:
+- Migrated to Container-based dependency injection
+- Removed direct get_async_db_client() calls
+- Added get_article_service() using Container pattern
+- Migrated audit logging to use Container's admin_audit_service
+- Architecture: API → Container → Service → Repository
 
 Endpoints:
 - GET /articles - List all articles (including drafts)
@@ -27,8 +34,7 @@ from pydantic import BaseModel, Field, field_validator
 from domains.articles.entities import ArticleCategory
 from domains.articles.service import ArticleService
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
-from infrastructure.repositories.article_repository import SupabaseArticleRepository
+from container import get_container
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)
@@ -159,14 +165,20 @@ class ArticlePublishResponse(BaseModel):
 
 
 # ==========================================
-# Helper Functions
+# Dependency Injection
 # ==========================================
 
-async def _get_article_service() -> ArticleService:
-    """Get ArticleService instance with injected repository."""
-    db = await get_async_db_client()
-    repo = SupabaseArticleRepository(db)
-    return ArticleService(repo)
+async def get_article_service() -> ArticleService:
+    """
+    Get ArticleService instance via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_article_service()
 
 
 def _article_to_response(article) -> ArticleResponse:
@@ -248,7 +260,7 @@ async def list_articles(
                     f"Invalid category. Must be one of: {', '.join(valid_categories)}"
                 )
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] List articles (category={category}, drafts={include_drafts})")
 
         articles = await service.admin_list_articles(
@@ -307,7 +319,7 @@ async def get_article(
         except ValueError:
             raise HTTPException(400, "Invalid article ID format")
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Get article: {article_id}")
 
         article = await service.admin_get_article(uuid)
@@ -359,7 +371,7 @@ async def create_article(
         }
     """
     try:
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Create article: {data.title}")
 
         article = await service.create_article(
@@ -375,11 +387,11 @@ async def create_article(
             sort_order=data.sort_order,
         )
 
-        # Log to audit trail
+        # v1.1.0: Audit logging via Container
         try:
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_create",
                 target_type="article",
@@ -450,7 +462,7 @@ async def update_article(
         except ValueError:
             raise HTTPException(400, "Invalid article ID format")
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Update article: {article_id}")
 
         article = await service.update_article(
@@ -468,11 +480,11 @@ async def update_article(
         if not article:
             raise HTTPException(404, f"Article '{article_id}' not found")
 
-        # Log to audit trail
+        # v1.1.0: Audit logging via Container
         try:
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_update",
                 target_type="article",
@@ -538,7 +550,7 @@ async def delete_article(
         except ValueError:
             raise HTTPException(400, "Invalid article ID format")
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Delete article: {article_id}")
 
         # Get article info before deletion for logging
@@ -551,11 +563,11 @@ async def delete_article(
         if not deleted:
             raise HTTPException(500, "Failed to delete article")
 
-        # Log to audit trail
+        # v1.1.0: Audit logging via Container
         try:
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_delete",
                 target_type="article",
@@ -619,7 +631,7 @@ async def publish_article(
         except ValueError:
             raise HTTPException(400, "Invalid article ID format")
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Publish article: {article_id}")
 
         article = await service.publish_article(uuid)
@@ -627,11 +639,11 @@ async def publish_article(
         if not article:
             raise HTTPException(404, f"Article '{article_id}' not found")
 
-        # Log to audit trail
+        # v1.1.0: Audit logging via Container
         try:
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_publish",
                 target_type="article",
@@ -688,7 +700,7 @@ async def unpublish_article(
         except ValueError:
             raise HTTPException(400, "Invalid article ID format")
 
-        service = _get_article_service()
+        service = await get_article_service()
         logger.info(f"[Admin {admin.get('id')}] Unpublish article: {article_id}")
 
         article = await service.unpublish_article(uuid)
@@ -696,11 +708,11 @@ async def unpublish_article(
         if not article:
             raise HTTPException(404, f"Article '{article_id}' not found")
 
-        # Log to audit trail
+        # v1.1.0: Audit logging via Container
         try:
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="article_unpublish",
                 target_type="article",

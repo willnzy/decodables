@@ -2,10 +2,16 @@
 Admin Static Pages Router - Static page management API.
 
 @module api.admin.static_pages
-@version 1.0.0
+@version 1.1.0 (Container DI Migration)
 
 Admin endpoints for full CRUD operations on static pages.
 Requires admin authentication.
+
+Changes in v1.1.0:
+- Migrated to Container-based dependency injection
+- Removed direct get_async_db_client() calls
+- Added get_static_page_service() using Container pattern
+- Architecture: API → Container → Service → Repository
 
 Endpoints:
 - GET /static-pages - List all static pages (including drafts)
@@ -27,8 +33,7 @@ from pydantic import BaseModel, Field, field_validator
 from domains.static_pages.entities import StaticPageType
 from domains.static_pages.service import StaticPageService
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
-from infrastructure.repositories.static_page_repository import SupabaseStaticPageRepository
+from container import get_container
 from dependencies import require_admin
 
 logger = logging.getLogger(__name__)
@@ -171,14 +176,20 @@ class StaticPagePublishResponse(BaseModel):
 
 
 # ==========================================
-# Helper Functions
+# Dependency Injection
 # ==========================================
 
-async def _get_static_page_service() -> StaticPageService:
-    """Get StaticPageService instance with injected repository."""
-    db = await get_async_db_client()
-    repo = SupabaseStaticPageRepository(db)
-    return StaticPageService(repo)
+async def get_static_page_service() -> StaticPageService:
+    """
+    Get StaticPageService instance via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_static_page_service()
 
 
 def _page_to_response(page) -> StaticPageResponse:
@@ -266,7 +277,7 @@ async def list_static_pages(
                     f"Invalid page_type. Must be one of: {', '.join(valid_types)}"
                 )
 
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] List static pages (type={page_type}, drafts={include_drafts})")
 
         pages = await service.admin_list_static_pages(
@@ -324,7 +335,7 @@ async def get_static_page(
         raise HTTPException(400, "Invalid page ID format")
 
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Get static page {page_id}")
 
         page = await service.admin_get_static_page(page_uuid)
@@ -376,7 +387,7 @@ async def create_static_page(
         }
     """
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Create static page: {data.slug}")
 
         page = await service.create_static_page(
@@ -447,7 +458,7 @@ async def update_static_page(
         raise HTTPException(400, "Invalid page ID format")
 
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Update static page: {page_id}")
 
         page = await service.update_static_page(
@@ -515,7 +526,7 @@ async def delete_static_page(
         raise HTTPException(400, "Invalid page ID format")
 
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Delete static page: {page_id}")
 
         success = await service.delete_static_page(page_uuid)
@@ -569,7 +580,7 @@ async def publish_static_page(
         raise HTTPException(400, "Invalid page ID format")
 
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Publish static page: {page_id}")
 
         page = await service.publish_static_page(page_uuid)
@@ -620,7 +631,7 @@ async def unpublish_static_page(
         raise HTTPException(400, "Invalid page ID format")
 
     try:
-        service = await _get_static_page_service()
+        service = await get_static_page_service()
         logger.info(f"[Admin {admin.get('id')}] Unpublish static page: {page_id}")
 
         page = await service.unpublish_static_page(page_uuid)
