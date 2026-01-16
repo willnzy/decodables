@@ -1,9 +1,10 @@
 # Make Decodables 后端架构完整指南
 
-> **版本**: v3.1 综合版
-> **日期**: 2026-01-10
-> **状态**: 标准规范 (所有新代码必须遵循)
-> **DDD 合规性**: ~98%
+> **版本**: v3.27 Stable
+> **日期**: 2026-01-16
+> **状态**: 🟢 V3 Stable (Production Ready, Zero Debt)
+> **DDD 合规性**: 98%
+> **重构完成报告**: [v3-refactoring-completion-report.md](../shared/v3-refactoring-completion-report.md)
 
 ---
 
@@ -810,11 +811,14 @@ decodables/
              │      └─ 工作单元?           → infrastructure/unit_of_work/
              │
              └─ HTTP 路由、API 端点
-                └─> api/routers/
+                └─> api/
                     │
-                    ├─ 普通路由?   → api/routers/{domain}.py
-                    ├─ Webhook?   → api/routers/webhooks/
-                    └─ 管理后台?   → api/routers/admin/
+                    ├─ 用户端 API?  → api/user/{module}.py (25 modules)
+                    ├─ 管理端 API?  → api/admin/{module}.py (15 modules)
+                    └─ Webhook?    → api/webhooks/
+
+                    # ⚠️ 注意: api/routers/ 已废弃 (v3.27)
+                    # 所有路由已迁移至 api/user/ 和 api/admin/
 ```
 
 ---
@@ -1057,10 +1061,12 @@ __all__ = [
 **需求**: 添加 "获取用户积分历史" API
 
 **决策流程**:
-1. 这是 HTTP 端点 → **api/routers/**
-2. 积分相关 → **api/routers/credits.py**
+1. 这是 HTTP 端点 → **api/user/** (用户端) 或 **api/admin/** (管理端)
+2. 积分相关 → **api/user/credits.py**
 3. 需要查询用例 → **application/queries/billing/get_credit_history.py**
-4. 需要仓储方法 → **domains/billing/repository.py** + **infrastructure/repositories/supabase_credits_repo.py**
+4. 需要仓储方法 → **domains/billing/repository.py** + **infrastructure/repositories/credit_repository.py**
+
+> ⚠️ **注意**: `api/routers/` 目录已在 v3.27 废弃，请使用 `api/user/` 或 `api/admin/`
 
 **实现**:
 ```python
@@ -1162,8 +1168,11 @@ class SupabaseUserRepository(IUserRepository):
 | 添加新用例 (创建项目、购买 Asset) | `application/commands/` 或 `application/queries/` |
 | 实现数据库查询逻辑 | `infrastructure/repositories/` |
 | 定义业务相关缓存键 | `infrastructure/cache/keys.py` |
-| 添加 API 端点 | `api/routers/` |
-| 添加 Webhook 处理 | `api/routers/webhooks/` |
+| 添加用户端 API | `api/user/{module}.py` |
+| 添加管理端 API | `api/admin/{module}.py` |
+| 添加 Webhook 处理 | `api/webhooks/` |
+
+> ⚠️ **v3.27 更新**: `api/routers/` 已废弃，使用 `api/user/` 和 `api/admin/`
 
 ### 8.2 核心原则速查
 

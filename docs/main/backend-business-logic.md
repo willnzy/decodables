@@ -1,8 +1,9 @@
 # MagicZine AI (Make Decodables) 后台业务逻辑说明
 
-> **当前版本**: v3.6.0
-> **发布日期**: 2026-01-12
+> **当前版本**: v3.27.0
+> **发布日期**: 2026-01-16
 > **产品**: MagicZine AI / Make Decodables - AI 驱动的 8 页可折叠迷你书创作平台
+> **架构状态**: 🟢 V3 Stable (Zero Debt)
 
 ---
 
@@ -10,6 +11,7 @@
 
 | 版本 | 日期 | 修改内容 | 作者 |
 |------|------|----------|------|
+| v3.27.0 | 2026-01-16 | 🏗️ **V3 重构完成**：Zero Debt、原子积分操作 (RPC)、N+1 优化、安全加固 | - |
 | v3.6.0 | 2026-01-12 | 🎨 **新增主题管理系统**：Themes v2.1 (AI 批量生成、审核工作流、主题切换、12 个 Admin API 端点) | - |
 | v3.5.0 | 2026-01-12 | 🔒 **数据库安全增强**：69 表启用 RLS、视图命名规范 `v_` 前缀、field_mappings 审计修复 | - |
 | v3.4.0 | 2026-01-11 | 📝 **新增文章管理系统**：Articles CMS (Manual/News/Changelog)、DDD 架构、Markdown 支持、发布/取消发布工作流 | - |
@@ -113,12 +115,13 @@
 > - **v1.x - v2.x**: 传统分层架构 (routers → services → db)
 > - **v3.0+**: DDD 三层架构 (api → application → domains + infrastructure)
 
-#### 当前架构 (v3.0+)
+#### 当前架构 (v3.27 Stable)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      API 层 (api/routers)                           │
+│              API 层 (api/user + api/admin)                          │
 │  HTTP 请求接收、参数验证、DTO 转换、调用 Application Layer             │
+│  ⚠️ 注意: api/routers/ 已废弃，迁移至 api/user/ 和 api/admin/         │
 ├─────────────────────────────────────────────────────────────────────┤
 │              应用层 (application/commands + queries)                │
 │  用例编排、Command/Query 分离、跨 Domain 协调、事务边界                │
