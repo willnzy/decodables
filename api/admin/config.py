@@ -2,9 +2,14 @@
 Admin Config Router - System configuration and rate limits for admins
 
 @module api.admin.config
-@version 3.26
+@version 3.29 (Container DI Migration)
 
 Changes:
+- v3.29: Container DI Migration
+  - Removed direct get_async_db_client() calls in DI
+  - Added get_config_service() using Container pattern
+  - Migrated audit logging to use Container's admin_audit_service
+  - Architecture: API → Container → Service → Repository
 - v3.26: Complete DDD architecture refactor
   - CFG-CRITICAL-1: Migrated to Repository pattern
   - CFG-CRITICAL-2: Activated ConfigRepository
@@ -42,7 +47,7 @@ from pydantic import BaseModel, Field, field_validator
 from domains.platform.config_service import RATE_LIMIT_PRESETS, ConfigService
 from domains.platform.config_repository import ConfigRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
+from container import get_container
 from dependencies import require_admin
 
 # Import response models
@@ -95,15 +100,20 @@ class RateLimitPresetRequest(BaseModel):
 
 
 # ==========================================
-# Helper Functions
+# Dependency Injection
 # ==========================================
 
-async def _get_config_service() -> ConfigService:
-    """Get ConfigService instance with injected repository."""
-    from infrastructure.repositories.config_repository import SupabaseConfigRepository
-    db = await get_async_db_client()
-    config_repo = SupabaseConfigRepository(db)
-    return ConfigService(config_repo)
+async def get_config_service() -> ConfigService:
+    """
+    Get ConfigService instance via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_config_service()
 
 
 # ==========================================
@@ -191,7 +201,7 @@ async def get_all_configs(
                 f"Invalid category. Must be one of: {', '.join(VALID_CONFIG_CATEGORIES)}"
             )
 
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Queried all configs (category={category})")
 
         configs = await config_service.get_all_configs(category)
@@ -275,7 +285,7 @@ async def get_config(
         }
     """
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Queried config: {config_key}")
 
         config = await config_service.get_config(config_key)
@@ -309,7 +319,7 @@ async def update_config(
 ):
     """Update a single system configuration."""
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Updating config: {data.config_key}")
 
         # Get old value for audit trail
@@ -324,13 +334,11 @@ async def update_config(
         if not success:
             raise HTTPException(500, "Failed to update configuration")
 
-        # ✅ Phase 3 - Task 9: Log configuration change to audit trail
+        # ✅ v3.29: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="config_update",
                 target_type="system_config",
@@ -372,7 +380,7 @@ async def batch_update_configs_endpoint(
 ):
     """Batch update multiple system configurations."""
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Batch updating {len(data.updates)} configs")
 
         results = await config_service.batch_update_configs(
@@ -383,23 +391,21 @@ async def batch_update_configs_endpoint(
         updated_count = sum(1 for success in results.values() if success)
         failed_count = len(results) - updated_count
 
-        # ✅ Phase 3 - Task 9: Log each successful config change to audit trail
+        # ✅ v3.29: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
 
             for update in data.updates:
                 config_key = update.get("config_key")
                 if config_key and results.get(config_key):
                     # Only log successful updates
-                    await admin_repo.admin_log_operation(
+                    await admin_audit.admin_log_operation(
                         admin_id=admin["id"],
                         operation_type="config_update",
                         target_type="system_config",
                         target_id=config_key,
-                        details=f"Batch config update",
+                        details="Batch config update",
                         metadata={
                             "batch_size": len(data.updates),
                             "new_value": update.get("config_value"),
@@ -443,7 +449,7 @@ async def get_rate_limits(
 ):
     """Get current rate limit configurations."""
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Queried rate limits")
 
         configs = await config_service.get_all_configs("rate_limit")
@@ -497,7 +503,7 @@ async def apply_rate_limit_preset_endpoint(
 ):
     """Apply a rate limit preset (strict, normal, relaxed, disabled)."""
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Applying rate limit preset: {data.preset}")
 
         success = await config_service.apply_rate_limit_preset(
@@ -508,13 +514,11 @@ async def apply_rate_limit_preset_endpoint(
         if not success:
             raise HTTPException(400, f"Invalid preset: {data.preset}")
 
-        # ✅ Phase 3 - Task 9: Log rate limit preset change to audit trail
+        # ✅ v3.29: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="rate_limit_preset_apply",
                 target_type="rate_limit",
@@ -588,18 +592,16 @@ async def clear_cache(
 ):
     """Clear all configuration cache."""
     try:
-        config_service = _get_config_service()
+        config_service = await get_config_service()
         logger.info(f"[Admin {admin.get('id')}] Clearing config cache")  # CFG-MEDIUM-3: Added audit
 
         config_service.clear_config_cache()
 
-        # ✅ Phase 3 - Task 9: Log cache clear operation to audit trail
+        # ✅ v3.29: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="cache_clear",
                 target_type="system",

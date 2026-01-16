@@ -2,13 +2,20 @@
 Admin Feature Flags API
 
 @module api.admin.feature_flags
-@version 1.2.0
+@version 3.29 (Container DI Migration)
 
 Admin端点用于管理Feature Flags:
 - CRUD操作
 - 开关控制
 - 审计日志
 - 测试评估
+
+Changes in v3.29:
+- Migrated to Container-based dependency injection
+- Removed direct get_async_db_client() calls in DI
+- Added get_feature_flag_service() using Container pattern
+- Migrated audit logging to use Container's admin_audit_service
+- Architecture: API → Container → Service → Repository
 
 Changes in v1.2.0:
 - 添加 allowed_tiers 参数支持 Tier 分层筛选
@@ -23,7 +30,7 @@ from pydantic import BaseModel, Field
 from core.feature_flag import feature_service, EvaluationContext
 from domains.feature_flags import FeatureFlagService, FeatureFlagRepository
 from dependencies import require_admin
-from core.database import get_async_db_client
+from container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -113,12 +120,17 @@ def validate_allowed_tiers(tiers: Optional[List[str]]) -> None:
 
 # ==================== 依赖注入 ====================
 
-def get_feature_flag_service(
-    supabase = Depends(get_async_db_client)
-) -> FeatureFlagService:
-    """获取Feature Flag Service"""
-    repository = FeatureFlagRepository(supabase)
-    return FeatureFlagService(repository)
+async def get_feature_flag_service() -> FeatureFlagService:
+    """
+    获取Feature Flag Service via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_feature_flag_service()
 
 
 # ==================== 管理端点 ====================
@@ -483,14 +495,12 @@ async def archive_flag(
     """
     success = await service.archive_flag(key, admin["user_id"])
 
-    # ✅ Task 9 - Phase 2: Log feature flag deletion to audit trail
+    # ✅ v3.29: Audit logging via Container
     if success:
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["user_id"],
                 operation_type="feature_flag_delete",
                 target_type="feature_flag",
@@ -499,8 +509,7 @@ async def archive_flag(
                 source="api",
             )
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to log feature flag deletion: {e}")
+            logger.warning(f"Failed to log feature flag deletion: {e}")
 
     if not success:
         raise HTTPException(404, f"Flag not found: {key}")

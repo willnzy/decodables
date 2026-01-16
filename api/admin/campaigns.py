@@ -2,9 +2,12 @@
 Admin Campaigns API - Campaign management for admins.
 
 @module api.admin.campaigns
-@version 3.30 (DDD Migration)
+@version 3.31 (Container DI Migration)
 
 Changes:
+- v3.31: Container DI Migration
+  - Migrated audit logging to use Container's admin_audit_service
+  - Removed direct get_async_db_client() calls in audit logging
 - v3.30: Complete DDD Migration (CAM-CRITICAL-1, CAM-CRITICAL-3)
   - API → Domain Service → Repository
   - Removed direct database access (supabase.table())
@@ -242,13 +245,12 @@ async def delete_campaign_endpoint(
         if not success:
             raise HTTPException(404, "Campaign not found")
 
-        # ✅ Task 9 - Phase 2: Log campaign deletion to audit trail
+        # ✅ v3.31: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            from container import get_container
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="campaign_delete",
                 target_type="campaign",

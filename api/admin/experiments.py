@@ -2,9 +2,14 @@
 Admin Experiments API - A/B Testing experiment management.
 
 @module api.admin.experiments
-@version 3.31 (Utility Endpoints Migration - 100% Service-based)
+@version 3.32 (Container DI Migration)
 
 Changes:
+- v3.32: Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls in DI
+  - Added get_experiment_service() using Container pattern
+  - Migrated audit logging to use Container's admin_audit_service
+  - Architecture: API → Container → Service → Repository
 - v3.31: Migrated remaining utility endpoints to ExperimentService
   - ai_analysis now uses experiment_service.get_experiment_results()
   - quick_recommendation now uses experiment_service.get_experiment_results()
@@ -76,9 +81,8 @@ from dependencies import require_admin
 from domains.platform.experiments.service import ExperimentService  # v3.29: Use Service class
 from domains.platform import experiments  # v3.29: Keep for legacy functions (analysis, trend, etc.)
 from domains.platform import experiment_ai_service  # EXP-HIGH-4: Moved import to top
-from infrastructure.repositories.experiment_repository import SupabaseExperimentRepository
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
+from container import get_container
 
 # Import response models (EXP-HIGH-1)
 from api.admin.experiments_models import (
@@ -100,14 +104,18 @@ router = APIRouter(prefix="/experiments", tags=["admin-experiments-v2"])
 
 async def get_experiment_service() -> ExperimentService:
     """
-    Dependency injection factory for ExperimentService.
+    Dependency injection factory for ExperimentService via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
 
     Returns:
         ExperimentService instance with Repository injected
     """
-    db = await get_async_db_client()
-    experiment_repo = SupabaseExperimentRepository(client=db)
-    return ExperimentService(experiment_repo)
+    container = get_container()
+    return await container.get_experiment_service()
 
 
 # ==========================================
@@ -442,13 +450,11 @@ async def delete_experiment(
         if not success:
             raise HTTPException(500, "Failed to delete experiment")
 
-        # ✅ Task 9 - Phase 2: Log experiment deletion to audit trail
+        # ✅ v3.32: Audit logging via Container
         try:
-            from core.database import get_async_db_client
-            from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
-
-            admin_repo = SupabaseAdminUsersRepository(await get_async_db_client())
-            await admin_repo.admin_log_operation(
+            container = get_container()
+            admin_audit = await container.get_admin_audit_service()
+            await admin_audit.admin_log_operation(
                 admin_id=admin["id"],
                 operation_type="experiment_delete",
                 target_type="experiment",

@@ -1,7 +1,12 @@
 """Admin Themes API - Theme management for admins.
 
 @module api.admin.themes
-@version 2.1.0
+@version 3.29 (Container DI Migration)
+
+v3.29: Migrated to Container-based dependency injection
+  - Removed direct get_async_db_client() calls
+  - Added get_themes_service() using Container pattern
+  - Architecture: API → Container → Service → Repository
 
 v2.1.0: Full implementation with CRUD, batch generation, review workflow
 
@@ -27,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from dependencies import require_admin
 from infrastructure.rate_limiter import limiter
-from core.database import get_async_db_client
+from container import get_container
 
 from domains.themes import ThemesService
 from domains.themes.constants import (
@@ -51,9 +56,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/themes", tags=["admin-themes-v2"])
 
 
-async def _get_themes_service() -> ThemesService:
-    """Get ThemesService instance."""
-    return ThemesService(await get_async_db_client())
+async def get_themes_service() -> ThemesService:
+    """
+    Get ThemesService instance via Container.
+
+    WHY Container-based DI?
+    - Centralized service instantiation
+    - Testable (mock injection)
+    - Follows DIP (Dependency Inversion Principle)
+    """
+    container = get_container()
+    return await container.get_themes_service()
 
 
 # ==========================================
@@ -96,7 +109,7 @@ async def list_themes(
     if ai_generated is not None:
         filters["ai_generated"] = ai_generated
 
-    service = _get_themes_service()
+    service = get_themes_service()
     result = await service.list_themes(offset=offset, limit=limit, filters=filters)
 
     return result
@@ -110,7 +123,7 @@ async def get_generation_status(
     admin: dict = Depends(require_admin),
 ):
     """Get theme generation status overview."""
-    service = _get_themes_service()
+    service = get_themes_service()
     return await service.get_generation_status(days=days)
 
 
@@ -123,7 +136,7 @@ async def get_calendar_view(
     admin: dict = Depends(require_admin),
 ):
     """Get calendar view of themes."""
-    service = _get_themes_service()
+    service = get_themes_service()
 
     filters = {
         "date_from": start_date,
@@ -164,7 +177,7 @@ async def get_pending_reviews(
     if review_status:
         filters["review_status"] = review_status
 
-    service = _get_themes_service()
+    service = get_themes_service()
     result = await service.list_themes(offset=offset, limit=limit, filters=filters)
 
     return result
@@ -178,7 +191,7 @@ async def get_theme(
     admin: dict = Depends(require_admin),
 ):
     """Get theme details."""
-    service = _get_themes_service()
+    service = get_themes_service()
     theme = await service.get_theme_by_id(theme_id)
 
     if not theme:
@@ -195,7 +208,7 @@ async def get_theme_history(
     admin: dict = Depends(require_admin),
 ):
     """Get theme generation history."""
-    service = _get_themes_service()
+    service = get_themes_service()
 
     try:
         return await service.get_theme_history(theme_id)
@@ -216,7 +229,7 @@ async def create_theme(
 ):
     """Create a new theme."""
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
 
         target_date = None
         if req.date:
@@ -266,7 +279,7 @@ async def update_theme(
         raise HTTPException(400, "No fields to update")
 
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
         theme = await service.update_theme(theme_id, update_data)
 
         if not theme:
@@ -292,7 +305,7 @@ async def delete_theme(
 ):
     """Delete a theme (soft delete)."""
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
         success = await service.delete_theme(theme_id)
 
         if not success:
@@ -329,7 +342,7 @@ async def batch_generate_themes(
     except ValueError:
         raise HTTPException(400, "Invalid start_date format. Use YYYY-MM-DD")
 
-    service = _get_themes_service()
+    service = get_themes_service()
 
     results = {
         "generated": 0,
@@ -455,7 +468,7 @@ async def review_theme(
     - switch: Switch to another alternative, status becomes 'reviewed'
     """
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
         result = await service.review_theme(
             theme_id=theme_id,
             action=req.action,
@@ -487,7 +500,7 @@ async def regenerate_theme(
     This preserves the generation history and increments regenerate_count.
     """
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
 
         # Get current theme to get its date
         theme = await service.get_theme_by_id(theme_id)
@@ -539,7 +552,7 @@ async def batch_approve_themes(
 ):
     """Batch approve multiple themes."""
     try:
-        service = _get_themes_service()
+        service = get_themes_service()
         result = await service.batch_approve_themes(
             theme_ids=req.theme_ids,
             admin_id=admin["id"],

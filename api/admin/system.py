@@ -2,9 +2,12 @@
 Admin System Router - System configs, cache, and metrics
 
 @module api.admin.system
-@version 3.30 (DDD Compliant)
+@version 3.31 (Container DI Migration)
 
 Changes:
+- v3.31: Container DI Migration
+  - Migrated audit logging to use Container's admin_audit_service
+  - Removed direct get_async_db_client() calls in audit logging
 - v3.30: Complete DDD architecture migration (SYS-CRITICAL-1)
   - API layer now calls Service layer instead of Repository
   - Moved constants to domains/platform/system/constants.py (SYS-MEDIUM-1)
@@ -348,8 +351,7 @@ async def clear_all_cache_endpoint(
     2. Call this endpoint with the token within 2 minutes
     """
     from core.cache import get_cache_provider
-    from infrastructure.repositories.admin_repository import AdminRepository
-    from core.database import get_async_db_client
+    from container import get_container
 
     try:
         # P0-013 fix: Verify confirmation token
@@ -370,17 +372,18 @@ async def clear_all_cache_endpoint(
         if not result:
             raise HTTPException(500, "Failed to clear cache")
 
-        # P0-013 fix: Audit logging
-        db = await get_async_db_client()
-        admin_repo = AdminRepository(db)
-        await admin_repo.admin_log_operation(
+        # v3.31: Audit logging via Container
+        container = get_container()
+        admin_audit = await container.get_admin_audit_service()
+        await admin_audit.admin_log_operation(
             admin_id=admin["id"],
             operation_type="cache_clear_all",
-            description=f"Cleared all Redis cache (CRITICAL OPERATION)",
+            details="Cleared all Redis cache (CRITICAL OPERATION)",
             metadata={
                 "ip": request.client.host if request.client else "unknown",
                 "user_agent": request.headers.get("user-agent", "unknown")
-            }
+            },
+            source="api",
         )
 
         logger.critical(f"🔴 CRITICAL: All cache cleared by admin {admin['id']} from IP {request.client.host if request.client else 'unknown'}")

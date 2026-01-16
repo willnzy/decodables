@@ -93,6 +93,10 @@ async def get_webhook_repository():
     Get WebhookRepository from Container for query operations.
 
     Used for get_failed_webhooks endpoint which only needs read access.
+
+    WHY separate from get_webhook_retry_service?
+    - This endpoint only needs read access (list failed webhooks)
+    - Avoids overhead of constructing full retry service with Clerk/Stripe services
     """
     from core.database import get_async_db_client
     from infrastructure.repositories import SupabaseWebhookRepository

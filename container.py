@@ -602,6 +602,87 @@ class Container:
             self._services['events'] = EventsService(repository)
         return self._services['events']
 
+    async def get_feature_flag_service(self):
+        """
+        Get feature flag service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from domains.feature_flags import FeatureFlagService, FeatureFlagRepository
+
+        if 'feature_flag_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = FeatureFlagRepository(db)
+            self._services['feature_flag_service'] = FeatureFlagService(repository)
+        return self._services['feature_flag_service']
+
+    async def get_experiment_service(self):
+        """
+        Get experiment service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from domains.platform.experiments.service import ExperimentService
+        from infrastructure.repositories.experiment_repository import SupabaseExperimentRepository
+
+        if 'experiment_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseExperimentRepository(db)
+            self._services['experiment_service'] = ExperimentService(repository)
+        return self._services['experiment_service']
+
+    async def get_config_service(self):
+        """
+        Get config service instance (v3.29, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Enables testing with mock services
+        - Follows DIP - API layer doesn't know about concrete implementations
+        """
+        from domains.platform.config_service import ConfigService
+        from infrastructure.repositories.config_repository import SupabaseConfigRepository
+
+        if 'config_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            config_repo = SupabaseConfigRepository(db)
+            self._services['config_service'] = ConfigService(config_repo)
+        return self._services['config_service']
+
+    async def get_admin_audit_service(self):
+        """
+        Get admin audit service for logging admin operations (v3.29, async).
+
+        WHY separate service?
+        - Centralizes audit logging for admin operations
+        - Avoids duplicate get_async_db_client() calls in API layer
+        - Enables consistent audit trail across all admin endpoints
+        """
+        from infrastructure.repositories import SupabaseAdminUsersRepository
+
+        if 'admin_audit' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            self._services['admin_audit'] = SupabaseAdminUsersRepository(db)
+        return self._services['admin_audit']
+
     async def get_assets_service(self):
         """Get assets service instance (v3.0.0, async)."""
         from domains.assets.assets_service import AssetsService
