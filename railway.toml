@@ -6,7 +6,8 @@
 # ==========================================
 [build]
   builder = "NIXPACKS"
-  buildCommand = "pip install -r requirements.txt"
+  # Clean up empty directories that conflict with .py files (Python import precedence issue)
+  buildCommand = "find . -type d -empty -delete && pip install -r requirements.txt"
 
 [deploy]
   startCommand = "uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2"
