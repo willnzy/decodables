@@ -118,7 +118,92 @@ class Endpoints:
     # Support
     SUPPORT_TICKET = f"{API_V2}/user/support/ticket"
     SUPPORT_CHAT = f"{API_V2}/user/support/chat"
+    SUPPORT_CONTACT = f"{API_V2}/user/support/contact"
     SUPPORT_FEEDBACK = f"{API_V2}/user/support/feedback"
+
+    # Onboarding
+    ONBOARDING_STEPS = f"{API_V2}/user/onboarding/steps"
+    ONBOARDING_STEPS_START = f"{API_V2}/user/onboarding/steps/start"
+    ONBOARDING_STEPS_COMPLETE = f"{API_V2}/user/onboarding/steps/complete"
+    ONBOARDING_STEPS_SKIP = f"{API_V2}/user/onboarding/steps/skip"
+    ONBOARDING_CHECKLIST = f"{API_V2}/user/onboarding/checklist"
+
+    # Referrals
+    REFERRALS = f"{API_V2}/user/referrals"
+    REFERRALS_STATS = f"{API_V2}/user/referrals/stats"
+
+    @staticmethod
+    def referral_by_code(code: str) -> str:
+        return f"{API_V2}/user/referrals/code/{code}"
+
+    @staticmethod
+    def referral_complete(referral_id: str) -> str:
+        return f"{API_V2}/user/referrals/{referral_id}/complete"
+
+    # Seller
+    SELLER_STATS = f"{API_V2}/user/seller/stats"
+
+    # Templates
+    TEMPLATES_ASSET = f"{API_V3}/user/templates/asset"
+    TEMPLATES_PAGE = f"{API_V3}/user/templates/page"
+
+    @staticmethod
+    def template_asset(template_id: str) -> str:
+        return f"{API_V3}/user/templates/asset/{template_id}"
+
+    @staticmethod
+    def template_asset_use(template_id: str) -> str:
+        return f"{API_V3}/user/templates/asset/{template_id}/use"
+
+    @staticmethod
+    def template_page(template_id: str) -> str:
+        return f"{API_V3}/user/templates/page/{template_id}"
+
+    @staticmethod
+    def template_page_use(template_id: str) -> str:
+        return f"{API_V3}/user/templates/page/{template_id}/use"
+
+    # Themes
+    THEMES_CURRENT = f"{API_V2}/user/themes/current"
+
+    # Tools
+    TOOLS_PDF_PREVIEW = f"{API_V2}/user/tools/pdf-preview"
+    TOOLS_OCR = f"{API_V2}/user/tools/ocr"
+
+    # Tasks
+    @staticmethod
+    def task_cancel(task_id: str) -> str:
+        return f"{API_V2}/user/tasks/{task_id}/cancel"
+
+    # User Assets
+    ASSETS_CHECK_URL = f"{API_V3}/user/assets/check-url"
+    ASSETS_FROM_URL = f"{API_V3}/user/assets/from-url"
+
+    @staticmethod
+    def asset(asset_id: str) -> str:
+        return f"{API_V3}/user/assets/{asset_id}"
+
+    @staticmethod
+    def asset_restore(asset_id: str) -> str:
+        return f"{API_V3}/user/assets/{asset_id}/restore"
+
+    @staticmethod
+    def asset_increment_usage(asset_id: str) -> str:
+        return f"{API_V3}/user/assets/{asset_id}/increment-usage"
+
+    # Generation (Images, PDF, Story)
+    GENERATE_PDF = f"{API_V2}/user/generate/pdf/pdf"
+    GENERATE_STORY_STORY = f"{API_V2}/user/generate/story/story"
+    GENERATE_STORY_INSPIRATION = f"{API_V2}/user/generate/story/inspiration"
+
+    # Experiments (Feature Flags)
+    EXPERIMENTS = f"{API_V2}/user/experiments"
+    EXPERIMENTS_ALL_FLAGS = f"{API_V2}/user/experiments/all-flags"
+    EXPERIMENTS_USER_TARGETING = f"{API_V2}/user/experiments/user-targeting"
+
+    @staticmethod
+    def experiment(flag_key: str) -> str:
+        return f"{API_V2}/user/experiments/{flag_key}"
 
     # Admin Endpoints
     ADMIN_USERS = f"{API_ADMIN}/users"
