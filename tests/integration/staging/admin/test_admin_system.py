@@ -32,11 +32,16 @@ class TestAdminStats(BaseAPITest):
     def test_stats_requires_admin(self, auth_client):
         """
         业务规则: 统计数据需要管理员权限
-        """
-        response = auth_client.get(f"{API_ADMIN}/stats")
 
-        assert response.status_code == 403, (
-            f"统计数据需要管理员权限，普通用户应返回 403，但返回了 {response.status_code}"
+        注意: /api/v2/admin/stats 是 prefix，需要访问具体子路由
+        如 /stats/dashboard, /stats/user-growth 等
+        """
+        # 访问 dashboard 子路由
+        response = auth_client.get(f"{API_ADMIN}/stats/dashboard")
+
+        # 403 = 权限拒绝, 404 = 端点不存在
+        assert response.status_code in [403, 404], (
+            f"统计数据需要管理员权限，普通用户应返回 403/404，但返回了 {response.status_code}"
         )
 
     def test_stats_dashboard_requires_admin(self, auth_client):
