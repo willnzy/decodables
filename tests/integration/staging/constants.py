@@ -270,18 +270,168 @@ class Endpoints:
     def static_page(slug: str) -> str:
         return f"{API_V2}/user/static-pages/{slug}"
 
+    # ==========================================
     # Admin Endpoints
+    # ==========================================
+
+    # Admin Users
     ADMIN_USERS = f"{API_ADMIN}/users"
-    ADMIN_SUBSCRIPTIONS_REFUND = f"{API_ADMIN}/subscriptions/refund"
-    ADMIN_SUBSCRIPTIONS_CANCEL = f"{API_ADMIN}/subscriptions/subscription/cancel"
 
     @staticmethod
     def admin_user(user_id: str) -> str:
         return f"{API_ADMIN}/users/{user_id}"
 
     @staticmethod
-    def admin_user_credits(user_id: str) -> str:
-        return f"{API_ADMIN}/users/{user_id}/credits"
+    def admin_user_ban(user_id: str) -> str:
+        return f"{API_ADMIN}/users/{user_id}/ban"
+
+    @staticmethod
+    def admin_user_unban(user_id: str) -> str:
+        return f"{API_ADMIN}/users/{user_id}/unban"
+
+    # Admin Subscriptions
+    ADMIN_SUBSCRIPTIONS_REFUND = f"{API_ADMIN}/subscriptions/refund"
+    ADMIN_SUBSCRIPTIONS_CANCEL = f"{API_ADMIN}/subscriptions/subscription/cancel"
+    ADMIN_SUBSCRIPTIONS_GIFT_CREDITS = f"{API_ADMIN}/subscriptions/gift-credits"
+
+    @staticmethod
+    def admin_user_subscription(user_id: str) -> str:
+        return f"{API_ADMIN}/subscriptions/user/{user_id}"
+
+    # Admin Config
+    ADMIN_CONFIG = f"{API_ADMIN}/config"
+
+    @staticmethod
+    def admin_config_key(key: str) -> str:
+        return f"{API_ADMIN}/config/{key}"
+
+    # Admin Themes
+    ADMIN_THEMES = f"{API_ADMIN}/themes"
+    ADMIN_THEMES_BATCH_GENERATE = f"{API_ADMIN}/themes/batch-generate"
+    ADMIN_THEMES_GENERATION_STATUS = f"{API_ADMIN}/themes/generation-status"
+    ADMIN_THEMES_CALENDAR = f"{API_ADMIN}/themes/calendar"
+    ADMIN_THEMES_BATCH_APPROVE = f"{API_ADMIN}/themes/review/batch-approve"
+
+    @staticmethod
+    def admin_theme(theme_id: str) -> str:
+        return f"{API_ADMIN}/themes/{theme_id}"
+
+    @staticmethod
+    def admin_theme_review(theme_id: str) -> str:
+        return f"{API_ADMIN}/themes/{theme_id}/review"
+
+    @staticmethod
+    def admin_theme_regenerate(theme_id: str) -> str:
+        return f"{API_ADMIN}/themes/{theme_id}/regenerate"
+
+    @staticmethod
+    def admin_theme_history(theme_id: str) -> str:
+        return f"{API_ADMIN}/themes/{theme_id}/history"
+
+    # Admin Campaigns
+    ADMIN_CAMPAIGNS = f"{API_ADMIN}/campaigns"
+
+    @staticmethod
+    def admin_campaign(campaign_id: str) -> str:
+        return f"{API_ADMIN}/campaigns/{campaign_id}"
+
+    @staticmethod
+    def admin_campaign_activate(campaign_id: str) -> str:
+        return f"{API_ADMIN}/campaigns/{campaign_id}/activate"
+
+    @staticmethod
+    def admin_campaign_pause(campaign_id: str) -> str:
+        return f"{API_ADMIN}/campaigns/{campaign_id}/pause"
+
+    @staticmethod
+    def admin_campaign_stats(campaign_id: str) -> str:
+        return f"{API_ADMIN}/campaigns/{campaign_id}/stats"
+
+    # Admin Feature Flags
+    ADMIN_FEATURE_FLAGS = f"{API_ADMIN}/feature-flags"
+    ADMIN_FEATURE_FLAGS_TEST = f"{API_ADMIN}/feature-flags/test-evaluation"
+    ADMIN_FEATURE_FLAGS_CLIENT = f"{API_ADMIN}/feature-flags/client/flags"
+
+    @staticmethod
+    def admin_feature_flag(key: str) -> str:
+        return f"{API_ADMIN}/feature-flags/{key}"
+
+    @staticmethod
+    def admin_feature_flag_toggle(key: str) -> str:
+        return f"{API_ADMIN}/feature-flags/{key}/toggle"
+
+    @staticmethod
+    def admin_feature_flag_audit(key: str) -> str:
+        return f"{API_ADMIN}/feature-flags/{key}/audit"
+
+    # Admin Stats (Dashboard)
+    ADMIN_STATS_DASHBOARD = f"{API_ADMIN}/stats/dashboard"
+    ADMIN_STATS_USER_GROWTH = f"{API_ADMIN}/stats/user-growth"
+    ADMIN_STATS_REVENUE = f"{API_ADMIN}/stats/revenue"
+    ADMIN_STATS_PROJECTS = f"{API_ADMIN}/stats/projects"
+    ADMIN_STATS_CREDITS = f"{API_ADMIN}/stats/credits"
+    ADMIN_STATS_TIER_DISTRIBUTION = f"{API_ADMIN}/stats/tier-distribution"
+    ADMIN_STATS_CONVERSION_FUNNEL = f"{API_ADMIN}/stats/conversion-funnel"
+    ADMIN_STATS_EXPORTS = f"{API_ADMIN}/stats/exports"
+    ADMIN_STATS_ASSETS = f"{API_ADMIN}/stats/assets"
+    ADMIN_STATS_TIER_ACTIVITY = f"{API_ADMIN}/stats/tier-activity"
+    ADMIN_STATS_SUBSCRIPTION_EVENTS = f"{API_ADMIN}/stats/subscription-events"
+    ADMIN_STATS_PAGE_VIEWS = f"{API_ADMIN}/stats/page-views"
+    ADMIN_STATS_PROJECT_DETAILS = f"{API_ADMIN}/stats/project-details"
+    ADMIN_STATS_RETURNING_USERS = f"{API_ADMIN}/stats/returning-users"
+    ADMIN_STATS_TIER_TREND = f"{API_ADMIN}/stats/tier-trend"
+    ADMIN_STATS_TIER_CONVERSION = f"{API_ADMIN}/stats/tier-conversion"
+    ADMIN_STATS_PERFORMANCE = f"{API_ADMIN}/stats/performance"
+    ADMIN_STATS_USER_DISTRIBUTION = f"{API_ADMIN}/stats/user-distribution"
+
+    # Admin Moderation
+    ADMIN_MODERATION_LIST = f"{API_ADMIN}/moderation/marketplace/moderation/list"
+    ADMIN_MODERATION_REPORTS = f"{API_ADMIN}/moderation/reports"
+    ADMIN_MODERATION_REPORTS_STATS = f"{API_ADMIN}/moderation/reports/stats"
+
+    @staticmethod
+    def admin_moderation_listing(listing_id: str) -> str:
+        return f"{API_ADMIN}/moderation/marketplace/moderation/{listing_id}"
+
+    @staticmethod
+    def admin_moderation_approve(listing_id: str) -> str:
+        return f"{API_ADMIN}/moderation/marketplace/moderation/{listing_id}/approve"
+
+    @staticmethod
+    def admin_moderation_reject(listing_id: str) -> str:
+        return f"{API_ADMIN}/moderation/marketplace/moderation/{listing_id}/reject"
+
+    @staticmethod
+    def admin_moderation_delete(listing_id: str) -> str:
+        return f"{API_ADMIN}/moderation/marketplace/moderation/{listing_id}/delete"
+
+    @staticmethod
+    def admin_moderation_unpublish(listing_id: str) -> str:
+        return f"{API_ADMIN}/moderation/marketplace/moderation/{listing_id}/unpublish"
+
+    @staticmethod
+    def admin_report(report_id: str) -> str:
+        return f"{API_ADMIN}/moderation/reports/{report_id}"
+
+    @staticmethod
+    def admin_report_respond(report_id: str) -> str:
+        return f"{API_ADMIN}/moderation/reports/{report_id}/respond"
+
+    # Admin Logs
+    ADMIN_LOGS_ERRORS = f"{API_ADMIN}/logs/errors"
+    ADMIN_LOGS_ERRORS_STATS = f"{API_ADMIN}/logs/errors/stats"
+    ADMIN_LOGS_OPERATIONS = f"{API_ADMIN}/logs/operations"
+    ADMIN_LOGS_OPERATIONS_EXPORT = f"{API_ADMIN}/logs/operations/export"
+    ADMIN_LOGS_AUDIT = f"{API_ADMIN}/logs/audit"
+
+    # Admin Metrics
+    ADMIN_METRICS_DAILY = f"{API_ADMIN}/metrics/daily"
+    ADMIN_METRICS_MONTHLY = f"{API_ADMIN}/metrics/monthly"
+    ADMIN_METRICS_RETENTION = f"{API_ADMIN}/metrics/retention"
+    ADMIN_METRICS_FUNNEL = f"{API_ADMIN}/metrics/funnel"
+    ADMIN_METRICS_ERRORS = f"{API_ADMIN}/metrics/errors"
+    ADMIN_METRICS_DAU_TREND = f"{API_ADMIN}/metrics/dau-trend"
+    ADMIN_METRICS_REFRESH = f"{API_ADMIN}/metrics/refresh"
 
 
 # ==========================================
