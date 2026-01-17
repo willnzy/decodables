@@ -1212,6 +1212,16 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+-- 触发器 12: 自动生成工单编号 (v2.1.0)
+-- 在插入 support_tickets 时自动生成 ticket_number
+DROP TRIGGER IF EXISTS trg_generate_ticket_number ON support_tickets;
+CREATE TRIGGER trg_generate_ticket_number
+    BEFORE INSERT ON support_tickets
+    FOR EACH ROW
+    WHEN (NEW.ticket_number IS NULL OR NEW.ticket_number = '')
+    EXECUTE FUNCTION generate_ticket_number();
+
+
 -- ============================================================================
 -- 视图定义 (1)
 -- ============================================================================
