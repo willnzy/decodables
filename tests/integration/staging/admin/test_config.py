@@ -1,13 +1,23 @@
 """
 Admin Config API Tests (Black Box)
 
-测试 /api/admin/config 相关接口
+测试 /api/v2/admin/config 相关接口
 
 业务规则:
 1. 只有 admin 才能管理系统配置
-2. 支持配置的 CRUD 操作
-3. 配置 key 唯一
-4. 某些配置不可删除 (系统保留)
+2. 支持获取所有配置、单个配置、更新配置
+3. 支持速率限制配置管理
+4. 支持缓存清除
+
+实际端点 (router prefix = /config):
+- GET /config/config - 获取所有配置
+- GET /config/config/{config_key} - 获取单个配置
+- PUT /config/config - 更新配置
+- PUT /config/config/batch - 批量更新配置
+- GET /config/rate-limits - 获取速率限制
+- POST /config/rate-limits/preset - 应用速率限制预设
+- GET /config/rate-limits/presets - 获取速率限制预设列表
+- POST /config/config/cache/clear - 清除配置缓存
 
 @module tests.integration.staging.admin.test_config
 """
@@ -15,18 +25,21 @@ Admin Config API Tests (Black Box)
 import pytest
 import uuid
 from ..base import BaseAPITest
-from ..constants import Endpoints
+from ..constants import API_ADMIN
+
+# Base path for config endpoints (router prefix is /config)
+CONFIG_BASE = f"{API_ADMIN}/config"
 
 
 @pytest.mark.p1
 class TestAdminConfigList(BaseAPITest):
     """
-    GET /api/admin/config 黑盒测试
+    GET /api/v2/admin/config/config 黑盒测试
 
-    获取配置列表
+    获取所有配置
     """
 
-    ENDPOINT = Endpoints.ADMIN_CONFIG
+    ENDPOINT = f"{CONFIG_BASE}/config"
 
     def test_list_config_requires_admin(self, anon_client):
         """
@@ -43,40 +56,43 @@ class TestAdminConfigList(BaseAPITest):
         # 可能返回 200 (admin) 或 403 (非 admin)
         assert response.status_code in [200, 403]
 
-    def test_list_config_pagination(self, auth_client):
+    def test_list_config_with_category_filter(self, auth_client):
         """
-        业务规则: 支持分页查询
+        业务规则: 支持按 category 筛选
         """
         response = auth_client.get(
             self.ENDPOINT,
-            params={"offset": 0, "limit": 10}
+            params={"category": "rate_limit"}
         )
         assert response.status_code in [200, 403]
 
-    def test_list_config_filter_by_group(self, auth_client):
+    def test_list_config_invalid_category(self, auth_client):
         """
-        业务规则: 支持按 group 筛选
+        业务规则: 无效的 category 值
         """
         response = auth_client.get(
             self.ENDPOINT,
-            params={"group": "pricing"}
+            params={"category": "invalid_category_12345"}
         )
-        assert response.status_code in [200, 403]
+        assert response.status_code in [400, 403]
 
 
 @pytest.mark.p1
-class TestAdminConfigGet(BaseAPITest):
+class TestAdminConfigGetSingle(BaseAPITest):
     """
-    GET /api/admin/config/{key} 黑盒测试
+    GET /api/v2/admin/config/config/{config_key} 黑盒测试
 
     获取单个配置
     """
+
+    def _get_endpoint(self, config_key: str) -> str:
+        return f"{CONFIG_BASE}/config/{config_key}"
 
     def test_get_config_requires_admin(self, anon_client):
         """
         业务规则: 获取配置需要管理员权限
         """
-        response = anon_client.get(Endpoints.admin_config_key("app_name"))
+        response = anon_client.get(self._get_endpoint("app_name"))
         self.assert_unauthorized(response)
 
     def test_get_nonexistent_config(self, auth_client):
@@ -84,96 +100,67 @@ class TestAdminConfigGet(BaseAPITest):
         业务规则: 获取不存在的配置
         """
         fake_key = f"nonexistent_config_{uuid.uuid4().hex[:10]}"
-        response = auth_client.get(Endpoints.admin_config_key(fake_key))
+        response = auth_client.get(self._get_endpoint(fake_key))
         assert response.status_code in [403, 404]
 
     def test_get_config_with_auth(self, auth_client):
         """
         业务规则: 获取存在的配置
         """
-        response = auth_client.get(Endpoints.admin_config_key("app_name"))
+        response = auth_client.get(self._get_endpoint("app_name"))
         # 可能返回 200/404 (admin) 或 403 (非 admin)
         assert response.status_code in [200, 403, 404]
 
 
 @pytest.mark.p1
-class TestAdminConfigCreate(BaseAPITest):
-    """
-    POST /api/admin/config 黑盒测试
-
-    创建配置
-    """
-
-    ENDPOINT = Endpoints.ADMIN_CONFIG
-
-    def test_create_config_requires_admin(self, anon_client):
-        """
-        业务规则: 创建配置需要管理员权限
-        """
-        response = anon_client.post(
-            self.ENDPOINT,
-            json={
-                "key": "test_config_key",
-                "value": "test_value",
-                "group": "test"
-            }
-        )
-        self.assert_unauthorized(response)
-
-    def test_create_config_missing_key(self, auth_client):
-        """
-        业务规则: 缺少 key 字段
-        """
-        response = auth_client.post(
-            self.ENDPOINT,
-            json={
-                "value": "test_value",
-                "group": "test"
-            }
-        )
-        assert response.status_code in [400, 403, 422]
-
-    def test_create_config_missing_value(self, auth_client):
-        """
-        业务规则: 缺少 value 字段
-        """
-        response = auth_client.post(
-            self.ENDPOINT,
-            json={
-                "key": "test_config_key",
-                "group": "test"
-            }
-        )
-        assert response.status_code in [400, 403, 422]
-
-    def test_create_config_empty_body(self, auth_client):
-        """
-        业务规则: 空请求体
-        """
-        response = auth_client.post(
-            self.ENDPOINT,
-            json={}
-        )
-        assert response.status_code in [400, 403, 422]
-
-
-@pytest.mark.p1
 class TestAdminConfigUpdate(BaseAPITest):
     """
-    PUT /api/admin/config/{key} 黑盒测试
+    PUT /api/v2/admin/config/config 黑盒测试
 
     更新配置
     """
+
+    ENDPOINT = f"{CONFIG_BASE}/config"
 
     def test_update_config_requires_admin(self, anon_client):
         """
         业务规则: 更新配置需要管理员权限
         """
         response = anon_client.put(
-            Endpoints.admin_config_key("app_name"),
-            json={"value": "New App Name"}
+            self.ENDPOINT,
+            json={"config_key": "app_name", "value": "New App Name"}
         )
         self.assert_unauthorized(response)
+
+    def test_update_config_missing_key(self, auth_client):
+        """
+        业务规则: 缺少 config_key 字段
+        """
+        response = auth_client.put(
+            self.ENDPOINT,
+            json={"value": "test_value"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_update_config_missing_value(self, auth_client):
+        """
+        业务规则: 缺少 value 字段
+        """
+        response = auth_client.put(
+            self.ENDPOINT,
+            json={"config_key": "app_name"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_update_config_empty_body(self, auth_client):
+        """
+        业务规则: 空请求体
+        """
+        response = auth_client.put(
+            self.ENDPOINT,
+            json={}
+        )
+        assert response.status_code in [400, 403, 422]
 
     def test_update_nonexistent_config(self, auth_client):
         """
@@ -181,53 +168,173 @@ class TestAdminConfigUpdate(BaseAPITest):
         """
         fake_key = f"nonexistent_config_{uuid.uuid4().hex[:10]}"
         response = auth_client.put(
-            Endpoints.admin_config_key(fake_key),
-            json={"value": "test"}
+            self.ENDPOINT,
+            json={"config_key": fake_key, "value": "test"}
         )
-        assert response.status_code in [403, 404]
-
-    def test_update_config_empty_value(self, auth_client):
-        """
-        业务规则: 更新为空值
-        """
-        response = auth_client.put(
-            Endpoints.admin_config_key("app_name"),
-            json={"value": ""}
-        )
-        # 空值可能被接受或拒绝
-        assert response.status_code in [200, 400, 403, 422]
+        assert response.status_code in [200, 400, 403, 404]
 
 
 @pytest.mark.p1
-class TestAdminConfigDelete(BaseAPITest):
+class TestAdminConfigBatchUpdate(BaseAPITest):
     """
-    DELETE /api/admin/config/{key} 黑盒测试
+    PUT /api/v2/admin/config/config/batch 黑盒测试
 
-    删除配置
+    批量更新配置
     """
 
-    def test_delete_config_requires_admin(self, anon_client):
+    ENDPOINT = f"{CONFIG_BASE}/config/batch"
+
+    def test_batch_update_requires_admin(self, anon_client):
         """
-        业务规则: 删除配置需要管理员权限
+        业务规则: 批量更新需要管理员权限
         """
-        response = anon_client.delete(Endpoints.admin_config_key("test_config"))
+        response = anon_client.put(
+            self.ENDPOINT,
+            json={"updates": [{"config_key": "test", "value": "value"}]}
+        )
         self.assert_unauthorized(response)
 
-    def test_delete_nonexistent_config(self, auth_client):
+    def test_batch_update_empty_updates(self, auth_client):
         """
-        业务规则: 删除不存在的配置
+        业务规则: 空更新列表
         """
-        fake_key = f"nonexistent_config_{uuid.uuid4().hex[:10]}"
-        response = auth_client.delete(Endpoints.admin_config_key(fake_key))
-        assert response.status_code in [403, 404]
+        response = auth_client.put(
+            self.ENDPOINT,
+            json={"updates": []}
+        )
+        assert response.status_code in [200, 400, 403, 422]
 
-    def test_delete_system_config(self, auth_client):
+    def test_batch_update_valid(self, auth_client):
         """
-        业务规则: 删除系统保留配置可能被阻止
+        业务规则: 有效的批量更新
         """
-        response = auth_client.delete(Endpoints.admin_config_key("app_name"))
-        # 系统配置可能不可删除
+        response = auth_client.put(
+            self.ENDPOINT,
+            json={
+                "updates": [
+                    {"config_key": "test_key_1", "value": "value_1"},
+                    {"config_key": "test_key_2", "value": "value_2"}
+                ]
+            }
+        )
         assert response.status_code in [200, 400, 403, 404]
+
+
+@pytest.mark.p1
+class TestAdminRateLimits(BaseAPITest):
+    """
+    GET /api/v2/admin/config/rate-limits 黑盒测试
+
+    获取速率限制配置
+    """
+
+    ENDPOINT = f"{CONFIG_BASE}/rate-limits"
+
+    def test_rate_limits_requires_admin(self, anon_client):
+        """
+        业务规则: 获取速率限制需要管理员权限
+        """
+        response = anon_client.get(self.ENDPOINT)
+        self.assert_unauthorized(response)
+
+    def test_rate_limits_with_auth(self, auth_client):
+        """
+        业务规则: 认证用户获取速率限制
+        """
+        response = auth_client.get(self.ENDPOINT)
+        assert response.status_code in [200, 403]
+
+
+@pytest.mark.p1
+class TestAdminRateLimitPresets(BaseAPITest):
+    """
+    GET /api/v2/admin/config/rate-limits/presets 黑盒测试
+
+    获取速率限制预设列表
+    """
+
+    ENDPOINT = f"{CONFIG_BASE}/rate-limits/presets"
+
+    def test_presets_requires_admin(self, anon_client):
+        """
+        业务规则: 获取预设列表需要管理员权限
+        """
+        response = anon_client.get(self.ENDPOINT)
+        self.assert_unauthorized(response)
+
+    def test_presets_with_auth(self, auth_client):
+        """
+        业务规则: 认证用户获取预设列表
+        """
+        response = auth_client.get(self.ENDPOINT)
+        assert response.status_code in [200, 403]
+
+
+@pytest.mark.p1
+class TestAdminRateLimitPresetApply(BaseAPITest):
+    """
+    POST /api/v2/admin/config/rate-limits/preset 黑盒测试
+
+    应用速率限制预设
+    """
+
+    ENDPOINT = f"{CONFIG_BASE}/rate-limits/preset"
+
+    def test_apply_preset_requires_admin(self, anon_client):
+        """
+        业务规则: 应用预设需要管理员权限
+        """
+        response = anon_client.post(
+            self.ENDPOINT,
+            json={"preset_name": "default"}
+        )
+        self.assert_unauthorized(response)
+
+    def test_apply_preset_missing_name(self, auth_client):
+        """
+        业务规则: 缺少预设名称
+        """
+        response = auth_client.post(
+            self.ENDPOINT,
+            json={}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_apply_invalid_preset(self, auth_client):
+        """
+        业务规则: 无效的预设名称
+        """
+        response = auth_client.post(
+            self.ENDPOINT,
+            json={"preset_name": "nonexistent_preset_12345"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+
+@pytest.mark.p1
+class TestAdminConfigCacheClear(BaseAPITest):
+    """
+    POST /api/v2/admin/config/config/cache/clear 黑盒测试
+
+    清除配置缓存
+    """
+
+    ENDPOINT = f"{CONFIG_BASE}/config/cache/clear"
+
+    def test_cache_clear_requires_admin(self, anon_client):
+        """
+        业务规则: 清除缓存需要管理员权限
+        """
+        response = anon_client.post(self.ENDPOINT)
+        self.assert_unauthorized(response)
+
+    def test_cache_clear_with_auth(self, auth_client):
+        """
+        业务规则: 认证用户清除缓存
+        """
+        response = auth_client.post(self.ENDPOINT)
+        # 可能返回 200 (admin) 或 403 (非 admin)
+        assert response.status_code in [200, 403]
 
 
 @pytest.mark.p2
@@ -236,53 +343,33 @@ class TestAdminConfigValidation(BaseAPITest):
     Admin Config API 参数验证测试
     """
 
-    ENDPOINT = Endpoints.ADMIN_CONFIG
-
     def test_config_key_special_chars(self, auth_client):
         """
-        业务规则: key 包含特殊字符
+        业务规则: key 包含特殊字符 (斜杠)
         """
         response = auth_client.get(
-            Endpoints.admin_config_key("test/key/with/slashes")
+            f"{CONFIG_BASE}/config/test/key/with/slashes"
         )
         # 特殊字符可能导致路由问题
         assert response.status_code in [400, 403, 404]
 
     def test_config_very_long_key(self, auth_client):
         """
-        业务规则: 很长的 key
+        业务规则: 很长的 key (超过 200 字符)
         """
-        long_key = "a" * 500
-        response = auth_client.get(Endpoints.admin_config_key(long_key))
-        assert response.status_code in [400, 403, 404]
+        long_key = "a" * 250
+        response = auth_client.get(f"{CONFIG_BASE}/config/{long_key}")
+        assert response.status_code in [400, 403, 404, 422]
 
-    def test_config_value_types(self, auth_client):
-        """
-        业务规则: 不同类型的配置值
-
-        配置值可以是 string, number, boolean, object, array
-        """
-        # 测试对象类型值
-        response = auth_client.post(
-            self.ENDPOINT,
-            json={
-                "key": "test_object_config",
-                "value": {"nested": "value"},
-                "group": "test"
-            }
-        )
-        assert response.status_code in [200, 201, 400, 403, 422]
-
-    def test_config_json_value(self, auth_client):
+    def test_update_with_json_value(self, auth_client):
         """
         业务规则: JSON 格式的配置值
         """
-        response = auth_client.post(
-            self.ENDPOINT,
+        response = auth_client.put(
+            f"{CONFIG_BASE}/config",
             json={
-                "key": "test_json_config",
-                "value": [1, 2, 3, {"key": "value"}],
-                "group": "test"
+                "config_key": "test_json_config",
+                "value": {"nested": "value", "array": [1, 2, 3]}
             }
         )
-        assert response.status_code in [200, 201, 400, 403, 422]
+        assert response.status_code in [200, 400, 403, 422]

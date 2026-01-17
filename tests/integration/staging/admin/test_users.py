@@ -1,12 +1,12 @@
 """
 Admin Users API Tests (Black Box)
 
-测试 /api/admin/users 相关接口
+测试 /api/v2/admin/users 相关接口
 
 业务规则:
 1. 只有 admin 才能访问用户管理接口
-2. 支持用户列表查询、详情、更新、删除
-3. 支持封禁/解封用户操作
+2. 支持用户搜索、审计查看、积分调整、tier 更新
+3. 支持用户项目管理
 4. 所有操作都有审计日志
 
 @module tests.integration.staging.admin.test_users
@@ -15,270 +15,445 @@ Admin Users API Tests (Black Box)
 import pytest
 import uuid
 from ..base import BaseAPITest
-from ..constants import Endpoints
+from ..constants import API_ADMIN
 
 
 @pytest.mark.p1
-class TestAdminUsersList(BaseAPITest):
+class TestAdminUsersSearch(BaseAPITest):
     """
-    GET /api/admin/users 黑盒测试
+    GET /api/v2/admin/users 黑盒测试
 
-    获取用户列表
+    搜索用户 (by user_id, email, or user_code)
     """
 
-    ENDPOINT = Endpoints.ADMIN_USERS
+    ENDPOINT = f"{API_ADMIN}/users"
 
-    def test_list_users_requires_admin(self, anon_client):
+    def test_search_users_requires_admin(self, anon_client):
         """
-        业务规则: 用户列表需要管理员权限
+        业务规则: 搜索用户需要管理员权限
+        """
+        response = anon_client.get(self.ENDPOINT, params={"query": "test"})
+        self.assert_unauthorized(response)
+
+    def test_search_users_missing_query(self, auth_client):
+        """
+        业务规则: 必须提供搜索关键词
+        """
+        response = auth_client.get(self.ENDPOINT)
+        # 可能返回 422 (缺少 query) 或 403 (非 admin)
+        assert response.status_code in [400, 403, 422]
+
+    def test_search_users_with_query(self, auth_client):
+        """
+        业务规则: 认证用户搜索
+        """
+        response = auth_client.get(self.ENDPOINT, params={"query": "test"})
+        # 可能返回 200 (admin) 或 403 (非 admin)
+        assert response.status_code in [200, 403]
+
+    def test_search_users_with_limit(self, auth_client):
+        """
+        业务规则: 支持 limit 参数
+        """
+        response = auth_client.get(
+            self.ENDPOINT,
+            params={"query": "test", "limit": 10}
+        )
+        assert response.status_code in [200, 403]
+
+    def test_search_users_empty_query(self, auth_client):
+        """
+        业务规则: 空查询应返回错误
+        """
+        response = auth_client.get(self.ENDPOINT, params={"query": ""})
+        assert response.status_code in [400, 403, 422]
+
+
+@pytest.mark.p1
+class TestAdminUsersByTier(BaseAPITest):
+    """
+    GET /api/v2/admin/users/by-tier/{tier} 黑盒测试
+
+    按 tier 获取用户列表
+    """
+
+    def _get_endpoint(self, tier: str) -> str:
+        return f"{API_ADMIN}/users/by-tier/{tier}"
+
+    def test_by_tier_requires_admin(self, anon_client):
+        """
+        业务规则: 按 tier 查询需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("t1"))
+        self.assert_unauthorized(response)
+
+    def test_by_tier_valid_tiers(self, auth_client):
+        """
+        业务规则: 支持有效的 tier 值
+        """
+        for tier in ["t1", "t2", "t3"]:
+            response = auth_client.get(self._get_endpoint(tier))
+            assert response.status_code in [200, 403]
+
+    def test_by_tier_invalid_tier(self, auth_client):
+        """
+        业务规则: 无效的 tier 值
+        """
+        response = auth_client.get(self._get_endpoint("invalid_tier"))
+        assert response.status_code in [400, 403]
+
+    def test_by_tier_pagination(self, auth_client):
+        """
+        业务规则: 支持分页
+        """
+        response = auth_client.get(
+            self._get_endpoint("t1"),
+            params={"offset": 0, "limit": 10}
+        )
+        assert response.status_code in [200, 403]
+
+
+@pytest.mark.p1
+class TestAdminUserAudit(BaseAPITest):
+    """
+    GET /api/v2/admin/users/{uid} 黑盒测试
+
+    获取用户审计信息
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}"
+
+    def test_audit_requires_admin(self, anon_client):
+        """
+        业务规则: 获取审计信息需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("user_test_12345"))
+        self.assert_unauthorized(response)
+
+    def test_audit_nonexistent_user(self, auth_client):
+        """
+        业务规则: 获取不存在用户的审计信息
+        """
+        fake_uid = f"user_{uuid.uuid4().hex[:20]}"
+        response = auth_client.get(self._get_endpoint(fake_uid))
+        # 可能返回 200 (空数据) 或 404 或 403 (非 admin)
+        assert response.status_code in [200, 403, 404]
+
+    def test_audit_uid_too_long(self, auth_client):
+        """
+        业务规则: uid 太长应返回 400
+        """
+        long_uid = "a" * 150
+        response = auth_client.get(self._get_endpoint(long_uid))
+        assert response.status_code in [400, 403]
+
+
+@pytest.mark.p1
+class TestAdminUserCredits(BaseAPITest):
+    """
+    POST /api/v2/admin/users/{uid}/credits 黑盒测试
+
+    调整用户积分
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/credits"
+
+    def test_credits_requires_admin(self, anon_client):
+        """
+        业务规则: 调整积分需要管理员权限
+        """
+        response = anon_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"amount": 100, "bucket": "permanent", "reason": "Test"}
+        )
+        self.assert_unauthorized(response)
+
+    def test_credits_missing_amount(self, auth_client):
+        """
+        业务规则: 缺少 amount 字段
+        """
+        response = auth_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"bucket": "permanent"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_credits_invalid_bucket(self, auth_client):
+        """
+        业务规则: 无效的 bucket 值
+
+        bucket 只能是 monthly 或 permanent
+        """
+        response = auth_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"amount": 100, "bucket": "invalid_bucket"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_credits_valid_buckets(self, auth_client):
+        """
+        业务规则: 测试有效的 bucket 值
+        """
+        for bucket in ["monthly", "permanent"]:
+            response = auth_client.post(
+                self._get_endpoint("user_test_12345"),
+                json={"amount": 100, "bucket": bucket, "reason": "Test"}
+            )
+            # 可能成功或失败 (非 admin / 用户不存在)
+            assert response.status_code in [200, 400, 403, 404]
+
+
+@pytest.mark.p1
+class TestAdminUserTierUpdate(BaseAPITest):
+    """
+    PATCH /api/v2/admin/users/{uid} 黑盒测试
+
+    更新用户 tier
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}"
+
+    def test_tier_update_requires_admin(self, anon_client):
+        """
+        业务规则: 更新 tier 需要管理员权限
+        """
+        response = anon_client.patch(
+            self._get_endpoint("user_test_12345"),
+            json={"tier": "t2"}
+        )
+        self.assert_unauthorized(response)
+
+    def test_tier_update_invalid_tier(self, auth_client):
+        """
+        业务规则: 无效的 tier 值
+        """
+        response = auth_client.patch(
+            self._get_endpoint("user_test_12345"),
+            json={"tier": "invalid_tier"}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_tier_update_valid_tiers(self, auth_client):
+        """
+        业务规则: 测试有效的 tier 值
+        """
+        for tier in ["t1", "t2", "t3", "free", "starter", "pro"]:
+            response = auth_client.patch(
+                self._get_endpoint("user_test_12345"),
+                json={"tier": tier}
+            )
+            assert response.status_code in [200, 400, 403, 404]
+
+
+@pytest.mark.p1
+class TestAdminUserDiscount(BaseAPITest):
+    """
+    POST /api/v2/admin/users/{uid}/discount 黑盒测试
+
+    创建用户折扣
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/discount"
+
+    def test_discount_requires_admin(self, anon_client):
+        """
+        业务规则: 创建折扣需要管理员权限
+        """
+        response = anon_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"discount_percent": 20}
+        )
+        self.assert_unauthorized(response)
+
+    def test_discount_invalid_percent(self, auth_client):
+        """
+        业务规则: 折扣百分比范围 1-100
+        """
+        # 0% 无效
+        response = auth_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"discount_percent": 0}
+        )
+        assert response.status_code in [400, 403, 422]
+
+        # 101% 无效
+        response = auth_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={"discount_percent": 101}
+        )
+        assert response.status_code in [400, 403, 422]
+
+    def test_discount_valid(self, auth_client):
+        """
+        业务规则: 创建有效的折扣
+        """
+        response = auth_client.post(
+            self._get_endpoint("user_test_12345"),
+            json={
+                "discount_percent": 20,
+                "valid_days": 7,
+                "target_plan": "t2"
+            }
+        )
+        assert response.status_code in [200, 400, 403, 404]
+
+
+@pytest.mark.p1
+class TestAdminUserPayments(BaseAPITest):
+    """
+    GET /api/v2/admin/users/{uid}/payments 黑盒测试
+
+    获取用户支付历史
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/payments"
+
+    def test_payments_requires_admin(self, anon_client):
+        """
+        业务规则: 获取支付历史需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("user_test_12345"))
+        self.assert_unauthorized(response)
+
+    def test_payments_with_auth(self, auth_client):
+        """
+        业务规则: 获取用户支付历史
+        """
+        response = auth_client.get(self._get_endpoint("user_test_12345"))
+        assert response.status_code in [200, 403, 404]
+
+
+@pytest.mark.p1
+class TestAdminUserProjects(BaseAPITest):
+    """
+    GET /api/v2/admin/users/{uid}/projects 黑盒测试
+
+    获取用户项目列表
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/projects"
+
+    def test_projects_requires_admin(self, anon_client):
+        """
+        业务规则: 获取项目列表需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("user_test_12345"))
+        self.assert_unauthorized(response)
+
+    def test_projects_with_auth(self, auth_client):
+        """
+        业务规则: 获取用户项目
+        """
+        response = auth_client.get(self._get_endpoint("user_test_12345"))
+        assert response.status_code in [200, 403, 404]
+
+
+@pytest.mark.p2
+class TestAdminUserAssetUsage(BaseAPITest):
+    """
+    GET /api/v2/admin/users/{uid}/asset-usage 黑盒测试
+
+    获取用户素材使用情况
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/asset-usage"
+
+    def test_asset_usage_requires_admin(self, anon_client):
+        """
+        业务规则: 获取素材使用需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("user_test_12345"))
+        self.assert_unauthorized(response)
+
+    def test_asset_usage_with_auth(self, auth_client):
+        """
+        业务规则: 获取用户素材使用情况
+        """
+        response = auth_client.get(self._get_endpoint("user_test_12345"))
+        assert response.status_code in [200, 403, 404]
+
+
+@pytest.mark.p2
+class TestAdminUserEnvStats(BaseAPITest):
+    """
+    GET /api/v2/admin/users/{uid}/env-stats 黑盒测试
+
+    获取用户环境统计
+    """
+
+    def _get_endpoint(self, uid: str) -> str:
+        return f"{API_ADMIN}/users/{uid}/env-stats"
+
+    def test_env_stats_requires_admin(self, anon_client):
+        """
+        业务规则: 获取环境统计需要管理员权限
+        """
+        response = anon_client.get(self._get_endpoint("user_test_12345"))
+        self.assert_unauthorized(response)
+
+    def test_env_stats_with_auth(self, auth_client):
+        """
+        业务规则: 获取用户环境统计
+        """
+        response = auth_client.get(self._get_endpoint("user_test_12345"))
+        assert response.status_code in [200, 403, 404]
+
+
+@pytest.mark.p2
+class TestAdminProjectRestore(BaseAPITest):
+    """
+    POST /api/v2/admin/projects/{project_id}/restore 黑盒测试
+
+    恢复删除的项目
+    """
+
+    def _get_endpoint(self, project_id: str) -> str:
+        return f"{API_ADMIN}/projects/{project_id}/restore"
+
+    def test_restore_requires_admin(self, anon_client):
+        """
+        业务规则: 恢复项目需要管理员权限
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.post(self._get_endpoint(fake_id))
+        self.assert_unauthorized(response)
+
+    def test_restore_nonexistent_project(self, auth_client):
+        """
+        业务规则: 恢复不存在的项目
+        """
+        fake_id = str(uuid.uuid4())
+        response = auth_client.post(self._get_endpoint(fake_id))
+        assert response.status_code in [400, 403, 404]
+
+
+@pytest.mark.p2
+class TestAdminProjectFeed(BaseAPITest):
+    """
+    GET /api/v2/admin/projects/feed 黑盒测试
+
+    获取全站项目 Feed
+    """
+
+    ENDPOINT = f"{API_ADMIN}/projects/feed"
+
+    def test_feed_requires_admin(self, anon_client):
+        """
+        业务规则: 获取 Feed 需要管理员权限
         """
         response = anon_client.get(self.ENDPOINT)
         self.assert_unauthorized(response)
 
-    def test_list_users_with_auth(self, auth_client):
+    def test_feed_with_auth(self, auth_client):
         """
-        业务规则: 认证用户访问
-
-        如果用户是 admin，返回用户列表
-        如果用户不是 admin，返回 403
+        业务规则: 获取项目 Feed
         """
         response = auth_client.get(self.ENDPOINT)
-        # 可能返回 200 (admin) 或 403 (非 admin)
         assert response.status_code in [200, 403]
-
-    def test_list_users_pagination(self, auth_client):
-        """
-        业务规则: 支持分页查询
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"offset": 0, "limit": 10}
-        )
-        # 可能返回 200 (admin) 或 403 (非 admin)
-        assert response.status_code in [200, 403]
-
-    def test_list_users_filter_by_tier(self, auth_client):
-        """
-        业务规则: 支持按 tier 筛选
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"tier": "t1"}
-        )
-        assert response.status_code in [200, 403]
-
-    def test_list_users_filter_by_status(self, auth_client):
-        """
-        业务规则: 支持按状态筛选
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"status": "active"}
-        )
-        assert response.status_code in [200, 403]
-
-    def test_list_users_search(self, auth_client):
-        """
-        业务规则: 支持搜索用户
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"search": "test"}
-        )
-        assert response.status_code in [200, 403]
-
-
-@pytest.mark.p1
-class TestAdminUserDetail(BaseAPITest):
-    """
-    GET /api/admin/users/{user_id} 黑盒测试
-
-    获取用户详情
-    """
-
-    def test_get_user_requires_admin(self, anon_client, test_user_id):
-        """
-        业务规则: 用户详情需要管理员权限
-        """
-        response = anon_client.get(Endpoints.admin_user(test_user_id))
-        self.assert_unauthorized(response)
-
-    def test_get_nonexistent_user(self, auth_client):
-        """
-        业务规则: 获取不存在的用户
-
-        返回 404 或 403 (非 admin)
-        """
-        fake_id = f"user_{uuid.uuid4().hex[:20]}"
-        response = auth_client.get(Endpoints.admin_user(fake_id))
-        assert response.status_code in [403, 404]
-
-    def test_get_user_with_auth(self, auth_client, test_user_id):
-        """
-        业务规则: 认证用户获取用户详情
-        """
-        response = auth_client.get(Endpoints.admin_user(test_user_id))
-        # 可能返回 200/404 (admin) 或 403 (非 admin)
-        assert response.status_code in [200, 403, 404]
-
-
-@pytest.mark.p1
-class TestAdminUserUpdate(BaseAPITest):
-    """
-    PUT /api/admin/users/{user_id} 黑盒测试
-
-    更新用户信息
-    """
-
-    def test_update_user_requires_admin(self, anon_client, test_user_id):
-        """
-        业务规则: 更新用户需要管理员权限
-        """
-        response = anon_client.put(
-            Endpoints.admin_user(test_user_id),
-            json={"display_name": "Updated Name"}
-        )
-        self.assert_unauthorized(response)
-
-    def test_update_nonexistent_user(self, auth_client):
-        """
-        业务规则: 更新不存在的用户
-        """
-        fake_id = f"user_{uuid.uuid4().hex[:20]}"
-        response = auth_client.put(
-            Endpoints.admin_user(fake_id),
-            json={"display_name": "Updated Name"}
-        )
-        assert response.status_code in [403, 404]
-
-    def test_update_user_empty_body(self, auth_client, test_user_id):
-        """
-        业务规则: 空请求体应返回错误
-        """
-        response = auth_client.put(
-            Endpoints.admin_user(test_user_id),
-            json={}
-        )
-        # 可能返回 400 (无字段) 或 403 (非 admin)
-        assert response.status_code in [400, 403, 422]
-
-
-@pytest.mark.p1
-class TestAdminUserDelete(BaseAPITest):
-    """
-    DELETE /api/admin/users/{user_id} 黑盒测试
-
-    删除用户 (软删除)
-    """
-
-    def test_delete_user_requires_admin(self, anon_client, test_user_id):
-        """
-        业务规则: 删除用户需要管理员权限
-        """
-        response = anon_client.delete(Endpoints.admin_user(test_user_id))
-        self.assert_unauthorized(response)
-
-    def test_delete_nonexistent_user(self, auth_client):
-        """
-        业务规则: 删除不存在的用户
-        """
-        fake_id = f"user_{uuid.uuid4().hex[:20]}"
-        response = auth_client.delete(Endpoints.admin_user(fake_id))
-        assert response.status_code in [403, 404]
-
-
-@pytest.mark.p1
-class TestAdminUserBan(BaseAPITest):
-    """
-    POST /api/admin/users/{user_id}/ban 黑盒测试
-
-    封禁用户
-    """
-
-    def test_ban_user_requires_admin(self, anon_client, test_user_id):
-        """
-        业务规则: 封禁用户需要管理员权限
-        """
-        response = anon_client.post(Endpoints.admin_user_ban(test_user_id))
-        self.assert_unauthorized(response)
-
-    def test_ban_nonexistent_user(self, auth_client):
-        """
-        业务规则: 封禁不存在的用户
-        """
-        fake_id = f"user_{uuid.uuid4().hex[:20]}"
-        response = auth_client.post(Endpoints.admin_user_ban(fake_id))
-        assert response.status_code in [403, 404]
-
-    def test_ban_user_with_reason(self, auth_client, test_user_id):
-        """
-        业务规则: 封禁用户并提供原因
-        """
-        response = auth_client.post(
-            Endpoints.admin_user_ban(test_user_id),
-            json={"reason": "Violation of terms"}
-        )
-        # 可能返回 200 (admin) 或 403 (非 admin) 或 404 (用户不存在)
-        assert response.status_code in [200, 403, 404]
-
-
-@pytest.mark.p1
-class TestAdminUserUnban(BaseAPITest):
-    """
-    POST /api/admin/users/{user_id}/unban 黑盒测试
-
-    解封用户
-    """
-
-    def test_unban_user_requires_admin(self, anon_client, test_user_id):
-        """
-        业务规则: 解封用户需要管理员权限
-        """
-        response = anon_client.post(Endpoints.admin_user_unban(test_user_id))
-        self.assert_unauthorized(response)
-
-    def test_unban_nonexistent_user(self, auth_client):
-        """
-        业务规则: 解封不存在的用户
-        """
-        fake_id = f"user_{uuid.uuid4().hex[:20]}"
-        response = auth_client.post(Endpoints.admin_user_unban(fake_id))
-        assert response.status_code in [403, 404]
-
-
-@pytest.mark.p2
-class TestAdminUsersValidation(BaseAPITest):
-    """
-    Admin Users API 参数验证测试
-    """
-
-    ENDPOINT = Endpoints.ADMIN_USERS
-
-    def test_invalid_tier_filter(self, auth_client):
-        """
-        业务规则: 无效的 tier 参数
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"tier": "invalid_tier"}
-        )
-        # 可能返回 400 (无效参数) 或 403 (非 admin)
-        assert response.status_code in [400, 403]
-
-    def test_invalid_pagination(self, auth_client):
-        """
-        业务规则: 无效的分页参数
-        """
-        response = auth_client.get(
-            self.ENDPOINT,
-            params={"offset": -1, "limit": 1000}
-        )
-        # 可能返回 400/422 (无效参数) 或 403 (非 admin)
-        assert response.status_code in [400, 403, 422]
-
-    def test_invalid_user_id_format(self, auth_client):
-        """
-        业务规则: 无效的用户 ID 格式
-        """
-        response = auth_client.get(Endpoints.admin_user("invalid-id-format"))
-        assert response.status_code in [400, 403, 404]

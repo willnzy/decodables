@@ -26,7 +26,7 @@ CLERK_API_BASE = "https://api.clerk.com/v1"
 # API Version Prefix
 API_V2 = "/api/v2"
 API_V3 = "/api/v3"
-API_ADMIN = "/api/admin"
+API_ADMIN = "/api/v2/admin"
 
 # ==========================================
 # API Endpoints
