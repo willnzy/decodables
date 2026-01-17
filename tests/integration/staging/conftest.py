@@ -1,0 +1,208 @@
+"""
+Staging Environment Test Configuration
+
+Fixtures for testing against the actual staging API.
+Requires TEST_USER_TOKEN environment variable.
+
+@module tests.integration.staging.conftest
+"""
+
+import os
+import pytest
+import httpx
+from typing import Generator, Optional
+
+
+# ==========================================
+# Custom Markers
+# ==========================================
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "p0: Priority 0 - Critical tests")
+    config.addinivalue_line("markers", "p1: Priority 1 - High priority tests")
+    config.addinivalue_line("markers", "p2: Priority 2 - Medium priority tests")
+    config.addinivalue_line("markers", "p3: Priority 3 - Low priority tests")
+    config.addinivalue_line("markers", "security: Security related tests")
+    config.addinivalue_line("markers", "performance: Performance related tests")
+
+
+# ==========================================
+# Configuration
+# ==========================================
+
+STAGING_BASE_URL = "https://decodables-staging.up.railway.app"
+API_V2_PREFIX = "/api/v2"
+
+
+def get_test_token() -> Optional[str]:
+    """
+    Get test user JWT token from environment.
+
+    Set via: export TEST_USER_TOKEN="your_clerk_jwt_token"
+
+    How to get the token:
+    1. Login to staging frontend
+    2. Open DevTools → Network
+    3. Find any API request with Authorization header
+    4. Copy the Bearer token value
+    """
+    return os.getenv("TEST_USER_TOKEN")
+
+
+# ==========================================
+# Fixtures
+# ==========================================
+
+@pytest.fixture(scope="session")
+def staging_base_url() -> str:
+    """Staging API base URL."""
+    return STAGING_BASE_URL
+
+
+@pytest.fixture(scope="session")
+def api_v2_url(staging_base_url) -> str:
+    """Full API v2 URL."""
+    return f"{staging_base_url}{API_V2_PREFIX}"
+
+
+@pytest.fixture(scope="session")
+def test_token() -> str:
+    """
+    Get test user token.
+
+    Raises pytest.skip if token not configured.
+    """
+    token = get_test_token()
+    if not token:
+        pytest.skip(
+            "TEST_USER_TOKEN not set. "
+            "Please set it to a valid Clerk JWT token.\n"
+            "Example: export TEST_USER_TOKEN='eyJhbG...'"
+        )
+    return token
+
+
+@pytest.fixture(scope="session")
+def auth_headers(test_token) -> dict:
+    """Authorization headers for authenticated requests."""
+    return {
+        "Authorization": f"Bearer {test_token}",
+        "Content-Type": "application/json",
+    }
+
+
+@pytest.fixture(scope="session")
+def sync_client() -> Generator[httpx.Client, None, None]:
+    """
+    Synchronous HTTP client for staging API.
+
+    Uses session scope for connection reuse.
+    """
+    with httpx.Client(timeout=30.0) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def auth_client(test_token, staging_base_url) -> Generator[httpx.Client, None, None]:
+    """
+    Authenticated synchronous HTTP client.
+
+    Pre-configured with Authorization header and base URL.
+    """
+    headers = {
+        "Authorization": f"Bearer {test_token}",
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(
+        base_url=staging_base_url,
+        timeout=30.0,
+        headers=headers,
+    ) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def anon_client(staging_base_url) -> Generator[httpx.Client, None, None]:
+    """
+    Anonymous (unauthenticated) HTTP client.
+
+    For testing endpoints without authentication.
+    """
+    headers = {
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(
+        base_url=staging_base_url,
+        timeout=30.0,
+        headers=headers,
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def async_client(staging_base_url) -> httpx.AsyncClient:
+    """
+    Asynchronous HTTP client for staging API.
+
+    For async test functions.
+    """
+    async with httpx.AsyncClient(
+        base_url=staging_base_url,
+        timeout=30.0,
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def async_auth_client(test_token, staging_base_url) -> httpx.AsyncClient:
+    """
+    Authenticated asynchronous HTTP client.
+    """
+    headers = {
+        "Authorization": f"Bearer {test_token}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(
+        base_url=staging_base_url,
+        timeout=30.0,
+        headers=headers,
+    ) as client:
+        yield client
+
+
+# ==========================================
+# Helper Functions
+# ==========================================
+
+def assert_success_response(response: httpx.Response, expected_status: int = 200):
+    """Assert response is successful with expected status."""
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}. "
+        f"Response: {response.text[:500]}"
+    )
+
+
+def assert_json_response(response: httpx.Response) -> dict:
+    """Assert response is valid JSON and return data."""
+    assert response.headers.get("content-type", "").startswith("application/json"), (
+        f"Expected JSON response, got {response.headers.get('content-type')}"
+    )
+    return response.json()
+
+
+def assert_error_response(
+    response: httpx.Response,
+    expected_status: int,
+    expected_detail: Optional[str] = None,
+):
+    """Assert response is an error with expected status and optional detail."""
+    assert response.status_code == expected_status, (
+        f"Expected {expected_status}, got {response.status_code}. "
+        f"Response: {response.text[:500]}"
+    )
+    if expected_detail:
+        data = response.json()
+        assert expected_detail in str(data.get("detail", "")), (
+            f"Expected detail containing '{expected_detail}', got {data}"
+        )
