@@ -298,7 +298,8 @@ async def create_listing(
     container = get_container()
     handler = await container.create_listing_handler()
 
-    user_tier = (user.get("tier") or "t1").lower()
+    # UserProfile.tier is UserTier enum, get string value
+    user_tier = (user.tier.value if user.tier else "t1").lower()
 
     # Validate publish permission based on tier
     if user_tier == "t2":

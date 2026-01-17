@@ -120,7 +120,7 @@ async def gen_images(
 
     # Validate parameters
     num_images = max(1, min(4, req.num_images or 1))
-    tier = (user.get("tier") or "t1").lower()
+    tier = (user.tier.value if user.tier else "t1").lower()
     model = get_model_for_tier(tier)
     generation_mode = validate_generation_mode(req.generation_mode)
     creativity_level = validate_creativity_level(req.creativity_level)
@@ -227,7 +227,7 @@ async def gen_images_async(
 
     # Validate parameters
     num_images = max(1, min(4, req.num_images or 1))
-    tier = (user.get("tier") or "t1").lower()
+    tier = (user.tier.value if user.tier else "t1").lower()
     model = get_model_for_tier(tier)
     generation_mode = validate_generation_mode(req.generation_mode)
     creativity_level = validate_creativity_level(req.creativity_level)

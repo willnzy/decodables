@@ -204,7 +204,11 @@ class AccessControl:
         if not user:
             return False
 
-        tier = (user.get("tier") or "t1").lower()
+        # UserProfile may be dict or object, handle both for backward compatibility
+        if hasattr(user, 'tier'):
+            tier = (user.tier.value if user.tier else "t1").lower()
+        else:
+            tier = (user.get("tier") or "t1").lower()
 
         # Pro/Enterprise users always have access
         if tier in ("t3", "t4"):

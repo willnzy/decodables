@@ -693,10 +693,27 @@ async def get_client_flags(
         }
     """
     # v3.30: Handle unauthenticated users
+    # v3.31: Handle both dict and UserProfile object
+    if user:
+        if hasattr(user, 'user_id'):
+            # UserProfile object
+            user_id = user.user_id
+            tier = user.tier.value if user.tier else None
+            email = user.email
+        else:
+            # dict
+            user_id = user.get("id")
+            tier = user.get("tier")
+            email = user.get("email")
+    else:
+        user_id = None
+        tier = None
+        email = None
+
     context = EvaluationContext(
-        user_id=user.get("id") if user else None,
-        tier=user.get("tier") if user else None,
-        email=user.get("email") if user else None,
+        user_id=user_id,
+        tier=tier,
+        email=email,
     )
 
     flags = feature_service.get_all_flags(context)

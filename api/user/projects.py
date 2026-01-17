@@ -357,7 +357,8 @@ async def create_project(
     container = get_container()
     handler = await container.get_create_project_handler()
 
-    tier = (user.get("tier") or "t1").lower()
+    # UserProfile.tier is UserTier enum, get string value
+    tier = (user.tier.value if user.tier else "t1").lower()
 
     command = CreateProjectCommand(
         user_id=user.user_id,
@@ -604,7 +605,8 @@ async def duplicate_project(
     container = get_container()
     creation_service = await container.get_creation_service()
 
-    tier = (user.get("tier") or "t1").lower()
+    # UserProfile.tier is UserTier enum, get string value
+    tier = (user.tier.value if user.tier else "t1").lower()
 
     try:
         # Service returns Project directly, not a Result object
