@@ -252,7 +252,7 @@ async def cancel_task(
         }
     """
     container = get_container()
-    handler = await container.cancel_task_handler()
+    handler = await container.get_cancel_task_handler()
 
     command = CancelTaskCommand(
         task_id=task_id,

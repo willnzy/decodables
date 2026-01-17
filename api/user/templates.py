@@ -199,7 +199,7 @@ async def list_asset_templates(
     v3.0.0: Now uses ListAssetTemplatesHandler (Container pattern).
     """
     container = get_container()
-    handler = await container.list_asset_templates_handler()
+    handler = await container.get_list_asset_templates_handler()
 
     query = ListAssetTemplatesQuery(user_id=user.user_id)
     result = await handler.handle(query)
@@ -221,7 +221,7 @@ async def create_asset_template(
     Business logic (template limit check) moved to Service layer.
     """
     container = get_container()
-    handler = await container.create_asset_template_handler()
+    handler = await container.get_create_asset_template_handler()
 
     template_data = {
         "name": req.name,
@@ -270,7 +270,7 @@ async def update_asset_template(
         raise HTTPException(400, "No fields to update")
 
     container = get_container()
-    handler = await container.update_asset_template_handler()
+    handler = await container.get_update_asset_template_handler()
 
     command = UpdateAssetTemplateCommand(
         template_id=template_id,
@@ -298,7 +298,7 @@ async def delete_asset_template(
     validate_template_id(template_id)
 
     container = get_container()
-    handler = await container.delete_asset_template_handler()
+    handler = await container.get_delete_asset_template_handler()
 
     command = DeleteAssetTemplateCommand(
         template_id=template_id,
@@ -340,7 +340,7 @@ async def use_asset_template(
     validate_template_id(template_id)
 
     container = get_container()
-    handler = await container.use_asset_template_handler()
+    handler = await container.get_use_asset_template_handler()
 
     command = UseAssetTemplateCommand(
         template_id=template_id,
@@ -367,7 +367,7 @@ async def list_page_templates(
     v3.0.0: Now uses ListPageTemplatesHandler (Container pattern).
     """
     container = get_container()
-    handler = await container.list_page_templates_handler()
+    handler = await container.get_list_page_templates_handler()
 
     query = ListPageTemplatesQuery(user_id=user.user_id)
     result = await handler.handle(query)
@@ -389,7 +389,7 @@ async def create_page_template(
     Business logic (template limit check) moved to Service layer.
     """
     container = get_container()
-    handler = await container.create_page_template_handler()
+    handler = await container.get_create_page_template_handler()
 
     template_data = {
         "name": req.name,
@@ -433,7 +433,7 @@ async def update_page_template(
         raise HTTPException(400, "No fields to update")
 
     container = get_container()
-    handler = await container.update_page_template_handler()
+    handler = await container.get_update_page_template_handler()
 
     command = UpdatePageTemplateCommand(
         template_id=template_id,
@@ -461,7 +461,7 @@ async def delete_page_template(
     validate_template_id(template_id)
 
     container = get_container()
-    handler = await container.delete_page_template_handler()
+    handler = await container.get_delete_page_template_handler()
 
     command = DeletePageTemplateCommand(
         template_id=template_id,
@@ -503,7 +503,7 @@ async def use_page_template(
     validate_template_id(template_id)
 
     container = get_container()
-    handler = await container.use_page_template_handler()
+    handler = await container.get_use_page_template_handler()
 
     command = UsePageTemplateCommand(
         template_id=template_id,

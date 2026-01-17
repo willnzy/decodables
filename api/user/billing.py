@@ -428,7 +428,7 @@ async def add_credits(
         Updated credit balance
     """
     container = get_container()
-    handler = await container.add_credits_handler()
+    handler = await container.get_add_credits_handler()
 
     # Map credit_type to CreditBucket and TransactionType
     from domains.billing.value_objects import CreditBucket, TransactionType

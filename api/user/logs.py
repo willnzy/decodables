@@ -169,7 +169,7 @@ async def log_error(
     v2.1.0: Added rate limiting (30/minute) to prevent abuse.
     """
     container = get_container()
-    handler = await container.create_error_log_handler()
+    handler = await container.get_create_error_log_handler()
 
     user_id = _extract_user_id_from_token(authorization)
 

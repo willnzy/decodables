@@ -158,7 +158,7 @@ async def upload_asset(
     tz = get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
-    handler = await container.upload_asset_handler()
+    handler = await container.get_upload_asset_handler()
 
     command = UploadAssetCommand(
         user_id=user.user_id,
@@ -189,7 +189,7 @@ async def delete_asset(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = await container.delete_asset_handler()
+    handler = await container.get_delete_asset_handler()
 
     command = DeleteAssetCommand(
         asset_id=asset_id,
@@ -223,7 +223,7 @@ async def add_asset_from_url(
     tz = get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
-    handler = await container.add_asset_from_url_handler()
+    handler = await container.get_add_asset_from_url_handler()
 
     command = AddAssetFromURLCommand(
         user_id=user.user_id,
@@ -256,7 +256,7 @@ async def check_url(
     Business logic (SSRF check, URL validation) moved to Service layer.
     """
     container = get_container()
-    handler = await container.check_url_handler()
+    handler = await container.get_check_url_handler()
 
     query = CheckURLQuery(url=url)
     result = await handler.handle(query)
@@ -280,7 +280,7 @@ async def increment_usage(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = await container.increment_asset_usage_handler()
+    handler = await container.get_increment_asset_usage_handler()
 
     command = IncrementAssetUsageCommand(
         asset_id=asset_id,
@@ -348,7 +348,7 @@ async def restore(
     validate_uuid_id(asset_id, "asset ID")
 
     container = get_container()
-    handler = await container.restore_asset_handler()
+    handler = await container.get_restore_asset_handler()
 
     command = RestoreAssetCommand(
         asset_id=asset_id,

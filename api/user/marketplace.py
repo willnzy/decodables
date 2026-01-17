@@ -298,7 +298,7 @@ async def create_listing(
         Created listing with moderation_status='pending'
     """
     container = get_container()
-    handler = await container.create_listing_handler()
+    handler = await container.get_create_listing_handler()
 
     # UserProfile.tier is UserTier enum, get string value
     user_tier = (user.tier.value if user.tier else "t1").lower()
@@ -369,7 +369,7 @@ async def update_listing(
         Update status
     """
     container = get_container()
-    handler = await container.update_listing_handler()
+    handler = await container.get_update_listing_handler()
 
     command = UpdateListingCommand(
         listing_id=listing_id,
@@ -413,7 +413,7 @@ async def unpublish_listing(
         Status
     """
     container = get_container()
-    handler = await container.unpublish_listing_handler()
+    handler = await container.get_unpublish_listing_handler()
 
     command = UnpublishListingCommand(
         listing_id=listing_id,
@@ -455,7 +455,7 @@ async def purchase_listing(
         Purchase result
     """
     container = get_container()
-    handler = await container.purchase_listing_handler()
+    handler = await container.get_purchase_listing_handler()
 
     # PurchaseListingCommand expects: listing_id, buyer_id, buyer_tier
     # Note: idempotency_key is generated internally by the handler
@@ -654,7 +654,7 @@ async def submit_report(
         HTTPException: 400 if already reported, 500 if failed
     """
     container = get_container()
-    handler = await container.create_report_handler()
+    handler = await container.get_create_report_handler()
 
     command = CreateReportCommand(
         user_id=user.user_id,
