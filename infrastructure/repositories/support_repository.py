@@ -2,7 +2,11 @@
 Support Repository - Support ticket management operations.
 
 @module infrastructure.repositories.support_repository
-@version 2.0.0 (AsyncClient migration)
+@version 2.1.0 (ticket_number generation)
+
+Changes in v2.1:
+- Added _generate_ticket_number() for ticket_number generation
+- Fixed NOT NULL constraint violation for ticket_number field
 
 Changes in v2.0:
 - Removed lazy loading (client parameter now mandatory)
@@ -13,6 +17,7 @@ Provides support ticket CRUD operations.
 """
 
 import logging
+import uuid
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
@@ -47,6 +52,23 @@ class SupabaseSupportRepository:
         """Get AsyncClient instance."""
         return self._client
 
+    def _generate_ticket_number(self) -> str:
+        """
+        Generate a unique ticket number.
+
+        Format: TKT-YYYYMMDD-XXXXX (where XXXXX is a random suffix)
+
+        Note: This is a fallback for when database trigger is not available.
+        The DB trigger (generate_ticket_number) uses sequential numbering,
+        but this method uses UUID suffix for simplicity.
+
+        Returns:
+            Ticket number string (e.g., "TKT-20260118-a1b2c")
+        """
+        today_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+        random_suffix = uuid.uuid4().hex[:5]
+        return f"TKT-{today_date}-{random_suffix}"
+
     @retry_on_network_error()
     async def create_ticket(
         self,
@@ -56,13 +78,33 @@ class SupabaseSupportRepository:
         priority: str = "medium",
         category: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Create a new support ticket."""
+        """
+        Create a new support ticket.
+
+        Args:
+            user_id: User ID
+            subject: Ticket subject
+            message: Ticket message/description
+            priority: Priority level (default: medium)
+            category: Category (default: general)
+
+        Returns:
+            Created ticket data or None
+        """
+        # Generate ticket_number since DB trigger may not exist
+        ticket_number = self._generate_ticket_number()
+
+        # Use 'general' as default category since it's NOT NULL in schema
+        effective_category = category or "general"
+
         result = await self.client.table("support_tickets").insert({
             "user_id": user_id,
+            "ticket_number": ticket_number,
             "subject": subject,
-            "message": message,
+            "description": message,  # Schema uses 'description' (NOT NULL)
+            "message": message,      # Also set 'message' for compatibility
             "priority": priority,
-            "category": category,
+            "category": effective_category,
             "status": "open",
         }).execute()
 
