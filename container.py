@@ -1350,7 +1350,7 @@ class Container:
 
     async def get_content_service(self):
         """Get content service instance (v3.0.0, async)."""
-        from domains.content.content_service import ContentService
+        from domains.content.service import ContentService
         from infrastructure.repositories.content_repository import SupabaseContentRepository
         if 'content' not in self._services:
             db = await get_async_db_client()
