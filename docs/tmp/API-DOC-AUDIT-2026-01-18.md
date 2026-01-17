@@ -343,10 +343,27 @@
 
 ---
 
-### ⏳ 待处理
+### ✅ 前端代码已更新 (2026-01-18)
 
-- 前端代码更新 (需配合后端修改)
-- API 文档更新 (user-api-review.md, admin-api-review.md)
+**修改文件**:
+- `services/adminService.ts` - search 参数
+- `services/userService.ts` - offset 分页
+- `services/projectService.ts` - offset 分页
+- `services/marketplaceService.ts` - offset 分页
+- `app/dashboard/_hooks/useDashboardAssets.ts` - offset 参数
+- `app/dashboard/_hooks/useDashboardProjects.ts` - page→offset 转换
+- `app/marketplace/page.js` - page→offset 转换
+
+---
+
+### ✅ API 文档已更新 (2026-01-18)
+
+**修改文件**:
+- `docs/shared/user-api-review.md` v3.39 → v3.40
+  - `GET /projects/dashboard` 响应格式: `{items, total_count}` → `{items, total, offset, limit, has_more}`
+  - `GET /referrals` 响应格式: `{referrals}` → `{items, total, offset, limit, has_more}`
+  - `GET /referrals` 添加 offset/limit 参数文档
+- `decodables-fe/docs/shared/` 同步更新
 
 ---
 
@@ -355,8 +372,8 @@
 - [x] 确认修复方案 (业务驱动)
 - [x] 创建修复任务清单
 - [x] 按优先级逐一修复后端代码
-- [ ] 更新前端代码
-- [ ] 更新 API 文档
+- [x] 更新前端代码
+- [x] 更新 API 文档
 - [ ] 验证前后端兼容性
 - [ ] 运行测试
 
@@ -396,3 +413,5 @@
 
 *审计完成时间: 2026-01-18*
 *后端修复完成时间: 2026-01-18*
+*前端修复完成时间: 2026-01-18*
+*文档更新完成时间: 2026-01-18*

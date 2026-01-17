@@ -1,8 +1,8 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.39
-> **最后更新**: 2026-01-16
+> **版本**: 3.40
+> **最后更新**: 2026-01-18
 > **总端点数**: 128 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
@@ -1819,7 +1819,10 @@
 ```json
 {
   "items": [ ... ],
-  "total_count": 50
+  "total": 50,
+  "offset": 0,
+  "limit": 20,
+  "has_more": true
 }
 ```
 
@@ -1994,10 +1997,16 @@
 
 获取推荐列表
 
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 20 | 每页数量 (1-100) |
+
 **响应**:
 ```json
 {
-  "referrals": [
+  "items": [
     {
       "id": "uuid-xxx",
       "referral_code": "abc123...",
@@ -2006,7 +2015,11 @@
       "reward_issued": true,
       "created_at": "2026-01-01T00:00:00Z"
     }
-  ]
+  ],
+  "total": 15,
+  "offset": 0,
+  "limit": 20,
+  "has_more": false
 }
 ```
 
@@ -3099,9 +3112,13 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.39*
-*最后更新: 2026-01-16*
+*文档版本: v3.40*
+*最后更新: 2026-01-18*
 *更新内容:
+- v3.40: DDD 合规审计修复
+  - 修复: `GET /projects/dashboard` 响应格式改为 `{items, total, offset, limit, has_more}`
+  - 修复: `GET /referrals` 响应格式改为 DDD 标准分页格式 `{items, total, offset, limit, has_more}`
+  - 新增: `GET /referrals` 添加 offset/limit 分页参数
 - v3.39: API 整合优化 - 新增统一 Seller 模块 (1个端点)，删除 7 个冗余端点
   - 新增: `GET /seller/stats` 统一卖家统计 (整合 projects/marketplace/assets)
   - 删除: `GET /projects/seller-stats`, `GET /marketplace/seller/stats`, `GET /user_assets/seller-stats`
