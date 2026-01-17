@@ -37,17 +37,33 @@ API_V2_PREFIX = "/api/v2"
 
 def get_test_token() -> Optional[str]:
     """
-    Get test user JWT token from environment.
+    Get test user JWT token.
 
-    Set via: export TEST_USER_TOKEN="your_clerk_jwt_token"
+    Priority:
+    1. TEST_USER_TOKEN environment variable (if set)
+    2. Auto-generate using Clerk API (requires active session)
 
-    How to get the token:
-    1. Login to staging frontend
-    2. Open DevTools → Network
-    3. Find any API request with Authorization header
-    4. Copy the Bearer token value
+    For auto-generation, the test user must have logged in to staging
+    at least once (to have an active session).
     """
-    return os.getenv("TEST_USER_TOKEN")
+    # First check environment variable
+    token = os.getenv("TEST_USER_TOKEN")
+    if token:
+        return token
+
+    # Try to auto-generate token using Clerk API
+    try:
+        from .get_test_token import get_test_token as generate_token
+        token = generate_token()
+        if token:
+            return token
+    except ImportError:
+        pass  # Script not available
+    except Exception as e:
+        import sys
+        print(f"Warning: Failed to auto-generate token: {e}", file=sys.stderr)
+
+    return None
 
 
 # ==========================================
@@ -66,24 +82,27 @@ def api_v2_url(staging_base_url) -> str:
     return f"{staging_base_url}{API_V2_PREFIX}"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def test_token() -> str:
     """
     Get test user token.
+
+    Uses module scope to refresh token for each test module,
+    avoiding token expiration issues (Clerk tokens expire in 60s).
 
     Raises pytest.skip if token not configured.
     """
     token = get_test_token()
     if not token:
         pytest.skip(
-            "TEST_USER_TOKEN not set. "
-            "Please set it to a valid Clerk JWT token.\n"
-            "Example: export TEST_USER_TOKEN='eyJhbG...'"
+            "TEST_USER_TOKEN not set and auto-generation failed. "
+            "Please ensure you have logged in to staging frontend.\n"
+            "Or set: export TEST_USER_TOKEN='eyJhbG...'"
         )
     return token
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def auth_headers(test_token) -> dict:
     """Authorization headers for authenticated requests."""
     return {
@@ -103,12 +122,13 @@ def sync_client() -> Generator[httpx.Client, None, None]:
         yield client
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def auth_client(test_token, staging_base_url) -> Generator[httpx.Client, None, None]:
     """
     Authenticated synchronous HTTP client.
 
     Pre-configured with Authorization header and base URL.
+    Uses module scope to refresh token per module (Clerk tokens expire in 60s).
     """
     headers = {
         "Authorization": f"Bearer {test_token}",
@@ -154,10 +174,11 @@ async def async_client(staging_base_url) -> httpx.AsyncClient:
         yield client
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def async_auth_client(test_token, staging_base_url) -> httpx.AsyncClient:
     """
     Authenticated asynchronous HTTP client.
+    Uses module scope to refresh token per module.
     """
     headers = {
         "Authorization": f"Bearer {test_token}",
