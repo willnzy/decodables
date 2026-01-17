@@ -14,7 +14,7 @@
 4. [Webhooks](#4-webhooks)
 5. [API 总览](#5-api-总览)
    - [User API](#user-api-123个端点)
-   - [Admin API](#admin-api-143个端点)
+   - [Admin API](#admin-api-178个端点)
 6. [附录 A: 认证系统](#附录-a-认证系统)
 7. [附录 B: Tier 命名规范](#附录-b-tier-命名规范)
 8. [附录 C: 积分系统](#附录-c-积分系统)
@@ -521,9 +521,9 @@ checkout.session 需要携带的 metadata:
 
 ---
 
-### Admin API (171个端点)
+### Admin API (178个端点)
 
-> **注意**: 实际代码中有 172 个 Admin API 端点。本表格汇总了已完整评审的端点模块。
+> **版本**: v3.40 (2026-01-17) - 完整评审 178 个端点
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
@@ -543,12 +543,16 @@ checkout.session 需要携带的 metadata:
 | **指标** | `/api/v2/admin/metrics` | 7 | 日/月指标、留存 |
 | **任务管理** | `/api/v2/admin/tasks/management` | 4 | 任务状态、手动触发 |
 | **营销活动** | `/api/v2/admin/campaigns` | 8 | 活动 CRUD、统计 |
-| **主题管理** | `/api/v2/admin/themes` | 12 | 主题 CRUD、AI 批量生成、审核 **NEW** |
+| **文章管理** | `/api/v2/admin/articles` | 7 | 文章 CMS CRUD |
+| **素材分类** | `/api/v2/admin/asset-categories` | 7 | 分类 CRUD、树结构 |
+| **主题管理** | `/api/v2/admin/themes` | 13 | 主题 CRUD、AI 批量生成、审核 |
+| **静态页面** | `/api/v2/admin/static-pages` | 7 | 静态页面 CMS CRUD **NEW** |
+| **用户创建监控** | `/api/v2/admin/monitoring/user-creation` | 3 | Webhook 健康度监控 **NEW** |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 171 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 178 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
-> **说明**: admin-api-review.md 记录了已评审的 155 个端点 (v3.36)，另有 1 个端点待补充评审文档（PUT /config/admin 占位符功能）。v3.36 新增 Feature Flags v1.1 树状结构 6 个端点；v1.2 新增 allowed_tiers Tier 分层筛选支持。
+> **说明**: admin-api-review.md v3.40 记录了全部 178 个端点。v3.40 新增 Static Pages (7个)、User Creation Monitoring (3个) 模块。
 
 ---
 
@@ -724,7 +728,7 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ### 文档现状
 
-本文档当前记录了 **User API 123 个端点** 和 **Admin API 143 个端点** (已评审 142 个)。
+本文档当前记录了 **User API 123 个端点** 和 **Admin API 178 个端点** (v3.40 已全部评审)。
 
 ### 详细端点文档
 
