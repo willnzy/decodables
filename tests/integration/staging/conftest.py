@@ -2,15 +2,22 @@
 Staging Environment Test Configuration
 
 Fixtures for testing against the actual staging API.
-Requires TEST_USER_TOKEN environment variable.
+Supports both regular user and admin user testing.
+
+Token 获取方式:
+1. 环境变量: TEST_USER_TOKEN / TEST_ADMIN_TOKEN
+2. Clerk API: CLERK_SECRET_KEY + SESSION_ID
 
 @module tests.integration.staging.conftest
+@version 2.0.0 (added admin support)
 """
 
 import os
 import pytest
 import httpx
 from typing import Generator, Optional
+
+from .test_users import TestUsers, TokenEnvVars
 
 
 # ==========================================
@@ -25,6 +32,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "p3: Priority 3 - Low priority tests")
     config.addinivalue_line("markers", "security: Security related tests")
     config.addinivalue_line("markers", "performance: Performance related tests")
+    config.addinivalue_line("markers", "admin: Requires admin privileges")
 
 
 # ==========================================
@@ -33,6 +41,36 @@ def pytest_configure(config):
 
 STAGING_BASE_URL = "https://decodables-staging.up.railway.app"
 API_V2_PREFIX = "/api/v2"
+CLERK_API_BASE = "https://api.clerk.com/v1"
+
+
+def _get_token_from_clerk(session_id: str, clerk_secret: str) -> Optional[str]:
+    """
+    Get JWT token from Clerk API using session ID.
+
+    Args:
+        session_id: Clerk session ID (e.g., "sess_xxx")
+        clerk_secret: Clerk secret key (e.g., "sk_test_xxx")
+
+    Returns:
+        JWT token or None if failed
+    """
+    try:
+        response = httpx.post(
+            f"{CLERK_API_BASE}/sessions/{session_id}/tokens",
+            headers={
+                "Authorization": f"Bearer {clerk_secret}",
+                "Content-Type": "application/json",
+            },
+            json={},
+            timeout=10.0,
+        )
+        if response.status_code == 200:
+            return response.json().get("jwt")
+    except Exception as e:
+        import sys
+        print(f"Warning: Failed to get token from Clerk: {e}", file=sys.stderr)
+    return None
 
 
 def get_test_token() -> Optional[str]:
@@ -47,7 +85,7 @@ def get_test_token() -> Optional[str]:
     at least once (to have an active session).
     """
     # First check environment variable
-    token = os.getenv("TEST_USER_TOKEN")
+    token = os.getenv(TokenEnvVars.USER_TOKEN)
     if token:
         return token
 
@@ -62,6 +100,38 @@ def get_test_token() -> Optional[str]:
     except Exception as e:
         import sys
         print(f"Warning: Failed to auto-generate token: {e}", file=sys.stderr)
+
+    return None
+
+
+def get_admin_token() -> Optional[str]:
+    """
+    Get admin user JWT token.
+
+    Priority:
+    1. TEST_ADMIN_TOKEN environment variable
+    2. Clerk API with TEST_ADMIN_SESSION_ID
+
+    Admin user: {TestUsers.ADMIN['email']} ({TestUsers.ADMIN['user_id']})
+
+    Returns:
+        Admin JWT token or None
+    """
+    # First check environment variable
+    token = os.getenv(TokenEnvVars.ADMIN_TOKEN)
+    if token:
+        return token
+
+    # Try Clerk API with environment variable session ID
+    clerk_secret = os.getenv(TokenEnvVars.CLERK_SECRET_KEY)
+    session_id = os.getenv(TokenEnvVars.ADMIN_SESSION_ID)
+
+    if clerk_secret and session_id:
+        return _get_token_from_clerk(session_id, clerk_secret)
+
+    # Try using configured session ID from test_users
+    if clerk_secret and TestUsers.ADMIN.get("clerk_session_id"):
+        return _get_token_from_clerk(TestUsers.ADMIN["clerk_session_id"], clerk_secret)
 
     return None
 
@@ -158,6 +228,60 @@ def anon_client(staging_base_url) -> Generator[httpx.Client, None, None]:
         headers=headers,
     ) as client:
         yield client
+
+
+# ==========================================
+# Admin Fixtures
+# ==========================================
+
+@pytest.fixture(scope="module")
+def admin_token() -> str:
+    """
+    Get admin user token.
+
+    Uses module scope to refresh token for each test module.
+    Raises pytest.skip if admin token not configured.
+
+    Admin user: willnzy@gmail.com (user_38J7ztkfxMPma40Q5FQ2ryO80eg)
+    """
+    token = get_admin_token()
+    if not token:
+        pytest.skip(
+            "Admin token not configured. Set one of:\n"
+            "  - TEST_ADMIN_TOKEN environment variable\n"
+            "  - CLERK_SECRET_KEY + TEST_ADMIN_SESSION_ID"
+        )
+    return token
+
+
+@pytest.fixture(scope="module")
+def admin_client(admin_token, staging_base_url) -> Generator[httpx.Client, None, None]:
+    """
+    Authenticated admin HTTP client.
+
+    Pre-configured with admin Authorization header and base URL.
+    Uses module scope to refresh token per module.
+    """
+    headers = {
+        "Authorization": f"Bearer {admin_token}",
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(
+        base_url=staging_base_url,
+        timeout=30.0,
+        headers=headers,
+    ) as client:
+        yield client
+
+
+@pytest.fixture(scope="module")
+def admin_user_info() -> dict:
+    """
+    Get admin user static information.
+
+    Returns configured admin user details from test_users.py.
+    """
+    return TestUsers.ADMIN.copy()
 
 
 @pytest.fixture
