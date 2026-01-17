@@ -216,7 +216,7 @@ async def list_listings(
         ListingsResponse with paginated listings
     """
     container = get_container()
-    handler = await container.search_listings_handler()
+    handler = await container.get_search_listings_handler()
 
     
 
@@ -237,6 +237,8 @@ async def list_listings(
         logger.error(f"Failed to get listings: {result.error}")
         raise HTTPException(500, "Failed to get listings")
 
+    # Calculate page number from offset for response
+    page = (offset // limit) + 1 if limit > 0 else 1
     return ListingsResponse(
         items=result.listings_list,
         total=result.total_count,
@@ -525,6 +527,8 @@ async def get_my_listings(
         logger.error(f"Failed to get my listings: {result.error}")
         raise HTTPException(500, "Failed to get listings")
 
+    # Calculate page number from offset for response
+    page = (offset // limit) + 1 if limit > 0 else 1
     return ListingsResponse(
         items=result.listings_list,
         total=result.total_count,
@@ -697,6 +701,8 @@ async def get_my_reports(
     container = get_container()
     handler = await container.get_my_reports_handler()
 
+    # Convert offset to page for query (query uses page-based pagination)
+    page = (offset // limit) + 1 if limit > 0 else 1
     query = GetMyReportsQuery(
         user_id=user.user_id,
         page=page,

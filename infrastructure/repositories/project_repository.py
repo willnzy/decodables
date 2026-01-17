@@ -48,7 +48,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Get project by ID."""
         try:
             result = await self.client.table("projects").select("*").eq(
-                "project_id", project_id
+                "id", project_id
             ).single().execute()
 
             if not result.data:
@@ -74,7 +74,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         try:
             data = self._map_to_row(project)
             await self.client.table("projects").upsert(
-                data, on_conflict="project_id"
+                data, on_conflict="id"
             ).execute()
 
             # v3.26: Batch save pages (N+1 fix)
@@ -110,7 +110,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             data["updated_at"] = datetime.utcnow().isoformat()
 
             result = await self.client.table("projects").update(data).eq(
-                "project_id", project.project_id
+                "id", project.project_id
             ).select("*").single().execute()
 
             if not result.data:
@@ -135,15 +135,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         Project pages are preserved for potential restoration.
         """
         # Use 'id' field (UUID) for BaseRepository compatibility
-        # Get project first to find its UUID
-        result = await self.client.table("projects").select("id").eq(
-            "project_id", project_id
-        ).single().execute()
-
-        if not result.data:
-            return False
-
-        return await super().soft_delete(result.data["id"])
+        return await super().soft_delete(project_id)
 
     async def soft_delete(self, project_id: str, user_id: Optional[str] = None) -> bool:
         """
@@ -171,7 +163,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Get projects owned by a user."""
         try:
             query = self.client.table("projects").select("*").eq(
-                "owner_id", owner_id
+                "user_id", owner_id
             ).neq("status", ProjectStatus.DELETED.value).order(
                 "updated_at", desc=True
             ).range(offset, offset + limit - 1)
@@ -240,8 +232,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Count projects owned by user."""
         try:
             query = self.client.table("projects").select(
-                "project_id", count="exact"
-            ).eq("owner_id", owner_id).neq("status", ProjectStatus.DELETED.value)
+                "id", count="exact"
+            ).eq("user_id", owner_id).neq("status", ProjectStatus.DELETED.value)
 
             if status:
                 query = query.eq("status", status.value)
@@ -350,9 +342,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             ).range(offset, offset + limit - 1)
 
             if owner_id and not include_public:
-                db_query = db_query.eq("owner_id", owner_id)
+                db_query = db_query.eq("user_id", owner_id)
             elif owner_id and include_public:
-                db_query = db_query.or_(f"owner_id.eq.{owner_id},is_public.eq.true")
+                db_query = db_query.or_(f"user_id.eq.{owner_id},is_public.eq.true")
             elif include_public:
                 db_query = db_query.eq("is_public", True)
 
@@ -395,8 +387,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             canvas_data = json.loads(canvas_data)
 
         return Project(
-            project_id=row["project_id"],
-            owner_id=row["owner_id"],
+            project_id=row.get("project_id") or row.get("id"),
+            owner_id=row.get("owner_id") or row.get("user_id"),
             metadata=metadata,
             canvas_size=canvas_size,
             status=ProjectStatus(row.get("status", "draft")),
@@ -429,8 +421,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     def _map_to_row(self, project: Project) -> dict:
         """Map Project to database row."""
         return {
-            "project_id": project.project_id,
-            "owner_id": project.owner_id,
+            "id": project.project_id,
+            "user_id": project.owner_id,
             "title": project.metadata.title,
             "description": project.metadata.description,
             "tags": project.metadata.tags,
