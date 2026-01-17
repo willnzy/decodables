@@ -1,13 +1,11 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 171 个，实际代码 172 个)
-> **版本**: 3.39
-> **最后更新**: 2026-01-12
-> **总端点数**: 171 个 (已评审) / 172 个 (实际代码)
+> **状态**: ✅ Complete (已评审 178 个)
+> **版本**: 3.40
+> **最后更新**: 2026-01-17
+> **总端点数**: 178 个
 
-本文档记录已评审的 171 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
-
-**注意**: 实际代码中有 172 个端点，另有 1 个端点（PUT /config/admin 占位符功能）待补充评审文档。
+本文档记录已评审的 178 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
 ---
 
@@ -15,7 +13,7 @@
 
 1. [AI Insights 洞察 (5个)](#1-ai-insights-洞察)
 2. [AI Models 管理 (8个)](#2-ai-models-管理)
-3. [Articles 文章管理 (7个)](#3-articles-文章管理) **NEW**
+3. [Articles 文章管理 (7个)](#3-articles-文章管理)
 4. [Asset Categories 分类管理 (7个)](#4-asset-categories-分类管理)
 5. [Campaigns 营销活动 (8个)](#5-campaigns-营销活动)
 6. [Config 系统配置 (8个)](#6-config-系统配置)
@@ -26,18 +24,19 @@
 11. [Metrics 系统指标 (7个)](#11-metrics-系统指标)
 12. [Moderation 内容审核 (10个)](#12-moderation-内容审核)
 13. [Notifications 通知管理 (5个)](#13-notifications-通知管理)
-14. [Pages 静态页面管理 (4个)](#14-pages-静态页面管理) **NEW**
+14. [Static Pages 静态页面管理 (7个)](#14-static-pages-静态页面管理) **UPDATED**
 15. [Stats 统计仪表板 (18个)](#15-stats-统计仪表板)
 16. [Subscriptions 订阅管理 (3个)](#16-subscriptions-订阅管理)
 17. [System 系统管理 (12个)](#17-system-系统管理)
 18. [Tasks 任务管理 (4个)](#18-tasks-任务管理)
-19. [Themes 主题管理 (12个)](#19-themes-主题管理) **NEW**
+19. [Themes 主题管理 (13个)](#19-themes-主题管理)
 20. [Users 用户管理 (13个)](#20-users-用户管理)
-21. [Webhooks 重试管理 (2个)](#21-webhooks-重试管理)
+21. [User Creation Monitoring 用户创建监控 (3个)](#21-user-creation-monitoring-用户创建监控) **NEW**
+22. [Webhooks 重试管理 (2个)](#22-webhooks-重试管理)
 
 ---
 
-## 📋 接口总览 (171个)
+## 📋 接口总览 (178个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -199,7 +198,7 @@
 | 139 | Tasks | GET | /tasks/management/logs | - | api/admin/tasks_mgmt.py | 获取任务日志 |
 | 140 | Tasks | GET | /tasks/management/health | - | api/admin/tasks_mgmt.py | 获取任务健康状态 |
 | 141 | Tasks | POST | /tasks/management/{task_name}/run | - | api/admin/tasks_mgmt.py | 手动触发任务 |
-| **Themes (12个)** **NEW** |
+| **Themes (13个)** |
 | 142 | Themes | GET | /themes | list_themes | api/admin/themes.py | 列出所有主题 |
 | 143 | Themes | GET | /themes/generation-status | get_generation_status | api/admin/themes.py | 获取主题生成状态 |
 | 144 | Themes | GET | /themes/calendar | get_calendar_view | api/admin/themes.py | 获取主题日历视图 |
@@ -229,8 +228,20 @@
 | **Webhooks (2个)** |
 | 167 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
 | 168 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
+| **Static Pages (7个)** **NEW** |
+| 169 | Static Pages | GET | /static-pages | list_static_pages | api/admin/static_pages.py | 列出所有静态页面 |
+| 170 | Static Pages | GET | /static-pages/{page_id} | get_static_page | api/admin/static_pages.py | 获取静态页面详情 |
+| 171 | Static Pages | POST | /static-pages | create_static_page | api/admin/static_pages.py | 创建静态页面 |
+| 172 | Static Pages | PUT | /static-pages/{page_id} | update_static_page | api/admin/static_pages.py | 更新静态页面 |
+| 173 | Static Pages | DELETE | /static-pages/{page_id} | delete_static_page | api/admin/static_pages.py | 删除静态页面 |
+| 174 | Static Pages | POST | /static-pages/{page_id}/publish | publish_static_page | api/admin/static_pages.py | 发布静态页面 |
+| 175 | Static Pages | POST | /static-pages/{page_id}/unpublish | unpublish_static_page | api/admin/static_pages.py | 取消发布静态页面 |
+| **User Creation Monitoring (3个)** **NEW** |
+| 176 | Monitoring | GET | /monitoring/user-creation/stats | get_user_creation_stats | api/admin/user_creation_monitoring.py | 用户创建统计 |
+| 177 | Monitoring | GET | /monitoring/user-creation/health | get_user_creation_health | api/admin/user_creation_monitoring.py | 用户创建健康状态 |
+| 178 | Monitoring | GET | /monitoring/user-creation/events | get_recent_creation_events | api/admin/user_creation_monitoring.py | 最近创建事件 |
 
-**注**: 文档共记录 168 个接口（1-168 连续序号，无缺失）。v3.39 新增 Themes v2.1 主题管理 12 个端点。
+**注**: 文档共记录 178 个接口。v3.40 新增 Static Pages (7个) 和 User Creation Monitoring (3个)。
 
 ---
 
@@ -3215,158 +3226,211 @@
 
 ---
 
-## 14. Pages 静态页面管理 **NEW**
+## 14. Static Pages 静态页面管理
 
-> v3.37 新增：静态页面 CMS 管理端点，用于配置 About Us、Contact Us、Privacy Policy 等页面内容。
+> v3.40 更新：使用新的 Static Pages CMS 系统，完整 CRUD 支持。
 > 设计文档：[static-pages-cms-design.md](static-pages-cms-design.md)
+> 文件：[api/admin/static_pages.py](../../api/admin/static_pages.py)
+> 版本：v1.1.0 (Container DI Migration)
 
-### GET `/pages`
+**架构**: API → Container → StaticPageService → Repository
 
-列出所有可配置页面
+### GET `/static-pages`
 
-**限流**: 60 req/min
+列出所有静态页面（包含草稿）
 
-**响应**:
-```json
-{
-  "pages": [
-    {
-      "page_name": "about-us",
-      "display_name": "About Us",
-      "type": "static",
-      "sections_count": 5,
-      "last_updated": "2026-01-12T10:00:00Z"
-    },
-    {
-      "page_name": "contact-us",
-      "display_name": "Contact Us",
-      "type": "hybrid",
-      "sections_count": 4,
-      "last_updated": "2026-01-12T09:30:00Z"
-    },
-    {
-      "page_name": "privacy-policy",
-      "display_name": "Privacy Policy",
-      "type": "static",
-      "sections_count": 16,
-      "last_updated": "2026-01-03T00:00:00Z"
-    }
-  ]
-}
-```
+**限流**: 30 req/min
 
-**页面类型**:
-- `static` - 纯静态内容页面（全部内容可 CMS 配置）
-- `hybrid` - 混合型页面（静态内容 + 动态功能如表单）
-
----
-
-### GET `/pages/{page_name}`
-
-获取页面所有区块（含未启用）
-
-**限流**: 60 req/min
-
-**路径参数**:
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `page_name` | string | 页面标识符 |
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `page_type` | string | - | 页面类型筛选: legal, company, guide, other |
+| `include_drafts` | bool | true | 是否包含未发布页面 |
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 (1-100) |
 
 **响应**:
 ```json
 {
-  "page": "about-us",
-  "display_name": "About Us",
-  "type": "static",
-  "sections": {
-    "hero": {
-      "title": "About {{GLOBAL_COMPANY_NAME}}",
-      "subtitle": "Our Mission",
-      "description": "We're on a mission to empower educators...",
-      "enabled": true,
-      "order": 1
-    },
-    "features": {
-      "title": "Why Choose Us",
-      "items": [...],
-      "enabled": true,
-      "order": 2
-    },
-    "cta": {
-      "title": "Ready to Create?",
-      "enabled": false,
-      "order": 3
+  "items": [
+    {
+      "id": "uuid-xxx",
+      "slug": "privacy-policy",
+      "title": "Privacy Policy",
+      "subtitle": "Your privacy matters",
+      "page_type": "legal",
+      "icon": "Shield",
+      "is_published": true,
+      "last_updated_display": "January 2026",
+      "sort_order": 0,
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-15T10:00:00Z"
     }
-  },
-  "available_params": [
-    "{{GLOBAL_COMPANY_NAME}}",
-    "{{GLOBAL_COMPANY_EMAIL}}",
-    "{{GLOBAL_COMPANY_WHATSAPP}}"
   ],
-  "last_updated": "2026-01-12T10:00:00Z"
+  "total": 8,
+  "offset": 0,
+  "limit": 50
 }
 ```
 
-**说明**:
-- 返回所有区块（包括 `enabled: false`）
-- 参数引用保持原样（不替换），方便管理员编辑
-- `available_params` 列出该页面可用的参数引用
-
 ---
 
-### PUT `/pages/{page_name}/{section}`
+### GET `/static-pages/{page_id}`
 
-更新单个区块
+获取静态页面详情（by UUID）
 
 **限流**: 30 req/min
 
 **路径参数**:
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `page_name` | string | 页面标识符 |
-| `section` | string | 区块名称 |
+| `page_id` | string | 页面 UUID |
+
+**响应**:
+```json
+{
+  "id": "uuid-xxx",
+  "slug": "privacy-policy",
+  "title": "Privacy Policy",
+  "subtitle": "Your privacy matters",
+  "content": "# Privacy Policy\n\nMarkdown content...",
+  "page_type": "legal",
+  "icon": "Shield",
+  "hero_gradient": "from-blue-600 to-indigo-600",
+  "meta_title": "Privacy Policy | Make Decodables",
+  "meta_description": "Learn about how we protect your data",
+  "schema_data": { "@type": "WebPage" },
+  "extra_data": {},
+  "is_published": true,
+  "published_at": "2026-01-01T00:00:00Z",
+  "last_updated_display": "January 2026",
+  "sort_order": 0,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-15T10:00:00Z"
+}
+```
+
+---
+
+### POST `/static-pages`
+
+创建新静态页面
+
+**限流**: 10 req/min
 
 **请求体**:
 ```json
 {
-  "title": "About Make Decodables",
-  "subtitle": "Our Mission",
-  "description": "We're on a mission to empower educators...",
-  "enabled": true,
-  "order": 1
+  "slug": "terms-of-service",
+  "title": "Terms of Service",
+  "content": "# Terms of Service\n\nMarkdown content...",
+  "page_type": "legal",
+  "subtitle": "Please read carefully",
+  "icon": "FileText",
+  "hero_gradient": "from-purple-600 to-pink-600",
+  "meta_title": "Terms of Service | Make Decodables",
+  "meta_description": "Read our terms of service",
+  "schema_data": {},
+  "extra_data": {},
+  "last_updated_display": "January 2026",
+  "sort_order": 1
 }
 ```
+
+**字段验证**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `slug` | string | ✅ | URL 友好标识符 (1-100 字符) |
+| `title` | string | ✅ | 页面标题 (1-200 字符) |
+| `content` | string | ✅ | Markdown 内容 |
+| `page_type` | string | ✅ | 页面类型: legal, company, guide, other |
+| `subtitle` | string | ❌ | 副标题 (最多 500 字符) |
+| `icon` | string | ❌ | Lucide 图标名称 |
+| `hero_gradient` | string | ❌ | CSS 渐变类名 |
+| `meta_title` | string | ❌ | SEO 标题 |
+| `meta_description` | string | ❌ | SEO 描述 |
+| `schema_data` | object | ❌ | JSON-LD Schema |
+| `extra_data` | object | ❌ | 额外数据 |
+| `last_updated_display` | string | ❌ | 显示日期 |
+| `sort_order` | int | ❌ | 排序权重 (默认 0) |
 
 **响应**:
 ```json
 {
   "success": true,
-  "section": "hero",
-  "updated_at": "2026-01-12T10:30:00Z"
+  "message": "Static page 'Terms of Service' created successfully",
+  "page": { ... }
 }
 ```
 
-**验证规则**:
-- 参数引用格式必须正确（`{{PARAM_NAME}}`）
-- `order` 必须为正整数
-- 内容长度限制根据区块类型不同
+---
 
-**审计**: 自动记录到配置审计日志
+### PUT `/static-pages/{page_id}`
+
+更新静态页面
+
+**限流**: 30 req/min
+
+**请求体**: 所有字段可选（同 POST 请求体）
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Static page updated successfully",
+  "page": { ... }
+}
+```
 
 ---
 
-### POST `/pages/{page_name}/preview`
+### DELETE `/static-pages/{page_id}`
 
-预览页面（含参数替换）
+删除静态页面
 
-**限流**: 60 req/min
+**限流**: 10 req/min
 
-**路径参数**:
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `page_name` | string | 页面标识符 |
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Static page deleted successfully"
+}
+```
 
-**响应**: 与 User API `/pages/{page_name}` 相同（参数已替换为实际值）
+---
+
+### POST `/static-pages/{page_id}/publish`
+
+发布静态页面
+
+**限流**: 10 req/min
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Static page published successfully",
+  "page": { ... }
+}
+```
+
+---
+
+### POST `/static-pages/{page_id}/unpublish`
+
+取消发布静态页面（设为草稿）
+
+**限流**: 10 req/min
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Static page unpublished successfully",
+  "page": { ... }
+}
+```
 
 ---
 
@@ -4285,7 +4349,7 @@
 
 ---
 
-## 19. Themes 主题管理 **NEW**
+## 19. Themes 主题管理
 
 Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史追踪。
 
@@ -4940,7 +5004,141 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-## 21. Webhooks 重试管理
+## 21. User Creation Monitoring 用户创建监控
+
+> v3.40 新增：监控 Clerk Webhook 用户创建健康度的管理端点。
+> 文件：[api/admin/user_creation_monitoring.py](../../api/admin/user_creation_monitoring.py)
+> 版本：v1.0.0
+
+**用途**: 监控 Clerk Webhook 健康度、追踪 JIT fallback 趋势、分析系统稳定性
+
+### GET `/monitoring/user-creation/stats`
+
+获取用户创建统计数据
+
+**限流**: 无
+
+**参数**:
+| 参数 | 类型 | 默认 | 范围 | 说明 |
+|------|------|------|------|------|
+| `days` | int | 7 | 1-90 | 统计周期（天数） |
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "period_days": 7,
+    "total_users": 150,
+    "webhook_created": 145,
+    "jit_created": 5,
+    "webhook_success_rate": 96.67,
+    "jit_fallback_rate": 3.33,
+    "duplicate_attempts": 2,
+    "errors": 0,
+    "timestamp": "2026-01-17T10:30:00Z"
+  }
+}
+```
+
+**关键指标**:
+- `webhook_success_rate`: Webhook 成功率（应该 >95%）
+- `jit_fallback_rate`: JIT 回退率（应该 <5%）
+- `duplicate_attempts`: Race condition 处理次数
+
+---
+
+### GET `/monitoring/user-creation/health`
+
+获取用户创建系统的健康状态
+
+**限流**: 无
+
+**参数**:
+| 参数 | 类型 | 默认 | 范围 | 说明 |
+|------|------|------|------|------|
+| `days` | int | 7 | 1-90 | 统计周期（天数） |
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "status": "degraded",
+    "stats": { ... },
+    "alerts": [
+      {
+        "severity": "warning",
+        "metric": "webhook_success_rate",
+        "value": 93.5,
+        "threshold": 95,
+        "message": "Webhook success rate is below target: 93.5%"
+      }
+    ],
+    "recommendations": [
+      "Monitor Clerk webhook delivery delays"
+    ],
+    "evaluated_at": "2026-01-17T10:30:00Z"
+  }
+}
+```
+
+**健康状态**:
+- `healthy`: 所有指标正常
+- `degraded`: 部分指标低于预期
+- `unhealthy`: 关键指标异常
+
+**告警级别**:
+- `critical`: 需要立即处理
+- `warning`: 需要关注
+
+---
+
+### GET `/monitoring/user-creation/events`
+
+获取最近的用户创建事件
+
+**限流**: 无
+
+**参数**:
+| 参数 | 类型 | 默认 | 范围 | 说明 |
+|------|------|------|------|------|
+| `limit` | int | 50 | 1-100 | 返回的最大事件数 |
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "user_id": "user_123",
+      "email": "user@example.com",
+      "created_by_source": "webhook",
+      "user_created_at": "2026-01-17T10:30:00Z",
+      "log_action": "created",
+      "delay_seconds": 0.5
+    },
+    {
+      "user_id": "user_124",
+      "email": "another@example.com",
+      "created_by_source": "jit",
+      "user_created_at": "2026-01-17T10:31:00Z",
+      "log_action": "created",
+      "delay_seconds": null
+    }
+  ],
+  "count": 2
+}
+```
+
+**用途**:
+- 查看最近的用户创建情况
+- 分析 Webhook vs JIT 创建分布
+- 调试 race condition 问题
+
+---
+
+## 22. Webhooks 重试管理
 
 ### POST `/webhooks/retry`
 
@@ -4989,11 +5187,24 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-*文档版本: v3.39*
-*最后更新: 2026-01-12*
+*文档版本: v3.40*
+*最后更新: 2026-01-17*
+
+**更新内容** (v3.40):
+- ✅ 新增 "User Creation Monitoring 用户创建监控" 模块 (3个接口)
+  - GET /monitoring/user-creation/stats - 用户创建统计
+  - GET /monitoring/user-creation/health - 健康状态检查
+  - GET /monitoring/user-creation/events - 最近创建事件
+- 🔄 重写 Section 14 "Static Pages 静态页面管理" 模块 (7个接口)
+  - 使用新的 `/static-pages` 路由替代旧的 `/pages`
+  - 完整 CRUD + 发布/取消发布功能
+  - Container-based DI 架构
+- ✅ 修正 Themes 模块接口数量 (12→13个)
+- ✅ 总模块数: 22 个
+- ✅ 总接口数: 178 个
 
 **更新内容** (v3.39):
-- ✅ 新增 "Themes 主题管理" 模块 (12个接口)，Theme System v2.1
+- ✅ 新增 "Themes 主题管理" 模块 (13个接口)，Theme System v2.1
   - 完整 CRUD 操作 (list/get/create/update/delete)
   - AI 批量预生成 (batch-generate)
   - 审核工作流 (review/batch-approve)
@@ -5003,7 +5214,7 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 - ✅ 总接口数: 171 个
 
 **更新内容** (v3.37):
-- ✅ 新增 "Pages 静态页面管理" 模块 (4个接口)，支持 CMS 动态内容管理
+- ✅ 新增 "Pages 静态页面管理" 模块 (已在 v3.40 重写)
 - ✅ 总模块数: 20 个
 
 **更新内容** (v3.36):
