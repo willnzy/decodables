@@ -178,8 +178,9 @@ class SupabaseContentRepository(ISystemResourceRepository):
         if allowed_tiers_filter:
             query = query.contains("allowed_tiers", [allowed_tiers_filter])
 
+        # Sort by display_order first, then by created_at
         query = query \
-            .order("sort_order", desc=False) \
+            .order("display_order", desc=False) \
             .order("created_at", desc=True) \
             .range(offset, offset + limit - 1)
 
