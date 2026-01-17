@@ -205,6 +205,71 @@ class Endpoints:
     def experiment(flag_key: str) -> str:
         return f"{API_V2}/user/experiments/{flag_key}"
 
+    # Analytics
+    ANALYTICS_EVENTS = f"{API_V2}/user/analytics/events"
+
+    # Articles (public)
+    ARTICLES = f"{API_V2}/user/articles"
+    ARTICLES_CATEGORIES = f"{API_V2}/user/articles/categories"
+    ARTICLES_SEARCH = f"{API_V2}/user/articles/search"
+    ARTICLES_FEATURED = f"{API_V2}/user/articles/featured"
+
+    @staticmethod
+    def article(slug: str) -> str:
+        return f"{API_V2}/user/articles/{slug}"
+
+    @staticmethod
+    def article_related(slug: str) -> str:
+        return f"{API_V2}/user/articles/{slug}/related"
+
+    # Campaigns
+    CAMPAIGNS_ACTIVE = f"{API_V2}/user/campaigns/active"
+
+    @staticmethod
+    def campaign_claim(campaign_id: str) -> str:
+        return f"{API_V2}/user/campaigns/{campaign_id}/claim"
+
+    @staticmethod
+    def campaign_dismiss(campaign_id: str) -> str:
+        return f"{API_V2}/user/campaigns/{campaign_id}/dismiss"
+
+    # Config (public)
+    @staticmethod
+    def config_key(key: str) -> str:
+        return f"{API_V2}/user/config/{key}"
+
+    # Export
+    @staticmethod
+    def export_pdf(project_id: str) -> str:
+        return f"{API_V2}/user/export/projects/{project_id}/pdf"
+
+    @staticmethod
+    def export_preview(project_id: str) -> str:
+        return f"{API_V2}/user/export/projects/{project_id}/preview"
+
+    @staticmethod
+    def export_zip(project_id: str) -> str:
+        return f"{API_V2}/user/export/projects/{project_id}/zip"
+
+    @staticmethod
+    def export_pdf_async(project_id: str) -> str:
+        return f"{API_V2}/user/export/projects/{project_id}/pdf/async"
+
+    @staticmethod
+    def export_zip_async(project_id: str) -> str:
+        return f"{API_V2}/user/export/projects/{project_id}/zip/async"
+
+    # Logs (public - no auth required)
+    LOGS_ERROR = f"{API_V2}/user/logs/error"
+    LOGS_ERRORS_BATCH = f"{API_V2}/user/logs/errors"
+
+    # Static Pages (public)
+    STATIC_PAGES = f"{API_V2}/user/static-pages"
+
+    @staticmethod
+    def static_page(slug: str) -> str:
+        return f"{API_V2}/user/static-pages/{slug}"
+
     # Admin Endpoints
     ADMIN_USERS = f"{API_ADMIN}/users"
     ADMIN_SUBSCRIPTIONS_REFUND = f"{API_ADMIN}/subscriptions/refund"

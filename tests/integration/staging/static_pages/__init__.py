@@ -1,0 +1,1 @@
+# Static Pages API Tests
