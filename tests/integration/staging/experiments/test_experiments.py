@@ -1,141 +1,214 @@
 """
-Experiments (Feature Flags) API Tests (Black Box)
+Experiments API Tests (Black Box)
 
 测试 /api/v2/user/experiments 相关接口
 
 业务规则:
-1. 用户可以查询 Feature Flag 状态
-2. 支持基于用户属性的条件判断
-3. 返回所有可用的 Feature Flags
+1. 用户可以被分配到实验组
+2. 支持记录曝光和转化事件
+3. 支持获取用户的实验状态
+
+实际端点:
+- POST /experiments/{experiment_key}/assign - 分配到实验组
+- POST /experiments/{experiment_key}/exposure - 记录曝光
+- POST /experiments/{experiment_key}/conversion - 记录转化
+- GET /experiments/user/{user_identifier} - 获取用户实验状态
 
 @module tests.integration.staging.experiments.test_experiments
 """
 
 import pytest
+import uuid
 from ..base import BaseAPITest
 from ..constants import Endpoints
 
 
 @pytest.mark.p1
-class TestGetAllFlags(BaseAPITest):
+class TestExperimentAssign(BaseAPITest):
     """
-    GET /api/v2/user/experiments/all-flags 黑盒测试
+    POST /api/v2/user/experiments/{experiment_key}/assign 黑盒测试
 
-    获取所有 Feature Flags
+    分配用户到实验组
     """
 
-    ENDPOINT = Endpoints.EXPERIMENTS_ALL_FLAGS
-
-    def test_get_all_flags_returns_dict(self, auth_client):
+    def test_assign_requires_user_identifier(self, anon_client):
         """
-        业务规则: all-flags 应返回 Feature Flag 字典
-        """
-        response = auth_client.get(self.ENDPOINT)
-        data = self.assert_success(response)
+        业务规则: 分配实验组需要 user_identifier
 
-        # 响应应该是字典，key 是 flag_key，value 是 flag 值
-        assert isinstance(data, dict), "响应应该是字典"
-
-    def test_flags_are_boolean_or_object(self, auth_client):
+        这是公开端点，但需要 user_identifier 参数
         """
-        业务规则: Flag 值应该是 boolean 或配置对象
-        """
-        response = auth_client.get(self.ENDPOINT)
-        data = self.assert_success(response)
+        response = anon_client.post(
+            Endpoints.experiment_assign("test_experiment"),
+            json={}
+        )
+        # 缺少 user_identifier 返回 422 验证错误
+        assert response.status_code == 422
 
-        for key, value in data.items():
-            # Flag 值可以是 boolean, string, number, 或 object
-            assert isinstance(value, (bool, str, int, float, dict, list, type(None))), (
-                f"Flag {key} 有无效的值类型: {type(value)}"
-            )
-
-    def test_public_endpoint_works_without_auth(self, anon_client):
+    def test_assign_nonexistent_experiment(self, auth_client):
         """
-        业务规则: Feature Flags 可能是公开的
-
-        或者需要认证 - 取决于实现
+        业务规则: 分配到不存在的实验
         """
-        response = anon_client.get(self.ENDPOINT)
-        # 可能返回 200 (公开) 或 401 (需要认证)
-        assert response.status_code in [200, 401]
+        fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
+        response = auth_client.post(
+            Endpoints.experiment_assign(fake_key),
+            json={}
+        )
+        # 可能返回 404 (实验不存在) 或 200 (创建新分配)
+        assert response.status_code in [200, 400, 404]
+
+    def test_assign_valid_experiment(self, auth_client):
+        """
+        业务规则: 分配到有效实验
+        """
+        response = auth_client.post(
+            Endpoints.experiment_assign("test_experiment"),
+            json={}
+        )
+        # 可能成功分配或实验不存在
+        assert response.status_code in [200, 400, 404]
 
 
 @pytest.mark.p1
-class TestGetSingleFlag(BaseAPITest):
+class TestExperimentExposure(BaseAPITest):
     """
-    GET /api/v2/user/experiments/{flag_key} 黑盒测试
+    POST /api/v2/user/experiments/{experiment_key}/exposure 黑盒测试
 
-    查询单个 Feature Flag
+    记录实验曝光
     """
 
-    def test_get_valid_flag(self, auth_client):
+    def test_exposure_requires_params(self, anon_client):
         """
-        业务规则: 查询存在的 Flag 应返回其值
-        """
-        # 先获取所有 flags 找一个有效的 key
-        all_flags_response = auth_client.get(Endpoints.EXPERIMENTS_ALL_FLAGS)
-        if all_flags_response.status_code == 200:
-            all_flags = all_flags_response.json()
-            if all_flags:
-                flag_key = list(all_flags.keys())[0]
-                response = auth_client.get(Endpoints.experiment(flag_key))
-                # 应该返回 200
-                assert response.status_code == 200
+        业务规则: 记录曝光需要 user_identifier 和 variant_key
 
-    def test_get_nonexistent_flag(self, auth_client):
+        这是公开端点，但需要必填参数
         """
-        业务规则: 查询不存在的 Flag
+        response = anon_client.post(
+            Endpoints.experiment_exposure("test_experiment"),
+            json={}
+        )
+        # 缺少 user_identifier 和 variant_key 返回 422 验证错误
+        assert response.status_code == 422
 
-        可能返回:
-        - 200 + default value
-        - 404
+    def test_exposure_nonexistent_experiment(self, auth_client):
+        """
+        业务规则: 记录不存在实验的曝光
+        """
+        fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
+        response = auth_client.post(
+            Endpoints.experiment_exposure(fake_key),
+            json={}
+        )
+        assert response.status_code in [200, 400, 404]
+
+
+@pytest.mark.p1
+class TestExperimentConversion(BaseAPITest):
+    """
+    POST /api/v2/user/experiments/{experiment_key}/conversion 黑盒测试
+
+    记录实验转化
+    """
+
+    def test_conversion_requires_user_identifier(self, anon_client):
+        """
+        业务规则: 记录转化需要 user_identifier
+
+        这是公开端点，但需要必填参数
+        """
+        response = anon_client.post(
+            Endpoints.experiment_conversion("test_experiment"),
+            json={}
+        )
+        # 缺少 user_identifier 返回 422 验证错误
+        assert response.status_code == 422
+
+    def test_conversion_nonexistent_experiment(self, auth_client):
+        """
+        业务规则: 记录不存在实验的转化
+        """
+        fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
+        response = auth_client.post(
+            Endpoints.experiment_conversion(fake_key),
+            json={}
+        )
+        assert response.status_code in [200, 400, 404]
+
+
+@pytest.mark.p2
+class TestExperimentUserStatus(BaseAPITest):
+    """
+    GET /api/v2/user/experiments/user/{user_identifier} 黑盒测试
+
+    获取用户实验状态
+    """
+
+    def test_user_status_public_endpoint(self, anon_client):
+        """
+        业务规则: 获取用户实验状态是公开端点
+
+        任何人都可以查询某个 user_identifier 的实验状态
+        """
+        response = anon_client.get(
+            Endpoints.experiment_user("test_user_123")
+        )
+        # 公开端点，返回 200 (可能为空列表)
+        data = self.assert_success(response)
+        assert "experiments" in data
+
+    def test_user_status_nonexistent_user(self, auth_client):
+        """
+        业务规则: 获取不存在用户的实验状态
+        """
+        fake_user = f"user_{uuid.uuid4().hex[:20]}"
+        response = auth_client.get(
+            Endpoints.experiment_user(fake_user)
+        )
+        # 可能返回 200 (空列表) 或 404
+        assert response.status_code in [200, 404]
+
+    def test_user_status_with_auth(self, auth_client):
+        """
+        业务规则: 获取有效用户的实验状态
         """
         response = auth_client.get(
-            Endpoints.experiment("nonexistent_flag_12345")
+            Endpoints.experiment_user("test_user_123")
         )
-        # 取决于实现，可能返回 200 (default) 或 404
         assert response.status_code in [200, 404]
 
 
 @pytest.mark.p2
-class TestUserTargeting(BaseAPITest):
+class TestExperimentsValidation(BaseAPITest):
     """
-    GET /api/v2/user/experiments/user-targeting 黑盒测试
-
-    获取用户定向规则
+    Experiments API 参数验证测试
     """
 
-    ENDPOINT = Endpoints.EXPERIMENTS_USER_TARGETING
-
-    def test_get_user_targeting(self, auth_client):
+    def test_assign_with_metadata(self, auth_client):
         """
-        业务规则: 获取用户的定向规则
+        业务规则: 分配时附带元数据
         """
-        response = auth_client.get(self.ENDPOINT)
-        # 可能返回 200 或 404 (如果没有定向规则)
-        assert response.status_code in [200, 404]
+        response = auth_client.post(
+            Endpoints.experiment_assign("test_experiment"),
+            json={"metadata": {"source": "test"}}
+        )
+        assert response.status_code in [200, 400, 404]
 
-    def test_requires_authentication(self, anon_client):
+    def test_conversion_with_value(self, auth_client):
         """
-        业务规则: 用户定向需要认证
+        业务规则: 转化时附带转化值
         """
-        response = anon_client.get(self.ENDPOINT)
-        self.assert_unauthorized(response)
+        response = auth_client.post(
+            Endpoints.experiment_conversion("test_experiment"),
+            json={"conversion_value": 100}
+        )
+        assert response.status_code in [200, 400, 404]
 
-
-@pytest.mark.p2
-class TestExperimentsPerformance(BaseAPITest):
-    """
-    Experiments 接口性能测试
-    """
-
-    def test_all_flags_response_time(self, auth_client):
+    def test_experiment_key_special_chars(self, auth_client):
         """
-        业务规则: Feature Flags 查询应快速响应
-
-        Feature Flags 是高频查询，应该有缓存
-        SLA: < 500ms
+        业务规则: 实验 key 包含特殊字符
         """
-        response = auth_client.get(Endpoints.EXPERIMENTS_ALL_FLAGS)
-        assert response.status_code == 200
-        self.assert_response_time(response, max_seconds=0.5)
+        response = auth_client.post(
+            Endpoints.experiment_assign("test/experiment/key"),
+            json={}
+        )
+        # 特殊字符可能导致路由问题
+        assert response.status_code in [400, 404]

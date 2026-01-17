@@ -71,11 +71,11 @@ class Endpoints:
     def project_duplicate(project_id: str) -> str:
         return f"{API_V2}/user/projects/{project_id}/duplicate"
 
-    # AI Generation
-    GENERATE_IMAGES = f"{API_V2}/user/generate/images"
-    GENERATE_IMAGES_ASYNC = f"{API_V2}/user/generate/images/async"
-    GENERATE_STORY = f"{API_V2}/user/generate/story"
-    GENERATE_INSPIRATION = f"{API_V2}/user/generate/inspiration"
+    # AI Generation (router prefix is /generate/images, endpoint is /images)
+    GENERATE_IMAGES = f"{API_V2}/user/generate/images/images"
+    GENERATE_IMAGES_ASYNC = f"{API_V2}/user/generate/images/images/async"
+    GENERATE_STORY = f"{API_V2}/user/generate/story/story"
+    GENERATE_INSPIRATION = f"{API_V2}/user/generate/story/inspiration"
 
     # Marketplace
     MARKETPLACE_LISTINGS = f"{API_V2}/user/marketplace/listings"
@@ -91,10 +91,10 @@ class Endpoints:
     RESOURCES = f"{API_V2}/user/resources"
     RESOURCES_TYPES = f"{API_V2}/user/resources/types"
 
-    # Assets (v3)
-    ASSETS = f"{API_V3}/user/assets"
-    ASSETS_DASHBOARD = f"{API_V3}/user/assets/dashboard"
-    ASSETS_DELETED = f"{API_V3}/user/assets/deleted"
+    # Assets (all user APIs are under v2)
+    ASSETS = f"{API_V2}/user/assets"
+    ASSETS_DASHBOARD = f"{API_V2}/user/assets/dashboard"
+    ASSETS_DELETED = f"{API_V2}/user/assets/deleted"
 
     # Config
     CONFIG = f"{API_V2}/user/config"
@@ -143,25 +143,25 @@ class Endpoints:
     # Seller
     SELLER_STATS = f"{API_V2}/user/seller/stats"
 
-    # Templates
-    TEMPLATES_ASSET = f"{API_V3}/user/templates/asset"
-    TEMPLATES_PAGE = f"{API_V3}/user/templates/page"
+    # Templates (all user APIs are under v2)
+    TEMPLATES_ASSET = f"{API_V2}/user/templates/asset"
+    TEMPLATES_PAGE = f"{API_V2}/user/templates/page"
 
     @staticmethod
     def template_asset(template_id: str) -> str:
-        return f"{API_V3}/user/templates/asset/{template_id}"
+        return f"{API_V2}/user/templates/asset/{template_id}"
 
     @staticmethod
     def template_asset_use(template_id: str) -> str:
-        return f"{API_V3}/user/templates/asset/{template_id}/use"
+        return f"{API_V2}/user/templates/asset/{template_id}/use"
 
     @staticmethod
     def template_page(template_id: str) -> str:
-        return f"{API_V3}/user/templates/page/{template_id}"
+        return f"{API_V2}/user/templates/page/{template_id}"
 
     @staticmethod
     def template_page_use(template_id: str) -> str:
-        return f"{API_V3}/user/templates/page/{template_id}/use"
+        return f"{API_V2}/user/templates/page/{template_id}/use"
 
     # Themes
     THEMES_CURRENT = f"{API_V2}/user/themes/current"
@@ -175,35 +175,45 @@ class Endpoints:
     def task_cancel(task_id: str) -> str:
         return f"{API_V2}/user/tasks/{task_id}/cancel"
 
-    # User Assets
-    ASSETS_CHECK_URL = f"{API_V3}/user/assets/check-url"
-    ASSETS_FROM_URL = f"{API_V3}/user/assets/from-url"
+    # User Assets (all user APIs are under v2)
+    ASSETS_CHECK_URL = f"{API_V2}/user/assets/check-url"
+    ASSETS_FROM_URL = f"{API_V2}/user/assets/from-url"
 
     @staticmethod
     def asset(asset_id: str) -> str:
-        return f"{API_V3}/user/assets/{asset_id}"
+        return f"{API_V2}/user/assets/{asset_id}"
 
     @staticmethod
     def asset_restore(asset_id: str) -> str:
-        return f"{API_V3}/user/assets/{asset_id}/restore"
+        return f"{API_V2}/user/assets/{asset_id}/restore"
 
     @staticmethod
     def asset_increment_usage(asset_id: str) -> str:
-        return f"{API_V3}/user/assets/{asset_id}/increment-usage"
+        return f"{API_V2}/user/assets/{asset_id}/increment-usage"
 
     # Generation (Images, PDF, Story)
     GENERATE_PDF = f"{API_V2}/user/generate/pdf/pdf"
     GENERATE_STORY_STORY = f"{API_V2}/user/generate/story/story"
     GENERATE_STORY_INSPIRATION = f"{API_V2}/user/generate/story/inspiration"
 
-    # Experiments (Feature Flags)
+    # Experiments (actual endpoints: assign, exposure, conversion, user/{identifier})
     EXPERIMENTS = f"{API_V2}/user/experiments"
-    EXPERIMENTS_ALL_FLAGS = f"{API_V2}/user/experiments/all-flags"
-    EXPERIMENTS_USER_TARGETING = f"{API_V2}/user/experiments/user-targeting"
 
     @staticmethod
-    def experiment(flag_key: str) -> str:
-        return f"{API_V2}/user/experiments/{flag_key}"
+    def experiment_assign(experiment_key: str) -> str:
+        return f"{API_V2}/user/experiments/{experiment_key}/assign"
+
+    @staticmethod
+    def experiment_exposure(experiment_key: str) -> str:
+        return f"{API_V2}/user/experiments/{experiment_key}/exposure"
+
+    @staticmethod
+    def experiment_conversion(experiment_key: str) -> str:
+        return f"{API_V2}/user/experiments/{experiment_key}/conversion"
+
+    @staticmethod
+    def experiment_user(user_identifier: str) -> str:
+        return f"{API_V2}/user/experiments/user/{user_identifier}"
 
     # Analytics
     ANALYTICS_EVENTS = f"{API_V2}/user/analytics/events"

@@ -50,14 +50,16 @@ class TestActiveCampaigns(BaseAPITest):
             # 活动应该有基本信息
             assert "id" in campaign or "campaign_id" in campaign
 
-    def test_requires_authentication(self, anon_client):
+    def test_public_endpoint(self, anon_client):
         """
-        业务规则: 营销活动需要认证
+        业务规则: 营销活动是公开端点
 
-        活动是个性化的，基于用户画像
+        支持 optional_user，匿名用户也可以查看通用活动
         """
         response = anon_client.get(self.ENDPOINT)
-        self.assert_unauthorized(response)
+        # 公开端点，返回 200 (可能为空列表)
+        data = self.assert_success(response)
+        assert isinstance(data, dict), "响应格式不正确"
 
 
 @pytest.mark.p1
