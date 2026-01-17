@@ -17,15 +17,21 @@ from domains.assets.assets_service import AssetsService
 
 @dataclass
 class GetUserAssetsQuery:
-    """Query to get user assets."""
+    """Query to get user assets with pagination."""
     user_id: str
     project_id: Optional[str] = None
+    offset: int = 0
+    limit: int = 50
 
 
 @dataclass
 class GetUserAssetsResult:
     """Result of get user assets query."""
-    assets: List[Dict[str, Any]]
+    items: List[Dict[str, Any]]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
 
 
 class GetUserAssetsHandler:
@@ -35,12 +41,20 @@ class GetUserAssetsHandler:
         self._service = service
 
     async def handle(self, query: GetUserAssetsQuery) -> GetUserAssetsResult:
-        """Execute get user assets query."""
-        assets = await self._service.get_user_assets(
+        """Execute get user assets query with pagination."""
+        result = await self._service.get_user_assets_paginated(
             query.user_id,
-            query.project_id
+            query.project_id,
+            offset=query.offset,
+            limit=query.limit
         )
-        return GetUserAssetsResult(assets=assets)
+        return GetUserAssetsResult(
+            items=result["items"],
+            total=result["total"],
+            offset=query.offset,
+            limit=query.limit,
+            has_more=result["has_more"]
+        )
 
 
 # ==========================================
@@ -133,14 +147,20 @@ class GetSellerStatsHandler:
 
 @dataclass
 class GetDeletedAssetsQuery:
-    """Query to get soft-deleted assets."""
+    """Query to get soft-deleted assets with pagination."""
     user_id: str
+    offset: int = 0
+    limit: int = 50
 
 
 @dataclass
 class GetDeletedAssetsResult:
     """Result of get deleted assets query."""
-    assets: List[Dict[str, Any]]
+    items: List[Dict[str, Any]]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
 
 
 class GetDeletedAssetsHandler:
@@ -150,6 +170,16 @@ class GetDeletedAssetsHandler:
         self._service = service
 
     async def handle(self, query: GetDeletedAssetsQuery) -> GetDeletedAssetsResult:
-        """Execute get deleted assets query."""
-        assets = await self._service.get_deleted_assets(query.user_id)
-        return GetDeletedAssetsResult(assets=assets)
+        """Execute get deleted assets query with pagination."""
+        result = await self._service.get_deleted_assets_paginated(
+            query.user_id,
+            offset=query.offset,
+            limit=query.limit
+        )
+        return GetDeletedAssetsResult(
+            items=result["items"],
+            total=result["total"],
+            offset=query.offset,
+            limit=query.limit,
+            has_more=result["has_more"]
+        )

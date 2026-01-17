@@ -179,11 +179,12 @@ class GetDashboardProjectsQuery:
     """
     Query to get dashboard projects with view type filtering.
 
+    P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
     Supports cross-domain data (marketplace listings).
     """
     user_id: str
     view_type: str = "all"  # "all", "bought", "selling"
-    page: int = 1
+    offset: int = 0
     limit: int = 20
     search: Optional[str] = None
     include_canvas_data: bool = True
@@ -214,7 +215,7 @@ class GetDashboardProjectsHandler:
             result = await self._repository.get_dashboard_projects(
                 user_id=query.user_id,
                 view_type=query.view_type,
-                page=query.page,
+                offset=query.offset,
                 limit=query.limit,
                 search=query.search,
                 include_canvas_data=query.include_canvas_data,

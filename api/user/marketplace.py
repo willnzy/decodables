@@ -2,9 +2,11 @@
 Marketplace API - Marketplace listings and purchases.
 
 @module api.user.marketplace
-@version 3.2.0
+@version 3.3.0
 
 Changes:
+- v3.3.0: DDD pagination compliance
+  - GET /listings response changed from {page} to {offset, limit, has_more}
 - v3.2.0: API Consolidation Phase 3
   - REMOVED: GET /seller/stats (use /api/v2/user/seller/stats?include=listings)
 - v3.1.0 (2026-01-10): P2-047 - SSRF protection for listing creation
@@ -168,10 +170,12 @@ class ListingResponse(BaseModel):
 
 
 class ListingsResponse(BaseModel):
-    """Listings list response."""
+    """Listings list response (DDD compliant: offset/limit pagination)."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
+    limit: int
+    has_more: bool
 
 
 class PurchaseResponse(BaseModel):
@@ -237,12 +241,13 @@ async def list_listings(
         logger.error(f"Failed to get listings: {result.error}")
         raise HTTPException(500, "Failed to get listings")
 
-    # Calculate page number from offset for response
-    page = (offset // limit) + 1 if limit > 0 else 1
+    # DDD compliant response with offset/limit
     return ListingsResponse(
         items=result.listings_list,
         total=result.total_count,
-        page=page,
+        offset=offset,
+        limit=limit,
+        has_more=offset + len(result.listings_list) < result.total_count,
     )
 
 

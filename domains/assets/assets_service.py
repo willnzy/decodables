@@ -130,7 +130,7 @@ class AssetsService:
         project_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get user assets with optional project filter.
+        Get user assets with optional project filter (legacy, no pagination).
 
         Args:
             user_id: User ID
@@ -140,6 +140,34 @@ class AssetsService:
             List of asset dicts
         """
         return await self.repository.get_assets(user_id, project_id)
+
+    async def get_user_assets_paginated(
+        self,
+        user_id: str,
+        project_id: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get user assets with pagination.
+
+        Args:
+            user_id: User ID
+            project_id: Optional project ID filter
+            offset: Number of items to skip
+            limit: Max items to return
+
+        Returns:
+            Dict with items, total, has_more
+        """
+        items, total = await self.repository.get_assets_paginated(
+            user_id, project_id, offset=offset, limit=limit
+        )
+        return {
+            "items": items,
+            "total": total,
+            "has_more": offset + len(items) < total
+        }
 
     async def check_url_validity(self, url: str) -> Dict[str, Any]:
         """
@@ -221,7 +249,7 @@ class AssetsService:
         offset: int = 0
     ) -> tuple[List[Dict[str, Any]], int]:
         """
-        Get soft-deleted assets (recoverable only).
+        Get soft-deleted assets (recoverable only) - legacy method.
 
         Only returns assets within recovery period.
         Expired assets are automatically filtered out.
@@ -255,6 +283,30 @@ class AssetsService:
             })
 
         return asset_dicts, total
+
+    async def get_deleted_assets_paginated(
+        self,
+        user_id: str,
+        offset: int = 0,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get soft-deleted assets with pagination response format.
+
+        Args:
+            user_id: User ID
+            offset: Number of items to skip
+            limit: Max items to return
+
+        Returns:
+            Dict with items, total, has_more
+        """
+        items, total = await self.get_deleted_assets(user_id, limit=limit, offset=offset)
+        return {
+            "items": items,
+            "total": total,
+            "has_more": offset + len(items) < total
+        }
 
     # ==========================================
     # Command Methods

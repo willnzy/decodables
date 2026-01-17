@@ -1,10 +1,14 @@
 """
-User Assets Router - User asset management endpoints (v3.1.0)
+User Assets Router - User asset management endpoints (v3.2.0)
 
 @module api.user.user_assets
-@version 3.1.0
+@version 3.2.0
 
 Changes:
+- v3.2.0: Pagination support
+  - GET /assets now supports offset/limit pagination
+  - GET /deleted now supports offset/limit pagination
+  - Response format: {items, total, offset, limit, has_more}
 - v3.1.0: API Consolidation Phase 3
   - REMOVED: GET /seller-stats (use /api/v2/user/seller/stats?include=assets)
 - v3.0.0: DDD architecture upgrade - Full CQRS pattern
@@ -25,14 +29,14 @@ Changes:
   - UA-LOW-2: Added URL length limit (2048 chars)
 
 Endpoints:
-- GET /api/v3/user/assets - Get user assets
+- GET /api/v3/user/assets?offset=0&limit=50 - Get user assets (paginated)
 - POST /api/v3/user/assets - Upload asset
 - DELETE /api/v3/user/assets/{asset_id} - Delete asset
 - POST /api/v3/user/assets/from-url - Add asset from URL
 - GET /api/v3/user/assets/check-url - Check URL validity
 - POST /api/v3/user/assets/{asset_id}/increment-usage - Increment usage
 - GET /api/v3/user/assets/dashboard - Asset dashboard
-- GET /api/v3/user/assets/deleted - Get deleted assets
+- GET /api/v3/user/assets/deleted?offset=0&limit=50 - Get deleted assets (paginated)
 - POST /api/v3/user/assets/{asset_id}/restore - Restore asset
 """
 
@@ -109,13 +113,39 @@ async def my_assets(
     request: Request,
     project_id: Optional[str] = None,
     scope: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 50,
     user: UserProfile = Depends(get_current_user)
 ):
     """
-    Fetch user assets.
+    Fetch user assets with pagination.
 
+    v3.2.0: Added pagination support (offset/limit).
     v3.0.0: Now uses GetUserAssetsHandler (Container pattern).
+
+    Query Parameters:
+        - project_id: Optional project ID filter
+        - scope: "all" for cross-project (Pro only)
+        - offset: Number of items to skip (default: 0)
+        - limit: Max items to return (default: 50, max: 100)
+
+    Returns:
+        {
+            "items": [...],
+            "total": 123,
+            "offset": 0,
+            "limit": 50,
+            "has_more": true
+        }
     """
+    # Validate pagination params
+    if offset < 0:
+        offset = 0
+    if limit < 1:
+        limit = 50
+    if limit > 100:
+        limit = 100
+
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
 
@@ -130,10 +160,21 @@ async def my_assets(
     container = get_container()
     handler = await container.get_user_assets_handler()
 
-    query = GetUserAssetsQuery(user_id=user.user_id, project_id=target_proj)
+    query = GetUserAssetsQuery(
+        user_id=user.user_id,
+        project_id=target_proj,
+        offset=offset,
+        limit=limit
+    )
     result = await handler.handle(query)
 
-    return result.assets
+    return {
+        "items": result.items,
+        "total": result.total,
+        "offset": result.offset,
+        "limit": result.limit,
+        "has_more": result.has_more
+    }
 
 
 @router.post("")
@@ -316,20 +357,54 @@ async def get_asset_dashboard(
 @limiter.limit("30/minute")
 async def get_deleted(
     request: Request,
+    offset: int = 0,
+    limit: int = 50,
     user: UserProfile = Depends(get_current_user)
 ):
     """
-    Get soft-deleted assets (trash).
+    Get soft-deleted assets (trash) with pagination.
 
+    v3.2.0: Added pagination support (offset/limit).
     v3.0.0: Now uses GetDeletedAssetsHandler (Container pattern).
+
+    Query Parameters:
+        - offset: Number of items to skip (default: 0)
+        - limit: Max items to return (default: 50, max: 100)
+
+    Returns:
+        {
+            "items": [...],
+            "total": 10,
+            "offset": 0,
+            "limit": 50,
+            "has_more": false
+        }
     """
+    # Validate pagination params
+    if offset < 0:
+        offset = 0
+    if limit < 1:
+        limit = 50
+    if limit > 100:
+        limit = 100
+
     container = get_container()
     handler = await container.get_deleted_assets_handler()
 
-    query = GetDeletedAssetsQuery(user_id=user.user_id)
+    query = GetDeletedAssetsQuery(
+        user_id=user.user_id,
+        offset=offset,
+        limit=limit
+    )
     result = await handler.handle(query)
 
-    return result.assets
+    return {
+        "items": result.items,
+        "total": result.total,
+        "offset": result.offset,
+        "limit": result.limit,
+        "has_more": result.has_more
+    }
 
 
 @router.post("/{asset_id}/restore")

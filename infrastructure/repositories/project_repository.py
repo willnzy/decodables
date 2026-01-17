@@ -778,7 +778,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         self,
         user_id: str,
         view_type: str = "all",
-        page: int = 1,
+        offset: int = 0,
         limit: int = 20,
         search: Optional[str] = None,
         include_canvas_data: bool = True
@@ -786,18 +786,19 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """
         Get projects for dashboard with view type filtering.
 
+        P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
+
         Args:
             user_id: User ID
             view_type: "all", "bought", or "selling"
-            page: Page number
+            offset: Number of records to skip
             limit: Items per page
             search: Search query
             include_canvas_data: Whether to include canvas_data
 
         Returns:
-            Dict with items, total, page, and view-specific metadata
+            Dict with items, total, offset, limit, and view-specific metadata
         """
-        offset = (page - 1) * limit
 
         # Determine select fields
         if include_canvas_data:
@@ -860,7 +861,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                     if listing_id and listing_id in listings_map:
                         item["marketplace_listing_data"] = listings_map[listing_id]
 
-        return {"items": items, "total": total, "page": page, "view_type": view_type}
+        return {"items": items, "total": total, "offset": offset, "limit": limit, "view_type": view_type}
 
     @retry_on_network_error()
     async def get_seller_project_stats(

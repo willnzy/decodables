@@ -26,15 +26,15 @@ Changes:
   - Added category parameter validation
   - Added preset validation using field_validator
 
-Endpoints:
-- GET /config - Get all configs
-- GET /config/{config_key} - Get single config
-- PUT /config - Update single config
-- PUT /config/batch - Batch update configs
+Endpoints (prefix: /api/v2/admin/config):
+- GET / - Get all configs
+- GET /{config_key} - Get single config
+- PUT / - Update single config
+- PUT /batch - Batch update configs
 - GET /rate-limits - Get current rate limits
 - POST /rate-limits/preset - Apply rate limit preset
 - GET /rate-limits/presets - Get available presets
-- POST /config/cache/clear - Clear config cache
+- POST /cache/clear - Clear config cache
 """
 
 import json
@@ -120,7 +120,7 @@ async def get_config_service() -> ConfigService:
 # Config Endpoints
 # ==========================================
 
-@router.get("/config", response_model=AllConfigsResponse)
+@router.get("", response_model=AllConfigsResponse)
 @limiter.limit("30/minute")  # CFG-LOW-2: Reduced from 60 to 30
 async def get_all_configs(
     request: Request,
@@ -221,7 +221,7 @@ async def get_all_configs(
         raise HTTPException(500, "Failed to retrieve configurations")
 
 
-@router.get("/config/{config_key}", response_model=SingleConfigResponse)
+@router.get("/{config_key}", response_model=SingleConfigResponse)
 @limiter.limit("30/minute")  # CFG-LOW-2
 async def get_config(
     request: Request,
@@ -310,7 +310,7 @@ async def get_config(
         raise HTTPException(500, "Failed to retrieve configuration")
 
 
-@router.put("/config", response_model=ConfigUpdateResponse)
+@router.put("", response_model=ConfigUpdateResponse)
 @limiter.limit("10/minute")
 async def update_config(
     request: Request,
@@ -371,7 +371,7 @@ async def update_config(
         raise HTTPException(500, "Failed to update configuration")
 
 
-@router.put("/config/batch", response_model=BatchConfigUpdateResponse)
+@router.put("/batch", response_model=BatchConfigUpdateResponse)
 @limiter.limit("10/minute")
 async def batch_update_configs_endpoint(
     request: Request,
@@ -584,7 +584,7 @@ async def get_rate_limit_presets(
 # Cache Management Endpoints
 # ==========================================
 
-@router.post("/config/cache/clear", response_model=CacheClearResponse)
+@router.post("/cache/clear", response_model=CacheClearResponse)
 @limiter.limit("10/minute")
 async def clear_cache(
     request: Request,

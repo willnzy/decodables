@@ -95,7 +95,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         project_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get user assets.
+        Get user assets (legacy, no pagination).
 
         Args:
             user_id: User ID
@@ -111,6 +111,40 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
         result = await query.order("created_at", desc=True).execute()
         return result.data or []
+
+    @retry_on_network_error()
+    async def get_assets_paginated(
+        self,
+        user_id: str,
+        project_id: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 50
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """
+        Get user assets with pagination.
+
+        Args:
+            user_id: User ID
+            project_id: Optional project ID filter
+            offset: Number of items to skip
+            limit: Max items to return
+
+        Returns:
+            Tuple of (list of asset dicts, total count)
+        """
+        # Build base query for non-deleted assets
+        base_query = self.client.table("assets").select("*", count="exact").eq("user_id", user_id).is_("is_deleted", False)
+
+        if project_id:
+            base_query = base_query.eq("project_id", project_id)
+
+        # Execute with pagination
+        result = await base_query.order("created_at", desc=True).range(offset, offset + limit - 1).execute()
+
+        items = result.data or []
+        total = result.count or 0
+
+        return items, total
 
     @retry_on_network_error()
     async def delete_asset(self, asset_id: str, user_id: str) -> bool:

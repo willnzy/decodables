@@ -209,7 +209,7 @@ async def list_projects(
 @router.get("/dashboard")
 async def dashboard_projects(
     view: str = Query("all", pattern="^(all|bought|selling)$"),
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
@@ -218,13 +218,13 @@ async def dashboard_projects(
     """
     Get projects for dashboard with view type filtering.
 
-    P1-002 fix: Migrated to page-based pagination (aligned with Query class).
+    P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
     v3.31: 添加重试机制处理 Supabase 临时故障 (502/503)
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
-        page: Page number (1-indexed, default: 1)
+        offset: Number of records to skip (default: 0)
         limit: Number of records to return (default: 20, max: 100)
         search: Search query
         include_canvas: Whether to include canvas_data
@@ -238,7 +238,7 @@ async def dashboard_projects(
     query = GetDashboardProjectsQuery(
         user_id=user.user_id,
         view_type=view,
-        page=page,
+        offset=offset,
         limit=limit,
         search=search,
         include_canvas_data=include_canvas,
@@ -248,15 +248,13 @@ async def dashboard_projects(
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         result = await handler.handle(query)
-        
+
         if result.success:
             # P2-002: Return Pydantic model
-            # v3.31: 计算 offset 以保持响应格式兼容
-            calculated_offset = (page - 1) * limit
             return DashboardProjectsResponse(
                 items=result.data.get("items", []),
                 total=result.data.get("total", 0),
-                offset=result.data.get("offset", calculated_offset),
+                offset=result.data.get("offset", offset),
                 limit=result.data.get("limit", limit),
                 view=view,
             )

@@ -98,7 +98,12 @@ async def get_referrals(
     """
     获取用户的推荐列表
 
+    P1-004 fix: Migrated to DDD-compliant response format.
+
     返回该用户创建的所有推荐记录
+
+    Returns:
+        {items, total, offset, limit, has_more} - DDD compliant pagination response
     """
     referrals, total = await service.get_user_referrals(
         user_id=user.user_id,
@@ -106,13 +111,13 @@ async def get_referrals(
         limit=limit
     )
 
+    items = [r.dict() for r in referrals]
     return {
-        "data": [r.dict() for r in referrals],
-        "pagination": {
-            "offset": offset,
-            "limit": limit,
-            "total": total
-        }
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(items) < total
     }
 
 

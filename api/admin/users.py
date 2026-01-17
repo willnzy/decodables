@@ -2,7 +2,11 @@
 Admin Users API - User management endpoints for admins.
 
 @module api.admin.users
-@version 3.28 (Container-based DI)
+@version 3.29 (API Consistency)
+
+Changes in v3.29:
+- Renamed query parameter 'query' to 'search' for API consistency
+- Renamed path parameter 'uid' to 'user_id' for API consistency
 
 Changes in v3.28:
 - USER-ARCH-1: Migrated to Container-based dependency injection
@@ -15,20 +19,20 @@ Changes in v3.25:
 - USER-MEDIUM-2: Migrated from page to offset pagination
 - USER-MEDIUM-3: Added tier enum validation
 - USER-LOW-1: Added field length limits to request models
-- USER-LOW-2: Added uid/project_id length validation
+- USER-LOW-2: Added user_id/project_id length validation
 - USER-LOW-3: Limited error exposure
 
 Endpoints:
-- GET /users - Search users
-- GET /users/{uid} - Get user audit
-- POST /users/{uid}/credits - Adjust credits
-- PATCH /users/{uid} - Update tier
-- POST /users/{uid}/discount - Create discount
-- GET /users/{uid}/payments - Get payment history
+- GET /users?search= - Search users
+- GET /users/{user_id} - Get user audit
+- POST /users/{user_id}/credits - Adjust credits
+- PATCH /users/{user_id} - Update tier
+- POST /users/{user_id}/discount - Create discount
+- GET /users/{user_id}/payments - Get payment history
 - GET /users/by-tier/{tier} - Get users by tier
-- GET /users/{uid}/projects - Get user projects
-- GET /users/{uid}/asset-usage - Get asset usage
-- GET /users/{uid}/env-stats - Get env stats
+- GET /users/{user_id}/projects - Get user projects
+- GET /users/{user_id}/asset-usage - Get asset usage
+- GET /users/{user_id}/env-stats - Get env stats
 - POST /projects/{project_id}/restore - Restore deleted project
 - GET /projects/feed - Site-wide project feed
 """
@@ -100,17 +104,18 @@ class DiscountRequest(BaseModel):
 @limiter.limit("30/minute")
 async def search_users_api(
     request: Request,
-    query: str = Query(..., min_length=1, max_length=200),
+    search: str = Query(..., min_length=1, max_length=200, description="Search by user_id, email, or user_code"),
     limit: int = Query(20, ge=1, le=100),
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """
-    Search users by query string (user_id, email, or user_code).
+    Search users by search string (user_id, email, or user_code).
 
     v3.28: Refactored to use AdminUsersService via Container.
+    v3.29: Renamed parameter from 'query' to 'search' for API consistency.
     """
-    return await service.search_users(query, limit=limit)
+    return await service.search_users(search, limit=limit)
 
 
 @router.get("/users/by-tier/{tier}")
@@ -134,40 +139,40 @@ async def get_users_by_tier_api(
         raise HTTPException(400, str(e))
 
 
-@router.get("/users/{uid}")
+@router.get("/users/{user_id}")
 @limiter.limit("30/minute")
 async def get_user_audit(
     request: Request,
-    uid: str,
+    user_id: str,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Get full user audit data."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
-    return await service.get_user_audit(uid)
+    return await service.get_user_audit(user_id)
 
 
-@router.post("/users/{uid}/credits")
+@router.post("/users/{user_id}/credits")
 @limiter.limit("10/minute")
 async def adjust_user_credits(
     request: Request,
-    uid: str,
+    user_id: str,
     req: CreditAdjustRequest,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Manually adjust a user's credits with admin logging."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
-    return await service.adjust_credits(uid, req.amount, req.bucket, req.reason, admin["id"])
+    return await service.adjust_credits(user_id, req.amount, req.bucket, req.reason, admin["id"])
 
 
-@router.patch("/users/{uid}")
+@router.patch("/users/{user_id}")
 @limiter.limit("10/minute")
 async def update_user(
     request: Request,
-    uid: str,
+    user_id: str,
     req: TierUpdateRequest,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
@@ -176,76 +181,77 @@ async def update_user(
     Update user properties (tier).
 
     v3.28: Refactored to use AdminUsersService via Container.
+    v3.29: Renamed path parameter from 'uid' to 'user_id' for API consistency.
     """
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
-    return await service.update_user_tier(uid, req.tier, admin["id"])
+    return await service.update_user_tier(user_id, req.tier, admin["id"])
 
 
-@router.post("/users/{uid}/tier", deprecated=True)
+@router.post("/users/{user_id}/tier", deprecated=True)
 @limiter.limit("10/minute")
 async def update_user_tier(
     request: Request,
-    uid: str,
+    user_id: str,
     req: TierUpdateRequest,
     admin: dict = Depends(require_admin),
 ):
     """
     Update user tier (DEPRECATED - REMOVED in v3.26).
 
-    **Please use `PATCH /users/{uid}` instead.**
+    **Please use `PATCH /users/{user_id}` instead.**
     """
     raise HTTPException(
         status_code=410,
         detail={
             "error": "Endpoint removed",
-            "message": "POST /users/{uid}/tier has been removed. Please use PATCH /users/{uid} instead.",
-            "replacement_endpoint": f"PATCH /admin/users/{uid}",
+            "message": "POST /users/{user_id}/tier has been removed. Please use PATCH /users/{user_id} instead.",
+            "replacement_endpoint": f"PATCH /admin/users/{user_id}",
         }
     )
 
 
-@router.post("/users/{uid}/discount")
+@router.post("/users/{user_id}/discount")
 @limiter.limit("10/minute")
 async def create_user_discount_api(
     request: Request,
-    uid: str,
+    user_id: str,
     req: DiscountRequest,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Create a user-specific discount with admin logging."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
     return await service.create_user_discount(
-        uid, req.discount_percent, req.valid_days, req.target_plan, admin["id"]
+        user_id, req.discount_percent, req.valid_days, req.target_plan, admin["id"]
     )
 
 
-@router.get("/users/{uid}/payments")
+@router.get("/users/{user_id}/payments")
 @limiter.limit("30/minute")
 async def get_user_payments(
     request: Request,
-    uid: str,
+    user_id: str,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Fetch a user's payment history."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
     try:
-        return await service.get_user_payments(uid)
+        return await service.get_user_payments(user_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 
 
-@router.get("/users/{uid}/projects")
+@router.get("/users/{user_id}/projects")
 @limiter.limit("30/minute")
 async def get_user_projects(
     request: Request,
-    uid: str,
+    user_id: str,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     include_deleted: bool = True,
@@ -253,46 +259,46 @@ async def get_user_projects(
     service = Depends(get_admin_users_service),
 ):
     """Fetch all projects owned by a specific user."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
-    return await service.get_user_projects(uid, offset, limit, include_deleted)
+    return await service.get_user_projects(user_id, offset, limit, include_deleted)
 
 
-@router.get("/users/{uid}/asset-usage")
+@router.get("/users/{user_id}/asset-usage")
 @limiter.limit("30/minute")
 async def get_user_asset_usage(
     request: Request,
-    uid: str,
+    user_id: str,
     top_n: int = 10,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Get detailed asset usage for a user."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
     try:
-        return await service.get_user_asset_usage(uid, top_n=top_n)
+        return await service.get_user_asset_usage(user_id, top_n=top_n)
     except Exception as e:
-        logger.error(f"[Admin] Failed to get asset usage for {uid}: {e}")
+        logger.error(f"[Admin] Failed to get asset usage for {user_id}: {e}")
         raise HTTPException(500, "Failed to retrieve asset usage data")
 
 
-@router.get("/users/{uid}/env-stats")
+@router.get("/users/{user_id}/env-stats")
 @limiter.limit("30/minute")
 async def get_user_env_stats(
     request: Request,
-    uid: str,
+    user_id: str,
     limit: int = 100,
     admin: dict = Depends(require_admin),
     service = Depends(get_admin_users_service),
 ):
     """Get detailed user environment statistics."""
-    if len(uid) > 100:
+    if len(user_id) > 100:
         raise HTTPException(400, "User ID too long (max 100 characters)")
     try:
-        return await service.get_user_env_stats(uid, limit=limit)
+        return await service.get_user_env_stats(user_id, limit=limit)
     except Exception as e:
-        logger.error(f"[Admin] Failed to get env stats for {uid}: {e}")
+        logger.error(f"[Admin] Failed to get env stats for {user_id}: {e}")
         raise HTTPException(500, "Failed to retrieve environment statistics")
 
 
