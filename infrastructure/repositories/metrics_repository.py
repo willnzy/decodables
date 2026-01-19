@@ -295,6 +295,11 @@ class SupabaseMetricsRepository:
                 "by_status": by_status
             }
         except APIError as e:
+            # Handle missing table gracefully (PGRST205 = table not found)
+            error_str = str(e)
+            if "PGRST205" in error_str or "404" in error_str:
+                logger.warning(f"[MetricsRepo] error_logs table not found, returning empty stats")
+                return {"total": 0, "by_type": {}, "by_status": {}}
             logger.error(f"[MetricsRepo] Failed to get error stats: {e}")
             raise
         except Exception as e:

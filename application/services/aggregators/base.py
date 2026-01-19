@@ -82,6 +82,11 @@ def upsert_stats(stat_type: str, data: dict, date: datetime = None):
         }, on_conflict="stat_type,stat_key,period_start").execute()
         return result.data[0] if result.data else None
     except Exception as e:
+        error_str = str(e)
+        # Handle missing table gracefully (PGRST205 = table not found in Supabase)
+        if "PGRST205" in error_str or "404" in error_str:
+            logger.warning(f"[Aggregator] aggregated_stats table not found, skipping upsert for {stat_type}")
+            return None
         log(f"❌ Error upserting stats {stat_type}: {e}")
         return None
 
