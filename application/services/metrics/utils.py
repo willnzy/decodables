@@ -27,9 +27,10 @@ BOT_PATTERNS = re.compile(
 )
 
 # Subscription pricing (cents)
+# Use system tier codes (t1/t2/t3), not display names (free/starter/pro)
 TIER_PRICING = {
-    'starter': 999,    # $9.99/month
-    'pro': 2499,       # $24.99/month
+    't2': 690,     # $6.9/month (Starter Plan)
+    't3': 990,     # $9.9/month (Pro Plan)
 }
 
 # Retention periods to calculate
