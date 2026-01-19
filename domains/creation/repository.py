@@ -234,3 +234,23 @@ class IProjectRepository(ABC):
             List of matching Projects
         """
         pass
+
+    @abstractmethod
+    async def get_by_idempotency_key(
+        self,
+        user_id: str,
+        idempotency_key: str
+    ) -> Optional[Project]:
+        """
+        Get project by idempotency key for a specific user.
+
+        v1.1.0: Idempotency support - enables safe retries on creation.
+
+        Args:
+            user_id: Owner's user ID
+            idempotency_key: Client-generated unique key
+
+        Returns:
+            Project if found with matching key, None otherwise
+        """
+        pass

@@ -2,12 +2,17 @@
 Creation Domain Service - Orchestrates project operations.
 
 @module domains.creation.service
-@version 2.0.0
+@version 2.1.0
 
 This service handles domain logic that doesn't naturally belong to aggregates.
 It coordinates operations but delegates persistence to the repository.
 
 Project limits are now fetched from TierService (system_configs) instead of hardcoded.
+
+v2.1.0 Changes:
+- Added idempotency_key support for create_project (industry best practice)
+- Added get_by_idempotency_key method
+- Prevents duplicate project creation on retry
 """
 
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
@@ -113,13 +118,40 @@ class CreationService:
 
         return project
 
+    async def get_by_idempotency_key(
+        self,
+        user_id: str,
+        idempotency_key: str
+    ) -> Optional[Project]:
+        """
+        Get project by idempotency key for a specific user.
+
+        v2.1.0: Idempotency support - returns existing project if already created
+        with this key, enabling safe retries.
+
+        Args:
+            user_id: Owner's user ID
+            idempotency_key: Client-generated unique key
+
+        Returns:
+            Project if found, None otherwise
+        """
+        if not idempotency_key:
+            return None
+
+        return await self._repository.get_by_idempotency_key(
+            user_id=user_id,
+            idempotency_key=idempotency_key,
+        )
+
     async def create_project(
         self,
         owner_id: str,
         title: str,
         canvas_size: Optional[CanvasSize] = None,
         description: Optional[str] = None,
-        user_tier: str = "t1"
+        user_tier: str = "t1",
+        idempotency_key: Optional[str] = None
     ) -> Project:
         """
         Create a new project with atomic limit check.
@@ -130,12 +162,15 @@ class CreationService:
         3. Verify count after create didn't exceed limit
         4. If exceeded, rollback (delete) and raise error
 
+        v2.1.0: Added idempotency_key support for safe retries.
+
         Args:
             owner_id: User ID of owner
             title: Project title
             canvas_size: Canvas dimensions
             description: Optional description
             user_tier: User's subscription tier
+            idempotency_key: Client-generated unique key for idempotent creation
 
         Returns:
             Created Project
@@ -160,13 +195,17 @@ class CreationService:
         if current_count >= limit:
             raise ProjectLimitExceededException(owner_id, limit)
 
-        # Create project
+        # Create project with idempotency_key
         project = Project.create_new(
             owner_id=owner_id,
             title=title.strip(),
             canvas_size=canvas_size,
             description=description,
         )
+        # v2.1.0: Store idempotency_key for duplicate detection
+        if idempotency_key:
+            project.idempotency_key = idempotency_key
+
         created = await self._repository.create(project)
 
         # Post-check (catches race condition)

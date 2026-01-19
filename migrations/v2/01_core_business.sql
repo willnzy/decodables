@@ -287,6 +287,10 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at_local TIMESTAMP,
     updated_at_local TIMESTAMP,
 
+    -- v2.1.0: Idempotency support for safe retry
+    -- Client-generated UUID, unique per user to prevent duplicate creation
+    idempotency_key TEXT,
+
     -- 扩展字段
     metadata JSONB DEFAULT '{}'::jsonb,
 
@@ -1114,6 +1118,12 @@ WHERE is_deleted = false AND tier IN ('t2', 't3');
 CREATE INDEX IF NOT EXISTS idx_projects_user_created_at
 ON projects(user_id, created_at DESC)
 WHERE is_deleted = false;
+
+-- v2.1.0: Idempotency key index for fast lookup during retry
+-- Partial index: only index non-null keys, unique per user
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_idempotency_key
+ON projects(user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL AND is_deleted = false;
 
 
 -- ============================================================================

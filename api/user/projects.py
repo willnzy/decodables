@@ -76,9 +76,16 @@ router = APIRouter(prefix="/projects", tags=["user-projects-v2"])
 # ==========================================
 
 class ProjectCreateRequest(BaseModel):
-    """Request to create a project."""
+    """
+    Request to create a project.
+
+    v1.1.0: Added idempotency_key for safe retry support.
+    """
     title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
     canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
+    # v1.1.0: Idempotency key - client-generated UUID for safe retries
+    # If provided, server returns existing project if already created with this key
+    idempotency_key: Optional[str] = Field(None, max_length=64, pattern=r'^[a-zA-Z0-9\-_]+$')
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -363,6 +370,7 @@ async def create_project(
         title=req.title or "Untitled",
         canvas_data=req.canvas_data,
         tier=tier,
+        idempotency_key=req.idempotency_key,  # v1.1.0: Idempotency support
     )
 
     result = await handler.handle(command)

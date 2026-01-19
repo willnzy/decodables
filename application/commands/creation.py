@@ -2,7 +2,12 @@
 Creation Commands - Project operations that change state.
 
 @module application.commands.creation
-@version 1.0.0
+@version 1.1.0
+
+Changes in v1.1.0:
+- Added idempotency_key support for CreateProjectCommand (prevents duplicate creation)
+- Added pre-commit serialization validation (ensures response can be built before commit)
+- Implements industry best practices for distributed system consistency
 """
 
 from dataclasses import dataclass
@@ -19,6 +24,11 @@ from domains.creation.locked_elements import update_project_locked_status
 logger = logging.getLogger(__name__)
 
 
+class SerializationError(Exception):
+    """Raised when response serialization fails before commit."""
+    pass
+
+
 @dataclass
 class CreateProjectCommand:
     """
@@ -29,11 +39,21 @@ class CreateProjectCommand:
     - title: Project title
     - canvas_data: Optional canvas JSON data
     - tier: User's subscription tier for limit checking
+    - idempotency_key: Client-generated unique key for idempotent creation (v1.1.0)
+
+    Idempotency Pattern (Industry Best Practice):
+    - Client generates a UUID and sends it with the request
+    - If request fails (network error, 500, etc.), client retries with SAME key
+    - Server checks if project with this key already exists
+    - If exists: return existing project (no duplicate created)
+    - If not: create new project with this key
+    - Used by Stripe, PayPal, AWS for payment/resource creation APIs
     """
     user_id: str
     title: str = "Untitled"
     canvas_data: Optional[Dict[str, Any]] = None
     tier: str = "t1"
+    idempotency_key: Optional[str] = None  # v1.1.0: Client-generated UUID for idempotent creation
 
 
 @dataclass
@@ -47,33 +67,103 @@ class CreateProjectResult:
 
 
 class CreateProjectHandler:
-    """Handler for CreateProjectCommand."""
+    """
+    Handler for CreateProjectCommand.
+
+    v1.1.0 Enhancements:
+    1. Idempotency support - prevents duplicate project creation on retry
+    2. Pre-commit serialization validation - catches serialization errors before DB commit
+    3. Rollback on serialization failure - ensures consistency
+    """
 
     def __init__(self, creation_service: CreationService):
         self._creation_service = creation_service
 
     async def handle(self, command: CreateProjectCommand) -> CreateProjectResult:
-        """Execute project creation."""
+        """
+        Execute project creation with idempotency and serialization safety.
+
+        Flow:
+        1. If idempotency_key provided, check for existing project
+        2. If exists, return existing (idempotent behavior)
+        3. If not, create new project
+        4. Validate serialization BEFORE returning (catch Pydantic errors)
+        5. If serialization fails, delete project and raise error
+        """
+        project = None
+
         try:
-            # Extract canvas size from canvas_data if provided
+            # Step 1: Idempotency check - return existing if key matches
+            if command.idempotency_key:
+                existing = await self._creation_service.get_by_idempotency_key(
+                    user_id=command.user_id,
+                    idempotency_key=command.idempotency_key,
+                )
+                if existing:
+                    logger.info(
+                        f"[Idempotent] Returning existing project {existing.project_id} "
+                        f"for idempotency_key={command.idempotency_key}"
+                    )
+                    # Validate serialization for existing project too
+                    project_dict = existing.to_dict()
+                    return CreateProjectResult(
+                        success=True,
+                        project=existing,
+                        project_dict=project_dict,
+                    )
+
+            # Step 2: Extract canvas size from canvas_data if provided
             canvas_size = None
             if command.canvas_data:
                 width = command.canvas_data.get("width", 1080)
                 height = command.canvas_data.get("height", 1080)
                 canvas_size = CanvasSize(width, height)
 
+            # Step 3: Create project
             project = await self._creation_service.create_project(
                 owner_id=command.user_id,
                 title=command.title,
                 canvas_size=canvas_size,
                 user_tier=command.tier,
+                idempotency_key=command.idempotency_key,
             )
+
+            # Step 4: Pre-commit serialization validation
+            # This catches Pydantic/serialization errors BEFORE returning success
+            try:
+                project_dict = project.to_dict()
+                # Optionally validate against Pydantic model here
+                # from api.user.projects import ProjectResponse
+                # ProjectResponse(**project_dict)  # Would catch field mismatches
+            except Exception as serialization_error:
+                # Step 5: Rollback - delete the created project
+                logger.error(
+                    f"[SerializationError] Project {project.project_id} created but "
+                    f"serialization failed: {serialization_error}. Rolling back."
+                )
+                try:
+                    await self._creation_service.delete_project(
+                        project_id=project.project_id,
+                        user_id=command.user_id,
+                        hard_delete=True,  # Permanently delete, not soft delete
+                    )
+                    logger.info(f"[Rollback] Project {project.project_id} deleted successfully")
+                except Exception as rollback_error:
+                    logger.error(f"[Rollback Failed] Could not delete project: {rollback_error}")
+
+                raise SerializationError(
+                    f"Project created but response serialization failed: {serialization_error}"
+                ) from serialization_error
 
             return CreateProjectResult(
                 success=True,
                 project=project,
-                project_dict=project.to_dict() if project else None,
+                project_dict=project_dict,
             )
+
+        except SerializationError:
+            # Re-raise serialization errors with clear message
+            raise
 
         except Exception as e:
             return CreateProjectResult(

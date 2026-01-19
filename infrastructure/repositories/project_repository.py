@@ -420,7 +420,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
     def _map_to_row(self, project: Project) -> dict:
         """Map Project to database row."""
-        return {
+        row = {
             "id": project.project_id,
             "user_id": project.owner_id,
             "title": project.metadata.title,
@@ -434,6 +434,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             "status": project.status.value,
             "collaborators": project.collaborators,
         }
+        # v2.1.0: Add idempotency_key if present
+        if hasattr(project, 'idempotency_key') and project.idempotency_key:
+            row["idempotency_key"] = project.idempotency_key
+        return row
 
     # Extended Methods
 
@@ -893,3 +897,47 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             "unique_buyers": unique_buyers,
             "total_revenue": float(total_revenue)
         }
+
+    # ==========================================
+    # v2.1.0: Idempotency Support
+    # ==========================================
+
+    async def get_by_idempotency_key(
+        self,
+        user_id: str,
+        idempotency_key: str
+    ) -> Optional[Project]:
+        """
+        Get project by idempotency key for a specific user.
+
+        v2.1.0: Idempotency support - enables safe retries on creation.
+        Industry best practice from Stripe/PayPal.
+
+        Args:
+            user_id: Owner's user ID
+            idempotency_key: Client-generated unique key
+
+        Returns:
+            Project if found with matching key, None otherwise
+        """
+        if not idempotency_key or not user_id:
+            return None
+
+        try:
+            result = await self.client.table("projects").select("*").eq(
+                "user_id", user_id
+            ).eq(
+                "idempotency_key", idempotency_key
+            ).single().execute()
+
+            if not result.data:
+                return None
+
+            return self._map_to_project(result.data)
+
+        except Exception as e:
+            # single() throws if no results or multiple results
+            if "No rows" in str(e) or "multiple" in str(e).lower():
+                return None
+            logger.error(f"Failed to get project by idempotency_key: {e}")
+            return None

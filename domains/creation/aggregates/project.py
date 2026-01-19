@@ -41,6 +41,8 @@ class Project:
     - Canvas configuration
     - Pages/canvas data
     - Sharing settings
+
+    v1.1.0: Added idempotency_key for safe retry support.
     """
     project_id: str
     owner_id: str
@@ -52,6 +54,10 @@ class Project:
     canvas_data: Optional[Dict[str, Any]] = None  # Direct canvas data from DB
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
+    # v1.1.0: Idempotency support - client-generated key for safe retries
+    idempotency_key: Optional[str] = None
+    # Flag for locked elements (marketplace assets)
+    contains_locked_elements: bool = False
 
     @classmethod
     def create_new(
