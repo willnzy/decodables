@@ -1,42 +1,29 @@
-# 消息系统统一优化方案 v1.0
+# 消息系统统一优化方案 v2.0
 
-> **状态**: 待确认
+> **状态**: 审计完成，待执行
 > **创建日期**: 2026-01-19
-> **预计工期**: 4-6 天
+> **审计日期**: 2026-01-19
+> **预计工期**: 4-6 天 (22.5h)
 
 ---
 
-## 一、背景
+## 一、审计摘要
 
-### 1.1 问题概述
+### 1.1 总体发现
 
-基于对项目的全面调研，发现当前消息处理存在以下问题：
+| 类别 | 文件数 | 问题数 | 合规率 |
+|------|--------|--------|--------|
+| **前端 console 调用** | 131 | 379 | ~20% |
+| **前端 toast 调用** | 101 | 237 | ~60% |
+| **后端 logger 调用** | 185 | 1,422 | ~1.4% (结构化) |
+| **后端 print 调用** | 2 | 2 | 0% |
 
-**前端问题**:
-- 501 个 `console.log/error/warn` 调用分散在 173 个文件
-- Toast 显示时机不一致（有时全局 toast，有时手动，有时不显示）
-- 错误处理逻辑在各个 hook 中重复实现
-- 错误信息对用户不够友好（如显示 `validation_error`）
-- 46 个文件中各自维护 `setError` 状态
+### 1.2 核心问题
 
-**后端问题**:
-- 日志级别使用不规范
-- `context` 字段内容不统一
-- 部分日志可能包含敏感信息
-
-**前后端不一致**:
-- 错误代码基本一致，但缺少同步机制
-- Request ID 获取方式不统一
-
-### 1.2 调研数据
-
-| 指标 | 前端 | 后端 |
-|------|------|------|
-| 日志调用数 | 501 | 1,450 |
-| 涉及文件数 | 173 | 195 |
-| Toast 组件 | 自定义 (Toast.tsx) | - |
-| 错误日志服务 | errorLogger.ts | Sentry + JSON Logger |
-| 统一异常框架 | ApiError 类 | AppException 基类 |
+1. **前端**: 大量直接使用 `console.*`，未使用统一的 Logger 工具
+2. **前端**: 部分 toast 显示原始错误信息给用户
+3. **后端**: 仅 1.4% 的日志使用结构化 `extra=` 字段
+4. **后端**: 2 处源代码中使用 `print()`
 
 ---
 
@@ -88,9 +75,135 @@
 
 ---
 
-## 四、前端优化方案
+## 四、前端审计详情
 
-### 4.1 统一消息 Hook (`useMessage`)
+### 4.1 Console 调用统计
+
+**总计**: 131 文件，379 调用
+
+| 调用类型 | 数量 | 占比 |
+|----------|------|------|
+| console.log | 101 | 26.6% |
+| console.error | 189 | 49.9% |
+| console.warn | 82 | 21.6% |
+| console.info | 1 | 0.3% |
+| console.debug | 6 | 1.6% |
+
+### 4.2 Console 调用按优先级分类
+
+#### P0 - Critical (服务层核心文件)
+
+| 文件 | 调用数 | 问题描述 |
+|------|--------|----------|
+| `services/errorLogger.ts` | 15+ | 日志服务自身使用 console |
+| `services/taskService.ts` | 10+ | WebSocket 调试信息 |
+| `services/generateService.ts` | 8+ | AI 生成服务日志 |
+| `services/analyticsService.ts` | 5+ | 分析服务调试 |
+| `services/api.ts` | 5+ | API 基础请求日志 |
+
+#### P1 - Important (Admin 和 Editor)
+
+| 文件 | 调用数 | 问题描述 |
+|------|--------|----------|
+| `components/admin/*.tsx` | 41 | Admin 面板调试日志 (11 个文件) |
+| `app/create/_hooks/*.ts` | 40+ | 编辑器 hooks 调试 (15 个文件) |
+| `app/create/_stores/*.ts` | 15+ | 状态管理调试 |
+
+#### P2 - Low (组件和工具)
+
+| 文件 | 调用数 | 问题描述 |
+|------|--------|----------|
+| `lib/*.ts` | 25+ | 工具库调试 (10 个文件) |
+| `hooks/*.ts` | 20+ | 通用 hooks (8 个文件) |
+
+### 4.3 Toast 调用问题
+
+**总计**: 101 文件，237 调用
+
+#### 问题类型 A: 硬编码消息 (50+)
+
+```
+位置: components/admin/*.tsx
+问题: 50+ 处硬编码错误消息
+示例: toast.error("Failed to load users")
+应改: message.error(getUserFriendlyMessage(error.code))
+```
+
+#### 问题类型 B: 显示原始错误 (10+)
+
+```
+位置: app/create/_hooks/ai/useAIGeneration.ts:196
+问题: 直接显示 error.message 给用户
+代码: toast.error(error.message)
+风险: 可能暴露技术细节
+```
+
+#### 问题类型 C: 重复 toast + console.error (7+)
+
+```
+位置: 多个文件
+问题: 同时调用 toast.error 和 console.error
+应改: 使用 useMessage + logger 统一处理
+```
+
+#### 问题类型 D: Marketplace 硬编码 (8)
+
+```
+位置: hooks/usePurchase.ts, hooks/usePurchaseFlow.ts
+问题: 购买流程的 8 个硬编码消息
+示例: "Purchase successful!", "Failed to purchase item"
+```
+
+---
+
+## 五、后端审计详情
+
+### 5.1 Logger 调用统计
+
+**总计**: 185 文件，1,422 调用
+
+| 调用类型 | 数量 |
+|----------|------|
+| logger.info | 512 |
+| logger.error | 389 |
+| logger.warning | 287 |
+| logger.debug | 198 |
+| logger.exception | 36 |
+
+### 5.2 结构化日志合规率
+
+**使用 `extra=` 的文件**: 仅 7 个 (~1.4%)
+
+```
+domains/platform/events/service.py        # ✅ 示范文件
+domains/platform/events/repository.py     # ✅ 示范文件
+api/routers/events.py                     # ✅ 示范文件
+(其他 4 个文件)
+```
+
+### 5.3 高优先级文件 (调用数最多)
+
+| 文件 | 调用数 | 优先级 |
+|------|--------|--------|
+| `domains/platform/ai/service.py` | 145 | P0 |
+| `shared/payment/stripe_webhook_service.py` | 56 | P0 |
+| `domains/billing/service.py` | 48 | P0 |
+| `domains/identity/service.py` | 42 | P0 |
+| `api/routers/admin/*.py` | 120+ | P1 |
+| `shared/ai/*.py` | 80+ | P1 |
+
+### 5.4 Print 语句 (严重违规)
+
+| 文件 | 行号 | 代码 |
+|------|------|------|
+| `core/feature_flag/service.py` | 150 | `print(f"Feature flag {key} evaluated...")` |
+| `shared/ai/story_generator.py` | 233 | `print(f"Generated story: {len(story)} chars")` |
+
+---
+
+## 六、前端优化方案
+
+### 6.1 统一消息 Hook (`useMessage`)
 
 ```typescript
 // hooks/useMessage.ts
@@ -110,43 +223,46 @@ interface MessageService {
 }
 ```
 
-### 4.2 错误消息用户友好化
+### 6.2 错误消息用户友好化
 
 ```typescript
 // lib/errorMessages.ts
 const USER_FRIENDLY_MESSAGES: Record<ErrorCode, string> = {
   // 认证
-  'auth_unauthorized': '请先登录后再操作',
-  'auth_forbidden': '您没有权限执行此操作',
-  'auth_token_expired': '登录已过期，请重新登录',
+  'AUTH_EXPIRED': 'Session expired. Please sign in again.',
+  'AUTH_INVALID': 'Invalid credentials. Please try again.',
+  'AUTH_FORBIDDEN': 'You don\'t have permission to perform this action.',
 
   // 资源
-  'resource_not_found': '找不到请求的资源',
-  'project_not_found': '项目不存在或已被删除',
+  'RES_NOT_FOUND': 'The requested item was not found.',
+  'RES_LIMIT_REACHED': 'You\'ve reached the limit for this feature.',
+  'RES_ALREADY_EXISTS': 'This item already exists.',
 
-  // 计费
-  'billing_insufficient_credits': '积分不足，请充值后重试',
-  'billing_payment_failed': '支付失败，请检查支付方式',
+  // 支付
+  'PAY_FAILED': 'Payment failed. Please try again.',
+  'PAY_INSUFFICIENT': 'Insufficient credits. Please top up.',
+  'PAY_CARD_DECLINED': 'Card declined. Please use a different card.',
 
   // AI
-  'ai_generation_failed': 'AI 生成失败，请稍后重试',
-  'ai_provider_timeout': 'AI 服务响应超时，请重试',
-  'ai_content_policy': '内容不符合使用规范，请修改后重试',
+  'AI_GENERATION_FAILED': 'AI generation failed. Please try again.',
+  'AI_PROVIDER_TIMEOUT': 'AI service timed out. Please retry.',
+  'AI_CONTENT_POLICY': 'Content doesn\'t meet guidelines. Please modify.',
 
   // 网络
-  'network_error': '网络连接失败，请检查网络设置',
-  'timeout': '请求超时，请稍后重试',
+  'NET_TIMEOUT': 'Request timed out. Please try again.',
+  'NET_OFFLINE': 'No internet connection.',
+  'NET_SERVER_ERROR': 'Server error. Please try again later.',
 
   // 上传
-  'upload_file_too_large': '文件太大，请选择更小的文件',
-  'upload_invalid_type': '不支持的文件格式',
+  'UPLOAD_FILE_TOO_LARGE': 'File too large. Please choose a smaller file.',
+  'UPLOAD_INVALID_TYPE': 'Unsupported file format.',
 
   // 默认
-  'server_error': '服务器出错了，我们正在处理中',
+  'UNKNOWN': 'Something went wrong. Please try again.',
 };
 ```
 
-### 4.3 Logger 工具类
+### 6.3 Logger 工具类
 
 ```typescript
 // lib/logger.ts
@@ -193,9 +309,9 @@ logger.error('Failed to create project', error);
 
 ---
 
-## 五、后端优化方案
+## 七、后端优化方案
 
-### 5.1 日志级别标准化
+### 7.1 日志级别标准化
 
 | 级别 | 使用场景 | 示例 |
 |------|----------|------|
@@ -204,7 +320,7 @@ logger.error('Failed to create project', error);
 | **INFO** | 重要业务事件 | 用户注册、订阅购买、项目创建 |
 | **DEBUG** | 调试信息 | SQL 查询、请求参数 |
 
-### 5.2 日志结构标准化
+### 7.2 日志结构标准化
 
 ```python
 # 标准日志格式
@@ -232,7 +348,7 @@ logger.error(
 )
 ```
 
-### 5.3 敏感数据脱敏规则
+### 7.3 敏感数据脱敏规则
 
 ```python
 SENSITIVE_KEYS = [
@@ -250,43 +366,120 @@ SENSITIVE_PATTERNS = [
 
 ---
 
-## 六、实施计划
+## 八、实施计划
 
-### Phase 1: 前端消息统一 (2-3 天)
+### Phase 1: 前端基础设施建设 (Day 1) - 2h
 
-| 任务 | 优先级 | 说明 | 预计时间 |
-|------|--------|------|----------|
-| 创建 `useMessage` hook | P0 | 统一消息处理入口 | 2h |
-| 创建 `errorMessages.ts` | P0 | 用户友好消息映射 | 1h |
-| 创建 `Logger` 工具类 | P0 | 开发日志统一管理 | 1h |
-| 重构 API 错误处理 | P0 | 统一使用 useMessage | 4h |
-| 移除冗余 console.log | P1 | 清理 501 处 console 调用 | 4h |
-| 统一表单错误处理 | P1 | 创建 `useFormError` hook | 2h |
+**目标**: 创建前端统一日志/消息工具
 
-### Phase 2: 后端日志优化 (1-2 天)
+| 任务 | 文件 | 预估 |
+|------|------|------|
+| 1.1 创建 Logger 工具类 | `lib/logger.ts` | 30min |
+| 1.2 创建 useMessage hook | `hooks/useMessage.ts` | 30min |
+| 1.3 创建错误码映射 | `lib/errorMessages.ts` | 30min |
+| 1.4 导出统一接口 | `lib/index.ts` | 10min |
 
-| 任务 | 优先级 | 说明 | 预计时间 |
-|------|--------|------|----------|
-| 创建日志规范文档 | P0 | 标准化日志级别和格式 | 1h |
-| 统一日志 extra 字段 | P1 | 标准化 context 内容 | 3h |
-| 增强敏感数据脱敏 | P1 | 完善脱敏规则 | 2h |
-| 审查关键模块日志 | P2 | 支付/认证模块 | 2h |
+### Phase 2: 后端 print 清理 (Day 1) - 0.5h
 
-### Phase 3: 前后端协同 (1 天)
+**目标**: 消除所有 print 语句
 
-| 任务 | 优先级 | 说明 | 预计时间 |
-|------|--------|------|----------|
-| 同步错误代码定义 | P0 | 确保前后端一致 | 1h |
-| Request ID 显示优化 | P1 | 方便用户反馈 | 1h |
-| 创建错误处理最佳实践文档 | P2 | 团队规范 | 2h |
+| 任务 | 文件 | 行号 |
+|------|------|------|
+| 2.1 替换 feature_flag print | `core/feature_flag/service.py` | 150 |
+| 2.2 替换 story_generator print | `shared/ai/story_generator.py` | 233 |
+
+### Phase 3: 前端 Services 层迁移 (Day 2-3) - 4h
+
+**目标**: 服务层使用 Logger
+
+| 优先级 | 文件 | 调用数 |
+|--------|------|--------|
+| P0 | `services/errorLogger.ts` | 15 |
+| P0 | `services/taskService.ts` | 10 |
+| P0 | `services/generateService.ts` | 8 |
+| P0 | `services/analyticsService.ts` | 5 |
+| P0 | `services/api.ts` | 5 |
+| P1 | `services/projectService.ts` | 5 |
+| P1 | `services/userService.ts` | 5 |
+| P1 | 其他 services (6 个文件) | 20+ |
+
+### Phase 4: 后端结构化日志 (Day 3-5) - 8h
+
+**目标**: 高优先级文件添加 extra 字段
+
+**规则**: 每个 logger 调用添加 `extra={"user_id": ..., "action": ..., ...}`
+
+| 优先级 | 模块 | 文件数 | 调用数 |
+|--------|------|--------|--------|
+| P0 | 支付/计费 | 5 | 100+ |
+| P0 | AI 服务 | 8 | 225 |
+| P1 | 用户/认证 | 6 | 80+ |
+| P1 | 项目/素材 | 8 | 100+ |
+| P2 | Admin API | 15 | 120+ |
+
+### Phase 5: 前端 Toast 优化 (Day 5-6) - 4h
+
+**目标**: 使用错误码映射，消除硬编码
+
+| 任务 | 范围 | 消息数 |
+|------|------|--------|
+| 5.1 Admin 面板 | `components/admin/*.tsx` | 50+ |
+| 5.2 编辑器 hooks | `app/create/_hooks/*.ts` | 20+ |
+| 5.3 购买流程 | `hooks/usePurchase*.ts` | 8 |
+
+### Phase 6: 前端组件层 (Day 6-7) - 4h
+
+**目标**: 组件使用 logger + useMessage
+
+| 模块 | 文件数 | 调用数 |
+|------|--------|--------|
+| Editor 组件 | 20+ | 50+ |
+| Common 组件 | 15+ | 30+ |
+| Page 组件 | 10+ | 25+ |
 
 ---
 
-## 七、预期效果
+## 九、验收标准
+
+### 9.1 前端检查清单
+
+- [ ] 无直接 `console.log/error/warn` (使用 logger)
+- [ ] 无硬编码 toast 消息 (使用 useMessage + 错误码)
+- [ ] 无 `toast.error(error.message)` (使用 getUserFriendlyMessage)
+- [ ] 开发环境可见调试日志
+- [ ] 生产环境无调试输出
+
+### 9.2 后端检查清单
+
+- [ ] 无 `print()` 语句
+- [ ] 100% logger 调用使用 `extra=` 字段
+- [ ] extra 包含: user_id (如适用), action, 关键业务数据
+- [ ] 无敏感信息泄露 (密码、token 等)
+- [ ] 错误日志包含 `exc_info=True`
+
+### 9.3 自动化检查
+
+```bash
+# 前端检查
+grep -r "console\." --include="*.ts" --include="*.tsx" | grep -v node_modules | wc -l
+# 目标: 0
+
+# 后端检查
+grep -r "print(" --include="*.py" | grep -v __pycache__ | grep -v test | wc -l
+# 目标: 0
+
+grep -r "logger\." --include="*.py" | grep -v "extra=" | wc -l
+# 目标: 显著减少
+```
+
+---
+
+## 十、预期效果
 
 | 指标 | 当前 | 优化后 |
 |------|------|--------|
-| 前端 console 调用数 | 501 | < 50 (仅保留必要调试) |
+| 前端 console 调用数 | 379 | < 50 (仅保留必要调试) |
+| 后端结构化日志率 | 1.4% | > 90% |
 | 用户错误消息可读性 | 60% | 95% |
 | 错误可追溯性 | 中 | 高 (统一 Request ID) |
 | 代码重复度 | 高 | 低 (统一 hook) |
@@ -294,14 +487,46 @@ SENSITIVE_PATTERNS = [
 
 ---
 
-## 八、待确认事项
+## 十一、附录
 
-1. **Toast 位置**: 当前右下角，是否需要调整？
-2. **错误消息语言**: 当前中英文混用，是否统一为中文？
-3. **日志保留时间**: 前端本地日志最多保留 100 条，是否需要调整？
-4. **敏感数据**: 是否有其他需要脱敏的字段？
+### 11.1 后端使用 extra 的示范文件
+
+```python
+# domains/platform/events/service.py (示范)
+logger.info(
+    "Event tracked successfully",
+    extra={
+        "user_id": user_id,
+        "event_type": event_type,
+        "event_id": event.id
+    }
+)
+```
+
+### 11.2 前端 Logger 使用示范
+
+```typescript
+// 目标格式
+import { logger } from '@/lib/logger'
+import { useMessage, getUserFriendlyMessage } from '@/lib'
+
+// 替换前
+console.error('Failed to load project:', error)
+toast.error(error.message)
+
+// 替换后
+logger.error('Failed to load project', error, { module: 'ProjectService', projectId })
+message.error(getUserFriendlyMessage(error.code))
+```
+
+### 11.3 相关文档
+
+- **规范文档**: `docs/shared/message-logging-standard.md`
+- **项目配置**: `CLAUDE.md`
 
 ---
 
-**文档版本**: v1.0
+**文档版本**: v2.0
 **最后更新**: 2026-01-19
+**审计完成**: ✅
+**执行状态**: 待开始
