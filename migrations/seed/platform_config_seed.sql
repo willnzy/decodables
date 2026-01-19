@@ -245,12 +245,12 @@ INSERT INTO pricing_plans (
 
 
 -- ============================================================================
--- PART 2: SYSTEM CONFIGS (72 records)
+-- PART 2: SYSTEM CONFIGS (73 records)
 -- ============================================================================
 -- Config Groups:
 --   - rate_limit: API rate limiting (24 records)
 --   - analytics: Analytics settings (3 records)
---   - feature_flag: Feature toggles (8 records)
+--   - feature_flag: Feature toggles (9 records)
 --   - limits: System limits (5 records)
 --   - credits: Credit costs (9 records)
 --   - pricing: Pricing display (8 records)
@@ -302,10 +302,11 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('analytics.min_level', '{"level": "normal"}', 'json', 'analytics', 'Minimum tracking level', true, true),
 
 -- ============================================================================
--- FEATURE FLAGS (8 records)
+-- FEATURE FLAGS (9 records)
 -- ============================================================================
 -- Core features
 ('FEATURE_AI_GENERATION', 'true', 'boolean', 'feature_flag', 'Enable AI image generation', true, true),
+('FEATURE_ASYNC_GENERATION', 'false', 'boolean', 'feature_flag', 'Enable async AI generation mode (polling-based)', true, true),
 ('FEATURE_MARKETPLACE', 'true', 'boolean', 'feature_flag', 'Enable marketplace', true, true),
 ('FEATURE_OCR', 'true', 'boolean', 'feature_flag', 'Enable OCR/Smart Scan', true, true),
 ('FEATURE_ZIP_EXPORT', 'true', 'boolean', 'feature_flag', 'Enable ZIP export', true, true),
@@ -461,12 +462,12 @@ COMMIT;
 -- GROUP BY config_group
 -- ORDER BY count DESC;
 
--- Expected system_configs results (72 total records):
+-- Expected system_configs results (73 total records):
 -- | config_group  | count |
 -- |---------------|-------|
 -- | rate_limit    | 24    |
 -- | credits       | 9     |
--- | feature_flag  | 8     |
+-- | feature_flag  | 9     |
 -- | pricing       | 8     |
 -- | ai_providers  | 5     |
 -- | ai_models     | 4     |
