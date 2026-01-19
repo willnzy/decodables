@@ -248,10 +248,14 @@ class Project:
             self.updated_at = datetime.utcnow()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API responses."""
+        """
+        Convert to dictionary for API responses.
+
+        Note: Uses 'id' and 'user_id' for API compatibility with ProjectResponse model.
+        """
         return {
-            "project_id": self.project_id,
-            "owner_id": self.owner_id,
+            "id": self.project_id,  # API uses 'id' not 'project_id'
+            "user_id": self.owner_id,  # API uses 'user_id' not 'owner_id'
             "title": self.metadata.title,
             "description": self.metadata.description,
             "tags": self.metadata.tags,
