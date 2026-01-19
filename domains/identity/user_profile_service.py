@@ -149,6 +149,7 @@ class UserProfileService:
                 "name": name if name else None,  # Explicitly null if empty
                 "avatar_url": profile.get("avatar_url"),  # Already nullable
                 "tier": profile.get("tier") or "t1",
+                "role": profile.get("role") or "user",  # v3.32: User role for admin access
                 "credits_monthly": profile.get("credits_monthly") or 0,
                 "credits_permanent": profile.get("credits_permanent") or 0,
                 "credits_total": credits_total,
