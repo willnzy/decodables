@@ -110,12 +110,14 @@ class UserProfileService:
         2. Fetches user profile
         3. Calculates total credits
         4. Determines member status
+        5. Maps database fields to API response format
 
         Args:
             user_id: User ID
 
         Returns:
-            User profile dict with credits_total and is_member fields
+            User profile dict with credits_total and is_member fields,
+            formatted for frontend consumption
         """
         try:
             # Reset monthly credits when needed
@@ -133,10 +135,28 @@ class UserProfileService:
             # Determine member status
             is_member = self._is_member(profile.get("tier"))
 
+            # Build display name from first_name + last_name
+            first_name = profile.get("first_name") or ""
+            last_name = profile.get("last_name") or ""
+            name = f"{first_name} {last_name}".strip() or profile.get("display_name") or profile.get("username")
+
+            # Map database fields to API response format (frontend expects these field names)
             return {
-                **profile,
+                "user_id": profile.get("id"),  # Map 'id' to 'user_id'
+                "user_code": profile.get("user_code", ""),
+                "email": profile.get("email", ""),
+                "name": name,  # Derived from first_name + last_name
+                "avatar_url": profile.get("avatar_url"),
+                "tier": profile.get("tier", "t1"),
+                "credits_monthly": profile.get("credits_monthly", 0),
+                "credits_permanent": profile.get("credits_permanent", 0),
                 "credits_total": credits_total,
-                "is_member": is_member
+                "subscription_status": profile.get("subscription_status"),
+                "subscription_end_date": profile.get("subscription_current_period_end"),  # Map field name
+                "created_at": profile.get("created_at"),
+                "updated_at": profile.get("updated_at"),
+                "timezone": profile.get("timezone"),
+                "is_member": is_member,
             }
 
         except Exception as e:
