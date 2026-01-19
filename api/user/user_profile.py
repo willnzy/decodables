@@ -97,10 +97,29 @@ async def get_me(
     """Get current user info (PRD v3.2)."""
     profile = await profile_service.get_user_profile(user.user_id)
     if not profile:
-        # Fallback to basic user data
-        profile = user
-        profile["credits_total"] = 0
-        profile["is_member"] = False
+        # Fallback to basic user data from the UserProfile dataclass
+        # Build display name from user fields
+        first_name = user.first_name or ""
+        last_name = user.last_name or ""
+        name = f"{first_name} {last_name}".strip() or user.display_name or user.username
+
+        profile = {
+            "user_id": user.user_id,
+            "user_code": user.user_code or "",
+            "email": user.email,
+            "name": name if name else None,
+            "avatar_url": user.avatar_url,
+            "tier": user.tier.value if hasattr(user.tier, 'value') else str(user.tier),
+            "credits_monthly": 0,
+            "credits_permanent": 0,
+            "credits_total": 0,
+            "subscription_status": user.subscription_status,
+            "subscription_end_date": None,
+            "created_at": user.created_at.isoformat() if user.created_at else "",
+            "updated_at": user.updated_at.isoformat() if user.updated_at else "",
+            "timezone": None,
+            "is_member": False,
+        }
     return profile
 
 

@@ -141,21 +141,22 @@ class UserProfileService:
             name = f"{first_name} {last_name}".strip() or profile.get("display_name") or profile.get("username")
 
             # Map database fields to API response format (frontend expects these field names)
+            # Note: Use explicit None for nullable fields, not omission (Zod expects null, not undefined)
             return {
-                "user_id": profile.get("id"),  # Map 'id' to 'user_id'
-                "user_code": profile.get("user_code", ""),
-                "email": profile.get("email", ""),
-                "name": name,  # Derived from first_name + last_name
-                "avatar_url": profile.get("avatar_url"),
-                "tier": profile.get("tier", "t1"),
-                "credits_monthly": profile.get("credits_monthly", 0),
-                "credits_permanent": profile.get("credits_permanent", 0),
+                "user_id": profile.get("id") or user_id,  # Map 'id' to 'user_id', fallback to input
+                "user_code": profile.get("user_code") or "",
+                "email": profile.get("email") or "",
+                "name": name if name else None,  # Explicitly null if empty
+                "avatar_url": profile.get("avatar_url"),  # Already nullable
+                "tier": profile.get("tier") or "t1",
+                "credits_monthly": profile.get("credits_monthly") or 0,
+                "credits_permanent": profile.get("credits_permanent") or 0,
                 "credits_total": credits_total,
-                "subscription_status": profile.get("subscription_status"),
-                "subscription_end_date": profile.get("subscription_current_period_end"),  # Map field name
-                "created_at": profile.get("created_at"),
-                "updated_at": profile.get("updated_at"),
-                "timezone": profile.get("timezone"),
+                "subscription_status": profile.get("subscription_status"),  # Already nullable
+                "subscription_end_date": profile.get("subscription_current_period_end"),  # Map field name, nullable
+                "created_at": profile.get("created_at") or "",
+                "updated_at": profile.get("updated_at") or "",
+                "timezone": profile.get("timezone"),  # Already nullable
                 "is_member": is_member,
             }
 
