@@ -1537,6 +1537,98 @@ draft → pending → approved / rejected
 - 触发条件: 任意页面标记为 `isDirty`
 - 保存时检查: 试用期过期、项目超限、锁定元素
 
+### 10.5 幂等性创建 (v1.1.0)
+
+> 业界最佳实践 (Stripe/PayPal/AWS) 防止重复创建
+
+**问题背景**:
+- DB 写入成功但响应失败（网络中断、服务器 500 等）
+- 客户端以为创建失败，重试后创建了重复项目
+- 用户看到"创建失败"但项目数已增加，触发配额限制
+
+**解决方案**:
+
+```
+POST /api/v2/user/projects
+{
+  "title": "My Project",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000"  // UUID v4
+}
+```
+
+**后端处理流程**:
+
+```python
+# application/commands/creation.py
+class CreateProjectHandler:
+    async def handle(self, command: CreateProjectCommand) -> CreateProjectResult:
+        # 1. 幂等性检查
+        if command.idempotency_key:
+            existing = await self._creation_service.get_by_idempotency_key(
+                user_id=command.user_id,
+                idempotency_key=command.idempotency_key,
+            )
+            if existing:
+                return CreateProjectResult(success=True, project=existing)
+
+        # 2. 创建项目
+        project = await self._creation_service.create_project(...)
+
+        # 3. 序列化验证 (防止 Pydantic 错误)
+        try:
+            project_dict = project.to_dict()
+        except Exception:
+            # 4. 回滚 - 删除刚创建的项目
+            await self._creation_service.delete_project(project.project_id, hard_delete=True)
+            raise SerializationError(...)
+
+        return CreateProjectResult(success=True, project=project)
+```
+
+**数据库索引**:
+
+```sql
+-- 唯一索引: (user_id, idempotency_key)
+CREATE UNIQUE INDEX idx_projects_user_idempotency_key
+ON projects(user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL AND is_deleted = false;
+```
+
+**前端重试逻辑**:
+
+```typescript
+// services/projectService.ts
+export const createProject = async (token, data, options = {}) => {
+  const { maxRetries = 2, retryDelay = 500 } = options;
+
+  // 生成幂等键 (同一逻辑操作使用相同 key)
+  const idempotencyKey = data.idempotency_key || generateIdempotencyKey();
+
+  let attempts = 0;
+  while (attempts <= maxRetries) {
+    try {
+      return await apiRequest('/api/v2/user/projects', {
+        method: 'POST',
+        body: JSON.stringify({ ...data, idempotency_key: idempotencyKey }),
+        token,
+      });
+    } catch (error) {
+      if (isRetryableError(error) && attempts < maxRetries) {
+        await sleep(retryDelay * ++attempts);  // 指数退避
+        continue;
+      }
+      throw error;
+    }
+  }
+};
+```
+
+**相关文件**:
+- 后端 Handler: `application/commands/creation.py`
+- 后端 Repository: `infrastructure/repositories/project_repository.py`
+- 前端 Service: `services/projectService.ts`
+- 前端工具: `lib/idempotency.ts`
+
 ---
 
 ## 11. 资源管理
