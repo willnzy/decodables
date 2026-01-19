@@ -245,12 +245,12 @@ INSERT INTO pricing_plans (
 
 
 -- ============================================================================
--- PART 2: SYSTEM CONFIGS (68 records)
+-- PART 2: SYSTEM CONFIGS (72 records)
 -- ============================================================================
 -- Config Groups:
 --   - rate_limit: API rate limiting (24 records)
 --   - analytics: Analytics settings (3 records)
---   - feature_flag: Feature toggles (4 records)
+--   - feature_flag: Feature toggles (8 records)
 --   - limits: System limits (5 records)
 --   - credits: Credit costs (9 records)
 --   - pricing: Pricing display (8 records)
@@ -302,12 +302,18 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('analytics.min_level', '{"level": "normal"}', 'json', 'analytics', 'Minimum tracking level', true, true),
 
 -- ============================================================================
--- FEATURE FLAGS (4 records)
+-- FEATURE FLAGS (8 records)
 -- ============================================================================
+-- Core features
 ('FEATURE_AI_GENERATION', 'true', 'boolean', 'feature_flag', 'Enable AI image generation', true, true),
 ('FEATURE_MARKETPLACE', 'true', 'boolean', 'feature_flag', 'Enable marketplace', true, true),
 ('FEATURE_OCR', 'true', 'boolean', 'feature_flag', 'Enable OCR/Smart Scan', true, true),
 ('FEATURE_ZIP_EXPORT', 'true', 'boolean', 'feature_flag', 'Enable ZIP export', true, true),
+-- Landing page sections
+('FEATURE_LANDING_HERO', 'true', 'boolean', 'feature_flag', 'Enable landing page hero section', true, true),
+('FEATURE_LANDING_HOW_IT_WORKS', 'true', 'boolean', 'feature_flag', 'Enable landing page how-it-works section', true, true),
+('FEATURE_LANDING_PRICING', 'true', 'boolean', 'feature_flag', 'Enable landing page pricing section', true, true),
+('FEATURE_LANDING_FINAL_CTA', 'true', 'boolean', 'feature_flag', 'Enable landing page final CTA section', true, true),
 
 -- ============================================================================
 -- LIMITS (5 records)
@@ -455,16 +461,16 @@ COMMIT;
 -- GROUP BY config_group
 -- ORDER BY count DESC;
 
--- Expected system_configs results (68 total records):
+-- Expected system_configs results (72 total records):
 -- | config_group  | count |
 -- |---------------|-------|
 -- | rate_limit    | 24    |
 -- | credits       | 9     |
+-- | feature_flag  | 8     |
 -- | pricing       | 8     |
 -- | ai_providers  | 5     |
 -- | ai_models     | 4     |
 -- | limits        | 5     |
--- | feature_flag  | 4     |
 -- | tier          | 6     |
 -- | analytics     | 3     |
 -- | ui            | 3     |
