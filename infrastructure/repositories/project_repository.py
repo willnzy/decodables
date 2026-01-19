@@ -937,7 +937,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
         except Exception as e:
             # single() throws if no results or multiple results
-            if "No rows" in str(e) or "multiple" in str(e).lower():
+            # Supabase PGRST116 error: "Cannot coerce the result to a single JSON object" with "0 rows"
+            error_str = str(e)
+            if "No rows" in error_str or "0 rows" in error_str or "multiple" in error_str.lower() or "PGRST116" in error_str:
                 return None
             logger.error(f"Failed to get project by idempotency_key: {e}")
             return None
