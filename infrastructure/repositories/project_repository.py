@@ -943,6 +943,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """
         Get seller statistics for projects.
 
+        v3.30: Only count approved listings (not pending/rejected).
+
         Args:
             user_id: User ID (maps to seller_id in marketplace_listings)
 
@@ -950,9 +952,12 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             Dict with total_selling, total_sales, unique_buyers, total_revenue
         """
         # Note: marketplace_listings uses seller_id (not user_id) and price_credits (not price)
+        # v3.30: Only count listings that have been approved (not pending/rejected)
         listings = await self.client.table("marketplace_listings").select(
             "id, price_credits, sales_count, unique_buyers_count"
-        ).eq("seller_id", user_id).eq("resource_type", "project").eq("is_deleted", False).execute()
+        ).eq("seller_id", user_id).eq("resource_type", "project").eq(
+            "is_deleted", False
+        ).eq("moderation_status", "approved").execute()
 
         data = listings.data or []
         total_sales = sum(l.get("sales_count", 0) for l in data)
