@@ -26,7 +26,7 @@ from io import BytesIO
 from typing import Dict, List, Optional, Callable, TYPE_CHECKING
 
 from domains.creation.repository import IProjectRepository
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from shared.ai.zine_generator import create_foldable_book, create_assets_zip
 
 if TYPE_CHECKING:
@@ -126,7 +126,7 @@ class ExportService:
             raise ExportException(f"PDF generation failed: {str(e)}")
 
         # Log activity
-        log_activity(user_id, "download_pdf", {"project_id": project_id})
+        await log_activity_async(user_id, "download_pdf", {"project_id": project_id})
 
         # Get sanitized filename
         title = self._sanitize_filename(proj.get("title", "project"))
@@ -206,7 +206,7 @@ class ExportService:
             logger.info(f"Preview image generated, size: {img_buffer.getbuffer().nbytes} bytes")
 
             # Log activity
-            log_activity(user_id, "preview_pdf", {"project_id": project_id})
+            await log_activity_async(user_id, "preview_pdf", {"project_id": project_id})
 
             return img_buffer
 
@@ -270,7 +270,7 @@ class ExportService:
             raise ExportException(f"ZIP generation failed: {str(e)}")
 
         # Log activity
-        log_activity(user_id, "export_zip", {"project_id": project_id})
+        await log_activity_async(user_id, "export_zip", {"project_id": project_id})
 
         # Get sanitized filename
         title = self._sanitize_filename(proj.get("title", "project"))
@@ -317,7 +317,7 @@ class ExportService:
             raise ExportException(f"ZIP generation failed: {str(e)}")
 
         # Log activity
-        log_activity(user_id, "export_zip", {"project_id": project_id})
+        await log_activity_async(user_id, "export_zip", {"project_id": project_id})
 
         return buf
 
@@ -445,7 +445,7 @@ class ExportService:
             raise ExportException(f"PDF generation failed: {str(e)}")
 
         # Log activity
-        log_activity(user_id, "download_pdf", {"project_id": project_id})
+        await log_activity_async(user_id, "download_pdf", {"project_id": project_id})
 
         # Get sanitized filename
         title = self._sanitize_filename(proj.get("title", "project"))
@@ -536,7 +536,7 @@ class ExportService:
             raise ExportException(f"ZIP creation failed: {str(e)}")
 
         # Log activity
-        log_activity(user_id, "export_zip", {"project_id": project_id})
+        await log_activity_async(user_id, "export_zip", {"project_id": project_id})
 
         # Get sanitized filename
         title = self._sanitize_filename(proj.get("title", "project"))
