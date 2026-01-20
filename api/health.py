@@ -44,6 +44,129 @@ HEALTH_CHECK_TIMEOUT = 5.0
 # Health Check Endpoints
 # ==========================================
 
+@router.get("/health/diagnose")
+@limiter.limit("10/minute")
+async def diagnose_connection(request: Request):
+    """
+    诊断 AsyncClient 连接问题。
+
+    测试内容:
+    1. 直接 httpx 请求 Supabase REST API
+    2. 使用缓存的 AsyncClient 查询
+    3. 新建 AsyncClient 查询
+
+    用于定位间歇性连接超时的根本原因。
+    """
+    import time
+    import httpx
+    from config import SUPABASE_URL, SUPABASE_KEY
+
+    results = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "tests": {}
+    }
+
+    # Test 1: 直接 httpx 请求
+    try:
+        url = f"{SUPABASE_URL}rest/v1/profiles?select=id&limit=1"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        }
+        start = time.time()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, headers=headers)
+            elapsed = time.time() - start
+            results["tests"]["direct_httpx"] = {
+                "status": "ok" if response.status_code == 200 else "error",
+                "time_ms": round(elapsed * 1000, 2),
+                "http_status": response.status_code
+            }
+    except Exception as e:
+        results["tests"]["direct_httpx"] = {
+            "status": "error",
+            "error": str(e)[:100]
+        }
+
+    # Test 2: 缓存的 AsyncClient
+    try:
+        start = time.time()
+        client = await get_async_db_client()
+        get_client_time = time.time() - start
+
+        if client:
+            start = time.time()
+            result = await client.table("profiles").select("id").limit(1).execute()
+            query_time = time.time() - start
+            results["tests"]["cached_async_client"] = {
+                "status": "ok",
+                "get_client_ms": round(get_client_time * 1000, 2),
+                "query_ms": round(query_time * 1000, 2),
+                "total_ms": round((get_client_time + query_time) * 1000, 2)
+            }
+        else:
+            results["tests"]["cached_async_client"] = {
+                "status": "error",
+                "error": "Client is None"
+            }
+    except Exception as e:
+        results["tests"]["cached_async_client"] = {
+            "status": "error",
+            "error": str(e)[:100]
+        }
+
+    # Test 3: 新建 AsyncClient
+    try:
+        from supabase import acreate_client
+
+        start = time.time()
+        new_client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
+        init_time = time.time() - start
+
+        start = time.time()
+        result = await new_client.table("profiles").select("id").limit(1).execute()
+        query_time = time.time() - start
+
+        results["tests"]["new_async_client"] = {
+            "status": "ok",
+            "init_ms": round(init_time * 1000, 2),
+            "query_ms": round(query_time * 1000, 2),
+            "total_ms": round((init_time + query_time) * 1000, 2)
+        }
+    except Exception as e:
+        results["tests"]["new_async_client"] = {
+            "status": "error",
+            "error": str(e)[:100]
+        }
+
+    # 诊断结论
+    cached = results["tests"].get("cached_async_client", {})
+    direct = results["tests"].get("direct_httpx", {})
+    new = results["tests"].get("new_async_client", {})
+
+    if cached.get("status") == "ok" and direct.get("status") == "ok":
+        cached_time = cached.get("total_ms", 0)
+        direct_time = direct.get("time_ms", 0)
+
+        if cached_time > direct_time * 5 and cached_time > 1000:
+            results["diagnosis"] = "CACHED_CLIENT_SLOW"
+            results["recommendation"] = "缓存的 AsyncClient 连接可能已失效，建议重启服务"
+        elif cached_time > 5000:
+            results["diagnosis"] = "CONNECTION_TIMEOUT"
+            results["recommendation"] = "连接超时，可能是网络问题"
+        else:
+            results["diagnosis"] = "HEALTHY"
+            results["recommendation"] = "连接正常"
+    elif cached.get("status") == "error":
+        results["diagnosis"] = "CACHED_CLIENT_ERROR"
+        results["recommendation"] = f"缓存客户端错误: {cached.get('error', 'unknown')}"
+    else:
+        results["diagnosis"] = "UNKNOWN"
+        results["recommendation"] = "需要进一步排查"
+
+    return results
+
+
 @router.get("/health")
 @limiter.limit("60/minute")
 async def health_check(request: Request):
