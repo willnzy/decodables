@@ -813,40 +813,73 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         else:
             select_fields = "id, title, thumbnail_url, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
 
-        # Build base query
-        query = self.client.table("projects").select(select_fields).eq(
-            "user_id", user_id
-        ).eq("is_deleted", False)
+        # v3.30: Special handling for "selling" view - query via marketplace_listings
+        if view_type == "selling":
+            # Get project IDs from marketplace_listings (reliable source of truth)
+            listings_result = await self.client.table("marketplace_listings").select(
+                "resource_id"
+            ).eq("seller_id", user_id).eq("resource_type", "project").eq("is_deleted", False).execute()
 
-        # Apply view type filter
-        if view_type == "bought":
-            query = query.eq("is_purchased", True)
-        elif view_type == "selling":
-            query = query.not_.is_("listing_status", "null")
+            selling_project_ids = [
+                str(l["resource_id"]) for l in (listings_result.data or [])
+                if l.get("resource_id")
+            ]
 
-        # Apply search filter
-        if search and search.strip():
-            query = query.ilike("title", f"%{search.strip()}%")
+            if not selling_project_ids:
+                # No selling projects, return empty
+                items = []
+                total = 0
+            else:
+                # Query projects by IDs
+                query = self.client.table("projects").select(select_fields).in_(
+                    "id", selling_project_ids
+                ).eq("is_deleted", False)
 
-        # Execute query
-        result = await query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
-        items = result.data or []
+                if search and search.strip():
+                    query = query.ilike("title", f"%{search.strip()}%")
 
-        # Get total count with same filters
-        count_query = self.client.table("projects").select("id", count="exact").eq(
-            "user_id", user_id
-        ).eq("is_deleted", False)
+                result = await query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
+                items = result.data or []
 
-        if view_type == "bought":
-            count_query = count_query.eq("is_purchased", True)
-        elif view_type == "selling":
-            count_query = count_query.not_.is_("listing_status", "null")
+                # Count with same filters
+                count_query = self.client.table("projects").select("id", count="exact").in_(
+                    "id", selling_project_ids
+                ).eq("is_deleted", False)
+                if search and search.strip():
+                    count_query = count_query.ilike("title", f"%{search.strip()}%")
+                count_result = await count_query.execute()
+                total = count_result.count or len(items)
+        else:
+            # Build base query for "all" and "bought" views
+            query = self.client.table("projects").select(select_fields).eq(
+                "user_id", user_id
+            ).eq("is_deleted", False)
 
-        if search and search.strip():
-            count_query = count_query.ilike("title", f"%{search.strip()}%")
+            # Apply view type filter
+            if view_type == "bought":
+                query = query.eq("is_purchased", True)
 
-        count_result = await count_query.execute()
-        total = count_result.count or len(items)
+            # Apply search filter
+            if search and search.strip():
+                query = query.ilike("title", f"%{search.strip()}%")
+
+            # Execute query
+            result = await query.range(offset, offset + limit - 1).order("updated_at", desc=True).execute()
+            items = result.data or []
+
+            # Get total count with same filters
+            count_query = self.client.table("projects").select("id", count="exact").eq(
+                "user_id", user_id
+            ).eq("is_deleted", False)
+
+            if view_type == "bought":
+                count_query = count_query.eq("is_purchased", True)
+
+            if search and search.strip():
+                count_query = count_query.ilike("title", f"%{search.strip()}%")
+
+            count_result = await count_query.execute()
+            total = count_result.count or len(items)
 
         # Get counts for all view types (for tab badges)
         # All projects count
@@ -868,13 +901,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         bought_count = bought_count_result.count or 0
 
         # Selling projects count
-        selling_count_query = self.client.table("projects").select("id", count="exact").eq(
-            "user_id", user_id
-        ).eq("is_deleted", False).not_.is_("listing_status", "null")
-        if search and search.strip():
-            selling_count_query = selling_count_query.ilike("title", f"%{search.strip()}%")
-        selling_count_result = await selling_count_query.execute()
-        selling_count = selling_count_result.count or 0
+        # v3.30: Query via marketplace_listings for accurate count
+        selling_listings_result = await self.client.table("marketplace_listings").select(
+            "resource_id", count="exact"
+        ).eq("seller_id", user_id).eq("resource_type", "project").eq("is_deleted", False).execute()
+        selling_count = selling_listings_result.count or 0
 
         counts = {
             "all": all_count,
