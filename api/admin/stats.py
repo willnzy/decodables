@@ -2,9 +2,13 @@
 Admin Stats API - Dashboard and analytics endpoints for admins.
 
 @module api.admin.stats
-@version 3.30 (P2-001 Fix: Typed Response Models)
+@version 3.31 (Field mapping fix)
 
 Changes:
+- v3.31: Fixed field mapping between Repository and Pydantic models
+  - user-growth: Map {date, count} to {date, new_users, total_users}
+  - credits: Map {total_used, by_type} to {total_credits_purchased, total_credits_consumed, avg_credits_per_user}
+
 - v3.30: P2-001 Fix - Migrate to Pydantic response models
   - All endpoints now return typed Pydantic models
   - API layer converts Service dict results to typed entities
@@ -171,8 +175,19 @@ async def get_user_growth_stats_endpoint(
 
     try:
         result = await get_user_growth_stats(start_date, end_date, group_by)
-        # v3.30: Convert list of dicts to Pydantic models (P2-001 Fix)
-        return [UserGrowthDataPoint(**item) for item in result]
+        # v3.31: Map repository data to Pydantic models
+        # Repository returns: {"date": "2026-01-20", "count": 10}
+        # Model needs: {"date": ..., "new_users": ..., "total_users": ...}
+        cumulative = 0
+        growth_data = []
+        for item in result:
+            cumulative += item.get("count", 0)
+            growth_data.append(UserGrowthDataPoint(
+                date=item.get("date", ""),
+                new_users=item.get("count", 0),
+                total_users=cumulative
+            ))
+        return growth_data
     except Exception as e:
         logger.error(f"Failed to fetch user growth stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch user growth statistics")
@@ -242,8 +257,15 @@ async def get_credit_usage_stats_endpoint(
 
     try:
         result = await get_credit_usage_stats(start_date, end_date)
-        # v3.30: Convert dict to Pydantic model (P2-001 Fix)
-        return CreditUsageStats(**result)
+        # v3.31: Map repository data to Pydantic model
+        # Repository returns: {"total_used": 100, "by_type": {...}}
+        # Model needs: total_credits_purchased, total_credits_consumed, avg_credits_per_user
+        total_consumed = result.get("total_used", 0)
+        return CreditUsageStats(
+            total_credits_purchased=0,  # Not tracked in current schema
+            total_credits_consumed=total_consumed,
+            avg_credits_per_user=0.0  # Would need user count to calculate
+        )
     except Exception as e:
         logger.error(f"Failed to fetch credit usage stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch credit usage statistics")

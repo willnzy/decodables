@@ -325,14 +325,15 @@ class SupabaseAdminStatsRepository:
             start_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
         # STAT-MEDIUM-7: Added limit to prevent OOM
-        result = await self.client.table("credit_transactions").select("amount, type").gte("created_at", start_date).limit(100000).execute()
+        # v3.31: Fixed column name - use tx_type instead of type
+        result = await self.client.table("credit_transactions").select("amount, tx_type").gte("created_at", start_date).limit(100000).execute()
 
         total_used = 0
         by_type = {}
 
         for tx in (result.data or []):
             amount = abs(tx.get("amount", 0))
-            tx_type = tx.get("type", "unknown")
+            tx_type = tx.get("tx_type", "unknown")
             total_used += amount
             by_type[tx_type] = by_type.get(tx_type, 0) + amount
 
