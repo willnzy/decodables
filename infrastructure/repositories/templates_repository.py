@@ -207,7 +207,7 @@ class SupabaseTemplatesRepository:
         """
         result = await self.client.table("page_prompt_templates") \
             .select("*") \
-            .eq("user_id", user_id) \
+            .eq("created_by", user_id) \
             .order("use_count", desc=True) \
             .execute()
 
@@ -232,7 +232,7 @@ class SupabaseTemplatesRepository:
         result = await self.client.table("page_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
-            .eq("user_id", user_id) \
+            .eq("created_by", user_id) \
             .single() \
             .execute()
 
@@ -282,7 +282,7 @@ class SupabaseTemplatesRepository:
         result = await self.client.table("page_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
-            .eq("user_id", user_id) \
+            .eq("created_by", user_id) \
             .execute()
 
         return result.data[0] if result.data else None
@@ -306,7 +306,7 @@ class SupabaseTemplatesRepository:
         await self.client.table("page_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
-            .eq("user_id", user_id) \
+            .eq("created_by", user_id) \
             .execute()
 
         return True
@@ -324,7 +324,7 @@ class SupabaseTemplatesRepository:
         """
         result = await self.client.table("page_prompt_templates") \
             .select("id", count="exact") \
-            .eq("user_id", user_id) \
+            .eq("created_by", user_id) \
             .execute()
 
         return result.count or 0
