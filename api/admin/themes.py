@@ -131,12 +131,40 @@ async def get_generation_status(
 @limiter.limit("30/minute")
 async def get_calendar_view(
     request: Request,
-    start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
-    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    month: str = Query(None, description="Month (YYYY-MM format)"),
+    start_date: str = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: str = Query(None, description="End date (YYYY-MM-DD)"),
     admin: dict = Depends(require_admin),
 ):
-    """Get calendar view of themes."""
+    """Get calendar view of themes.
+
+    Accepts either:
+    - month: YYYY-MM format (e.g., "2026-01") - will calculate start/end dates
+    - start_date + end_date: explicit date range
+    """
     service = get_themes_service()
+
+    # Handle month parameter
+    if month:
+        try:
+            year, m = month.split('-')
+            year, m = int(year), int(m)
+            # First day of month
+            start_date = f"{year}-{m:02d}-01"
+            # Last day of month (handle different month lengths)
+            if m == 12:
+                end_date = f"{year + 1}-01-01"
+            else:
+                end_date = f"{year}-{m + 1:02d}-01"
+            # Adjust to last day of current month
+            from datetime import datetime, timedelta
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=1)
+            end_date = end_dt.strftime("%Y-%m-%d")
+        except (ValueError, AttributeError):
+            raise HTTPException(400, "Invalid month format. Use YYYY-MM (e.g., 2026-01)")
+
+    if not start_date or not end_date:
+        raise HTTPException(400, "Either 'month' or both 'start_date' and 'end_date' are required")
 
     filters = {
         "date_from": start_date,
