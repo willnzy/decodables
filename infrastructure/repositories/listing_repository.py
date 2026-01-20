@@ -612,7 +612,8 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             "price_type": listing.price_type.value,
             "price_credits": listing.credit_price,  # DB column is price_credits
             "allowed_tiers": listing.allowed_tiers,
-            "status": listing.status.value,
+            "status": listing.status.value,  # Internal status field
+            "moderation_status": self._status_to_moderation(listing.status),  # DB uses moderation_status
             "is_featured": listing.is_featured,
             "rejection_reason": listing.rejection_reason,
             "view_count": listing.stats.view_count,
@@ -621,6 +622,23 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             "purchase_count": listing.stats.purchase_count,
             "published_at": listing.published_at.isoformat() if listing.published_at else None,
         }
+
+    def _status_to_moderation(self, status: ListingStatus) -> str:
+        """
+        Map ListingStatus to database moderation_status.
+
+        DB moderation_status: draft, pending, approved, rejected
+        Code ListingStatus: draft, pending_review, published, rejected, suspended, archived
+        """
+        mapping = {
+            ListingStatus.DRAFT: "draft",
+            ListingStatus.PENDING_REVIEW: "pending",
+            ListingStatus.PUBLISHED: "approved",
+            ListingStatus.REJECTED: "rejected",
+            ListingStatus.SUSPENDED: "rejected",  # Suspended maps to rejected
+            ListingStatus.ARCHIVED: "rejected",   # Archived maps to rejected
+        }
+        return mapping.get(status, "draft")
 
     # ==========================================
     # Statistics & Leaderboard Methods

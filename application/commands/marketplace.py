@@ -102,6 +102,13 @@ class CreateListingHandler:
                     preview_url=command.preview_url,
                 )
 
+            # v3.30: Auto-submit for review after creation (if preview_url is set)
+            if listing.metadata.preview_url:
+                listing = await self._marketplace_service.submit_for_review(
+                    listing_id=listing.listing_id,
+                    user_id=command.seller_id,
+                )
+
             # Link project/asset to the new listing
             if command.resource_id and self._client:
                 if resource_type == ResourceType.PROJECT:
