@@ -368,14 +368,16 @@ class AssetsService:
         ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
         filename = f"{user_id}/uploads/{uuid.uuid4()}.{ext}"
 
-        # 6. Upload to Storage
+        # 6. Upload to Storage (v2.0: AsyncClient storage methods are async)
         try:
-            await self.storage.storage.from_(BUCKET_NAME).upload(
+            bucket = self.storage.storage.from_(BUCKET_NAME)
+            await bucket.upload(
                 path=filename,
                 file=contents,
                 file_options={"content-type": file.content_type}
             )
-            url = self.storage.storage.from_(BUCKET_NAME).get_public_url(filename)
+            # get_public_url is also async in AsyncClient
+            url = await bucket.get_public_url(filename)
         except Exception as e:
             logger.error(f"Failed to upload file: {e}")
             raise UploadFailedException(reason=str(e))
