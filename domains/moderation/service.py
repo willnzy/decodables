@@ -27,14 +27,8 @@ from typing import Optional, Dict, List, Tuple
 from infrastructure.repositories import (
     SupabaseAdminModerationRepository,
     SupabaseAdminUsersRepository,
-    SupabaseAdminStatsRepository,
 )
 from domains.moderation.constants import (
-    EVENT_MODERATION_APPROVE,
-    EVENT_MODERATION_REJECT,
-    EVENT_MODERATION_DELETE,
-    EVENT_MODERATION_UNPUBLISH,
-    EVENT_REPORT_RESPOND,
     OP_LISTING_APPROVE,
     OP_LISTING_REJECT,
     OP_REPORT_RESPOND,
@@ -43,19 +37,18 @@ from domains.moderation.constants import (
 logger = logging.getLogger(__name__)
 
 
-async def _get_repos() -> Tuple[SupabaseAdminModerationRepository, SupabaseAdminStatsRepository, SupabaseAdminUsersRepository]:
+async def _get_repos() -> Tuple[SupabaseAdminModerationRepository, SupabaseAdminUsersRepository]:
     """
     Get repository instances.
 
     v3.29: Fixed async function declaration (SyntaxError fix).
     v3.28: DDD Migration helper.
-    Returns all 3 repositories used by moderation service.
+    v3.30: Removed StatsRepository - admin operations should only log to admin_operations table.
     """
     db_client = await get_async_db_client()
     moderation_repo = SupabaseAdminModerationRepository(db_client)
-    stats_repo = SupabaseAdminStatsRepository(db_client)
     admin_users_repo = SupabaseAdminUsersRepository(db_client)
-    return moderation_repo, stats_repo, admin_users_repo
+    return moderation_repo, admin_users_repo
 
 
 # ==========================================
@@ -84,7 +77,7 @@ async def get_moderation_list(
         Tuple of (items list, total count)
     """
     try:
-        moderation_repo, _, _ = await _get_repos()
+        moderation_repo, _ = await _get_repos()
         items, total = await moderation_repo.admin_get_moderation_list(
             status=status,
             resource_type=resource_type,
@@ -111,7 +104,7 @@ async def get_moderation_detail(listing_id: str) -> Optional[Dict]:
         Listing dict or None if not found
     """
     try:
-        moderation_repo, _, _ = await _get_repos()
+        moderation_repo, _ = await _get_repos()
         item = await moderation_repo.admin_get_moderation_detail(listing_id)
         return item
 
@@ -134,7 +127,7 @@ async def approve_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
+        moderation_repo, admin_users_repo = await _get_repos()
 
         # Approve listing
         result = await moderation_repo.admin_approve_listing(listing_id, admin_id)
@@ -142,14 +135,7 @@ async def approve_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
             logger.warning(f"[Moderation] Listing {listing_id} not found for approval")
             return None
 
-        # Log event
-        await stats_repo.log_user_event(
-            admin_id,
-            EVENT_MODERATION_APPROVE,
-            {"listing_id": listing_id}
-        )
-
-        # Log admin operation
+        # Log admin operation (admin_operations table - for audit trail)
         await admin_users_repo.admin_log_operation(
             admin_id=admin_id,
             operation_type=OP_LISTING_APPROVE,
@@ -180,7 +166,7 @@ async def reject_listing(listing_id: str, admin_id: str, reason: str) -> Optiona
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
+        moderation_repo, admin_users_repo = await _get_repos()
 
         # Reject listing
         result = await moderation_repo.admin_reject_listing(listing_id, admin_id, reason)
@@ -188,14 +174,7 @@ async def reject_listing(listing_id: str, admin_id: str, reason: str) -> Optiona
             logger.warning(f"[Moderation] Listing {listing_id} not found for rejection")
             return None
 
-        # Log event
-        await stats_repo.log_user_event(
-            admin_id,
-            EVENT_MODERATION_REJECT,
-            {"listing_id": listing_id, "reason": reason}
-        )
-
-        # Log admin operation
+        # Log admin operation (admin_operations table - for audit trail)
         await admin_users_repo.admin_log_operation(
             admin_id=admin_id,
             operation_type=OP_LISTING_REJECT,
@@ -225,7 +204,7 @@ async def delete_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, _ = await _get_repos()
+        moderation_repo, admin_users_repo = await _get_repos()
 
         # Delete listing
         result = await moderation_repo.admin_delete_listing(listing_id)
@@ -233,11 +212,13 @@ async def delete_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
             logger.warning(f"[Moderation] Listing {listing_id} not found for deletion")
             return None
 
-        # Log event
-        await stats_repo.log_user_event(
-            admin_id,
-            EVENT_MODERATION_DELETE,
-            {"listing_id": listing_id}
+        # Log admin operation (admin_operations table - for audit trail)
+        await admin_users_repo.admin_log_operation(
+            admin_id=admin_id,
+            operation_type="listing_delete",
+            target_user_id=result.get("seller_id"),
+            details=f"Deleted listing: {result.get('title', listing_id)[:50]}",
+            reason=None
         )
 
         return result
@@ -261,7 +242,7 @@ async def unpublish_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, _ = await _get_repos()
+        moderation_repo, admin_users_repo = await _get_repos()
 
         # Unpublish listing
         result = await moderation_repo.admin_unpublish_listing(listing_id)
@@ -269,11 +250,13 @@ async def unpublish_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
             logger.warning(f"[Moderation] Listing {listing_id} not found for unpublishing")
             return None
 
-        # Log event
-        await stats_repo.log_user_event(
-            admin_id,
-            EVENT_MODERATION_UNPUBLISH,
-            {"listing_id": listing_id}
+        # Log admin operation (admin_operations table - for audit trail)
+        await admin_users_repo.admin_log_operation(
+            admin_id=admin_id,
+            operation_type="listing_unpublish",
+            target_user_id=result.get("seller_id"),
+            details=f"Unpublished listing: {result.get('title', listing_id)[:50]}",
+            reason=None
         )
 
         return result
@@ -307,7 +290,7 @@ async def get_reports(
         Tuple of (reports list, total count, has_more flag)
     """
     try:
-        moderation_repo, _, _ = await _get_repos()
+        moderation_repo, _ = await _get_repos()
 
         # v3.28: Single query returns both items and total
         reports, total = await moderation_repo.admin_get_reports(
@@ -336,7 +319,7 @@ async def get_reports_stats() -> Dict[str, int]:
         Dict with counts by status
     """
     try:
-        moderation_repo, _, _ = await _get_repos()
+        moderation_repo, _ = await _get_repos()
         stats = await moderation_repo.admin_get_reports_stats()
         return stats
 
@@ -364,7 +347,7 @@ async def get_report_detail(report_id: str) -> Optional[Dict]:
         Report dict or None if not found
     """
     try:
-        moderation_repo, _, _ = await _get_repos()
+        moderation_repo, _ = await _get_repos()
         report = await moderation_repo.admin_get_report_detail(report_id)
         return report
 
@@ -395,7 +378,7 @@ async def respond_to_report(
         Result dict or None if failed
     """
     try:
-        moderation_repo, stats_repo, admin_users_repo = await _get_repos()
+        moderation_repo, admin_users_repo = await _get_repos()
 
         # Respond to report
         result = await moderation_repo.admin_respond_to_report(
@@ -409,14 +392,7 @@ async def respond_to_report(
             logger.warning(f"[Moderation] Report {report_id} not found")
             return None
 
-        # Log event
-        await stats_repo.log_user_event(
-            admin_id,
-            EVENT_REPORT_RESPOND,
-            {"report_id": report_id, "status": new_status}
-        )
-
-        # Log admin operation
+        # Log admin operation (admin_operations table - for audit trail)
         await admin_users_repo.admin_log_operation(
             admin_id=admin_id,
             operation_type=OP_REPORT_RESPOND,

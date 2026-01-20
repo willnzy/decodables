@@ -435,15 +435,26 @@ class SupabaseAdminStatsRepository:
         return [v for k, v in sorted(stats.items())]
 
     @retry_on_network_error()
-    async def log_user_event(self, user_id: str, event_type: str, properties: Optional[dict] = None,
-                       session_id: Optional[str] = None, event_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Log user event."""
+    async def log_user_event(self, user_id: str, event_type: str, event_data: Optional[dict] = None,
+                       session_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Log user event to user_events table.
+
+        Note: event_type must be one of the allowed types defined in database CHECK constraint:
+        - page_view, button_click, form_submit
+        - feature_used, error_occurred, api_call
+        - project_created, project_updated, project_deleted
+        - asset_uploaded, asset_purchased, payment_completed
+        - login, logout, signup, profile_updated
+
+        For admin operations, use admin_log_operation() instead - this method is for
+        tracking regular user behavior only.
+        """
         result = await self.client.table("user_events").insert({
             "user_id": user_id,
             "event_type": event_type,
-            "properties": properties or {},
+            "event_data": event_data or {},
             "session_id": session_id,
-            "event_id": event_id,
         }).execute()
 
         return result.data[0] if result.data else None
@@ -454,7 +465,7 @@ class SupabaseAdminStatsRepository:
         Batch insert user events (optimized for multiple events).
 
         Args:
-            events: List of event dicts with keys: user_id, event_type, properties, session_id, event_id
+            events: List of event dicts with keys: user_id, event_type, event_data, session_id
 
         Returns:
             List of inserted event records
@@ -462,11 +473,24 @@ class SupabaseAdminStatsRepository:
         Performance:
             - 10 events: 1 DB call instead of 10 (10x improvement)
             - Reference: https://supabase.com/docs/reference/python/insert
+
+        Note: event_type must be one of the allowed types. For admin operations,
+        use admin_log_operation() instead.
         """
         if not events:
             return []
 
-        result = await self.client.table("user_events").insert(events).execute()
+        # Prepare events for insertion
+        mapped_events = []
+        for event in events:
+            mapped_events.append({
+                'user_id': event['user_id'],
+                'event_type': event.get('event_type', 'feature_used'),
+                'event_data': event.get('event_data', {}),
+                'session_id': event.get('session_id'),
+            })
+
+        result = await self.client.table("user_events").insert(mapped_events).execute()
         return result.data or []
 
     @retry_on_network_error()
