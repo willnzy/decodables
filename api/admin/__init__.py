@@ -2,12 +2,13 @@
 Admin API Layer - Admin management endpoints (v2).
 
 @package api.admin
-@version 2.0.0
+@version 2.1.0
 
 Endpoints:
 - /api/v2/admin/users/* - User management
 - /api/v2/admin/stats/* - Dashboard and analytics
 - /api/v2/admin/config/* - System configuration
+- /api/v2/admin/tiers/* - Tier configuration management (v2.1)
 - /api/v2/admin/campaigns/* - Campaign management
 - /api/v2/admin/moderation/* - Content moderation
 - /api/v2/admin/notifications/* - Notification management
@@ -50,6 +51,7 @@ from .articles import router as articles_router
 from .themes import router as themes_router
 from .user_creation_monitoring import router as user_creation_monitoring_router
 from .static_pages import router as static_pages_router
+from .tiers import router as tiers_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -77,5 +79,6 @@ admin_router.include_router(articles_router)
 admin_router.include_router(themes_router)
 admin_router.include_router(user_creation_monitoring_router)
 admin_router.include_router(static_pages_router)
+admin_router.include_router(tiers_router)
 
 __all__ = ['admin_router']
