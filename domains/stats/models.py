@@ -50,10 +50,17 @@ class ProjectStats(BaseModel):
 
 
 class CreditUsageStats(BaseModel):
-    """Credit usage statistics."""
+    """Credit usage statistics (summary)."""
     total_credits_purchased: int = Field(..., description="Total credits purchased")
     total_credits_consumed: int = Field(..., description="Total credits consumed")
     avg_credits_per_user: float = Field(..., description="Average credits per user")
+
+
+class CreditUsageItem(BaseModel):
+    """Credit usage by action type (for charts)."""
+    action: str = Field(..., description="Action type (ai_generation, smart_scan, etc.)")
+    credits: int = Field(..., description="Total credits consumed")
+    count: int = Field(..., description="Number of operations")
 
 
 class TierDistributionItem(BaseModel):

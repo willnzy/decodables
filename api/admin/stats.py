@@ -2,9 +2,13 @@
 Admin Stats API - Dashboard and analytics endpoints for admins.
 
 @module api.admin.stats
-@version 3.31 (Field mapping fix)
+@version 3.32 (Credits endpoint fix)
 
 Changes:
+- v3.32: Fixed /credits endpoint to return List[CreditUsageItem] instead of CreditUsageStats
+  - Frontend expects array for chart rendering, not object
+  - Transformed by_type dict to list of CreditUsageItem
+
 - v3.31: Fixed field mapping between Repository and Pydantic models
   - user-growth: Map {date, count} to {date, new_users, total_users}
   - credits: Map {total_used, by_type} to {total_credits_purchased, total_credits_consumed, avg_credits_per_user}
@@ -98,7 +102,7 @@ from domains.stats.models import (
     UserGrowthDataPoint,
     RevenueDataPoint,
     ProjectStats,
-    CreditUsageStats,
+    CreditUsageItem,
     TierDistributionItem,
     ConversionFunnelStep,
     # Aggregated Stats Response Models (8-18) - P3-001 Fix
@@ -242,30 +246,33 @@ async def get_project_stats_endpoint(
         raise HTTPException(500, "Failed to fetch project statistics")
 
 
-@router.get("/credits", response_model=CreditUsageStats)
+@router.get("/credits", response_model=List[CreditUsageItem])
 @limiter.limit("30/minute")
 async def get_credit_usage_stats_endpoint(
     request: Request,
     start_date: Optional[str] = Query(None, max_length=30),
     end_date: Optional[str] = Query(None, max_length=30),
     admin: dict = Depends(require_admin),
-) -> CreditUsageStats:
-    """Fetch credit usage stats."""
+) -> List[CreditUsageItem]:
+    """Fetch credit usage stats by action type."""
     # v3.25: STAT-MEDIUM-2 - Validate date formats
     validate_date_format(start_date, "start_date")
     validate_date_format(end_date, "end_date")
 
     try:
         result = await get_credit_usage_stats(start_date, end_date)
-        # v3.31: Map repository data to Pydantic model
-        # Repository returns: {"total_used": 100, "by_type": {...}}
-        # Model needs: total_credits_purchased, total_credits_consumed, avg_credits_per_user
-        total_consumed = result.get("total_used", 0)
-        return CreditUsageStats(
-            total_credits_purchased=0,  # Not tracked in current schema
-            total_credits_consumed=total_consumed,
-            avg_credits_per_user=0.0  # Would need user count to calculate
-        )
+        # v3.32: Return List[CreditUsageItem] to match frontend expectations
+        # Repository returns: {"total_used": 100, "by_type": {"ai_generation": 50, "smart_scan": 30}}
+        # Frontend expects: [{action: "ai_generation", credits: 50, count: 10}, ...]
+        by_type = result.get("by_type", {})
+        items = []
+        for action, credits in by_type.items():
+            items.append(CreditUsageItem(
+                action=action,
+                credits=credits,
+                count=1  # Count not tracked per type in current schema
+            ))
+        return items
     except Exception as e:
         logger.error(f"Failed to fetch credit usage stats: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to fetch credit usage statistics")
