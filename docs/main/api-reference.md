@@ -256,6 +256,7 @@ POST /api/v2/user/tools/ocr            # 上传图片进行 OCR
 /api/v2/admin/users/*         # 用户管理
 /api/v2/admin/stats/*         # 统计数据
 /api/v2/admin/config/*        # 系统配置
+/api/v2/admin/tiers/*         # Tier 配置管理 (v3.41 NEW)
 /api/v2/admin/campaigns/*     # 营销活动
 /api/v2/admin/moderation/*    # 内容审核
 /api/v2/admin/notifications/* # 通知管理
@@ -521,9 +522,9 @@ checkout.session 需要携带的 metadata:
 
 ---
 
-### Admin API (178个端点)
+### Admin API (181个端点)
 
-> **版本**: v3.40 (2026-01-17) - 完整评审 178 个端点
+> **版本**: v3.41 (2026-01-20) - 完整评审 181 个端点
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
@@ -535,6 +536,7 @@ checkout.session 需要携带的 metadata:
 | **内容审核** | `/api/v2/admin/moderation` | 10 | Marketplace 审核、举报 |
 | **通知管理** | `/api/v2/admin/notifications` | 5 | 广播、批量发送 |
 | **系统配置** | `/api/v2/admin/config` | 8 | 配置 CRUD、限流预设 |
+| **Tier 配置** | `/api/v2/admin/tiers` | 3 | Tier 权益配置管理 **NEW** |
 | **系统管理** | `/api/v2/admin/system` | 12 | 缓存、系统配置 |
 | **实验管理** | `/api/v2/admin/experiments` | 14 | AB 测试、AI 分析 |
 | **Feature Flags** | `/api/v2/admin/feature-flags` | 15 | 功能开关管理 (v1.2 含 Tier 分层筛选) |
@@ -546,13 +548,13 @@ checkout.session 需要携带的 metadata:
 | **文章管理** | `/api/v2/admin/articles` | 7 | 文章 CMS CRUD |
 | **素材分类** | `/api/v2/admin/asset-categories` | 7 | 分类 CRUD、树结构 |
 | **主题管理** | `/api/v2/admin/themes` | 13 | 主题 CRUD、AI 批量生成、审核 |
-| **静态页面** | `/api/v2/admin/static-pages` | 7 | 静态页面 CMS CRUD **NEW** |
-| **用户创建监控** | `/api/v2/admin/monitoring/user-creation` | 3 | Webhook 健康度监控 **NEW** |
+| **静态页面** | `/api/v2/admin/static-pages` | 7 | 静态页面 CMS CRUD |
+| **用户创建监控** | `/api/v2/admin/monitoring/user-creation` | 3 | Webhook 健康度监控 |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 178 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 181 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
-> **说明**: admin-api-review.md v3.40 记录了全部 178 个端点。v3.40 新增 Static Pages (7个)、User Creation Monitoring (3个) 模块。
+> **说明**: admin-api-review.md v3.41 记录了全部 181 个端点。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个)、User Creation Monitoring (3个) 模块。
 
 ---
 
@@ -764,9 +766,10 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ---
 
-*文档版本: v3.30*
-*最后更新: 2026-01-16*
+*文档版本: v3.31*
+*最后更新: 2026-01-20*
 *更新内容:
+- v3.31: 新增 Tiers API (3个端点) - Tier 配置管理
 - v3.30: 精简附录 B/C，Tier 和积分系统详细内容移至 backend-business-logic.md
 - v3.29: Feature Flags v1.2 Tier 分层筛选支持 (allowed_tiers 字段, 规则级 tiers)
 - v3.28: Feature Flags v1.1 树状结构支持 (Admin 15 个端点, User 4 个端点)

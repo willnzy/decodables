@@ -1,11 +1,11 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 178 个)
-> **版本**: 3.40
-> **最后更新**: 2026-01-17
-> **总端点数**: 178 个
+> **状态**: ✅ Complete (已评审 181 个)
+> **版本**: 3.41
+> **最后更新**: 2026-01-20
+> **总端点数**: 181 个
 
-本文档记录已评审的 178 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 181 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
 
 ---
 
@@ -30,13 +30,14 @@
 17. [System 系统管理 (12个)](#17-system-系统管理)
 18. [Tasks 任务管理 (4个)](#18-tasks-任务管理)
 19. [Themes 主题管理 (13个)](#19-themes-主题管理)
-20. [Users 用户管理 (13个)](#20-users-用户管理)
-21. [User Creation Monitoring 用户创建监控 (3个)](#21-user-creation-monitoring-用户创建监控) **NEW**
-22. [Webhooks 重试管理 (2个)](#22-webhooks-重试管理)
+20. [Tiers 配置管理 (3个)](#20-tiers-配置管理) **NEW**
+21. [Users 用户管理 (13个)](#21-users-用户管理)
+22. [User Creation Monitoring 用户创建监控 (3个)](#22-user-creation-monitoring-用户创建监控)
+23. [Webhooks 重试管理 (2个)](#23-webhooks-重试管理)
 
 ---
 
-## 📋 接口总览 (178个)
+## 📋 接口总览 (181个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -212,36 +213,40 @@
 | 152 | Themes | POST | /themes/{theme_id}/review | review_theme | api/admin/themes.py | 审核主题 |
 | 153 | Themes | POST | /themes/{theme_id}/regenerate | regenerate_theme | api/admin/themes.py | 重新生成主题 |
 | 154 | Themes | POST | /themes/review/batch-approve | batch_approve_themes | api/admin/themes.py | 批量审核通过 |
+| **Tiers (3个)** **NEW** |
+| 155 | Tiers | GET | /tiers | get_all_tiers | api/admin/tiers.py | 获取所有 Tier 配置 |
+| 156 | Tiers | GET | /tiers/{tier_code} | get_tier | api/admin/tiers.py | 获取单个 Tier 配置 |
+| 157 | Tiers | PUT | /tiers/{tier_code} | update_tier | api/admin/tiers.py | 更新 Tier 配置 |
 | **Users (13个)** |
-| 155 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
-| 156 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
-| 157 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
-| 158 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
-| 159 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
-| 160 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
-| 161 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
-| 162 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
-| 163 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
-| 164 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
-| 165 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
-| 166 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
+| 158 | Users | GET | /users | - | api/admin/users.py | 搜索用户 |
+| 159 | Users | GET | /users/by-tier/{tier} | - | api/admin/users.py | 按 Tier 获取用户 |
+| 160 | Users | GET | /users/{user_id} | - | api/admin/users.py | 获取用户完整审计信息 |
+| 161 | Users | POST | /users/{user_id}/credits | - | api/admin/users.py | 调整用户积分 |
+| 162 | Users | PATCH | /users/{user_id} | - | api/admin/users.py | 更新用户信息 |
+| 163 | Users | POST | /users/{user_id}/discount | - | api/admin/users.py | 创建用户折扣 |
+| 164 | Users | GET | /users/{user_id}/payments | - | api/admin/users.py | 获取用户支付记录 |
+| 165 | Users | GET | /users/{user_id}/projects | - | api/admin/users.py | 获取用户项目列表 |
+| 166 | Users | GET | /users/{user_id}/asset-usage | - | api/admin/users.py | 获取用户素材使用情况 |
+| 167 | Users | GET | /users/{user_id}/env-stats | - | api/admin/users.py | 获取用户环境统计 |
+| 168 | Users | POST | /users/projects/{project_id}/restore | - | api/admin/users.py | 恢复用户项目 |
+| 169 | Users | GET | /users/projects/feed | - | api/admin/users.py | 获取项目动态流 |
 | **Webhooks (2个)** |
-| 167 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
-| 168 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
-| **Static Pages (7个)** **NEW** |
-| 169 | Static Pages | GET | /static-pages | list_static_pages | api/admin/static_pages.py | 列出所有静态页面 |
-| 170 | Static Pages | GET | /static-pages/{page_id} | get_static_page | api/admin/static_pages.py | 获取静态页面详情 |
-| 171 | Static Pages | POST | /static-pages | create_static_page | api/admin/static_pages.py | 创建静态页面 |
-| 172 | Static Pages | PUT | /static-pages/{page_id} | update_static_page | api/admin/static_pages.py | 更新静态页面 |
-| 173 | Static Pages | DELETE | /static-pages/{page_id} | delete_static_page | api/admin/static_pages.py | 删除静态页面 |
-| 174 | Static Pages | POST | /static-pages/{page_id}/publish | publish_static_page | api/admin/static_pages.py | 发布静态页面 |
-| 175 | Static Pages | POST | /static-pages/{page_id}/unpublish | unpublish_static_page | api/admin/static_pages.py | 取消发布静态页面 |
-| **User Creation Monitoring (3个)** **NEW** |
-| 176 | Monitoring | GET | /monitoring/user-creation/stats | get_user_creation_stats | api/admin/user_creation_monitoring.py | 用户创建统计 |
-| 177 | Monitoring | GET | /monitoring/user-creation/health | get_user_creation_health | api/admin/user_creation_monitoring.py | 用户创建健康状态 |
-| 178 | Monitoring | GET | /monitoring/user-creation/events | get_recent_creation_events | api/admin/user_creation_monitoring.py | 最近创建事件 |
+| 170 | Webhooks | POST | /webhooks/retry | - | api/admin/webhooks_retry.py | 重试失败的 Webhooks |
+| 171 | Webhooks | GET | /webhooks/failed | - | api/admin/webhooks_retry.py | 获取失败的 Webhooks |
+| **Static Pages (7个)** |
+| 172 | Static Pages | GET | /static-pages | list_static_pages | api/admin/static_pages.py | 列出所有静态页面 |
+| 173 | Static Pages | GET | /static-pages/{page_id} | get_static_page | api/admin/static_pages.py | 获取静态页面详情 |
+| 174 | Static Pages | POST | /static-pages | create_static_page | api/admin/static_pages.py | 创建静态页面 |
+| 175 | Static Pages | PUT | /static-pages/{page_id} | update_static_page | api/admin/static_pages.py | 更新静态页面 |
+| 176 | Static Pages | DELETE | /static-pages/{page_id} | delete_static_page | api/admin/static_pages.py | 删除静态页面 |
+| 177 | Static Pages | POST | /static-pages/{page_id}/publish | publish_static_page | api/admin/static_pages.py | 发布静态页面 |
+| 178 | Static Pages | POST | /static-pages/{page_id}/unpublish | unpublish_static_page | api/admin/static_pages.py | 取消发布静态页面 |
+| **User Creation Monitoring (3个)** |
+| 179 | Monitoring | GET | /monitoring/user-creation/stats | get_user_creation_stats | api/admin/user_creation_monitoring.py | 用户创建统计 |
+| 180 | Monitoring | GET | /monitoring/user-creation/health | get_user_creation_health | api/admin/user_creation_monitoring.py | 用户创建健康状态 |
+| 181 | Monitoring | GET | /monitoring/user-creation/events | get_recent_creation_events | api/admin/user_creation_monitoring.py | 最近创建事件 |
 
-**注**: 文档共记录 178 个接口。v3.40 新增 Static Pages (7个) 和 User Creation Monitoring (3个)。
+**注**: 文档共记录 181 个接口。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个) 和 User Creation Monitoring (3个)。
 
 ---
 
@@ -4702,7 +4707,124 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-## 20. Users 用户管理
+## 20. Tiers 配置管理
+
+> **NEW** v3.41 (2026-01-20)
+
+### GET `/tiers`
+
+获取所有 Tier 配置
+
+**限流**: 30 req/min
+
+**响应**:
+```json
+{
+  "tiers": [
+    {
+      "tier_code": "t1",
+      "display_name": "Free Plan",
+      "enabled": true,
+      "monthly_credits": 0,
+      "max_projects": 1,
+      "price_original": 0.0,
+      "price_current": 0.0,
+      "ai_queue_priority": "low",
+      "topup_discount": 1.0,
+      "features": {
+        "pdf_export": true,
+        "zip_export": "trial",
+        "basic_editor": true,
+        "vector_tools": false,
+        "freehand_tools": false,
+        "clipboard_paste": false,
+        "platform_assets": true,
+        "upload_image": true,
+        "upload_advanced": false,
+        "save_assets": false,
+        "history_assets": false,
+        "browse_marketplace": true,
+        "purchase_marketplace": false,
+        "publish_marketplace": false,
+        "ai_features": true
+      }
+    }
+  ]
+}
+```
+
+---
+
+### GET `/tiers/{tier_code}`
+
+获取单个 Tier 配置
+
+**限流**: 30 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `tier_code` | string | Tier 代码: t1, t2, t3, t4 |
+
+**响应**: 同上单个 tier 对象
+
+**错误码**:
+| 状态码 | 说明 |
+|--------|------|
+| 400 | 无效的 tier_code |
+
+---
+
+### PUT `/tiers/{tier_code}`
+
+更新 Tier 配置
+
+**限流**: 10 req/min
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `tier_code` | string | Tier 代码: t1, t2, t3, t4 |
+
+**请求体**:
+```json
+{
+  "display_name": "Starter Plan",
+  "enabled": true,
+  "monthly_credits": 100,
+  "max_projects": 3,
+  "price_original": 9.9,
+  "price_current": 6.9,
+  "ai_queue_priority": "normal",
+  "topup_discount": 0.9,
+  "features": {
+    "pdf_export": true,
+    "zip_export": true,
+    "vector_tools": true
+  }
+}
+```
+
+**字段说明**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `display_name` | string | 用户看到的显示名称 |
+| `enabled` | boolean | 是否启用 (t1 不可禁用) |
+| `monthly_credits` | integer | 月度积分配额 |
+| `max_projects` | integer | 最大项目数 |
+| `price_original` | number | 原价 (用于划线) |
+| `price_current` | number | 现价 |
+| `ai_queue_priority` | string | AI 队列优先级: low/normal/high |
+| `topup_discount` | number | 充值折扣 (0-1) |
+| `features` | object | 功能权限配置 |
+
+**响应**: 返回更新后的完整 Tier 配置
+
+**审计日志**: 记录到 `admin_operations` 表
+
+---
+
+## 21. Users 用户管理
 
 ### GET `/users`
 
@@ -5004,7 +5126,7 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-## 21. User Creation Monitoring 用户创建监控
+## 22. User Creation Monitoring 用户创建监控
 
 > v3.40 新增：监控 Clerk Webhook 用户创建健康度的管理端点。
 > 文件：[api/admin/user_creation_monitoring.py](../../api/admin/user_creation_monitoring.py)
@@ -5138,7 +5260,7 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-## 22. Webhooks 重试管理
+## 23. Webhooks 重试管理
 
 ### POST `/webhooks/retry`
 
