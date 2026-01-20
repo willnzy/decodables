@@ -109,20 +109,27 @@ class CreateListingHandler:
                     user_id=command.seller_id,
                 )
 
-            # Link project/asset to the new listing
+            # Link project/asset to the new listing (bidirectional relationship)
             if command.resource_id and self._client:
                 if resource_type == ResourceType.PROJECT:
-                    # Update project with marketplace_listing_id (UUID from marketplace_listings.id)
-                    # First get the listing's UUID
+                    # Get the listing's UUID
                     listing_result = await self._client.table("marketplace_listings").select(
                         "id"
                     ).eq("listing_id", listing.listing_id).single().execute()
 
                     if listing_result.data:
                         listing_uuid = listing_result.data["id"]
+
+                        # v3.31: Fix bidirectional link
+                        # 1. Update marketplace_listings.resource_id (for Selling view queries)
+                        await self._client.table("marketplace_listings").update({
+                            "resource_id": command.resource_id,
+                        }).eq("listing_id", listing.listing_id).execute()
+
+                        # 2. Update project with marketplace_listing_id
                         await self._client.table("projects").update({
                             "marketplace_listing_id": listing_uuid,
-                            "listing_status": "pending",  # Also update listing_status for Selling tab
+                            "listing_status": "pending",
                         }).eq("id", command.resource_id).execute()
 
             return CreateListingResult(
