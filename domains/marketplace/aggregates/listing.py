@@ -176,6 +176,8 @@ class Listing:
             self.metadata.tags = tags
         if preview_url is not None:
             self.metadata.preview_url = preview_url
+            # Also set thumbnail_url to the same value for marketplace display
+            self.metadata.thumbnail_url = preview_url
         self.updated_at = datetime.utcnow()
 
     def set_pricing(self, price_type: PriceType, credit_price: int = 0):

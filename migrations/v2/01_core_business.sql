@@ -348,16 +348,17 @@ CREATE INDEX IF NOT EXISTS idx_project_pages_project ON project_pages(project_id
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_listings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    listing_id TEXT UNIQUE NOT NULL DEFAULT gen_random_uuid()::text,  -- 业务 ID (Repository 使用)
     seller_id TEXT REFERENCES profiles(id),
 
     -- 基本信息
     title TEXT NOT NULL,
     description TEXT,
-    thumbnail_url TEXT NOT NULL,
+    thumbnail_url TEXT,  -- P0-10: 改为可空，创建后通过 update 设置
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- P0-10: Repository 使用的字段
 
     -- 资源信息
-    resource_url TEXT NOT NULL,
+    resource_url TEXT,  -- P0-10: 改为可空，创建后通过 update 设置
     resource_type TEXT NOT NULL CHECK (resource_type IN ('project', 'asset', 'template')),
     resource_id UUID,
 
@@ -390,6 +391,8 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
     total_revenue INTEGER DEFAULT 0,
     view_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
     download_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
+    like_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段 (收藏/喜欢数)
+    purchase_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段 (购买次数)
     rating_average NUMERIC(3,2) DEFAULT 0,  -- P0-10: Repository 使用的字段
     rating_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
 
@@ -399,6 +402,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
     is_featured BOOLEAN DEFAULT FALSE,  -- 是否精选/推荐 (由管理员设置)
     moderation_status TEXT NOT NULL DEFAULT 'draft' CHECK (moderation_status IN ('draft', 'pending', 'approved', 'rejected')),
     moderation_note TEXT,
+    rejection_reason TEXT,  -- P0-10: Repository 使用的字段 (拒绝原因)
     moderated_by TEXT REFERENCES profiles(id),
     moderated_at TIMESTAMPTZ,
     published_at TIMESTAMPTZ,  -- P0-10: Repository 使用的字段

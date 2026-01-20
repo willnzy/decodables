@@ -95,17 +95,14 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             data = self._map_to_row(listing)
             data["updated_at"] = datetime.utcnow().isoformat()
 
-            result = await self.client.table("marketplace_listings").update(data).eq(
+            # AsyncClient: update doesn't support .select() chaining
+            # Just execute the update and return the listing object
+            await self.client.table("marketplace_listings").update(data).eq(
                 "listing_id", listing.listing_id
-            ).select("*").single().execute()
-
-            if not result.data:
-                raise ListingNotFoundException(listing.listing_id)
+            ).execute()
 
             return listing
 
-        except ListingNotFoundException:
-            raise
         except Exception as e:
             logger.error(f"Failed to update listing {listing.listing_id}: {e}")
             raise
