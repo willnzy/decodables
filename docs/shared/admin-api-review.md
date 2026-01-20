@@ -1,11 +1,14 @@
 # Admin API 完整参考
 
-> **状态**: ✅ Complete (已评审 181 个)
-> **版本**: 3.41
+> **状态**: ✅ Complete (已评审 187 个)
+> **版本**: 3.43
 > **最后更新**: 2026-01-20
-> **总端点数**: 181 个
+> **总端点数**: 187 个
 
-本文档记录已评审的 181 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+本文档记录已评审的 187 个 Admin API 端点的完整信息，包括请求参数、响应格式、验证规则和限流配置。
+
+**v3.43 更新**:
+- 新增 Notifications Template CRUD 端点 (6个): GET/POST/PUT/DELETE /notifications, POST /notifications/{id}/send
 
 ---
 
@@ -23,7 +26,7 @@
 10. [Logs 日志审计 (5个)](#10-logs-日志审计)
 11. [Metrics 系统指标 (7个)](#11-metrics-系统指标)
 12. [Moderation 内容审核 (10个)](#12-moderation-内容审核)
-13. [Notifications 通知管理 (5个)](#13-notifications-通知管理)
+13. [Notifications 通知管理 (11个)](#13-notifications-通知管理) **UPDATED**
 14. [Static Pages 静态页面管理 (7个)](#14-static-pages-静态页面管理) **UPDATED**
 15. [Stats 统计仪表板 (18个)](#15-stats-统计仪表板)
 16. [Subscriptions 订阅管理 (3个)](#16-subscriptions-订阅管理)
@@ -3085,6 +3088,175 @@
 ---
 
 ## 13. Notifications 通知管理
+
+> v3.33 更新: 新增 Admin Notification Templates CRUD 端点
+> 文件: [api/admin/notifications.py](../../api/admin/notifications.py)
+> 版本: v3.33 (Admin Template CRUD Support)
+
+**架构**: API → Domain Service → Repository
+
+### 13.1 Template CRUD Endpoints (v3.33 新增)
+
+#### GET `/notifications`
+
+列出通知模板列表
+
+**限流**: 60 req/min
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `status` | string | - | 状态筛选: draft, scheduled, sent, failed |
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 20 | 每页数量 (1-100) |
+
+**响应**:
+```json
+{
+  "notifications": [
+    {
+      "id": "uuid-xxx",
+      "title": "系统维护通知",
+      "message": "我们将在周日凌晨进行系统维护",
+      "type": "announcement",
+      "channel": "in_app",
+      "status": "draft",
+      "target_users": null,
+      "target_tiers": ["t2", "t3"],
+      "scheduled_at": null,
+      "sent_at": null,
+      "created_by": "admin_xxx",
+      "created_at": "2026-01-20T10:00:00Z",
+      "updated_at": "2026-01-20T10:00:00Z",
+      "stats": null
+    }
+  ],
+  "total": 15
+}
+```
+
+---
+
+#### GET `/notifications/{id}`
+
+获取单个通知模板
+
+**限流**: 60 req/min
+
+**响应**:
+```json
+{
+  "id": "uuid-xxx",
+  "title": "系统维护通知",
+  "message": "我们将在周日凌晨进行系统维护",
+  "type": "announcement",
+  "channel": "in_app",
+  "status": "draft",
+  "target_users": null,
+  "target_tiers": ["t2", "t3"],
+  "scheduled_at": null,
+  "sent_at": null,
+  "created_by": "admin_xxx",
+  "created_at": "2026-01-20T10:00:00Z",
+  "updated_at": "2026-01-20T10:00:00Z",
+  "stats": null
+}
+```
+
+**错误**:
+- 404: 通知模板不存在
+
+---
+
+#### POST `/notifications`
+
+创建通知模板（草稿）
+
+**限流**: 30 req/min
+
+**请求体**:
+```json
+{
+  "title": "系统维护通知",
+  "message": "我们将在周日凌晨 2:00-4:00 进行系统维护",
+  "type": "announcement",
+  "channel": "in_app",
+  "target_users": null,
+  "target_tiers": ["t2", "t3"],
+  "scheduled_at": "2026-01-21T02:00:00Z"
+}
+```
+
+**type 可选值**: `info`, `warning`, `error`, `success`, `announcement`, `system`, `alert`, `promo`
+
+**channel 可选值**: `in_app`, `email`, `push`, `all`
+
+**响应**: 创建的通知模板对象
+
+---
+
+#### PUT `/notifications/{id}`
+
+更新通知模板
+
+**限流**: 30 req/min
+
+**请求体**: 与 POST 相同，所有字段可选
+
+**限制**: 只能更新 `draft` 或 `scheduled` 状态的通知
+
+**错误**:
+- 404: 通知模板不存在
+- 400: 无法编辑已发送的通知
+
+---
+
+#### DELETE `/notifications/{id}`
+
+删除通知模板
+
+**限流**: 30 req/min
+
+**限制**: 只能删除 `draft` 或 `scheduled` 状态的通知
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Notification deleted"
+}
+```
+
+**错误**:
+- 404: 通知模板不存在
+- 400: 无法删除已发送的通知
+
+---
+
+#### POST `/notifications/{id}/send`
+
+发送通知模板
+
+**限流**: 10 req/min
+
+**响应**:
+```json
+{
+  "success": true,
+  "template_id": "uuid-xxx",
+  "total_recipients": 1542,
+  "delivered": 1538,
+  "failed": 4
+}
+```
+
+**错误**:
+- 404: 通知模板不存在
+- 400: 无法发送已发送的通知
+
+---
+
+### 13.2 Legacy Sending Endpoints (保持向后兼容)
 
 ### POST `/notifications/broadcast`
 

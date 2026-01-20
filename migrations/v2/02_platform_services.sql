@@ -639,6 +639,67 @@ CREATE TRIGGER trg_notifications_sync_type
 
 
 -- ----------------------------------------------------------------------------
+-- 14b. admin_notification_templates (Admin 通知模板/草稿)
+-- ----------------------------------------------------------------------------
+-- 用于 Admin Panel 的通知管理功能，支持草稿、定时发送
+CREATE TABLE IF NOT EXISTS admin_notification_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    notification_type TEXT NOT NULL DEFAULT 'info',  -- info/warning/error/success/announcement
+    channel TEXT NOT NULL DEFAULT 'in_app',          -- in_app/email/push/all
+    status TEXT NOT NULL DEFAULT 'draft',            -- draft/scheduled/sent/failed
+    target_users TEXT[],                             -- 指定用户 ID 列表
+    target_tiers TEXT[],                             -- 目标 Tier 列表 (t1/t2/t3)
+    scheduled_at TIMESTAMPTZ,                        -- 定时发送时间
+    sent_at TIMESTAMPTZ,                             -- 实际发送时间
+    created_by TEXT NOT NULL,                        -- Admin user_id
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- 发送统计
+    stats JSONB DEFAULT '{"total_recipients": 0, "delivered": 0, "read": 0, "failed": 0}',
+
+    CONSTRAINT check_notification_type CHECK (
+        notification_type IN ('info', 'warning', 'error', 'success', 'announcement', 'system', 'alert', 'promo')
+    ),
+    CONSTRAINT check_channel CHECK (
+        channel IN ('in_app', 'email', 'push', 'all')
+    ),
+    CONSTRAINT check_status CHECK (
+        status IN ('draft', 'scheduled', 'sent', 'failed')
+    )
+);
+
+-- 索引: 按状态查询
+CREATE INDEX IF NOT EXISTS idx_admin_notification_templates_status
+    ON admin_notification_templates(status, created_at DESC);
+
+-- 索引: 按创建者查询
+CREATE INDEX IF NOT EXISTS idx_admin_notification_templates_created_by
+    ON admin_notification_templates(created_by, created_at DESC);
+
+-- 索引: 定时发送查询 (找出需要发送的通知)
+CREATE INDEX IF NOT EXISTS idx_admin_notification_templates_scheduled
+    ON admin_notification_templates(scheduled_at)
+    WHERE status = 'scheduled' AND scheduled_at IS NOT NULL;
+
+-- 触发器: 自动更新 updated_at
+CREATE OR REPLACE FUNCTION update_notification_template_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_notification_template_updated_at ON admin_notification_templates;
+CREATE TRIGGER trg_notification_template_updated_at
+    BEFORE UPDATE ON admin_notification_templates
+    FOR EACH ROW
+    EXECUTE FUNCTION update_notification_template_timestamp();
+
+
+-- ----------------------------------------------------------------------------
 -- 14. stripe_webhook_events
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS stripe_webhook_events (

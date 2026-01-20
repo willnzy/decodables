@@ -6,5 +6,20 @@ Platform Domain Aggregates.
 
 from .feature_flag import FeatureFlag
 from .experiment import Experiment
+from .notification_template import (
+    NotificationTemplate,
+    NotificationType,
+    NotificationChannel,
+    NotificationStatus,
+    NotificationStats,
+)
 
-__all__ = ['FeatureFlag', 'Experiment']
+__all__ = [
+    'FeatureFlag',
+    'Experiment',
+    'NotificationTemplate',
+    'NotificationType',
+    'NotificationChannel',
+    'NotificationStatus',
+    'NotificationStats',
+]

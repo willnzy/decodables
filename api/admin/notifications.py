@@ -2,9 +2,17 @@
 Admin Notifications Router - Notification management endpoints for admins
 
 @module api.admin.notifications
-@version 3.30 (DDD Migration)
+@version 3.33 (Admin Template CRUD Support)
 
 Changes:
+- v3.33: Added Admin Notification Template CRUD endpoints
+  - GET / - List notification templates (with pagination)
+  - GET /{id} - Get single notification template
+  - POST / - Create notification template (draft)
+  - PUT /{id} - Update notification template
+  - DELETE /{id} - Delete notification template
+  - POST /{id}/send - Send notification template
+
 - v3.30: Complete DDD Migration (NTF-CRITICAL-1, NTF-CRITICAL-2, NTF-CRITICAL-3)
   - API → Domain Service → Repository
   - Removed direct Repository calls from API
@@ -20,12 +28,20 @@ Changes:
   - NTF-LOW-1: Added field length limits (title, content, user_id)
   - NTF-LOW-2: Added user_ids list max length validation in schema
 
-Endpoints:
+Legacy Endpoints (kept for backward compatibility):
 - POST /broadcast - Send broadcast notification
 - POST /notification/send - Send to single user
 - POST /notification/batch - Send to multiple users
 - GET /notification/stats - Get notification stats
 - GET /notification/history - Get notification history
+
+New CRUD Endpoints (v3.33):
+- GET / - List notifications
+- GET /{id} - Get notification
+- POST / - Create notification
+- PUT /{id} - Update notification
+- DELETE /{id} - Delete notification
+- POST /{id}/send - Send notification
 """
 
 import logging
@@ -44,6 +60,13 @@ from domains.platform.notifications import (
     send_to_users,
     get_stats,
     get_history,
+    # v3.33: Template CRUD
+    list_templates,
+    get_template,
+    create_template,
+    update_template,
+    delete_template,
+    send_template,
 )
 from domains.platform.notifications.constants import (
     VALID_TARGET_GROUPS,
@@ -458,3 +481,307 @@ async def adm_notification_history(
     except Exception as e:
         logger.error(f"Failed to get notification history: {e}")
         raise HTTPException(500, "Failed to get notification history")
+
+
+# ==========================================
+# Admin Notification Template CRUD (v3.33)
+# ==========================================
+
+# Valid types and channels for templates
+VALID_TEMPLATE_TYPES = {"info", "warning", "error", "success", "announcement", "system", "alert", "promo"}
+VALID_CHANNELS = {"in_app", "email", "push", "all"}
+VALID_STATUSES = {"draft", "scheduled", "sent", "failed"}
+
+
+class CreateNotificationRequest(BaseModel):
+    """Request model for creating a notification template."""
+    title: str = Field(..., min_length=1, max_length=200)
+    message: str = Field(..., min_length=1, max_length=2000)
+    type: str = Field("info", max_length=50)
+    channel: str = Field("in_app", max_length=50)
+    target_users: Optional[List[str]] = None
+    target_tiers: Optional[List[str]] = None
+    scheduled_at: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in VALID_TEMPLATE_TYPES:
+            raise ValueError(f"Invalid type. Must be one of: {', '.join(VALID_TEMPLATE_TYPES)}")
+        return v
+
+    @field_validator("channel")
+    @classmethod
+    def validate_channel(cls, v: str) -> str:
+        if v not in VALID_CHANNELS:
+            raise ValueError(f"Invalid channel. Must be one of: {', '.join(VALID_CHANNELS)}")
+        return v
+
+
+class UpdateNotificationRequest(BaseModel):
+    """Request model for updating a notification template."""
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    message: Optional[str] = Field(None, min_length=1, max_length=2000)
+    type: Optional[str] = Field(None, max_length=50)
+    channel: Optional[str] = Field(None, max_length=50)
+    target_users: Optional[List[str]] = None
+    target_tiers: Optional[List[str]] = None
+    scheduled_at: Optional[str] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_TEMPLATE_TYPES:
+            raise ValueError(f"Invalid type. Must be one of: {', '.join(VALID_TEMPLATE_TYPES)}")
+        return v
+
+    @field_validator("channel")
+    @classmethod
+    def validate_channel(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_CHANNELS:
+            raise ValueError(f"Invalid channel. Must be one of: {', '.join(VALID_CHANNELS)}")
+        return v
+
+
+@router.get("")
+@limiter.limit("60/minute")
+async def list_notifications(
+    request: Request,
+    status: Optional[str] = Query(None, description="Filter by status"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT, description="Page size"),
+    admin: dict = Depends(require_admin)
+):
+    """
+    List notification templates with pagination.
+
+    Returns paginated list of admin notification templates (drafts, scheduled, sent).
+
+    Args:
+        status: Filter by status (draft/scheduled/sent/failed)
+        offset: Pagination offset (default: 0)
+        limit: Page size (default: 20, max: 100)
+
+    Returns:
+        Dict containing:
+            - notifications: List of notification templates
+            - total: Total count matching filters
+    """
+    if status and status not in VALID_STATUSES:
+        raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}")
+
+    try:
+        return await list_templates(status=status, offset=offset, limit=limit)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list notifications: {e}")
+        raise HTTPException(500, "Failed to list notifications")
+
+
+@router.get("/{notification_id}")
+@limiter.limit("60/minute")
+async def get_notification(
+    request: Request,
+    notification_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Get a single notification template by ID.
+
+    Args:
+        notification_id: Template UUID
+
+    Returns:
+        Notification template dict
+
+    Raises:
+        404: Notification not found
+    """
+    try:
+        result = await get_template(notification_id)
+        if not result:
+            raise HTTPException(404, "Notification not found")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get notification {notification_id}: {e}")
+        raise HTTPException(500, "Failed to get notification")
+
+
+@router.post("")
+@limiter.limit("30/minute")
+async def create_notification(
+    request: Request,
+    req: CreateNotificationRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Create a new notification template (draft).
+
+    Creates a notification in draft status that can be edited and sent later.
+
+    Args:
+        req: Notification creation payload
+            - title: Notification title
+            - message: Notification content
+            - type: Notification type (info/warning/error/success/announcement)
+            - channel: Delivery channel (in_app/email/push/all)
+            - target_users: Optional list of specific user IDs
+            - target_tiers: Optional list of tier codes (t1/t2/t3)
+            - scheduled_at: Optional scheduled send time (ISO string)
+
+    Returns:
+        Created notification template
+    """
+    try:
+        result = await create_template(
+            title=req.title,
+            message=req.message,
+            notification_type=req.type,
+            channel=req.channel,
+            admin_id=admin["id"],
+            target_users=req.target_users,
+            target_tiers=req.target_tiers,
+            scheduled_at=req.scheduled_at,
+        )
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create notification: {e}")
+        raise HTTPException(500, "Failed to create notification")
+
+
+@router.put("/{notification_id}")
+@limiter.limit("30/minute")
+async def update_notification_endpoint(
+    request: Request,
+    notification_id: str,
+    req: UpdateNotificationRequest,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Update an existing notification template.
+
+    Only draft and scheduled notifications can be updated.
+
+    Args:
+        notification_id: Template UUID
+        req: Update payload (all fields optional)
+
+    Returns:
+        Updated notification template
+
+    Raises:
+        404: Notification not found
+        400: Cannot edit notification in current status
+    """
+    try:
+        result = await update_template(
+            template_id=notification_id,
+            admin_id=admin["id"],
+            title=req.title,
+            message=req.message,
+            notification_type=req.type,
+            channel=req.channel,
+            target_users=req.target_users,
+            target_tiers=req.target_tiers,
+            scheduled_at=req.scheduled_at,
+        )
+
+        if not result:
+            raise HTTPException(404, "Notification not found")
+
+        return result
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update notification {notification_id}: {e}")
+        raise HTTPException(500, "Failed to update notification")
+
+
+@router.delete("/{notification_id}")
+@limiter.limit("30/minute")
+async def delete_notification_endpoint(
+    request: Request,
+    notification_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Delete a notification template.
+
+    Only draft and scheduled notifications can be deleted.
+
+    Args:
+        notification_id: Template UUID
+
+    Returns:
+        Success confirmation
+
+    Raises:
+        404: Notification not found
+        400: Cannot delete notification in current status
+    """
+    try:
+        result = await delete_template(template_id=notification_id, admin_id=admin["id"])
+
+        if not result:
+            raise HTTPException(404, "Notification not found")
+
+        return {"success": True, "message": "Notification deleted"}
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete notification {notification_id}: {e}")
+        raise HTTPException(500, "Failed to delete notification")
+
+
+@router.post("/{notification_id}/send")
+@limiter.limit("10/minute")
+async def send_notification_endpoint(
+    request: Request,
+    notification_id: str,
+    admin: dict = Depends(require_admin)
+):
+    """
+    Send a notification template immediately.
+
+    Sends the notification to all target users and marks it as sent.
+
+    Args:
+        notification_id: Template UUID
+
+    Returns:
+        Dict with send results:
+            - success: true
+            - template_id: Template UUID
+            - total_recipients: Number of target users
+            - delivered: Number of successful deliveries
+            - failed: Number of failed deliveries
+
+    Raises:
+        404: Notification not found
+        400: Cannot send notification in current status
+    """
+    try:
+        result = await send_template(template_id=notification_id, admin_id=admin["id"])
+        return result
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send notification {notification_id}: {e}")
+        raise HTTPException(500, "Failed to send notification")

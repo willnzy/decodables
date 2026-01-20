@@ -49,6 +49,7 @@ from .metrics_repository import SupabaseMetricsRepository
 from .webhook_repository import SupabaseWebhookRepository
 from .article_repository import SupabaseArticleRepository
 from .static_page_repository import SupabaseStaticPageRepository
+from .notification_template_repository import SupabaseNotificationTemplateRepository
 
 __all__ = [
     # Base Repository
@@ -89,4 +90,5 @@ __all__ = [
     'SupabaseWebhookRepository',
     'SupabaseArticleRepository',
     'SupabaseStaticPageRepository',
+    'SupabaseNotificationTemplateRepository',
 ]
