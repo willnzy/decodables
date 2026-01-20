@@ -241,12 +241,14 @@
 | 176 | Static Pages | DELETE | /static-pages/{page_id} | delete_static_page | api/admin/static_pages.py | 删除静态页面 |
 | 177 | Static Pages | POST | /static-pages/{page_id}/publish | publish_static_page | api/admin/static_pages.py | 发布静态页面 |
 | 178 | Static Pages | POST | /static-pages/{page_id}/unpublish | unpublish_static_page | api/admin/static_pages.py | 取消发布静态页面 |
-| **User Creation Monitoring (3个)** |
-| 179 | Monitoring | GET | /monitoring/user-creation/stats | get_user_creation_stats | api/admin/user_creation_monitoring.py | 用户创建统计 |
+| **User Creation Monitoring (5个)** |
+| 179 | Monitoring | GET | /monitoring/user-creation/stats | get_user_creation_stats | api/admin/user_creation_monitoring.py | 用户创建仪表板统计 |
 | 180 | Monitoring | GET | /monitoring/user-creation/health | get_user_creation_health | api/admin/user_creation_monitoring.py | 用户创建健康状态 |
 | 181 | Monitoring | GET | /monitoring/user-creation/events | get_recent_creation_events | api/admin/user_creation_monitoring.py | 最近创建事件 |
+| 182 | Monitoring | GET | /monitoring/user-creation/recent | get_recent_users | api/admin/user_creation_monitoring.py | 最近注册用户列表 ⭐NEW |
+| 183 | Monitoring | GET | /monitoring/user-creation/trends | get_user_creation_trends | api/admin/user_creation_monitoring.py | 用户创建趋势 ⭐NEW |
 
-**注**: 文档共记录 181 个接口。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个) 和 User Creation Monitoring (3个)。
+**注**: 文档共记录 183 个接口。v3.42 新增 Monitoring /recent 和 /trends (2个)。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个) 和 User Creation Monitoring (3个)。
 
 ---
 
@@ -5128,51 +5130,51 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ## 22. User Creation Monitoring 用户创建监控
 
-> v3.40 新增：监控 Clerk Webhook 用户创建健康度的管理端点。
+> v3.42 更新：新增 /recent 和 /trends 端点，重构 /stats 端点格式。
 > 文件：[api/admin/user_creation_monitoring.py](../../api/admin/user_creation_monitoring.py)
-> 版本：v1.0.0
+> 版本：v1.1.0
 
-**用途**: 监控 Clerk Webhook 健康度、追踪 JIT fallback 趋势、分析系统稳定性
+**用途**: 监控用户创建情况、展示仪表板统计、追踪创建趋势
 
 ### GET `/monitoring/user-creation/stats`
 
-获取用户创建统计数据
+获取用户创建仪表板统计数据（用于前端 User Monitoring 面板）
 
 **限流**: 无
 
-**参数**:
-| 参数 | 类型 | 默认 | 范围 | 说明 |
-|------|------|------|------|------|
-| `days` | int | 7 | 1-90 | 统计周期（天数） |
+**参数**: 无
 
 **响应**:
 ```json
 {
-  "success": true,
-  "data": {
-    "period_days": 7,
-    "total_users": 150,
-    "webhook_created": 145,
-    "jit_created": 5,
-    "webhook_success_rate": 96.67,
-    "jit_fallback_rate": 3.33,
-    "duplicate_attempts": 2,
-    "errors": 0,
-    "timestamp": "2026-01-17T10:30:00Z"
-  }
+  "today": 15,
+  "yesterday": 12,
+  "this_week": 85,
+  "this_month": 320,
+  "change_percent": 25.0,
+  "hourly_breakdown": [
+    {"hour": 0, "count": 2},
+    {"hour": 1, "count": 1},
+    {"hour": 2, "count": 0},
+    ...
+    {"hour": 23, "count": 3}
+  ]
 }
 ```
 
 **关键指标**:
-- `webhook_success_rate`: Webhook 成功率（应该 >95%）
-- `jit_fallback_rate`: JIT 回退率（应该 <5%）
-- `duplicate_attempts`: Race condition 处理次数
+- `today`: 今日创建用户数
+- `yesterday`: 昨日创建用户数
+- `this_week`: 本周创建用户数
+- `this_month`: 本月创建用户数
+- `change_percent`: 与昨日相比的变化百分比
+- `hourly_breakdown`: 今日每小时创建数（24 小时）
 
 ---
 
 ### GET `/monitoring/user-creation/health`
 
-获取用户创建系统的健康状态
+获取用户创建系统的健康状态（用于 Webhook 健康监控）
 
 **限流**: 无
 
@@ -5218,7 +5220,7 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ### GET `/monitoring/user-creation/events`
 
-获取最近的用户创建事件
+获取最近的用户创建事件（包含 Webhook/JIT 来源信息）
 
 **限流**: 无
 
@@ -5257,6 +5259,95 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 - 查看最近的用户创建情况
 - 分析 Webhook vs JIT 创建分布
 - 调试 race condition 问题
+
+---
+
+### GET `/monitoring/user-creation/recent` ⭐ NEW
+
+获取最近注册的用户列表（用于前端 Recent Registrations 展示）
+
+**限流**: 无
+
+**参数**:
+| 参数 | 类型 | 默认 | 范围 | 说明 |
+|------|------|------|------|------|
+| `offset` | int | 0 | ≥0 | 偏移量 |
+| `limit` | int | 20 | 1-100 | 返回的最大用户数 |
+
+**响应**:
+```json
+{
+  "users": [
+    {
+      "id": "uuid-123-456",
+      "user_id": "user_2abc3def...",
+      "email": "user@example.com",
+      "tier": "t1",
+      "source": "webhook",
+      "created_at": "2026-01-20T10:30:00Z"
+    },
+    {
+      "id": "uuid-789-012",
+      "user_id": "user_4ghi5jkl...",
+      "email": "another@example.com",
+      "tier": "t2",
+      "source": "jit",
+      "created_at": "2026-01-20T09:15:00Z"
+    }
+  ],
+  "total": 1250
+}
+```
+
+**用途**:
+- 前端 User Monitoring 面板的 "Recent Registrations" 展示
+- 支持分页浏览所有用户
+
+---
+
+### GET `/monitoring/user-creation/trends` ⭐ NEW
+
+获取用户创建趋势数据（用于前端趋势图表展示）
+
+**限流**: 无
+
+**参数**:
+| 参数 | 类型 | 默认 | 可选值 | 说明 |
+|------|------|------|--------|------|
+| `period` | string | week | day, week, month | 统计周期 |
+
+**响应**:
+```json
+{
+  "trends": [
+    {
+      "date": "2026-01-14",
+      "count": 15,
+      "tier_breakdown": {
+        "t1": 10,
+        "t2": 3,
+        "t3": 2
+      }
+    },
+    {
+      "date": "2026-01-15",
+      "count": 18,
+      "tier_breakdown": {
+        "t1": 12,
+        "t2": 4,
+        "t3": 2
+      }
+    },
+    ...
+  ],
+  "period": "week"
+}
+```
+
+**用途**:
+- 展示用户创建趋势图表
+- 按 tier 分类显示创建数量（Free/Starter/Pro）
+- 支持 day（1天）、week（7天）、month（30天）周期
 
 ---
 
@@ -5309,8 +5400,19 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
 
 ---
 
-*文档版本: v3.40*
-*最后更新: 2026-01-17*
+*文档版本: v3.42*
+*最后更新: 2026-01-20*
+
+**更新内容** (v3.42):
+- ✅ User Creation Monitoring 模块扩展 (3→5个接口)
+  - ⭐ NEW: GET /monitoring/user-creation/recent - 最近注册用户列表
+  - ⭐ NEW: GET /monitoring/user-creation/trends - 用户创建趋势图表
+  - 🔄 重构 GET /monitoring/user-creation/stats - 新增仪表板格式 (today/yesterday/this_week/this_month/hourly_breakdown)
+- ✅ 总接口数: 183 个
+
+**更新内容** (v3.41):
+- ✅ 新增 "Tiers 管理" 模块 (3个接口)
+- ✅ 总接口数: 181 个
 
 **更新内容** (v3.40):
 - ✅ 新增 "User Creation Monitoring 用户创建监控" 模块 (3个接口)

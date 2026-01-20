@@ -522,9 +522,9 @@ checkout.session 需要携带的 metadata:
 
 ---
 
-### Admin API (181个端点)
+### Admin API (183个端点)
 
-> **版本**: v3.41 (2026-01-20) - 完整评审 181 个端点
+> **版本**: v3.42 (2026-01-20) - 完整评审 183 个端点
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
@@ -536,7 +536,7 @@ checkout.session 需要携带的 metadata:
 | **内容审核** | `/api/v2/admin/moderation` | 10 | Marketplace 审核、举报 |
 | **通知管理** | `/api/v2/admin/notifications` | 5 | 广播、批量发送 |
 | **系统配置** | `/api/v2/admin/config` | 8 | 配置 CRUD、限流预设 |
-| **Tier 配置** | `/api/v2/admin/tiers` | 3 | Tier 权益配置管理 **NEW** |
+| **Tier 配置** | `/api/v2/admin/tiers` | 3 | Tier 权益配置管理 |
 | **系统管理** | `/api/v2/admin/system` | 12 | 缓存、系统配置 |
 | **实验管理** | `/api/v2/admin/experiments` | 14 | AB 测试、AI 分析 |
 | **Feature Flags** | `/api/v2/admin/feature-flags` | 15 | 功能开关管理 (v1.2 含 Tier 分层筛选) |
@@ -549,12 +549,12 @@ checkout.session 需要携带的 metadata:
 | **素材分类** | `/api/v2/admin/asset-categories` | 7 | 分类 CRUD、树结构 |
 | **主题管理** | `/api/v2/admin/themes` | 13 | 主题 CRUD、AI 批量生成、审核 |
 | **静态页面** | `/api/v2/admin/static-pages` | 7 | 静态页面 CMS CRUD |
-| **用户创建监控** | `/api/v2/admin/monitoring/user-creation` | 3 | Webhook 健康度监控 |
+| **用户创建监控** | `/api/v2/admin/monitoring/user-creation` | 5 | 仪表板统计、趋势、最近用户 **v3.42 扩展** |
 | **Webhooks** | `/api/v2/admin/webhooks` | 2 | Webhook 重试 |
 
-**详细文档**: 完整的 181 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
+**详细文档**: 完整的 183 个 Admin API 端点详细文档见 [docs/shared/admin-api-review.md](../shared/admin-api-review.md)
 
-> **说明**: admin-api-review.md v3.41 记录了全部 181 个端点。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个)、User Creation Monitoring (3个) 模块。
+> **说明**: admin-api-review.md v3.42 记录了全部 183 个端点。v3.42 扩展 User Creation Monitoring (3→5个)。v3.41 新增 Tiers (3个)。v3.40 新增 Static Pages (7个)。
 
 ---
 
@@ -766,9 +766,10 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ---
 
-*文档版本: v3.31*
+*文档版本: v3.32*
 *最后更新: 2026-01-20*
 *更新内容:
+- v3.32: User Creation Monitoring 模块扩展 (3→5 端点) - 新增 /recent 和 /trends 端点
 - v3.31: 新增 Tiers API (3个端点) - Tier 配置管理
 - v3.30: 精简附录 B/C，Tier 和积分系统详细内容移至 backend-business-logic.md
 - v3.29: Feature Flags v1.2 Tier 分层筛选支持 (allowed_tiers 字段, 规则级 tiers)
