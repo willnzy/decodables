@@ -18,49 +18,47 @@ router = APIRouter(prefix="/monitoring/user-creation", tags=["admin-monitoring"]
 
 @router.get("/stats")
 async def get_user_creation_stats(
-    days: int = Query(7, ge=1, le=90, description="统计最近 N 天的数据"),
     user: Dict = Depends(require_admin)
 ) -> Dict[str, Any]:
     """
-    获取用户创建统计数据
-    
+    获取用户创建仪表板统计数据
+
     **关键指标**:
-    - `webhook_success_rate`: Webhook 成功率（应该 >95%）
-    - `jit_fallback_rate`: JIT 回退率（应该 <5%）
-    - `duplicate_attempts`: Race condition 处理次数
-    
+    - `today`: 今日创建用户数
+    - `yesterday`: 昨日创建用户数
+    - `this_week`: 本周创建用户数
+    - `this_month`: 本月创建用户数
+    - `change_percent`: 与昨日相比的变化百分比
+    - `hourly_breakdown`: 今日每小时创建数
+
     **使用场景**:
-    - 监控 Webhook 健康度
-    - 追踪 JIT fallback 趋势
-    - 分析系统稳定性
-    
+    - 前端 User Monitoring 面板展示
+    - 快速了解用户增长情况
+
     Args:
-        days: 统计周期（天数）
         user: 当前管理员用户（自动注入）
-    
+
     Returns:
-        统计数据字典
-    
+        仪表板统计数据
+
     Example Response:
         ```json
         {
-            "period_days": 7,
-            "total_users": 150,
-            "webhook_created": 145,
-            "jit_created": 5,
-            "webhook_success_rate": 96.67,
-            "jit_fallback_rate": 3.33,
-            "duplicate_attempts": 2,
-            "errors": 0,
-            "timestamp": "2026-01-13T10:30:00Z"
+            "today": 15,
+            "yesterday": 12,
+            "this_week": 85,
+            "this_month": 320,
+            "change_percent": 25.0,
+            "hourly_breakdown": [
+                {"hour": 0, "count": 2},
+                {"hour": 1, "count": 1},
+                ...
+            ]
         }
         ```
     """
-    stats = await UserCreationMonitoringService.get_creation_stats(days=days)
-    return {
-        "success": True,
-        "data": stats
-    }
+    stats = await UserCreationMonitoringService.get_dashboard_stats()
+    return stats
 
 
 @router.get("/health")
@@ -127,19 +125,19 @@ async def get_recent_creation_events(
 ) -> Dict[str, Any]:
     """
     获取最近的用户创建事件
-    
+
     **用途**:
     - 查看最近的用户创建情况
     - 分析 Webhook vs JIT 创建分布
     - 调试 race condition 问题
-    
+
     Args:
         limit: 返回的最大事件数
         user: 当前管理员用户（自动注入）
-    
+
     Returns:
         事件列表
-    
+
     Example Response:
         ```json
         {
@@ -167,9 +165,97 @@ async def get_recent_creation_events(
         ```
     """
     events = await UserCreationMonitoringService.get_recent_events(limit=limit)
-    
+
     return {
         "success": True,
         "data": events,
         "count": len(events)
     }
+
+
+@router.get("/recent")
+async def get_recent_users(
+    offset: int = Query(0, ge=0, description="偏移量"),
+    limit: int = Query(20, ge=1, le=100, description="返回的最大用户数"),
+    user: Dict = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    获取最近注册的用户列表
+
+    **用途**:
+    - 查看最近注册的用户
+    - 用于前端 User Monitoring 面板显示
+
+    Args:
+        offset: 偏移量
+        limit: 返回的最大用户数
+        user: 当前管理员用户（自动注入）
+
+    Returns:
+        用户列表和总数
+
+    Example Response:
+        ```json
+        {
+            "users": [
+                {
+                    "id": "uuid-123",
+                    "user_id": "user_123",
+                    "email": "user@example.com",
+                    "tier": "t1",
+                    "source": "webhook",
+                    "created_at": "2026-01-13T10:30:00Z"
+                }
+            ],
+            "total": 100
+        }
+        ```
+    """
+    result = await UserCreationMonitoringService.get_recent_users(
+        offset=offset,
+        limit=limit
+    )
+
+    return result
+
+
+@router.get("/trends")
+async def get_user_creation_trends(
+    period: str = Query('week', description="统计周期: day, week, month"),
+    user: Dict = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    获取用户创建趋势数据
+
+    **用途**:
+    - 展示用户创建趋势图表
+    - 按 tier 分类显示创建数量
+
+    Args:
+        period: 统计周期 (day, week, month)
+        user: 当前管理员用户（自动注入）
+
+    Returns:
+        趋势数据
+
+    Example Response:
+        ```json
+        {
+            "trends": [
+                {
+                    "date": "2026-01-13",
+                    "count": 15,
+                    "tier_breakdown": {
+                        "t1": 10,
+                        "t2": 3,
+                        "t3": 2
+                    }
+                }
+            ],
+            "period": "week"
+        }
+        ```
+    """
+    result = await UserCreationMonitoringService.get_creation_trends(period=period)
+
+    return result

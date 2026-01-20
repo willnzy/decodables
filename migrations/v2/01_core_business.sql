@@ -1752,6 +1752,123 @@ COMMENT ON FUNCTION get_user_creation_stats IS '获取用户创建统计数据�
 
 
 -- ----------------------------------------------------------------------------
+-- get_user_dashboard_stats - 获取仪表板统计数据 (前端 User Monitoring 面板)
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION get_user_dashboard_stats()
+RETURNS TABLE(
+    today BIGINT,
+    yesterday BIGINT,
+    this_week BIGINT,
+    this_month BIGINT,
+    change_percent NUMERIC,
+    hourly_breakdown JSONB
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_today BIGINT;
+    v_yesterday BIGINT;
+    v_this_week BIGINT;
+    v_this_month BIGINT;
+    v_change_percent NUMERIC;
+    v_hourly JSONB;
+BEGIN
+    -- 今日创建数
+    SELECT COUNT(*) INTO v_today
+    FROM profiles
+    WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE;
+
+    -- 昨日创建数
+    SELECT COUNT(*) INTO v_yesterday
+    FROM profiles
+    WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE - INTERVAL '1 day';
+
+    -- 本周创建数
+    SELECT COUNT(*) INTO v_this_week
+    FROM profiles
+    WHERE created_at >= date_trunc('week', CURRENT_DATE);
+
+    -- 本月创建数
+    SELECT COUNT(*) INTO v_this_month
+    FROM profiles
+    WHERE created_at >= date_trunc('month', CURRENT_DATE);
+
+    -- 与昨日相比的变化百分比
+    IF v_yesterday > 0 THEN
+        v_change_percent := ROUND(((v_today - v_yesterday)::NUMERIC / v_yesterday * 100), 1);
+    ELSE
+        v_change_percent := CASE WHEN v_today > 0 THEN 100.0 ELSE 0.0 END;
+    END IF;
+
+    -- 今日每小时创建数
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'hour', h.hour,
+            'count', COALESCE(c.count, 0)
+        ) ORDER BY h.hour
+    ) INTO v_hourly
+    FROM generate_series(0, 23) AS h(hour)
+    LEFT JOIN (
+        SELECT
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INTEGER AS hour,
+            COUNT(*) AS count
+        FROM profiles
+        WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE
+        GROUP BY EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')
+    ) c ON h.hour = c.hour;
+
+    RETURN QUERY SELECT v_today, v_yesterday, v_this_week, v_this_month, v_change_percent, v_hourly;
+END;
+$$;
+
+COMMENT ON FUNCTION get_user_dashboard_stats IS '获取用户创建仪表板统计数据，用于前端 User Monitoring 面板';
+
+
+-- ----------------------------------------------------------------------------
+-- get_user_creation_trends - 获取用户创建趋势数据
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION get_user_creation_trends(p_days INTEGER DEFAULT 7)
+RETURNS TABLE(
+    date TEXT,
+    count BIGINT,
+    t1_count BIGINT,
+    t2_count BIGINT,
+    t3_count BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        TO_CHAR(d.date, 'YYYY-MM-DD') AS date,
+        COALESCE(c.total, 0) AS count,
+        COALESCE(c.t1, 0) AS t1_count,
+        COALESCE(c.t2, 0) AS t2_count,
+        COALESCE(c.t3, 0) AS t3_count
+    FROM generate_series(
+        CURRENT_DATE - INTERVAL '1 day' * (p_days - 1),
+        CURRENT_DATE,
+        INTERVAL '1 day'
+    ) AS d(date)
+    LEFT JOIN (
+        SELECT
+            DATE(created_at AT TIME ZONE 'UTC') AS created_date,
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE tier = 't1') AS t1,
+            COUNT(*) FILTER (WHERE tier = 't2') AS t2,
+            COUNT(*) FILTER (WHERE tier = 't3') AS t3
+        FROM profiles
+        WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * p_days
+        GROUP BY DATE(created_at AT TIME ZONE 'UTC')
+    ) c ON d.date = c.created_date
+    ORDER BY d.date;
+END;
+$$;
+
+COMMENT ON FUNCTION get_user_creation_trends IS '获取用户创建趋势数据，按天统计各 tier 创建数';
+
+
+-- ----------------------------------------------------------------------------
 -- cleanup_old_user_creation_logs - 清理旧日志
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION cleanup_old_user_creation_logs(p_retention_days INTEGER DEFAULT 90)

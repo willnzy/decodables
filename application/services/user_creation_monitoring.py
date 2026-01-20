@@ -216,6 +216,163 @@ class UserCreationMonitoringService:
             return []
     
     @staticmethod
+    async def get_dashboard_stats() -> Dict[str, Any]:
+        """
+        获取用户创建仪表板统计数据
+
+        返回适合前端仪表板显示的统计数据格式
+
+        Returns:
+            仪表板统计数据，包含：
+            {
+                "today": 今日创建数,
+                "yesterday": 昨日创建数,
+                "this_week": 本周创建数,
+                "this_month": 本月创建数,
+                "change_percent": 与昨日相比的变化百分比,
+                "hourly_breakdown": 今日每小时创建数列表
+            }
+        """
+        try:
+            db_client = await get_async_db_client()
+
+            # 调用数据库 RPC 函数获取仪表板统计
+            result = await db_client.rpc('get_user_dashboard_stats', {}).execute()
+
+            if not result.data or len(result.data) == 0:
+                logger.warning("No dashboard stats data found")
+                return UserCreationMonitoringService._get_empty_dashboard_stats()
+
+            stats = result.data[0]
+
+            return {
+                "today": stats.get('today', 0),
+                "yesterday": stats.get('yesterday', 0),
+                "this_week": stats.get('this_week', 0),
+                "this_month": stats.get('this_month', 0),
+                "change_percent": float(stats.get('change_percent', 0)),
+                "hourly_breakdown": stats.get('hourly_breakdown', [])
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get dashboard stats: {e}", exc_info=True)
+            # 返回空数据而不是抛出异常，让前端能正常显示
+            return UserCreationMonitoringService._get_empty_dashboard_stats()
+
+    @staticmethod
+    async def get_recent_users(offset: int = 0, limit: int = 20) -> Dict[str, Any]:
+        """
+        获取最近注册的用户列表
+
+        Args:
+            offset: 偏移量
+            limit: 返回数量限制
+
+        Returns:
+            {
+                "users": 用户列表,
+                "total": 总数
+            }
+        """
+        try:
+            db_client = await get_async_db_client()
+
+            # 获取总数
+            count_result = await db_client.table('user_profiles')\
+                .select('id', count='exact')\
+                .execute()
+
+            total = count_result.count or 0
+
+            # 获取用户列表
+            result = await db_client.table('user_profiles')\
+                .select('id, user_id, email, tier, created_by_source, created_at')\
+                .order('created_at', desc=True)\
+                .range(offset, offset + limit - 1)\
+                .execute()
+
+            users = []
+            if result.data:
+                for user in result.data:
+                    users.append({
+                        "id": user.get('id'),
+                        "user_id": user.get('user_id'),
+                        "email": user.get('email'),
+                        "tier": user.get('tier', 't1'),
+                        "source": user.get('created_by_source'),
+                        "created_at": user.get('created_at')
+                    })
+
+            return {
+                "users": users,
+                "total": total
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get recent users: {e}", exc_info=True)
+            return {"users": [], "total": 0}
+
+    @staticmethod
+    async def get_creation_trends(period: str = 'week') -> Dict[str, Any]:
+        """
+        获取用户创建趋势数据
+
+        Args:
+            period: 统计周期 ('day', 'week', 'month')
+
+        Returns:
+            {
+                "trends": 趋势数据列表,
+                "period": 周期类型
+            }
+        """
+        try:
+            db_client = await get_async_db_client()
+
+            # 根据周期确定天数
+            days_map = {'day': 1, 'week': 7, 'month': 30}
+            days = days_map.get(period, 7)
+
+            # 调用 RPC 函数获取趋势数据
+            result = await db_client.rpc('get_user_creation_trends', {
+                'p_days': days
+            }).execute()
+
+            trends = []
+            if result.data:
+                for item in result.data:
+                    trends.append({
+                        "date": item.get('date'),
+                        "count": item.get('count', 0),
+                        "tier_breakdown": {
+                            "t1": item.get('t1_count', 0),
+                            "t2": item.get('t2_count', 0),
+                            "t3": item.get('t3_count', 0)
+                        }
+                    })
+
+            return {
+                "trends": trends,
+                "period": period
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get creation trends: {e}", exc_info=True)
+            return {"trends": [], "period": period}
+
+    @staticmethod
+    def _get_empty_dashboard_stats() -> Dict[str, Any]:
+        """返回空仪表板统计数据"""
+        return {
+            "today": 0,
+            "yesterday": 0,
+            "this_week": 0,
+            "this_month": 0,
+            "change_percent": 0.0,
+            "hourly_breakdown": [{"hour": h, "count": 0} for h in range(24)]
+        }
+
+    @staticmethod
     def _get_empty_stats() -> Dict[str, Any]:
         """返回空统计数据"""
         return {
