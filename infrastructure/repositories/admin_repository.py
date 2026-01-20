@@ -900,7 +900,8 @@ class SupabaseAdminModerationRepository:
             query = query.eq("resource_type", resource_type)
 
         # v3.28: Added OOM protection + count="exact"
-        result = await query.order("submitted_at", desc=True)\
+        # v3.30: Fixed column name - use updated_at instead of submitted_at (doesn't exist)
+        result = await query.order("updated_at", desc=True)\
             .range(offset, offset + limit - 1)\
             .limit(10000)\
             .execute()
