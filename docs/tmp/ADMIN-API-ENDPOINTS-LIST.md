@@ -116,7 +116,45 @@ python -m pytest tests/integration/staging/admin/config/ -v --tb=short
 
 ---
 
-### 4. Feature Flags (功能开关) ⏳
+### 4. Tiers (Tier 配置管理) ⏳ 🆕
+
+```bash
+python -m pytest tests/integration/staging/admin/tiers/ -v --tb=short
+```
+
+| 端点 | 方法 | Rate Limit | 状态 |
+|------|------|------------|------|
+| `/api/v2/admin/tiers` | GET | 30/min | ⏳ |
+| `/api/v2/admin/tiers/{tier_code}` | GET | 30/min | ⏳ |
+| `/api/v2/admin/tiers/{tier_code}` | PUT | 10/min | ⏳ |
+
+**说明**: 3 个端点，Tier 配置查询/更新 (display_name, monthly_credits, max_projects, pricing, features)
+
+**返回数据结构**:
+```json
+{
+  "tiers": [
+    {
+      "tier_code": "t1",
+      "display_name": "Free Plan",
+      "enabled": true,
+      "monthly_credits": 0,
+      "max_projects": 1,
+      "price_original": 0.0,
+      "price_current": 0.0,
+      "ai_queue_priority": "low",
+      "topup_discount": 1.0,
+      "features": { "pdf_export": true, "zip_export": "trial", ... }
+    }
+  ]
+}
+```
+
+---
+
+### 5. Feature Flags (功能开关) ⏳
+
+> 注: 后续模块编号因新增 Tiers 模块而 +1
 
 ```bash
 python -m pytest tests/integration/staging/admin/feature_flags/ -v --tb=short
@@ -498,36 +536,37 @@ python -m pytest tests/integration/staging/admin/monitoring/ -v --tb=short
 1. ⏳ **Users** - 用户管理 (12 端点)
 2. ⏳ **Subscriptions** - 订阅管理 (3 端点)
 3. ⏳ **Config** - 系统配置 (8 端点)
-4. ⏳ **Feature Flags** - 功能开关 (9 端点)
+4. ⏳ **Tiers** - Tier 配置管理 (3 端点) 🆕
+5. ⏳ **Feature Flags** - 功能开关 (9 端点)
 
 ### 第二批 - 数据分析
 
-5. ⏳ **Stats** - 数据统计 (18 端点)
-6. ⏳ **Metrics** - 系统指标 (7 端点)
-7. ⏳ **Events** - 事件分析 (5 端点)
-8. ⏳ **Experiments** - A/B 实验 (14 端点)
+6. ⏳ **Stats** - 数据统计 (18 端点)
+7. ⏳ **Metrics** - 系统指标 (7 端点)
+8. ⏳ **Events** - 事件分析 (5 端点)
+9. ⏳ **Experiments** - A/B 实验 (14 端点)
 
 ### 第三批 - 内容管理
 
-9. ⏳ **Asset Categories** - 素材分类 (7 端点)
-10. ⏳ **Themes** - 主题管理 (13 端点)
-11. ⏳ **Static Pages** - 静态页面 (7 端点)
-12. ⏳ **Articles** - 文章管理 (7 端点)
+10. ⏳ **Asset Categories** - 素材分类 (7 端点)
+11. ⏳ **Themes** - 主题管理 (13 端点)
+12. ⏳ **Static Pages** - 静态页面 (7 端点)
+13. ⏳ **Articles** - 文章管理 (7 端点)
 
 ### 第四批 - 运营功能
 
-13. ⏳ **Campaigns** - 营销活动 (8 端点)
-14. ⏳ **Moderation** - 内容审核 (10 端点)
-15. ⏳ **Notifications** - 通知管理 (5 端点)
+14. ⏳ **Campaigns** - 营销活动 (8 端点)
+15. ⏳ **Moderation** - 内容审核 (10 端点)
+16. ⏳ **Notifications** - 通知管理 (5 端点)
 
 ### 第五批 - 系统运维
 
-16. ⏳ **System** - 系统管理 (12 端点)
-17. ⏳ **Logs** - 日志管理 (5 端点)
-18. ⏳ **Tasks Management** - 任务管理 (4 端点)
-19. ⏳ **Webhooks** - Webhook 重试 (2 端点)
-20. ⏳ **Monitoring** - 用户监控 (3 端点)
-21. ⏳ **AI Insights** - AI 洞察 (5 端点)
+17. ⏳ **System** - 系统管理 (12 端点)
+18. ⏳ **Logs** - 日志管理 (5 端点)
+19. ⏳ **Tasks Management** - 任务管理 (4 端点)
+20. ⏳ **Webhooks** - Webhook 重试 (2 端点)
+21. ⏳ **Monitoring** - 用户监控 (3 端点)
+22. ⏳ **AI Insights** - AI 洞察 (5 端点)
 
 ---
 
@@ -535,12 +574,14 @@ python -m pytest tests/integration/staging/admin/monitoring/ -v --tb=short
 
 | 分类 | 模块数 | 端点数 | 已通过 | 已修复待验证 | 待测试 |
 |------|--------|--------|--------|--------------|--------|
-| 核心管理 | 4 | 32 | 0 | 0 | 32 |
+| 核心管理 | 5 | 35 | 0 | 0 | 35 |
 | 数据分析 | 4 | 44 | 0 | 0 | 44 |
 | 内容管理 | 4 | 34 | 0 | 0 | 34 |
 | 运营功能 | 3 | 23 | 0 | 0 | 23 |
 | 系统运维 | 6 | 31 | 0 | 0 | 31 |
-| **总计** | **21** | **164** | 0 | 0 | 164 |
+| **总计** | **22** | **167** | 0 | 0 | 167 |
+
+> 🆕 v1.1 (2026-01-20): 新增 Tiers 模块 (3 端点)
 
 ---
 
@@ -581,5 +622,6 @@ API → Container → Service → Repository
 
 ---
 
-**文档版本**: v1.0
-**更新日期**: 2026-01-18
+**文档版本**: v1.1
+**更新日期**: 2026-01-20
+**变更记录**: 新增 Tiers (Tier 配置管理) 模块，共 3 个端点
