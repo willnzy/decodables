@@ -1068,7 +1068,10 @@ class Container:
         """Get create listing handler (async)."""
         if 'create_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            self._handlers['create_listing'] = CreateListingHandler(marketplace_service)
+            supabase_client = await self.get_supabase_client()
+            self._handlers['create_listing'] = CreateListingHandler(
+                marketplace_service, supabase_client
+            )
         return self._handlers['create_listing']
 
     async def get_update_listing_handler(self) -> UpdateListingHandler:

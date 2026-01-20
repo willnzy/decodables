@@ -338,6 +338,7 @@ async def create_listing(
         tags=None,  # API doesn't provide tags yet
         preview_url=req.thumbnail_url,
         seller_tier=user_tier,
+        resource_id=req.resource_id,  # Link back to project/asset
     )
 
     result = await handler.handle(command)

@@ -40,6 +40,7 @@ class CreateListingCommand:
     tags: Optional[List[str]] = None
     preview_url: Optional[str] = None
     seller_tier: str = "t1"
+    resource_id: Optional[str] = None  # Project/Asset ID to link back
 
 
 @dataclass
@@ -53,8 +54,9 @@ class CreateListingResult:
 class CreateListingHandler:
     """Handler for CreateListingCommand."""
 
-    def __init__(self, marketplace_service: MarketplaceService):
+    def __init__(self, marketplace_service: MarketplaceService, supabase_client=None):
         self._marketplace_service = marketplace_service
+        self._client = supabase_client  # For updating project link
 
     async def handle(self, command: CreateListingCommand) -> CreateListingResult:
         """Execute listing creation."""
@@ -99,6 +101,22 @@ class CreateListingHandler:
                     tags=command.tags,
                     preview_url=command.preview_url,
                 )
+
+            # Link project/asset to the new listing
+            if command.resource_id and self._client:
+                if resource_type == ResourceType.PROJECT:
+                    # Update project with marketplace_listing_id (UUID from marketplace_listings.id)
+                    # First get the listing's UUID
+                    listing_result = await self._client.table("marketplace_listings").select(
+                        "id"
+                    ).eq("listing_id", listing.listing_id).single().execute()
+
+                    if listing_result.data:
+                        listing_uuid = listing_result.data["id"]
+                        await self._client.table("projects").update({
+                            "marketplace_listing_id": listing_uuid,
+                            "listing_status": "pending",  # Also update listing_status for Selling tab
+                        }).eq("id", command.resource_id).execute()
 
             return CreateListingResult(
                 success=True,

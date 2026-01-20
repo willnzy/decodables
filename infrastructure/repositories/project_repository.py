@@ -900,7 +900,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 for item in items:
                     listing_id = item.get("marketplace_listing_id")
                     if listing_id and listing_id in listings_map:
-                        item["marketplace_listing_data"] = listings_map[listing_id]
+                        item["marketplace_listing"] = listings_map[listing_id]
 
         return {"items": items, "total": total, "offset": offset, "limit": limit, "view_type": view_type, "counts": counts}
 
