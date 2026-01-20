@@ -214,7 +214,7 @@ async def log_analytics_events(
     Enriches events with server-side IP, geo, and device info.
     Writes to both user_events and analytics_events tables.
     """
-    user_id = user.get("id") if user else None
+    user_id = user.user_id if user else None
 
     # Get client info
     client_ip = _get_client_ip(request)

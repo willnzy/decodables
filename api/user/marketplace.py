@@ -467,7 +467,7 @@ async def purchase_listing(
     command = PurchaseListingCommand(
         listing_id=req.listing_id,
         buyer_id=user.user_id,
-        buyer_tier=user.get("tier", "t1"),
+        buyer_tier=user.tier or "t1",
     )
 
     result = await handler.handle(command)

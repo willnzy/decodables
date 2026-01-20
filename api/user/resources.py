@@ -173,7 +173,7 @@ async def list_resources(
     if category and category not in VALID_CATEGORIES:
         category = None  # Silently ignore invalid category
 
-    user_tier = user.get("tier", "t1") if user else "t1"
+    user_tier = (user.tier or "t1") if user else "t1"
 
     container = get_container()
     handler = await container.get_resources_handler()
@@ -259,7 +259,7 @@ async def get_resource(
     if not UUID_PATTERN.match(resource_id):
         raise HTTPException(400, "Invalid resource ID format")
 
-    user_tier = user.get("tier", "t1") if user else "t1"
+    user_tier = (user.tier or "t1") if user else "t1"
 
     container = get_container()
     handler = await container.get_resource_by_id_handler()

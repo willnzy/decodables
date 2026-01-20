@@ -190,7 +190,7 @@ async def get_portal(
     Returns:
         PortalResponse with portal URL
     """
-    stripe_customer_id = user.get("stripe_customer_id")
+    stripe_customer_id = user.stripe_customer_id
     if not stripe_customer_id:
         raise HTTPException(400, "No subscription found")
 
@@ -198,7 +198,7 @@ async def get_portal(
     # Stripe customer IDs: cus_ followed by alphanumeric (including underscores in test mode)
     if not re.match(r"^cus_[a-zA-Z0-9_]+$", stripe_customer_id):
         logger.error(
-            f"Invalid stripe_customer_id format for user {user['id']}: {stripe_customer_id}"
+            f"Invalid stripe_customer_id format for user {user.user_id}: {stripe_customer_id}"
         )
         raise HTTPException(400, "Invalid customer data")
 
