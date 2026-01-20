@@ -396,6 +396,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
     -- 状态 (P0-10: 添加 status 字段供 Repository 使用)
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published', 'unpublished', 'rejected', 'deleted')),
     is_public BOOLEAN DEFAULT FALSE,
+    is_featured BOOLEAN DEFAULT FALSE,  -- 是否精选/推荐 (由管理员设置)
     moderation_status TEXT NOT NULL DEFAULT 'draft' CHECK (moderation_status IN ('draft', 'pending', 'approved', 'rejected')),
     moderation_note TEXT,
     moderated_by TEXT REFERENCES profiles(id),

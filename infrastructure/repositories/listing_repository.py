@@ -596,9 +596,6 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
 
     def _map_to_row(self, listing: Listing) -> dict:
         """Map Listing to database row."""
-        # Note: is_featured is NOT included because:
-        # 1. It doesn't exist in marketplace_listings table schema
-        # 2. It should only be set by admin, not during user publish
         return {
             "listing_id": listing.listing_id,
             "seller_id": listing.seller_id,
@@ -619,6 +616,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             "price_credits": listing.credit_price,  # DB column is price_credits
             "allowed_tiers": listing.allowed_tiers,
             "status": listing.status.value,
+            "is_featured": listing.is_featured,
             "rejection_reason": listing.rejection_reason,
             "view_count": listing.stats.view_count,
             "download_count": listing.stats.download_count,
