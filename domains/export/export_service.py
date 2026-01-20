@@ -160,18 +160,34 @@ class ExportService:
         # Extract data
         image_urls, texts, paper_size = self._extract_project_data(proj)
 
+        # Log extracted data for debugging
+        logger.info(f"Preview export: project_id={project_id[:8]}..., paper_size={paper_size}, "
+                    f"pages_with_images={sum(1 for u in image_urls if u)}/8")
+
         # Generate PDF first
         pdf_buffer = BytesIO()
         try:
             create_foldable_book(image_urls, texts, pdf_buffer, paper_type=paper_size)
             pdf_buffer.seek(0)
         except Exception as e:
-            logger.error(f"PDF generation for preview failed: {type(e).__name__}")
-            raise ExportException("Preview generation failed")
+            logger.error(f"PDF generation for preview failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            raise ExportException(f"Preview generation failed: {str(e)}")
+
+        # Verify PDF buffer has content
+        pdf_size = pdf_buffer.getbuffer().nbytes
+        if pdf_size == 0:
+            logger.error("PDF generation returned empty buffer")
+            raise ExportException("PDF generation failed: empty buffer")
+
+        logger.info(f"PDF generated successfully: {pdf_size} bytes")
 
         # Convert to image
         try:
             pdf_doc = fitz.open(stream=pdf_buffer.read(), filetype="pdf")
+            if len(pdf_doc) == 0:
+                logger.error("PDF has no pages")
+                raise ExportException("PDF has no pages")
+
             page = pdf_doc[0]
 
             zoom = 2.0
@@ -187,8 +203,8 @@ class ExportService:
             return img_buffer
 
         except Exception as e:
-            logger.error(f"PDF to image conversion failed: {type(e).__name__}")
-            raise ExportException("Failed to generate preview")
+            logger.error(f"PDF to image conversion failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            raise ExportException(f"Failed to generate preview: {str(e)}")
 
     async def export_project_zip(
         self,
