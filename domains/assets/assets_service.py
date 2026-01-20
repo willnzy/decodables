@@ -370,7 +370,7 @@ class AssetsService:
 
         # 6. Upload to Storage
         try:
-            self.storage.storage.from_(BUCKET_NAME).upload(
+            await self.storage.storage.from_(BUCKET_NAME).upload(
                 path=filename,
                 file=contents,
                 file_options={"content-type": file.content_type}
@@ -386,7 +386,7 @@ class AssetsService:
             url,
             "uploaded",
             project_id,
-            timezone=timezone
+            tz=timezone
         )
 
         return {"url": url, "filename": filename}
@@ -446,7 +446,7 @@ class AssetsService:
             url,
             "external",
             project_id,
-            timezone=timezone
+            tz=timezone
         )
 
         return {"status": "ok", "asset": asset}
