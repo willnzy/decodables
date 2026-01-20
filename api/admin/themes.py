@@ -173,18 +173,19 @@ async def get_calendar_view(
 
     result = await service.list_themes(offset=0, limit=366, filters=filters)
 
-    # Group by date
-    calendar = {}
-    for theme in result["themes"]:
-        theme_date = theme.get("date")
-        if theme_date:
-            calendar[theme_date] = theme
+    # Return themes as array (frontend expects Theme[])
+    themes_list = result.get("themes", [])
 
     return {
-        "start_date": start_date,
-        "end_date": end_date,
-        "themes": calendar,
-        "total": len(calendar),
+        "month": month or f"{start_date[:7]}",
+        "themes": themes_list,
+        "stats": {
+            "total_dates": 31,  # Approximate days in month
+            "has_theme_count": len(themes_list),
+            "pending_review_count": sum(1 for t in themes_list if t.get("review_status") == "pending"),
+            "coverage_percentage": round(len(themes_list) / 31 * 100, 1),
+            "date_range": {"start": start_date, "end": end_date},
+        },
     }
 
 
