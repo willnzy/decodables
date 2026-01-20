@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
 MAX_URL_LENGTH = 2048
-BUCKET_NAME = "user-generations"  # Same as shared.ai.image_generator
+BUCKET_NAME = "make-decodables-u"  # User content bucket (same as shared.ai.image_generator)
 
 
 class AssetsService:
