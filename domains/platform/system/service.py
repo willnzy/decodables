@@ -269,12 +269,13 @@ async def get_cache_status() -> Dict[str, Any]:
     Returns:
         Dict with status, used_memory, total_keys, etc.
     """
-    from core.cache import get_cache_provider
+    from core.cache import get_redis_client, is_redis_available
 
     try:
-        cache_provider = get_cache_provider()
-        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
+        if not is_redis_available():
+            return {"status": "disconnected", "error": "Redis not available"}
 
+        redis = get_redis_client()
         if not redis:
             return {"status": "disconnected", "error": "Redis not connected"}
 
@@ -288,7 +289,7 @@ async def get_cache_status() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"[System] Failed to get cache status: {e}")
-        return {"status": "error", "error": "Failed to get cache status"}
+        return {"status": "error", "error": str(e)}
 
 
 async def list_cache_keys(pattern: str = "*", limit: int = 100) -> Dict[str, Any]:
@@ -304,12 +305,13 @@ async def list_cache_keys(pattern: str = "*", limit: int = 100) -> Dict[str, Any
     Returns:
         Dict with keys, total, pattern
     """
-    from core.cache import get_cache_provider
+    from core.cache import get_redis_client, is_redis_available
 
     try:
-        cache_provider = get_cache_provider()
-        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
+        if not is_redis_available():
+            return {"keys": [], "error": "Redis not available", "pattern": pattern}
 
+        redis = get_redis_client()
         if not redis:
             return {"keys": [], "error": "Redis not connected", "pattern": pattern}
 
@@ -324,7 +326,7 @@ async def list_cache_keys(pattern: str = "*", limit: int = 100) -> Dict[str, Any
         return {"keys": keys[:limit], "total": len(keys), "pattern": pattern}
     except Exception as e:
         logger.error(f"[System] Failed to list cache keys: {e}")
-        return {"keys": [], "error": "Failed to list cache keys", "pattern": pattern}
+        return {"keys": [], "error": str(e), "pattern": pattern}
 
 
 async def delete_cache_key(key: str) -> Dict[str, Any]:
@@ -339,12 +341,13 @@ async def delete_cache_key(key: str) -> Dict[str, Any]:
     Returns:
         Dict with status and key
     """
-    from core.cache import get_cache_provider
+    from core.cache import get_redis_client, is_redis_available
 
     try:
-        cache_provider = get_cache_provider()
-        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
+        if not is_redis_available():
+            raise Exception("Redis not available")
 
+        redis = get_redis_client()
         if not redis:
             raise Exception("Redis not connected")
 
@@ -364,12 +367,13 @@ async def clear_all_cache() -> bool:
     Returns:
         True if successful
     """
-    from core.cache import get_cache_provider
+    from core.cache import get_redis_client, is_redis_available
 
     try:
-        cache_provider = get_cache_provider()
-        redis = getattr(cache_provider, '_client', None) if hasattr(cache_provider, '_client') else None
+        if not is_redis_available():
+            raise Exception("Redis not available")
 
+        redis = get_redis_client()
         if not redis:
             raise Exception("Redis not connected")
 
