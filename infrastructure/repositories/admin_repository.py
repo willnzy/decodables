@@ -889,8 +889,9 @@ class SupabaseAdminModerationRepository:
         Returns:
             Tuple of (items list, total count)
         """
+        # v3.29: Disambiguate profiles relationship (seller_id vs moderated_by)
         query = self.client.table("marketplace_listings").select(
-            "*, profiles(username, email)", count="exact"
+            "*, profiles!marketplace_listings_seller_id_fkey(username, email)", count="exact"
         ).eq("is_deleted", False)
 
         if status:
@@ -911,9 +912,12 @@ class SupabaseAdminModerationRepository:
 
     @retry_on_network_error()
     async def admin_get_moderation_detail(self, listing_id: str) -> Optional[Dict[str, Any]]:
-        """Get listing detail for moderation."""
+        """Get listing detail for moderation.
+
+        v3.29: Disambiguate profiles relationship (seller_id vs moderated_by).
+        """
         result = await self.client.table("marketplace_listings").select(
-            "*, profiles(username, email, tier)"
+            "*, profiles!marketplace_listings_seller_id_fkey(username, email, tier)"
         ).eq("id", listing_id).execute()
 
         return result.data[0] if result.data else None
