@@ -115,26 +115,46 @@ async def diagnose_connection(request: Request):
             "error": str(e)[:100]
         }
 
-    # Test 3: 新建 AsyncClient
+    # Test 3: 新建 AsyncClient (注意: 不要频繁调用此端点，会消耗连接)
+    # 跳过此测试以避免连接泄漏
+    results["tests"]["new_async_client"] = {
+        "status": "skipped",
+        "reason": "Skipped to avoid connection leak"
+    }
+
+    # Test 4: 检查当前连接池状态 (如果可用)
     try:
-        from supabase import acreate_client
-
-        start = time.time()
-        new_client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
-        init_time = time.time() - start
-
-        start = time.time()
-        result = await new_client.table("profiles").select("id").limit(1).execute()
-        query_time = time.time() - start
-
-        results["tests"]["new_async_client"] = {
-            "status": "ok",
-            "init_ms": round(init_time * 1000, 2),
-            "query_ms": round(query_time * 1000, 2),
-            "total_ms": round((init_time + query_time) * 1000, 2)
-        }
+        # 检查 httpx 连接池状态
+        if client:
+            # 尝试获取底层 httpx 客户端信息
+            postgrest = getattr(client, 'postgrest', None)
+            if postgrest:
+                http_client = getattr(postgrest, '_client', None)
+                if http_client and hasattr(http_client, '_transport'):
+                    transport = http_client._transport
+                    if hasattr(transport, '_pool'):
+                        pool = transport._pool
+                        results["tests"]["connection_pool"] = {
+                            "status": "ok",
+                            "pool_type": type(pool).__name__,
+                        }
+                    else:
+                        results["tests"]["connection_pool"] = {
+                            "status": "ok",
+                            "info": "Transport exists but no pool info"
+                        }
+                else:
+                    results["tests"]["connection_pool"] = {
+                        "status": "ok",
+                        "info": "No http client info available"
+                    }
+            else:
+                results["tests"]["connection_pool"] = {
+                    "status": "ok",
+                    "info": "No postgrest client"
+                }
     except Exception as e:
-        results["tests"]["new_async_client"] = {
+        results["tests"]["connection_pool"] = {
             "status": "error",
             "error": str(e)[:100]
         }
