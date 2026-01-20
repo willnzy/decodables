@@ -580,7 +580,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             metadata=metadata,
             source=source,
             price_type=PriceType(row.get("price_type", "t1")),
-            credit_price=row.get("credit_price", 0),
+            credit_price=row.get("price_credits", 0),  # DB column is price_credits
             allowed_tiers=allowed_tiers,
             status=ListingStatus(row.get("status", "draft")),
             stats=stats,
@@ -613,7 +613,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             "dimensions": listing.metadata.dimensions,
             "license_type": listing.metadata.license_type,
             "price_type": listing.price_type.value,
-            "credit_price": listing.credit_price,
+            "price_credits": listing.credit_price,  # DB column is price_credits
             "allowed_tiers": listing.allowed_tiers,
             "status": listing.status.value,
             "is_featured": listing.is_featured,
