@@ -260,7 +260,7 @@ async def invalidate_cache_endpoint(
 # Cache Management Routes (v3.30: DDD Migration)
 # ==========================================
 
-@router.get("/system/cache/status")
+@router.get("/cache/status")
 @limiter.limit("30/minute")
 async def get_cache_status_endpoint(request: Request, admin: dict = Depends(require_admin)):
     """Get Redis cache status and statistics."""
@@ -268,7 +268,7 @@ async def get_cache_status_endpoint(request: Request, admin: dict = Depends(requ
     return result
 
 
-@router.get("/system/cache/keys")
+@router.get("/cache/keys")
 @limiter.limit("30/minute")
 async def list_cache_keys_endpoint(
     request: Request,
@@ -285,7 +285,7 @@ async def list_cache_keys_endpoint(
     return result
 
 
-@router.delete("/system/cache/key/{key:path}")
+@router.delete("/cache/key/{key:path}")
 @limiter.limit("10/minute")
 async def delete_cache_key_endpoint(request: Request, key: str, admin: dict = Depends(require_admin)):
     """Delete a specific cache key."""
@@ -301,7 +301,7 @@ async def delete_cache_key_endpoint(request: Request, key: str, admin: dict = De
         raise HTTPException(500, "Failed to delete cache key")
 
 
-@router.post("/system/cache/clear-all/confirm")
+@router.post("/cache/clear-all/confirm")
 @limiter.limit("1/10 minutes")
 async def request_clear_all_confirmation(request: Request, admin: dict = Depends(require_admin)):
     """
@@ -334,7 +334,7 @@ async def request_clear_all_confirmation(request: Request, admin: dict = Depends
         raise HTTPException(500, "Failed to generate confirmation token")
 
 
-@router.post("/system/cache/clear-all")
+@router.post("/cache/clear-all")
 @limiter.limit("1/10 minutes")
 async def clear_all_cache_endpoint(
     request: Request,
@@ -347,7 +347,7 @@ async def clear_all_cache_endpoint(
     P0-013 fix: Two-step confirmation + audit logging.
 
     Steps:
-    1. Call POST /system/cache/clear-all/confirm to get token
+    1. Call POST /cache/clear-all/confirm to get token
     2. Call this endpoint with the token within 2 minutes
     """
     from core.cache import get_cache_provider
