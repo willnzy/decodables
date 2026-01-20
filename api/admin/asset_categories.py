@@ -149,7 +149,7 @@ async def get_category_handlers():
 # Endpoints
 # =============================================================================
 
-@router.get("/", response_model=List[CategoryResponse])
+@router.get("", response_model=List[CategoryResponse])
 async def list_categories(
     asset_type: Optional[str] = Query(None, pattern=r'^(text|image|shape|table|sticker|icon|frame)$'),
     parent_id: Optional[str] = Query(None),
@@ -215,7 +215,7 @@ async def get_category_tree(
     return categories
 
 
-@router.post("/", response_model=CategoryResponse, status_code=201)
+@router.post("", response_model=CategoryResponse, status_code=201)
 async def create_category(
     request: CreateCategoryRequest = Body(...)
 ):
