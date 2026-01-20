@@ -222,7 +222,8 @@ async def lifespan(app: FastAPI):
 # ==========================================
 app = FastAPI(
     title="MagicZine AI API v3.28 - AsyncClient Migration",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False  # Disable auto-redirect to prevent Mixed Content errors (HTTP→HTTPS)
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
