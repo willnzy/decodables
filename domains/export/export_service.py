@@ -181,27 +181,39 @@ class ExportService:
 
         logger.info(f"PDF generated successfully: {pdf_size} bytes")
 
-        # Convert to image
+        # Convert to image using PyMuPDF
+        pdf_data = pdf_buffer.read()
         try:
-            pdf_doc = fitz.open(stream=pdf_buffer.read(), filetype="pdf")
+            logger.info(f"Opening PDF with fitz, data size: {len(pdf_data)} bytes")
+            pdf_doc = fitz.open(stream=pdf_data, filetype="pdf")
+            logger.info(f"PDF opened, pages: {len(pdf_doc)}")
+
             if len(pdf_doc) == 0:
                 logger.error("PDF has no pages")
                 raise ExportException("PDF has no pages")
 
             page = pdf_doc[0]
+            logger.info(f"Got page 0, size: {page.rect}")
 
             zoom = 2.0
             mat = fitz.Matrix(zoom, zoom)
+            logger.info(f"Creating pixmap with zoom={zoom}")
             pix = page.get_pixmap(matrix=mat)
+            logger.info(f"Pixmap created, size: {pix.width}x{pix.height}")
 
             img_buffer = BytesIO(pix.tobytes("png"))
             pdf_doc.close()
+            logger.info(f"Preview image generated, size: {img_buffer.getbuffer().nbytes} bytes")
 
             # Log activity
             log_activity(user_id, "preview_pdf", {"project_id": project_id})
 
             return img_buffer
 
+        except RuntimeError as e:
+            # PyMuPDF RuntimeError - likely missing system dependencies (mupdf)
+            logger.error(f"PyMuPDF RuntimeError (check nixpacks.toml for mupdf dep): {str(e)}", exc_info=True)
+            raise ExportException(f"Failed to generate preview: PyMuPDF error - {str(e)}")
         except Exception as e:
             logger.error(f"PDF to image conversion failed: {type(e).__name__}: {str(e)}", exc_info=True)
             raise ExportException(f"Failed to generate preview: {str(e)}")

@@ -1,0 +1,18 @@
+# Nixpacks Configuration for Make Decodables
+# https://nixpacks.com/docs/configuration/file
+
+# ==========================================
+# System Dependencies
+# ==========================================
+[phases.setup]
+# Preserve default provider packages and add our dependencies
+# mupdf - Required for PyMuPDF (fitz) PDF processing
+# freetype - Required for font rendering in PDF
+nixPkgs = ['...', 'mupdf', 'freetype']
+
+# ==========================================
+# Build Phase
+# ==========================================
+[phases.build]
+# Clean up empty directories that conflict with .py files (Python import precedence issue)
+cmds = ['find . -type d -empty -delete']
