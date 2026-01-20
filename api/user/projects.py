@@ -135,6 +135,13 @@ class ProjectRestoreResponse(BaseModel):
     project: Optional[Dict[str, Any]] = None
 
 
+class ViewTypeCounts(BaseModel):
+    """Counts for each view type tab."""
+    all: int = 0
+    bought: int = 0
+    selling: int = 0
+
+
 class DashboardProjectsResponse(BaseModel):
     """Dashboard projects response (P2-002)."""
     items: List[Dict[str, Any]]
@@ -142,6 +149,7 @@ class DashboardProjectsResponse(BaseModel):
     offset: int
     limit: int
     view: str
+    counts: Optional[ViewTypeCounts] = None
 
     class Config:
         extra = "allow"
@@ -257,13 +265,16 @@ async def dashboard_projects(
         result = await handler.handle(query)
 
         if result.success:
-            # P2-002: Return Pydantic model
+            # P2-002: Return Pydantic model with counts for tab badges
+            counts_data = result.data.get("counts")
+            counts = ViewTypeCounts(**counts_data) if counts_data else None
             return DashboardProjectsResponse(
                 items=result.data.get("items", []),
                 total=result.data.get("total", 0),
                 offset=result.data.get("offset", offset),
                 limit=result.data.get("limit", limit),
                 view=view,
+                counts=counts,
             )
         
         # 检查是否为可重试的错误 (502, 503, 网络错误)

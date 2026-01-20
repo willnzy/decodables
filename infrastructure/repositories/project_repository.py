@@ -848,6 +848,40 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         count_result = await count_query.execute()
         total = count_result.count or len(items)
 
+        # Get counts for all view types (for tab badges)
+        # All projects count
+        all_count_query = self.client.table("projects").select("id", count="exact").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False)
+        if search and search.strip():
+            all_count_query = all_count_query.ilike("title", f"%{search.strip()}%")
+        all_count_result = await all_count_query.execute()
+        all_count = all_count_result.count or 0
+
+        # Bought projects count
+        bought_count_query = self.client.table("projects").select("id", count="exact").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False).eq("is_purchased", True)
+        if search and search.strip():
+            bought_count_query = bought_count_query.ilike("title", f"%{search.strip()}%")
+        bought_count_result = await bought_count_query.execute()
+        bought_count = bought_count_result.count or 0
+
+        # Selling projects count
+        selling_count_query = self.client.table("projects").select("id", count="exact").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False).not_.is_("listing_status", "null")
+        if search and search.strip():
+            selling_count_query = selling_count_query.ilike("title", f"%{search.strip()}%")
+        selling_count_result = await selling_count_query.execute()
+        selling_count = selling_count_result.count or 0
+
+        counts = {
+            "all": all_count,
+            "bought": bought_count,
+            "selling": selling_count,
+        }
+
         # Enrich with marketplace listing data if present
         if items:
             marketplace_listing_ids = [
@@ -868,7 +902,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                     if listing_id and listing_id in listings_map:
                         item["marketplace_listing_data"] = listings_map[listing_id]
 
-        return {"items": items, "total": total, "offset": offset, "limit": limit, "view_type": view_type}
+        return {"items": items, "total": total, "offset": offset, "limit": limit, "view_type": view_type, "counts": counts}
 
     @retry_on_network_error()
     async def get_seller_project_stats(
