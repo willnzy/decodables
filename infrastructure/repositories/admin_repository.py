@@ -928,14 +928,15 @@ class SupabaseAdminModerationRepository:
         """
         Approve listing.
 
-        v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
+        v3.28: MOD-HIGH-3 Fix - Uses primary key for single record update.
+        Note: AsyncClient update() doesn't support .limit(), but eq("id", ...) ensures single record.
         """
         result = await self.client.table("marketplace_listings").update({
             "moderation_status": "approved",
             "is_public": True,
             "moderated_at": datetime.now(timezone.utc).isoformat(),
             "moderated_by": admin_id,
-        }).eq("id", listing_id).limit(1).execute()
+        }).eq("id", listing_id).execute()
 
         return result.data[0] if result.data else None
 
@@ -944,7 +945,8 @@ class SupabaseAdminModerationRepository:
         """
         Reject listing.
 
-        v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
+        v3.28: MOD-HIGH-3 Fix - Uses primary key for single record update.
+        Note: AsyncClient update() doesn't support .limit(), but eq("id", ...) ensures single record.
         """
         result = await self.client.table("marketplace_listings").update({
             "moderation_status": "rejected",
@@ -952,7 +954,7 @@ class SupabaseAdminModerationRepository:
             "rejection_reason": reason,
             "moderated_at": datetime.now(timezone.utc).isoformat(),
             "moderated_by": admin_id,
-        }).eq("id", listing_id).limit(1).execute()
+        }).eq("id", listing_id).execute()
 
         return result.data[0] if result.data else None
 
@@ -961,12 +963,13 @@ class SupabaseAdminModerationRepository:
         """
         Delete listing.
 
-        v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
+        v3.28: MOD-HIGH-3 Fix - Uses primary key for single record update.
+        Note: AsyncClient update() doesn't support .limit(), but eq("id", ...) ensures single record.
         """
         result = await self.client.table("marketplace_listings").update({
             "is_deleted": True,
             "deleted_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", listing_id).limit(1).execute()
+        }).eq("id", listing_id).execute()
 
         return result.data[0] if result.data else None
 
@@ -975,11 +978,12 @@ class SupabaseAdminModerationRepository:
         """
         Unpublish listing.
 
-        v3.28: MOD-HIGH-3 Fix - Added .limit(1) protection.
+        v3.28: MOD-HIGH-3 Fix - Uses primary key for single record update.
+        Note: AsyncClient update() doesn't support .limit(), but eq("id", ...) ensures single record.
         """
         result = await self.client.table("marketplace_listings").update({
             "is_public": False,
-        }).eq("id", listing_id).limit(1).execute()
+        }).eq("id", listing_id).execute()
 
         return result.data[0] if result.data else None
 
