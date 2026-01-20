@@ -382,13 +382,14 @@ class AssetsService:
             logger.error(f"Failed to upload file: {e}")
             raise UploadFailedException(reason=str(e))
 
-        # 7. Save to database
+        # 7. Save to database (source='upload' per schema constraint)
         await self.repository.save_asset(
             user_id,
             url,
-            "uploaded",
-            project_id,
-            tz=timezone
+            source="upload",
+            project_id=project_id,
+            tz=timezone,
+            asset_type="image"
         )
 
         return {"url": url, "filename": filename}
@@ -442,13 +443,14 @@ class AssetsService:
         except httpx.RequestError:
             raise UrlNotAccessibleException(reason="Failed to access URL")
 
-        # 3. Save to database
+        # 3. Save to database (source='upload' for external URLs, per schema constraint)
         asset = await self.repository.save_asset(
             user_id,
             url,
-            "external",
-            project_id,
-            tz=timezone
+            source="upload",  # External URLs are still user uploads
+            project_id=project_id,
+            tz=timezone,
+            asset_type="image"
         )
 
         return {"status": "ok", "asset": asset}

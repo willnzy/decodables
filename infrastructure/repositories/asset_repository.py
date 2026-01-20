@@ -58,10 +58,11 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         self,
         user_id: str,
         url: str,
-        asset_type: str,
+        source: str,
         project_id: Optional[str] = None,
         prompt: Optional[str] = None,
-        tz: str = "UTC"
+        tz: str = "UTC",
+        asset_type: str = "image"
     ) -> Optional[Dict[str, Any]]:
         """
         Save new asset.
@@ -69,10 +70,11 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Args:
             user_id: User ID
             url: Asset URL
-            asset_type: Asset type/source
+            source: Asset source (upload, ai, system, marketplace)
             project_id: Optional project ID
             prompt: Optional prompt used to generate
             tz: Timezone
+            asset_type: Asset type (image, video, audio, document). Defaults to 'image'.
 
         Returns:
             Created asset dict
@@ -80,7 +82,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         result = await self.client.table("assets").insert({
             "user_id": user_id,
             "url": url,
-            "source": asset_type,
+            "type": asset_type,  # Required NOT NULL field
+            "source": source,
             "project_id": project_id,
             "prompt": prompt,
             "timezone": tz,
