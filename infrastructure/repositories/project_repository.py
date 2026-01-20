@@ -434,6 +434,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             "status": project.status.value,
             "collaborators": project.collaborators,
         }
+        # v2.2.0: Add canvas_data (critical - this was missing, causing data loss on save)
+        if project.canvas_data is not None:
+            row["canvas_data"] = project.canvas_data
         # v2.1.0: Add idempotency_key if present
         if hasattr(project, 'idempotency_key') and project.idempotency_key:
             row["idempotency_key"] = project.idempotency_key
