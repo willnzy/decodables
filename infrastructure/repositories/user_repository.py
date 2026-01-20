@@ -389,10 +389,16 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     ) -> UserProfile:
         """Update user's onboarding progress."""
         try:
-            result = await self.client.table("profiles").update({
+            # Update onboarding step
+            await self.client.table("profiles").update({
                 "onboarding_step": step.value,
                 "updated_at": datetime.utcnow().isoformat(),
-            }).eq("id", user_id).select("*").single().execute()
+            }).eq("id", user_id).execute()
+
+            # Fetch updated data
+            result = await self.client.table("profiles").select("*").eq(
+                "id", user_id
+            ).single().execute()
 
             if not result.data:
                 raise UserNotFoundException(user_id)

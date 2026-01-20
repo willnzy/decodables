@@ -111,9 +111,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             result = await self.client.table("projects").update(data).eq(
                 "id", project.project_id
-            ).select("*").single().execute()
+            ).execute()
 
-            if not result.data:
+            if not result.data or len(result.data) == 0:
                 raise ProjectNotFoundException(project.project_id)
 
             return project

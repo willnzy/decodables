@@ -364,11 +364,15 @@ class SupabaseCreditRepository(ICreditRepository):
     ) -> UserCredits:
         """Reset monthly credits for a user."""
         try:
-            result = await self.client.table("profiles").update({
+            # Update credits
+            await self.client.table("profiles").update({
                 "credits_monthly": new_amount
-            }).eq("id", user_id).select(
+            }).eq("id", user_id).execute()
+
+            # Fetch updated data
+            result = await self.client.table("profiles").select(
                 "id, credits_monthly, credits_permanent, tier"
-            ).single().execute()
+            ).eq("id", user_id).single().execute()
 
             if not result.data:
                 raise CreditOperationFailedException(
