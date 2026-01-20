@@ -901,10 +901,12 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         bought_count = bought_count_result.count or 0
 
         # Selling projects count
-        # v3.30: Query via marketplace_listings for accurate count
+        # v3.30: Only count approved listings (consistent with Total Selling stats)
         selling_listings_result = await self.client.table("marketplace_listings").select(
             "resource_id", count="exact"
-        ).eq("seller_id", user_id).eq("resource_type", "project").eq("is_deleted", False).execute()
+        ).eq("seller_id", user_id).eq("resource_type", "project").eq(
+            "is_deleted", False
+        ).eq("moderation_status", "approved").execute()
         selling_count = selling_listings_result.count or 0
 
         counts = {
