@@ -255,7 +255,8 @@ class Listing:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
-            "listing_id": self.listing_id,
+            "id": self.listing_id,  # Frontend expects 'id'
+            "listing_id": self.listing_id,  # Keep for backwards compatibility
             "seller_id": self.seller_id,
             "resource_type": self.resource_type.value,
             "resource_type_display": self.resource_type.display_name,
