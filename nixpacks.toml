@@ -2,6 +2,11 @@
 # https://nixpacks.com/docs/configuration/file
 
 # ==========================================
+# Providers (Language Detection)
+# ==========================================
+providers = ['python']
+
+# ==========================================
 # System Dependencies
 # ==========================================
 [phases.setup]
@@ -15,4 +20,8 @@ nixPkgs = ['...', 'mupdf', 'freetype']
 # ==========================================
 [phases.build]
 # Clean up empty directories that conflict with .py files (Python import precedence issue)
-cmds = ['find . -type d -empty -delete']
+# Then install Python dependencies
+cmds = [
+  'find . -type d -empty -delete',
+  'pip install -r requirements.txt'
+]

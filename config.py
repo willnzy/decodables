@@ -43,7 +43,8 @@ OPENAI_ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development
     "https://make-decodables.vercel.app",          # Vercel production
-    "https://decodables-production.up.railway.app" # Railway API
+    "https://decodables-staging.up.railway.app",   # Railway API (staging)
+    "https://decodables-production.up.railway.app" # Railway API (production)
 ]
 
 # Rate Limiting
