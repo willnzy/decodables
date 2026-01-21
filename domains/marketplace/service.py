@@ -377,6 +377,7 @@ class MarketplaceService:
     async def search_listings_with_filters(
         self,
         query: str = "",
+        resource_type: Optional[str] = None,
         category: Optional[AssetCategory] = None,
         price_filter: Optional[PriceFilter] = None,
         sort_by: ListingSortOrder = ListingSortOrder.LATEST,
@@ -390,7 +391,8 @@ class MarketplaceService:
 
         Args:
             query: Search query (optional)
-            category: Filter by category
+            resource_type: Top-level filter ("asset" or "project")
+            category: Filter by specific category (clipart, sticker, template, etc.)
             price_filter: Price filter (all/free/paid)
             sort_by: Sort order (latest/popular/price_asc/price_desc/best_selling)
             tier_filter: Filter by allowed tier
@@ -403,6 +405,7 @@ class MarketplaceService:
         """
         return await self._repository.search_with_filters(
             query=query,
+            resource_type=resource_type,
             category=category,
             price_filter=price_filter,
             sort_by=sort_by,

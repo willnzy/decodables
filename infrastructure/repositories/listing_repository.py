@@ -268,6 +268,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def search_with_filters(
         self,
         query: str = "",
+        resource_type: Optional[str] = None,
         category: Optional[AssetCategory] = None,
         price_filter: Optional[PriceFilter] = None,
         sort_by: ListingSortOrder = ListingSortOrder.LATEST,
@@ -278,6 +279,17 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     ) -> tuple[List[Listing], int]:
         """
         Search listings with advanced filtering and sorting.
+
+        Args:
+            query: Search query (optional)
+            resource_type: Top-level filter ("asset" or "project")
+            category: Specific category filter (clipart, sticker, template, etc.)
+            price_filter: Price filter (all/free/paid)
+            sort_by: Sort order
+            tier_filter: Filter by allowed tier
+            featured: If True, prioritize featured listings
+            limit: Max results
+            offset: Results to skip
 
         P1-004: Uses RPC function p_get_marketplace_listings for 5x-10x better performance.
         Falls back to direct query if RPC fails (graceful degradation).
@@ -295,7 +307,8 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
                 )
 
                 result = await self.client.rpc("p_get_marketplace_listings", {
-                    "p_category": rpc_params["category"],
+                    "p_resource_type": resource_type,  # Top-level: asset/project
+                    "p_category": rpc_params["category"],  # Specific category
                     "p_price_filter": rpc_params["price_filter"],
                     "p_sort_by": rpc_params["sort_by"],
                     "p_tier_filter": tier_filter,
@@ -331,9 +344,13 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
                     f"title.ilike.%{query}%,description.ilike.%{query}%"
                 )
 
-            # Category filter (resource_type in DB)
+            # Resource type filter (top-level: asset/project)
+            if resource_type:
+                db_query = db_query.eq("resource_type", resource_type)
+
+            # Category filter (second-level: clipart, sticker, template, etc.)
             if category:
-                db_query = db_query.eq("resource_type", category.value)
+                db_query = db_query.eq("category", category.value)
 
             # Tier filter
             if tier_filter and tier_filter != "all":

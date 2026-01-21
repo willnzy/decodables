@@ -27,7 +27,8 @@
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION p_get_marketplace_listings(
-    p_category TEXT DEFAULT NULL,
+    p_resource_type TEXT DEFAULT NULL, -- Top-level: 'asset' or 'project'
+    p_category TEXT DEFAULT NULL,      -- Second-level: 'clipart', 'sticker', 'template', etc.
     p_price_filter TEXT DEFAULT 'all',  -- 'all', 'free', 'paid'
     p_sort_by TEXT DEFAULT 'latest',    -- 'latest', 'popular', 'best_selling', 'price_asc', 'price_desc'
     p_tier_filter TEXT DEFAULT NULL,
@@ -92,8 +93,10 @@ BEGIN
     WHERE ml.is_public = true
       AND ml.is_deleted = false
       AND ml.moderation_status = 'approved'
-      -- Category filter
-      AND (p_category IS NULL OR ml.resource_type = p_category)
+      -- Resource type filter (top-level: asset/project)
+      AND (p_resource_type IS NULL OR ml.resource_type = p_resource_type)
+      -- Category filter (second-level: specific category)
+      AND (p_category IS NULL OR ml.category = p_category)
       -- Tier filter
       AND (p_tier_filter IS NULL OR p_tier_filter = ANY(ml.allowed_tiers))
       -- Price filter
@@ -161,7 +164,8 @@ BEGIN
       AND ml.is_deleted = false
       AND ml.moderation_status = 'approved'
       -- Same filters as count query
-      AND (p_category IS NULL OR ml.resource_type = p_category)
+      AND (p_resource_type IS NULL OR ml.resource_type = p_resource_type)
+      AND (p_category IS NULL OR ml.category = p_category)
       AND (p_tier_filter IS NULL OR p_tier_filter = ANY(ml.allowed_tiers))
       AND (
           CASE p_price_filter

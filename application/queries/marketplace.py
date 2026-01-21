@@ -83,7 +83,8 @@ class GetListingHandler:
 class SearchListingsQuery:
     """Query to search listings with filtering and sorting."""
     query: str = ""
-    category: Optional[str] = None
+    resource_type: Optional[str] = None  # Top-level: "asset" | "project"
+    category: Optional[str] = None  # Second-level: "clipart" | "sticker" | "template" etc.
     price_type: Optional[str] = None  # Deprecated: use price_filter instead
     price_filter: Optional[str] = None  # "all" | "t1" | "paid"
     sort_by: Optional[str] = None  # "latest" | "popular" | "price_asc" | "price_desc" | "best_selling"
@@ -145,7 +146,8 @@ class SearchListingsHandler:
             # Use the enhanced search method
             listings, total_count = await self._marketplace_service.search_listings_with_filters(
                 query=query.query,
-                category=category,
+                resource_type=query.resource_type,  # Top-level filter: asset/project
+                category=category,  # Second-level filter: specific category
                 price_filter=price_filter,
                 sort_by=sort_by,
                 tier_filter=query.tier_filter,

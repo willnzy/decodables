@@ -226,7 +226,8 @@ async def list_listings(
 
     query = SearchListingsQuery(
         query="",
-        category=resource_type,
+        resource_type=resource_type,  # Top-level: "asset" or "project"
+        category=None,  # Second-level category (not used in this API)
         price_filter=price,
         sort_by=sort,
         tier_filter=tier,
