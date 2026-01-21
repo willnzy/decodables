@@ -69,7 +69,7 @@ class SupabaseTemplatesRepository:
         result = await self.client.table("asset_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
-            .order("usage_count", desc=True) \
+            .order("use_count", desc=True) \
             .execute()
 
         return result.data or []
