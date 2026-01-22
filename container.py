@@ -1078,7 +1078,10 @@ class Container:
         """Get update listing handler (async)."""
         if 'update_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            self._handlers['update_listing'] = UpdateListingHandler(marketplace_service)
+            supabase_client = await self.get_supabase_client()
+            self._handlers['update_listing'] = UpdateListingHandler(
+                marketplace_service, supabase_client
+            )
         return self._handlers['update_listing']
 
     async def get_unpublish_listing_handler(self) -> UnpublishListingHandler:

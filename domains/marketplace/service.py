@@ -154,7 +154,7 @@ class MarketplaceService:
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
         preview_url: Optional[str] = None
-    ) -> Listing:
+    ) -> tuple[Listing, bool]:
         """
         Update listing metadata.
 
@@ -167,21 +167,22 @@ class MarketplaceService:
             preview_url: New preview URL
 
         Returns:
-            Updated Listing
+            Tuple of (Updated Listing, requires_remoderation)
         """
         listing = await self.get_listing_or_raise(listing_id)
 
         if listing.seller_id != user_id:
             raise ListingAccessDeniedException(listing_id, user_id, "edit")
 
-        listing.update_metadata(
+        requires_remoderation = listing.update_metadata(
             title=title,
             description=description,
             tags=tags,
             preview_url=preview_url,
         )
 
-        return await self._repository.update(listing)
+        updated_listing = await self._repository.update(listing)
+        return updated_listing, requires_remoderation
 
     async def submit_for_review(
         self,

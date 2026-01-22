@@ -136,8 +136,12 @@ class ListingUpdateRequest(BaseModel):
     """Request to update a listing (P2-030: DoS protection)."""
     title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
+    thumbnail_url: Optional[str] = Field(None, max_length=2000)  # Preview/thumbnail image
+    resource_url: Optional[str] = Field(None, max_length=2000)  # Resource URL
     price_credits: Optional[int] = Field(None, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
+    version: Optional[str] = Field(None, max_length=20)  # Version string
+    changelog: Optional[str] = Field(None, max_length=2000)  # What's new
 
 
 class PurchaseRequest(BaseModel):
@@ -386,6 +390,7 @@ async def update_listing(
         description=req.description,
         price_credits=req.price_credits,
         allowed_tiers=req.allowed_tiers,
+        preview_url=req.thumbnail_url,  # thumbnail_url maps to preview_url
     )
 
     result = await handler.handle(command)

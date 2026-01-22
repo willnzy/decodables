@@ -610,6 +610,9 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
 
     def _map_to_row(self, listing: Listing) -> dict:
         """Map Listing to database row."""
+        # is_public is only True when listing is published (approved)
+        is_public = listing.status == ListingStatus.PUBLISHED
+
         return {
             "listing_id": listing.listing_id,
             "seller_id": listing.seller_id,
@@ -631,6 +634,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             "allowed_tiers": listing.allowed_tiers,
             "status": listing.status.value,  # Internal status field
             "moderation_status": self._status_to_moderation(listing.status),  # DB uses moderation_status
+            "is_public": is_public,  # Only public when published
             "is_featured": listing.is_featured,
             "rejection_reason": listing.rejection_reason,
             "view_count": listing.stats.view_count,

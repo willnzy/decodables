@@ -95,7 +95,7 @@ class CreateListingHandler:
 
             # Update with additional metadata if provided
             if command.tags or command.preview_url:
-                listing = await self._marketplace_service.update_listing(
+                listing, _ = await self._marketplace_service.update_listing(
                     listing_id=listing.listing_id,
                     user_id=command.seller_id,
                     tags=command.tags,
@@ -173,15 +173,18 @@ class UpdateListingResult:
 class UpdateListingHandler:
     """Handler for UpdateListingCommand."""
 
-    def __init__(self, marketplace_service: MarketplaceService):
+    def __init__(self, marketplace_service: MarketplaceService, supabase_client=None):
         self._marketplace_service = marketplace_service
+        self._client = supabase_client  # For updating project link
 
     async def handle(self, command: UpdateListingCommand) -> UpdateListingResult:
         """Execute listing update."""
         try:
             requires_resubmit = False
 
-            listing = await self._marketplace_service.update_listing(
+            # Update metadata (title, description, tags, preview_url)
+            # Returns (listing, requires_remoderation)
+            listing, metadata_requires_remod = await self._marketplace_service.update_listing(
                 listing_id=command.listing_id,
                 user_id=command.user_id,
                 title=command.title,
@@ -190,19 +193,42 @@ class UpdateListingHandler:
                 preview_url=command.preview_url,
             )
 
+            if metadata_requires_remod:
+                requires_resubmit = True
+
             # Handle pricing update if provided
             # For published listings, changing price triggers re-moderation
             if command.price_credits is not None:
                 price_type = PriceType.FREE if command.price_credits == 0 else PriceType.CREDITS
-                requires_remoderation = listing.set_pricing(price_type, command.price_credits)
+                pricing_requires_remod = listing.set_pricing(price_type, command.price_credits)
                 listing = await self._marketplace_service._repository.update(listing)
-                if requires_remoderation:
+                if pricing_requires_remod:
                     requires_resubmit = True
 
             # Handle allowed_tiers update if provided
             if command.allowed_tiers is not None:
                 listing.allowed_tiers = command.allowed_tiers
                 listing = await self._marketplace_service._repository.update(listing)
+
+            # Update linked project's listing_status if re-moderation was triggered
+            if requires_resubmit and self._client:
+                try:
+                    # Get the resource_id from the listing
+                    listing_data = await self._client.table("marketplace_listings").select(
+                        "resource_id"
+                    ).eq("listing_id", listing.listing_id).single().execute()
+
+                    if listing_data.data and listing_data.data.get("resource_id"):
+                        # Update project's listing_status to pending
+                        await self._client.table("projects").update({
+                            "listing_status": "pending",
+                        }).eq("id", listing_data.data["resource_id"]).execute()
+                except Exception as e:
+                    # Log but don't fail - listing update is the primary operation
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to update project listing_status: {e}"
+                    )
 
             return UpdateListingResult(
                 success=True,

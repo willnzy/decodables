@@ -163,10 +163,34 @@ class Listing:
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
         preview_url: Optional[str] = None
-    ):
-        """Update listing metadata."""
-        if not self.is_editable:
-            raise ValueError("Cannot edit published listing")
+    ) -> bool:
+        """
+        Update listing metadata.
+
+        For published listings, editing will trigger re-moderation.
+
+        Args:
+            title: New title
+            description: New description
+            tags: New tags
+            preview_url: New preview URL
+
+        Returns:
+            True if listing requires re-moderation, False otherwise
+        """
+        requires_remoderation = False
+
+        # Check if editing is allowed
+        if self.status == ListingStatus.PUBLISHED:
+            # Published listings: allow edit but require re-moderation
+            requires_remoderation = True
+        elif self.status == ListingStatus.PENDING_REVIEW:
+            # Already pending review (e.g., from set_pricing in same transaction)
+            # Allow editing without changing status
+            pass
+        elif not self.is_editable:
+            # Other non-editable statuses (SUSPENDED, ARCHIVED)
+            raise ValueError(f"Cannot edit listing in {self.status.value} status")
 
         if title is not None:
             self.metadata.title = title
@@ -179,6 +203,12 @@ class Listing:
             # Also set thumbnail_url to the same value for marketplace display
             self.metadata.thumbnail_url = preview_url
         self.updated_at = datetime.utcnow()
+
+        # Set back to pending for re-moderation if was published
+        if requires_remoderation:
+            self.status = ListingStatus.PENDING_REVIEW
+
+        return requires_remoderation
 
     def set_pricing(self, price_type: PriceType, credit_price: int = 0) -> bool:
         """
@@ -199,9 +229,13 @@ class Listing:
         if self.status == ListingStatus.PUBLISHED:
             # Published listings: allow edit but require re-moderation
             requires_remoderation = True
+        elif self.status == ListingStatus.PENDING_REVIEW:
+            # Already pending review (e.g., from update_metadata in same transaction)
+            # Allow editing without changing status
+            pass
         elif not self.is_editable:
-            # PENDING_REVIEW listings cannot be edited
-            raise ValueError("Cannot edit listing in pending status")
+            # Other non-editable statuses (SUSPENDED, ARCHIVED)
+            raise ValueError(f"Cannot edit listing in {self.status.value} status")
 
         self.price_type = price_type
         self.credit_price = credit_price if price_type == PriceType.CREDITS else 0
