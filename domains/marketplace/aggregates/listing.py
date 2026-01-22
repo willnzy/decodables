@@ -180,20 +180,38 @@ class Listing:
             self.metadata.thumbnail_url = preview_url
         self.updated_at = datetime.utcnow()
 
-    def set_pricing(self, price_type: PriceType, credit_price: int = 0):
+    def set_pricing(self, price_type: PriceType, credit_price: int = 0) -> bool:
         """
         Set listing pricing.
+
+        For published listings, changing price will trigger re-moderation.
 
         Args:
             price_type: Pricing model
             credit_price: Price in credits
+
+        Returns:
+            True if listing requires re-moderation, False otherwise
         """
-        if not self.is_editable:
-            raise ValueError("Cannot edit published listing")
+        requires_remoderation = False
+
+        # Check if editing is allowed
+        if self.status == ListingStatus.PUBLISHED:
+            # Published listings: allow edit but require re-moderation
+            requires_remoderation = True
+        elif not self.is_editable:
+            # PENDING_REVIEW listings cannot be edited
+            raise ValueError("Cannot edit listing in pending status")
 
         self.price_type = price_type
         self.credit_price = credit_price if price_type == PriceType.CREDITS else 0
         self.updated_at = datetime.utcnow()
+
+        # Set back to pending for re-moderation if was published
+        if requires_remoderation:
+            self.status = ListingStatus.PENDING_REVIEW
+
+        return requires_remoderation
 
     def submit_for_review(self):
         """Submit listing for review."""

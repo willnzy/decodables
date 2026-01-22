@@ -179,6 +179,8 @@ class UpdateListingHandler:
     async def handle(self, command: UpdateListingCommand) -> UpdateListingResult:
         """Execute listing update."""
         try:
+            requires_resubmit = False
+
             listing = await self._marketplace_service.update_listing(
                 listing_id=command.listing_id,
                 user_id=command.user_id,
@@ -189,10 +191,13 @@ class UpdateListingHandler:
             )
 
             # Handle pricing update if provided
+            # For published listings, changing price triggers re-moderation
             if command.price_credits is not None:
                 price_type = PriceType.FREE if command.price_credits == 0 else PriceType.CREDITS
-                listing.set_pricing(price_type, command.price_credits)
+                requires_remoderation = listing.set_pricing(price_type, command.price_credits)
                 listing = await self._marketplace_service._repository.update(listing)
+                if requires_remoderation:
+                    requires_resubmit = True
 
             # Handle allowed_tiers update if provided
             if command.allowed_tiers is not None:
@@ -202,7 +207,7 @@ class UpdateListingHandler:
             return UpdateListingResult(
                 success=True,
                 listing=listing,
-                requires_resubmit=False,
+                requires_resubmit=requires_resubmit,
             )
 
         except ValueError as e:
