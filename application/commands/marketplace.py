@@ -578,14 +578,14 @@ class UnpublishListingHandler:
         self._client = supabase_client  # For updating project link
 
     async def handle(self, command: UnpublishListingCommand) -> UnpublishListingResult:
-        """Execute listing unpublish (archive)."""
+        """Execute listing unpublish (back to draft)."""
         try:
             listing = await self._marketplace_service.unpublish_listing(
                 listing_id=command.listing_id,
                 user_id=command.user_id,
             )
 
-            # Update linked project's listing_status to archived
+            # Update linked project's listing_status to draft
             if self._client:
                 try:
                     # Get the resource_id from the listing
@@ -594,9 +594,9 @@ class UnpublishListingHandler:
                     ).eq("listing_id", listing.listing_id).single().execute()
 
                     if listing_data.data and listing_data.data.get("resource_id"):
-                        # Update project's listing_status to archived
+                        # Update project's listing_status to draft
                         await self._client.table("projects").update({
-                            "listing_status": "archived",
+                            "listing_status": "draft",
                         }).eq("id", listing_data.data["resource_id"]).execute()
                 except Exception as e:
                     # Log but don't fail - listing unpublish is the primary operation

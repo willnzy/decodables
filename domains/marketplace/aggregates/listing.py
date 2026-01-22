@@ -184,9 +184,6 @@ class Listing:
         if self.status == ListingStatus.PUBLISHED:
             # Published listings: allow edit but require re-moderation
             requires_remoderation = True
-        elif self.status == ListingStatus.ARCHIVED:
-            # Archived (unpublished) listings: allow re-publish with re-moderation
-            requires_remoderation = True
         elif self.status == ListingStatus.REJECTED:
             # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
@@ -236,9 +233,6 @@ class Listing:
         if self.status == ListingStatus.PUBLISHED:
             # Published listings: allow edit but require re-moderation
             requires_remoderation = True
-        elif self.status == ListingStatus.ARCHIVED:
-            # Archived (unpublished) listings: allow re-publish with re-moderation
-            requires_remoderation = True
         elif self.status == ListingStatus.REJECTED:
             # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
@@ -255,7 +249,7 @@ class Listing:
         self.credit_price = credit_price if price_type == PriceType.CREDITS else 0
         self.updated_at = datetime.utcnow()
 
-        # Set to pending for re-moderation if was published/archived/rejected
+        # Set to pending for re-moderation if was published/rejected
         if requires_remoderation:
             self.status = ListingStatus.PENDING_REVIEW
 
@@ -300,9 +294,9 @@ class Listing:
         self.rejection_reason = reason
         self.updated_at = datetime.utcnow()
 
-    def archive(self):
-        """Archive listing."""
-        self.status = ListingStatus.ARCHIVED
+    def unpublish(self):
+        """Unpublish listing (back to draft for re-submission)."""
+        self.status = ListingStatus.DRAFT
         self.updated_at = datetime.utcnow()
 
     def record_view(self):

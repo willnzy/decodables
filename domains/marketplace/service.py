@@ -523,7 +523,7 @@ class MarketplaceService:
         user_id: str
     ) -> Listing:
         """
-        Unpublish (archive) a listing.
+        Unpublish a listing (back to draft for re-submission).
 
         Only the seller can unpublish their own listing.
         Only published listings can be unpublished.
@@ -533,7 +533,7 @@ class MarketplaceService:
             user_id: User making the request
 
         Returns:
-            Archived Listing
+            Draft Listing (ready for re-submission)
 
         Raises:
             ListingNotFoundException: If listing not found
@@ -548,7 +548,7 @@ class MarketplaceService:
         if listing.status != ListingStatus.PUBLISHED:
             raise ValueError(f"Cannot unpublish listing in {listing.status.value} status")
 
-        listing.archive()
+        listing.unpublish()
         return await self._repository.update(listing)
 
     async def get_seller_stats(self, seller_id: str) -> dict:

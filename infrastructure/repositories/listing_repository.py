@@ -649,7 +649,10 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         Map ListingStatus to database moderation_status.
 
         DB moderation_status: draft, pending, approved, rejected
-        Code ListingStatus: draft, pending_review, published, rejected, suspended, archived
+        Code ListingStatus: draft, pending_review, published, rejected, suspended
+
+        Note: ARCHIVED is kept for backward compatibility with existing records.
+        New unpublish operations set status to DRAFT instead.
         """
         mapping = {
             ListingStatus.DRAFT: "draft",
@@ -657,7 +660,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             ListingStatus.PUBLISHED: "approved",
             ListingStatus.REJECTED: "rejected",
             ListingStatus.SUSPENDED: "rejected",  # Suspended maps to rejected
-            ListingStatus.ARCHIVED: "rejected",   # Archived maps to rejected
+            ListingStatus.ARCHIVED: "draft",      # Legacy: treat as draft
         }
         return mapping.get(status, "draft")
 
