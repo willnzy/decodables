@@ -1307,16 +1307,36 @@
   "description": "精心设计的贴纸",
   "thumbnail_url": "https://...",
   "resource_url": "https://...",
-  "resource_type": "sticker",
+  "resource_type": "asset",
+  "category": "sticker",
+  "source": "user",
   "price_credits": 30,
   "allowed_tiers": ["t2", "t3"],
-  "submit_for_review": true
+  "allow_preview": true,
+  "version": "1.0",
+  "changelog": ""
 }
 ```
 
+**字段说明**:
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| title | string | ✅ | 商品标题 (1-200字符) |
+| description | string | ❌ | 商品描述 (最多2000字符) |
+| thumbnail_url | string | ❌ | 缩略图URL |
+| resource_url | string | ❌ | 资源URL |
+| resource_type | string | ✅ | "asset" 或 "project" |
+| category | string | ❌ | 分类 (clipart/sticker/template等) |
+| source | string | ❌ | 来源 (system/user/ai/community) |
+| price_credits | int | ❌ | 价格 0-500，默认0 |
+| allowed_tiers | string[] | ❌ | 可访问的Tier |
+| allow_preview | bool | ❌ | 是否允许购买前预览，默认true |
+| version | string | ❌ | 版本号，默认"1.0" |
+| changelog | string | ❌ | 更新日志 |
+
 **权限**:
-- t2: 仅能发布免费资源
-- t3: 可发布任意价格资源
+- t2 (Starter): 仅能发布免费资源 (price_credits=0, resource_type='asset')
+- t3 (Pro): 可发布任意价格资源 (0-500 credits)
 
 **响应**:
 ```json
@@ -1337,15 +1357,25 @@
 ```json
 {
   "title": "更新后的标题",
-  "price_credits": 40
+  "description": "更新后的描述",
+  "thumbnail_url": "https://...",
+  "resource_url": "https://...",
+  "price_credits": 40,
+  "allowed_tiers": ["t2", "t3"],
+  "allow_preview": true,
+  "version": "1.1",
+  "changelog": "修复了一些问题"
 }
 ```
+
+**注意**: 对于已发布 (approved) 的商品，修改关键字段 (如 price_credits) 会触发重新审核，状态变为 pending。
 
 **响应**:
 ```json
 {
-  "success": true,
-  "listing": { ... }
+  "status": "updated",
+  "listing_id": "listing_xxx",
+  "requires_resubmit": true
 }
 ```
 

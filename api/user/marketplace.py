@@ -100,6 +100,7 @@ class ListingCreateRequest(BaseModel):
     resource_id: Optional[str] = Field(None, max_length=50)  # P2-030: UUID length
     price_credits: int = Field(0, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
+    allow_preview: bool = Field(True)  # Whether buyers can preview before purchase
     version: Optional[str] = Field("1.0", max_length=20)  # P2-030: DoS protection
     changelog: Optional[str] = Field(None, max_length=5000)  # P2-030: DoS protection
 
