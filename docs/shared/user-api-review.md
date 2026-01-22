@@ -1,8 +1,8 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.40
-> **最后更新**: 2026-01-18
+> **版本**: 3.41
+> **最后更新**: 2026-01-23
 > **总端点数**: 128 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
@@ -1368,7 +1368,21 @@
 }
 ```
 
-**注意**: 对于已发布 (approved) 的商品，修改关键字段 (如 price_credits) 会触发重新审核，状态变为 pending。
+**状态转换说明**:
+
+| 原状态 | 更新后状态 | 说明 |
+|--------|------------|------|
+| draft | draft | 草稿可自由编辑，不触发审核 |
+| pending | - | 待审核状态不可编辑 |
+| approved (published) | pending | 已发布商品编辑后需重新审核 |
+| rejected | pending | 被拒绝商品编辑后可重新提交审核 |
+| archived (unpublished) | pending | 下架商品编辑后可重新发布，需审核 |
+| suspended | - | 被封禁商品不可编辑，需联系客服 |
+
+**注意**:
+- 修改任何字段 (title, description, price_credits 等) 都会触发重新审核
+- 关联项目的 `listing_status` 会同步更新为 "pending"
+- `requires_resubmit: true` 表示需要等待管理员审核
 
 **响应**:
 ```json
@@ -1383,7 +1397,14 @@
 
 ### DELETE `/marketplace/listings/{listing_id}`
 
-下架商品
+下架商品 (Unpublish)
+
+将商品从市场下架，状态变为 `archived`。下架后的商品可以通过 PUT 请求重新编辑并发布（需重新审核）。
+
+**注意**:
+- 只有 `approved` (已发布) 状态的商品可以下架
+- 下架后关联项目的 `listing_status` 会同步更新为 `archived`
+- 下架不会删除商品数据，卖家可以随时重新发布
 
 **响应**:
 ```json
