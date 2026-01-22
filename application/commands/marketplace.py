@@ -210,6 +210,18 @@ class UpdateListingHandler:
                 listing.allowed_tiers = command.allowed_tiers
                 listing = await self._marketplace_service._repository.update(listing)
 
+            # Auto-submit DRAFT listings for review (e.g., after unpublish + re-edit)
+            # Similar to CreateListingHandler auto-submit behavior
+            from domains.marketplace.value_objects import ListingStatus
+            if listing.status == ListingStatus.DRAFT and listing.metadata.preview_url:
+                await self._marketplace_service.submit_for_review(
+                    listing_id=listing.listing_id,
+                    user_id=command.user_id,
+                )
+                # Refresh listing to get updated status
+                listing = await self._marketplace_service.get_listing(listing.listing_id)
+                requires_resubmit = True
+
             # Update linked project's listing_status if re-moderation was triggered
             if requires_resubmit and self._client:
                 try:
