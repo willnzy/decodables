@@ -1068,9 +1068,9 @@ class Container:
         """Get create listing handler (async)."""
         if 'create_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            supabase_client = await self.get_supabase_client()
+            db = await get_async_db_client()
             self._handlers['create_listing'] = CreateListingHandler(
-                marketplace_service, supabase_client
+                marketplace_service, db
             )
         return self._handlers['create_listing']
 
@@ -1078,9 +1078,9 @@ class Container:
         """Get update listing handler (async)."""
         if 'update_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            supabase_client = await self.get_supabase_client()
+            db = await get_async_db_client()
             self._handlers['update_listing'] = UpdateListingHandler(
-                marketplace_service, supabase_client
+                marketplace_service, db
             )
         return self._handlers['update_listing']
 
@@ -1088,9 +1088,9 @@ class Container:
         """Get unpublish listing handler (async)."""
         if 'unpublish_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            supabase_client = await self.get_supabase_client()
+            db = await get_async_db_client()
             self._handlers['unpublish_listing'] = UnpublishListingHandler(
-                marketplace_service, supabase_client
+                marketplace_service, db
             )
         return self._handlers['unpublish_listing']
 
