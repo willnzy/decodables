@@ -150,6 +150,7 @@ class UpdateListingCommand:
     Command to update a marketplace listing.
 
     Only editable in draft/rejected status.
+    Set submit_for_review=True to also submit for review after update.
     """
     listing_id: str
     user_id: str
@@ -159,6 +160,7 @@ class UpdateListingCommand:
     allowed_tiers: Optional[List[str]] = None
     tags: Optional[List[str]] = None
     preview_url: Optional[str] = None
+    submit_for_review: bool = False  # Explicit flag to trigger auto-submit for DRAFT listings
 
 
 @dataclass
@@ -210,10 +212,20 @@ class UpdateListingHandler:
                 listing.allowed_tiers = command.allowed_tiers
                 listing = await self._marketplace_service._repository.update(listing)
 
-            # Auto-submit DRAFT listings for review (e.g., after unpublish + re-edit)
-            # Similar to CreateListingHandler auto-submit behavior
+            # Auto-submit DRAFT listings for review when explicitly requested
+            # or when preview_url is set (backward compatibility)
             from domains.marketplace.value_objects import ListingStatus
-            if listing.status == ListingStatus.DRAFT and listing.metadata.preview_url:
+            should_submit = (
+                listing.status == ListingStatus.DRAFT and
+                (command.submit_for_review or listing.metadata.preview_url)
+            )
+            if should_submit:
+                # Validate preview_url is required for publishing
+                if not listing.metadata.preview_url:
+                    return UpdateListingResult(
+                        success=False,
+                        error="Preview image is required to publish listing",
+                    )
                 await self._marketplace_service.submit_for_review(
                     listing_id=listing.listing_id,
                     user_id=command.user_id,
