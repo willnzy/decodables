@@ -1088,7 +1088,10 @@ class Container:
         """Get unpublish listing handler (async)."""
         if 'unpublish_listing' not in self._handlers:
             marketplace_service = await self.get_marketplace_service()
-            self._handlers['unpublish_listing'] = UnpublishListingHandler(marketplace_service)
+            supabase_client = await self.get_supabase_client()
+            self._handlers['unpublish_listing'] = UnpublishListingHandler(
+                marketplace_service, supabase_client
+            )
         return self._handlers['unpublish_listing']
 
     async def get_purchase_listing_handler(self) -> PurchaseListingHandler:

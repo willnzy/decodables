@@ -180,17 +180,24 @@ class Listing:
         """
         requires_remoderation = False
 
-        # Check if editing is allowed
+        # Check if editing is allowed and determine re-moderation requirement
         if self.status == ListingStatus.PUBLISHED:
             # Published listings: allow edit but require re-moderation
+            requires_remoderation = True
+        elif self.status == ListingStatus.ARCHIVED:
+            # Archived (unpublished) listings: allow re-publish with re-moderation
+            requires_remoderation = True
+        elif self.status == ListingStatus.REJECTED:
+            # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
         elif self.status == ListingStatus.PENDING_REVIEW:
             # Already pending review (e.g., from set_pricing in same transaction)
             # Allow editing without changing status
             pass
-        elif not self.is_editable:
-            # Other non-editable statuses (SUSPENDED, ARCHIVED)
-            raise ValueError(f"Cannot edit listing in {self.status.value} status")
+        elif self.status == ListingStatus.SUSPENDED:
+            # Suspended listings cannot be edited (admin action required)
+            raise ValueError("Cannot edit suspended listing. Please contact support.")
+        # DRAFT is editable without re-moderation (is_editable = True)
 
         if title is not None:
             self.metadata.title = title
@@ -225,23 +232,30 @@ class Listing:
         """
         requires_remoderation = False
 
-        # Check if editing is allowed
+        # Check if editing is allowed and determine re-moderation requirement
         if self.status == ListingStatus.PUBLISHED:
             # Published listings: allow edit but require re-moderation
+            requires_remoderation = True
+        elif self.status == ListingStatus.ARCHIVED:
+            # Archived (unpublished) listings: allow re-publish with re-moderation
+            requires_remoderation = True
+        elif self.status == ListingStatus.REJECTED:
+            # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
         elif self.status == ListingStatus.PENDING_REVIEW:
             # Already pending review (e.g., from update_metadata in same transaction)
             # Allow editing without changing status
             pass
-        elif not self.is_editable:
-            # Other non-editable statuses (SUSPENDED, ARCHIVED)
-            raise ValueError(f"Cannot edit listing in {self.status.value} status")
+        elif self.status == ListingStatus.SUSPENDED:
+            # Suspended listings cannot be edited (admin action required)
+            raise ValueError("Cannot edit suspended listing. Please contact support.")
+        # DRAFT is editable without re-moderation (is_editable = True)
 
         self.price_type = price_type
         self.credit_price = credit_price if price_type == PriceType.CREDITS else 0
         self.updated_at = datetime.utcnow()
 
-        # Set back to pending for re-moderation if was published
+        # Set to pending for re-moderation if was published/archived/rejected
         if requires_remoderation:
             self.status = ListingStatus.PENDING_REVIEW
 
