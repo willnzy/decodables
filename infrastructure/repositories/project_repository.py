@@ -924,16 +924,23 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             ]
 
             if marketplace_listing_ids:
+                # Include listing_id (business ID) for API calls
                 listings_res = await self.client.table("marketplace_listings").select(
-                    "id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, usage_count, version, changelog"
+                    "id, listing_id, title, description, moderation_status, is_public, allowed_tiers, price_credits, sales_count, usage_count, version, changelog"
                 ).in_("id", marketplace_listing_ids).execute()
 
-                listings_map = {l["id"]: l for l in (listings_res.data or [])}
+                # Map by database id (UUID) for lookup, but use listing_id as the returned id
+                listings_map = {}
+                for l in (listings_res.data or []):
+                    db_id = l["id"]
+                    # Replace 'id' with 'listing_id' so frontend uses business ID for API calls
+                    l["id"] = l.pop("listing_id")
+                    listings_map[db_id] = l
 
                 for item in items:
-                    listing_id = item.get("marketplace_listing_id")
-                    if listing_id and listing_id in listings_map:
-                        item["marketplace_listing"] = listings_map[listing_id]
+                    db_listing_id = item.get("marketplace_listing_id")
+                    if db_listing_id and db_listing_id in listings_map:
+                        item["marketplace_listing"] = listings_map[db_listing_id]
 
         return {"items": items, "total": total, "offset": offset, "limit": limit, "view_type": view_type, "counts": counts}
 
