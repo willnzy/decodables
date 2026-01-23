@@ -698,6 +698,16 @@ CREATE TRIGGER trg_notification_template_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_notification_template_timestamp();
 
+-- RLS: Admin 专用表，仅 service_role 可访问
+ALTER TABLE admin_notification_templates ENABLE ROW LEVEL SECURITY;
+
+-- 策略: 允许 service_role 完全访问 (通过后端 API 访问)
+DROP POLICY IF EXISTS admin_notification_templates_service_role ON admin_notification_templates;
+CREATE POLICY admin_notification_templates_service_role ON admin_notification_templates
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
 
 -- ----------------------------------------------------------------------------
 -- 14. stripe_webhook_events
