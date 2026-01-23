@@ -853,6 +853,33 @@ class Container:
             self._services['export_service'] = ExportService(project_repository=project_repo)
         return self._services['export_service']
 
+    async def get_thumbnail_service(self):
+        """
+        Get thumbnail service instance (v2.3.0, async).
+
+        WHY in Container?
+        - Centralizes service construction with all dependencies
+        - ThumbnailService requires ExportService, ProjectRepository, and storage client
+        - Used by UpdateProjectHandler for background thumbnail generation
+        """
+        from domains.creation.thumbnail_service import ThumbnailService
+        from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+        if 'thumbnail_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            export_service = await self.get_export_service()
+            project_repo = SupabaseProjectRepository(db)
+
+            self._services['thumbnail_service'] = ThumbnailService(
+                export_service=export_service,
+                project_repository=project_repo,
+                storage_client=db,  # AsyncClient has storage methods
+            )
+        return self._services['thumbnail_service']
+
     async def get_pdf_generation_service(self):
         """
         Get PDF generation service instance (v1.2.0, async).
@@ -1040,13 +1067,20 @@ class Container:
         return self._handlers['create_project']
 
     async def get_update_project_handler(self) -> UpdateProjectHandler:
-        """Get update project handler (async, P1-013: includes listing_repository)."""
+        """
+        Get update project handler (async).
+
+        P1-013: includes listing_repository for locked elements check
+        v2.3.0: includes thumbnail_service for background thumbnail generation
+        """
         if 'update_project' not in self._handlers:
             creation_service = await self.get_creation_service()
             listing_repo = await self.get_listing_repository()
+            thumbnail_service = await self.get_thumbnail_service()
             self._handlers['update_project'] = UpdateProjectHandler(
                 creation_service,
-                listing_repo  # P1-013: For locked elements check
+                listing_repo,  # P1-013: For locked elements check
+                thumbnail_service,  # v2.3.0: For background thumbnail generation
             )
         return self._handlers['update_project']
 

@@ -624,3 +624,43 @@ class ExportService:
 
         # Fallback: only t3 and t4 can export ZIP
         return tier.lower() in ("t3", "t4")
+
+    # ==========================================
+    # Thumbnail Generation (v2.3.0)
+    # ==========================================
+
+    async def generate_thumbnail_from_project(
+        self,
+        project_id: str,
+        user_id: str,
+    ) -> Optional[BytesIO]:
+        """
+        Generate thumbnail PNG from project canvas data.
+
+        This method generates a preview image from the project's first page,
+        suitable for use as a project thumbnail or marketplace listing preview.
+
+        Args:
+            project_id: Project ID to generate thumbnail for
+            user_id: User ID for ownership verification
+
+        Returns:
+            BytesIO: PNG image buffer, or None if generation fails
+
+        Note:
+            This is a lightweight wrapper around export_preview that
+            catches exceptions and returns None on failure, making it
+            suitable for background task processing.
+        """
+        try:
+            img_buffer = await self.export_preview(user_id, project_id)
+            return img_buffer
+        except ProjectNotFoundException:
+            logger.warning(f"[Thumbnail] Project {project_id[:8]}... not found")
+            return None
+        except ExportException as e:
+            logger.warning(f"[Thumbnail] Generation failed for {project_id[:8]}...: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Thumbnail] Unexpected error for {project_id[:8]}...: {e}")
+            return None

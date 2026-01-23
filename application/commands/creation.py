@@ -206,23 +206,33 @@ class UpdateProjectResult:
 class UpdateProjectHandler:
     """Handler for UpdateProjectCommand."""
 
-    def __init__(self, creation_service: CreationService, listing_repository=None):
+    def __init__(
+        self,
+        creation_service: CreationService,
+        listing_repository=None,
+        thumbnail_service=None,
+    ):
         """
         Initialize handler with dependencies.
 
         Args:
             creation_service: Creation service for project operations
             listing_repository: Listing repository for locked elements check (optional)
+            thumbnail_service: ThumbnailService for background thumbnail generation (optional)
         """
         self._creation_service = creation_service
         self._listing_repository = listing_repository
+        self._thumbnail_service = thumbnail_service
 
     async def handle(self, command: UpdateProjectCommand) -> UpdateProjectResult:
         """
         Execute project update.
 
         P1-013: Now includes locked elements check when canvas_data is updated.
+        v2.3.0: Triggers background thumbnail generation when canvas_data is updated.
         """
+        import asyncio
+
         try:
             # First verify access - this also confirms ownership
             project = await self._creation_service.get_project_with_access(
@@ -230,6 +240,9 @@ class UpdateProjectHandler:
                 user_id=command.user_id,
                 require_edit=True,
             )
+
+            # Track if canvas_data was updated (for thumbnail generation)
+            canvas_updated = command.canvas_data is not None
 
             # Update project metadata through domain aggregate
             if command.title is not None:
@@ -265,6 +278,18 @@ class UpdateProjectHandler:
             # Persist changes through repository
             await self._creation_service._repository.update(project)
 
+            # v2.3.0: Trigger background thumbnail generation when canvas_data is updated
+            # This runs asynchronously (non-blocking) to avoid slowing down save operations
+            if canvas_updated and self._thumbnail_service is not None:
+                # Create background task for thumbnail generation
+                asyncio.create_task(
+                    self._generate_thumbnail_background(
+                        command.project_id,
+                        command.user_id,
+                    )
+                )
+                logger.debug(f"[UpdateProject] Triggered background thumbnail generation for {command.project_id[:8]}...")
+
             return UpdateProjectResult(
                 success=True,
                 project=project,
@@ -276,6 +301,33 @@ class UpdateProjectHandler:
                 error=str(e),
                 exception=e,
             )
+
+    async def _generate_thumbnail_background(
+        self,
+        project_id: str,
+        user_id: str,
+    ):
+        """
+        Generate thumbnail in background (non-blocking).
+
+        This method wraps the thumbnail generation with error handling
+        to ensure background task failures don't affect the main flow.
+
+        Args:
+            project_id: Project ID
+            user_id: User ID
+        """
+        try:
+            thumbnail_url = await self._thumbnail_service.generate_and_store(
+                project_id, user_id
+            )
+            if thumbnail_url:
+                logger.info(f"[UpdateProject] Background thumbnail generated for {project_id[:8]}...")
+            else:
+                logger.warning(f"[UpdateProject] Background thumbnail generation returned None for {project_id[:8]}...")
+        except Exception as e:
+            # Log but don't raise - this is a background task
+            logger.error(f"[UpdateProject] Background thumbnail generation failed for {project_id[:8]}...: {e}")
 
 
 @dataclass
