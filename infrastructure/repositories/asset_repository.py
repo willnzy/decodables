@@ -398,3 +398,132 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             "total_revenue": float(total_revenue),
             "listings": listings_data
         }
+
+    @retry_on_network_error()
+    async def get_dashboard_assets(
+        self,
+        user_id: str,
+        view_type: str = "all",
+        offset: int = 0,
+        limit: int = 15,
+        search: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get assets for dashboard with view type filtering.
+
+        Args:
+            user_id: User ID
+            view_type: "all", "bought", or "selling"
+            offset: Number of records to skip
+            limit: Items per page
+            search: Search query (searches in name field)
+
+        Returns:
+            Dict with items, total, offset, limit, has_more, and counts for tabs
+        """
+        select_fields = "id, url, type, name, category, source, usage_count, prompt, description, metadata, is_purchased, source_listing_id, origin_owner_id, created_at, updated_at"
+
+        # Handle "selling" view - query via marketplace_listings
+        if view_type == "selling":
+            # Get asset IDs from marketplace_listings where resource_type='asset'
+            listings_result = await self.client.table("marketplace_listings").select(
+                "resource_id"
+            ).eq("seller_id", user_id).eq("resource_type", "asset").eq("is_deleted", False).execute()
+
+            selling_asset_ids = [
+                str(l["resource_id"]) for l in (listings_result.data or [])
+                if l.get("resource_id")
+            ]
+
+            if not selling_asset_ids:
+                items = []
+                total = 0
+            else:
+                # Query assets by IDs
+                query = self.client.table("assets").select(select_fields).in_(
+                    "id", selling_asset_ids
+                ).eq("is_deleted", False)
+
+                if search and search.strip():
+                    query = query.ilike("name", f"%{search.strip()}%")
+
+                result = await query.range(offset, offset + limit - 1).order("created_at", desc=True).execute()
+                items = result.data or []
+
+                # Count with same filters
+                count_query = self.client.table("assets").select("id", count="exact").in_(
+                    "id", selling_asset_ids
+                ).eq("is_deleted", False)
+                if search and search.strip():
+                    count_query = count_query.ilike("name", f"%{search.strip()}%")
+                count_result = await count_query.execute()
+                total = count_result.count or len(items)
+        else:
+            # Build base query for "all" and "bought" views
+            query = self.client.table("assets").select(select_fields).eq(
+                "user_id", user_id
+            ).eq("is_deleted", False)
+
+            # Apply view type filter
+            if view_type == "bought":
+                query = query.eq("is_purchased", True)
+
+            # Apply search filter
+            if search and search.strip():
+                query = query.ilike("name", f"%{search.strip()}%")
+
+            # Execute query
+            result = await query.range(offset, offset + limit - 1).order("created_at", desc=True).execute()
+            items = result.data or []
+
+            # Get total count with same filters
+            count_query = self.client.table("assets").select("id", count="exact").eq(
+                "user_id", user_id
+            ).eq("is_deleted", False)
+
+            if view_type == "bought":
+                count_query = count_query.eq("is_purchased", True)
+
+            if search and search.strip():
+                count_query = count_query.ilike("name", f"%{search.strip()}%")
+
+            count_result = await count_query.execute()
+            total = count_result.count or len(items)
+
+        # Get counts for all view types (for tab badges)
+        # All assets count
+        all_count_query = self.client.table("assets").select("id", count="exact").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False)
+        all_count_result = await all_count_query.execute()
+        all_count = all_count_result.count or 0
+
+        # Bought assets count
+        bought_count_query = self.client.table("assets").select("id", count="exact").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False).eq("is_purchased", True)
+        bought_count_result = await bought_count_query.execute()
+        bought_count = bought_count_result.count or 0
+
+        # Selling assets count (approved listings)
+        selling_listings_result = await self.client.table("marketplace_listings").select(
+            "resource_id", count="exact"
+        ).eq("seller_id", user_id).eq("resource_type", "asset").eq(
+            "is_deleted", False
+        ).eq("moderation_status", "approved").execute()
+        selling_count = selling_listings_result.count or 0
+
+        counts = {
+            "all": all_count,
+            "bought": bought_count,
+            "selling": selling_count,
+        }
+
+        return {
+            "items": items,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + len(items) < total,
+            "counts": counts,
+        }

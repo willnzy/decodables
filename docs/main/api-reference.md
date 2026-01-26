@@ -1,7 +1,7 @@
 # Make Decodables 后端 API 参考文档
 
-> 版本: 3.29
-> 更新时间: 2026-01-12
+> 版本: 3.33
+> 更新时间: 2026-01-27
 > 供前端重构参考
 
 ---
@@ -501,7 +501,7 @@ checkout.session 需要携带的 metadata:
 | **市场** | `/api/v2/user/marketplace` | 11 | 商品、购买、举报 |
 | **系统资源** | `/api/v2/user/resources` | 7 | 贴纸、背景、模板 |
 | **用户资源** | `/api/v2/user/assets` | 10 | 上传、删除、恢复 |
-| **用户资源** | `/api/v2/user/user_assets` | 10 | 资产管理 (别名) |
+| **用户资源** | `/api/v2/user/user_assets` | 10 | 资产管理、Dashboard视图过滤 (v3.33) |
 | **系统资源** | `/api/v2/user/system_resources` | 9 | 系统资源管理 |
 | **模板** | `/api/v2/user/templates` | 10 | Asset/Page 模板 |
 | **分析** | `/api/v2/user/analytics` | 1 | 事件上报 |
@@ -766,9 +766,10 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ---
 
-*文档版本: v3.32*
-*最后更新: 2026-01-20*
+*文档版本: v3.33*
+*最后更新: 2026-01-27*
 *更新内容:
+- v3.33: user_assets/dashboard 端点重构 - 新增视图过滤 (all/bought/selling)、搜索、分页
 - v3.32: User Creation Monitoring 模块扩展 (3→5 端点) - 新增 /recent 和 /trends 端点
 - v3.31: 新增 Tiers API (3个端点) - Tier 配置管理
 - v3.30: 精简附录 B/C，Tier 和积分系统详细内容移至 backend-business-logic.md

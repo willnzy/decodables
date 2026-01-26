@@ -2,13 +2,18 @@
 Assets Queries - Read-only operations for user assets.
 
 @module application.queries.assets
-@version 1.0.0
+@version 1.1.0
+
+Changes:
+- v1.1.0: Added GetDashboardAssetsQuery/Handler for dashboard view filtering
+- v1.0.0: Initial implementation
 """
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
 from domains.assets.assets_service import AssetsService
+from infrastructure.repositories.asset_repository import SupabaseAssetRepository
 
 
 # ==========================================
@@ -183,3 +188,62 @@ class GetDeletedAssetsHandler:
             limit=query.limit,
             has_more=result["has_more"]
         )
+
+
+# ==========================================
+# Query 6: Get Dashboard Assets
+# ==========================================
+
+@dataclass
+class GetDashboardAssetsQuery:
+    """
+    Query to get dashboard assets with view type filtering.
+
+    Supports cross-domain data (marketplace listings for selling view).
+    """
+    user_id: str
+    view_type: str = "all"  # "all", "bought", "selling"
+    offset: int = 0
+    limit: int = 15
+    search: Optional[str] = None
+
+
+@dataclass
+class GetDashboardAssetsResult:
+    """Result of dashboard assets query."""
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class GetDashboardAssetsHandler:
+    """
+    Handler for GetDashboardAssetsQuery.
+
+    Uses repository directly for cross-domain queries (marketplace listings).
+    """
+
+    def __init__(self, repository: SupabaseAssetRepository):
+        self._repository = repository
+
+    async def handle(self, query: GetDashboardAssetsQuery) -> GetDashboardAssetsResult:
+        """Execute dashboard assets query."""
+        try:
+            result = await self._repository.get_dashboard_assets(
+                user_id=query.user_id,
+                view_type=query.view_type,
+                offset=query.offset,
+                limit=query.limit,
+                search=query.search,
+            )
+
+            return GetDashboardAssetsResult(
+                success=True,
+                data=result,
+            )
+
+        except Exception as e:
+            return GetDashboardAssetsResult(
+                success=False,
+                error=str(e),
+            )

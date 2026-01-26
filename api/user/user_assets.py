@@ -1,10 +1,14 @@
 """
-User Assets Router - User asset management endpoints (v3.2.0)
+User Assets Router - User asset management endpoints (v3.3.0)
 
 @module api.user.user_assets
-@version 3.2.0
+@version 3.3.0
 
 Changes:
+- v3.3.0: Dashboard endpoint refactored
+  - GET /dashboard now returns asset list with view filtering (all/bought/selling)
+  - Supports offset/limit pagination and search
+  - Returns counts for tab badges
 - v3.2.0: Pagination support
   - GET /assets now supports offset/limit pagination
   - GET /deleted now supports offset/limit pagination
@@ -29,21 +33,21 @@ Changes:
   - UA-LOW-2: Added URL length limit (2048 chars)
 
 Endpoints:
-- GET /api/v3/user/assets?offset=0&limit=50 - Get user assets (paginated)
-- POST /api/v3/user/assets - Upload asset
-- DELETE /api/v3/user/assets/{asset_id} - Delete asset
-- POST /api/v3/user/assets/from-url - Add asset from URL
-- GET /api/v3/user/assets/check-url - Check URL validity
-- POST /api/v3/user/assets/{asset_id}/increment-usage - Increment usage
-- GET /api/v3/user/assets/dashboard - Asset dashboard
-- GET /api/v3/user/assets/deleted?offset=0&limit=50 - Get deleted assets (paginated)
-- POST /api/v3/user/assets/{asset_id}/restore - Restore asset
+- GET /api/v2/user/assets?offset=0&limit=50 - Get user assets (paginated)
+- POST /api/v2/user/assets - Upload asset
+- DELETE /api/v2/user/assets/{asset_id} - Delete asset
+- POST /api/v2/user/assets/from-url - Add asset from URL
+- GET /api/v2/user/assets/check-url - Check URL validity
+- POST /api/v2/user/assets/{asset_id}/increment-usage - Increment usage
+- GET /api/v2/user/assets/dashboard?view=all&offset=0&limit=15 - Asset dashboard (with view filter)
+- GET /api/v2/user/assets/deleted?offset=0&limit=50 - Get deleted assets (paginated)
+- POST /api/v2/user/assets/{asset_id}/restore - Restore asset
 """
 
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Request, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Request, Depends, UploadFile, File, Form, Query
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
@@ -56,8 +60,8 @@ from container import get_container
 from application.queries.assets import (
     GetUserAssetsQuery,
     CheckURLQuery,
-    GetDashboardStatsQuery,
     GetDeletedAssetsQuery,
+    GetDashboardAssetsQuery,
 )
 from application.commands.assets import (
     UploadAssetCommand,
@@ -336,21 +340,45 @@ async def increment_usage(
 @limiter.limit("30/minute")
 async def get_asset_dashboard(
     request: Request,
+    view: str = Query("all", pattern="^(all|bought|selling)$"),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(15, ge=1, le=100, description="Number of records to return (1-100)"),
+    search: Optional[str] = None,
     user: UserProfile = Depends(get_current_user)
 ):
     """
-    Get asset usage dashboard data.
+    Get assets for dashboard with view type filtering.
 
-    v3.0.0: Now uses GetDashboardStatsHandler (Container pattern).
-    Eliminated direct Supabase calls - statistics aggregation moved to Repository/Service.
+    v3.3.0: Refactored to return asset list with view filtering (all/bought/selling).
+    v3.0.0: Now uses GetDashboardAssetsHandler (Container pattern).
+
+    Args:
+        view: View type - "all" (default), "bought", or "selling"
+        offset: Number of records to skip (default: 0)
+        limit: Number of records to return (default: 15, max: 100)
+        search: Search query (searches in name field)
+
+    Returns:
+        Dict with items, total, offset, limit, has_more, and counts for tab badges
     """
     container = get_container()
-    handler = await container.get_dashboard_stats_handler()
+    handler = await container.get_dashboard_assets_handler()
 
-    query = GetDashboardStatsQuery(user_id=user.user_id)
+    query = GetDashboardAssetsQuery(
+        user_id=user.user_id,
+        view_type=view,
+        offset=offset,
+        limit=limit,
+        search=search,
+    )
+
     result = await handler.handle(query)
 
-    return result.stats
+    if result.success:
+        return result.data
+    else:
+        from fastapi import HTTPException
+        raise HTTPException(500, result.error or "Failed to load assets")
 
 
 @router.get("/deleted")

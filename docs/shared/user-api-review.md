@@ -163,7 +163,7 @@
 | 119 | User Assets | POST | /user_assets/from-url | add_asset_from_url | api/user/user_assets.py | 从URL添加资产 |
 | 120 | User Assets | GET | /user_assets/check-url | check_url | api/user/user_assets.py | URL检查 |
 | 121 | User Assets | POST | /user_assets/{asset_id}/increment-usage | increment_usage | api/user/user_assets.py | 使用次数增加 |
-| 122 | User Assets | GET | /user_assets/dashboard | get_dashboard | api/user/user_assets.py | 资产Dashboard |
+| 122 | User Assets | GET | /user_assets/dashboard | get_asset_dashboard | api/user/user_assets.py | 资产Dashboard (带view过滤) |
 | 124 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
 | 125 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
 | 126 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
@@ -2927,20 +2927,54 @@ URL检查
 
 ### GET `/user_assets/dashboard`
 
-资产Dashboard
+资产Dashboard - 获取用户素材列表，支持视图过滤 (v3.3.0 重构)
+
+**Query 参数**:
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| view | string | 否 | "all" | 视图类型: "all"(全部), "bought"(已购买), "selling"(正在销售) |
+| offset | int | 否 | 0 | 跳过的记录数 |
+| limit | int | 否 | 15 | 返回的记录数 (1-100) |
+| search | string | 否 | - | 搜索关键词 (按name字段) |
 
 **响应**:
 ```json
 {
-  "total_assets": 45,
-  "by_type": {
-    "sticker": 25,
-    "background": 15,
-    "template": 5
-  },
-  "total_usage": 250
+  "items": [
+    {
+      "id": "8153ab03-6212-4ba5-b489-ebd7aa802106",
+      "url": "https://...",
+      "type": "image",
+      "name": null,
+      "category": null,
+      "source": "upload",
+      "usage_count": 0,
+      "prompt": null,
+      "description": null,
+      "metadata": {},
+      "is_purchased": false,
+      "source_listing_id": null,
+      "origin_owner_id": null,
+      "created_at": "2026-01-26T22:40:17.344175+00:00",
+      "updated_at": "2026-01-26T22:40:17.344175+00:00"
+    }
+  ],
+  "total": 1,
+  "offset": 0,
+  "limit": 15,
+  "has_more": false,
+  "counts": {
+    "all": 1,
+    "bought": 0,
+    "selling": 0
+  }
 }
 ```
+
+**视图说明**:
+- `all`: 用户的所有素材 (is_deleted=false)
+- `bought`: 已购买的素材 (is_purchased=true)
+- `selling`: 正在销售的素材 (通过 marketplace_listings 查询)
 
 ---
 

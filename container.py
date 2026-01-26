@@ -1613,6 +1613,16 @@ class Container:
             self._handlers['get_deleted_assets'] = GetDeletedAssetsHandler(assets_service)
         return self._handlers['get_deleted_assets']
 
+    async def get_dashboard_assets_handler(self):
+        """Get dashboard assets handler (v1.1.0, async)."""
+        from application.queries.assets import GetDashboardAssetsHandler
+        from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+        if 'get_dashboard_assets' not in self._handlers:
+            db = await get_async_db_client()
+            repository = SupabaseAssetRepository(db)
+            self._handlers['get_dashboard_assets'] = GetDashboardAssetsHandler(repository)
+        return self._handlers['get_dashboard_assets']
+
     # Assets Command Handlers (v3.0.0, async)
     async def get_upload_asset_handler(self):
         """Get upload asset handler (v3.0.0, async)."""
