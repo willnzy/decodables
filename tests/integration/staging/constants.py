@@ -81,6 +81,14 @@ class Endpoints:
         """Toggle project star status (v3.33 Phase 2.6)"""
         return f"{API_V2}/user/projects/{project_id}/star"
 
+    # Project by folder / starred (v3.33 Phase 2.6)
+    PROJECTS_STARRED = f"{API_V2}/user/projects/starred"
+
+    @staticmethod
+    def projects_by_folder(folder_id: str) -> str:
+        """List projects in a folder (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/projects/folder/{folder_id}"
+
     # AI Generation (router prefix is /generate/images, endpoint is /images)
     GENERATE_IMAGES = f"{API_V2}/user/generate/images/images"
     GENERATE_IMAGES_ASYNC = f"{API_V2}/user/generate/images/images/async"
@@ -214,6 +222,14 @@ class Endpoints:
     def asset_star(asset_id: str) -> str:
         """Toggle asset star status (v3.33 Phase 2.6)"""
         return f"{API_V2}/user/assets/{asset_id}/star"
+
+    # Asset by folder / starred (v3.33 Phase 2.6)
+    ASSETS_STARRED = f"{API_V2}/user/assets/starred"
+
+    @staticmethod
+    def assets_by_folder(folder_id: str) -> str:
+        """List assets in a folder (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/assets/folder/{folder_id}"
 
     @staticmethod
     def asset_increment_usage(asset_id: str) -> str:

@@ -528,3 +528,237 @@ class TestAssetStar(BaseAPITest):
 
         # 素材不存在应返回 404，存在应返回 200
         assert response.status_code in [200, 400, 404]
+
+    def test_star_asset_invalid_is_starred_type(self, auth_client):
+        """
+        业务规则: is_starred 必须是布尔值
+
+        Sad Path: 类型错误
+        """
+        fake_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_star(fake_id),
+            json={"is_starred": "yes"}  # 字符串而非布尔值
+        )
+
+        # 可能返回 422 (验证错误) 或 404 (素材不存在)
+        assert response.status_code in [400, 404, 422], (
+            f"非布尔值 is_starred 应被拒绝，但返回了 {response.status_code}"
+        )
+
+
+# ==========================================
+# Test: Asset Move Additional Cases
+# ==========================================
+
+@pytest.mark.p1
+class TestAssetMoveAdditional(BaseAPITest):
+    """
+    POST /api/v2/user/assets/{asset_id}/move 附加测试
+
+    覆盖更多边界情况
+    """
+
+    def test_move_asset_with_invalid_folder_id_format(self, auth_client):
+        """
+        业务规则: folder_id 必须是有效的 UUID 或 null
+
+        Sad Path: 验证错误
+        """
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_move(fake_asset_id),
+            json={"folder_id": "invalid-folder-uuid"}
+        )
+
+        assert response.status_code in [400, 404, 422], (
+            f"无效 folder_id 格式应被拒绝，但返回了 {response.status_code}"
+        )
+
+
+# ==========================================
+# Test: List Starred Assets (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestAssetsStarred(BaseAPITest):
+    """
+    GET /api/v2/user/assets/starred 黑盒测试
+
+    获取收藏的素材列表
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 返回用户收藏的所有素材
+    2. 支持分页 (offset, limit)
+    3. 需要认证
+    """
+
+    ENDPOINT = Endpoints.ASSETS_STARRED
+
+    def test_list_starred_assets_returns_list(self, auth_client):
+        """
+        业务规则: 返回收藏素材列表
+
+        期望响应包含:
+        - items: 素材数组
+        - total: 总数
+        """
+        response = auth_client.get(self.ENDPOINT)
+        data = self.assert_success(response)
+
+        assert "items" in data, "响应应包含 items"
+        assert isinstance(data["items"], list), "items 应该是数组"
+
+    def test_starred_pagination_params(self, auth_client):
+        """
+        业务规则: 分页参数应正确生效
+        """
+        response = auth_client.get(
+            self.ENDPOINT,
+            params={"offset": 0, "limit": 5}
+        )
+        data = self.assert_success(response)
+
+        items = data.get("items", [])
+        assert len(items) <= 5, f"limit=5 但返回了 {len(items)} 条"
+
+    def test_starred_requires_authentication(self, anon_client):
+        """
+        业务规则: 收藏列表是私有数据，必须登录
+        """
+        response = anon_client.get(self.ENDPOINT)
+        self.assert_unauthorized(response)
+
+    def test_starred_invalid_offset_rejected(self, auth_client):
+        """
+        业务规则: offset 必须 >= 0
+
+        Sad Path: 验证错误
+        """
+        response = auth_client.get(
+            self.ENDPOINT,
+            params={"offset": -1}
+        )
+
+        assert response.status_code in [400, 422], (
+            f"负数 offset 应被拒绝，但返回了 {response.status_code}"
+        )
+
+    def test_starred_invalid_limit_rejected(self, auth_client):
+        """
+        业务规则: limit 必须在有效范围内 (1-100)
+
+        Sad Path: 验证错误
+        """
+        response = auth_client.get(
+            self.ENDPOINT,
+            params={"limit": 0}
+        )
+
+        assert response.status_code in [400, 422], (
+            f"limit=0 应被拒绝，但返回了 {response.status_code}"
+        )
+
+
+# ==========================================
+# Test: List Assets by Folder (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestAssetsByFolder(BaseAPITest):
+    """
+    GET /api/v2/user/assets/folder/{folder_id} 黑盒测试
+
+    获取指定文件夹中的素材
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 返回指定文件夹中的所有素材
+    2. 支持分页
+    3. 文件夹必须存在且属于用户的 workspace
+    """
+
+    FOLDERS_ENDPOINT = Endpoints.FOLDERS
+
+    def test_list_by_folder_returns_list(self, auth_client):
+        """
+        业务规则: 返回文件夹中的素材列表
+        """
+        # 先创建一个 asset 类型文件夹
+        folder_name = f"Test_AssetFolder_{uuid.uuid4().hex[:8]}"
+        folder_resp = auth_client.post(
+            self.FOLDERS_ENDPOINT,
+            json={"folder_type": "asset", "name": folder_name}
+        )
+
+        if folder_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试文件夹")
+
+        folder_id = folder_resp.json()["id"]
+
+        # 获取文件夹中的素材
+        response = auth_client.get(Endpoints.assets_by_folder(folder_id))
+
+        # 清理
+        auth_client.delete(Endpoints.folder(folder_id))
+
+        data = self.assert_success(response)
+        assert "items" in data, "响应应包含 items"
+        assert isinstance(data["items"], list), "items 应该是数组"
+
+    def test_by_folder_nonexistent_returns_404(self, auth_client):
+        """
+        业务规则: 文件夹不存在应返回 404
+        """
+        fake_folder_id = str(uuid.uuid4())
+        response = auth_client.get(Endpoints.assets_by_folder(fake_folder_id))
+
+        self.assert_not_found(response)
+
+    def test_by_folder_invalid_id_format(self, auth_client):
+        """
+        业务规则: 无效的 UUID 格式应被拒绝
+
+        Sad Path: 验证错误
+        """
+        response = auth_client.get(Endpoints.assets_by_folder("invalid-uuid"))
+
+        assert response.status_code in [400, 404, 422], (
+            f"无效 UUID 应被拒绝，但返回了 {response.status_code}"
+        )
+
+    def test_by_folder_requires_authentication(self, anon_client):
+        """
+        业务规则: 必须登录
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.get(Endpoints.assets_by_folder(fake_id))
+        self.assert_unauthorized(response)
+
+    def test_by_folder_pagination(self, auth_client):
+        """
+        业务规则: 支持分页参数
+        """
+        # 创建文件夹
+        folder_name = f"Test_AssetPage_{uuid.uuid4().hex[:8]}"
+        folder_resp = auth_client.post(
+            self.FOLDERS_ENDPOINT,
+            json={"folder_type": "asset", "name": folder_name}
+        )
+
+        if folder_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试文件夹")
+
+        folder_id = folder_resp.json()["id"]
+
+        # 带分页参数查询
+        response = auth_client.get(
+            Endpoints.assets_by_folder(folder_id),
+            params={"offset": 0, "limit": 10}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.folder(folder_id))
+
+        data = self.assert_success(response)
+        items = data.get("items", [])
+        assert len(items) <= 10
