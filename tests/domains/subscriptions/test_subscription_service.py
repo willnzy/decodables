@@ -9,9 +9,27 @@ Tests for subscription business logic with mocked repositories.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import HTTPException
 
 from domains.subscriptions.subscription_service import SubscriptionService
+from domains.subscriptions.exceptions import (
+    UserNotFoundException,
+    UserCodeMissingException,
+    UserCodeMismatchException,
+    UserEmailMismatchException,
+    NoStripeCustomerException,
+    PaymentNotFoundException,
+    PaymentOwnershipException,
+    PaymentStatusException,
+    AlreadyRefundedException,
+    InvalidRefundAmountException,
+    RefundFailedException,
+    SubscriptionNotFoundException,
+    SubscriptionOwnershipException,
+    SubscriptionStatusException,
+    AlreadyCancelScheduledException,
+    InvalidDowngradePathException,
+    NoActiveSubscriptionException,
+)
 
 
 # ==========================================
@@ -74,57 +92,45 @@ class TestVerifyUserIdentity:
 
     @pytest.mark.asyncio
     async def test_verify_user_identity_user_not_found(self, service, mock_users_repo):
-        """User not found raises 404."""
+        """User not found raises UserNotFoundException."""
         mock_users_repo.get_profile.return_value = None
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UserNotFoundException):
             await service._verify_user_identity("user-123", "ABC123")
-
-        assert exc_info.value.status_code == 404
-        assert "User not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_verify_user_identity_no_user_code(self, service, mock_users_repo):
-        """User without user_code raises 400."""
+        """User without user_code raises UserCodeMissingException."""
         mock_users_repo.get_profile.return_value = {
             "user_id": "user-123",
             "user_code": None
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UserCodeMissingException):
             await service._verify_user_identity("user-123", "ABC123")
-
-        assert exc_info.value.status_code == 400
-        assert "no user code" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_verify_user_identity_code_mismatch(self, service, mock_users_repo):
-        """User code mismatch raises 403."""
+        """User code mismatch raises UserCodeMismatchException."""
         mock_users_repo.get_profile.return_value = {
             "user_id": "user-123",
             "user_code": "ABC123"
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UserCodeMismatchException):
             await service._verify_user_identity("user-123", "WRONG")
-
-        assert exc_info.value.status_code == 403
-        assert "does not match" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     async def test_verify_user_identity_email_mismatch(self, service, mock_users_repo):
-        """Email mismatch raises 403."""
+        """Email mismatch raises UserEmailMismatchException."""
         mock_users_repo.get_profile.return_value = {
             "user_id": "user-123",
             "user_code": "ABC123",
             "email": "test@example.com"
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UserEmailMismatchException):
             await service._verify_user_identity("user-123", "ABC123", "wrong@example.com")
-
-        assert exc_info.value.status_code == 403
-        assert "email does not match" in str(exc_info.value.detail)
 
 
 # ==========================================
@@ -206,7 +212,7 @@ class TestProcessRefund:
             "stripe_customer_id": None
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NoStripeCustomerException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -215,9 +221,6 @@ class TestProcessRefund:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "no Stripe customer ID" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -235,7 +238,7 @@ class TestProcessRefund:
         }
         mock_get_pi.return_value = None
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(PaymentNotFoundException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -244,9 +247,6 @@ class TestProcessRefund:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 404
-        assert "Payment not found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -267,7 +267,7 @@ class TestProcessRefund:
         mock_pi.customer = "cus_other"
         mock_get_pi.return_value = mock_pi
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(PaymentOwnershipException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -276,9 +276,6 @@ class TestProcessRefund:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 403
-        assert "does not belong to this user" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -300,7 +297,7 @@ class TestProcessRefund:
         mock_pi.status = "pending"
         mock_get_pi.return_value = mock_pi
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(PaymentStatusException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -309,9 +306,6 @@ class TestProcessRefund:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "Cannot refund payment with status" in str(exc_info.value.detail)
 
 
 # ==========================================
@@ -386,7 +380,7 @@ class TestCancelSubscription:
         }
         mock_get_sub.return_value = None
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(SubscriptionNotFoundException):
             await service.cancel_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -395,9 +389,6 @@ class TestCancelSubscription:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 404
-        assert "not found" in str(exc_info.value.detail)
 
 
 # ==========================================
@@ -517,7 +508,7 @@ class TestDowngradeSubscription:
             "tier": "t2"
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(InvalidDowngradePathException):
             await service.downgrade_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -527,9 +518,6 @@ class TestDowngradeSubscription:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "Cannot downgrade" in str(exc_info.value.detail)
 
 
 # ==========================================
@@ -560,7 +548,7 @@ class TestProcessRefundAdditional:
         mock_pi.amount_received = 0  # Already refunded
         mock_get_pi.return_value = mock_pi
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AlreadyRefundedException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -569,9 +557,6 @@ class TestProcessRefundAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "already been fully refunded" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -595,7 +580,7 @@ class TestProcessRefundAdditional:
         mock_pi.amount_received = 1000
         mock_get_pi.return_value = mock_pi
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(InvalidRefundAmountException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -604,9 +589,6 @@ class TestProcessRefundAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "exceeds refundable amount" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_payment_intent_details')
@@ -634,7 +616,7 @@ class TestProcessRefundAdditional:
 
         mock_create_refund.return_value = {"success": False, "error": "Stripe error"}
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(RefundFailedException):
             await service.process_refund(
                 user_id="user-123",
                 user_code="ABC123",
@@ -643,9 +625,6 @@ class TestProcessRefundAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "Refund operation failed" in str(exc_info.value.detail)
 
 
 # ==========================================
@@ -674,7 +653,7 @@ class TestCancelSubscriptionAdditional:
         mock_sub.customer = "cus_other"
         mock_get_sub.return_value = mock_sub
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(SubscriptionOwnershipException):
             await service.cancel_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -683,9 +662,6 @@ class TestCancelSubscriptionAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 403
-        assert "does not belong to this user" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_subscription_details')
@@ -707,7 +683,7 @@ class TestCancelSubscriptionAdditional:
         mock_sub.status = "canceled"  # Already canceled
         mock_get_sub.return_value = mock_sub
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(SubscriptionStatusException):
             await service.cancel_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -716,9 +692,6 @@ class TestCancelSubscriptionAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "Cannot cancel subscription with status" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_subscription_details')
@@ -741,7 +714,7 @@ class TestCancelSubscriptionAdditional:
         mock_sub.cancel_at_period_end = True  # Already scheduled
         mock_get_sub.return_value = mock_sub
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AlreadyCancelScheduledException):
             await service.cancel_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -750,9 +723,6 @@ class TestCancelSubscriptionAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "already scheduled for cancellation" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_subscription_details')
@@ -936,7 +906,7 @@ class TestDowngradeSubscriptionAdditional:
             "stripe_customer_id": None
         }
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NoStripeCustomerException):
             await service.downgrade_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -946,9 +916,6 @@ class TestDowngradeSubscriptionAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "no Stripe customer ID" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_customer_subscriptions')
@@ -969,7 +936,7 @@ class TestDowngradeSubscriptionAdditional:
 
         mock_get_subs.return_value = []
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NoActiveSubscriptionException):
             await service.downgrade_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -979,9 +946,6 @@ class TestDowngradeSubscriptionAdditional:
                 reason="Test",
                 admin_id="admin-1"
             )
-
-        assert exc_info.value.status_code == 400
-        assert "No active subscription found" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio
     @patch('domains.subscriptions.subscription_service.get_customer_subscriptions')
@@ -1041,20 +1005,20 @@ class TestHelperMethods:
     """Tests for helper methods."""
 
     def test_extract_plan_name_starter(self, service):
-        """Extract plan name for Starter."""
+        """Extract tier code for Starter (t2)."""
         mock_sub = MagicMock()
         mock_sub.items.data = [MagicMock(price=MagicMock(id="price_starter_monthly"))]
 
         result = service._extract_plan_name(mock_sub)
-        assert result == "Starter"
+        assert result == "t2"
 
     def test_extract_plan_name_pro(self, service):
-        """Extract plan name for Pro."""
+        """Extract tier code for Pro (t3)."""
         mock_sub = MagicMock()
         mock_sub.items.data = [MagicMock(price=MagicMock(id="price_pro_monthly"))]
 
         result = service._extract_plan_name(mock_sub)
-        assert result == "Pro"
+        assert result == "t3"
 
     def test_extract_plan_name_unknown(self, service):
         """Extract plan name for unknown."""

@@ -76,6 +76,7 @@ class TestCreateProjectHandler:
             title="New Project",
             canvas_size=None,
             user_tier="starter",
+            idempotency_key=None,
         )
 
     @pytest.mark.asyncio

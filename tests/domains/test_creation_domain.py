@@ -138,8 +138,9 @@ class TestProjectAggregate:
 
         data = project.to_dict()
 
-        assert data["project_id"] == project.project_id
-        assert data["owner_id"] == "user_456"
+        # to_dict uses API-compatible keys: 'id' and 'user_id'
+        assert data["id"] == project.project_id
+        assert data["user_id"] == "user_456"
         assert data["title"] == "Test Project"
         assert "canvas_data" in data
 
