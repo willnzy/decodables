@@ -76,9 +76,9 @@ jobs:
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "🔍 Running database backup in dry-run mode..."
-            python scripts/backup/backup_lite.py --dry-run --verbose
+            python scripts/tools/backup/backup_lite.py --dry-run --verbose
           else
-            python scripts/backup/backup_lite.py --verbose
+            python scripts/tools/backup/backup_lite.py --verbose
           fi
 
       - name: Send database backup failure email
@@ -139,9 +139,9 @@ jobs:
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "🔍 Running storage backup in dry-run mode..."
-            python scripts/backup/backup_storage.py --dry-run --verbose
+            python scripts/tools/backup/backup_storage.py --dry-run --verbose
           else
-            python scripts/backup/backup_storage.py --verbose
+            python scripts/tools/backup/backup_storage.py --verbose
           fi
 
       - name: Send storage backup failure email
