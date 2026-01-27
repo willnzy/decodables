@@ -101,7 +101,7 @@ async def list_workspaces(
     workspace_service = await container.get_workspace_service()
 
     # Phase 1: Get or create default workspace
-    workspace = await workspace_service.get_or_create_default(user.id)
+    workspace = await workspace_service.get_or_create_default(user.user_id)
 
     return {
         "items": [workspace.to_dict()],
@@ -127,7 +127,7 @@ async def get_current_workspace(
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    workspace = await workspace_service.get_or_create_default(user.id)
+    workspace = await workspace_service.get_or_create_default(user.user_id)
 
     return workspace.to_dict()
 
@@ -162,7 +162,7 @@ async def get_workspace(
         raise HTTPException(404, "Workspace not found")
 
     # Verify ownership
-    if workspace.owner_id != user.id:
+    if workspace.owner_id != user.user_id:
         raise HTTPException(403, "Not authorized to access this workspace")
 
     return workspace.to_dict()
@@ -208,7 +208,7 @@ async def update_workspace(
         raise HTTPException(404, "Workspace not found")
 
     # Verify ownership
-    if workspace.owner_id != user.id:
+    if workspace.owner_id != user.user_id:
         raise HTTPException(403, "Not authorized to modify this workspace")
 
     # Update workspace via repository
@@ -272,7 +272,7 @@ async def delete_workspace(
         raise HTTPException(404, "Workspace not found")
 
     # Verify ownership
-    if workspace.owner_id != user.id:
+    if workspace.owner_id != user.user_id:
         raise HTTPException(403, "Not authorized to delete this workspace")
 
     # Phase 1: Cannot delete default workspace
@@ -331,7 +331,7 @@ async def get_workspace_stats(
         raise HTTPException(404, "Workspace not found")
 
     # Verify ownership
-    if workspace.owner_id != user.id:
+    if workspace.owner_id != user.user_id:
         raise HTTPException(403, "Not authorized to access this workspace")
 
     # Get tag count
