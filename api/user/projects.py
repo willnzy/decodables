@@ -33,6 +33,7 @@ Endpoints:
 
 import logging
 import asyncio
+import re
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -46,6 +47,12 @@ from infrastructure.rate_limiter import limiter
 # v3.31: 重试配置
 MAX_RETRIES = 2
 RETRY_DELAY = 1.0  # 秒
+
+# UUID validation pattern
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
 
 from application.commands.creation import (
     CreateProjectCommand,
@@ -793,6 +800,10 @@ async def list_projects_by_folder(
 
     # Handle "root" as unfiled projects
     target_folder_id: Optional[str] = None if folder_id == "root" else folder_id
+
+    # Validate UUID format (if not root)
+    if target_folder_id and not UUID_PATTERN.match(target_folder_id):
+        raise HTTPException(400, "Invalid folder ID format")
 
     # Validate folder belongs to user's workspace (if not root)
     if target_folder_id:
