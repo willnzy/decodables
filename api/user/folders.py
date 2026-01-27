@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from domains.folder.entities import FolderColor, FolderType
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
@@ -147,10 +147,10 @@ async def create_folder(
             color=fc,
         )
 
-        log_activity(
+        await log_activity_async(
             user_id=ctx.user_id,
             action="folder_created",
-            details={"folder_id": folder.id, "name": folder.name, "type": data.folder_type}
+            metadata={"folder_id": folder.id, "name": folder.name, "type": data.folder_type}
         )
 
         return folder.to_dict()
@@ -233,10 +233,10 @@ async def delete_folder(
     if not success:
         raise HTTPException(500, "Failed to delete folder")
 
-    log_activity(
+    await log_activity_async(
         user_id=ctx.user_id,
         action="folder_deleted",
-        details={"folder_id": folder_id, "name": folder_name}
+        metadata={"folder_id": folder_id, "name": folder_name}
     )
 
     return {"success": True, "message": "Folder deleted"}
