@@ -104,9 +104,15 @@ async def pdf_preview(
     container = get_container()
     handler = await container.get_pdf_preview_handler()
 
+    # Convert UserProfile to dict for ToolsService
+    user_dict = {
+        "id": user.user_id,
+        "tier": user.tier,
+    }
+
     command = PdfPreviewCommand(
         file=file,
-        user=user,
+        user=user_dict,
     )
 
     result = await handler.handle(command)
@@ -138,10 +144,16 @@ async def ocr_tool(
     container = get_container()
     handler = await container.get_ocr_handler()
 
+    # Convert UserProfile to dict for ToolsService
+    user_dict = {
+        "id": user.user_id,
+        "tier": user.tier,
+    }
+
     command = OcrCommand(
         file=file,
         project_id=project_id,
-        user=user,
+        user=user_dict,
         timezone=timezone,
         is_trial=is_trial,
     )

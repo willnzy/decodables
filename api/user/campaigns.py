@@ -163,7 +163,7 @@ class DismissResponse(BaseModel):
 
 @router.get("/active")
 async def get_active_campaigns(
-    user: Optional[dict] = Depends(optional_user),
+    user: Optional[UserProfile] = Depends(optional_user),
     campaign_service: CampaignService = Depends(get_campaign_service),
 ) -> ActiveCampaignsResponse:
     """
@@ -176,8 +176,17 @@ async def get_active_campaigns(
 
     v2.2.0: Migrated to use CampaignService (DDD architecture)
     """
+    # Convert UserProfile to dict for CampaignService
+    user_dict = None
+    if user:
+        user_dict = {
+            "id": user.user_id,
+            "tier": user.tier,
+            "cohort": getattr(user, "cohort", None),
+        }
+
     # Use CampaignService to get campaigns with status
-    campaigns_with_status, dismissed_map = await campaign_service.get_active_campaigns_for_user(user)
+    campaigns_with_status, dismissed_map = await campaign_service.get_active_campaigns_for_user(user_dict)
 
     if not campaigns_with_status:
         return ActiveCampaignsResponse(
@@ -264,10 +273,17 @@ async def claim_campaign(
     if not UUID_PATTERN.match(campaign_id):
         raise HTTPException(400, "Invalid campaign ID format")
 
+    # Convert UserProfile to dict for CampaignService
+    user_dict = {
+        "id": user.user_id,
+        "tier": user.tier,
+        "cohort": getattr(user, "cohort", None),
+    }
+
     # Use CampaignService to claim the campaign
     result: ClaimResult = await campaign_service.claim_campaign(
         campaign_id=campaign_id,
-        user=user,
+        user=user_dict,
         grant_credits_fn=get_grant_credits_fn,
     )
 
