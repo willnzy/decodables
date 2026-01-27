@@ -153,16 +153,16 @@
 | 100 | System Resources | GET | /system_resources/{resource_id}/audit-log | get_audit_log | api/user/system_resources.py | 获取审计日志 |
 | 101 | Tasks | GET | /tasks/{task_id} | get_task | api/user/tasks.py | 查询任务状态 |
 | 102 | Tasks | POST | /tasks/{task_id}/cancel | cancel_task | api/user/tasks.py | 取消任务 |
-| 103 | Templates | GET | /templates/asset | list_asset_templates | api/user/templates.py | 列出资产模板 |
-| 104 | Templates | POST | /templates/asset | create_asset_template | api/user/templates.py | 创建资产模板 |
-| 105 | Templates | PUT | /templates/asset/{template_id} | update_asset_template | api/user/templates.py | 更新资产模板 |
-| 106 | Templates | DELETE | /templates/asset/{template_id} | delete_asset_template | api/user/templates.py | 删除资产模板 |
-| 107 | Templates | POST | /templates/asset/{template_id}/use | use_asset_template | api/user/templates.py | 使用资产模板 |
-| 108 | Templates | GET | /templates/page | list_page_templates | api/user/templates.py | 列出页面模板 |
-| 109 | Templates | POST | /templates/page | create_page_template | api/user/templates.py | 创建页面模板 |
-| 110 | Templates | PUT | /templates/page/{template_id} | update_page_template | api/user/templates.py | 更新页面模板 |
-| 111 | Templates | DELETE | /templates/page/{template_id} | delete_page_template | api/user/templates.py | 删除页面模板 |
-| 112 | Templates | POST | /templates/page/{template_id}/use | use_page_template | api/user/templates.py | 使用页面模板 |
+| 103 | Prompt Templates | GET | /prompt_template/asset | list_asset_templates | api/user/templates.py | 列出用户素材提示词模板 |
+| 104 | Prompt Templates | POST | /prompt_template/asset | create_asset_template | api/user/templates.py | 创建用户素材提示词模板 |
+| 105 | Prompt Templates | PUT | /prompt_template/asset/{template_id} | update_asset_template | api/user/templates.py | 更新用户素材提示词模板 |
+| 106 | Prompt Templates | DELETE | /prompt_template/asset/{template_id} | delete_asset_template | api/user/templates.py | 删除用户素材提示词模板 |
+| 107 | Prompt Templates | POST | /prompt_template/asset/{template_id}/use | use_asset_template | api/user/templates.py | 使用用户素材提示词模板 |
+| 108 | Prompt Templates | GET | /prompt_template/page | list_page_templates | api/user/templates.py | 列出用户页面提示词模板 |
+| 109 | Prompt Templates | POST | /prompt_template/page | create_page_template | api/user/templates.py | 创建用户页面提示词模板 |
+| 110 | Prompt Templates | PUT | /prompt_template/page/{template_id} | update_page_template | api/user/templates.py | 更新用户页面提示词模板 |
+| 111 | Prompt Templates | DELETE | /prompt_template/page/{template_id} | delete_page_template | api/user/templates.py | 删除用户页面提示词模板 |
+| 112 | Prompt Templates | POST | /prompt_template/page/{template_id}/use | use_page_template | api/user/templates.py | 使用用户页面提示词模板 |
 | 113 | Themes | GET | /themes/current | get_current_theme | api/user/themes.py | 获取当前主题 |
 | 114 | Tools | POST | /tools/pdf-preview | pdf_preview | api/user/tools.py | PDF预览生成 |
 | 115 | Tools | POST | /tools/ocr | ocr_text | api/user/tools.py | OCR文字识别 |
@@ -2719,11 +2719,11 @@ AI客服对话
 
 ---
 
-## 25. Templates 模板
+## 25. Prompt Templates 用户提示词模板
 
-### GET `/templates/asset`
+### GET `/prompt_template/asset`
 
-列出资产模板
+列出用户素材提示词模板
 
 **响应**:
 ```json
@@ -2741,9 +2741,9 @@ AI客服对话
 
 ---
 
-### POST `/templates/asset`
+### POST `/prompt_template/asset`
 
-创建资产模板
+创建用户素材提示词模板
 
 **请求体**:
 ```json
@@ -2764,9 +2764,9 @@ AI客服对话
 
 ---
 
-### PUT `/templates/asset/{template_id}`
+### PUT `/prompt_template/asset/{template_id}`
 
-更新资产模板
+更新用户素材提示词模板
 
 **请求体** (所有字段可选):
 ```json
@@ -2786,9 +2786,9 @@ AI客服对话
 
 ---
 
-### DELETE `/templates/asset/{template_id}`
+### DELETE `/prompt_template/asset/{template_id}`
 
-删除资产模板
+删除用户素材提示词模板
 
 **响应**:
 ```json
@@ -2800,9 +2800,9 @@ AI客服对话
 
 ---
 
-### POST `/templates/asset/{template_id}/use`
+### POST `/prompt_template/asset/{template_id}/use`
 
-使用资产模板
+使用用户素材提示词模板
 
 **响应**:
 ```json
@@ -2814,47 +2814,47 @@ AI客服对话
 
 ---
 
-### GET `/templates/page`
+### GET `/prompt_template/page`
 
-列出页面模板
+列出用户页面提示词模板
 
-**响应**: 同 `/templates/asset`
-
----
-
-### POST `/templates/page`
-
-创建页面模板
-
-**请求体**: 同 `/templates/asset`
-
-**响应**: 同 `/templates/asset`
+**响应**: 同 `/prompt_template/asset`
 
 ---
 
-### PUT `/templates/page/{template_id}`
+### POST `/prompt_template/page`
 
-更新页面模板
+创建用户页面提示词模板
 
-**请求体**: 同 `/templates/asset/{template_id}`
+**请求体**: 同 `/prompt_template/asset`
 
-**响应**: 同 `/templates/asset/{template_id}`
-
----
-
-### DELETE `/templates/page/{template_id}`
-
-删除页面模板
-
-**响应**: 同 `/templates/asset/{template_id}`
+**响应**: 同 `/prompt_template/asset`
 
 ---
 
-### POST `/templates/page/{template_id}/use`
+### PUT `/prompt_template/page/{template_id}`
 
-使用页面模板
+更新用户页面提示词模板
 
-**响应**: 同 `/templates/asset/{template_id}/use`
+**请求体**: 同 `/prompt_template/asset/{template_id}`
+
+**响应**: 同 `/prompt_template/asset/{template_id}`
+
+---
+
+### DELETE `/prompt_template/page/{template_id}`
+
+删除用户页面提示词模板
+
+**响应**: 同 `/prompt_template/asset/{template_id}`
+
+---
+
+### POST `/prompt_template/page/{template_id}/use`
+
+使用用户页面提示词模板
+
+**响应**: 同 `/prompt_template/asset/{template_id}/use`
 
 ---
 
