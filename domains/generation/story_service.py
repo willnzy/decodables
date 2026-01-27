@@ -93,7 +93,7 @@ class StoryGenerationService:
             InsufficientCreditsException: If user lacks credits (API returns 402)
             StoryGenerationException: If generation fails (API returns 500)
         """
-        cost = get_text_generation_cost()
+        cost = await get_text_generation_cost()
         idempotency_key = None
         deduction_bucket = None  # Track which bucket was deducted
 
