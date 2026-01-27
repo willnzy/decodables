@@ -201,7 +201,7 @@ async def get_credits(request: Request, user: UserProfile = Depends(get_current_
 
     if not result.success:
         # v1.2.0: B-HIGH-3 - Sanitized error message
-        logger.error(f"[Billing] Failed to get credits for user {user['id']}: {result.error}")
+        logger.error(f"[Billing] Failed to get credits for user {user.user_id}: {result.error}")
         raise HTTPException(500, "Failed to retrieve credit balance")
 
     return CreditsResponse(
@@ -325,7 +325,7 @@ async def get_transactions(
 
     if not result.success:
         # v1.2.0: B-HIGH-3 - Sanitized error message
-        logger.error(f"[Billing] Failed to get transactions for user {user['id']}: {result.error}")
+        logger.error(f"[Billing] Failed to get transactions for user {user.user_id}: {result.error}")
         raise HTTPException(500, "Failed to retrieve transaction history")
 
     # v1.1.0: B-P0-2 fix - use idempotency_key or created_at as fallback for id
@@ -379,7 +379,7 @@ async def check_can_afford(
 
     if not credits_result.success:
         # v1.2.0: B-HIGH-3 - Sanitized error message
-        logger.error(f"[Billing] Failed to check affordability for user {user['id']}: {credits_result.error}")
+        logger.error(f"[Billing] Failed to check affordability for user {user.user_id}: {credits_result.error}")
         raise HTTPException(500, "Failed to check affordability")
 
     # Calculate required amount

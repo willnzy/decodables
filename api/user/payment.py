@@ -126,7 +126,7 @@ async def create_checkout(
             # v2.2.0: P-P0-2 - Validate discount_percent range
             if not (1 <= discount_percent <= 100):
                 logger.warning(
-                    f"Invalid discount_percent {discount_percent} for user {user['id']}, "
+                    f"Invalid discount_percent {discount_percent} for user {user.user_id}, "
                     f"discount_id={discount_id}. Ignoring discount."
                 )
                 discount_percent = 0
@@ -153,12 +153,12 @@ async def create_checkout(
             await user_repo.mark_discount_used(discount_id)
             logger.info(
                 f"Discount {discount_id} ({discount_percent}%) applied and marked used "
-                f"for user {user['id']} on plan {req.plan_type}"
+                f"for user {user.user_id} on plan {req.plan_type}"
             )
 
         # v2.2.0: P-MEDIUM-1 - Log successful checkout
         logger.info(
-            f"Checkout session created for user {user['id']}, "
+            f"Checkout session created for user {user.user_id}, "
             f"plan={req.plan_type}, discount={discount_percent}%"
         )
 
@@ -171,7 +171,7 @@ async def create_checkout(
         raise
     except Exception as e:
         # v2.1.0: P-P0-2 fix - don't expose internal error details
-        logger.error(f"Checkout error for user {user['id']}: {e}")
+        logger.error(f"Checkout error for user {user.user_id}: {e}")
         raise HTTPException(500, "Failed to create checkout session. Please try again.")
 
 
@@ -215,5 +215,5 @@ async def get_portal(
         raise
     except Exception as e:
         # v2.1.0: P-P0-2 fix - don't expose internal error details
-        logger.error(f"Portal error for user {user['id']}: {e}")
+        logger.error(f"Portal error for user {user.user_id}: {e}")
         raise HTTPException(500, "Failed to access billing portal. Please try again.")
