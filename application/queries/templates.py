@@ -2,7 +2,12 @@
 Templates Queries - Read-only operations for user prompt templates.
 
 @module application.queries.templates
-@version 1.0.0
+@version 1.1.0 (Unified naming)
+
+Changes:
+- v1.1.0: Updated service method calls to new naming convention
+  - list_asset_templates → list_user_asset_prompt_templates
+  - list_page_templates → list_user_page_prompt_templates
 """
 
 from dataclasses import dataclass
@@ -35,7 +40,7 @@ class ListAssetTemplatesHandler:
 
     async def handle(self, query: ListAssetTemplatesQuery) -> ListAssetTemplatesResult:
         """Execute list query."""
-        templates = await self._service.list_asset_templates(query.user_id)
+        templates = await self._service.list_user_asset_prompt_templates(query.user_id)
         return ListAssetTemplatesResult(templates=templates)
 
 
@@ -63,5 +68,5 @@ class ListPageTemplatesHandler:
 
     async def handle(self, query: ListPageTemplatesQuery) -> ListPageTemplatesResult:
         """Execute list query."""
-        templates = await self._service.list_page_templates(query.user_id)
+        templates = await self._service.list_user_page_prompt_templates(query.user_id)
         return ListPageTemplatesResult(templates=templates)

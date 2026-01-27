@@ -1435,7 +1435,7 @@ LIMIT 10000;  -- 分批删除
 | `created_by` | TEXT | - |
 | `created_at` | TIMESTAMPTZ | - |
 
-##### `asset_prompt_templates` (24 个字段)
+##### `user_asset_prompt_templates` (24 个字段)
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
@@ -1605,7 +1605,7 @@ LIMIT 10000;  -- 分批删除
 | `recovery_expires_at` | IS | - |
 | `(deleted_at` | IS | - |
 
-##### `user_prompt_templates` (12 个字段)
+##### `user_page_prompt_templates` (12 个字段)
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|

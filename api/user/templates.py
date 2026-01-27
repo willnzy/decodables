@@ -1,10 +1,14 @@
 """
-Templates API - User prompt templates management (v3.0.0).
+Prompt Templates API - User prompt templates management (v3.2.0).
 
 @module api.user.templates
-@version 3.1.0 (Container DI Migration)
+@version 3.2.0 (Unified naming)
 
 Changes:
+- v3.2.0: Unified naming convention
+  - Route prefix changed from /templates to /prompt_template
+  - Updated service method names to user_asset_prompt_template / user_page_prompt_template
+
 - v3.1.0: Container DI Migration
   - Migrated audit logging to use Container's admin_audit_service
   - Removed direct get_async_db_client() calls
@@ -27,19 +31,19 @@ Changes:
   - TPL-LOW-3: Added negative_prompt max_length
 
 Endpoints:
-Asset Prompt Templates (5W1H):
-- GET /api/v3/user/templates/asset - List templates
-- POST /api/v3/user/templates/asset - Create template
-- PUT /api/v3/user/templates/asset/{id} - Update template
-- DELETE /api/v3/user/templates/asset/{id} - Delete template
-- POST /api/v3/user/templates/asset/{id}/use - Mark as used
+User Asset Prompt Templates (5W1H):
+- GET /api/v2/user/prompt_template/asset - List templates
+- POST /api/v2/user/prompt_template/asset - Create template
+- PUT /api/v2/user/prompt_template/asset/{id} - Update template
+- DELETE /api/v2/user/prompt_template/asset/{id} - Delete template
+- POST /api/v2/user/prompt_template/asset/{id}/use - Mark as used
 
-Page Prompt Templates (AI Design Page):
-- GET /api/v3/user/templates/page - List templates
-- POST /api/v3/user/templates/page - Create template
-- PUT /api/v3/user/templates/page/{id} - Update template
-- DELETE /api/v3/user/templates/page/{id} - Delete template
-- POST /api/v3/user/templates/page/{id}/use - Mark as used
+User Page Prompt Templates (AI Design Page):
+- GET /api/v2/user/prompt_template/page - List templates
+- POST /api/v2/user/prompt_template/page - Create template
+- PUT /api/v2/user/prompt_template/page/{id} - Update template
+- DELETE /api/v2/user/prompt_template/page/{id} - Delete template
+- POST /api/v2/user/prompt_template/page/{id}/use - Mark as used
 """
 
 import logging
@@ -70,7 +74,7 @@ from application.commands.templates import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/templates", tags=["user-templates-v3"])
+router = APIRouter(prefix="/prompt_template", tags=["user-prompt-templates"])
 
 # ==========================================
 # Constants (v2.1.0)

@@ -451,7 +451,7 @@ WHERE is_deleted = true AND is_permanently_deleted = false;
 | `marketplace_listings` | ✅ | ✅ | 市场商品 (保留交易历史) |
 | `assets` | ✅ | ✅ | 用户资源 (保留使用统计) |
 | `asset_categories` | ✅ | ❌ | 素材分类 (LTREE 层级结构) |
-| `asset_prompt_templates` | ✅ | ❌ | AI 提示词模板 |
+| `user_asset_prompt_templates` | ✅ | ❌ | 用户 AI 素材提示词模板 |
 | `marketplace_favorites` | ✅ | ❌ | 用户收藏 |
 | `marketplace_reviews` | ✅ | ❌ | 商品评价 |
 | `campaigns` | ✅ | ✅ | 营销活动 |

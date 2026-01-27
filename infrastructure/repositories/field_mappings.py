@@ -386,8 +386,8 @@ ASSET_CATEGORIES_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
-# asset_prompt_templates 表
-ASSET_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
+# user_asset_prompt_templates 表
+USER_ASSET_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'template_id',
     'user_id': 'user_id',
     'name': 'name',
@@ -881,8 +881,8 @@ ONBOARDING_STEPS_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
-# user_prompt_templates 表
-USER_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
+# user_page_prompt_templates 表
+USER_PAGE_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'template_id',
     'user_id': 'user_id',
     'name': 'name',

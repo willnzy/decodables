@@ -2,7 +2,13 @@
 Templates Commands - Write operations for user prompt templates.
 
 @module application.commands.templates
-@version 1.0.0
+@version 1.1.0 (Unified naming)
+
+Changes:
+- v1.1.0: Updated service method calls to new naming convention
+  - create_asset_template → create_user_asset_prompt_template
+  - create_page_template → create_user_page_prompt_template
+  - etc.
 """
 
 from dataclasses import dataclass
@@ -39,7 +45,7 @@ class CreateAssetTemplateHandler:
 
     async def handle(self, command: CreateAssetTemplateCommand) -> CreateAssetTemplateResult:
         """Execute create command."""
-        template = await self._service.create_asset_template(
+        template = await self._service.create_user_asset_prompt_template(
             command.user_id,
             command.template_data
         )
@@ -71,7 +77,7 @@ class UpdateAssetTemplateHandler:
 
     async def handle(self, command: UpdateAssetTemplateCommand) -> UpdateAssetTemplateResult:
         """Execute update command."""
-        template = await self._service.update_asset_template(
+        template = await self._service.update_user_asset_prompt_template(
             command.template_id,
             command.user_id,
             command.updates
@@ -103,7 +109,7 @@ class DeleteAssetTemplateHandler:
 
     async def handle(self, command: DeleteAssetTemplateCommand) -> DeleteAssetTemplateResult:
         """Execute delete command."""
-        success = await self._service.delete_asset_template(
+        success = await self._service.delete_user_asset_prompt_template(
             command.template_id,
             command.user_id
         )
@@ -134,7 +140,7 @@ class UseAssetTemplateHandler:
 
     async def handle(self, command: UseAssetTemplateCommand) -> UseAssetTemplateResult:
         """Execute use command."""
-        new_count = await self._service.use_asset_template(
+        new_count = await self._service.use_user_asset_prompt_template(
             command.template_id,
             command.user_id
         )
@@ -169,7 +175,7 @@ class CreatePageTemplateHandler:
 
     async def handle(self, command: CreatePageTemplateCommand) -> CreatePageTemplateResult:
         """Execute create command."""
-        template = await self._service.create_page_template(
+        template = await self._service.create_user_page_prompt_template(
             command.user_id,
             command.template_data
         )
@@ -201,7 +207,7 @@ class UpdatePageTemplateHandler:
 
     async def handle(self, command: UpdatePageTemplateCommand) -> UpdatePageTemplateResult:
         """Execute update command."""
-        template = await self._service.update_page_template(
+        template = await self._service.update_user_page_prompt_template(
             command.template_id,
             command.user_id,
             command.updates
@@ -233,7 +239,7 @@ class DeletePageTemplateHandler:
 
     async def handle(self, command: DeletePageTemplateCommand) -> DeletePageTemplateResult:
         """Execute delete command."""
-        success = await self._service.delete_page_template(
+        success = await self._service.delete_user_page_prompt_template(
             command.template_id,
             command.user_id
         )
@@ -264,7 +270,7 @@ class UsePageTemplateHandler:
 
     async def handle(self, command: UsePageTemplateCommand) -> UsePageTemplateResult:
         """Execute use command."""
-        new_count = await self._service.use_page_template(
+        new_count = await self._service.use_user_page_prompt_template(
             command.template_id,
             command.user_id
         )

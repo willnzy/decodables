@@ -2,9 +2,12 @@
 Templates Service - Business logic for user prompt templates.
 
 @module domains.templates.templates_service
-@version 1.1.0 (DDD Exception Compliance)
+@version 1.2.0 (Unified naming)
 
 Changes:
+- v1.2.0: Unified naming convention
+  - Renamed asset methods to user_asset_prompt_template
+  - Renamed user prompt methods to user_page_prompt_template
 - v1.1.0: DDD-compliant exceptions
   - Removed all HTTPException (replaced with domain exceptions)
   - API layer now responsible for HTTP status code mapping
@@ -46,12 +49,12 @@ class TemplatesService:
         self.repository = repository
 
     # ==========================================
-    # Asset Prompt Templates (5W1H)
+    # User Asset Prompt Templates (5W1H)
     # ==========================================
 
-    async def list_asset_templates(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_user_asset_prompt_templates(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        List all asset templates for a user.
+        List all user asset prompt templates for a user.
 
         Args:
             user_id: User ID
@@ -59,15 +62,15 @@ class TemplatesService:
         Returns:
             List of templates ordered by use_count (desc)
         """
-        return await self.repository.list_asset_templates(user_id)
+        return await self.repository.list_user_asset_prompt_templates(user_id)
 
-    async def create_asset_template(
+    async def create_user_asset_prompt_template(
         self,
         user_id: str,
         template_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Create asset template with limit check.
+        Create user asset prompt template with limit check.
 
         Business logic:
         1. Check template count limit
@@ -84,7 +87,7 @@ class TemplatesService:
             TemplateLimitExceededException: If limit exceeded
         """
         # 1. Check template count limit
-        count = await self.repository.count_asset_templates(user_id)
+        count = await self.repository.count_user_asset_prompt_templates(user_id)
         if count >= MAX_TEMPLATES_PER_USER:
             raise TemplateLimitExceededException(max_templates=MAX_TEMPLATES_PER_USER)
 
@@ -95,16 +98,16 @@ class TemplatesService:
         }
 
         # 3. Create template
-        return await self.repository.create_asset_template(data)
+        return await self.repository.create_user_asset_prompt_template(data)
 
-    async def update_asset_template(
+    async def update_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str,
         updates: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Update asset template.
+        Update user asset prompt template.
 
         Args:
             template_id: Template UUID
@@ -117,7 +120,7 @@ class TemplatesService:
         Raises:
             TemplateNotFoundException: If template not found
         """
-        result = await self.repository.update_asset_template(
+        result = await self.repository.update_user_asset_prompt_template(
             template_id,
             user_id,
             updates
@@ -128,13 +131,13 @@ class TemplatesService:
 
         return result
 
-    async def delete_asset_template(
+    async def delete_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> bool:
         """
-        Delete asset template.
+        Delete user asset prompt template.
 
         Args:
             template_id: Template UUID
@@ -143,15 +146,15 @@ class TemplatesService:
         Returns:
             True if deleted
         """
-        return await self.repository.delete_asset_template(template_id, user_id)
+        return await self.repository.delete_user_asset_prompt_template(template_id, user_id)
 
-    async def use_asset_template(
+    async def use_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> int:
         """
-        Mark asset template as used (increment use_count).
+        Mark user asset prompt template as used (increment use_count).
 
         Business logic:
         1. Get current use_count
@@ -169,7 +172,7 @@ class TemplatesService:
             TemplateNotFoundException: If template not found
         """
         # 1. Get current template
-        template = await self.repository.get_asset_template(template_id, user_id)
+        template = await self.repository.get_user_asset_prompt_template(template_id, user_id)
         if not template:
             raise TemplateNotFoundException()
 
@@ -178,7 +181,7 @@ class TemplatesService:
         new_count = current_count + 1
 
         # 3. Update
-        await self.repository.update_asset_template(
+        await self.repository.update_user_asset_prompt_template(
             template_id,
             user_id,
             {
@@ -190,28 +193,28 @@ class TemplatesService:
         return new_count
 
     # ==========================================
-    # Page Prompt Templates
+    # User Page Prompt Templates
     # ==========================================
 
-    async def list_page_templates(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_user_page_prompt_templates(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        List all page templates for a user.
+        List all user page prompt templates for a user.
 
         Args:
             user_id: User ID
 
         Returns:
-            List of templates ordered by use_count (desc)
+            List of templates ordered by updated_at (desc)
         """
-        return await self.repository.list_page_templates(user_id)
+        return await self.repository.list_user_page_prompt_templates(user_id)
 
-    async def create_page_template(
+    async def create_user_page_prompt_template(
         self,
         user_id: str,
         template_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Create page template with limit check.
+        Create user page prompt template with limit check.
 
         Business logic:
         1. Check template count limit
@@ -228,7 +231,7 @@ class TemplatesService:
             TemplateLimitExceededException: If limit exceeded
         """
         # 1. Check template count limit
-        count = await self.repository.count_page_templates(user_id)
+        count = await self.repository.count_user_page_prompt_templates(user_id)
         if count >= MAX_TEMPLATES_PER_USER:
             raise TemplateLimitExceededException(max_templates=MAX_TEMPLATES_PER_USER)
 
@@ -239,16 +242,16 @@ class TemplatesService:
         }
 
         # 3. Create template
-        return await self.repository.create_page_template(data)
+        return await self.repository.create_user_page_prompt_template(data)
 
-    async def update_page_template(
+    async def update_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str,
         updates: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Update page template.
+        Update user page prompt template.
 
         Args:
             template_id: Template UUID
@@ -261,7 +264,7 @@ class TemplatesService:
         Raises:
             TemplateNotFoundException: If template not found
         """
-        result = await self.repository.update_page_template(
+        result = await self.repository.update_user_page_prompt_template(
             template_id,
             user_id,
             updates
@@ -272,13 +275,13 @@ class TemplatesService:
 
         return result
 
-    async def delete_page_template(
+    async def delete_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> bool:
         """
-        Delete page template.
+        Delete user page prompt template.
 
         Args:
             template_id: Template UUID
@@ -287,15 +290,15 @@ class TemplatesService:
         Returns:
             True if deleted
         """
-        return await self.repository.delete_page_template(template_id, user_id)
+        return await self.repository.delete_user_page_prompt_template(template_id, user_id)
 
-    async def use_page_template(
+    async def use_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> int:
         """
-        Mark page template as used (increment use_count).
+        Mark user page prompt template as used (increment use_count).
 
         Business logic:
         1. Get current use_count
@@ -313,7 +316,7 @@ class TemplatesService:
             TemplateNotFoundException: If template not found
         """
         # 1. Get current template
-        template = await self.repository.get_page_template(template_id, user_id)
+        template = await self.repository.get_user_page_prompt_template(template_id, user_id)
         if not template:
             raise TemplateNotFoundException()
 
@@ -322,7 +325,7 @@ class TemplatesService:
         new_count = current_count + 1
 
         # 3. Update
-        await self.repository.update_page_template(
+        await self.repository.update_user_page_prompt_template(
             template_id,
             user_id,
             {

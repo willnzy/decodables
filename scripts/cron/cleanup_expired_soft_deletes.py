@@ -45,7 +45,7 @@ TABLES_TO_CLEANUP = [
     'credit_transactions',
     # Phase 3.1 (8张)
     'marketplace_favorites', 'marketplace_reviews', 'campaigns',
-    'daily_themes', 'holidays', 'asset_prompt_templates',
+    'daily_themes', 'holidays', 'user_asset_prompt_templates',
     'support_tickets', 'support_replies'
 ]
 

@@ -2,7 +2,12 @@
 Templates Repository - Data access for user prompt templates.
 
 @module infrastructure.repositories.templates_repository
-@version 2.0.0 (AsyncClient migration)
+@version 2.1.0 (Unified naming)
+
+Changes in v2.1:
+- Renamed tables: asset_prompt_templates → user_asset_prompt_templates
+- Renamed tables: user_prompt_templates → user_page_prompt_templates
+- Unified method naming convention
 
 Changes in v2.0:
 - Removed lazy loading (client parameter now mandatory)
@@ -10,7 +15,7 @@ Changes in v2.0:
 - Removed get_supabase_client() import (sync client)
 
 Purpose:
-- Data access for asset_prompt_templates and user_prompt_templates tables
+- Data access for user_asset_prompt_templates and user_page_prompt_templates tables
 - Returns raw Dict data for template CRUD operations
 """
 
@@ -25,11 +30,12 @@ class SupabaseTemplatesRepository:
     """
     Supabase implementation for Templates data access.
 
+    v2.1: Unified naming convention.
     v2.0: AsyncClient required (no lazy loading).
 
     Handles two tables:
-    - asset_prompt_templates (5W1H templates)
-    - user_prompt_templates (AI Design Page templates)
+    - user_asset_prompt_templates (5W1H templates for image/asset generation)
+    - user_page_prompt_templates (templates for AI Design Page generation)
     """
 
     def __init__(self, db_client: DatabaseClient):
@@ -52,13 +58,13 @@ class SupabaseTemplatesRepository:
         return self._client
 
     # ==========================================
-    # Asset Prompt Templates (5W1H)
+    # User Asset Prompt Templates (5W1H)
     # ==========================================
 
     @retry_on_network_error()
-    async def list_asset_templates(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_user_asset_prompt_templates(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        List all asset templates for a user, ordered by use_count.
+        List all user asset prompt templates for a user, ordered by use_count.
 
         Args:
             user_id: User ID
@@ -66,7 +72,7 @@ class SupabaseTemplatesRepository:
         Returns:
             List of template dicts
         """
-        result = await self.client.table("asset_prompt_templates") \
+        result = await self.client.table("user_asset_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
             .order("use_count", desc=True) \
@@ -75,13 +81,13 @@ class SupabaseTemplatesRepository:
         return result.data or []
 
     @retry_on_network_error()
-    async def get_asset_template(
+    async def get_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get single asset template by ID.
+        Get single user asset prompt template by ID.
 
         Args:
             template_id: Template UUID
@@ -90,7 +96,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template dict or None
         """
-        result = await self.client.table("asset_prompt_templates") \
+        result = await self.client.table("user_asset_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -100,9 +106,9 @@ class SupabaseTemplatesRepository:
         return result.data if result.data else None
 
     @retry_on_network_error()
-    async def create_asset_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_user_asset_prompt_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create a new asset template.
+        Create a new user asset prompt template.
 
         Args:
             data: Template data dict
@@ -113,24 +119,24 @@ class SupabaseTemplatesRepository:
         Raises:
             Exception: If creation fails
         """
-        result = await self.client.table("asset_prompt_templates") \
+        result = await self.client.table("user_asset_prompt_templates") \
             .insert(data) \
             .execute()
 
         if not result.data:
-            raise Exception("Failed to create asset template")
+            raise Exception("Failed to create user asset prompt template")
 
         return result.data[0]
 
     @retry_on_network_error()
-    async def update_asset_template(
+    async def update_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str,
         updates: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        Update asset template.
+        Update user asset prompt template.
 
         Args:
             template_id: Template UUID
@@ -140,7 +146,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Updated template dict or None if not found
         """
-        result = await self.client.table("asset_prompt_templates") \
+        result = await self.client.table("user_asset_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -149,13 +155,13 @@ class SupabaseTemplatesRepository:
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
-    async def delete_asset_template(
+    async def delete_user_asset_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> bool:
         """
-        Delete asset template.
+        Delete user asset prompt template.
 
         Args:
             template_id: Template UUID
@@ -164,7 +170,7 @@ class SupabaseTemplatesRepository:
         Returns:
             True if deleted
         """
-        await self.client.table("asset_prompt_templates") \
+        await self.client.table("user_asset_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -173,9 +179,9 @@ class SupabaseTemplatesRepository:
         return True
 
     @retry_on_network_error()
-    async def count_asset_templates(self, user_id: str) -> int:
+    async def count_user_asset_prompt_templates(self, user_id: str) -> int:
         """
-        Count asset templates for a user.
+        Count user asset prompt templates for a user.
 
         Args:
             user_id: User ID
@@ -183,7 +189,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template count
         """
-        result = await self.client.table("asset_prompt_templates") \
+        result = await self.client.table("user_asset_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user_id) \
             .execute()
@@ -191,13 +197,13 @@ class SupabaseTemplatesRepository:
         return result.count or 0
 
     # ==========================================
-    # Page Prompt Templates
+    # User Page Prompt Templates
     # ==========================================
 
     @retry_on_network_error()
-    async def list_page_templates(self, user_id: str) -> List[Dict[str, Any]]:
+    async def list_user_page_prompt_templates(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        List all page templates for a user, ordered by use_count.
+        List all user page prompt templates for a user, ordered by updated_at.
 
         Args:
             user_id: User ID
@@ -205,7 +211,7 @@ class SupabaseTemplatesRepository:
         Returns:
             List of template dicts
         """
-        result = await self.client.table("user_prompt_templates") \
+        result = await self.client.table("user_page_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
             .order("updated_at", desc=True) \
@@ -214,13 +220,13 @@ class SupabaseTemplatesRepository:
         return result.data or []
 
     @retry_on_network_error()
-    async def get_page_template(
+    async def get_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get single page template by ID.
+        Get single user page prompt template by ID.
 
         Args:
             template_id: Template UUID
@@ -229,7 +235,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template dict or None
         """
-        result = await self.client.table("user_prompt_templates") \
+        result = await self.client.table("user_page_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -239,9 +245,9 @@ class SupabaseTemplatesRepository:
         return result.data if result.data else None
 
     @retry_on_network_error()
-    async def create_page_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_user_page_prompt_template(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create a new page template.
+        Create a new user page prompt template.
 
         Args:
             data: Template data dict
@@ -252,24 +258,24 @@ class SupabaseTemplatesRepository:
         Raises:
             Exception: If creation fails
         """
-        result = await self.client.table("user_prompt_templates") \
+        result = await self.client.table("user_page_prompt_templates") \
             .insert(data) \
             .execute()
 
         if not result.data:
-            raise Exception("Failed to create page template")
+            raise Exception("Failed to create user page prompt template")
 
         return result.data[0]
 
     @retry_on_network_error()
-    async def update_page_template(
+    async def update_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str,
         updates: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        Update page template.
+        Update user page prompt template.
 
         Args:
             template_id: Template UUID
@@ -279,7 +285,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Updated template dict or None if not found
         """
-        result = await self.client.table("user_prompt_templates") \
+        result = await self.client.table("user_page_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -288,13 +294,13 @@ class SupabaseTemplatesRepository:
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
-    async def delete_page_template(
+    async def delete_user_page_prompt_template(
         self,
         template_id: str,
         user_id: str
     ) -> bool:
         """
-        Delete page template.
+        Delete user page prompt template.
 
         Args:
             template_id: Template UUID
@@ -303,7 +309,7 @@ class SupabaseTemplatesRepository:
         Returns:
             True if deleted
         """
-        await self.client.table("user_prompt_templates") \
+        await self.client.table("user_page_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -312,9 +318,9 @@ class SupabaseTemplatesRepository:
         return True
 
     @retry_on_network_error()
-    async def count_page_templates(self, user_id: str) -> int:
+    async def count_user_page_prompt_templates(self, user_id: str) -> int:
         """
-        Count page templates for a user.
+        Count user page prompt templates for a user.
 
         Args:
             user_id: User ID
@@ -322,7 +328,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template count
         """
-        result = await self.client.table("user_prompt_templates") \
+        result = await self.client.table("user_page_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user_id) \
             .execute()

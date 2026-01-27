@@ -79,7 +79,7 @@ echo "✅ 迁移完成（包含优化补丁）"
   - assets (用户素材)
   - asset_categories (素材分类)
   - system_assets (系统素材)
-  - asset_prompt_templates (素材提示模板)
+  - user_asset_prompt_templates (用户素材提示模板)
 
 市场相关 (6):
   - marketplace_listings (市场列表)
@@ -92,7 +92,7 @@ echo "✅ 迁移完成（包含优化补丁）"
 AI 生成 (3):
   - user_generations (生成记录)
   - generation_tasks (生成任务)
-  - user_prompt_templates (用户提示词模板)
+  - user_page_prompt_templates (用户页面提示词模板)
 
 系统日志 (1):
   - system_error_logs (RPC 函数内部错误日志)

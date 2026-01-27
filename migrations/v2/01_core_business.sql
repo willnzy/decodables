@@ -799,11 +799,12 @@ CREATE TABLE IF NOT EXISTS project_versions (
 
 
 -- ----------------------------------------------------------------------------
--- 11. asset_prompt_templates (AI提示词模板)
+-- 11. user_asset_prompt_templates (用户素材提示词模板)
+-- User-created prompt templates for asset/image AI generation (5W1H)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS asset_prompt_templates (
+CREATE TABLE IF NOT EXISTS user_asset_prompt_templates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id),
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
     who_type TEXT,
@@ -824,9 +825,9 @@ CREATE TABLE IF NOT EXISTS asset_prompt_templates (
     is_deleted BOOLEAN DEFAULT false,
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,
-    CONSTRAINT chk_asset_prompt_templates_deleted_at_consistency
+    CONSTRAINT chk_uapt_deleted_at_consistency
         CHECK ((is_deleted = false AND deleted_at IS NULL) OR (is_deleted = true AND deleted_at IS NOT NULL)),
-    CONSTRAINT chk_asset_prompt_templates_recovery_expires_at_consistency
+    CONSTRAINT chk_uapt_recovery_expires_at_consistency
     CHECK (
         recovery_expires_at IS NULL OR
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
@@ -1124,10 +1125,10 @@ CREATE TABLE IF NOT EXISTS marketplace_reviews (
 
 
 -- ----------------------------------------------------------------------------
--- 20. user_prompt_templates (用户提示词模板)
--- User-created prompt templates for AI generation
+-- 20. user_page_prompt_templates (用户页面提示词模板)
+-- User-created prompt templates for page AI generation
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS user_prompt_templates (
+CREATE TABLE IF NOT EXISTS user_page_prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -1141,14 +1142,14 @@ CREATE TABLE IF NOT EXISTS user_prompt_templates (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    CONSTRAINT upt_name_not_empty CHECK (LENGTH(TRIM(name)) > 0),
-    CONSTRAINT upt_creativity_level CHECK (creativity_level >= 0.0 AND creativity_level <= 1.0),
-    CONSTRAINT upt_generation_mode CHECK (generation_mode IN ('guided', 'flexible')),
-    CONSTRAINT upt_unique_user_name UNIQUE (user_id, name)
+    CONSTRAINT uppt_name_not_empty CHECK (LENGTH(TRIM(name)) > 0),
+    CONSTRAINT uppt_creativity_level CHECK (creativity_level >= 0.0 AND creativity_level <= 1.0),
+    CONSTRAINT uppt_generation_mode CHECK (generation_mode IN ('guided', 'flexible')),
+    CONSTRAINT uppt_unique_user_name UNIQUE (user_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_prompt_templates_user_id ON user_prompt_templates(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_prompt_templates_name ON user_prompt_templates(name);
+CREATE INDEX IF NOT EXISTS idx_user_page_prompt_templates_user_id ON user_page_prompt_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_page_prompt_templates_name ON user_page_prompt_templates(name);
 
 
 -- ----------------------------------------------------------------------------
