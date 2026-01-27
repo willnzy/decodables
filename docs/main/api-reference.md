@@ -1,7 +1,7 @@
 # Make Decodables 后端 API 参考文档
 
 > 版本: 3.33
-> 更新时间: 2026-01-27
+> 更新时间: 2026-01-28
 > 供前端重构参考
 
 ---
@@ -486,16 +486,17 @@ checkout.session 需要携带的 metadata:
 
 ## 5. API 总览
 
-### User API (144个端点)
+### User API (158个端点)
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
 | **用户档案** | `/api/v2/user/profile` | 7 | 用户信息、通知、时区 |
 | **工作区** | `/api/v2/user/workspaces` | 6 | Workspace CRUD、统计 (v3.33) |
 | **标签系统** | `/api/v2/user/tags` | 6 | Tag CRUD、预设、分组 (v3.33) |
+| **文件夹** | `/api/v2/user/folders` | 6 | Folder CRUD、重排序 (v3.33) |
 | **项目标签** | `/api/v2/user/projects/{id}/tags` | 4 | 项目-标签关联 (v3.33) |
 | **素材标签** | `/api/v2/user/assets/{id}/tags` | 4 | 素材-标签关联 (v3.33) |
-| **项目管理** | `/api/v2/user/projects` | 10 | CRUD、恢复、复制 |
+| **项目管理** | `/api/v2/user/projects` | 14 | CRUD、恢复、复制、移动、收藏 (v3.33) |
 | **计费管理** | `/api/v2/user/billing` | 4 | 积分余额、交易历史 |
 | **支付** | `/api/v2/user/payment` | 2 | Checkout、Portal |
 | **AI 生成 - 图片** | `/api/v2/user/generate/images` | 2 | 同步/异步生成 |
@@ -505,7 +506,7 @@ checkout.session 需要携带的 metadata:
 | **市场** | `/api/v2/user/marketplace` | 11 | 商品、购买、举报 |
 | **系统资源** | `/api/v2/user/resources` | 7 | 贴纸、背景、模板 |
 | **用户资源** | `/api/v2/user/assets` | 10 | 上传、删除、恢复 |
-| **用户资源** | `/api/v2/user/user_assets` | 10 | 资产管理、Dashboard视图过滤 (v3.33) |
+| **用户资源** | `/api/v2/user/user_assets` | 14 | 资产管理、移动、收藏 (v3.33) |
 | **系统资源** | `/api/v2/user/system_resources` | 9 | 系统资源管理 |
 | **模板** | `/api/v2/user/templates` | 10 | Asset/Page 模板 |
 | **分析** | `/api/v2/user/analytics` | 1 | 事件上报 |
@@ -522,9 +523,9 @@ checkout.session 需要携带的 metadata:
 | **日志** | `/api/v2/user/logs` | 2 | 错误上报 |
 | **Webhooks** | `/api/v2/user/webhooks` | 2 | Clerk、Stripe |
 
-**详细文档**: 完整的 144 个 User API 端点详细文档见 [docs/shared/user-api-review.md](../shared/user-api-review.md)
+**详细文档**: 完整的 158 个 User API 端点详细文档见 [docs/shared/user-api-review.md](../shared/user-api-review.md)
 
-> **v3.33 新增**: Workspace (6个) + Tags (6个) + Project Tags (4个) + Asset Tags (4个) = 20 个新端点
+> **v3.33 新增**: Workspace (6个) + Tags (6个) + Folders (6个) + Project Tags (4个) + Asset Tags (4个) + Project move/star (4个) + Asset move/star (4个) = 34 个新端点
 
 ---
 

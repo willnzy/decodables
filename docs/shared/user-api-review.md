@@ -30,7 +30,7 @@
 15. [Onboarding 新手引导 (6个)](#15-onboarding-新手引导)
 16. [Payment 支付 (2个)](#16-payment-支付)
 17. [Pages 静态页面内容 (2个)](#17-pages-静态页面内容) **NEW**
-18. [Projects 项目管理 (9个)](#18-projects-项目管理)
+18. [Projects 项目管理 (13个)](#18-projects-项目管理)
 19. [Referrals 推荐系统 (6个)](#19-referrals-推荐系统)
 20. [Resources 系统资源 (4个)](#20-resources-系统资源)
 21. [Seller 卖家统计 (1个)](#21-seller-卖家统计) **NEW**
@@ -40,17 +40,18 @@
 25. [Templates 模板 (10个)](#25-templates-模板)
 26. [Themes 主题 (1个)](#26-themes-主题)
 27. [Tools 工具 (2个)](#27-tools-工具)
-28. [User Assets 用户资产 (9个)](#28-user-assets-用户资产)
+28. [User Assets 用户资产 (13个)](#28-user-assets-用户资产)
 29. [User Profile 用户档案 (7个)](#29-user-profile-用户档案)
 30. [Webhooks (2个)](#30-webhooks)
 31. [Workspaces 工作区 (6个)](#31-workspaces-工作区) **NEW v3.43**
 32. [Tags 标签系统 (6个)](#32-tags-标签系统) **NEW v3.43**
 33. [Project Tags 项目标签 (4个)](#33-project-tags-项目标签) **NEW v3.43**
 34. [Asset Tags 素材标签 (4个)](#34-asset-tags-素材标签) **NEW v3.43**
+35. [Folders 文件夹 (6个)](#35-folders-文件夹) **NEW v3.33**
 
 ---
 
-## 📋 接口总览 (148个)
+## 📋 接口总览 (162个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -123,6 +124,10 @@
 | 72 | Projects | DELETE | /projects/{project_id} | delete_project | api/user/projects.py | 删除项目 |
 | 73 | Projects | POST | /projects/{project_id}/restore | restore_project | api/user/projects.py | 恢复已删除项目 |
 | 74 | Projects | POST | /projects/{project_id}/duplicate | duplicate_project | api/user/projects.py | 复制项目 |
+| 74a | Projects | POST | /projects/{project_id}/move | move_project | api/user/projects.py | 移动到文件夹 (v3.33) |
+| 74b | Projects | POST | /projects/{project_id}/star | star_project | api/user/projects.py | 切换收藏状态 (v3.33) |
+| 74c | Projects | GET | /projects/folder/{folder_id} | get_projects_by_folder | api/user/projects.py | 获取文件夹内项目 (v3.33) |
+| 74d | Projects | GET | /projects/starred | get_starred_projects | api/user/projects.py | 获取收藏项目 (v3.33) |
 | 75 | Referrals | POST | /referrals | create_referral | api/user/referrals.py | 创建推荐 |
 | 76 | Referrals | GET | /referrals | list_referrals | api/user/referrals.py | 获取推荐列表 |
 | 77 | Referrals | GET | /referrals/stats | get_stats | api/user/referrals.py | 获取推荐统计 |
@@ -170,6 +175,10 @@
 | 122 | User Assets | GET | /user_assets/dashboard | get_asset_dashboard | api/user/user_assets.py | 资产Dashboard (带view过滤) |
 | 124 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
 | 125 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
+| 125a | User Assets | POST | /user_assets/{asset_id}/move | move_asset | api/user/user_assets.py | 移动到文件夹 (v3.33) |
+| 125b | User Assets | POST | /user_assets/{asset_id}/star | star_asset | api/user/user_assets.py | 切换收藏状态 (v3.33) |
+| 125c | User Assets | GET | /user_assets/folder/{folder_id} | get_assets_by_folder | api/user/user_assets.py | 获取文件夹内资产 (v3.33) |
+| 125d | User Assets | GET | /user_assets/starred | get_starred_assets | api/user/user_assets.py | 获取收藏资产 (v3.33) |
 | 126 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
 | 127 | User Profile | GET | /user_profile/history | get_history | api/user/user_profile.py | 获取操作历史 |
 | 128 | User Profile | GET | /user_profile/purchases | get_purchases | api/user/user_profile.py | 获取购买记录 |
@@ -179,6 +188,12 @@
 | 132 | User Profile | PUT | /user_profile/timezone | update_timezone | api/user/user_profile.py | 更新时区 |
 | 133 | Webhooks | POST | /webhooks/clerk | clerk_webhook | api/user/webhooks.py | Clerk Webhook处理 |
 | 134 | Webhooks | POST | /webhooks/stripe | stripe_webhook | api/user/webhooks.py | Stripe Webhook处理 |
+| 135 | Folders | GET | /folders | list_folders | api/user/folders.py | 获取文件夹列表 (v3.33) |
+| 136 | Folders | POST | /folders | create_folder | api/user/folders.py | 创建文件夹 (v3.33) |
+| 137 | Folders | PATCH | /folders/{folder_id} | update_folder | api/user/folders.py | 更新文件夹 (v3.33) |
+| 138 | Folders | DELETE | /folders/{folder_id} | delete_folder | api/user/folders.py | 删除文件夹 (v3.33) |
+| 139 | Folders | POST | /folders/reorder | reorder_folders | api/user/folders.py | 重排序文件夹 (v3.33) |
+| 140 | Folders | GET | /folders/{folder_id} | get_folder | api/user/folders.py | 获取文件夹详情 (v3.33) |
 
 ---
 
@@ -2046,6 +2061,105 @@
 
 ---
 
+### POST `/projects/{project_id}/move`
+
+移动项目到指定文件夹 (v3.33 Phase 2.6)
+
+**请求体**:
+```json
+{
+  "folder_id": "uuid-xxx"  // null 表示移到根目录
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "project": {
+    "id": "proj_xxx",
+    "folder_id": "uuid-xxx"
+  }
+}
+```
+
+**错误**:
+- `404`: 项目不存在或无权访问
+- `400`: 文件夹不存在或类型不匹配
+
+---
+
+### POST `/projects/{project_id}/star`
+
+切换项目收藏状态 (v3.33 Phase 2.6)
+
+**请求体**:
+```json
+{
+  "is_starred": true
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "project": {
+    "id": "proj_xxx",
+    "is_starred": true
+  }
+}
+```
+
+---
+
+### GET `/projects/folder/{folder_id}`
+
+获取指定文件夹内的项目列表 (v3.33 Phase 2.6)
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 |
+| `search` | string | - | 搜索关键词 |
+
+**说明**: folder_id 为 "root" 时返回根目录项目 (folder_id=NULL)
+
+**响应**:
+```json
+{
+  "items": [...],
+  "total": 10,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+---
+
+### GET `/projects/starred`
+
+获取收藏的项目列表 (v3.33 Phase 2.6)
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 |
+
+**响应**:
+```json
+{
+  "items": [...],
+  "total": 5,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+---
+
 ## 18. Referrals 推荐系统
 
 ### POST `/referrals`
@@ -3015,6 +3129,105 @@ URL检查
 
 ---
 
+### POST `/user_assets/{asset_id}/move`
+
+移动资产到指定文件夹 (v3.33 Phase 2.6)
+
+**请求体**:
+```json
+{
+  "folder_id": "uuid-xxx"  // null 表示移到根目录
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "asset": {
+    "id": "asset_xxx",
+    "folder_id": "uuid-xxx"
+  }
+}
+```
+
+**错误**:
+- `404`: 资产不存在或无权访问
+- `400`: 文件夹不存在或类型不匹配
+
+---
+
+### POST `/user_assets/{asset_id}/star`
+
+切换资产收藏状态 (v3.33 Phase 2.6)
+
+**请求体**:
+```json
+{
+  "is_starred": true
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "asset": {
+    "id": "asset_xxx",
+    "is_starred": true
+  }
+}
+```
+
+---
+
+### GET `/user_assets/folder/{folder_id}`
+
+获取指定文件夹内的资产列表 (v3.33 Phase 2.6)
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 |
+| `search` | string | - | 搜索关键词 |
+
+**说明**: folder_id 为 "root" 时返回根目录资产 (folder_id=NULL)
+
+**响应**:
+```json
+{
+  "items": [...],
+  "total": 10,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+---
+
+### GET `/user_assets/starred`
+
+获取收藏的资产列表 (v3.33 Phase 2.6)
+
+**参数**:
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `offset` | int | 0 | 分页偏移量 |
+| `limit` | int | 50 | 每页数量 |
+
+**响应**:
+```json
+{
+  "items": [...],
+  "total": 5,
+  "offset": 0,
+  "limit": 50
+}
+```
+
+---
+
 ## 29. User Profile 用户档案
 
 ### GET `/user_profile/me`
@@ -3659,9 +3872,196 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.43*
-*最后更新: 2026-01-27*
+## 35. Folders 文件夹
+
+> **v3.33 新增** - Workspace + Tag 系统 Phase 2.6
+> **端点数**: 6 个
+> **文件**: `api/user/folders.py`
+
+文件夹系统用于组织 Projects 和 Assets，支持 8 色系统和自定义排序。
+
+**Folder 结构**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | uuid | 文件夹 ID |
+| workspace_id | uuid | 所属工作区 |
+| folder_type | string | 类型: "project" 或 "asset" |
+| name | string | 文件夹名称 (1-100 字符) |
+| color | string | 颜色: slate/red/orange/amber/emerald/cyan/blue/violet |
+| sort_order | int | 排序顺序 |
+| item_count | int | 包含项目/资产数量 (计算字段) |
+| created_by | string | 创建者 user_id |
+| created_at | datetime | 创建时间 |
+| updated_at | datetime | 更新时间 |
+
+### GET `/folders`
+
+获取文件夹列表。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**参数**:
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| folder_type | string | 是 | - | "project" 或 "asset" |
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid-xxx",
+      "workspace_id": "ws_xxx",
+      "folder_type": "project",
+      "name": "My Folder",
+      "color": "blue",
+      "sort_order": 0,
+      "item_count": 5,
+      "created_by": "user_xxx",
+      "created_at": "2026-01-28T10:00:00Z",
+      "updated_at": "2026-01-28T10:00:00Z"
+    }
+  ],
+  "total": 3
+}
+```
+
+### POST `/folders`
+
+创建新文件夹。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "folder_type": "project",
+  "name": "My Folder",
+  "color": "blue"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| folder_type | string | 是 | "project" 或 "asset" |
+| name | string | 是 | 1-100 字符 |
+| color | string | 否 | 默认 "slate" |
+
+**验证规则**:
+- name 在同一 workspace + folder_type 下必须唯一
+
+**响应**: 创建的 Folder 对象
+
+**错误**:
+- `400`: 名称已存在或参数无效
+
+### GET `/folders/{folder_id}`
+
+获取文件夹详情。
+
+**认证**: 必须
+
+**响应**: Folder 对象
+
+**错误**:
+- `404`: 文件夹不存在或无权访问
+
+### PATCH `/folders/{folder_id}`
+
+更新文件夹。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "name": "Updated Name",
+  "color": "violet"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 新名称 |
+| color | string | 否 | 新颜色 |
+
+**响应**: 更新后的 Folder 对象
+
+**错误**:
+- `400`: 名称冲突
+- `404`: 文件夹不存在
+
+### DELETE `/folders/{folder_id}`
+
+删除文件夹。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**说明**: 删除文件夹后，其中的项目/资产会移到根目录 (folder_id=NULL)。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Folder deleted"
+}
+```
+
+**错误**:
+- `404`: 文件夹不存在
+
+### POST `/folders/reorder`
+
+重新排序文件夹。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "folder_type": "project",
+  "folder_ids": ["uuid-1", "uuid-2", "uuid-3"]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| folder_type | string | 是 | "project" 或 "asset" |
+| folder_ids | array | 是 | 排序后的文件夹 ID 列表 |
+
+**验证规则**:
+- 所有 folder_ids 必须属于当前 workspace
+
+**响应**:
+```json
+{
+  "success": true
+}
+```
+
+**错误**:
+- `400`: 包含无效文件夹 ID
+
+---
+
+*文档版本: v3.33*
+*最后更新: 2026-01-28*
 *更新内容:
+- v3.33: 新增 Folder + Star 系统 (14 个端点)
+  - 新增: Folders 文件夹 (6个端点) - CRUD、重排序
+  - 新增: Projects 移动/收藏 (4个端点) - move/star/folder/starred
+  - 新增: Assets 移动/收藏 (4个端点) - move/star/folder/starred
+  - 总端点数: 148 → 162
 - v3.43: 新增 Workspace + Tag 系统 (20 个端点)
   - 新增: Workspaces 工作区 (6个端点) - CRUD、统计
   - 新增: Tags 标签系统 (6个端点) - CRUD、预设、分组
