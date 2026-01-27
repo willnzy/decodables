@@ -34,7 +34,7 @@ from domains.identity.aggregates.user_profile import UserProfile
 from domains.tag.entities import TagColor
 from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
 
 router = APIRouter(prefix="/tags", tags=["user-tags-v1"])
@@ -120,10 +120,12 @@ class TagGroupPresetResponse(BaseModel):
 async def list_tags(
     request: Request,
     group_name: Optional[str] = None,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get user's tags.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Query Parameters:
         - group_name: Optional filter by group
@@ -132,14 +134,10 @@ async def list_tags(
         TagListResponse with items and total
     """
     container = get_container()
-    workspace_service = await container.get_workspace_service()
     tag_service = await container.get_tag_service()
 
-    # Get user's workspace
-    workspace_id = await workspace_service.get_user_workspace_id(user.id)
-
-    # Get tags
-    tags = await tag_service.list_tags(workspace_id, group_name)
+    # Get tags using workspace_id from context
+    tags = await tag_service.list_tags(ctx.workspace_id, group_name)
 
     return {
         "items": [tag.to_dict() for tag in tags],
@@ -151,20 +149,20 @@ async def list_tags(
 @limiter.limit("60/minute")
 async def list_tags_by_group(
     request: Request,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get tags organized by group.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Dict mapping group_name to list of tags
     """
     container = get_container()
-    workspace_service = await container.get_workspace_service()
     tag_service = await container.get_tag_service()
 
-    workspace_id = await workspace_service.get_user_workspace_id(user.id)
-    groups = await tag_service.get_tags_by_group(workspace_id)
+    groups = await tag_service.get_tags_by_group(ctx.workspace_id)
 
     return {
         group: [tag.to_dict() for tag in tags]
@@ -177,32 +175,31 @@ async def list_tags_by_group(
 async def create_tag(
     request: Request,
     data: CreateTagRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Create a new tag.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Created tag
     """
     container = get_container()
-    workspace_service = await container.get_workspace_service()
     tag_service = await container.get_tag_service()
-
-    workspace_id = await workspace_service.get_user_workspace_id(user.id)
 
     try:
         tag = await tag_service.create_tag(
-            workspace_id=workspace_id,
+            workspace_id=ctx.workspace_id,
             name=data.name,
             color=TagColor.from_str(data.color),
-            created_by=user.id,
+            created_by=ctx.user_id,
             group_name=data.group_name,
             icon=data.icon,
         )
 
-        await log_activity(
-            user_id=user.id,
+        log_activity(
+            user_id=ctx.user_id,
             action="tag_created",
             details={"tag_id": tag.id, "name": tag.name}
         )
@@ -219,10 +216,12 @@ async def update_tag(
     request: Request,
     tag_id: str,
     data: UpdateTagRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Update an existing tag.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Updated tag
@@ -239,7 +238,7 @@ async def update_tag(
         raise HTTPException(404, "Tag not found")
 
     # Check that user owns the workspace
-    is_owner = await workspace_service.validate_ownership(tag.workspace_id, user.id)
+    is_owner = await workspace_service.validate_ownership(tag.workspace_id, ctx.user_id)
     if not is_owner:
         raise HTTPException(403, "Not authorized to modify this tag")
 
@@ -263,10 +262,12 @@ async def update_tag(
 async def delete_tag(
     request: Request,
     tag_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Delete a tag.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Success message
@@ -282,14 +283,14 @@ async def delete_tag(
     if not tag:
         raise HTTPException(404, "Tag not found")
 
-    is_owner = await workspace_service.validate_ownership(tag.workspace_id, user.id)
+    is_owner = await workspace_service.validate_ownership(tag.workspace_id, ctx.user_id)
     if not is_owner:
         raise HTTPException(403, "Not authorized to delete this tag")
 
     await tag_service.delete_tag(tag_id)
 
-    await log_activity(
-        user_id=user.id,
+    log_activity(
+        user_id=ctx.user_id,
         action="tag_deleted",
         details={"tag_id": tag_id, "name": tag.name}
     )
@@ -301,10 +302,12 @@ async def delete_tag(
 @limiter.limit("60/minute")
 async def list_presets(
     request: Request,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get available tag group presets.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         List of tag group presets
@@ -328,10 +331,12 @@ async def list_presets(
 async def get_project_tags(
     request: Request,
     project_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get tags for a project.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         List of tags
@@ -354,10 +359,12 @@ async def add_project_tags(
     request: Request,
     project_id: str,
     data: AddTagsRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Add tags to a project.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Updated list of project tags
@@ -373,7 +380,7 @@ async def add_project_tags(
         tags = await project_tag_service.add_tags(
             project_id=project_id,
             tag_ids=data.tag_ids,
-            user_id=user.id
+            user_id=ctx.user_id
         )
 
         return {
@@ -390,10 +397,12 @@ async def set_project_tags(
     request: Request,
     project_id: str,
     data: SetTagsRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Set project tags (replace all existing).
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Updated list of project tags
@@ -409,7 +418,7 @@ async def set_project_tags(
         tags = await project_tag_service.set_tags(
             project_id=project_id,
             tag_ids=data.tag_ids,
-            user_id=user.id
+            user_id=ctx.user_id
         )
 
         return {
@@ -426,10 +435,12 @@ async def remove_project_tag(
     request: Request,
     project_id: str,
     tag_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Remove a tag from a project.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Success message
@@ -454,10 +465,12 @@ async def remove_project_tag(
 async def get_asset_tags(
     request: Request,
     asset_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get tags for an asset.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         List of tags
@@ -480,10 +493,12 @@ async def add_asset_tags(
     request: Request,
     asset_id: str,
     data: AddTagsRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Add tags to an asset.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Updated list of asset tags
@@ -499,7 +514,7 @@ async def add_asset_tags(
         tags = await asset_tag_service.add_tags(
             asset_id=asset_id,
             tag_ids=data.tag_ids,
-            user_id=user.id,
+            user_id=ctx.user_id,
             source="manual"
         )
 
@@ -517,10 +532,12 @@ async def set_asset_tags(
     request: Request,
     asset_id: str,
     data: SetTagsRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Set asset tags (replace all existing).
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Updated list of asset tags
@@ -536,7 +553,7 @@ async def set_asset_tags(
         tags = await asset_tag_service.set_tags(
             asset_id=asset_id,
             tag_ids=data.tag_ids,
-            user_id=user.id,
+            user_id=ctx.user_id,
             source="manual"
         )
 
@@ -554,10 +571,12 @@ async def remove_asset_tag(
     request: Request,
     asset_id: str,
     tag_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Remove a tag from an asset.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Success message

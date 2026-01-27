@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
 from infrastructure.rate_limiter import limiter
 
@@ -172,12 +172,13 @@ async def list_projects(
     limit: int = Query(6, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas_data: bool = True,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectListResponse:
     """
     Get user's projects with pagination.
 
     P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Args:
         offset: Number of records to skip (default: 0)
@@ -192,7 +193,7 @@ async def list_projects(
     handler = await container.get_user_projects_handler()
 
     query = GetUserProjectsQuery(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         limit=limit,
         offset=offset,
     )
@@ -200,7 +201,7 @@ async def list_projects(
     result = await handler.handle(query)
 
     if not result.success:
-        logger.error(f"Failed to get projects for user {user.user_id}: {result.error}")
+        logger.error(f"Failed to get projects for user {ctx.user_id}: {result.error}")
         raise HTTPException(500, "Failed to get projects")
 
     # Filter by search if provided
@@ -228,7 +229,7 @@ async def dashboard_projects(
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> DashboardProjectsResponse:
     """
     Get projects for dashboard with view type filtering.
@@ -236,6 +237,7 @@ async def dashboard_projects(
     P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
     v3.31: 添加重试机制处理 Supabase 临时故障 (502/503)
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
@@ -251,7 +253,7 @@ async def dashboard_projects(
     handler = await container.get_dashboard_projects_handler()
 
     query = GetDashboardProjectsQuery(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         view_type=view,
         offset=offset,
         limit=limit,
@@ -276,7 +278,7 @@ async def dashboard_projects(
                 view=view,
                 counts=counts,
             )
-        
+
         # 检查是否为可重试的错误 (502, 503, 网络错误)
         error_str = str(result.error).lower() if result.error else ""
         is_retryable = any([
@@ -287,11 +289,11 @@ async def dashboard_projects(
             "cloudflare" in error_str,
             "internal server error" in error_str,
         ])
-        
+
         if is_retryable and attempt < MAX_RETRIES:
             logger.warning(
                 f"Retrying dashboard_projects (attempt {attempt + 1}/{MAX_RETRIES}) "
-                f"for user {user.user_id}: {result.error}"
+                f"for user {ctx.user_id}: {result.error}"
             )
             await asyncio.sleep(RETRY_DELAY * (attempt + 1))  # 指数退避
             last_error = result.error
@@ -299,8 +301,8 @@ async def dashboard_projects(
         else:
             last_error = result.error
             break
-    
-    logger.error(f"Failed to get dashboard projects for user {user.user_id}: {last_error}")
+
+    logger.error(f"Failed to get dashboard projects for user {ctx.user_id}: {last_error}")
     raise HTTPException(500, "Failed to get dashboard projects")
 
 
@@ -308,7 +310,7 @@ async def dashboard_projects(
 async def list_deleted_projects(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectListResponse:
     """
     Retrieve the user's deleted projects.
@@ -316,16 +318,17 @@ async def list_deleted_projects(
     P1-002 fix: Migrated to offset-based pagination.
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
     P2-003 fix: Fixed bug using 'page' instead of 'offset' in response.
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         ProjectListResponse with deleted projects that can be restored
     """
     container = get_container()
     creation_service = await container.get_creation_service()
-    
+
     # Note: get_user_deleted_projects returns tuple (items, total)
     items, total = await creation_service.get_user_deleted_projects(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         limit=limit,
         offset=offset,
     )
@@ -345,7 +348,7 @@ async def list_deleted_projects(
 async def create_project(
     request: Request,
     req: ProjectCreateRequest,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectResponse:
     """
     Create a new project.
@@ -356,6 +359,7 @@ async def create_project(
     - Pro: 200 projects
 
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         ProjectResponse with created project details
@@ -374,10 +378,10 @@ async def create_project(
     handler = await container.get_create_project_handler()
 
     # UserProfile.tier is UserTier enum, get string value
-    tier = (user.tier.value if user.tier else "t1").lower()
+    tier = (ctx.user.tier.value if ctx.user.tier else "t1").lower()
 
     command = CreateProjectCommand(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         title=req.title or "Untitled",
         canvas_data=req.canvas_data,
         tier=tier,
@@ -400,7 +404,7 @@ async def create_project(
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectResponse:
     """
     Get single project details.
@@ -408,6 +412,7 @@ async def get_project(
     Only owner can access the project.
 
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         ProjectResponse with project details
@@ -417,7 +422,7 @@ async def get_project(
 
     query = GetProjectQuery(
         project_id=project_id,
-        user_id=user.user_id,
+        user_id=ctx.user_id,
     )
 
     result = await handler.handle(query)
@@ -437,7 +442,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     req: ProjectUpdateRequest,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectUpdateResponse:
     """
     Update a project.
@@ -448,6 +453,7 @@ async def update_project(
     - Free user trial period
 
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         ProjectUpdateResponse with update status and locked_elements info
@@ -472,11 +478,11 @@ async def update_project(
 
     command = UpdateProjectCommand(
         project_id=project_id,
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         title=req.title,
         canvas_data=req.canvas_data,
         thumbnail_url=req.thumbnail_url,
-        user_tier=user.tier or "t1",  # P1-013: For locked elements check
+        user_tier=ctx.user.tier or "t1",  # P1-013: For locked elements check
     )
 
     result = await handler.handle(command)
@@ -500,10 +506,12 @@ async def update_project(
 async def delete_project(
     project_id: str,
     permanent: bool = False,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectDeleteResponse:
     """
     Delete a project.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Args:
         project_id: Project ID to delete
@@ -518,7 +526,7 @@ async def delete_project(
 
     command = DeleteProjectCommand(
         project_id=project_id,
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         permanent=permanent,
     )
 
@@ -535,7 +543,7 @@ async def delete_project(
     try:
         admin_audit = await container.get_admin_audit_service()
         await admin_audit.admin_log_operation(
-            admin_id=user.user_id,  # User deleting their own project
+            admin_id=ctx.user_id,  # User deleting their own project
             operation_type="project_delete_permanent" if permanent else "project_delete_soft",
             target_type="project",
             target_id=project_id,
@@ -555,10 +563,12 @@ async def delete_project(
 @router.post("/{project_id}/restore")
 async def restore_project(
     project_id: str,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectRestoreResponse:
     """
     Restore a deleted project from trash.
+
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         Restored project details
@@ -568,7 +578,7 @@ async def restore_project(
 
     command = RestoreProjectCommand(
         project_id=project_id,
-        user_id=user.user_id,
+        user_id=ctx.user_id,
     )
 
     result = await handler.handle(command)
@@ -585,7 +595,7 @@ async def restore_project(
     try:
         admin_audit = await container.get_admin_audit_service()
         await admin_audit.admin_log_operation(
-            admin_id=user.user_id,
+            admin_id=ctx.user_id,
             operation_type="project_restore",
             target_type="project",
             target_id=project_id,
@@ -607,7 +617,7 @@ async def restore_project(
 async def duplicate_project(
     request: Request,
     project_id: str,
-    user: UserProfile = Depends(get_current_user),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectResponse:
     """
     Duplicate a project.
@@ -615,6 +625,7 @@ async def duplicate_project(
     Creates a copy of the project with title + " (Copy)".
 
     P2-002 fix: Return Pydantic model instead of Dict[str, Any].
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Returns:
         ProjectResponse with new duplicated project
@@ -623,13 +634,13 @@ async def duplicate_project(
     creation_service = await container.get_creation_service()
 
     # UserProfile.tier is UserTier enum, get string value
-    tier = (user.tier.value if user.tier else "t1").lower()
+    tier = (ctx.user.tier.value if ctx.user.tier else "t1").lower()
 
     try:
         # Service returns Project directly, not a Result object
         project = await creation_service.duplicate_project(
             project_id=project_id,
-            user_id=user.user_id,
+            user_id=ctx.user_id,
             tier=tier,
         )
 

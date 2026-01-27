@@ -53,7 +53,7 @@ from pydantic import BaseModel, Field
 from domains.identity.aggregates.user_profile import UserProfile
 from infrastructure.logging.activity_logger import log_activity
 from infrastructure.rate_limiter import limiter
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from core.utils.timezone import get_request_timezone
 from core.middleware import validate_file_size  # P3-005: File upload size validation
 from container import get_container
@@ -119,13 +119,14 @@ async def my_assets(
     scope: Optional[str] = None,
     offset: int = 0,
     limit: int = 50,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Fetch user assets with pagination.
 
     v3.2.0: Added pagination support (offset/limit).
     v3.0.0: Now uses GetUserAssetsHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Query Parameters:
         - project_id: Optional project ID filter
@@ -154,7 +155,7 @@ async def my_assets(
     validate_optional_uuid(project_id, "project ID")
 
     # Pro tier check for cross-project scope (t3/t4 only)
-    user_tier = user.tier.value if hasattr(user.tier, 'value') else user.tier
+    user_tier = ctx.user.tier.value if hasattr(ctx.user.tier, 'value') else ctx.user.tier
     if scope == "all" and user_tier not in ("t3", "t4"):
         from fastapi import HTTPException
         raise HTTPException(403, "Pro required for cross-project history")
@@ -165,7 +166,7 @@ async def my_assets(
     handler = await container.get_user_assets_handler()
 
     query = GetUserAssetsQuery(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         project_id=target_proj,
         offset=offset,
         limit=limit
@@ -187,27 +188,28 @@ async def upload_asset(
     request: Request,
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Upload personal assets (Pro only, PRD v3.2).
 
     v3.0.0: Now uses UploadAssetHandler (Container pattern).
     Business logic (Pro check, file validation) moved to Service layer.
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
 
-    tz = get_request_timezone(request, user_id=user.user_id)
+    tz = get_request_timezone(request, user_id=ctx.user_id)
 
     container = get_container()
     handler = await container.get_upload_asset_handler()
 
     command = UploadAssetCommand(
-        user_id=user.user_id,
-        user_tier=user.tier.value if hasattr(user.tier, 'value') else str(user.tier),
+        user_id=ctx.user_id,
+        user_tier=ctx.user.tier.value if hasattr(ctx.user.tier, 'value') else str(ctx.user.tier),
         file=file,
         project_id=project_id,
         timezone=tz
@@ -223,12 +225,13 @@ async def delete_asset(
     request: Request,
     asset_id: str,
     permanent: bool = False,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Delete a user asset (PRD v3.3).
 
     v3.0.0: Now uses DeleteAssetHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
     # v3.25: UA-MEDIUM-1 - Validate asset_id format
     validate_uuid_id(asset_id, "asset ID")
@@ -238,16 +241,16 @@ async def delete_asset(
 
     command = DeleteAssetCommand(
         asset_id=asset_id,
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         permanent=permanent
     )
     result = await handler.handle(command)
 
     # Log activity
     if permanent:
-        log_activity(user.user_id, "permanent_delete_asset", {"asset_id": asset_id})
+        log_activity(ctx.user_id, "permanent_delete_asset", {"asset_id": asset_id})
     else:
-        log_activity(user.user_id, "delete_asset", {"asset_id": asset_id})
+        log_activity(ctx.user_id, "delete_asset", {"asset_id": asset_id})
 
     return result.result
 
@@ -257,21 +260,22 @@ async def delete_asset(
 async def add_asset_from_url(
     request: Request,
     req: AssetFromUrlRequest,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Add an asset from external URL.
 
     v3.0.0: Now uses AddAssetFromURLHandler (Container pattern).
     Business logic (SSRF protection, URL validation) moved to Service layer.
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
-    tz = get_request_timezone(request, user_id=user.user_id)
+    tz = get_request_timezone(request, user_id=ctx.user_id)
 
     container = get_container()
     handler = await container.get_add_asset_from_url_handler()
 
     command = AddAssetFromURLCommand(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         url=req.url,
         project_id=req.project_id,
         timezone=tz
@@ -280,7 +284,7 @@ async def add_asset_from_url(
 
     # Log activity
     if result.result.get("asset"):
-        log_activity(user.user_id, "create_asset_from_url", {
+        log_activity(ctx.user_id, "create_asset_from_url", {
             "asset_id": result.result["asset"].get("id")
         })
 
@@ -292,13 +296,14 @@ async def add_asset_from_url(
 async def check_url(
     request: Request,
     url: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Check if a URL points to a valid image.
 
     v3.0.0: Now uses CheckURLHandler (Container pattern).
     Business logic (SSRF check, URL validation) moved to Service layer.
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
     container = get_container()
     handler = await container.get_check_url_handler()
@@ -314,12 +319,13 @@ async def check_url(
 async def increment_usage(
     request: Request,
     asset_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Increment usage count for an asset.
 
     v3.0.0: Now uses IncrementAssetUsageHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
     # v3.25: UA-MEDIUM-1 - Validate asset_id format
     validate_uuid_id(asset_id, "asset ID")
@@ -329,7 +335,7 @@ async def increment_usage(
 
     command = IncrementAssetUsageCommand(
         asset_id=asset_id,
-        user_id=user.user_id
+        user_id=ctx.user_id
     )
     result = await handler.handle(command)
 
@@ -344,13 +350,14 @@ async def get_asset_dashboard(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(15, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get assets for dashboard with view type filtering.
 
     v3.3.0: Refactored to return asset list with view filtering (all/bought/selling).
     v3.0.0: Now uses GetDashboardAssetsHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Args:
         view: View type - "all" (default), "bought", or "selling"
@@ -365,7 +372,7 @@ async def get_asset_dashboard(
     handler = await container.get_dashboard_assets_handler()
 
     query = GetDashboardAssetsQuery(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         view_type=view,
         offset=offset,
         limit=limit,
@@ -387,13 +394,14 @@ async def get_deleted(
     request: Request,
     offset: int = 0,
     limit: int = 50,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Get soft-deleted assets (trash) with pagination.
 
     v3.2.0: Added pagination support (offset/limit).
     v3.0.0: Now uses GetDeletedAssetsHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
 
     Query Parameters:
         - offset: Number of items to skip (default: 0)
@@ -420,7 +428,7 @@ async def get_deleted(
     handler = await container.get_deleted_assets_handler()
 
     query = GetDeletedAssetsQuery(
-        user_id=user.user_id,
+        user_id=ctx.user_id,
         offset=offset,
         limit=limit
     )
@@ -440,12 +448,13 @@ async def get_deleted(
 async def restore(
     request: Request,
     asset_id: str,
-    user: UserProfile = Depends(get_current_user)
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
     Restore a soft-deleted asset.
 
     v3.0.0: Now uses RestoreAssetHandler (Container pattern).
+    v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
     # v3.25: UA-MEDIUM-1 - Validate asset_id format
     validate_uuid_id(asset_id, "asset ID")
@@ -455,11 +464,11 @@ async def restore(
 
     command = RestoreAssetCommand(
         asset_id=asset_id,
-        user_id=user.user_id
+        user_id=ctx.user_id
     )
     result = await handler.handle(command)
 
     # Log activity
-    log_activity(user.user_id, "restore_asset", {"asset_id": asset_id})
+    log_activity(ctx.user_id, "restore_asset", {"asset_id": asset_id})
 
     return {"status": "ok", "asset": result.asset}

@@ -386,6 +386,67 @@ get_current_user_optional = optional_user
 
 
 # ============================================================================
+# UserWithWorkspace - User Context with Workspace (v3.33)
+# ============================================================================
+
+from dataclasses import dataclass
+from domains.identity.aggregates import UserProfile
+from domains.workspace import WorkspaceService
+
+
+@dataclass
+class UserWithWorkspace:
+    """
+    User context with their default workspace.
+
+    Used by APIs that need workspace_id for data isolation.
+    Workspace is created automatically on first access (lazy initialization).
+
+    @version 1.0.0 (v3.33 Workspace + Tag Phase 2.5)
+    """
+    user: UserProfile
+    workspace_id: str
+
+    @property
+    def user_id(self) -> str:
+        """Convenience property to access user_id."""
+        return self.user.user_id
+
+
+async def get_current_user_with_workspace(
+    user: UserProfile = Depends(get_current_user),
+) -> UserWithWorkspace:
+    """
+    Get current user with their default workspace.
+
+    If workspace doesn't exist, it will be created automatically.
+    This is the primary dependency for APIs that need workspace context.
+
+    Usage:
+        @router.get("/projects")
+        async def list_projects(ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)):
+            user_id = ctx.user_id
+            workspace_id = ctx.workspace_id
+            ...
+
+    Args:
+        user: Current authenticated user (from get_current_user)
+
+    Returns:
+        UserWithWorkspace: User with their default workspace_id
+    """
+    from container import get_container
+
+    container = get_container()
+    workspace_service = await container.get_workspace_service()
+
+    # get_or_create_default handles idempotent workspace creation
+    workspace = await workspace_service.get_or_create_default(user.user_id)
+
+    return UserWithWorkspace(user=user, workspace_id=workspace.id)
+
+
+# ============================================================================
 # Analytics Service Dependency
 # ============================================================================
 
