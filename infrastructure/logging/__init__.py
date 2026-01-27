@@ -5,7 +5,7 @@ Infrastructure - Logging Package.
 @version 1.0.0
 """
 
-from .activity_logger import log_activity
+from .activity_logger import log_activity_async
 from .task_logger import TaskLogger, task_context, log_task_run
 
-__all__ = ["log_activity", "TaskLogger", "task_context", "log_task_run"]
+__all__ = ["log_activity_async", "TaskLogger", "task_context", "log_task_run"]
