@@ -1,9 +1,9 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.41
-> **最后更新**: 2026-01-23
-> **总端点数**: 128 个
+> **版本**: 3.43
+> **最后更新**: 2026-01-27
+> **总端点数**: 148 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
 
@@ -43,10 +43,14 @@
 28. [User Assets 用户资产 (9个)](#28-user-assets-用户资产)
 29. [User Profile 用户档案 (7个)](#29-user-profile-用户档案)
 30. [Webhooks (2个)](#30-webhooks)
+31. [Workspaces 工作区 (6个)](#31-workspaces-工作区) **NEW v3.43**
+32. [Tags 标签系统 (6个)](#32-tags-标签系统) **NEW v3.43**
+33. [Project Tags 项目标签 (4个)](#33-project-tags-项目标签) **NEW v3.43**
+34. [Asset Tags 素材标签 (4个)](#34-asset-tags-素材标签) **NEW v3.43**
 
 ---
 
-## 📋 接口总览 (128个)
+## 📋 接口总览 (148个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -3215,9 +3219,455 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.40*
-*最后更新: 2026-01-18*
+## 31. Workspaces 工作区
+
+> **v3.43 新增** - Workspace + Tag 系统 Phase 1
+> **端点数**: 6 个
+> **文件**: `api/user/workspaces.py`
+
+### GET `/workspaces`
+
+获取用户的所有工作区列表。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "My Workspace",
+      "description": "Default workspace",
+      "owner_id": "user_xxx",
+      "is_default": true,
+      "is_personal": true,
+      "is_active": true,
+      "created_at": "2026-01-27T00:00:00Z",
+      "updated_at": "2026-01-27T00:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### GET `/workspaces/current`
+
+获取当前用户的默认工作区。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "id": "uuid",
+  "name": "My Workspace",
+  "description": null,
+  "owner_id": "user_xxx",
+  "is_default": true,
+  "is_personal": true,
+  "is_active": true,
+  "created_at": "2026-01-27T00:00:00Z",
+  "updated_at": "2026-01-27T00:00:00Z"
+}
+```
+
+### GET `/workspaces/{workspace_id}`
+
+获取指定工作区详情。
+
+**认证**: 必须 (仅 owner)
+
+**限流**: 60/minute
+
+**响应**: 同 `/workspaces/current`
+
+### PATCH `/workspaces/{workspace_id}`
+
+更新工作区信息。
+
+**认证**: 必须 (仅 owner)
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "name": "Updated Name",
+  "description": "Updated description"
+}
+```
+
+**响应**: 更新后的工作区对象
+
+### DELETE `/workspaces/{workspace_id}`
+
+删除工作区 (软删除)。
+
+**认证**: 必须 (仅 owner)
+
+**限流**: 10/minute
+
+**约束**: 不能删除默认工作区
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Workspace deleted"
+}
+```
+
+### GET `/workspaces/{workspace_id}/stats`
+
+获取工作区统计信息。
+
+**认证**: 必须 (仅 owner)
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "workspace_id": "uuid",
+  "tag_count": 25,
+  "project_count": 10,
+  "asset_count": 50
+}
+```
+
+---
+
+## 32. Tags 标签系统
+
+> **v3.43 新增** - Workspace + Tag 系统 Phase 1
+> **端点数**: 6 个
+> **文件**: `api/user/tags.py`
+
+### GET `/tags`
+
+获取用户工作区的所有标签。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**查询参数**:
+| 参数 | 类型 | 必须 | 说明 |
+|------|------|------|------|
+| group_name | string | 否 | 按分组过滤 |
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "Grade 1",
+      "color": "blue",
+      "icon": "🎓",
+      "group_name": "Grade Level",
+      "sort_order": 0,
+      "usage_count": 15
+    }
+  ],
+  "total": 25
+}
+```
+
+### GET `/tags/by-group`
+
+获取按分组组织的标签。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "Grade Level": [
+    {"id": "uuid", "name": "Grade 1", "color": "blue", ...}
+  ],
+  "Phonics Pattern": [
+    {"id": "uuid", "name": "CVC Words", "color": "purple", ...}
+  ]
+}
+```
+
+### POST `/tags`
+
+创建新标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "name": "New Tag",
+  "color": "green",
+  "group_name": "Custom",
+  "icon": "📚"
+}
+```
+
+**验证规则**:
+- name: 1-50 字符，必填
+- color: gray/red/orange/yellow/green/blue/purple/pink
+- group_name: 可选，最多 50 字符
+- icon: 可选，最多 10 字符 (emoji)
+
+**响应**: 创建的标签对象
+
+### PATCH `/tags/{tag_id}`
+
+更新标签。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "name": "Updated Name",
+  "color": "red",
+  "group_name": "New Group",
+  "icon": "🔥"
+}
+```
+
+**响应**: 更新后的标签对象
+
+### DELETE `/tags/{tag_id}`
+
+删除标签 (会解除所有关联)。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Tag deleted"
+}
+```
+
+### GET `/tags/presets`
+
+获取系统预设的标签分组。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "group_name": "grade_level",
+      "display_name": "Grade Level",
+      "description": "Organize by student grade level",
+      "icon": "🎓",
+      "preset_tags": [
+        {"name": "Pre-K", "color": "pink"},
+        {"name": "Kindergarten", "color": "purple"}
+      ],
+      "is_default": true
+    }
+  ]
+}
+```
+
+---
+
+## 33. Project Tags 项目标签
+
+> **v3.43 新增** - Workspace + Tag 系统 Phase 1
+> **端点数**: 4 个
+> **文件**: `api/user/tags.py`
+
+### GET `/projects/{project_id}/tags`
+
+获取项目的所有标签。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "Grade 1",
+      "color": "blue",
+      "group_name": "Grade Level"
+    }
+  ]
+}
+```
+
+### POST `/projects/{project_id}/tags`
+
+为项目添加标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "tag_ids": ["uuid1", "uuid2"]
+}
+```
+
+**验证规则**:
+- tag_ids: 至少 1 个，UUID 格式
+- 每个项目最多 10 个标签
+
+**响应**: 更新后的项目标签列表
+
+### PUT `/projects/{project_id}/tags`
+
+替换项目的所有标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "tag_ids": ["uuid1", "uuid2"]
+}
+```
+
+**响应**: 替换后的项目标签列表
+
+### DELETE `/projects/{project_id}/tags/{tag_id}`
+
+移除项目的指定标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Tag removed from project"
+}
+```
+
+---
+
+## 34. Asset Tags 素材标签
+
+> **v3.43 新增** - Workspace + Tag 系统 Phase 1
+> **端点数**: 4 个
+> **文件**: `api/user/tags.py`
+
+### GET `/assets/{asset_id}/tags`
+
+获取素材的所有标签。
+
+**认证**: 必须
+
+**限流**: 60/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "Animals",
+      "color": "green",
+      "group_name": "Topic"
+    }
+  ]
+}
+```
+
+### POST `/assets/{asset_id}/tags`
+
+为素材添加标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "tag_ids": ["uuid1", "uuid2"]
+}
+```
+
+**验证规则**:
+- tag_ids: 至少 1 个，UUID 格式
+- 每个素材最多 10 个标签
+
+**响应**: 更新后的素材标签列表
+
+### PUT `/assets/{asset_id}/tags`
+
+替换素材的所有标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**请求体**:
+```json
+{
+  "tag_ids": ["uuid1", "uuid2"]
+}
+```
+
+**响应**: 替换后的素材标签列表
+
+### DELETE `/assets/{asset_id}/tags/{tag_id}`
+
+移除素材的指定标签。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Tag removed from asset"
+}
+```
+
+---
+
+*文档版本: v3.43*
+*最后更新: 2026-01-27*
 *更新内容:
+- v3.43: 新增 Workspace + Tag 系统 (20 个端点)
+  - 新增: Workspaces 工作区 (6个端点) - CRUD、统计
+  - 新增: Tags 标签系统 (6个端点) - CRUD、预设、分组
+  - 新增: Project Tags 项目标签 (4个端点) - 项目-标签关联
+  - 新增: Asset Tags 素材标签 (4个端点) - 素材-标签关联
+  - 总端点数: 128 → 148
 - v3.40: DDD 合规审计修复
   - 修复: `GET /projects/dashboard` 响应格式改为 `{items, total, offset, limit, has_more}`
   - 修复: `GET /referrals` 响应格式改为 DDD 标准分页格式 `{items, total, offset, limit, has_more}`
@@ -3232,6 +3682,6 @@ Stripe-Signature: <signature>
 - v3.33: 新增 Articles 文章模块 (4个公开端点)
 - v3.32: 完整记录 123 个 User API 端点
 - 包含所有请求参数、响应格式、验证规则和限流配置
-- 按 30 个模块分类组织
+- 按 34 个模块分类组织
 - DDD 架构合规: 100%
 - 测试覆盖率: 65%+*
