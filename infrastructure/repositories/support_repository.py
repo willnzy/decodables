@@ -94,8 +94,10 @@ class SupabaseSupportRepository:
         # Generate ticket_number since DB trigger may not exist
         ticket_number = self._generate_ticket_number()
 
-        # Use 'general' as default category since it's NOT NULL in schema
-        effective_category = category or "general"
+        # Use 'other' as default category (must match DB check_category constraint)
+        # Valid: technical_issue, billing_question, feature_request, bug_report,
+        #        account_issue, content_issue, payment_issue, other
+        effective_category = category or "other"
 
         result = await self.client.table("support_tickets").insert({
             "user_id": user_id,

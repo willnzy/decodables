@@ -387,13 +387,15 @@ class SupportService:
         if images:
             formatted_message += f"\n\nAttached images ({len(images)}):\n" + "\n".join(images)
 
-        # Create ticket
+        # Create ticket (category must match DB check_category constraint)
+        # Valid: technical_issue, billing_question, feature_request, bug_report,
+        #        account_issue, content_issue, payment_issue, other
         await self.repository.create_ticket(
             user_id=user_id,
             subject="User Feedback",
             message=f"From: {user_email}\n\n{formatted_message}",
             priority="low",
-            category="feedback",
+            category="other",  # feedback uses 'other' category
         )
 
         # Log activity
