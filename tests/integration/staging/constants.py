@@ -129,6 +129,76 @@ class Endpoints:
     def config_group(group_name: str) -> str:
         return f"{API_V2}/user/config/group/{group_name}"
 
+    # Workspaces (v3.33 Phase 2)
+    WORKSPACES = f"{API_V2}/user/workspaces"
+    WORKSPACES_CURRENT = f"{API_V2}/user/workspaces/current"
+
+    @staticmethod
+    def workspace(workspace_id: str) -> str:
+        """Get/Update/Delete workspace by ID"""
+        return f"{API_V2}/user/workspaces/{workspace_id}"
+
+    @staticmethod
+    def workspace_stats(workspace_id: str) -> str:
+        """Get workspace statistics"""
+        return f"{API_V2}/user/workspaces/{workspace_id}/stats"
+
+    # Tags (v3.33 Phase 2)
+    TAGS = f"{API_V2}/user/tags"
+    TAGS_BY_GROUP = f"{API_V2}/user/tags/by-group"
+    TAGS_PRESETS = f"{API_V2}/user/tags/presets"
+
+    @staticmethod
+    def tag(tag_id: str) -> str:
+        """Update/Delete tag by ID"""
+        return f"{API_V2}/user/tags/{tag_id}"
+
+    # Project Tags (v3.33 Phase 2)
+    @staticmethod
+    def project_tags(project_id: str) -> str:
+        """Get/Add/Set project tags"""
+        return f"{API_V2}/user/projects/{project_id}/tags"
+
+    @staticmethod
+    def project_tag(project_id: str, tag_id: str) -> str:
+        """Remove tag from project"""
+        return f"{API_V2}/user/projects/{project_id}/tags/{tag_id}"
+
+    # Asset Tags (v3.33 Phase 2)
+    @staticmethod
+    def asset_tags(asset_id: str) -> str:
+        """Get/Add/Set asset tags"""
+        return f"{API_V2}/user/assets/{asset_id}/tags"
+
+    @staticmethod
+    def asset_tag(asset_id: str, tag_id: str) -> str:
+        """Remove tag from asset"""
+        return f"{API_V2}/user/assets/{asset_id}/tags/{tag_id}"
+
+    # System Resources (Admin)
+    SYSTEM_RESOURCES = f"{API_V2}/user/system-resources"
+    SYSTEM_RESOURCES_STATS = f"{API_V2}/user/system-resources/stats"
+    SYSTEM_RESOURCES_BATCH = f"{API_V2}/user/system-resources/batch"
+
+    @staticmethod
+    def system_resource(resource_id: str) -> str:
+        """Get/Update/Delete system resource"""
+        return f"{API_V2}/user/system-resources/{resource_id}"
+
+    @staticmethod
+    def system_resource_replace(resource_id: str) -> str:
+        """Replace system resource file"""
+        return f"{API_V2}/user/system-resources/{resource_id}/replace"
+
+    @staticmethod
+    def system_resource_audit(resource_id: str) -> str:
+        """Get system resource audit log"""
+        return f"{API_V2}/user/system-resources/{resource_id}/audit-log"
+
+    # Webhooks
+    WEBHOOKS_CLERK = f"{API_V2}/user/webhooks/clerk"
+    WEBHOOKS_STRIPE = f"{API_V2}/user/webhooks/stripe"
+
     # Generations History
     GENERATIONS_HISTORY = f"{API_V2}/user/generations/history"
 
