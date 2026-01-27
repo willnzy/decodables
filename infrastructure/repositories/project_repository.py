@@ -547,17 +547,31 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if owner_result.data:
             return owner_result.data[0]
 
-        # Second try: Check if user has purchased this project
-        # Use a single query with join to verify both project existence AND purchase
-        purchase_result = await self.client.table("marketplace_purchases").select(
-            "id, projects!inner(id, user_id, title, canvas_data, thumbnail_url, created_at, updated_at, is_deleted)"
-        ).eq("buyer_id", user_id).eq("project_id", project_id).execute()
+        # Second try: Check if user has purchased this project via marketplace
+        # Correct query path: purchases → listings → check resource_id
+        # Step 1: Find the listing for this project
+        listing_result = await self.client.table("marketplace_listings").select(
+            "id"
+        ).eq("resource_type", "project").eq("resource_id", project_id).execute()
 
-        if purchase_result.data and purchase_result.data[0].get("projects"):
-            project_data = purchase_result.data[0]["projects"]
-            # Don't return deleted projects even to purchasers
-            if not project_data.get("is_deleted", False):
-                return project_data
+        if listing_result.data:
+            listing_id = listing_result.data[0]["id"]
+            # Step 2: Check if user purchased this listing
+            purchase_result = await self.client.table("marketplace_purchases").select(
+                "id"
+            ).eq("user_id", user_id).eq("listing_id", listing_id).execute()
+
+            if purchase_result.data:
+                # User has purchased, fetch the project data
+                project_result = await self.client.table("projects").select("*").eq(
+                    "id", project_id
+                ).execute()
+
+                if project_result.data:
+                    project_data = project_result.data[0]
+                    # Don't return deleted projects even to purchasers
+                    if not project_data.get("is_deleted", False):
+                        return project_data
 
         # No access - return None (same response for not-found and access-denied)
         return None
