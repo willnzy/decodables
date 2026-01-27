@@ -535,7 +535,7 @@ class CreationService:
         project_dicts = []
         for proj in projects:
             project_dicts.append({
-                "id": proj.id,
+                "id": proj.project_id,
                 "title": proj.title,
                 "thumbnail_url": proj.thumbnail_url,
                 "deleted_at": proj.deleted_at,
