@@ -774,6 +774,7 @@ class Container:
         """
         from domains.generation import GenerationService
         from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+        from infrastructure.repositories.config_repository import SupabaseConfigRepository
         from domains.identity.tier_service import TierService
 
         if 'generation_service' not in self._services:
@@ -783,7 +784,8 @@ class Container:
 
             billing_service = await self.get_billing_service()
             asset_repository = SupabaseAssetRepository(db)
-            tier_service = TierService()
+            config_repo = SupabaseConfigRepository(db)
+            tier_service = TierService(config_repo)
 
             self._services['generation_service'] = GenerationService(
                 billing_service=billing_service,
