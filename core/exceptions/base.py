@@ -32,6 +32,12 @@ class ErrorCode(str, Enum):
     RESOURCE_ALREADY_EXISTS = "resource_already_exists"
     RESOURCE_CONFLICT = "resource_conflict"
     RESOURCE_DELETED = "resource_deleted"
+    USER_NOT_FOUND = "user_not_found"
+
+    # === Payment Errors ===
+    PAYMENT_FAILED = "payment_failed"
+    PAYMENT_INVALID = "payment_invalid"
+    CREDITS_INSUFFICIENT = "credits_insufficient"
 
     # === Upload Errors ===
     UPLOAD_FILE_TOO_LARGE = "upload_file_too_large"
