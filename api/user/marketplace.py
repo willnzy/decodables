@@ -540,12 +540,13 @@ async def get_my_listings(
         logger.error(f"Failed to get my listings: {result.error}")
         raise HTTPException(500, "Failed to get listings")
 
-    # Calculate page number from offset for response
-    page = (offset // limit) + 1 if limit > 0 else 1
+    # DDD compliant response with offset/limit
     return ListingsResponse(
         items=result.listings_list,
         total=result.total_count,
-        page=page,
+        offset=offset,
+        limit=limit,
+        has_more=offset + len(result.listings_list) < result.total_count,
     )
 
 
