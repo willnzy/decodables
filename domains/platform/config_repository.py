@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 
 
-class ConfigRepository(ABC):
+class IConfigRepository(ABC):
     """
     Abstract interface for system configuration data access.
 

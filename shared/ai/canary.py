@@ -15,7 +15,8 @@ import logging
 from typing import Tuple, Optional, Dict, Any
 
 from domains.platform.config_service import ConfigService
-from domains.platform.config_repository import ConfigRepository
+from infrastructure.repositories.config_repository import SupabaseConfigRepository
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,13 @@ logger = logging.getLogger(__name__)
 _config_service: Optional[ConfigService] = None
 
 
-def _get_config_service() -> ConfigService:
-    """Get or create global ConfigService instance."""
+async def _get_config_service() -> ConfigService:
+    """Get or create global ConfigService instance (async)."""
     global _config_service
     if _config_service is None:
-        _config_service = ConfigService(ConfigRepository())
+        db_client = await get_async_db_client()
+        config_repo = SupabaseConfigRepository(db_client)
+        _config_service = ConfigService(config_repo)
     return _config_service
 
 
@@ -57,7 +60,7 @@ async def get_canary_config() -> Dict[str, Any]:
             }
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     return await config_service.get_config("ai_model.canary") or {"enabled": False}
 
 

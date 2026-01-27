@@ -14,12 +14,12 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from core.database import DatabaseClient, retry_on_network_error
-from domains.platform.config_repository import ConfigRepository
+from domains.platform.config_repository import IConfigRepository
 
 logger = logging.getLogger(__name__)
 
 
-class SupabaseConfigRepository(ConfigRepository):
+class SupabaseConfigRepository(IConfigRepository):
     """
     Supabase implementation of configuration repository.
 

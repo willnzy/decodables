@@ -45,7 +45,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, Query, Path
 from pydantic import BaseModel, Field, field_validator
 
 from domains.platform.config_service import RATE_LIMIT_PRESETS, ConfigService
-from domains.platform.config_repository import ConfigRepository
+from domains.platform.config_repository import IConfigRepository
 from infrastructure.rate_limiter import limiter
 from container import get_container
 from dependencies import require_admin

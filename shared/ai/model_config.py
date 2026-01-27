@@ -15,7 +15,8 @@ import logging
 from typing import Dict, Any, Optional, List
 
 from domains.platform.config_service import ConfigService
-from domains.platform.config_repository import ConfigRepository
+from infrastructure.repositories.config_repository import SupabaseConfigRepository
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,13 @@ logger = logging.getLogger(__name__)
 _config_service: Optional[ConfigService] = None
 
 
-def _get_config_service() -> ConfigService:
-    """Get or create global ConfigService instance."""
+async def _get_config_service() -> ConfigService:
+    """Get or create global ConfigService instance (async)."""
     global _config_service
     if _config_service is None:
-        _config_service = ConfigService(ConfigRepository())
+        db_client = await get_async_db_client()
+        config_repo = SupabaseConfigRepository(db_client)
+        _config_service = ConfigService(config_repo)
     return _config_service
 
 
@@ -87,7 +90,7 @@ async def get_text_model_config() -> Dict[str, Any]:
             "show_provider": False
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     config = await config_service.get_config("ai_model.user.text_reasoning")
     if not config:
         logger.debug("[ModelConfig] Using default text model config")
@@ -110,7 +113,7 @@ async def get_image_model_config(tier: str = "t1") -> Dict[str, Any]:
             "show_provider": False
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     config = await config_service.get_config("ai_model.user.image_generation")
     if not config:
         logger.debug("[ModelConfig] Using default image model config")
@@ -139,7 +142,7 @@ async def get_admin_model_config() -> Dict[str, Any]:
             "fallback": {"provider": "openai", "model": "gpt-4o-mini"}
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     config = await config_service.get_config("ai_model.admin.analysis")
     if not config:
         logger.debug("[ModelConfig] Using default admin model config")
@@ -154,7 +157,7 @@ async def get_enabled_providers() -> Dict[str, bool]:
     Returns:
         {"openai": True, "fal": True, "qwen": False, ...}
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     config = await config_service.get_config("ai_providers.enabled")
     if not config:
         return DEFAULT_ENABLED_PROVIDERS.copy()
@@ -171,7 +174,7 @@ async def get_provider_models(provider: str) -> Dict[str, List[str]]:
     Returns:
         {"text": ["gpt-4o-mini", "gpt-4o"], "image": ["dall-e-3"]}
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     all_models = await config_service.get_config("ai_providers.models") or {}
     return all_models.get(provider, {})
 
@@ -187,7 +190,7 @@ async def get_all_provider_models() -> Dict[str, Dict[str, List[str]]]:
             ...
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     return await config_service.get_config("ai_providers.models") or {}
 
 
@@ -202,7 +205,7 @@ async def get_provider_timeout(provider: str, call_type: str = "text") -> int:
     Returns:
         超时秒数
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     timeouts = await config_service.get_config("ai_providers.timeouts") or {}
     provider_timeouts = timeouts.get(provider, {})
 
@@ -222,7 +225,7 @@ async def get_model_cost(provider: str, model: str) -> float:
     Returns:
         成本 (USD per 1M tokens 或 per image)
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     costs = await config_service.get_config("ai_providers.costs") or {}
     provider_costs = costs.get(provider, {})
     return provider_costs.get(model, 0.0)
@@ -240,7 +243,7 @@ async def get_retry_config() -> Dict[str, Any]:
             "retry_on_status": [429, 500, 502, 503, 504]
         }
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     return await config_service.get_config("ai_providers.retry") or {
         "max_retries": 3,
         "base_delay_ms": 1000,

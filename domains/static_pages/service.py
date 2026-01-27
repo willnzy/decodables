@@ -21,7 +21,7 @@ from .repository import StaticPageRepository
 
 if TYPE_CHECKING:
     from domains.identity.tier_service import TierService
-    from domains.platform.config_repository import ConfigRepository
+    from domains.platform.config_repository import IConfigRepository
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class StaticPageService:
         self,
         repository: StaticPageRepository,
         tier_service: Optional["TierService"] = None,
-        config_repo: Optional["ConfigRepository"] = None,
+        config_repo: Optional["IConfigRepository"] = None,
     ):
         """
         Initialize StaticPageService.

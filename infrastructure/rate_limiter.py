@@ -22,7 +22,8 @@ from slowapi.util import get_remote_address
 from core.cache import is_redis_available
 from core.cache.redis_provider import get_redis_client
 from domains.platform.config_service import ConfigService, DEFAULT_RATE_LIMITS
-from domains.platform.config_repository import ConfigRepository
+from infrastructure.repositories.config_repository import SupabaseConfigRepository
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +60,13 @@ limiter = create_limiter_from_url()
 _config_service: Optional[ConfigService] = None
 
 
-def get_config_service() -> ConfigService:
-    """Get or create global ConfigService instance."""
+async def get_config_service() -> ConfigService:
+    """Get or create global ConfigService instance (async)."""
     global _config_service
     if _config_service is None:
-        _config_service = ConfigService(ConfigRepository())
+        db_client = await get_async_db_client()
+        config_repo = SupabaseConfigRepository(db_client)
+        _config_service = ConfigService(config_repo)
     return _config_service
 
 
@@ -85,7 +88,7 @@ def dynamic_limit(config_key: str):
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(request: Request, *args, **kwargs):
-            config_service = get_config_service()
+            config_service = await get_config_service()
 
             # Check if rate limiting is enabled
             enabled = await config_service.is_rate_limit_enabled(config_key)
@@ -109,7 +112,7 @@ def dynamic_limit(config_key: str):
 
         @wraps(func)
         async def sync_wrapper(request: Request, *args, **kwargs):
-            config_service = get_config_service()
+            config_service = await get_config_service()
 
             # Check if rate limiting is enabled
             enabled = await config_service.is_rate_limit_enabled(config_key)
@@ -153,7 +156,7 @@ async def get_current_limits() -> dict:
             "storage": "redis" or "memory"
         }
     """
-    config_service = get_config_service()
+    config_service = await get_config_service()
     configs = await config_service.get_all_configs("rate_limit")
 
     limits = {}

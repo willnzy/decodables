@@ -13,7 +13,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from core.cache import cache_service
-from domains.platform.config_repository import ConfigRepository
+from domains.platform.config_repository import IConfigRepository
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class ConfigService:
     Handles system configuration management with caching.
     """
 
-    def __init__(self, config_repo: ConfigRepository):
+    def __init__(self, config_repo: IConfigRepository):
         """
         Initialize service with repository.
 
