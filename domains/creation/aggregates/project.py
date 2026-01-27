@@ -61,6 +61,9 @@ class Project:
     # v3.33 Phase 2.6: Folder organization and starring
     folder_id: Optional[str] = None
     is_starred: bool = False
+    # Soft delete support
+    deleted_at: Optional[datetime] = None
+    recovery_expires_at: Optional[datetime] = None
 
     @classmethod
     def create_new(

@@ -402,6 +402,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             # v3.33 Phase 2.6: Folder organization and starring
             folder_id=row.get("folder_id"),
             is_starred=row.get("is_starred", False),
+            # Soft delete support
+            deleted_at=datetime.fromisoformat(row["deleted_at"].replace("Z", "+00:00"))
+                if row.get("deleted_at") else None,
+            recovery_expires_at=datetime.fromisoformat(row["recovery_expires_at"].replace("Z", "+00:00"))
+                if row.get("recovery_expires_at") else None,
         )
 
     def _map_to_page(self, row: dict) -> Page:

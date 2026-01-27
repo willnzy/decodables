@@ -537,7 +537,7 @@ class CreationService:
             project_dicts.append({
                 "id": proj.project_id,
                 "title": proj.title,
-                "thumbnail_url": proj.thumbnail_url,
+                "thumbnail_url": proj.metadata.thumbnail_url,
                 "deleted_at": proj.deleted_at,
                 "recovery_expires_at": proj.recovery_expires_at,
             })
