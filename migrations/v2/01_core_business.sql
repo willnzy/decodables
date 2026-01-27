@@ -5,9 +5,10 @@
 -- 说明: 用户、积分、项目、素材、市场、Workspace、Tag
 -- 执行顺序: 第 1 个执行
 -- 生成时间: 2026-01-10
--- 更新时间: 2026-01-27 (v3.33 Phase 0: Workspace + Tag 系统)
+-- 更新时间: 2026-01-28 (v3.33 Phase 2.6: Folder + Star)
 --
 -- v3.33 变更:
+--   Phase 0:
 --   - profiles: 新增 trial_extended_days 字段
 --   - 新增 workspaces 表 (用户 Workspace)
 --   - 新增 tags 表 (用户级标签，替代旧系统级标签)
@@ -17,6 +18,10 @@
 --   - projects/assets: 新增 workspace_id 字段
 --   - asset_tags -> legacy_system_tags (已废弃)
 --   - asset_tag_relations -> legacy_asset_tag_relations (已废弃)
+--   Phase 2.6:
+--   - 新增 folders 表 (文件夹系统，支持 8 色标记)
+--   - projects: 新增 folder_id, is_starred 字段
+--   - assets: 新增 folder_id, is_starred 字段
 -- ============================================================================
 
 -- 开始事务
@@ -259,6 +264,48 @@ CREATE TRIGGER update_workspaces_updated_at
 
 
 -- ----------------------------------------------------------------------------
+-- 3.1 folders (文件夹 - v3.33 Phase 2.6)
+-- 说明: Project/Asset 共用的文件夹系统，支持 8 色标记
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- 归属 Workspace
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+
+    -- 文件夹类型 (区分 Project 文件夹和 Asset 文件夹)
+    folder_type TEXT NOT NULL CHECK (folder_type IN ('project', 'asset')),
+
+    -- 基础信息
+    name TEXT NOT NULL,
+    color TEXT DEFAULT 'slate' CHECK (color IN ('slate', 'red', 'orange', 'amber', 'emerald', 'cyan', 'blue', 'violet')),
+
+    -- 排序
+    sort_order INTEGER DEFAULT 0,
+
+    -- 创建者
+    created_by TEXT NOT NULL REFERENCES profiles(id),
+
+    -- 时间戳
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- 唯一约束: 同一 Workspace 内同类型文件夹名称唯一
+    UNIQUE (workspace_id, folder_type, name)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_folders_workspace_type ON folders(workspace_id, folder_type);
+
+-- 触发器
+DROP TRIGGER IF EXISTS update_folders_updated_at ON folders;
+CREATE TRIGGER update_folders_updated_at
+    BEFORE UPDATE ON folders
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ----------------------------------------------------------------------------
 -- 4. legacy_system_tags (旧系统级标签 - 已废弃，保留兼容)
 -- 注意: 此表已废弃，新标签系统使用 tags 表 (用户级标签)
 -- ----------------------------------------------------------------------------
@@ -379,6 +426,10 @@ CREATE TABLE IF NOT EXISTS projects (
 
     -- v3.33: Workspace 关联 (可空，向后兼容现有项目)
     workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
+
+    -- v3.33 Phase 2.6: 文件夹和收藏
+    folder_id UUID REFERENCES folders(id) ON DELETE SET NULL,
+    is_starred BOOLEAN DEFAULT FALSE,
 
     -- 项目信息
     title TEXT NOT NULL DEFAULT 'My Magic Story',
@@ -597,6 +648,10 @@ CREATE TABLE IF NOT EXISTS assets (
     -- v3.33: Workspace 关联 (可空，向后兼容现有素材)
     workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
 
+    -- v3.33 Phase 2.6: 文件夹和收藏
+    folder_id UUID REFERENCES folders(id) ON DELETE SET NULL,
+    is_starred BOOLEAN DEFAULT FALSE,
+
     url TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('image', 'video', 'audio', 'document')),
 
@@ -632,6 +687,15 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE INDEX IF NOT EXISTS idx_assets_workspace
 ON assets(workspace_id)
 WHERE workspace_id IS NOT NULL;
+
+-- v3.33 Phase 2.6: Folder and Star indexes for assets
+CREATE INDEX IF NOT EXISTS idx_assets_folder
+ON assets(folder_id)
+WHERE folder_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_assets_starred
+ON assets(user_id, is_starred)
+WHERE is_starred = TRUE;
 
 
 -- ----------------------------------------------------------------------------
@@ -1324,6 +1388,15 @@ WHERE idempotency_key IS NOT NULL AND is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_projects_workspace
 ON projects(workspace_id)
 WHERE workspace_id IS NOT NULL;
+
+-- v3.33 Phase 2.6: Folder and Star indexes for projects
+CREATE INDEX IF NOT EXISTS idx_projects_folder
+ON projects(folder_id)
+WHERE folder_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_projects_starred
+ON projects(user_id, is_starred)
+WHERE is_starred = TRUE;
 
 
 -- ============================================================================

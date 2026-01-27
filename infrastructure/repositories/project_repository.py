@@ -399,6 +399,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 if row.get("created_at") else datetime.utcnow(),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
                 if row.get("updated_at") else datetime.utcnow(),
+            # v3.33 Phase 2.6: Folder organization and starring
+            folder_id=row.get("folder_id"),
+            is_starred=row.get("is_starred", False),
         )
 
     def _map_to_page(self, row: dict) -> Page:
@@ -440,6 +443,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         # v2.1.0: Add idempotency_key if present
         if hasattr(project, 'idempotency_key') and project.idempotency_key:
             row["idempotency_key"] = project.idempotency_key
+        # v3.33 Phase 2.6: Folder organization and starring
+        if hasattr(project, 'folder_id'):
+            row["folder_id"] = project.folder_id
+        if hasattr(project, 'is_starred'):
+            row["is_starred"] = project.is_starred
         return row
 
     # Extended Methods
@@ -1025,3 +1033,123 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 return None
             logger.error(f"Failed to get project by idempotency_key: {e}")
             return None
+
+    # ==========================================
+    # v3.33 Phase 2.6: Folder Organization and Starring
+    # ==========================================
+
+    @retry_on_network_error()
+    async def move_to_folder(
+        self,
+        project_id: str,
+        user_id: str,
+        folder_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Move project to a folder (or root if folder_id is None).
+
+        Args:
+            project_id: Project ID
+            user_id: User ID (for ownership check)
+            folder_id: Target folder ID (None = move to root)
+
+        Returns:
+            Updated project dict or None if not found/unauthorized
+        """
+        result = await self.client.table("projects").update({
+            "folder_id": folder_id,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", project_id).eq("user_id", user_id).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def toggle_star(
+        self,
+        project_id: str,
+        user_id: str,
+        is_starred: bool
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Toggle project starred status.
+
+        Args:
+            project_id: Project ID
+            user_id: User ID (for ownership check)
+            is_starred: New starred status
+
+        Returns:
+            Updated project dict or None if not found/unauthorized
+        """
+        result = await self.client.table("projects").update({
+            "is_starred": is_starred,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", project_id).eq("user_id", user_id).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def get_by_folder(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        offset: int = 0,
+        limit: int = 50,
+        search: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get projects in a specific folder.
+
+        Args:
+            user_id: User ID
+            folder_id: Folder ID (None = root/unfiled)
+            offset: Number of records to skip
+            limit: Number of records to return
+            search: Optional search query
+
+        Returns:
+            List of project dicts
+        """
+        query = self.client.table("projects").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False)
+
+        if folder_id is None:
+            query = query.is_("folder_id", "null")
+        else:
+            query = query.eq("folder_id", folder_id)
+
+        if search and search.strip():
+            query = query.ilike("title", f"%{search.strip()}%")
+
+        result = await query.order("is_starred", desc=True).order(
+            "updated_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+
+        return result.data or []
+
+    @retry_on_network_error()
+    async def get_starred(
+        self,
+        user_id: str,
+        offset: int = 0,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get starred projects.
+
+        Args:
+            user_id: User ID
+            offset: Number of records to skip
+            limit: Number of records to return
+
+        Returns:
+            List of starred project dicts
+        """
+        result = await self.client.table("projects").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False).eq("is_starred", True).order(
+            "updated_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+
+        return result.data or []

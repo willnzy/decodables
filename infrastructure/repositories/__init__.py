@@ -50,6 +50,8 @@ from .webhook_repository import SupabaseWebhookRepository
 from .article_repository import SupabaseArticleRepository
 from .static_page_repository import SupabaseStaticPageRepository
 from .notification_template_repository import SupabaseNotificationTemplateRepository
+from .workspace_repository import SupabaseWorkspaceRepository
+from .folder_repository import SupabaseFolderRepository
 
 __all__ = [
     # Base Repository
@@ -91,4 +93,6 @@ __all__ = [
     'SupabaseArticleRepository',
     'SupabaseStaticPageRepository',
     'SupabaseNotificationTemplateRepository',
+    'SupabaseWorkspaceRepository',
+    'SupabaseFolderRepository',
 ]

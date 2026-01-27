@@ -42,6 +42,10 @@ Endpoints:
 - GET /api/v2/user/assets/dashboard?view=all&offset=0&limit=15 - Asset dashboard (with view filter)
 - GET /api/v2/user/assets/deleted?offset=0&limit=50 - Get deleted assets (paginated)
 - POST /api/v2/user/assets/{asset_id}/restore - Restore asset
+- GET /api/v2/user/assets/starred - List starred assets (v3.33)
+- GET /api/v2/user/assets/folder/{folder_id} - List assets in folder (v3.33)
+- POST /api/v2/user/assets/{asset_id}/move - Move asset to folder (v3.33)
+- POST /api/v2/user/assets/{asset_id}/star - Toggle star status (v3.33)
 """
 
 import re
@@ -472,3 +476,219 @@ async def restore(
     log_activity(ctx.user_id, "restore_asset", {"asset_id": asset_id})
 
     return {"status": "ok", "asset": result.asset}
+
+
+# ==========================================
+# v3.33 Phase 2.6: Folder and Star Endpoints
+# ==========================================
+
+class MoveAssetToFolderRequest(BaseModel):
+    """Request to move asset to a folder."""
+    folder_id: Optional[str] = Field(None, description="Target folder ID (null = move to root)")
+
+
+class ToggleAssetStarRequest(BaseModel):
+    """Request to toggle asset star status."""
+    is_starred: bool = Field(..., description="New starred status")
+
+
+class AssetMoveResponse(BaseModel):
+    """Response for move operation."""
+    success: bool
+    folder_id: Optional[str] = None
+
+
+class AssetStarResponse(BaseModel):
+    """Response for star operation."""
+    success: bool
+    is_starred: bool
+
+
+@router.post("/{asset_id}/move")
+@limiter.limit("30/minute")
+async def move_asset_to_folder(
+    request: Request,
+    asset_id: str,
+    req: MoveAssetToFolderRequest,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
+):
+    """
+    Move asset to a folder (or root if folder_id is null).
+
+    v3.33 Phase 2.6: Folder organization support.
+
+    Args:
+        asset_id: Asset ID to move
+        req: MoveAssetToFolderRequest with target folder_id
+
+    Returns:
+        AssetMoveResponse with success status
+    """
+    # Validate asset_id format
+    validate_uuid_id(asset_id, "asset ID")
+
+    container = get_container()
+
+    # Validate folder belongs to user's workspace (if not moving to root)
+    if req.folder_id:
+        validate_uuid_id(req.folder_id, "folder ID")
+        folder_service = await container.get_folder_service()
+        if not await folder_service.validate_folder_access(req.folder_id, ctx.workspace_id):
+            from fastapi import HTTPException
+            raise HTTPException(404, "Folder not found")
+
+    # Get asset repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseAssetRepository(db)
+
+    result = await repo.move_to_folder(asset_id, ctx.user_id, req.folder_id)
+
+    if not result:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Asset not found or access denied")
+
+    return AssetMoveResponse(success=True, folder_id=req.folder_id)
+
+
+@router.post("/{asset_id}/star")
+@limiter.limit("60/minute")
+async def toggle_asset_star(
+    request: Request,
+    asset_id: str,
+    req: ToggleAssetStarRequest,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
+):
+    """
+    Toggle asset starred status.
+
+    v3.33 Phase 2.6: Asset starring support.
+
+    Args:
+        asset_id: Asset ID to star/unstar
+        req: ToggleAssetStarRequest with is_starred value
+
+    Returns:
+        AssetStarResponse with new starred status
+    """
+    # Validate asset_id format
+    validate_uuid_id(asset_id, "asset ID")
+
+    # Get asset repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseAssetRepository(db)
+
+    result = await repo.toggle_star(asset_id, ctx.user_id, req.is_starred)
+
+    if not result:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Asset not found or access denied")
+
+    return AssetStarResponse(success=True, is_starred=req.is_starred)
+
+
+@router.get("/folder/{folder_id}")
+@limiter.limit("60/minute")
+async def list_assets_by_folder(
+    request: Request,
+    folder_id: str,
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
+    search: Optional[str] = None,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
+):
+    """
+    Get assets in a specific folder.
+
+    v3.33 Phase 2.6: Folder filtering support.
+    Note: Use folder_id="root" to get unfiled assets.
+
+    Args:
+        folder_id: Folder ID (or "root" for unfiled)
+        offset: Number of records to skip
+        limit: Number of records to return
+        search: Optional search query
+
+    Returns:
+        Dict with items, total, offset, limit
+    """
+    container = get_container()
+
+    # Handle "root" as unfiled assets
+    target_folder_id: Optional[str] = None if folder_id == "root" else folder_id
+
+    # Validate folder belongs to user's workspace (if not root)
+    if target_folder_id:
+        validate_uuid_id(target_folder_id, "folder ID")
+        folder_service = await container.get_folder_service()
+        if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
+            from fastapi import HTTPException
+            raise HTTPException(404, "Folder not found")
+
+    # Get asset repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseAssetRepository(db)
+
+    items = await repo.get_by_folder(
+        user_id=ctx.user_id,
+        folder_id=target_folder_id,
+        offset=offset,
+        limit=limit,
+        search=search,
+    )
+
+    return {
+        "items": items,
+        "total": len(items),  # Approximate; exact count would need separate query
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@router.get("/starred")
+@limiter.limit("60/minute")
+async def list_starred_assets(
+    request: Request,
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
+):
+    """
+    Get starred assets.
+
+    v3.33 Phase 2.6: Starred assets view.
+
+    Args:
+        offset: Number of records to skip
+        limit: Number of records to return
+
+    Returns:
+        Dict with items, total, offset, limit
+    """
+    # Get asset repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseAssetRepository(db)
+
+    items = await repo.get_starred(
+        user_id=ctx.user_id,
+        offset=offset,
+        limit=limit,
+    )
+
+    return {
+        "items": items,
+        "total": len(items),  # Approximate; exact count would need separate query
+        "offset": offset,
+        "limit": limit,
+    }

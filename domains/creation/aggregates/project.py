@@ -58,6 +58,9 @@ class Project:
     idempotency_key: Optional[str] = None
     # Flag for locked elements (marketplace assets)
     contains_locked_elements: bool = False
+    # v3.33 Phase 2.6: Folder organization and starring
+    folder_id: Optional[str] = None
+    is_starred: bool = False
 
     @classmethod
     def create_new(
@@ -274,4 +277,7 @@ class Project:
             "collaborators": self.collaborators,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+            # v3.33 Phase 2.6: Folder organization and starring
+            "folder_id": self.folder_id,
+            "is_starred": self.is_starred,
         }

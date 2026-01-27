@@ -19,12 +19,16 @@ Endpoints:
 - GET /api/v2/user/projects - List user projects
 - GET /api/v2/user/projects/dashboard - Dashboard view
 - GET /api/v2/user/projects/deleted - List deleted projects
+- GET /api/v2/user/projects/starred - List starred projects (v3.33)
+- GET /api/v2/user/projects/folder/{folder_id} - List projects in folder (v3.33)
 - POST /api/v2/user/projects - Create project
 - GET /api/v2/user/projects/{id} - Get project details
 - PUT /api/v2/user/projects/{id} - Update project
 - DELETE /api/v2/user/projects/{id} - Delete project
 - POST /api/v2/user/projects/{id}/restore - Restore deleted project
 - POST /api/v2/user/projects/{id}/duplicate - Duplicate project
+- POST /api/v2/user/projects/{id}/move - Move project to folder (v3.33)
+- POST /api/v2/user/projects/{id}/star - Toggle star status (v3.33)
 """
 
 import logging
@@ -656,3 +660,203 @@ async def duplicate_project(
     except Exception as e:
         logger.error(f"Failed to duplicate project {project_id}: {e}")
         raise HTTPException(500, "Failed to duplicate project")
+
+
+# ==========================================
+# v3.33 Phase 2.6: Folder and Star Endpoints
+# ==========================================
+
+class MoveToFolderRequest(BaseModel):
+    """Request to move project to a folder."""
+    folder_id: Optional[str] = Field(None, description="Target folder ID (null = move to root)")
+
+
+class ToggleStarRequest(BaseModel):
+    """Request to toggle project star status."""
+    is_starred: bool = Field(..., description="New starred status")
+
+
+class ProjectMoveResponse(BaseModel):
+    """Response for move operation."""
+    success: bool
+    folder_id: Optional[str] = None
+
+
+class ProjectStarResponse(BaseModel):
+    """Response for star operation."""
+    success: bool
+    is_starred: bool
+
+
+@router.post("/{project_id}/move")
+@limiter.limit("30/minute")
+async def move_project_to_folder(
+    request: Request,
+    project_id: str,
+    req: MoveToFolderRequest,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectMoveResponse:
+    """
+    Move project to a folder (or root if folder_id is null).
+
+    v3.33 Phase 2.6: Folder organization support.
+
+    Args:
+        project_id: Project ID to move
+        req: MoveToFolderRequest with target folder_id
+
+    Returns:
+        ProjectMoveResponse with success status
+    """
+    container = get_container()
+
+    # Validate folder belongs to user's workspace (if not moving to root)
+    if req.folder_id:
+        folder_service = await container.get_folder_service()
+        if not await folder_service.validate_folder_access(req.folder_id, ctx.workspace_id):
+            raise HTTPException(404, "Folder not found")
+
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    result = await repo.move_to_folder(project_id, ctx.user_id, req.folder_id)
+
+    if not result:
+        raise HTTPException(404, "Project not found or access denied")
+
+    return ProjectMoveResponse(success=True, folder_id=req.folder_id)
+
+
+@router.post("/{project_id}/star")
+@limiter.limit("60/minute")
+async def toggle_project_star(
+    request: Request,
+    project_id: str,
+    req: ToggleStarRequest,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectStarResponse:
+    """
+    Toggle project starred status.
+
+    v3.33 Phase 2.6: Project starring support.
+
+    Args:
+        project_id: Project ID to star/unstar
+        req: ToggleStarRequest with is_starred value
+
+    Returns:
+        ProjectStarResponse with new starred status
+    """
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    result = await repo.toggle_star(project_id, ctx.user_id, req.is_starred)
+
+    if not result:
+        raise HTTPException(404, "Project not found or access denied")
+
+    return ProjectStarResponse(success=True, is_starred=req.is_starred)
+
+
+@router.get("/folder/{folder_id}")
+async def list_projects_by_folder(
+    folder_id: str,
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    search: Optional[str] = None,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectListResponse:
+    """
+    Get projects in a specific folder.
+
+    v3.33 Phase 2.6: Folder filtering support.
+    Note: Use folder_id="root" to get unfiled projects.
+
+    Args:
+        folder_id: Folder ID (or "root" for unfiled)
+        offset: Number of records to skip
+        limit: Number of records to return
+        search: Optional search query
+
+    Returns:
+        ProjectListResponse with projects in the folder
+    """
+    container = get_container()
+
+    # Handle "root" as unfiled projects
+    target_folder_id: Optional[str] = None if folder_id == "root" else folder_id
+
+    # Validate folder belongs to user's workspace (if not root)
+    if target_folder_id:
+        folder_service = await container.get_folder_service()
+        if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
+            raise HTTPException(404, "Folder not found")
+
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    items = await repo.get_by_folder(
+        user_id=ctx.user_id,
+        folder_id=target_folder_id,
+        offset=offset,
+        limit=limit,
+        search=search,
+    )
+
+    return ProjectListResponse(
+        items=items,
+        total=len(items),  # Approximate; exact count would need separate query
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/starred")
+async def list_starred_projects(
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectListResponse:
+    """
+    Get starred projects.
+
+    v3.33 Phase 2.6: Starred projects view.
+
+    Args:
+        offset: Number of records to skip
+        limit: Number of records to return
+
+    Returns:
+        ProjectListResponse with starred projects
+    """
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    items = await repo.get_starred(
+        user_id=ctx.user_id,
+        offset=offset,
+        limit=limit,
+    )
+
+    return ProjectListResponse(
+        items=items,
+        total=len(items),  # Approximate; exact count would need separate query
+        offset=offset,
+        limit=limit,
+    )

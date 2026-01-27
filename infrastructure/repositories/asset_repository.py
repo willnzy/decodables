@@ -527,3 +527,123 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             "has_more": offset + len(items) < total,
             "counts": counts,
         }
+
+    # ==========================================
+    # v3.33 Phase 2.6: Folder Organization and Starring
+    # ==========================================
+
+    @retry_on_network_error()
+    async def move_to_folder(
+        self,
+        asset_id: str,
+        user_id: str,
+        folder_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Move asset to a folder (or root if folder_id is None).
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+            folder_id: Target folder ID (None = move to root)
+
+        Returns:
+            Updated asset dict or None if not found/unauthorized
+        """
+        result = await self.client.table("assets").update({
+            "folder_id": folder_id,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", asset_id).eq("user_id", user_id).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def toggle_star(
+        self,
+        asset_id: str,
+        user_id: str,
+        is_starred: bool
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Toggle asset starred status.
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+            is_starred: New starred status
+
+        Returns:
+            Updated asset dict or None if not found/unauthorized
+        """
+        result = await self.client.table("assets").update({
+            "is_starred": is_starred,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", asset_id).eq("user_id", user_id).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def get_by_folder(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        offset: int = 0,
+        limit: int = 50,
+        search: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get assets in a specific folder.
+
+        Args:
+            user_id: User ID
+            folder_id: Folder ID (None = root/unfiled)
+            offset: Number of records to skip
+            limit: Number of records to return
+            search: Optional search query
+
+        Returns:
+            List of asset dicts
+        """
+        query = self.client.table("assets").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False)
+
+        if folder_id is None:
+            query = query.is_("folder_id", "null")
+        else:
+            query = query.eq("folder_id", folder_id)
+
+        if search and search.strip():
+            query = query.ilike("name", f"%{search.strip()}%")
+
+        result = await query.order("is_starred", desc=True).order(
+            "created_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+
+        return result.data or []
+
+    @retry_on_network_error()
+    async def get_starred(
+        self,
+        user_id: str,
+        offset: int = 0,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get starred assets.
+
+        Args:
+            user_id: User ID
+            offset: Number of records to skip
+            limit: Number of records to return
+
+        Returns:
+            List of starred asset dicts
+        """
+        result = await self.client.table("assets").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False).eq("is_starred", True).order(
+            "created_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+
+        return result.data or []

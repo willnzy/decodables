@@ -1118,6 +1118,27 @@ class Container:
             )
         return self._services['asset_tag_service']
 
+    async def get_folder_service(self):
+        """
+        Get folder service instance (v3.33 Phase 2.6, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by Folder API for folder CRUD operations
+        - Phase 2.6: Full folder management with 8-color system
+        """
+        from domains.folder import FolderService
+        from infrastructure.repositories.folder_repository import SupabaseFolderRepository
+
+        if 'folder_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseFolderRepository(db)
+            self._services['folder_service'] = FolderService(repository)
+        return self._services['folder_service']
+
     # ========== Command Handlers (v2.0 - Async Methods) ==========
 
     async def get_deduct_credits_handler(self) -> DeductCreditsHandler:
