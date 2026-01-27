@@ -199,7 +199,7 @@ async def get_generation_history(
             user.user_id, limit, offset, favorites_only
         )
     except Exception as e:
-        logger.error(f"Get history failed for user {user['id'][:8]}...: {e}")
+        logger.error(f"Get history failed for user {user.user_id[:8]}...: {e}")
         raise HTTPException(500, "Failed to fetch generation history")
 
     return GenerationHistoryResponse(

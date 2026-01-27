@@ -104,7 +104,7 @@ class GenerationHistoryService:
         if favorites_only:
             count_query = count_query.eq("is_favorited", True)
 
-        count_result = count_query.execute()
+        count_result = await count_query.execute()
 
         # Extract count
         total_count = count_result.count if count_result.count is not None else len(result.data or [])
