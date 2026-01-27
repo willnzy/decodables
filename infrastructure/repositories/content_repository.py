@@ -138,7 +138,7 @@ class SupabaseContentRepository(ISystemResourceRepository):
             .maybe_single() \
             .execute()
 
-        if not result.data:
+        if not result or not result.data:
             return None
 
         return self._to_entity(result.data)
@@ -186,7 +186,7 @@ class SupabaseContentRepository(ISystemResourceRepository):
 
         result = await query.execute()
 
-        if not result.data:
+        if not result or not result.data:
             return []
 
         return [self._to_entity(item) for item in result.data]
