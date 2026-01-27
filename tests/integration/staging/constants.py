@@ -71,6 +71,16 @@ class Endpoints:
     def project_duplicate(project_id: str) -> str:
         return f"{API_V2}/user/projects/{project_id}/duplicate"
 
+    @staticmethod
+    def project_move(project_id: str) -> str:
+        """Move project to folder (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/projects/{project_id}/move"
+
+    @staticmethod
+    def project_star(project_id: str) -> str:
+        """Toggle project star status (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/projects/{project_id}/star"
+
     # AI Generation (router prefix is /generate/images, endpoint is /images)
     GENERATE_IMAGES = f"{API_V2}/user/generate/images/images"
     GENERATE_IMAGES_ASYNC = f"{API_V2}/user/generate/images/images/async"
@@ -95,6 +105,14 @@ class Endpoints:
     ASSETS = f"{API_V2}/user/assets"
     ASSETS_DASHBOARD = f"{API_V2}/user/assets/dashboard"
     ASSETS_DELETED = f"{API_V2}/user/assets/deleted"
+
+    # Folders (v3.33 Phase 2.6)
+    FOLDERS = f"{API_V2}/user/folders"
+    FOLDERS_REORDER = f"{API_V2}/user/folders/reorder"
+
+    @staticmethod
+    def folder(folder_id: str) -> str:
+        return f"{API_V2}/user/folders/{folder_id}"
 
     # Config
     CONFIG = f"{API_V2}/user/config"
@@ -186,6 +204,16 @@ class Endpoints:
     @staticmethod
     def asset_restore(asset_id: str) -> str:
         return f"{API_V2}/user/assets/{asset_id}/restore"
+
+    @staticmethod
+    def asset_move(asset_id: str) -> str:
+        """Move asset to folder (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/assets/{asset_id}/move"
+
+    @staticmethod
+    def asset_star(asset_id: str) -> str:
+        """Toggle asset star status (v3.33 Phase 2.6)"""
+        return f"{API_V2}/user/assets/{asset_id}/star"
 
     @staticmethod
     def asset_increment_usage(asset_id: str) -> str:

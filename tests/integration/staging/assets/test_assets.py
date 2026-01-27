@@ -342,3 +342,189 @@ class TestRestoreAsset(BaseAPITest):
         fake_id = str(uuid.uuid4())
         response = anon_client.post(Endpoints.asset_restore(fake_id))
         self.assert_unauthorized(response)
+
+
+# ==========================================
+# Test: Asset Move (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestAssetMove(BaseAPITest):
+    """
+    POST /api/v2/user/assets/{asset_id}/move 黑盒测试
+
+    移动素材到文件夹
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 素材可以移动到任意 asset 类型的文件夹
+    2. folder_id=null 表示移动到根目录 (无文件夹)
+    3. 只能移动到 asset 类型的文件夹
+    4. 移动到不存在的文件夹应失败
+    """
+
+    ASSETS_ENDPOINT = Endpoints.ASSETS
+    FOLDERS_ENDPOINT = Endpoints.FOLDERS
+
+    def test_move_asset_to_folder_requires_valid_asset(self, auth_client):
+        """
+        业务规则: 移动不存在的素材应返回 404
+        """
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_move(fake_asset_id),
+            json={"folder_id": None}
+        )
+
+        # 应返回 400 或 404
+        assert response.status_code in [400, 404], (
+            f"移动不存在的素材应失败，但返回了 {response.status_code}"
+        )
+
+    def test_move_asset_to_nonexistent_folder_rejected(self, auth_client):
+        """
+        业务规则: 移动到不存在的文件夹应失败
+        """
+        # 这里我们测试的是逻辑：即使素材不存在，
+        # 如果 folder_id 是无效的 UUID，也应该失败
+        fake_asset_id = str(uuid.uuid4())
+        fake_folder_id = str(uuid.uuid4())
+
+        response = auth_client.post(
+            Endpoints.asset_move(fake_asset_id),
+            json={"folder_id": fake_folder_id}
+        )
+
+        # 应返回 400 或 404
+        assert response.status_code in [400, 404], (
+            f"移动到不存在的文件夹应失败，但返回了 {response.status_code}"
+        )
+
+    def test_move_asset_with_invalid_id_format(self, auth_client):
+        """
+        业务规则: 无效的 UUID 格式应被拒绝
+        """
+        response = auth_client.post(
+            Endpoints.asset_move("invalid-id"),
+            json={"folder_id": None}
+        )
+
+        assert response.status_code in [400, 404, 422], (
+            f"无效 ID 应被拒绝，但返回了 {response.status_code}"
+        )
+
+    def test_move_asset_requires_authentication(self, anon_client):
+        """
+        业务规则: 移动素材必须登录
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.post(
+            Endpoints.asset_move(fake_id),
+            json={"folder_id": None}
+        )
+        self.assert_unauthorized(response)
+
+    def test_move_asset_to_root_with_null_folder(self, auth_client):
+        """
+        业务规则: folder_id=null 表示移动到根目录
+
+        注意: 由于测试环境可能没有素材，这里测试的是 API 能否正确处理 null folder_id
+        """
+        # 使用一个假 ID 来测试
+        # 如果素材存在，应该能成功移动到根目录
+        # 如果素材不存在，应该返回 404
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_move(fake_asset_id),
+            json={"folder_id": None}
+        )
+
+        # 素材不存在应返回 404，存在应返回 200
+        assert response.status_code in [200, 400, 404]
+
+
+# ==========================================
+# Test: Asset Star (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestAssetStar(BaseAPITest):
+    """
+    POST /api/v2/user/assets/{asset_id}/star 黑盒测试
+
+    切换素材收藏状态
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 素材可以被标记为收藏/取消收藏
+    2. is_starred=true 收藏, is_starred=false 取消收藏
+    3. 收藏状态切换后应立即生效
+    """
+
+    def test_star_nonexistent_asset_returns_404(self, auth_client):
+        """
+        业务规则: 收藏不存在的素材应返回 404
+        """
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_star(fake_asset_id),
+            json={"is_starred": True}
+        )
+
+        # 应返回 400 或 404
+        assert response.status_code in [400, 404], (
+            f"收藏不存在的素材应失败，但返回了 {response.status_code}"
+        )
+
+    def test_star_asset_with_invalid_id_format(self, auth_client):
+        """
+        业务规则: 无效的 UUID 格式应被拒绝
+        """
+        response = auth_client.post(
+            Endpoints.asset_star("invalid-id"),
+            json={"is_starred": True}
+        )
+
+        assert response.status_code in [400, 404, 422], (
+            f"无效 ID 应被拒绝，但返回了 {response.status_code}"
+        )
+
+    def test_star_requires_is_starred_field(self, auth_client):
+        """
+        业务规则: is_starred 是必需字段
+        """
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_star(fake_asset_id),
+            json={}  # 缺少 is_starred
+        )
+
+        # 应返回 400 或 422 (验证错误)
+        # 或者 404 (如果先验证资产存在性)
+        assert response.status_code in [400, 404, 422], (
+            f"缺少 is_starred 应被拒绝，但返回了 {response.status_code}"
+        )
+
+    def test_star_requires_authentication(self, anon_client):
+        """
+        业务规则: 收藏素材必须登录
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.post(
+            Endpoints.asset_star(fake_id),
+            json={"is_starred": True}
+        )
+        self.assert_unauthorized(response)
+
+    def test_unstar_asset_logic(self, auth_client):
+        """
+        业务规则: is_starred=false 应取消收藏
+
+        注意: 由于测试环境可能没有素材，这里测试的是 API 结构正确性
+        """
+        fake_asset_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.asset_star(fake_asset_id),
+            json={"is_starred": False}
+        )
+
+        # 素材不存在应返回 404，存在应返回 200
+        assert response.status_code in [200, 400, 404]

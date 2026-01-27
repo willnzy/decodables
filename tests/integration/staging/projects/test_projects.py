@@ -476,3 +476,320 @@ class TestProjectDashboard(BaseAPITest):
         """
         response = anon_client.get(self.ENDPOINT)
         self.assert_unauthorized(response)
+
+
+# ==========================================
+# Test: Project Move (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestProjectMove(BaseAPITest):
+    """
+    POST /api/v2/user/projects/{project_id}/move 黑盒测试
+
+    移动项目到文件夹
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 项目可以移动到任意文件夹
+    2. folder_id=null 表示移动到根目录 (无文件夹)
+    3. 只能移动到 project 类型的文件夹
+    4. 移动到不存在的文件夹应失败
+    """
+
+    ENDPOINT = Endpoints.PROJECTS
+    FOLDERS_ENDPOINT = Endpoints.FOLDERS
+
+    def test_move_project_to_folder(self, auth_client):
+        """
+        业务规则: 项目可以移动到文件夹
+        """
+        # 创建一个文件夹
+        folder_name = f"Test_Folder_{uuid.uuid4().hex[:8]}"
+        folder_resp = auth_client.post(
+            self.FOLDERS_ENDPOINT,
+            json={"folder_type": "project", "name": folder_name}
+        )
+
+        if folder_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试文件夹")
+
+        folder_id = folder_resp.json()["id"]
+
+        # 创建一个项目
+        project_title = f"Test_Project_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            # 清理文件夹
+            auth_client.delete(Endpoints.folder(folder_id))
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            auth_client.delete(Endpoints.folder(folder_id))
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 移动项目到文件夹
+        move_resp = auth_client.post(
+            Endpoints.project_move(project_id),
+            json={"folder_id": folder_id}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+        auth_client.delete(Endpoints.folder(folder_id))
+
+        assert move_resp.status_code == 200, (
+            f"移动项目失败: {move_resp.status_code} - {move_resp.text[:200]}"
+        )
+
+        data = move_resp.json()
+        assert data.get("folder_id") == folder_id, "项目应在目标文件夹中"
+
+    def test_move_project_to_root(self, auth_client):
+        """
+        业务规则: folder_id=null 移动到根目录
+        """
+        # 创建项目
+        project_title = f"Test_Root_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 移动到根目录
+        move_resp = auth_client.post(
+            Endpoints.project_move(project_id),
+            json={"folder_id": None}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+
+        assert move_resp.status_code == 200, (
+            f"移动到根目录失败: {move_resp.status_code}"
+        )
+
+        data = move_resp.json()
+        assert data.get("folder_id") is None, "项目应在根目录"
+
+    def test_move_to_nonexistent_folder_rejected(self, auth_client):
+        """
+        业务规则: 移动到不存在的文件夹应失败
+        """
+        # 创建项目
+        project_title = f"Test_Invalid_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 尝试移动到不存在的文件夹
+        fake_folder_id = str(uuid.uuid4())
+        move_resp = auth_client.post(
+            Endpoints.project_move(project_id),
+            json={"folder_id": fake_folder_id}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+
+        # 应返回 400 或 404
+        assert move_resp.status_code in [400, 404], (
+            f"移动到不存在的文件夹应失败，但返回了 {move_resp.status_code}"
+        )
+
+    def test_move_nonexistent_project_returns_404(self, auth_client):
+        """
+        业务规则: 移动不存在的项目应返回 404
+        """
+        fake_project_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.project_move(fake_project_id),
+            json={"folder_id": None}
+        )
+
+        self.assert_not_found(response)
+
+    def test_move_requires_authentication(self, anon_client):
+        """
+        业务规则: 移动项目必须登录
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.post(
+            Endpoints.project_move(fake_id),
+            json={"folder_id": None}
+        )
+        self.assert_unauthorized(response)
+
+
+# ==========================================
+# Test: Project Star (v3.33 Phase 2.6)
+# ==========================================
+
+@pytest.mark.p1
+class TestProjectStar(BaseAPITest):
+    """
+    POST /api/v2/user/projects/{project_id}/star 黑盒测试
+
+    切换项目收藏状态
+
+    业务规则 (v3.33 Phase 2.6):
+    1. 项目可以被标记为收藏/取消收藏
+    2. is_starred=true 收藏, is_starred=false 取消收藏
+    3. 收藏状态切换后应立即生效
+    """
+
+    ENDPOINT = Endpoints.PROJECTS
+
+    def test_star_project(self, auth_client):
+        """
+        业务规则: 可以收藏项目
+        """
+        # 创建项目
+        project_title = f"Test_Star_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 收藏项目
+        star_resp = auth_client.post(
+            Endpoints.project_star(project_id),
+            json={"is_starred": True}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+
+        assert star_resp.status_code == 200, (
+            f"收藏项目失败: {star_resp.status_code} - {star_resp.text[:200]}"
+        )
+
+        data = star_resp.json()
+        assert data.get("is_starred") is True, "项目应已被收藏"
+
+    def test_unstar_project(self, auth_client):
+        """
+        业务规则: 可以取消收藏项目
+        """
+        # 创建项目
+        project_title = f"Test_Unstar_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 先收藏
+        auth_client.post(
+            Endpoints.project_star(project_id),
+            json={"is_starred": True}
+        )
+
+        # 再取消收藏
+        unstar_resp = auth_client.post(
+            Endpoints.project_star(project_id),
+            json={"is_starred": False}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+
+        assert unstar_resp.status_code == 200, (
+            f"取消收藏失败: {unstar_resp.status_code}"
+        )
+
+        data = unstar_resp.json()
+        assert data.get("is_starred") is False, "项目应已取消收藏"
+
+    def test_star_nonexistent_project_returns_404(self, auth_client):
+        """
+        业务规则: 收藏不存在的项目应返回 404
+        """
+        fake_project_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.project_star(fake_project_id),
+            json={"is_starred": True}
+        )
+
+        self.assert_not_found(response)
+
+    def test_star_requires_is_starred_field(self, auth_client):
+        """
+        业务规则: is_starred 是必需字段
+        """
+        # 创建项目
+        project_title = f"Test_Field_{uuid.uuid4().hex[:8]}"
+        project_resp = auth_client.post(
+            self.ENDPOINT,
+            json={"title": project_title, "content": {}}
+        )
+
+        if project_resp.status_code == 403:
+            pytest.skip("测试用户已达项目限制")
+
+        if project_resp.status_code not in [200, 201]:
+            pytest.skip("无法创建测试项目")
+
+        project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
+
+        # 不提供 is_starred
+        star_resp = auth_client.post(
+            Endpoints.project_star(project_id),
+            json={}
+        )
+
+        # 清理
+        auth_client.delete(Endpoints.project(project_id), params={"permanent": True})
+
+        # 应返回 400 或 422
+        assert star_resp.status_code in [400, 422], (
+            f"缺少 is_starred 应被拒绝，但返回了 {star_resp.status_code}"
+        )
+
+    def test_star_requires_authentication(self, anon_client):
+        """
+        业务规则: 收藏项目必须登录
+        """
+        fake_id = str(uuid.uuid4())
+        response = anon_client.post(
+            Endpoints.project_star(fake_id),
+            json={"is_starred": True}
+        )
+        self.assert_unauthorized(response)
