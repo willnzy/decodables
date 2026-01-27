@@ -9,7 +9,7 @@ import jwt
 from fastapi import Header, Depends
 from infrastructure.repositories import SupabaseUserRepository
 from core.database import get_async_db_client
-from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API, CLERK_ALLOWED_ORIGINS
+from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API, CLERK_ALLOWED_ORIGINS, TEST_JWT_PUBLIC_KEY
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
 from domains.shared import access_control
@@ -68,62 +68,84 @@ async def get_current_user(authorization: str = Header(None)):
     payload = None
     
     # Production mode: Verify JWT signature + audience/authorized party
-    if CLERK_PEM_PUBLIC_KEY:
-        try:
-            # v3.27.2: Complete JWT Verification with aud + azp
-            #
-            # Security layers:
-            # 1. RS256 Signature - Cryptographic proof token came from Clerk
-            # 2. Expiration (exp) - Automatic by PyJWT, prevents replay attacks
-            # 3. Audience (aud) - Verifies token was issued for this API (if configured in Clerk)
-            # 4. Authorized Party (azp) - Verifies which frontend origin requested the token
-            #
-            # Reference: https://clerk.com/docs/backend-requests/handling/manual-jwt
+    # Supports dual public keys: Clerk (real users) + Test (integration testing)
+    if CLERK_PEM_PUBLIC_KEY or TEST_JWT_PUBLIC_KEY:
+        payload = None
+        last_error = None
 
-            # Check if token has 'aud' claim for proper verification
-            # First decode without verification to inspect claims
-            unverified = jwt.decode(token, options={"verify_signature": False})
-            token_has_aud = "aud" in unverified
+        # List of public keys to try (Clerk first, then test key)
+        public_keys_to_try = []
+        if CLERK_PEM_PUBLIC_KEY:
+            public_keys_to_try.append(("clerk", CLERK_PEM_PUBLIC_KEY))
+        if TEST_JWT_PUBLIC_KEY:
+            public_keys_to_try.append(("test", TEST_JWT_PUBLIC_KEY))
 
-            if token_has_aud and CLERK_FRONTEND_API:
-                # Token has 'aud' claim - use standard JWT audience verification
-                payload = jwt.decode(
-                    token,
-                    CLERK_PEM_PUBLIC_KEY,
-                    algorithms=["RS256"],
-                    audience=CLERK_FRONTEND_API,
-                    options={"verify_aud": True}
-                )
-            else:
-                # No 'aud' claim - decode without audience verification
-                payload = jwt.decode(
-                    token,
-                    CLERK_PEM_PUBLIC_KEY,
-                    algorithms=["RS256"],
-                    options={"verify_aud": False}
-                )
+        for key_name, public_key in public_keys_to_try:
+            try:
+                # v3.27.2: Complete JWT Verification with aud + azp
+                #
+                # Security layers:
+                # 1. RS256 Signature - Cryptographic proof token came from Clerk
+                # 2. Expiration (exp) - Automatic by PyJWT, prevents replay attacks
+                # 3. Audience (aud) - Verifies token was issued for this API (if configured in Clerk)
+                # 4. Authorized Party (azp) - Verifies which frontend origin requested the token
+                #
+                # Reference: https://clerk.com/docs/backend-requests/handling/manual-jwt
 
-            # Additionally verify azp (Authorized Party) if configured
-            # This provides defense-in-depth by checking frontend origin
-            allowed_origins = _get_allowed_origins()
-            if allowed_origins:
-                token_azp = payload.get("azp")
-                if token_azp and token_azp not in allowed_origins:
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.warning(
-                        f"[Security] Token azp '{token_azp}' not in allowed origins. "
-                        f"Allowed: {allowed_origins}"
+                # Check if token has 'aud' claim for proper verification
+                # First decode without verification to inspect claims
+                unverified = jwt.decode(token, options={"verify_signature": False})
+                token_has_aud = "aud" in unverified
+
+                if token_has_aud and CLERK_FRONTEND_API and key_name == "clerk":
+                    # Token has 'aud' claim - use standard JWT audience verification
+                    payload = jwt.decode(
+                        token,
+                        public_key,
+                        algorithms=["RS256"],
+                        audience=CLERK_FRONTEND_API,
+                        options={"verify_aud": True}
                     )
-                    raise UnauthorizedException(
-                        message="Invalid token: unauthorized origin"
+                else:
+                    # No 'aud' claim or test key - decode without audience verification
+                    payload = jwt.decode(
+                        token,
+                        public_key,
+                        algorithms=["RS256"],
+                        options={"verify_aud": False}
                     )
 
-            user_id = payload.get("sub")
-        except jwt.ExpiredSignatureError:
-            raise UnauthorizedException(message="Token expired")
-        except jwt.InvalidTokenError as e:
-            raise UnauthorizedException(message=f"Invalid token: {str(e)}")
+                # Additionally verify azp (Authorized Party) if configured
+                # This provides defense-in-depth by checking frontend origin
+                # Skip azp check for test tokens
+                if key_name == "clerk":
+                    allowed_origins = _get_allowed_origins()
+                    if allowed_origins:
+                        token_azp = payload.get("azp")
+                        if token_azp and token_azp not in allowed_origins:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(
+                                f"[Security] Token azp '{token_azp}' not in allowed origins. "
+                                f"Allowed: {allowed_origins}"
+                            )
+                            raise UnauthorizedException(
+                                message="Invalid token: unauthorized origin"
+                            )
+
+                # Signature verified successfully
+                break
+
+            except jwt.ExpiredSignatureError:
+                raise UnauthorizedException(message="Token expired")
+            except jwt.InvalidTokenError as e:
+                last_error = e
+                continue  # Try next public key
+
+        if payload is None:
+            raise UnauthorizedException(message=f"Invalid token: {str(last_error)}")
+
+        user_id = payload.get("sub")
     else:
         # Development mode: Decode without verification (UNSAFE)
         # ⚠️ WARNING: This mode should NEVER be used in production!

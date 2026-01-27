@@ -79,8 +79,14 @@ class TestUsers:
 class TokenEnvVars:
     """Token 环境变量名称"""
 
-    # 普通用户 token
+    # 普通用户 token (t1 Free)
     USER_TOKEN = "TEST_USER_TOKEN"
+
+    # Starter 用户 token (t2)
+    STARTER_TOKEN = "TEST_STARTER_TOKEN"
+
+    # Pro 用户 token (t3)
+    PRO_TOKEN = "TEST_PRO_TOKEN"
 
     # Admin 用户 token
     ADMIN_TOKEN = "TEST_ADMIN_TOKEN"
@@ -88,11 +94,11 @@ class TokenEnvVars:
     # Clerk Secret Key (用于通过 API 获取 token)
     CLERK_SECRET_KEY = "CLERK_SECRET_KEY"
 
-    # Admin 用户的 Clerk Session ID
+    # Session IDs for auto-refresh
     ADMIN_SESSION_ID = "TEST_ADMIN_SESSION_ID"
-
-    # 普通用户的 Clerk Session ID
     USER_SESSION_ID = "TEST_USER_SESSION_ID"
+    STARTER_SESSION_ID = "TEST_STARTER_SESSION_ID"
+    PRO_SESSION_ID = "TEST_PRO_SESSION_ID"
 
 
 # ==========================================
@@ -102,21 +108,37 @@ class TokenEnvVars:
 """
 ## 配置测试 Token 的方式
 
+### 测试用户类型
+
+| 环境变量 | 用户类型 | Tier | 用途 |
+|----------|----------|------|------|
+| TEST_USER_TOKEN | 普通用户 | t1 (Free) | 测试基础功能和限制 |
+| TEST_STARTER_TOKEN | Starter 用户 | t2 | 测试付费功能 |
+| TEST_PRO_TOKEN | Pro 用户 | t3 | 测试高级功能 |
+| TEST_ADMIN_TOKEN | Admin 用户 | - | 测试管理接口 |
+
+
 ### 方式 1: 直接设置 Token (最简单)
 
 从浏览器登录后获取 token，设置环境变量：
 
 ```bash
-# 普通用户
+# Free 用户 (t1) - 必需
 export TEST_USER_TOKEN='eyJhbG...'
 
-# Admin 用户
+# Starter 用户 (t2) - Tier 测试需要
+export TEST_STARTER_TOKEN='eyJhbG...'
+
+# Pro 用户 (t3) - Tier 测试需要
+export TEST_PRO_TOKEN='eyJhbG...'
+
+# Admin 用户 - Admin 测试需要
 export TEST_ADMIN_TOKEN='eyJhbG...'
 ```
 
 获取方式:
 1. 打开 https://decodables-staging.up.railway.app
-2. 登录账号
+2. 登录对应账号 (Free/Starter/Pro/Admin)
 3. 打开 DevTools (F12) → Console
 4. 执行: await window.Clerk.session.getToken()
 5. 复制返回的 token
@@ -126,12 +148,17 @@ export TEST_ADMIN_TOKEN='eyJhbG...'
 
 ### 方式 2: 通过 Clerk API 自动获取 (推荐)
 
-设置 Clerk Secret Key 和 Session ID：
+设置 Clerk Secret Key 和各用户的 Session ID：
 
 ```bash
+# Clerk Secret Key (从 Clerk Dashboard 获取)
 export CLERK_SECRET_KEY='sk_test_...'
-export TEST_ADMIN_SESSION_ID='sess_...'
-export TEST_USER_SESSION_ID='sess_...'
+
+# 各用户的 Session ID
+export TEST_USER_SESSION_ID='sess_...'      # Free 用户
+export TEST_STARTER_SESSION_ID='sess_...'   # Starter 用户
+export TEST_PRO_SESSION_ID='sess_...'       # Pro 用户
+export TEST_ADMIN_SESSION_ID='sess_...'     # Admin 用户
 ```
 
 Session ID 获取方式:
@@ -148,17 +175,31 @@ curl -H "Authorization: Bearer sk_test_..." \\
 ### 方式 3: 混合使用
 
 可以同时配置多种方式，代码会按优先级尝试：
-1. 直接 Token (TEST_USER_TOKEN / TEST_ADMIN_TOKEN)
+1. 直接 Token (TEST_USER_TOKEN 等)
 2. Clerk API 生成 (CLERK_SECRET_KEY + SESSION_ID)
 
 
 ## 运行测试
 
 ```bash
-# 运行 Admin 测试
-python -m pytest tests/integration/staging/admin/ -v --tb=short
+# 运行基础测试 (只需要 TEST_USER_TOKEN)
+pytest tests/integration/staging/projects/ -v
 
-# 运行需要 Admin 权限的特定测试
-python -m pytest tests/integration/staging/admin/test_users.py -v
+# 运行 Tier 限制测试 (需要不同 Tier 的用户)
+pytest tests/integration/staging/tier_enforcement/ -v
+
+# 运行 Admin 测试 (需要 TEST_ADMIN_TOKEN)
+pytest tests/integration/staging/system_resources/ -v -m admin
 ```
+
+
+## 可用的 Fixture
+
+| Fixture | 需要的环境变量 | 说明 |
+|---------|----------------|------|
+| anon_client | 无 | 匿名客户端 (webhook 测试) |
+| auth_client | TEST_USER_TOKEN | Free 用户客户端 |
+| starter_client | TEST_STARTER_TOKEN | Starter 用户客户端 |
+| pro_client | TEST_PRO_TOKEN | Pro 用户客户端 |
+| admin_client | TEST_ADMIN_TOKEN | Admin 客户端 |
 """

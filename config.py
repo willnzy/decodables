@@ -19,6 +19,20 @@ API_VERSION = "3.2.0"
 # Clerk Authentication
 CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
 CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
+# Test JWT Public Key (for integration testing without Clerk login)
+# When configured, backend accepts both Clerk-signed and test-signed JWTs
+# ⚠️ SECURITY: Only enabled in non-production environments!
+_test_jwt_key = os.environ.get("TEST_JWT_PUBLIC_KEY")
+TEST_JWT_PUBLIC_KEY = _test_jwt_key if not IS_PRODUCTION else None
+
+# Log warning if test key is configured in production (should never happen)
+if IS_PRODUCTION and _test_jwt_key:
+    import logging
+    logging.getLogger(__name__).critical(
+        "🚨 SECURITY ALERT: TEST_JWT_PUBLIC_KEY is configured in PRODUCTION! "
+        "This key will be IGNORED for security reasons. "
+        "Remove TEST_JWT_PUBLIC_KEY from production environment variables immediately!"
+    )
 # v3.27.1: Authorized Party (azp) verification
 # Clerk includes 'azp' in JWT by default (unlike 'aud')
 # This is the frontend origin that requested the token
