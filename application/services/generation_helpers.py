@@ -18,7 +18,8 @@ from typing import Optional, List, Dict, Any
 
 from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
 from domains.platform.config_service import ConfigService
-from domains.platform.config_repository import ConfigRepository
+from infrastructure.repositories.config_repository import SupabaseConfigRepository
+from core.database import get_async_db_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,13 @@ logger = logging.getLogger(__name__)
 _config_service: Optional[ConfigService] = None
 
 
-def _get_config_service() -> ConfigService:
-    """Get or create global ConfigService instance."""
+async def _get_config_service() -> ConfigService:
+    """Get or create global ConfigService instance (async)."""
     global _config_service
     if _config_service is None:
-        _config_service = ConfigService(ConfigRepository())
+        db_client = await get_async_db_client()
+        config_repo = SupabaseConfigRepository(db_client)
+        _config_service = ConfigService(config_repo)
     return _config_service
 
 
@@ -160,7 +163,7 @@ async def get_base_cost(has_reference: bool) -> int:
     1. Database system_configs (primary)
     2. Emergency fallback (if database unavailable)
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     config_key = CONFIG_KEY_IMAGE_GENERATION_REF if has_reference else CONFIG_KEY_IMAGE_GENERATION
     fallback = EMERGENCY_FALLBACK_COST_REF if has_reference else EMERGENCY_FALLBACK_COST
 
@@ -194,7 +197,7 @@ async def get_text_generation_cost() -> int:
 
     Note: Currently configured as 0 (free), but can be changed via config.
     """
-    config_service = _get_config_service()
+    config_service = await _get_config_service()
     try:
         config_value = await config_service.get_config(CONFIG_KEY_TEXT_GENERATION, use_cache=True)
         if config_value is not None:
