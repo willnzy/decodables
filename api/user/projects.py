@@ -715,6 +715,14 @@ async def move_project_to_folder(
     Returns:
         ProjectMoveResponse with success status
     """
+    # Validate project_id UUID format
+    if not UUID_PATTERN.match(project_id):
+        raise HTTPException(400, "Invalid project ID format")
+
+    # Validate folder_id UUID format (if provided)
+    if req.folder_id and not UUID_PATTERN.match(req.folder_id):
+        raise HTTPException(400, "Invalid folder ID format")
+
     container = get_container()
 
     # Validate folder belongs to user's workspace (if not moving to root)
@@ -758,6 +766,10 @@ async def toggle_project_star(
     Returns:
         ProjectStarResponse with new starred status
     """
+    # Validate project_id UUID format
+    if not UUID_PATTERN.match(project_id):
+        raise HTTPException(400, "Invalid project ID format")
+
     # Get project repository directly for this operation
     from core.database import get_async_db_client
     from infrastructure.repositories.project_repository import SupabaseProjectRepository
