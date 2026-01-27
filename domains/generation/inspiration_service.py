@@ -170,22 +170,30 @@ class InspirationService:
             }
 
         except Exception as e:
-            logger.error(
-                f"Inspiration generation failed: {e}",
-                extra={
-                    "error_type": type(e).__name__,
-                    "category": category,
-                    "user_id_prefix": user_id[:8],  # Only log prefix for privacy
-                },
-                exc_info=True  # Include stack trace in logs
-            )
+            error_type = type(e).__name__
+
+            # Known errors: log concisely without stack trace
+            if "AuthenticationError" in error_type or "401" in str(e):
+                logger.warning(f"[Inspiration] OpenAI API key invalid, using fallback")
+            elif "RateLimitError" in error_type or "429" in str(e):
+                logger.warning(f"[Inspiration] Rate limited, using fallback")
+            elif "APIConnectionError" in error_type:
+                logger.warning(f"[Inspiration] API connection failed, using fallback")
+            else:
+                # Unknown errors: log with more detail (but no stack trace)
+                logger.error(
+                    f"[Inspiration] Generation failed: {error_type} - {e}",
+                    extra={
+                        "category": category,
+                        "user_id_prefix": user_id[:8] if user_id else "unknown",
+                    }
+                )
 
             # Graceful degradation: Return fallback suggestions
             return {
                 "suggestions": FALLBACK_SUGGESTIONS,
                 "category": category,
                 "fallback": True,
-                # v1.0.0: GS-LOW-2 - Don't expose internal error details
             }
 
     def _get_prompt(self, category: str) -> str:
