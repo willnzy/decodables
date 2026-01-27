@@ -1678,15 +1678,21 @@ $$ LANGUAGE plpgsql;
 -- - 这提供了安全深度防御：即使 anon key 泄露，也无法访问数据
 -- ============================================================================
 
--- 01_core_business.sql 中的表 (28个，包含监控日志表)
+-- 01_core_business.sql 中的表 (35个，包含 v3.33 新表和监控日志表)
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asset_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE asset_tags ENABLE ROW LEVEL SECURITY;
+-- v3.33: 新增 Workspace 和 Tag 系统表
+ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_system_tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tag_group_presets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_pages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE asset_tag_relations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_asset_tag_relations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_asset_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_recent_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_favorite_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_versions ENABLE ROW LEVEL SECURITY;

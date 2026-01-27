@@ -2,10 +2,21 @@
 -- Make Decodables - 数据库架构 (文件 1/3)
 -- ============================================================================
 -- 分类: 核心业务
--- 说明: 用户、积分、项目、素材、市场
+-- 说明: 用户、积分、项目、素材、市场、Workspace、Tag
 -- 执行顺序: 第 1 个执行
 -- 生成时间: 2026-01-10
--- 更新时间: 2026-01-12 (修复表创建顺序)
+-- 更新时间: 2026-01-27 (v3.33 Phase 0: Workspace + Tag 系统)
+--
+-- v3.33 变更:
+--   - profiles: 新增 trial_extended_days 字段
+--   - 新增 workspaces 表 (用户 Workspace)
+--   - 新增 tags 表 (用户级标签，替代旧系统级标签)
+--   - 新增 tag_group_presets 表 (标签分组预设)
+--   - 新增 project_tags 表 (项目-标签关联)
+--   - 新增 user_asset_tags 表 (素材-标签关联)
+--   - projects/assets: 新增 workspace_id 字段
+--   - asset_tags -> legacy_system_tags (已废弃)
+--   - asset_tag_relations -> legacy_asset_tag_relations (已废弃)
 -- ============================================================================
 
 -- 开始事务
@@ -34,15 +45,20 @@ $$ LANGUAGE plpgsql;
 -- 第一层: 无外键依赖的基础表
 --   1. profiles
 --   2. asset_categories
---   3. asset_tags
+--   3. workspaces (v3.33 新增，依赖 profiles)
+--   4. legacy_system_tags (原 asset_tags，已废弃)
+--   5. tags (v3.33 新增，依赖 workspaces)
+--   6. tag_group_presets (v3.33 新增)
 --
 -- 第二层: 依赖第一层的表
---   4. projects (依赖 profiles)
---   5. marketplace_listings (依赖 profiles)
+--   7. projects (依赖 profiles, workspaces)
+--   8. marketplace_listings (依赖 profiles)
 --
 -- 第三层: 依赖第一、二层的表
---   6. assets (依赖 profiles, projects, marketplace_listings)
---   7. project_versions (依赖 projects, profiles)
+--   9. assets (依赖 profiles, projects, marketplace_listings, workspaces)
+--   10. legacy_asset_tag_relations (原 asset_tag_relations，已废弃)
+--   11. project_tags (v3.33 新增)
+--   12. user_asset_tags (v3.33 新增)
 --   ... 其他表
 
 
@@ -84,6 +100,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     trial_start_date TIMESTAMPTZ,
     trial_end_date TIMESTAMPTZ,
     is_trial_active BOOLEAN DEFAULT FALSE,
+    trial_extended_days INTEGER DEFAULT 0 CHECK (trial_extended_days >= 0),  -- v3.33: Admin 可延长的试用天数
 
     -- Stripe 相关
     stripe_customer_id TEXT UNIQUE,
@@ -204,9 +221,48 @@ CREATE TABLE IF NOT EXISTS asset_categories (
 
 
 -- ----------------------------------------------------------------------------
--- 3. asset_tags (标签 - 无外键依赖)
+-- 3. workspaces (工作区 - v3.33 Phase 0)
+-- 说明: 用户 Workspace，一期只支持 Personal Workspace (用户默认拥有一个)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS asset_tags (
+CREATE TABLE IF NOT EXISTS workspaces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- 基础信息
+    name TEXT NOT NULL,
+    description TEXT,
+
+    -- 所有者 (Clerk user_id)
+    owner_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+    -- 配置 (一期简化: 全部为 TRUE)
+    is_default BOOLEAN DEFAULT TRUE,        -- 是否为用户的默认 workspace
+    is_personal BOOLEAN DEFAULT TRUE,       -- 是否为个人 workspace (vs 团队)
+
+    -- 状态
+    is_active BOOLEAN DEFAULT TRUE,
+
+    -- 标准审计字段
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_default ON workspaces(owner_id, is_default) WHERE is_default = TRUE;
+
+-- 触发器: 更新 updated_at
+DROP TRIGGER IF EXISTS update_workspaces_updated_at ON workspaces;
+CREATE TRIGGER update_workspaces_updated_at
+    BEFORE UPDATE ON workspaces
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ----------------------------------------------------------------------------
+-- 4. legacy_system_tags (旧系统级标签 - 已废弃，保留兼容)
+-- 注意: 此表已废弃，新标签系统使用 tags 表 (用户级标签)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS legacy_system_tags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(50) NOT NULL,
     slug VARCHAR(50) UNIQUE NOT NULL,
@@ -217,13 +273,93 @@ CREATE TABLE IF NOT EXISTS asset_tags (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_tags_type ON asset_tags(tag_type);
-CREATE INDEX IF NOT EXISTS idx_asset_tags_usage ON asset_tags(usage_count DESC);
-CREATE INDEX IF NOT EXISTS idx_asset_tags_name ON asset_tags(name);
+CREATE INDEX IF NOT EXISTS idx_legacy_system_tags_type ON legacy_system_tags(tag_type);
+CREATE INDEX IF NOT EXISTS idx_legacy_system_tags_usage ON legacy_system_tags(usage_count DESC);
+CREATE INDEX IF NOT EXISTS idx_legacy_system_tags_name ON legacy_system_tags(name);
 
-DROP TRIGGER IF EXISTS update_asset_tags_updated_at ON asset_tags;
-CREATE TRIGGER update_asset_tags_updated_at
-    BEFORE UPDATE ON asset_tags
+DROP TRIGGER IF EXISTS update_legacy_system_tags_updated_at ON legacy_system_tags;
+CREATE TRIGGER update_legacy_system_tags_updated_at
+    BEFORE UPDATE ON legacy_system_tags
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ----------------------------------------------------------------------------
+-- 5. tags (用户级标签 - v3.33 新标签系统)
+-- 说明: 标签归属于 Workspace，每个用户通过 Workspace 管理自己的标签
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- 归属 Workspace
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+
+    -- 标签信息
+    name TEXT NOT NULL,
+    color TEXT DEFAULT 'gray' CHECK (color IN ('gray', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink')),
+    icon TEXT,                              -- emoji 或 icon name
+
+    -- 标签分组
+    group_name TEXT,                        -- 如: "grade_level", "phonics_pattern"
+
+    -- 排序
+    sort_order INTEGER DEFAULT 0,
+
+    -- 创建者
+    created_by TEXT NOT NULL REFERENCES profiles(id),
+
+    -- 状态
+    is_active BOOLEAN DEFAULT TRUE,
+
+    -- 时间戳
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- 唯一约束: 同一 Workspace 内标签名唯一
+    UNIQUE (workspace_id, name)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_tags_workspace ON tags(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_tags_group ON tags(workspace_id, group_name);
+CREATE INDEX IF NOT EXISTS idx_tags_active ON tags(workspace_id, is_active) WHERE is_active = TRUE;
+
+-- 触发器
+DROP TRIGGER IF EXISTS update_tags_updated_at ON tags;
+CREATE TRIGGER update_tags_updated_at
+    BEFORE UPDATE ON tags
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ----------------------------------------------------------------------------
+-- 6. tag_group_presets (标签分组预设 - 系统级模板)
+-- 说明: 系统预定义的标签分组模板，新用户创建 Workspace 时自动应用
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tag_group_presets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    group_name TEXT NOT NULL UNIQUE,        -- 内部名称 (如 'grade_level')
+    display_name TEXT NOT NULL,             -- 显示名称 (如 'Grade Level')
+    description TEXT,
+    icon TEXT,                              -- emoji
+
+    preset_tags JSONB DEFAULT '[]',         -- 预设标签数组: [{"name": "Grade 1", "color": "blue"}, ...]
+    is_default BOOLEAN DEFAULT FALSE,       -- 是否默认应用到新 Workspace
+    sort_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_tag_group_presets_default ON tag_group_presets(is_default) WHERE is_default = TRUE;
+
+-- 触发器
+DROP TRIGGER IF EXISTS update_tag_group_presets_updated_at ON tag_group_presets;
+CREATE TRIGGER update_tag_group_presets_updated_at
+    BEFORE UPDATE ON tag_group_presets
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -240,6 +376,9 @@ CREATE TABLE IF NOT EXISTS projects (
 
     -- 用户ID (P0-8: Repository 同时使用 user_id 和 owner_id)
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+    -- v3.33: Workspace 关联 (可空，向后兼容现有项目)
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
 
     -- 项目信息
     title TEXT NOT NULL DEFAULT 'My Magic Story',
@@ -454,6 +593,10 @@ CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id),
+
+    -- v3.33: Workspace 关联 (可空，向后兼容现有素材)
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
+
     url TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('image', 'video', 'audio', 'document')),
 
@@ -485,19 +628,64 @@ CREATE TABLE IF NOT EXISTS assets (
     )
 );
 
+-- v3.33: Workspace index for filtering assets by workspace
+CREATE INDEX IF NOT EXISTS idx_assets_workspace
+ON assets(workspace_id)
+WHERE workspace_id IS NOT NULL;
+
 
 -- ----------------------------------------------------------------------------
--- 7. asset_tag_relations (素材-标签关联)
+-- 7. legacy_asset_tag_relations (旧素材-标签关联 - 已废弃)
+-- 注意: 此表已废弃，新标签系统使用 project_tags 和 user_asset_tags
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS asset_tag_relations (
+CREATE TABLE IF NOT EXISTS legacy_asset_tag_relations (
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-    tag_id UUID NOT NULL REFERENCES asset_tags(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES legacy_system_tags(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (asset_id, tag_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_tag_rel_asset ON asset_tag_relations(asset_id);
-CREATE INDEX IF NOT EXISTS idx_asset_tag_rel_tag ON asset_tag_relations(tag_id);
+CREATE INDEX IF NOT EXISTS idx_legacy_asset_tag_rel_asset ON legacy_asset_tag_relations(asset_id);
+CREATE INDEX IF NOT EXISTS idx_legacy_asset_tag_rel_tag ON legacy_asset_tag_relations(tag_id);
+
+
+-- ----------------------------------------------------------------------------
+-- 7.1 project_tags (项目-标签关联 - v3.33 新标签系统)
+-- 说明: 项目与用户标签的多对多关联
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS project_tags (
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+
+    added_by TEXT NOT NULL REFERENCES profiles(id),
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+
+    PRIMARY KEY (project_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_tags_project ON project_tags(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_tags_tag ON project_tags(tag_id);
+
+
+-- ----------------------------------------------------------------------------
+-- 7.2 user_asset_tags (用户素材-标签关联 - v3.33 新标签系统)
+-- 说明: 用户素材与用户标签的多对多关联，支持 AI 推荐来源标记
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_asset_tags (
+    asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+
+    added_by TEXT NOT NULL REFERENCES profiles(id),
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- 来源标记 (区分手动添加 vs AI 推荐)
+    source TEXT DEFAULT 'manual' CHECK (source IN ('manual', 'ai_recommended')),
+
+    PRIMARY KEY (asset_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_asset_tags_asset ON user_asset_tags(asset_id);
+CREATE INDEX IF NOT EXISTS idx_user_asset_tags_tag ON user_asset_tags(tag_id);
 
 
 -- ----------------------------------------------------------------------------
@@ -1131,6 +1319,11 @@ WHERE is_deleted = false;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_idempotency_key
 ON projects(user_id, idempotency_key)
 WHERE idempotency_key IS NOT NULL AND is_deleted = false;
+
+-- v3.33: Workspace index for filtering projects by workspace
+CREATE INDEX IF NOT EXISTS idx_projects_workspace
+ON projects(workspace_id)
+WHERE workspace_id IS NOT NULL;
 
 
 -- ============================================================================

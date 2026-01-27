@@ -1,17 +1,23 @@
 -- ============================================================================
 -- PLATFORM CONFIGURATION SEED FILE
 -- ============================================================================
--- Contains: Pricing plans + System configurations
+-- Contains: Pricing plans + System configurations + Tag presets
 -- Merged from: pricing_plans_seed.sql + system_configs_seed.sql
 --
 -- Tables seeded:
 --   - pricing_plans (6 records: 3 subscriptions + 3 credit packs)
---   - system_configs (77 records across 14 config groups)
+--   - system_configs (84 records across 16 config groups)
+--   - tag_group_presets (4 records) - v3.33 新增
 --
 -- Usage:
 --   psql $DATABASE_URL -f migrations/seed/platform_config_seed.sql
 --
 -- Note: Uses ON CONFLICT DO UPDATE to make script idempotent
+--
+-- v3.33 更新:
+--   - 新增 trial.default_days, trial.urgent_threshold_days 配置
+--   - 新增 tag.* 配置项 (4个)
+--   - 新增 tag_group_presets 预设数据 (4个标签分组)
 -- ============================================================================
 
 BEGIN;
@@ -245,7 +251,7 @@ INSERT INTO pricing_plans (
 
 
 -- ============================================================================
--- PART 2: SYSTEM CONFIGS (73 records)
+-- PART 2: SYSTEM CONFIGS (80 records)
 -- ============================================================================
 -- Config Groups:
 --   - rate_limit: API rate limiting (24 records)
@@ -259,8 +265,9 @@ INSERT INTO pricing_plans (
 --   - marketing: Marketing text (2 records)
 --   - tooltip: Tooltip text (2 records)
 --   - marketplace: Marketplace settings (3 records)
---   - tier: Tier display names (6 records)
---   - trial: Trial period (1 record)
+--   - tier: Tier display names (15 records)
+--   - trial: Trial period (3 records) - v3.33 更新
+--   - tag: Tag system (4 records) - v3.33 新增
 --   - database: Database settings (1 record)
 -- ============================================================================
 
@@ -414,9 +421,19 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 ('tier.t3.max_projects', '200', 'integer', 'tier', 'Third Tier 最大项目数', true, true),
 
 -- ============================================================================
--- TRIAL PERIOD (1 record)
+-- TRIAL PERIOD (3 records) - v3.33 更新
 -- ============================================================================
-('trial.duration_days', '30', 'integer', 'trial', 'Free tier 试用期天数 (可通过 Admin API 修改)', true, true),
+('trial.default_days', '7', 'integer', 'trial', 'Free tier 默认试用期天数', true, true),
+('trial.urgent_threshold_days', '2', 'integer', 'trial', '触发紧迫状态的剩余天数 (显示为 amber 色)', true, true),
+('trial.duration_days', '30', 'integer', 'trial', '[已废弃] 使用 trial.default_days', true, false),
+
+-- ============================================================================
+-- TAG SYSTEM (4 records) - v3.33 新增
+-- ============================================================================
+('tag.max_tags_per_workspace', '100', 'integer', 'tag', '每个 Workspace 最大标签数', true, true),
+('tag.max_tags_per_project', '10', 'integer', 'tag', '每个项目最大标签数', true, true),
+('tag.max_tags_per_asset', '10', 'integer', 'tag', '每个素材最大标签数', true, true),
+('tag.enable_preset_groups', 'true', 'boolean', 'tag', '新 Workspace 是否自动创建预设标签分组', true, true),
 
 -- ============================================================================
 -- DATABASE SETTINGS (1 record)
@@ -431,6 +448,68 @@ ON CONFLICT (key) DO UPDATE SET
     is_active = EXCLUDED.is_active,
     is_editable = EXCLUDED.is_editable,
     updated_at = CURRENT_TIMESTAMP;
+
+
+-- ============================================================================
+-- PART 3: TAG GROUP PRESETS (4 records) - v3.33 新增
+-- ============================================================================
+-- 预设标签分组模板，新用户创建 Workspace 时可选择应用
+
+INSERT INTO tag_group_presets (group_name, display_name, description, icon, preset_tags, is_default, sort_order, is_active)
+VALUES
+  -- Grade Level (教育年级)
+  ('grade_level', 'Grade Level', 'Organize by student grade level', '🎓',
+   '[
+     {"name": "Pre-K", "color": "pink"},
+     {"name": "Kindergarten", "color": "purple"},
+     {"name": "Grade 1", "color": "blue"},
+     {"name": "Grade 2", "color": "green"},
+     {"name": "Grade 3", "color": "yellow"},
+     {"name": "Grade 4", "color": "orange"},
+     {"name": "Grade 5", "color": "red"}
+   ]'::jsonb, TRUE, 1, TRUE),
+
+  -- Phonics Pattern (自然拼读)
+  ('phonics_pattern', 'Phonics Pattern', 'Categorize by phonics patterns', '📖',
+   '[
+     {"name": "CVC Words", "color": "blue"},
+     {"name": "CVCe Words", "color": "green"},
+     {"name": "Blends", "color": "purple"},
+     {"name": "Digraphs", "color": "orange"},
+     {"name": "R-Controlled", "color": "red"},
+     {"name": "Diphthongs", "color": "pink"}
+   ]'::jsonb, TRUE, 2, TRUE),
+
+  -- Topic (主题)
+  ('topic', 'Topic', 'Organize by content topic', '📚',
+   '[
+     {"name": "Animals", "color": "green"},
+     {"name": "Nature", "color": "blue"},
+     {"name": "Science", "color": "purple"},
+     {"name": "Holidays", "color": "red"},
+     {"name": "Family", "color": "pink"},
+     {"name": "Community", "color": "orange"}
+   ]'::jsonb, TRUE, 3, TRUE),
+
+  -- Status (项目状态)
+  ('status', 'Status', 'Track project status', '📋',
+   '[
+     {"name": "Draft", "color": "gray"},
+     {"name": "In Progress", "color": "yellow"},
+     {"name": "Ready", "color": "green"},
+     {"name": "Published", "color": "blue"}
+   ]'::jsonb, FALSE, 4, TRUE)
+
+ON CONFLICT (group_name) DO UPDATE SET
+    display_name = EXCLUDED.display_name,
+    description = EXCLUDED.description,
+    icon = EXCLUDED.icon,
+    preset_tags = EXCLUDED.preset_tags,
+    is_default = EXCLUDED.is_default,
+    sort_order = EXCLUDED.sort_order,
+    is_active = EXCLUDED.is_active,
+    updated_at = CURRENT_TIMESTAMP;
+
 
 COMMIT;
 
