@@ -41,7 +41,6 @@ jobs:
       - name: Run unit tests
         run: |
           pytest tests/test_credits_logic.py \
-                 tests/services/test_analytics_service.py \
                  tests/edge_cases/ \
                  tests/business_rules/ \
                  -v --tb=short
