@@ -25,7 +25,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from container import get_container
@@ -226,10 +226,10 @@ async def update_workspace(
 
     updated = await workspace_repo.update_partial(workspace_id, update_data)
 
-    await log_activity(
-        user_id=user.id,
+    await log_activity_async(
+        user_id=user.user_id,
         action="workspace_updated",
-        details={
+        metadata={
             "workspace_id": workspace_id,
             "updates": list(update_data.keys())
         }
@@ -287,10 +287,10 @@ async def delete_workspace(
     workspace_repo = SupabaseWorkspaceRepository(db)
     await workspace_repo.delete(workspace_id)
 
-    await log_activity(
-        user_id=user.id,
+    await log_activity_async(
+        user_id=user.user_id,
         action="workspace_deleted",
-        details={"workspace_id": workspace_id, "name": workspace.name}
+        metadata={"workspace_id": workspace_id, "name": workspace.name}
     )
 
     return {"success": True, "message": "Workspace deleted"}
