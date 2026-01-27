@@ -24,7 +24,7 @@ import re
 from typing import Dict, List, Any, Optional
 
 from infrastructure.repositories.support_repository import SupabaseSupportRepository
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class SupportService:
 
             if report:
                 # Log activity
-                log_activity(user_id, "submit_report", {"listing_id": listing_id})
+                await log_activity_async(user_id, "submit_report", {"listing_id": listing_id})
 
             return report
 
@@ -200,7 +200,7 @@ class SupportService:
         )
 
         # Log activity
-        log_activity(user_id, "create_support_ticket", {
+        await log_activity_async(user_id, "create_support_ticket", {
             "email": user_email,
         })
 
@@ -343,7 +343,7 @@ class SupportService:
         )
 
         # Log activity
-        log_activity(user_id, "contact_form", {
+        await log_activity_async(user_id, "contact_form", {
             "name": name,
             "email": email,
         })
@@ -397,7 +397,7 @@ class SupportService:
         )
 
         # Log activity
-        log_activity(user_id, "submit_feedback", {
+        await log_activity_async(user_id, "submit_feedback", {
             "email": user_email,
             "has_images": len(images) > 0,
         })

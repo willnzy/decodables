@@ -33,7 +33,7 @@ from dependencies import get_current_user
 from container import get_container
 from application.commands.tools import PdfPreviewCommand, OcrCommand
 from infrastructure.rate_limiter import limiter
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from core.utils.timezone import get_request_timezone
 from core.middleware import validate_file_size  # P3-005: File upload size validation
 from domains.identity import is_user_in_trial
@@ -149,7 +149,7 @@ async def ocr_tool(
     result = await handler.handle(command)
 
     # Log activity
-    log_activity(user.user_id, "ocr_process", {
+    await log_activity_async(user.user_id, "ocr_process", {
         "filename": file.filename,
         "project_id": project_id,
     })

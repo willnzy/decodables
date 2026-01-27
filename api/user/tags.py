@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
 from domains.tag.entities import TagColor
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
@@ -198,10 +198,10 @@ async def create_tag(
             icon=data.icon,
         )
 
-        log_activity(
+        await log_activity_async(
             user_id=ctx.user_id,
             action="tag_created",
-            details={"tag_id": tag.id, "name": tag.name}
+            metadata={"tag_id": tag.id, "name": tag.name}
         )
 
         return tag.to_dict()
@@ -289,10 +289,10 @@ async def delete_tag(
 
     await tag_service.delete_tag(tag_id)
 
-    log_activity(
+    await log_activity_async(
         user_id=ctx.user_id,
         action="tag_deleted",
-        details={"tag_id": tag_id, "name": tag.name}
+        metadata={"tag_id": tag_id, "name": tag.name}
     )
 
     return {"success": True, "message": "Tag deleted"}

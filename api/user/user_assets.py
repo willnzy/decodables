@@ -55,7 +55,7 @@ from fastapi import APIRouter, Request, Depends, UploadFile, File, Form, Query
 from pydantic import BaseModel, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from core.utils.timezone import get_request_timezone
@@ -252,9 +252,9 @@ async def delete_asset(
 
     # Log activity
     if permanent:
-        log_activity(ctx.user_id, "permanent_delete_asset", {"asset_id": asset_id})
+        await log_activity_async(ctx.user_id, "permanent_delete_asset", {"asset_id": asset_id})
     else:
-        log_activity(ctx.user_id, "delete_asset", {"asset_id": asset_id})
+        await log_activity_async(ctx.user_id, "delete_asset", {"asset_id": asset_id})
 
     return result.result
 
@@ -288,7 +288,7 @@ async def add_asset_from_url(
 
     # Log activity
     if result.result.get("asset"):
-        log_activity(ctx.user_id, "create_asset_from_url", {
+        await log_activity_async(ctx.user_id, "create_asset_from_url", {
             "asset_id": result.result["asset"].get("id")
         })
 
@@ -473,7 +473,7 @@ async def restore(
     result = await handler.handle(command)
 
     # Log activity
-    log_activity(ctx.user_id, "restore_asset", {"asset_id": asset_id})
+    await log_activity_async(ctx.user_id, "restore_asset", {"asset_id": asset_id})
 
     return {"status": "ok", "asset": result.asset}
 

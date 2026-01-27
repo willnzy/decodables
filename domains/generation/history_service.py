@@ -10,7 +10,7 @@ Handles queries, updates, and deletions with ownership verification.
 import logging
 from typing import Dict, List, Any
 
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ class GenerationHistoryService:
             raise GenerationNotFoundException("Generation not found")
 
         # Log activity
-        log_activity(user_id, "delete_generation", {"generation_id": generation_id})
+        await log_activity_async(user_id, "delete_generation", {"generation_id": generation_id})
 
         return generation_id
 
@@ -216,7 +216,7 @@ class GenerationHistoryService:
         deleted_count = len(result.data or [])
 
         # Log activity
-        log_activity(user_id, "batch_delete_generations", {
+        await log_activity_async(user_id, "batch_delete_generations", {
             "keep_favorites": keep_favorites,
             "deleted_count": deleted_count,
         })

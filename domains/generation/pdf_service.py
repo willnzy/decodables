@@ -21,7 +21,7 @@ from typing import List, Optional
 
 from shared.ai.zine_generator import create_foldable_book
 from infrastructure.repositories.project_repository import SupabaseProjectRepository
-from infrastructure.logging.activity_logger import log_activity
+from infrastructure.logging.activity_logger import log_activity_async
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,6 @@ class PdfGenerationService:
             raise PdfGenerationException("PDF generation failed unexpectedly")
 
         # Step 4: Log activity
-        log_activity(user_id, "download_pdf", {"project_id": project_id})
+        await log_activity_async(user_id, "download_pdf", {"project_id": project_id})
 
         return buf

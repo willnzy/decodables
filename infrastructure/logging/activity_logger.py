@@ -56,20 +56,6 @@ async def log_activity_async(
         logger.warning(f"Failed to log activity: {e}")
 
 
-# Deprecated: Sync version removed in v2.0
-# Use log_activity_async() instead
-def log_activity(user_id: str, action: str, metadata: Optional[Dict[str, Any]] = None) -> None:
-    """
-    DEPRECATED in v2.0: Use log_activity_async() instead.
-
-    This sync version is no longer supported.
-    Raises RuntimeError to prevent accidental usage.
-    """
-    raise RuntimeError(
-        "log_activity() is deprecated in v2.0. Use log_activity_async() instead."
-    )
-
-
 async def log_webhook_operation(
     operation_type: str,
     source: str,  # "stripe" or "clerk"
