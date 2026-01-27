@@ -54,6 +54,7 @@ from .articles import router as articles_router
 from .static_pages import router as static_pages_router
 from .seller import router as seller_router  # v1.0.0: Unified seller stats
 from .tags import router as tags_router, project_tags_router, asset_tags_router  # v3.33: Tag system
+from .workspaces import router as workspaces_router  # v3.33: Workspace system
 
 # User API root router
 user_router = APIRouter(prefix="/api/v2/user", tags=["user-v2"])
@@ -92,5 +93,6 @@ user_router.include_router(seller_router)  # v1.0.0: Unified seller stats
 user_router.include_router(tags_router)  # v3.33: Tag CRUD
 user_router.include_router(project_tags_router)  # v3.33: Project-Tag associations
 user_router.include_router(asset_tags_router)  # v3.33: Asset-Tag associations
+user_router.include_router(workspaces_router)  # v3.33: Workspace management
 
 __all__ = ["user_router"]

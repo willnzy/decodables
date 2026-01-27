@@ -180,3 +180,59 @@ class SupabaseWorkspaceRepository(IWorkspaceRepository):
         except Exception as e:
             logger.error(f"[WorkspaceRepository] exists failed: {e}")
             raise
+
+    @retry_on_network_error()
+    async def update_partial(self, workspace_id: str, data: dict) -> Optional[Workspace]:
+        """Partially update a workspace."""
+        try:
+            if not workspace_id:
+                raise ValueError("Workspace ID required for update")
+
+            # Only allow safe fields to be updated
+            allowed_fields = {"name", "description"}
+            update_data = {k: v for k, v in data.items() if k in allowed_fields}
+
+            if not update_data:
+                # No valid fields to update, fetch and return current
+                return await self.get_by_id(workspace_id)
+
+            result = await self.client.table("workspaces")\
+                .update(update_data)\
+                .eq("id", workspace_id)\
+                .eq("is_active", True)\
+                .execute()
+
+            if result.data:
+                logger.info(
+                    f"[WorkspaceRepository] Updated workspace: "
+                    f"id={workspace_id}, fields={list(update_data.keys())}"
+                )
+                return Workspace.from_dict(result.data[0])
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[WorkspaceRepository] update_partial failed: {e}")
+            raise
+
+    @retry_on_network_error()
+    async def delete(self, workspace_id: str) -> bool:
+        """Soft delete a workspace (set is_active=False)."""
+        try:
+            if not workspace_id:
+                raise ValueError("Workspace ID required for delete")
+
+            result = await self.client.table("workspaces")\
+                .update({"is_active": False})\
+                .eq("id", workspace_id)\
+                .execute()
+
+            success = bool(result.data)
+            if success:
+                logger.info(f"[WorkspaceRepository] Soft deleted workspace: id={workspace_id}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"[WorkspaceRepository] delete failed: {e}")
+            raise

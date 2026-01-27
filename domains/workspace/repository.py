@@ -99,3 +99,30 @@ class IWorkspaceRepository(ABC):
             True if workspace exists
         """
         pass
+
+    @abstractmethod
+    async def update_partial(self, workspace_id: str, data: dict) -> Optional[Workspace]:
+        """
+        Partially update a workspace.
+
+        Args:
+            workspace_id: Workspace UUID
+            data: Dictionary of fields to update
+
+        Returns:
+            Updated Workspace entity or None if not found
+        """
+        pass
+
+    @abstractmethod
+    async def delete(self, workspace_id: str) -> bool:
+        """
+        Soft delete a workspace (set is_active=False).
+
+        Args:
+            workspace_id: Workspace UUID
+
+        Returns:
+            True if deleted successfully
+        """
+        pass
