@@ -41,7 +41,7 @@ SPECIAL_MAPPINGS = {
         'payment_records': 'payment_id',
         'asset_categories': 'category_id',
         'asset_prompt_templates': 'template_id',
-        'page_prompt_templates': 'template_id',
+        'user_prompt_templates': 'template_id',
         'onboarding_steps': 'step_id',
         'project_versions': 'version_id',
         'pricing_plans': 'plan_id',

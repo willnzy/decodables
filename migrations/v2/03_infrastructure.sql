@@ -1706,7 +1706,7 @@ ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
 -- 注意: marketplace_reports 是视图 (VIEW)，不是表，不需要启用 RLS
 ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
-ALTER TABLE page_prompt_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_prompt_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscription_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_resources ENABLE ROW LEVEL SECURITY;

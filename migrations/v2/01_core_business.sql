@@ -1124,10 +1124,10 @@ CREATE TABLE IF NOT EXISTS marketplace_reviews (
 
 
 -- ----------------------------------------------------------------------------
--- 20. page_prompt_templates (用户页面生成预设)
--- User-created presets for AI page generation settings
+-- 20. user_prompt_templates (用户提示词模板)
+-- User-created prompt templates for AI generation
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS page_prompt_templates (
+CREATE TABLE IF NOT EXISTS user_prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -1141,14 +1141,14 @@ CREATE TABLE IF NOT EXISTS page_prompt_templates (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    CONSTRAINT check_name_not_empty CHECK (LENGTH(TRIM(name)) > 0),
-    CONSTRAINT check_creativity_level CHECK (creativity_level >= 0.0 AND creativity_level <= 1.0),
-    CONSTRAINT check_generation_mode CHECK (generation_mode IN ('guided', 'flexible')),
-    CONSTRAINT unique_user_template_name UNIQUE (user_id, name)
+    CONSTRAINT upt_name_not_empty CHECK (LENGTH(TRIM(name)) > 0),
+    CONSTRAINT upt_creativity_level CHECK (creativity_level >= 0.0 AND creativity_level <= 1.0),
+    CONSTRAINT upt_generation_mode CHECK (generation_mode IN ('guided', 'flexible')),
+    CONSTRAINT upt_unique_user_name UNIQUE (user_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_user_id ON page_prompt_templates(user_id);
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_name ON page_prompt_templates(name);
+CREATE INDEX IF NOT EXISTS idx_user_prompt_templates_user_id ON user_prompt_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_prompt_templates_name ON user_prompt_templates(name);
 
 
 -- ----------------------------------------------------------------------------

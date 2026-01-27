@@ -1605,26 +1605,22 @@ LIMIT 10000;  -- 分批删除
 | `recovery_expires_at` | IS | - |
 | `(deleted_at` | IS | - |
 
-##### `page_prompt_templates` (16 个字段)
+##### `user_prompt_templates` (12 个字段)
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
-| `id` | UUID | - |
-| `template_name` | TEXT | - |
-| `template_category` | TEXT | - |
-| `prompt_template` | TEXT | - |
-| `description` | TEXT | - |
-| `example_input` | JSONB | - |
-| `example_output` | TEXT | - |
-| `parameters` | JSONB | - |
-| `is_active` | BOOLEAN | - |
-| `usage_count` | INTEGER | - |
-| `created_by` | TEXT | - |
-| `created_at` | TIMESTAMPTZ | - |
-| `updated_at` | TIMESTAMPTZ | - |
-| `template_category` | IN | - |
-| `'text_to_image',` | 'image_enhancement', | - |
-| ... | ... | *(共 16 个字段，完整定义见 SQL 文件)* |
+| `id` | UUID | 主键 |
+| `user_id` | TEXT | 所属用户 |
+| `name` | TEXT | 模板名称 |
+| `layout` | TEXT | 布局选择 |
+| `story_theme` | TEXT | 故事主题 |
+| `main_character` | TEXT | 主角描述 |
+| `style` | TEXT | 风格选择 |
+| `creativity_level` | REAL | 创意度 (0-1) |
+| `negative_prompt` | TEXT | 负面提示词 |
+| `generation_mode` | TEXT | 生成模式 (guided/flexible) |
+| `created_at` | TIMESTAMPTZ | 创建时间 |
+| `updated_at` | TIMESTAMPTZ | 更新时间 |
 
 ##### `subscription_history` (9 个字段)
 

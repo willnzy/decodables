@@ -10,7 +10,7 @@ Changes in v2.0:
 - Removed get_supabase_client() import (sync client)
 
 Purpose:
-- Data access for asset_prompt_templates and page_prompt_templates tables
+- Data access for asset_prompt_templates and user_prompt_templates tables
 - Returns raw Dict data for template CRUD operations
 """
 
@@ -29,7 +29,7 @@ class SupabaseTemplatesRepository:
 
     Handles two tables:
     - asset_prompt_templates (5W1H templates)
-    - page_prompt_templates (AI Design Page templates)
+    - user_prompt_templates (AI Design Page templates)
     """
 
     def __init__(self, db_client: DatabaseClient):
@@ -205,7 +205,7 @@ class SupabaseTemplatesRepository:
         Returns:
             List of template dicts
         """
-        result = await self.client.table("page_prompt_templates") \
+        result = await self.client.table("user_prompt_templates") \
             .select("*") \
             .eq("user_id", user_id) \
             .order("updated_at", desc=True) \
@@ -229,7 +229,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template dict or None
         """
-        result = await self.client.table("page_prompt_templates") \
+        result = await self.client.table("user_prompt_templates") \
             .select("*") \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -252,7 +252,7 @@ class SupabaseTemplatesRepository:
         Raises:
             Exception: If creation fails
         """
-        result = await self.client.table("page_prompt_templates") \
+        result = await self.client.table("user_prompt_templates") \
             .insert(data) \
             .execute()
 
@@ -279,7 +279,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Updated template dict or None if not found
         """
-        result = await self.client.table("page_prompt_templates") \
+        result = await self.client.table("user_prompt_templates") \
             .update(updates) \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -303,7 +303,7 @@ class SupabaseTemplatesRepository:
         Returns:
             True if deleted
         """
-        await self.client.table("page_prompt_templates") \
+        await self.client.table("user_prompt_templates") \
             .delete() \
             .eq("id", template_id) \
             .eq("user_id", user_id) \
@@ -322,7 +322,7 @@ class SupabaseTemplatesRepository:
         Returns:
             Template count
         """
-        result = await self.client.table("page_prompt_templates") \
+        result = await self.client.table("user_prompt_templates") \
             .select("id", count="exact") \
             .eq("user_id", user_id) \
             .execute()

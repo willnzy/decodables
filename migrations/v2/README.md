@@ -92,7 +92,7 @@ echo "✅ 迁移完成（包含优化补丁）"
 AI 生成 (3):
   - user_generations (生成记录)
   - generation_tasks (生成任务)
-  - page_prompt_templates (页面模板)
+  - user_prompt_templates (用户提示词模板)
 
 系统日志 (1):
   - system_error_logs (RPC 函数内部错误日志)

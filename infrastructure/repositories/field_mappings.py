@@ -881,19 +881,18 @@ ONBOARDING_STEPS_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
-# page_prompt_templates 表
-PAGE_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
+# user_prompt_templates 表
+USER_PROMPT_TEMPLATES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'template_id',
-    'template_name': 'template_name',
-    'template_category': 'template_category',
-    'prompt_template': 'prompt_template',
-    'description': 'description',
-    'example_input': 'example_input',
-    'example_output': 'example_output',
-    'parameters': 'parameters',
-    'is_active': 'is_active',
-    'usage_count': 'usage_count',
-    'created_by': 'created_by',
+    'user_id': 'user_id',
+    'name': 'name',
+    'layout': 'layout',
+    'story_theme': 'story_theme',
+    'main_character': 'main_character',
+    'style': 'style',
+    'creativity_level': 'creativity_level',
+    'negative_prompt': 'negative_prompt',
+    'generation_mode': 'generation_mode',
     'created_at': 'created_at',
     'updated_at': 'updated_at',
 }
