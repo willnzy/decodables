@@ -1124,38 +1124,31 @@ CREATE TABLE IF NOT EXISTS marketplace_reviews (
 
 
 -- ----------------------------------------------------------------------------
--- 20. page_prompt_templates (页面提示词模板)
+-- 20. page_prompt_templates (用户页面生成预设)
+-- User-created presets for AI page generation settings
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS page_prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_name TEXT NOT NULL UNIQUE,
-    template_category TEXT NOT NULL,
-    prompt_template TEXT NOT NULL,
-    description TEXT,
-    example_input JSONB DEFAULT '{}',
-    example_output TEXT,
-    parameters JSONB DEFAULT '[]',
-    is_active BOOLEAN DEFAULT true,
-    usage_count INTEGER DEFAULT 0,
-    created_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    layout TEXT DEFAULT 'image_top',
+    story_theme TEXT,
+    main_character TEXT,
+    style TEXT DEFAULT 'cartoon',
+    creativity_level REAL DEFAULT 0.3,
+    negative_prompt TEXT,
+    generation_mode TEXT DEFAULT 'guided',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    CONSTRAINT check_template_category CHECK (
-        template_category IN (
-            'text_to_image', 'image_enhancement', 'style_preset',
-            'text_generation', 'custom', 'system'
-        )
-    ),
-    CONSTRAINT check_template_name_not_empty CHECK (LENGTH(TRIM(template_name)) > 0),
-    CONSTRAINT check_prompt_template_not_empty CHECK (LENGTH(TRIM(prompt_template)) > 0),
-    CONSTRAINT check_usage_count CHECK (usage_count >= 0)
+    CONSTRAINT check_name_not_empty CHECK (LENGTH(TRIM(name)) > 0),
+    CONSTRAINT check_creativity_level CHECK (creativity_level >= 0.0 AND creativity_level <= 1.0),
+    CONSTRAINT check_generation_mode CHECK (generation_mode IN ('guided', 'flexible')),
+    CONSTRAINT unique_user_template_name UNIQUE (user_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_category ON page_prompt_templates(template_category);
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_active ON page_prompt_templates(is_active, usage_count DESC);
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_template_name ON page_prompt_templates(template_name);
-CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_created_by ON page_prompt_templates(created_by) WHERE created_by IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_user_id ON page_prompt_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_page_prompt_templates_name ON page_prompt_templates(name);
 
 
 -- ----------------------------------------------------------------------------
