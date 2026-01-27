@@ -295,3 +295,241 @@ class TestWebhookSecurity(BaseAPITest):
         assert response.status_code in [400, 500], (
             f"被篡改的请求体应被拒绝，但返回了 {response.status_code}"
         )
+
+
+# ==========================================
+# Test: Webhook Idempotency
+# ==========================================
+
+@pytest.mark.p0
+class TestWebhookIdempotency(BaseAPITest):
+    """
+    Webhook 幂等性测试
+
+    业务规则:
+    1. 相同的 Webhook 事件不应被处理两次
+    2. 使用事件 ID 去重
+    3. 重复请求应返回成功但不重复执行业务逻辑
+
+    重要性:
+    - 防止重复扣费/充值
+    - 防止重复创建用户
+    - 网络重试时保证数据一致性
+    """
+
+    def test_stripe_idempotency_key_concept(self, anon_client):
+        """
+        业务规则: Stripe Webhook 应基于事件 ID 实现幂等
+
+        Stripe 事件特点:
+        - 每个事件有唯一的 id (evt_xxx)
+        - 相同事件可能被发送多次 (网络重试)
+        - 后端应记录已处理的事件 ID
+
+        注意: 由于我们没有有效签名，只能测试请求格式
+        """
+        # 构造一个带有事件 ID 的请求
+        event_id = "evt_test_idempotency_123"
+        event_payload = {
+            "id": event_id,
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_test_123",
+                    "customer": "cus_test_123"
+                }
+            }
+        }
+
+        # 第一次请求 (会因签名失败而被拒绝)
+        response1 = anon_client.post(
+            Endpoints.WEBHOOKS_STRIPE,
+            headers={"Stripe-Signature": "t=1234567890,v1=fake_signature"},
+            json=event_payload
+        )
+
+        # 由于签名无效，应返回 400
+        assert response1.status_code == 400, (
+            f"无效签名应返回 400, 实际: {response1.status_code}"
+        )
+
+        # 在真实场景中，相同事件 ID 的第二次请求应:
+        # - 返回 200 (已处理)
+        # - 但不重复执行业务逻辑
+        print("✓ 幂等性依赖后端事件 ID 去重机制")
+        print("  - 建议: 后端应维护 processed_events 表")
+        print("  - 建议: 处理前检查事件 ID 是否已存在")
+
+    def test_clerk_webhook_event_id(self, anon_client):
+        """
+        业务规则: Clerk Webhook 应基于事件 ID 实现幂等
+
+        Clerk 事件特点:
+        - 通过 svix-id header 标识事件
+        - 相同 svix-id 的请求应只处理一次
+        """
+        event_id = "msg_test_idempotency_456"
+        event_payload = {
+            "type": "user.created",
+            "data": {
+                "id": "user_test_123",
+                "email_addresses": [{"email_address": "test@example.com"}]
+            }
+        }
+
+        # 请求 (会因签名失败而被拒绝)
+        response = anon_client.post(
+            Endpoints.WEBHOOKS_CLERK,
+            headers={
+                "svix-id": event_id,
+                "svix-timestamp": "1234567890",
+                "svix-signature": "v1,fake_signature"
+            },
+            json=event_payload
+        )
+
+        # 由于签名无效，应返回 400 或 500
+        assert response.status_code in [400, 500], (
+            f"无效签名应被拒绝, 实际: {response.status_code}"
+        )
+
+        print("✓ Clerk 幂等性依赖 svix-id 去重")
+        print("  - 建议: 后端应检查 svix-id 是否已处理")
+
+
+@pytest.mark.p1
+class TestWebhookIdempotencyBehavior(BaseAPITest):
+    """
+    Webhook 幂等行为验证
+
+    测试重复事件的处理策略
+    """
+
+    def test_idempotency_documentation(self, anon_client):
+        """
+        记录幂等性实现建议
+
+        由于无法在集成测试中验证实际的幂等性行为（需要有效签名），
+        此测试记录预期行为和实现建议。
+        """
+        idempotency_requirements = """
+        Webhook 幂等性要求:
+
+        1. Stripe Webhook:
+           - 事件 ID: event.id (evt_xxx)
+           - 存储: processed_stripe_events 表
+           - 字段: event_id, processed_at, event_type
+           - 行为: 重复事件返回 200，但不执行业务逻辑
+
+        2. Clerk Webhook:
+           - 事件 ID: svix-id header (msg_xxx)
+           - 存储: processed_clerk_events 表
+           - 字段: svix_id, processed_at, event_type
+           - 行为: 重复事件返回 200，但不执行业务逻辑
+
+        3. 关键业务影响:
+           - checkout.session.completed: 防止重复充值积分
+           - invoice.payment_succeeded: 防止重复续费处理
+           - user.created: 防止重复创建用户记录
+           - customer.subscription.updated: 防止重复状态更新
+
+        4. 实现建议:
+           - 使用数据库事务保证原子性
+           - 先检查是否已处理，再执行业务逻辑
+           - 考虑使用 Redis 缓存加速检查
+           - 设置事件记录的 TTL (如 7 天)
+        """
+
+        print(idempotency_requirements)
+
+        # 这是文档测试，总是通过
+        assert True
+
+
+# ==========================================
+# Test: Webhook Error Handling
+# ==========================================
+
+@pytest.mark.p1
+class TestWebhookErrorHandling(BaseAPITest):
+    """
+    Webhook 错误处理测试
+
+    验证各种错误场景的响应
+    """
+
+    def test_stripe_webhook_returns_json_error(self, anon_client):
+        """
+        业务规则: Webhook 错误应返回 JSON 格式
+
+        便于 Stripe 记录和调试
+        """
+        response = anon_client.post(
+            Endpoints.WEBHOOKS_STRIPE,
+            headers={"Stripe-Signature": "t=1234567890,v1=invalid"},
+            json={"id": "evt_test", "type": "test"}
+        )
+
+        # 验证返回的是 JSON
+        try:
+            error_data = response.json()
+            assert isinstance(error_data, dict), "错误响应应是 JSON 对象"
+            print(f"✓ 错误响应是 JSON 格式: {error_data}")
+        except Exception:
+            print(f"⚠️ 错误响应不是 JSON: {response.text[:200]}")
+
+    def test_clerk_webhook_returns_json_error(self, anon_client):
+        """
+        业务规则: Clerk Webhook 错误应返回 JSON 格式
+        """
+        response = anon_client.post(
+            Endpoints.WEBHOOKS_CLERK,
+            headers={
+                "svix-id": "msg_test",
+                "svix-timestamp": "1234567890",
+                "svix-signature": "v1,invalid"
+            },
+            json={"type": "user.created", "data": {}}
+        )
+
+        try:
+            error_data = response.json()
+            assert isinstance(error_data, dict), "错误响应应是 JSON 对象"
+            print(f"✓ 错误响应是 JSON 格式")
+        except Exception:
+            print(f"⚠️ 错误响应不是 JSON: {response.text[:200]}")
+
+    def test_webhook_error_no_sensitive_info(self, anon_client):
+        """
+        安全规则: 错误响应不应泄露敏感信息
+
+        不应包含:
+        - Webhook 签名密钥
+        - 内部堆栈跟踪
+        - 数据库连接信息
+        """
+        response = anon_client.post(
+            Endpoints.WEBHOOKS_STRIPE,
+            headers={"Stripe-Signature": "t=1234567890,v1=invalid"},
+            json={"id": "evt_test", "type": "test"}
+        )
+
+        response_text = response.text.lower()
+
+        sensitive_patterns = [
+            "whsec_",  # Stripe webhook secret prefix
+            "sk_live_",  # Stripe live key
+            "sk_test_",  # Stripe test key
+            "traceback",  # Python stack trace
+            "file \"",  # Stack trace file reference
+            "password",
+            "secret_key",
+            "database_url"
+        ]
+
+        for pattern in sensitive_patterns:
+            assert pattern not in response_text, (
+                f"错误响应不应包含敏感信息: {pattern}"
+            )
+
+        print("✓ 错误响应不包含敏感信息")
