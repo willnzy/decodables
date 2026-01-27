@@ -1015,6 +1015,109 @@ class Container:
             self._services['assets'] = AssetsService(repository, db)  # AsyncClient for storage
         return self._services['assets']
 
+    # ========== Workspace & Tag Services (v3.33) ==========
+
+    async def get_workspace_service(self):
+        """
+        Get workspace service instance (v3.33, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by Tag API and Clerk webhook for automatic workspace creation
+        - Phase 1: Only manages default personal workspaces
+        """
+        from domains.workspace import WorkspaceService
+        from infrastructure.repositories.workspace_repository import SupabaseWorkspaceRepository
+
+        if 'workspace_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseWorkspaceRepository(db)
+            self._services['workspace_service'] = WorkspaceService(repository)
+        return self._services['workspace_service']
+
+    async def get_tag_service(self):
+        """
+        Get tag service instance (v3.33, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by Tag API for tag CRUD operations
+        - Phase 1: Full tag management functionality
+        """
+        from domains.tag import TagService
+        from infrastructure.repositories.tag_repository import SupabaseTagRepository
+
+        if 'tag_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            repository = SupabaseTagRepository(db)
+            config_service = await self.get_config_service()
+            self._services['tag_service'] = TagService(repository, config_service)
+        return self._services['tag_service']
+
+    async def get_project_tag_service(self):
+        """
+        Get project tag service instance (v3.33, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by Project Tag API for project-tag associations
+        """
+        from domains.tag import ProjectTagService
+        from infrastructure.repositories.tag_repository import (
+            SupabaseTagRepository,
+            SupabaseProjectTagRepository,
+        )
+
+        if 'project_tag_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            tag_repo = SupabaseTagRepository(db)
+            project_tag_repo = SupabaseProjectTagRepository(db)
+            config_service = await self.get_config_service()
+            self._services['project_tag_service'] = ProjectTagService(
+                project_tag_repository=project_tag_repo,
+                tag_repository=tag_repo,
+                config_service=config_service,
+            )
+        return self._services['project_tag_service']
+
+    async def get_asset_tag_service(self):
+        """
+        Get asset tag service instance (v3.33, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by Asset Tag API for asset-tag associations
+        """
+        from domains.tag import AssetTagService
+        from infrastructure.repositories.tag_repository import (
+            SupabaseTagRepository,
+            SupabaseAssetTagRepository,
+        )
+
+        if 'asset_tag_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            tag_repo = SupabaseTagRepository(db)
+            asset_tag_repo = SupabaseAssetTagRepository(db)
+            config_service = await self.get_config_service()
+            self._services['asset_tag_service'] = AssetTagService(
+                asset_tag_repository=asset_tag_repo,
+                tag_repository=tag_repo,
+                config_service=config_service,
+            )
+        return self._services['asset_tag_service']
+
     # ========== Command Handlers (v2.0 - Async Methods) ==========
 
     async def get_deduct_credits_handler(self) -> DeductCreditsHandler:

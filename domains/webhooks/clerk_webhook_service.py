@@ -169,6 +169,14 @@ class ClerkWebhookService:
         # Note: Signup bonus is granted in create_user_idempotent() RPC
         # by setting credits_permanent=50, so no need to grant again
 
+        # v3.33: Create default workspace and apply preset tags for new users
+        if was_created:
+            try:
+                await self._create_workspace_and_preset_tags(user_id)
+            except Exception as e:
+                logger.warning(f"Failed to create workspace/preset tags for user {user_id}: {e}")
+                # Don't fail the webhook - user is created, workspace can be created on-demand
+
         # Log signup event
         try:
             await self.db_client.table("activity_logs").insert({
@@ -252,6 +260,44 @@ class ClerkWebhookService:
                     logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
             except Exception as inner_e:
                 logger.error(f"Failed to grant signup bonus to user {user_id}: {inner_e}")
+
+    async def _create_workspace_and_preset_tags(self, user_id: str) -> None:
+        """
+        Create default workspace and apply preset tags for a new user.
+
+        v3.33: Phase 1 - Workspace + Tag System
+
+        This method:
+        1. Creates a default personal workspace for the user
+        2. Applies default preset tag groups to the workspace
+
+        Args:
+            user_id: Clerk user_id of the new user
+        """
+        from container import get_container
+
+        try:
+            container = get_container()
+
+            # 1. Create default workspace
+            workspace_service = await container.get_workspace_service()
+            workspace = await workspace_service.get_or_create_default(user_id)
+            logger.info(f"✅ Created default workspace {workspace.id} for user {user_id}")
+
+            # 2. Apply preset tags (if enabled in config)
+            config_service = await container.get_config_service()
+            enable_presets = await config_service.get_bool("tag.enable_preset_groups", True)
+
+            if enable_presets:
+                tag_service = await container.get_tag_service()
+                tags = await tag_service.apply_default_presets(workspace.id, user_id)
+                logger.info(
+                    f"✅ Applied {len(tags)} preset tags to workspace {workspace.id} for user {user_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to create workspace/preset tags for user {user_id}: {e}")
+            raise
 
     async def _handle_user_updated(self, data: Dict[str, Any]) -> Dict[str, str]:
         """
