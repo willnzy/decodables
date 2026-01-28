@@ -4054,9 +4054,13 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.33*
+*文档版本: v3.34*
 *最后更新: 2026-01-28*
 *更新内容:
+- v3.34: 路由顺序修复 (2026-01-28)
+  - 修复: `GET /projects/starred` 和 `GET /projects/folder/{folder_id}` 返回 404
+  - 原因: FastAPI 路由匹配顺序问题，`/{project_id}` 通配符先于具体路由
+  - 解决: 将 `/starred` 和 `/folder/{folder_id}` 移至 `/{project_id}` 之前
 - v3.33: 新增 Folder + Star 系统 (14 个端点)
   - 新增: Folders 文件夹 (6个端点) - CRUD、重排序
   - 新增: Projects 移动/收藏 (4个端点) - move/star/folder/starred
