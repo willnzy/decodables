@@ -285,6 +285,90 @@ for i, result in enumerate(results):
 # 或使用 supabase CLI: supabase db dump / restore
 ```
 
+#### 1.3.1.3 定时任务异步处理 (Scheduled Tasks)
+
+**问题背景**: 使用 APScheduler BackgroundScheduler 时，定时任务在独立线程中运行，使用 `asyncio.run()` 创建新的事件循环。如果使用单例 AsyncClient，会导致 "Event loop is closed" 错误。
+
+**根因分析**:
+```
+FastAPI 主事件循环 (Event Loop A)
+    ↓
+创建 AsyncClient 并缓存到 _async_db_client (单例)
+    ↓
+BackgroundScheduler 在新线程运行定时任务
+    ↓
+asyncio.run() 创建新事件循环 (Event Loop B)
+    ↓
+get_async_db_client() 返回 Event Loop A 中创建的缓存客户端
+    ↓
+❌ 客户端绑定了 Event Loop A，无法在 Event Loop B 中使用
+    ↓
+"Event loop is closed"
+```
+
+**行业最佳实践**: 定时任务中不使用单例 AsyncClient，每次任务创建独立的客户端。
+
+**参考来源**:
+- [Python asyncio: Event loops in threads](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.run)
+- [APScheduler: Async jobs](https://apscheduler.readthedocs.io/en/3.x/userguide.html#adding-jobs)
+
+**解决方案** (`core/database/client.py`):
+
+```python
+from core.database import create_task_async_client
+
+# ❌ 错误做法: 使用单例 (在定时任务中会报错)
+async def my_scheduled_task():
+    db = await get_async_db_client()  # 可能返回已关闭的 event loop 的客户端
+    await db.table("users").select("*").execute()
+
+# ✅ 正确做法: 每次创建新客户端
+async def my_scheduled_task():
+    db = await create_task_async_client()  # 创建新客户端
+    try:
+        await db.table("users").select("*").execute()
+    finally:
+        if hasattr(db, 'aclose'):
+            await db.aclose()  # 清理资源
+```
+
+**API 对比**:
+
+| 函数 | 类型 | 适用场景 |
+|------|------|----------|
+| `get_async_db_client()` | 单例 | FastAPI 路由处理器 (共享同一事件循环) |
+| `create_task_async_client()` | 工厂 | 定时任务 (每次创建独立客户端) |
+
+**Scheduler 示例** (`scheduler.py`):
+
+```python
+def run_webhook_retry():
+    """定时任务: 重试失败的 webhook"""
+    import asyncio
+
+    async def _async_webhook_retry():
+        from core.database import create_task_async_client
+
+        # 创建任务专用客户端
+        db = await create_task_async_client()
+        try:
+            repo = SupabaseWebhookRepository(db)
+            service = WebhookRetryService(repo, ...)
+            return await service.retry_all_failed_webhooks()
+        finally:
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+
+    # asyncio.run() 创建新事件循环
+    result = asyncio.run(_async_webhook_retry())
+```
+
+**要点**:
+1. ✅ 定时任务必须使用 `create_task_async_client()` 创建独立客户端
+2. ✅ 任务结束后必须清理客户端 (`aclose()` 或 `finally` 块)
+3. ❌ 不要在定时任务中使用 `get_async_db_client()` 单例
+4. ❌ 不要跨事件循环共享 AsyncClient
+
 ---
 
 ### 1.3.2 shared/ - 共享层 (服务抽象)

@@ -27,6 +27,7 @@ from .client import (
     get_db_client,
     get_async_db_client,  # NEW: Async client for native async/await
     close_async_db_client,  # NEW: Cleanup function
+    create_task_async_client,  # NEW: Non-singleton client for scheduled tasks
     is_db_available,
     DatabaseConfig,
     DatabaseClient,
@@ -65,6 +66,7 @@ __all__ = [
     # Client (Async - NEW, recommended)
     'get_async_db_client',
     'close_async_db_client',
+    'create_task_async_client',  # Non-singleton for scheduled tasks
     # FastAPI Dependencies (NEW, recommended for route handlers)
     'get_async_db',
     'require_async_db',

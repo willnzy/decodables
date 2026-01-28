@@ -171,6 +171,58 @@ async def close_async_db_client():
         logger.info("[DB] Async database client closed")
 
 
+async def create_task_async_client(config: DatabaseConfig = None) -> Any:
+    """
+    Create a fresh async client for scheduled tasks.
+
+    IMPORTANT: This is NOT a singleton. Each scheduled task should create
+    its own client to avoid event loop conflicts.
+
+    Background:
+    - BackgroundScheduler runs tasks in separate threads
+    - Each thread creates a new event loop via asyncio.run()
+    - Singleton async clients are bound to the original event loop
+    - Using a singleton across event loops causes "Event loop is closed" error
+
+    The caller is responsible for closing the client after use.
+
+    Args:
+        config: Optional configuration, uses environment if not provided
+
+    Returns:
+        New Supabase AsyncClient instance
+
+    Raises:
+        ValueError: If database is not configured
+
+    Usage in scheduled tasks:
+        async def my_task():
+            client = await create_task_async_client()
+            try:
+                # use client...
+            finally:
+                # Cleanup (if aclose is available)
+                if hasattr(client, 'aclose'):
+                    await client.aclose()
+    """
+    cfg = config or DatabaseConfig.from_env()
+
+    if not cfg.is_valid:
+        raise ValueError("Database not configured - missing URL or KEY")
+
+    try:
+        from supabase import acreate_client
+        client = await acreate_client(cfg.url, cfg.key)
+        logger.info("[DB] Task-specific async client created")
+        return client
+    except ImportError:
+        logger.error("[DB] supabase package not installed or AsyncClient not available")
+        raise
+    except Exception as e:
+        logger.error(f"[DB] Failed to create task async client: {e}")
+        raise
+
+
 def get_db_info() -> dict:
     """
     Get database connection info (for monitoring/debugging).
