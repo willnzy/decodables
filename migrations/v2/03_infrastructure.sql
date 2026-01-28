@@ -36,7 +36,7 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS admin_operations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    admin_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    admin_id TEXT NOT NULL,  -- 不使用外键，支持系统级操作 (system_webhook, system_scheduler 等)
     operation_type TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT,
