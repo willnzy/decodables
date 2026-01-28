@@ -106,6 +106,37 @@ class FolderService:
         """
         return await self._repo.get_by_workspace(workspace_id, folder_type)
 
+    async def list_folders_with_counts(
+        self,
+        workspace_id: str,
+        folder_type: FolderType,
+        user_id: str,
+    ) -> List[Folder]:
+        """
+        List all folders with bought/selling counts for filtering.
+
+        v3.34: Added for Bought/Selling tab folder filtering.
+        Returns folders with item_count, bought_count, and selling_count populated.
+
+        Args:
+            workspace_id: Workspace UUID
+            folder_type: Type of folder (project or asset)
+            user_id: User ID (for checking marketplace_listings)
+
+        Returns:
+            List of Folder entities with counts populated
+        """
+        folders = await self._repo.get_by_workspace(workspace_id, folder_type)
+
+        # Enrich each folder with bought/selling counts
+        for folder in folders:
+            counts = await self._repo.count_items_by_type(folder.id, user_id)
+            folder.item_count = counts["total"]
+            folder.bought_count = counts["bought_count"]
+            folder.selling_count = counts["selling_count"]
+
+        return folders
+
     async def update_folder(
         self,
         folder_id: str,

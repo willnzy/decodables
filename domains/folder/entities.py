@@ -84,8 +84,11 @@ class Folder:
     created_by: str = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    # Computed field (not stored in DB)
+    # Computed fields (not stored in DB)
     item_count: int = 0
+    # v3.34: Sub-counts for filtering in Bought/Selling tabs
+    bought_count: int = 0  # Projects with is_purchased=True
+    selling_count: int = 0  # Projects with active marketplace listings
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""
@@ -100,6 +103,8 @@ class Folder:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "item_count": self.item_count,
+            "bought_count": self.bought_count,
+            "selling_count": self.selling_count,
         }
 
     @classmethod
@@ -132,6 +137,8 @@ class Folder:
             created_at=created_at,
             updated_at=updated_at,
             item_count=data.get("item_count", 0),
+            bought_count=data.get("bought_count", 0),
+            selling_count=data.get("selling_count", 0),
         )
 
     @staticmethod

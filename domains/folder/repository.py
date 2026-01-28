@@ -158,6 +158,28 @@ class IFolderRepository(ABC):
         pass
 
     @abstractmethod
+    async def count_items_by_type(
+        self,
+        folder_id: str,
+        user_id: str,
+    ) -> dict:
+        """
+        Count items in a folder by marketplace status.
+
+        For project folders:
+        - bought_count: Projects with is_purchased=True
+        - selling_count: Projects with active marketplace listings
+
+        Args:
+            folder_id: Folder UUID
+            user_id: User ID (needed for checking marketplace_listings)
+
+        Returns:
+            Dict with 'total', 'bought_count', 'selling_count'
+        """
+        pass
+
+    @abstractmethod
     async def reorder(
         self,
         workspace_id: str,

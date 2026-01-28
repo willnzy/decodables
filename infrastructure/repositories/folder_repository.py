@@ -300,6 +300,123 @@ class SupabaseFolderRepository(IFolderRepository):
             return 0
 
     @retry_on_network_error()
+    async def count_items_by_type(
+        self,
+        folder_id: str,
+        user_id: str,
+    ) -> dict:
+        """
+        Count items in a folder by marketplace status.
+
+        For project folders:
+        - bought_count: Projects with is_purchased=True
+        - selling_count: Projects with active marketplace listings
+
+        Args:
+            folder_id: Folder UUID
+            user_id: User ID (needed for checking marketplace_listings)
+
+        Returns:
+            Dict with 'total', 'bought_count', 'selling_count'
+        """
+        try:
+            # First get the folder to know its type
+            folder = await self.get_by_id(folder_id)
+            if not folder:
+                return {"total": 0, "bought_count": 0, "selling_count": 0}
+
+            if folder.folder_type == FolderType.PROJECT:
+                # Total count
+                total_result = await self.client.table("projects")\
+                    .select("id", count="exact")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .execute()
+                total = total_result.count or 0
+
+                # Bought count (is_purchased = True)
+                bought_result = await self.client.table("projects")\
+                    .select("id", count="exact")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .eq("is_purchased", True)\
+                    .execute()
+                bought_count = bought_result.count or 0
+
+                # Selling count - get project IDs in this folder, then check marketplace_listings
+                projects_result = await self.client.table("projects")\
+                    .select("id")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .execute()
+                project_ids = [p["id"] for p in (projects_result.data or [])]
+
+                selling_count = 0
+                if project_ids:
+                    # Count projects that have active marketplace listings
+                    listings_result = await self.client.table("marketplace_listings")\
+                        .select("resource_id", count="exact")\
+                        .eq("seller_id", user_id)\
+                        .eq("resource_type", "project")\
+                        .eq("is_deleted", False)\
+                        .in_("resource_id", project_ids)\
+                        .execute()
+                    selling_count = listings_result.count or 0
+
+                return {
+                    "total": total,
+                    "bought_count": bought_count,
+                    "selling_count": selling_count,
+                }
+
+            else:  # ASSET
+                # For assets, similar logic but using assets table
+                total_result = await self.client.table("assets")\
+                    .select("id", count="exact")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .execute()
+                total = total_result.count or 0
+
+                # Bought count
+                bought_result = await self.client.table("assets")\
+                    .select("id", count="exact")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .eq("is_purchased", True)\
+                    .execute()
+                bought_count = bought_result.count or 0
+
+                # Selling count
+                assets_result = await self.client.table("assets")\
+                    .select("id")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .execute()
+                asset_ids = [a["id"] for a in (assets_result.data or [])]
+
+                selling_count = 0
+                if asset_ids:
+                    listings_result = await self.client.table("marketplace_listings")\
+                        .select("resource_id", count="exact")\
+                        .eq("seller_id", user_id)\
+                        .eq("resource_type", "asset")\
+                        .eq("is_deleted", False)\
+                        .in_("resource_id", asset_ids)\
+                        .execute()
+                    selling_count = listings_result.count or 0
+
+                return {
+                    "total": total,
+                    "bought_count": bought_count,
+                    "selling_count": selling_count,
+                }
+
+        except Exception as e:
+            logger.error(f"[FolderRepository] count_items_by_type failed: {e}")
+            return {"total": 0, "bought_count": 0, "selling_count": 0}
+
+    @retry_on_network_error()
     async def reorder(
         self,
         workspace_id: str,

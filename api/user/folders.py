@@ -80,6 +80,9 @@ class FolderResponse(BaseModel):
     color: str
     sort_order: int
     item_count: int = 0
+    # v3.34: Counts for Bought/Selling tab filtering
+    bought_count: int = 0
+    selling_count: int = 0
 
 
 class FolderListResponse(BaseModel):
@@ -105,13 +108,23 @@ async def list_folders(
         - folder_type: "project" or "asset" (required)
 
     Returns:
-        FolderListResponse with items and total
+        FolderListResponse with items, total, and per-folder counts:
+        - item_count: total items in folder
+        - bought_count: items with is_purchased=True
+        - selling_count: items with active marketplace listings
+
+    v3.34: Now includes bought_count and selling_count for Bought/Selling tab filtering.
     """
     container = get_container()
     folder_service = await container.get_folder_service()
 
     ft = FolderType.from_str(folder_type)
-    folders = await folder_service.list_folders(ctx.workspace_id, ft)
+    # v3.34: Use list_folders_with_counts to include bought/selling counts
+    folders = await folder_service.list_folders_with_counts(
+        ctx.workspace_id,
+        ft,
+        ctx.user_id,
+    )
 
     return {
         "items": [folder.to_dict() for folder in folders],
