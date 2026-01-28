@@ -455,7 +455,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                 if search and search.strip():
                     query = query.ilike("name", f"%{search.strip()}%")
 
-                result = await query.range(offset, offset + limit - 1).order("created_at", desc=True).execute()
+                result = await query.order("created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
                 items = result.data or []
 
                 # Count with same filters
@@ -493,7 +493,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                 query = query.ilike("name", f"%{search.strip()}%")
 
             # Execute query
-            result = await query.range(offset, offset + limit - 1).order("created_at", desc=True).execute()
+            result = await query.order("created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
             items = result.data or []
 
             # Get total count with same filters
