@@ -974,11 +974,13 @@ CREATE INDEX IF NOT EXISTS idx_static_pages_published ON static_pages(is_publish
 ALTER TABLE static_pages ENABLE ROW LEVEL SECURITY;
 
 -- 公开读取已发布的页面
+DROP POLICY IF EXISTS "static_pages_public_read" ON static_pages;
 CREATE POLICY "static_pages_public_read" ON static_pages
     FOR SELECT
     USING (is_published = true);
 
 -- Admin 完全访问 (通过 service_role)
+DROP POLICY IF EXISTS "static_pages_admin_all" ON static_pages;
 CREATE POLICY "static_pages_admin_all" ON static_pages
     FOR ALL
     USING (auth.role() = 'service_role')
