@@ -358,7 +358,14 @@ class CreationService:
             description=source.metadata.description,
         )
 
-        # Copy pages from source
+        # Copy canvas_data (editor stores page data in this JSON field)
+        new_project.canvas_data = source.canvas_data
+
+        # Copy tags from source
+        if source.metadata.tags:
+            new_project.metadata.tags = list(source.metadata.tags)
+
+        # Copy pages from project_pages table (if any)
         for page in source.pages:
             new_project.add_page(page.canvas_data)
 

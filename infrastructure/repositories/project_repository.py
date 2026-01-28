@@ -233,7 +233,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         try:
             query = self.client.table("projects").select(
                 "id", count="exact"
-            ).eq("user_id", owner_id).neq("status", ProjectStatus.DELETED.value)
+            ).eq("user_id", owner_id).neq(
+                "status", ProjectStatus.DELETED.value
+            ).eq("is_deleted", False)
 
             if status:
                 query = query.eq("status", status.value)
