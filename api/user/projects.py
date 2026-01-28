@@ -354,6 +354,112 @@ async def list_deleted_projects(
     )
 
 
+# ==========================================
+# IMPORTANT: These specific GET routes MUST come BEFORE /{project_id}
+# to avoid being caught by the wildcard route.
+# ==========================================
+
+
+@router.get("/starred")
+async def list_starred_projects(
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectListResponse:
+    """
+    Get starred projects.
+
+    v3.33 Phase 2.6: Starred projects view.
+
+    Args:
+        offset: Number of records to skip
+        limit: Number of records to return
+
+    Returns:
+        ProjectListResponse with starred projects
+    """
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    items = await repo.get_starred(
+        user_id=ctx.user_id,
+        offset=offset,
+        limit=limit,
+    )
+
+    return ProjectListResponse(
+        items=items,
+        total=len(items),  # Approximate; exact count would need separate query
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get("/folder/{folder_id}")
+async def list_projects_by_folder(
+    folder_id: str,
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    search: Optional[str] = None,
+    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
+) -> ProjectListResponse:
+    """
+    Get projects in a specific folder.
+
+    v3.33 Phase 2.6: Folder filtering support.
+    Note: Use folder_id="root" to get unfiled projects.
+
+    Args:
+        folder_id: Folder ID (or "root" for unfiled)
+        offset: Number of records to skip
+        limit: Number of records to return
+        search: Optional search query
+
+    Returns:
+        ProjectListResponse with projects in the folder
+    """
+    container = get_container()
+
+    # Handle "root" as unfiled projects
+    target_folder_id: Optional[str] = None if folder_id == "root" else folder_id
+
+    # Validate UUID format (if not root)
+    if target_folder_id and not UUID_PATTERN.match(target_folder_id):
+        raise HTTPException(400, "Invalid folder ID format")
+
+    # Validate folder belongs to user's workspace (if not root)
+    if target_folder_id:
+        folder_service = await container.get_folder_service()
+        if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
+            raise HTTPException(404, "Folder not found")
+
+    # Get project repository directly for this operation
+    from core.database import get_async_db_client
+    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+
+    db = await get_async_db_client()
+    repo = SupabaseProjectRepository(db)
+
+    items = await repo.get_by_folder(
+        user_id=ctx.user_id,
+        folder_id=target_folder_id,
+        offset=offset,
+        limit=limit,
+        search=search,
+    )
+
+    return ProjectListResponse(
+        items=items,
+        total=len(items),  # Approximate; exact count would need separate query
+        offset=offset,
+        limit=limit,
+    )
+
+
 @router.post("")
 @limiter.limit("20/minute")
 async def create_project(
@@ -783,103 +889,3 @@ async def toggle_project_star(
         raise HTTPException(404, "Project not found or access denied")
 
     return ProjectStarResponse(success=True, is_starred=req.is_starred)
-
-
-@router.get("/folder/{folder_id}")
-async def list_projects_by_folder(
-    folder_id: str,
-    offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    search: Optional[str] = None,
-    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
-) -> ProjectListResponse:
-    """
-    Get projects in a specific folder.
-
-    v3.33 Phase 2.6: Folder filtering support.
-    Note: Use folder_id="root" to get unfiled projects.
-
-    Args:
-        folder_id: Folder ID (or "root" for unfiled)
-        offset: Number of records to skip
-        limit: Number of records to return
-        search: Optional search query
-
-    Returns:
-        ProjectListResponse with projects in the folder
-    """
-    container = get_container()
-
-    # Handle "root" as unfiled projects
-    target_folder_id: Optional[str] = None if folder_id == "root" else folder_id
-
-    # Validate UUID format (if not root)
-    if target_folder_id and not UUID_PATTERN.match(target_folder_id):
-        raise HTTPException(400, "Invalid folder ID format")
-
-    # Validate folder belongs to user's workspace (if not root)
-    if target_folder_id:
-        folder_service = await container.get_folder_service()
-        if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
-            raise HTTPException(404, "Folder not found")
-
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
-
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    items = await repo.get_by_folder(
-        user_id=ctx.user_id,
-        folder_id=target_folder_id,
-        offset=offset,
-        limit=limit,
-        search=search,
-    )
-
-    return ProjectListResponse(
-        items=items,
-        total=len(items),  # Approximate; exact count would need separate query
-        offset=offset,
-        limit=limit,
-    )
-
-
-@router.get("/starred")
-async def list_starred_projects(
-    offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
-) -> ProjectListResponse:
-    """
-    Get starred projects.
-
-    v3.33 Phase 2.6: Starred projects view.
-
-    Args:
-        offset: Number of records to skip
-        limit: Number of records to return
-
-    Returns:
-        ProjectListResponse with starred projects
-    """
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
-
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    items = await repo.get_starred(
-        user_id=ctx.user_id,
-        offset=offset,
-        limit=limit,
-    )
-
-    return ProjectListResponse(
-        items=items,
-        total=len(items),  # Approximate; exact count would need separate query
-        offset=offset,
-        limit=limit,
-    )
