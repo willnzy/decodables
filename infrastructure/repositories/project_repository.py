@@ -835,10 +835,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """
 
         # Determine select fields
+        # v3.37: Added folder_id and is_starred for folder filtering
         if include_canvas_data:
-            select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
+            select_fields = "id, title, thumbnail_url, canvas_data, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, folder_id, is_starred, created_at, updated_at"
         else:
-            select_fields = "id, title, thumbnail_url, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, created_at, updated_at"
+            select_fields = "id, title, thumbnail_url, source_listing_id, is_purchased, origin_owner_id, listing_status, marketplace_listing_id, folder_id, is_starred, created_at, updated_at"
 
         # v3.30: Special handling for "selling" view - query via marketplace_listings
         if view_type == "selling":
