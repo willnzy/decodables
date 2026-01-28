@@ -206,7 +206,7 @@ async def upload_asset(
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
 
-    tz = get_request_timezone(request, user_id=ctx.user_id)
+    tz = await get_request_timezone(request, user_id=ctx.user_id)
 
     container = get_container()
     handler = await container.get_upload_asset_handler()
@@ -273,7 +273,7 @@ async def add_asset_from_url(
     Business logic (SSRF protection, URL validation) moved to Service layer.
     v3.33: Now uses UserWithWorkspace for automatic workspace creation.
     """
-    tz = get_request_timezone(request, user_id=ctx.user_id)
+    tz = await get_request_timezone(request, user_id=ctx.user_id)
 
     container = get_container()
     handler = await container.get_add_asset_from_url_handler()

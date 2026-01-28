@@ -139,7 +139,7 @@ async def ocr_tool(
     is_trial = is_user_in_trial(user, trial_days=TRIAL_DAYS)
 
     # Get timezone for asset storage
-    timezone = get_request_timezone(request, user_id=user.user_id)
+    timezone = await get_request_timezone(request, user_id=user.user_id)
 
     container = get_container()
     handler = await container.get_ocr_handler()

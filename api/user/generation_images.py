@@ -126,7 +126,7 @@ async def gen_images(
     creativity_level = validate_creativity_level(req.creativity_level)
 
     # Get timezone
-    tz = get_request_timezone(request, user_id=user.user_id)
+    tz = await get_request_timezone(request, user_id=user.user_id)
 
     # Enhance prompts if needed
     enhancement_data = enhance_prompts(
