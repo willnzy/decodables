@@ -219,25 +219,20 @@ async def get_timezone_from_body(request: Request) -> Optional[str]:
 def get_timezone_from_user_profile(user_id: Optional[str]) -> Optional[str]:
     """
     Get timezone from user's database profile.
-    
+
+    Note: This requires async DB access (UserRepository.get_by_id),
+    but this function is sync. Use the async get_request_timezone_async()
+    for profile-based timezone lookup. This sync version always returns None
+    and relies on other fallbacks (header, Cloudflare, default).
+
     Args:
         user_id: User ID
-        
+
     Returns:
-        str or None: Timezone if user has one set
+        None (async DB lookup not available in sync context)
     """
-    if not user_id:
-        return None
-    
-    try:
-        from infrastructure.db_compat import get_user_timezone
-        tz = get_user_timezone(user_id)
-        if tz and tz != "UTC":  # Only return if explicitly set
-            logger.debug(f"Timezone from user profile: {tz}")
-            return tz
-    except Exception as e:
-        logger.warning(f"Failed to get user timezone: {e}")
-    
+    # Profile timezone lookup requires async DB access.
+    # Other fallbacks (header, Cloudflare, default) handle this.
     return None
 
 
