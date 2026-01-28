@@ -369,6 +369,22 @@ def run_webhook_retry():
 3. ❌ 不要在定时任务中使用 `get_async_db_client()` 单例
 4. ❌ 不要跨事件循环共享 AsyncClient
 
+**已修复文件清单** (v3.31):
+
+| 文件 | 函数/方法 | 修复方式 |
+|------|-----------|----------|
+| `scheduler.py` | `run_webhook_retry()` | 使用 `create_task_async_client()` |
+| `scheduler.py` | `run_daily_maintenance()` | 使用 `create_task_async_client()` |
+| `scheduler.py` | `run_weekly_maintenance()` | 使用 `create_task_async_client()` |
+| `infrastructure/tasks/maintenance_scheduler.py` | 所有方法 | 增加可选 `db` 参数 |
+| `infrastructure/task_queue/queue_service.py` | `enqueue_export_task()` | 使用 `create_task_async_client()` |
+| `infrastructure/task_queue/export_handler.py` | `execute_export_task()` | 整合为单一事件循环 + `create_task_async_client()` |
+
+**新增定时任务检查清单**:
+- [ ] 是否使用 `create_task_async_client()` 而非 `get_async_db_client()`？
+- [ ] 是否在 `finally` 块中调用 `aclose()` 清理？
+- [ ] 是否将所有异步操作放在同一个 `asyncio.run()` 中？
+
 ---
 
 ### 1.3.2 shared/ - 共享层 (服务抽象)
