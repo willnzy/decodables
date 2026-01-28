@@ -106,7 +106,16 @@ Happy creating! 🎨',
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 2. Using AI to Generate Images
 INSERT INTO articles (
@@ -212,7 +221,16 @@ Ready to try it? Open a project and click the **AI Image** button!',
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 3. Designing Beautiful Pages
 INSERT INTO articles (
@@ -337,7 +355,16 @@ Start with our templates for:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 4. Exporting and Printing Your Books
 INSERT INTO articles (
@@ -455,7 +482,16 @@ For classroom sets:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 5. How to Fold Your Mini-Book
 INSERT INTO articles (
@@ -561,7 +597,16 @@ Check that your original print was oriented correctly. The cover should be in th
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 6. Using OCR & Smart Scan
 INSERT INTO articles (
@@ -687,7 +732,16 @@ Smart Scan works best with:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 7. Selling on the Marketplace
 INSERT INTO articles (
@@ -819,7 +873,16 @@ Ready to start selling? Create something amazing and share it with the community
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 8. Working with Stickers
 INSERT INTO articles (
@@ -956,7 +1019,16 @@ Available on the marketplace:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 9. Tips for Teachers: Classroom Use
 INSERT INTO articles (
@@ -1125,7 +1197,16 @@ Mini-books support:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 10. Understanding Subscriptions & Credits
 INSERT INTO articles (
@@ -1278,7 +1359,16 @@ Receipts are emailed automatically. Access past receipts in your billing portal.
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 11. Troubleshooting Guide
 INSERT INTO articles (
@@ -1472,7 +1562,16 @@ Please include:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- 12. Frequently Asked Questions
 INSERT INTO articles (
@@ -1641,7 +1740,16 @@ Ensure stable internet connection, try a different browser, or use a different q
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================
@@ -1678,7 +1786,16 @@ No! Our AI can generate complete pages for you. Just describe what you want, and
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- FAQ: Credits & Pricing
 INSERT INTO articles (
@@ -1713,7 +1830,16 @@ Buy Credit Booster (${{pricing.credits_100.price}} = {{pricing.credits_100.amoun
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- FAQ: Features & Plans
 INSERT INTO articles (
@@ -1744,7 +1870,16 @@ Pro users have a commercial license. Free and Starter users should use creations
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- FAQ: Export & Printing
 INSERT INTO articles (
@@ -1775,7 +1910,16 @@ Check our "Folding Instructions" guide for step-by-step directions. You''ll need
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- FAQ: Marketplace
 INSERT INTO articles (
@@ -1806,7 +1950,16 @@ You keep {{marketplace.seller_share_percent}}% of each sale as permanent credits
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- FAQ: Account & Support
 INSERT INTO articles (
@@ -1837,7 +1990,16 @@ Email: {{site.email}} or WhatsApp: {{site.whatsapp}}. We typically respond withi
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================
@@ -1881,7 +2043,16 @@ Your credit balance is too low. Click "Buy Credits" in the popup, or upgrade to 
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Trial period expired
 INSERT INTO articles (
@@ -1925,7 +2096,16 @@ Your {{trial.duration_days}}-day Free trial has ended. Projects are now read-onl
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Project limit reached
 INSERT INTO articles (
@@ -1971,7 +2151,16 @@ You''ve hit the maximum projects for your tier (Free: {{tiers.t1.maxProjects}}, 
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Content policy violation
 INSERT INTO articles (
@@ -2017,7 +2206,16 @@ Your AI prompt contains restricted content. Avoid violence, adult content, real 
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Failed to save project
 INSERT INTO articles (
@@ -2061,7 +2259,16 @@ Check your internet connection and try again. Your edits are cached locally, so 
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Upload failed
 INSERT INTO articles (
@@ -2108,7 +2315,16 @@ Check file size (max {{limits.upload_max_size_mb}}MB) and format (JPG, PNG, WEBP
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: Checkout failed
 INSERT INTO articles (
@@ -2154,7 +2370,16 @@ Check your card has sufficient funds. Disable popup blockers (Stripe opens in a 
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Troubleshooting: ZIP export requires Pro
 INSERT INTO articles (
@@ -2199,7 +2424,16 @@ All users can export as PDF for free! PDF export includes:
     0,
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 
 -- ============================================================================

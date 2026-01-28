@@ -81,7 +81,16 @@ To our beta testers and early supporters - thank you for helping us shape Make D
     156,
     CURRENT_TIMESTAMP - INTERVAL '30 days',
     CURRENT_TIMESTAMP - INTERVAL '30 days'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- News 2: AI Image Generation Update
 INSERT INTO articles (
@@ -169,7 +178,16 @@ Open any project and click the AI Image button to try it out!
     243,
     CURRENT_TIMESTAMP - INTERVAL '21 days',
     CURRENT_TIMESTAMP - INTERVAL '21 days'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- News 3: Marketplace Launch
 INSERT INTO articles (
@@ -269,7 +287,16 @@ Ready to explore? Check out the marketplace!
     189,
     CURRENT_TIMESTAMP - INTERVAL '14 days',
     CURRENT_TIMESTAMP - INTERVAL '14 days'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- News 4: User Story
 INSERT INTO articles (
@@ -359,7 +386,16 @@ Are you using Make Decodables in creative ways? We''d love to feature you!
     87,
     CURRENT_TIMESTAMP - INTERVAL '7 days',
     CURRENT_TIMESTAMP - INTERVAL '7 days'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- News 5: New Templates Announcement
 INSERT INTO articles (
@@ -466,7 +502,16 @@ Tag us @MakeDecodables to share your spring books!
     64,
     CURRENT_TIMESTAMP - INTERVAL '3 days',
     CURRENT_TIMESTAMP - INTERVAL '3 days'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- News 6: Platform Update
 INSERT INTO articles (
@@ -584,4 +629,13 @@ For developers and power users:
     42,
     CURRENT_TIMESTAMP - INTERVAL '1 day',
     CURRENT_TIMESTAMP - INTERVAL '1 day'
-);
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    summary = EXCLUDED.summary,
+    content = EXCLUDED.content,
+    tags = EXCLUDED.tags,
+    is_featured = EXCLUDED.is_featured,
+    is_published = EXCLUDED.is_published,
+    sort_order = EXCLUDED.sort_order,
+    updated_at = CURRENT_TIMESTAMP;
