@@ -202,23 +202,22 @@ class SupabaseUserTasksRepository:
         user_id: str,
     ) -> Optional[Dict[str, Any]]:
         """
-        Get task details from database via RPC function (fallback when not in cache).
+        Get task details from database (fallback when not in cache).
 
         Args:
-            task_id: Task identifier
+            task_id: Task identifier (UUID)
             user_id: User ID (for ownership verification)
 
         Returns:
-            Task details dict or None if not found/unsuccessful
+            Task details dict or None if not found
         """
         try:
-            result = await self.supabase.rpc("get_task_details", {
-                "p_task_id": task_id,
-                "p_user_id": user_id,
-            }).execute()
+            result = await self.supabase.table("generation_tasks").select(
+                "*"
+            ).eq("id", task_id).eq("user_id", user_id).maybe_single().execute()
 
-            if result.data and result.data.get("success"):
-                return result.data
+            if result.data:
+                return {"success": True, "task": result.data}
 
             return None
 

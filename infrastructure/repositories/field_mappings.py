@@ -186,7 +186,7 @@ LISTINGS_DB_TO_DOMAIN: Dict[str, str] = {
 # ============================================================
 PURCHASES_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'purchase_id',                      # UUID
-    'user_id': 'buyer_id',                    # TEXT (FK to profiles.id) - 注意: 代码中使用 buyer_id
+    'user_id': 'buyer_id',                    # TEXT (FK to profiles.id) - 数据库列是 user_id，领域对象字段是 buyer_id
     'listing_id': 'listing_id',               # UUID (FK to marketplace_listings.id)
     'price_paid': 'price_paid',               # INTEGER (积分)
     'idempotency_key': 'idempotency_key',     # TEXT

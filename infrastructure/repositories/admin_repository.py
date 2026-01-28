@@ -51,7 +51,7 @@ class SupabaseAdminUsersRepository:
 
         projects = await self.client.table("projects").select("id, title, created_at").eq("user_id", user_id).execute()
         transactions = await self.client.table("credit_transactions").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
-        purchases = await self.client.table("marketplace_purchases").select("*").eq("buyer_id", user_id).execute()
+        purchases = await self.client.table("marketplace_purchases").select("*").eq("user_id", user_id).execute()
         
         return {
             "profile": profile.data[0],

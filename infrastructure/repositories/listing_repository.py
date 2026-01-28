@@ -440,15 +440,15 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """
         try:
             # Use upsert with ON CONFLICT DO NOTHING to handle race condition
-            # The unique constraint on (listing_id, buyer_id) prevents duplicates
+            # The unique constraint on (listing_id, user_id) prevents duplicates
             result = await self.client.table("marketplace_purchases").upsert(
                 {
                     "listing_id": listing_id,
-                    "buyer_id": buyer_id,
+                    "user_id": buyer_id,
                     "credit_amount": credit_amount,
                     "purchased_at": datetime.utcnow().isoformat(),
                 },
-                on_conflict="listing_id,buyer_id",
+                on_conflict="listing_id,user_id",
                 ignore_duplicates=True,  # Don't update if exists
             ).execute()
 
@@ -487,7 +487,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             result = await self.client.table("marketplace_purchases").select(
                 "id"
-            ).eq("listing_id", listing_id).eq("buyer_id", user_id).maybe_single().execute()
+            ).eq("listing_id", listing_id).eq("user_id", user_id).maybe_single().execute()
 
             return result.data is not None
 
@@ -507,7 +507,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             # Get purchase records
             purchases = await self.client.table("marketplace_purchases").select(
                 "listing_id"
-            ).eq("buyer_id", user_id).order(
+            ).eq("user_id", user_id).order(
                 "purchased_at", desc=True
             ).range(offset, offset + limit - 1).execute()
 
