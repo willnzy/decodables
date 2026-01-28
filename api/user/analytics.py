@@ -82,6 +82,7 @@ class AnalyticsEvent(BaseModel):
     event_id: Optional[str] = Field(None, max_length=100)
     event_level: Optional[str] = Field(None, pattern="^(critical|important|normal|debug)$")
     timestamp: Optional[str] = Field(None, max_length=50)
+    utc_timestamp: Optional[str] = Field(None, max_length=50)
     session_id: Optional[str] = Field(None, max_length=100)
     properties: Dict[str, Any] = Field(default_factory=dict)
     env: Dict[str, Any] = Field(default_factory=dict)
