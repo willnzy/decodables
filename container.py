@@ -211,8 +211,14 @@ class Container:
     async def get_creation_service(self) -> CreationService:
         """Get creation service instance (async)."""
         if 'creation' not in self._services:
+            from infrastructure.repositories.config_repository import SupabaseConfigRepository
+            from domains.identity.tier_service import TierService
+
             project_repo = await self.get_project_repository()
-            self._services['creation'] = CreationService(project_repo)
+            db = await get_async_db_client()
+            config_repo = SupabaseConfigRepository(db)
+            tier_service = TierService(config_repo)
+            self._services['creation'] = CreationService(project_repo, tier_service)
         return self._services['creation']
 
     async def get_marketplace_service(self) -> MarketplaceService:

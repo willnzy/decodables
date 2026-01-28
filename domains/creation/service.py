@@ -336,7 +336,13 @@ class CreationService:
         # Verify access to source project
         source = await self.get_project_with_access(project_id, user_id)
 
-        limit = self.PROJECT_LIMITS.get(tier, 5)
+        # Get project limit from TierService (configurable)
+        if self._tier_service:
+            limit = await self._tier_service.get_max_projects(tier)
+        else:
+            # Fallback if tier_service not injected
+            from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
+            limit = EMERGENCY_TIER_CONFIGS.get(tier, {}).get("max_projects", 1)
 
         # Pre-check (optimistic)
         current_count = await self._repository.count_by_owner(user_id)
