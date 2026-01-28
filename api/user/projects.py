@@ -852,7 +852,7 @@ async def move_project_to_folder(
     return ProjectMoveResponse(success=True, folder_id=req.folder_id)
 
 
-@router.post("/{project_id}/star")
+@router.patch("/{project_id}/star")
 @limiter.limit("60/minute")
 async def toggle_project_star(
     request: Request,

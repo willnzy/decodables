@@ -553,7 +553,7 @@ async def move_asset_to_folder(
     return AssetMoveResponse(success=True, folder_id=req.folder_id)
 
 
-@router.post("/{asset_id}/star")
+@router.patch("/{asset_id}/star")
 @limiter.limit("60/minute")
 async def toggle_asset_star(
     request: Request,

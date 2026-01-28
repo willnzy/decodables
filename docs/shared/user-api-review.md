@@ -125,7 +125,7 @@
 | 73 | Projects | POST | /projects/{project_id}/restore | restore_project | api/user/projects.py | 恢复已删除项目 |
 | 74 | Projects | POST | /projects/{project_id}/duplicate | duplicate_project | api/user/projects.py | 复制项目 |
 | 74a | Projects | POST | /projects/{project_id}/move | move_project | api/user/projects.py | 移动到文件夹 (v3.33) |
-| 74b | Projects | POST | /projects/{project_id}/star | star_project | api/user/projects.py | 切换收藏状态 (v3.33) |
+| 74b | Projects | PATCH | /projects/{project_id}/star | star_project | api/user/projects.py | 切换收藏状态 (v3.33) |
 | 74c | Projects | GET | /projects/folder/{folder_id} | get_projects_by_folder | api/user/projects.py | 获取文件夹内项目 (v3.33) |
 | 74d | Projects | GET | /projects/starred | get_starred_projects | api/user/projects.py | 获取收藏项目 (v3.33) |
 | 75 | Referrals | POST | /referrals | create_referral | api/user/referrals.py | 创建推荐 |
@@ -176,7 +176,7 @@
 | 124 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
 | 125 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
 | 125a | User Assets | POST | /user_assets/{asset_id}/move | move_asset | api/user/user_assets.py | 移动到文件夹 (v3.33) |
-| 125b | User Assets | POST | /user_assets/{asset_id}/star | star_asset | api/user/user_assets.py | 切换收藏状态 (v3.33) |
+| 125b | User Assets | PATCH | /user_assets/{asset_id}/star | star_asset | api/user/user_assets.py | 切换收藏状态 (v3.33) |
 | 125c | User Assets | GET | /user_assets/folder/{folder_id} | get_assets_by_folder | api/user/user_assets.py | 获取文件夹内资产 (v3.33) |
 | 125d | User Assets | GET | /user_assets/starred | get_starred_assets | api/user/user_assets.py | 获取收藏资产 (v3.33) |
 | 126 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
@@ -2089,7 +2089,7 @@
 
 ---
 
-### POST `/projects/{project_id}/star`
+### PATCH `/projects/{project_id}/star`
 
 切换项目收藏状态 (v3.33 Phase 2.6)
 
@@ -3157,7 +3157,7 @@ URL检查
 
 ---
 
-### POST `/user_assets/{asset_id}/star`
+### PATCH `/user_assets/{asset_id}/star`
 
 切换资产收藏状态 (v3.33 Phase 2.6)
 
