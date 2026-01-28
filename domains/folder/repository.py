@@ -161,6 +161,7 @@ class IFolderRepository(ABC):
     async def count_items_by_type(
         self,
         folder_id: str,
+        folder_type: FolderType,
         user_id: str,
     ) -> dict:
         """
@@ -172,6 +173,7 @@ class IFolderRepository(ABC):
 
         Args:
             folder_id: Folder UUID
+            folder_type: Type of folder (project or asset) - avoids redundant DB lookup
             user_id: User ID (needed for checking marketplace_listings)
 
         Returns:

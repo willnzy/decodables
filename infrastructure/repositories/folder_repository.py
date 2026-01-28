@@ -303,6 +303,7 @@ class SupabaseFolderRepository(IFolderRepository):
     async def count_items_by_type(
         self,
         folder_id: str,
+        folder_type: FolderType,
         user_id: str,
     ) -> dict:
         """
@@ -314,18 +315,14 @@ class SupabaseFolderRepository(IFolderRepository):
 
         Args:
             folder_id: Folder UUID
+            folder_type: Type of folder (project or asset) - avoids redundant DB lookup
             user_id: User ID (needed for checking marketplace_listings)
 
         Returns:
             Dict with 'total', 'bought_count', 'selling_count'
         """
         try:
-            # First get the folder to know its type
-            folder = await self.get_by_id(folder_id)
-            if not folder:
-                return {"total": 0, "bought_count": 0, "selling_count": 0}
-
-            if folder.folder_type == FolderType.PROJECT:
+            if folder_type == FolderType.PROJECT:
                 # Total count
                 total_result = await self.client.table("projects")\
                     .select("id", count="exact")\
