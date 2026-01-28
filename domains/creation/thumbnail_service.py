@@ -152,14 +152,14 @@ class ThumbnailService:
 
             logger.debug(f"[Thumbnail] Uploading {img_size} bytes to {storage_path}")
 
-            # Upload to Supabase storage
-            result = self._storage.storage.from_(THUMBNAIL_BUCKET).upload(
+            # Upload to Supabase storage (AsyncClient requires await)
+            result = await self._storage.storage.from_(THUMBNAIL_BUCKET).upload(
                 path=storage_path,
                 file=img_data,
                 file_options={"content-type": "image/png", "upsert": "true"}
             )
 
-            # Get public URL
+            # Get public URL (sync method, no await needed)
             public_url = self._storage.storage.from_(THUMBNAIL_BUCKET).get_public_url(
                 storage_path
             )
@@ -187,9 +187,9 @@ class ThumbnailService:
             True if update successful, False otherwise
         """
         try:
-            # Use repository to update project
+            # Use AsyncClient to update project directly
             # Note: We update directly via table to avoid loading full project
-            result = self._storage.table("projects").update({
+            result = await self._storage.table("projects").update({
                 "thumbnail_url": thumbnail_url,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", project_id).execute()
