@@ -94,33 +94,75 @@ def run_daily_aggregation():
 
 
 def run_daily_maintenance():
-    """Run daily database maintenance tasks (v3.30)"""
+    """
+    Run daily database maintenance tasks (v3.30, v3.31 AsyncClient fix)
+
+    IMPORTANT: Uses create_task_async_client() instead of get_async_db_client()
+    to avoid "Event loop is closed" error. See docs/main/backend-architecture.md 1.3.1.3
+    """
     logger.info(f"[{datetime.now()}] 🔧 Starting daily maintenance tasks...")
-    
-    try:
-        import asyncio
+
+    import asyncio
+
+    async def _async_daily_maintenance():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
         from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
-        
-        # Run maintenance in async context
-        asyncio.run(MaintenanceScheduler.run_daily_maintenance())
-        logger.info(f"[{datetime.now()}] ✅ Daily maintenance complete")
+
+        # Create fresh AsyncClient for this task (NOT singleton!)
+        db = await create_task_async_client()
+
+        try:
+            result = await MaintenanceScheduler.run_daily_maintenance(db=db)
+            return result
+        finally:
+            # Cleanup: close client after task
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Task-specific async client closed")
+
+    try:
+        result = asyncio.run(_async_daily_maintenance())
+        total_deleted = result.get('total_deleted', 0)
+        logger.info(f"[{datetime.now()}] ✅ Daily maintenance complete: {total_deleted} records deleted")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Daily maintenance failed: {e}")
+        logger.error(f"[{datetime.now()}] ❌ Daily maintenance failed: {e}", exc_info=True)
 
 
 def run_weekly_maintenance():
-    """Run weekly database maintenance tasks (v3.30)"""
+    """
+    Run weekly database maintenance tasks (v3.30, v3.31 AsyncClient fix)
+
+    IMPORTANT: Uses create_task_async_client() instead of get_async_db_client()
+    to avoid "Event loop is closed" error. See docs/main/backend-architecture.md 1.3.1.3
+    """
     logger.info(f"[{datetime.now()}] 🔧 Starting weekly maintenance tasks...")
-    
-    try:
-        import asyncio
+
+    import asyncio
+
+    async def _async_weekly_maintenance():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
         from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
-        
-        # Run maintenance in async context
-        asyncio.run(MaintenanceScheduler.run_weekly_maintenance())
-        logger.info(f"[{datetime.now()}] ✅ Weekly maintenance complete")
+
+        # Create fresh AsyncClient for this task (NOT singleton!)
+        db = await create_task_async_client()
+
+        try:
+            result = await MaintenanceScheduler.run_weekly_maintenance(db=db)
+            return result
+        finally:
+            # Cleanup: close client after task
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Task-specific async client closed")
+
+    try:
+        result = asyncio.run(_async_weekly_maintenance())
+        total_deleted = result.get('total_deleted', 0)
+        logger.info(f"[{datetime.now()}] ✅ Weekly maintenance complete: {total_deleted} records deleted")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Weekly maintenance failed: {e}")
+        logger.error(f"[{datetime.now()}] ❌ Weekly maintenance failed: {e}", exc_info=True)
 
 
 def run_storage_cleanup():

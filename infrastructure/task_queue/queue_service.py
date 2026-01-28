@@ -273,25 +273,31 @@ class TaskQueueService:
         try:
             # Create database record (generation_tasks table)
             # Note: This is a sync context (RQ worker), need async wrapper
-            from core.database import get_async_db_client
+            # v3.31: Use create_task_async_client() to avoid "Event loop is closed" error
+            # See docs/main/backend-architecture.md 1.3.1.3
+            from core.database import create_task_async_client
             import asyncio
 
             async def _create_task_record():
-                db = await get_async_db_client()
-                task_type = f"export_{export_type}"  # "export_pdf" or "export_zip"
-                await db.table("generation_tasks").insert({
-                    "id": task_id,
-                    "user_id": user_id,
-                    "project_id": project_id,
-                    "task_type": task_type,
-                    "status": "pending",
-                    "parameters": {
-                        "export_type": export_type,
-                        "tier": tier,
-                        "idempotency_key": idempotency_key,
-                    },
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }).execute()
+                db = await create_task_async_client()
+                try:
+                    task_type = f"export_{export_type}"  # "export_pdf" or "export_zip"
+                    await db.table("generation_tasks").insert({
+                        "id": task_id,
+                        "user_id": user_id,
+                        "project_id": project_id,
+                        "task_type": task_type,
+                        "status": "pending",
+                        "parameters": {
+                            "export_type": export_type,
+                            "tier": tier,
+                            "idempotency_key": idempotency_key,
+                        },
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }).execute()
+                finally:
+                    if hasattr(db, 'aclose'):
+                        await db.aclose()
 
             asyncio.run(_create_task_record())
 

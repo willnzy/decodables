@@ -387,49 +387,46 @@ def execute_export_task(
     logger.info(f"[Export:{task_id}] Starting {export_type} export for user {user_id[:8]}...")
 
     # Import dependencies (avoid circular imports)
-    from core.database import get_async_db_client
+    # v3.31: Use create_task_async_client() to avoid "Event loop is closed" error
+    # See docs/main/backend-architecture.md 1.3.1.3
+    from core.database import create_task_async_client
     from shared.storage import get_storage_service
     from infrastructure.repositories.project_repository import SupabaseProjectRepository
     from domains.export import ExportService
     from infrastructure.task_queue.progress_tracker import progress_tracker
     import asyncio
 
-    # Initialize services (need async wrapper for AsyncClient)
-    async def _initialize_services():
-        db_client = await get_async_db_client()
-        project_repo = SupabaseProjectRepository(db_client)
-        export_service = ExportService(project_repository=project_repo)
-        storage_service = get_storage_service()
+    async def _execute_export():
+        """Execute export with fresh AsyncClient (all in one event loop)"""
+        db_client = await create_task_async_client()
 
-        # Create handler
-        handler = ExportTaskHandler(
-            export_service=export_service,
-            storage_service=storage_service,
-            progress_tracker=progress_tracker,
-            db_client=db_client
-        )
-        return handler
+        try:
+            project_repo = SupabaseProjectRepository(db_client)
+            export_service = ExportService(project_repository=project_repo)
+            storage_service = get_storage_service()
 
-    handler = asyncio.run(_initialize_services())
-
-    # Run async method in event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    try:
-        if export_type == "pdf":
-            result = loop.run_until_complete(
-                handler.execute_pdf_export(task_id, user_id, project_id)
+            # Create handler
+            handler = ExportTaskHandler(
+                export_service=export_service,
+                storage_service=storage_service,
+                progress_tracker=progress_tracker,
+                db_client=db_client
             )
-        elif export_type == "zip":
-            result = loop.run_until_complete(
-                handler.execute_zip_export(task_id, user_id, project_id, tier)
-            )
-        else:
-            raise ValueError(f"Unknown export type: {export_type}")
 
-        logger.info(f"[Export:{task_id}] Export completed successfully")
-        return result
+            if export_type == "pdf":
+                result = await handler.execute_pdf_export(task_id, user_id, project_id)
+            elif export_type == "zip":
+                result = await handler.execute_zip_export(task_id, user_id, project_id, tier)
+            else:
+                raise ValueError(f"Unknown export type: {export_type}")
 
-    finally:
-        loop.close()
+            return result
+        finally:
+            # Cleanup: close client after task
+            if hasattr(db_client, 'aclose'):
+                await db_client.aclose()
+                logger.info("[DB] Task-specific async client closed")
+
+    result = asyncio.run(_execute_export())
+    logger.info(f"[Export:{task_id}] Export completed successfully")
+    return result
