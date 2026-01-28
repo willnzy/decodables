@@ -282,13 +282,20 @@ class UpdateProjectHandler:
             # This runs asynchronously (non-blocking) to avoid slowing down save operations
             if canvas_updated and self._thumbnail_service is not None:
                 # Create background task for thumbnail generation
-                asyncio.create_task(
+                # Keep reference to prevent potential GC before completion
+                task = asyncio.create_task(
                     self._generate_thumbnail_background(
                         command.project_id,
                         command.user_id,
                     )
                 )
-                logger.debug(f"[UpdateProject] Triggered background thumbnail generation for {command.project_id[:8]}...")
+                task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
+                logger.info(f"[UpdateProject] Triggered background thumbnail generation for {command.project_id[:8]}...")
+            else:
+                if not canvas_updated:
+                    logger.info(f"[UpdateProject] No canvas_data in update, skipping thumbnail for {command.project_id[:8]}...")
+                elif self._thumbnail_service is None:
+                    logger.warning(f"[UpdateProject] thumbnail_service is None, cannot generate thumbnail for {command.project_id[:8]}...")
 
             return UpdateProjectResult(
                 success=True,

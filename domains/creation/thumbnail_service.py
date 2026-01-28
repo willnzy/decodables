@@ -150,7 +150,7 @@ class ThumbnailService:
             img_data = img_buffer.read()
             img_size = len(img_data)
 
-            logger.debug(f"[Thumbnail] Uploading {img_size} bytes to {storage_path}")
+            logger.info(f"[Thumbnail] Uploading {img_size} bytes to {storage_path}")
 
             # Upload to Supabase storage (AsyncClient requires await)
             result = await self._storage.storage.from_(THUMBNAIL_BUCKET).upload(
@@ -164,7 +164,7 @@ class ThumbnailService:
                 storage_path
             )
 
-            logger.debug(f"[Thumbnail] Uploaded successfully: {public_url}")
+            logger.info(f"[Thumbnail] Uploaded successfully: {public_url}")
             return public_url
 
         except Exception as e:
@@ -195,7 +195,7 @@ class ThumbnailService:
             }).eq("id", project_id).execute()
 
             if result.data:
-                logger.debug(f"[Thumbnail] Updated project {project_id[:8]}... thumbnail_url")
+                logger.info(f"[Thumbnail] Updated project {project_id[:8]}... thumbnail_url")
                 return True
             else:
                 logger.warning(f"[Thumbnail] No rows updated for {project_id[:8]}...")
