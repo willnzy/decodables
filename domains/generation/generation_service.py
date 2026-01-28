@@ -393,7 +393,7 @@ class GenerationService:
 
         # Save task to database
         try:
-            self.db_client.rpc("create_generation_task", {
+            await self.db_client.rpc("create_generation_task", {
                 "p_task_id": task_id,
                 "p_user_id": user_id,
                 "p_task_type": "image_generation",
@@ -581,7 +581,7 @@ class GenerationService:
                     generation_time_ms=generation_time_ms // len(urls) if len(urls) > 1 else generation_time_ms,
                     timezone=timezone,
                 )
-                self.db_client.table("user_generations").insert(generation_record).execute()
+                await self.db_client.table("user_generations").insert(generation_record).execute()
             except Exception as e:
                 logger.warning(f"Failed to save generation history: {e}")
 

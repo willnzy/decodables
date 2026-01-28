@@ -94,7 +94,7 @@ class GenerationHistoryService:
             query = query.eq("is_favorited", True)
 
         # Get paginated data
-        result = query.range(offset, offset + limit - 1).execute()
+        result = await query.range(offset, offset + limit - 1).execute()
 
         # Get total count with same filters
         count_query = self.db.table("user_generations") \
@@ -138,7 +138,7 @@ class GenerationHistoryService:
             ...     {"is_favorited": True}
             ... )
         """
-        result = self.db.table("user_generations") \
+        result = await self.db.table("user_generations") \
             .update(updates) \
             .eq("id", generation_id) \
             .eq("user_id", user_id) \
@@ -171,7 +171,7 @@ class GenerationHistoryService:
             >>> deleted_id = await service.delete_generation("user_123", "gen_abc")
             >>> print(f"Deleted: {deleted_id}")
         """
-        result = self.db.table("user_generations") \
+        result = await self.db.table("user_generations") \
             .delete() \
             .eq("id", generation_id) \
             .eq("user_id", user_id) \
@@ -212,7 +212,7 @@ class GenerationHistoryService:
         if keep_favorites:
             query = query.eq("is_favorited", False)
 
-        result = query.execute()
+        result = await query.execute()
         deleted_count = len(result.data or [])
 
         # Log activity
