@@ -176,8 +176,8 @@ class GenerationService:
 
         # Calculate cost using config-driven pricing
         has_reference = bool(reference_image)
-        cost = calculate_cost(len(final_prompts), has_reference, num_images)
-        base_cost = get_base_cost(has_reference)
+        cost = await calculate_cost(len(final_prompts), has_reference, num_images)
+        base_cost = await get_base_cost(has_reference)
 
         # Deduct credits using DDD BillingService with atomic operation
         idempotency_key = f"gen_sync_{user_id}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -354,7 +354,7 @@ class GenerationService:
 
         # Calculate cost using config-driven pricing
         has_reference = bool(reference_image)
-        cost = calculate_cost(len(final_prompts), has_reference, num_images)
+        cost = await calculate_cost(len(final_prompts), has_reference, num_images)
 
         # Generate task ID first (for idempotency)
         task_id = f"gen_{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4().hex[:8]}"
