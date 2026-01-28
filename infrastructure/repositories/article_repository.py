@@ -35,6 +35,14 @@ class SupabaseArticleRepository(ArticleRepository):
         self.db = db_client
         self.table = "articles"
 
+    @staticmethod
+    def _is_not_found_error(error: Exception) -> bool:
+        """Check if error is a PostgREST PGRST116 (0 rows for .single())."""
+        code = getattr(error, 'code', None)
+        if code == 'PGRST116':
+            return True
+        return 'pgrst116' in str(error).lower()
+
     # ==========================================
     # Read Operations
     # ==========================================
@@ -47,6 +55,9 @@ class SupabaseArticleRepository(ArticleRepository):
                 return Article.from_dict(response.data)
             return None
         except Exception as e:
+            if self._is_not_found_error(e):
+                logger.debug(f"[ArticleRepo] Article not found by ID: {article_id}")
+                return None
             logger.error(f"[ArticleRepo] Error getting article by ID: {e}")
             return None
 
@@ -58,6 +69,9 @@ class SupabaseArticleRepository(ArticleRepository):
                 return Article.from_dict(response.data)
             return None
         except Exception as e:
+            if self._is_not_found_error(e):
+                logger.debug(f"[ArticleRepo] Article not found by slug: {slug}")
+                return None
             logger.error(f"[ArticleRepo] Error getting article by slug: {e}")
             return None
 
