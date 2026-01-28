@@ -38,7 +38,7 @@ class ReferralRepository:
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
 
-            result = self.client.table("referrals").insert(data).execute()
+            result = await self.client.table("referrals").insert(data).execute()
 
             if result.data:
                 return ReferralEntity(**result.data[0])
@@ -51,7 +51,7 @@ class ReferralRepository:
     async def get_by_code(self, referral_code: str) -> Optional[ReferralEntity]:
         """根据推荐码获取"""
         try:
-            result = self.client.table("referrals") \
+            result = await self.client.table("referrals") \
                 .select("*") \
                 .eq("referral_code", referral_code) \
                 .execute()
@@ -72,7 +72,7 @@ class ReferralRepository:
     ) -> tuple[List[ReferralEntity], int]:
         """获取用户的推荐记录"""
         try:
-            result = self.client.table("referrals") \
+            result = await self.client.table("referrals") \
                 .select("*", count="exact") \
                 .eq("referrer_id", user_id) \
                 .order("created_at", desc=True) \
@@ -105,7 +105,7 @@ class ReferralRepository:
             if completed_at:
                 update_data["completed_at"] = completed_at.isoformat()
 
-            result = self.client.table("referrals") \
+            result = await self.client.table("referrals") \
                 .update(update_data) \
                 .eq("id", referral_id) \
                 .execute()
@@ -122,20 +122,20 @@ class ReferralRepository:
         """获取推荐统计"""
         try:
             # 总推荐数
-            total_result = self.client.table("referrals") \
+            total_result = await self.client.table("referrals") \
                 .select("id", count="exact") \
                 .eq("referrer_id", user_id) \
                 .execute()
 
             # 完成数
-            completed_result = self.client.table("referrals") \
+            completed_result = await self.client.table("referrals") \
                 .select("id", count="exact") \
                 .eq("referrer_id", user_id) \
                 .eq("status", "completed") \
                 .execute()
 
             # 待定数
-            pending_result = self.client.table("referrals") \
+            pending_result = await self.client.table("referrals") \
                 .select("id", count="exact") \
                 .eq("referrer_id", user_id) \
                 .eq("status", "pending") \
