@@ -428,7 +428,7 @@ class SupabaseFolderRepository(IFolderRepository):
             table = "projects" if folder_type == FolderType.PROJECT else "assets"
 
             result = await self.client.table(table)\
-                .select("id, thumbnail_url")\
+                .select("id, title, thumbnail_url")\
                 .eq("folder_id", folder_id)\
                 .eq("is_deleted", False)\
                 .order("updated_at", desc=True)\
@@ -439,6 +439,7 @@ class SupabaseFolderRepository(IFolderRepository):
             for row in (result.data or []):
                 items.append({
                     "id": row["id"],
+                    "title": row.get("title", ""),
                     "thumbnailUrl": row.get("thumbnail_url"),
                 })
 
