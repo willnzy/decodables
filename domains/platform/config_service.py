@@ -141,6 +141,48 @@ class ConfigService:
         # Return default
         return DEFAULT_RATE_LIMITS.get(config_key)
 
+    async def get_bool(
+        self,
+        config_key: str,
+        default: bool = False
+    ) -> bool:
+        """
+        Get a boolean config value by key.
+
+        Args:
+            config_key: Config key (e.g., "tag.enable_preset_groups")
+            default: Default value if config not found
+
+        Returns:
+            Boolean config value
+        """
+        try:
+            config = await self.get_config(config_key)
+            if config is None:
+                return default
+
+            # If config is a dict, look for 'enabled' or 'value' key
+            if isinstance(config, dict):
+                if "enabled" in config:
+                    return bool(config["enabled"])
+                if "value" in config:
+                    return bool(config["value"])
+                return default
+
+            # If config is already a bool
+            if isinstance(config, bool):
+                return config
+
+            # If config is a string
+            if isinstance(config, str):
+                return config.lower() in ("true", "1", "yes", "on")
+
+            # Otherwise cast to bool
+            return bool(config)
+        except Exception as e:
+            logger.warning(f"[ConfigService] Error getting bool config {config_key}: {e}")
+            return default
+
     async def set_config(
         self,
         config_key: str,
