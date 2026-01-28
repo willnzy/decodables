@@ -8,7 +8,7 @@ Defines the contract for Folder data access.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from .entities import Folder, FolderType
 
 
@@ -176,6 +176,29 @@ class IFolderRepository(ABC):
 
         Returns:
             Dict with 'total', 'bought_count', 'selling_count'
+        """
+        pass
+
+    @abstractmethod
+    async def get_preview_items(
+        self,
+        folder_id: str,
+        folder_type: FolderType,
+        limit: int = 4,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get preview items (thumbnails) for a folder.
+
+        Returns up to `limit` items with id and thumbnail_url,
+        ordered by most recently updated.
+
+        Args:
+            folder_id: Folder UUID
+            folder_type: Type of folder (project or asset)
+            limit: Max number of preview items (default: 4)
+
+        Returns:
+            List of dicts with 'id' and 'thumbnail_url' keys
         """
         pass
 

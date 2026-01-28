@@ -72,6 +72,11 @@ class ReorderFoldersRequest(BaseModel):
     folder_ids: List[str] = Field(..., min_length=1)
 
 
+class FolderPreviewItemResponse(BaseModel):
+    id: str
+    thumbnailUrl: Optional[str] = None
+
+
 class FolderResponse(BaseModel):
     id: str
     workspace_id: str
@@ -83,6 +88,8 @@ class FolderResponse(BaseModel):
     # v3.34: Counts for Bought/Selling tab filtering
     bought_count: int = 0
     selling_count: int = 0
+    # v3.37: Preview items for folder thumbnail grid
+    preview_items: List[FolderPreviewItemResponse] = []
 
 
 class FolderListResponse(BaseModel):

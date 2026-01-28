@@ -128,12 +128,17 @@ class FolderService:
         """
         folders = await self._repo.get_by_workspace(workspace_id, folder_type)
 
-        # Enrich each folder with bought/selling counts
+        # Enrich each folder with bought/selling counts and preview items
         for folder in folders:
             counts = await self._repo.count_items_by_type(folder.id, user_id)
             folder.item_count = counts["total"]
             folder.bought_count = counts["bought_count"]
             folder.selling_count = counts["selling_count"]
+
+            # v3.37: Fetch preview items (up to 4 thumbnails)
+            folder.preview_items = await self._repo.get_preview_items(
+                folder.id, folder.folder_type, limit=4
+            )
 
         return folders
 

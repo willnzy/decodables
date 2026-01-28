@@ -7,7 +7,7 @@ Folder Repository Implementation - Supabase data access.
 Implements IFolderRepository using Supabase PostgreSQL.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 
 from domains.folder.repository import IFolderRepository
@@ -415,6 +415,38 @@ class SupabaseFolderRepository(IFolderRepository):
         except Exception as e:
             logger.error(f"[FolderRepository] count_items_by_type failed: {e}")
             return {"total": 0, "bought_count": 0, "selling_count": 0}
+
+    @retry_on_network_error()
+    async def get_preview_items(
+        self,
+        folder_id: str,
+        folder_type: FolderType,
+        limit: int = 4,
+    ) -> List[Dict[str, Any]]:
+        """Get preview items (thumbnails) for a folder."""
+        try:
+            table = "projects" if folder_type == FolderType.PROJECT else "assets"
+
+            result = await self.client.table(table)\
+                .select("id, thumbnail_url")\
+                .eq("folder_id", folder_id)\
+                .eq("is_deleted", False)\
+                .order("updated_at", desc=True)\
+                .limit(limit)\
+                .execute()
+
+            items = []
+            for row in (result.data or []):
+                items.append({
+                    "id": row["id"],
+                    "thumbnailUrl": row.get("thumbnail_url"),
+                })
+
+            return items
+
+        except Exception as e:
+            logger.error(f"[FolderRepository] get_preview_items failed: {e}")
+            return []
 
     @retry_on_network_error()
     async def reorder(

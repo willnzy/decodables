@@ -7,9 +7,9 @@ Domain models for Folder domain.
 @version 1.0.0 (created for v3.33 Workspace + Tag Phase 2.6)
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -89,6 +89,8 @@ class Folder:
     # v3.34: Sub-counts for filtering in Bought/Selling tabs
     bought_count: int = 0  # Projects with is_purchased=True
     selling_count: int = 0  # Projects with active marketplace listings
+    # v3.37: Preview items for folder thumbnail grid (up to 4)
+    preview_items: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""
@@ -105,6 +107,7 @@ class Folder:
             "item_count": self.item_count,
             "bought_count": self.bought_count,
             "selling_count": self.selling_count,
+            "preview_items": self.preview_items,
         }
 
     @classmethod
