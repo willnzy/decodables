@@ -815,7 +815,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         offset: int = 0,
         limit: int = 20,
         search: Optional[str] = None,
-        include_canvas_data: bool = True
+        include_canvas_data: bool = True,
+        folder_id: Optional[str] = "NOT_SET",
     ) -> Dict[str, Any]:
         """
         Get projects for dashboard with view type filtering.
@@ -863,6 +864,13 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                     "id", selling_project_ids
                 ).eq("is_deleted", False)
 
+                # Apply folder filter
+                if folder_id != "NOT_SET":
+                    if folder_id is None:
+                        query = query.is_("folder_id", "null")
+                    else:
+                        query = query.eq("folder_id", folder_id)
+
                 if search and search.strip():
                     query = query.ilike("title", f"%{search.strip()}%")
 
@@ -873,6 +881,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 count_query = self.client.table("projects").select("id", count="exact").in_(
                     "id", selling_project_ids
                 ).eq("is_deleted", False)
+                if folder_id != "NOT_SET":
+                    if folder_id is None:
+                        count_query = count_query.is_("folder_id", "null")
+                    else:
+                        count_query = count_query.eq("folder_id", folder_id)
                 if search and search.strip():
                     count_query = count_query.ilike("title", f"%{search.strip()}%")
                 count_result = await count_query.execute()
@@ -886,6 +899,13 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             # Apply view type filter
             if view_type == "bought":
                 query = query.eq("is_purchased", True)
+
+            # Apply folder filter
+            if folder_id != "NOT_SET":
+                if folder_id is None:
+                    query = query.is_("folder_id", "null")
+                else:
+                    query = query.eq("folder_id", folder_id)
 
             # Apply search filter
             if search and search.strip():
@@ -902,6 +922,12 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             if view_type == "bought":
                 count_query = count_query.eq("is_purchased", True)
+
+            if folder_id != "NOT_SET":
+                if folder_id is None:
+                    count_query = count_query.is_("folder_id", "null")
+                else:
+                    count_query = count_query.eq("folder_id", folder_id)
 
             if search and search.strip():
                 count_query = count_query.ilike("title", f"%{search.strip()}%")

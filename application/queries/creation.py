@@ -188,6 +188,7 @@ class GetDashboardProjectsQuery:
     limit: int = 20
     search: Optional[str] = None
     include_canvas_data: bool = True
+    folder_id: Optional[str] = "NOT_SET"  # "NOT_SET" = no filter, None = root only, str = specific folder
 
 
 @dataclass
@@ -219,6 +220,7 @@ class GetDashboardProjectsHandler:
                 limit=query.limit,
                 search=query.search,
                 include_canvas_data=query.include_canvas_data,
+                folder_id=query.folder_id,
             )
 
             return GetDashboardProjectsResult(

@@ -206,6 +206,7 @@ class GetDashboardAssetsQuery:
     offset: int = 0
     limit: int = 15
     search: Optional[str] = None
+    folder_id: Optional[str] = "NOT_SET"  # "NOT_SET" = no filter, None = root only, str = specific folder
 
 
 @dataclass
@@ -235,6 +236,7 @@ class GetDashboardAssetsHandler:
                 offset=query.offset,
                 limit=query.limit,
                 search=query.search,
+                folder_id=query.folder_id,
             )
 
             return GetDashboardAssetsResult(

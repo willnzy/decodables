@@ -240,6 +240,7 @@ async def dashboard_projects(
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
     include_canvas: bool = True,
+    folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> DashboardProjectsResponse:
     """
@@ -263,6 +264,11 @@ async def dashboard_projects(
     container = get_container()
     handler = await container.get_dashboard_projects_handler()
 
+    # Parse folder_id: "null" string → None (root only), absent → "NOT_SET" (no filter)
+    parsed_folder_id: Optional[str] = "NOT_SET"
+    if folder_id is not None:
+        parsed_folder_id = None if folder_id == "null" else folder_id
+
     query = GetDashboardProjectsQuery(
         user_id=ctx.user_id,
         view_type=view,
@@ -270,6 +276,7 @@ async def dashboard_projects(
         limit=limit,
         search=search,
         include_canvas_data=include_canvas,
+        folder_id=parsed_folder_id,
     )
 
     # v3.31: 添加重试机制处理 Supabase 临时故障

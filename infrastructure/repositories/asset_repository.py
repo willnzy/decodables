@@ -406,7 +406,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         view_type: str = "all",
         offset: int = 0,
         limit: int = 15,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        folder_id: Optional[str] = "NOT_SET",
     ) -> Dict[str, Any]:
         """
         Get assets for dashboard with view type filtering.
@@ -421,7 +422,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Dict with items, total, offset, limit, has_more, and counts for tabs
         """
-        select_fields = "id, url, type, name, category, source, usage_count, prompt, description, metadata, is_purchased, source_listing_id, origin_owner_id, created_at, updated_at"
+        select_fields = "id, url, type, name, category, source, usage_count, prompt, description, metadata, is_purchased, source_listing_id, origin_owner_id, folder_id, is_starred, created_at, updated_at"
 
         # Handle "selling" view - query via marketplace_listings
         if view_type == "selling":
@@ -444,6 +445,13 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                     "id", selling_asset_ids
                 ).eq("is_deleted", False)
 
+                # Apply folder filter
+                if folder_id != "NOT_SET":
+                    if folder_id is None:
+                        query = query.is_("folder_id", "null")
+                    else:
+                        query = query.eq("folder_id", folder_id)
+
                 if search and search.strip():
                     query = query.ilike("name", f"%{search.strip()}%")
 
@@ -454,6 +462,11 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                 count_query = self.client.table("assets").select("id", count="exact").in_(
                     "id", selling_asset_ids
                 ).eq("is_deleted", False)
+                if folder_id != "NOT_SET":
+                    if folder_id is None:
+                        count_query = count_query.is_("folder_id", "null")
+                    else:
+                        count_query = count_query.eq("folder_id", folder_id)
                 if search and search.strip():
                     count_query = count_query.ilike("name", f"%{search.strip()}%")
                 count_result = await count_query.execute()
@@ -467,6 +480,13 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             # Apply view type filter
             if view_type == "bought":
                 query = query.eq("is_purchased", True)
+
+            # Apply folder filter
+            if folder_id != "NOT_SET":
+                if folder_id is None:
+                    query = query.is_("folder_id", "null")
+                else:
+                    query = query.eq("folder_id", folder_id)
 
             # Apply search filter
             if search and search.strip():
@@ -483,6 +503,12 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
             if view_type == "bought":
                 count_query = count_query.eq("is_purchased", True)
+
+            if folder_id != "NOT_SET":
+                if folder_id is None:
+                    count_query = count_query.is_("folder_id", "null")
+                else:
+                    count_query = count_query.eq("folder_id", folder_id)
 
             if search and search.strip():
                 count_query = count_query.ilike("name", f"%{search.strip()}%")

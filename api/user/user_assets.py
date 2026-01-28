@@ -354,6 +354,7 @@ async def get_asset_dashboard(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(15, ge=1, le=100, description="Number of records to return (1-100)"),
     search: Optional[str] = None,
+    folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
@@ -375,12 +376,18 @@ async def get_asset_dashboard(
     container = get_container()
     handler = await container.get_dashboard_assets_handler()
 
+    # Parse folder_id: "null" string → None (root only), absent → "NOT_SET" (no filter)
+    parsed_folder_id: Optional[str] = "NOT_SET"
+    if folder_id is not None:
+        parsed_folder_id = None if folder_id == "null" else folder_id
+
     query = GetDashboardAssetsQuery(
         user_id=ctx.user_id,
         view_type=view,
         offset=offset,
         limit=limit,
         search=search,
+        folder_id=parsed_folder_id,
     )
 
     result = await handler.handle(query)
