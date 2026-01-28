@@ -159,8 +159,8 @@ class ThumbnailService:
                 file_options={"content-type": "image/png", "upsert": "true"}
             )
 
-            # Get public URL (sync method, no await needed)
-            public_url = self._storage.storage.from_(THUMBNAIL_BUCKET).get_public_url(
+            # Get public URL (async on AsyncClient)
+            public_url = await self._storage.storage.from_(THUMBNAIL_BUCKET).get_public_url(
                 storage_path
             )
 
