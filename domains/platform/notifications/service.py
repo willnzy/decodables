@@ -137,7 +137,7 @@ async def send_broadcast(
     Args:
         title: 通知标题
         content: 通知内容
-        target_group: 目标用户组 (all/free/starter/pro)
+        target_group: 目标用户组 (all/t1/t2/t3)
         admin_id: 管理员 ID
         notification_repo: 可选的 NotificationRepository 实例 (用于依赖注入/测试)
 

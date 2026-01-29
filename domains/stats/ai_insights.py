@@ -172,7 +172,7 @@ async def get_behavior_analysis(
                 - total_events_analyzed: Number of events processed
                 - limited: Boolean indicating if data was truncated
             - segments: User segmentation data
-                - by_tier: Count of users by tier (free/starter/pro)
+                - by_tier: Count of users by tier (t1/t2/t3)
                 - total_users: Total user count
             - period: Analysis period (start/end dates)
 

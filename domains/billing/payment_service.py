@@ -257,20 +257,20 @@ def get_tier_from_price_id(price_id: str) -> str:
         price_id: Stripe price ID
 
     Returns:
-        Tier code ('t2', 't3') or 'free' if not found
+        Tier code ('t2', 't3') or 't1' if not found
     """
     if not price_id:
-        return 'free'
+        return 't1'
 
     # Build reverse map and lookup
     for tier, configured_price_id in PRICE_MAP.items():
         if configured_price_id and price_id == configured_price_id:
-            # credits plans return 'free' (they don't change tier)
-            return tier if tier in ['t2', 't3'] else 'free'
+            # credits plans return 't1' (they don't change tier)
+            return tier if tier in ['t2', 't3'] else 't1'
 
-    # Fallback: log warning and return free
-    logger.warning(f"[Payment] Unknown price_id: {price_id}, defaulting to 'free'")
-    return 'free'
+    # Fallback: log warning and return t1
+    logger.warning(f"[Payment] Unknown price_id: {price_id}, defaulting to 't1'")
+    return 't1'
 
 
 def get_credits_amount(plan_type: str) -> int:
@@ -792,7 +792,7 @@ class PaymentService:
             price_id: Stripe price ID
 
         Returns:
-            Tier code ('t2', 't3') or 'free' if not found
+            Tier code ('t2', 't3') or 't1' if not found
         """
         return get_tier_from_price_id(price_id)
 

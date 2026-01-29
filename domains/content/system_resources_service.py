@@ -213,7 +213,7 @@ class SystemResourcesService:
         tags = resource_data.get("tags", "")
         tag_list = [t.strip() for t in tags.split(",")] if tags else []
 
-        allowed_tiers = resource_data.get("allowed_tiers", "free,starter,pro")
+        allowed_tiers = resource_data.get("allowed_tiers", "t1,t2,t3")
         tier_list = [t.strip() for t in allowed_tiers.split(",")]
 
         # 8. Build database record

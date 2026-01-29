@@ -35,12 +35,12 @@ class ListingCreate(BaseModel):
     def validate_tiers(cls, v):
         if v is None:
             return None
-        valid_options = [['free'], ['starter', 'pro'], ['pro']]
+        valid_options = [['t1'], ['t2', 't3'], ['t3']]
         sorted_v = sorted(v) if v else []
         for valid in valid_options:
             if sorted(valid) == sorted_v:
                 return v
-        raise ValueError("allowed_tiers must be ['free'], ['starter','pro'], or ['pro']")
+        raise ValueError("allowed_tiers must be ['t1'], ['t2','t3'], or ['t3']")
 
 
 class ListingUpdate(BaseModel):
@@ -83,7 +83,7 @@ class MarketplacePublishRequest(BaseModel):
     resource_url: str
     resource_type: str  # 'project' | 'asset'
     price_credits: int = 0
-    allowed_tiers: List[str]  # Required; only ['free'], ['starter','pro'], or ['pro']
+    allowed_tiers: List[str]  # Required; only ['t1'], ['t2','t3'], or ['t3']
 
 
 class MarketplacePurchaseRequest(BaseModel):

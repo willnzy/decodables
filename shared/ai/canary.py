@@ -77,7 +77,7 @@ async def should_use_canary(
     Args:
         user_id: 用户 ID (或 visitor_xxx)
         model_type: 模型类型 ('text_reasoning' | 'image_generation')
-        tier: 用户等级 ('free', 'starter', 'pro')
+        tier: 用户等级 ('t1', 't2', 't3')
 
     Returns:
         (should_use_canary, canary_config)

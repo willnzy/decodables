@@ -130,7 +130,7 @@ class SupabaseNotificationRepository:
         Args:
             title: Notification title
             content: Notification content
-            target_group: Target user group ('all', 'free', 'starter', 'pro')
+            target_group: Target user group ('all', 't1', 't2', 't3')
 
         Returns:
             Broadcast information

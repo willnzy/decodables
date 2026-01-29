@@ -216,7 +216,7 @@ async def list_listings(
         featured: Only show featured listings (sorted by sales)
         resource_type: Filter by 'asset' or 'project'
         sort: Sort order (latest, popular, price_asc, price_desc, best_selling)
-        tier: Filter by tier requirement ('free', 'starter', 'pro')
+        tier: Filter by tier requirement ('t1', 't2', 't3')
         price: Price filter ('free', 'paid', 'all')
         page: Page number
         limit: Items per page
@@ -302,8 +302,8 @@ async def create_listing(
     Publish to marketplace (submit for review).
 
     Requires membership:
-    - Starter: only free assets (price_credits=0, resource_type='asset')
-    - Pro: any price 0-500, assets or projects
+    - t2: only free assets (price_credits=0, resource_type='asset')
+    - t3: any price 0-500, assets or projects
 
     Returns:
         Created listing with moderation_status='pending'
@@ -317,9 +317,9 @@ async def create_listing(
     # Validate publish permission based on tier
     if user_tier == "t2":
         if req.resource_type != "asset":
-            raise HTTPException(403, "Starter users can only publish assets")
+            raise HTTPException(403, "t2 users can only publish assets")
         if req.price_credits > 0:
-            raise HTTPException(403, "Starter users can only publish free assets")
+            raise HTTPException(403, "t2 users can only publish free assets")
 
     # Determine category:
     # - If provided, use it

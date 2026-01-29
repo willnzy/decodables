@@ -33,7 +33,7 @@ class OnboardingStepEntity(BaseModel):
     description: Optional[str] = None
     step_order: int
     is_required: bool = True
-    target_tiers: List[str] = Field(default_factory=lambda: ["free", "starter", "pro"])
+    target_tiers: List[str] = Field(default_factory=lambda: ["t1", "t2", "t3"])
     config: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     created_at: datetime

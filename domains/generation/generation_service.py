@@ -136,7 +136,7 @@ class GenerationService:
             prompts: Original prompts
             num_images: Number of images per prompt (1-4)
             model: AI model to use (flux-schnell, flux-dev)
-            tier: User tier (free, starter, pro)
+            tier: User tier (t1, t2, t3)
             reference_image: Optional reference image URL
             reference_strength: Reference influence (0-1)
             image_size: Image aspect ratio

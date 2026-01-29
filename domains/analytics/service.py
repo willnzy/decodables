@@ -338,7 +338,7 @@ class AnalyticsService:
             user_id: User ID
             event_name: Event name (e.g., "checkout_completed", "subscription_started")
             amount_cents: Optional amount in cents
-            plan: Optional plan name (e.g., "t3", "pro")
+            plan: Optional plan name (e.g., "t2", "t3")
             stripe_payment_id: Optional Stripe payment ID
             extra_properties: Additional custom properties
             

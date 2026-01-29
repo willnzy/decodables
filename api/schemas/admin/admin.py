@@ -19,7 +19,7 @@ class CreditAdjustRequest(BaseModel):
 class TierUpdateRequest(BaseModel):
     """Admin tier update request."""
     user_id: str
-    tier: str = Field(..., pattern="^(free|starter|pro)$")
+    tier: str = Field(..., pattern="^(t1|t2|t3)$")
 
 
 class DiscountCreateRequest(BaseModel):
@@ -27,14 +27,14 @@ class DiscountCreateRequest(BaseModel):
     user_id: str
     discount_percent: int = Field(..., ge=1, le=100)
     valid_days: int = Field(..., ge=1, le=365)
-    target_plan: Optional[str] = Field(default=None, pattern="^(starter|pro)$")
+    target_plan: Optional[str] = Field(default=None, pattern="^(t2|t3)$")
 
 
 class BroadcastRequest(BaseModel):
     """Admin broadcast notification request."""
     title: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=1000)
-    target_group: str = Field(default="all", pattern="^(all|free|starter|pro)$")
+    target_group: str = Field(default="all", pattern="^(all|t1|t2|t3)$")
 
 
 class ModerationAction(BaseModel):
@@ -62,7 +62,7 @@ class AdminDowngradeRequest(BaseModel):
     user_id: str
     user_code: str  # For verification
     user_email: str  # For verification
-    target_tier: str  # 'starter' | 'free'
+    target_tier: str  # 't2' | 't1'
     immediate: bool = False  # True = immediate, False = apply at period end
     reason: str
 
@@ -79,7 +79,7 @@ class AdminBroadcastRequest(BaseModel):
     """Admin broadcast (legacy)."""
     title: str
     content: str
-    target_group: Optional[str] = "all"  # 'all', 'free', 'starter', 'pro'
+    target_group: Optional[str] = "all"  # 'all', 't1', 't2', 't3'
 
 
 class AdminModerationRejectRequest(BaseModel):

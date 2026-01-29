@@ -13,7 +13,7 @@ Changes:
 Business Logic:
 - Refund processing with safety checks
 - Subscription cancellation (immediate or scheduled)
-- Subscription downgrade (Pro→Starter, Any→Free)
+- Subscription downgrade (t3→t2, Any→t1)
 """
 
 import os
@@ -51,6 +51,7 @@ from domains.billing.payment_service import (
     create_refund,
     get_payment_intent_details,
     get_subscription_details,
+    get_tier_from_price_id,
     modify_subscription,
 )
 from domains.identity.constants import (
@@ -389,8 +390,8 @@ class SubscriptionService:
         Downgrade a user's subscription.
 
         Supports:
-        - Pro → Starter (modify subscription)
-        - Pro/Starter → Free (cancel subscription)
+        - t3 → t2 (modify subscription)
+        - t3/t2 → t1 (cancel subscription)
 
         Args:
             user_id: User ID
@@ -647,17 +648,13 @@ class SubscriptionService:
 
     def _extract_plan_name(self, subscription_detail) -> str:
         """Extract plan tier from subscription details.
-        
+
         Returns tier code (t2/t3) based on Stripe Price ID.
-        Display name should be fetched from TierService for user-facing output.
+        Uses PRICE_MAP-based lookup via get_tier_from_price_id.
         """
         if not subscription_detail.items.data:
             return "Unknown"
 
-        price_id = subscription_detail.items.data[0].price.id.lower()
-        # Map Stripe Price ID patterns to tier codes
-        if 'starter' in price_id or 't2' in price_id:
-            return "t2"
-        elif 'pro' in price_id or 't3' in price_id:
-            return "t3"
-        return "Unknown"
+        price_id = subscription_detail.items.data[0].price.id
+        tier = get_tier_from_price_id(price_id)
+        return tier if tier in ["t2", "t3"] else "Unknown"

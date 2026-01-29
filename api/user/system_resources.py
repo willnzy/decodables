@@ -141,7 +141,7 @@ async def list_system_resources(
                 - description: Resource description
                 - file_url: Download URL for resource file
                 - thumbnail_url: Preview thumbnail URL
-                - allowed_tiers: List of tiers with access (["free", "starter", "pro"])
+                - allowed_tiers: List of tiers with access (["t1", "t2", "t3"])
                 - tags: List of searchable tags
                 - sort_order: Display order priority
                 - is_active: Whether resource is visible to users
@@ -179,7 +179,7 @@ async def list_system_resources(
                     "description": "A playful cat sticker",
                     "file_url": "https://storage.example.com/stickers/cat_01.png",
                     "thumbnail_url": "https://storage.example.com/thumbnails/cat_01.png",
-                    "allowed_tiers": ["free", "starter", "pro"],
+                    "allowed_tiers": ["t1", "t2", "t3"],
                     "tags": ["cat", "animal", "cute"],
                     "sort_order": 100,
                     "is_active": true,
@@ -278,7 +278,7 @@ async def create_resource(
     name: Optional[str] = Form(None, description="Display name (optional, defaults to filename)"),
     description: Optional[str] = Form(None, description="Resource description (optional)"),
     tags: Optional[str] = Form(None, description="Comma-separated tags (optional, e.g., 'cat,animal,cute')"),
-    allowed_tiers: Optional[str] = Form("free,starter,pro", description="Comma-separated tiers with access (default: all)"),
+    allowed_tiers: Optional[str] = Form("t1,t2,t3", description="Comma-separated tiers with access (default: all)"),
     sort_order: int = Form(0, description="Display order priority (default: 0, higher = shown first)"),
     admin: dict = Depends(require_admin)
 ):
@@ -310,12 +310,12 @@ async def create_resource(
             Displayed in resource library
         tags: Comma-separated searchable tags (optional)
             Format: "cat,animal,cute,cartoon"
-        allowed_tiers: Comma-separated tier access list (default: "free,starter,pro")
-            Valid values: "free", "starter", "pro"
+        allowed_tiers: Comma-separated tier access list (default: "t1,t2,t3")
+            Valid values: "t1", "t2", "t3"
             Examples:
-                - "pro": Pro users only
-                - "starter,pro": Starter and Pro users
-                - "free,starter,pro": All users (default)
+                - "t3": t3 users only
+                - "t2,t3": t2 and t3 users
+                - "t1,t2,t3": All users (default)
         sort_order: Display priority (default: 0)
             Higher numbers appear first in lists
             Range: -1000 to 1000
@@ -353,7 +353,7 @@ async def create_resource(
         name: Cute Cat Sticker
         description: A playful cat for decorating decodables
         tags: cat,animal,cute,cartoon
-        allowed_tiers: free,starter,pro
+        allowed_tiers: t1,t2,t3
         sort_order: 100
 
         Response:

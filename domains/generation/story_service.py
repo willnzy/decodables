@@ -83,7 +83,7 @@ class StoryGenerationService:
 
         Args:
             user_id: User ID
-            tier: User tier (free, pro)
+            tier: User tier (t1, t3)
             topic: Story topic/theme
 
         Returns:

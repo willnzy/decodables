@@ -24,7 +24,7 @@ class OnboardingService:
     async def get_available_steps(
         self,
         user_id: str,
-        user_tier: str = "free"
+        user_tier: str = "t1"
     ) -> List[Dict[str, Any]]:
         """
         获取用户可用的引导步骤
@@ -153,7 +153,7 @@ class OnboardingService:
     async def get_checklist_progress(
         self,
         user_id: str,
-        user_tier: str = "free"
+        user_tier: str = "t1"
     ) -> Dict[str, Any]:
         """
         获取用户任务清单进度

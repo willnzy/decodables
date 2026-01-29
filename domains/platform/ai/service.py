@@ -97,7 +97,7 @@ async def get_model_configs() -> Dict[str, Any]:
 
     try:
         # 并发查询所有配置 (性能优化)
-        text, free, starter, pro, admin, providers = await asyncio.gather(
+        text, t1_config, t2_config, t3_config, admin, providers = await asyncio.gather(
             get_text_model_config(),
             get_image_model_config("t1"),
             get_image_model_config("t2"),
@@ -109,9 +109,9 @@ async def get_model_configs() -> Dict[str, Any]:
         return {
             "text": text,
             "image": {
-                "t1": free,
-                "t2": starter,
-                "t3": pro,
+                "t1": t1_config,
+                "t2": t2_config,
+                "t3": t3_config,
             },
             "admin": admin,
             "enabled_providers": providers,
@@ -234,7 +234,7 @@ async def update_image_model_config(
     - 添加 Audit Log (修复 AIM-SEC-2)
 
     Args:
-        tier: 用户等级 (free/starter/pro/all)
+        tier: 用户等级 (t1/t2/t3/all)
         provider: 提供商名称
         model: 模型名称
         admin_id: 管理员 ID

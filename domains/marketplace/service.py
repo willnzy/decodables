@@ -116,7 +116,7 @@ class MarketplaceService:
             ListingAccessDeniedException: If seller can't publish
             InvalidListingDataException: If data invalid
         """
-        # Only starter+ can publish to marketplace
+        # Only t2+ can publish to marketplace
         if seller_tier not in ("t2", "t3"):
             raise ListingAccessDeniedException(
                 listing_id="new",

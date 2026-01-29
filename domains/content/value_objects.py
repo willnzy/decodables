@@ -133,11 +133,11 @@ class AccessControl:
         return cls(allowed_tiers=["t1"])
 
     @classmethod
-    def starter_plus(cls):
-        """Create starter+ access."""
+    def t2_plus(cls):
+        """Create t2+ access."""
         return cls(allowed_tiers=["t2", "t3"])
 
     @classmethod
-    def pro_only(cls):
-        """Create pro-only access."""
+    def t3_only(cls):
+        """Create t3-only access."""
         return cls(allowed_tiers=["t3"])

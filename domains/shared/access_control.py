@@ -47,7 +47,7 @@ def can_access_resource(user: Dict[str, Any], allowed_tiers: List[str]) -> bool:
     Business Rule:
     - "all" in allowed_tiers → everyone can access
     - User tier must be in allowed_tiers OR higher in hierarchy
-    - Hierarchy: free(0) < starter(1) < pro(2) < enterprise(3)
+    - Hierarchy: t1(0) < t2(1) < t3(2) < t4(3)
 
     Args:
         user: User profile dict with tier

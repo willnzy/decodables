@@ -179,7 +179,7 @@ async def get_tier_distribution() -> Dict[str, Any]:
     v3.29: DDD Migration - Uses Repository.
 
     Returns:
-        Dict with free, starter, pro counts
+        Dict with t1, t2, t3 counts
     """
     try:
         stats_repo = await _get_repos()

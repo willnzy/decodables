@@ -181,7 +181,7 @@ class StripeWebhookService:
         Handle checkout.session.completed event.
 
         Processes:
-        1. Subscription purchases (starter, pro)
+        1. Subscription purchases (t2, t3)
         2. Credits purchases (credits_100, credits_500, credits_2000)
 
         Transaction order (v2.4.0):
@@ -224,7 +224,7 @@ class StripeWebhookService:
         if credits_amount > 0:
             return await self._process_credits_purchase(uid, credits_amount, amount_total, currency, session_id)
 
-        # Handle subscription purchase (starter, pro)
+        # Handle subscription purchase (t2, t3)
         elif plan in ["t2", "t3"]:
             return await self._process_subscription_start(uid, plan, amount_total, currency, session, session_id)
 
@@ -365,7 +365,7 @@ class StripeWebhookService:
 
         Args:
             uid: User ID
-            plan: Plan type (starter, pro)
+            plan: Plan type (t2, t3)
             amount_total: Payment amount in cents
             currency: Payment currency
             session: Full session object
@@ -534,7 +534,7 @@ class StripeWebhookService:
 
         Args:
             uid: User ID
-            tier: Current tier (starter, pro)
+            tier: Current tier (t2, t3)
             current_status: Current subscription status
             amount_paid: Payment amount in cents
             currency: Payment currency

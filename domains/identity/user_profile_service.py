@@ -309,10 +309,10 @@ class UserProfileService:
         Check if user is a paying member.
 
         Args:
-            tier: User tier (free/starter/pro)
+            tier: User tier (t1/t2/t3)
 
         Returns:
-            True if user is starter or pro tier
+            True if user is t2 or t3 tier
         """
         tier_normalized = (tier or "t1").lower()
         return tier_normalized in ["t2", "t3"]
