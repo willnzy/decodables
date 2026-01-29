@@ -200,8 +200,10 @@ class GetDashboardAssetsQuery:
     Query to get dashboard assets with view type filtering.
 
     Supports cross-domain data (marketplace listings for selling view).
+    v3.45: Added workspace_id for data isolation.
     """
     user_id: str
+    workspace_id: Optional[str] = None
     view_type: str = "all"  # "all", "bought", "selling"
     offset: int = 0
     limit: int = 15
@@ -232,6 +234,7 @@ class GetDashboardAssetsHandler:
         try:
             result = await self._repository.get_dashboard_assets(
                 user_id=query.user_id,
+                workspace_id=query.workspace_id,
                 view_type=query.view_type,
                 offset=query.offset,
                 limit=query.limit,

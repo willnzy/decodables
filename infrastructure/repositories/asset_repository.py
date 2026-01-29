@@ -403,6 +403,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
     async def get_dashboard_assets(
         self,
         user_id: str,
+        workspace_id: Optional[str] = None,
         view_type: str = "all",
         offset: int = 0,
         limit: int = 15,
@@ -412,8 +413,11 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         """
         Get assets for dashboard with view type filtering.
 
+        v3.45: Added workspace_id filter for data isolation.
+
         Args:
             user_id: User ID
+            workspace_id: Workspace ID for data isolation (optional for backward compat)
             view_type: "all", "bought", or "selling"
             offset: Number of records to skip
             limit: Items per page
@@ -445,6 +449,10 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                     "id", selling_asset_ids
                 ).eq("is_deleted", False)
 
+                # v3.45: Workspace isolation
+                if workspace_id:
+                    query = query.eq("workspace_id", workspace_id)
+
                 # Apply folder filter
                 if folder_id != "NOT_SET":
                     if folder_id is None:
@@ -462,6 +470,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                 count_query = self.client.table("assets").select("id", count="exact").in_(
                     "id", selling_asset_ids
                 ).eq("is_deleted", False)
+                if workspace_id:
+                    count_query = count_query.eq("workspace_id", workspace_id)
                 if folder_id != "NOT_SET":
                     if folder_id is None:
                         count_query = count_query.is_("folder_id", "null")
@@ -476,6 +486,10 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             query = self.client.table("assets").select(select_fields).eq(
                 "user_id", user_id
             ).eq("is_deleted", False)
+
+            # v3.45: Workspace isolation
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
 
             # Apply view type filter
             if view_type == "bought":
@@ -501,6 +515,9 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                 "user_id", user_id
             ).eq("is_deleted", False)
 
+            if workspace_id:
+                count_query = count_query.eq("workspace_id", workspace_id)
+
             if view_type == "bought":
                 count_query = count_query.eq("is_purchased", True)
 
@@ -521,6 +538,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         all_count_query = self.client.table("assets").select("id", count="exact").eq(
             "user_id", user_id
         ).eq("is_deleted", False)
+        if workspace_id:
+            all_count_query = all_count_query.eq("workspace_id", workspace_id)
         all_count_result = await all_count_query.execute()
         all_count = all_count_result.count or 0
 
@@ -528,6 +547,8 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         bought_count_query = self.client.table("assets").select("id", count="exact").eq(
             "user_id", user_id
         ).eq("is_deleted", False).eq("is_purchased", True)
+        if workspace_id:
+            bought_count_query = bought_count_query.eq("workspace_id", workspace_id)
         bought_count_result = await bought_count_query.execute()
         bought_count = bought_count_result.count or 0
 

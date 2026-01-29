@@ -271,6 +271,7 @@ async def dashboard_projects(
 
     query = GetDashboardProjectsQuery(
         user_id=ctx.user_id,
+        workspace_id=ctx.workspace_id,
         view_type=view,
         offset=offset,
         limit=limit,

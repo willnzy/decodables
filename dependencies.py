@@ -6,7 +6,7 @@ FastAPI dependency injection functions
 """
 
 import jwt
-from fastapi import Header, Depends
+from fastapi import Header, Depends, Request
 from infrastructure.repositories import SupabaseUserRepository
 from core.database import get_async_db_client
 from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API, CLERK_ALLOWED_ORIGINS, TEST_JWT_PUBLIC_KEY
@@ -436,35 +436,53 @@ class UserWithWorkspace:
 
 
 async def get_current_user_with_workspace(
+    request: Request,
     user: UserProfile = Depends(get_current_user),
 ) -> UserWithWorkspace:
     """
-    Get current user with their default workspace.
+    Get current user with their active workspace.
 
-    If workspace doesn't exist, it will be created automatically.
-    This is the primary dependency for APIs that need workspace context.
+    Workspace resolution order:
+    1. X-Workspace-Id header (if provided and valid)
+    2. Default workspace (fallback, auto-created if needed)
 
-    Usage:
-        @router.get("/projects")
-        async def list_projects(ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)):
-            user_id = ctx.user_id
-            workspace_id = ctx.workspace_id
-            ...
+    The X-Workspace-Id header allows the frontend to specify which workspace
+    the user is currently viewing, enabling data isolation per workspace.
+
+    @version 2.0.0 (v3.45 Workspace data isolation)
 
     Args:
+        request: FastAPI request (for reading X-Workspace-Id header)
         user: Current authenticated user (from get_current_user)
 
     Returns:
-        UserWithWorkspace: User with their default workspace_id
+        UserWithWorkspace: User with their active workspace_id
     """
     from container import get_container
 
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    # get_or_create_default handles idempotent workspace creation
-    workspace = await workspace_service.get_or_create_default(user.user_id)
+    # Check for explicit workspace selection via header
+    requested_workspace_id = request.headers.get("X-Workspace-Id")
 
+    if requested_workspace_id:
+        # Validate: user must own or be a member of this workspace
+        workspace = await workspace_service.get_by_id(requested_workspace_id)
+        if workspace and workspace.owner_id == user.user_id:
+            return UserWithWorkspace(user=user, workspace_id=workspace.id)
+
+        # Check membership (user might be a member, not owner)
+        try:
+            member_service = await container.get_member_service()
+            await member_service._verify_membership(requested_workspace_id, user.user_id)
+            return UserWithWorkspace(user=user, workspace_id=requested_workspace_id)
+        except (ValueError, Exception):
+            # Invalid workspace or not a member — fall back to default
+            pass
+
+    # Fallback: use default workspace (auto-created if needed)
+    workspace = await workspace_service.get_or_create_default(user.user_id)
     return UserWithWorkspace(user=user, workspace_id=workspace.id)
 
 

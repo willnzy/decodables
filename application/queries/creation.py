@@ -181,8 +181,10 @@ class GetDashboardProjectsQuery:
 
     P1-002 fix: Migrated from page-based to offset-based pagination (DDD compliant).
     Supports cross-domain data (marketplace listings).
+    v3.45: Added workspace_id for data isolation.
     """
     user_id: str
+    workspace_id: Optional[str] = None
     view_type: str = "all"  # "all", "bought", "selling"
     offset: int = 0
     limit: int = 20
@@ -215,6 +217,7 @@ class GetDashboardProjectsHandler:
             # Repository method handles cross-domain data (marketplace enrichment)
             result = await self._repository.get_dashboard_projects(
                 user_id=query.user_id,
+                workspace_id=query.workspace_id,
                 view_type=query.view_type,
                 offset=query.offset,
                 limit=query.limit,
