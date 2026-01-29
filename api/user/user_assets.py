@@ -352,7 +352,7 @@ async def get_asset_dashboard(
     request: Request,
     view: str = Query("all", pattern="^(all|bought|selling)$"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(15, ge=1, le=100, description="Number of records to return (1-100)"),
+    limit: int = Query(15, ge=1, description="Number of records to return"),
     search: Optional[str] = None,
     folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)

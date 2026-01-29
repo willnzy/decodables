@@ -180,7 +180,7 @@ class ProjectUpdateResponse(BaseModel):
 @router.get("")
 async def list_projects(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(6, ge=1, le=100, description="Number of records to return (1-100)"),
+    limit: int = Query(6, ge=1, description="Number of records to return"),
     search: Optional[str] = None,
     include_canvas_data: bool = True,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
@@ -193,7 +193,7 @@ async def list_projects(
 
     Args:
         offset: Number of records to skip (default: 0)
-        limit: Number of records to return (default: 6, max: 100)
+        limit: Number of records to return (default: 6)
         search: Search query to filter by title
         include_canvas_data: Whether to include canvas_data
 
@@ -237,7 +237,7 @@ async def list_projects(
 async def dashboard_projects(
     view: str = Query("all", pattern="^(all|bought|selling)$"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
+    limit: int = Query(20, ge=1, description="Number of records to return"),
     search: Optional[str] = None,
     include_canvas: bool = True,
     folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
@@ -254,7 +254,7 @@ async def dashboard_projects(
     Args:
         view: View type - "all" (default), "bought", or "selling"
         offset: Number of records to skip (default: 0)
-        limit: Number of records to return (default: 20, max: 100)
+        limit: Number of records to return (default: 20)
         search: Search query
         include_canvas: Whether to include canvas_data
 
