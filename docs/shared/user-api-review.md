@@ -1,9 +1,9 @@
 # User API 完整参考
 
 > **状态**: ✅ Complete
-> **版本**: 3.43
-> **最后更新**: 2026-01-27
-> **总端点数**: 148 个
+> **版本**: 3.44
+> **最后更新**: 2026-01-29
+> **总端点数**: 157 个
 > **DDD 合规**: 100%
 > **测试覆盖率**: 65%+
 
@@ -43,15 +43,17 @@
 28. [User Assets 用户资产 (13个)](#28-user-assets-用户资产)
 29. [User Profile 用户档案 (7个)](#29-user-profile-用户档案)
 30. [Webhooks (2个)](#30-webhooks)
-31. [Workspaces 工作区 (6个)](#31-workspaces-工作区) **NEW v3.43**
+31. [Workspaces 工作区 (7个)](#31-workspaces-工作区) **UPDATED v3.44**
 32. [Tags 标签系统 (6个)](#32-tags-标签系统) **NEW v3.43**
 33. [Project Tags 项目标签 (4个)](#33-project-tags-项目标签) **NEW v3.43**
 34. [Asset Tags 素材标签 (4个)](#34-asset-tags-素材标签) **NEW v3.43**
 35. [Folders 文件夹 (6个)](#35-folders-文件夹) **NEW v3.33**
+36. [Workspace Members 成员管理 (5个)](#36-workspace-members-成员管理) **NEW v3.44**
+37. [Workspace Invitations 邀请管理 (3个)](#37-workspace-invitations-邀请管理) **NEW v3.44**
 
 ---
 
-## 📋 接口总览 (162个)
+## 📋 接口总览 (171个)
 
 | 序号 | 模块 | 方法 | 路径 | 函数名 | 文件 | 说明 |
 |------|------|------|------|--------|------|------|
@@ -3434,8 +3436,8 @@ Stripe-Signature: <signature>
 
 ## 31. Workspaces 工作区
 
-> **v3.43 新增** - Workspace + Tag 系统 Phase 1
-> **端点数**: 6 个
+> **v3.44 更新** - Workspace + Tag 系统 Phase 1 + 多 Workspace 创建
+> **端点数**: 7 个
 > **文件**: `api/user/workspaces.py`
 
 ### GET `/workspaces`
@@ -3465,6 +3467,54 @@ Stripe-Signature: <signature>
   "total": 1
 }
 ```
+
+### POST `/workspaces`
+
+创建新的团队工作区。
+
+**认证**: 必须
+
+**限流**: 10/minute
+
+**请求体**:
+```json
+{
+  "name": "My Team",
+  "description": "Team workspace for collaboration"
+}
+```
+
+| 字段 | 类型 | 必填 | 验证 |
+|------|------|------|------|
+| name | string | ✅ | 1-100 字符 |
+| description | string | ❌ | 最大 500 字符 |
+
+**配额限制**:
+| Tier | 最大工作区数 |
+|------|-------------|
+| t1 (Free) | 1 (不可创建额外) |
+| t2 (Starter) | 1 (不可创建额外) |
+| t3 (Pro) | 10 |
+
+**响应** (201):
+```json
+{
+  "id": "uuid",
+  "name": "My Team",
+  "description": "Team workspace for collaboration",
+  "owner_id": "user_xxx",
+  "is_default": false,
+  "is_personal": false,
+  "is_active": true,
+  "created_at": "2026-01-29T00:00:00Z",
+  "updated_at": "2026-01-29T00:00:00Z"
+}
+```
+
+**错误**:
+- `400`: 名称无效或配额已满 ("Workspace limit reached")
+
+---
 
 ### GET `/workspaces/current`
 
@@ -4054,9 +4104,275 @@ Stripe-Signature: <signature>
 
 ---
 
-*文档版本: v3.34*
-*最后更新: 2026-01-28*
+## 36. Workspace Members 成员管理
+
+> **v3.44 新增** - Phase 5 成员邀请/管理
+> **端点数**: 5 个
+> **文件**: `api/user/workspace_members.py`
+
+### GET `/workspaces/{workspace_id}/members`
+
+获取工作区的所有成员列表。
+
+**认证**: 必须 (需是该工作区成员或 owner)
+
+**限流**: 60/minute
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| workspace_id | UUID | 工作区 ID |
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "workspace_id": "uuid",
+      "user_id": "user_xxx",
+      "role": "owner",
+      "invited_by": null,
+      "is_active": true,
+      "user_email": "owner@example.com",
+      "user_name": "John Doe",
+      "created_at": "2026-01-29T00:00:00Z",
+      "updated_at": "2026-01-29T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "workspace_owner_id": "user_xxx"
+}
+```
+
+**错误**:
+- `403`: 用户不是工作区成员
+
+---
+
+### POST `/workspaces/{workspace_id}/members/invite`
+
+通过邮箱邀请成员加入工作区。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 20/minute
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| workspace_id | UUID | 工作区 ID |
+
+**请求体**:
+```json
+{
+  "email": "member@example.com",
+  "role": "member"
+}
+```
+
+| 字段 | 类型 | 必填 | 验证 |
+|------|------|------|------|
+| email | string | ✅ | 3-254 字符 |
+| role | string | ❌ | 仅 "member" (默认) |
+
+**响应**:
+```json
+{
+  "id": "uuid",
+  "workspace_id": "uuid",
+  "invited_email": "member@example.com",
+  "invited_by": "user_xxx",
+  "role": "member",
+  "status": "pending",
+  "expires_at": "2026-02-05T00:00:00Z",
+  "created_at": "2026-01-29T00:00:00Z"
+}
+```
+
+**错误**:
+- `400`: 邮箱格式无效 / 已存在该成员 / 已有待处理邀请
+- `403`: 非工作区 owner
+
+---
+
+### PATCH `/workspaces/{workspace_id}/members/{member_id}`
+
+更新成员角色。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 20/minute
+
+**请求体**:
+```json
+{
+  "role": "member"
+}
+```
+
+**响应**: 更新后的成员对象
+
+**错误**:
+- `400`: 无效 ID / 不能修改 owner 角色
+- `403`: 非工作区 owner
+
+---
+
+### DELETE `/workspaces/{workspace_id}/members/{member_id}`
+
+移除工作区成员。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 20/minute
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Member removed"
+}
+```
+
+**错误**:
+- `400`: 无效 ID / 不能移除 owner
+- `403`: 非工作区 owner
+
+---
+
+### GET `/workspaces/{workspace_id}/invitations`
+
+获取工作区的所有邀请记录。
+
+**认证**: 必须 (仅 workspace owner)
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "workspace_id": "uuid",
+      "invited_email": "member@example.com",
+      "invited_by": "user_xxx",
+      "role": "member",
+      "status": "pending",
+      "expires_at": "2026-02-05T00:00:00Z",
+      "accepted_by": null,
+      "accepted_at": null,
+      "created_at": "2026-01-29T00:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**错误**:
+- `403`: 非工作区 owner
+
+---
+
+## 37. Workspace Invitations 邀请管理
+
+> **v3.44 新增** - Phase 5 用户侧邀请管理
+> **端点数**: 3 个
+> **文件**: `api/user/workspace_invitations.py`
+
+### GET `/invitations`
+
+获取当前用户的所有待处理邀请。
+
+**认证**: 必须
+
+**限流**: 30/minute
+
+**响应**:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "workspace_id": "uuid",
+      "workspace_name": "Team Alpha",
+      "invited_email": "user@example.com",
+      "invited_by": "user_xxx",
+      "role": "member",
+      "status": "pending",
+      "expires_at": "2026-02-05T00:00:00Z",
+      "created_at": "2026-01-29T00:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**说明**: 通过当前用户邮箱匹配邀请，响应中包含 `workspace_name` 字段 (富化)
+
+---
+
+### POST `/invitations/{invitation_id}/accept`
+
+接受工作区邀请。
+
+**认证**: 必须
+
+**限流**: 10/minute
+
+**路径参数**:
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| invitation_id | UUID | 邀请 ID |
+
+**响应**: 新创建的成员对象
+```json
+{
+  "id": "uuid",
+  "workspace_id": "uuid",
+  "user_id": "user_xxx",
+  "role": "member",
+  "invited_by": "user_yyy",
+  "is_active": true,
+  "created_at": "2026-01-29T00:00:00Z"
+}
+```
+
+**错误**:
+- `400`: 邀请不存在 / 已过期 / 邮箱不匹配 / 已接受
+
+---
+
+### POST `/invitations/{invitation_id}/decline`
+
+拒绝工作区邀请。
+
+**认证**: 必须
+
+**限流**: 10/minute
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Invitation declined"
+}
+```
+
+**错误**:
+- `400`: 邀请不存在 / 邮箱不匹配
+
+---
+
+*文档版本: v3.44*
+*最后更新: 2026-01-29*
 *更新内容:
+- v3.44: Phase 5 成员管理 + 多 Workspace 创建 (2026-01-29)
+  - 新增: POST `/workspaces` 创建工作区 (Workspaces 6→7 端点)
+  - 新增: Workspace Members 成员管理 (5个端点) - 列表、邀请、角色更新、移除、邀请记录
+  - 新增: Workspace Invitations 邀请管理 (3个端点) - 待处理邀请、接受、拒绝
+  - 总端点数: 162 → 171
 - v3.34: 路由顺序修复 (2026-01-28)
   - 修复: `GET /projects/starred` 和 `GET /projects/folder/{folder_id}` 返回 404
   - 原因: FastAPI 路由匹配顺序问题，`/{project_id}` 通配符先于具体路由

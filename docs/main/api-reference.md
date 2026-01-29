@@ -1,7 +1,7 @@
 # Make Decodables 后端 API 参考文档
 
-> 版本: 3.33
-> 更新时间: 2026-01-28
+> 版本: 3.44
+> 更新时间: 2026-01-29
 > 供前端重构参考
 
 ---
@@ -486,12 +486,12 @@ checkout.session 需要携带的 metadata:
 
 ## 5. API 总览
 
-### User API (158个端点)
+### User API (171个端点)
 
 | 模块 | 基础路径 | 端点数 | 说明 |
 |------|----------|--------|------|
 | **用户档案** | `/api/v2/user/profile` | 7 | 用户信息、通知、时区 |
-| **工作区** | `/api/v2/user/workspaces` | 6 | Workspace CRUD、统计 (v3.33) |
+| **工作区** | `/api/v2/user/workspaces` | 7 | Workspace CRUD、创建、统计 (v3.44) |
 | **标签系统** | `/api/v2/user/tags` | 6 | Tag CRUD、预设、分组 (v3.33) |
 | **文件夹** | `/api/v2/user/folders` | 6 | Folder CRUD、重排序 (v3.33) |
 | **项目标签** | `/api/v2/user/projects/{id}/tags` | 4 | 项目-标签关联 (v3.33) |
@@ -521,10 +521,13 @@ checkout.session 需要携带的 metadata:
 | **推荐系统** | `/api/v2/user/referrals` | 6 | 推荐码、奖励 |
 | **工具** | `/api/v2/user/tools` | 2 | PDF预览、OCR |
 | **日志** | `/api/v2/user/logs` | 2 | 错误上报 |
+| **成员管理** | `/api/v2/user/workspaces/{id}/members` | 5 | 成员列表、邀请、角色、移除 (v3.44) |
+| **邀请管理** | `/api/v2/user/invitations` | 3 | 待处理邀请、接受、拒绝 (v3.44) |
 | **Webhooks** | `/api/v2/user/webhooks` | 2 | Clerk、Stripe |
 
-**详细文档**: 完整的 158 个 User API 端点详细文档见 [docs/shared/user-api-review.md](../shared/user-api-review.md)
+**详细文档**: 完整的 171 个 User API 端点详细文档见 [docs/shared/user-api-review.md](../shared/user-api-review.md)
 
+> **v3.44 新增**: Workspace POST create (1个) + Members (5个) + Invitations (3个) = 9 个新端点
 > **v3.33 新增**: Workspace (6个) + Tags (6个) + Folders (6个) + Project Tags (4个) + Asset Tags (4个) + Project move/star (4个) + Asset move/star (4个) = 34 个新端点
 
 ---
@@ -773,9 +776,10 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 
 ---
 
-*文档版本: v3.33*
-*最后更新: 2026-01-27*
+*文档版本: v3.44*
+*最后更新: 2026-01-29*
 *更新内容:
+- v3.44: Phase 5 成员管理 + 多 Workspace 创建 - 新增 9 个端点 (POST create workspace, Members 5个, Invitations 3个)
 - v3.33: user_assets/dashboard 端点重构 - 新增视图过滤 (all/bought/selling)、搜索、分页
 - v3.32: User Creation Monitoring 模块扩展 (3→5 端点) - 新增 /recent 和 /trends 端点
 - v3.31: 新增 Tiers API (3个端点) - Tier 配置管理
