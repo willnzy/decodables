@@ -1004,6 +1004,7 @@ class TestDowngradeSubscriptionAdditional:
 class TestHelperMethods:
     """Tests for helper methods."""
 
+    @patch.dict("domains.billing.payment_service.PRICE_MAP", {"t2": "price_starter_monthly", "t3": "price_pro_monthly"})
     def test_extract_plan_name_starter(self, service):
         """Extract tier code for Starter (t2)."""
         mock_sub = MagicMock()
@@ -1012,6 +1013,7 @@ class TestHelperMethods:
         result = service._extract_plan_name(mock_sub)
         assert result == "t2"
 
+    @patch.dict("domains.billing.payment_service.PRICE_MAP", {"t2": "price_starter_monthly", "t3": "price_pro_monthly"})
     def test_extract_plan_name_pro(self, service):
         """Extract tier code for Pro (t3)."""
         mock_sub = MagicMock()
