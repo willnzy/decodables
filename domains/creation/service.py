@@ -361,6 +361,10 @@ class CreationService:
         # Copy canvas_data (editor stores page data in this JSON field)
         new_project.canvas_data = source.canvas_data
 
+        # Copy thumbnail from source project
+        if source.metadata.thumbnail_url:
+            new_project.metadata.thumbnail_url = source.metadata.thumbnail_url
+
         # Copy tags from source
         if source.metadata.tags:
             new_project.metadata.tags = list(source.metadata.tags)

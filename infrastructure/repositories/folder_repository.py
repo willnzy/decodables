@@ -422,23 +422,39 @@ class SupabaseFolderRepository(IFolderRepository):
     ) -> List[Dict[str, Any]]:
         """Get preview items (thumbnails) for a folder."""
         try:
-            table = "projects" if folder_type == FolderType.PROJECT else "assets"
+            # Projects have title + thumbnail_url; assets have url (the image itself)
+            if folder_type == FolderType.PROJECT:
+                result = await self.client.table("projects")\
+                    .select("id, title, thumbnail_url")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .order("updated_at", desc=True)\
+                    .limit(limit)\
+                    .execute()
 
-            result = await self.client.table(table)\
-                .select("id, title, thumbnail_url")\
-                .eq("folder_id", folder_id)\
-                .eq("is_deleted", False)\
-                .order("updated_at", desc=True)\
-                .limit(limit)\
-                .execute()
+                items = []
+                for row in (result.data or []):
+                    items.append({
+                        "id": row["id"],
+                        "title": row.get("title", ""),
+                        "thumbnailUrl": row.get("thumbnail_url"),
+                    })
+            else:
+                result = await self.client.table("assets")\
+                    .select("id, url")\
+                    .eq("folder_id", folder_id)\
+                    .eq("is_deleted", False)\
+                    .order("updated_at", desc=True)\
+                    .limit(limit)\
+                    .execute()
 
-            items = []
-            for row in (result.data or []):
-                items.append({
-                    "id": row["id"],
-                    "title": row.get("title", ""),
-                    "thumbnailUrl": row.get("thumbnail_url"),
-                })
+                items = []
+                for row in (result.data or []):
+                    items.append({
+                        "id": row["id"],
+                        "title": "",
+                        "thumbnailUrl": row.get("url"),
+                    })
 
             return items
 
