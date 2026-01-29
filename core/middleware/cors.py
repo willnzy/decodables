@@ -14,7 +14,7 @@ def add_cors_headers(
     origins: Optional[List[str]] = None,
     allow_credentials: bool = True,
     allow_methods: str = "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-    allow_headers: str = "Authorization, Content-Type, X-Request-ID"
+    allow_headers: str = "Authorization, Content-Type, X-Request-ID, X-Workspace-Id"
 ) -> Response:
     """
     Add CORS headers to a response.

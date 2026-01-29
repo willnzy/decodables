@@ -253,6 +253,7 @@ app.add_middleware(
         "X-Requested-With",
         "X-Request-ID",
         "X-Timezone",
+        "X-Workspace-Id",
         "Cache-Control",
     ],
     expose_headers=["X-Request-ID", "X-Response-Time", "Content-Disposition"],
