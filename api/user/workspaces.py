@@ -2,20 +2,15 @@
 Workspaces Router - Workspace management endpoints (v3.33)
 
 @module api.user.workspaces
-@version 1.0.0 (created for v3.33 Workspace + Tag Phase 1)
+@version 2.0.0 (Phase 2: Multi-workspace support)
 
 Endpoints:
-- GET /api/v2/user/workspaces - List user's workspaces
-- GET /api/v2/user/workspaces/current - Get current default workspace
-- GET /api/v2/user/workspaces/{workspace_id} - Get workspace by ID
+- GET  /api/v2/user/workspaces - List user's workspaces
+- POST /api/v2/user/workspaces - Create a new workspace (Phase 2)
+- GET  /api/v2/user/workspaces/current - Get current default workspace
+- GET  /api/v2/user/workspaces/{workspace_id} - Get workspace by ID
 - PATCH /api/v2/user/workspaces/{workspace_id} - Update workspace
-- DELETE /api/v2/user/workspaces/{workspace_id} - Delete workspace (Phase 2+)
-
-Phase 1 Scope:
-- Users have exactly one default Personal Workspace
-- Workspace is auto-created on registration
-- Basic CRUD operations supported
-- No team/collaboration features yet (Phase 2)
+- DELETE /api/v2/user/workspaces/{workspace_id} - Delete workspace
 """
 
 import re
@@ -52,6 +47,12 @@ def validate_uuid(value: str, field_name: str = "ID") -> None:
 # ==========================================
 # Request/Response Models
 # ==========================================
+
+class CreateWorkspaceRequest(BaseModel):
+    """Request model for creating a workspace."""
+    name: str = Field(min_length=1, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=500)
+
 
 class UpdateWorkspaceRequest(BaseModel):
     """Request model for updating a workspace."""
@@ -91,8 +92,7 @@ async def list_workspaces(
     """
     List user's workspaces.
 
-    Phase 1: Returns the user's single default workspace.
-    Phase 2+: Will return all workspaces user has access to.
+    Returns all workspaces owned by the user (default + team).
 
     Returns:
         WorkspaceListResponse with items and total count
@@ -100,13 +100,64 @@ async def list_workspaces(
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    # Phase 1: Get or create default workspace
-    workspace = await workspace_service.get_or_create_default(user.user_id)
+    workspaces = await workspace_service.list_user_workspaces(user.user_id)
 
     return {
-        "items": [workspace.to_dict()],
-        "total": 1
+        "items": [ws.to_dict() for ws in workspaces],
+        "total": len(workspaces)
     }
+
+
+@router.post("")
+@limiter.limit("10/minute")
+async def create_workspace(
+    request: Request,
+    data: CreateWorkspaceRequest,
+    user: UserProfile = Depends(get_current_user)
+):
+    """
+    Create a new team workspace (Phase 2).
+
+    Tier-based quota:
+    - Free/Starter: 1 workspace (cannot create additional)
+    - Pro: up to 10 workspaces
+
+    Args:
+        data: CreateWorkspaceRequest (name, description)
+
+    Returns:
+        Created workspace details
+
+    Raises:
+        400: Validation error or quota exceeded
+    """
+    container = get_container()
+    workspace_service = await container.get_workspace_service()
+
+    # Get user tier
+    user_tier = getattr(user, "tier", "t1") or "t1"
+
+    try:
+        workspace = await workspace_service.create_workspace(
+            user_id=user.user_id,
+            name=data.name,
+            description=data.description,
+            user_tier=user_tier,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    await log_activity_async(
+        user_id=user.user_id,
+        action="workspace_created",
+        metadata={
+            "workspace_id": workspace.id,
+            "name": workspace.name,
+            "is_personal": workspace.is_personal,
+        }
+    )
+
+    return workspace.to_dict()
 
 
 @router.get("/current")

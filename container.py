@@ -1043,7 +1043,8 @@ class Container:
                 raise RuntimeError("Database client not available")
 
             repository = SupabaseWorkspaceRepository(db)
-            self._services['workspace_service'] = WorkspaceService(repository)
+            config_service = await self.get_config_service()
+            self._services['workspace_service'] = WorkspaceService(repository, config_service)
         return self._services['workspace_service']
 
     async def get_tag_service(self):

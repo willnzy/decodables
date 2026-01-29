@@ -87,3 +87,27 @@ class Workspace:
             is_personal=True,
             is_active=True,
         )
+
+    @staticmethod
+    def create_team(owner_id: str, name: str, description: Optional[str] = None) -> "Workspace":
+        """
+        Factory method to create a non-default team workspace.
+
+        Phase 2+: Pro users can create additional workspaces for collaboration.
+
+        Args:
+            owner_id: Clerk user_id of the workspace owner
+            name: Workspace name (required)
+            description: Optional description
+
+        Returns:
+            Workspace entity ready for persistence
+        """
+        return Workspace(
+            name=name,
+            description=description,
+            owner_id=owner_id,
+            is_default=False,
+            is_personal=False,
+            is_active=True,
+        )
