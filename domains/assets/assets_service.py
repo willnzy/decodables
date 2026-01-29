@@ -318,7 +318,10 @@ class AssetsService:
         user_tier: str,
         file: UploadFile,
         project_id: Optional[str],
-        timezone: str = "UTC"
+        timezone: str = "UTC",
+        workspace_id: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        tag_ids: Optional[list] = None,
     ) -> Dict[str, Any]:
         """
         Upload asset with Pro check and file validation.
@@ -383,14 +386,31 @@ class AssetsService:
             raise UploadFailedException(reason=str(e))
 
         # 7. Save to database (source='upload' per schema constraint)
-        await self.repository.save_asset(
+        saved_asset = await self.repository.save_asset(
             user_id,
             url,
             source="upload",
             project_id=project_id,
             tz=timezone,
-            asset_type="image"
+            asset_type="image",
+            workspace_id=workspace_id,
+            folder_id=folder_id,
         )
+
+        # 8. Set tags if provided (v3.46)
+        if tag_ids and saved_asset and saved_asset.get("id"):
+            try:
+                from container import get_container
+                container = get_container()
+                asset_tag_service = await container.get_asset_tag_service()
+                await asset_tag_service.set_tags(
+                    asset_id=saved_asset["id"],
+                    tag_ids=tag_ids,
+                    user_id=user_id,
+                    source="upload"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to set tags during upload: {e}")
 
         return {"url": url, "filename": filename}
 

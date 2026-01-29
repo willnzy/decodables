@@ -5,8 +5,8 @@ Assets Commands - Write operations for user assets.
 @version 1.0.0
 """
 
-from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+from typing import Dict, Any, Optional, List
 from fastapi import UploadFile
 
 from domains.assets.assets_service import AssetsService
@@ -24,6 +24,9 @@ class UploadAssetCommand:
     file: UploadFile
     project_id: Optional[str]
     timezone: str = "UTC"
+    workspace_id: Optional[str] = None
+    folder_id: Optional[str] = None
+    tag_ids: Optional[List[str]] = field(default=None)
 
 
 @dataclass
@@ -45,7 +48,10 @@ class UploadAssetHandler:
             command.user_tier,
             command.file,
             command.project_id,
-            command.timezone
+            command.timezone,
+            workspace_id=command.workspace_id,
+            folder_id=command.folder_id,
+            tag_ids=command.tag_ids,
         )
         return UploadAssetResult(result=result)
 

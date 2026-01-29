@@ -62,7 +62,9 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         project_id: Optional[str] = None,
         prompt: Optional[str] = None,
         tz: str = "UTC",
-        asset_type: str = "image"
+        asset_type: str = "image",
+        workspace_id: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Save new asset.
@@ -75,11 +77,13 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             prompt: Optional prompt used to generate
             tz: Timezone
             asset_type: Asset type (image, video, audio, document). Defaults to 'image'.
+            workspace_id: Optional workspace ID (v3.46: set at upload time)
+            folder_id: Optional folder ID (v3.46: set at upload time)
 
         Returns:
             Created asset dict
         """
-        result = await self.client.table("assets").insert({
+        insert_data = {
             "user_id": user_id,
             "url": url,
             "type": asset_type,  # Required NOT NULL field
@@ -87,7 +91,13 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             "project_id": project_id,
             "prompt": prompt,
             "timezone": tz,
-        }).execute()
+        }
+        if workspace_id:
+            insert_data["workspace_id"] = workspace_id
+        if folder_id:
+            insert_data["folder_id"] = folder_id
+
+        result = await self.client.table("assets").insert(insert_data).execute()
 
         return result.data[0] if result.data else None
 

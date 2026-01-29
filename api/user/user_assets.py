@@ -192,6 +192,9 @@ async def upload_asset(
     request: Request,
     file: UploadFile = Depends(validate_file_size),  # P3-005: File size validation (10MB limit)
     project_id: Optional[str] = Form(None),
+    workspace_id: Optional[str] = Form(None),
+    folder_id: Optional[str] = Form(None),
+    tag_ids: Optional[str] = Form(None),  # JSON array string, e.g. '["uuid1","uuid2"]'
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):
     """
@@ -200,11 +203,32 @@ async def upload_asset(
     v3.0.0: Now uses UploadAssetHandler (Container pattern).
     Business logic (Pro check, file validation) moved to Service layer.
     v3.33: Now uses UserWithWorkspace for automatic workspace creation.
+    v3.46: Added workspace_id, folder_id, tag_ids for Add Assets dialog.
 
     P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
+    import json
+    from fastapi import HTTPException
+
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
+    validate_optional_uuid(workspace_id, "workspace ID")
+    validate_optional_uuid(folder_id, "folder ID")
+
+    # v3.46: Parse tag_ids JSON array
+    parsed_tag_ids = None
+    if tag_ids:
+        try:
+            parsed_tag_ids = json.loads(tag_ids)
+            if not isinstance(parsed_tag_ids, list):
+                raise HTTPException(400, "tag_ids must be a JSON array")
+            for tid in parsed_tag_ids:
+                validate_uuid_id(tid, "tag_id")
+        except json.JSONDecodeError:
+            raise HTTPException(400, "Invalid tag_ids format: must be a JSON array")
+
+    # v3.46: Default workspace_id from request header if not provided
+    effective_workspace_id = workspace_id or ctx.workspace_id
 
     tz = await get_request_timezone(request, user_id=ctx.user_id)
 
@@ -216,7 +240,10 @@ async def upload_asset(
         user_tier=ctx.user.tier.value if hasattr(ctx.user.tier, 'value') else str(ctx.user.tier),
         file=file,
         project_id=project_id,
-        timezone=tz
+        timezone=tz,
+        workspace_id=effective_workspace_id,
+        folder_id=folder_id,
+        tag_ids=parsed_tag_ids,
     )
     result = await handler.handle(command)
 
