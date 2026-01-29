@@ -9,6 +9,7 @@ Defines the contract for Folder data access.
 
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
+
 from .entities import Folder, FolderType
 
 
@@ -145,12 +146,13 @@ class IFolderRepository(ABC):
         pass
 
     @abstractmethod
-    async def count_items(self, folder_id: str) -> int:
+    async def count_items(self, folder_id: str, workspace_id: Optional[str] = None) -> int:
         """
         Count items (projects or assets) in a folder.
 
         Args:
             folder_id: Folder UUID
+            workspace_id: Workspace UUID for data isolation filtering
 
         Returns:
             Number of items in the folder
@@ -163,6 +165,7 @@ class IFolderRepository(ABC):
         folder_id: str,
         folder_type: FolderType,
         user_id: str,
+        workspace_id: Optional[str] = None,
     ) -> dict:
         """
         Count items in a folder by marketplace status.
@@ -175,6 +178,7 @@ class IFolderRepository(ABC):
             folder_id: Folder UUID
             folder_type: Type of folder (project or asset) - avoids redundant DB lookup
             user_id: User ID (needed for checking marketplace_listings)
+            workspace_id: Workspace UUID for data isolation filtering
 
         Returns:
             Dict with 'total', 'bought_count', 'selling_count'
@@ -187,6 +191,7 @@ class IFolderRepository(ABC):
         folder_id: str,
         folder_type: FolderType,
         limit: int = 4,
+        workspace_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get preview items (thumbnails) for a folder.
@@ -198,6 +203,7 @@ class IFolderRepository(ABC):
             folder_id: Folder UUID
             folder_type: Type of folder (project or asset)
             limit: Max number of preview items (default: 4)
+            workspace_id: Workspace UUID for data isolation filtering
 
         Returns:
             List of dicts with 'id' and 'thumbnail_url' keys

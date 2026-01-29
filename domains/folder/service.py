@@ -138,10 +138,12 @@ class FolderService:
         async def _enrich_folder(folder: Folder) -> None:
             """Enrich a single folder with counts and preview items in parallel."""
             counts_task = self._repo.count_items_by_type(
-                folder.id, folder.folder_type, user_id
+                folder.id, folder.folder_type, user_id,
+                workspace_id=workspace_id,
             )
             preview_task = self._repo.get_preview_items(
-                folder.id, folder.folder_type, limit=4
+                folder.id, folder.folder_type, limit=4,
+                workspace_id=workspace_id,
             )
             counts, preview_items = await asyncio.gather(counts_task, preview_task)
 

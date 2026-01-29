@@ -82,9 +82,9 @@ class SupabaseFolderRepository(IFolderRepository):
 
             folders = [Folder.from_dict(row) for row in (result.data or [])]
 
-            # Enrich with item counts
+            # Enrich with item counts (workspace_id for data isolation)
             for folder in folders:
-                folder.item_count = await self.count_items(folder.id)
+                folder.item_count = await self.count_items(folder.id, workspace_id=workspace_id)
 
             return folders
 
@@ -271,7 +271,7 @@ class SupabaseFolderRepository(IFolderRepository):
             raise
 
     @retry_on_network_error()
-    async def count_items(self, folder_id: str) -> int:
+    async def count_items(self, folder_id: str, workspace_id: Optional[str] = None) -> int:
         """Count items (projects or assets) in a folder."""
         try:
             # First get the folder to know its type
@@ -281,17 +281,21 @@ class SupabaseFolderRepository(IFolderRepository):
 
             # Count items based on folder type
             if folder.folder_type == FolderType.PROJECT:
-                result = await self.client.table("projects")\
+                query = self.client.table("projects")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    query = query.eq("workspace_id", workspace_id)
+                result = await query.execute()
             else:  # ASSET
-                result = await self.client.table("assets")\
+                query = self.client.table("assets")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    query = query.eq("workspace_id", workspace_id)
+                result = await query.execute()
 
             return result.count if result.count else 0
 
@@ -305,6 +309,7 @@ class SupabaseFolderRepository(IFolderRepository):
         folder_id: str,
         folder_type: FolderType,
         user_id: str,
+        workspace_id: Optional[str] = None,
     ) -> dict:
         """
         Count items in a folder by marketplace status.
@@ -317,6 +322,7 @@ class SupabaseFolderRepository(IFolderRepository):
             folder_id: Folder UUID
             folder_type: Type of folder (project or asset) - avoids redundant DB lookup
             user_id: User ID (needed for checking marketplace_listings)
+            workspace_id: Workspace UUID for data isolation filtering
 
         Returns:
             Dict with 'total', 'bought_count', 'selling_count'
@@ -324,28 +330,34 @@ class SupabaseFolderRepository(IFolderRepository):
         try:
             if folder_type == FolderType.PROJECT:
                 # Total count
-                total_result = await self.client.table("projects")\
+                total_query = self.client.table("projects")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    total_query = total_query.eq("workspace_id", workspace_id)
+                total_result = await total_query.execute()
                 total = total_result.count or 0
 
                 # Bought count (is_purchased = True)
-                bought_result = await self.client.table("projects")\
+                bought_query = self.client.table("projects")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
                     .eq("is_deleted", False)\
-                    .eq("is_purchased", True)\
-                    .execute()
+                    .eq("is_purchased", True)
+                if workspace_id:
+                    bought_query = bought_query.eq("workspace_id", workspace_id)
+                bought_result = await bought_query.execute()
                 bought_count = bought_result.count or 0
 
                 # Selling count - get project IDs in this folder, then check marketplace_listings
-                projects_result = await self.client.table("projects")\
+                projects_query = self.client.table("projects")\
                     .select("id")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    projects_query = projects_query.eq("workspace_id", workspace_id)
+                projects_result = await projects_query.execute()
                 project_ids = [p["id"] for p in (projects_result.data or [])]
 
                 selling_count = 0
@@ -368,28 +380,34 @@ class SupabaseFolderRepository(IFolderRepository):
 
             else:  # ASSET
                 # For assets, similar logic but using assets table
-                total_result = await self.client.table("assets")\
+                total_query = self.client.table("assets")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    total_query = total_query.eq("workspace_id", workspace_id)
+                total_result = await total_query.execute()
                 total = total_result.count or 0
 
                 # Bought count
-                bought_result = await self.client.table("assets")\
+                bought_query = self.client.table("assets")\
                     .select("id", count="exact")\
                     .eq("folder_id", folder_id)\
                     .eq("is_deleted", False)\
-                    .eq("is_purchased", True)\
-                    .execute()
+                    .eq("is_purchased", True)
+                if workspace_id:
+                    bought_query = bought_query.eq("workspace_id", workspace_id)
+                bought_result = await bought_query.execute()
                 bought_count = bought_result.count or 0
 
                 # Selling count
-                assets_result = await self.client.table("assets")\
+                assets_query = self.client.table("assets")\
                     .select("id")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
-                    .execute()
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    assets_query = assets_query.eq("workspace_id", workspace_id)
+                assets_result = await assets_query.execute()
                 asset_ids = [a["id"] for a in (assets_result.data or [])]
 
                 selling_count = 0
@@ -419,15 +437,19 @@ class SupabaseFolderRepository(IFolderRepository):
         folder_id: str,
         folder_type: FolderType,
         limit: int = 4,
+        workspace_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Get preview items (thumbnails) for a folder."""
         try:
             # Projects have title + thumbnail_url; assets have url (the image itself)
             if folder_type == FolderType.PROJECT:
-                result = await self.client.table("projects")\
+                query = self.client.table("projects")\
                     .select("id, title, thumbnail_url")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    query = query.eq("workspace_id", workspace_id)
+                result = await query\
                     .order("updated_at", desc=True)\
                     .limit(limit)\
                     .execute()
@@ -440,10 +462,13 @@ class SupabaseFolderRepository(IFolderRepository):
                         "thumbnailUrl": row.get("thumbnail_url"),
                     })
             else:
-                result = await self.client.table("assets")\
+                query = self.client.table("assets")\
                     .select("id, url")\
                     .eq("folder_id", folder_id)\
-                    .eq("is_deleted", False)\
+                    .eq("is_deleted", False)
+                if workspace_id:
+                    query = query.eq("workspace_id", workspace_id)
+                result = await query\
                     .order("updated_at", desc=True)\
                     .limit(limit)\
                     .execute()
