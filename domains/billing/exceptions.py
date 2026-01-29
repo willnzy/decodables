@@ -75,6 +75,7 @@ class CreditOperationFailedException(BillingException):
         self,
         operation: str = None,
         reason: str = None,
+        user_id: str = None,
         **kwargs
     ):
         message = "Credit operation failed"
@@ -85,7 +86,7 @@ class CreditOperationFailedException(BillingException):
 
         super().__init__(
             message=message,
-            context={"operation": operation, "reason": reason},
+            context={"operation": operation, "reason": reason, "user_id": user_id},
             **kwargs
         )
 

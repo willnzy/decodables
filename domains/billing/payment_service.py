@@ -257,7 +257,7 @@ def get_tier_from_price_id(price_id: str) -> str:
         price_id: Stripe price ID
 
     Returns:
-        Tier name ('starter', 'pro') or 'free' if not found
+        Tier code ('t2', 't3') or 'free' if not found
     """
     if not price_id:
         return 'free'
@@ -266,7 +266,7 @@ def get_tier_from_price_id(price_id: str) -> str:
     for tier, configured_price_id in PRICE_MAP.items():
         if configured_price_id and price_id == configured_price_id:
             # credits plans return 'free' (they don't change tier)
-            return tier if tier in ['starter', 'pro'] else 'free'
+            return tier if tier in ['t2', 't3'] else 'free'
 
     # Fallback: log warning and return free
     logger.warning(f"[Payment] Unknown price_id: {price_id}, defaulting to 'free'")
@@ -302,7 +302,7 @@ def create_checkout_session(
 
     Args:
         user_id: User ID
-        plan_type: 'credits_100', 'credits_500', 'credits_2000', 'starter', 'pro'
+        plan_type: 'credits_100', 'credits_500', 'credits_2000', 't2', 't3'
         discount_percent: Discount percentage (0-100)
         idempotency_key: Optional key to prevent duplicate sessions
 
@@ -749,7 +749,7 @@ class PaymentService:
 
         Args:
             user_id: User ID
-            plan_type: 'credits_100', 'credits_500', 'credits_2000', 'starter', 'pro'
+            plan_type: 'credits_100', 'credits_500', 'credits_2000', 't2', 't3'
             discount_percent: Discount percentage (0-100)
             idempotency_key: Optional key to prevent duplicate sessions
 
@@ -792,7 +792,7 @@ class PaymentService:
             price_id: Stripe price ID
 
         Returns:
-            Tier name ('starter', 'pro') or 'free' if not found
+            Tier code ('t2', 't3') or 'free' if not found
         """
         return get_tier_from_price_id(price_id)
 

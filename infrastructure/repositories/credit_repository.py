@@ -127,11 +127,15 @@ class SupabaseCreditRepository(ICreditRepository):
 
         try:
             # Call atomic deduction RPC
-            result = await self.client.rpc("deduct_credits_atomic", {
+            rpc_params = {
                 "p_user_id": user_id,
                 "p_amount": amount,
+                "p_type": tx_type.value,
                 "p_description": description or f"{tx_type.value} operation",
-            }).execute()
+            }
+            if idempotency_key:
+                rpc_params["p_idempotency_key"] = idempotency_key
+            result = await self.client.rpc("deduct_credits_atomic", rpc_params).execute()
 
             if not result.data:
                 raise CreditOperationFailedException(
@@ -157,11 +161,19 @@ class SupabaseCreditRepository(ICreditRepository):
                     reason="RPC returned no data"
                 )
 
-            # Check for insufficient credits
-            if data.get("error"):
-                raise InsufficientCreditsException(
-                    required=amount,
-                    available=data.get("available", 0)
+            # Check for RPC failure (success=False means insufficient credits or validation error)
+            if not data.get("success"):
+                error_msg = data.get("error_message", "")
+                if "Insufficient credits" in error_msg:
+                    available = data.get("balance_monthly", 0) + data.get("balance_permanent", 0)
+                    raise InsufficientCreditsException(
+                        required=amount,
+                        available=available
+                    )
+                raise CreditOperationFailedException(
+                    user_id=user_id,
+                    operation="deduct",
+                    reason=error_msg or "RPC returned failure"
                 )
 
             # Determine bucket used - RPC returns 'bucket' field
@@ -218,11 +230,16 @@ class SupabaseCreditRepository(ICreditRepository):
             column = "credits_monthly" if bucket == CreditBucket.MONTHLY else "credits_permanent"
 
             # Call atomic addition RPC
-            result = await self.client.rpc("add_credits_atomic", {
+            rpc_params = {
                 "p_user_id": user_id,
                 "p_amount": amount,
                 "p_bucket": bucket.value,
-            }).execute()
+                "p_type": tx_type.value,
+                "p_description": description or f"{tx_type.value} operation",
+            }
+            if idempotency_key:
+                rpc_params["p_idempotency_key"] = idempotency_key
+            result = await self.client.rpc("add_credits_atomic", rpc_params).execute()
 
             if not result.data:
                 raise CreditOperationFailedException(
@@ -246,6 +263,15 @@ class SupabaseCreditRepository(ICreditRepository):
                     user_id=user_id,
                     operation="add",
                     reason="RPC returned no data"
+                )
+
+            # Check for RPC failure
+            if not data.get("success"):
+                error_msg = data.get("error_message", "")
+                raise CreditOperationFailedException(
+                    user_id=user_id,
+                    operation="add",
+                    reason=error_msg or "RPC returned failure"
                 )
 
             # Create transaction record

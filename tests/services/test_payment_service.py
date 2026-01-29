@@ -107,25 +107,25 @@ class TestCreateCheckoutSession:
         assert "Invalid plan type" in str(exc_info.value)
     
     def test_subscription_mode_for_starter(self, reset_stripe_mock):
-        """【业务规则 13.2】Starter 计划使用 subscription 模式"""
+        """【业务规则 13.2】Starter 计划 (t2) 使用 subscription 模式"""
         # Setup
-        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        payment_service.PRICE_MAP["t2"] = "price_starter_123"
         stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
-        
-        result = payment_service.create_checkout_session("user_001", "starter")
-        
+
+        result = payment_service.create_checkout_session("user_001", "t2")
+
         # Verify subscription mode
         call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
         assert call_kwargs["mode"] == "subscription"
-    
+
     def test_subscription_mode_for_pro(self, reset_stripe_mock):
-        """【业务规则 13.2】Pro 计划使用 subscription 模式"""
+        """【业务规则 13.2】Pro 计划 (t3) 使用 subscription 模式"""
         # Setup
-        payment_service.PRICE_MAP["pro"] = "price_pro_456"
+        payment_service.PRICE_MAP["t3"] = "price_pro_456"
         stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
-        
-        result = payment_service.create_checkout_session("user_001", "pro")
-        
+
+        result = payment_service.create_checkout_session("user_001", "t3")
+
         # Verify subscription mode
         call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
         assert call_kwargs["mode"] == "subscription"
@@ -175,24 +175,24 @@ class TestCreateCheckoutSession:
     def test_metadata_contains_user_id_and_plan(self, reset_stripe_mock):
         """【业务规则】元数据包含 user_id 和 plan_type"""
         # Setup
-        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        payment_service.PRICE_MAP["t2"] = "price_starter_123"
         stripe_mock.checkout.Session.create.return_value = MagicMock(url="https://checkout.stripe.com/...")
-        
-        result = payment_service.create_checkout_session("user_001", "starter")
-        
+
+        result = payment_service.create_checkout_session("user_001", "t2")
+
         # Verify metadata
         call_kwargs = stripe_mock.checkout.Session.create.call_args[1]
         assert call_kwargs["metadata"]["user_id"] == "user_001"
-        assert call_kwargs["metadata"]["plan_type"] == "starter"
-    
+        assert call_kwargs["metadata"]["plan_type"] == "t2"
+
     def test_stripe_error_returns_none(self, reset_stripe_mock):
         """【业务规则】Stripe 错误返回 None"""
         # Setup
-        payment_service.PRICE_MAP["starter"] = "price_starter_123"
+        payment_service.PRICE_MAP["t2"] = "price_starter_123"
         stripe_mock.checkout.Session.create.side_effect = Exception("Stripe error")
-        
-        result = payment_service.create_checkout_session("user_001", "starter")
-        
+
+        result = payment_service.create_checkout_session("user_001", "t2")
+
         assert result is None
 
 
@@ -243,40 +243,40 @@ class TestGetSubscriptionStatus:
     """
     
     def test_active_starter_subscription(self, reset_stripe_mock):
-        """【业务规则】正确识别 Starter 订阅"""
-        payment_service.PRICE_MAP["starter"] = "price_starter_123"
-        
+        """【业务规则】正确识别 Starter (t2) 订阅"""
+        payment_service.PRICE_MAP["t2"] = "price_starter_123"
+
         mock_sub = MagicMock()
         mock_sub.status = "active"
         mock_sub.current_period_end = 1704067200
         mock_sub.__getitem__ = lambda self, key: {
             "items": {"data": [{"price": {"id": "price_starter_123"}}]}
         }[key]
-        
+
         stripe_mock.Subscription.list.return_value = MagicMock(data=[mock_sub])
-        
+
         result = payment_service.get_subscription_status("cus_123")
-        
+
         assert result["status"] == "active"
-        assert result["tier"] == "starter"
-    
+        assert result["tier"] == "t2"
+
     def test_active_pro_subscription(self, reset_stripe_mock):
-        """【业务规则】正确识别 Pro 订阅"""
-        payment_service.PRICE_MAP["pro"] = "price_pro_456"
-        
+        """【业务规则】正确识别 Pro (t3) 订阅"""
+        payment_service.PRICE_MAP["t3"] = "price_pro_456"
+
         mock_sub = MagicMock()
         mock_sub.status = "active"
         mock_sub.current_period_end = 1704067200
         mock_sub.__getitem__ = lambda self, key: {
             "items": {"data": [{"price": {"id": "price_pro_456"}}]}
         }[key]
-        
+
         stripe_mock.Subscription.list.return_value = MagicMock(data=[mock_sub])
-        
+
         result = payment_service.get_subscription_status("cus_123")
-        
+
         assert result["status"] == "active"
-        assert result["tier"] == "pro"
+        assert result["tier"] == "t3"
     
     def test_no_subscription_returns_free(self, reset_stripe_mock):
         """【业务规则】无订阅返回 free"""

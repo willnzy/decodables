@@ -62,7 +62,7 @@ def get_payment_service() -> PaymentService:
 
 # v2.2.0: Valid plan types - subscriptions and credit packages
 VALID_PLAN_TYPES = {"t2", "t3", "credits_100", "credits_500", "credits_2000"}
-PLAN_TYPE_PATTERN = "^(starter|pro|credits_100|credits_500|credits_2000)$"
+PLAN_TYPE_PATTERN = "^(t2|t3|credits_100|credits_500|credits_2000)$"
 
 
 # ==========================================
@@ -104,7 +104,7 @@ async def create_checkout(
     Applies any available discount for the user.
 
     Args:
-        req: Checkout request with plan_type (starter or pro)
+        req: Checkout request with plan_type (t2, t3, or credits_*)
 
     Returns:
         CheckoutResponse with checkout URL and discount info
