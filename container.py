@@ -1047,6 +1047,28 @@ class Container:
             self._services['workspace_service'] = WorkspaceService(repository, config_service)
         return self._services['workspace_service']
 
+    async def get_member_service(self):
+        """
+        Get member service instance (v3.33 Phase 5, async).
+
+        WHY in Container?
+        - Centralizes service construction
+        - Used by workspace member and invitation APIs
+        """
+        from domains.workspace.member_service import MemberService
+        from infrastructure.repositories.member_repository import SupabaseMemberRepository
+        from infrastructure.repositories.workspace_repository import SupabaseWorkspaceRepository
+
+        if 'member_service' not in self._services:
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            member_repo = SupabaseMemberRepository(db)
+            workspace_repo = SupabaseWorkspaceRepository(db)
+            self._services['member_service'] = MemberService(member_repo, workspace_repo)
+        return self._services['member_service']
+
     async def get_tag_service(self):
         """
         Get tag service instance (v3.33, async).

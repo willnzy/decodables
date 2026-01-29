@@ -55,6 +55,8 @@ from .static_pages import router as static_pages_router
 from .seller import router as seller_router  # v1.0.0: Unified seller stats
 from .tags import router as tags_router, project_tags_router, asset_tags_router  # v3.33: Tag system
 from .workspaces import router as workspaces_router  # v3.33: Workspace system
+from .workspace_members import router as workspace_members_router  # v3.33 Phase 5: Members
+from .workspace_invitations import router as invitations_router  # v3.33 Phase 5: Invitations
 from .folders import router as folders_router  # v3.33 Phase 2.6: Folder system
 
 # User API root router
@@ -95,6 +97,8 @@ user_router.include_router(tags_router)  # v3.33: Tag CRUD
 user_router.include_router(project_tags_router)  # v3.33: Project-Tag associations
 user_router.include_router(asset_tags_router)  # v3.33: Asset-Tag associations
 user_router.include_router(workspaces_router)  # v3.33: Workspace management
+user_router.include_router(workspace_members_router)  # v3.33 Phase 5: Member management
+user_router.include_router(invitations_router)  # v3.33 Phase 5: Invitations
 user_router.include_router(folders_router)  # v3.33 Phase 2.6: Folder management
 
 __all__ = ["user_router"]
