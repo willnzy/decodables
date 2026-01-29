@@ -156,6 +156,7 @@ class TestPermanentCreditsNeverExpire:
         # Mock RPC response - use correct field names matching repository
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
+                "success": True,
                 "balance_monthly": 100,
                 "balance_permanent": 350,  # 300 + 50
             }
@@ -217,6 +218,7 @@ class TestDeductionPriority:
         # Repository uses 'bucket' field to determine deduction source
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
+                "success": True,
                 "bucket": "monthly",  # Indicates deducted from monthly
                 "balance_monthly": 450,
                 "balance_permanent": 200,
@@ -246,6 +248,7 @@ class TestDeductionPriority:
         # When monthly is exhausted, bucket shows 'monthly' since deduction started there
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
+                "success": True,
                 "bucket": "monthly",  # Started from monthly
                 "balance_monthly": 0,
                 "balance_permanent": 180,
@@ -273,6 +276,7 @@ class TestDeductionPriority:
         # Mock RPC response showing deduction from permanent only
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
+                "success": True,
                 "bucket": "permanent",  # Deducted from permanent
                 "balance_monthly": 0,
                 "balance_permanent": 150,
@@ -298,11 +302,13 @@ class TestDeductionPriority:
         # Arrange: User has 30 total credits, needs 50
         user_id = "user_004"
 
-        # Mock RPC response with error
+        # Mock RPC response with error - must match repository's expected fields
         mock_supabase_client.rpc.return_value.execute.return_value = MagicMock(
             data={
-                "error": "INSUFFICIENT_CREDITS",
-                "available": 30
+                "success": False,
+                "error_message": "Insufficient credits",
+                "balance_monthly": 10,
+                "balance_permanent": 20,
             }
         )
 
