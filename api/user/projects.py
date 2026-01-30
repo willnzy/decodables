@@ -33,7 +33,6 @@ Endpoints:
 
 import logging
 import asyncio
-import re
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -43,16 +42,11 @@ from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
 from infrastructure.rate_limiter import limiter
+from core.utils.validation import UUID_PATTERN, validate_uuid, sanitize_postgrest_query
 
 # v3.31: 重试配置
 MAX_RETRIES = 2
 RETRY_DELAY = 1.0  # 秒
-
-# UUID validation pattern
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE
-)
 
 from application.commands.creation import (
     CreateProjectCommand,
@@ -180,8 +174,8 @@ class ProjectUpdateResponse(BaseModel):
 @router.get("")
 async def list_projects(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(6, ge=1, description="Number of records to return"),
-    search: Optional[str] = None,
+    limit: int = Query(6, ge=1, le=100, description="Number of records to return (max 100)"),
+    search: Optional[str] = Query(None, max_length=200, description="Search by title"),
     include_canvas_data: bool = True,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectListResponse:
@@ -237,8 +231,8 @@ async def list_projects(
 async def dashboard_projects(
     view: str = Query("all", pattern="^(all|bought|selling)$"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, description="Number of records to return"),
-    search: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return (max 100)"),
+    search: Optional[str] = Query(None, max_length=200, description="Search by title"),
     include_canvas: bool = True,
     folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),

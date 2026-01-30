@@ -12,7 +12,6 @@ Endpoints:
 - POST /api/v2/user/folders/reorder - Reorder folders
 """
 
-import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Query
@@ -23,27 +22,17 @@ from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
+from core.utils.validation import validate_uuid
 
 router = APIRouter(prefix="/folders", tags=["user-folders-v1"])
 
 
 # ==========================================
-# Constants
+# Constants (WS4: UUID validation centralized to core.utils.validation)
 # ==========================================
-
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE
-)
 
 VALID_COLORS = {"slate", "red", "orange", "amber", "emerald", "cyan", "blue", "violet"}
 VALID_TYPES = {"project", "asset"}
-
-
-def validate_uuid(value: str, field_name: str = "ID") -> None:
-    """Validate that a value is a valid UUID format."""
-    if not UUID_PATTERN.match(value):
-        raise HTTPException(400, f"Invalid {field_name} format")
 
 
 # ==========================================

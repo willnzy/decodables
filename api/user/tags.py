@@ -24,7 +24,6 @@ Asset Tags:
 - DELETE /api/v2/user/assets/{asset_id}/tags/{tag_id} - Remove tag from asset
 """
 
-import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Query
@@ -36,6 +35,7 @@ from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
+from core.utils.validation import validate_uuid
 
 router = APIRouter(prefix="/tags", tags=["user-tags-v1"])
 
@@ -45,19 +45,8 @@ asset_tags_router = APIRouter(tags=["user-asset-tags-v1"])
 
 
 # ==========================================
-# Constants
+# Constants (WS4: UUID validation centralized to core.utils.validation)
 # ==========================================
-
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE
-)
-
-
-def validate_uuid(value: str, field_name: str = "ID") -> None:
-    """Validate that a value is a valid UUID format."""
-    if not UUID_PATTERN.match(value):
-        raise HTTPException(400, f"Invalid {field_name} format")
 
 
 # ==========================================

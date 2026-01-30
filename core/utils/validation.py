@@ -16,7 +16,79 @@ Changes in v2.0.0 (2026-01-10):
 import re
 from typing import Optional, List, Any, Dict
 from urllib.parse import urlparse
+from fastapi import HTTPException
 
+
+# ==========================================
+# UUID Validation (WS4: centralized)
+# ==========================================
+
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
+
+
+def validate_uuid(value: str, field_name: str = "ID") -> str:
+    """
+    Validate a UUID string. Raises HTTPException(400) if invalid.
+
+    Args:
+        value: String to validate
+        field_name: Human-readable field name for error message
+
+    Returns:
+        The validated UUID string
+
+    Raises:
+        HTTPException: 400 if format is invalid
+    """
+    if not UUID_PATTERN.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format")
+    return value
+
+
+# ==========================================
+# Query / Search Sanitization (WS4)
+# ==========================================
+
+# Pagination limits
+MAX_LIMIT = 100
+MAX_SEARCH_LENGTH = 200
+
+# PostgREST special characters that need escaping in search queries
+_POSTGREST_SPECIAL_CHARS = re.compile(r"[%_\\]")
+
+
+def sanitize_postgrest_query(query: str) -> str:
+    """
+    Sanitize a search query for safe use in PostgREST ILIKE patterns.
+
+    Escapes % and _ which are SQL LIKE wildcards, and backslashes.
+    This prevents users from injecting custom wildcard patterns.
+
+    Args:
+        query: Raw search string from user input
+
+    Returns:
+        Sanitized string safe for PostgREST queries
+    """
+    if not query:
+        return query
+    # Truncate to max length
+    query = query[:MAX_SEARCH_LENGTH]
+    # Escape special chars: \ → \\, % → \%, _ → \_
+    return _POSTGREST_SPECIAL_CHARS.sub(lambda m: "\\" + m.group(0), query)
+
+
+def clamp_limit(limit: int, max_limit: int = MAX_LIMIT) -> int:
+    """Clamp a limit value to the allowed range [1, max_limit]."""
+    return max(1, min(limit, max_limit))
+
+
+# ==========================================
+# URL Validation
+# ==========================================
 
 # Allowed URL schemes for thumbnail URLs
 ALLOWED_URL_SCHEMES = {"https"}

@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 import logging
 import json
 
+from core.utils.validation import sanitize_postgrest_query
+
 from domains.creation.repository import IProjectRepository
 from domains.creation.aggregates.project import Project, Page
 from domains.creation.value_objects import (
@@ -337,9 +339,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Search projects by title/description."""
         try:
             # Build search query
+            safe_query = sanitize_postgrest_query(query)
             db_query = self.client.table("projects").select("*").neq(
                 "status", ProjectStatus.DELETED.value
-            ).or_(f"title.ilike.%{query}%,description.ilike.%{query}%").order(
+            ).or_(f"title.ilike.%{safe_query}%,description.ilike.%{safe_query}%").order(
                 "updated_at", desc=True
             ).range(offset, offset + limit - 1)
 

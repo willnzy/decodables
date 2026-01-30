@@ -79,27 +79,21 @@ router = APIRouter(prefix="/assets", tags=["user-assets-v3"])
 
 
 # ==========================================
-# Constants (v3.25)
+# Constants (v3.25, WS4: centralized validation)
 # ==========================================
 
-# v3.25: UA-MEDIUM-1/2 - UUID validation pattern
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE
-)
+from core.utils.validation import UUID_PATTERN, validate_uuid, sanitize_postgrest_query
 
 
 def validate_uuid_id(value: str, field_name: str = "ID") -> None:
-    """v3.25: Validate that a value is a valid UUID format."""
-    from fastapi import HTTPException
-    if not UUID_PATTERN.match(value):
-        raise HTTPException(400, f"Invalid {field_name} format")
+    """v3.25: Validate that a value is a valid UUID format (delegates to shared)."""
+    validate_uuid(value, field_name)
 
 
 def validate_optional_uuid(value: Optional[str], field_name: str = "ID") -> None:
     """v3.25: Validate optional UUID field."""
     if value is not None:
-        validate_uuid_id(value, field_name)
+        validate_uuid(value, field_name)
 
 
 # ==========================================
@@ -379,8 +373,8 @@ async def get_asset_dashboard(
     request: Request,
     view: str = Query("all", pattern="^(all|bought|selling)$"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(15, ge=1, description="Number of records to return"),
-    search: Optional[str] = None,
+    limit: int = Query(15, ge=1, le=100, description="Number of records to return (max 100)"),
+    search: Optional[str] = Query(None, max_length=200, description="Search by name"),
     folder_id: Optional[str] = Query(None, description="Filter by folder: 'null' = root only, UUID = specific folder, omit = all"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace)
 ):

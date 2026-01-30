@@ -10,8 +10,6 @@ Endpoints:
 - POST /api/v2/user/invitations/{id}/decline - Decline an invitation
 """
 
-import re
-
 from fastapi import APIRouter, Request, Depends, HTTPException
 
 from domains.identity.aggregates.user_profile import UserProfile
@@ -19,18 +17,9 @@ from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
 from dependencies import get_current_user
 from container import get_container
+from core.utils.validation import validate_uuid
 
 router = APIRouter(prefix="/invitations", tags=["workspace-invitations-v1"])
-
-UUID_PATTERN = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-    re.IGNORECASE,
-)
-
-
-def validate_uuid(value: str, field_name: str = "ID") -> None:
-    if not UUID_PATTERN.match(value):
-        raise HTTPException(400, f"Invalid {field_name} format")
 
 
 @router.get("")
