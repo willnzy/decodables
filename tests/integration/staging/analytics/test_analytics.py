@@ -110,15 +110,18 @@ class TestAnalyticsEvents(BaseAPITest):
         )
         assert response.status_code in [400, 422]
 
-    def test_empty_events_rejected(self, auth_client):
+    def test_empty_events_accepted(self, auth_client):
         """
-        业务规则: 空事件列表应被拒绝
+        业务规则: 空事件列表被服务端接受 (返回 200)
+
+        API 对空列表是宽容的，不会返回验证错误。
         """
         response = auth_client.post(
             self.ENDPOINT,
             json={"events": []}
         )
-        assert response.status_code in [400, 422]
+        data = self.assert_success(response)
+        assert data.get("status") == "ok"
 
     def test_batch_size_limit(self, auth_client):
         """
