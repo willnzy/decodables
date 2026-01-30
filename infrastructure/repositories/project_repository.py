@@ -111,6 +111,75 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             logger.error(f"Failed to create project {project.project_id}: {e}")
             raise
 
+    async def create_with_limit_check(
+        self,
+        project: Project,
+        project_limit: int,
+    ) -> Project:
+        """
+        WS-2: Atomic project creation with limit check via RPC.
+
+        Uses advisory lock + count + insert in a single DB transaction
+        to prevent TOCTOU race condition.
+
+        Args:
+            project: Project entity to create
+            project_limit: Maximum projects allowed for this user
+
+        Returns:
+            Created Project
+
+        Raises:
+            ProjectLimitExceededException: If limit reached
+            Exception: If RPC call fails
+        """
+        try:
+            data = self._map_to_row(project)
+            result = await self.client.rpc("create_project_with_limit_check", {
+                "p_user_id": project.owner_id,
+                "p_project_id": project.project_id,
+                "p_title": data.get("title", "Untitled"),
+                "p_canvas_size": data.get("canvas_size", "1080x1080"),
+                "p_description": data.get("description"),
+                "p_canvas_data": data.get("canvas_data", {}),
+                "p_tags": data.get("tags", []),
+                "p_thumbnail_url": data.get("thumbnail_url"),
+                "p_is_public": data.get("is_public", False),
+                "p_is_template": data.get("is_template", False),
+                "p_template_category": data.get("template_category"),
+                "p_idempotency_key": data.get("idempotency_key"),
+                "p_folder_id": str(data["folder_id"]) if data.get("folder_id") else None,
+                "p_is_starred": data.get("is_starred", False),
+                "p_project_limit": project_limit,
+                "p_workspace_id": str(data["workspace_id"]) if data.get("workspace_id") else None,
+            }).execute()
+
+            if result.data and len(result.data) > 0:
+                row = result.data[0]
+                if not row.get("success"):
+                    error_code = row.get("error_code", "UNKNOWN")
+                    if error_code == "LIMIT_EXCEEDED":
+                        from domains.creation.exceptions import ProjectLimitExceededException
+                        raise ProjectLimitExceededException(project.owner_id, project_limit)
+                    raise Exception(f"Atomic create failed: {error_code}")
+
+                # If RPC returned a different project_id (idempotency hit), update entity
+                rpc_project_id = row.get("project_id")
+                if rpc_project_id and str(rpc_project_id) != project.project_id:
+                    project._project_id = str(rpc_project_id)
+
+            # Create pages (still separate for now, as pages table has different structure)
+            if project.pages:
+                await self.save_pages_batch(project.project_id, project.pages)
+
+            return project
+
+        except Exception as e:
+            if "ProjectLimitExceededException" in type(e).__name__:
+                raise
+            logger.error(f"Failed to create project atomically {project.project_id}: {e}")
+            raise
+
     async def update(self, project: Project) -> Project:
         """Update existing project."""
         try:

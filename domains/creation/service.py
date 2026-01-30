@@ -190,12 +190,7 @@ class CreationService:
             from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
             limit = EMERGENCY_TIER_CONFIGS.get(user_tier, {}).get("max_projects", 1)
 
-        # Pre-check (optimistic, may have race condition)
-        current_count = await self._repository.count_by_owner(owner_id)
-        if current_count >= limit:
-            raise ProjectLimitExceededException(owner_id, limit)
-
-        # Create project with idempotency_key
+        # Create project entity
         project = Project.create_new(
             owner_id=owner_id,
             title=title.strip(),
@@ -206,14 +201,8 @@ class CreationService:
         if idempotency_key:
             project.idempotency_key = idempotency_key
 
-        created = await self._repository.create(project)
-
-        # Post-check (catches race condition)
-        final_count = await self._repository.count_by_owner(owner_id)
-        if final_count > limit:
-            # Race condition detected - rollback by deleting
-            await self._repository.delete(created.project_id)
-            raise ProjectLimitExceededException(owner_id, limit)
+        # WS-2: Atomic limit check + create via RPC (replaces TOCTOU pattern)
+        created = await self._repository.create_with_limit_check(project, limit)
 
         return created
 
@@ -344,11 +333,6 @@ class CreationService:
             from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
             limit = EMERGENCY_TIER_CONFIGS.get(tier, {}).get("max_projects", 1)
 
-        # Pre-check (optimistic)
-        current_count = await self._repository.count_by_owner(user_id)
-        if current_count >= limit:
-            raise ProjectLimitExceededException(user_id, limit)
-
         # Create new project with copied data
         new_title = f"{source.metadata.title} (Copy)"
         new_project = Project.create_new(
@@ -373,13 +357,8 @@ class CreationService:
         for page in source.pages:
             new_project.add_page(page.canvas_data)
 
-        created = await self._repository.create(new_project)
-
-        # Post-check (catches race condition)
-        final_count = await self._repository.count_by_owner(user_id)
-        if final_count > limit:
-            await self._repository.delete(created.project_id)
-            raise ProjectLimitExceededException(user_id, limit)
+        # WS-2: Atomic limit check + create via RPC (replaces TOCTOU pattern)
+        created = await self._repository.create_with_limit_check(new_project, limit)
 
         return created
 

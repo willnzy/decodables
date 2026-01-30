@@ -65,6 +65,26 @@ class IProjectRepository(ABC):
         pass
 
     @abstractmethod
+    async def create_with_limit_check(self, project: Project, project_limit: int) -> Project:
+        """
+        WS-2: Atomic project creation with limit check.
+
+        Uses DB-level advisory lock + count + insert in a single transaction
+        to prevent TOCTOU race condition.
+
+        Args:
+            project: Project to create
+            project_limit: Maximum projects allowed for this user
+
+        Returns:
+            Created Project
+
+        Raises:
+            ProjectLimitExceededException: If user has reached their project limit
+        """
+        pass
+
+    @abstractmethod
     async def update(self, project: Project) -> Project:
         """
         Update existing project.

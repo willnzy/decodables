@@ -3477,6 +3477,99 @@ COMMENT ON FUNCTION set_asset_tags_atomic IS 'WS5: 原子替换素材标签 (删
 
 
 -- ============================================================================
+-- WS-2: 原子创建项目 + 限额检查 RPC
+-- ============================================================================
+
+-- create_project_with_limit_check: 在单事务内完成限额检查 + 项目创建
+-- 解决 TOCTOU 竞态: count 和 insert 在同一事务中使用 advisory lock 保证原子性
+CREATE OR REPLACE FUNCTION create_project_with_limit_check(
+    p_user_id TEXT,
+    p_project_id UUID,
+    p_title TEXT,
+    p_canvas_size TEXT DEFAULT '1080x1080',
+    p_description TEXT DEFAULT NULL,
+    p_canvas_data JSONB DEFAULT '{}'::jsonb,
+    p_tags TEXT[] DEFAULT ARRAY[]::TEXT[],
+    p_thumbnail_url TEXT DEFAULT NULL,
+    p_is_public BOOLEAN DEFAULT FALSE,
+    p_is_template BOOLEAN DEFAULT FALSE,
+    p_template_category TEXT DEFAULT NULL,
+    p_idempotency_key TEXT DEFAULT NULL,
+    p_folder_id UUID DEFAULT NULL,
+    p_is_starred BOOLEAN DEFAULT FALSE,
+    p_project_limit INTEGER DEFAULT 100,
+    p_workspace_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    project_id UUID,
+    error_code TEXT
+) AS $$
+DECLARE
+    v_current_count INTEGER;
+    v_lock_key BIGINT;
+BEGIN
+    -- 1. 幂等性检查: 如果 idempotency_key 已存在，返回已有项目
+    IF p_idempotency_key IS NOT NULL THEN
+        SELECT p.id INTO project_id
+        FROM projects p
+        WHERE p.user_id = p_user_id
+          AND p.idempotency_key = p_idempotency_key
+          AND p.is_deleted = FALSE;
+
+        IF FOUND THEN
+            success := TRUE;
+            error_code := NULL;
+            RETURN NEXT;
+            RETURN;
+        END IF;
+    END IF;
+
+    -- 2. Advisory lock — 基于 user_id 哈希，防止同一用户并发创建
+    v_lock_key := hashtext(p_user_id);
+    PERFORM pg_advisory_xact_lock(v_lock_key);
+
+    -- 3. 原子限额检查
+    SELECT COUNT(*) INTO v_current_count
+    FROM projects
+    WHERE user_id = p_user_id
+      AND is_deleted = FALSE
+      AND status != 'deleted';
+
+    IF v_current_count >= p_project_limit THEN
+        success := FALSE;
+        project_id := NULL;
+        error_code := 'LIMIT_EXCEEDED';
+        RETURN NEXT;
+        RETURN;
+    END IF;
+
+    -- 4. 插入项目 (ON CONFLICT 处理幂等)
+    INSERT INTO projects (
+        id, user_id, title, canvas_size, description, canvas_data,
+        tags, thumbnail_url, is_public, is_template, template_category,
+        idempotency_key, folder_id, is_starred, workspace_id,
+        status, is_deleted
+    ) VALUES (
+        p_project_id, p_user_id, p_title, p_canvas_size, p_description, p_canvas_data,
+        p_tags, p_thumbnail_url, p_is_public, p_is_template, p_template_category,
+        p_idempotency_key, p_folder_id, p_is_starred, p_workspace_id,
+        'draft', FALSE
+    );
+
+    success := TRUE;
+    project_id := p_project_id;
+    error_code := NULL;
+    RETURN NEXT;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION create_project_with_limit_check IS 'WS-2: 原子创建项目 + 限额检查 (advisory lock + count + insert 在单事务内)';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;
