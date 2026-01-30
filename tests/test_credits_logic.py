@@ -105,16 +105,16 @@ class TestMonthlyCreditsReset:
 
             # Mock credit refresh
             mock_supabase_client.table.return_value.update.return_value.eq.return_value.execute.return_value = MagicMock(
-                data={"credits_monthly": 1000}
+                data={"credits_monthly": 200}
             )
 
             # Act: Check and reset if needed
             await credit_repo.check_and_reset_monthly_credits_if_needed(user_id)
 
-            # Assert: Credits were refreshed
+            # Assert: Credits were refreshed (t3 = 200 per TIER_MONTHLY_CREDITS)
             assert mock_supabase_client.table.return_value.update.called
             update_call = mock_supabase_client.table.return_value.update.call_args[0][0]
-            assert update_call["credits_monthly"] == 1000
+            assert update_call["credits_monthly"] == 200
 
     @pytest.mark.asyncio
     async def test_no_reset_before_30_days(self, credit_repo, mock_supabase_client):
