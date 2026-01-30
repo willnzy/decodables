@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS payment_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     payment_type TEXT NOT NULL,
-    payment_method TEXT NOT NULL,
+    payment_method TEXT NOT NULL DEFAULT 'card',
     amount_usd NUMERIC(10, 2) NOT NULL,
     amount_credits INTEGER,
     currency TEXT DEFAULT 'USD',
@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS payment_records (
     failure_reason TEXT,
     receipt_url TEXT,
     metadata JSONB DEFAULT '{}',
+    stripe_refund_id TEXT,
     refunded_amount NUMERIC(10, 2) DEFAULT 0,
     refunded_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -252,7 +253,11 @@ CREATE TABLE IF NOT EXISTS payment_records (
     CONSTRAINT check_payment_type CHECK (
         payment_type IN (
             'subscription', 'credit_purchase', 'one_time_purchase',
-            'upgrade', 'addon'
+            'upgrade', 'addon',
+            -- WS1: 代码实际写入的类型
+            'refund', 'sub_canceled', 'sub_cancel_scheduled', 'sub_renewal',
+            'sub_payment', 'tier_downgrade', 'tier_downgrade_scheduled',
+            'admin_adjustment', 'payment_failed'
         )
     ),
     CONSTRAINT check_payment_method CHECK (

@@ -331,7 +331,7 @@ class SubscriptionService:
             await self.users_repo.update_subscription_tier(user_id, TIER_T1, subscription_status="canceled")
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="sub_canceled",
                 metadata={
@@ -344,7 +344,7 @@ class SubscriptionService:
         else:
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="sub_cancel_scheduled",
                 metadata={
@@ -461,7 +461,7 @@ class SubscriptionService:
 
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade",
                 metadata={
@@ -486,7 +486,7 @@ class SubscriptionService:
 
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade",
                 metadata={
@@ -511,7 +511,7 @@ class SubscriptionService:
 
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade",
                 metadata={
@@ -531,7 +531,7 @@ class SubscriptionService:
 
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade_scheduled",
                 metadata={
@@ -598,7 +598,7 @@ class SubscriptionService:
 
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade",
                 metadata={
@@ -613,7 +613,7 @@ class SubscriptionService:
         else:
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=0,
+                amount_usd=0,
                 currency="USD",
                 payment_type="tier_downgrade_scheduled",
                 metadata={

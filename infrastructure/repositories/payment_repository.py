@@ -34,37 +34,42 @@ class SupabasePaymentRepository:
     async def create(
         self,
         user_id: str,
-        amount: float,
+        amount_usd: float,
         currency: str,
         payment_type: str,
-        stripe_payment_id: Optional[str] = None,
+        stripe_payment_intent_id: Optional[str] = None,
         metadata: Optional[dict] = None,
-        timezone_str: str = "UTC"
+        timezone_str: str = "UTC",
+        payment_method: str = "card",
+        status: str = "succeeded",
     ) -> Optional[Dict[str, Any]]:
         """
         Log payment record.
 
         Args:
             user_id: User ID
-            amount: Payment amount
+            amount_usd: Payment amount in USD
             currency: Currency code
             payment_type: Payment type
-            stripe_payment_id: Stripe payment ID
+            stripe_payment_intent_id: Stripe payment intent ID
             metadata: Additional metadata
             timezone_str: User timezone
+            payment_method: Payment method (default: card)
+            status: Payment status (default: succeeded)
 
         Returns:
             Created payment record
         """
         result = await self.client.table("payment_records").insert({
             "user_id": user_id,
-            "amount": amount,
+            "amount_usd": amount_usd,
             "currency": currency,
             "payment_type": payment_type,
-            "stripe_payment_id": stripe_payment_id,
+            "stripe_payment_intent_id": stripe_payment_intent_id,
+            "payment_method": payment_method,
             "metadata": metadata or {},
             "timezone": timezone_str,
-            "status": "completed",
+            "status": status,
         }).execute()
 
         return result.data[0] if result.data else None
@@ -138,19 +143,19 @@ class SupabasePaymentRepository:
     @retry_on_network_error()
     async def get_by_stripe_id(
         self,
-        stripe_payment_id: str
+        stripe_payment_intent_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get payment by Stripe ID.
+        Get payment by Stripe payment intent ID.
 
         Args:
-            stripe_payment_id: Stripe payment ID
+            stripe_payment_intent_id: Stripe payment intent ID
 
         Returns:
             Payment record or None
         """
         result = await self.client.table("payment_records").select("*").eq(
-            "stripe_payment_id", stripe_payment_id
+            "stripe_payment_intent_id", stripe_payment_intent_id
         ).execute()
 
         return result.data[0] if result.data else None
@@ -211,31 +216,31 @@ class SupabasePaymentRepository:
             end_date = datetime.now(timezone.utc).isoformat()
 
         result = await self.client.table("payment_records").select(
-            "amount, created_at, payment_type"
+            "amount_usd, created_at, payment_type"
         ).gte("created_at", start_date).lte(
             "created_at", end_date
-        ).eq("status", "completed").execute()
+        ).eq("status", "succeeded").execute()
 
         payments = result.data or []
 
         # Calculate totals
-        total = sum(p.get("amount", 0) for p in payments)
+        total = sum(p.get("amount_usd", 0) for p in payments)
 
         # Group by type
         by_type = {}
         for p in payments:
             pt = p.get("payment_type", "unknown")
-            by_type[pt] = by_type.get(pt, 0) + p.get("amount", 0)
+            by_type[pt] = by_type.get(pt, 0) + p.get("amount_usd", 0)
 
         # Group by date
         by_date = {}
         for p in payments:
             date_str = p.get("created_at", "")[:10]
-            by_date[date_str] = by_date.get(date_str, 0) + p.get("amount", 0)
+            by_date[date_str] = by_date.get(date_str, 0) + p.get("amount_usd", 0)
 
         return {
             "total": total,
             "by_type": by_type,
-            "by_date": [{"date": k, "amount": v} for k, v in sorted(by_date.items())],
+            "by_date": [{"date": k, "amount_usd": v} for k, v in sorted(by_date.items())],
             "transaction_count": len(payments),
         }

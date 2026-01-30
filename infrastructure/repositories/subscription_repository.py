@@ -147,7 +147,7 @@ class SupabaseSubscriptionRepository:
         self,
         user_id: str,
         change_type: str,
-        amount: float = 0.0,
+        amount_usd: float = 0.0,
         currency: str = "USD",
         metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
@@ -157,7 +157,7 @@ class SupabaseSubscriptionRepository:
         Args:
             user_id: User ID
             change_type: Payment type (refund, sub_canceled, tier_downgrade, etc.)
-            amount: Amount (negative for refunds)
+            amount_usd: Amount in USD
             currency: Currency code
             metadata: Additional metadata
 
@@ -167,10 +167,10 @@ class SupabaseSubscriptionRepository:
         try:
             await self.payment_repo.create(
                 user_id=user_id,
-                amount=amount,
+                amount_usd=amount_usd,
                 currency=currency,
                 payment_type=change_type,
-                stripe_payment_id=None,  # Optional, can be in metadata
+                stripe_payment_intent_id=None,
                 metadata=metadata or {}
             )
             return True

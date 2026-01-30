@@ -405,7 +405,10 @@ class StripeWebhookService:
             try:
                 # Legacy flow: payment first, then tier, then credits
                 await self.payment_repo.create(
-                    uid, amount_total, currency, "sub_payment",
+                    user_id=uid,
+                    amount_usd=amount_total,
+                    currency=currency,
+                    payment_type="sub_payment",
                     metadata={
                         "description": f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}",
                         "session_id": session_id
@@ -546,7 +549,10 @@ class StripeWebhookService:
         # Step 1: Record payment FIRST (audit trail)
         try:
             await self.payment_repo.create(
-                uid, amount_paid, currency, "sub_renewal",
+                user_id=uid,
+                amount_usd=amount_paid,
+                currency=currency,
+                payment_type="sub_renewal",
                 metadata={
                     "description": f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}",
                     "invoice_id": invoice_id
@@ -900,8 +906,8 @@ class StripeWebhookService:
         try:
             refund_record = await self.payment_repo.create(
                 user_id=user_id,
-                payment_intent_id=payment_intent_id,
-                amount=amount_refunded / 100,  # Convert cents to dollars
+                stripe_payment_intent_id=payment_intent_id,
+                amount_usd=amount_refunded / 100,  # Convert cents to dollars
                 currency=currency,
                 status="refunded",
                 payment_type="refund",
