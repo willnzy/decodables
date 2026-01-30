@@ -226,14 +226,14 @@ class GenerationService:
                 timeout=GENERATION_TIMEOUT_SECONDS
             )
         except asyncio.TimeoutError:
-            # Generation timed out - refund credits
+            # Generation timed out - refund credits to original bucket (WS-6: 1B#4)
             logger.error(f"Image generation timed out after {GENERATION_TIMEOUT_SECONDS}s, refunding {cost} credits")
-            await self._refund_credits(user_id, cost, "timeout", idempotency_key)
+            await self._refund_credits(user_id, cost, "timeout", idempotency_key, bucket=tx.bucket)
             raise GenerationTimeoutException("Image generation timed out")
         except Exception as e:
-            # Generation failed - refund credits atomically
+            # Generation failed - refund credits to original bucket (WS-6: 1B#4)
             logger.error(f"Image generation failed, refunding {cost} credits: {e}")
-            await self._refund_credits(user_id, cost, "failed", idempotency_key)
+            await self._refund_credits(user_id, cost, "failed", idempotency_key, bucket=tx.bucket)
             raise GenerationFailedException(str(e))
 
         generation_time_ms = int((time.time() - generation_start) * 1000)
@@ -241,10 +241,10 @@ class GenerationService:
         # Filter successful URLs
         successful_urls = [url for url in urls if url]
 
-        # If no images generated, refund
+        # If no images generated, refund to original bucket (WS-6: 1B#4)
         if not successful_urls:
             logger.warning(f"No images generated, refunding {cost} credits")
-            await self._refund_credits(user_id, cost, "empty", idempotency_key)
+            await self._refund_credits(user_id, cost, "empty", idempotency_key, bucket=tx.bucket)
             raise EmptyGenerationException("No images were generated")
 
         # Save assets and generation history
@@ -427,8 +427,8 @@ class GenerationService:
 
         if not enqueued_task_id:
             logger.error(f"[AsyncGen] Failed to enqueue task {task_id}")
-            # Refund credits atomically
-            await self._refund_credits(user_id, cost, "queue_failed", task_id)
+            # Refund credits to original bucket (WS-6: 1B#4)
+            await self._refund_credits(user_id, cost, "queue_failed", task_id, bucket=tx.bucket)
             raise Exception("Generation service temporarily unavailable")
 
         # Track analytics
@@ -474,22 +474,26 @@ class GenerationService:
         user_id: str,
         amount: int,
         reason: str,
-        original_key: str
+        original_key: str,
+        bucket: CreditBucket = CreditBucket.PERMANENT,
     ):
         """
         Refund credits on generation failure.
+
+        WS-6(1B#4): Refunds to the original deduction bucket, not always PERMANENT.
 
         Args:
             user_id: User ID
             amount: Credits to refund
             reason: Reason for refund (timeout, failed, empty, queue_failed)
             original_key: Original idempotency key
+            bucket: Target bucket for refund (should match original deduction bucket)
         """
         try:
             await self.billing_service.add_credits(
                 user_id=user_id,
                 amount=amount,
-                bucket=CreditBucket.PERMANENT,  # Refund to permanent as conservative choice
+                bucket=bucket,
                 tx_type=TransactionType.REFUND,
                 description=f"Refund: generation {reason}",
                 idempotency_key=f"refund_{reason}_{original_key}",
