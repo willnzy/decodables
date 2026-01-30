@@ -42,7 +42,7 @@ from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
 from container import get_container
 from infrastructure.rate_limiter import limiter
-from core.utils.validation import UUID_PATTERN, validate_uuid, sanitize_postgrest_query
+from core.utils.validation import UUID_PATTERN, validate_uuid
 
 # v3.31: 重试配置
 MAX_RETRIES = 2

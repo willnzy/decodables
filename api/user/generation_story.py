@@ -137,8 +137,22 @@ async def gen_inspiration(
         Dict: Inspiration data (suggestions, category, fallback?)
     """
     # v3.28: Generate inspiration via Service (DDD compliant)
-    result = await inspiration_service.generate_inspiration(
-        user_id=user.user_id,
-        category=req.category,
-    )
-    return result
+    # WS-18(1A#15): Add error handling with graceful fallback
+    try:
+        result = await inspiration_service.generate_inspiration(
+            user_id=user.user_id,
+            category=req.category,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"[Inspiration] Failed to generate inspiration: {e}")
+        # Graceful fallback with default suggestions
+        return {
+            "suggestions": [
+                "A sunny day at the beach",
+                "Animals playing in the park",
+                "A colorful garden with butterflies",
+            ],
+            "category": req.category or "general",
+            "fallback": True,
+        }

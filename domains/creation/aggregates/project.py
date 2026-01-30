@@ -9,7 +9,7 @@ All project operations must go through this aggregate.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ..value_objects import (
@@ -28,8 +28,8 @@ class Page:
     page_number: int
     canvas_data: Optional[Dict[str, Any]] = None
     thumbnail_url: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -53,8 +53,8 @@ class Project:
     pages: List[Page] = field(default_factory=list)
     collaborators: List[str] = field(default_factory=list)
     canvas_data: Optional[Dict[str, Any]] = None  # Direct canvas data from DB
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # v1.1.0: Idempotency support - client-generated key for safe retries
     idempotency_key: Optional[str] = None
     # Flag for locked elements (marketplace assets)
@@ -161,7 +161,7 @@ class Project:
             updates["is_public"] = is_public
         if updates:
             self.metadata = self.metadata.replace(**updates)
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def add_page(self, canvas_data: Optional[Dict[str, Any]] = None) -> Page:
         """
@@ -180,7 +180,7 @@ class Project:
             canvas_data=canvas_data or {},
         )
         self.pages.append(page)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return page
 
     def remove_page(self, page_id: str) -> bool:
@@ -202,7 +202,7 @@ class Project:
                 # Renumber remaining pages
                 for j, p in enumerate(self.pages):
                     p.page_number = j + 1
-                self.updated_at = datetime.utcnow()
+                self.updated_at = datetime.now(timezone.utc)
                 return True
         return False
 
@@ -217,8 +217,8 @@ class Project:
         for page in self.pages:
             if page.page_id == page_id:
                 page.canvas_data = canvas_data
-                page.updated_at = datetime.utcnow()
-                self.updated_at = datetime.utcnow()
+                page.updated_at = datetime.now(timezone.utc)
+                self.updated_at = datetime.now(timezone.utc)
                 return
         raise PageNotFoundException(page_id=page_id, project_id=self.project_id)
 
@@ -233,35 +233,35 @@ class Project:
         """Add a collaborator to the project."""
         if user_id not in self.collaborators and user_id != self.owner_id:
             self.collaborators.append(user_id)
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def remove_collaborator(self, user_id: str):
         """Remove a collaborator from the project."""
         if user_id in self.collaborators:
             self.collaborators.remove(user_id)
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def archive(self):
         """Archive the project."""
         self.status = ProjectStatus.ARCHIVED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def restore(self):
         """Restore archived project."""
         if self.status == ProjectStatus.ARCHIVED:
             self.status = ProjectStatus.ACTIVE
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def mark_deleted(self):
         """Mark project as deleted (soft delete)."""
         self.status = ProjectStatus.DELETED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def activate(self):
         """Activate a draft project."""
         if self.status == ProjectStatus.DRAFT:
             self.status = ProjectStatus.ACTIVE
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """
