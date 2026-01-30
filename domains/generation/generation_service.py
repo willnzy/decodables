@@ -36,6 +36,7 @@ from application.services.generation_helpers import (
     get_base_cost,
     build_generation_record,
 )
+from core.utils.validation import validate_reference_image_url
 
 if TYPE_CHECKING:
     from domains.identity.tier_service import TierService
@@ -173,6 +174,12 @@ class GenerationService:
         """
         # Use enhanced prompts if provided, otherwise use original
         final_prompts = prompts_to_use or prompts
+
+        # WS-1: Validate reference image MIME type and URL (SUP-8d)
+        if reference_image:
+            is_valid, mime_error = validate_reference_image_url(reference_image)
+            if not is_valid:
+                raise GenerationFailedException(f"Invalid reference image: {mime_error}")
 
         # Calculate cost using config-driven pricing
         has_reference = bool(reference_image)
@@ -351,6 +358,12 @@ class GenerationService:
         """
         # Use enhanced prompts if provided
         final_prompts = prompts_to_use or prompts
+
+        # WS-1: Validate reference image MIME type and URL (SUP-8d)
+        if reference_image:
+            is_valid, mime_error = validate_reference_image_url(reference_image)
+            if not is_valid:
+                raise GenerationFailedException(f"Invalid reference image: {mime_error}")
 
         # Calculate cost using config-driven pricing
         has_reference = bool(reference_image)

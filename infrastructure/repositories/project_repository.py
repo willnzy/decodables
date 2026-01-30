@@ -503,7 +503,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         ).eq("is_deleted", False)
 
         if search:
-            query = query.ilike("title", f"%{search}%")
+            safe_search = sanitize_postgrest_query(search)
+            query = query.ilike("title", f"%{safe_search}%")
 
         result = await query.order("updated_at", desc=True).range(offset, offset + limit - 1).execute()
         return result.data or []
@@ -529,7 +530,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         ).eq("is_deleted", False)
 
         if search:
-            query = query.ilike("title", f"%{search}%")
+            safe_search = sanitize_postgrest_query(search)
+            query = query.ilike("title", f"%{safe_search}%")
 
         result = await query.execute()
         return result.count or 0
@@ -786,18 +788,26 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     async def update_project_hash(
         self,
         project_id: str,
-        new_hash: str
+        new_hash: str,
+        user_id: Optional[str] = None
     ):
         """
         Update project content hash.
 
+        WS-1: Added user_id for ownership check (1C#14).
+
         Args:
             project_id: Project ID
             new_hash: New content hash
+            user_id: User ID for ownership check (optional for backward compat)
         """
-        await self.client.table("projects").update({"content_hash": new_hash}).eq(
+        query = self.client.table("projects").update({"content_hash": new_hash}).eq(
             "id", project_id
-        ).execute()
+        )
+        # WS-1: ownership check when user_id is provided
+        if user_id:
+            query = query.eq("user_id", user_id)
+        await query.execute()
 
     @retry_on_network_error()
     async def get_all_projects_feed(
@@ -895,7 +905,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                         query = query.eq("folder_id", folder_id)
 
                 if search and search.strip():
-                    query = query.ilike("title", f"%{search.strip()}%")
+                    safe_search = sanitize_postgrest_query(search.strip())
+                    query = query.ilike("title", f"%{safe_search}%")
 
                 result = await query.order("updated_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
                 items = result.data or []
@@ -912,7 +923,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                     else:
                         count_query = count_query.eq("folder_id", folder_id)
                 if search and search.strip():
-                    count_query = count_query.ilike("title", f"%{search.strip()}%")
+                    safe_search = sanitize_postgrest_query(search.strip())
+                    count_query = count_query.ilike("title", f"%{safe_search}%")
                 count_result = await count_query.execute()
                 total = count_result.count or len(items)
         else:
@@ -938,7 +950,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             # Apply search filter
             if search and search.strip():
-                query = query.ilike("title", f"%{search.strip()}%")
+                safe_search = sanitize_postgrest_query(search.strip())
+                query = query.ilike("title", f"%{safe_search}%")
 
             # Execute query
             result = await query.order("updated_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
@@ -962,7 +975,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                     count_query = count_query.eq("folder_id", folder_id)
 
             if search and search.strip():
-                count_query = count_query.ilike("title", f"%{search.strip()}%")
+                safe_search = sanitize_postgrest_query(search.strip())
+                count_query = count_query.ilike("title", f"%{safe_search}%")
 
             count_result = await count_query.execute()
             total = count_result.count or len(items)
@@ -975,7 +989,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if workspace_id:
             all_count_query = all_count_query.eq("workspace_id", workspace_id)
         if search and search.strip():
-            all_count_query = all_count_query.ilike("title", f"%{search.strip()}%")
+            safe_search = sanitize_postgrest_query(search.strip())
+            all_count_query = all_count_query.ilike("title", f"%{safe_search}%")
         all_count_result = await all_count_query.execute()
         all_count = all_count_result.count or 0
 
@@ -986,7 +1001,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         if workspace_id:
             bought_count_query = bought_count_query.eq("workspace_id", workspace_id)
         if search and search.strip():
-            bought_count_query = bought_count_query.ilike("title", f"%{search.strip()}%")
+            safe_search = sanitize_postgrest_query(search.strip())
+            bought_count_query = bought_count_query.ilike("title", f"%{safe_search}%")
         bought_count_result = await bought_count_query.execute()
         bought_count = bought_count_result.count or 0
 
@@ -1203,7 +1219,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             query = query.eq("folder_id", folder_id)
 
         if search and search.strip():
-            query = query.ilike("title", f"%{search.strip()}%")
+            safe_search = sanitize_postgrest_query(search.strip())
+            query = query.ilike("title", f"%{safe_search}%")
 
         result = await query.order("is_starred", desc=True).order(
             "updated_at", desc=True

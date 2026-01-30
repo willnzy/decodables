@@ -104,8 +104,9 @@ async def gen_pdf(
         raise HTTPException(404, "Project not found or access denied")
     except PdfGenerationException as e:
         # v3.26: GP-HIGH-3 fix - User-friendly error for PDF generation failures
+        # WS-1: Do not expose internal error details to client (1A#3)
         logger.error(f"PDF generation failed for user {user.user_id}: {e}")
-        raise HTTPException(500, f"PDF generation failed: {str(e)}")
+        raise HTTPException(500, "PDF generation failed. Please try again later.")
 
     return StreamingResponse(
         buf,

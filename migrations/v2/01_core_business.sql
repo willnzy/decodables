@@ -255,9 +255,9 @@ CREATE TABLE IF NOT EXISTS workspaces (
     -- 状态
     is_active BOOLEAN DEFAULT TRUE,
 
-    -- 标准审计字段
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    -- 标准审计字段 (WS-1: 1C#29 NOT NULL DEFAULT)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 索引
@@ -295,9 +295,9 @@ CREATE TABLE IF NOT EXISTS folders (
     -- 创建者
     created_by TEXT NOT NULL REFERENCES profiles(id),
 
-    -- 时间戳
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    -- 时间戳 (WS-1: 1C#29 NOT NULL DEFAULT)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     -- 唯一约束: 同一 Workspace 内同类型文件夹名称唯一
     UNIQUE (workspace_id, folder_type, name)
@@ -444,7 +444,7 @@ CREATE TABLE IF NOT EXISTS projects (
     title TEXT NOT NULL DEFAULT 'My Magic Story',
     description TEXT,  -- P0-8: Repository 使用的字段
     tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- P0-8: Repository 使用的字段
-    canvas_data JSONB DEFAULT '{}'::jsonb,
+    canvas_data JSONB DEFAULT '{}'::jsonb,  -- WS-1(1C#24): 应用层限制 canvas_data 大小 ≤ 5MB，DB 不加 CHECK 以避免性能影响
     thumbnail_url TEXT,
     canvas_size TEXT DEFAULT '1080x1080',  -- P0-8: Repository 使用的字段
 
@@ -468,7 +468,9 @@ CREATE TABLE IF NOT EXISTS projects (
     content_hash TEXT,  -- P0-8: Repository 使用的字段
 
     -- 市场相关
+    -- WS-1(1C#25): marketplace_listing_id 引用 marketplace_listings(id)，未加 FK 因该表在 02_platform_services.sql
     marketplace_listing_id UUID,
+    -- WS-1(1C#26): source_listing_id 引用 marketplace_listings(id)，表示项目来源 listing
     source_listing_id UUID,
     is_purchased BOOLEAN DEFAULT FALSE,
     origin_owner_id TEXT REFERENCES profiles(id),
@@ -506,6 +508,31 @@ CREATE TABLE IF NOT EXISTS projects (
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
     )
 );
+
+-- WS-1: RLS 纵深防御 (1C#18)
+-- authenticated 用户只能访问自己的项目; service_role 保持全量访问
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY projects_owner_policy ON projects
+    FOR ALL
+    TO authenticated
+    USING (user_id = auth.uid()::text)
+    WITH CHECK (user_id = auth.uid()::text);
+
+-- service_role 全量访问策略 (后端 API 使用 service_role key)
+CREATE POLICY projects_service_role_policy ON projects
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+-- WS-1: canvas_size 格式约束 (1C#22) — 必须为 NxN 格式
+ALTER TABLE projects ADD CONSTRAINT chk_projects_canvas_size_format
+    CHECK (canvas_size IS NULL OR canvas_size ~ '^\d{1,5}x\d{1,5}$');
+
+-- WS-1: listing_status 枚举约束 (1C#27)
+ALTER TABLE projects ADD CONSTRAINT chk_projects_listing_status
+    CHECK (listing_status IS NULL OR listing_status IN ('draft', 'pending', 'published', 'rejected', 'removed'));
 
 -- P0-8: 为 Repository 兼容创建 owner_id 作为 user_id 的别名视图
 -- 注意: Repository 可能使用 owner_id 或 user_id，此视图确保两者都可用

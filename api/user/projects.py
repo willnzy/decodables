@@ -98,7 +98,8 @@ class ProjectUpdateRequest(BaseModel):
     canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
     thumbnail_url: Optional[str] = Field(None, max_length=500)  # P2-030: DoS protection
     title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
-    used_listing_ids: Optional[List[str]] = None
+    # WS-1: Added max_items and item format validation (1A#18)
+    used_listing_ids: Optional[List[str]] = Field(None, max_length=100)
 
 
 class ProjectResponse(BaseModel):
@@ -112,7 +113,8 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    model_config = ConfigDict(extra="allow")
+    # WS-1: Changed from "allow" to "ignore" to prevent leaking unexpected fields (1A#21)
+    model_config = ConfigDict(extra="ignore")
 
 
 class ProjectListResponse(BaseModel):
@@ -263,7 +265,12 @@ async def dashboard_projects(
     # Parse folder_id: "null" string → None (root only), absent → "NOT_SET" (no filter)
     parsed_folder_id: Optional[str] = "NOT_SET"
     if folder_id is not None:
-        parsed_folder_id = None if folder_id == "null" else folder_id
+        if folder_id == "null":
+            parsed_folder_id = None
+        else:
+            # WS-1(1A#17): Validate folder_id UUID format
+            validate_uuid(folder_id, "folder_id")
+            parsed_folder_id = folder_id
 
     query = GetDashboardProjectsQuery(
         user_id=ctx.user_id,
@@ -411,7 +418,7 @@ async def list_projects_by_folder(
     folder_id: str,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    search: Optional[str] = None,
+    search: Optional[str] = Query(None, max_length=200, description="Search by title"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectListResponse:
     """
@@ -538,6 +545,9 @@ async def get_project(
     Returns:
         ProjectResponse with project details
     """
+    # WS-1: Validate UUID format (1A#2)
+    validate_uuid(project_id, "project_id")
+
     container = get_container()
     handler = await container.get_project_handler()
 
@@ -579,6 +589,9 @@ async def update_project(
     Returns:
         ProjectUpdateResponse with update status and locked_elements info
     """
+    # WS-1: Validate UUID format (1A#2)
+    validate_uuid(project_id, "project_id")
+
     # Validate title if provided
     is_valid, error = validate_title(req.title)
     if not is_valid:
@@ -642,6 +655,9 @@ async def delete_project(
     Returns:
         Deletion status with stage info
     """
+    # WS-1: Validate UUID format (1A#2)
+    validate_uuid(project_id, "project_id")
+
     container = get_container()
     handler = await container.get_delete_project_handler()
 
@@ -694,6 +710,9 @@ async def restore_project(
     Returns:
         Restored project details
     """
+    # WS-1: Validate UUID format (1A#2)
+    validate_uuid(project_id, "project_id")
+
     container = get_container()
     handler = await container.get_restore_project_handler()
 
@@ -709,8 +728,8 @@ async def restore_project(
             raise HTTPException(404, "Project not found")
         if isinstance(result.exception, ProjectAccessDeniedException):
             raise HTTPException(403, "Access denied")
-        logger.error(f"Failed to restore project {project_id}: {result.error}")
-        raise HTTPException(400, result.error or "Failed to restore project")
+        logger.error(f"[Projects] Failed to restore project {project_id}: {result.error}")
+        raise HTTPException(400, "Failed to restore project")
 
     # ✅ v1.2.0: Audit logging via Container (DI migration)
     try:
@@ -751,6 +770,9 @@ async def duplicate_project(
     Returns:
         ProjectResponse with new duplicated project
     """
+    # WS-1: Validate UUID format (1A#2)
+    validate_uuid(project_id, "project_id")
+
     container = get_container()
     creation_service = await container.get_creation_service()
 
