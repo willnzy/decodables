@@ -882,7 +882,8 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
         'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
         'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
         'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
-        'monthly_reset', 'marketplace_purchase'
+        'monthly_reset', 'marketplace_purchase',
+        'monthly_credits_cleared', 'refund_reversal'
     )),
     -- ⚠️ DEPRECATED: tx_type 已废弃，新代码请使用 transaction_type
     -- 保留仅为向后兼容，触发器自动同步值
@@ -890,7 +891,8 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
         'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
         'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
         'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
-        'monthly_reset', 'marketplace_purchase'
+        'monthly_reset', 'marketplace_purchase',
+        'monthly_credits_cleared', 'refund_reversal'
     )),
 
     bucket TEXT NOT NULL CHECK (bucket IN ('monthly', 'permanent')),
@@ -1410,6 +1412,23 @@ WHERE folder_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_projects_starred
 ON projects(user_id, is_starred)
 WHERE is_starred = TRUE;
+
+-- WS3: Dashboard composite index for projects
+-- Covers: user's non-deleted projects sorted by updated_at (dashboard default sort)
+CREATE INDEX IF NOT EXISTS idx_projects_user_dashboard
+ON projects(user_id, updated_at DESC)
+WHERE is_deleted = false;
+
+-- WS3: Dashboard composite index for assets
+-- Covers: user's non-deleted assets sorted by created_at (dashboard default sort)
+CREATE INDEX IF NOT EXISTS idx_assets_user_dashboard
+ON assets(user_id, created_at DESC)
+WHERE is_deleted = false;
+
+-- WS3: Credit transactions user lookup index
+-- Covers: user's credit history sorted by time (billing/admin pages)
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_created_at
+ON credit_transactions(user_id, created_at DESC);
 
 
 -- ============================================================================
@@ -2737,6 +2756,7 @@ BEGIN
         INSERT INTO credit_transactions (
             user_id,
             transaction_type,
+            bucket,
             amount,
             balance_monthly_after,
             balance_permanent_after,
@@ -2745,6 +2765,7 @@ BEGIN
         ) VALUES (
             p_user_id,
             'monthly_credits_cleared',
+            'monthly',
             -v_cleared_monthly,
             0,
             v_profile.credits_permanent,
@@ -2867,6 +2888,7 @@ BEGIN
         INSERT INTO credit_transactions (
             user_id,
             transaction_type,
+            bucket,
             amount,
             balance_monthly_after,
             balance_permanent_after,
@@ -2876,6 +2898,7 @@ BEGIN
         ) VALUES (
             p_user_id,
             'refund_reversal',
+            'permanent',
             -v_actual_deduct,
             v_profile.credits_monthly,
             v_new_permanent,
@@ -2910,6 +2933,389 @@ $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
 COMMENT ON FUNCTION process_credit_refund IS 'WS5: 原子处理积分购买退费 (幂等+积分扣回+审计)';
+
+
+-- ---------------------------------------------------------------------------
+-- get_dashboard_projects - 高性能 Dashboard 项目查询 (WS3: #14, #15)
+-- ---------------------------------------------------------------------------
+-- 单次 DB 往返返回分页项目列表 + 总数 + 标签数据
+-- 替代 Repository 层多步查询: list + count + tag joins
+
+CREATE OR REPLACE FUNCTION get_dashboard_projects(
+    p_user_id TEXT,
+    p_workspace_id UUID DEFAULT NULL,
+    p_view TEXT DEFAULT 'all',           -- 'all', 'starred', 'folder'
+    p_folder_id UUID DEFAULT NULL,
+    p_offset INTEGER DEFAULT 0,
+    p_limit INTEGER DEFAULT 20,
+    p_search TEXT DEFAULT '',
+    p_sort_by TEXT DEFAULT 'updated_at',
+    p_sort_order TEXT DEFAULT 'desc',
+    p_tag_ids UUID[] DEFAULT NULL,
+    p_tag_match_mode TEXT DEFAULT 'any', -- 'any' or 'all'
+    p_include_canvas_data BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_total INTEGER;
+    v_items JSONB;
+BEGIN
+    -- Count total matching projects
+    SELECT COUNT(*)::INTEGER INTO v_total
+    FROM projects p
+    WHERE p.user_id = p_user_id
+      AND p.is_deleted = false
+      AND (p_workspace_id IS NULL OR p.workspace_id = p_workspace_id)
+      AND (
+          CASE p_view
+              WHEN 'starred' THEN p.is_starred = true
+              WHEN 'folder' THEN p.folder_id = p_folder_id
+              ELSE true
+          END
+      )
+      AND (
+          p_search = '' OR p_search IS NULL
+          OR p.title ILIKE '%' || p_search || '%'
+      )
+      AND (
+          p_tag_ids IS NULL OR array_length(p_tag_ids, 1) IS NULL
+          OR (
+              CASE p_tag_match_mode
+                  WHEN 'all' THEN
+                      -- All tags must match
+                      NOT EXISTS (
+                          SELECT 1 FROM unnest(p_tag_ids) AS required_tag
+                          WHERE required_tag NOT IN (
+                              SELECT pt.tag_id FROM project_tags pt WHERE pt.project_id = p.id
+                          )
+                      )
+                  ELSE
+                      -- Any tag matches
+                      EXISTS (
+                          SELECT 1 FROM project_tags pt
+                          WHERE pt.project_id = p.id AND pt.tag_id = ANY(p_tag_ids)
+                      )
+              END
+          )
+      );
+
+    -- Fetch paginated items with tags
+    SELECT COALESCE(jsonb_agg(row_data ORDER BY sort_key DESC), '[]'::jsonb) INTO v_items
+    FROM (
+        SELECT
+            jsonb_build_object(
+                'id', p.id,
+                'user_id', p.user_id,
+                'workspace_id', p.workspace_id,
+                'folder_id', p.folder_id,
+                'is_starred', p.is_starred,
+                'title', p.title,
+                'description', p.description,
+                'thumbnail_url', p.thumbnail_url,
+                'canvas_size', p.canvas_size,
+                'status', p.status,
+                'is_public', p.is_public,
+                'is_template', p.is_template,
+                'view_count', p.view_count,
+                'like_count', p.like_count,
+                'created_at', p.created_at,
+                'updated_at', p.updated_at,
+                'canvas_data', CASE WHEN p_include_canvas_data THEN p.canvas_data ELSE NULL END,
+                'tags', COALESCE(
+                    (SELECT jsonb_agg(jsonb_build_object('tag_id', pt.tag_id, 'tag_name', t.name, 'tag_color', t.color))
+                     FROM project_tags pt
+                     JOIN tags t ON t.id = pt.tag_id
+                     WHERE pt.project_id = p.id),
+                    '[]'::jsonb
+                )
+            ) AS row_data,
+            CASE p_sort_by
+                WHEN 'created_at' THEN extract(epoch FROM p.created_at)
+                WHEN 'title' THEN 0  -- title sorting handled separately
+                ELSE extract(epoch FROM p.updated_at)
+            END AS sort_key
+        FROM projects p
+        WHERE p.user_id = p_user_id
+          AND p.is_deleted = false
+          AND (p_workspace_id IS NULL OR p.workspace_id = p_workspace_id)
+          AND (
+              CASE p_view
+                  WHEN 'starred' THEN p.is_starred = true
+                  WHEN 'folder' THEN p.folder_id = p_folder_id
+                  ELSE true
+              END
+          )
+          AND (
+              p_search = '' OR p_search IS NULL
+              OR p.title ILIKE '%' || p_search || '%'
+          )
+          AND (
+              p_tag_ids IS NULL OR array_length(p_tag_ids, 1) IS NULL
+              OR (
+                  CASE p_tag_match_mode
+                      WHEN 'all' THEN
+                          NOT EXISTS (
+                              SELECT 1 FROM unnest(p_tag_ids) AS required_tag
+                              WHERE required_tag NOT IN (
+                                  SELECT pt.tag_id FROM project_tags pt WHERE pt.project_id = p.id
+                              )
+                          )
+                      ELSE
+                          EXISTS (
+                              SELECT 1 FROM project_tags pt
+                              WHERE pt.project_id = p.id AND pt.tag_id = ANY(p_tag_ids)
+                          )
+                  END
+              )
+          )
+        ORDER BY
+            CASE WHEN p_sort_by = 'title' AND p_sort_order = 'asc' THEN p.title END ASC,
+            CASE WHEN p_sort_by = 'title' AND p_sort_order = 'desc' THEN p.title END DESC,
+            CASE WHEN p_sort_by = 'created_at' AND p_sort_order = 'asc' THEN p.created_at END ASC,
+            CASE WHEN p_sort_by = 'created_at' AND p_sort_order = 'desc' THEN p.created_at END DESC,
+            CASE WHEN p_sort_by NOT IN ('title', 'created_at') AND p_sort_order = 'asc' THEN p.updated_at END ASC,
+            CASE WHEN p_sort_by NOT IN ('title', 'created_at') AND p_sort_order = 'desc' THEN p.updated_at END DESC
+        LIMIT p_limit OFFSET p_offset
+    ) subq;
+
+    RETURN jsonb_build_object(
+        'items', v_items,
+        'total', v_total,
+        'offset', p_offset,
+        'limit', p_limit,
+        'has_more', (p_offset + p_limit) < v_total
+    );
+END;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION get_dashboard_projects IS 'WS3: 高性能 Dashboard 项目查询 (分页+标签+搜索+排序，单次DB往返)';
+
+
+-- ---------------------------------------------------------------------------
+-- get_dashboard_assets - 高性能 Dashboard 素材查询 (WS3: #16)
+-- ---------------------------------------------------------------------------
+-- 同 get_dashboard_projects 模式，适配 assets 表结构
+
+CREATE OR REPLACE FUNCTION get_dashboard_assets(
+    p_user_id TEXT,
+    p_workspace_id UUID DEFAULT NULL,
+    p_view TEXT DEFAULT 'all',           -- 'all', 'starred', 'folder'
+    p_folder_id UUID DEFAULT NULL,
+    p_offset INTEGER DEFAULT 0,
+    p_limit INTEGER DEFAULT 20,
+    p_search TEXT DEFAULT '',
+    p_sort_by TEXT DEFAULT 'created_at',
+    p_sort_order TEXT DEFAULT 'desc',
+    p_tag_ids UUID[] DEFAULT NULL,
+    p_tag_match_mode TEXT DEFAULT 'any',
+    p_type_filter TEXT DEFAULT NULL      -- 'image', 'video', 'audio', 'document'
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_total INTEGER;
+    v_items JSONB;
+BEGIN
+    -- Count total matching assets
+    SELECT COUNT(*)::INTEGER INTO v_total
+    FROM assets a
+    WHERE a.user_id = p_user_id
+      AND a.is_deleted = false
+      AND (p_workspace_id IS NULL OR a.workspace_id = p_workspace_id)
+      AND (p_type_filter IS NULL OR a.type = p_type_filter)
+      AND (
+          CASE p_view
+              WHEN 'starred' THEN a.is_starred = true
+              WHEN 'folder' THEN a.folder_id = p_folder_id
+              ELSE true
+          END
+      )
+      AND (
+          p_search = '' OR p_search IS NULL
+          OR a.name ILIKE '%' || p_search || '%'
+      )
+      AND (
+          p_tag_ids IS NULL OR array_length(p_tag_ids, 1) IS NULL
+          OR (
+              CASE p_tag_match_mode
+                  WHEN 'all' THEN
+                      NOT EXISTS (
+                          SELECT 1 FROM unnest(p_tag_ids) AS required_tag
+                          WHERE required_tag NOT IN (
+                              SELECT uat.tag_id FROM user_asset_tags uat WHERE uat.asset_id = a.id
+                          )
+                      )
+                  ELSE
+                      EXISTS (
+                          SELECT 1 FROM user_asset_tags uat
+                          WHERE uat.asset_id = a.id AND uat.tag_id = ANY(p_tag_ids)
+                      )
+              END
+          )
+      );
+
+    -- Fetch paginated items with tags
+    SELECT COALESCE(jsonb_agg(row_data), '[]'::jsonb) INTO v_items
+    FROM (
+        SELECT
+            jsonb_build_object(
+                'id', a.id,
+                'user_id', a.user_id,
+                'workspace_id', a.workspace_id,
+                'folder_id', a.folder_id,
+                'is_starred', a.is_starred,
+                'name', a.name,
+                'url', a.url,
+                'type', a.type,
+                'category', a.category,
+                'source', a.source,
+                'usage_count', a.usage_count,
+                'description', a.description,
+                'prompt', a.prompt,
+                'metadata', a.metadata,
+                'created_at', a.created_at,
+                'updated_at', a.updated_at,
+                'tags', COALESCE(
+                    (SELECT jsonb_agg(jsonb_build_object('tag_id', uat.tag_id, 'tag_name', t.name, 'tag_color', t.color))
+                     FROM user_asset_tags uat
+                     JOIN tags t ON t.id = uat.tag_id
+                     WHERE uat.asset_id = a.id),
+                    '[]'::jsonb
+                )
+            ) AS row_data
+        FROM assets a
+        WHERE a.user_id = p_user_id
+          AND a.is_deleted = false
+          AND (p_workspace_id IS NULL OR a.workspace_id = p_workspace_id)
+          AND (p_type_filter IS NULL OR a.type = p_type_filter)
+          AND (
+              CASE p_view
+                  WHEN 'starred' THEN a.is_starred = true
+                  WHEN 'folder' THEN a.folder_id = p_folder_id
+                  ELSE true
+              END
+          )
+          AND (
+              p_search = '' OR p_search IS NULL
+              OR a.name ILIKE '%' || p_search || '%'
+          )
+          AND (
+              p_tag_ids IS NULL OR array_length(p_tag_ids, 1) IS NULL
+              OR (
+                  CASE p_tag_match_mode
+                      WHEN 'all' THEN
+                          NOT EXISTS (
+                              SELECT 1 FROM unnest(p_tag_ids) AS required_tag
+                              WHERE required_tag NOT IN (
+                                  SELECT uat.tag_id FROM user_asset_tags uat WHERE uat.asset_id = a.id
+                              )
+                          )
+                      ELSE
+                          EXISTS (
+                              SELECT 1 FROM user_asset_tags uat
+                              WHERE uat.asset_id = a.id AND uat.tag_id = ANY(p_tag_ids)
+                          )
+                  END
+              )
+          )
+        ORDER BY
+            CASE WHEN p_sort_by = 'name' AND p_sort_order = 'asc' THEN a.name END ASC,
+            CASE WHEN p_sort_by = 'name' AND p_sort_order = 'desc' THEN a.name END DESC,
+            CASE WHEN p_sort_by = 'usage_count' AND p_sort_order = 'asc' THEN a.usage_count END ASC,
+            CASE WHEN p_sort_by = 'usage_count' AND p_sort_order = 'desc' THEN a.usage_count END DESC,
+            CASE WHEN p_sort_by NOT IN ('name', 'usage_count') AND p_sort_order = 'asc' THEN a.created_at END ASC,
+            CASE WHEN p_sort_by NOT IN ('name', 'usage_count') AND p_sort_order = 'desc' THEN a.created_at END DESC
+        LIMIT p_limit OFFSET p_offset
+    ) subq;
+
+    RETURN jsonb_build_object(
+        'items', v_items,
+        'total', v_total,
+        'offset', p_offset,
+        'limit', p_limit,
+        'has_more', (p_offset + p_limit) < v_total
+    );
+END;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION get_dashboard_assets IS 'WS3: 高性能 Dashboard 素材查询 (分页+标签+搜索+排序，单次DB往返)';
+
+
+-- ---------------------------------------------------------------------------
+-- get_dashboard_stats - Dashboard 统计信息 (WS3: #5, #17)
+-- ---------------------------------------------------------------------------
+-- 扩展 p_get_user_dashboard_stats，添加 workspace 过滤 + folder 统计
+
+CREATE OR REPLACE FUNCTION get_dashboard_stats(
+    p_user_id TEXT,
+    p_workspace_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_project_count INTEGER;
+    v_asset_count INTEGER;
+    v_folder_count INTEGER;
+    v_starred_projects INTEGER;
+    v_starred_assets INTEGER;
+    v_draft_count INTEGER;
+    v_active_count INTEGER;
+BEGIN
+    -- Project counts
+    SELECT COUNT(*)::INTEGER INTO v_project_count
+    FROM projects
+    WHERE user_id = p_user_id AND is_deleted = false
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    SELECT COUNT(*)::INTEGER INTO v_starred_projects
+    FROM projects
+    WHERE user_id = p_user_id AND is_deleted = false AND is_starred = true
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    SELECT COUNT(*)::INTEGER INTO v_draft_count
+    FROM projects
+    WHERE user_id = p_user_id AND is_deleted = false AND status = 'draft'
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    SELECT COUNT(*)::INTEGER INTO v_active_count
+    FROM projects
+    WHERE user_id = p_user_id AND is_deleted = false AND status = 'active'
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    -- Asset counts
+    SELECT COUNT(*)::INTEGER INTO v_asset_count
+    FROM assets
+    WHERE user_id = p_user_id AND is_deleted = false
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    SELECT COUNT(*)::INTEGER INTO v_starred_assets
+    FROM assets
+    WHERE user_id = p_user_id AND is_deleted = false AND is_starred = true
+      AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
+
+    -- Folder count (workspace-specific)
+    IF p_workspace_id IS NOT NULL THEN
+        SELECT COUNT(*)::INTEGER INTO v_folder_count
+        FROM folders
+        WHERE workspace_id = p_workspace_id AND is_deleted = false;
+    ELSE
+        v_folder_count := 0;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'project_count', v_project_count,
+        'asset_count', v_asset_count,
+        'folder_count', v_folder_count,
+        'starred_projects', v_starred_projects,
+        'starred_assets', v_starred_assets,
+        'draft_count', v_draft_count,
+        'active_count', v_active_count
+    );
+END;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION get_dashboard_stats IS 'WS3: Dashboard 统计信息 (项目/素材/文件夹/收藏/状态)';
 
 
 -- ============================================================================

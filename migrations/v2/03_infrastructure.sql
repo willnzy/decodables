@@ -1913,6 +1913,107 @@ CREATE POLICY service_role_all ON support_replies FOR ALL TO service_role USING 
 
 
 -- ============================================================================
+-- WS3: Authenticated User RLS Policies (Defense-in-Depth)
+-- ============================================================================
+-- 策略说明:
+-- - 后端通过 service_role key 访问，不受这些策略影响
+-- - 这些策略作为额外防线：即使 anon/authenticated key 泄露，
+--   authenticated 用户也只能访问自己的数据
+-- - user_id 字段类型为 TEXT (Clerk ID 格式: user_xxx)
+-- - auth.uid()::TEXT 匹配 Supabase Auth JWT 中的用户 ID
+-- ============================================================================
+
+-- Projects: 用户只能访问自己的项目
+CREATE POLICY auth_user_own_projects ON projects
+    FOR ALL TO authenticated
+    USING (user_id = auth.uid()::TEXT)
+    WITH CHECK (user_id = auth.uid()::TEXT);
+
+-- Assets: 用户只能访问自己的素材
+CREATE POLICY auth_user_own_assets ON assets
+    FOR ALL TO authenticated
+    USING (user_id = auth.uid()::TEXT)
+    WITH CHECK (user_id = auth.uid()::TEXT);
+
+-- Project Tags: 用户只能访问自己项目的标签 (通过 project 关联)
+CREATE POLICY auth_user_own_project_tags ON project_tags
+    FOR ALL TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM projects p
+            WHERE p.id = project_id AND p.user_id = auth.uid()::TEXT
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM projects p
+            WHERE p.id = project_id AND p.user_id = auth.uid()::TEXT
+        )
+    );
+
+-- Asset Tags: 用户只能访问自己素材的标签 (通过 asset 关联)
+CREATE POLICY auth_user_own_asset_tags ON user_asset_tags
+    FOR ALL TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM assets a
+            WHERE a.id = asset_id AND a.user_id = auth.uid()::TEXT
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM assets a
+            WHERE a.id = asset_id AND a.user_id = auth.uid()::TEXT
+        )
+    );
+
+-- Tags: 用户只能管理自己 workspace 的标签
+CREATE POLICY auth_user_own_tags ON tags
+    FOR ALL TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM workspaces w
+            WHERE w.id = workspace_id AND w.owner_id = auth.uid()::TEXT
+        )
+        OR EXISTS (
+            SELECT 1 FROM workspace_members wm
+            WHERE wm.workspace_id = tags.workspace_id
+              AND wm.user_id = auth.uid()::TEXT
+              AND wm.is_active = true
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM workspaces w
+            WHERE w.id = workspace_id AND w.owner_id = auth.uid()::TEXT
+        )
+        OR EXISTS (
+            SELECT 1 FROM workspace_members wm
+            WHERE wm.workspace_id = tags.workspace_id
+              AND wm.user_id = auth.uid()::TEXT
+              AND wm.is_active = true
+        )
+    );
+
+-- Profiles: 用户只能读取/更新自己的 profile
+CREATE POLICY auth_user_own_profile ON profiles
+    FOR ALL TO authenticated
+    USING (id = auth.uid()::TEXT)
+    WITH CHECK (id = auth.uid()::TEXT);
+
+-- Credit Transactions: 用户只能读取自己的积分流水
+CREATE POLICY auth_user_own_credit_transactions ON credit_transactions
+    FOR SELECT TO authenticated
+    USING (user_id = auth.uid()::TEXT);
+
+-- Notifications: 用户只能读取自己的通知
+CREATE POLICY auth_user_own_notifications ON notifications
+    FOR ALL TO authenticated
+    USING (user_id = auth.uid()::TEXT)
+    WITH CHECK (user_id = auth.uid()::TEXT);
+
+
+-- ============================================================================
 -- 维护任务配置 (v3.30)
 -- ============================================================================
 -- 说明: 定期清理和优化配置，防止日志表无限增长
