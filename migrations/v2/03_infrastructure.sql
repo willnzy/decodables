@@ -212,7 +212,8 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_error_logs_sync_level ON error_logs;
 CREATE TRIGGER trg_error_logs_sync_level
@@ -541,7 +542,8 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 2
@@ -561,7 +563,8 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 3
@@ -570,7 +573,8 @@ RETURNS TRIGGER AS $$
 BEGIN
     RAISE EXCEPTION 'Table % is append-only. UPDATE and DELETE operations are not allowed.', TG_TABLE_NAME;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 4
@@ -625,7 +629,8 @@ BEGIN
 
     RETURN COALESCE(NEW, OLD);
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 5
@@ -755,7 +760,8 @@ BEGIN
 
     RETURN QUERY SELECT TRUE, v_monthly - v_deduct_monthly, v_permanent - v_deduct_permanent, NULL::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 6
@@ -839,7 +845,8 @@ BEGIN
 
     RETURN QUERY SELECT TRUE, v_monthly, v_permanent, NULL::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 6b: 原子积分购买处理 (v3.27 - Phase 5 Part C)
@@ -973,7 +980,8 @@ BEGIN
 
     RETURN QUERY SELECT TRUE, v_payment_id, v_monthly, v_permanent, NULL::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 COMMENT ON FUNCTION process_credit_purchase IS 'v3.27: 原子性处理积分购买（支付记录+积分增加+交易记录在同一事务中）';
 
@@ -1076,7 +1084,8 @@ BEGIN
 
     RETURN QUERY SELECT TRUE, NULL::TEXT;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 8
@@ -1108,7 +1117,8 @@ BEGIN
 
     RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 9
@@ -1174,7 +1184,8 @@ BEGIN
         END,
         updated_at = CURRENT_TIMESTAMP;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 函数 10
@@ -1188,7 +1199,8 @@ EXCEPTION
     WHEN OTHERS THEN
         RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = 'public';
 
 
 -- 函数 11
@@ -1212,7 +1224,8 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- 触发器 12: 自动生成工单编号 (v2.1.0)
@@ -1292,7 +1305,8 @@ BEGIN
     );
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 -- 触发器需要在 marketplace_listings 表存在后创建
 DO $$
@@ -1371,7 +1385,8 @@ EXCEPTION
         -- 某些表不存在时返回默认值
         RETURN QUERY SELECT 0, 0, 0, 0, 't1'::TEXT, 0, 0;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_get_marketplace_trending(
@@ -1403,7 +1418,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_get_user_credit_summary(
@@ -1428,7 +1444,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN QUERY SELECT 0, 0, 0;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_calculate_user_activity_score(
@@ -1455,7 +1472,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN QUERY SELECT 0::NUMERIC, 0, 0;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_aggregate_experiment_results(p_experiment_id UUID)
@@ -1477,7 +1495,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_check_system_health()
@@ -1499,7 +1518,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN QUERY SELECT 'error'::TEXT, 0::NUMERIC, 'tables_missing'::TEXT;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 -- ----------------------------------------------------------------------------
@@ -1560,7 +1580,8 @@ EXCEPTION
     WHEN undefined_table THEN
         RETURN QUERY SELECT false, 0, 'projects table not found';
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- ----------------------------------------------------------------------------
@@ -1644,7 +1665,8 @@ BEGIN
         END IF;
     END IF;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_complete_webhook_processing(
@@ -1670,7 +1692,8 @@ BEGIN
         p_event_id;
     RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- ============================================================================
@@ -1838,7 +1861,8 @@ BEGIN
         pg_size_pretty(pg_total_relation_size('activity_logs'))::TEXT
     FROM activity_logs;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 COMMENT ON FUNCTION get_log_tables_stats() IS '获取日志表统计信息（用于监控清理效果）';
 

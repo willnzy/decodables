@@ -260,7 +260,8 @@ BEGIN
     
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_sync_daily_metrics_date ON daily_metrics;
 CREATE TRIGGER trg_sync_daily_metrics_date
@@ -629,7 +630,8 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_notifications_sync_type ON notifications;
 CREATE TRIGGER trg_notifications_sync_type
@@ -690,7 +692,8 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_notification_template_updated_at ON admin_notification_templates;
 CREATE TRIGGER trg_notification_template_updated_at
@@ -701,10 +704,11 @@ CREATE TRIGGER trg_notification_template_updated_at
 -- RLS: Admin 专用表，仅 service_role 可访问
 ALTER TABLE admin_notification_templates ENABLE ROW LEVEL SECURITY;
 
--- 策略: 允许 service_role 完全访问 (通过后端 API 访问)
+-- 策略: 仅允许 service_role 完全访问 (通过后端 API 访问)
 DROP POLICY IF EXISTS admin_notification_templates_service_role ON admin_notification_templates;
 CREATE POLICY admin_notification_templates_service_role ON admin_notification_templates
     FOR ALL
+    TO service_role
     USING (true)
     WITH CHECK (true);
 
@@ -818,7 +822,8 @@ BEGIN
     RETURNING * INTO NEW;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_v_marketplace_reports_insert ON v_marketplace_reports;
 CREATE TRIGGER trg_v_marketplace_reports_insert
@@ -858,7 +863,8 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_experiments_generate_id ON experiments;
 CREATE TRIGGER trg_experiments_generate_id

@@ -34,7 +34,7 @@ CREATE SCHEMA IF NOT EXISTS internal;
 -- 启用必要的 PostgreSQL 扩展
 -- ============================================================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";      -- UUID 生成函数
-CREATE EXTENSION IF NOT EXISTS "ltree";          -- 层级树结构支持 (用于 asset_categories)
+CREATE EXTENSION IF NOT EXISTS "ltree" SCHEMA extensions;  -- 层级树结构支持 (用于 asset_categories)
 
 -- ============================================================================
 -- 辅助函数 (需要先创建)
@@ -45,7 +45,8 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 -- ============================================================================
 -- 表创建顺序 (按依赖关系排列)
@@ -922,7 +923,8 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 DROP TRIGGER IF EXISTS trg_sync_credit_transaction_type ON credit_transactions;
 CREATE TRIGGER trg_sync_credit_transaction_type
@@ -1607,7 +1609,8 @@ BEGIN
     WHERE ac.path <@ parent_path_input AND ac.deleted_at IS NULL
     ORDER BY ac.path, ac.display_order;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- Update category descendants path
@@ -1629,7 +1632,8 @@ BEGIN
     GET DIAGNOSTICS updated_count = ROW_COUNT;
     RETURN updated_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- Soft delete category descendants
@@ -1648,7 +1652,8 @@ BEGIN
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
     RETURN deleted_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- Increment category usage
@@ -1659,7 +1664,8 @@ BEGIN
     SET usage_count = usage_count + 1, updated_at = CURRENT_TIMESTAMP
     WHERE id = category_id_input AND deleted_at IS NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 
 -- ============================================================================
@@ -1732,7 +1738,8 @@ BEGIN
     
     RETURN new_user_code;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
 
 COMMENT ON FUNCTION generate_user_code() IS 
 '生成 26 位唯一用户码（HOTFIX: 使用序列避免并发冲突）
