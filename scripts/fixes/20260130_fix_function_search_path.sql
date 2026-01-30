@@ -27,7 +27,7 @@ ALTER FUNCTION public.update_category_descendants_path(LTREE, LTREE) SET search_
 ALTER FUNCTION public.soft_delete_category_descendants(LTREE) SET search_path = 'public';
 ALTER FUNCTION public.increment_category_usage(UUID) SET search_path = 'public';
 ALTER FUNCTION public.generate_user_code() SET search_path = 'public';
-ALTER FUNCTION public.create_user_idempotent(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) SET search_path = 'public';
+ALTER FUNCTION public.create_user_idempotent(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) SET search_path = 'public';
 ALTER FUNCTION public.get_user_creation_stats(INTEGER) SET search_path = 'public';
 ALTER FUNCTION public.get_user_dashboard_stats() SET search_path = 'public';
 ALTER FUNCTION public.get_user_creation_trends(INTEGER) SET search_path = 'public';
