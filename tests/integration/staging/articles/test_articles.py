@@ -54,10 +54,13 @@ class TestArticlesList(BaseAPITest):
     def test_filter_by_category(self, auth_client):
         """
         业务规则: 可以按分类筛选文章
+
+        有效分类: manual, news, changelog, faq, troubleshooting
+        (ArticleCategory enum 定义)
         """
         response = auth_client.get(
             self.ENDPOINT,
-            params={"category": "tutorials"}
+            params={"category": "manual"}
         )
         # 应该返回 200 (可能为空)
         data = self.assert_success(response)
@@ -125,15 +128,17 @@ class TestArticleSearch(BaseAPITest):
         )
         data = self.assert_success(response)
 
-    def test_search_empty_query_handled(self, auth_client):
+    def test_search_empty_query_rejected(self, auth_client):
         """
-        业务规则: 空查询应返回空结果或错误
+        业务规则: 空查询应返回验证错误
+
+        搜索参数 q 有 min_length=2 约束，空字符串会返回 422。
         """
         response = auth_client.get(
             self.ENDPOINT,
             params={"q": ""}
         )
-        assert response.status_code in [200, 400]
+        assert response.status_code == 422
 
     def test_public_search(self, anon_client):
         """

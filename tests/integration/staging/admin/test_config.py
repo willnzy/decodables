@@ -10,14 +10,14 @@ Admin Config API Tests (Black Box)
 4. 支持缓存清除
 
 实际端点 (router prefix = /config):
-- GET /config/config - 获取所有配置
-- GET /config/config/{config_key} - 获取单个配置
-- PUT /config/config - 更新配置
-- PUT /config/config/batch - 批量更新配置
+- GET /config - 获取所有配置
+- GET /config/{config_key} - 获取单个配置
+- PUT /config - 更新配置
+- PUT /config/batch - 批量更新配置
 - GET /config/rate-limits - 获取速率限制
 - POST /config/rate-limits/preset - 应用速率限制预设
 - GET /config/rate-limits/presets - 获取速率限制预设列表
-- POST /config/config/cache/clear - 清除配置缓存
+- POST /config/cache/clear - 清除配置缓存
 
 @module tests.integration.staging.admin.test_config
 """
@@ -34,12 +34,12 @@ CONFIG_BASE = f"{API_ADMIN}/config"
 @pytest.mark.p1
 class TestAdminConfigList(BaseAPITest):
     """
-    GET /api/v2/admin/config/config 黑盒测试
+    GET /api/v2/admin/config 黑盒测试
 
-    获取所有配置
+    获取所有配置 (router prefix = /config, route = GET /)
     """
 
-    ENDPOINT = f"{CONFIG_BASE}/config"
+    ENDPOINT = CONFIG_BASE
 
     def test_list_config_requires_admin(self, anon_client):
         """
@@ -80,13 +80,13 @@ class TestAdminConfigList(BaseAPITest):
 @pytest.mark.p1
 class TestAdminConfigGetSingle(BaseAPITest):
     """
-    GET /api/v2/admin/config/config/{config_key} 黑盒测试
+    GET /api/v2/admin/config/{config_key} 黑盒测试
 
-    获取单个配置
+    获取单个配置 (router prefix = /config, route = GET /{config_key})
     """
 
     def _get_endpoint(self, config_key: str) -> str:
-        return f"{CONFIG_BASE}/config/{config_key}"
+        return f"{CONFIG_BASE}/{config_key}"
 
     def test_get_config_requires_admin(self, anon_client):
         """
@@ -115,12 +115,12 @@ class TestAdminConfigGetSingle(BaseAPITest):
 @pytest.mark.p1
 class TestAdminConfigUpdate(BaseAPITest):
     """
-    PUT /api/v2/admin/config/config 黑盒测试
+    PUT /api/v2/admin/config 黑盒测试
 
-    更新配置
+    更新配置 (router prefix = /config, route = PUT /)
     """
 
-    ENDPOINT = f"{CONFIG_BASE}/config"
+    ENDPOINT = CONFIG_BASE
 
     def test_update_config_requires_admin(self, anon_client):
         """
@@ -177,12 +177,12 @@ class TestAdminConfigUpdate(BaseAPITest):
 @pytest.mark.p1
 class TestAdminConfigBatchUpdate(BaseAPITest):
     """
-    PUT /api/v2/admin/config/config/batch 黑盒测试
+    PUT /api/v2/admin/config/batch 黑盒测试
 
-    批量更新配置
+    批量更新配置 (router prefix = /config, route = PUT /batch)
     """
 
-    ENDPOINT = f"{CONFIG_BASE}/config/batch"
+    ENDPOINT = f"{CONFIG_BASE}/batch"
 
     def test_batch_update_requires_admin(self, anon_client):
         """
@@ -314,12 +314,12 @@ class TestAdminRateLimitPresetApply(BaseAPITest):
 @pytest.mark.p1
 class TestAdminConfigCacheClear(BaseAPITest):
     """
-    POST /api/v2/admin/config/config/cache/clear 黑盒测试
+    POST /api/v2/admin/config/cache/clear 黑盒测试
 
-    清除配置缓存
+    清除配置缓存 (router prefix = /config, route = POST /cache/clear)
     """
 
-    ENDPOINT = f"{CONFIG_BASE}/config/cache/clear"
+    ENDPOINT = f"{CONFIG_BASE}/cache/clear"
 
     def test_cache_clear_requires_admin(self, anon_client):
         """
@@ -348,7 +348,7 @@ class TestAdminConfigValidation(BaseAPITest):
         业务规则: key 包含特殊字符 (斜杠)
         """
         response = auth_client.get(
-            f"{CONFIG_BASE}/config/test/key/with/slashes"
+            f"{CONFIG_BASE}/test/key/with/slashes"
         )
         # 特殊字符可能导致路由问题
         assert response.status_code in [400, 403, 404]
@@ -358,7 +358,7 @@ class TestAdminConfigValidation(BaseAPITest):
         业务规则: 很长的 key (超过 200 字符)
         """
         long_key = "a" * 250
-        response = auth_client.get(f"{CONFIG_BASE}/config/{long_key}")
+        response = auth_client.get(f"{CONFIG_BASE}/{long_key}")
         assert response.status_code in [400, 403, 404, 422]
 
     def test_update_with_json_value(self, auth_client):
@@ -366,7 +366,7 @@ class TestAdminConfigValidation(BaseAPITest):
         业务规则: JSON 格式的配置值
         """
         response = auth_client.put(
-            f"{CONFIG_BASE}/config",
+            CONFIG_BASE,
             json={
                 "config_key": "test_json_config",
                 "value": {"nested": "value", "array": [1, 2, 3]}

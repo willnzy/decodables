@@ -68,9 +68,12 @@ class TestAnalyticsEvents(BaseAPITest):
         data = self.assert_success(response)
         assert data.get("status") == "ok"
 
-    def test_event_requires_event_id(self, auth_client):
+    def test_event_id_is_optional(self, auth_client):
         """
-        业务规则: 事件必须有 event_id
+        业务规则: event_id 是可选的，缺少时服务端自动生成 UUID
+
+        event_id 在 AnalyticsEvent schema 中定义为 Optional，
+        缺少时会自动生成 uuid4。
         """
         response = auth_client.post(
             self.ENDPOINT,
@@ -83,11 +86,15 @@ class TestAnalyticsEvents(BaseAPITest):
                 ]
             }
         )
-        assert response.status_code in [400, 422]
+        # event_id 是可选的，缺少不会导致验证错误
+        data = self.assert_success(response)
+        assert data.get("status") == "ok"
 
-    def test_event_requires_event_name(self, auth_client):
+    def test_event_requires_event_type(self, auth_client):
         """
-        业务规则: 事件必须有 event_name
+        业务规则: 事件必须有 event_type (min_length=1)
+
+        event_type 是 AnalyticsEvent schema 中的必填字段。
         """
         response = auth_client.post(
             self.ENDPOINT,
@@ -95,7 +102,8 @@ class TestAnalyticsEvents(BaseAPITest):
                 "events": [
                     {
                         "event_id": str(uuid.uuid4()),
-                        "event_type": "page_view"
+                        "event_name": "test_event"
+                        # 缺少 event_type
                     }
                 ]
             }

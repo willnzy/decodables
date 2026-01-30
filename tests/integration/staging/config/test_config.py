@@ -79,16 +79,26 @@ class TestConfigByKey(BaseAPITest):
                     response = auth_client.get(Endpoints.config_key(first_key))
                     data = self.assert_success(response)
 
-    def test_public_endpoint(self, anon_client):
+    def test_non_public_key_returns_403(self, auth_client):
         """
-        业务规则: 单个配置也是公开的 (如果 key 存在且公开)
+        业务规则: 非公开 key 返回 403
 
-        注意: 某些 key 可能返回 403 (非公开配置)
+        config/{key} 端点会检查 is_config_public(key)，
+        不在白名单 (FEATURE_*, UI_*, PRICING_*, tier.* 等) 中的 key 返回 403。
+        "app_name" 不匹配任何公开前缀，因此返回 403。
         """
-        # 使用常见的配置 key
-        response = anon_client.get(Endpoints.config_key("app_name"))
-        # 可能存在 (200)、不存在 (404) 或非公开 (403)
-        assert response.status_code in [200, 403, 404]
+        response = auth_client.get(Endpoints.config_key("app_name"))
+        assert response.status_code == 403
+
+    def test_public_key_accessible(self, auth_client):
+        """
+        业务规则: 匹配公开白名单的 key 可以访问
+
+        白名单前缀包括: FEATURE_, UI_, PRICING_, tier. 等
+        """
+        response = auth_client.get(Endpoints.config_key("FEATURE_dark_mode"))
+        # 200 (key 存在) 或 404 (key 不存在但前缀合法)
+        assert response.status_code in [200, 404]
 
 
 @pytest.mark.p1

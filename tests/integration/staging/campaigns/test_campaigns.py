@@ -107,19 +107,40 @@ class TestCampaignDismiss(BaseAPITest):
         """
         业务规则: 忽略不存在的活动
 
+        DismissRequest 需要 channel 字段 (pattern: modal|toast|banner)
         可能返回成功 (幂等) 或 404
         """
         fake_id = str(uuid.uuid4())
-        response = auth_client.post(Endpoints.campaign_dismiss(fake_id))
+        response = auth_client.post(
+            Endpoints.campaign_dismiss(fake_id),
+            json={"channel": "modal"}
+        )
         # 可能返回 200 (幂等) 或 404
         assert response.status_code in [200, 400, 404]
+
+    def test_dismiss_requires_channel_field(self, auth_client):
+        """
+        业务规则: dismiss 需要 channel 字段
+
+        DismissRequest schema 要求 channel (modal|toast|banner)
+        缺少 channel 会返回 422 验证错误
+        """
+        fake_id = str(uuid.uuid4())
+        response = auth_client.post(
+            Endpoints.campaign_dismiss(fake_id),
+            json={}  # 缺少 channel
+        )
+        assert response.status_code == 422
 
     def test_dismiss_requires_authentication(self, anon_client):
         """
         业务规则: 忽略活动必须登录
         """
         fake_id = str(uuid.uuid4())
-        response = anon_client.post(Endpoints.campaign_dismiss(fake_id))
+        response = anon_client.post(
+            Endpoints.campaign_dismiss(fake_id),
+            json={"channel": "modal"}
+        )
         self.assert_unauthorized(response)
 
 

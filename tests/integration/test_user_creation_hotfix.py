@@ -17,6 +17,7 @@ from core.database import get_async_db_client
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="需要真实数据库连接，不在 CI 中运行")
 class TestUserCreationHotfix:
     """用户创建 HOTFIX 测试套件"""
     
@@ -242,6 +243,7 @@ class TestUserCreationHotfix:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="需要真实数据库连接，不在 CI 中运行")
 class TestMonitoringStats:
     """监控统计测试"""
     

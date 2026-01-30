@@ -449,7 +449,7 @@ class TestAssetMove(BaseAPITest):
 @pytest.mark.p1
 class TestAssetStar(BaseAPITest):
     """
-    POST /api/v2/user/assets/{asset_id}/star 黑盒测试
+    PATCH /api/v2/user/assets/{asset_id}/star 黑盒测试
 
     切换素材收藏状态
 
@@ -457,6 +457,8 @@ class TestAssetStar(BaseAPITest):
     1. 素材可以被标记为收藏/取消收藏
     2. is_starred=true 收藏, is_starred=false 取消收藏
     3. 收藏状态切换后应立即生效
+
+    注意: 端点使用 PATCH 方法 (router.patch)
     """
 
     def test_star_nonexistent_asset_returns_404(self, auth_client):
@@ -464,7 +466,7 @@ class TestAssetStar(BaseAPITest):
         业务规则: 收藏不存在的素材应返回 404
         """
         fake_asset_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.asset_star(fake_asset_id),
             json={"is_starred": True}
         )
@@ -478,7 +480,7 @@ class TestAssetStar(BaseAPITest):
         """
         业务规则: 无效的 UUID 格式应被拒绝
         """
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.asset_star("invalid-id"),
             json={"is_starred": True}
         )
@@ -492,7 +494,7 @@ class TestAssetStar(BaseAPITest):
         业务规则: is_starred 是必需字段
         """
         fake_asset_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.asset_star(fake_asset_id),
             json={}  # 缺少 is_starred
         )
@@ -508,7 +510,7 @@ class TestAssetStar(BaseAPITest):
         业务规则: 收藏素材必须登录
         """
         fake_id = str(uuid.uuid4())
-        response = anon_client.post(
+        response = anon_client.patch(
             Endpoints.asset_star(fake_id),
             json={"is_starred": True}
         )
@@ -521,7 +523,7 @@ class TestAssetStar(BaseAPITest):
         注意: 由于测试环境可能没有素材，这里测试的是 API 结构正确性
         """
         fake_asset_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.asset_star(fake_asset_id),
             json={"is_starred": False}
         )
@@ -536,7 +538,7 @@ class TestAssetStar(BaseAPITest):
         Sad Path: 类型错误
         """
         fake_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.asset_star(fake_id),
             json={"is_starred": "yes"}  # 字符串而非布尔值
         )

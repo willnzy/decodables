@@ -47,11 +47,13 @@ class TestExperimentAssign(BaseAPITest):
     def test_assign_nonexistent_experiment(self, auth_client):
         """
         业务规则: 分配到不存在的实验
+
+        AssignmentRequest 需要 user_identifier 字段
         """
         fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
         response = auth_client.post(
             Endpoints.experiment_assign(fake_key),
-            json={}
+            json={"user_identifier": "test_user_123"}
         )
         # 可能返回 404 (实验不存在) 或 200 (创建新分配)
         assert response.status_code in [200, 400, 404]
@@ -59,10 +61,12 @@ class TestExperimentAssign(BaseAPITest):
     def test_assign_valid_experiment(self, auth_client):
         """
         业务规则: 分配到有效实验
+
+        AssignmentRequest 需要 user_identifier 字段
         """
         response = auth_client.post(
             Endpoints.experiment_assign("test_experiment"),
-            json={}
+            json={"user_identifier": "test_user_123"}
         )
         # 可能成功分配或实验不存在
         assert response.status_code in [200, 400, 404]
@@ -92,11 +96,13 @@ class TestExperimentExposure(BaseAPITest):
     def test_exposure_nonexistent_experiment(self, auth_client):
         """
         业务规则: 记录不存在实验的曝光
+
+        ExposureRequest 需要 user_identifier + variant_key
         """
         fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
         response = auth_client.post(
             Endpoints.experiment_exposure(fake_key),
-            json={}
+            json={"user_identifier": "test_user_123", "variant_key": "control"}
         )
         assert response.status_code in [200, 400, 404]
 
@@ -125,11 +131,13 @@ class TestExperimentConversion(BaseAPITest):
     def test_conversion_nonexistent_experiment(self, auth_client):
         """
         业务规则: 记录不存在实验的转化
+
+        ConversionRequest 需要 user_identifier (metric_key 默认 "primary")
         """
         fake_key = f"nonexistent_exp_{uuid.uuid4().hex[:10]}"
         response = auth_client.post(
             Endpoints.experiment_conversion(fake_key),
-            json={}
+            json={"user_identifier": "test_user_123"}
         )
         assert response.status_code in [200, 400, 404]
 
@@ -185,30 +193,36 @@ class TestExperimentsValidation(BaseAPITest):
     def test_assign_with_metadata(self, auth_client):
         """
         业务规则: 分配时附带元数据
+
+        AssignmentRequest 需要 user_identifier
         """
         response = auth_client.post(
             Endpoints.experiment_assign("test_experiment"),
-            json={"metadata": {"source": "test"}}
+            json={"user_identifier": "test_user_123", "metadata": {"source": "test"}}
         )
         assert response.status_code in [200, 400, 404]
 
     def test_conversion_with_value(self, auth_client):
         """
         业务规则: 转化时附带转化值
+
+        ConversionRequest 需要 user_identifier
         """
         response = auth_client.post(
             Endpoints.experiment_conversion("test_experiment"),
-            json={"conversion_value": 100}
+            json={"user_identifier": "test_user_123", "conversion_value": 100}
         )
         assert response.status_code in [200, 400, 404]
 
     def test_experiment_key_special_chars(self, auth_client):
         """
         业务规则: 实验 key 包含特殊字符
+
+        AssignmentRequest 需要 user_identifier
         """
         response = auth_client.post(
             Endpoints.experiment_assign("test/experiment/key"),
-            json={}
+            json={"user_identifier": "test_user_123"}
         )
         # 特殊字符可能导致路由问题
         assert response.status_code in [400, 404]
