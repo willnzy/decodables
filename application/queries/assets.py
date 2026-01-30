@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
 from domains.assets.assets_service import AssetsService
-from infrastructure.repositories.asset_repository import SupabaseAssetRepository
 
 
 # ==========================================
@@ -223,16 +222,16 @@ class GetDashboardAssetsHandler:
     """
     Handler for GetDashboardAssetsQuery.
 
-    Uses repository directly for cross-domain queries (marketplace listings).
+    Uses AssetsService for DDD-compliant data access.
     """
 
-    def __init__(self, repository: SupabaseAssetRepository):
-        self._repository = repository
+    def __init__(self, assets_service: AssetsService):
+        self._assets_service = assets_service
 
     async def handle(self, query: GetDashboardAssetsQuery) -> GetDashboardAssetsResult:
         """Execute dashboard assets query."""
         try:
-            result = await self._repository.get_dashboard_assets(
+            result = await self._assets_service.get_dashboard_assets(
                 user_id=query.user_id,
                 workspace_id=query.workspace_id,
                 view_type=query.view_type,

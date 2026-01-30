@@ -9,7 +9,7 @@ Concrete implementations live in infrastructure/repositories/.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from .aggregates.project import Project, Page
 from .value_objects import ProjectStatus
@@ -253,4 +253,65 @@ class IProjectRepository(ABC):
         Returns:
             Project if found with matching key, None otherwise
         """
+        pass
+
+    # ==========================================
+    # Dashboard Queries
+    # ==========================================
+
+    @abstractmethod
+    async def get_dashboard_projects(
+        self,
+        user_id: str,
+        workspace_id: Optional[str] = None,
+        view_type: str = "all",
+        offset: int = 0,
+        limit: int = 20,
+        search: Optional[str] = None,
+        include_canvas_data: bool = True,
+        folder_id: Optional[str] = "NOT_SET",
+    ) -> Dict[str, Any]:
+        """Get projects for dashboard with view type filtering."""
+        pass
+
+    @abstractmethod
+    async def get_seller_project_stats(self, user_id: str) -> Dict[str, Any]:
+        """Get seller statistics for projects."""
+        pass
+
+    # ==========================================
+    # v3.33 Phase 2.6: Folder Organization and Starring
+    # ==========================================
+
+    @abstractmethod
+    async def move_to_folder(
+        self, project_id: str, user_id: str, folder_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Move project to a folder (or root if folder_id is None)."""
+        pass
+
+    @abstractmethod
+    async def toggle_star(
+        self, project_id: str, user_id: str, is_starred: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """Toggle project starred status."""
+        pass
+
+    @abstractmethod
+    async def get_by_folder(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        offset: int = 0,
+        limit: int = 50,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get projects in a specific folder."""
+        pass
+
+    @abstractmethod
+    async def get_starred(
+        self, user_id: str, offset: int = 0, limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Get starred projects."""
         pass

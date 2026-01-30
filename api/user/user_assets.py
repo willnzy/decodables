@@ -572,14 +572,9 @@ async def move_asset_to_folder(
             from fastapi import HTTPException
             raise HTTPException(404, "Folder not found")
 
-    # Get asset repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+    assets_service = await container.get_assets_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseAssetRepository(db)
-
-    result = await repo.move_to_folder(asset_id, ctx.user_id, req.folder_id)
+    result = await assets_service.move_to_folder(asset_id, ctx.user_id, req.folder_id)
 
     if not result:
         from fastapi import HTTPException
@@ -611,14 +606,10 @@ async def toggle_asset_star(
     # Validate asset_id format
     validate_uuid_id(asset_id, "asset ID")
 
-    # Get asset repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+    container = get_container()
+    assets_service = await container.get_assets_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseAssetRepository(db)
-
-    result = await repo.toggle_star(asset_id, ctx.user_id, req.is_starred)
+    result = await assets_service.toggle_star(asset_id, ctx.user_id, req.is_starred)
 
     if not result:
         from fastapi import HTTPException
@@ -665,14 +656,9 @@ async def list_assets_by_folder(
             from fastapi import HTTPException
             raise HTTPException(404, "Folder not found")
 
-    # Get asset repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+    assets_service = await container.get_assets_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseAssetRepository(db)
-
-    items = await repo.get_by_folder(
+    items = await assets_service.list_assets_by_folder(
         user_id=ctx.user_id,
         folder_id=target_folder_id,
         offset=offset,
@@ -682,7 +668,7 @@ async def list_assets_by_folder(
 
     return {
         "items": items,
-        "total": len(items),  # Approximate; exact count would need separate query
+        "total": len(items),
         "offset": offset,
         "limit": limit,
     }
@@ -708,14 +694,10 @@ async def list_starred_assets(
     Returns:
         Dict with items, total, offset, limit
     """
-    # Get asset repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.asset_repository import SupabaseAssetRepository
+    container = get_container()
+    assets_service = await container.get_assets_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseAssetRepository(db)
-
-    items = await repo.get_starred(
+    items = await assets_service.list_starred_assets(
         user_id=ctx.user_id,
         offset=offset,
         limit=limit,
@@ -723,7 +705,7 @@ async def list_starred_assets(
 
     return {
         "items": items,
-        "total": len(items),  # Approximate; exact count would need separate query
+        "total": len(items),
         "offset": offset,
         "limit": limit,
     }

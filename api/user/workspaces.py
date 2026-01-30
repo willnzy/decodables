@@ -253,36 +253,24 @@ async def update_workspace(
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    # Get workspace
-    workspace = await workspace_service.get_by_id(workspace_id)
-    if not workspace:
+    try:
+        updated = await workspace_service.update_workspace(
+            workspace_id=workspace_id,
+            user_id=user.user_id,
+            name=data.name,
+            description=data.description,
+        )
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+
+    if not updated:
         raise HTTPException(404, "Workspace not found")
-
-    # Verify ownership
-    if workspace.owner_id != user.user_id:
-        raise HTTPException(403, "Not authorized to modify this workspace")
-
-    # Update workspace via repository
-    from infrastructure.repositories.workspace_repository import SupabaseWorkspaceRepository
-    from core.database import get_async_db_client
-
-    db = await get_async_db_client()
-    workspace_repo = SupabaseWorkspaceRepository(db)
-
-    update_data = {}
-    if data.name is not None:
-        update_data["name"] = data.name
-    if data.description is not None:
-        update_data["description"] = data.description
-
-    updated = await workspace_repo.update_partial(workspace_id, update_data)
 
     await log_activity_async(
         user_id=user.user_id,
         action="workspace_updated",
         metadata={
             "workspace_id": workspace_id,
-            "updates": list(update_data.keys())
         }
     )
 
@@ -318,30 +306,23 @@ async def delete_workspace(
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    workspace = await workspace_service.get_by_id(workspace_id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
-
-    # Verify ownership
-    if workspace.owner_id != user.user_id:
-        raise HTTPException(403, "Not authorized to delete this workspace")
-
-    # Phase 1: Cannot delete default workspace
-    if workspace.is_default:
-        raise HTTPException(400, "Cannot delete default workspace")
-
-    # Delete via repository
-    from infrastructure.repositories.workspace_repository import SupabaseWorkspaceRepository
-    from core.database import get_async_db_client
-
-    db = await get_async_db_client()
-    workspace_repo = SupabaseWorkspaceRepository(db)
-    await workspace_repo.delete(workspace_id)
+    try:
+        success = await workspace_service.delete_workspace(
+            workspace_id=workspace_id,
+            user_id=user.user_id,
+        )
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(404, error_msg)
+        raise HTTPException(400, error_msg)
 
     await log_activity_async(
         user_id=user.user_id,
         action="workspace_deleted",
-        metadata={"workspace_id": workspace_id, "name": workspace.name}
+        metadata={"workspace_id": workspace_id}
     )
 
     return {"success": True, "message": "Workspace deleted"}
@@ -377,24 +358,19 @@ async def get_workspace_stats(
     container = get_container()
     workspace_service = await container.get_workspace_service()
 
-    workspace = await workspace_service.get_by_id(workspace_id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
+    try:
+        stats = await workspace_service.get_workspace_stats(
+            workspace_id=workspace_id,
+            user_id=user.user_id,
+        )
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
-    # Verify ownership
-    if workspace.owner_id != user.user_id:
-        raise HTTPException(403, "Not authorized to access this workspace")
-
-    # Get tag count
+    # Add tag count from tag service
     tag_service = await container.get_tag_service()
     tags = await tag_service.list_tags(workspace_id)
+    stats["tag_count"] = len(tags)
 
-    # TODO: Add project and asset counts when those services are integrated
-    # For now, return placeholder values that will be filled in later
-
-    return {
-        "workspace_id": workspace_id,
-        "tag_count": len(tags),
-        "project_count": 0,  # TODO: Integrate with projects service
-        "asset_count": 0,    # TODO: Integrate with assets service
-    }
+    return stats

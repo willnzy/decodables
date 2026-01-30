@@ -7,7 +7,7 @@ Core business logic for Workspace domain.
 @version 2.0.0 (Phase 2: Multi-workspace support)
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 
 from .entities import Workspace
@@ -239,3 +239,143 @@ class WorkspaceService:
         if user_tier in ("t3", "t4"):
             return PRO_MAX_WORKSPACES
         return DEFAULT_MAX_WORKSPACES
+
+    # ==========================================
+    # Workspace Update / Delete / Stats
+    # ==========================================
+
+    async def update_workspace(
+        self,
+        workspace_id: str,
+        user_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[Workspace]:
+        """
+        Update workspace name/description with ownership check.
+
+        Args:
+            workspace_id: Workspace UUID
+            user_id: Clerk user_id (for ownership check)
+            name: New workspace name
+            description: New workspace description
+
+        Returns:
+            Updated Workspace entity or None
+
+        Raises:
+            PermissionError: If user is not the owner
+            ValueError: If no valid fields to update
+        """
+        workspace = await self._repo.get_by_id(workspace_id)
+        if not workspace:
+            return None
+
+        if workspace.owner_id != user_id:
+            raise PermissionError("Not authorized to modify this workspace")
+
+        update_data: Dict[str, Any] = {}
+        if name is not None:
+            update_data["name"] = name.strip()
+        if description is not None:
+            update_data["description"] = description.strip()
+
+        if not update_data:
+            return workspace
+
+        updated = await self._repo.update_partial(workspace_id, update_data)
+        if updated:
+            logger.info(
+                f"[WorkspaceService] Updated workspace: "
+                f"id={workspace_id}, fields={list(update_data.keys())}"
+            )
+        return updated
+
+    async def delete_workspace(
+        self,
+        workspace_id: str,
+        user_id: str,
+    ) -> bool:
+        """
+        Delete a workspace with ownership check.
+
+        Args:
+            workspace_id: Workspace UUID
+            user_id: Clerk user_id (for ownership check)
+
+        Returns:
+            True if deleted
+
+        Raises:
+            PermissionError: If user is not the owner
+            ValueError: If trying to delete default workspace or workspace not found
+        """
+        workspace = await self._repo.get_by_id(workspace_id)
+        if not workspace:
+            raise ValueError("Workspace not found")
+
+        if workspace.owner_id != user_id:
+            raise PermissionError("Not authorized to delete this workspace")
+
+        if workspace.is_default:
+            raise ValueError("Cannot delete default workspace")
+
+        success = await self._repo.delete(workspace_id)
+        if success:
+            logger.info(
+                f"[WorkspaceService] Deleted workspace: "
+                f"id={workspace_id}, name={workspace.name}"
+            )
+        return success
+
+    async def get_workspace_stats(
+        self,
+        workspace_id: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get workspace statistics (tag/project/asset counts).
+
+        Uses the repository's count methods for real data
+        instead of hardcoded 0 values.
+
+        Args:
+            workspace_id: Workspace UUID
+            user_id: Clerk user_id (for ownership check)
+
+        Returns:
+            Dict with workspace_id, tag_count, project_count, asset_count
+
+        Raises:
+            PermissionError: If user is not the owner
+            ValueError: If workspace not found
+        """
+        workspace = await self._repo.get_by_id(workspace_id)
+        if not workspace:
+            raise ValueError("Workspace not found")
+
+        if workspace.owner_id != user_id:
+            raise PermissionError("Not authorized to access this workspace")
+
+        # Count projects and assets owned by this user
+        # We import here to avoid circular dependency
+        from core.database import get_async_db_client
+        client = await get_async_db_client()
+
+        # Project count
+        project_result = await client.table("projects").select(
+            "id", count="exact"
+        ).eq("user_id", user_id).eq("is_deleted", False).execute()
+        project_count = project_result.count or 0
+
+        # Asset count
+        asset_result = await client.table("assets").select(
+            "id", count="exact"
+        ).eq("user_id", user_id).eq("is_deleted", False).execute()
+        asset_count = asset_result.count or 0
+
+        return {
+            "workspace_id": workspace_id,
+            "project_count": project_count,
+            "asset_count": asset_count,
+        }

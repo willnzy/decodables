@@ -572,3 +572,124 @@ class CreationService:
             Dict with total_listings, total_sales, total_revenue
         """
         return await self._repository.get_seller_project_stats(user_id)
+
+    # ==========================================
+    # Dashboard Queries
+    # ==========================================
+
+    async def get_dashboard_projects(
+        self,
+        user_id: str,
+        workspace_id: Optional[str] = None,
+        view_type: str = "all",
+        offset: int = 0,
+        limit: int = 20,
+        search: Optional[str] = None,
+        include_canvas_data: bool = True,
+        folder_id: Optional[str] = "NOT_SET",
+    ) -> Dict[str, Any]:
+        """
+        Get projects for dashboard with view type filtering.
+
+        Delegates to repository for cross-domain data queries.
+
+        Args:
+            user_id: User ID
+            workspace_id: Workspace ID for data isolation
+            view_type: "all", "bought", or "selling"
+            offset: Pagination offset
+            limit: Items per page
+            search: Search query
+            include_canvas_data: Whether to include canvas_data
+            folder_id: Folder filter
+
+        Returns:
+            Dict with items, total, offset, limit
+        """
+        return await self._repository.get_dashboard_projects(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            view_type=view_type,
+            offset=offset,
+            limit=limit,
+            search=search,
+            include_canvas_data=include_canvas_data,
+            folder_id=folder_id,
+        )
+
+    # ==========================================
+    # v3.33 Phase 2.6: Folder Organization and Starring
+    # ==========================================
+
+    async def list_starred_projects(
+        self, user_id: str, offset: int = 0, limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get starred projects for a user.
+
+        Args:
+            user_id: User ID
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            List of starred project dicts
+        """
+        return await self._repository.get_starred(user_id, offset, limit)
+
+    async def list_projects_by_folder(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        offset: int = 0,
+        limit: int = 50,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get projects in a specific folder.
+
+        Args:
+            user_id: User ID
+            folder_id: Folder ID (None = root/unfiled)
+            offset: Pagination offset
+            limit: Pagination limit
+            search: Optional search filter
+
+        Returns:
+            List of project dicts in the folder
+        """
+        return await self._repository.get_by_folder(
+            user_id, folder_id, offset, limit, search,
+        )
+
+    async def toggle_star(
+        self, project_id: str, user_id: str, is_starred: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Toggle project starred status.
+
+        Args:
+            project_id: Project ID
+            user_id: User ID (for ownership check)
+            is_starred: New starred status
+
+        Returns:
+            Updated project dict or None if not found/unauthorized
+        """
+        return await self._repository.toggle_star(project_id, user_id, is_starred)
+
+    async def move_to_folder(
+        self, project_id: str, user_id: str, folder_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Move project to a folder (or root if folder_id is None).
+
+        Args:
+            project_id: Project ID
+            user_id: User ID (for ownership check)
+            folder_id: Target folder ID (None = move to root)
+
+        Returns:
+            Updated project dict or None if not found/unauthorized
+        """
+        return await self._repository.move_to_folder(project_id, user_id, folder_id)

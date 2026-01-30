@@ -554,3 +554,121 @@ class AssetsService:
             raise AssetNotFoundException(asset_id=asset_id, in_trash=True)
 
         return result
+
+    # ==========================================
+    # Dashboard Queries
+    # ==========================================
+
+    async def get_dashboard_assets(
+        self,
+        user_id: str,
+        workspace_id: Optional[str] = None,
+        view_type: str = "all",
+        offset: int = 0,
+        limit: int = 15,
+        search: Optional[str] = None,
+        folder_id: Optional[str] = "NOT_SET",
+    ) -> Dict[str, Any]:
+        """
+        Get assets for dashboard with view type filtering.
+
+        Delegates to repository for cross-domain data queries.
+
+        Args:
+            user_id: User ID
+            workspace_id: Workspace ID for data isolation
+            view_type: "all", "bought", or "selling"
+            offset: Pagination offset
+            limit: Items per page
+            search: Search query
+            folder_id: Folder filter
+
+        Returns:
+            Dict with items, total, offset, limit
+        """
+        return await self.repository.get_dashboard_assets(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            view_type=view_type,
+            offset=offset,
+            limit=limit,
+            search=search,
+            folder_id=folder_id,
+        )
+
+    # ==========================================
+    # v3.33 Phase 2.6: Folder Organization and Starring
+    # ==========================================
+
+    async def list_starred_assets(
+        self, user_id: str, offset: int = 0, limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get starred assets for a user.
+
+        Args:
+            user_id: User ID
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            List of starred asset dicts
+        """
+        return await self.repository.get_starred(user_id, offset, limit)
+
+    async def list_assets_by_folder(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        offset: int = 0,
+        limit: int = 50,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get assets in a specific folder.
+
+        Args:
+            user_id: User ID
+            folder_id: Folder ID (None = root/unfiled)
+            offset: Pagination offset
+            limit: Pagination limit
+            search: Optional search filter
+
+        Returns:
+            List of asset dicts in the folder
+        """
+        return await self.repository.get_by_folder(
+            user_id, folder_id, offset, limit, search,
+        )
+
+    async def toggle_star(
+        self, asset_id: str, user_id: str, is_starred: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Toggle asset starred status.
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+            is_starred: New starred status
+
+        Returns:
+            Updated asset dict or None if not found/unauthorized
+        """
+        return await self.repository.toggle_star(asset_id, user_id, is_starred)
+
+    async def move_to_folder(
+        self, asset_id: str, user_id: str, folder_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Move asset to a folder (or root if folder_id is None).
+
+        Args:
+            asset_id: Asset ID
+            user_id: User ID (for ownership check)
+            folder_id: Target folder ID (None = move to root)
+
+        Returns:
+            Updated asset dict or None if not found/unauthorized
+        """
+        return await self.repository.move_to_folder(asset_id, user_id, folder_id)

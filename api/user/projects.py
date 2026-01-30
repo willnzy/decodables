@@ -386,14 +386,10 @@ async def list_starred_projects(
     Returns:
         ProjectListResponse with starred projects
     """
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+    container = get_container()
+    creation_service = await container.get_creation_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    items = await repo.get_starred(
+    items = await creation_service.list_starred_projects(
         user_id=ctx.user_id,
         offset=offset,
         limit=limit,
@@ -401,7 +397,7 @@ async def list_starred_projects(
 
     return ProjectListResponse(
         items=items,
-        total=len(items),  # Approximate; exact count would need separate query
+        total=len(items),
         offset=offset,
         limit=limit,
     )
@@ -445,14 +441,9 @@ async def list_projects_by_folder(
         if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
             raise HTTPException(404, "Folder not found")
 
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+    creation_service = await container.get_creation_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    items = await repo.get_by_folder(
+    items = await creation_service.list_projects_by_folder(
         user_id=ctx.user_id,
         folder_id=target_folder_id,
         offset=offset,
@@ -462,7 +453,7 @@ async def list_projects_by_folder(
 
     return ProjectListResponse(
         items=items,
-        total=len(items),  # Approximate; exact count would need separate query
+        total=len(items),
         offset=offset,
         limit=limit,
     )
@@ -845,14 +836,9 @@ async def move_project_to_folder(
         if not await folder_service.validate_folder_access(req.folder_id, ctx.workspace_id):
             raise HTTPException(404, "Folder not found")
 
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+    creation_service = await container.get_creation_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    result = await repo.move_to_folder(project_id, ctx.user_id, req.folder_id)
+    result = await creation_service.move_to_folder(project_id, ctx.user_id, req.folder_id)
 
     if not result:
         raise HTTPException(404, "Project not found or access denied")
@@ -884,14 +870,10 @@ async def toggle_project_star(
     if not UUID_PATTERN.match(project_id):
         raise HTTPException(400, "Invalid project ID format")
 
-    # Get project repository directly for this operation
-    from core.database import get_async_db_client
-    from infrastructure.repositories.project_repository import SupabaseProjectRepository
+    container = get_container()
+    creation_service = await container.get_creation_service()
 
-    db = await get_async_db_client()
-    repo = SupabaseProjectRepository(db)
-
-    result = await repo.toggle_star(project_id, ctx.user_id, req.is_starred)
+    result = await creation_service.toggle_star(project_id, ctx.user_id, req.is_starred)
 
     if not result:
         raise HTTPException(404, "Project not found or access denied")

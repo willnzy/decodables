@@ -1532,8 +1532,8 @@ class Container:
     async def get_dashboard_projects_handler(self) -> GetDashboardProjectsHandler:
         """Get dashboard projects query handler (async)."""
         if 'get_dashboard_projects' not in self._handlers:
-            project_repo = await self.get_project_repository()
-            self._handlers['get_dashboard_projects'] = GetDashboardProjectsHandler(project_repo)
+            creation_service = await self.get_creation_service()
+            self._handlers['get_dashboard_projects'] = GetDashboardProjectsHandler(creation_service)
         return self._handlers['get_dashboard_projects']
 
     async def get_listing_handler(self) -> GetListingHandler:
@@ -1819,11 +1819,9 @@ class Container:
     async def get_dashboard_assets_handler(self):
         """Get dashboard assets handler (v1.1.0, async)."""
         from application.queries.assets import GetDashboardAssetsHandler
-        from infrastructure.repositories.asset_repository import SupabaseAssetRepository
         if 'get_dashboard_assets' not in self._handlers:
-            db = await get_async_db_client()
-            repository = SupabaseAssetRepository(db)
-            self._handlers['get_dashboard_assets'] = GetDashboardAssetsHandler(repository)
+            assets_service = await self.get_assets_service()
+            self._handlers['get_dashboard_assets'] = GetDashboardAssetsHandler(assets_service)
         return self._handlers['get_dashboard_assets']
 
     # Assets Command Handlers (v3.0.0, async)

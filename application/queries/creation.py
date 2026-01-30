@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 
 from domains.creation import CreationService, Project, ProjectStatus
-from domains.creation.repository import IProjectRepository
 
 
 @dataclass
@@ -205,17 +204,16 @@ class GetDashboardProjectsHandler:
     """
     Handler for GetDashboardProjectsQuery.
 
-    Uses repository directly for cross-domain queries.
+    Uses CreationService for DDD-compliant data access.
     """
 
-    def __init__(self, repository: IProjectRepository):
-        self._repository = repository
+    def __init__(self, creation_service: CreationService):
+        self._creation_service = creation_service
 
     async def handle(self, query: GetDashboardProjectsQuery) -> GetDashboardProjectsResult:
         """Execute dashboard projects query."""
         try:
-            # Repository method handles cross-domain data (marketplace enrichment)
-            result = await self._repository.get_dashboard_projects(
+            result = await self._creation_service.get_dashboard_projects(
                 user_id=query.user_id,
                 workspace_id=query.workspace_id,
                 view_type=query.view_type,
