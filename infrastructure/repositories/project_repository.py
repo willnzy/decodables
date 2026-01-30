@@ -50,9 +50,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     async def get_by_id(self, project_id: str) -> Optional[Project]:
         """Get project by ID."""
         try:
+            # WS-3(1C#4): Filter out soft-deleted projects
             result = await self.client.table("projects").select("*").eq(
                 "id", project_id
-            ).single().execute()
+            ).eq("is_deleted", False).single().execute()
 
             if not result.data:
                 return None
@@ -297,9 +298,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     ) -> List[Project]:
         """Get projects shared with a user."""
         try:
+            # WS-3(1C#5): Add is_deleted filter
             result = await self.client.table("projects").select("*").contains(
                 "collaborators", [user_id]
-            ).neq("status", ProjectStatus.DELETED.value).order(
+            ).eq("is_deleted", False).neq("status", ProjectStatus.DELETED.value).order(
                 "updated_at", desc=True
             ).range(offset, offset + limit - 1).execute()
 
@@ -317,9 +319,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
     ) -> List[Project]:
         """Get public projects."""
         try:
+            # WS-3: Add is_deleted filter
             query = self.client.table("projects").select("*").eq(
                 "is_public", True
-            ).eq("status", ProjectStatus.ACTIVE.value).order(
+            ).eq("is_deleted", False).eq("status", ProjectStatus.ACTIVE.value).order(
                 "updated_at", desc=True
             ).range(offset, offset + limit - 1)
 
@@ -453,7 +456,10 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         try:
             # Build search query
             safe_query = sanitize_postgrest_query(query)
-            db_query = self.client.table("projects").select("*").neq(
+            # WS-3: Add is_deleted filter
+            db_query = self.client.table("projects").select("*").eq(
+                "is_deleted", False
+            ).neq(
                 "status", ProjectStatus.DELETED.value
             ).or_(f"title.ilike.%{safe_query}%,description.ilike.%{safe_query}%").order(
                 "updated_at", desc=True
