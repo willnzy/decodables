@@ -94,22 +94,27 @@ class ProjectCreateRequest(BaseModel):
 
 
 class ProjectUpdateRequest(BaseModel):
-    """Request to update a project."""
+    """Request to update a project. WS-5: Added is_public field."""
     canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
     thumbnail_url: Optional[str] = Field(None, max_length=500)  # P2-030: DoS protection
     title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
     # WS-1: Added max_items and item format validation (1A#18)
     used_listing_ids: Optional[List[str]] = Field(None, max_length=100)
+    # WS-5: Project visibility (projects table field)
+    is_public: Optional[bool] = None
 
 
 class ProjectResponse(BaseModel):
-    """Single project response."""
+    """Single project response. WS-5: Aligned with frontend Project interface."""
     id: str
     user_id: str
     title: str
     thumbnail_url: Optional[str] = None
     canvas_data: Optional[Dict[str, Any]] = None
     status: str = "active"
+    is_deleted: bool = False
+    deleted_at: Optional[str] = None
+    is_public: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -631,6 +636,8 @@ async def update_project(
         canvas_data=req.canvas_data,
         thumbnail_url=req.thumbnail_url,
         user_tier=(ctx.user.tier.value if ctx.user.tier else "t1"),  # P1-013: For locked elements check
+        # WS-5: Project visibility
+        is_public=req.is_public,
     )
 
     result = await handler.handle(command)

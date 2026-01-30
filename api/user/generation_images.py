@@ -29,8 +29,8 @@ Changes:
          Add transaction-based refund on generation failure
 
 Endpoints:
-- POST /api/v2/user/generate/images - Sync image generation
-- POST /api/v2/user/generate/images/async - Async image generation (v3.23)
+- POST /api/v2/user/generate/images - Sync image generation (WS-5: fixed /images/images → /)
+- POST /api/v2/user/generate/images/async - Async image generation (v3.23, WS-5: fixed path)
 """
 
 import logging
@@ -84,7 +84,7 @@ async def get_generation_service() -> GenerationService:
 # Sync Image Generation
 # ==========================================
 
-@router.post("/images")
+@router.post("")
 @limiter.limit("10/minute")
 async def gen_images(
     request: Request,
@@ -197,7 +197,7 @@ async def gen_images(
 # Async Image Generation (v3.23)
 # ==========================================
 
-@router.post("/images/async")
+@router.post("/async")
 @limiter.limit("10/minute")
 async def gen_images_async(
     request: Request,

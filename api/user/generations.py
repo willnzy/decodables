@@ -66,11 +66,12 @@ class FavoriteRequest(BaseModel):
 
 
 class GenerationHistoryResponse(BaseModel):
-    """Generation history response."""
-    generations: List[Dict[str, Any]]
+    """Generation history response. WS-5: Aligned field name with frontend contract."""
+    items: List[Dict[str, Any]]
     total: int
     limit: int
     offset: int
+    has_more: bool = False
 
 
 class FavoriteResponse(BaseModel):
@@ -142,7 +143,7 @@ async def get_generation_history(
 
     Returns:
         GenerationHistoryResponse containing:
-            - generations: List of generation objects including:
+            - items: List of generation objects including:
                 - id: Generation UUID
                 - image_urls: List of generated image URLs (1-8 images)
                 - prompt: Original text prompt used
@@ -173,7 +174,7 @@ async def get_generation_history(
 
         Response:
         {
-            "generations": [
+            "items": [
                 {
                     "id": "550e8400-e29b-41d4-a716-446655440000",
                     "image_urls": [
@@ -203,10 +204,11 @@ async def get_generation_history(
         raise HTTPException(500, "Failed to fetch generation history")
 
     return GenerationHistoryResponse(
-        generations=generations,
+        items=generations,
         total=total,
         limit=limit,
         offset=offset,
+        has_more=(offset + limit) < total,
     )
 
 

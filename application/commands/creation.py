@@ -185,6 +185,7 @@ class UpdateProjectCommand:
     - canvas_data: Canvas JSON data (editor state)
     - thumbnail_url: Thumbnail URL
     - user_tier: User's current tier (for locked elements check)
+    - is_public: WS-5: Project visibility
     """
     project_id: str
     user_id: str
@@ -192,6 +193,8 @@ class UpdateProjectCommand:
     canvas_data: Optional[Dict[str, Any]] = None
     thumbnail_url: Optional[str] = None
     user_tier: str = "t1"  # Default to free tier
+    # WS-5: Project visibility
+    is_public: Optional[bool] = None
 
 
 @dataclass
@@ -253,6 +256,10 @@ class UpdateProjectHandler:
 
             if command.thumbnail_url is not None:
                 project.metadata.thumbnail_url = command.thumbnail_url
+
+            # WS-5: Project visibility
+            if command.is_public is not None:
+                project.update_metadata(is_public=command.is_public)
 
             # P1-013: Check for locked elements if canvas_data was updated
             if command.canvas_data is not None and self._listing_repository is not None:
