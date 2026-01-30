@@ -2769,6 +2769,146 @@ SET search_path = 'public';
 COMMENT ON FUNCTION process_subscription_termination IS 'WS4: 原子处理订阅终止 (tier降级+积分清零+审计记录)，统一所有取消/降级路径';
 
 
+-- ---------------------------------------------------------------------------
+-- process_credit_refund - 原子处理积分购买退费 (WS5: #6, #14, #15)
+-- ---------------------------------------------------------------------------
+-- 退费 webhook 触发时，原子执行:
+--   1. 幂等性检查 (stripe_refund_id)
+--   2. 扣回永久积分 (不允许扣成负数)
+--   3. 插入 credit_transaction 审计
+--   4. 插入 payment_record (type='refund')
+--   5. 更新原始交易记录的 refunded_amount / refunded_at
+
+CREATE OR REPLACE FUNCTION process_credit_refund(
+    p_user_id TEXT,
+    p_credits_to_deduct INTEGER,      -- 应扣回的积分数 (已按比例计算)
+    p_payment_intent_id TEXT,          -- 原始 payment_intent ID
+    p_refund_id TEXT,                  -- Stripe refund ID (幂等性 key)
+    p_amount_usd NUMERIC,             -- 退款金额 (美元, 已转换)
+    p_currency TEXT DEFAULT 'USD',
+    p_metadata JSONB DEFAULT '{}'::jsonb
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_existing_refund UUID;
+    v_profile RECORD;
+    v_actual_deduct INTEGER;
+    v_new_permanent INTEGER;
+    v_payment_id UUID;
+BEGIN
+    -- 1. Idempotency check: has this refund already been processed?
+    SELECT id INTO v_existing_refund
+    FROM payment_records
+    WHERE stripe_refund_id = p_refund_id
+    LIMIT 1;
+
+    IF FOUND THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_processed', true,
+            'existing_payment_id', v_existing_refund
+        );
+    END IF;
+
+    -- 2. Lock and read user profile
+    SELECT id, credits_permanent, credits_monthly
+    INTO v_profile
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'user_not_found'
+        );
+    END IF;
+
+    -- 3. Calculate actual deduction (cap at current balance, never go negative)
+    v_actual_deduct := LEAST(p_credits_to_deduct, v_profile.credits_permanent);
+    v_new_permanent := v_profile.credits_permanent - v_actual_deduct;
+
+    -- 4. Deduct permanent credits
+    IF v_actual_deduct > 0 THEN
+        UPDATE profiles
+        SET credits_permanent = v_new_permanent,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = p_user_id;
+    END IF;
+
+    -- 5. Insert refund payment_record
+    INSERT INTO payment_records (
+        user_id, payment_type, amount_usd, currency, status,
+        stripe_payment_intent_id, stripe_refund_id,
+        refunded_amount, refunded_at, metadata
+    ) VALUES (
+        p_user_id,
+        'refund',
+        p_amount_usd,
+        p_currency,
+        'refunded',
+        p_payment_intent_id,
+        p_refund_id,
+        p_amount_usd,
+        CURRENT_TIMESTAMP,
+        p_metadata || jsonb_build_object(
+            'credits_deducted', v_actual_deduct,
+            'credits_requested', p_credits_to_deduct,
+            'remaining_permanent', v_new_permanent
+        )
+    )
+    RETURNING id INTO v_payment_id;
+
+    -- 6. Insert credit_transaction audit record
+    IF v_actual_deduct > 0 THEN
+        INSERT INTO credit_transactions (
+            user_id,
+            transaction_type,
+            amount,
+            balance_monthly_after,
+            balance_permanent_after,
+            description,
+            idempotency_key,
+            metadata
+        ) VALUES (
+            p_user_id,
+            'refund_reversal',
+            -v_actual_deduct,
+            v_profile.credits_monthly,
+            v_new_permanent,
+            'Credits reversed due to refund (refund_id: ' || p_refund_id || ')',
+            'refund_' || p_refund_id,
+            jsonb_build_object(
+                'refund_id', p_refund_id,
+                'payment_intent_id', p_payment_intent_id,
+                'payment_record_id', v_payment_id
+            )
+        );
+    END IF;
+
+    -- 7. Update original payment record's refunded_amount/refunded_at
+    UPDATE payment_records
+    SET refunded_amount = COALESCE(refunded_amount, 0) + p_amount_usd,
+        refunded_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE stripe_payment_intent_id = p_payment_intent_id
+      AND payment_type != 'refund';
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'already_processed', false,
+        'credits_deducted', v_actual_deduct,
+        'credits_requested', p_credits_to_deduct,
+        'remaining_permanent', v_new_permanent,
+        'payment_id', v_payment_id
+    );
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION process_credit_refund IS 'WS5: 原子处理积分购买退费 (幂等+积分扣回+审计)';
+
+
 -- ============================================================================
 -- 提交事务
 -- ============================================================================

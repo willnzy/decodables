@@ -808,36 +808,10 @@ class StripeWebhookService:
         """
         Handle charge.refunded webhook event.
 
-        P0-010 fix: Process refunds via webhook for transaction safety.
-        This ensures refund is only recorded in database after Stripe confirms it.
-
-        Event structure:
-        {
-            "id": "evt_xxx",
-            "type": "charge.refunded",
-            "data": {
-                "object": {
-                    "id": "ch_xxx",
-                    "payment_intent": "pi_xxx",
-                    "amount_refunded": 2000,  # cents
-                    "currency": "usd",
-                    "refunds": {
-                        "data": [{
-                            "id": "re_xxx",
-                            "amount": 2000,
-                            "reason": "requested_by_customer",
-                            "status": "succeeded",
-                            "created": 1234567890
-                        }]
-                    },
-                    "metadata": {
-                        "user_id": "user_xxx",
-                        "admin_id": "user_admin_xxx",  # Who initiated refund
-                        "refund_reason": "Customer request"
-                    }
-                }
-            }
-        }
+        WS5: Processes refunds with credit/subscription recovery:
+        - Credit purchase refund → deduct permanent credits (atomic RPC)
+        - Subscription refund → terminate subscription (reuse WS4 RPC)
+        - Unknown type → record-only (no credit/tier changes)
 
         Args:
             event: Stripe charge.refunded webhook event
@@ -849,138 +823,393 @@ class StripeWebhookService:
         charge_id = charge.get("id", "unknown")
         payment_intent_id = charge.get("payment_intent", "unknown")
 
-        # Extract refund data
+        # Extract refund data — sort by created DESC to get latest (#17)
         refunds = charge.get("refunds", {}).get("data", [])
         if not refunds:
             logger.error(f"[Webhook] charge.refunded event has no refunds data: charge={charge_id}")
             return {"status": "error", "error": "no_refunds_data"}
 
-        # Process the latest refund (Stripe sends charge.refunded for each refund)
-        refund = refunds[0]
+        refund = sorted(refunds, key=lambda r: r.get("created", 0), reverse=True)[0]
         refund_id = refund.get("id", "unknown")
         amount_refunded = refund.get("amount", 0)  # cents
         currency = charge.get("currency", "usd")
         refund_reason = refund.get("reason", "unknown")
         refund_status = refund.get("status", "unknown")
 
-        # Get metadata
-        metadata = charge.get("metadata", {})
-        user_id = metadata.get("user_id")
-        admin_id = metadata.get("admin_id")
-        custom_reason = metadata.get("refund_reason", refund_reason)
+        # Get charge metadata (set by create_refund via Charge.modify)
+        charge_metadata = charge.get("metadata", {})
+        user_id = charge_metadata.get("user_id")
+        admin_id = charge_metadata.get("admin_id")
+        custom_reason = charge_metadata.get("refund_reason", refund_reason)
 
         logger.info(
             f"[Webhook] Processing charge.refunded: "
             f"refund_id={refund_id}, charge={charge_id}, pi={payment_intent_id}, "
-            f"amount=${amount_refunded/100:.2f} {currency}, user={user_id}"
+            f"amount=${amount_refunded / 100:.2f} {currency}, user={user_id}"
         )
 
         # Validate refund status
         if refund_status != "succeeded":
-            logger.warning(f"[Webhook] Refund {refund_id} not succeeded (status={refund_status}), skipping database update")
-            return {"status": "ok", "action": "refund_not_succeeded", "refund_id": refund_id, "refund_status": refund_status}
+            logger.warning(f"[Webhook] Refund {refund_id} not succeeded (status={refund_status}), skipping")
+            return {"status": "ok", "action": "refund_not_succeeded", "refund_id": refund_id}
 
         # Validate user_id
         if not user_id:
             logger.error(f"[Webhook] charge.refunded missing user_id in metadata: refund={refund_id}")
             return {"status": "error", "error": "missing_user_id", "refund_id": refund_id}
 
-        # Check if refund already recorded (idempotency)
-        try:
-            existing = self.payment_repo.get_by_payment_intent_and_type(payment_intent_id, "refund")
-            if existing and any(r.get("metadata", {}).get("stripe_refund_id") == refund_id for r in existing):
-                logger.info(f"[Webhook] Refund {refund_id} already recorded, skipping")
-                return {"status": "ok", "action": "already_recorded", "refund_id": refund_id}
-        except Exception as e:
-            logger.warning(f"[Webhook] Failed to check existing refund: {e}")
+        # ============================================
+        # Determine original transaction type
+        # ============================================
+        plan_type = charge_metadata.get("plan_type")
+        original_record = None
 
-        # Record refund in payment_records table
+        if not plan_type:
+            # Fallback: look up original payment_record to determine type
+            try:
+                original_record = await self.payment_repo.get_by_stripe_id(payment_intent_id)
+                if original_record:
+                    orig_type = original_record.get("payment_type", "")
+                    if orig_type == "credit_purchase":
+                        plan_type = "credit_purchase"
+                    elif orig_type in ("sub_payment", "subscription"):
+                        plan_type = "subscription"
+                    logger.info(f"[Webhook] Determined plan_type='{plan_type}' from payment_records for pi={payment_intent_id}")
+            except Exception as e:
+                logger.warning(f"[Webhook] Failed to look up original payment record: {e}")
+
+        # ============================================
+        # Route: Credit purchase refund → deduct credits
+        # ============================================
+        if plan_type and plan_type.startswith("credits_"):
+            # It's a credit purchase refund — deduct credits atomically
+            return await self._process_credit_refund(
+                user_id=user_id,
+                payment_intent_id=payment_intent_id,
+                refund_id=refund_id,
+                amount_refunded=amount_refunded,
+                currency=currency,
+                charge_id=charge_id,
+                admin_id=admin_id,
+                custom_reason=custom_reason,
+                plan_type=plan_type,
+                original_record=original_record,
+            )
+
+        if plan_type == "credit_purchase":
+            return await self._process_credit_refund(
+                user_id=user_id,
+                payment_intent_id=payment_intent_id,
+                refund_id=refund_id,
+                amount_refunded=amount_refunded,
+                currency=currency,
+                charge_id=charge_id,
+                admin_id=admin_id,
+                custom_reason=custom_reason,
+                plan_type=plan_type,
+                original_record=original_record,
+            )
+
+        # ============================================
+        # Route: Subscription refund → terminate subscription
+        # ============================================
+        if plan_type in ("subscription", "t2", "t3"):
+            return await self._process_subscription_refund(
+                user_id=user_id,
+                payment_intent_id=payment_intent_id,
+                refund_id=refund_id,
+                amount_refunded=amount_refunded,
+                currency=currency,
+                charge_id=charge_id,
+                admin_id=admin_id,
+                custom_reason=custom_reason,
+            )
+
+        # ============================================
+        # Route: Unknown type — record-only (no credit/tier changes)
+        # ============================================
+        return await self._process_generic_refund(
+            user_id=user_id,
+            payment_intent_id=payment_intent_id,
+            refund_id=refund_id,
+            amount_refunded=amount_refunded,
+            currency=currency,
+            charge_id=charge_id,
+            admin_id=admin_id,
+            custom_reason=custom_reason,
+        )
+
+    async def _process_credit_refund(
+        self,
+        user_id: str,
+        payment_intent_id: str,
+        refund_id: str,
+        amount_refunded: int,
+        currency: str,
+        charge_id: str,
+        admin_id: Optional[str],
+        custom_reason: str,
+        plan_type: str,
+        original_record: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Process credit purchase refund: deduct permanent credits atomically.
+
+        WS5: Uses process_credit_refund RPC for idempotency + atomic credit deduction.
+        """
+        # Calculate credits to deduct
+        credits_to_deduct = 0
+
+        if original_record:
+            original_amount = original_record.get("amount_usd", 0)
+            original_credits = original_record.get("metadata", {}).get("credits_amount", 0)
+            # For partial refund, pro-rate credits
+            if original_amount > 0 and original_credits > 0:
+                refund_ratio = (amount_refunded / 100) / original_amount
+                credits_to_deduct = round(refund_ratio * original_credits)
+            elif original_credits > 0:
+                credits_to_deduct = original_credits
+        else:
+            # Estimate from plan_type
+            from domains.billing.payment_service import get_credits_amount
+            credits_to_deduct = get_credits_amount(plan_type)
+
         try:
-            refund_record = await self.payment_repo.create(
+            rpc_result = await self.payment_repo.process_credit_refund(
+                user_id=user_id,
+                credits_to_deduct=credits_to_deduct,
+                payment_intent_id=payment_intent_id,
+                refund_id=refund_id,
+                amount_usd=amount_refunded / 100,
+                currency=currency.upper(),
+                metadata={
+                    "charge_id": charge_id,
+                    "refund_reason": custom_reason,
+                    "admin_id": admin_id,
+                    "plan_type": plan_type,
+                },
+            )
+
+            if rpc_result.get("already_processed"):
+                logger.info(f"[Webhook] Credit refund {refund_id} already processed (idempotent)")
+                return {"status": "ok", "action": "already_processed", "refund_id": refund_id}
+
+            actual_deducted = rpc_result.get("credits_deducted", 0)
+            remaining = rpc_result.get("remaining_permanent", 0)
+            logger.info(
+                f"[Webhook] Credit refund processed: refund_id={refund_id}, "
+                f"deducted={actual_deducted} credits, remaining={remaining}"
+            )
+
+        except Exception as e:
+            logger.critical(
+                f"[Webhook] CRITICAL: Credit refund RPC failed! "
+                f"refund_id={refund_id}, pi={payment_intent_id}, user={user_id}, "
+                f"amount=${amount_refunded / 100:.2f}, error={e}"
+            )
+            return {"status": "error", "error": "credit_refund_failed", "refund_id": refund_id}
+
+        # Non-critical: activity log + audit
+        await self._log_refund_activity(
+            user_id, refund_id, payment_intent_id, charge_id,
+            amount_refunded, currency, custom_reason, admin_id, "credit_refund",
+        )
+
+        return {
+            "status": "ok", "action": "credit_refund_processed",
+            "refund_id": refund_id, "user_id": user_id,
+            "credits_deducted": rpc_result.get("credits_deducted", 0),
+            "amount": amount_refunded / 100,
+        }
+
+    async def _process_subscription_refund(
+        self,
+        user_id: str,
+        payment_intent_id: str,
+        refund_id: str,
+        amount_refunded: int,
+        currency: str,
+        charge_id: str,
+        admin_id: Optional[str],
+        custom_reason: str,
+    ) -> Dict[str, Any]:
+        """
+        Process subscription refund: terminate subscription + record refund.
+
+        WS5: Reuses WS4 process_subscription_termination RPC for tier downgrade + credits clear.
+        """
+        # Step 1: Terminate subscription atomically (tier→t1 + credits_monthly=0)
+        try:
+            await self.subscription_repo.terminate_subscription(
+                user_id=user_id,
+                new_tier="t1",
+                reason="refund",
+                subscription_status="canceled",
+                metadata={
+                    "refund_id": refund_id,
+                    "payment_intent_id": payment_intent_id,
+                    "source": "stripe_refund_webhook",
+                    "admin_id": admin_id,
+                },
+            )
+            logger.info(f"[Webhook] Subscription terminated due to refund for user {user_id}")
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to terminate subscription on refund for user {user_id}: {e}")
+            # Continue to record refund even if termination fails
+
+        # Step 2: Record refund payment record (with stripe_refund_id for idempotency)
+        try:
+            await self.payment_repo.create(
                 user_id=user_id,
                 stripe_payment_intent_id=payment_intent_id,
-                amount_usd=amount_refunded / 100,  # Convert cents to dollars
-                currency=currency,
+                amount_usd=amount_refunded / 100,
+                currency=currency.upper(),
                 status="refunded",
                 payment_type="refund",
                 metadata={
                     "stripe_refund_id": refund_id,
-                    "stripe_charge_id": charge_id,
+                    "charge_id": charge_id,
                     "refund_reason": custom_reason,
-                    "refund_status": refund_status,
                     "admin_id": admin_id,
-                    "refunded_at": refund.get("created")
-                }
+                    "refund_type": "subscription",
+                },
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to record subscription refund {refund_id}: {e}")
+
+        # Non-critical: activity log + audit
+        await self._log_refund_activity(
+            user_id, refund_id, payment_intent_id, charge_id,
+            amount_refunded, currency, custom_reason, admin_id, "subscription_refund",
+        )
+
+        return {
+            "status": "ok", "action": "subscription_refund_processed",
+            "refund_id": refund_id, "user_id": user_id,
+            "amount": amount_refunded / 100,
+        }
+
+    async def _process_generic_refund(
+        self,
+        user_id: str,
+        payment_intent_id: str,
+        refund_id: str,
+        amount_refunded: int,
+        currency: str,
+        charge_id: str,
+        admin_id: Optional[str],
+        custom_reason: str,
+    ) -> Dict[str, Any]:
+        """
+        Record-only refund for unknown transaction types.
+
+        No credit/tier changes — just create the refund payment_record.
+        """
+        try:
+            await self.payment_repo.create(
+                user_id=user_id,
+                stripe_payment_intent_id=payment_intent_id,
+                amount_usd=amount_refunded / 100,
+                currency=currency.upper(),
+                status="refunded",
+                payment_type="refund",
+                metadata={
+                    "stripe_refund_id": refund_id,
+                    "charge_id": charge_id,
+                    "refund_reason": custom_reason,
+                    "admin_id": admin_id,
+                    "refund_type": "unknown",
+                },
             )
 
-            if not refund_record:
-                raise Exception("Payment record creation returned None")
+            # Also update original record's refunded fields
+            await self.payment_repo.update_refund_status(
+                payment_intent_id, amount_refunded / 100,
+            )
 
-            logger.info(f"[Webhook] Recorded refund {refund_id} in payment_records: record_id={refund_record.get('id')}")
-
+            logger.info(f"[Webhook] Recorded generic refund {refund_id} for user {user_id}")
         except Exception as e:
             logger.critical(
-                f"🔴 CRITICAL: Stripe refund webhook processing failed!\n"
-                f"Refund ID: {refund_id}\n"
-                f"Payment Intent: {payment_intent_id}\n"
-                f"User ID: {user_id}\n"
-                f"Amount: ${amount_refunded/100:.2f} {currency}\n"
-                f"Admin ID: {admin_id}\n"
-                f"Reason: {custom_reason}\n"
-                f"Database Error: {e}\n"
-                f"⚠️  MANUAL ACTION REQUIRED: Record this refund in payment_records table!"
+                f"[Webhook] CRITICAL: Failed to record refund {refund_id} "
+                f"for user {user_id}: {e}"
             )
-            return {"status": "error", "error": "database_failure", "refund_id": refund_id, "details": str(e)}
+            return {"status": "error", "error": "database_failure", "refund_id": refund_id}
 
-        # Log admin operation if admin_id exists
+        await self._log_refund_activity(
+            user_id, refund_id, payment_intent_id, charge_id,
+            amount_refunded, currency, custom_reason, admin_id, "generic_refund",
+        )
+
+        return {
+            "status": "ok", "action": "refund_recorded",
+            "refund_id": refund_id, "user_id": user_id,
+            "amount": amount_refunded / 100,
+        }
+
+    async def _log_refund_activity(
+        self,
+        user_id: str,
+        refund_id: str,
+        payment_intent_id: str,
+        charge_id: str,
+        amount_refunded: int,
+        currency: str,
+        reason: str,
+        admin_id: Optional[str],
+        refund_type: str,
+    ) -> None:
+        """Non-critical: log refund to activity log and admin audit trail."""
+        # Activity log
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=user_id,
+                action="refund_processed",
+                metadata={
+                    "refund_id": refund_id,
+                    "amount": amount_refunded / 100,
+                    "refund_type": refund_type,
+                },
+            )
+
+        # Admin audit log
         if admin_id:
             try:
-                from infrastructure.repositories.admin_repository import AdminRepository
-                admin_repo = AdminRepository(self.db_client)
+                from infrastructure.repositories.admin_repository import SupabaseAdminUsersRepository
+                admin_repo = SupabaseAdminUsersRepository(self.db_client)
                 await admin_repo.admin_log_operation(
                     admin_id=admin_id,
                     operation_type="refund_processed",
-                    description=f"Processed Stripe refund ${amount_refunded/100:.2f} for user {user_id}",
+                    target_user_id=user_id,
+                    details=f"Refund ${amount_refunded / 100:.2f} ({refund_type})",
                     metadata={
                         "refund_id": refund_id,
                         "payment_intent_id": payment_intent_id,
+                        "charge_id": charge_id,
                         "amount": amount_refunded / 100,
                         "currency": currency,
-                        "reason": custom_reason,
-                        "user_id": user_id
-                    }
+                        "reason": reason,
+                    },
                 )
             except Exception as e:
                 logger.warning(f"[Webhook] Failed to log admin operation: {e}")
 
-        # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
+        # Webhook audit trail
         try:
             from infrastructure.logging.activity_logger import log_webhook_operation
             await log_webhook_operation(
                 operation_type="webhook_refund_process",
                 source="stripe",
                 target_user_id=user_id,
-                details=f"Refund processed: ${amount_refunded/100:.2f} {currency.upper()} (reason: {custom_reason})",
+                details=f"Refund ${amount_refunded / 100:.2f} {currency.upper()} ({refund_type})",
                 metadata={
                     "refund_id": refund_id,
                     "payment_intent_id": payment_intent_id,
                     "charge_id": charge_id,
+                    "refund_type": refund_type,
                     "amount": amount_refunded / 100,
-                    "currency": currency,
-                    "refund_reason": custom_reason,
-                    "refund_status": refund_status,
                     "admin_id": admin_id,
+                    "reason": reason,
                 },
             )
         except Exception as e:
             logger.warning(f"Failed to log webhook operation: {e}")
-
-        return {
-            "status": "ok",
-            "action": "refund_processed",
-            "refund_id": refund_id,
-            "payment_intent_id": payment_intent_id,
-            "user_id": user_id,
-            "amount": amount_refunded / 100,
-            "currency": currency
-        }

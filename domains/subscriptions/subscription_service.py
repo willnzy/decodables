@@ -207,7 +207,10 @@ class SubscriptionService:
         if pi.status != 'succeeded':
             raise PaymentStatusException(status=pi.status)
 
-        refundable_amount = pi.amount_received if hasattr(pi, 'amount_received') else pi.amount
+        # WS5 (#18): Use amount - amount_refunded to correctly calculate refundable amount
+        # amount_received doesn't account for previous partial refunds
+        already_refunded = getattr(pi, 'amount_refunded', 0) or 0
+        refundable_amount = pi.amount - already_refunded
 
         if refundable_amount <= 0:
             raise AlreadyRefundedException()

@@ -193,6 +193,124 @@ class SupabasePaymentRepository:
         return result.data[0] if result.data else None
 
     @retry_on_network_error()
+    async def get_by_payment_intent_and_type(
+        self,
+        stripe_payment_intent_id: str,
+        payment_type: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get payment record by Stripe payment intent ID and payment type.
+
+        Used for:
+        - Refund idempotency check (type='refund')
+        - Original transaction lookup (type='credit_purchase' / 'sub_payment')
+
+        Args:
+            stripe_payment_intent_id: Stripe payment intent ID
+            payment_type: Payment type to filter
+
+        Returns:
+            Payment record dict or None
+        """
+        result = await self.client.table("payment_records").select("*").eq(
+            "stripe_payment_intent_id", stripe_payment_intent_id
+        ).eq(
+            "payment_type", payment_type
+        ).limit(1).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
+    async def update_refund_status(
+        self,
+        stripe_payment_intent_id: str,
+        refunded_amount: float,
+    ) -> bool:
+        """
+        Update original payment record with refund information.
+
+        Sets refunded_amount and refunded_at on the original (non-refund) record
+        matching the given payment_intent_id.
+
+        Args:
+            stripe_payment_intent_id: Stripe payment intent ID of original transaction
+            refunded_amount: Total refunded amount in USD
+
+        Returns:
+            True if a record was updated
+        """
+        try:
+            result = await self.client.table("payment_records").update({
+                "refunded_amount": refunded_amount,
+                "refunded_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq(
+                "stripe_payment_intent_id", stripe_payment_intent_id
+            ).neq(
+                "payment_type", "refund"
+            ).execute()
+
+            return bool(result.data)
+        except Exception as e:
+            logger.error(f"[PaymentRepo] Failed to update refund status for {stripe_payment_intent_id}: {e}")
+            return False
+
+    @retry_on_network_error()
+    async def process_credit_refund(
+        self,
+        user_id: str,
+        credits_to_deduct: int,
+        payment_intent_id: str,
+        refund_id: str,
+        amount_usd: float,
+        currency: str = "USD",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Atomically process a credit purchase refund via RPC.
+
+        Executes in single transaction:
+        - Idempotency check (stripe_refund_id)
+        - Deduct permanent credits (capped at balance)
+        - Insert credit_transaction audit record
+        - Insert refund payment_record
+        - Update original payment record refunded_amount/refunded_at
+
+        Args:
+            user_id: User ID
+            credits_to_deduct: Credits to reverse (pre-calculated, possibly pro-rated)
+            payment_intent_id: Original Stripe payment intent ID
+            refund_id: Stripe refund ID (idempotency key)
+            amount_usd: Refund amount in USD
+            currency: Currency code
+            metadata: Additional metadata
+
+        Returns:
+            RPC result dict
+
+        Raises:
+            Exception on RPC failure
+        """
+        result = await self.client.rpc("process_credit_refund", {
+            "p_user_id": user_id,
+            "p_credits_to_deduct": credits_to_deduct,
+            "p_payment_intent_id": payment_intent_id,
+            "p_refund_id": refund_id,
+            "p_amount_usd": amount_usd,
+            "p_currency": currency,
+            "p_metadata": metadata or {},
+        }).execute()
+
+        if not result.data:
+            raise Exception("RPC process_credit_refund returned no data")
+
+        data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else {}
+        if not data.get("success"):
+            raise Exception(f"RPC failed: {data.get('error', 'Unknown error')}")
+
+        return data
+
+    @retry_on_network_error()
     async def get_revenue_stats(
         self,
         start_date: Optional[str] = None,

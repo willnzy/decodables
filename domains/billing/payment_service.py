@@ -880,7 +880,8 @@ class PaymentService:
         payment_intent_id: str,
         amount_cents: Optional[int] = None,
         reason: str = "requested_by_customer",
-        timeout: int = 30
+        timeout: int = 30,
+        metadata: Optional[Dict[str, str]] = None,
     ) -> Dict:
         """
         Create a refund for a payment.
@@ -890,11 +891,12 @@ class PaymentService:
             amount_cents: Amount to refund in cents (None for full refund)
             reason: Refund reason
             timeout: Request timeout in seconds
+            metadata: WS5 (#16): Metadata to attach to charge for webhook processing
 
         Returns:
             Dict with success, refund, and error
         """
-        return create_refund(payment_intent_id, amount_cents, reason, timeout)
+        return create_refund(payment_intent_id, amount_cents, reason, timeout, metadata)
 
     def get_payment_intent_details(self, payment_intent_id: str, timeout: int = 30):
         """
