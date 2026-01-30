@@ -791,15 +791,19 @@ class Container:
         - Centralizes service construction
         - Enables testing with mock services
         - Used by user generations API for history management
+
+        WS-4: Injects IGenerationHistoryRepository instead of raw db_client
         """
         from domains.generation import GenerationHistoryService
+        from infrastructure.repositories.generation_history_repository import SupabaseGenerationHistoryRepository
 
         if 'generation_history_service' not in self._services:
             db = await get_async_db_client()
             if db is None:
                 raise RuntimeError("Database client not available")
 
-            self._services['generation_history_service'] = GenerationHistoryService(db_client=db)
+            history_repo = SupabaseGenerationHistoryRepository(db)
+            self._services['generation_history_service'] = GenerationHistoryService(repository=history_repo)
         return self._services['generation_history_service']
 
     async def get_generation_service(self):
@@ -811,10 +815,13 @@ class Container:
         - GenerationService requires BillingService, AssetRepository, TierService
         - Enables testing with mock services
         - Used by user generate images API
+
+        WS-4: Injects IAssetRepository + IGenerationHistoryRepository interfaces
         """
         from domains.generation import GenerationService
         from infrastructure.repositories.asset_repository import SupabaseAssetRepository
         from infrastructure.repositories.config_repository import SupabaseConfigRepository
+        from infrastructure.repositories.generation_history_repository import SupabaseGenerationHistoryRepository
         from domains.identity.tier_service import TierService
 
         if 'generation_service' not in self._services:
@@ -826,12 +833,14 @@ class Container:
             asset_repository = SupabaseAssetRepository(db)
             config_repo = SupabaseConfigRepository(db)
             tier_service = TierService(config_repo)
+            history_repo = SupabaseGenerationHistoryRepository(db)
 
             self._services['generation_service'] = GenerationService(
                 billing_service=billing_service,
                 asset_repository=asset_repository,
                 tier_service=tier_service,
                 db_client=db,
+                history_repository=history_repo,
             )
         return self._services['generation_service']
 

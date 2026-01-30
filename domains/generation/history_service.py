@@ -1,15 +1,19 @@
 """Generation History Service - Generation history management.
 
 @module domains.generation.history_service
-@version 3.0.0
+@version 3.1.0
 
 Service for managing user generation history with complete DDD architecture.
 Handles queries, updates, and deletions with ownership verification.
+
+Changes:
+- v3.1.0: WS-4 - Depend on IGenerationHistoryRepository interface instead of raw db_client
 """
 
 import logging
 from typing import Dict, List, Any
 
+from domains.generation.repository import IGenerationHistoryRepository
 from infrastructure.logging.activity_logger import log_activity_async
 
 logger = logging.getLogger(__name__)
@@ -41,19 +45,20 @@ class GenerationHistoryService:
     - Batch delete generations with optional favorite preservation
     - Activity logging for all mutations
 
-    Architecture: API → GenerationHistoryService → Database
+    Architecture: API → GenerationHistoryService → IGenerationHistoryRepository
 
     v3.0.0: Created for DDD compliance (GEN-CRITICAL-1 fix)
+    v3.1.0: WS-4 - Depend on IGenerationHistoryRepository interface
     """
 
-    def __init__(self, db_client):
+    def __init__(self, repository: IGenerationHistoryRepository):
         """
         Initialize GenerationHistoryService.
 
         Args:
-            db_client: Supabase database client
+            repository: Generation history repository interface
         """
-        self.db = db_client
+        self._repo = repository
 
     # ==========================================
     # Public Methods
@@ -84,32 +89,12 @@ class GenerationHistoryService:
             >>> generations, total = await service.get_history("user_123", limit=20, offset=0)
             >>> print(f"Found {total} generations, showing {len(generations)}")
         """
-        # Build query
-        query = self.db.table("user_generations") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .order("created_at", desc=True)
-
-        if favorites_only:
-            query = query.eq("is_favorited", True)
-
-        # Get paginated data
-        result = await query.range(offset, offset + limit - 1).execute()
-
-        # Get total count with same filters
-        count_query = self.db.table("user_generations") \
-            .select("id", count="exact") \
-            .eq("user_id", user_id)
-
-        if favorites_only:
-            count_query = count_query.eq("is_favorited", True)
-
-        count_result = await count_query.execute()
-
-        # Extract count
-        total_count = count_result.count if count_result.count is not None else len(result.data or [])
-
-        return result.data or [], total_count
+        return await self._repo.get_history(
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            favorites_only=favorites_only,
+        )
 
     async def update_generation(
         self,
@@ -138,16 +123,16 @@ class GenerationHistoryService:
             ...     {"is_favorited": True}
             ... )
         """
-        result = await self.db.table("user_generations") \
-            .update(updates) \
-            .eq("id", generation_id) \
-            .eq("user_id", user_id) \
-            .execute()
+        result = await self._repo.update_generation(
+            user_id=user_id,
+            generation_id=generation_id,
+            updates=updates,
+        )
 
-        if not result.data:
+        if not result:
             raise GenerationNotFoundException("Generation not found")
 
-        return result.data[0]
+        return result
 
     async def delete_generation(
         self,
@@ -171,14 +156,12 @@ class GenerationHistoryService:
             >>> deleted_id = await service.delete_generation("user_123", "gen_abc")
             >>> print(f"Deleted: {deleted_id}")
         """
-        result = await self.db.table("user_generations") \
-            .delete() \
-            .eq("id", generation_id) \
-            .eq("user_id", user_id) \
-            .execute()
+        deleted = await self._repo.delete_generation(
+            user_id=user_id,
+            generation_id=generation_id,
+        )
 
-        # Check if record was actually deleted
-        if not result.data:
+        if not deleted:
             raise GenerationNotFoundException("Generation not found")
 
         # Log activity
@@ -205,15 +188,10 @@ class GenerationHistoryService:
             >>> deleted_count = await service.batch_delete("user_123", keep_favorites=True)
             >>> print(f"Deleted {deleted_count} generations")
         """
-        query = self.db.table("user_generations") \
-            .delete() \
-            .eq("user_id", user_id)
-
-        if keep_favorites:
-            query = query.eq("is_favorited", False)
-
-        result = await query.execute()
-        deleted_count = len(result.data or [])
+        deleted_count = await self._repo.batch_delete(
+            user_id=user_id,
+            keep_favorites=keep_favorites,
+        )
 
         # Log activity
         await log_activity_async(user_id, "batch_delete_generations", {

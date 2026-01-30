@@ -20,7 +20,7 @@ from io import BytesIO
 from typing import List, Optional
 
 from shared.ai.zine_generator import create_foldable_book
-from infrastructure.repositories.project_repository import SupabaseProjectRepository
+from domains.creation.repository import IProjectRepository
 from infrastructure.logging.activity_logger import log_activity_async
 
 logger = logging.getLogger(__name__)
@@ -60,12 +60,12 @@ class PdfGenerationService:
     - project_repository: Access to project data
     """
 
-    def __init__(self, project_repository: SupabaseProjectRepository):
+    def __init__(self, project_repository: IProjectRepository):
         """
         Initialize PdfGenerationService.
 
         Args:
-            project_repository: Repository for project data access
+            project_repository: Repository interface for project data access
         """
         self.project_repo = project_repository
 

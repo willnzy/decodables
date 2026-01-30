@@ -335,3 +335,21 @@ class IProjectRepository(ABC):
     ) -> List[Dict[str, Any]]:
         """Get starred projects."""
         pass
+
+    @abstractmethod
+    async def update_thumbnail(
+        self, project_id: str, thumbnail_url: str,
+    ) -> bool:
+        """
+        Update project thumbnail URL.
+
+        WS-4: Added to replace direct table() calls in ThumbnailService.
+
+        Args:
+            project_id: Project ID
+            thumbnail_url: New thumbnail URL
+
+        Returns:
+            True if updated successfully
+        """
+        pass

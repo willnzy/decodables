@@ -177,7 +177,9 @@ class ThumbnailService:
         thumbnail_url: str,
     ) -> bool:
         """
-        Update project's thumbnail_url in database.
+        Update project's thumbnail_url in database via repository.
+
+        WS-4: Uses IProjectRepository.update_thumbnail() instead of direct table() call.
 
         Args:
             project_id: Project ID to update
@@ -187,14 +189,12 @@ class ThumbnailService:
             True if update successful, False otherwise
         """
         try:
-            # Use AsyncClient to update project directly
-            # Note: We update directly via table to avoid loading full project
-            result = await self._storage.table("projects").update({
-                "thumbnail_url": thumbnail_url,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", project_id).execute()
+            updated = await self._project_repo.update_thumbnail(
+                project_id=project_id,
+                thumbnail_url=thumbnail_url,
+            )
 
-            if result.data:
+            if updated:
                 logger.info(f"[Thumbnail] Updated project {project_id[:8]}... thumbnail_url")
                 return True
             else:

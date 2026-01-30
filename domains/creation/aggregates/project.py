@@ -18,6 +18,7 @@ from ..value_objects import (
     CanvasSize,
     ProjectMetadata,
 )
+from ..exceptions import PageNotFoundException
 
 
 @dataclass
@@ -148,16 +149,19 @@ class Project:
         tags: Optional[List[str]] = None,
         is_public: Optional[bool] = None
     ):
-        """Update project metadata."""
+        """Update project metadata (creates new immutable ProjectMetadata)."""
+        updates = {}
         if title is not None:
-            self.metadata.title = title
+            updates["title"] = title
         if description is not None:
-            self.metadata.description = description
+            updates["description"] = description
         if tags is not None:
-            self.metadata.tags = tags
+            updates["tags"] = tuple(tags)
         if is_public is not None:
-            self.metadata.is_public = is_public
-        self.updated_at = datetime.utcnow()
+            updates["is_public"] = is_public
+        if updates:
+            self.metadata = self.metadata.replace(**updates)
+            self.updated_at = datetime.utcnow()
 
     def add_page(self, canvas_data: Optional[Dict[str, Any]] = None) -> Page:
         """
@@ -216,7 +220,7 @@ class Project:
                 page.updated_at = datetime.utcnow()
                 self.updated_at = datetime.utcnow()
                 return
-        raise ValueError(f"Page not found: {page_id}")
+        raise PageNotFoundException(page_id=page_id, project_id=self.project_id)
 
     def get_page(self, page_id: str) -> Optional[Page]:
         """Get a page by ID."""
@@ -270,7 +274,7 @@ class Project:
             "user_id": self.owner_id,  # API uses 'user_id' not 'owner_id'
             "title": self.metadata.title,
             "description": self.metadata.description,
-            "tags": self.metadata.tags,
+            "tags": list(self.metadata.tags),
             "is_public": self.metadata.is_public,
             "thumbnail_url": self.metadata.thumbnail_url,
             "canvas_size": self.canvas_size.to_string(),

@@ -25,7 +25,6 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
-from infrastructure.repositories import SupabaseAssetRepository
 from shared.ai.image_generator import generate_8_images
 from infrastructure.task_queue import task_queue
 from infrastructure.monitoring.analytics_tracker import track_ai_generation
@@ -37,6 +36,7 @@ from application.services.generation_helpers import (
     build_generation_record,
 )
 from core.utils.validation import validate_reference_image_url
+from domains.generation.repository import IAssetRepository, IGenerationHistoryRepository
 
 if TYPE_CHECKING:
     from domains.identity.tier_service import TierService
@@ -74,17 +74,19 @@ class GenerationService:
     - Track analytics
     - Handle errors and timeouts with automatic refunds
 
-    Architecture: API → GenerationService → (BillingService, AssetRepository, AI API)
+    Architecture: API → GenerationService → (BillingService, IAssetRepository, AI API)
 
     v1.0.0: Created for DDD compliance (GI-CRITICAL-1 fix)
+    v1.2.0: WS-4 - Depend on IAssetRepository interface, not concrete implementation
     """
 
     def __init__(
         self,
         billing_service,  # BillingService (injected via DI)
-        asset_repository: SupabaseAssetRepository,  # Asset storage
+        asset_repository: IAssetRepository,  # Asset storage (interface)
         tier_service: "TierService" = None,  # TierService for queue priority
-        db_client = None,  # AsyncClient for direct database operations
+        db_client = None,  # AsyncClient for RPC calls (task queue)
+        history_repository: Optional[IGenerationHistoryRepository] = None,  # Generation history
     ):
         """
         Initialize Generation Service.
@@ -93,12 +95,14 @@ class GenerationService:
             billing_service: BillingService for credit operations
             asset_repository: Repository for asset storage
             tier_service: TierService for queue priority configuration
-            db_client: AsyncClient for direct database operations (RPC calls, generation history)
+            db_client: AsyncClient for RPC calls (task queue operations)
+            history_repository: Repository for generation history (WS-4)
         """
         self.billing_service = billing_service
         self.asset_repo = asset_repository
         self._tier_service = tier_service
-        self.db_client = db_client or asset_repository.client  # Use repo's client if not provided
+        self.db_client = db_client or asset_repository.client  # For RPC calls
+        self._history_repo = history_repository
 
     async def generate_images_sync(
         self,
@@ -573,7 +577,7 @@ class GenerationService:
                 tz=timezone
             )
 
-            # Save to user_generations table
+            # Save to user_generations table via repository
             try:
                 generation_record = build_generation_record(
                     user_id=user_id,
@@ -598,7 +602,11 @@ class GenerationService:
                     generation_time_ms=generation_time_ms // len(urls) if len(urls) > 1 else generation_time_ms,
                     timezone=timezone,
                 )
-                await self.db_client.table("user_generations").insert(generation_record).execute()
+                if self._history_repo:
+                    await self._history_repo.insert_generation(generation_record)
+                else:
+                    # Fallback: direct db insert (backwards compatibility)
+                    await self.db_client.table("user_generations").insert(generation_record).execute()
             except Exception as e:
                 logger.warning(f"Failed to save generation history: {e}")
 

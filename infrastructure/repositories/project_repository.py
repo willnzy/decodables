@@ -452,10 +452,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
     def _map_to_project(self, row: dict) -> Project:
         """Map database row to Project."""
+        raw_tags = row.get("tags", [])
         metadata = ProjectMetadata(
             title=row.get("title", "Untitled"),
             description=row.get("description"),
-            tags=row.get("tags", []),
+            tags=tuple(raw_tags) if isinstance(raw_tags, list) else raw_tags,
             thumbnail_url=row.get("thumbnail_url"),
             is_public=row.get("is_public", False),
             is_template=row.get("is_template", False),
@@ -518,7 +519,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             "user_id": project.owner_id,
             "title": project.metadata.title,
             "description": project.metadata.description,
-            "tags": project.metadata.tags,
+            "tags": list(project.metadata.tags),
             "thumbnail_url": project.metadata.thumbnail_url,
             "is_public": project.metadata.is_public,
             "is_template": project.metadata.is_template,
@@ -1322,3 +1323,26 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         ).range(offset, offset + limit - 1).execute()
 
         return result.data or []
+
+    @retry_on_network_error()
+    async def update_thumbnail(
+        self, project_id: str, thumbnail_url: str,
+    ) -> bool:
+        """
+        Update project thumbnail URL.
+
+        WS-4: Added to replace direct table() calls in ThumbnailService.
+
+        Args:
+            project_id: Project ID
+            thumbnail_url: New thumbnail URL
+
+        Returns:
+            True if updated successfully
+        """
+        result = await self.client.table("projects").update({
+            "thumbnail_url": thumbnail_url,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", project_id).execute()
+
+        return bool(result.data)

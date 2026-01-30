@@ -106,6 +106,11 @@ class AssetId:
 class CanvasSize:
     """
     Canvas dimensions value object.
+
+    Constraints:
+    - Width and height must be positive integers
+    - Maximum 4096px per dimension (browser canvas rendering limit,
+      also enforced by CHECK constraint in DB schema)
     """
     width: int
     height: int
@@ -142,11 +147,27 @@ class CanvasSize:
 
     @classmethod
     def from_string(cls, size_str: str) -> "CanvasSize":
-        """Create from string like '1080x1080'."""
+        """
+        Create from string like '1080x1080'.
+
+        Args:
+            size_str: Size string in format 'WIDTHxHEIGHT'
+
+        Returns:
+            CanvasSize instance
+
+        Raises:
+            ValueError: If format is invalid or values are not numeric
+        """
         parts = size_str.split("x")
         if len(parts) != 2:
             raise ValueError(f"Invalid size format: {size_str}")
-        return cls(int(parts[0]), int(parts[1]))
+        try:
+            width = int(parts[0])
+            height = int(parts[1])
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid size values (must be integers): {size_str}")
+        return cls(width, height)
 
     # Common presets
     @classmethod
@@ -162,16 +183,17 @@ class CanvasSize:
         return cls(2480, 3508)  # 300 DPI
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProjectMetadata:
     """
-    Project metadata value object.
+    Project metadata value object (immutable).
 
-    Stores additional project information.
+    WS-4 (1B#10): Made frozen=True for proper DDD value object semantics.
+    Updates create new instances via replace() method.
     """
     title: str
     description: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
+    tags: tuple = ()  # Use tuple for immutability (frozen dataclass)
     thumbnail_url: Optional[str] = None
     is_public: bool = False
     is_template: bool = False
@@ -179,12 +201,24 @@ class ProjectMetadata:
     view_count: int = 0
     like_count: int = 0
 
+    def replace(self, **kwargs) -> "ProjectMetadata":
+        """
+        Create a new ProjectMetadata with updated fields.
+
+        Returns:
+            New ProjectMetadata instance with specified fields updated.
+        """
+        from dataclasses import asdict
+        current = asdict(self)
+        current.update(kwargs)
+        return ProjectMetadata(**current)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
             "title": self.title,
             "description": self.description,
-            "tags": self.tags,
+            "tags": list(self.tags),
             "thumbnail_url": self.thumbnail_url,
             "is_public": self.is_public,
             "is_template": self.is_template,
@@ -196,10 +230,11 @@ class ProjectMetadata:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectMetadata":
         """Create from dictionary."""
+        tags = data.get("tags", [])
         return cls(
             title=data.get("title", "Untitled"),
             description=data.get("description"),
-            tags=data.get("tags", []),
+            tags=tuple(tags) if isinstance(tags, list) else tags,
             thumbnail_url=data.get("thumbnail_url"),
             is_public=data.get("is_public", False),
             is_template=data.get("is_template", False),

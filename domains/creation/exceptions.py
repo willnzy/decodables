@@ -131,3 +131,24 @@ class CanvasOperationException(CreationException):
             },
             **kwargs
         )
+
+
+class PageNotFoundException(CreationException):
+    """
+    WS-4 (1B#28): Raised when a page is not found in a project.
+    Replaces ValueError in aggregate methods.
+    """
+    status_code = 404
+    default_code = ErrorCode.RESOURCE_NOT_FOUND
+    default_message = "Page not found"
+
+    def __init__(self, page_id: str, project_id: str = None, **kwargs):
+        message = f"Page {page_id} not found"
+        if project_id:
+            message += f" in project {project_id}"
+
+        super().__init__(
+            message=message,
+            context={"page_id": page_id, "project_id": project_id},
+            **kwargs
+        )
