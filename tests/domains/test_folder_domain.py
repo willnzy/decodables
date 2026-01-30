@@ -325,12 +325,24 @@ class TestFolderService:
     @pytest.mark.asyncio
     async def test_delete_folder(self, folder_service, mock_repository):
         """Test deleting a folder."""
+        from domains.folder.entities import Folder, FolderType, FolderColor
+
+        folder = Folder(
+            id="folder_id",
+            workspace_id="ws_123",
+            folder_type=FolderType.PROJECT,
+            name="Test",
+            color=FolderColor.SLATE,
+            sort_order=0,
+            created_by="user",
+        )
+        mock_repository.get_by_id.return_value = folder
         mock_repository.delete.return_value = True
 
         result = await folder_service.delete_folder("folder_id")
 
         assert result is True
-        mock_repository.delete.assert_called_once_with("folder_id")
+        mock_repository.delete.assert_called_once_with("folder_id", workspace_id="ws_123")
 
     @pytest.mark.asyncio
     async def test_update_folder(self, folder_service, mock_repository):

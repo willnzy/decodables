@@ -165,7 +165,7 @@ class TestProcessRefund:
         mock_pi.customer = "cus_test"
         mock_pi.status = "succeeded"
         mock_pi.amount = 1000
-        mock_pi.amount_received = 1000
+        mock_pi.amount_refunded = 0  # WS5 (#18): amount - amount_refunded = refundable
         mock_get_pi.return_value = mock_pi
 
         # Mock refund
@@ -478,7 +478,7 @@ class TestDowngradeSubscription:
         mock_updated.current_period_end = 1234567890
         mock_modify.return_value = mock_updated
 
-        with patch.dict('os.environ', {'STRIPE_STARTER_MONTHLY_PRICE_ID': 'price_starter'}):
+        with patch.dict('domains.billing.payment_service.PRICE_MAP', {'t2': 'price_starter'}):
             result = await service.downgrade_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
@@ -545,7 +545,8 @@ class TestProcessRefundAdditional:
         mock_pi = MagicMock()
         mock_pi.customer = "cus_test"
         mock_pi.status = "succeeded"
-        mock_pi.amount_received = 0  # Already refunded
+        mock_pi.amount = 1000
+        mock_pi.amount_refunded = 1000  # Already fully refunded
         mock_get_pi.return_value = mock_pi
 
         with pytest.raises(AlreadyRefundedException):
@@ -577,7 +578,7 @@ class TestProcessRefundAdditional:
         mock_pi.customer = "cus_test"
         mock_pi.status = "succeeded"
         mock_pi.amount = 1000
-        mock_pi.amount_received = 1000
+        mock_pi.amount_refunded = 0
         mock_get_pi.return_value = mock_pi
 
         with pytest.raises(InvalidRefundAmountException):
@@ -611,7 +612,7 @@ class TestProcessRefundAdditional:
         mock_pi.customer = "cus_test"
         mock_pi.status = "succeeded"
         mock_pi.amount = 1000
-        mock_pi.amount_received = 1000
+        mock_pi.amount_refunded = 0
         mock_get_pi.return_value = mock_pi
 
         mock_create_refund.return_value = {"success": False, "error": "Stripe error"}
@@ -979,7 +980,7 @@ class TestDowngradeSubscriptionAdditional:
         mock_updated.current_period_end = 1234567890
         mock_modify.return_value = mock_updated
 
-        with patch.dict('os.environ', {'STRIPE_STARTER_MONTHLY_PRICE_ID': 'price_starter'}):
+        with patch.dict('domains.billing.payment_service.PRICE_MAP', {'t2': 'price_starter'}):
             result = await service.downgrade_user_subscription(
                 user_id="user-123",
                 user_code="ABC123",
