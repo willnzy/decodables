@@ -69,6 +69,10 @@ TIER_MONTHLY_PRICES = {
     TIER_T4: 0.0,   # Enterprise Plan - custom pricing
 }
 
+# Signup bonus credits (FALLBACK only — use tier_service.get_signup_bonus())
+# Authoritative source: database system_configs table
+SIGNUP_BONUS_CREDITS = 100
+
 # Trial period configuration (can be overridden via system_configs)
 DEFAULT_TRIAL_DURATION_DAYS = 30  # Free tier users get 30-day trial with full access
 

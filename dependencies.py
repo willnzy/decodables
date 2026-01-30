@@ -202,7 +202,7 @@ async def get_current_user(authorization: str = Header(None)):
             )
 
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
-    # This ensures new users get their 50 signup bonus credits instantly,
+    # This ensures new users get their signup bonus credits instantly,
     # without waiting for the Clerk webhook to be processed
     #
     # Architecture: Webhook-First with Graceful Fallback
@@ -262,9 +262,22 @@ async def get_current_user(authorization: str = Header(None)):
             display_name=username or first_name or email.split("@")[0] if email else None
         )
         
+        # Get signup bonus from TierService (centralized config)
+        signup_bonus = 0
+        try:
+            from container import Container
+            tier_service = await Container()._get_or_create_tier_service()
+            signup_bonus = await tier_service.get_signup_bonus()
+        except Exception as e:
+            logger.warning(f"Failed to get signup bonus from TierService in JIT path: {e}")
+            from domains.identity.constants import SIGNUP_BONUS_CREDITS
+            signup_bonus = SIGNUP_BONUS_CREDITS
+
         # Idempotent create: safe even if webhook creates user simultaneously
         # Returns (profile, was_created) - was_created=True if we created it
-        profile, was_created = await user_repo.create_or_get(user_profile, source='jit')
+        profile, was_created = await user_repo.create_or_get(
+            user_profile, source='jit', signup_bonus=signup_bonus
+        )
         
         if was_created:
             # JIT successfully created user (webhook hadn't arrived)

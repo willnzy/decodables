@@ -111,26 +111,28 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
     async def create_or_get(
         self,
         user_profile: UserProfile,
-        source: str
+        source: str,
+        signup_bonus: int = 0,
     ) -> Tuple[UserProfile, bool]:
         """
         Create user or get existing (idempotent operation).
-        
+
         Uses database-level atomic operation (RPC) to ensure thread-safety
         and avoid race conditions between Webhook and JIT creation.
-        
+
         Business Pattern: Stripe Idempotency Pattern
         Reference: https://stripe.com/docs/api/idempotent_requests
-        
+
         Args:
             user_profile: The UserProfile to create
             source: Creation source ('webhook' or 'jit')
-        
+            signup_bonus: Signup bonus credits — 调用方应从 TierService 获取后传入
+
         Returns:
             Tuple of (UserProfile, was_created)
             - was_created=True: User was newly created by this call
             - was_created=False: User already existed
-        
+
         Implementation:
         - Calls PostgreSQL RPC function create_user_idempotent()
         - RPC uses SELECT FOR UPDATE to prevent race conditions
@@ -148,6 +150,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
                 'p_last_name': user_profile.last_name,
                 'p_avatar_url': user_profile.avatar_url,
                 'p_display_name': user_profile.display_name,
+                'p_signup_bonus': signup_bonus,
             }).execute()
             
             if not result.data:
@@ -549,7 +552,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         timezone_str: str = "UTC",
-        signup_bonus: int = 100,
+        signup_bonus: int = 0,
     ) -> Optional[Dict[str, Any]]:
         """
         Create new user profile with signup bonus.
@@ -562,7 +565,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             first_name: First name
             last_name: Last name
             timezone_str: User timezone
-            signup_bonus: Signup bonus credits (default 100, from system_configs via TierService)
+            signup_bonus: Signup bonus credits — 必须由调用方从 TierService 获取后传入，不硬编码
 
         Returns:
             Created profile dict

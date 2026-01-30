@@ -144,22 +144,30 @@ class ClerkWebhookService:
             display_name=username or first_name or email.split("@")[0]
         )
         
+        # Get signup bonus from TierService (centralized config)
+        signup_bonus = 0
+        if self.tier_service:
+            try:
+                signup_bonus = await self.tier_service.get_signup_bonus()
+            except Exception as e:
+                logger.warning(f"Failed to get signup bonus from TierService: {e}")
+                from domains.identity.constants import SIGNUP_BONUS_CREDITS
+                signup_bonus = SIGNUP_BONUS_CREDITS
+
         # Idempotent create: safe even if JIT already created the user
         # Returns (profile, was_created) - was_created=False if JIT beat us
         profile, was_created = await self.user_repo.create_or_get(
             user_profile,
-            source='webhook'
+            source='webhook',
+            signup_bonus=signup_bonus,
         )
-        
+
         if was_created:
             # Webhook successfully created user (normal case)
             logger.info(
                 f"✅ Webhook created user {user_id}. "
-                f"Signup bonus (50 credits) was granted by RPC."
+                f"Signup bonus ({signup_bonus} credits) was granted by RPC."
             )
-            
-            # ✅ HOTFIX: 注册奖励已在 create_user_idempotent() RPC 中发放
-            # 无需再次调用 _grant_signup_bonus()（会导致重复发放 100 credits）
             
             status_result = {"status": "processed", "was_created": True}
         else:
@@ -173,7 +181,7 @@ class ClerkWebhookService:
             status_result = {"status": "duplicate", "was_created": False, "reason": "jit_created"}
         
         # Note: Signup bonus is granted in create_user_idempotent() RPC
-        # by setting credits_permanent=50, so no need to grant again
+        # via p_signup_bonus parameter (value from TierService)
 
         # v3.33: Create default workspace and apply preset tags for new users
         if was_created:
