@@ -109,7 +109,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         """Update existing project."""
         try:
             data = self._map_to_row(project)
-            data["updated_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
             result = await self.client.table("projects").update(data).eq(
                 "id", project.project_id
@@ -166,7 +166,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         try:
             query = self.client.table("projects").select("*").eq(
                 "user_id", owner_id
-            ).neq("status", ProjectStatus.DELETED.value).order(
+            ).eq("is_deleted", False).neq("status", ProjectStatus.DELETED.value).order(
                 "updated_at", desc=True
             ).range(offset, offset + limit - 1)
 
@@ -259,7 +259,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 "page_number": page.page_number,
                 "canvas_data": json.dumps(page.canvas_data) if page.canvas_data else None,
                 "thumbnail_url": page.thumbnail_url,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
             await self.client.table("project_pages").upsert(
@@ -289,7 +289,7 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             return []
 
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             batch_data = [
                 {
                     "page_id": page.page_id,
@@ -401,9 +401,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             collaborators=row.get("collaborators", []),
             canvas_data=canvas_data,
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
             # v3.33 Phase 2.6: Folder organization and starring
             folder_id=row.get("folder_id"),
             is_starred=row.get("is_starred", False),
@@ -426,9 +426,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             canvas_data=canvas_data,
             thumbnail_url=row.get("thumbnail_url"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
         )
 
     def _map_to_row(self, project: Project) -> dict:

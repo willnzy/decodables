@@ -490,10 +490,13 @@ class BaseRepository(ABC, Generic[T]):
             Count of matching records
         """
         try:
+            # Use count="exact" for efficient server-side counting
             if include_deleted:
-                query = self._query_all("id")
+                query = self.client.table(self.table_name).select("id", count="exact")
             else:
-                query = self._query_active_only("id")
+                query = self.client.table(self.table_name).select(
+                    "id", count="exact"
+                ).eq("is_deleted", False)
 
             # Apply filters
             if filters:
@@ -501,7 +504,7 @@ class BaseRepository(ABC, Generic[T]):
                     query = query.eq(key, value)
 
             result = await query.execute()
-            return len(result.data) if result.data else 0
+            return result.count if result.count else 0
 
         except Exception as e:
             logger.error(f"Error counting {self.table_name} records: {e}")

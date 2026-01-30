@@ -204,10 +204,10 @@ class AssetsService:
         except Exception:
             return {"valid": False, "error": "Invalid URL"}
 
-        # Accessibility check
+        # Accessibility check (async to avoid blocking event loop)
         try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.head(url, follow_redirects=True)
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http_client:
+                response = await http_client.head(url, follow_redirects=True)
                 content_type = response.headers.get('content-type', '')
 
                 return {
@@ -450,10 +450,10 @@ class AssetsService:
         # 1. SSRF validation
         self._validate_url_safe(url)
 
-        # 2. Check URL accessibility
+        # 2. Check URL accessibility (async to avoid blocking event loop)
         try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.head(url, follow_redirects=True)
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http_client:
+                response = await http_client.head(url, follow_redirects=True)
                 if response.status_code != 200:
                     raise UrlNotAccessibleException(status_code_http=response.status_code)
 
@@ -526,10 +526,10 @@ class AssetsService:
             AssetNotFoundException: If asset not found
         """
         result = await self.repository.increment_asset_usage(asset_id, user_id)
-        if not result:
+        if result is None:
             raise AssetNotFoundException(asset_id=asset_id)
 
-        return result.get("usage_count", 0)
+        return result
 
     async def restore_asset(
         self,

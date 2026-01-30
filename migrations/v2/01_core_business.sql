@@ -3319,6 +3319,137 @@ COMMENT ON FUNCTION get_dashboard_stats IS 'WS3: Dashboard 统计信息 (项目/
 
 
 -- ============================================================================
+-- WS5: increment_asset_usage 原子操作
+-- ============================================================================
+
+-- Atomic increment of asset usage_count (prevents race conditions)
+CREATE OR REPLACE FUNCTION increment_asset_usage(
+    p_asset_id UUID,
+    p_user_id TEXT
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_new_count INTEGER;
+BEGIN
+    UPDATE assets
+    SET usage_count = COALESCE(usage_count, 0) + 1
+    WHERE id = p_asset_id AND user_id = p_user_id AND is_deleted = false
+    RETURNING usage_count INTO v_new_count;
+
+    IF NOT FOUND THEN
+        RETURN -1;  -- Asset not found or not owned by user
+    END IF;
+
+    RETURN v_new_count;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION increment_asset_usage IS 'WS5: 原子递增素材使用次数';
+
+
+-- ============================================================================
+-- WS5: delete_tag_atomic - 原子删除标签 + 关联
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION delete_tag_atomic(
+    p_tag_id UUID
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Step 1: Soft delete the tag
+    UPDATE tags SET is_active = false WHERE id = p_tag_id;
+
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+
+    -- Step 2: Remove project associations
+    DELETE FROM project_tags WHERE tag_id = p_tag_id;
+
+    -- Step 3: Remove asset associations
+    DELETE FROM user_asset_tags WHERE tag_id = p_tag_id;
+
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION delete_tag_atomic IS 'WS5: 原子删除标签及其所有关联';
+
+
+-- ============================================================================
+-- WS5: set_project_tags_atomic - 原子替换项目标签
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION set_project_tags_atomic(
+    p_project_id UUID,
+    p_tag_ids UUID[],
+    p_user_id TEXT
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_count INTEGER := 0;
+    v_tag_id UUID;
+BEGIN
+    -- Step 1: Delete all existing tags for this project
+    DELETE FROM project_tags WHERE project_id = p_project_id;
+
+    -- Step 2: Insert new tags
+    IF p_tag_ids IS NOT NULL AND array_length(p_tag_ids, 1) > 0 THEN
+        FOREACH v_tag_id IN ARRAY p_tag_ids LOOP
+            INSERT INTO project_tags (project_id, tag_id, added_by)
+            VALUES (p_project_id, v_tag_id, p_user_id)
+            ON CONFLICT (project_id, tag_id) DO NOTHING;
+            v_count := v_count + 1;
+        END LOOP;
+    END IF;
+
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION set_project_tags_atomic IS 'WS5: 原子替换项目标签 (删除旧标签+插入新标签)';
+
+
+-- ============================================================================
+-- WS5: set_asset_tags_atomic - 原子替换素材标签
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION set_asset_tags_atomic(
+    p_asset_id UUID,
+    p_tag_ids UUID[],
+    p_user_id TEXT,
+    p_source TEXT DEFAULT 'manual'
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_count INTEGER := 0;
+    v_tag_id UUID;
+BEGIN
+    -- Step 1: Delete all existing tags for this asset
+    DELETE FROM user_asset_tags WHERE asset_id = p_asset_id;
+
+    -- Step 2: Insert new tags
+    IF p_tag_ids IS NOT NULL AND array_length(p_tag_ids, 1) > 0 THEN
+        FOREACH v_tag_id IN ARRAY p_tag_ids LOOP
+            INSERT INTO user_asset_tags (asset_id, tag_id, added_by, source)
+            VALUES (p_asset_id, v_tag_id, p_user_id, p_source)
+            ON CONFLICT (asset_id, tag_id) DO NOTHING;
+            v_count := v_count + 1;
+        END LOOP;
+    END IF;
+
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql VOLATILE
+SET search_path = 'public';
+
+COMMENT ON FUNCTION set_asset_tags_atomic IS 'WS5: 原子替换素材标签 (删除旧标签+插入新标签)';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;

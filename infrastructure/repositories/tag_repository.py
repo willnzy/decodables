@@ -217,24 +217,11 @@ class SupabaseTagRepository(ITagRepository):
 
     @retry_on_network_error()
     async def delete(self, tag_id: str) -> bool:
-        """Soft delete a tag."""
+        """Atomically soft delete a tag and remove all associations."""
         try:
-            # Soft delete (set is_active = False)
-            result = await self.client.table("tags")\
-                .update({"is_active": False})\
-                .eq("id", tag_id)\
-                .execute()
-
-            # Also delete associations (hard delete for join tables)
-            await self.client.table("project_tags")\
-                .delete()\
-                .eq("tag_id", tag_id)\
-                .execute()
-
-            await self.client.table("user_asset_tags")\
-                .delete()\
-                .eq("tag_id", tag_id)\
-                .execute()
+            result = await self.client.rpc("delete_tag_atomic", {
+                "p_tag_id": tag_id,
+            }).execute()
 
             return bool(result.data)
 
@@ -470,18 +457,17 @@ class SupabaseProjectTagRepository(IProjectTagRepository):
         tag_ids: List[str],
         user_id: str
     ) -> List[ProjectTag]:
-        """Set project's tags (replace all existing)."""
+        """Atomically set project's tags (replace all existing)."""
         try:
-            # Delete existing tags
-            await self.client.table("project_tags")\
-                .delete()\
-                .eq("project_id", project_id)\
-                .execute()
+            await self.client.rpc("set_project_tags_atomic", {
+                "p_project_id": project_id,
+                "p_tag_ids": tag_ids,
+                "p_user_id": user_id,
+            }).execute()
 
-            # Add new tags
+            # Return the newly set tags
             if tag_ids:
-                return await self.add_tags(project_id, tag_ids, user_id)
-
+                return await self.get_tags_for_project(project_id)
             return []
 
         except Exception as e:
@@ -634,18 +620,18 @@ class SupabaseAssetTagRepository(IAssetTagRepository):
         user_id: str,
         source: str = "manual"
     ) -> List[UserAssetTag]:
-        """Set asset's tags (replace all existing)."""
+        """Atomically set asset's tags (replace all existing)."""
         try:
-            # Delete existing tags
-            await self.client.table("user_asset_tags")\
-                .delete()\
-                .eq("asset_id", asset_id)\
-                .execute()
+            await self.client.rpc("set_asset_tags_atomic", {
+                "p_asset_id": asset_id,
+                "p_tag_ids": tag_ids,
+                "p_user_id": user_id,
+                "p_source": source,
+            }).execute()
 
-            # Add new tags
+            # Return the newly set tags
             if tag_ids:
-                return await self.add_tags(asset_id, tag_ids, user_id, source)
-
+                return await self.get_tags_for_asset(asset_id)
             return []
 
         except Exception as e:

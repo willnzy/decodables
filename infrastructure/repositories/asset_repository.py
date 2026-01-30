@@ -105,24 +105,28 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
     async def get_assets(
         self,
         user_id: str,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Get user assets (legacy, no pagination).
+        Get user assets with default limit.
 
         Args:
             user_id: User ID
             project_id: Optional project ID filter
+            limit: Maximum number of assets to return (default: 100)
 
         Returns:
             List of asset dicts
         """
-        query = self.client.table("assets").select("*").eq("user_id", user_id)
+        query = self.client.table("assets").select("*").eq(
+            "user_id", user_id
+        ).eq("is_deleted", False)
 
         if project_id:
             query = query.eq("project_id", project_id)
 
-        result = await query.order("created_at", desc=True).execute()
+        result = await query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
     @retry_on_network_error()
@@ -261,7 +265,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
     @retry_on_network_error()
     async def soft_delete_asset(self, asset_id: str, user_id: str) -> bool:
         """
-        Soft delete an asset (mark as deleted).
+        Soft delete an asset (mark as deleted with recovery window).
 
         Args:
             asset_id: Asset ID
@@ -270,8 +274,15 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             True if deleted
         """
+        from datetime import timedelta
+
+        now = datetime.now(timezone.utc)
+        recovery_expires = now + timedelta(days=30)
+
         result = await self.client.table("assets").update({
-            "is_deleted": True
+            "is_deleted": True,
+            "deleted_at": now.isoformat(),
+            "recovery_expires_at": recovery_expires.isoformat(),
         }).eq("id", asset_id).eq("user_id", user_id).execute()
 
         return len(result.data) > 0 if result.data else False
@@ -295,34 +306,27 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         return len(result.data) > 0 if result.data else False
 
     @retry_on_network_error()
-    async def increment_asset_usage(self, asset_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    async def increment_asset_usage(self, asset_id: str, user_id: str) -> Optional[int]:
         """
-        Increment usage count for an asset.
+        Atomically increment usage count for an asset.
+
+        Uses RPC function to prevent race conditions from concurrent increments.
 
         Args:
             asset_id: Asset ID
             user_id: User ID (for ownership check)
 
         Returns:
-            Updated asset dict with new usage_count
+            New usage count, or None if asset not found/not owned
         """
-        # Get current asset
-        get_result = await self.client.table("assets").select("usage_count").eq(
-            "id", asset_id
-        ).eq("user_id", user_id).single().execute()
+        result = await self.client.rpc("increment_asset_usage", {
+            "p_asset_id": asset_id,
+            "p_user_id": user_id,
+        }).execute()
 
-        if not get_result.data:
-            return None
-
-        current_count = get_result.data.get("usage_count", 0)
-        new_count = current_count + 1
-
-        # Update usage count
-        update_result = await self.client.table("assets").update({
-            "usage_count": new_count
-        }).eq("id", asset_id).eq("user_id", user_id).execute()
-
-        return update_result.data[0] if update_result.data else None
+        if result.data is not None and result.data != -1:
+            return result.data
+        return None
 
     # Legacy method removed - use list_deleted_recoverable() from BaseRepository instead
     # This automatically filters expired records and returns Entity + total count
