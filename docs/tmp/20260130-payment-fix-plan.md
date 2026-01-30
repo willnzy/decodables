@@ -3,7 +3,7 @@
 **创建日期**: 2026-01-30
 **关联审计报告**: `docs/tmp/20260130-payment-audit-report.md`
 **状态**: 待讨论确认
-**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正) → v3.4 二轮审计 (6 个新发现修正) → v3.5 三轮审计 (7 个新发现: 并发/幂等/配置)
+**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正) → v3.4 二轮审计 (6 个新发现修正) → v3.5 三轮审计 (7 个新发现: 并发/幂等/配置) → v3.6 方案-代码交叉验证 (5 个架构/规范问题)
 
 ---
 
@@ -26,7 +26,8 @@ CLAUDE.md 规定: "代码改动 = 业务代码 + 测试代码 (缺一不可)"。
 **`table("activity_logs")` 直接插入 — 共 9 处**:
 - `stripe_webhook_service.py`: 5 处 (lines 306, 427, 583, 700, 777)
 - `clerk_webhook_service.py`: 4 处 (lines 182, 343, 385, 416)
-- 迁移到: 新增 `ActivityLogRepository.log_activity()` 方法
+- 迁移到: **新建文件** `infrastructure/repositories/activity_log_repository.py` — `ActivityLogRepository.log_activity()` 方法
+  - ⚠️ **v3.6 审计发现**: 此文件是全新创建的 Repository，不属于现有文件修改。须纳入 WS2 文件清单
 
 **`table("profiles")` 直接操作 — 共 5 处** (v3.3 补充精确位置):
 - `stripe_webhook_service.py` line 490: `select("user_id").eq("stripe_customer_id", ...)` → `user_repo.get_by_stripe_customer_id()`
@@ -238,7 +239,7 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 
 **根因**: RC1 — 各层硬编码值，TierService 未注入
 **解决**: #36, #2, #29, #30, #42, #43, #28
-**文件**: 9 个
+**文件**: 10 个
 
 #### 核心思路
 
@@ -327,10 +328,20 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 
 - docstring "Grants 50" → "Grants signup bonus (configured in system_configs)"
 
+**10. `decodables/infrastructure/repositories/activity_log_repository.py`** — **新建文件** (v3.6 新增)
+
+- ⚠️ **v3.6 审计发现**: G2 要求迁移 9 处 `table("activity_logs").insert(...)` 到 Repository 层，但目标文件 `ActivityLogRepository` 未在任何 WS 文件清单中列出
+- **新建** `ActivityLogRepository` 类:
+  - `log_activity(user_id, action, details, ...)` 方法: 封装 `table("activity_logs").insert(...)`
+  - 统一 activity_logs 的插入接口
+- **Container**: 在 `container.py` 的 webhook service 工厂方法中注入 `activity_log_repo`
+- **调用方**: `stripe_webhook_service.py` (5 处) + `clerk_webhook_service.py` (4 处) 统一通过此 Repository 插入
+
 #### 验证
 
 - [ ] 全局搜索硬编码 `500`, `1000`, `50` (积分相关) — 确认全部替换
 - [ ] TierService 注入链完整: Container → Service → 使用
+- [ ] ActivityLogRepository 已创建，9 处直接 `table("activity_logs")` 已迁移
 - [ ] 后端 build 通过
 
 ---
@@ -375,10 +386,24 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 - 返回: JSONB `{success, already_processed, credits_monthly}`
 
 > ⚠️ **部署顺序**: 这两个 RPC 放在 `01_core_business.sql` 但 INSERT 到 `payment_records`（定义在 `03_infrastructure.sql`）。部署时必须先执行 `03` 再执行 `01`，与文件编号顺序相反。在 SQL 文件头部添加注释说明。
+>
+> ⚠️ **v3.6 补充 (架构决策)**: 跨文件 RPC 依赖使部署顺序脆弱。两种可选方案:
+> - **方案 A (当前选择)**: 保持 RPC 在 `01`，添加醒目注释 `-- DEPENDS ON: 03_infrastructure.sql (payment_records table)`，部署脚本/文档明确标注执行顺序为 `03 → 01 → 02`
+> - **方案 B (备选)**: 将涉及 `payment_records` INSERT 的 RPC 移到 `03_infrastructure.sql`。缺点是核心业务逻辑分散到基础设施文件
+> - **选择方案 A**: 保持逻辑内聚性 (核心业务 RPC 在核心业务文件)，通过注释和文档管控部署顺序
 
 **`add_credits_atomic` 增加幂等性** (解决 #26):
 - 在函数开头加 idempotency_key 查重逻辑
 - 参考已有 `deduct_credits_atomic` 的幂等实现
+- ⚠️ **v3.6 审计发现 (并发安全)**: `credit_transactions.idempotency_key` 当前**无 UNIQUE 约束**。仅靠 RPC 内 `SELECT` 查重在并发下不可靠 (两个请求同时 SELECT 到 0 条 → 都执行 INSERT)
+- **修复**: 在 `01_core_business.sql` 的 `credit_transactions` 表定义中新增:
+  ```sql
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_transactions_idempotency_key
+      ON credit_transactions(idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+  ```
+  - 使用**部分索引** (WHERE NOT NULL): 允许历史记录无 idempotency_key
+  - RPC 内使用 `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` 或 `SELECT FOR UPDATE` 替代单纯 `SELECT` 查重
 
 **`check_webhook_idempotency`** RPC (v3.5 新增 — 解决 P0-3):
 - ⚠️ **v3.5 审计发现 (P0)**: `stripe_webhook_service.py` line 107 调用 `rpc("check_webhook_idempotency")`，但 SQL 中**无此函数**。与 #25 同类问题
@@ -387,6 +412,16 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 - 原子执行: `INSERT INTO stripe_webhook_events (...) ON CONFLICT (event_id) DO NOTHING RETURNING ...`
 - 返回: `{idempotent: true/false}` — true = 已处理过 (跳过)，false = 首次处理 (继续)
 - 归属文件: **`03_infrastructure.sql`** (stripe_webhook_events 属于基础设施表)
+- ⚠️ **v3.6 审计发现 (方案完整性)**: `03_infrastructure.sql` 中**已存在** `p_start_webhook_processing` (line ~1638) 和 `p_complete_webhook_processing` (line ~1672) 两个 webhook 处理函数。与新建的 `check_webhook_idempotency` 的关系需明确:
+  - **`check_webhook_idempotency`**: 入口幂等性检查 (event_id 去重，判断是否首次处理)
+  - **`p_start_webhook_processing`**: 标记事件开始处理 (设置 processing 状态)
+  - **`p_complete_webhook_processing`**: 标记事件处理完成 (设置 completed 状态)
+  - **调用顺序**: `check_webhook_idempotency` → `p_start_webhook_processing` → 业务逻辑 → `p_complete_webhook_processing`
+  - **实施建议**: 可考虑将 `check_webhook_idempotency` 与 `p_start_webhook_processing` 合并为一个 RPC (check + start)，减少网络往返。合并后函数签名:
+    ```sql
+    p_check_and_start_webhook(p_event_id, p_event_type, p_payload)
+    → {already_processed: bool, started: bool}
+    ```
 
 **`admin_adjust_credits_atomic`** RPC (v3.5 新增 — 解决 P0-4):
 - ⚠️ **v3.5 审计发现 (P0)**: `admin_repository.py` line 64-91 的 `admin_adjust_credits()` 是非原子 Read-Modify-Write (无行级锁)，存在 Lost Update 竞态
@@ -653,9 +688,27 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 **2. `decodables/api/user/payment.py`**
 
 - ⚠️ **代码探查发现**: Payment API 使用 `PaymentService()` 直接实例化 (via `Depends(get_payment_service)`)，**不走 Container DI**
-- **策略**: 不改造 DI 路径，在 endpoint 层直接获取 user profile 的 `stripe_customer_id` 传给 `PaymentService`:
+- **策略**: 不改造 DI 路径，在 endpoint 层直接获取 user profile 的 `stripe_customer_id` 传给 `PaymentService`
+- ⚠️ **v3.6 审计发现 (方案完整性)**: endpoint 如何获取 `user_repo` 实例？当前 `payment.py` 无 `user_repo` 依赖注入
+- **获取路径** (两种方案):
+  - **方案 A (推荐)**: 通过 Container 获取:
+    ```python
+    from container import Container
+    container = Container()
+    user_repo = await container.get_user_repository()
+    ```
+  - **方案 B**: 新增 FastAPI Dependency:
+    ```python
+    async def get_user_repo():
+        db = await get_async_db_client()
+        return SupabaseUserRepository(db)
+    ```
+  - **选择方案 A**: 复用 Container 已有实例，避免重复创建 Repository
+- **完整示例**:
   ```python
   # checkout 端点内:
+  container = Container()
+  user_repo = await container.get_user_repository()
   user_profile = await user_repo.get_profile(user_id)
   stripe_customer_id = user_profile.get("stripe_customer_id")
   result = payment_service.create_checkout_session(
@@ -1036,6 +1089,16 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 | WS7d | ✅ 无问题 | - |
 | WS8 | ✅ 无问题 | - |
 
+### 4.6 方案-代码交叉验证 (v3.6 架构/规范审查)
+
+| # | 类型 | 涉及 WS | 问题 | 修正 |
+|---|------|---------|------|------|
+| 1 | 文件清单遗漏 | G2/WS2 | `ActivityLogRepository` 是新建文件，未列入 WS2 文件清单 | WS2 文件数 9→10，新增文件 10 `activity_log_repository.py` |
+| 2 | 架构决策 | WS3 | `01_core_business.sql` RPC 跨文件 INSERT 到 `03_infrastructure.sql` 的 `payment_records`，部署顺序脆弱 | 选择方案 A (保持逻辑内聚)，强化部署顺序文档: `03→01→02` |
+| 3 | 方案不完整 | WS6 | endpoint 使用 `user_repo.get_profile()` 但未说明如何获取 `user_repo` 实例 | 通过 `Container().get_user_repository()` 获取 |
+| 4 | 并发安全 | WS3 | `credit_transactions.idempotency_key` 无 UNIQUE 约束，RPC SELECT 查重在并发下不可靠 | 新增部分 UNIQUE 索引 (WHERE NOT NULL) + INSERT ON CONFLICT |
+| 5 | 方案不完整 | WS3 | `check_webhook_idempotency` 与已有 `p_start_webhook_processing`/`p_complete_webhook_processing` 关系未明确 | 明确调用顺序，建议合并为 `p_check_and_start_webhook` |
+
 ---
 
 ## 五、执行顺序与 Commit 规划
@@ -1045,7 +1108,7 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 | 顺序 | 工作流 | 解决问题 | 涉及文件数 |
 |------|--------|---------|-----------|
 | 1 | WS1: Schema 对齐 | #23, #24, #32 | 5 |
-| 2 | WS2: 配置集中化 + DI | #36, #2, #28, #29, #30, #42, #43 | 9 |
+| 2 | WS2: 配置集中化 + DI | #36, #2, #28, #29, #30, #42, #43 | 10 |
 | 3 | WS3: 原子 RPC | #25, #49, #26 | 6 |
 | 4 | WS4: 取消/降级完善 | #5, #7, #8, #9, #10 | 4 |
 | 5 | WS5: 退费完善 | #6, #14, #15, #16, #17, #18 | 5 |
@@ -1095,9 +1158,19 @@ fix(payment): WS7b - add invoice.payment_failed handler + startup validation (#3
 
 ---
 
-**文档版本**: v3.5
+**文档版本**: v3.6
 **最后更新**: 2026-01-30
 **状态**: 待讨论确认
+
+### v3.6 修正清单 (方案-代码交叉验证 — 5 个架构/规范问题)
+
+| 修正位置 | 修正内容 | 严重度 |
+|----------|---------|--------|
+| G2 + WS2 | `ActivityLogRepository` 是全新文件，补入 WS2 文件清单 (9→10)。明确新建路径 `infrastructure/repositories/activity_log_repository.py` | 🟡 P1 |
+| WS3 部署顺序 | 跨文件 RPC 依赖 (01 INSERT 到 03 的表)。选择方案 A: 保持逻辑内聚，强化注释 + 部署文档 `03→01→02` | 🟡 P1 |
+| WS6 文件 2 (`payment.py`) | endpoint `user_repo` 获取路径未指定。明确通过 `Container().get_user_repository()` 获取 | 🟡 P1 |
+| WS3 文件 1 (`01_core_business.sql`) | `credit_transactions.idempotency_key` 无 UNIQUE 约束 → 新增部分 UNIQUE 索引 + INSERT ON CONFLICT 替代 SELECT 查重 | 🟡 P1 |
+| WS3 新增 RPC (`check_webhook_idempotency`) | 与已有 `p_start_webhook_processing`/`p_complete_webhook_processing` 关系未明确 → 建议合并为 `p_check_and_start_webhook` | 🟢 P2 |
 
 ### v3.5 修正清单 (三轮审计 — 7 个新发现: 并发/幂等/配置)
 
