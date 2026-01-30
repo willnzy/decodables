@@ -121,11 +121,13 @@ class ProjectListResponse(BaseModel):
     Project list response (DDD compliant).
 
     P1-002 fix: Migrated from page-based to offset-based pagination.
+    WS11: Added has_more for frontend pagination alignment.
     """
     items: List[Dict[str, Any]]
     total: int
     offset: int
     limit: int
+    has_more: bool = False
 
 
 class ProjectDeleteResponse(BaseModel):
@@ -148,11 +150,12 @@ class ViewTypeCounts(BaseModel):
 
 
 class DashboardProjectsResponse(BaseModel):
-    """Dashboard projects response (P2-002)."""
+    """Dashboard projects response (P2-002). WS11: Added has_more."""
     items: List[Dict[str, Any]]
     total: int
     offset: int
     limit: int
+    has_more: bool = False
     view: str
     counts: Optional[ViewTypeCounts] = None
 
@@ -224,6 +227,7 @@ async def list_projects(
         total=result.total_count,
         offset=offset,
         limit=limit,
+        has_more=(offset + limit) < result.total_count,
     )
 
 
@@ -283,11 +287,15 @@ async def dashboard_projects(
             # P2-002: Return Pydantic model with counts for tab badges
             counts_data = result.data.get("counts")
             counts = ViewTypeCounts(**counts_data) if counts_data else None
+            resp_total = result.data.get("total", 0)
+            resp_offset = result.data.get("offset", offset)
+            resp_limit = result.data.get("limit", limit)
             return DashboardProjectsResponse(
                 items=result.data.get("items", []),
-                total=result.data.get("total", 0),
-                offset=result.data.get("offset", offset),
-                limit=result.data.get("limit", limit),
+                total=resp_total,
+                offset=resp_offset,
+                limit=resp_limit,
+                has_more=(resp_offset + resp_limit) < resp_total,
                 view=view,
                 counts=counts,
             )
@@ -353,6 +361,7 @@ async def list_deleted_projects(
         total=total,
         offset=offset,
         limit=limit,
+        has_more=(offset + limit) < total,
     )
 
 
@@ -389,11 +398,13 @@ async def list_starred_projects(
         limit=limit,
     )
 
+    total = len(items)
     return ProjectListResponse(
         items=items,
-        total=len(items),
+        total=total,
         offset=offset,
         limit=limit,
+        has_more=total >= limit,  # Heuristic: full page means likely more
     )
 
 
@@ -445,11 +456,13 @@ async def list_projects_by_folder(
         search=search,
     )
 
+    total = len(items)
     return ProjectListResponse(
         items=items,
-        total=len(items),
+        total=total,
         offset=offset,
         limit=limit,
+        has_more=total >= limit,
     )
 
 
