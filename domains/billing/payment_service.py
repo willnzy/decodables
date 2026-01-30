@@ -24,7 +24,9 @@ import stripe
 import os
 import logging
 import time
+import asyncio
 import hashlib
+import threading
 from functools import wraps
 from typing import Optional, Dict, Any, Callable
 
@@ -58,7 +60,9 @@ CREDITS_AMOUNT_MAP = {
 }
 
 # Coupon cache: discount_percent -> coupon_id
+# WS7a (#21): Thread lock protects concurrent cache access
 _coupon_cache: Dict[int, str] = {}
+_coupon_cache_lock = threading.Lock()
 
 
 # ==========================================
@@ -110,6 +114,52 @@ def retry_on_stripe_error(
                         )
                 except stripe.error.StripeError as e:
                     # Non-retryable Stripe errors
+                    logger.error(f"[Stripe] {func.__name__} failed (non-retryable): {e}")
+                    raise
+
+            raise last_exception
+
+        return wrapper
+    return decorator
+
+
+def async_retry_on_stripe_error(
+    max_retries: int = 3,
+    initial_delay: float = 0.5,
+    backoff_factor: float = 2.0,
+    retryable_errors: tuple = (
+        stripe.error.APIConnectionError,
+        stripe.error.RateLimitError,
+    )
+) -> Callable:
+    """
+    WS7a (#4): Async version of retry decorator using asyncio.sleep instead of time.sleep.
+
+    Use this for async contexts (e.g., FastAPI endpoints) to avoid blocking the event loop.
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except retryable_errors as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"[Stripe] {func.__name__} failed (attempt {attempt + 1}/{max_retries + 1}), "
+                            f"retrying in {delay:.1f}s: {e}"
+                        )
+                        await asyncio.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        logger.error(
+                            f"[Stripe] {func.__name__} failed after {max_retries + 1} attempts: {e}"
+                        )
+                except stripe.error.StripeError as e:
                     logger.error(f"[Stripe] {func.__name__} failed (non-retryable): {e}")
                     raise
 
@@ -204,16 +254,18 @@ def get_or_create_coupon(discount_percent: int) -> Optional[str]:
     if discount_percent <= 0 or discount_percent > 100:
         return None
 
-    # Check cache first
-    if discount_percent in _coupon_cache:
-        coupon_id = _coupon_cache[discount_percent]
-        # Verify coupon still exists in Stripe
-        try:
-            stripe.Coupon.retrieve(coupon_id)
-            return coupon_id
-        except stripe.error.InvalidRequestError:
-            # Coupon was deleted, remove from cache
-            del _coupon_cache[discount_percent]
+    # WS7a (#21): Thread-safe cache access
+    with _coupon_cache_lock:
+        # Check cache first
+        if discount_percent in _coupon_cache:
+            coupon_id = _coupon_cache[discount_percent]
+            # Verify coupon still exists in Stripe
+            try:
+                stripe.Coupon.retrieve(coupon_id)
+                return coupon_id
+            except stripe.error.InvalidRequestError:
+                # Coupon was deleted, remove from cache
+                del _coupon_cache[discount_percent]
 
     # Create new coupon with deterministic ID
     coupon_id = f"DISCOUNT_{discount_percent}_PERCENT"
@@ -222,7 +274,8 @@ def get_or_create_coupon(discount_percent: int) -> Optional[str]:
         # Try to retrieve existing coupon first
         try:
             coupon = stripe.Coupon.retrieve(coupon_id)
-            _coupon_cache[discount_percent] = coupon.id
+            with _coupon_cache_lock:
+                _coupon_cache[discount_percent] = coupon.id
             return coupon.id
         except stripe.error.InvalidRequestError:
             pass  # Coupon doesn't exist, create it
@@ -234,7 +287,8 @@ def get_or_create_coupon(discount_percent: int) -> Optional[str]:
             duration="once",
             name=f"{discount_percent}% Discount"
         )
-        _coupon_cache[discount_percent] = coupon.id
+        with _coupon_cache_lock:
+            _coupon_cache[discount_percent] = coupon.id
         logger.info(f"[Stripe] Created coupon: {coupon_id}")
         return coupon.id
 

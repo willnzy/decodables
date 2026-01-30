@@ -21,6 +21,8 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+from starlette.concurrency import run_in_threadpool
+
 from domains.subscriptions.exceptions import (
     UserNotFoundException,
     UserCodeMissingException,
@@ -197,8 +199,8 @@ class SubscriptionService:
         if not customer_id:
             raise NoStripeCustomerException()
 
-        # Fetch PaymentIntent details
-        pi = get_payment_intent_details(payment_intent_id)
+        # WS7a (#20): Wrap sync Stripe SDK call with run_in_threadpool
+        pi = await run_in_threadpool(get_payment_intent_details, payment_intent_id)
         if not pi:
             raise PaymentNotFoundException()
 
@@ -222,16 +224,14 @@ class SubscriptionService:
             if amount_cents > refundable_amount:
                 raise InvalidRefundAmountException(amount=amount_cents, refundable=refundable_amount)
 
-        # Execute refund with metadata for webhook processing (P0-010 fix)
-        result = create_refund(
+        # WS7a (#20): Wrap sync Stripe SDK call with run_in_threadpool
+        result = await run_in_threadpool(
+            create_refund,
             payment_intent_id,
-            amount_cents=amount_cents,
-            reason="requested_by_customer",
-            metadata={
-                "user_id": user_id,
-                "admin_id": admin_id,
-                "refund_reason": reason
-            }
+            amount_cents,
+            "requested_by_customer",
+            30,
+            {"user_id": user_id, "admin_id": admin_id, "refund_reason": reason},
         )
 
         if not result["success"]:
@@ -305,8 +305,8 @@ class SubscriptionService:
         if not customer_id:
             raise NoStripeCustomerException()
 
-        # Get subscription details
-        subscription_detail = get_subscription_details(subscription_id)
+        # WS7a (#20): Wrap sync Stripe SDK call
+        subscription_detail = await run_in_threadpool(get_subscription_details, subscription_id)
         if not subscription_detail:
             logger.error(f"[Admin] Subscription retrieve failed for {subscription_id}")
             raise SubscriptionNotFoundException()
@@ -320,8 +320,8 @@ class SubscriptionService:
         if not immediate and subscription_detail.cancel_at_period_end:
             raise AlreadyCancelScheduledException()
 
-        # Cancel subscription via Stripe
-        result = cancel_subscription(subscription_id, immediate=immediate)
+        # WS7a (#20): Wrap sync Stripe SDK call
+        result = await run_in_threadpool(cancel_subscription, subscription_id, immediate)
 
         if not result["success"]:
             logger.error(f"[Admin] Cancel subscription failed for {subscription_id}: {result['error']}")
@@ -518,7 +518,7 @@ class SubscriptionService:
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "t1"}
 
         # Case 2: Has Stripe customer - check for active subscription
-        subscriptions = get_customer_subscriptions(customer_id)
+        subscriptions = await run_in_threadpool(get_customer_subscriptions, customer_id)
         active_sub = next((sub for sub in subscriptions if sub.status in ['active', 'trialing']), None)
 
         if not active_sub:
@@ -528,14 +528,14 @@ class SubscriptionService:
 
         # Case 3: Has active subscription - cancel it
         if immediate:
-            result = cancel_subscription(active_sub.id, immediate=True)
+            result = await run_in_threadpool(cancel_subscription, active_sub.id, True)
             if not result["success"]:
                 logger.error(f"[Admin] Failed to cancel subscription {active_sub.id}: {result['error']}")
                 raise SubscriptionCancelFailedException()
 
             await _atomic_terminate(sub_id=active_sub.id, status="canceled")
         else:
-            result = cancel_subscription(active_sub.id, immediate=False)
+            result = await run_in_threadpool(cancel_subscription, active_sub.id, False)
             if not result["success"]:
                 logger.error(f"[Admin] Failed to schedule cancellation for {active_sub.id}: {result['error']}")
                 raise SubscriptionCancelFailedException()
@@ -582,7 +582,7 @@ class SubscriptionService:
         if not customer_id:
             raise NoStripeCustomerException()
 
-        subscriptions = get_customer_subscriptions(customer_id)
+        subscriptions = await run_in_threadpool(get_customer_subscriptions, customer_id)
         active_sub = next((sub for sub in subscriptions if sub.status in ['active', 'trialing']), None)
 
         if not active_sub:
@@ -594,14 +594,14 @@ class SubscriptionService:
             raise PriceIdNotConfiguredException(tier="t2")
 
         # WS4 (#10): Use proration instead of billing_cycle_anchor='now'
-        # billing_cycle_anchor='now' causes billing reset which is incorrect for downgrades
-        updated_sub = modify_subscription(
-            active_sub.id,
-            items=[{
-                "id": active_sub.items.data[0].id,
-                "price": t2_price_id,
-            }],
-            proration_behavior='create_prorations' if immediate else 'none',
+        # WS7a (#20): Wrap sync Stripe SDK call
+        proration = 'create_prorations' if immediate else 'none'
+        updated_sub = await run_in_threadpool(
+            lambda: modify_subscription(
+                active_sub.id,
+                items=[{"id": active_sub.items.data[0].id, "price": t2_price_id}],
+                proration_behavior=proration,
+            )
         )
 
         if not updated_sub:
@@ -720,7 +720,7 @@ class SubscriptionService:
             raise NoStripeCustomerException()
 
         # Find active subscription
-        subscriptions = get_customer_subscriptions(customer_id)
+        subscriptions = await run_in_threadpool(get_customer_subscriptions, customer_id)
         active_sub = next(
             (sub for sub in subscriptions if sub.status in ['active', 'trialing']),
             None,
@@ -733,14 +733,13 @@ class SubscriptionService:
         if not target_price_id:
             raise PriceIdNotConfiguredException(tier=target_tier)
 
-        # Modify subscription with proration
-        updated_sub = modify_subscription(
-            active_sub.id,
-            items=[{
-                "id": active_sub.items.data[0].id,
-                "price": target_price_id,
-            }],
-            proration_behavior='create_prorations',
+        # WS7a (#20): Wrap sync Stripe SDK call
+        updated_sub = await run_in_threadpool(
+            lambda: modify_subscription(
+                active_sub.id,
+                items=[{"id": active_sub.items.data[0].id, "price": target_price_id}],
+                proration_behavior='create_prorations',
+            )
         )
 
         if not updated_sub:

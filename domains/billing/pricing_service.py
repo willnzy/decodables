@@ -16,6 +16,8 @@ import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
+from starlette.concurrency import run_in_threadpool
+
 logger = logging.getLogger(__name__)
 
 
@@ -157,11 +159,14 @@ class PricingService:
     async def _fetch_all_plans(self) -> List[PricingPlan]:
         """Fetch all active pricing plans from database."""
         try:
-            response = self.db_client.table("pricing_plans")\
-                .select("*")\
-                .eq("is_active", True)\
-                .order("sort_order")\
-                .execute()
+            # WS7a (#37): Wrap sync DB call with run_in_threadpool to avoid blocking event loop
+            response = await run_in_threadpool(
+                lambda: self.db_client.table("pricing_plans")
+                    .select("*")
+                    .eq("is_active", True)
+                    .order("sort_order")
+                    .execute()
+            )
 
             if not response.data:
                 logger.warning("No pricing plans found in database")
@@ -196,12 +201,15 @@ class PricingService:
 
         # Fetch from database
         try:
-            response = self.db_client.table("pricing_plans")\
-                .select("*")\
-                .eq("plan_code", plan_code)\
-                .eq("is_active", True)\
-                .single()\
-                .execute()
+            # WS7a (#37): Wrap sync DB call with run_in_threadpool
+            response = await run_in_threadpool(
+                lambda: self.db_client.table("pricing_plans")
+                    .select("*")
+                    .eq("plan_code", plan_code)
+                    .eq("is_active", True)
+                    .single()
+                    .execute()
+            )
 
             if not response.data:
                 logger.warning(f"Pricing plan not found: {plan_code}")
@@ -285,14 +293,17 @@ class PricingService:
         """
         # Check for user-specific override first
         try:
-            override_response = self.db_client.table("user_price_overrides")\
-                .select("*, pricing_plans!inner(plan_code)")\
-                .eq("user_id", user_id)\
-                .eq("pricing_plans.plan_code", plan_code)\
-                .gte("valid_until", datetime.now(timezone.utc).isoformat())\
-                .or_("valid_until.is.null")\
-                .single()\
-                .execute()
+            # WS7a (#37): Wrap sync DB call with run_in_threadpool
+            override_response = await run_in_threadpool(
+                lambda: self.db_client.table("user_price_overrides")
+                    .select("*, pricing_plans!inner(plan_code)")
+                    .eq("user_id", user_id)
+                    .eq("pricing_plans.plan_code", plan_code)
+                    .gte("valid_until", datetime.now(timezone.utc).isoformat())
+                    .or_("valid_until.is.null")
+                    .single()
+                    .execute()
+            )
 
             if override_response.data:
                 logger.info(f"Using price override for user {user_id}, plan {plan_code}")
