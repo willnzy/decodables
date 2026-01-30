@@ -244,6 +244,135 @@ def run_webhook_retry():
     except Exception as e:
         logger.error(f"[{datetime.now()}] ❌ Webhook retry failed: {e}", exc_info=True)
 
+def run_credit_reconciliation():
+    """
+    Daily credit reconciliation task (WS7d, #38)
+
+    Checks for active subscription users (t2/t3) whose last monthly_reset
+    credit transaction is older than 32 days — indicating a missed refresh.
+
+    SAFETY: This task only LOGS anomalies and sends Sentry alerts.
+    It does NOT auto-fix. Admin must manually verify and issue credits
+    via the Admin API.
+
+    Schedule: 6:00 AM UTC daily
+    """
+    logger.info(f"[{datetime.now()}] 🔍 Starting credit reconciliation...")
+
+    import asyncio
+
+    async def _async_credit_reconciliation():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
+
+        db = await create_task_async_client()
+
+        try:
+            # 1. Find active subscription users (t2/t3)
+            active_result = await db.table("profiles").select(
+                "id, tier, email, subscription_status"
+            ).in_(
+                "tier", ["t2", "t3"]
+            ).eq(
+                "subscription_status", "active"
+            ).execute()
+
+            if not active_result.data:
+                logger.info("[Reconciliation] No active subscribers found")
+                return {"checked": 0, "anomalies": []}
+
+            anomalies = []
+            checked = 0
+
+            for user in active_result.data:
+                checked += 1
+                user_id = user["id"]
+                tier = user["tier"]
+
+                # 2. Check last monthly_reset transaction
+                tx_result = await db.table("credit_transactions").select(
+                    "created_at"
+                ).eq(
+                    "user_id", user_id
+                ).eq(
+                    "transaction_type", "monthly_reset"
+                ).order(
+                    "created_at", desc=True
+                ).limit(1).execute()
+
+                if not tx_result.data:
+                    # No monthly_reset ever — anomaly if subscription is active
+                    anomalies.append({
+                        "user_id": user_id,
+                        "tier": tier,
+                        "email": user.get("email"),
+                        "reason": "no_monthly_reset_found",
+                        "last_reset": None,
+                    })
+                    continue
+
+                last_reset_str = tx_result.data[0]["created_at"]
+                from datetime import datetime as dt
+                try:
+                    last_reset = dt.fromisoformat(last_reset_str.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    continue
+
+                # 3. Check if last reset is older than 32 days
+                age_days = (datetime.now(timezone.utc) - last_reset).days
+                if age_days > 32:
+                    anomalies.append({
+                        "user_id": user_id,
+                        "tier": tier,
+                        "email": user.get("email"),
+                        "reason": "stale_monthly_reset",
+                        "last_reset": last_reset_str,
+                        "days_since_reset": age_days,
+                    })
+
+            return {"checked": checked, "anomalies": anomalies}
+
+        finally:
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Reconciliation async client closed")
+
+    try:
+        result = asyncio.run(_async_credit_reconciliation())
+        checked = result["checked"]
+        anomalies = result["anomalies"]
+
+        if anomalies:
+            logger.warning(
+                f"[{datetime.now()}] ⚠️ Credit reconciliation found {len(anomalies)} anomalies "
+                f"out of {checked} active subscribers"
+            )
+            for a in anomalies:
+                logger.warning(
+                    f"  [ANOMALY] user={a['user_id']} tier={a['tier']} "
+                    f"reason={a['reason']} last_reset={a.get('last_reset')} "
+                    f"days={a.get('days_since_reset', 'N/A')}"
+                )
+
+            # Send Sentry alert for anomalies
+            try:
+                import sentry_sdk
+                sentry_sdk.capture_message(
+                    f"Credit reconciliation: {len(anomalies)} anomalies found",
+                    level="warning",
+                    extras={"anomalies": anomalies, "checked": checked},
+                )
+            except Exception:
+                pass  # Sentry not configured is OK
+        else:
+            logger.info(
+                f"[{datetime.now()}] ✅ Credit reconciliation complete: "
+                f"{checked} subscribers checked, no anomalies"
+            )
+    except Exception as e:
+        logger.error(f"[{datetime.now()}] ❌ Credit reconciliation failed: {e}", exc_info=True)
+
+
 def init_scheduler():
     """
     Initialize and start the scheduler
@@ -310,6 +439,15 @@ def init_scheduler():
         misfire_grace_time=3600  # 1 hour grace period
     )
 
+    # WS7d: Credit reconciliation task - run at 6:00 AM UTC daily
+    scheduler.add_job(
+        run_credit_reconciliation,
+        CronTrigger(hour=6, minute=0),  # 6:00 AM UTC
+        id="credit_reconciliation",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("📅 Scheduler started with jobs:")
@@ -319,6 +457,7 @@ def init_scheduler():
     logger.info("   - Daily maintenance: 4:00 AM UTC (v3.30)")
     logger.info("   - Weekly maintenance: Sunday 5:00 AM UTC (v3.30)")
     logger.info("   - Webhook retry: every hour at :15 (P3-022)")
+    logger.info("   - Credit reconciliation: 6:00 AM UTC (WS7d)")
 
 def shutdown_scheduler():
     """
