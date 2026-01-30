@@ -3,7 +3,7 @@
 **创建日期**: 2026-01-30
 **关联审计报告**: `docs/tmp/20260130-payment-audit-report.md`
 **状态**: 待讨论确认
-**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正)
+**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正) → v3.4 二轮审计 (6 个新发现修正) → v3.5 三轮审计 (7 个新发现: 并发/幂等/配置)
 
 ---
 
@@ -205,7 +205,8 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
   - `amount` → `amount_usd`
   - `stripe_payment_id` → `stripe_payment_intent_id`
 - 添加 `payment_method` 默认值 `'card'`
-- 新增 `status: str = "completed"` 可选参数 (当前硬编码 `"completed"`，退费记录需要 `"refunded"`)
+- 新增 `status: str = "succeeded"` 可选参数 (退费记录需要 `"refunded"`)
+  - ⚠️ **v3.4 审计发现 (P1)**: 当前硬编码 `"completed"` **不在 DB CHECK 约束中** (`status IN ('pending', 'processing', 'succeeded', 'failed', 'cancelled', 'refunded')`)。默认值必须改为 `"succeeded"`
   - ⚠️ **v3.3 审计发现 (P0)**: `_handle_charge_refunded()` (line 901-916) 传入 `status="refunded"` 但 `create()` 无此参数，导致 **TypeError 崩溃**
   - 同时传入 `payment_intent_id=` (错误参数名，应为 `stripe_payment_id=`)
   - 本修正同时解决这两个传参错误
@@ -338,7 +339,7 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 
 **根因**: RC2 — 缺失原子操作，多步操作无事务保护
 **解决**: #25, #49, #26
-**文件**: 4 个
+**文件**: 6 个
 
 #### 设计决策
 
@@ -379,13 +380,48 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 - 在函数开头加 idempotency_key 查重逻辑
 - 参考已有 `deduct_credits_atomic` 的幂等实现
 
+**`check_webhook_idempotency`** RPC (v3.5 新增 — 解决 P0-3):
+- ⚠️ **v3.5 审计发现 (P0)**: `stripe_webhook_service.py` line 107 调用 `rpc("check_webhook_idempotency")`，但 SQL 中**无此函数**。与 #25 同类问题
+- **当前行为**: RPC 不存在 → 抛异常 → 关键事件 (checkout/invoice) reject → 非关键事件 fallback `return False` (继续处理，可能重复退费)
+- 输入: `p_event_id, p_event_type, p_payload`
+- 原子执行: `INSERT INTO stripe_webhook_events (...) ON CONFLICT (event_id) DO NOTHING RETURNING ...`
+- 返回: `{idempotent: true/false}` — true = 已处理过 (跳过)，false = 首次处理 (继续)
+- 归属文件: **`03_infrastructure.sql`** (stripe_webhook_events 属于基础设施表)
+
+**`admin_adjust_credits_atomic`** RPC (v3.5 新增 — 解决 P0-4):
+- ⚠️ **v3.5 审计发现 (P0)**: `admin_repository.py` line 64-91 的 `admin_adjust_credits()` 是非原子 Read-Modify-Write (无行级锁)，存在 Lost Update 竞态
+- 输入: `p_user_id, p_amount, p_bucket ('monthly'|'permanent'), p_reason, p_admin_id`
+- 原子执行:
+  1. `SELECT credits_monthly, credits_permanent FROM profiles WHERE id = p_user_id FOR UPDATE` (行级锁)
+  2. 计算新值: `new_value = GREATEST(0, current + p_amount)`
+  3. UPDATE profiles SET credits_{bucket} = new_value
+  4. INSERT credit_transactions (审计记录，含 balance_monthly_after / balance_permanent_after)
+- 返回: `{success, old_value, new_value, actual_change}`
+- 归属文件: **`01_core_business.sql`** (操作 profiles + credit_transactions)
+- **同步修改**: `admin_repository.py` 的 `admin_adjust_credits()` 改为调用此 RPC
+
 **2. `decodables/infrastructure/repositories/subscription_repository.py`** — G3: Repository 封装
 
 - 新增 `start_subscription(user_id, plan, ...)` 方法: 封装 `process_subscription_start` RPC 调用
 - 新增 `renew_subscription(user_id, tier, ...)` 方法: 封装 `process_subscription_renewal` RPC 调用
 - Webhook service 通过 Repository 方法调用，不直接 `db_client.rpc()`
 
-**3. `decodables/domains/webhooks/stripe_webhook_service.py`**
+**3. `decodables/container.py`** — 新增 DI 方法
+
+- ⚠️ **v3.4 审计发现 (P1)**: Container 缺少 `get_subscription_repository()` 方法。WS3 要求 webhook service 注入 `subscription_repo`，但 Container 无法提供
+- **新增方法**:
+  ```python
+  async def get_subscription_repository(self) -> SubscriptionRepository:
+      if 'subscription_repository' not in self._services:
+          db = await get_async_db_client()
+          user_repo = await self._get_or_create_user_repo()
+          payment_repo = await self._get_or_create_payment_repo()
+          self._services['subscription_repository'] = SubscriptionRepository(db, user_repo, payment_repo)
+      return self._services['subscription_repository']
+  ```
+- `get_stripe_webhook_service()` 注入 `subscription_repo=await self.get_subscription_repository()`
+
+**4. `decodables/domains/webhooks/stripe_webhook_service.py`**
 
 - ⚠️ **代码探查发现**: `_process_subscription_start()` (line 387) **已经调用** `rpc("process_subscription_start")`，但 SQL 函数不存在 (这正是 bug #25)
 - **因此**: 只需创建 SQL RPC 函数 + 校验调用参数签名一致，不需要从头编写 webhook 端调用代码
@@ -415,6 +451,9 @@ Stripe 不保证事件顺序。RPC 内需加状态前置条件检查:
 - [ ] add_credits_atomic: 重复 idempotency_key 不重复发放
 - [ ] 乱序事件不会覆盖正确状态
 - [ ] 旧的多步非原子代码路径已删除
+- [ ] check_webhook_idempotency: 重复 event_id 返回 `{idempotent: true}` ✓
+- [ ] admin_adjust_credits_atomic: 并发操作不丢失更新 (FOR UPDATE 锁) ✓
+- [ ] admin_repository.py 改为调用新 RPC ✓
 
 ---
 
@@ -516,18 +555,38 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 - 全额退费: 扣回全部购买积分
 - 部分退费: `退回积分 = ROUND(退款金额 / 原始金额 × 原始积分数)` (按比例)
 
-**2. `decodables/domains/webhooks/stripe_webhook_service.py`**
+**2. `decodables/infrastructure/repositories/payment_repository.py`** — 新增查询方法
+
+- ⚠️ **v3.4 审计发现 (P0)**: `_handle_charge_refunded()` (line 892) 调用 `self.payment_repo.get_by_payment_intent_and_type(payment_intent_id, "credit_purchase")`，**但此方法在 PaymentRepository 中不存在**。当前代码 try/except 吞掉异常，导致退费幂等性检查完全失效
+- **新增方法**:
+  ```python
+  async def get_by_payment_intent_and_type(
+      self, stripe_payment_intent_id: str, payment_type: str
+  ) -> Optional[dict]:
+      """查询指定 payment_intent + type 的记录 (用于退费幂等性检查和原始交易反查)"""
+  ```
+- ⚠️ **v3.4 审计发现 (P2)**: `payment_records` 表**已有** `refunded_amount NUMERIC(10,2) DEFAULT 0` 和 `refunded_at TIMESTAMPTZ` 字段。退费处理应更新这些现有字段而非仅插入新 refund 记录
+- **新增方法**:
+  ```python
+  async def update_refund_status(
+      self, stripe_payment_intent_id: str, refunded_amount: float
+  ) -> bool:
+      """更新原始交易记录的 refunded_amount 和 refunded_at"""
+  ```
+
+**3. `decodables/domains/webhooks/stripe_webhook_service.py`**
 
 - `_handle_charge_refunded()` 扩展:
   1. 获取原始 payment_intent metadata
   2. **如果有 metadata**: 直接判断 `plan_type`
-  3. **如果无 metadata (fallback)**: 通过 `stripe_payment_intent_id` 在 payment_records 中反查原始交易类型
+  3. **如果无 metadata (fallback)**: 通过 `self.payment_repo.get_by_payment_intent_and_type()` 在 payment_records 中反查原始交易类型
   4. 积分购买退费 → 通过 Repository: `await self.credit_repo.process_refund(...)` (G3 封装)
   5. 订阅退费 → 通过 Repository: `await self.subscription_repo.terminate_subscription(...)` (复用 WS4 RPC)
   6. `charge.refunds.data` → 按 `created` 排序取最新 (解决 #17)
   7. 传递 Stripe refund ID 用于 RPC 幂等性检查
+  8. **更新原始记录**: 调用 `self.payment_repo.update_refund_status()` 更新 refunded_amount/refunded_at
 
-**3. `decodables/domains/billing/payment_service.py`**
+**4. `decodables/domains/billing/payment_service.py`**
 
 - `PaymentService.create_refund()` **类方法** (line ~878):
   - 增加 `metadata: Optional[Dict] = None` 参数并透传到模块函数 (解决 #16)
@@ -535,7 +594,7 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   - 修改范围仅限类方法签名对齐，不需要改模块函数
 - 退款金额计算: `amount - amount_refunded` 替代 `amount_received` (解决 #18)
 
-**4. `decodables/domains/subscriptions/subscription_service.py`**
+**5. `decodables/domains/subscriptions/subscription_service.py`**
 
 - `process_refund()`: 退款金额计算改为 `pi.amount - pi.amount_refunded`
 
@@ -571,6 +630,25 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   - 增加 `customer_id: Optional[str] = None` 参数
   - `if customer_id: session_params["customer"] = customer_id`
   - 无 customer_id 时不设 `customer_creation` (Stripe Checkout 默认行为已会创建 Customer，无需显式指定)
+  - ⚠️ **v3.5 新增 (P1-5)**: metadata 补充 `credits_amount`:
+    ```python
+    "metadata": {
+        "user_id": user_id,
+        "plan_type": plan_type,
+        "credits_amount": get_credits_amount(plan_type)  # 新增: 锁定 checkout 时的积分数
+    }
+    ```
+    - 防止 checkout 创建后到 webhook 处理期间配置变更导致积分发放数不一致
+    - Webhook handler 优先读 metadata.credits_amount，fallback 到 `get_credits_amount(plan)`
+  - ⚠️ **v3.5 新增 (P2-2)**: 捕获 Stripe `IdempotencyError`，返回友好提示而非 500:
+    ```python
+    except stripe.error.IdempotencyError:
+        return None  # 当前返回 None → API 500
+    # 改为:
+    except stripe.error.IdempotencyError:
+        logger.info(f"[Checkout] Duplicate request for {user_id}:{plan_type}")
+        raise HTTPException(409, "Checkout session already created. Please wait.")
+    ```
 
 **2. `decodables/api/user/payment.py`**
 
@@ -615,6 +693,8 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 - [ ] 新用户 checkout → 自动创建 Customer ✓
 - [ ] 已有 t2 订阅再请求 t3 → 走升级流程 ✓
 - [ ] 降级请求 → 返回 400 ✓
+- [ ] Checkout metadata 包含 credits_amount ✓
+- [ ] 双击 checkout → 返回 409 而非 500 ✓
 
 ---
 
@@ -631,7 +711,7 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 #### WS7a: Async + 线程安全 (解决 #4, #20, #21, #37)
 
 **关注点**: 事件循环阻塞 + 线程安全
-**文件**: 2 个
+**文件**: 3 个
 
 **1. `decodables/domains/billing/payment_service.py`** (#4, #20, #21)
 
@@ -661,9 +741,19 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   ```
 - 涉及方法: `_fetch_all_plans()`, `get_plan_by_code()`, `get_user_price()`
 
+**3. `decodables/domains/subscriptions/subscription_service.py`** (#20 扩展)
+
+- ⚠️ **v3.4 审计发现 (P1)**: 此文件也有同步 Stripe SDK 调用未包装 `run_in_threadpool`，与 payment_service.py (#20) 同类问题
+- **涉及方法** (同步 Stripe 调用):
+  - `cancel_user_subscription()`: 调用 `stripe.Subscription.cancel()` / `stripe.Subscription.modify()`
+  - `_downgrade_t3_to_t2()`: 调用 `stripe.Subscription.modify()`
+  - `get_subscription_details()`: 调用 `stripe.Subscription.retrieve()`
+- **修复**: 所有同步 Stripe SDK 调用用 `run_in_threadpool` 包装
+
 **验证**:
-- [ ] Stripe 调用不阻塞事件循环 ✓
+- [ ] Stripe 调用不阻塞事件循环 (payment_service + subscription_service) ✓
 - [ ] PricingService 同步查询通过 run_in_threadpool 包装 ✓
+- [ ] SubscriptionService Stripe 调用通过 run_in_threadpool 包装 ✓
 - [ ] coupon_cache 线程安全 ✓
 
 ---
@@ -684,15 +774,25 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 
 - 新增 `STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")`
 - 启动时验证非空 (生产环境)
+- ⚠️ **v3.5 新增 (P1-4)**: 新增 `STRIPE_API_VERSION = os.environ.get("STRIPE_API_VERSION", "2024-12-18.acacia")`
+  - 初始化时设置 `stripe.api_version = STRIPE_API_VERSION`
+  - 防止 Stripe SDK 自动升级 API 版本导致 webhook 签名/字段/行为不可预期变化
 
 **3. `decodables/domains/webhooks/stripe_webhook_service.py`** (#44, #45)
 
 - `handle_event()` 新增:
   - `invoice.payment_failed` → `_handle_invoice_payment_failed()`
   - (P2) `invoice.payment_action_required` → 记录日志
+  - ⚠️ **v3.5 新增 (P2-3)**: `customer.deleted` → `_handle_customer_deleted()` (清除本地 `stripe_customer_id`，GDPR 合规)
+- ⚠️ **v3.5 新增 (P1-6)**: `_handle_invoice_payment()` 中当 `tier not in ["t2", "t3"]` 时 (line 503-519)，增加 `logger.warning` + Sentry alert，而非静默返回 `{"status": "ok"}`
 - `_handle_invoice_payment_failed()`:
   - 更新 subscription_status='past_due'
   - 记录 payment_record (type='payment_failed')
+- ⚠️ **v3.4 审计发现 (P0)**: `_process_subscription_termination()` (line 652) 中 `termination_statuses = ["canceled", "unpaid", "past_due", "incomplete_expired"]`
+  - **`past_due` 不应触发立即降级**: 业界实践 (Stripe Dunning) 是 past_due → 重试扣费 → 多次失败后才 unpaid → 最终 canceled
+  - **修复**: 从 `termination_statuses` 列表中移除 `past_due`
+  - `past_due` 由新增的 `_handle_invoice_payment_failed()` 处理: 仅更新 subscription_status='past_due' + 记录日志，**不降级不清积分**
+  - 修正后: `termination_statuses = ["canceled", "unpaid", "incomplete_expired"]`
 
 **4. `decodables/migrations/v2/02_platform_services.sql`** (#47)
 
@@ -707,6 +807,9 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 - [ ] 生产环境缺 STRIPE_WEBHOOK_SECRET → 启动失败 ✓
 - [ ] construct_event 使用显式 tolerance=300 ✓
 - [ ] stripe_webhook_events RLS 启用 ✓
+- [ ] stripe.api_version 已锁定 ✓
+- [ ] t1 用户收到 subscription webhook → WARNING 日志 + Sentry ✓
+- [ ] customer.deleted → 清除本地 stripe_customer_id ✓
 
 ---
 
@@ -923,12 +1026,12 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 | G3 | ✅ 无问题 | - |
 | WS1 | ⚠️ P0 发现 | `_handle_charge_refunded` 传参 TypeError 崩溃 + `create()` 缺 status 参数 |
 | WS2 | ⚠️ 调整 | `_grant_signup_bonus` 是死代码应删除；需新增 `get_by_stripe_customer_id` repo 方法 |
-| WS3 | ⚠️ 参数名 | RPC 参数名应与代码已有调用对齐 (`p_credits_amount` / `p_payment_amount`) |
+| WS3 | ⚠️ P0×2+DI | RPC 参数名对齐；Container 缺 DI；`check_webhook_idempotency` 不存在；Admin 积分非原子 |
 | WS4 | ⚠️ 签名 | 补充完整方法签名 (含 user_code, subscription_id, reason, admin_id) |
-| WS5 | ✅ 无问题 | 类方法 vs 模块函数区分已在 v3.2 明确 |
-| WS6 | ✅ 无问题 | - |
-| WS7a | ✅ 无问题 | - |
-| WS7b | ✅ 无问题 | - |
+| WS5 | ⚠️ P0 发现 | `get_by_payment_intent_and_type()` 不存在 (退费幂等性失效)；补充 `refunded_amount`/`refunded_at` 更新 |
+| WS6 | ⚠️ 补充 | Checkout metadata 缺 `credits_amount`；IdempotencyError 返回 500 |
+| WS7a | ⚠️ 补充 | `subscription_service.py` 也有同步 Stripe 调用需要 `run_in_threadpool` |
+| WS7b | ⚠️ P0+补充 | `past_due` 过度降级；API 版本未锁定；t1 webhook 静默忽略；缺 `customer.deleted` |
 | WS7c | ✅ 无问题 | - |
 | WS7d | ✅ 无问题 | - |
 | WS8 | ✅ 无问题 | - |
@@ -943,11 +1046,11 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 |------|--------|---------|-----------|
 | 1 | WS1: Schema 对齐 | #23, #24, #32 | 5 |
 | 2 | WS2: 配置集中化 + DI | #36, #2, #28, #29, #30, #42, #43 | 9 |
-| 3 | WS3: 原子 RPC | #25, #49, #26 | 4 |
+| 3 | WS3: 原子 RPC | #25, #49, #26 | 6 |
 | 4 | WS4: 取消/降级完善 | #5, #7, #8, #9, #10 | 4 |
-| 5 | WS5: 退费完善 | #6, #14, #15, #16, #17, #18 | 4 |
+| 5 | WS5: 退费完善 | #6, #14, #15, #16, #17, #18 | 5 |
 | 6 | WS6: 客户绑定 + 升级 | #1, #3, #41 | 5 |
-| 7a | WS7a: Async + 线程安全 | #4, #20, #21, #37 | 2 |
+| 7a | WS7a: Async + 线程安全 | #4, #20, #21, #37 | 3 |
 | 7b | WS7b: Webhook + 启动校验 | #39, #44, #45, #47, #48, #50 | 4 |
 | 7c | WS7c: 缓存 + 代码质量 | #27, #31, #40 | 3 |
 | 7d | WS7d: 对账 + 死代码清理 | #22, #34, #38 | 2 |
@@ -992,9 +1095,36 @@ fix(payment): WS7b - add invoice.payment_failed handler + startup validation (#3
 
 ---
 
-**文档版本**: v3.3
+**文档版本**: v3.5
 **最后更新**: 2026-01-30
 **状态**: 待讨论确认
+
+### v3.5 修正清单 (三轮审计 — 7 个新发现: 并发/幂等/配置)
+
+| 修正位置 | 修正内容 | 严重度 |
+|----------|---------|--------|
+| WS3 新增 RPC | `check_webhook_idempotency` RPC 不存在 (line 107 调用，SQL 无定义)。新建原子 check-and-insert 函数 | 🔴 P0 |
+| WS3 新增 RPC + `admin_repository.py` | `admin_adjust_credits()` 非原子 Read-Modify-Write → 新建 `admin_adjust_credits_atomic` RPC (FOR UPDATE 锁) | 🔴 P0 |
+| WS3 文件数 | 5 → 6 | - |
+| WS7b 文件 2 (`config.py`) | Stripe API 版本未锁定 → 新增 `STRIPE_API_VERSION` 环境变量 + `stripe.api_version` 初始化 | 🟡 P1 |
+| WS6 文件 1 (`payment_service.py`) | Checkout metadata 缺 `credits_amount` → 新增，webhook 优先使用 metadata 值 | 🟡 P1 |
+| WS7b 文件 3 (`stripe_webhook_service.py`) | t1 用户收到 subscription webhook 静默忽略 → 增加 WARNING + Sentry | 🟡 P1 |
+| WS6 文件 1 (`payment_service.py`) | Checkout IdempotencyError 返回 500 → 改为 409 + 友好提示 | 🟢 P2 |
+| WS7b 文件 3 (`stripe_webhook_service.py`) | 缺 `customer.deleted` 事件处理 → 新增 handler 清除 stripe_customer_id | 🟢 P2 |
+
+### v3.4 修正清单 (二轮审计 — 6 个新发现修正)
+
+| 修正位置 | 修正内容 | 严重度 |
+|----------|---------|--------|
+| WS1 文件 2 | `status` 默认值 `"completed"` → `"succeeded"` (不在 DB CHECK 约束中) | 🟡 P1 |
+| WS5 新增文件 2 | 新增 `payment_repo.get_by_payment_intent_and_type()` 方法 (line 892 调用但不存在，退费幂等性失效) | 🔴 P0 |
+| WS5 新增文件 2 | 新增 `payment_repo.update_refund_status()` 方法 (利用现有 `refunded_amount`/`refunded_at` 字段) | 🟢 P2 |
+| WS5 文件数 | 4 → 5 | - |
+| WS7b 文件 3 | `past_due` 从 `termination_statuses` 移除 (业界实践: past_due 应走 Dunning 重试，不立即降级) | 🔴 P0 |
+| WS3 新增文件 3 | Container 新增 `get_subscription_repository()` 方法 (webhook service 注入 subscription_repo 的前提) | 🟡 P1 |
+| WS3 文件数 | 4 → 5 | - |
+| WS7a 新增文件 3 | `subscription_service.py` 同步 Stripe 调用也需 `run_in_threadpool` 包装 | 🟡 P1 |
+| WS7a 文件数 | 2 → 3 | - |
 
 ### v3.3 修正清单 (深度审计 — 7 个新发现修正)
 
