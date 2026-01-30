@@ -53,6 +53,7 @@ from domains.billing.payment_service import (
     get_subscription_details,
     get_tier_from_price_id,
     modify_subscription,
+    PRICE_MAP,
 )
 from domains.identity.constants import (
     TIER_T1,
@@ -587,8 +588,8 @@ class SubscriptionService:
         if not active_sub:
             raise NoActiveSubscriptionException()
 
-        # Stripe Price ID for t2 plan (environment variable)
-        t2_price_id = os.environ.get("STRIPE_T2_MONTHLY_PRICE_ID") or os.environ.get("STRIPE_STARTER_MONTHLY_PRICE_ID")
+        # Stripe Price ID for t2 plan (from centralized PRICE_MAP)
+        t2_price_id = PRICE_MAP.get("t2")
         if not t2_price_id:
             raise PriceIdNotConfiguredException(tier="t2")
 
@@ -666,6 +667,97 @@ class SubscriptionService:
             "from_tier": "t3",
             "to_tier": "t2",
             "subscription_id": active_sub.id,
+        }
+
+    # ==========================================
+    # Subscription Upgrade (WS6 #41)
+    # ==========================================
+
+    async def upgrade_subscription(
+        self,
+        user_id: str,
+        target_tier: str,
+    ) -> Dict[str, Any]:
+        """
+        Upgrade a user's subscription to a higher tier.
+
+        Uses Stripe Subscription.modify() with proration.
+        Actual tier change in local DB is driven by customer.subscription.updated webhook.
+
+        Args:
+            user_id: User ID
+            target_tier: Target tier ('t3' typically)
+
+        Returns:
+            Dict with status, from_tier, to_tier, subscription_id
+
+        Raises:
+            UserNotFoundException: If user not found
+            NoStripeCustomerException: If no Stripe customer
+            NoActiveSubscriptionException: If no active subscription
+            InvalidTierException: If target tier invalid
+            InvalidDowngradePathException: If not an upgrade
+            PriceIdNotConfiguredException: If price ID missing
+            SubscriptionModifyFailedException: If Stripe modify fails
+        """
+        user = await self.users_repo.get_profile(user_id)
+        if not user:
+            raise UserNotFoundException()
+
+        current_tier = user.get("tier", "t1")
+        target_tier = target_tier.lower()
+
+        # Validate target tier
+        if target_tier not in TIER_LEVELS:
+            raise InvalidTierException(tier=target_tier, valid_tiers=list(TIER_LEVELS.keys()))
+
+        # Must be an upgrade (target > current)
+        if TIER_LEVELS.get(target_tier, 0) <= TIER_LEVELS.get(current_tier, 0):
+            raise InvalidDowngradePathException(from_tier=current_tier, to_tier=target_tier)
+
+        customer_id = user.get("stripe_customer_id")
+        if not customer_id:
+            raise NoStripeCustomerException()
+
+        # Find active subscription
+        subscriptions = get_customer_subscriptions(customer_id)
+        active_sub = next(
+            (sub for sub in subscriptions if sub.status in ['active', 'trialing']),
+            None,
+        )
+        if not active_sub:
+            raise NoActiveSubscriptionException()
+
+        # Get target tier price ID from centralized PRICE_MAP
+        target_price_id = PRICE_MAP.get(target_tier)
+        if not target_price_id:
+            raise PriceIdNotConfiguredException(tier=target_tier)
+
+        # Modify subscription with proration
+        updated_sub = modify_subscription(
+            active_sub.id,
+            items=[{
+                "id": active_sub.items.data[0].id,
+                "price": target_price_id,
+            }],
+            proration_behavior='create_prorations',
+        )
+
+        if not updated_sub:
+            logger.error(f"[Upgrade] Subscription modify failed for {active_sub.id}")
+            raise SubscriptionModifyFailedException()
+
+        logger.info(
+            f"[Upgrade] Subscription {active_sub.id} upgraded: {current_tier} → {target_tier} "
+            f"for user {user_id}. Tier update will be applied via webhook."
+        )
+
+        return {
+            "status": "upgrade_initiated",
+            "from_tier": current_tier,
+            "to_tier": target_tier,
+            "subscription_id": active_sub.id,
+            "message": "Upgrade initiated. Changes will be applied shortly via webhook.",
         }
 
     # ==========================================

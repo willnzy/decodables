@@ -295,7 +295,8 @@ def create_checkout_session(
     user_id: str,
     plan_type: str,
     discount_percent: int = 0,
-    idempotency_key: Optional[str] = None
+    idempotency_key: Optional[str] = None,
+    customer_id: Optional[str] = None,
 ) -> Optional[str]:
     """
     Create Stripe Checkout Session.
@@ -305,9 +306,14 @@ def create_checkout_session(
         plan_type: 'credits_100', 'credits_500', 'credits_2000', 't2', 't3'
         discount_percent: Discount percentage (0-100)
         idempotency_key: Optional key to prevent duplicate sessions
+        customer_id: Optional Stripe Customer ID to bind session to existing customer
 
     Returns:
         Checkout session URL or None on failure
+
+    Raises:
+        ValueError: If plan_type is invalid
+        stripe.error.IdempotencyError: If duplicate request detected (WS6 #3)
     """
     price_id = PRICE_MAP.get(plan_type)
     if not price_id:
@@ -324,6 +330,16 @@ def create_checkout_session(
         idempotency_key = hashlib.sha256(key_base.encode()).hexdigest()[:32]
 
     try:
+        # WS6 (#3): Lock credits_amount in metadata at checkout time
+        # Prevents config change between checkout creation and webhook processing
+        metadata = {
+            "user_id": user_id,
+            "plan_type": plan_type,
+        }
+        credits_amount = CREDITS_AMOUNT_MAP.get(plan_type)
+        if credits_amount:
+            metadata["credits_amount"] = str(credits_amount)
+
         # Build session params
         session_params = {
             "payment_method_types": ['card'],
@@ -331,8 +347,12 @@ def create_checkout_session(
             "mode": mode,
             "success_url": f'{FRONTEND_URL}/dashboard?success=true&plan={plan_type}',
             "cancel_url": f'{FRONTEND_URL}/dashboard?canceled=true',
-            "metadata": {"user_id": user_id, "plan_type": plan_type},
+            "metadata": metadata,
         }
+
+        # WS6 (#1): Bind to existing Stripe Customer if available
+        if customer_id:
+            session_params["customer"] = customer_id
 
         # Apply discount coupon (using cached coupon)
         if discount_percent > 0 and discount_percent <= 100:
@@ -354,9 +374,9 @@ def create_checkout_session(
         return checkout_session.url
 
     except stripe.error.IdempotencyError as e:
-        # Same idempotency key was used with different params
+        # WS6 (#3): Re-raise IdempotencyError for API layer to return 409
         logger.warning(f"[Stripe] Idempotency conflict for user {user_id}: {e}")
-        return None
+        raise
     except stripe.error.StripeError as e:
         logger.error(f"[Stripe] Checkout session error for user {user_id}: {e}")
         return None
@@ -742,7 +762,8 @@ class PaymentService:
         user_id: str,
         plan_type: str,
         discount_percent: int = 0,
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        customer_id: Optional[str] = None,
     ) -> Optional[str]:
         """
         Create Stripe Checkout Session.
@@ -752,11 +773,15 @@ class PaymentService:
             plan_type: 'credits_100', 'credits_500', 'credits_2000', 't2', 't3'
             discount_percent: Discount percentage (0-100)
             idempotency_key: Optional key to prevent duplicate sessions
+            customer_id: Optional Stripe Customer ID (WS6 #1)
 
         Returns:
             Checkout session URL or None on failure
+
+        Raises:
+            stripe.error.IdempotencyError: If duplicate request detected
         """
-        return create_checkout_session(user_id, plan_type, discount_percent, idempotency_key)
+        return create_checkout_session(user_id, plan_type, discount_percent, idempotency_key, customer_id)
 
     def create_portal_session(self, user_id: str, customer_id: str) -> Optional[str]:
         """

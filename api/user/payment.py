@@ -32,10 +32,12 @@ Changes in v2.1.0:
 Endpoints:
 - POST /api/v2/user/payment/checkout - Create checkout session
 - POST /api/v2/user/payment/portal - Get billing portal URL
+- POST /api/v2/user/payment/upgrade - Upgrade subscription tier (WS6)
 """
 
 import logging
 import re
+import stripe
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,6 +48,7 @@ from dependencies import get_current_user
 from infrastructure.rate_limiter import limiter
 from container import get_container
 from domains.billing.payment_service import PaymentService
+from domains.identity.constants import TIER_LEVELS
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,20 @@ class CheckoutResponse(BaseModel):
     discount_applied: int = 0
 
 
+class UpgradeRequest(BaseModel):
+    """Upgrade subscription request (WS6 #41)."""
+    target_tier: str = Field(..., pattern="^(t2|t3)$")
+
+
+class UpgradeResponse(BaseModel):
+    """Upgrade subscription response."""
+    status: str
+    from_tier: str
+    to_tier: str
+    subscription_id: str
+    message: str
+
+
 class PortalResponse(BaseModel):
     """Portal response."""
     url: str
@@ -114,6 +131,29 @@ async def create_checkout(
         container = get_container()
         user_repo = await container.get_user_repository()
 
+        # WS6 (#1): Get stripe_customer_id from user profile for customer binding
+        user_profile = await user_repo.get_profile(user.user_id)
+        stripe_customer_id = user_profile.get("stripe_customer_id") if user_profile else None
+
+        # WS6 (#41): Upgrade interception — if user has active subscription and requests subscription plan
+        is_subscription_plan = req.plan_type in ("t2", "t3")
+        if is_subscription_plan and user_profile:
+            current_tier = user_profile.get("tier", "t1")
+            current_sub_status = user_profile.get("subscription_status")
+            current_level = TIER_LEVELS.get(current_tier, 0)
+            requested_level = TIER_LEVELS.get(req.plan_type, 0)
+
+            if current_sub_status in ("active", "trialing"):
+                if current_level == requested_level:
+                    raise HTTPException(400, f"Already on {req.plan_type} plan")
+                if current_level > requested_level:
+                    raise HTTPException(400, "Use downgrade endpoint for lower tiers")
+                # current_level < requested_level → upgrade: use /upgrade endpoint
+                raise HTTPException(
+                    400,
+                    "You already have an active subscription. Use the upgrade endpoint to change your plan."
+                )
+
         # v2.2.0: Get and validate discount
         discount = await user_repo.get_user_discount(user.user_id, req.plan_type)
         discount_percent = 0
@@ -143,7 +183,11 @@ async def create_checkout(
                 discount_id = None
 
         # v2.3.0: Use PaymentService via DI
-        url = payment_service.create_checkout_session(user.user_id, req.plan_type, discount_percent)
+        # WS6 (#1): Pass customer_id for Stripe Customer binding
+        url = payment_service.create_checkout_session(
+            user.user_id, req.plan_type, discount_percent,
+            customer_id=stripe_customer_id,
+        )
 
         if not url:
             raise HTTPException(500, "Failed to create checkout session")
@@ -169,6 +213,10 @@ async def create_checkout(
 
     except HTTPException:
         raise
+    except stripe.error.IdempotencyError:
+        # WS6 (#3): Return 409 instead of 500 for duplicate checkout requests
+        logger.info(f"[Checkout] Duplicate request for {user.user_id}:{req.plan_type}")
+        raise HTTPException(409, "Checkout session already created. Please wait.")
     except Exception as e:
         # v2.1.0: P-P0-2 fix - don't expose internal error details
         logger.error(f"Checkout error for user {user.user_id}: {e}")
@@ -217,3 +265,71 @@ async def get_portal(
         # v2.1.0: P-P0-2 fix - don't expose internal error details
         logger.error(f"Portal error for user {user.user_id}: {e}")
         raise HTTPException(500, "Failed to access billing portal. Please try again.")
+
+
+@router.post("/upgrade", response_model=UpgradeResponse)
+@limiter.limit("3/minute")
+async def upgrade_subscription(
+    request: Request,
+    req: UpgradeRequest,
+    user: UserProfile = Depends(get_current_user),
+) -> UpgradeResponse:
+    """
+    Upgrade subscription to a higher tier (WS6 #41).
+
+    Uses Stripe Subscription.modify() with proration.
+    Tier change in local DB is driven by customer.subscription.updated webhook.
+
+    Args:
+        req: UpgradeRequest with target_tier (t2 or t3)
+
+    Returns:
+        UpgradeResponse with upgrade status
+    """
+    from domains.subscriptions.exceptions import (
+        UserNotFoundException,
+        NoStripeCustomerException,
+        NoActiveSubscriptionException,
+        InvalidTierException,
+        InvalidDowngradePathException,
+        PriceIdNotConfiguredException,
+        SubscriptionModifyFailedException,
+    )
+
+    try:
+        container = get_container()
+        subscription_service = await container.get_subscription_service()
+
+        result = await subscription_service.upgrade_subscription(
+            user_id=user.user_id,
+            target_tier=req.target_tier,
+        )
+
+        return UpgradeResponse(
+            status=result["status"],
+            from_tier=result["from_tier"],
+            to_tier=result["to_tier"],
+            subscription_id=result["subscription_id"],
+            message=result["message"],
+        )
+
+    except UserNotFoundException:
+        raise HTTPException(404, "User not found")
+    except NoStripeCustomerException:
+        raise HTTPException(400, "No Stripe customer found. Please subscribe first.")
+    except NoActiveSubscriptionException:
+        raise HTTPException(400, "No active subscription to upgrade")
+    except InvalidTierException as e:
+        raise HTTPException(400, str(e))
+    except InvalidDowngradePathException:
+        raise HTTPException(400, "Target tier must be higher than current tier. Use downgrade endpoint for lower tiers.")
+    except PriceIdNotConfiguredException as e:
+        logger.error(f"[Upgrade] Price ID not configured: {e}")
+        raise HTTPException(500, "Service configuration error. Please contact support.")
+    except SubscriptionModifyFailedException:
+        raise HTTPException(500, "Failed to modify subscription. Please try again.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Upgrade] Error for user {user.user_id}: {e}")
+        raise HTTPException(500, "Failed to upgrade subscription. Please try again.")

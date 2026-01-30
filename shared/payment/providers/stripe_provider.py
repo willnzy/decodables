@@ -56,18 +56,23 @@ class StripePaymentProvider(IPaymentService):
         user_id: str,
         plan_type: str,
         discount_percent: int = 0,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        customer_id: Optional[str] = None,
     ) -> CheckoutSession:
         """
         Create a checkout session for payment or subscription.
 
         Wraps: services.payment_service.create_checkout_session()
+
+        Args:
+            customer_id: WS6 (#1) — Stripe Customer ID to bind session to existing customer
         """
         try:
             url = stripe_service.create_checkout_session(
                 user_id=user_id,
                 plan_type=plan_type,
-                discount_percent=discount_percent
+                discount_percent=discount_percent,
+                customer_id=customer_id,
             )
 
             if url:
