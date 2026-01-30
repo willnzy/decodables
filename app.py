@@ -167,6 +167,16 @@ async def lifespan(app: FastAPI):
     # ===== STARTUP =====
     logger.info(f"📅 Instance {INSTANCE_ID} starting...")
 
+    # WS-13 (SUP-7): Fail-fast — verify critical environment variables
+    from config import REQUIRED_ENV_VARS
+    missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
+    if missing_vars:
+        raise RuntimeError(
+            f"Missing critical environment variables: {', '.join(missing_vars)}. "
+            f"Server cannot start without these."
+        )
+    logger.info(f"✅ All {len(REQUIRED_ENV_VARS)} critical env vars present")
+
     # v3.28: Initialize async database client
     from core.database import get_async_db_client
     try:
@@ -228,20 +238,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS configuration - allowed origins
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",                       # Local development
-    "http://127.0.0.1:3000",                       # Local development (fallback)
-    "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
-    "https://makedecodables.com",                  # Production domain
-    "https://www.makedecodables.com",              # Production domain (www)
-    "https://make-decodables.vercel.app",          # Vercel legacy
-    "https://decodables-production.up.railway.app" # Railway API host
-]
+# WS-13 (SUP-6/8): CORS origins from config.py single source of truth
+from config import CORS_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     # v3.26: Explicit headers list (security hardening - no wildcard)

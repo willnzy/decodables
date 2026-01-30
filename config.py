@@ -56,12 +56,22 @@ SUPPORT_EMAIL_FROM = os.environ.get("SUPPORT_EMAIL_FROM", "noreply@makedecodable
 # OpenAI Assistant (for AI Support Chat)
 OPENAI_ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 
-# CORS Settings
+# CORS Settings — Single Source of Truth (WS-13: SUP-6)
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development
-    "https://make-decodables.vercel.app",          # Vercel production
+    "http://127.0.0.1:3000",                       # Local development (fallback)
+    "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
+    "https://makedecodables.com",                  # Production domain
+    "https://www.makedecodables.com",              # Production domain (www)
+    "https://make-decodables.vercel.app",          # Vercel legacy
     "https://decodables-staging.up.railway.app",   # Railway API (staging)
     "https://decodables-production.up.railway.app" # Railway API (production)
+]
+
+# WS-13 (SUP-7): Critical environment variables required at startup
+REQUIRED_ENV_VARS: List[str] = [
+    "SUPABASE_URL",
+    "SUPABASE_KEY",
 ]
 
 # Rate Limiting
