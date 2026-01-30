@@ -548,7 +548,8 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         avatar_url: str,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-        timezone_str: str = "UTC"
+        timezone_str: str = "UTC",
+        signup_bonus: int = 100,
     ) -> Optional[Dict[str, Any]]:
         """
         Create new user profile with signup bonus.
@@ -561,6 +562,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             first_name: First name
             last_name: Last name
             timezone_str: User timezone
+            signup_bonus: Signup bonus credits (default 100, from system_configs via TierService)
 
         Returns:
             Created profile dict
@@ -576,7 +578,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             "last_name": last_name,
             "tier": "t1",
             "credits_monthly": 0,
-            "credits_permanent": 50,  # Signup bonus
+            "credits_permanent": signup_bonus,
             "user_code": user_code,
             "timezone": timezone_str,
         }
@@ -613,7 +615,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             update_data["stripe_customer_id"] = stripe_customer_id
 
         # P0-011 fix: Reset monthly credits when downgrading to free tier
-        if tier == "t1" or tier == "t1":
+        if tier == "t1":
             update_data["credits_monthly"] = 0
 
         result = await self.client.table("profiles").update(update_data).eq("id", user_id).execute()
@@ -826,3 +828,46 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         await self.client.table("profiles").update({
             "credits_monthly": credits
         }).eq("id", user_id).execute()
+
+    async def get_by_stripe_customer_id(self, stripe_customer_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Look up a user profile by Stripe customer ID.
+
+        Used by checkout flow to bind existing Stripe customer to new sessions.
+
+        Args:
+            stripe_customer_id: Stripe customer ID (e.g. 'cus_xxx')
+
+        Returns:
+            Profile dict or None if not found
+        """
+        try:
+            result = await self.client.table("profiles").select("*").eq(
+                "stripe_customer_id", stripe_customer_id
+            ).limit(1).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"[UserRepo] Failed to get user by stripe_customer_id {stripe_customer_id}: {e}")
+            return None
+
+    async def update_subscription_status(self, user_id: str, status: str) -> bool:
+        """
+        Update only the subscription_status field (without changing tier).
+
+        Used for invoice.payment_failed → 'past_due', etc.
+
+        Args:
+            user_id: User ID
+            status: New subscription status ('active', 'past_due', 'canceled', 'inactive')
+
+        Returns:
+            True if update succeeded
+        """
+        try:
+            await self.client.table("profiles").update({
+                "subscription_status": status
+            }).eq("id", user_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"[UserRepo] Failed to update subscription_status for {user_id}: {e}")
+            return False

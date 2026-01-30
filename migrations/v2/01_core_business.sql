@@ -1783,7 +1783,8 @@ CREATE OR REPLACE FUNCTION create_user_idempotent(
     p_first_name TEXT DEFAULT NULL,
     p_last_name TEXT DEFAULT NULL,
     p_avatar_url TEXT DEFAULT NULL,
-    p_display_name TEXT DEFAULT NULL
+    p_display_name TEXT DEFAULT NULL,
+    p_signup_bonus INT DEFAULT 100  -- 注册奖励积分，默认100（由调用方从 system_configs 获取）
 )
 RETURNS TABLE(
     user_profile JSONB,
@@ -1836,7 +1837,7 @@ BEGIN
         p_avatar_url,
         v_display_name_final,
         't1',
-        50,  -- 注册奖励（仅在创建时发放一次）
+        p_signup_bonus,  -- 注册奖励（仅在创建时发放一次，默认100）
         p_source,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP

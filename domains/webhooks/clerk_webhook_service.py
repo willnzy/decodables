@@ -44,6 +44,8 @@ class ClerkWebhookService:
         user_repo: SupabaseUserRepository,
         credit_repo: SupabaseCreditRepository,
         db_client = None,  # AsyncClient for direct database operations
+        tier_service = None,  # WS2: TierService for dynamic signup bonus configuration
+        activity_log_repo = None,  # WS2: ActivityLogRepository for unified activity logging
     ):
         """
         Initialize Clerk Webhook Service.
@@ -52,10 +54,14 @@ class ClerkWebhookService:
             user_repo: User repository for profile operations
             credit_repo: Credit repository for signup bonus
             db_client: AsyncClient for direct database operations (activity logs, RPC calls)
+            tier_service: TierService for dynamic tier/credits configuration
+            activity_log_repo: ActivityLogRepository for activity logging
         """
         self.user_repo = user_repo
         self.credit_repo = credit_repo
         self.db_client = db_client or user_repo.client  # Use repo's client if not provided
+        self.tier_service = tier_service
+        self.activity_log_repo = activity_log_repo
 
     def verify_signature(self, payload: bytes, headers: Dict[str, str]) -> Dict[str, Any]:
         """
@@ -178,19 +184,17 @@ class ClerkWebhookService:
                 # Don't fail the webhook - user is created, workspace can be created on-demand
 
         # Log signup event
-        try:
-            await self.db_client.table("activity_logs").insert({
-                "user_id": user_id,
-                "action": "user_signup",
-                "metadata": {
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=user_id,
+                action="user_signup",
+                metadata={
                     "email": email,
                     "first_name": first_name,
                     "last_name": last_name,
                     "method": "clerk"
                 },
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log signup activity: {e}")
+            )
 
         # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
         try:
@@ -212,54 +216,8 @@ class ClerkWebhookService:
 
         return {"status": "processed"}
 
-    async def _grant_signup_bonus(self, user_id: str) -> None:
-        """
-        Grant 50 signup bonus credits with atomic idempotency.
-
-        Uses atomic RPC if available, falls back to legacy check-then-insert.
-
-        Args:
-            user_id: User ID to grant bonus to
-        """
-        try:
-            idempotency_key = f"signup_bonus_{user_id}"
-            result = await self.db_client.rpc("grant_signup_bonus_atomic", {
-                "p_user_id": user_id,
-                "p_amount": 50,
-                "p_idempotency_key": idempotency_key
-            }).execute()
-
-            if result.data and result.data.get("granted"):
-                logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
-            elif result.data and result.data.get("already_exists"):
-                logger.info(f"✅ Signup bonus already granted to user {user_id}, skipping")
-            else:
-                logger.warning(f"Signup bonus result unknown for user {user_id}: {result.data}")
-        except Exception as e:
-            # Fallback to legacy method if RPC doesn't exist
-            logger.warning(f"Atomic signup bonus RPC not available, using legacy: {e}")
-            try:
-                idempotency_key = f"signup_bonus_{user_id}"
-                existing = await self.credit_repo.check_idempotency(idempotency_key)
-                if existing:
-                    logger.info(f"✅ Signup bonus already granted to user {user_id}, skipping")
-                else:
-                    await self.credit_repo.add_credits_permanent(
-                        user_id,
-                        50,
-                        "Welcome bonus for new users",
-                        "signup_bonus"
-                    )
-                    # Best effort to update idempotency key
-                    try:
-                        await self.db_client.table("credit_transactions").update({
-                            "idempotency_key": idempotency_key
-                        }).eq("user_id", user_id).eq("type", "signup_bonus").execute()
-                    except Exception:
-                        pass
-                    logger.info(f"✅ Granted 50 signup bonus credits to user {user_id}")
-            except Exception as inner_e:
-                logger.error(f"Failed to grant signup bonus to user {user_id}: {inner_e}")
+    # WS2: _grant_signup_bonus() REMOVED — dead code (line 113: "DO NOT call", line 156: "无需再次调用")
+    # Signup bonus is granted by create_user_idempotent RPC (p_signup_bonus parameter)
 
     async def _create_workspace_and_preset_tags(self, user_id: str) -> None:
         """
@@ -339,18 +297,16 @@ class ClerkWebhookService:
         # handled via Stripe webhooks, not Clerk.
 
         # Log profile update
-        try:
-            await self.db_client.table("activity_logs").insert({
-                "user_id": user_id,
-                "action": "profile_updated",
-                "metadata": {
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=user_id,
+                action="profile_updated",
+                metadata={
                     "avatar_changed": new_avatar is not None,
                     "username_changed": new_username is not None,
                     "name_changed": new_first_name is not None or new_last_name is not None
                 },
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log profile update: {e}")
+            )
 
         logger.info(f"✅ Updated profile for user {user_id}")
         return {"status": "processed"}
@@ -382,14 +338,15 @@ class ClerkWebhookService:
                     logger.info(f"User {user_id} not found in profiles, skipping login log (user.created may still be processing)")
                     return {"status": "processed"}
                 
-                await self.db_client.table("activity_logs").insert({
-                    "user_id": user_id,
-                    "action": "user_login",
-                    "metadata": {
-                        "client_ip": event.get("event_attributes", {}).get("http_request", {}).get("client_ip"),
-                        "user_agent": event.get("event_attributes", {}).get("http_request", {}).get("user_agent")
-                    },
-                }).execute()
+                if self.activity_log_repo:
+                    await self.activity_log_repo.log_activity(
+                        user_id=user_id,
+                        action="user_login",
+                        metadata={
+                            "client_ip": event.get("event_attributes", {}).get("http_request", {}).get("client_ip"),
+                            "user_agent": event.get("event_attributes", {}).get("http_request", {}).get("user_agent")
+                        },
+                    )
             except Exception as e:
                 logger.warning(f"Failed to log login: {e}")
 
@@ -412,13 +369,11 @@ class ClerkWebhookService:
         """
         user_id = data.get("user_id")
         if user_id:
-            try:
-                await self.db_client.table("activity_logs").insert({
-                    "user_id": user_id,
-                    "action": "user_logout",
-                    "metadata": {"reason": event_type},
-                }).execute()
-            except Exception as e:
-                logger.warning(f"Failed to log logout: {e}")
+            if self.activity_log_repo:
+                await self.activity_log_repo.log_activity(
+                    user_id=user_id,
+                    action="user_logout",
+                    metadata={"reason": event_type},
+                )
 
         return {"status": "processed"}

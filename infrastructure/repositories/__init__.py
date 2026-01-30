@@ -52,6 +52,7 @@ from .static_page_repository import SupabaseStaticPageRepository
 from .notification_template_repository import SupabaseNotificationTemplateRepository
 from .workspace_repository import SupabaseWorkspaceRepository
 from .folder_repository import SupabaseFolderRepository
+from .activity_log_repository import ActivityLogRepository
 
 __all__ = [
     # Base Repository
@@ -95,4 +96,5 @@ __all__ = [
     'SupabaseNotificationTemplateRepository',
     'SupabaseWorkspaceRepository',
     'SupabaseFolderRepository',
+    'ActivityLogRepository',
 ]

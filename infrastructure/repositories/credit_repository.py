@@ -693,25 +693,20 @@ class SupabaseCreditRepository(ICreditRepository):
         return {"items": result.data or [], "total": result.count or 0}
 
     @retry_on_network_error()
-    async def refresh_monthly_credits(self, user_id: str, tier: str) -> Optional[dict]:
+    async def refresh_monthly_credits(self, user_id: str, amount: int) -> Optional[dict]:
         """
-        Reset monthly credits based on tier.
+        Reset monthly credits to the specified amount.
 
-        Business Rule:
-        - starter: 500 credits/month
-        - pro: 1000 credits/month
-        - free: 0 credits/month
+        WS2: Changed from tier-based lookup to explicit amount parameter.
+        The caller (webhook service / scheduler) gets the amount from TierService.
 
         Args:
             user_id: User ID
-            tier: User tier
+            amount: Monthly credits amount to set
 
         Returns:
             Dict with credits_monthly or None
         """
-        tier_credits = {"t2": 500, "t3": 1000}
-        amount = tier_credits.get(tier, 0)
-
         if amount == 0:
             return None
 
@@ -722,7 +717,7 @@ class SupabaseCreditRepository(ICreditRepository):
 
         await self.log_transaction(
             user_id, amount, "monthly", "monthly_reset",
-            f"{tier} monthly refresh"
+            "monthly credits refresh"
         )
         return {"credits_monthly": amount}
 
@@ -745,9 +740,15 @@ class SupabaseCreditRepository(ICreditRepository):
         if tier not in ["t2", "t3"]:
             return
 
+        # Get monthly credits amount from constants (fallback source)
+        from domains.identity.constants import TIER_MONTHLY_CREDITS
+        amount = TIER_MONTHLY_CREDITS.get(tier, 0)
+        if amount <= 0:
+            return
+
         reset_at = profile.get("credits_reset_at")
         if not reset_at:
-            await self.refresh_monthly_credits(user_id, tier)
+            await self.refresh_monthly_credits(user_id, amount)
             return
 
         try:
@@ -758,6 +759,6 @@ class SupabaseCreditRepository(ICreditRepository):
 
             days_since = (datetime.now(timezone.utc) - reset_dt).days
             if days_since >= 30:
-                await self.refresh_monthly_credits(user_id, tier)
+                await self.refresh_monthly_credits(user_id, amount)
         except Exception as e:
             logger.warning(f"Error checking credit reset: {e}")

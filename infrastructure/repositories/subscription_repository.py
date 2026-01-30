@@ -74,20 +74,27 @@ class SupabaseSubscriptionRepository:
     v3.28: Wraps existing UserRepository and PaymentRepository for subscription operations.
     """
 
-    def __init__(self, db_client):
+    def __init__(self, db_client, user_repo=None, payment_repo=None):
         """
-        Initialize with database client.
+        Initialize with database client and optional repository dependencies.
 
         Args:
             db_client: Supabase client instance
+            user_repo: UserRepository instance (injected by Container)
+            payment_repo: PaymentRepository instance (injected by Container)
         """
         self.db = db_client
-        from infrastructure.repositories import (
-            SupabaseUserRepository,
-            SupabasePaymentRepository
-        )
-        self.users_repo = SupabaseUserRepository(db_client)
-        self.payment_repo = SupabasePaymentRepository(db_client)
+        if user_repo and payment_repo:
+            self.users_repo = user_repo
+            self.payment_repo = payment_repo
+        else:
+            # Fallback: create repositories directly (for backward compatibility)
+            from infrastructure.repositories import (
+                SupabaseUserRepository,
+                SupabasePaymentRepository
+            )
+            self.users_repo = SupabaseUserRepository(db_client)
+            self.payment_repo = SupabasePaymentRepository(db_client)
 
     async def get_user_subscription_info(self, user_id: str) -> Optional[Dict[str, Any]]:
         """

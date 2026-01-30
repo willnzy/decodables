@@ -185,7 +185,7 @@ class GrantSignupBonusCommand:
     """
     Command to grant signup bonus to new user.
 
-    Grants 50 permanent credits to new users.
+    Grants signup bonus permanent credits to new users (configured in system_configs, default 100).
     """
     user_id: str
 

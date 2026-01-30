@@ -55,6 +55,8 @@ class StripeWebhookService:
         credit_repo: SupabaseCreditRepository,
         payment_repo: SupabasePaymentRepository,
         db_client = None,  # AsyncClient for direct database operations
+        tier_service = None,  # WS2: TierService for dynamic credits configuration
+        activity_log_repo = None,  # WS2: ActivityLogRepository for unified activity logging
     ):
         """
         Initialize Stripe Webhook Service.
@@ -64,11 +66,15 @@ class StripeWebhookService:
             credit_repo: Credit repository for credits operations
             payment_repo: Payment repository for payment records
             db_client: AsyncClient for direct database operations (activity logs, RPC calls)
+            tier_service: TierService for dynamic tier/credits configuration
+            activity_log_repo: ActivityLogRepository for activity logging
         """
         self.user_repo = user_repo
         self.credit_repo = credit_repo
         self.payment_repo = payment_repo
         self.db_client = db_client or user_repo.client  # Use repo's client if not provided
+        self.tier_service = tier_service
+        self.activity_log_repo = activity_log_repo
 
     def verify_signature(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         """
@@ -302,19 +308,17 @@ class StripeWebhookService:
         # ============================================
 
         # Log activity (non-critical)
-        try:
-            await self.db_client.table("activity_logs").insert({
-                "user_id": uid,
-                "action": "credits_purchase",
-                "metadata": {
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=uid,
+                action="credits_purchase",
+                metadata={
                     "amount": credits_amount,
                     "payment": amount_total,
                     "session_id": session_id,
                     "payment_id": str(payment_id) if payment_id else None,
                 },
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log activity: {e}")
+            )
 
         # Track analytics (non-critical)
         try:
@@ -380,7 +384,13 @@ class StripeWebhookService:
             logger.error(f"[Webhook] Missing customer_id in checkout session for user {uid}")
             return {"status": "error", "error": "missing_customer_id", "user_id": uid}
 
-        amt = 500 if plan == "t2" else 1000
+        # WS2: Get monthly credits from TierService (was hardcoded 500/1000)
+        if self.tier_service:
+            amt = await self.tier_service.get_monthly_credits(plan)
+        else:
+            # Emergency fallback (should never happen with proper DI)
+            from domains.identity.constants import TIER_MONTHLY_CREDITS
+            amt = TIER_MONTHLY_CREDITS.get(plan, 0)
 
         # Try atomic RPC for subscription creation
         try:
@@ -426,14 +436,12 @@ class StripeWebhookService:
                 return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
 
         # Log activity (non-critical)
-        try:
-            self.db_client.table("activity_logs").insert({
-                "user_id": uid,
-                "action": "subscription_started",
-                "metadata": {"plan": plan, "payment": amount_total, "session_id": session_id},
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log activity: {e}")
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=uid,
+                action="subscription_started",
+                metadata={"plan": plan, "payment": amount_total, "session_id": session_id},
+            )
 
         # Track analytics (non-critical)
         try:
@@ -572,9 +580,14 @@ class StripeWebhookService:
             except Exception as e:
                 logger.warning(f"[Webhook] Failed to update subscription status for user {uid}: {e}")
 
-        # Step 3: Refresh credits
+        # Step 3: Refresh credits (WS2: get amount from TierService)
         try:
-            await self.credit_repo.refresh_monthly_credits(uid, tier)
+            if self.tier_service:
+                monthly_credits = await self.tier_service.get_monthly_credits(tier)
+            else:
+                from domains.identity.constants import TIER_MONTHLY_CREDITS
+                monthly_credits = TIER_MONTHLY_CREDITS.get(tier, 0)
+            await self.credit_repo.refresh_monthly_credits(uid, monthly_credits)
         except Exception as e:
             logger.error(f"[Webhook] CRITICAL: Payment recorded but credits refresh failed for user {uid}: {e}")
             return {
@@ -585,14 +598,12 @@ class StripeWebhookService:
             }
 
         # Step 4: Log activity (non-critical)
-        try:
-            self.db_client.table("activity_logs").insert({
-                "user_id": uid,
-                "action": "monthly_credits_refreshed",
-                "metadata": {"tier": tier, "payment": amount_paid, "invoice_id": invoice_id},
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log activity: {e}")
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=uid,
+                action="monthly_credits_refreshed",
+                metadata={"tier": tier, "payment": amount_paid, "invoice_id": invoice_id},
+            )
 
         # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
         try:
@@ -702,18 +713,16 @@ class StripeWebhookService:
             return {"status": "error", "error": "tier_update_failed", "user_id": uid}
 
         # Log activity (non-critical)
-        try:
-            self.db_client.table("activity_logs").insert({
-                "user_id": uid,
-                "action": "subscription_ended",
-                "metadata": {
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=uid,
+                action="subscription_ended",
+                metadata={
                     "reason": status,
                     "previous_tier": current_tier,
                     "subscription_id": subscription_id
                 },
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Failed to log activity: {e}")
+            )
 
         # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
         try:
@@ -779,18 +788,16 @@ class StripeWebhookService:
 
         # Log activity if tier changed
         if new_tier != current_tier:
-            try:
-                self.db_client.table("activity_logs").insert({
-                    "user_id": uid,
-                    "action": "subscription_changed",
-                    "metadata": {
+            if self.activity_log_repo:
+                await self.activity_log_repo.log_activity(
+                    user_id=uid,
+                    action="subscription_changed",
+                    metadata={
                         "previous_tier": current_tier,
                         "new_tier": new_tier,
                         "subscription_id": subscription_id
                     },
-                }).execute()
-            except Exception as e:
-                logger.warning(f"Failed to log activity: {e}")
+                )
 
             # ✅ Phase 4 - Task 9: Log webhook operation to audit trail
             try:

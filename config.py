@@ -82,7 +82,7 @@ RATE_LIMIT_OCR = "10/minute"
 # ==========================================
 # CREDITS_PER_IMAGE = 5        # ❌ REMOVED - use tier_service.get_operation_cost("image_generation")
 # CREDITS_PER_OCR = 10         # ❌ REMOVED - use tier_service.get_operation_cost("ocr")
-# CREDITS_SIGNUP_BONUS = 50    # ❌ REMOVED - use tier_service.get_signup_bonus()
+# CREDITS_SIGNUP_BONUS = 100   # ❌ REMOVED - use tier_service.get_signup_bonus() or SQL RPC default
 # CREDITS_MONTHLY_T2 = 100     # ❌ REMOVED - use tier_service.get_monthly_credits("t2")
 # CREDITS_MONTHLY_T3 = 200     # ❌ REMOVED - use tier_service.get_monthly_credits("t3")
 

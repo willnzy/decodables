@@ -194,11 +194,23 @@ class Container:
 
     # ========== Domain Services (v2.0 - Async Methods) ==========
 
+    async def _get_or_create_tier_service(self):
+        """Get or create TierService instance (shared across services)."""
+        if 'tier_service' not in self._services:
+            from infrastructure.repositories.config_repository import SupabaseConfigRepository
+            from domains.identity.tier_service import TierService
+
+            db = await get_async_db_client()
+            config_repo = SupabaseConfigRepository(db)
+            self._services['tier_service'] = TierService(config_repo)
+        return self._services['tier_service']
+
     async def get_billing_service(self) -> BillingService:
         """Get billing service instance (async)."""
         if 'billing' not in self._services:
             credit_repo = await self.get_credit_repository()
-            self._services['billing'] = BillingService(credit_repo)
+            tier_service = await self._get_or_create_tier_service()
+            self._services['billing'] = BillingService(credit_repo, tier_service=tier_service)
         return self._services['billing']
 
     async def get_identity_service(self) -> IdentityService:
@@ -426,11 +438,13 @@ class Container:
             users_repo = SupabaseUserRepository(db)
             payment_repo = SupabasePaymentRepository(db)
             admin_repo = SupabaseAdminUsersRepository(db)
+            tier_service = await self._get_or_create_tier_service()
 
             self._services['subscription'] = SubscriptionService(
                 users_repo=users_repo,
                 payment_repo=payment_repo,
                 admin_repo=admin_repo,
+                tier_service=tier_service,
             )
         return self._services['subscription']
 
@@ -981,7 +995,14 @@ class Container:
 
             user_repo = SupabaseUserRepository(db)
             credit_repo = SupabaseCreditRepository(db)
-            self._services['clerk_webhook_service'] = ClerkWebhookService(user_repo, credit_repo)
+            tier_service = await self._get_or_create_tier_service()
+            from infrastructure.repositories.activity_log_repository import ActivityLogRepository
+            activity_log_repo = ActivityLogRepository(db)
+            self._services['clerk_webhook_service'] = ClerkWebhookService(
+                user_repo, credit_repo,
+                tier_service=tier_service,
+                activity_log_repo=activity_log_repo,
+            )
         return self._services['clerk_webhook_service']
 
     async def get_stripe_webhook_service(self):
@@ -1008,8 +1029,13 @@ class Container:
             user_repo = SupabaseUserRepository(db)
             credit_repo = SupabaseCreditRepository(db)
             payment_repo = SupabasePaymentRepository(db)
+            tier_service = await self._get_or_create_tier_service()
+            from infrastructure.repositories.activity_log_repository import ActivityLogRepository
+            activity_log_repo = ActivityLogRepository(db)
             self._services['stripe_webhook_service'] = StripeWebhookService(
-                user_repo, credit_repo, payment_repo
+                user_repo, credit_repo, payment_repo,
+                tier_service=tier_service,
+                activity_log_repo=activity_log_repo,
             )
         return self._services['stripe_webhook_service']
 
