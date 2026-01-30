@@ -193,9 +193,13 @@ def validate_config() -> Dict[str, Any]:
     if not stripe.api_key:
         missing_keys.append("STRIPE_SECRET_KEY")
 
-    # Check webhook secret
+    # WS7b (#50): STRIPE_WEBHOOK_SECRET is critical in production
     if not WEBHOOK_SECRET:
-        warnings.append("STRIPE_WEBHOOK_SECRET (webhooks will fail)")
+        import config as app_config
+        if app_config.IS_PRODUCTION:
+            missing_keys.append("STRIPE_WEBHOOK_SECRET")
+        else:
+            warnings.append("STRIPE_WEBHOOK_SECRET (webhooks will fail in dev)")
 
     # Check price IDs
     required_prices = ["credits_100", "t2", "t3"]
@@ -477,7 +481,8 @@ def construct_event(payload: bytes, sig_header: str) -> Dict:
         Exception: If signature verification fails
     """
     try:
-        return stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
+        # WS7b (#48): Explicit tolerance to prevent replay attacks beyond 5 minutes
+        return stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET, tolerance=300)
     except stripe.error.SignatureVerificationError as e:
         logger.warning(f"[Stripe] Webhook signature verification failed: {e}")
         raise Exception(f"Webhook signature verification failed: {str(e)}")

@@ -178,11 +178,22 @@ class StripeWebhookService:
             return await self._handle_checkout_completed(event)
         elif event_type == "invoice.payment_succeeded":
             return await self._handle_invoice_payment(event)
+        elif event_type == "invoice.payment_failed":
+            # WS7b (#44): Handle failed payments (dunning)
+            return await self._handle_invoice_payment_failed(event)
+        elif event_type == "invoice.payment_action_required":
+            # WS7b (#45): Log action-required invoices (3D Secure, etc.)
+            invoice = event.get("data", {}).get("object", {})
+            logger.info(f"[Webhook] invoice.payment_action_required: invoice={invoice.get('id')}, customer={invoice.get('customer')}")
+            return {"status": "ok", "action": "payment_action_required_logged"}
         elif event_type in ["customer.subscription.deleted", "customer.subscription.updated"]:
             return await self._handle_subscription_change(event)
         elif event_type == "charge.refunded":
             # P0-010 fix: Process refunds via webhook for transaction safety
             return await self._handle_charge_refunded(event)
+        elif event_type == "customer.deleted":
+            # WS7b (#45): GDPR — clear local stripe_customer_id
+            return await self._handle_customer_deleted(event)
 
         return {"status": "ok"}
 
@@ -507,6 +518,14 @@ class StripeWebhookService:
                 except Exception as e:
                     logger.warning(f"[Webhook] Failed to confirm subscription status for user {uid}: {e}")
 
+        # WS7b (#45): Warn if subscription invoice for non-subscriber (data inconsistency)
+        if billing_reason in ("subscription_cycle", "subscription_create") and tier not in ("t2", "t3"):
+            logger.warning(
+                f"[Webhook] ALERT: Subscription invoice for non-subscriber! "
+                f"user={uid}, tier={tier}, invoice={invoice_id}, billing_reason={billing_reason}. "
+                f"Possible data inconsistency — check Stripe Dashboard."
+            )
+
         return {"status": "ok"}
 
     async def _process_subscription_renewal(
@@ -633,7 +652,9 @@ class StripeWebhookService:
         current_tier = user_res.data[0].get("tier", "t1")
 
         # Handle termination statuses
-        termination_statuses = ["canceled", "unpaid", "past_due", "incomplete_expired"]
+        # WS7b: Removed past_due — Stripe dunning retries payment before canceling.
+        # past_due is handled by _handle_invoice_payment_failed() (status update only, no tier change).
+        termination_statuses = ["canceled", "unpaid", "incomplete_expired"]
         if status in termination_statuses:
             return await self._process_subscription_termination(uid, current_tier, status, subscription_id)
 
@@ -1213,3 +1234,95 @@ class StripeWebhookService:
             )
         except Exception as e:
             logger.warning(f"Failed to log webhook operation: {e}")
+
+    # ==========================================
+    # WS7b: New Webhook Handlers
+    # ==========================================
+
+    async def _handle_invoice_payment_failed(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle invoice.payment_failed — update subscription_status to past_due.
+
+        WS7b (#44): Stripe dunning sends this when payment fails. We mark the user
+        as past_due but do NOT downgrade tier or clear credits. The actual downgrade
+        happens only when Stripe sends subscription.deleted (after all retries fail).
+        """
+        invoice = event["data"]["object"]
+        invoice_id = invoice.get("id", "unknown")
+        customer_id = invoice.get("customer")
+
+        if not customer_id:
+            logger.error(f"[Webhook] invoice.payment_failed missing customer_id: invoice={invoice_id}")
+            return {"status": "error", "error": "missing_customer_id"}
+
+        # Look up user
+        user_res = await self.db_client.table("profiles").select("id, tier, subscription_status")\
+            .eq("stripe_customer_id", customer_id).execute()
+
+        if not user_res.data:
+            logger.warning(f"[Webhook] No user found for customer {customer_id}: invoice={invoice_id}")
+            return {"status": "error", "error": "user_not_found"}
+
+        user = user_res.data[0]
+        uid = user["id"]
+
+        # Update subscription_status to past_due (no tier change!)
+        try:
+            await self.db_client.table("profiles").update({
+                "subscription_status": "past_due"
+            }).eq("id", uid).execute()
+            logger.warning(
+                f"[Webhook] Payment failed for user {uid}: invoice={invoice_id}, "
+                f"tier={user.get('tier')}, status updated to past_due"
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to update past_due status for user {uid}: {e}")
+            return {"status": "error", "error": "status_update_failed"}
+
+        # Record payment failure in payment_records
+        try:
+            await self.payment_repo.create(
+                user_id=uid,
+                amount_usd=0,
+                currency="USD",
+                payment_type="payment_failed",
+                metadata={
+                    "invoice_id": invoice_id,
+                    "customer_id": customer_id,
+                    "source": "stripe_webhook",
+                },
+            )
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to record payment_failed for user {uid}: {e}")
+
+        return {"status": "ok", "action": "marked_past_due", "user_id": uid}
+
+    async def _handle_customer_deleted(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle customer.deleted — clear local stripe_customer_id (GDPR compliance).
+
+        WS7b (#45): When a Stripe customer is deleted, we must clear the reference
+        in our database to avoid orphaned references.
+        """
+        customer = event["data"]["object"]
+        customer_id = customer.get("id")
+
+        if not customer_id:
+            return {"status": "error", "error": "missing_customer_id"}
+
+        try:
+            result = await self.db_client.table("profiles").update({
+                "stripe_customer_id": None,
+                "subscription_status": "inactive",
+            }).eq("stripe_customer_id", customer_id).execute()
+
+            affected = len(result.data) if result.data else 0
+            if affected:
+                logger.info(f"[Webhook] Cleared stripe_customer_id for {affected} user(s): customer={customer_id}")
+            else:
+                logger.info(f"[Webhook] customer.deleted: no local user with customer={customer_id}")
+
+            return {"status": "ok", "action": "customer_cleared", "affected": affected}
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to clear customer {customer_id}: {e}")
+            return {"status": "error", "error": "clear_customer_failed"}

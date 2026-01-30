@@ -737,6 +737,11 @@ CREATE TABLE IF NOT EXISTS stripe_webhook_events (
 );
 
 
+-- WS7b (#47): Enable RLS on stripe_webhook_events (service_role only)
+ALTER TABLE stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY service_role_all ON stripe_webhook_events
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- ----------------------------------------------------------------------------
 -- 15. system_resource_audit_logs
 -- ----------------------------------------------------------------------------

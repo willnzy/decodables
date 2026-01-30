@@ -43,7 +43,10 @@ CLERK_ALLOWED_ORIGINS = os.environ.get("CLERK_ALLOWED_ORIGINS", "")
 CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API")
 
 # Stripe
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")  # WS7b (#39)
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+# WS7b (#39): Lock Stripe API version to prevent unexpected behavior changes
+STRIPE_API_VERSION = os.environ.get("STRIPE_API_VERSION", "2024-12-18.acacia")
 
 # Email (Resend)
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
