@@ -361,6 +361,76 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
             logger.error(f"Failed to count projects for owner {owner_id}: {e}")
             return 0
 
+    async def count_by_owner_with_search(
+        self,
+        owner_id: str,
+        search: str,
+    ) -> int:
+        """
+        WS-12: Count projects by owner filtered by search query.
+        Uses DB-side ILIKE filtering for accurate total count.
+        """
+        try:
+            safe_query = sanitize_postgrest_query(search)
+            result = await self.client.table("projects").select(
+                "id", count="exact"
+            ).eq("user_id", owner_id).eq(
+                "is_deleted", False
+            ).neq(
+                "status", ProjectStatus.DELETED.value
+            ).or_(
+                f"title.ilike.%{safe_query}%,description.ilike.%{safe_query}%"
+            ).execute()
+
+            return result.count if result.count else 0
+
+        except Exception as e:
+            logger.error(f"Failed to count search results for owner {owner_id}: {e}")
+            return 0
+
+    async def count_starred(self, owner_id: str) -> int:
+        """WS-12: Count starred projects for accurate pagination total."""
+        try:
+            result = await self.client.table("projects").select(
+                "id", count="exact"
+            ).eq("user_id", owner_id).eq(
+                "is_starred", True
+            ).eq("is_deleted", False).execute()
+
+            return result.count if result.count else 0
+
+        except Exception as e:
+            logger.error(f"Failed to count starred projects for {owner_id}: {e}")
+            return 0
+
+    async def count_by_folder(
+        self,
+        owner_id: str,
+        folder_id: Optional[str],
+        search: Optional[str] = None,
+    ) -> int:
+        """WS-12: Count projects in folder for accurate pagination total."""
+        try:
+            query = self.client.table("projects").select(
+                "id", count="exact"
+            ).eq("user_id", owner_id).eq("is_deleted", False)
+
+            if folder_id:
+                query = query.eq("folder_id", folder_id)
+            else:
+                query = query.is_("folder_id", "null")
+
+            if search:
+                safe_query = sanitize_postgrest_query(search)
+                query = query.ilike("title", f"%{safe_query}%")
+
+            result = await query.execute()
+            return result.count if result.count else 0
+
+        except Exception as e:
+            logger.error(f"Failed to count folder projects: {e}")
+            return 0
+
     async def save_page(self, project_id: str, page: Page) -> Page:
         """Save a single page."""
         try:

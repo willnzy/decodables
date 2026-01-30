@@ -446,6 +446,32 @@ class CreationService:
         """
         return await self._repository.count_by_owner(user_id)
 
+    async def count_search_results(self, user_id: str, search: str) -> int:
+        """
+        WS-12: Count search results for accurate pagination total.
+
+        Args:
+            user_id: User ID
+            search: Search query
+
+        Returns:
+            Total matching project count
+        """
+        return await self._repository.count_by_owner_with_search(user_id, search)
+
+    async def count_starred_projects(self, user_id: str) -> int:
+        """WS-12: Count starred projects for accurate pagination total."""
+        return await self._repository.count_starred(user_id)
+
+    async def count_folder_projects(
+        self,
+        user_id: str,
+        folder_id: Optional[str],
+        search: Optional[str] = None,
+    ) -> int:
+        """WS-12: Count folder projects for accurate pagination total."""
+        return await self._repository.count_by_folder(user_id, folder_id, search)
+
     async def add_collaborator(
         self,
         project_id: str,

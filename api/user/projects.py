@@ -211,6 +211,7 @@ async def list_projects(
         user_id=ctx.user_id,
         limit=limit,
         offset=offset,
+        search=search,  # WS-12: Push search to DB layer
     )
 
     result = await handler.handle(query)
@@ -219,11 +220,7 @@ async def list_projects(
         logger.error(f"Failed to get projects for user {ctx.user_id}: {result.error}")
         raise HTTPException(500, "Failed to get projects")
 
-    # Filter by search if provided
     items = result.projects_list
-    if search:
-        search_lower = search.lower()
-        items = [p for p in items if search_lower in (p.get("title") or "").lower()]
 
     # Optionally exclude canvas_data for lighter response
     if not include_canvas_data:
@@ -416,13 +413,14 @@ async def list_starred_projects(
         limit=limit,
     )
 
-    total = len(items)
+    # WS-12: Use DB count for accurate pagination total
+    total = await creation_service.count_starred_projects(ctx.user_id)
     return ProjectListResponse(
         items=items,
         total=total,
         offset=offset,
         limit=limit,
-        has_more=total >= limit,  # Heuristic: full page means likely more
+        has_more=(offset + limit) < total,
     )
 
 
@@ -476,13 +474,16 @@ async def list_projects_by_folder(
         search=search,
     )
 
-    total = len(items)
+    # WS-12: Use DB count for accurate pagination total
+    total = await creation_service.count_folder_projects(
+        ctx.user_id, target_folder_id, search
+    )
     return ProjectListResponse(
         items=items,
         total=total,
         offset=offset,
         limit=limit,
-        has_more=total >= limit,
+        has_more=(offset + limit) < total,
     )
 
 

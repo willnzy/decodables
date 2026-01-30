@@ -63,6 +63,7 @@ class GetUserProjectsQuery:
     status: Optional[str] = None
     limit: int = 50
     offset: int = 0
+    search: Optional[str] = None  # WS-12: DB-side search filter
 
 
 @dataclass
@@ -92,15 +93,27 @@ class GetUserProjectsHandler:
         try:
             status = ProjectStatus(query.status) if query.status else None
 
-            projects = await self._creation_service.get_user_projects(
-                user_id=query.user_id,
-                status=status,
-                limit=query.limit,
-                offset=query.offset,
-            )
-
-            # Get actual total count for pagination (not just current page count)
-            total_count = await self._creation_service.count_user_projects(query.user_id)
+            # WS-12: Use DB-side search when search query is provided
+            if query.search:
+                projects = await self._creation_service.search_projects(
+                    query=query.search,
+                    user_id=query.user_id,
+                    include_public=False,
+                    limit=query.limit,
+                    offset=query.offset,
+                )
+                # Get filtered total count from DB
+                total_count = await self._creation_service.count_search_results(
+                    query.user_id, query.search
+                )
+            else:
+                projects = await self._creation_service.get_user_projects(
+                    user_id=query.user_id,
+                    status=status,
+                    limit=query.limit,
+                    offset=query.offset,
+                )
+                total_count = await self._creation_service.count_user_projects(query.user_id)
 
             return GetUserProjectsResult(
                 success=True,
