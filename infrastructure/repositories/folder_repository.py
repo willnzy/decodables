@@ -178,6 +178,7 @@ class SupabaseFolderRepository(IFolderRepository):
             result = await self.client.table("folders")\
                 .update(data)\
                 .eq("id", folder.id)\
+                .eq("workspace_id", folder.workspace_id)\
                 .execute()
 
             if result.data:
@@ -190,7 +191,9 @@ class SupabaseFolderRepository(IFolderRepository):
             raise
 
     @retry_on_network_error()
-    async def update_partial(self, folder_id: str, data: dict) -> Optional[Folder]:
+    async def update_partial(
+        self, folder_id: str, data: dict, workspace_id: Optional[str] = None,
+    ) -> Optional[Folder]:
         """Partially update a folder."""
         try:
             if not folder_id:
@@ -212,10 +215,12 @@ class SupabaseFolderRepository(IFolderRepository):
                 # No valid fields to update, fetch and return current
                 return await self.get_by_id(folder_id)
 
-            result = await self.client.table("folders")\
+            query = self.client.table("folders")\
                 .update(update_data)\
-                .eq("id", folder_id)\
-                .execute()
+                .eq("id", folder_id)
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
+            result = await query.execute()
 
             if result.data:
                 logger.info(
@@ -231,16 +236,18 @@ class SupabaseFolderRepository(IFolderRepository):
             raise
 
     @retry_on_network_error()
-    async def delete(self, folder_id: str) -> bool:
+    async def delete(self, folder_id: str, workspace_id: Optional[str] = None) -> bool:
         """Delete a folder."""
         try:
             if not folder_id:
                 raise ValueError("Folder ID required for delete")
 
-            result = await self.client.table("folders")\
+            query = self.client.table("folders")\
                 .delete()\
-                .eq("id", folder_id)\
-                .execute()
+                .eq("id", folder_id)
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
+            result = await query.execute()
 
             # Check if deletion was successful
             # Note: Items in folder will have folder_id set to NULL (ON DELETE SET NULL)

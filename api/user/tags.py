@@ -61,6 +61,46 @@ def validate_uuid(value: str, field_name: str = "ID") -> None:
 
 
 # ==========================================
+# Ownership Verification Helpers (WS1 IDOR fix)
+# ==========================================
+
+async def verify_project_ownership(project_id: str, user_id: str) -> None:
+    """
+    Verify that a project belongs to the current user.
+
+    Raises HTTPException 404 if not found, 403 if not owned.
+    """
+    from core.database import get_async_db_client
+    client = await get_async_db_client()
+    result = await client.table("projects").select("user_id").eq(
+        "id", project_id
+    ).maybe_single().execute()
+
+    if not result.data:
+        raise HTTPException(404, "Project not found")
+    if result.data["user_id"] != user_id:
+        raise HTTPException(403, "Not authorized to access this project")
+
+
+async def verify_asset_ownership(asset_id: str, user_id: str) -> None:
+    """
+    Verify that an asset belongs to the current user.
+
+    Raises HTTPException 404 if not found, 403 if not owned.
+    """
+    from core.database import get_async_db_client
+    client = await get_async_db_client()
+    result = await client.table("assets").select("user_id").eq(
+        "id", asset_id
+    ).maybe_single().execute()
+
+    if not result.data:
+        raise HTTPException(404, "Asset not found")
+    if result.data["user_id"] != user_id:
+        raise HTTPException(403, "Not authorized to access this asset")
+
+
+# ==========================================
 # Request/Response Models
 # ==========================================
 
@@ -343,6 +383,9 @@ async def get_project_tags(
     """
     validate_uuid(project_id, "project_id")
 
+    # WS1: Verify project ownership before accessing tags
+    await verify_project_ownership(project_id, ctx.user_id)
+
     container = get_container()
     project_tag_service = await container.get_project_tag_service()
 
@@ -372,6 +415,9 @@ async def add_project_tags(
     validate_uuid(project_id, "project_id")
     for tag_id in data.tag_ids:
         validate_uuid(tag_id, "tag_id")
+
+    # WS1: Verify project ownership before modifying tags
+    await verify_project_ownership(project_id, ctx.user_id)
 
     container = get_container()
     project_tag_service = await container.get_project_tag_service()
@@ -411,6 +457,9 @@ async def set_project_tags(
     for tag_id in data.tag_ids:
         validate_uuid(tag_id, "tag_id")
 
+    # WS1: Verify project ownership before replacing tags
+    await verify_project_ownership(project_id, ctx.user_id)
+
     container = get_container()
     project_tag_service = await container.get_project_tag_service()
 
@@ -448,6 +497,9 @@ async def remove_project_tag(
     validate_uuid(project_id, "project_id")
     validate_uuid(tag_id, "tag_id")
 
+    # WS1: Verify project ownership before removing tag
+    await verify_project_ownership(project_id, ctx.user_id)
+
     container = get_container()
     project_tag_service = await container.get_project_tag_service()
 
@@ -476,6 +528,9 @@ async def get_asset_tags(
         List of tags
     """
     validate_uuid(asset_id, "asset_id")
+
+    # WS1: Verify asset ownership before accessing tags
+    await verify_asset_ownership(asset_id, ctx.user_id)
 
     container = get_container()
     asset_tag_service = await container.get_asset_tag_service()
@@ -506,6 +561,9 @@ async def add_asset_tags(
     validate_uuid(asset_id, "asset_id")
     for tag_id in data.tag_ids:
         validate_uuid(tag_id, "tag_id")
+
+    # WS1: Verify asset ownership before modifying tags
+    await verify_asset_ownership(asset_id, ctx.user_id)
 
     container = get_container()
     asset_tag_service = await container.get_asset_tag_service()
@@ -546,6 +604,9 @@ async def set_asset_tags(
     for tag_id in data.tag_ids:
         validate_uuid(tag_id, "tag_id")
 
+    # WS1: Verify asset ownership before replacing tags
+    await verify_asset_ownership(asset_id, ctx.user_id)
+
     container = get_container()
     asset_tag_service = await container.get_asset_tag_service()
 
@@ -583,6 +644,9 @@ async def remove_asset_tag(
     """
     validate_uuid(asset_id, "asset_id")
     validate_uuid(tag_id, "tag_id")
+
+    # WS1: Verify asset ownership before removing tag
+    await verify_asset_ownership(asset_id, ctx.user_id)
 
     container = get_container()
     asset_tag_service = await container.get_asset_tag_service()

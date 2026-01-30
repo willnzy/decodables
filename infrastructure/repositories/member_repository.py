@@ -98,14 +98,18 @@ class SupabaseMemberRepository(IMemberRepository):
             raise
 
     @retry_on_network_error()
-    async def update_member_role(self, member_id: str, role: str) -> Optional[WorkspaceMember]:
+    async def update_member_role(
+        self, member_id: str, role: str, workspace_id: Optional[str] = None,
+    ) -> Optional[WorkspaceMember]:
         """Update a member's role."""
         try:
-            result = await self.client.table("workspace_members")\
+            query = self.client.table("workspace_members")\
                 .update({"role": role})\
                 .eq("id", member_id)\
-                .eq("is_active", True)\
-                .execute()
+                .eq("is_active", True)
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
+            result = await query.execute()
 
             if result.data:
                 return WorkspaceMember.from_dict(result.data[0])
@@ -115,13 +119,17 @@ class SupabaseMemberRepository(IMemberRepository):
             raise
 
     @retry_on_network_error()
-    async def remove_member(self, member_id: str) -> bool:
+    async def remove_member(
+        self, member_id: str, workspace_id: Optional[str] = None,
+    ) -> bool:
         """Soft delete a member."""
         try:
-            result = await self.client.table("workspace_members")\
+            query = self.client.table("workspace_members")\
                 .update({"is_active": False})\
-                .eq("id", member_id)\
-                .execute()
+                .eq("id", member_id)
+            if workspace_id:
+                query = query.eq("workspace_id", workspace_id)
+            result = await query.execute()
 
             success = bool(result.data)
             if success:

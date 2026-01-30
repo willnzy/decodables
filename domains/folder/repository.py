@@ -103,13 +103,16 @@ class IFolderRepository(ABC):
         pass
 
     @abstractmethod
-    async def update_partial(self, folder_id: str, data: dict) -> Optional[Folder]:
+    async def update_partial(
+        self, folder_id: str, data: dict, workspace_id: Optional[str] = None,
+    ) -> Optional[Folder]:
         """
         Partially update a folder.
 
         Args:
             folder_id: Folder UUID
             data: Dictionary of fields to update
+            workspace_id: Workspace UUID for ownership filtering (defense-in-depth)
 
         Returns:
             Updated Folder entity or None if not found
@@ -117,7 +120,7 @@ class IFolderRepository(ABC):
         pass
 
     @abstractmethod
-    async def delete(self, folder_id: str) -> bool:
+    async def delete(self, folder_id: str, workspace_id: Optional[str] = None) -> bool:
         """
         Delete a folder.
 
@@ -126,6 +129,7 @@ class IFolderRepository(ABC):
 
         Args:
             folder_id: Folder UUID
+            workspace_id: Workspace UUID for ownership filtering (defense-in-depth)
 
         Returns:
             True if deleted successfully

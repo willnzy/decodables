@@ -33,12 +33,16 @@ class IMemberRepository(ABC):
         pass
 
     @abstractmethod
-    async def update_member_role(self, member_id: str, role: str) -> Optional[WorkspaceMember]:
+    async def update_member_role(
+        self, member_id: str, role: str, workspace_id: Optional[str] = None,
+    ) -> Optional[WorkspaceMember]:
         """Update a member's role."""
         pass
 
     @abstractmethod
-    async def remove_member(self, member_id: str) -> bool:
+    async def remove_member(
+        self, member_id: str, workspace_id: Optional[str] = None,
+    ) -> bool:
         """Soft delete a member (set is_active=False)."""
         pass
 

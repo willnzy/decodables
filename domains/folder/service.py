@@ -161,6 +161,7 @@ class FolderService:
         folder_id: str,
         name: Optional[str] = None,
         color: Optional[FolderColor] = None,
+        workspace_id: Optional[str] = None,
     ) -> Optional[Folder]:
         """
         Update an existing folder.
@@ -169,6 +170,7 @@ class FolderService:
             folder_id: Folder UUID
             name: New folder name (optional)
             color: New folder color (optional)
+            workspace_id: Workspace UUID for ownership filtering (defense-in-depth)
 
         Returns:
             Updated Folder entity or None if not found
@@ -177,11 +179,14 @@ class FolderService:
             ValueError: If new name conflicts with existing folder
         """
         update_data = {}
+        resolved_workspace_id = workspace_id
 
         if name is not None:
             # Check for name conflict
             folder = await self._repo.get_by_id(folder_id)
             if folder:
+                if not resolved_workspace_id:
+                    resolved_workspace_id = folder.workspace_id
                 existing = await self._repo.get_by_workspace_and_name(
                     folder.workspace_id,
                     folder.folder_type,
@@ -198,7 +203,9 @@ class FolderService:
         if not update_data:
             return await self._repo.get_by_id(folder_id)
 
-        updated = await self._repo.update_partial(folder_id, update_data)
+        updated = await self._repo.update_partial(
+            folder_id, update_data, workspace_id=resolved_workspace_id,
+        )
 
         if updated:
             logger.info(
@@ -208,7 +215,9 @@ class FolderService:
 
         return updated
 
-    async def delete_folder(self, folder_id: str) -> bool:
+    async def delete_folder(
+        self, folder_id: str, workspace_id: Optional[str] = None,
+    ) -> bool:
         """
         Delete a folder.
 
@@ -217,14 +226,16 @@ class FolderService:
 
         Args:
             folder_id: Folder UUID
+            workspace_id: Workspace UUID for ownership filtering (defense-in-depth)
 
         Returns:
             True if deleted successfully
         """
         # Get folder for logging
         folder = await self._repo.get_by_id(folder_id)
+        resolved_workspace_id = workspace_id or (folder.workspace_id if folder else None)
 
-        success = await self._repo.delete(folder_id)
+        success = await self._repo.delete(folder_id, workspace_id=resolved_workspace_id)
 
         if success and folder:
             logger.info(

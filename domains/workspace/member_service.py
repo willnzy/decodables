@@ -246,7 +246,7 @@ class MemberService:
         if target.role == "owner":
             raise ValueError("Cannot remove the workspace owner")
 
-        await self._member_repo.remove_member(target_member_id)
+        await self._member_repo.remove_member(target_member_id, workspace_id=workspace_id)
 
         logger.info(
             f"[MemberService] Member removed: workspace={workspace_id}, "
@@ -281,7 +281,9 @@ class MemberService:
 
         await self._verify_ownership(workspace_id, updater_id)
 
-        updated = await self._member_repo.update_member_role(target_member_id, new_role)
+        updated = await self._member_repo.update_member_role(
+            target_member_id, new_role, workspace_id=workspace_id,
+        )
         if not updated:
             raise ValueError("Member not found")
 

@@ -209,6 +209,7 @@ async def update_folder(
             folder_id=folder_id,
             name=data.name,
             color=color,
+            workspace_id=ctx.workspace_id,
         )
 
         if not updated:
@@ -248,7 +249,7 @@ async def delete_folder(
     folder = await folder_service.get_folder(folder_id)
     folder_name = folder.name if folder else "unknown"
 
-    success = await folder_service.delete_folder(folder_id)
+    success = await folder_service.delete_folder(folder_id, workspace_id=ctx.workspace_id)
 
     if not success:
         raise HTTPException(500, "Failed to delete folder")
