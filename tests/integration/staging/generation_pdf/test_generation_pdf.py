@@ -57,13 +57,20 @@ class TestGeneratePdf(BaseAPITest):
     def test_generate_pdf_nonexistent_project(self, auth_client):
         """
         业务规则: 不存在的项目应返回 404
+
+        PdfGenRequest schema 要求:
+        - project_id: UUID 格式
+        - current_hash: 1-128 字符, 字母数字+连字符+下划线
+        - image_urls: 必须来自允许的域名 (Supabase/FAL.ai/CloudFlare R2/AWS S3)
+        - texts: 最多 20 项
         """
         fake_id = str(uuid.uuid4())
         response = auth_client.post(
             self.ENDPOINT,
             json={
                 "project_id": fake_id,
-                "image_urls": ["https://example.com/1.png"],
+                "current_hash": "test_hash_abc123",
+                "image_urls": ["https://fal.media/files/test/1.png"],
                 "texts": ["Page 1"]
             }
         )
@@ -165,13 +172,16 @@ class TestGeneratePdfSecurity(BaseAPITest):
     def test_cannot_generate_others_project(self, auth_client):
         """
         业务规则: 不能为他人项目生成 PDF
+
+        PdfGenRequest 要求完整的请求体 (含 current_hash 和合法域名 image_urls)。
         """
         other_user_project = "00000000-0000-0000-0000-000000000001"
         response = auth_client.post(
             self.ENDPOINT,
             json={
                 "project_id": other_user_project,
-                "image_urls": ["https://example.com/1.png"],
+                "current_hash": "test_hash_abc123",
+                "image_urls": ["https://fal.media/files/test/1.png"],
                 "texts": ["Test"]
             }
         )

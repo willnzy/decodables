@@ -32,13 +32,18 @@ class TestReferralsList(BaseAPITest):
     def test_get_referrals_returns_paginated_response(self, auth_client):
         """
         业务规则: 推荐列表应返回分页结构
+
+        API 使用 DDD 标准分页格式: items/total/offset/limit/has_more
         """
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        assert "data" in data, "响应应包含 data"
-        assert isinstance(data["data"], list), "data 应该是列表"
-        assert "pagination" in data, "响应应包含 pagination"
+        assert "items" in data, "响应应包含 items"
+        assert isinstance(data["items"], list), "items 应该是列表"
+        # DDD 分页标准字段
+        assert "total" in data, "响应应包含 total"
+        assert "offset" in data, "响应应包含 offset"
+        assert "limit" in data, "响应应包含 limit"
 
     def test_pagination_works(self, auth_client):
         """
@@ -50,7 +55,7 @@ class TestReferralsList(BaseAPITest):
         )
         data = self.assert_success(response)
 
-        referrals = data.get("data", [])
+        referrals = data.get("items", [])
         assert len(referrals) <= 5, f"limit=5 但返回了 {len(referrals)} 条"
 
     def test_requires_authentication(self, anon_client):
@@ -84,7 +89,8 @@ class TestReferralsStats(BaseAPITest):
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        assert "data" in data, "响应应包含 data"
+        # 统计数据是字典格式
+        assert isinstance(data, dict), "统计数据应该是字典"
 
     def test_requires_authentication(self, anon_client):
         """

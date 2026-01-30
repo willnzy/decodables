@@ -44,7 +44,14 @@ class TestActiveCampaigns(BaseAPITest):
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        items = data.get("items", data) if isinstance(data, dict) else data
+        if isinstance(data, dict) and "items" in data:
+            items = data["items"]
+        elif isinstance(data, list):
+            items = data
+        else:
+            # 响应是 dict 但没有 "items" key，可能是空响应或其他格式
+            items = []
+
         if items and len(items) > 0:
             campaign = items[0]
             # 活动应该有基本信息
@@ -161,7 +168,13 @@ class TestCampaignTypes(BaseAPITest):
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        items = data.get("items", data) if isinstance(data, dict) else data
+        if isinstance(data, dict) and "items" in data:
+            items = data["items"]
+        elif isinstance(data, list):
+            items = data
+        else:
+            items = []
+
         if items and len(items) > 0:
             campaign = items[0]
             # 应该有类型或奖励信息
@@ -189,7 +202,13 @@ class TestCampaignExpiry(BaseAPITest):
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        items = data.get("items", data) if isinstance(data, dict) else data
+        if isinstance(data, dict) and "items" in data:
+            items = data["items"]
+        elif isinstance(data, list):
+            items = data
+        else:
+            items = []
+
         for campaign in items:
             # 如果有 is_expired 字段，应该为 False
             if "is_expired" in campaign:

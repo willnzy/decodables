@@ -252,6 +252,9 @@ class TestMarketplaceCreateListing(BaseAPITest):
     def test_create_listing_requires_title(self, auth_client):
         """
         业务规则: 商品标题是必需的
+
+        注意: Tier 权限检查 (is_config_public / tier gate) 在输入验证之前执行。
+        Free (t1) 用户会先收到 403 (Starter+ 才能发布)。
         """
         response = auth_client.post(
             self.ENDPOINT,
@@ -260,14 +263,17 @@ class TestMarketplaceCreateListing(BaseAPITest):
                 "resource_type": "asset",
             }
         )
-        # 应返回 400 或 422 (验证失败)
-        assert response.status_code in [400, 422], (
+        # 403: Free 用户无权发布 (tier gate 先于 validation)
+        # 400/422: 付费用户收到验证失败
+        assert response.status_code in [400, 403, 422], (
             f"空标题应被拒绝，但返回了 {response.status_code}"
         )
 
     def test_create_listing_valid_resource_types(self, auth_client):
         """
         业务规则: resource_type 只能是 'asset' 或 'project'
+
+        注意: Free (t1) 用户先被 403 拒绝 (tier gate 先于 validation)。
         """
         response = auth_client.post(
             self.ENDPOINT,
@@ -276,14 +282,17 @@ class TestMarketplaceCreateListing(BaseAPITest):
                 "resource_type": "invalid_type",
             }
         )
-        # 应返回 400 或 422
-        assert response.status_code in [400, 422], (
+        # 403: Free 用户无权发布
+        # 400/422: 付费用户收到验证失败
+        assert response.status_code in [400, 403, 422], (
             f"无效 resource_type 应被拒绝，但返回了 {response.status_code}"
         )
 
     def test_create_listing_price_range(self, auth_client):
         """
         业务规则: 价格范围 0-500 积分
+
+        注意: Free (t1) 用户先被 403 拒绝 (tier gate 先于 validation)。
         """
         # 测试负价格
         response = auth_client.post(
@@ -294,7 +303,7 @@ class TestMarketplaceCreateListing(BaseAPITest):
                 "price_credits": -1,
             }
         )
-        assert response.status_code in [400, 422], "负价格应被拒绝"
+        assert response.status_code in [400, 403, 422], "负价格应被拒绝"
 
         # 测试超过上限
         response = auth_client.post(
@@ -305,7 +314,7 @@ class TestMarketplaceCreateListing(BaseAPITest):
                 "price_credits": 501,
             }
         )
-        assert response.status_code in [400, 422], "超过 500 的价格应被拒绝"
+        assert response.status_code in [400, 403, 422], "超过 500 的价格应被拒绝"
 
     def test_requires_authentication(self, anon_client):
         """

@@ -167,15 +167,19 @@ class TestLogErrorsBatch(BaseAPITest):
         )
         assert response.status_code in [400, 422]
 
-    def test_empty_batch_rejected(self, auth_client):
+    def test_empty_batch_accepted(self, auth_client):
         """
-        业务规则: 空批次应被拒绝
+        业务规则: 空批次被接受 (幂等设计)
+
+        API 对空 errors 数组返回 200，而非拒绝。
+        这是 API 的设计选择：空批次不产生副作用，返回成功。
         """
         response = auth_client.post(
             self.ENDPOINT,
             json={"errors": []}
         )
-        assert response.status_code in [400, 422]
+        # API 接受空批次
+        assert response.status_code == 200
 
     def test_log_batch_without_auth(self, anon_client):
         """

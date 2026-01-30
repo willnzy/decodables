@@ -48,23 +48,25 @@ class TestUserProfile(BaseAPITest):
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        # 验证核心字段存在 (API 返回 "id" 而非 "user_id")
-        required_fields = ["id", "tier"]
+        # 验证核心字段存在
+        # API 通过 UserProfileService.get_user_profile() 返回 "user_id" (非 "id")
+        # 数据库 "id" 字段被映射为 "user_id"
+        required_fields = ["user_id", "tier"]
         self.assert_has_fields(data, required_fields)
 
     def test_user_id_format(self, auth_client):
         """
-        业务规则: id (用户ID) 格式为 user_xxx
+        业务规则: user_id (用户ID) 格式为 user_xxx
 
-        Clerk 生成的用户ID格式统一
+        Clerk 生成的用户ID格式统一。
+        API 通过 UserProfileService 将数据库 "id" 映射为 "user_id"。
         """
         response = auth_client.get(self.ENDPOINT)
         data = self.assert_success(response)
 
-        # API 返回 "id" 字段 (不是 "user_id")
-        user_id = data.get("id")
-        assert user_id is not None, "缺少 id"
-        assert user_id.startswith("user_"), f"id 格式错误: {user_id}"
+        user_id = data.get("user_id")
+        assert user_id is not None, "缺少 user_id"
+        assert user_id.startswith("user_"), f"user_id 格式错误: {user_id}"
 
     def test_user_code_format(self, auth_client):
         """

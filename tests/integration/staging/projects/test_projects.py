@@ -650,7 +650,7 @@ class TestProjectMove(BaseAPITest):
 @pytest.mark.p1
 class TestProjectStar(BaseAPITest):
     """
-    POST /api/v2/user/projects/{project_id}/star 黑盒测试
+    PATCH /api/v2/user/projects/{project_id}/star 黑盒测试
 
     切换项目收藏状态
 
@@ -658,6 +658,7 @@ class TestProjectStar(BaseAPITest):
     1. 项目可以被标记为收藏/取消收藏
     2. is_starred=true 收藏, is_starred=false 取消收藏
     3. 收藏状态切换后应立即生效
+    4. HTTP 方法为 PATCH (非 POST)
     """
 
     ENDPOINT = Endpoints.PROJECTS
@@ -681,8 +682,8 @@ class TestProjectStar(BaseAPITest):
 
         project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
 
-        # 收藏项目
-        star_resp = auth_client.post(
+        # 收藏项目 (PATCH 方法)
+        star_resp = auth_client.patch(
             Endpoints.project_star(project_id),
             json={"is_starred": True}
         )
@@ -716,14 +717,14 @@ class TestProjectStar(BaseAPITest):
 
         project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
 
-        # 先收藏
-        auth_client.post(
+        # 先收藏 (PATCH 方法)
+        auth_client.patch(
             Endpoints.project_star(project_id),
             json={"is_starred": True}
         )
 
-        # 再取消收藏
-        unstar_resp = auth_client.post(
+        # 再取消收藏 (PATCH 方法)
+        unstar_resp = auth_client.patch(
             Endpoints.project_star(project_id),
             json={"is_starred": False}
         )
@@ -743,7 +744,7 @@ class TestProjectStar(BaseAPITest):
         业务规则: 收藏不存在的项目应返回 404
         """
         fake_project_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.project_star(fake_project_id),
             json={"is_starred": True}
         )
@@ -769,8 +770,8 @@ class TestProjectStar(BaseAPITest):
 
         project_id = project_resp.json().get("id") or project_resp.json().get("project_id")
 
-        # 不提供 is_starred
-        star_resp = auth_client.post(
+        # 不提供 is_starred (PATCH 方法)
+        star_resp = auth_client.patch(
             Endpoints.project_star(project_id),
             json={}
         )
@@ -788,7 +789,7 @@ class TestProjectStar(BaseAPITest):
         业务规则: 收藏项目必须登录
         """
         fake_id = str(uuid.uuid4())
-        response = anon_client.post(
+        response = anon_client.patch(
             Endpoints.project_star(fake_id),
             json={"is_starred": True}
         )
@@ -800,7 +801,7 @@ class TestProjectStar(BaseAPITest):
 
         Sad Path: 验证错误
         """
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.project_star("invalid-uuid-format"),
             json={"is_starred": True}
         )
@@ -816,7 +817,7 @@ class TestProjectStar(BaseAPITest):
         Sad Path: 类型错误
         """
         fake_id = str(uuid.uuid4())
-        response = auth_client.post(
+        response = auth_client.patch(
             Endpoints.project_star(fake_id),
             json={"is_starred": "yes"}  # 字符串而非布尔值
         )

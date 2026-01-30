@@ -48,7 +48,7 @@ class TestSupportTicket(BaseAPITest):
             }
         )
         data = self.assert_success(response)
-        assert data.get("status") == "success"
+        assert data.get("status") == "ok"
 
     def test_create_ticket_with_email(self, auth_client):
         """
@@ -62,7 +62,7 @@ class TestSupportTicket(BaseAPITest):
             }
         )
         data = self.assert_success(response)
-        assert data.get("status") == "success"
+        assert data.get("status") == "ok"
 
     def test_invalid_email_format_rejected(self, auth_client):
         """
@@ -219,7 +219,7 @@ class TestContactForm(BaseAPITest):
             }
         )
         data = self.assert_success(response)
-        assert data.get("status") == "success"
+        assert data.get("status") == "ok"
 
     def test_contact_with_subject(self, auth_client):
         """
@@ -296,7 +296,7 @@ class TestFeedback(BaseAPITest):
             }
         )
         data = self.assert_success(response)
-        assert data.get("status") == "success"
+        assert data.get("status") == "ok"
 
     def test_feedback_with_images(self, auth_client):
         """

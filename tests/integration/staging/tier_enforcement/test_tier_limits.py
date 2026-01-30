@@ -153,7 +153,7 @@ class TestAssetTierLimits(BaseAPITest):
         注意: 实际上传测试需要文件，这里测试 API 响应结构
         """
         # 获取用户资产统计
-        response = auth_client.get(Endpoints.USER_PROFILE)
+        response = auth_client.get(Endpoints.PROFILE_ME)
 
         if response.status_code != 200:
             pytest.skip("User profile endpoint not available")
@@ -193,7 +193,7 @@ class TestFeatureAccessByTier(BaseAPITest):
         """
         业务规则: 用户可以查看自己的 Tier 信息
         """
-        response = auth_client.get(Endpoints.USER_PROFILE)
+        response = auth_client.get(Endpoints.PROFILE_ME)
 
         if response.status_code != 200:
             pytest.skip("User profile endpoint not available")

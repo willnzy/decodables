@@ -52,32 +52,49 @@ class TestConfigByKey(BaseAPITest):
     按 key 获取单个配置
     """
 
-    def test_get_nonexistent_key(self, auth_client):
+    def test_get_nonexistent_key_with_public_prefix(self, auth_client):
         """
-        业务规则: 获取不存在的配置 key
+        业务规则: 获取不存在但前缀合法的配置 key
 
-        可能返回 404 或 null
+        config/{key} 端点会检查 is_config_public(key)，
+        只有白名单前缀 (FEATURE_*, UI_*, PRICING_*, tier.* 等) 才可访问。
+        使用合法前缀的不存在 key 应返回 200+null 或 404。
         """
-        response = auth_client.get(Endpoints.config_key("nonexistent_config_key_12345"))
-        # 可能返回 404 或 200 + null
+        response = auth_client.get(Endpoints.config_key("FEATURE_nonexistent_12345"))
+        # 公开前缀 key: 200 (null value) 或 404 (key not found)
         assert response.status_code in [200, 404]
 
     def test_get_valid_config_key(self, auth_client):
         """
         业务规则: 获取存在的配置 key
 
-        先获取所有配置，找到一个有效的 key
+        先获取所有配置，找到一个匹配公开白名单前缀的 key。
+        config/{key} 端点有 is_config_public() 检查，
+        非公开前缀的 key 即使存在也会返回 403。
         """
         # 先获取所有配置
         all_response = auth_client.get(Endpoints.CONFIG)
         if all_response.status_code == 200:
             all_configs = all_response.json()
             if all_configs and isinstance(all_configs, dict):
-                # 找第一个 key
-                first_key = list(all_configs.keys())[0] if all_configs else None
-                if first_key:
-                    response = auth_client.get(Endpoints.config_key(first_key))
+                # 查找匹配公开白名单前缀的 key
+                public_prefixes = ("FEATURE_", "UI_", "PRICING_", "tier.")
+                public_key = None
+                for key in all_configs.keys():
+                    if any(key.startswith(prefix) for prefix in public_prefixes):
+                        public_key = key
+                        break
+
+                if public_key:
+                    response = auth_client.get(Endpoints.config_key(public_key))
                     data = self.assert_success(response)
+                else:
+                    # 所有 key 都不匹配公开前缀，使用第一个 key 验证 403
+                    first_key = list(all_configs.keys())[0]
+                    response = auth_client.get(Endpoints.config_key(first_key))
+                    assert response.status_code == 403, (
+                        f"非公开 key '{first_key}' 应返回 403，实际返回 {response.status_code}"
+                    )
 
     def test_non_public_key_returns_403(self, auth_client):
         """
@@ -161,11 +178,14 @@ class TestConfigValidation(BaseAPITest):
     def test_very_long_key(self, auth_client):
         """
         业务规则: 很长的 key 应被拒绝或截断
+
+        长 key 不匹配任何公开白名单前缀，
+        is_config_public() 会返回 403。
         """
         long_key = "a" * 500
         response = auth_client.get(Endpoints.config_key(long_key))
-        # 应该不会返回 500
-        assert response.status_code in [200, 400, 404]
+        # 不匹配公开前缀 → 403，或 400 (长度校验)，或 404
+        assert response.status_code in [400, 403, 404]
 
 
 @pytest.mark.p2
