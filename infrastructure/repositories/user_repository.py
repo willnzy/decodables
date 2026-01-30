@@ -618,8 +618,12 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             update_data["stripe_customer_id"] = stripe_customer_id
 
         # P0-011 fix: Reset monthly credits when downgrading to free tier
+        # WS4: Also clear cancel/downgrade schedule flags
         if tier == "t1":
             update_data["credits_monthly"] = 0
+            update_data["cancel_at_period_end"] = False
+            update_data["cancel_at"] = None
+            update_data["pending_tier_change"] = None
 
         result = await self.client.table("profiles").update(update_data).eq("id", user_id).execute()
         return result.data[0] if result.data else None

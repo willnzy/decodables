@@ -98,11 +98,13 @@ class SubscriptionService:
         payment_repo: SupabasePaymentRepository,
         admin_repo: SupabaseAdminUsersRepository,
         tier_service: "TierService" = None,
+        subscription_repo=None,  # WS4: SupabaseSubscriptionRepository for atomic RPC calls
     ):
         self.users_repo = users_repo
         self.payment_repo = payment_repo
         self.admin_repo = admin_repo
         self._tier_service = tier_service
+        self._subscription_repo = subscription_repo
 
     async def _get_monthly_credits(self, tier: str) -> int:
         """Get monthly credits for tier from TierService or fallback."""
@@ -328,20 +330,39 @@ class SubscriptionService:
 
         # Update database
         if immediate:
-            await self.users_repo.update_subscription_tier(user_id, TIER_T1, subscription_status="canceled")
-            await self.payment_repo.create(
-                user_id=user_id,
-                amount_usd=0,
-                currency="USD",
-                payment_type="sub_canceled",
-                metadata={
-                    "plan_name": plan_name,
-                    "subscription_id": subscription_id,
-                    "reason": reason,
-                    "admin_id": admin_id
-                }
-            )
+            # WS4: Atomic termination via RPC (tier→t1 + credits_monthly=0 + audit)
+            if self._subscription_repo:
+                await self._subscription_repo.terminate_subscription(
+                    user_id=user_id,
+                    new_tier=TIER_T1,
+                    reason="sub_canceled",
+                    subscription_status="canceled",
+                    metadata={
+                        "plan_name": plan_name,
+                        "subscription_id": subscription_id,
+                        "reason": reason,
+                        "admin_id": admin_id,
+                        "source": "admin_cancel_immediate",
+                    },
+                )
+            else:
+                # Fallback if subscription_repo not injected
+                await self.users_repo.update_subscription_tier(user_id, TIER_T1, subscription_status="canceled")
+                await self.payment_repo.create(
+                    user_id=user_id,
+                    amount_usd=0,
+                    currency="USD",
+                    payment_type="sub_canceled",
+                    metadata={
+                        "plan_name": plan_name,
+                        "subscription_id": subscription_id,
+                        "reason": reason,
+                        "admin_id": admin_id,
+                    },
+                )
         else:
+            # WS4 (#9): Period-end cancel — record intent, don't change tier/credits yet
+            # Stripe will send subscription.deleted webhook at period end → triggers actual termination
             await self.payment_repo.create(
                 user_id=user_id,
                 amount_usd=0,
@@ -352,9 +373,16 @@ class SubscriptionService:
                     "subscription_id": subscription_id,
                     "period_end": str(subscription.current_period_end),
                     "reason": reason,
-                    "admin_id": admin_id
-                }
+                    "admin_id": admin_id,
+                },
             )
+            # WS4: Mark profile with cancel_at_period_end for frontend display
+            if self._subscription_repo:
+                await self._subscription_repo.schedule_cancellation(
+                    user_id=user_id,
+                    cancel_at=str(subscription.current_period_end),
+                    pending_tier=None,  # Full cancel → t1 (handled by webhook)
+                )
 
         # Log admin operation
         await self.admin_repo.admin_log_operation(
@@ -362,14 +390,14 @@ class SubscriptionService:
             operation_type="subscription_cancel",
             target_user_id=user_id,
             details=f"{plan_name} ({'immediate' if immediate else 'at period end'})",
-            reason=reason
+            reason=reason,
         )
 
         return {
             "status": "canceled" if immediate else "cancel_scheduled",
             "subscription_id": subscription.id,
             "cancel_at_period_end": subscription.cancel_at_period_end,
-            "current_period_end": subscription.current_period_end
+            "current_period_end": subscription.current_period_end,
         }
 
     # ==========================================
@@ -453,25 +481,36 @@ class SubscriptionService:
     ) -> Dict[str, Any]:
         """Handle downgrade to Free tier."""
 
+        # WS4: Helper for atomic downgrade-to-t1 via RPC
+        async def _atomic_terminate(sub_id=None, status="inactive"):
+            if self._subscription_repo:
+                await self._subscription_repo.terminate_subscription(
+                    user_id=user_id,
+                    new_tier="t1",
+                    reason="tier_downgrade",
+                    subscription_status=status,
+                    metadata={
+                        "from_tier": current_tier,
+                        "to_tier": "t1",
+                        "subscription_id": sub_id,
+                        "reason": reason,
+                        "admin_id": admin_id,
+                        "source": "admin_downgrade_to_free",
+                    },
+                )
+            else:
+                await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status=status)
+                await self.users_repo.update_monthly_credits(user_id, 0)
+                await self.payment_repo.create(
+                    user_id=user_id, amount_usd=0, currency="USD",
+                    payment_type="tier_downgrade",
+                    metadata={"from_tier": current_tier, "to_tier": "t1",
+                              "subscription_id": sub_id, "reason": reason, "admin_id": admin_id},
+                )
+
         # Case 1: No Stripe customer (already free or never subscribed)
         if not customer_id:
-            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
-            monthly_credits = await self._get_monthly_credits("t1")
-            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
-
-            await self.payment_repo.create(
-                user_id=user_id,
-                amount_usd=0,
-                currency="USD",
-                payment_type="tier_downgrade",
-                metadata={
-                    "from_tier": current_tier,
-                    "to_tier": "t1",
-                    "immediate": immediate,
-                    "reason": reason,
-                    "admin_id": admin_id
-                }
-            )
+            await _atomic_terminate()
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "t1"}
 
         # Case 2: Has Stripe customer - check for active subscription
@@ -480,22 +519,7 @@ class SubscriptionService:
 
         if not active_sub:
             # No active subscription - just update tier
-            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="inactive")
-            monthly_credits = await self._get_monthly_credits("t1")
-            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
-
-            await self.payment_repo.create(
-                user_id=user_id,
-                amount_usd=0,
-                currency="USD",
-                payment_type="tier_downgrade",
-                metadata={
-                    "from_tier": current_tier,
-                    "to_tier": "t1",
-                    "reason": reason,
-                    "admin_id": admin_id
-                }
-            )
+            await _atomic_terminate()
             return {"status": "downgraded", "from_tier": current_tier, "to_tier": "t1"}
 
         # Case 3: Has active subscription - cancel it
@@ -505,24 +529,7 @@ class SubscriptionService:
                 logger.error(f"[Admin] Failed to cancel subscription {active_sub.id}: {result['error']}")
                 raise SubscriptionCancelFailedException()
 
-            await self.users_repo.update_subscription_tier(user_id, "t1", subscription_status="canceled")
-            monthly_credits = await self._get_monthly_credits("t1")
-            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
-
-            await self.payment_repo.create(
-                user_id=user_id,
-                amount_usd=0,
-                currency="USD",
-                payment_type="tier_downgrade",
-                metadata={
-                    "from_tier": current_tier,
-                    "to_tier": "t1",
-                    "immediate": True,
-                    "subscription_id": active_sub.id,
-                    "reason": reason,
-                    "admin_id": admin_id
-                }
-            )
+            await _atomic_terminate(sub_id=active_sub.id, status="canceled")
         else:
             result = cancel_subscription(active_sub.id, immediate=False)
             if not result["success"]:
@@ -540,15 +547,22 @@ class SubscriptionService:
                     "period_end": str(result['subscription'].current_period_end),
                     "subscription_id": active_sub.id,
                     "reason": reason,
-                    "admin_id": admin_id
-                }
+                    "admin_id": admin_id,
+                },
             )
+            # WS4: Mark profile with cancel_at_period_end
+            if self._subscription_repo:
+                await self._subscription_repo.schedule_cancellation(
+                    user_id=user_id,
+                    cancel_at=str(result['subscription'].current_period_end),
+                    pending_tier=None,
+                )
 
         return {
             "status": "downgraded" if immediate else "downgrade_scheduled",
             "from_tier": current_tier,
             "to_tier": "t1",
-            "subscription_id": active_sub.id
+            "subscription_id": active_sub.id,
         }
 
     async def _downgrade_t3_to_t2(
@@ -575,15 +589,15 @@ class SubscriptionService:
         if not t2_price_id:
             raise PriceIdNotConfiguredException(tier="t2")
 
-        # Modify subscription to t2 plan
+        # WS4 (#10): Use proration instead of billing_cycle_anchor='now'
+        # billing_cycle_anchor='now' causes billing reset which is incorrect for downgrades
         updated_sub = modify_subscription(
             active_sub.id,
             items=[{
                 "id": active_sub.items.data[0].id,
-                "price": t2_price_id
+                "price": t2_price_id,
             }],
             proration_behavior='create_prorations' if immediate else 'none',
-            billing_cycle_anchor='unchanged' if not immediate else 'now'
         )
 
         if not updated_sub:
@@ -592,6 +606,7 @@ class SubscriptionService:
 
         # Update database
         if immediate:
+            # t3→t2: tier changes but user keeps subscription, update credits to t2 level
             await self.users_repo.update_subscription_tier(user_id, "t2", subscription_status="active")
             monthly_credits = await self._get_monthly_credits("t2")
             await self.users_repo.update_monthly_credits(user_id, monthly_credits)
@@ -607,10 +622,11 @@ class SubscriptionService:
                     "immediate": True,
                     "subscription_id": active_sub.id,
                     "reason": reason,
-                    "admin_id": admin_id
-                }
+                    "admin_id": admin_id,
+                },
             )
         else:
+            # WS4 (#5): Period-end downgrade — record intent, actual change at next billing
             await self.payment_repo.create(
                 user_id=user_id,
                 amount_usd=0,
@@ -622,9 +638,16 @@ class SubscriptionService:
                     "next_billing": str(updated_sub.current_period_end),
                     "subscription_id": active_sub.id,
                     "reason": reason,
-                    "admin_id": admin_id
-                }
+                    "admin_id": admin_id,
+                },
             )
+            # WS4: Mark profile with pending_tier_change for frontend display
+            if self._subscription_repo:
+                await self._subscription_repo.schedule_cancellation(
+                    user_id=user_id,
+                    cancel_at=str(updated_sub.current_period_end),
+                    pending_tier="t2",
+                )
 
         # Log admin operation
         await self.admin_repo.admin_log_operation(
@@ -632,14 +655,14 @@ class SubscriptionService:
             operation_type="subscription_downgrade",
             target_user_id=user_id,
             details=f"t3 → t2 ({'immediate' if immediate else 'at period end'})",
-            reason=reason
+            reason=reason,
         )
 
         return {
             "status": "downgraded" if immediate else "downgrade_scheduled",
             "from_tier": "t3",
             "to_tier": "t2",
-            "subscription_id": active_sub.id
+            "subscription_id": active_sub.id,
         }
 
     # ==========================================

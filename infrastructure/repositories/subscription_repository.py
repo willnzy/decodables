@@ -282,3 +282,81 @@ class SupabaseSubscriptionRepository:
             raise Exception(f"RPC failed: {data.get('error', 'Unknown error')}")
 
         return data
+
+    async def terminate_subscription(
+        self,
+        user_id: str,
+        new_tier: str,
+        reason: str,
+        subscription_status: str = "inactive",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Atomically terminate a subscription via RPC.
+
+        Executes in single transaction:
+        - Tier downgrade + credits_monthly clear + payment record + audit trail.
+        - Clears cancel_at_period_end / cancel_at / pending_tier_change flags.
+        - Preserves stripe_customer_id for future re-subscription.
+
+        Args:
+            user_id: User ID
+            new_tier: Target tier ('t1' typically)
+            reason: Payment type for audit ('sub_canceled', 'tier_downgrade', etc.)
+            subscription_status: Target status (default 'inactive')
+            metadata: Additional metadata for payment record
+
+        Returns:
+            RPC result dict with 'success', 'previous_tier', 'cleared_credits', etc.
+
+        Raises:
+            Exception on RPC failure
+        """
+        result = await self.db.rpc("process_subscription_termination", {
+            "p_user_id": user_id,
+            "p_new_tier": new_tier,
+            "p_reason": reason,
+            "p_subscription_status": subscription_status,
+            "p_metadata": metadata or {},
+        }).execute()
+
+        if not result.data:
+            raise Exception("RPC process_subscription_termination returned no data")
+
+        data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else {}
+        if not data.get("success"):
+            raise Exception(f"RPC failed: {data.get('error', 'Unknown error')}")
+
+        return data
+
+    async def schedule_cancellation(
+        self,
+        user_id: str,
+        cancel_at: str,
+        pending_tier: Optional[str] = None,
+    ) -> bool:
+        """
+        Mark a subscription for period-end cancellation/downgrade.
+
+        Updates profiles with cancel_at_period_end=True and optional pending_tier_change.
+        Actual termination happens when Stripe sends subscription.deleted webhook.
+
+        Args:
+            user_id: User ID
+            cancel_at: ISO timestamp of cancellation (Stripe current_period_end)
+            pending_tier: Target tier for downgrade (None = full cancel to t1)
+
+        Returns:
+            True if update succeeded
+        """
+        try:
+            update_data = {
+                "cancel_at_period_end": True,
+                "cancel_at": cancel_at,
+                "pending_tier_change": pending_tier,
+            }
+            await self.db.table("profiles").update(update_data).eq("id", user_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"[SubscriptionRepo] Failed to schedule cancellation for {user_id}: {e}")
+            return False

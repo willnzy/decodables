@@ -457,11 +457,14 @@ class Container:
             admin_repo = SupabaseAdminUsersRepository(db)
             tier_service = await self._get_or_create_tier_service()
 
+            subscription_repo = await self.get_subscription_repository()
+
             self._services['subscription'] = SubscriptionService(
                 users_repo=users_repo,
                 payment_repo=payment_repo,
                 admin_repo=admin_repo,
                 tier_service=tier_service,
+                subscription_repo=subscription_repo,
             )
         return self._services['subscription']
 

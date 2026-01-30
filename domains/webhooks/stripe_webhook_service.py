@@ -146,7 +146,7 @@ class StripeWebhookService:
             result: Processing result dictionary
         """
         try:
-            self.db_client.rpc("update_webhook_result", {
+            await self.db_client.rpc("update_webhook_result", {
                 "p_event_id": event_id,
                 "p_result": result
             }).execute()
@@ -478,7 +478,7 @@ class StripeWebhookService:
             return {"status": "error", "error": "missing_customer_id", "invoice_id": invoice_id}
 
         # Look up user by stripe_customer_id
-        user_res = self.db_client.table("profiles").select("id, tier, subscription_status")\
+        user_res = await self.db_client.table("profiles").select("id, tier, subscription_status")\
             .eq("stripe_customer_id", customer_id).execute()
 
         if not user_res.data:
@@ -500,7 +500,7 @@ class StripeWebhookService:
         if billing_reason == "subscription_create" and tier in ["t2", "t3"]:
             if current_status != "active":
                 try:
-                    self.db_client.table("profiles").update({
+                    await self.db_client.table("profiles").update({
                         "subscription_status": "active"
                     }).eq("id", uid).execute()
                     logger.info(f"[Webhook] Confirmed subscription active for user {uid}")
@@ -622,7 +622,7 @@ class StripeWebhookService:
         logger.info(f"[Webhook] Processing subscription change: sub={subscription_id}, status={status}, event={event_type}")
 
         # Look up user
-        user_res = self.db_client.table("profiles").select("id, tier")\
+        user_res = await self.db_client.table("profiles").select("id, tier")\
             .eq("stripe_customer_id", customer_id).execute()
 
         if not user_res.data:
@@ -662,6 +662,10 @@ class StripeWebhookService:
         """
         Process subscription termination (cancel, unpaid, etc).
 
+        WS4: Uses atomic RPC to ensure tier downgrade + credits_monthly clear + audit
+        happen in a single transaction. Prevents the bug where tier is downgraded
+        but credits_monthly is not cleared (#7, #8).
+
         Args:
             uid: User ID
             current_tier: Current tier before downgrade
@@ -671,13 +675,27 @@ class StripeWebhookService:
         Returns:
             Dict with status and action details
         """
-        # Downgrade to free
+        # WS4: Atomic termination via RPC (tier + credits_monthly=0 + audit)
         try:
-            await self.user_repo.update_subscription_tier(uid, "t1", subscription_status="inactive")
-            logger.info(f"[Webhook] Downgraded user {uid} to free tier (was {current_tier}), reason: {status}")
+            rpc_result = await self.subscription_repo.terminate_subscription(
+                user_id=uid,
+                new_tier="t1",
+                reason="sub_canceled",
+                subscription_status="inactive",
+                metadata={
+                    "stripe_status": status,
+                    "subscription_id": subscription_id,
+                    "source": "stripe_webhook",
+                },
+            )
+            cleared = rpc_result.get("cleared_credits", 0)
+            logger.info(
+                f"[Webhook] Terminated subscription for user {uid}: "
+                f"{current_tier} → t1, cleared {cleared} monthly credits, reason: {status}"
+            )
         except Exception as e:
-            logger.error(f"[Webhook] Failed to downgrade user {uid}: {e}")
-            return {"status": "error", "error": "tier_update_failed", "user_id": uid}
+            logger.error(f"[Webhook] Failed to terminate subscription for user {uid}: {e}")
+            return {"status": "error", "error": "termination_failed", "user_id": uid}
 
         # Log activity (non-critical)
         if self.activity_log_repo:

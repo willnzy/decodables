@@ -114,9 +114,14 @@ CREATE TABLE IF NOT EXISTS profiles (
     -- Stripe 相关
     stripe_customer_id TEXT UNIQUE,
     stripe_subscription_id TEXT,
-    subscription_status TEXT CHECK (subscription_status IN ('active', 'canceled', 'past_due', 'incomplete', 'trialing')),
+    subscription_status TEXT CHECK (subscription_status IN ('active', 'canceled', 'past_due', 'incomplete', 'trialing', 'inactive')),
     subscription_current_period_start TIMESTAMPTZ,
     subscription_current_period_end TIMESTAMPTZ,
+
+    -- 取消/降级状态 (WS4: 期末取消/降级追踪)
+    cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,  -- 标记期末取消状态
+    cancel_at TIMESTAMPTZ,  -- 期末取消的具体时间点 (Stripe current_period_end)
+    pending_tier_change TEXT DEFAULT NULL CHECK (pending_tier_change IS NULL OR pending_tier_change IN ('t1', 't2', 't3')),  -- 期末降级目标 tier
 
     -- 偏好设置
     language TEXT DEFAULT 'en' CHECK (language IN ('en', 'zh', 'es', 'fr', 'de', 'ja', 'ko')),
@@ -2650,6 +2655,118 @@ $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
 COMMENT ON FUNCTION admin_adjust_credits_atomic IS 'WS3: 原子管理员积分调整 (FOR UPDATE 锁防止 Lost Update)';
+
+
+-- ---------------------------------------------------------------------------
+-- process_subscription_termination - 原子处理订阅终止 (WS4: #7, #8)
+-- ---------------------------------------------------------------------------
+-- 统一处理所有导致 tier 降级的路径:
+--   1. Stripe webhook subscription.deleted (取消/unpaid/过期)
+--   2. Admin 立即取消
+--   3. Admin 降级到 t1
+-- 原子执行: tier 降级 + credits_monthly 清零 + payment_record + credit_transaction 审计
+-- 清除 cancel_at_period_end 等期末标记 (因为已经实际生效)
+-- 保留 stripe_customer_id (便于用户未来复购)
+
+CREATE OR REPLACE FUNCTION process_subscription_termination(
+    p_user_id TEXT,
+    p_new_tier TEXT,
+    p_reason TEXT,                    -- payment_type: 'sub_canceled', 'tier_downgrade', etc.
+    p_subscription_status TEXT DEFAULT 'inactive',  -- 目标 subscription_status
+    p_metadata JSONB DEFAULT '{}'::jsonb
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_profile RECORD;
+    v_cleared_monthly INTEGER;
+    v_payment_id UUID;
+BEGIN
+    -- 1. Lock and read current profile
+    SELECT id, tier, credits_monthly, credits_permanent, subscription_status,
+           cancel_at_period_end, cancel_at, pending_tier_change
+    INTO v_profile
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'user_not_found'
+        );
+    END IF;
+
+    -- Record credits being cleared for audit
+    v_cleared_monthly := v_profile.credits_monthly;
+
+    -- 2. Update profiles: tier + status + clear monthly credits + clear cancel flags
+    UPDATE profiles SET
+        tier = p_new_tier,
+        subscription_status = p_subscription_status,
+        credits_monthly = 0,
+        credits_reset_at = NULL,
+        cancel_at_period_end = FALSE,
+        cancel_at = NULL,
+        pending_tier_change = NULL,
+        tier_changed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_user_id;
+
+    -- 3. Insert payment_record for audit trail
+    INSERT INTO payment_records (
+        user_id, payment_type, amount_usd, currency, status, metadata
+    ) VALUES (
+        p_user_id,
+        p_reason,
+        0,
+        'USD',
+        'completed',
+        p_metadata || jsonb_build_object(
+            'previous_tier', v_profile.tier,
+            'new_tier', p_new_tier,
+            'cleared_monthly_credits', v_cleared_monthly
+        )
+    )
+    RETURNING id INTO v_payment_id;
+
+    -- 4. Insert credit_transaction audit record (only if credits were actually cleared)
+    IF v_cleared_monthly > 0 THEN
+        INSERT INTO credit_transactions (
+            user_id,
+            transaction_type,
+            amount,
+            balance_monthly_after,
+            balance_permanent_after,
+            description,
+            metadata
+        ) VALUES (
+            p_user_id,
+            'monthly_credits_cleared',
+            -v_cleared_monthly,
+            0,
+            v_profile.credits_permanent,
+            'Monthly credits cleared on subscription termination (' || p_reason || ')',
+            jsonb_build_object(
+                'reason', p_reason,
+                'previous_tier', v_profile.tier,
+                'new_tier', p_new_tier,
+                'payment_record_id', v_payment_id
+            )
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'previous_tier', v_profile.tier,
+        'new_tier', p_new_tier,
+        'cleared_credits', v_cleared_monthly,
+        'payment_id', v_payment_id
+    );
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION process_subscription_termination IS 'WS4: 原子处理订阅终止 (tier降级+积分清零+审计记录)，统一所有取消/降级路径';
 
 
 -- ============================================================================
