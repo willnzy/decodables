@@ -805,7 +805,8 @@ CREATE TABLE IF NOT EXISTS content_reports (
 DROP TABLE IF EXISTS marketplace_reports CASCADE;
 DROP VIEW IF EXISTS marketplace_reports CASCADE;
 DROP VIEW IF EXISTS v_marketplace_reports CASCADE;
-CREATE OR REPLACE VIEW v_marketplace_reports AS
+CREATE OR REPLACE VIEW v_marketplace_reports
+WITH (security_invoker = true) AS
 SELECT * FROM content_reports;
 
 -- P0-6: 允许通过视图插入

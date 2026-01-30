@@ -27,6 +27,9 @@
 -- 开始事务
 BEGIN;
 
+-- 创建 internal schema (运维视图专用，PostgREST 不暴露)
+CREATE SCHEMA IF NOT EXISTS internal;
+
 -- ============================================================================
 -- 启用必要的 PostgreSQL 扩展
 -- ============================================================================
@@ -502,7 +505,8 @@ CREATE TABLE IF NOT EXISTS projects (
 -- 注意: Repository 可能使用 owner_id 或 user_id，此视图确保两者都可用
 -- 命名规范: 视图统一使用 v_ 前缀
 DROP VIEW IF EXISTS projects_v CASCADE;  -- 删除旧视图名
-CREATE OR REPLACE VIEW v_projects AS
+CREATE OR REPLACE VIEW v_projects
+WITH (security_invoker = true) AS
 SELECT
     *,
     user_id AS owner_id  -- 别名
@@ -2166,9 +2170,11 @@ COMMENT ON FUNCTION cleanup_old_user_creation_logs IS '清理旧的用户创建�
 
 -- ----------------------------------------------------------------------------
 -- v_user_creation_events - 用户创建事件视图
+-- 运维视图，放在 internal schema，PostgREST 不暴露 (包含 email 等敏感信息)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW v_user_creation_events AS
-SELECT 
+DROP VIEW IF EXISTS public.v_user_creation_events CASCADE;
+CREATE OR REPLACE VIEW internal.v_user_creation_events AS
+SELECT
     p.id AS user_id,
     p.email,
     p.username,
@@ -2179,12 +2185,12 @@ SELECT
     ucl.metadata AS log_metadata,
     ucl.created_at AS log_created_at,
     EXTRACT(EPOCH FROM (ucl.created_at - p.created_at)) AS delay_seconds
-FROM profiles p
-LEFT JOIN user_creation_logs ucl ON p.id = ucl.user_id
+FROM public.profiles p
+LEFT JOIN public.user_creation_logs ucl ON p.id = ucl.user_id
 WHERE ucl.action IN ('created', 'duplicate_attempt')
 ORDER BY p.created_at DESC;
 
-COMMENT ON VIEW v_user_creation_events IS '用户创建事件视图，包含延迟分析';
+COMMENT ON VIEW internal.v_user_creation_events IS '用户创建事件视图，包含延迟分析';
 
 
 -- ============================================================================

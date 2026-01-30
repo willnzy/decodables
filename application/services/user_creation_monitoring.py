@@ -199,8 +199,8 @@ class UserCreationMonitoringService:
         try:
             db_client = await get_async_db_client()
             
-            # 查询视图
-            result = await db_client.table('v_user_creation_events')\
+            # 查询 internal schema 运维视图 (不暴露给 PostgREST)
+            result = await db_client.schema('internal').table('v_user_creation_events')\
                 .select('*')\
                 .order('user_created_at', desc=True)\
                 .limit(limit)\

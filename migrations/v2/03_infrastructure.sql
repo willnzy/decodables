@@ -10,6 +10,9 @@
 -- 开始事务
 BEGIN;
 
+-- 创建 internal schema (运维视图专用，PostgREST 不暴露)
+CREATE SCHEMA IF NOT EXISTS internal;
+
 -- ============================================================================
 -- 包含的表 (12) - 按依赖关系排序
 -- ============================================================================
@@ -1226,8 +1229,9 @@ CREATE TRIGGER trg_generate_ticket_number
 -- 视图定义 (1)
 -- ============================================================================
 
--- 视图 1
-CREATE OR REPLACE VIEW v_ai_usage_last_30_days AS
+-- 视图 1 (运维视图，放在 internal schema，PostgREST 不暴露)
+DROP VIEW IF EXISTS public.v_ai_usage_last_30_days CASCADE;
+CREATE OR REPLACE VIEW internal.v_ai_usage_last_30_days AS
 SELECT
     provider,
     model,
@@ -1241,7 +1245,7 @@ SELECT
     SUM(total_images) as total_images,
     ROUND(AVG(avg_latency_ms)) as avg_latency_ms,
     SUM(estimated_cost_usd) as total_cost_usd
-FROM ai_usage_daily
+FROM public.ai_usage_daily
 WHERE date >= CURRENT_DATE - INTERVAL '30 days'
 GROUP BY provider, model, call_type
 ORDER BY total_cost_usd DESC;
@@ -1774,9 +1778,10 @@ ALTER TABLE support_replies ENABLE ROW LEVEL SECURITY;
 -- 说明: 定期清理和优化配置，防止日志表无限增长
 -- ============================================================================
 
--- 查看表大小监控视图
-CREATE OR REPLACE VIEW v_table_sizes AS
-SELECT 
+-- 查看表大小监控视图 (运维视图，放在 internal schema，PostgREST 不暴露)
+DROP VIEW IF EXISTS public.v_table_sizes CASCADE;
+CREATE OR REPLACE VIEW internal.v_table_sizes AS
+SELECT
     schemaname,
     tablename,
     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size,
@@ -1787,7 +1792,7 @@ FROM pg_tables
 WHERE schemaname = 'public'
 ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 
-COMMENT ON VIEW v_table_sizes IS '数据库表大小监控视图';
+COMMENT ON VIEW internal.v_table_sizes IS '数据库表大小监控视图';
 
 
 -- 查看日志表统计函数

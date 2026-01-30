@@ -195,8 +195,8 @@ def get_usage_summary(days: int = 30) -> dict:
         return {}
     
     try:
-        # 使用视图查询
-        result = supabase.from_("v_ai_usage_last_30_days").select("*").execute()
+        # 查询 internal schema 运维视图 (不暴露给 PostgREST)
+        result = supabase.schema("internal").from_("v_ai_usage_last_30_days").select("*").execute()
         
         if not result.data:
             return {
