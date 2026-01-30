@@ -161,6 +161,14 @@ CREATE TABLE IF NOT EXISTS analytics_events (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 索引: created_at 用于时间范围查询 (Supabase Index Advisor 建议, startup_cost 1348→6)
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at
+    ON analytics_events USING btree (created_at);
+
+-- 索引: user_id 用于按用户查询事件
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id
+    ON analytics_events(user_id);
+
 
 -- ----------------------------------------------------------------------------
 -- 6. clerk_webhook_events
