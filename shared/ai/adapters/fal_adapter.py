@@ -24,8 +24,17 @@ from ..base import (
     classify_error
 )
 from ..retry import with_retry
+from core.resilience import CircuitBreaker, CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
+
+# WS-15: Circuit breaker for FAL service
+_fal_circuit = CircuitBreaker(
+    name="fal",
+    failure_threshold=5,
+    reset_timeout=60.0,
+    half_open_max_calls=1,
+)
 
 # ==========================================
 # Configuration
@@ -163,36 +172,38 @@ class FALImageAdapter(BaseImageAdapter):
         
         start_time = time.time()
         timeout = get_fal_timeout(model)
-        
+
         try:
-            # 获取默认参数
-            defaults = FAL_MODEL_DEFAULTS.get(model, FAL_MODEL_DEFAULTS["flux-schnell"])
-            steps = num_inference_steps or defaults["num_inference_steps"]
-            cfg = guidance_scale or defaults["guidance_scale"]
-            
-            # 构建参数
-            arguments = {
-                "prompt": prompt,
-                "image_size": size,
-                "num_inference_steps": steps,
-                "guidance_scale": cfg,
-                "enable_safety_checker": enable_safety_checker,
-            }
-            
-            if negative_prompt:
-                arguments["negative_prompt"] = negative_prompt
-            
-            # 异步调用 FAL with timeout
-            handler = await self._fal.submit_async(endpoint, arguments=arguments)
-            result = await asyncio.wait_for(handler.get(), timeout=timeout)
-            
+            # WS-15: Circuit breaker wraps external call
+            async with _fal_circuit:
+                # 获取默认参数
+                defaults = FAL_MODEL_DEFAULTS.get(model, FAL_MODEL_DEFAULTS["flux-schnell"])
+                steps = num_inference_steps or defaults["num_inference_steps"]
+                cfg = guidance_scale or defaults["guidance_scale"]
+
+                # 构建参数
+                arguments = {
+                    "prompt": prompt,
+                    "image_size": size,
+                    "num_inference_steps": steps,
+                    "guidance_scale": cfg,
+                    "enable_safety_checker": enable_safety_checker,
+                }
+
+                if negative_prompt:
+                    arguments["negative_prompt"] = negative_prompt
+
+                # 异步调用 FAL with timeout
+                handler = await self._fal.submit_async(endpoint, arguments=arguments)
+                result = await asyncio.wait_for(handler.get(), timeout=timeout)
+
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             # 提取图像 URL
             image_urls = []
             if result and "images" in result:
                 image_urls = [img["url"] for img in result["images"] if "url" in img]
-            
+
             return AIResponse(
                 success=True,
                 content=image_urls,
@@ -202,7 +213,18 @@ class FALImageAdapter(BaseImageAdapter):
                 latency_ms=latency_ms,
                 raw_response=result
             )
-            
+
+        except CircuitBreakerOpen as e:
+            logger.warning(f"[FAL] Circuit breaker open: {e}")
+            return AIResponse(
+                success=False,
+                content=[],
+                error=str(e),
+                error_type=AIErrorType.API_ERROR,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=0,
+            )
         except asyncio.TimeoutError:
             latency_ms = int((time.time() - start_time) * 1000)
             logger.error(f"[FAL] Image generation timed out after {timeout}s")
@@ -219,7 +241,7 @@ class FALImageAdapter(BaseImageAdapter):
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)
             logger.error(f"[FAL] Image generation error: {e}")
-            
+
             return AIResponse(
                 success=False,
                 content=[],
@@ -266,34 +288,36 @@ class FALImageAdapter(BaseImageAdapter):
         
         start_time = time.time()
         timeout = get_fal_timeout(model, "image-to-image")
-        
+
         try:
-            # 获取默认参数
-            defaults = FAL_MODEL_DEFAULTS.get(model, FAL_MODEL_DEFAULTS["flux-dev"])
-            steps = num_inference_steps or defaults["num_inference_steps"]
-            cfg = guidance_scale or defaults["guidance_scale"]
-            
-            # 构建参数
-            arguments = {
-                "prompt": prompt,
-                "image_url": image_url,
-                "strength": strength,
-                "num_inference_steps": steps,
-                "guidance_scale": cfg,
-                "enable_safety_checker": enable_safety_checker,
-            }
-            
-            # 异步调用 FAL with timeout
-            handler = await self._fal.submit_async(endpoint, arguments=arguments)
-            result = await asyncio.wait_for(handler.get(), timeout=timeout)
-            
+            # WS-15: Circuit breaker wraps external call
+            async with _fal_circuit:
+                # 获取默认参数
+                defaults = FAL_MODEL_DEFAULTS.get(model, FAL_MODEL_DEFAULTS["flux-dev"])
+                steps = num_inference_steps or defaults["num_inference_steps"]
+                cfg = guidance_scale or defaults["guidance_scale"]
+
+                # 构建参数
+                arguments = {
+                    "prompt": prompt,
+                    "image_url": image_url,
+                    "strength": strength,
+                    "num_inference_steps": steps,
+                    "guidance_scale": cfg,
+                    "enable_safety_checker": enable_safety_checker,
+                }
+
+                # 异步调用 FAL with timeout
+                handler = await self._fal.submit_async(endpoint, arguments=arguments)
+                result = await asyncio.wait_for(handler.get(), timeout=timeout)
+
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             # 提取图像 URL
             image_urls = []
             if result and "images" in result:
                 image_urls = [img["url"] for img in result["images"] if "url" in img]
-            
+
             return AIResponse(
                 success=True,
                 content=image_urls,
@@ -303,7 +327,18 @@ class FALImageAdapter(BaseImageAdapter):
                 latency_ms=latency_ms,
                 raw_response=result
             )
-            
+
+        except CircuitBreakerOpen as e:
+            logger.warning(f"[FAL] Circuit breaker open: {e}")
+            return AIResponse(
+                success=False,
+                content=[],
+                error=str(e),
+                error_type=AIErrorType.API_ERROR,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=0,
+            )
         except asyncio.TimeoutError:
             latency_ms = int((time.time() - start_time) * 1000)
             logger.error(f"[FAL] Image-to-image timed out after {timeout}s")
@@ -320,7 +355,7 @@ class FALImageAdapter(BaseImageAdapter):
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)
             logger.error(f"[FAL] Image-to-image error: {e}")
-            
+
             return AIResponse(
                 success=False,
                 content=[],

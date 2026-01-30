@@ -22,7 +22,8 @@ from typing import Dict, Any, Optional
 import time
 import uuid
 
-from shared.ai.story_generator import generate_story_json
+# WS-15(SUP-7c): Use async version to avoid blocking event loop
+from shared.ai.story_generator import generate_story_json_async
 from domains.billing import BillingService
 from domains.billing.value_objects import TransactionType, CreditBucket
 from domains.billing.exceptions import InsufficientCreditsException
@@ -118,7 +119,8 @@ class StoryGenerationService:
 
         # Step 2: Generate story via AI
         try:
-            result = generate_story_json(
+            # WS-15(SUP-7c): Use async version to avoid blocking event loop
+            result = await generate_story_json_async(
                 topic,
                 user_id=user_id,
                 tier=tier,

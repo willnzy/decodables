@@ -27,8 +27,24 @@ from ..base import (
     classify_error
 )
 from ..retry import with_retry
+from core.resilience import CircuitBreaker, CircuitBreakerOpen
 
 logger = logging.getLogger(__name__)
+
+# WS-15: Circuit breakers for OpenAI services
+_openai_text_circuit = CircuitBreaker(
+    name="openai-text",
+    failure_threshold=5,
+    reset_timeout=60.0,
+    half_open_max_calls=1,
+)
+
+_openai_image_circuit = CircuitBreaker(
+    name="openai-image",
+    failure_threshold=5,
+    reset_timeout=60.0,
+    half_open_max_calls=1,
+)
 
 # ==========================================
 # Configuration
@@ -141,39 +157,41 @@ class OpenAITextAdapter(BaseTextAdapter):
         
         start_time = time.time()
         timeout = get_openai_timeout(model, "text")
-        
+
         try:
-            # 处理 o1 系列模型的特殊要求
-            processed_messages = messages
-            params = {
-                "model": model,
-                "messages": processed_messages,
-                "timeout": timeout,  # Request-level timeout
-            }
-            
-            if model.startswith("o1"):
-                # o1 不支持 system message，转换为 user message
-                processed_messages = self._convert_system_to_user(messages)
-                params["messages"] = processed_messages
-                # o1 也不支持 temperature 和某些参数
-                if max_tokens:
-                    params["max_completion_tokens"] = max_tokens
-            else:
-                # 常规模型
-                params["temperature"] = temperature
-                if max_tokens:
-                    params["max_tokens"] = max_tokens
-                if response_format:
-                    params["response_format"] = response_format
-            
-            # Remove timeout from params (handled at client level)
-            params.pop("timeout", None)
-            
-            # 调用 API
-            response = await self._client.chat.completions.create(**params)
-            
+            # WS-15: Circuit breaker wraps external call
+            async with _openai_text_circuit:
+                # 处理 o1 系列模型的特殊要求
+                processed_messages = messages
+                params = {
+                    "model": model,
+                    "messages": processed_messages,
+                    "timeout": timeout,  # Request-level timeout
+                }
+
+                if model.startswith("o1"):
+                    # o1 不支持 system message，转换为 user message
+                    processed_messages = self._convert_system_to_user(messages)
+                    params["messages"] = processed_messages
+                    # o1 也不支持 temperature 和某些参数
+                    if max_tokens:
+                        params["max_completion_tokens"] = max_tokens
+                else:
+                    # 常规模型
+                    params["temperature"] = temperature
+                    if max_tokens:
+                        params["max_tokens"] = max_tokens
+                    if response_format:
+                        params["response_format"] = response_format
+
+                # Remove timeout from params (handled at client level)
+                params.pop("timeout", None)
+
+                # 调用 API
+                response = await self._client.chat.completions.create(**params)
+
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             # 提取响应
             content = response.choices[0].message.content or ""
             usage = AIUsage(
@@ -181,7 +199,7 @@ class OpenAITextAdapter(BaseTextAdapter):
                 output_tokens=response.usage.completion_tokens if response.usage else 0,
                 total_tokens=response.usage.total_tokens if response.usage else 0,
             )
-            
+
             return AIResponse(
                 success=True,
                 content=content,
@@ -191,12 +209,22 @@ class OpenAITextAdapter(BaseTextAdapter):
                 latency_ms=latency_ms,
                 raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
-            
+
+        except CircuitBreakerOpen as e:
+            logger.warning(f"[OpenAI] Circuit breaker open: {e}")
+            return AIResponse(
+                success=False,
+                error=str(e),
+                error_type=AIErrorType.API_ERROR,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=0,
+            )
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)
             logger.error(f"[OpenAI] Chat completion error: {e}")
-            
+
             return AIResponse(
                 success=False,
                 error=str(e),
@@ -306,31 +334,33 @@ class OpenAIImageAdapter(BaseImageAdapter):
             )
         
         start_time = time.time()
-        
+
         try:
-            # DALL-E 3 只支持 n=1
-            if model == "dall-e-3":
-                num_images = 1
-            
-            # 如果有 negative prompt，追加到 prompt
-            full_prompt = prompt
-            if negative_prompt:
-                full_prompt = f"{prompt}. Avoid: {negative_prompt}"
-            
-            response = await self._client.images.generate(
-                model=model,
-                prompt=full_prompt,
-                size=size,
-                n=num_images,
-                quality=quality,
-                style=style,
-            )
-            
+            # WS-15: Circuit breaker wraps external call
+            async with _openai_image_circuit:
+                # DALL-E 3 只支持 n=1
+                if model == "dall-e-3":
+                    num_images = 1
+
+                # 如果有 negative prompt，追加到 prompt
+                full_prompt = prompt
+                if negative_prompt:
+                    full_prompt = f"{prompt}. Avoid: {negative_prompt}"
+
+                response = await self._client.images.generate(
+                    model=model,
+                    prompt=full_prompt,
+                    size=size,
+                    n=num_images,
+                    quality=quality,
+                    style=style,
+                )
+
             latency_ms = int((time.time() - start_time) * 1000)
-            
+
             # 提取图像 URL
             image_urls = [img.url for img in response.data if img.url]
-            
+
             return AIResponse(
                 success=True,
                 content=image_urls,
@@ -339,12 +369,23 @@ class OpenAIImageAdapter(BaseImageAdapter):
                 provider=self.provider_name,
                 latency_ms=latency_ms,
             )
-            
+
+        except CircuitBreakerOpen as e:
+            logger.warning(f"[OpenAI] Circuit breaker open: {e}")
+            return AIResponse(
+                success=False,
+                content=[],
+                error=str(e),
+                error_type=AIErrorType.API_ERROR,
+                provider=self.provider_name,
+                model=model,
+                latency_ms=0,
+            )
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)
             error_type = classify_error(e, self.provider_name)
             logger.error(f"[OpenAI] Image generation error: {e}")
-            
+
             return AIResponse(
                 success=False,
                 content=[],
