@@ -36,7 +36,7 @@ import asyncio
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from domains.identity.aggregates.user_profile import UserProfile
 from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
@@ -112,8 +112,7 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ProjectListResponse(BaseModel):
@@ -159,8 +158,7 @@ class DashboardProjectsResponse(BaseModel):
     view: str
     counts: Optional[ViewTypeCounts] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ProjectUpdateResponse(BaseModel):
@@ -316,7 +314,7 @@ async def dashboard_projects(
                 f"Retrying dashboard_projects (attempt {attempt + 1}/{MAX_RETRIES}) "
                 f"for user {ctx.user_id}: {result.error}"
             )
-            await asyncio.sleep(RETRY_DELAY * (attempt + 1))  # 指数退避
+            await asyncio.sleep(RETRY_DELAY * (2 ** attempt))  # Exponential backoff
             last_error = result.error
             continue
         else:
@@ -605,7 +603,7 @@ async def update_project(
         title=req.title,
         canvas_data=req.canvas_data,
         thumbnail_url=req.thumbnail_url,
-        user_tier=ctx.user.tier or "t1",  # P1-013: For locked elements check
+        user_tier=(ctx.user.tier.value if ctx.user.tier else "t1"),  # P1-013: For locked elements check
     )
 
     result = await handler.handle(command)

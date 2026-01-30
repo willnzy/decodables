@@ -48,16 +48,14 @@ Endpoints:
 - POST /api/v2/user/assets/{asset_id}/star - Toggle star status (v3.33)
 """
 
-import re
 from typing import Optional
 
-from fastapi import APIRouter, Request, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Query
 from pydantic import BaseModel, Field
 
-from domains.identity.aggregates.user_profile import UserProfile
 from infrastructure.logging.activity_logger import log_activity_async
 from infrastructure.rate_limiter import limiter
-from dependencies import get_current_user, get_current_user_with_workspace, UserWithWorkspace
+from dependencies import get_current_user_with_workspace, UserWithWorkspace
 from core.utils.timezone import get_request_timezone
 from core.middleware import validate_file_size  # P3-005: File upload size validation
 from container import get_container
@@ -82,7 +80,7 @@ router = APIRouter(prefix="/assets", tags=["user-assets-v3"])
 # Constants (v3.25, WS4: centralized validation)
 # ==========================================
 
-from core.utils.validation import UUID_PATTERN, validate_uuid, sanitize_postgrest_query
+from core.utils.validation import validate_uuid
 
 
 def validate_uuid_id(value: str, field_name: str = "ID") -> None:
@@ -155,7 +153,6 @@ async def my_assets(
     # Pro tier check for cross-project scope (t3/t4 only)
     user_tier = ctx.user.tier.value if hasattr(ctx.user.tier, 'value') else ctx.user.tier
     if scope == "all" and user_tier not in ("t3", "t4"):
-        from fastapi import HTTPException
         raise HTTPException(403, "Pro required for cross-project history")
 
     target_proj = project_id if scope != "all" else None
@@ -202,7 +199,6 @@ async def upload_asset(
     P3-005: Added 10MB file size limit via validate_file_size dependency.
     """
     import json
-    from fastapi import HTTPException
 
     # v3.25: UA-MEDIUM-2 - Validate project_id format
     validate_optional_uuid(project_id, "project ID")
@@ -417,7 +413,6 @@ async def get_asset_dashboard(
     if result.success:
         return result.data
     else:
-        from fastapi import HTTPException
         raise HTTPException(500, result.error or "Failed to load assets")
 
 
@@ -563,7 +558,6 @@ async def move_asset_to_folder(
         validate_uuid_id(req.folder_id, "folder ID")
         folder_service = await container.get_folder_service()
         if not await folder_service.validate_folder_access(req.folder_id, ctx.workspace_id):
-            from fastapi import HTTPException
             raise HTTPException(404, "Folder not found")
 
     assets_service = await container.get_assets_service()
@@ -571,7 +565,6 @@ async def move_asset_to_folder(
     result = await assets_service.move_to_folder(asset_id, ctx.user_id, req.folder_id)
 
     if not result:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found or access denied")
 
     return AssetMoveResponse(success=True, folder_id=req.folder_id)
@@ -606,7 +599,6 @@ async def toggle_asset_star(
     result = await assets_service.toggle_star(asset_id, ctx.user_id, req.is_starred)
 
     if not result:
-        from fastapi import HTTPException
         raise HTTPException(404, "Asset not found or access denied")
 
     return AssetStarResponse(success=True, is_starred=req.is_starred)
@@ -647,7 +639,6 @@ async def list_assets_by_folder(
         validate_uuid_id(target_folder_id, "folder ID")
         folder_service = await container.get_folder_service()
         if not await folder_service.validate_folder_access(target_folder_id, ctx.workspace_id):
-            from fastapi import HTTPException
             raise HTTPException(404, "Folder not found")
 
     assets_service = await container.get_assets_service()

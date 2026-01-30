@@ -28,6 +28,7 @@ from domains.creation.value_objects import (
     ProjectMetadata,
 )
 from domains.creation.exceptions import ProjectNotFoundException
+from postgrest.exceptions import APIError
 from core.database import retry_on_network_error
 from .base_repository import BaseRepository
 
@@ -67,6 +68,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             return project
 
+        except APIError as e:
+            if e.code == "PGRST116":
+                return None
+            logger.error(f"Failed to get project {project_id}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Failed to get project {project_id}: {e}")
             return None
@@ -324,6 +330,11 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             return self._map_to_page(result.data)
 
+        except APIError as e:
+            if e.code == "PGRST116":
+                return None
+            logger.error(f"Failed to get page {page_id}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Failed to get page {page_id}: {e}")
             return None
@@ -1096,12 +1107,13 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
 
             return self._map_to_project(result.data)
 
-        except Exception as e:
-            # single() throws if no results or multiple results
-            # Supabase PGRST116 error: "Cannot coerce the result to a single JSON object" with "0 rows"
-            error_str = str(e)
-            if "No rows" in error_str or "0 rows" in error_str or "multiple" in error_str.lower() or "PGRST116" in error_str:
+        except APIError as e:
+            # single() throws PGRST116 when 0 or multiple rows returned
+            if e.code == "PGRST116":
                 return None
+            logger.error(f"Failed to get project by idempotency_key: {e}")
+            return None
+        except Exception as e:
             logger.error(f"Failed to get project by idempotency_key: {e}")
             return None
 
