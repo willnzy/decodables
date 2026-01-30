@@ -83,8 +83,7 @@ class TestAnalyticsEvents(BaseAPITest):
                 ]
             }
         )
-        # 服务端可能不校验 event_id，直接接受 (200)
-        assert response.status_code in [200, 400, 422]
+        assert response.status_code in [400, 422]
 
     def test_event_requires_event_name(self, auth_client):
         """
@@ -101,8 +100,7 @@ class TestAnalyticsEvents(BaseAPITest):
                 ]
             }
         )
-        # 服务端可能不校验 event_name，直接接受 (200)
-        assert response.status_code in [200, 400, 422]
+        assert response.status_code in [400, 422]
 
     def test_empty_events_rejected(self, auth_client):
         """
@@ -112,8 +110,7 @@ class TestAnalyticsEvents(BaseAPITest):
             self.ENDPOINT,
             json={"events": []}
         )
-        # 服务端可能不校验空列表，直接接受 (200)
-        assert response.status_code in [200, 400, 422]
+        assert response.status_code in [400, 422]
 
     def test_batch_size_limit(self, auth_client):
         """

@@ -45,9 +45,7 @@ class TestActiveCampaigns(BaseAPITest):
         data = self.assert_success(response)
 
         items = data.get("items", data) if isinstance(data, dict) else data
-        if not isinstance(items, list):
-            items = []
-        if len(items) > 0:
+        if items and len(items) > 0:
             campaign = items[0]
             # 活动应该有基本信息
             assert "id" in campaign or "campaign_id" in campaign
@@ -113,8 +111,8 @@ class TestCampaignDismiss(BaseAPITest):
         """
         fake_id = str(uuid.uuid4())
         response = auth_client.post(Endpoints.campaign_dismiss(fake_id))
-        # 可能返回 200 (幂等), 404, 或 422 (验证错误)
-        assert response.status_code in [200, 400, 404, 422]
+        # 可能返回 200 (幂等) 或 404
+        assert response.status_code in [200, 400, 404]
 
     def test_dismiss_requires_authentication(self, anon_client):
         """
@@ -143,9 +141,7 @@ class TestCampaignTypes(BaseAPITest):
         data = self.assert_success(response)
 
         items = data.get("items", data) if isinstance(data, dict) else data
-        if not isinstance(items, list):
-            items = []
-        if len(items) > 0:
+        if items and len(items) > 0:
             campaign = items[0]
             # 应该有类型或奖励信息
             has_type_info = (

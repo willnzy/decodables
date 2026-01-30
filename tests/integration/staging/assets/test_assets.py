@@ -117,8 +117,7 @@ class TestUploadAsset(BaseAPITest):
 
         # Pro 用户: 200/201
         # Non-Pro: 403
-        # 验证错误: 422
-        assert response.status_code in [200, 201, 403, 422]
+        assert response.status_code in [200, 201, 403]
 
 
 @pytest.mark.p1
@@ -470,8 +469,8 @@ class TestAssetStar(BaseAPITest):
             json={"is_starred": True}
         )
 
-        # 应返回 400, 404 或 405 (方法不支持)
-        assert response.status_code in [400, 404, 405], (
+        # 应返回 400 或 404
+        assert response.status_code in [400, 404], (
             f"收藏不存在的素材应失败，但返回了 {response.status_code}"
         )
 
@@ -484,7 +483,7 @@ class TestAssetStar(BaseAPITest):
             json={"is_starred": True}
         )
 
-        assert response.status_code in [400, 404, 405, 422], (
+        assert response.status_code in [400, 404, 422], (
             f"无效 ID 应被拒绝，但返回了 {response.status_code}"
         )
 
@@ -500,8 +499,7 @@ class TestAssetStar(BaseAPITest):
 
         # 应返回 400 或 422 (验证错误)
         # 或者 404 (如果先验证资产存在性)
-        # 或者 405 (方法不支持)
-        assert response.status_code in [400, 404, 405, 422], (
+        assert response.status_code in [400, 404, 422], (
             f"缺少 is_starred 应被拒绝，但返回了 {response.status_code}"
         )
 
@@ -514,9 +512,7 @@ class TestAssetStar(BaseAPITest):
             Endpoints.asset_star(fake_id),
             json={"is_starred": True}
         )
-        assert response.status_code in [401, 405], (
-            f"收藏素材需要认证，匿名用户应返回 401/405，但返回了 {response.status_code}"
-        )
+        self.assert_unauthorized(response)
 
     def test_unstar_asset_logic(self, auth_client):
         """
@@ -530,8 +526,8 @@ class TestAssetStar(BaseAPITest):
             json={"is_starred": False}
         )
 
-        # 素材不存在应返回 404，存在应返回 200，方法不支持返回 405
-        assert response.status_code in [200, 400, 404, 405]
+        # 素材不存在应返回 404，存在应返回 200
+        assert response.status_code in [200, 400, 404]
 
     def test_star_asset_invalid_is_starred_type(self, auth_client):
         """
@@ -545,8 +541,8 @@ class TestAssetStar(BaseAPITest):
             json={"is_starred": "yes"}  # 字符串而非布尔值
         )
 
-        # 可能返回 422 (验证错误) 或 404 (素材不存在) 或 405 (方法不支持)
-        assert response.status_code in [400, 404, 405, 422], (
+        # 可能返回 422 (验证错误) 或 404 (素材不存在)
+        assert response.status_code in [400, 404, 422], (
             f"非布尔值 is_starred 应被拒绝，但返回了 {response.status_code}"
         )
 

@@ -53,8 +53,8 @@ class TestExperimentAssign(BaseAPITest):
             Endpoints.experiment_assign(fake_key),
             json={}
         )
-        # 可能返回 404 (实验不存在), 200 (创建新分配), 或 422 (缺少 user_identifier)
-        assert response.status_code in [200, 400, 404, 422]
+        # 可能返回 404 (实验不存在) 或 200 (创建新分配)
+        assert response.status_code in [200, 400, 404]
 
     def test_assign_valid_experiment(self, auth_client):
         """
@@ -64,8 +64,8 @@ class TestExperimentAssign(BaseAPITest):
             Endpoints.experiment_assign("test_experiment"),
             json={}
         )
-        # 可能成功分配、实验不存在、或缺少 user_identifier (422)
-        assert response.status_code in [200, 400, 404, 422]
+        # 可能成功分配或实验不存在
+        assert response.status_code in [200, 400, 404]
 
 
 @pytest.mark.p1
@@ -98,7 +98,7 @@ class TestExperimentExposure(BaseAPITest):
             Endpoints.experiment_exposure(fake_key),
             json={}
         )
-        assert response.status_code in [200, 400, 404, 422]
+        assert response.status_code in [200, 400, 404]
 
 
 @pytest.mark.p1
@@ -131,7 +131,7 @@ class TestExperimentConversion(BaseAPITest):
             Endpoints.experiment_conversion(fake_key),
             json={}
         )
-        assert response.status_code in [200, 400, 404, 422]
+        assert response.status_code in [200, 400, 404]
 
 
 @pytest.mark.p2
@@ -190,7 +190,7 @@ class TestExperimentsValidation(BaseAPITest):
             Endpoints.experiment_assign("test_experiment"),
             json={"metadata": {"source": "test"}}
         )
-        assert response.status_code in [200, 400, 404, 422]
+        assert response.status_code in [200, 400, 404]
 
     def test_conversion_with_value(self, auth_client):
         """
@@ -200,7 +200,7 @@ class TestExperimentsValidation(BaseAPITest):
             Endpoints.experiment_conversion("test_experiment"),
             json={"conversion_value": 100}
         )
-        assert response.status_code in [200, 400, 404, 422]
+        assert response.status_code in [200, 400, 404]
 
     def test_experiment_key_special_chars(self, auth_client):
         """

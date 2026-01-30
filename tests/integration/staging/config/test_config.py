@@ -59,8 +59,8 @@ class TestConfigByKey(BaseAPITest):
         可能返回 404 或 null
         """
         response = auth_client.get(Endpoints.config_key("nonexistent_config_key_12345"))
-        # 可能返回 404, 200 + null, 或 403 (需要额外权限)
-        assert response.status_code in [200, 403, 404]
+        # 可能返回 404 或 200 + null
+        assert response.status_code in [200, 404]
 
     def test_get_valid_config_key(self, auth_client):
         """
@@ -77,10 +77,7 @@ class TestConfigByKey(BaseAPITest):
                 first_key = list(all_configs.keys())[0] if all_configs else None
                 if first_key:
                     response = auth_client.get(Endpoints.config_key(first_key))
-                    # 单独 key 接口可能需要额外权限
-                    assert response.status_code in [200, 403, 404], (
-                        f"获取配置 key '{first_key}': 预期 200/403/404，但返回了 {response.status_code}"
-                    )
+                    data = self.assert_success(response)
 
     def test_public_endpoint(self, anon_client):
         """
@@ -158,7 +155,7 @@ class TestConfigValidation(BaseAPITest):
         long_key = "a" * 500
         response = auth_client.get(Endpoints.config_key(long_key))
         # 应该不会返回 500
-        assert response.status_code in [200, 400, 403, 404]
+        assert response.status_code in [200, 400, 404]
 
 
 @pytest.mark.p2
