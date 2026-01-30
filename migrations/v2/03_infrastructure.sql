@@ -1700,9 +1700,10 @@ SET search_path = 'public';
 -- Row Level Security (RLS) 启用
 -- ============================================================================
 -- 策略说明:
--- - 启用 RLS 但不添加任何策略 = 默认拒绝所有通过 anon key 的访问
--- - 后端使用 service_role key，会自动绕过 RLS
--- - 这提供了安全深度防御：即使 anon key 泄露，也无法访问数据
+-- - 所有表启用 RLS + 仅授权 service_role 完全访问
+-- - 后端使用 service_role key (自带 bypassrls 权限)
+-- - anon / authenticated 角色无策略 = 完全拒绝访问
+-- - 安全深度防御：即使 anon key 泄露，也无法访问数据
 -- ============================================================================
 
 -- 01_core_business.sql 中的表 (35个，包含 v3.33 新表和监控日志表)
@@ -1793,6 +1794,101 @@ ALTER TABLE pricing_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_price_overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_replies ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================================
+-- Row Level Security (RLS) 策略 - service_role 显式授权
+-- ============================================================================
+-- 策略说明:
+-- - 所有表仅允许 service_role 完全访问 (后端 FastAPI 使用 service_role key)
+-- - 显式策略使安全意图自文档化，消除 Supabase 审计告警
+-- - anon / authenticated 角色无任何策略 = 完全拒绝访问
+-- ============================================================================
+
+-- 01_core_business.sql 中的表
+CREATE POLICY service_role_all ON profiles FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON asset_categories FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON workspaces FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON folders FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON legacy_system_tags FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON tags FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON tag_group_presets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON projects FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON project_pages FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON marketplace_listings FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON assets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON legacy_asset_tag_relations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON project_tags FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_asset_tags FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON workspace_members FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON workspace_invitations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_recent_assets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_favorite_assets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON project_versions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_asset_prompt_templates FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON credit_purchases FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON credit_transactions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON generation_tasks FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON listing_usages FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON marketplace_favorites FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON marketplace_purchases FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON marketplace_reviews FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_page_prompt_templates FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON subscription_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON system_assets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON system_resources FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_discounts FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_generations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON system_error_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_creation_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- 02_platform_services.sql 中的表
+CREATE POLICY service_role_all ON activity_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON aggregated_stats FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON ai_usage_daily FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON analytics_aggregation FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON analytics_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON clerk_webhook_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON config_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON daily_themes FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON feature_flags FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON holidays FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON monthly_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON hourly_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON notifications FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON stripe_webhook_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON system_resource_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON campaigns FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON content_reports FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiments FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON onboarding_steps FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON articles FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiment_configs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON flag_exposures FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON flag_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON campaign_dismissals FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON campaign_participations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiment_assignments FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiment_conversions FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiment_exposures FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON experiment_results FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON referrals FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_onboarding_progress FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- 03_infrastructure.sql 中的表
+CREATE POLICY service_role_all ON admin_operations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON ai_call_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON api_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON error_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON payment_records FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON pricing_plans FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON scheduled_task_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON system_configs FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON pricing_history FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON support_tickets FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON user_price_overrides FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY service_role_all ON support_replies FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 
 -- ============================================================================
