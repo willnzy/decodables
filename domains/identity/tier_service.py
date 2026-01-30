@@ -15,7 +15,7 @@ All configurations are read from system_configs table, with emergency fallbacks.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 
@@ -193,7 +193,24 @@ class TierService:
         """
         self.config_repo = config_repo
         self._cache: Dict[str, Any] = {}
+        self._cache_timestamp: Optional[datetime] = None
         self._tier_config_cache: Dict[str, Dict[str, Any]] = {}
+        self._tier_config_cache_timestamp: Optional[datetime] = None
+        self._cache_ttl_seconds = 300  # 5 minutes
+
+    def _is_display_cache_valid(self) -> bool:
+        """Check if display name cache is still valid."""
+        if not self._cache_timestamp:
+            return False
+        age = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
+        return age < self._cache_ttl_seconds
+
+    def _is_tier_config_cache_valid(self) -> bool:
+        """Check if tier config cache is still valid."""
+        if not self._tier_config_cache_timestamp:
+            return False
+        age = (datetime.now(timezone.utc) - self._tier_config_cache_timestamp).total_seconds()
+        return age < self._cache_ttl_seconds
 
     async def get_tier_display_name(self, tier: str) -> str:
         """
@@ -218,8 +235,8 @@ class TierService:
             logger.warning(f"Invalid tier code: {tier}")
             return tier.upper()
 
-        # Check cache first
-        if tier in self._cache:
+        # Check cache first (with TTL)
+        if self._is_display_cache_valid() and tier in self._cache:
             return self._cache[tier]
 
         # Fetch from database
@@ -230,8 +247,9 @@ class TierService:
                 default_value=DEFAULT_TIER_DISPLAY_NAMES.get(tier, tier.upper())
             )
 
-            # Cache the result
+            # Cache the result with timestamp
             self._cache[tier] = display_name
+            self._cache_timestamp = datetime.now(timezone.utc)
             return display_name
 
         except Exception as e:
@@ -333,6 +351,7 @@ class TierService:
     def clear_cache(self):
         """Clear the tier display name cache."""
         self._cache.clear()
+        self._cache_timestamp = None
         logger.debug("Tier display name cache cleared")
 
     async def get_trial_duration_days(self) -> int:
@@ -432,9 +451,9 @@ class TierService:
             logger.warning(f"Invalid tier: {tier}, using t1 config")
             tier = TIER_T1
 
-        # Check cache
+        # Check cache (with TTL)
         cache_key = f"tier_config_{tier}"
-        if cache_key in self._tier_config_cache:
+        if self._is_tier_config_cache_valid() and cache_key in self._tier_config_cache:
             return self._tier_config_cache[cache_key]
 
         try:
@@ -464,8 +483,9 @@ class TierService:
                     if config[key] is None:
                         config[key] = fallback[key]
 
-            # Cache result
+            # Cache result with timestamp
             self._tier_config_cache[cache_key] = config
+            self._tier_config_cache_timestamp = datetime.now(timezone.utc)
             return config
 
         except Exception as e:
@@ -670,4 +690,5 @@ class TierService:
     def clear_tier_config_cache(self):
         """清除 Tier 配置缓存 (配置更新后调用)"""
         self._tier_config_cache.clear()
+        self._tier_config_cache_timestamp = None
         logger.debug("Tier config cache cleared")

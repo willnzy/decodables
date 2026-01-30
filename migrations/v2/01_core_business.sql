@@ -874,8 +874,9 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 交易类型 (P0-6: 同时支持 transaction_type 和 tx_type)
-    -- transaction_type: 规范字段名 (用于报表和管理)
-    -- tx_type: Repository 使用的字段名 (用于插入)
+    -- transaction_type: 规范字段名 (用于报表、管理、RPC 函数)
+    -- tx_type: ⚠️ DEPRECATED — Repository 历史遗留字段，新代码应使用 transaction_type
+    --   触发器 trg_sync_credit_transaction_type 自动双向同步两个字段
     -- 至少一个必须有值，两个都有值时必须相同
     transaction_type TEXT CHECK (transaction_type IN (
         'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
@@ -883,6 +884,8 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
         'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
         'monthly_reset', 'marketplace_purchase'
     )),
+    -- ⚠️ DEPRECATED: tx_type 已废弃，新代码请使用 transaction_type
+    -- 保留仅为向后兼容，触发器自动同步值
     tx_type TEXT CHECK (tx_type IN (
         'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
         'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
