@@ -245,7 +245,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    # WS-14(SUP-1c): Removed HEAD — not needed by frontend
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     # v3.26: Explicit headers list (security hardening - no wildcard)
     allow_headers=[
         "Authorization",

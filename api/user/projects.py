@@ -175,7 +175,9 @@ class ProjectUpdateResponse(BaseModel):
 # ==========================================
 
 @router.get("")
+@limiter.limit("60/minute")
 async def list_projects(
+    request: Request,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(6, ge=1, le=100, description="Number of records to return (max 100)"),
     search: Optional[str] = Query(None, max_length=200, description="Search by title"),
@@ -232,7 +234,9 @@ async def list_projects(
 
 
 @router.get("/dashboard")
+@limiter.limit("60/minute")
 async def dashboard_projects(
+    request: Request,
     view: str = Query("all", pattern="^(all|bought|selling)$"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (max 100)"),
@@ -333,7 +337,9 @@ async def dashboard_projects(
 
 
 @router.get("/deleted")
+@limiter.limit("30/minute")
 async def list_deleted_projects(
+    request: Request,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return (1-100)"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
@@ -377,7 +383,9 @@ async def list_deleted_projects(
 
 
 @router.get("/starred")
+@limiter.limit("60/minute")
 async def list_starred_projects(
+    request: Request,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
@@ -414,7 +422,9 @@ async def list_starred_projects(
 
 
 @router.get("/folder/{folder_id}")
+@limiter.limit("60/minute")
 async def list_projects_by_folder(
+    request: Request,
     folder_id: str,
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
@@ -530,7 +540,9 @@ async def create_project(
 
 
 @router.get("/{project_id}")
+@limiter.limit("120/minute")
 async def get_project(
+    request: Request,
     project_id: str,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectResponse:
@@ -570,7 +582,9 @@ async def get_project(
 
 
 @router.put("/{project_id}")
+@limiter.limit("30/minute")
 async def update_project(
+    request: Request,
     project_id: str,
     req: ProjectUpdateRequest,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
@@ -637,7 +651,9 @@ async def update_project(
 
 
 @router.delete("/{project_id}")
+@limiter.limit("10/minute")
 async def delete_project(
+    request: Request,
     project_id: str,
     permanent: bool = False,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
@@ -698,7 +714,9 @@ async def delete_project(
 
 
 @router.post("/{project_id}/restore")
+@limiter.limit("10/minute")
 async def restore_project(
+    request: Request,
     project_id: str,
     ctx: UserWithWorkspace = Depends(get_current_user_with_workspace),
 ) -> ProjectRestoreResponse:

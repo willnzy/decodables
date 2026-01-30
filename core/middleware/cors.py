@@ -31,7 +31,10 @@ def add_cors_headers(
     Returns:
         Response with CORS headers added
     """
-    origin = origins[0] if origins else "*"
+    # WS-14(SUP-2c): Reject if no origins configured — never fall back to wildcard
+    if not origins:
+        return response
+    origin = origins[0]
     response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Credentials"] = str(allow_credentials).lower()
     response.headers["Access-Control-Allow-Methods"] = allow_methods
