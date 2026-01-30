@@ -179,7 +179,8 @@ class TestGetUsageSummary:
     def test_returns_summary(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
         
-        mock_supabase.from_.return_value.select.return_value.execute.return_value.data = [
+        # Source uses supabase.schema("internal").from_(...), so mock the full chain
+        mock_supabase.schema.return_value.from_.return_value.select.return_value.execute.return_value.data = [
             {"provider": "openai", "model": "gpt-4o", "total_calls": 100, "total_cost_usd": 5.0},
             {"provider": "openai", "model": "gpt-4o-mini", "total_calls": 200, "total_cost_usd": 1.0},
         ]
@@ -193,7 +194,8 @@ class TestGetUsageSummary:
     @patch('shared.ai.usage_tracker.supabase')
     def test_returns_empty_on_no_data(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
-        mock_supabase.from_.return_value.select.return_value.execute.return_value.data = None
+        # Source uses supabase.schema("internal").from_(...), so mock the full chain
+        mock_supabase.schema.return_value.from_.return_value.select.return_value.execute.return_value.data = None
         
         result = get_usage_summary()
         
@@ -202,7 +204,8 @@ class TestGetUsageSummary:
     @patch('shared.ai.usage_tracker.supabase')
     def test_handles_exception(self, mock_supabase):
         from shared.ai.usage_tracker import get_usage_summary
-        mock_supabase.from_.side_effect = Exception("DB Error")
+        # Source uses supabase.schema("internal").from_(...), so trigger on schema()
+        mock_supabase.schema.return_value.from_.side_effect = Exception("DB Error")
         
         result = get_usage_summary()
         
