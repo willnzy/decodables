@@ -2,8 +2,8 @@
 
 **创建日期**: 2026-01-30
 **关联审计报告**: `docs/tmp/20260130-payment-audit-report.md`
-**状态**: 待讨论确认
-**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正) → v3.4 二轮审计 (6 个新发现修正) → v3.5 三轮审计 (7 个新发现: 并发/幂等/配置) → v3.6 方案-代码交叉验证 (5 个架构/规范问题)
+**状态**: ✅ **全部完成** (2026-01-30)
+**版本历史**: v1.0 初版 → v2.0 补全 6 个遗漏问题 → v3.0 架构合规修正 → v3.1 代码探查确认 + WS7 拆分 + 消除待确认项 → v3.2 代码兼容性验证 (10 个矛盾点修正) → v3.3 深度审计 (7 个新发现修正) → v3.4 二轮审计 (6 个新发现修正) → v3.5 三轮审计 (7 个新发现: 并发/幂等/配置) → v3.6 方案-代码交叉验证 (5 个架构/规范问题) → **v4.0 全部修复完成**
 
 ---
 
@@ -229,9 +229,9 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 
 #### 验证
 
-- [ ] 全局搜索 `payment_repo.create(` — 确认所有调用方字段名一致
-- [ ] CHECK 约束覆盖所有实际写入的 payment_type 值
-- [ ] 后端 build 通过
+- [x] 全局搜索 `payment_repo.create(` — 确认所有调用方字段名一致
+- [x] CHECK 约束覆盖所有实际写入的 payment_type 值
+- [x] 后端 build 通过
 
 ---
 
@@ -339,10 +339,10 @@ WS3 (原子 RPC)  ← 依赖 WS2: webhook 调 RPC 需传入 TierService 获取�
 
 #### 验证
 
-- [ ] 全局搜索硬编码 `500`, `1000`, `50` (积分相关) — 确认全部替换
-- [ ] TierService 注入链完整: Container → Service → 使用
-- [ ] ActivityLogRepository 已创建，9 处直接 `table("activity_logs")` 已迁移
-- [ ] 后端 build 通过
+- [x] 全局搜索硬编码 `500`, `1000`, `50` (积分相关) — 确认全部替换
+- [x] TierService 注入链完整: Container → Service → 使用
+- [x] ActivityLogRepository 已创建，9 处直接 `table("activity_logs")` 已迁移
+- [x] 后端 build 通过
 
 ---
 
@@ -481,14 +481,14 @@ Stripe 不保证事件顺序。RPC 内需加状态前置条件检查:
 
 #### 验证
 
-- [ ] 首次订阅: RPC 原子完成 (tier + credits + payment record)
-- [ ] 续费: RPC 原子完成 (credits reset + payment record)
-- [ ] add_credits_atomic: 重复 idempotency_key 不重复发放
-- [ ] 乱序事件不会覆盖正确状态
-- [ ] 旧的多步非原子代码路径已删除
-- [ ] check_webhook_idempotency: 重复 event_id 返回 `{idempotent: true}` ✓
-- [ ] admin_adjust_credits_atomic: 并发操作不丢失更新 (FOR UPDATE 锁) ✓
-- [ ] admin_repository.py 改为调用新 RPC ✓
+- [x] 首次订阅: RPC 原子完成 (tier + credits + payment record)
+- [x] 续费: RPC 原子完成 (credits reset + payment record)
+- [x] add_credits_atomic: 重复 idempotency_key 不重复发放
+- [x] 乱序事件不会覆盖正确状态
+- [x] 旧的多步非原子代码路径已删除
+- [x] check_webhook_idempotency: 重复 event_id 返回 `{idempotent: true}` ✓
+- [x] admin_adjust_credits_atomic: 并发操作不丢失更新 (FOR UPDATE 锁) ✓
+- [x] admin_repository.py 改为调用新 RPC ✓
 
 ---
 
@@ -549,11 +549,11 @@ Stripe 不保证事件顺序。RPC 内需加状态前置条件检查:
 
 #### 验证
 
-- [ ] Admin 立即取消 → credits_monthly=0, tier='t1' ✓
-- [ ] Stripe webhook subscription.deleted → credits_monthly=0 ✓
-- [ ] 期末取消 → cancel_at_period_end=true, 积分不变 ✓
-- [ ] 期末取消后 Stripe 到期触发 deletion → 清零 ✓
-- [ ] 降级 t3→t2 immediate=True → 不触发 billing_cycle_anchor ✓
+- [x] Admin 立即取消 → credits_monthly=0, tier='t1' ✓
+- [x] Stripe webhook subscription.deleted → credits_monthly=0 ✓
+- [x] 期末取消 → cancel_at_period_end=true, 积分不变 ✓
+- [x] 期末取消后 Stripe 到期触发 deletion → 清零 ✓
+- [x] 降级 t3→t2 immediate=True → 不触发 billing_cycle_anchor ✓
 
 ---
 
@@ -635,13 +635,13 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 
 #### 验证
 
-- [ ] 积分购买退费 → 积分扣回 (按比例计算) ✓
-- [ ] 订阅退费 → 降级 t1 + 清零月度积分 ✓
-- [ ] 无 metadata 退费 → 通过 payment_records 反查成功 ✓
-- [ ] 部分退款后再次退款 → 可退金额计算准确 ✓
-- [ ] PaymentService.create_refund → 正确传递 metadata ✓
-- [ ] 重复 refund webhook → 幂等处理 (不重复扣积分) ✓
-- [ ] Webhook service 通过 Repository 调用 RPC (不直接 db_client.rpc) ✓
+- [x] 积分购买退费 → 积分扣回 (按比例计算) ✓
+- [x] 订阅退费 → 降级 t1 + 清零月度积分 ✓
+- [x] 无 metadata 退费 → 通过 payment_records 反查成功 ✓
+- [x] 部分退款后再次退款 → 可退金额计算准确 ✓
+- [x] PaymentService.create_refund → 正确传递 metadata ✓
+- [x] 重复 refund webhook → 幂等处理 (不重复扣积分) ✓
+- [x] Webhook service 通过 Repository 调用 RPC (不直接 db_client.rpc) ✓
 
 ---
 
@@ -742,12 +742,12 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 
 #### 验证
 
-- [ ] 已有 stripe_customer_id 的用户 checkout → 复用同一 Customer ✓
-- [ ] 新用户 checkout → 自动创建 Customer ✓
-- [ ] 已有 t2 订阅再请求 t3 → 走升级流程 ✓
-- [ ] 降级请求 → 返回 400 ✓
-- [ ] Checkout metadata 包含 credits_amount ✓
-- [ ] 双击 checkout → 返回 409 而非 500 ✓
+- [x] 已有 stripe_customer_id 的用户 checkout → 复用同一 Customer ✓
+- [x] 新用户 checkout → 自动创建 Customer ✓
+- [x] 已有 t2 订阅再请求 t3 → 走升级流程 ✓
+- [x] 降级请求 → 返回 400 ✓
+- [x] Checkout metadata 包含 credits_amount ✓
+- [x] 双击 checkout → 返回 409 而非 500 ✓
 
 ---
 
@@ -804,10 +804,10 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 - **修复**: 所有同步 Stripe SDK 调用用 `run_in_threadpool` 包装
 
 **验证**:
-- [ ] Stripe 调用不阻塞事件循环 (payment_service + subscription_service) ✓
-- [ ] PricingService 同步查询通过 run_in_threadpool 包装 ✓
-- [ ] SubscriptionService Stripe 调用通过 run_in_threadpool 包装 ✓
-- [ ] coupon_cache 线程安全 ✓
+- [x] Stripe 调用不阻塞事件循环 (payment_service + subscription_service) ✓
+- [x] PricingService 同步查询通过 run_in_threadpool 包装 ✓
+- [x] SubscriptionService Stripe 调用通过 run_in_threadpool 包装 ✓
+- [x] coupon_cache 线程安全 ✓
 
 ---
 
@@ -856,13 +856,13 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   ```
 
 **验证**:
-- [ ] invoice.payment_failed → subscription_status='past_due' ✓
-- [ ] 生产环境缺 STRIPE_WEBHOOK_SECRET → 启动失败 ✓
-- [ ] construct_event 使用显式 tolerance=300 ✓
-- [ ] stripe_webhook_events RLS 启用 ✓
-- [ ] stripe.api_version 已锁定 ✓
-- [ ] t1 用户收到 subscription webhook → WARNING 日志 + Sentry ✓
-- [ ] customer.deleted → 清除本地 stripe_customer_id ✓
+- [x] invoice.payment_failed → subscription_status='past_due' ✓
+- [x] 生产环境缺 STRIPE_WEBHOOK_SECRET → 启动失败 ✓
+- [x] construct_event 使用显式 tolerance=300 ✓
+- [x] stripe_webhook_events RLS 启用 ✓
+- [x] stripe.api_version 已锁定 ✓
+- [x] t1 用户收到 subscription webhook → WARNING 日志 + Sentry ✓
+- [x] customer.deleted → 清除本地 stripe_customer_id ✓
 
 ---
 
@@ -896,9 +896,9 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   3. **第三步 (未来清理)**: 移除 `tx_type` 字段 + trigger + 相关约束
 
 **验证**:
-- [ ] TierService 缓存 5 分钟后自动过期 ✓
-- [ ] update_subscription_tier 冗余条件已修复 ✓
-- [ ] 所有新 RPC 统一使用 `transaction_type` 字段 ✓
+- [x] TierService 缓存 5 分钟后自动过期 ✓
+- [x] update_subscription_tier 冗余条件已修复 ✓
+- [x] 所有新 RPC 统一使用 `transaction_type` 字段 ✓
 
 ---
 
@@ -936,9 +936,9 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
   3. 如有残留类型引用，迁移到 `app/admin/users/_components/modals/`
 
 **验证**:
-- [ ] 对账任务能发现漏发积分的用户 ✓
-- [ ] `components/admin/` 已删除，无残留引用 ✓
-- [ ] 前端 build 通过 ✓
+- [x] 对账任务能发现漏发积分的用户 ✓
+- [x] `components/admin/` 已删除，无残留引用 ✓
+- [x] 前端 build 通过 ✓
 
 ---
 
@@ -1008,14 +1008,14 @@ Metadata 缺失 fallback: 通过 payment_records 反查原始交易类型。
 
 #### 验证
 
-- [ ] Checkout 成功返回 → toast + 刷新数据 ✓
-- [ ] Portal 跳转正常 (字段名 `url` 一致) ✓
-- [ ] purchaseCredits 支持选择包型 ✓
-- [ ] DowngradeModal 动态积分数 ✓
-- [ ] SubscriptionCard 展示 past_due/canceled 状态 ✓
-- [ ] 升级操作后 → loading + 轮询检测 tier 变化 ✓
-- [ ] 后端 /me 返回 cancel_at_period_end 和 cancel_at ✓
-- [ ] 前端 build 通过 ✓
+- [x] Checkout 成功返回 → toast + 刷新数据 ✓
+- [x] Portal 跳转正常 (字段名 `url` 一致) ✓
+- [x] purchaseCredits 支持选择包型 ✓
+- [x] DowngradeModal 动态积分数 ✓
+- [x] SubscriptionCard 展示 past_due/canceled 状态 ✓
+- [x] 升级操作后 → loading + 轮询检测 tier 变化 ✓
+- [x] 后端 /me 返回 cancel_at_period_end 和 cancel_at ✓
+- [x] 前端 build 通过 ✓
 
 ---
 
@@ -1158,9 +1158,9 @@ fix(payment): WS7b - add invoice.payment_failed handler + startup validation (#3
 
 ---
 
-**文档版本**: v3.6
+**文档版本**: v4.0
 **最后更新**: 2026-01-30
-**状态**: 待讨论确认
+**状态**: ✅ 全部完成
 
 ### v3.6 修正清单 (方案-代码交叉验证 — 5 个架构/规范问题)
 
@@ -1268,3 +1268,103 @@ fix(payment): WS7b - add invoice.payment_failed handler + startup validation (#3
 | WS7 | 区分 #4 (asyncio.sleep) 和 #20 (run_in_threadpool) 为不同问题 |
 | WS7 | 对账调度器: 明确 TierService 独立创建路径 + 安全机制 (仅记录不自动补发) |
 | WS8 | SubscriptionCard: 增加后端 API 字段返回确认前提 |
+
+---
+
+## 七、修复完成记录 (v4.0)
+
+### 执行时间
+
+2026-01-30，全部 8 个工作流 (11 个 commit) 完成。
+
+### Git Commit 记录
+
+| 顺序 | 工作流 | Commit Hash | 仓库 | 说明 |
+|------|--------|-------------|------|------|
+| 1 | WS1 | `d7d582b` | decodables | Schema 对齐: CHECK 约束扩展, 字段名修正, payment_method DEFAULT |
+| 2 | WS2 | `0615af2` | decodables | 配置集中化 + DI: TierService 注入, 硬编码消除, ActivityLogRepo 新建 |
+| 2+ | WS2 补充 | `524e58a` | decodables | WS2 遗漏修复: subscription_repository DI, G2 table() 迁移 |
+| 3 | WS3 | `7a49230` | decodables | 原子 RPC: process_subscription_start/renewal, check_webhook_idempotency, admin_adjust_credits_atomic, add_credits_atomic 幂等性 |
+| 4 | WS4 | `5f49904` | decodables | 取消/降级路径完善: process_subscription_termination RPC, 期末取消, profiles 新字段 |
+| 5 | WS5 | `2c4818a` | decodables | 退费完善: process_credit_refund RPC, metadata 传递, 退款金额计算修正 |
+| 6 | WS6 | `6db0691` | decodables | Checkout 客户绑定 + 升级: customer_id 透传, upgrade API, credits_amount metadata |
+| 7a | WS7a | `ea6e8bf` | decodables | Async + 线程安全: run_in_threadpool 包装, async_retry 装饰器, coupon_cache Lock |
+| 7b | WS7b | `a9e2e83` | decodables | Webhook 补全 + 启动校验: invoice.payment_failed handler, STRIPE_API_VERSION 锁定, past_due dunning 修正, RLS |
+| 7c | WS7c | `b74343e` | decodables | 缓存 + 代码质量: TierService TTL 5分钟, tx_type deprecated 标记 |
+| 7d | WS7d | `28adbe6` | decodables | 对账任务: run_credit_reconciliation 日终调度 (log-only) |
+| 7d+ | WS7d 前端 | `4407179` | decodables-fe | 死代码清理: 删除 components/admin/ 整目录 (30 文件, 18,810 行) |
+| 8 | WS8 | `535c6fe` | decodables-fe | 前端修复: portal_url→url, purchaseCredits 参数化, DowngradeModal 动态积分, checkout callback, SubscriptionCard 状态 badge |
+
+### 问题覆盖确认
+
+**全部 50 个问题已修复**:
+
+| 问题 | 状态 | 修复 WS |
+|------|------|---------|
+| #1 | ✅ | WS6 — Checkout 绑定 stripe_customer_id |
+| #2 | ✅ | WS2 — Webhook 积分从 TierService 获取 |
+| #3 | ✅ | WS6 — upgrade_subscription API |
+| #4 | ✅ | WS7a — async_retry_on_stripe_error |
+| #5 | ✅ | WS4 — 期末降级 pending_tier_change |
+| #6 | ✅ | WS5 — PaymentService.create_refund metadata |
+| #7 | ✅ | WS4 — process_subscription_termination 清零 credits_monthly |
+| #8 | ✅ | WS4 — Webhook subscription.deleted 触发清零 |
+| #9 | ✅ | WS4 — 期末取消 cancel_at_period_end |
+| #10 | ✅ | WS4 — 移除 billing_cycle_anchor='now' |
+| #11 | ✅ | WS8 — purchaseCredits 接受 planType 参数 |
+| #12 | ✅ | WS8 — DashboardContent checkout callback |
+| #13 | ✅ | WS8 — portal_url → url 统一 |
+| #14 | ✅ | WS5 — process_credit_refund RPC 扣回积分 |
+| #15 | ✅ | WS5 — 订阅退费触发降级 |
+| #16 | ✅ | WS5 — create_refund 类方法增加 metadata |
+| #17 | ✅ | WS5 — refunds 按 created 排序取最新 |
+| #18 | ✅ | WS5 — 退款金额 amount - amount_refunded |
+| #19 | - | 已确认无问题 |
+| #20 | ✅ | WS7a — run_in_threadpool 包装 Stripe SDK |
+| #21 | ✅ | WS7a — coupon_cache threading.Lock |
+| #22 | ✅ | WS7d — 删除 components/admin/ 重复代码 |
+| #23 | ✅ | WS1 — CHECK 约束扩展 |
+| #24 | ✅ | WS1 — 字段名 amount_usd / stripe_payment_intent_id |
+| #25 | ✅ | WS3 — process_subscription_start RPC 创建 |
+| #26 | ✅ | WS3 — add_credits_atomic 幂等性 |
+| #27 | ✅ | WS7c — tx_type deprecated 标记 |
+| #28 | ✅ | WS2 — Container 注入 TierService |
+| #29 | ✅ | WS2 — credit_repo 参数化替代硬编码 |
+| #30 | ✅ | WS2 — create_profile signup_bonus 参数化 |
+| #31 | ✅ | WS7c — (WS4 已修复冗余条件) |
+| #32 | ✅ | WS1 — record_subscription_change 字段对齐 |
+| #33 | ✅ | WS8 — DowngradeModal useAllTiers() 动态积分 |
+| #34 | ✅ | WS7d — 删除重复 Admin Modals |
+| #35 | ✅ | WS8 — Profile 页 checkout callback |
+| #36 | ✅ | WS2 — 注册奖励 TierService 统一 |
+| #37 | ✅ | WS7a — PricingService run_in_threadpool |
+| #38 | ✅ | WS7d — run_credit_reconciliation 日终对账 |
+| #39 | ✅ | WS7b — STRIPE_SECRET_KEY 声明 |
+| #40 | ✅ | WS7c — TierService 缓存 TTL 5分钟 |
+| #41 | ✅ | WS6 — StripeProvider customer_id 透传 |
+| #42 | ✅ | WS2 — config.py 注释指向 TierService |
+| #43 | ✅ | WS2 — docstring 更新 |
+| #44 | ✅ | WS7b — invoice.payment_failed handler |
+| #45 | ✅ | WS7b — invoice.payment_action_required 日志 |
+| #46 | ✅ | WS8 — SubscriptionCard 状态 badge |
+| #47 | ✅ | WS7b — stripe_webhook_events RLS |
+| #48 | ✅ | WS7b — WEBHOOK_SECRET 生产环境 raise |
+| #49 | ✅ | WS3 — process_subscription_renewal RPC |
+| #50 | ✅ | WS7b — construct_event tolerance=300 |
+
+### 额外修复 (方案审计中发现的新问题)
+
+| 来源 | 问题 | 修复 WS |
+|------|------|---------|
+| v3.3 P0 | `_handle_charge_refunded` TypeError 崩溃 | WS1 |
+| v3.4 P0 | `status` 默认值 "completed" 不在 CHECK 约束中 | WS1 |
+| v3.4 P0 | `get_by_payment_intent_and_type()` 不存在 | WS5 |
+| v3.4 P0 | `past_due` 过度降级 (应走 Dunning) | WS7b |
+| v3.5 P0 | `check_webhook_idempotency` RPC 不存在 | WS3 |
+| v3.5 P0 | `admin_adjust_credits` 非原子 Lost Update | WS3 |
+| v3.6 P1 | `idempotency_key` 无 UNIQUE 约束 | WS3 |
+| v3.6 P1 | `ActivityLogRepository` 新建文件遗漏 | WS2 |
+| v3.3 P1 | `_grant_signup_bonus()` 死代码删除 | WS2 |
+| v3.4 P1 | `subscription_service.py` 同步阻塞 | WS7a |
+| v3.5 P1 | `STRIPE_API_VERSION` 未锁定 | WS7b |
+| v3.5 P1 | Checkout metadata 缺 `credits_amount` | WS6 |
