@@ -57,6 +57,7 @@ class StripeWebhookService:
         db_client = None,  # AsyncClient for direct database operations
         tier_service = None,  # WS2: TierService for dynamic credits configuration
         activity_log_repo = None,  # WS2: ActivityLogRepository for unified activity logging
+        subscription_repo = None,  # WS3: SubscriptionRepository for atomic RPC calls
     ):
         """
         Initialize Stripe Webhook Service.
@@ -68,6 +69,7 @@ class StripeWebhookService:
             db_client: AsyncClient for direct database operations (activity logs, RPC calls)
             tier_service: TierService for dynamic tier/credits configuration
             activity_log_repo: ActivityLogRepository for activity logging
+            subscription_repo: SubscriptionRepository for atomic subscription RPC calls
         """
         self.user_repo = user_repo
         self.credit_repo = credit_repo
@@ -75,6 +77,7 @@ class StripeWebhookService:
         self.db_client = db_client or user_repo.client  # Use repo's client if not provided
         self.tier_service = tier_service
         self.activity_log_repo = activity_log_repo
+        self.subscription_repo = subscription_repo
 
     def verify_signature(self, payload: bytes, sig_header: str) -> Dict[str, Any]:
         """
@@ -110,13 +113,14 @@ class StripeWebhookService:
             Exception: If idempotency check fails for critical events
         """
         try:
-            result = self.db_client.rpc("check_webhook_idempotency", {
+            result = await self.db_client.rpc("check_webhook_idempotency", {
                 "p_event_id": event_id,
                 "p_event_type": event_type,
                 "p_payload": event
             }).execute()
 
-            check_data = result.data
+            # RPC returns JSONB — handle list or dict
+            check_data = result.data[0] if isinstance(result.data, list) else result.data
             if check_data and check_data.get("idempotent"):
                 logger.info(f"[Webhook] Duplicate event ignored: {event_id} ({event_type})")
                 return True
@@ -392,48 +396,24 @@ class StripeWebhookService:
             from domains.identity.constants import TIER_MONTHLY_CREDITS
             amt = TIER_MONTHLY_CREDITS.get(plan, 0)
 
-        # Try atomic RPC for subscription creation
+        # WS3: Atomic subscription start via Repository → RPC
         try:
-            result = self.db_client.rpc("process_subscription_start", {
-                "p_user_id": uid,
-                "p_plan": plan,
-                "p_stripe_customer_id": stripe_customer_id,
-                "p_credits_amount": amt,
-                "p_payment_amount": amount_total,
-                "p_currency": currency,
-                "p_session_id": session_id
-            }).execute()
+            rpc_result = await self.subscription_repo.start_subscription(
+                user_id=uid,
+                plan=plan,
+                stripe_customer_id=stripe_customer_id,
+                credits_amount=amt,
+                payment_amount=amount_total,
+                currency=currency,
+                session_id=session_id,
+            )
 
-            if not result.data or not result.data.get("success"):
-                error_msg = result.data.get("error") if result.data else "Unknown error"
-                logger.error(f"[Webhook] Atomic subscription start failed for user {uid}: {error_msg}")
-                return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
+            if rpc_result.get("already_processed"):
+                logger.info(f"[Webhook] Subscription start already processed for user {uid} (idempotent)")
 
         except Exception as e:
-            # Fallback to non-atomic (legacy) flow if RPC doesn't exist
-            logger.warning(f"[Webhook] Atomic RPC not available, using legacy flow: {e}")
-            try:
-                # Legacy flow: payment first, then tier, then credits
-                await self.payment_repo.create(
-                    user_id=uid,
-                    amount_usd=amount_total,
-                    currency=currency,
-                    payment_type="sub_payment",
-                    metadata={
-                        "description": f"{plan.capitalize()} Plan Subscription - ${amount_total/100:.2f}",
-                        "session_id": session_id
-                    }
-                )
-                await self.user_repo.update_subscription_tier(uid, plan, stripe_customer_id, "active")
-                await self.credit_repo.add_credits_monthly(
-                    uid,
-                    amt,
-                    f"{plan.capitalize()} Monthly Credits",
-                    "sub_grant"
-                )
-            except Exception as legacy_error:
-                logger.error(f"[Webhook] Legacy subscription flow failed for user {uid}: {legacy_error}")
-                return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
+            logger.error(f"[Webhook] Atomic subscription start failed for user {uid}: {e}")
+            return {"status": "error", "error": "subscription_start_failed", "user_id": uid}
 
         # Log activity (non-critical)
         if self.activity_log_repo:
@@ -554,45 +534,32 @@ class StripeWebhookService:
         Returns:
             Dict with status and action details
         """
-        # Step 1: Record payment FIRST (audit trail)
+        # WS3: Get monthly credits from TierService
+        if self.tier_service:
+            monthly_credits = await self.tier_service.get_monthly_credits(tier)
+        else:
+            from domains.identity.constants import TIER_MONTHLY_CREDITS
+            monthly_credits = TIER_MONTHLY_CREDITS.get(tier, 0)
+
+        # WS3: Atomic renewal via Repository → RPC (payment + status + credits in one transaction)
         try:
-            await self.payment_repo.create(
+            rpc_result = await self.subscription_repo.renew_subscription(
                 user_id=uid,
+                tier=tier,
                 amount_usd=amount_paid,
                 currency=currency,
-                payment_type="sub_renewal",
-                metadata={
-                    "description": f"{tier.capitalize()} Plan Renewal - ${amount_paid/100:.2f}",
-                    "invoice_id": invoice_id
-                }
+                invoice_id=invoice_id,
+                monthly_credits=monthly_credits,
             )
-        except Exception as e:
-            logger.error(f"[Webhook] Failed to record renewal payment for user {uid}: {e}")
-            return {"status": "error", "error": "payment_record_failed", "invoice_id": invoice_id}
 
-        # Step 2: Ensure subscription status is active
-        if current_status != "active":
-            try:
-                self.db_client.table("profiles").update({
-                    "subscription_status": "active"
-                }).eq("id", uid).execute()
-                logger.info(f"[Webhook] Reactivated subscription for user {uid}")
-            except Exception as e:
-                logger.warning(f"[Webhook] Failed to update subscription status for user {uid}: {e}")
+            if rpc_result.get("already_processed"):
+                logger.info(f"[Webhook] Subscription renewal already processed for user {uid} (idempotent)")
 
-        # Step 3: Refresh credits (WS2: get amount from TierService)
-        try:
-            if self.tier_service:
-                monthly_credits = await self.tier_service.get_monthly_credits(tier)
-            else:
-                from domains.identity.constants import TIER_MONTHLY_CREDITS
-                monthly_credits = TIER_MONTHLY_CREDITS.get(tier, 0)
-            await self.credit_repo.refresh_monthly_credits(uid, monthly_credits)
         except Exception as e:
-            logger.error(f"[Webhook] CRITICAL: Payment recorded but credits refresh failed for user {uid}: {e}")
+            logger.error(f"[Webhook] Atomic subscription renewal failed for user {uid}: {e}")
             return {
-                "status": "partial_error",
-                "error": "credits_refresh_failed",
+                "status": "error",
+                "error": "subscription_renewal_failed",
                 "invoice_id": invoice_id,
                 "user_id": uid
             }

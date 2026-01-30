@@ -61,34 +61,42 @@ class SupabaseAdminUsersRepository:
         }
 
     @retry_on_network_error()
-    async def admin_adjust_credits(self, user_id: str, amount: int, bucket: str, reason: str) -> Optional[Dict[str, Any]]:
-        """Admin adjust user credits."""
-        profile = await self.client.table("profiles").select("credits_monthly, credits_permanent").eq("id", user_id).execute()
+    async def admin_adjust_credits(
+        self, user_id: str, amount: int, bucket: str, reason: str, admin_id: str = "system"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Admin adjust user credits atomically via RPC.
 
-        if not profile.data:
-            return None
-        
-        current = profile.data[0]
-        
-        if bucket == "monthly":
-            new_value = max(0, current.get("credits_monthly", 0) + amount)
-            update = {"credits_monthly": new_value}
-        else:
-            new_value = max(0, current.get("credits_permanent", 0) + amount)
-            update = {"credits_permanent": new_value}
-        
-        await self.client.table("profiles").update(update).eq("id", user_id).execute()
+        WS3: Uses admin_adjust_credits_atomic RPC to prevent Lost Update race condition.
+        All operations (read + update + log) execute in a single transaction with FOR UPDATE lock.
 
-        # Log transaction
-        await self.client.table("credit_transactions").insert({
-            "user_id": user_id,
-            "amount": abs(amount),
-            "bucket": bucket,
-            "type": "admin_add" if amount > 0 else "admin_deduct",
-            "description": reason,
+        Args:
+            user_id: Target user ID
+            amount: Positive = add, negative = deduct
+            bucket: 'monthly' or 'permanent'
+            reason: Human-readable reason for the adjustment
+            admin_id: Admin user ID performing the action
+
+        Returns:
+            Dict with success, old_value, new_value, actual_change or None if user not found
+        """
+        result = await self.client.rpc("admin_adjust_credits_atomic", {
+            "p_user_id": user_id,
+            "p_amount": amount,
+            "p_bucket": bucket,
+            "p_reason": reason,
+            "p_admin_id": admin_id,
         }).execute()
 
-        return {"success": True, "new_value": new_value}
+        if not result.data:
+            return None
+
+        data = result.data[0] if isinstance(result.data, list) else result.data
+        if not data.get("success"):
+            logger.warning(f"[AdminRepo] Credit adjustment failed for {user_id}: {data.get('error')}")
+            return None
+
+        return data
 
     @retry_on_network_error()
     async def admin_get_user_projects(self, user_id: str, offset: int = 0, limit: int = 20, include_deleted: bool = True) -> List[Dict[str, Any]]:

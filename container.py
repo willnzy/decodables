@@ -205,6 +205,23 @@ class Container:
             self._services['tier_service'] = TierService(config_repo)
         return self._services['tier_service']
 
+    async def get_subscription_repository(self):
+        """Get SubscriptionRepository instance with injected dependencies (WS3)."""
+        if 'subscription_repository' not in self._repositories:
+            from infrastructure.repositories.subscription_repository import SupabaseSubscriptionRepository
+            from infrastructure.repositories import SupabaseUserRepository, SupabasePaymentRepository
+
+            db = await get_async_db_client()
+            if db is None:
+                raise RuntimeError("Database client not available")
+
+            user_repo = SupabaseUserRepository(db)
+            payment_repo = SupabasePaymentRepository(db)
+            self._repositories['subscription_repository'] = SupabaseSubscriptionRepository(
+                db, user_repo=user_repo, payment_repo=payment_repo
+            )
+        return self._repositories['subscription_repository']
+
     async def get_billing_service(self) -> BillingService:
         """Get billing service instance (async)."""
         if 'billing' not in self._services:
@@ -1032,10 +1049,12 @@ class Container:
             tier_service = await self._get_or_create_tier_service()
             from infrastructure.repositories.activity_log_repository import ActivityLogRepository
             activity_log_repo = ActivityLogRepository(db)
+            subscription_repo = await self.get_subscription_repository()
             self._services['stripe_webhook_service'] = StripeWebhookService(
                 user_repo, credit_repo, payment_repo,
                 tier_service=tier_service,
                 activity_log_repo=activity_log_repo,
+                subscription_repo=subscription_repo,
             )
         return self._services['stripe_webhook_service']
 

@@ -184,3 +184,101 @@ class SupabaseSubscriptionRepository:
         except Exception as e:
             logger.error(f"[SubscriptionRepo] Failed to record change for {user_id}: {e}")
             return False
+
+    async def start_subscription(
+        self,
+        user_id: str,
+        plan: str,
+        stripe_customer_id: str,
+        credits_amount: int,
+        payment_amount: int,
+        currency: str,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Atomically process first subscription via RPC.
+
+        Executes in single transaction: tier update + payment record + credit grant.
+
+        Args:
+            user_id: User ID
+            plan: Tier code ('t2', 't3')
+            stripe_customer_id: Stripe customer ID
+            credits_amount: Monthly credits to grant (from TierService)
+            payment_amount: Amount in cents
+            currency: Currency code
+            session_id: Stripe checkout session ID (idempotency key)
+
+        Returns:
+            RPC result dict with 'success', 'tier', 'credits_monthly', etc.
+
+        Raises:
+            Exception on RPC failure
+        """
+        result = await self.db.rpc("process_subscription_start", {
+            "p_user_id": user_id,
+            "p_plan": plan,
+            "p_stripe_customer_id": stripe_customer_id,
+            "p_credits_amount": credits_amount,
+            "p_payment_amount": payment_amount,
+            "p_currency": currency,
+            "p_session_id": session_id,
+        }).execute()
+
+        if not result.data:
+            raise Exception("RPC process_subscription_start returned no data")
+
+        data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else {}
+        if not data.get("success"):
+            raise Exception(f"RPC failed: {data.get('error', 'Unknown error')}")
+
+        return data
+
+    async def renew_subscription(
+        self,
+        user_id: str,
+        tier: str,
+        amount_usd: int,
+        currency: str,
+        invoice_id: str,
+        monthly_credits: int,
+    ) -> Dict[str, Any]:
+        """
+        Atomically process subscription renewal via RPC.
+
+        Executes in single transaction: payment record + status update + credit reset.
+
+        Args:
+            user_id: User ID
+            tier: Current tier code ('t2', 't3')
+            amount_usd: Amount in cents
+            currency: Currency code
+            invoice_id: Stripe invoice ID
+            monthly_credits: Monthly credits to reset to (from TierService)
+
+        Returns:
+            RPC result dict with 'success', 'credits_monthly', etc.
+
+        Raises:
+            Exception on RPC failure
+        """
+        idempotency_key = f"renewal_{invoice_id}"
+
+        result = await self.db.rpc("process_subscription_renewal", {
+            "p_user_id": user_id,
+            "p_tier": tier,
+            "p_amount_usd": amount_usd,
+            "p_currency": currency,
+            "p_invoice_id": invoice_id,
+            "p_monthly_credits": monthly_credits,
+            "p_idempotency_key": idempotency_key,
+        }).execute()
+
+        if not result.data:
+            raise Exception("RPC process_subscription_renewal returned no data")
+
+        data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else {}
+        if not data.get("success"):
+            raise Exception(f"RPC failed: {data.get('error', 'Unknown error')}")
+
+        return data

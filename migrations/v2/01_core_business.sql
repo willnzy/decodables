@@ -932,6 +932,11 @@ CREATE TRIGGER trg_sync_credit_transaction_type
     FOR EACH ROW
     EXECUTE FUNCTION sync_credit_transaction_type();
 
+-- WS3: 幂等性 UNIQUE 部分索引 — 防止并发重复写入
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_transactions_idempotency_key
+    ON credit_transactions(idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
 
 -- ----------------------------------------------------------------------------
 -- 14. generation_tasks (AI生成任务)
@@ -2285,6 +2290,366 @@ CREATE TRIGGER update_workspace_invitations_updated_at
     BEFORE UPDATE ON workspace_invitations
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+
+-- ============================================================================
+-- WS3: 原子 RPC 函数 (支付系统审计修复)
+-- DEPENDS ON: 03_infrastructure.sql (payment_records table)
+-- 部署顺序: 03_infrastructure.sql → 01_core_business.sql → 02_platform_services.sql
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- process_subscription_start - 原子处理首次订阅 (#25)
+-- 幂等性: p_session_id 作为 idempotency_key
+-- 原子执行: profiles 更新 + payment_records 插入 + credit_transactions 插入
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION process_subscription_start(
+    p_user_id TEXT,
+    p_plan TEXT,                    -- 't2' or 't3'
+    p_stripe_customer_id TEXT,
+    p_credits_amount INT,          -- 月度积分 (从 TierService 获取)
+    p_payment_amount INT,          -- 支付金额 (美分)
+    p_currency TEXT,
+    p_session_id TEXT              -- Stripe checkout session ID (幂等性 key)
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_current_tier TEXT;
+    v_current_status TEXT;
+    v_payment_id UUID;
+BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
+    END IF;
+
+    IF p_plan NOT IN ('t2', 't3') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid plan: ' || COALESCE(p_plan, 'NULL'));
+    END IF;
+
+    IF p_session_id IS NULL OR length(p_session_id) = 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid session_id');
+    END IF;
+
+    -- 幂等性检查: session_id 是否已处理过
+    IF EXISTS (
+        SELECT 1 FROM credit_transactions
+        WHERE idempotency_key = 'sub_start_' || p_session_id
+    ) THEN
+        SELECT credits_monthly, credits_permanent, tier
+        INTO v_monthly, v_permanent, v_current_tier
+        FROM profiles WHERE id = p_user_id;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_processed', true,
+            'user_id', p_user_id,
+            'tier', COALESCE(v_current_tier, p_plan),
+            'credits_monthly', COALESCE(v_monthly, 0)
+        );
+    END IF;
+
+    -- 加锁获取用户当前状态
+    SELECT tier, subscription_status, credits_monthly, credits_permanent
+    INTO v_current_tier, v_current_status, v_monthly, v_permanent
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    END IF;
+
+    -- 状态前置检查: 若用户已是付费 tier (delayed event)，跳过
+    IF v_current_tier IN ('t2', 't3') AND v_current_status = 'active' THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_processed', true,
+            'user_id', p_user_id,
+            'tier', v_current_tier,
+            'credits_monthly', v_monthly
+        );
+    END IF;
+
+    -- 步骤 1: 更新 profiles (tier + customer + status + credits)
+    UPDATE profiles
+    SET tier = p_plan,
+        stripe_customer_id = p_stripe_customer_id,
+        subscription_status = 'active',
+        credits_monthly = p_credits_amount,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    -- 步骤 2: 插入 payment_records
+    INSERT INTO payment_records (
+        user_id, payment_type, payment_method, amount_usd, currency, status, metadata, created_at
+    ) VALUES (
+        p_user_id,
+        'sub_payment',
+        'card',
+        p_payment_amount / 100.0,
+        UPPER(p_currency),
+        'succeeded',
+        jsonb_build_object(
+            'session_id', p_session_id,
+            'plan', p_plan,
+            'description', format('%s Plan Subscription - $%s', initcap(p_plan), (p_payment_amount / 100.0)::TEXT)
+        ),
+        NOW()
+    )
+    RETURNING id INTO v_payment_id;
+
+    -- 步骤 3: 插入 credit_transactions (月度积分发放)
+    INSERT INTO credit_transactions (
+        user_id, transaction_type, bucket, amount,
+        balance_monthly_after, balance_permanent_after,
+        description, idempotency_key, created_at
+    ) VALUES (
+        p_user_id,
+        'monthly_reset',
+        'monthly',
+        p_credits_amount,
+        p_credits_amount,
+        v_permanent,
+        format('%s Plan Monthly Credits', initcap(p_plan)),
+        'sub_start_' || p_session_id,
+        NOW()
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'tier', p_plan,
+        'credits_monthly', p_credits_amount,
+        'payment_id', v_payment_id
+    );
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION process_subscription_start IS 'WS3: 原子处理首次订阅 (tier更新+支付记录+积分发放)，幂等';
+
+-- ----------------------------------------------------------------------------
+-- process_subscription_renewal - 原子处理订阅续费 (#49)
+-- 幂等性: p_idempotency_key (invoice_id)
+-- 原子执行: payment_records 插入 + profiles 更新 + credit_transactions 插入
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION process_subscription_renewal(
+    p_user_id TEXT,
+    p_tier TEXT,                    -- 当前 tier ('t2' or 't3')
+    p_amount_usd INT,              -- 支付金额 (美分)
+    p_currency TEXT,
+    p_invoice_id TEXT,             -- Stripe invoice ID
+    p_monthly_credits INT,         -- 月度积分 (从 TierService 获取)
+    p_idempotency_key TEXT         -- 幂等性 key (通常 = 'renewal_' + invoice_id)
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_current_status TEXT;
+    v_payment_id UUID;
+BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
+    END IF;
+
+    IF p_idempotency_key IS NULL OR length(p_idempotency_key) < 16 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid idempotency_key');
+    END IF;
+
+    -- 幂等性检查
+    IF EXISTS (
+        SELECT 1 FROM credit_transactions
+        WHERE idempotency_key = p_idempotency_key
+    ) THEN
+        SELECT credits_monthly, credits_permanent
+        INTO v_monthly, v_permanent
+        FROM profiles WHERE id = p_user_id;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'already_processed', true,
+            'credits_monthly', COALESCE(v_monthly, 0)
+        );
+    END IF;
+
+    -- 加锁获取用户当前状态
+    SELECT subscription_status, credits_monthly, credits_permanent
+    INTO v_current_status, v_monthly, v_permanent
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    END IF;
+
+    -- 状态前置检查: 若已取消，跳过 (防止乱序 event 覆盖)
+    IF v_current_status = 'canceled' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'subscription_canceled',
+            'message', 'Subscription was canceled, skipping renewal'
+        );
+    END IF;
+
+    -- 步骤 1: 插入 payment_records
+    INSERT INTO payment_records (
+        user_id, payment_type, payment_method, amount_usd, currency, status, metadata, created_at
+    ) VALUES (
+        p_user_id,
+        'sub_renewal',
+        'card',
+        p_amount_usd / 100.0,
+        UPPER(p_currency),
+        'succeeded',
+        jsonb_build_object(
+            'invoice_id', p_invoice_id,
+            'tier', p_tier,
+            'description', format('%s Plan Renewal - $%s', initcap(p_tier), (p_amount_usd / 100.0)::TEXT)
+        ),
+        NOW()
+    )
+    RETURNING id INTO v_payment_id;
+
+    -- 步骤 2: 更新 subscription_status 为 active + 重置月度积分
+    UPDATE profiles
+    SET subscription_status = 'active',
+        credits_monthly = p_monthly_credits,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    -- 步骤 3: 插入 credit_transactions (月度积分重置)
+    INSERT INTO credit_transactions (
+        user_id, transaction_type, bucket, amount,
+        balance_monthly_after, balance_permanent_after,
+        description, idempotency_key, created_at
+    ) VALUES (
+        p_user_id,
+        'monthly_reset',
+        'monthly',
+        p_monthly_credits,
+        p_monthly_credits,
+        v_permanent,
+        format('%s Plan Monthly Credits Renewal', initcap(p_tier)),
+        p_idempotency_key,
+        NOW()
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'credits_monthly', p_monthly_credits,
+        'payment_id', v_payment_id
+    );
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION process_subscription_renewal IS 'WS3: 原子处理订阅续费 (支付记录+状态更新+积分重置)，幂等';
+
+-- ----------------------------------------------------------------------------
+-- admin_adjust_credits_atomic - 原子管理员积分调整 (v3.5 审计 P0)
+-- 解决 admin_repository.py 非原子 Read-Modify-Write 竞态
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION admin_adjust_credits_atomic(
+    p_user_id TEXT,
+    p_amount INT,                  -- 正数=增加, 负数=扣减
+    p_bucket TEXT,                 -- 'monthly' or 'permanent'
+    p_reason TEXT,
+    p_admin_id TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_monthly INT;
+    v_permanent INT;
+    v_old_value INT;
+    v_new_value INT;
+    v_actual_change INT;
+    v_tx_type TEXT;
+BEGIN
+    -- 输入验证
+    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
+    END IF;
+
+    IF p_bucket NOT IN ('monthly', 'permanent') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid bucket: ' || COALESCE(p_bucket, 'NULL'));
+    END IF;
+
+    IF p_amount = 0 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Amount cannot be zero');
+    END IF;
+
+    -- 加锁获取用户当前余额 (FOR UPDATE 防止 Lost Update)
+    SELECT credits_monthly, credits_permanent
+    INTO v_monthly, v_permanent
+    FROM profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    END IF;
+
+    -- 计算新值 (不低于0)
+    IF p_bucket = 'monthly' THEN
+        v_old_value := v_monthly;
+        v_new_value := GREATEST(0, v_monthly + p_amount);
+        v_actual_change := v_new_value - v_monthly;
+
+        UPDATE profiles
+        SET credits_monthly = v_new_value, updated_at = NOW()
+        WHERE id = p_user_id;
+
+        v_monthly := v_new_value;
+    ELSE
+        v_old_value := v_permanent;
+        v_new_value := GREATEST(0, v_permanent + p_amount);
+        v_actual_change := v_new_value - v_permanent;
+
+        UPDATE profiles
+        SET credits_permanent = v_new_value, updated_at = NOW()
+        WHERE id = p_user_id;
+
+        v_permanent := v_new_value;
+    END IF;
+
+    -- 交易类型
+    v_tx_type := CASE WHEN p_amount > 0 THEN 'admin_adjustment' ELSE 'admin_adjustment' END;
+
+    -- 插入 credit_transactions (审计记录)
+    INSERT INTO credit_transactions (
+        user_id, transaction_type, bucket, amount,
+        balance_monthly_after, balance_permanent_after,
+        description, metadata, created_at
+    ) VALUES (
+        p_user_id,
+        v_tx_type,
+        p_bucket,
+        v_actual_change,
+        v_monthly,
+        v_permanent,
+        p_reason,
+        jsonb_build_object('admin_id', p_admin_id, 'requested_amount', p_amount),
+        NOW()
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'old_value', v_old_value,
+        'new_value', v_new_value,
+        'actual_change', v_actual_change
+    );
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION admin_adjust_credits_atomic IS 'WS3: 原子管理员积分调整 (FOR UPDATE 锁防止 Lost Update)';
 
 
 -- ============================================================================

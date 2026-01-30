@@ -815,6 +815,22 @@ BEGIN
         RETURN;
     END IF;
 
+    -- WS3: 幂等性检查 (idempotency_key 去重)
+    IF p_idempotency_key IS NOT NULL THEN
+        IF EXISTS (
+            SELECT 1 FROM credit_transactions
+            WHERE idempotency_key = p_idempotency_key
+        ) THEN
+            -- 已处理过，返回当前余额
+            SELECT credits_monthly, credits_permanent
+            INTO v_monthly, v_permanent
+            FROM profiles WHERE id = p_user_id;
+
+            RETURN QUERY SELECT TRUE, COALESCE(v_monthly, 0), COALESCE(v_permanent, 0), NULL::TEXT;
+            RETURN;
+        END IF;
+    END IF;
+
     -- 加锁获取当前余额
     SELECT credits_monthly, credits_permanent
     INTO v_monthly, v_permanent
@@ -837,7 +853,7 @@ BEGIN
         v_permanent := v_permanent + p_amount;
     END IF;
 
-    -- 记录交易
+    -- 记录交易 (UNIQUE 部分索引保证并发安全)
     INSERT INTO credit_transactions (
         user_id, transaction_type, bucket, amount,
         balance_monthly_after, balance_permanent_after,
@@ -2024,6 +2040,57 @@ END;
 $$;
 
 COMMENT ON FUNCTION cleanup_old_activity_logs IS '清理旧的活动日志（保留 N 天，排除关键事件）';
+
+
+-- ============================================================================
+-- WS3: check_webhook_idempotency — Webhook 事件幂等性检查
+-- 与已有 p_start_webhook_processing / p_complete_webhook_processing 配合使用
+-- 调用顺序: check_webhook_idempotency → p_start_webhook_processing → 业务逻辑 → p_complete_webhook_processing
+-- ============================================================================
+CREATE OR REPLACE FUNCTION check_webhook_idempotency(
+    p_event_id TEXT,
+    p_event_type TEXT,
+    p_payload JSONB DEFAULT '{}'::JSONB
+)
+RETURNS JSONB AS $$
+DECLARE
+    v_existing_id UUID;
+    v_processed BOOLEAN;
+BEGIN
+    -- 输入验证
+    IF p_event_id IS NULL OR length(p_event_id) = 0 THEN
+        RETURN jsonb_build_object('idempotent', false, 'error', 'Invalid event_id');
+    END IF;
+
+    -- 原子 INSERT (ON CONFLICT 保证并发安全)
+    INSERT INTO stripe_webhook_events (
+        event_id, event_type, payload, processed, created_at
+    ) VALUES (
+        p_event_id, p_event_type, p_payload, false, NOW()
+    )
+    ON CONFLICT (event_id) DO NOTHING
+    RETURNING id INTO v_existing_id;
+
+    IF v_existing_id IS NOT NULL THEN
+        -- 首次插入成功 → 未处理过
+        RETURN jsonb_build_object('idempotent', false, 'event_id', p_event_id);
+    ELSE
+        -- 已存在 → 检查是否已处理
+        SELECT processed INTO v_processed
+        FROM stripe_webhook_events
+        WHERE event_id = p_event_id;
+
+        RETURN jsonb_build_object(
+            'idempotent', true,
+            'event_id', p_event_id,
+            'already_processed', COALESCE(v_processed, false)
+        );
+    END IF;
+END;
+$$ LANGUAGE plpgsql
+SET search_path = 'public';
+
+COMMENT ON FUNCTION check_webhook_idempotency IS 'WS3: Webhook 事件幂等性检查 (ON CONFLICT 原子去重)';
 
 
 -- ============================================================================
