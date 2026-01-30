@@ -37,6 +37,21 @@ class IListingRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_ids(self, listing_ids: List[str]) -> List[Listing]:
+        """
+        Get multiple listings by IDs in a single query (batch fetch).
+
+        WS-19: Added to fix N+1 queries in locked_elements check.
+
+        Args:
+            listing_ids: List of listing unique identifiers
+
+        Returns:
+            List of found Listing aggregates (may be fewer than requested if some not found)
+        """
+        pass
+
+    @abstractmethod
     async def save(self, listing: Listing) -> Listing:
         """
         Persist listing.

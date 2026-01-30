@@ -35,6 +35,7 @@ CREATE SCHEMA IF NOT EXISTS internal;
 -- ============================================================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";      -- UUID 生成函数
 CREATE EXTENSION IF NOT EXISTS "ltree" SCHEMA extensions;  -- 层级树结构支持 (用于 asset_categories)
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";         -- WS-19: Trigram 索引支持 (模糊搜索优化)
 
 -- ============================================================================
 -- 辅助函数 (需要先创建)
@@ -545,6 +546,12 @@ SELECT
     user_id AS owner_id  -- 别名
 FROM projects;
 
+-- WS-19: Auto-update updated_at on projects modification
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
+CREATE TRIGGER update_projects_updated_at
+    BEFORE UPDATE ON projects
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- ----------------------------------------------------------------------------
 -- 4.1 project_pages (项目页面 - P0-9: Repository 使用但之前缺失的表)
@@ -1445,6 +1452,16 @@ WHERE is_starred = TRUE;
 CREATE INDEX IF NOT EXISTS idx_projects_user_dashboard
 ON projects(user_id, updated_at DESC)
 WHERE is_deleted = false;
+
+-- WS-19: Trigram index for fuzzy title search (ILIKE '%query%' optimization)
+CREATE INDEX IF NOT EXISTS idx_projects_title_trgm
+ON projects USING gin(title gin_trgm_ops)
+WHERE is_deleted = false;
+
+-- WS-19: Composite index for marketplace purchase queries
+CREATE INDEX IF NOT EXISTS idx_projects_user_purchased
+ON projects(user_id, is_purchased)
+WHERE is_purchased = true AND is_deleted = false;
 
 -- WS3: Dashboard composite index for assets
 -- Covers: user's non-deleted assets sorted by created_at (dashboard default sort)
@@ -3373,6 +3390,62 @@ $$ LANGUAGE plpgsql VOLATILE
 SET search_path = 'public';
 
 COMMENT ON FUNCTION increment_asset_usage IS 'WS5: 原子递增素材使用次数';
+
+
+-- ============================================================================
+-- WS-19: Atomic counter increments for projects
+-- ============================================================================
+
+-- Atomically increment view_count on a project
+CREATE OR REPLACE FUNCTION increment_project_view_count(
+    p_project_id UUID
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_new_count INTEGER;
+BEGIN
+    UPDATE projects
+    SET view_count = view_count + 1
+    WHERE id = p_project_id AND is_deleted = false
+    RETURNING view_count INTO v_new_count;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project not found: %', p_project_id;
+    END IF;
+
+    RETURN v_new_count;
+END;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public';
+
+COMMENT ON FUNCTION increment_project_view_count IS 'WS-19: 原子递增项目浏览次数';
+
+-- Atomically increment like_count on a project
+CREATE OR REPLACE FUNCTION increment_project_like_count(
+    p_project_id UUID,
+    p_delta INTEGER DEFAULT 1  -- +1 for like, -1 for unlike
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_new_count INTEGER;
+BEGIN
+    UPDATE projects
+    SET like_count = GREATEST(0, like_count + p_delta)
+    WHERE id = p_project_id AND is_deleted = false
+    RETURNING like_count INTO v_new_count;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project not found: %', p_project_id;
+    END IF;
+
+    RETURN v_new_count;
+END;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public';
+
+COMMENT ON FUNCTION increment_project_like_count IS 'WS-19: 原子递增/递减项目点赞数';
 
 
 -- ============================================================================

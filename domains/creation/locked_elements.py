@@ -125,47 +125,48 @@ async def check_locked_elements(
     if not listing_ids:
         return []
 
-    # Step 2: Fetch listing metadata from database
+    # Step 2: Batch fetch all listings in a single query (WS-19: N+1 fix)
     locked_elements = []
 
+    try:
+        listings = await listing_repo.get_by_ids(list(listing_ids))
+    except Exception as e:
+        logger.error(f"Batch fetch listings failed: {e}")
+        # Fail-safe: treat all as locked if batch fetch fails
+        return [
+            {"listing_id": lid, "title": "Error Loading Listing", "allowed_tiers": [], "reason": "fetch_error"}
+            for lid in listing_ids
+        ]
+
+    # Build lookup map: listing_id → listing
+    listing_map = {listing.listing_id: listing for listing in listings}
+
+    # Step 3: Check each listing against user's tier
     for listing_id in listing_ids:
-        try:
-            # Fetch listing info
-            listing = await listing_repo.get_by_id(listing_id)
+        listing = listing_map.get(listing_id)
 
-            if not listing:
-                # Listing not found (might be deleted) - treat as locked
-                logger.warning(f"Listing {listing_id} not found in database")
-                locked_elements.append({
-                    "listing_id": listing_id,
-                    "title": "Unknown Listing",
-                    "allowed_tiers": [],
-                    "reason": "not_found"
-                })
-                continue
-
-            # Step 3: Check if user's tier is in allowed_tiers
-            allowed_tiers = listing.allowed_tiers or []
-
-            if user_tier not in allowed_tiers:
-                # Element is locked for this user
-                locked_elements.append({
-                    "listing_id": listing.listing_id,
-                    "title": listing.metadata.title,
-                    "allowed_tiers": allowed_tiers,
-                    "reason": "tier_restriction"
-                })
-                logger.info(f"Locked element found: {listing.metadata.title} (requires {allowed_tiers}, user has {user_tier})")
-
-        except Exception as e:
-            # If fetching fails, treat as locked (fail-safe)
-            logger.error(f"Error fetching listing {listing_id}: {e}")
+        if not listing:
+            # Listing not found (might be deleted) - treat as locked
+            logger.warning(f"Listing {listing_id} not found in database")
             locked_elements.append({
                 "listing_id": listing_id,
-                "title": "Error Loading Listing",
+                "title": "Unknown Listing",
                 "allowed_tiers": [],
-                "reason": "fetch_error"
+                "reason": "not_found"
             })
+            continue
+
+        # Check if user's tier is in allowed_tiers
+        allowed_tiers = listing.allowed_tiers or []
+
+        if user_tier not in allowed_tiers:
+            locked_elements.append({
+                "listing_id": listing.listing_id,
+                "title": listing.metadata.title,
+                "allowed_tiers": allowed_tiers,
+                "reason": "tier_restriction"
+            })
+            logger.info(f"Locked element found: {listing.metadata.title} (requires {allowed_tiers}, user has {user_tier})")
 
     return locked_elements
 

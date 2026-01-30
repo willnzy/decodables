@@ -63,6 +63,33 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             logger.error(f"Failed to get listing {listing_id}: {e}")
             return None
 
+    async def get_by_ids(self, listing_ids: List[str]) -> List[Listing]:
+        """
+        WS-19: Batch fetch listings by IDs (fixes N+1 in locked_elements).
+
+        Args:
+            listing_ids: List of listing IDs to fetch
+
+        Returns:
+            List of found Listing aggregates
+        """
+        if not listing_ids:
+            return []
+
+        try:
+            result = await self.client.table("marketplace_listings").select("*").in_(
+                "listing_id", list(listing_ids)
+            ).execute()
+
+            if not result.data:
+                return []
+
+            return [self._map_to_listing(row) for row in result.data]
+
+        except Exception as e:
+            logger.error(f"Failed to batch fetch listings: {e}")
+            return []
+
     async def save(self, listing: Listing) -> Listing:
         """Persist listing (upsert)."""
         try:
