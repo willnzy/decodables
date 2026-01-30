@@ -177,8 +177,41 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         except Exception as e:
             if "ProjectLimitExceededException" in type(e).__name__:
                 raise
+
+            # Graceful fallback: if RPC function not found (not yet deployed to DB),
+            # fall back to non-atomic count + create pattern
+            error_str = str(e)
+            if "PGRST202" in error_str or "Could not find the function" in error_str:
+                logger.warning(
+                    f"RPC create_project_with_limit_check not found, "
+                    f"falling back to non-atomic create for {project.project_id}"
+                )
+                return await self._fallback_create_with_limit_check(project, project_limit)
+
             logger.error(f"Failed to create project atomically {project.project_id}: {e}")
             raise
+
+    async def _fallback_create_with_limit_check(
+        self, project: Project, project_limit: int
+    ) -> Project:
+        """
+        Fallback: non-atomic count + create when RPC is not deployed.
+
+        Note: This has a TOCTOU race window. Replace with RPC once DB is updated.
+        """
+        from domains.creation.exceptions import ProjectLimitExceededException
+
+        # Count existing projects
+        count_result = await self.client.table("projects").select(
+            "id", count="exact"
+        ).eq("user_id", project.owner_id).eq("is_deleted", False).execute()
+
+        current_count = count_result.count if count_result.count is not None else 0
+        if current_count >= project_limit:
+            raise ProjectLimitExceededException(project.owner_id, project_limit)
+
+        # Create project via normal insert
+        return await self.create(project)
 
     async def update(self, project: Project) -> Project:
         """Update existing project."""
