@@ -1877,6 +1877,7 @@ CREATE POLICY service_role_all ON holidays FOR ALL TO service_role USING (true) 
 CREATE POLICY service_role_all ON monthly_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON hourly_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON notifications FOR ALL TO service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS service_role_all ON stripe_webhook_events;
 CREATE POLICY service_role_all ON stripe_webhook_events FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON system_resource_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON user_events FOR ALL TO service_role USING (true) WITH CHECK (true);
