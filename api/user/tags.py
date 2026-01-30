@@ -65,7 +65,7 @@ async def verify_project_ownership(project_id: str, user_id: str) -> None:
         "id", project_id
     ).maybe_single().execute()
 
-    if not result.data:
+    if result is None or not result.data:
         raise HTTPException(404, "Project not found")
     if result.data["user_id"] != user_id:
         raise HTTPException(403, "Not authorized to access this project")
@@ -83,7 +83,7 @@ async def verify_asset_ownership(asset_id: str, user_id: str) -> None:
         "id", asset_id
     ).maybe_single().execute()
 
-    if not result.data:
+    if result is None or not result.data:
         raise HTTPException(404, "Asset not found")
     if result.data["user_id"] != user_id:
         raise HTTPException(403, "Not authorized to access this asset")
