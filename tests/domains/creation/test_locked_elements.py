@@ -194,7 +194,7 @@ class TestCheckLockedElements:
             ]
         }
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=sample_listing_t2_t3)
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[sample_listing_t2_t3])
 
         # Execute
         locked = await check_locked_elements(canvas, "t3", mock_listing_repo)
@@ -212,7 +212,7 @@ class TestCheckLockedElements:
             ]
         }
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=sample_listing_t2_t3)
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[sample_listing_t2_t3])
 
         # Execute
         locked = await check_locked_elements(canvas, "t1", mock_listing_repo)
@@ -240,14 +240,9 @@ class TestCheckLockedElements:
             ]
         }
 
-        async def get_by_id_side_effect(listing_id):
-            if listing_id == "list_premium":
-                return sample_listing_t2_t3
-            elif listing_id == "list_free":
-                return sample_listing_all_tiers
-            return None
-
-        mock_listing_repo.get_by_id = AsyncMock(side_effect=get_by_id_side_effect)
+        mock_listing_repo.get_by_ids = AsyncMock(
+            return_value=[sample_listing_t2_t3, sample_listing_all_tiers]
+        )
 
         # Execute
         locked = await check_locked_elements(canvas, "t1", mock_listing_repo)
@@ -266,7 +261,7 @@ class TestCheckLockedElements:
             ]
         }
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=None)  # Not found
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[])  # Not found
 
         # Execute
         locked = await check_locked_elements(canvas, "t1", mock_listing_repo)
@@ -286,7 +281,7 @@ class TestCheckLockedElements:
             ]
         }
 
-        mock_listing_repo.get_by_id = AsyncMock(side_effect=Exception("Database error"))
+        mock_listing_repo.get_by_ids = AsyncMock(side_effect=Exception("Database error"))
 
         # Execute
         locked = await check_locked_elements(canvas, "t1", mock_listing_repo)
@@ -338,7 +333,7 @@ class TestUpdateProjectLockedStatus:
         listing.metadata.title = "Premium Item"
         listing.allowed_tiers = ["t2", "t3"]  # ← Correct: at Listing level
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=listing)
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[listing])
 
         # Execute
         has_locked = await update_project_locked_status(
@@ -364,7 +359,7 @@ class TestUpdateProjectLockedStatus:
         listing.metadata.title = "Free Item"
         listing.allowed_tiers = ["t1", "t2", "t3"]  # ← Correct: at Listing level, not metadata
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=listing)
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[listing])
 
         # Execute
         has_locked = await update_project_locked_status(
@@ -389,7 +384,7 @@ class TestUpdateProjectLockedStatus:
         listing.metadata.title = "Item"
         listing.allowed_tiers = ["t1", "t2", "t3"]  # ← Correct: at Listing level
 
-        mock_listing_repo.get_by_id = AsyncMock(return_value=listing)
+        mock_listing_repo.get_by_ids = AsyncMock(return_value=[listing])
 
         # Execute (no canvas_data parameter)
         has_locked = await update_project_locked_status(
@@ -400,4 +395,4 @@ class TestUpdateProjectLockedStatus:
         )
 
         # Verify
-        assert mock_listing_repo.get_by_id.called
+        assert mock_listing_repo.get_by_ids.called
