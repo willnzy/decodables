@@ -42,6 +42,35 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     Inherits soft/hard delete operations from BaseRepository.
     """
 
+    @staticmethod
+    def _sanitize_postgrest_query(query: str) -> str:
+        """
+        Sanitize user input for PostgREST filter strings.
+
+        Escapes special characters that could alter PostgREST query semantics:
+        - Commas (,) separate OR conditions in .or_()
+        - Dots (.) separate column.operator.value
+        - Parentheses control grouping
+        - Percent (%) is a wildcard in ILIKE
+        - Asterisk (*) is a wildcard
+
+        WS-M4: Prevents PostgREST injection (1c#1, 4i#7).
+        """
+        if not query:
+            return query
+        # Escape characters that have special meaning in PostgREST filter syntax
+        special_chars = {
+            ',': '\\,',
+            '.': '\\.',
+            '(': '\\(',
+            ')': '\\)',
+            '*': '\\*',
+        }
+        result = query
+        for char, escaped in special_chars.items():
+            result = result.replace(char, escaped)
+        return result
+
     @property
     def table_name(self) -> str:
         """Table name for marketplace listings."""
@@ -275,7 +304,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             db_query = self.client.table("marketplace_listings").select("*").eq(
                 "status", ListingStatus.PUBLISHED.value
-            ).or_(f"title.ilike.%{query}%,description.ilike.%{query}%").order(
+            ).or_(f"title.ilike.%{self._sanitize_postgrest_query(query)}%,description.ilike.%{self._sanitize_postgrest_query(query)}%").order(
                 "view_count", desc=True
             ).range(offset, offset + limit - 1)
 
@@ -365,10 +394,11 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
                 "moderation_status", "approved"
             )
 
-            # Text search filter
+            # Text search filter (WS-M4: sanitize for PostgREST injection)
             if query:
+                safe_query = self._sanitize_postgrest_query(query)
                 db_query = db_query.or_(
-                    f"title.ilike.%{query}%,description.ilike.%{query}%"
+                    f"title.ilike.%{safe_query}%,description.ilike.%{safe_query}%"
                 )
 
             # Resource type filter (top-level: asset/project)

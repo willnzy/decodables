@@ -593,7 +593,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
 
     -- 资源信息
     resource_url TEXT,  -- P0-10: 改为可空，创建后通过 update 设置
-    resource_type TEXT NOT NULL CHECK (resource_type IN ('project', 'asset', 'template')),
+    resource_type TEXT NOT NULL CHECK (resource_type IN ('project', 'asset')),
     resource_id UUID,
 
     -- 文件信息 (P0-10: Repository 使用的字段)
@@ -3640,6 +3640,204 @@ $$ LANGUAGE plpgsql VOLATILE
 SET search_path = 'public';
 
 COMMENT ON FUNCTION create_project_with_limit_check IS 'WS-2: 原子创建项目 + 限额检查 (advisory lock + count + insert 在单事务内)';
+
+
+-- ============================================================================
+-- WS-M4: Marketplace Security Hardening
+-- ============================================================================
+
+-- 21. marketplace_listing_usage_log (素材使用记录)
+-- Tracks when users use marketplace listings in their projects
+CREATE TABLE IF NOT EXISTS marketplace_listing_usage_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    usage_type TEXT NOT NULL DEFAULT 'view' CHECK (usage_type IN ('view', 'download', 'use')),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_usage_log_listing_id
+ON marketplace_listing_usage_log(listing_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_listing_usage_log_user_id
+ON marketplace_listing_usage_log(user_id, created_at DESC);
+
+
+-- ============================================================================
+-- WS-M4 Phase A: Row Level Security (RLS) Policies
+-- ============================================================================
+
+-- marketplace_listings: sellers can manage own, public can read approved
+ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_listings_service_role ON marketplace_listings
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_listings_select_public ON marketplace_listings
+    FOR SELECT
+    TO authenticated
+    USING (
+        (is_public = true AND is_deleted = false AND moderation_status = 'approved')
+        OR seller_id = auth.uid()::text
+    );
+
+CREATE POLICY marketplace_listings_insert_own ON marketplace_listings
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (seller_id = auth.uid()::text);
+
+CREATE POLICY marketplace_listings_update_own ON marketplace_listings
+    FOR UPDATE
+    TO authenticated
+    USING (seller_id = auth.uid()::text)
+    WITH CHECK (seller_id = auth.uid()::text);
+
+
+-- marketplace_purchases: users can only see own purchases
+ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_purchases_service_role ON marketplace_purchases
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_purchases_select_own ON marketplace_purchases
+    FOR SELECT
+    TO authenticated
+    USING (user_id = auth.uid()::text);
+
+CREATE POLICY marketplace_purchases_insert_own ON marketplace_purchases
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (user_id = auth.uid()::text);
+
+
+-- marketplace_favorites: users can only manage own favorites
+ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_favorites_service_role ON marketplace_favorites
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_favorites_select_own ON marketplace_favorites
+    FOR SELECT
+    TO authenticated
+    USING (user_id = auth.uid()::text);
+
+CREATE POLICY marketplace_favorites_insert_own ON marketplace_favorites
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY marketplace_favorites_delete_own ON marketplace_favorites
+    FOR DELETE
+    TO authenticated
+    USING (user_id = auth.uid()::text);
+
+
+-- marketplace_reports: users can see own reports
+ALTER TABLE marketplace_reports ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_reports_service_role ON marketplace_reports
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_reports_select_own ON marketplace_reports
+    FOR SELECT
+    TO authenticated
+    USING (reporter_id = auth.uid()::text);
+
+CREATE POLICY marketplace_reports_insert_own ON marketplace_reports
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (reporter_id = auth.uid()::text);
+
+
+-- marketplace_reviews: public read, users manage own
+ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_reviews_service_role ON marketplace_reviews
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_reviews_select_public ON marketplace_reviews
+    FOR SELECT
+    TO authenticated
+    USING (is_deleted = false);
+
+CREATE POLICY marketplace_reviews_insert_own ON marketplace_reviews
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (reviewer_id = auth.uid()::text);
+
+CREATE POLICY marketplace_reviews_update_own ON marketplace_reviews
+    FOR UPDATE
+    TO authenticated
+    USING (reviewer_id = auth.uid()::text)
+    WITH CHECK (reviewer_id = auth.uid()::text);
+
+
+-- marketplace_listing_usage_log: users can see own usage
+ALTER TABLE marketplace_listing_usage_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY marketplace_usage_log_service_role ON marketplace_listing_usage_log
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY marketplace_usage_log_select_own ON marketplace_listing_usage_log
+    FOR SELECT
+    TO authenticated
+    USING (user_id = auth.uid()::text);
+
+CREATE POLICY marketplace_usage_log_insert_own ON marketplace_listing_usage_log
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (user_id = auth.uid()::text);
+
+
+-- ============================================================================
+-- WS-M4 Phase C: Missing Indexes
+-- ============================================================================
+
+-- marketplace_purchases: fast lookup by user and listing
+CREATE INDEX IF NOT EXISTS idx_marketplace_purchases_user_id
+ON marketplace_purchases(user_id, purchased_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_marketplace_purchases_listing_id
+ON marketplace_purchases(listing_id);
+
+-- marketplace_favorites: fast unique check
+CREATE INDEX IF NOT EXISTS idx_marketplace_favorites_user_listing
+ON marketplace_favorites(user_id, listing_id)
+WHERE is_deleted = false;
+
+-- marketplace_reviews: fast lookup by listing
+CREATE INDEX IF NOT EXISTS idx_marketplace_reviews_listing_id
+ON marketplace_reviews(listing_id)
+WHERE is_deleted = false;
+
+-- marketplace_listings: seller lookup with soft-delete filter
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_seller_id
+ON marketplace_listings(seller_id, created_at DESC)
+WHERE is_deleted = false;
+
+-- marketplace_listings: published listings (common query path)
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_published
+ON marketplace_listings(is_public, is_deleted, moderation_status, created_at DESC)
+WHERE is_public = true AND is_deleted = false AND moderation_status = 'approved';
 
 
 -- ============================================================================
