@@ -384,9 +384,9 @@ async def check_can_afford(
 
     # Calculate required amount
     if operation:
-        # Use billing service to get operation cost
-        billing_service = get_container().billing_service
-        required = billing_service.get_operation_cost(operation)
+        # WS-B2: Fix double bug — (1) async get_billing_service (2) await async method
+        billing_service = await get_container().get_billing_service()
+        required = await billing_service.get_operation_cost(operation)
     else:
         required = amount
 

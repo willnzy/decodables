@@ -173,6 +173,16 @@ class StripeWebhookService:
             logger.error(f"[Webhook] Received Stripe event without type: {event['id']}")
             return {"status": "error", "error": "missing_event_type"}
 
+        # WS-B2 (RS-2): Skip stale events older than 1 hour
+        import time
+        event_created = event.get("created", 0)
+        if event_created and (time.time() - event_created) > 3600:
+            logger.warning(
+                f"[Webhook] Skipping stale event {event['id']} "
+                f"(type={event_type}, age={int(time.time() - event_created)}s)"
+            )
+            return {"status": "skipped", "reason": "stale_event"}
+
         # Route to appropriate handler
         if event_type == "checkout.session.completed":
             return await self._handle_checkout_completed(event)

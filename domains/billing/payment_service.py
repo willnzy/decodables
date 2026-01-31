@@ -816,7 +816,7 @@ class PaymentService:
         """
         pass
 
-    def create_checkout_session(
+    async def create_checkout_session(
         self,
         user_id: str,
         plan_type: str,
@@ -826,6 +826,9 @@ class PaymentService:
     ) -> Optional[str]:
         """
         Create Stripe Checkout Session.
+
+        WS-B2: Wrapped with run_in_threadpool to prevent blocking FastAPI event loop.
+        The underlying Stripe SDK uses sync HTTP + retry with time.sleep().
 
         Args:
             user_id: User ID
@@ -840,11 +843,16 @@ class PaymentService:
         Raises:
             stripe.error.IdempotencyError: If duplicate request detected
         """
-        return create_checkout_session(user_id, plan_type, discount_percent, idempotency_key, customer_id)
+        from fastapi.concurrency import run_in_threadpool
+        return await run_in_threadpool(
+            create_checkout_session, user_id, plan_type, discount_percent, idempotency_key, customer_id
+        )
 
-    def create_portal_session(self, user_id: str, customer_id: str) -> Optional[str]:
+    async def create_portal_session(self, user_id: str, customer_id: str) -> Optional[str]:
         """
         Create Stripe billing portal session.
+
+        WS-B2: Wrapped with run_in_threadpool to prevent blocking FastAPI event loop.
 
         Args:
             user_id: User ID (for logging)
@@ -853,7 +861,8 @@ class PaymentService:
         Returns:
             Portal session URL or None on failure
         """
-        return create_portal_session(user_id, customer_id)
+        from fastapi.concurrency import run_in_threadpool
+        return await run_in_threadpool(create_portal_session, user_id, customer_id)
 
     # Helper methods
     def get_or_create_coupon(self, discount_percent: int) -> Optional[str]:

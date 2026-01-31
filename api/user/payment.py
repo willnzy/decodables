@@ -184,7 +184,7 @@ async def create_checkout(
 
         # v2.3.0: Use PaymentService via DI
         # WS6 (#1): Pass customer_id for Stripe Customer binding
-        url = payment_service.create_checkout_session(
+        url = await payment_service.create_checkout_session(
             user.user_id, req.plan_type, discount_percent,
             customer_id=stripe_customer_id,
         )
@@ -252,7 +252,7 @@ async def get_portal(
 
     try:
         # v2.3.0: Use PaymentService via DI
-        url = payment_service.create_portal_session(user.user_id, stripe_customer_id)
+        url = await payment_service.create_portal_session(user.user_id, stripe_customer_id)
 
         if not url:
             raise HTTPException(500, "Failed to create portal session")

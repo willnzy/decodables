@@ -70,6 +70,31 @@ async def get_config_service() -> ConfigService:
     return _config_service
 
 
+def _parse_retry_after(limit_string: str) -> int:
+    """
+    Parse the window from a rate limit string to compute Retry-After seconds.
+
+    Examples:
+        "5/minute" → 60
+        "100/hour" → 3600
+        "10/second" → 1
+
+    Returns:
+        Retry-After value in seconds (defaults to 60 if unparseable)
+    """
+    window_map = {
+        "second": 1,
+        "minute": 60,
+        "hour": 3600,
+        "day": 86400,
+    }
+    try:
+        window = limit_string.split("/")[1].strip().lower()
+        return window_map.get(window, 60)
+    except (IndexError, AttributeError):
+        return 60
+
+
 def dynamic_limit(config_key: str):
     """
     Decorator for dynamic rate limiting based on database config.
@@ -104,9 +129,11 @@ def dynamic_limit(config_key: str):
                 return await limited_func(request, *args, **kwargs)
             except Exception as e:
                 if "RateLimitExceeded" in str(type(e)):
+                    retry_after = _parse_retry_after(limit_string)
                     raise HTTPException(
                         status_code=429,
-                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})"
+                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})",
+                        headers={"Retry-After": str(retry_after)},
                     )
                 raise
 
@@ -126,9 +153,11 @@ def dynamic_limit(config_key: str):
                 return limited_func(request, *args, **kwargs)
             except Exception as e:
                 if "RateLimitExceeded" in str(type(e)):
+                    retry_after = _parse_retry_after(limit_string)
                     raise HTTPException(
                         status_code=429,
-                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})"
+                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})",
+                        headers={"Retry-After": str(retry_after)},
                     )
                 raise
 
