@@ -51,6 +51,21 @@ class MarketplaceService:
         """
         self._repository = repository
 
+    async def save_listing(self, listing: Listing) -> Listing:
+        """
+        Persist a listing that has been modified in-memory.
+
+        Used by application handlers after calling aggregate methods
+        (e.g., set_pricing, set allowed_tiers).
+
+        Args:
+            listing: Modified listing to persist
+
+        Returns:
+            Persisted listing
+        """
+        return await self._repository.update(listing)
+
     async def get_listing(self, listing_id: str) -> Optional[Listing]:
         """
         Get listing by ID.
@@ -271,6 +286,12 @@ class MarketplaceService:
 
         if not listing.is_published:
             raise ListingNotPublishedException(listing_id)
+
+        # Self-purchase guard (WS-M2: 4i#3, 1b#3)
+        if listing.seller_id == buyer_id:
+            raise PurchaseFailedException(
+                listing_id, buyer_id, "Cannot purchase your own listing"
+            )
 
         # Check if already purchased
         if await self._repository.has_purchased(listing_id, buyer_id):
@@ -550,6 +571,42 @@ class MarketplaceService:
 
         listing.unpublish()
         return await self._repository.update(listing)
+
+    async def has_purchased(self, listing_id: str, user_id: str) -> bool:
+        """
+        Check if user has already purchased a listing.
+
+        Args:
+            listing_id: Listing ID
+            user_id: User ID
+
+        Returns:
+            True if purchased
+        """
+        return await self._repository.has_purchased(listing_id, user_id)
+
+    async def record_purchase(
+        self,
+        listing_id: str,
+        buyer_id: str,
+        credit_amount: int = 0
+    ) -> tuple[bool, bool]:
+        """
+        Record a purchase atomically.
+
+        Args:
+            listing_id: Listing ID
+            buyer_id: Buyer user ID
+            credit_amount: Credits spent
+
+        Returns:
+            tuple[bool, bool]: (success, already_existed)
+        """
+        return await self._repository.record_purchase(
+            listing_id=listing_id,
+            buyer_id=buyer_id,
+            credit_amount=credit_amount,
+        )
 
     async def get_seller_stats(self, seller_id: str) -> dict:
         """

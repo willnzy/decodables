@@ -3664,6 +3664,106 @@ CREATE INDEX IF NOT EXISTS idx_listing_usage_log_user_id
 ON marketplace_listing_usage_log(user_id, created_at DESC);
 
 
+-- WS-M2: Atomic purchase RPC
+-- Wraps credit deduction + purchase record in single transaction
+-- Eliminates TOCTOU race condition between balance check and deduction
+CREATE OR REPLACE FUNCTION p_purchase_listing(
+    p_listing_id UUID,
+    p_buyer_id TEXT,
+    p_price INTEGER,
+    p_idempotency_key TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    already_existed BOOLEAN,
+    error_message TEXT
+)
+LANGUAGE plpgsql
+VOLATILE
+AS $$
+DECLARE
+    v_listing RECORD;
+    v_monthly INTEGER;
+    v_permanent INTEGER;
+    v_deduct_monthly INTEGER;
+    v_deduct_permanent INTEGER;
+BEGIN
+    -- Lock listing row to prevent concurrent modifications
+    SELECT id, seller_id, price_credits, status, is_public, is_deleted, moderation_status, title
+    INTO v_listing
+    FROM marketplace_listings
+    WHERE id = p_listing_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, FALSE, 'Listing not found'::TEXT;
+        RETURN;
+    END IF;
+
+    -- Validate listing is purchasable
+    IF v_listing.is_deleted OR NOT v_listing.is_public OR v_listing.moderation_status != 'approved' THEN
+        RETURN QUERY SELECT FALSE, FALSE, 'Listing is not available for purchase'::TEXT;
+        RETURN;
+    END IF;
+
+    -- Self-purchase guard
+    IF v_listing.seller_id = p_buyer_id THEN
+        RETURN QUERY SELECT FALSE, FALSE, 'Cannot purchase your own listing'::TEXT;
+        RETURN;
+    END IF;
+
+    -- Idempotent insert: ON CONFLICT returns existing
+    INSERT INTO marketplace_purchases (listing_id, user_id, price_paid, idempotency_key, purchased_at)
+    VALUES (p_listing_id, p_buyer_id, p_price, p_idempotency_key, NOW())
+    ON CONFLICT (user_id, listing_id) DO NOTHING;
+
+    IF NOT FOUND THEN
+        -- Purchase already existed (duplicate)
+        RETURN QUERY SELECT TRUE, TRUE, NULL::TEXT;
+        RETURN;
+    END IF;
+
+    -- Deduct credits if price > 0 (monthly first, then permanent)
+    IF p_price > 0 THEN
+        SELECT COALESCE(credits_monthly, 0), COALESCE(credits_permanent, 0)
+        INTO v_monthly, v_permanent
+        FROM profiles
+        WHERE id = p_buyer_id
+        FOR UPDATE;
+
+        IF (v_monthly + v_permanent) < p_price THEN
+            -- Insufficient credits - rollback
+            RAISE EXCEPTION 'Insufficient credits: have %, need %', v_monthly + v_permanent, p_price;
+        END IF;
+
+        -- Deduct from monthly first, remainder from permanent
+        v_deduct_monthly := LEAST(v_monthly, p_price);
+        v_deduct_permanent := p_price - v_deduct_monthly;
+
+        UPDATE profiles
+        SET credits_monthly = credits_monthly - v_deduct_monthly,
+            credits_permanent = credits_permanent - v_deduct_permanent
+        WHERE id = p_buyer_id;
+
+        -- Record credit transaction
+        INSERT INTO credit_transactions (user_id, amount, transaction_type, description, idempotency_key)
+        VALUES (p_buyer_id, -p_price, 'purchase', 'Purchase: ' || LEFT(v_listing.title, 50), p_idempotency_key);
+    END IF;
+
+    -- Update listing stats
+    UPDATE marketplace_listings
+    SET sales_count = sales_count + 1,
+        purchase_count = purchase_count + 1,
+        download_count = download_count + 1
+    WHERE id = p_listing_id;
+
+    RETURN QUERY SELECT TRUE, FALSE, NULL::TEXT;
+END;
+$$;
+
+COMMENT ON FUNCTION p_purchase_listing IS 'WS-M2: Atomic purchase with credit deduction in single transaction';
+
+
 -- ============================================================================
 -- WS-M4 Phase A: Row Level Security (RLS) Policies
 -- ============================================================================

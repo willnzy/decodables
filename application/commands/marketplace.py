@@ -16,7 +16,7 @@ from domains.marketplace import (
     ListingSource,
     PriceType,
 )
-from domains.billing import BillingService, TransactionType
+from domains.billing import BillingService, TransactionType, CreditBucket
 
 
 @dataclass
@@ -34,7 +34,7 @@ class CreateListingCommand:
     title: str = ""
     description: Optional[str] = None
     source: str = "user"  # ListingSource value: "system", "user", "ai", "community"
-    price_type: str = "t1"  # "t1", "premium", "credits"
+    price_type: str = "free"  # "free", "subscription", "credits"
     credit_price: int = 0
     allowed_tiers: Optional[List[str]] = None  # ["t1", "t2", "t3"]
     tags: Optional[List[str]] = None
@@ -203,14 +203,14 @@ class UpdateListingHandler:
             if command.price_credits is not None:
                 price_type = PriceType.FREE if command.price_credits == 0 else PriceType.CREDITS
                 pricing_requires_remod = listing.set_pricing(price_type, command.price_credits)
-                listing = await self._marketplace_service._repository.update(listing)
+                listing = await self._marketplace_service.save_listing(listing)
                 if pricing_requires_remod:
                     requires_resubmit = True
 
             # Handle allowed_tiers update if provided
             if command.allowed_tiers is not None:
                 listing.allowed_tiers = command.allowed_tiers
-                listing = await self._marketplace_service._repository.update(listing)
+                listing = await self._marketplace_service.save_listing(listing)
 
             # Auto-submit DRAFT listings for review when explicitly requested
             # or when preview_url is set (backward compatibility)
@@ -367,7 +367,7 @@ class PurchaseListingHandler:
 
             # Step 3: Check if already purchased (early exit, not authoritative)
             try:
-                if await self._marketplace_service._repository.has_purchased(
+                if await self._marketplace_service.has_purchased(
                     command.listing_id, command.buyer_id
                 ):
                     return PurchaseListingResult(
@@ -412,7 +412,7 @@ class PurchaseListingHandler:
 
             # Step 5: Record purchase atomically (M-P0-001 fix)
             # This handles race condition where concurrent requests both pass has_purchased()
-            success, already_existed = await self._marketplace_service._repository.record_purchase(
+            success, already_existed = await self._marketplace_service.record_purchase(
                 listing_id=command.listing_id,
                 buyer_id=command.buyer_id,
                 credit_amount=credits_to_deduct,
@@ -425,6 +425,7 @@ class PurchaseListingHandler:
                         await self._billing_service.add_credits(
                             user_id=command.buyer_id,
                             amount=credits_to_deduct,
+                            bucket=CreditBucket.PERMANENT,
                             tx_type=TransactionType.REFUND,
                             description=f"Refund: Failed purchase of {listing.metadata.title}",
                             idempotency_key=f"refund_{command.listing_id}_{command.buyer_id}",
@@ -450,6 +451,7 @@ class PurchaseListingHandler:
                         await self._billing_service.add_credits(
                             user_id=command.buyer_id,
                             amount=credits_to_deduct,
+                            bucket=CreditBucket.PERMANENT,
                             tx_type=TransactionType.REFUND,
                             description=f"Refund: Duplicate purchase attempt for {listing.metadata.title}",
                             idempotency_key=f"refund_dup_{command.listing_id}_{command.buyer_id}",
@@ -501,6 +503,7 @@ class PurchaseListingHandler:
                     await self._billing_service.add_credits(
                         user_id=command.buyer_id,
                         amount=credits_to_deduct,
+                        bucket=CreditBucket.PERMANENT,
                         tx_type=TransactionType.REFUND,
                         description=f"Refund: Purchase failed",
                         idempotency_key=f"refund_fail_{command.listing_id}_{command.buyer_id}",
@@ -521,6 +524,7 @@ class PurchaseListingHandler:
                     await self._billing_service.add_credits(
                         user_id=command.buyer_id,
                         amount=credits_to_deduct,
+                        bucket=CreditBucket.PERMANENT,
                         tx_type=TransactionType.REFUND,
                         description=f"Refund: Unexpected error during purchase",
                         idempotency_key=f"refund_err_{command.listing_id}_{command.buyer_id}",
