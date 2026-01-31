@@ -86,7 +86,7 @@ class SearchListingsQuery:
     resource_type: Optional[str] = None  # Top-level: "asset" | "project"
     category: Optional[str] = None  # Second-level: "clipart" | "sticker" | "template" etc.
     price_type: Optional[str] = None  # Deprecated: use price_filter instead
-    price_filter: Optional[str] = None  # "all" | "t1" | "paid"
+    price_filter: Optional[str] = None  # "all" | "free" | "paid"
     sort_by: Optional[str] = None  # "latest" | "popular" | "price_asc" | "price_desc" | "best_selling"
     tier_filter: Optional[str] = None  # User tier filter
     featured: bool = False
@@ -428,8 +428,8 @@ class GetLeaderboardHandler:
 class GetMyReportsQuery:
     """Query to get user's reports."""
     user_id: str
-    page: int = 1
     limit: int = 20
+    offset: int = 0
 
 
 @dataclass
@@ -462,8 +462,8 @@ class GetMyReportsHandler:
         try:
             reports, total_count = await self._support_service.get_user_reports(
                 user_id=query.user_id,
-                page=query.page,
                 limit=query.limit,
+                offset=query.offset,
             )
 
             return GetMyReportsResult(

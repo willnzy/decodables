@@ -113,16 +113,16 @@ class SupportService:
     async def get_user_reports(
         self,
         user_id: str,
-        page: int = 1,
         limit: int = 20,
+        offset: int = 0,
     ) -> tuple[List[Dict[str, Any]], int]:
         """
         Get reports submitted by a user with pagination.
 
         Args:
             user_id: User ID
-            page: Page number (1-indexed)
             limit: Items per page
+            offset: Number of records to skip
 
         Returns:
             tuple: (reports, total_count)
@@ -130,11 +130,11 @@ class SupportService:
                 - total_count: Total number of matching records
 
         Example:
-            >>> reports, total = await service.get_user_reports("user_123", page=1, limit=20)
+            >>> reports, total = await service.get_user_reports("user_123", limit=20, offset=0)
             >>> print(f"Found {total} reports, showing {len(reports)}")
         """
         reports, total_count = await self.repository.get_user_reports_with_count(
-            user_id, page, limit
+            user_id, limit=limit, offset=offset
         )
 
         return reports, total_count

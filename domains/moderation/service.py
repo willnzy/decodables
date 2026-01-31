@@ -148,7 +148,7 @@ async def approve_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
 
     except Exception as e:
         logger.error(f"[Moderation] Failed to approve listing {listing_id}: {e}")
-        return None
+        raise  # Re-raise to API layer for proper error handling
 
 
 async def reject_listing(listing_id: str, admin_id: str, reason: str) -> Optional[Dict]:
@@ -225,7 +225,7 @@ async def delete_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
 
     except Exception as e:
         logger.error(f"[Moderation] Failed to delete listing {listing_id}: {e}")
-        return None
+        raise  # Re-raise to API layer for proper error handling
 
 
 async def unpublish_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
@@ -263,7 +263,7 @@ async def unpublish_listing(listing_id: str, admin_id: str) -> Optional[Dict]:
 
     except Exception as e:
         logger.error(f"[Moderation] Failed to unpublish listing {listing_id}: {e}")
-        return None
+        raise  # Re-raise to API layer for proper error handling
 
 
 # ==========================================

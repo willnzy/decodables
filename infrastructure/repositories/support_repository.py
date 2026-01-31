@@ -209,26 +209,23 @@ class SupabaseSupportRepository:
     async def get_user_reports(
         self,
         user_id: str,
-        page: int = 1,
-        limit: int = 20
+        limit: int = 20,
+        offset: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Get reports submitted by a user.
 
         Args:
             user_id: User ID
-            page: Page number (1-indexed)
             limit: Items per page
+            offset: Number of records to skip
 
         Returns:
             List of reports
         """
-        start = (page - 1) * limit
-        end = start + limit - 1
-
         result = await self.client.table("v_marketplace_reports").select("*").eq(
             "reporter_id", user_id
-        ).order("created_at", desc=True).range(start, end).execute()
+        ).order("created_at", desc=True).range(offset, offset + limit - 1).execute()
 
         return result.data or []
 
@@ -236,8 +233,8 @@ class SupabaseSupportRepository:
     async def get_user_reports_with_count(
         self,
         user_id: str,
-        page: int = 1,
-        limit: int = 20
+        limit: int = 20,
+        offset: int = 0
     ) -> tuple[List[Dict[str, Any]], int]:
         """
         Get reports submitted by a user with total count.
@@ -246,20 +243,17 @@ class SupabaseSupportRepository:
 
         Args:
             user_id: User ID
-            page: Page number (1-indexed)
             limit: Items per page
+            offset: Number of records to skip
 
         Returns:
             Tuple of (List of reports, total_count)
         """
-        start = (page - 1) * limit
-        end = start + limit - 1
-
         result = await self.client.table("v_marketplace_reports").select(
             "*", count="exact"
         ).eq("reporter_id", user_id).order(
             "created_at", desc=True
-        ).range(start, end).execute()
+        ).range(offset, offset + limit - 1).execute()
 
         reports = result.data or []
         total_count = result.count if result.count is not None else len(reports)

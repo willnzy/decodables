@@ -42,7 +42,7 @@ Security Fixes in v2.1.0:
 import logging
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from domains.identity.aggregates.user_profile import UserProfile
@@ -136,12 +136,37 @@ class ListingUpdateRequest(BaseModel):
     """Request to update a listing (P2-030: DoS protection)."""
     title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
-    thumbnail_url: Optional[str] = Field(None, max_length=2000)  # Preview/thumbnail image
-    resource_url: Optional[str] = Field(None, max_length=2000)  # Resource URL
+    thumbnail_url: Optional[str] = Field(None, max_length=500)  # P2-047: URL length limit
+    resource_url: Optional[str] = Field(None, max_length=500)  # P2-047: URL length limit
     price_credits: Optional[int] = Field(None, ge=0, le=500)
     allowed_tiers: Optional[List[str]] = None
     version: Optional[str] = Field(None, max_length=20)  # Version string
     changelog: Optional[str] = Field(None, max_length=2000)  # What's new
+
+    @field_validator("thumbnail_url", "resource_url")
+    @classmethod
+    def validate_urls(cls, v: Optional[str]) -> Optional[str]:
+        """Validate URLs for SSRF protection (P2-047) — same as ListingCreateRequest."""
+        if v is None:
+            return v
+
+        is_valid, error = validate_thumbnail_url(v)
+        if not is_valid:
+            raise ValueError(f"Invalid URL: {error}")
+
+        return v
+
+    @field_validator("allowed_tiers")
+    @classmethod
+    def validate_tiers(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate allowed_tiers values (only t1/t2/t3 allowed)."""
+        if v is None:
+            return v
+        valid_tiers = {"t1", "t2", "t3"}
+        for tier in v:
+            if tier not in valid_tiers:
+                raise ValueError(f"Invalid tier '{tier}'. Must be one of: t1, t2, t3")
+        return v
 
 
 class PurchaseRequest(BaseModel):
@@ -259,7 +284,7 @@ async def list_listings(
 
 @router.get("/listings/{listing_id}")
 async def get_listing(
-    listing_id: str,
+    listing_id: str = Path(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     user: UserProfile = Depends(get_current_user),
 ) -> ListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
@@ -328,8 +353,8 @@ async def create_listing(
     if not category:
         category = "template" if req.resource_type == "project" else "element"
 
-    # Map price_credits to price_type
-    price_type = "t1" if req.price_credits == 0 else "credits"
+    # Map price_credits to price_type (must match PriceType enum values)
+    price_type = "free" if req.price_credits == 0 else "credits"
 
     command = CreateListingCommand(
         seller_id=user.user_id,
@@ -364,8 +389,8 @@ async def create_listing(
 
 @router.put("/listings/{listing_id}")
 async def update_listing(
-    listing_id: str,
-    req: ListingUpdateRequest,
+    listing_id: str = Path(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    req: ListingUpdateRequest = ...,
     user: UserProfile = Depends(get_current_user),
 ) -> UpdateListingResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
@@ -413,7 +438,7 @@ async def update_listing(
 
 @router.delete("/listings/{listing_id}")
 async def unpublish_listing(
-    listing_id: str,
+    listing_id: str = Path(..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     user: UserProfile = Depends(get_current_user),
 ) -> Dict[str, str]:
     """
@@ -715,12 +740,10 @@ async def get_my_reports(
     container = get_container()
     handler = await container.get_my_reports_handler()
 
-    # Convert offset to page for query (query uses page-based pagination)
-    page = (offset // limit) + 1 if limit > 0 else 1
     query = GetMyReportsQuery(
         user_id=user.user_id,
-        page=page,
         limit=limit,
+        offset=offset,
     )
 
     result = await handler.handle(query)
