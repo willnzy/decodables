@@ -229,7 +229,7 @@ async def get_categories(
                 CategoryCountResponse(
                     category=cat["category"],
                     display_name=_get_category_display_name(cat["category"]),
-                    count=cat["count"],
+                    count=cat["published_count"],
                 )
                 for cat in categories
             ]

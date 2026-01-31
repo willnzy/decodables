@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
+from core.utils.validation import sanitize_postgrest_query
 from domains.articles.entities import Article, ArticleSummary, ArticleCategory
 from domains.articles.repository import ArticleRepository
 
@@ -35,6 +36,18 @@ class SupabaseArticleRepository(ArticleRepository):
         """
         self.db = db_client
         self.table = "articles"
+
+    @staticmethod
+    def _escape_or_filter_query(query: str) -> str:
+        """Escape chars that manipulate PostgREST .or_() filter structure.
+
+        Strips structural characters (comma, dot, parens) that could be used
+        to inject additional filter conditions, then applies ILIKE wildcard
+        escaping via sanitize_postgrest_query.
+        """
+        for char in (',', '.', '(', ')'):
+            query = query.replace(char, '')
+        return sanitize_postgrest_query(query.strip())
 
     @staticmethod
     def _is_not_found_error(error: Exception) -> bool:
@@ -137,7 +150,7 @@ class SupabaseArticleRepository(ArticleRepository):
             query = self.db.table(self.table).select("id", count="exact")
 
             if published_only:
-                query = query.eq("is_published", True)
+                query = query.eq("is_published", True).eq("is_deleted", False)
 
             if category:
                 query = query.eq("category", category.value)
@@ -149,25 +162,17 @@ class SupabaseArticleRepository(ArticleRepository):
             return 0
 
     async def get_categories_with_counts(self) -> List[dict]:
-        """Get all categories with their article counts."""
+        """Get all categories with published article counts via RPC (single query)."""
         try:
-            # Query each category
+            response = await self.db.rpc("get_article_category_counts").execute()
             results = []
+            # Build results from RPC response, ensuring all categories are represented
+            rpc_data = {row["category"]: row["published_count"] for row in (response.data or [])}
             for cat in ArticleCategory:
-                # Total count
-                total_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).execute()
-                total = total_response.count or 0
-
-                # Published count (excludes soft-deleted)
-                pub_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).eq("is_published", True).eq("is_deleted", False).execute()
-                published = pub_response.count or 0
-
                 results.append({
                     "category": cat.value,
-                    "count": total,
-                    "published_count": published,
+                    "published_count": rpc_data.get(cat.value, 0),
                 })
-
             return results
         except Exception as e:
             logger.error(f"[ArticleRepo] Error getting categories: {e}")
@@ -277,16 +282,12 @@ class SupabaseArticleRepository(ArticleRepository):
             return False
 
     async def increment_view_count(self, article_id: UUID) -> bool:
-        """Increment article view count."""
+        """Increment article view count atomically via RPC."""
         try:
-            # Use RPC or raw SQL for atomic increment
-            # For now, use read-modify-write (not ideal but works)
-            response = await self.db.table(self.table).select("view_count").eq("id", str(article_id)).single().execute()
-            if response.data:
-                new_count = (response.data.get("view_count") or 0) + 1
-                await self.db.table(self.table).update({"view_count": new_count}).eq("id", str(article_id)).execute()
-                return True
-            return False
+            await self.db.rpc("increment_article_view_count", {
+                "p_article_id": str(article_id),
+            }).execute()
+            return True
         except Exception as e:
             logger.error(f"[ArticleRepo] Error incrementing view count: {e}")
             return False
@@ -305,8 +306,9 @@ class SupabaseArticleRepository(ArticleRepository):
     ) -> List[ArticleSummary]:
         """Search articles by title and content."""
         try:
-            # Use ilike for case-insensitive search
-            search_pattern = f"%{query}%"
+            # Escape structural + ILIKE wildcard chars to prevent filter injection
+            sanitized = self._escape_or_filter_query(query)
+            search_pattern = f"%{sanitized}%"
 
             db_query = self.db.table(self.table).select(
                 "id, slug, title, summary, category, tags, cover_image, is_featured, "

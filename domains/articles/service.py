@@ -7,6 +7,7 @@ Article Service - Business Logic Layer.
 Handles article management business logic.
 """
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -43,7 +44,7 @@ class ArticleService:
         """
         Get published article by slug (for public API).
 
-        Also increments view count.
+        Also increments view count (fire-and-forget via create_task).
 
         Args:
             slug: Article slug
@@ -53,13 +54,17 @@ class ArticleService:
         """
         article = await self.repository.get_by_slug(slug)
         if article and article.is_published:
-            # Increment view count (fire-and-forget)
-            try:
-                await self.repository.increment_view_count(article.id)
-            except Exception as e:
-                logger.warning(f"[ArticleService] Failed to increment view count: {e}")
+            # Fire-and-forget: create_task returns immediately, doesn't block response
+            asyncio.create_task(self._safe_increment_view(article.id))
             return article
         return None
+
+    async def _safe_increment_view(self, article_id: UUID) -> None:
+        """Fire-and-forget wrapper with error logging for view count increment."""
+        try:
+            await self.repository.increment_view_count(article_id)
+        except Exception as e:
+            logger.warning(f"[ArticleService] Failed to increment view count: {e}")
 
     async def list_articles(
         self,
