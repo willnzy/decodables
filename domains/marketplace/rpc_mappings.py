@@ -28,13 +28,15 @@ class MarketplaceRPCMapper:
 
     # Price filter mappings: Domain enum → RPC parameter
     PRICE_FILTER_TO_RPC: Dict[str, str] = {
-        "t1": "free",      # PriceFilter.FREE ("t1") → "free" for RPC
+        "free": "free",    # PriceFilter.FREE ("free") → "free" for RPC
         "paid": "paid",    # PriceFilter.PAID ("paid") → "paid" (no change)
         "all": "all",      # PriceFilter.ALL ("all") → "all" (no change)
     }
 
     # Category mappings: Domain enum → RPC parameter
     # Currently 1:1 mapping, but centralized for future changes
+    # Category mappings: Domain enum → RPC parameter
+    # Only includes values that exist in AssetCategory enum
     CATEGORY_TO_RPC: Dict[str, str] = {
         "asset": "asset",
         "project": "project",
@@ -43,9 +45,8 @@ class MarketplaceRPCMapper:
         "sticker": "sticker",
         "background": "background",
         "frame": "frame",
-        "text_style": "text_style",
         "font": "font",
-        "filter": "filter",
+        # Removed "text_style" and "filter" — not in AssetCategory enum (DR#2)
     }
 
     # Sort order mappings: Domain enum → RPC parameter

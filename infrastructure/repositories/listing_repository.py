@@ -13,7 +13,7 @@ Inherits from BaseRepository for soft/hard delete support.
 """
 
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from domains.marketplace.repository import IListingRepository
@@ -52,7 +52,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             result = await self.client.table("marketplace_listings").select("*").eq(
                 "listing_id", listing_id
-            ).single().execute()
+            ).eq("is_deleted", False).single().execute()
 
             if not result.data:
                 return None
@@ -120,7 +120,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         """Update existing listing."""
         try:
             data = self._map_to_row(listing)
-            data["updated_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
             # AsyncClient: update doesn't support .select() chaining
             # Just execute the update and return the listing object
@@ -238,7 +238,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def get_featured(self, limit: int = 10) -> List[Listing]:
         """Get featured listings."""
         try:
-            result = self.client.table("marketplace_listings").select("*").eq(
+            result = await self.client.table("marketplace_listings").select("*").eq(
                 "status", ListingStatus.PUBLISHED.value
             ).eq("is_featured", True).order(
                 "published_at", desc=True
@@ -253,7 +253,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def get_pending_review(self, limit: int = 50) -> List[Listing]:
         """Get listings pending review."""
         try:
-            result = self.client.table("marketplace_listings").select("*").eq(
+            result = await self.client.table("marketplace_listings").select("*").eq(
                 "status", ListingStatus.PENDING_REVIEW.value
             ).order("created_at").limit(limit).execute()
 
@@ -284,7 +284,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             if price_type:
                 db_query = db_query.eq("price_type", price_type.value)
 
-            result = db_query.execute()
+            result = await db_query.execute()
 
             return [self._map_to_listing(row) for row in result.data]
 
@@ -428,7 +428,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     ) -> List[Listing]:
         """Get popular listings."""
         try:
-            since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
             query = self.client.table("marketplace_listings").select("*").eq(
                 "status", ListingStatus.PUBLISHED.value
@@ -468,12 +468,13 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             # Use upsert with ON CONFLICT DO NOTHING to handle race condition
             # The unique constraint on (listing_id, user_id) prevents duplicates
+            # Note: listing_id here is the UUID PK of marketplace_listings (not TEXT listing_id)
             result = await self.client.table("marketplace_purchases").upsert(
                 {
                     "listing_id": listing_id,
                     "user_id": buyer_id,
-                    "credit_amount": credit_amount,
-                    "purchased_at": datetime.utcnow().isoformat(),
+                    "price_paid": credit_amount,  # Was "credit_amount" — DB column is price_paid
+                    "purchased_at": datetime.now(timezone.utc).isoformat(),
                 },
                 on_conflict="listing_id,user_id",
                 ignore_duplicates=True,  # Don't update if exists
@@ -484,12 +485,17 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             is_new_purchase = bool(result.data)
 
             if is_new_purchase:
-                # Only increment stats for new purchases
+                # Increment purchase_count — WS-M2 will replace with atomic RPC
+                # Note: increment_listing_stat RPC doesn't exist in DB, using fetch+update
                 try:
-                    await self.client.rpc("increment_listing_stat", {
-                        "p_listing_id": listing_id,
-                        "p_stat": "purchase_count",
-                    }).execute()
+                    current = await self.client.table("marketplace_listings").select(
+                        "purchase_count, sales_count"
+                    ).eq("id", listing_id).single().execute()
+                    if current.data:
+                        await self.client.table("marketplace_listings").update({
+                            "purchase_count": (current.data.get("purchase_count", 0) or 0) + 1,
+                            "sales_count": (current.data.get("sales_count", 0) or 0) + 1,
+                        }).eq("id", listing_id).execute()
                 except Exception as stat_err:
                     # Log but don't fail - purchase record is the source of truth
                     logger.warning(f"Failed to increment purchase count for {listing_id}: {stat_err}")
@@ -620,7 +626,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             category=category,
             metadata=metadata,
             source=source,
-            price_type=PriceType(row.get("price_type", "t1")),
+            price_type=PriceType(row.get("price_type", "free")),  # Was "t1" — aligned with PriceType.FREE
             credit_price=row.get("price_credits", 0),  # DB column is price_credits
             allowed_tiers=allowed_tiers,
             status=ListingStatus(row.get("status", "draft")),
@@ -628,11 +634,12 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             is_featured=row.get("is_featured", False),
             rejection_reason=row.get("rejection_reason"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
             published_at=datetime.fromisoformat(row["published_at"].replace("Z", "+00:00"))
                 if row.get("published_at") else None,
+            id=row.get("id"),  # DB UUID primary key
         )
 
     def _map_to_row(self, listing: Listing) -> dict:
@@ -740,18 +747,28 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
     async def record_listing_usage(
         self,
         listing_id: str,
-        used_by_user_id: str,
-        project_id: str
+        user_id: str,
+        project_id: str,
+        usage_type: str = "view"
     ) -> bool:
-        """Record listing usage."""
+        """Record listing usage.
+
+        Args:
+            listing_id: UUID PK of the listing (not TEXT listing_id)
+            user_id: User who used the listing
+            project_id: Project where listing was used
+            usage_type: Type of usage (e.g., 'view', 'download', 'use_in_project')
+        """
         try:
-            await self.client.table("listing_usages").insert({
-                "listing_id": listing_id,
-                "used_by_user_id": used_by_user_id,
+            await self.client.table("marketplace_listing_usage_log").insert({
+                "listing_id": listing_id,              # Was "listing_id" with TEXT value — now expects UUID
+                "user_id": user_id,                    # Was "used_by_user_id" — DB column is user_id
                 "project_id": project_id,
+                "usage_type": usage_type,              # Was missing — DB column is NOT NULL
             }).execute()
             return True
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to record listing usage: {e}")
             return False
 
     async def get_leaderboard(

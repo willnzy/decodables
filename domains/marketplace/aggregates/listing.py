@@ -9,7 +9,7 @@ All listing operations must go through this aggregate.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ..value_objects import (
@@ -37,11 +37,13 @@ class Listing:
     - Two-level classification (resource_type + category)
     - Access control (allowed_tiers)
     """
+    # Non-default fields (no defaults — must come first in dataclass)
     listing_id: str
     seller_id: str
     resource_type: ResourceType  # Top-level: asset or project
     category: AssetCategory  # Second-level: specific content type
     metadata: ListingMetadata
+    # Fields with defaults
     source: ListingSource = ListingSource.USER
     price_type: PriceType = PriceType.FREE
     credit_price: int = 0
@@ -50,9 +52,10 @@ class Listing:
     stats: ListingStats = field(default_factory=ListingStats)
     is_featured: bool = False
     rejection_reason: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     published_at: Optional[datetime] = None
+    id: Optional[str] = None  # DB UUID primary key (populated by _map_to_listing from row["id"])
 
     @classmethod
     def create_new(
@@ -206,7 +209,7 @@ class Listing:
             self.metadata.preview_url = preview_url
             # Also set thumbnail_url to the same value for marketplace display
             self.metadata.thumbnail_url = preview_url
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
         # Set back to pending for re-moderation if was published
         if requires_remoderation:
@@ -247,7 +250,7 @@ class Listing:
 
         self.price_type = price_type
         self.credit_price = credit_price if price_type == PriceType.CREDITS else 0
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
         # Set to pending for re-moderation if was published/rejected
         if requires_remoderation:
@@ -264,7 +267,7 @@ class Listing:
             raise ValueError("Preview image is required")
 
         self.status = ListingStatus.PENDING_REVIEW
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def approve(self):
         """Approve and publish listing."""
@@ -272,9 +275,9 @@ class Listing:
             raise ValueError("Only pending listings can be approved")
 
         self.status = ListingStatus.PUBLISHED
-        self.published_at = datetime.utcnow()
+        self.published_at = datetime.now(timezone.utc)
         self.rejection_reason = None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def reject(self, reason: str):
         """Reject listing."""
@@ -283,7 +286,7 @@ class Listing:
 
         self.status = ListingStatus.REJECTED
         self.rejection_reason = reason
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def suspend(self, reason: str):
         """Suspend published listing."""
@@ -292,12 +295,15 @@ class Listing:
 
         self.status = ListingStatus.SUSPENDED
         self.rejection_reason = reason
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def unpublish(self):
         """Unpublish listing (back to draft for re-submission)."""
+        if self.status != ListingStatus.PUBLISHED:
+            raise ValueError("Only published listings can be unpublished")
+
         self.status = ListingStatus.DRAFT
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def record_view(self):
         """Record a view."""
@@ -310,7 +316,7 @@ class Listing:
     def set_featured(self, featured: bool):
         """Set featured status."""
         self.is_featured = featured
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""

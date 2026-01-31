@@ -227,6 +227,7 @@ class IListingRepository(ABC):
     async def search_with_filters(
         self,
         query: str = "",
+        resource_type: Optional[str] = None,
         category: Optional[AssetCategory] = None,
         price_filter: Optional[PriceFilter] = None,
         sort_by: ListingSortOrder = ListingSortOrder.LATEST,
@@ -240,6 +241,7 @@ class IListingRepository(ABC):
 
         Args:
             query: Search query (optional)
+            resource_type: Top-level filter ("asset" or "project")
             category: Filter by category
             price_filter: Price filter (all/free/paid)
             sort_by: Sort order
@@ -369,5 +371,60 @@ class IListingRepository(ABC):
 
         Returns:
             Tuple of (Listing, is_purchased, seller_info) or None if not accessible
+        """
+        pass
+
+    @abstractmethod
+    async def get_seller_stats(self, seller_id: str) -> dict:
+        """
+        Get aggregated stats for a seller.
+
+        Args:
+            seller_id: Seller user ID
+
+        Returns:
+            Dict with total_listings, total_sales, total_views, etc.
+        """
+        pass
+
+    @abstractmethod
+    async def get_leaderboard(
+        self,
+        period: str = "all_time",
+        board_type: str = "top_sellers",
+        limit: int = 10
+    ) -> List[dict]:
+        """
+        Get marketplace leaderboard.
+
+        Args:
+            period: Time period filter (e.g. "all_time", "monthly", "weekly")
+            board_type: Leaderboard type (e.g. "top_sellers", "top_listings")
+            limit: Maximum results
+
+        Returns:
+            List of leaderboard entries
+        """
+        pass
+
+    @abstractmethod
+    async def record_listing_usage(
+        self,
+        listing_id: str,
+        user_id: str,
+        project_id: str,
+        usage_type: str = "view"
+    ) -> bool:
+        """
+        Record listing usage (view, download, use in project).
+
+        Args:
+            listing_id: Listing ID
+            user_id: User ID
+            project_id: Project ID where listing was used
+            usage_type: Type of usage (e.g. "view", "download", "use")
+
+        Returns:
+            True if recorded successfully
         """
         pass

@@ -131,10 +131,10 @@ class ListingSource(str, Enum):
 
 
 class PriceType(str, Enum):
-    """Pricing model types."""
-    FREE = "t1"
-    PREMIUM = "premium"  # Requires paid subscription
-    CREDITS = "credits"  # Pay with credits
+    """Pricing model types. Values must match DB CHECK constraint."""
+    FREE = "free"                  # Was "t1" — DB CHECK only allows ('free', 'credits', 'subscription')
+    PREMIUM = "subscription"       # Was "premium" — 'subscription' = requires paid subscription tier
+    CREDITS = "credits"            # Pay with credits
 
 
 class ListingSortOrder(str, Enum):
@@ -149,7 +149,7 @@ class ListingSortOrder(str, Enum):
 class PriceFilter(str, Enum):
     """Price filter options."""
     ALL = "all"
-    FREE = "t1"
+    FREE = "free"   # Was "t1" — aligned with PriceType.FREE
     PAID = "paid"
 
 
