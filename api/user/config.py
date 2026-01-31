@@ -107,8 +107,8 @@ PUBLIC_CONFIG_PATTERNS = [
 
 # Valid group names for the /group/{group_name} endpoint
 VALID_CONFIG_GROUPS = {
-    "tier", "credits", "feature", "ui", "landing", "site", "pricing",
-    "rate_limit", "FEATURE", "UI", "LANDING", "SITE", "PRICING", "CREDITS",
+    "tier", "credits", "feature", "feature_flag", "ui", "landing", "site", "pricing",
+    "rate_limit", "FEATURE", "FEATURE_FLAG", "UI", "LANDING", "SITE", "PRICING", "CREDITS",
 }
 
 
