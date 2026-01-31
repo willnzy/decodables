@@ -105,6 +105,7 @@ class ArticleResponse(BaseModel):
     category: str = Field(..., description="Article category")
     tags: List[str] = Field(default_factory=list, description="Article tags")
     cover_image: Optional[str] = Field(None, description="Cover image URL")
+    is_featured: bool = Field(False, description="Whether article is featured")
     is_published: bool = Field(..., description="Publication status")
     published_at: Optional[str] = Field(None, description="Publication timestamp")
     author_id: Optional[str] = Field(None, description="Author user ID")
@@ -112,6 +113,9 @@ class ArticleResponse(BaseModel):
     view_count: int = Field(0, description="View count")
     created_at: Optional[str] = Field(None, description="Creation timestamp")
     updated_at: Optional[str] = Field(None, description="Last update timestamp")
+    is_deleted: bool = Field(False, description="Soft delete status")
+    deleted_at: Optional[str] = Field(None, description="Deletion timestamp")
+    recovery_expires_at: Optional[str] = Field(None, description="Recovery window expiry")
 
 
 class ArticleSummaryResponse(BaseModel):
@@ -122,6 +126,7 @@ class ArticleSummaryResponse(BaseModel):
     summary: Optional[str] = Field(None, description="Article summary")
     category: str = Field(..., description="Article category")
     tags: List[str] = Field(default_factory=list, description="Article tags")
+    is_featured: bool = Field(False, description="Whether article is featured")
     is_published: bool = Field(..., description="Publication status")
     published_at: Optional[str] = Field(None, description="Publication timestamp")
     view_count: int = Field(0, description="View count")

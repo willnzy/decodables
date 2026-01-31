@@ -172,10 +172,23 @@ class ArticleRepository(ABC):
     @abstractmethod
     async def delete(self, article_id: UUID) -> bool:
         """
-        Delete an article.
+        Soft delete an article (sets is_deleted=true).
 
         Args:
-            article_id: Article UUID to delete
+            article_id: Article UUID to soft delete
+
+        Returns:
+            True if soft-deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    async def hard_delete(self, article_id: UUID) -> bool:
+        """
+        Permanently delete an article (for data cleanup only).
+
+        Args:
+            article_id: Article UUID to permanently delete
 
         Returns:
             True if deleted, False if not found

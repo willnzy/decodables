@@ -43,6 +43,7 @@ class ArticleSummaryResponse(BaseModel):
     category: str = Field(..., description="Article category")
     tags: List[str] = Field(default_factory=list, description="Article tags")
     cover_image: Optional[str] = Field(None, description="Cover image URL")
+    is_featured: bool = Field(False, description="Whether article is featured")
     published_at: Optional[str] = Field(None, description="Publication timestamp")
     view_count: int = Field(0, description="View count")
 
@@ -57,6 +58,7 @@ class ArticleDetailResponse(BaseModel):
     category: str = Field(..., description="Article category")
     tags: List[str] = Field(default_factory=list, description="Article tags")
     cover_image: Optional[str] = Field(None, description="Cover image URL")
+    is_featured: bool = Field(False, description="Whether article is featured")
     published_at: Optional[str] = Field(None, description="Publication timestamp")
     view_count: int = Field(0, description="View count")
     created_at: Optional[str] = Field(None, description="Creation timestamp")

@@ -11,6 +11,7 @@ Changes in v2.0:
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -62,9 +63,9 @@ class SupabaseArticleRepository(ArticleRepository):
             return None
 
     async def get_by_slug(self, slug: str) -> Optional[Article]:
-        """Get article by slug."""
+        """Get published article by slug (public-facing, excludes soft-deleted)."""
         try:
-            response = await self.db.table(self.table).select("*").eq("slug", slug).single().execute()
+            response = await self.db.table(self.table).select("*").eq("slug", slug).eq("is_deleted", False).single().execute()
             if response.data:
                 return Article.from_dict(response.data)
             return None
@@ -81,13 +82,13 @@ class SupabaseArticleRepository(ArticleRepository):
         offset: int = 0,
         limit: int = 20,
     ) -> List[ArticleSummary]:
-        """List published articles."""
+        """List published articles (excludes soft-deleted)."""
         try:
             # Select only fields needed for summary (exclude content for performance)
             query = self.db.table(self.table).select(
-                "id, slug, title, summary, category, tags, cover_image, "
+                "id, slug, title, summary, category, tags, cover_image, is_featured, "
                 "is_published, published_at, view_count, created_at, updated_at"
-            ).eq("is_published", True).order("published_at", desc=True)
+            ).eq("is_published", True).eq("is_deleted", False).order("published_at", desc=True)
 
             if category:
                 query = query.eq("category", category.value)
@@ -106,10 +107,10 @@ class SupabaseArticleRepository(ArticleRepository):
         offset: int = 0,
         limit: int = 20,
     ) -> List[ArticleSummary]:
-        """List all articles (for admin)."""
+        """List all articles (for admin — includes soft-deleted)."""
         try:
             query = self.db.table(self.table).select(
-                "id, slug, title, summary, category, tags, cover_image, "
+                "id, slug, title, summary, category, tags, cover_image, is_featured, "
                 "is_published, published_at, view_count, created_at, updated_at"
             ).order("updated_at", desc=True)
 
@@ -157,8 +158,8 @@ class SupabaseArticleRepository(ArticleRepository):
                 total_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).execute()
                 total = total_response.count or 0
 
-                # Published count
-                pub_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).eq("is_published", True).execute()
+                # Published count (excludes soft-deleted)
+                pub_response = await self.db.table(self.table).select("id", count="exact").eq("category", cat.value).eq("is_published", True).eq("is_deleted", False).execute()
                 published = pub_response.count or 0
 
                 results.append({
@@ -177,12 +178,12 @@ class SupabaseArticleRepository(ArticleRepository):
         category: Optional[ArticleCategory] = None,
         limit: int = 4,
     ) -> List[ArticleSummary]:
-        """List featured published articles."""
+        """List featured published articles (excludes soft-deleted)."""
         try:
             query = self.db.table(self.table).select(
-                "id, slug, title, summary, category, tags, cover_image, "
+                "id, slug, title, summary, category, tags, cover_image, is_featured, "
                 "is_published, published_at, view_count, created_at, updated_at"
-            ).eq("is_published", True).eq("is_featured", True).order("published_at", desc=True)
+            ).eq("is_published", True).eq("is_featured", True).eq("is_deleted", False).order("published_at", desc=True)
 
             if category:
                 query = query.eq("category", category.value)
@@ -255,12 +256,24 @@ class SupabaseArticleRepository(ArticleRepository):
             raise
 
     async def delete(self, article_id: UUID) -> bool:
-        """Delete an article."""
+        """Soft delete an article (sets is_deleted=true, deleted_at=current time)."""
+        try:
+            response = await self.db.table(self.table).update({
+                "is_deleted": True,
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", str(article_id)).execute()
+            return len(response.data or []) > 0
+        except Exception as e:
+            logger.error(f"[ArticleRepo] Error soft-deleting article: {e}")
+            return False
+
+    async def hard_delete(self, article_id: UUID) -> bool:
+        """Permanently delete an article (for data cleanup only)."""
         try:
             response = await self.db.table(self.table).delete().eq("id", str(article_id)).execute()
             return len(response.data or []) > 0
         except Exception as e:
-            logger.error(f"[ArticleRepo] Error deleting article: {e}")
+            logger.error(f"[ArticleRepo] Error hard-deleting article: {e}")
             return False
 
     async def increment_view_count(self, article_id: UUID) -> bool:
@@ -296,12 +309,12 @@ class SupabaseArticleRepository(ArticleRepository):
             search_pattern = f"%{query}%"
 
             db_query = self.db.table(self.table).select(
-                "id, slug, title, summary, category, tags, cover_image, "
+                "id, slug, title, summary, category, tags, cover_image, is_featured, "
                 "is_published, published_at, view_count, created_at, updated_at"
             ).or_(f"title.ilike.{search_pattern},content.ilike.{search_pattern},summary.ilike.{search_pattern}")
 
             if published_only:
-                db_query = db_query.eq("is_published", True)
+                db_query = db_query.eq("is_published", True).eq("is_deleted", False)
 
             if category:
                 db_query = db_query.eq("category", category.value)
@@ -314,9 +327,9 @@ class SupabaseArticleRepository(ArticleRepository):
             return []
 
     async def slug_exists(self, slug: str, exclude_id: Optional[UUID] = None) -> bool:
-        """Check if a slug already exists."""
+        """Check if a slug already exists (excludes soft-deleted to allow slug reuse)."""
         try:
-            query = self.db.table(self.table).select("id").eq("slug", slug)
+            query = self.db.table(self.table).select("id").eq("slug", slug).eq("is_deleted", False)
 
             if exclude_id:
                 query = query.neq("id", str(exclude_id))

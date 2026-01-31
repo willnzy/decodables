@@ -74,6 +74,11 @@ class Article:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+    # Soft delete (match campaigns/daily_themes/holidays pattern)
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    recovery_expires_at: Optional[datetime] = None
+
     def publish(self) -> None:
         """Mark article as published."""
         self.is_published = True
@@ -121,6 +126,9 @@ class Article:
             view_count=data.get("view_count", 0),
             created_at=_parse_datetime(data.get("created_at")),
             updated_at=_parse_datetime(data.get("updated_at")),
+            is_deleted=data.get("is_deleted", False),
+            deleted_at=_parse_datetime(data.get("deleted_at")),
+            recovery_expires_at=_parse_datetime(data.get("recovery_expires_at")),
         )
 
     def to_dict(self) -> dict:
@@ -141,6 +149,9 @@ class Article:
             "view_count": self.view_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "is_deleted": self.is_deleted,
+            "deleted_at": self.deleted_at.isoformat() if self.deleted_at else None,
+            "recovery_expires_at": self.recovery_expires_at.isoformat() if self.recovery_expires_at else None,
         }
 
 
@@ -158,6 +169,7 @@ class ArticleSummary:
     category: ArticleCategory
     tags: List[str]
     cover_image: Optional[str]
+    is_featured: bool
     is_published: bool
     published_at: Optional[datetime]
     view_count: int
@@ -187,6 +199,7 @@ class ArticleSummary:
             category=category,
             tags=tags if isinstance(tags, list) else [],
             cover_image=data.get("cover_image"),
+            is_featured=data.get("is_featured", False),
             is_published=data.get("is_published", False),
             published_at=_parse_datetime(data.get("published_at")),
             view_count=data.get("view_count", 0),
@@ -204,6 +217,7 @@ class ArticleSummary:
             "category": self.category.value if isinstance(self.category, ArticleCategory) else self.category,
             "tags": self.tags,
             "cover_image": self.cover_image,
+            "is_featured": self.is_featured,
             "is_published": self.is_published,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "view_count": self.view_count,

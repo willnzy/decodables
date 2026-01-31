@@ -928,15 +928,55 @@ CREATE TABLE IF NOT EXISTS articles (
 
     -- 时间戳
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- 软删除 (match campaigns/daily_themes/holidays pattern)
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    recovery_expires_at TIMESTAMPTZ,
+
+    -- 约束
+    CONSTRAINT articles_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+    CONSTRAINT chk_articles_deleted_at_consistency CHECK (
+        (is_deleted = false AND deleted_at IS NULL) OR
+        (is_deleted = true AND deleted_at IS NOT NULL)
+    ),
+    CONSTRAINT chk_articles_recovery_expires_at_consistency CHECK (
+        recovery_expires_at IS NULL OR
+        (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
+    )
 );
 
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
 CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(is_published, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_featured ON articles(is_featured, published_at DESC) WHERE is_featured = true;  -- v1.1.0 新增
-CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug);
 CREATE INDEX IF NOT EXISTS idx_articles_author ON articles(author_id);
+CREATE INDEX IF NOT EXISTS idx_articles_category_published
+    ON articles(category, published_at DESC)
+    WHERE is_published = true AND is_deleted = false;
+
+-- updated_at 自动更新触发器
+CREATE TRIGGER set_articles_updated_at
+    BEFORE UPDATE ON articles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- RLS
+ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
+
+-- 公开读取已发布且未删除的文章
+DROP POLICY IF EXISTS "articles_public_read" ON articles;
+CREATE POLICY "articles_public_read" ON articles
+    FOR SELECT
+    USING (is_published = true AND is_deleted = false);
+
+-- Admin 完全访问 (通过 service_role) — 注: service_role_all 在 03_infrastructure.sql 中也有定义
+-- 此处保留 admin_all 与 static_pages 模式一致
+DROP POLICY IF EXISTS "articles_admin_all" ON articles;
+CREATE POLICY "articles_admin_all" ON articles
+    FOR ALL
+    USING (auth.role() = 'service_role')
+    WITH CHECK (auth.role() = 'service_role');
 
 
 -- ----------------------------------------------------------------------------
