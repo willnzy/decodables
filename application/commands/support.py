@@ -62,15 +62,13 @@ class CreateSupportTicketHandler:
 
 @dataclass
 class AiChatSupportCommand:
-    """Command to process AI chat support."""
+    """Command to process AI chat support (pure data, no service references)."""
     user_id: str
     message: str
     images: List[str]
     conversation_history: List[Dict[str, Any]]
-    ai_chat_service: Any
-    openai_assistant_id: Optional[str]
-    openai_client: Any
-    support_system_prompt: str
+    openai_assistant_id: Optional[str] = None
+    support_system_prompt: str = ""
 
 
 @dataclass
@@ -80,16 +78,20 @@ class AiChatSupportResult:
 
 
 class AiChatSupportHandler:
-    """Handler for AiChatSupportCommand."""
+    """Handler for AiChatSupportCommand. Services injected at construction."""
 
-    def __init__(self, support_service):
+    def __init__(self, support_service, ai_chat_service: Any = None, openai_client: Any = None):
         """
-        Initialize with SupportService.
+        Initialize with SupportService and AI dependencies.
 
         Args:
             support_service: SupportService instance
+            ai_chat_service: AI chat service instance
+            openai_client: OpenAI client instance
         """
         self._support_service = support_service
+        self._ai_chat_service = ai_chat_service
+        self._openai_client = openai_client
 
     async def handle(self, command: AiChatSupportCommand) -> AiChatSupportResult:
         """
@@ -106,9 +108,9 @@ class AiChatSupportHandler:
             command.message,
             command.images,
             command.conversation_history,
-            command.ai_chat_service,
+            self._ai_chat_service,
             command.openai_assistant_id,
-            command.openai_client,
+            self._openai_client,
             command.support_system_prompt,
         )
         return AiChatSupportResult(result_data=result_data)
@@ -121,7 +123,7 @@ class AiChatSupportHandler:
 @dataclass
 class SendContactMessageCommand:
     """Command to send contact form message."""
-    user_id: str
+    user_id: Optional[str]
     name: str
     email: str
     message: str

@@ -10,7 +10,7 @@ Handles article management business logic.
 import asyncio
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
 
@@ -121,7 +121,7 @@ class ArticleService:
         category: Optional[str] = None,
         offset: int = 0,
         limit: int = 20,
-    ) -> List[ArticleSummary]:
+    ) -> tuple[List[ArticleSummary], int]:
         """
         Search published articles.
 
@@ -132,7 +132,7 @@ class ArticleService:
             limit: Maximum results
 
         Returns:
-            List of matching ArticleSummary
+            Tuple of (matching ArticleSummary list, total count)
         """
         cat = ArticleCategory(category) if category else None
         return await self.repository.search(
@@ -282,11 +282,11 @@ class ArticleService:
             cover_image=cover_image,
             author_id=author_id,
             is_published=is_published,
-            published_at=datetime.utcnow() if is_published else None,
+            published_at=datetime.now(timezone.utc) if is_published else None,
             sort_order=sort_order,
             view_count=0,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         return await self.repository.create(article)
@@ -348,7 +348,7 @@ class ArticleService:
         if sort_order is not None:
             article.sort_order = sort_order
 
-        article.updated_at = datetime.utcnow()
+        article.updated_at = datetime.now(timezone.utc)
 
         return await self.repository.update(article)
 
@@ -367,7 +367,7 @@ class ArticleService:
             return None
 
         article.publish()
-        article.updated_at = datetime.utcnow()
+        article.updated_at = datetime.now(timezone.utc)
 
         return await self.repository.update(article)
 
@@ -386,7 +386,7 @@ class ArticleService:
             return None
 
         article.unpublish()
-        article.updated_at = datetime.utcnow()
+        article.updated_at = datetime.now(timezone.utc)
 
         return await self.repository.update(article)
 

@@ -220,7 +220,7 @@ class ArticleRepository(ABC):
         published_only: bool = True,
         offset: int = 0,
         limit: int = 20,
-    ) -> List[ArticleSummary]:
+    ) -> tuple[List[ArticleSummary], int]:
         """
         Search articles by title and content.
 

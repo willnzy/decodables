@@ -278,7 +278,7 @@ async def search_articles(
                     f"Invalid category. Must be one of: {', '.join(valid_categories)}"
                 )
 
-        articles = await service.search_articles(
+        articles, total = await service.search_articles(
             query=q,
             category=category,
             offset=offset,
@@ -300,7 +300,7 @@ async def search_articles(
                 )
                 for a in articles
             ],
-            total=len(articles),  # Note: Search doesn't return total count
+            total=total,
             offset=offset,
             limit=limit,
         )

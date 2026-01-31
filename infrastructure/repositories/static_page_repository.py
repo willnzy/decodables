@@ -5,7 +5,7 @@ Implements StaticPageRepository interface using Supabase AsyncClient.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any
 from uuid import UUID
 
@@ -224,8 +224,8 @@ class SupabaseStaticPageRepository(StaticPageRepository):
         try:
             result = await self._client.table('static_pages').update({
                 'is_published': True,
-                'published_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
+                'published_at': datetime.now(timezone.utc).isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat(),
             }).eq('id', str(page_id)).execute()
 
             if not result.data:
@@ -243,7 +243,7 @@ class SupabaseStaticPageRepository(StaticPageRepository):
             result = await self._client.table('static_pages').update({
                 'is_published': False,
                 'published_at': None,
-                'updated_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat(),
             }).eq('id', str(page_id)).execute()
 
             if not result.data:

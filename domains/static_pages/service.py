@@ -12,7 +12,7 @@ Business logic for static page management.
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any, Dict, TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -329,8 +329,8 @@ class StaticPageService:
             published_at=None,
             last_updated_display=last_updated_display,
             sort_order=sort_order,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         created = await self._repository.create(page)
@@ -421,7 +421,7 @@ class StaticPageService:
         if sort_order is not None:
             page.sort_order = sort_order
 
-        page.updated_at = datetime.utcnow()
+        page.updated_at = datetime.now(timezone.utc)
 
         updated = await self._repository.update(page)
         logger.info(f"[StaticPageService] Static page updated: {page_id}")

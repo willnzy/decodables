@@ -6,7 +6,7 @@ Article Domain Entities.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Union
 from uuid import UUID
@@ -82,7 +82,7 @@ class Article:
     def publish(self) -> None:
         """Mark article as published."""
         self.is_published = True
-        self.published_at = datetime.utcnow()
+        self.published_at = datetime.now(timezone.utc)
 
     def unpublish(self) -> None:
         """Mark article as unpublished (draft)."""
@@ -107,7 +107,7 @@ class Article:
             import json
             try:
                 tags = json.loads(tags)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 tags = []
 
         return cls(
@@ -188,7 +188,7 @@ class ArticleSummary:
             import json
             try:
                 tags = json.loads(tags)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 tags = []
 
         return cls(

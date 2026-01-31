@@ -1381,11 +1381,17 @@ class Container:
         return self._handlers['create_support_ticket']
 
     async def get_ai_chat_support_handler(self):
-        """Get AI chat support handler (v3.1.0, async)."""
+        """Get AI chat support handler (v3.1.0, async). Services injected here."""
         from application.commands.support import AiChatSupportHandler
+        from application.services import ai_chat_service
+        from shared.ai.story_generator import client as openai_client
         if 'ai_chat_support' not in self._handlers:
             support_service = await self.get_support_service()
-            self._handlers['ai_chat_support'] = AiChatSupportHandler(support_service)
+            self._handlers['ai_chat_support'] = AiChatSupportHandler(
+                support_service,
+                ai_chat_service=ai_chat_service,
+                openai_client=openai_client,
+            )
         return self._handlers['ai_chat_support']
 
     async def get_send_contact_message_handler(self):

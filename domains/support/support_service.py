@@ -23,6 +23,8 @@ import logging
 import re
 from typing import Dict, List, Any, Optional
 
+from starlette.concurrency import run_in_threadpool
+
 from infrastructure.repositories.support_repository import SupabaseSupportRepository
 from infrastructure.logging.activity_logger import log_activity_async
 
@@ -275,7 +277,8 @@ class SupportService:
 
             messages.append({"role": "user", "content": message})
 
-            response = openai_client.chat.completions.create(
+            response = await run_in_threadpool(
+                openai_client.chat.completions.create,
                 model="gpt-4o-mini",
                 messages=messages,
                 temperature=0.7,

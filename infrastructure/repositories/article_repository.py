@@ -101,7 +101,7 @@ class SupabaseArticleRepository(ArticleRepository):
             query = self.db.table(self.table).select(
                 "id, slug, title, summary, category, tags, cover_image, is_featured, "
                 "is_published, published_at, view_count, created_at, updated_at"
-            ).eq("is_published", True).eq("is_deleted", False).order("published_at", desc=True)
+            ).eq("is_published", True).eq("is_deleted", False).order("sort_order").order("published_at", desc=True)
 
             if category:
                 query = query.eq("category", category.value)
@@ -303,8 +303,8 @@ class SupabaseArticleRepository(ArticleRepository):
         published_only: bool = True,
         offset: int = 0,
         limit: int = 20,
-    ) -> List[ArticleSummary]:
-        """Search articles by title and content."""
+    ) -> tuple[List[ArticleSummary], int]:
+        """Search articles by title and content. Returns (results, total_count)."""
         try:
             # Escape structural + ILIKE wildcard chars to prevent filter injection
             sanitized = self._escape_or_filter_query(query)
@@ -312,7 +312,8 @@ class SupabaseArticleRepository(ArticleRepository):
 
             db_query = self.db.table(self.table).select(
                 "id, slug, title, summary, category, tags, cover_image, is_featured, "
-                "is_published, published_at, view_count, created_at, updated_at"
+                "is_published, published_at, view_count, created_at, updated_at",
+                count="exact",
             ).or_(f"title.ilike.{search_pattern},content.ilike.{search_pattern},summary.ilike.{search_pattern}")
 
             if published_only:
@@ -323,10 +324,12 @@ class SupabaseArticleRepository(ArticleRepository):
 
             response = await db_query.order("published_at", desc=True).range(offset, offset + limit - 1).execute()
 
-            return [ArticleSummary.from_dict(item) for item in response.data or []]
+            articles = [ArticleSummary.from_dict(item) for item in response.data or []]
+            total = response.count if response.count is not None else len(articles)
+            return articles, total
         except Exception as e:
             logger.error(f"[ArticleRepo] Error searching articles: {e}")
-            return []
+            return [], 0
 
     async def slug_exists(self, slug: str, exclude_id: Optional[UUID] = None) -> bool:
         """Check if a slug already exists (excludes soft-deleted to allow slug reuse)."""

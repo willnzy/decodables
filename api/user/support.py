@@ -37,7 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from domains.identity.aggregates.user_profile import UserProfile
-from dependencies import get_current_user
+from dependencies import get_current_user, get_current_user_optional
 from container import get_container
 from application.commands.support import (
     CreateSupportTicketCommand,
@@ -289,7 +289,6 @@ async def chat_support(
     """
     from application.services import ai_chat_service
     from config import OPENAI_ASSISTANT_ID
-    from shared.ai.story_generator import client as openai_client
 
     container = get_container()
     handler = await container.get_ai_chat_support_handler()
@@ -299,9 +298,7 @@ async def chat_support(
         message=req.message,
         images=req.images,
         conversation_history=req.conversation_history,
-        ai_chat_service=ai_chat_service,
         openai_assistant_id=OPENAI_ASSISTANT_ID,
-        openai_client=openai_client,
         support_system_prompt=ai_chat_service.SUPPORT_SYSTEM_PROMPT_FALLBACK,
     )
 
@@ -315,7 +312,7 @@ async def chat_support(
 async def contact(
     request: Request,
     req: ContactRequest,
-    user: UserProfile = Depends(get_current_user),
+    user: Optional[dict] = Depends(get_current_user_optional),
 ) -> SupportResponse:
     """
     Submit contact form for general inquiries or business requests.
@@ -374,7 +371,7 @@ async def contact(
     handler = await container.get_send_contact_message_handler()
 
     command = SendContactMessageCommand(
-        user_id=user.user_id,
+        user_id=user.get("user_id") if user else None,
         name=req.name,
         email=req.email,
         message=req.message,
