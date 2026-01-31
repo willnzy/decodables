@@ -34,7 +34,7 @@ Endpoints:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from pydantic import BaseModel
 
 from domains.identity.aggregates.user_profile import UserProfile
@@ -149,8 +149,8 @@ async def get_me(
 @limiter.limit("50/minute")  # v2.2.0: Added rate limiting
 async def get_history(
     request: Request,
-    offset: int = 0,  # v2.1.0: UP-P0-3 fix - use offset/limit per DDD standards
-    limit: int = 20,
+    offset: int = Query(0, ge=0, le=10000),
+    limit: int = Query(20, ge=1, le=100),
     user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
@@ -162,11 +162,13 @@ async def get_history(
 @limiter.limit("50/minute")  # v2.2.0: Added rate limiting
 async def get_purchases(
     request: Request,
+    offset: int = Query(0, ge=0, le=10000),
+    limit: int = Query(20, ge=1, le=100),
     user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
-    """Get user's marketplace purchases."""
-    return await profile_service.get_purchases(user.user_id)
+    """Get user's marketplace purchases with pagination."""
+    return await profile_service.get_purchases(user.user_id, offset=offset, limit=limit)
 
 
 @router.get("/notifications")
@@ -174,16 +176,22 @@ async def get_purchases(
 async def get_notifications(
     request: Request,
     unread_only: bool = False,
+    offset: int = Query(0, ge=0, le=10000),
+    limit: int = Query(20, ge=1, le=100),
     user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
 ):
     """
-    Get user notifications.
+    Get user notifications with pagination.
 
     Args:
         unread_only: If True, return only unread notifications
+        offset: Pagination offset
+        limit: Items per page (1-100)
     """
-    return await profile_service.get_notifications(user.user_id, unread_only=unread_only)
+    return await profile_service.get_notifications(
+        user.user_id, unread_only=unread_only, offset=offset, limit=limit
+    )
 
 
 @router.post("/notifications/{id}/read")

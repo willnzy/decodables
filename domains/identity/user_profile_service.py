@@ -52,13 +52,13 @@ class CreditRepositoryProtocol(Protocol):
 @runtime_checkable
 class ListingRepositoryProtocol(Protocol):
     """Protocol for listing repository operations."""
-    async def get_user_purchases(self, user_id: str) -> List[Dict]: ...
+    async def get_user_purchases(self, user_id: str, limit: int = 50, offset: int = 0) -> List[Dict]: ...
 
 
 @runtime_checkable
 class NotificationRepositoryProtocol(Protocol):
     """Protocol for notification repository operations."""
-    async def get_user_notifications(self, user_id: str, unread_only: bool = False) -> List[Dict]: ...
+    async def get_user_notifications(self, user_id: str, unread_only: bool = False, limit: int = 50, offset: int = 0) -> Dict: ...
     async def mark_as_read(self, notification_id: str, user_id: str) -> Optional[Dict]: ...
     async def mark_all_as_read(self, user_id: str) -> None: ...
 
@@ -190,29 +190,41 @@ class UserProfileService:
             page = (offset // limit) + 1
             result = await self._credit_repo.get_credit_history(user_id, page, limit)
 
+            total = result["total"]
             return {
                 "items": result["items"],
-                "total": result["total"],
+                "total": total,
                 "offset": offset,
-                "limit": limit
+                "limit": limit,
+                "has_more": (offset + limit) < total,
             }
 
         except Exception as e:
             logger.error(f"[UserProfileService] Failed to get credit history for {user_id}: {e}")
             raise
 
-    async def get_purchases(self, user_id: str) -> List[Dict]:
+    async def get_purchases(self, user_id: str, offset: int = 0, limit: int = 20) -> Dict:
         """
-        Get user's marketplace purchases.
+        Get user's marketplace purchases with pagination.
 
         Args:
             user_id: User ID
+            offset: Pagination offset
+            limit: Items per page
 
         Returns:
-            List of purchase records
+            Dict with items, offset, limit, has_more
         """
         try:
-            return await self._listing_repo.get_user_purchases(user_id)
+            items = await self._listing_repo.get_user_purchases(
+                user_id, limit=limit, offset=offset
+            )
+            return {
+                "items": items,
+                "offset": offset,
+                "limit": limit,
+                "has_more": len(items) >= limit,
+            }
 
         except Exception as e:
             logger.error(f"[UserProfileService] Failed to get purchases for {user_id}: {e}")
@@ -221,22 +233,28 @@ class UserProfileService:
     async def get_notifications(
         self,
         user_id: str,
-        unread_only: bool = False
-    ) -> List[Dict]:
+        unread_only: bool = False,
+        offset: int = 0,
+        limit: int = 20
+    ) -> Dict:
         """
-        Get user notifications.
+        Get user notifications with pagination.
 
         Args:
             user_id: User ID
             unread_only: If True, return only unread notifications
+            offset: Pagination offset
+            limit: Items per page
 
         Returns:
-            List of notification records
+            Dict with items, total, offset, limit, has_more
         """
         try:
             return await self._notif_repo.get_user_notifications(
                 user_id,
-                unread_only=unread_only
+                unread_only=unread_only,
+                limit=limit,
+                offset=offset
             )
 
         except Exception as e:

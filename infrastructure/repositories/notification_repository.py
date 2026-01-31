@@ -73,18 +73,30 @@ class SupabaseNotificationRepository:
         self,
         user_id: str,
         unread_only: bool = False,
-        limit: int = 50
+        limit: int = 50,
+        offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """Get user notifications."""
-        query = self.client.table("notifications").select("*").eq(
+        """Get user notifications with pagination."""
+        query = self.client.table("notifications").select(
+            "*", count="exact"
+        ).eq(
             "user_id", user_id
         )
 
         if unread_only:
             query = query.eq("is_read", False)
 
-        result = await query.order("created_at", desc=True).limit(limit).execute()
-        return result.data or []
+        result = await query.order(
+            "created_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+
+        return {
+            "items": result.data or [],
+            "total": result.count or 0,
+            "offset": offset,
+            "limit": limit,
+            "has_more": (offset + limit) < (result.count or 0),
+        }
 
     @retry_on_network_error()
     async def mark_as_read(self, notification_id: str, user_id: str) -> bool:
