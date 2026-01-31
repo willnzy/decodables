@@ -10,7 +10,7 @@ Migrated from sync methods to async Repository pattern.
 
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypedDict
 
 from core.cache import cache_service
 from domains.platform.config_repository import IConfigRepository
@@ -82,6 +82,14 @@ RATE_LIMIT_PRESETS = {
         "enabled": False
     }
 }
+
+
+class ConfigEntry(TypedDict):
+    """Typed dict for a single config entry."""
+    key: str
+    value: Any
+    config_group: str
+    is_active: bool
 
 
 class ConfigService:
@@ -220,7 +228,7 @@ class ConfigService:
     async def get_all_configs(
         self,
         category: str = None
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ConfigEntry]:
         """
         Get all configs, optionally filtered by category.
 

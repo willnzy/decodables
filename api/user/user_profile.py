@@ -79,6 +79,27 @@ async def get_user_profile_service() -> UserProfileService:
 # Request Models
 # ==========================================
 
+class UserProfileResponse(BaseModel):
+    """Response model for /me endpoint."""
+    user_id: str
+    user_code: str = ""
+    email: Optional[str] = None
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    tier: str = "t1"
+    role: str = "user"
+    credits_monthly: int = 0
+    credits_permanent: int = 0
+    credits_total: int = 0
+    subscription_status: Optional[str] = None
+    subscription_end_date: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+    timezone: Optional[str] = None
+    is_member: bool = False
+    is_within_trial: bool = False
+
+
 class TimezoneUpdateRequest(BaseModel):
     timezone: str
 
@@ -93,7 +114,7 @@ async def get_me(
     request: Request,
     user: UserProfile = Depends(get_current_user),
     profile_service: UserProfileService = Depends(get_user_profile_service),  # v2.2.0: DI
-):
+) -> UserProfileResponse:
     """Get current user info (PRD v3.2)."""
     profile = await profile_service.get_user_profile(user.user_id)
     if not profile:
@@ -119,8 +140,9 @@ async def get_me(
             "updated_at": user.updated_at.isoformat() if user.updated_at else "",
             "timezone": None,
             "is_member": False,
+            "is_within_trial": False,
         }
-    return profile
+    return UserProfileResponse(**profile)
 
 
 @router.get("/history")

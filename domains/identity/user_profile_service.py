@@ -22,6 +22,8 @@ Architecture: Service → Interface → Repository → Database
 import logging
 from typing import Dict, List, Optional, Protocol, runtime_checkable
 
+from domains.identity.trial_helper import is_user_in_trial
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,6 +161,7 @@ class UserProfileService:
                 "updated_at": profile.get("updated_at") or "",
                 "timezone": profile.get("timezone"),  # Already nullable
                 "is_member": is_member,
+                "is_within_trial": is_user_in_trial(profile),
             }
 
         except Exception as e:

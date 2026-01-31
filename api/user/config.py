@@ -35,10 +35,11 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel, ConfigDict
 
 from domains.platform.config_service import ConfigService
+from infrastructure.rate_limiter import limiter
 from container import get_container
 
 logger = logging.getLogger(__name__)
@@ -91,18 +92,24 @@ PUBLIC_CONFIG_WHITELIST = {
     "rate_limit.generation.window",
 }
 
-# Pattern-based whitelist (for prefixes)
+# Pattern-based whitelist (for prefixes) — precompiled for performance
 PUBLIC_CONFIG_PATTERNS = [
-    r"^FEATURE_",   # All feature flags
-    r"^UI_",        # All UI configs
-    r"^LANDING_",   # Landing page content (CMS-Lite)
-    r"^SITE_",      # Site public info (name, contact, social)
-    r"^PRICING_",   # Pricing display info (features, tiers)
-    r"^tier\.",     # Tier configuration (monthly_credits, features, etc.)
-    r"^credits\.",  # Credit costs configuration
-    r"^CREDITS_",   # Credit-related uppercase configs
-    r"^T[23]_",     # T2/T3 plan configs (pricing, credits)
+    re.compile(r"^FEATURE_"),   # All feature flags
+    re.compile(r"^UI_"),        # All UI configs
+    re.compile(r"^LANDING_"),   # Landing page content (CMS-Lite)
+    re.compile(r"^SITE_"),      # Site public info (name, contact, social)
+    re.compile(r"^PRICING_"),   # Pricing display info (features, tiers)
+    re.compile(r"^tier\."),     # Tier configuration (monthly_credits, features, etc.)
+    re.compile(r"^credits\."),  # Credit costs configuration
+    re.compile(r"^CREDITS_"),   # Credit-related uppercase configs
+    re.compile(r"^T[23]_"),     # T2/T3 plan configs (pricing, credits)
 ]
+
+# Valid group names for the /group/{group_name} endpoint
+VALID_CONFIG_GROUPS = {
+    "tier", "credits", "feature", "ui", "landing", "site", "pricing",
+    "rate_limit", "FEATURE", "UI", "LANDING", "SITE", "PRICING", "CREDITS",
+}
 
 
 def is_config_public(key: str) -> bool:
@@ -111,9 +118,9 @@ def is_config_public(key: str) -> bool:
     if key in PUBLIC_CONFIG_WHITELIST:
         return True
 
-    # Check patterns
+    # Check precompiled patterns
     for pattern in PUBLIC_CONFIG_PATTERNS:
-        if re.match(pattern, key):
+        if pattern.match(key):
             return True
 
     return False
@@ -142,11 +149,9 @@ class ConfigGroupResponse(BaseModel):
 
 class AllConfigsResponse(BaseModel):
     """Response for all public configs (P2-002)."""
-    configs: Dict[str, Dict[str, Any]]
+    model_config = ConfigDict(extra="allow")
 
-    class Config:
-        # Allow arbitrary dict keys
-        extra = "allow"
+    configs: Dict[str, Dict[str, Any]]
 
 
 class SingleConfigResponse(BaseModel):
@@ -160,7 +165,9 @@ class SingleConfigResponse(BaseModel):
 # ==========================================
 
 @router.get("")
+@limiter.limit("200/minute")
 async def list_configs(
+    request: Request,
     config_service: ConfigService = Depends(get_config_service),
 ) -> AllConfigsResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]
     """
@@ -183,7 +190,9 @@ async def list_configs(
 
 
 @router.get("/group/{group_name}")
+@limiter.limit("200/minute")
 async def get_group(
+    request: Request,
     group_name: str,
     config_service: ConfigService = Depends(get_config_service),
 ) -> ConfigGroupResponse:
@@ -195,6 +204,10 @@ async def get_group(
 
     Only returns configs in the public whitelist.
     """
+    # Validate group_name against allowed set
+    if group_name not in VALID_CONFIG_GROUPS:
+        raise HTTPException(404, f"Config group not found: {group_name}")
+
     # v2.2.0: Use ConfigService (DDD compliance)
     configs = await config_service.get_all_configs(category=group_name)
 
@@ -228,7 +241,9 @@ async def get_group(
 
 
 @router.get("/{key}")
+@limiter.limit("200/minute")
 async def get_config(
+    request: Request,
     key: str,
     config_service: ConfigService = Depends(get_config_service),
 ) -> SingleConfigResponse:  # P2-002: Return Pydantic model instead of Dict[str, Any]

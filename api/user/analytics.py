@@ -36,15 +36,13 @@ Security & Validation Enhancements (v2.2.0):
 - Accurate metrics: return requested vs inserted counts
 """
 
-import json
 import logging
 import re
 import ipaddress
-import uuid
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, Depends, Request, HTTPException
-from pydantic import BaseModel, Field, field_validator, ValidationError
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field, field_validator
 
 from dependencies import get_current_user_optional
 from infrastructure.rate_limiter import limiter
@@ -77,6 +75,10 @@ async def get_analytics_service() -> AnalyticsService:
 # Request/Response Models
 # ==========================================
 
+# Precompiled regex for dict key validation (used in AnalyticsEvent validator)
+_DICT_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_]{1,50}$")
+
+
 class AnalyticsEvent(BaseModel):
     """Single analytics event."""
     event_type: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9_]+$")
@@ -101,13 +103,10 @@ class AnalyticsEvent(BaseModel):
             raise ValueError("Maximum 100 keys allowed in dictionary fields")
 
         # Filter and validate keys (only alphanumeric and underscore)
-        import re
         filtered = {}
-        key_pattern = re.compile(r"^[a-zA-Z0-9_]{1,50}$")
-
         for key, value in v.items():
             # Validate key format
-            if not key_pattern.match(key):
+            if not _DICT_KEY_PATTERN.match(key):
                 continue  # Skip invalid keys
 
             # Limit string value size
@@ -121,7 +120,7 @@ class AnalyticsEvent(BaseModel):
 
 class AnalyticsEventsRequest(BaseModel):
     """Batch analytics events request."""
-    events: List[AnalyticsEvent]
+    events: List[AnalyticsEvent] = Field(..., max_length=100)
 
 
 class AnalyticsEventsResponse(BaseModel):
@@ -206,6 +205,7 @@ def _get_country_from_ip(ip: str) -> Dict[str, str]:
 @limiter.limit("60/minute")
 async def log_analytics_events(
     request: Request,
+    req: AnalyticsEventsRequest,
     user: Optional[dict] = Depends(get_current_user_optional),
     analytics_service: AnalyticsService = Depends(get_analytics_service),
 ) -> AnalyticsEventsResponse:
@@ -215,43 +215,6 @@ async def log_analytics_events(
     Enriches events with server-side IP, geo, and device info.
     Writes to both user_events and analytics_events tables.
     """
-    # Manual body parsing with detailed logging for debugging 422 errors
-    try:
-        body = await request.json()
-    except Exception as e:
-        logger.error(f"[Analytics] Failed to parse JSON body: {e}")
-        content_type = request.headers.get("content-type", "unknown")
-        raw_body = await request.body()
-        logger.error(f"[Analytics] Content-Type: {content_type}, Raw body (first 500 chars): {raw_body[:500]}")
-        raise HTTPException(status_code=422, detail=f"Invalid JSON body: {str(e)}")
-
-    # Log the raw body for debugging
-    logger.info(f"[Analytics] Received request body keys: {list(body.keys()) if isinstance(body, dict) else type(body).__name__}")
-    if isinstance(body, dict) and "events" in body:
-        events_list = body["events"]
-        logger.info(f"[Analytics] Events count: {len(events_list) if isinstance(events_list, list) else 'NOT_A_LIST'}")
-        if isinstance(events_list, list) and len(events_list) > 0:
-            first_event = events_list[0]
-            logger.info(f"[Analytics] First event keys: {list(first_event.keys()) if isinstance(first_event, dict) else type(first_event).__name__}")
-            if isinstance(first_event, dict):
-                logger.info(f"[Analytics] First event_type: {first_event.get('event_type', 'MISSING')}")
-                logger.info(f"[Analytics] First event_level: {first_event.get('event_level', 'MISSING')}")
-
-    # Manual Pydantic validation with detailed error logging
-    try:
-        req = AnalyticsEventsRequest(**body)
-    except ValidationError as e:
-        logger.error(f"[Analytics] Pydantic validation failed: {e}")
-        logger.error(f"[Analytics] Validation errors detail: {e.errors()}")
-        # Log the problematic event data
-        if isinstance(body, dict) and "events" in body:
-            for i, event_data in enumerate(body.get("events", [])):
-                if isinstance(event_data, dict):
-                    et = event_data.get("event_type", "MISSING")
-                    el = event_data.get("event_level", "MISSING")
-                    logger.error(f"[Analytics] Event[{i}] event_type='{et}', event_level='{el}'")
-        raise HTTPException(status_code=422, detail={"message": "Request validation failed", "errors": e.errors()})
-
     user_id = user.user_id if user else None
 
     # Get client info
