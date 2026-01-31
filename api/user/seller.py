@@ -190,7 +190,7 @@ async def get_unified_seller_stats(
             if result.success:
                 listings_stats = ListingSellerStats(
                     total_earned_credits=result.stats.get("total_earned_credits", 0),
-                    listings_count=result.stats.get("listings_count", 0),
+                    listings_count=result.stats.get("total_listings", 0),  # DR#4: repo returns "total_listings"
                     total_sales=result.stats.get("total_sales", 0),
                     total_usage=result.stats.get("total_usage", 0),
                 )

@@ -319,7 +319,13 @@ class Listing:
         self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API responses."""
+        """Convert to dictionary for API responses.
+
+        WS-M5: Aligned with frontend MarketplaceListing contract.
+        - credit_price → price_credits (4h#2)
+        - stats flattened: usage_count, sales_count, view_count (4h#3)
+        - Added missing fields: resource_url, resource_id, is_public, moderation_status (4h#10)
+        """
         return {
             "id": self.listing_id,  # Frontend expects 'id'
             "listing_id": self.listing_id,  # Keep for backwards compatibility
@@ -335,13 +341,25 @@ class Listing:
             "tags": self.metadata.tags,
             "preview_url": self.metadata.preview_url,
             "thumbnail_url": self.metadata.thumbnail_url,
+            "resource_url": self.metadata.file_url,
+            "resource_id": None,  # Populated by repository from DB row
             "price_type": self.price_type.value,
-            "credit_price": self.credit_price,
+            "price_credits": self.credit_price,  # WS-M5: renamed from credit_price (4h#2)
             "is_free": self.is_free,
             "allowed_tiers": self.allowed_tiers,
             "status": self.status.value,
+            "moderation_status": self.status.value,  # WS-M5: alias for frontend compat (4h#10)
+            "is_public": self.is_published,
             "is_featured": self.is_featured,
-            "stats": self.stats.to_dict(),
+            # WS-M5: flattened stats (4h#3)
+            "usage_count": self.stats.view_count + self.stats.download_count,
+            "sales_count": self.stats.purchase_count,
+            "view_count": self.stats.view_count,
+            "download_count": self.stats.download_count,
+            "like_count": self.stats.like_count,
+            "rating_average": self.stats.rating_average,
+            "rating_count": self.stats.rating_count,
             "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
             "published_at": self.published_at.isoformat() if self.published_at else None,
         }
