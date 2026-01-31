@@ -530,7 +530,7 @@ async def purchase_listing(
 async def get_my_listings(
     offset: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, pattern="^(draft|pending_review|published|rejected|suspended|archived)$"),
+    status: Optional[str] = Query(None, pattern="^(draft|pending|published|rejected|suspended|archived)$"),
     user: UserProfile = Depends(get_current_user),
 ) -> ListingsResponse:
     """
@@ -541,7 +541,7 @@ async def get_my_listings(
     Args:
         page: Page number (1-indexed)
         limit: Items per page
-        status: Filter by status (draft/pending_review/published/rejected/suspended/archived)
+        status: Filter by status (draft/pending/published/rejected/suspended/archived)
 
     Returns:
         Own listings with moderation info

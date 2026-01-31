@@ -190,7 +190,7 @@ class Listing:
         elif self.status == ListingStatus.REJECTED:
             # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
-        elif self.status == ListingStatus.PENDING_REVIEW:
+        elif self.status == ListingStatus.PENDING:
             # Already pending review (e.g., from set_pricing in same transaction)
             # Allow editing without changing status
             pass
@@ -213,7 +213,7 @@ class Listing:
 
         # Set back to pending for re-moderation if was published
         if requires_remoderation:
-            self.status = ListingStatus.PENDING_REVIEW
+            self.status = ListingStatus.PENDING
 
         return requires_remoderation
 
@@ -239,7 +239,7 @@ class Listing:
         elif self.status == ListingStatus.REJECTED:
             # Rejected listings: allow edit and resubmit with re-moderation
             requires_remoderation = True
-        elif self.status == ListingStatus.PENDING_REVIEW:
+        elif self.status == ListingStatus.PENDING:
             # Already pending review (e.g., from update_metadata in same transaction)
             # Allow editing without changing status
             pass
@@ -254,7 +254,7 @@ class Listing:
 
         # Set to pending for re-moderation if was published/rejected
         if requires_remoderation:
-            self.status = ListingStatus.PENDING_REVIEW
+            self.status = ListingStatus.PENDING
 
         return requires_remoderation
 
@@ -266,12 +266,12 @@ class Listing:
         if not self.metadata.preview_url:
             raise ValueError("Preview image is required")
 
-        self.status = ListingStatus.PENDING_REVIEW
+        self.status = ListingStatus.PENDING
         self.updated_at = datetime.now(timezone.utc)
 
     def approve(self):
         """Approve and publish listing."""
-        if self.status != ListingStatus.PENDING_REVIEW:
+        if self.status != ListingStatus.PENDING:
             raise ValueError("Only pending listings can be approved")
 
         self.status = ListingStatus.PUBLISHED
@@ -281,7 +281,7 @@ class Listing:
 
     def reject(self, reason: str):
         """Reject listing."""
-        if self.status != ListingStatus.PENDING_REVIEW:
+        if self.status != ListingStatus.PENDING:
             raise ValueError("Only pending listings can be rejected")
 
         self.status = ListingStatus.REJECTED

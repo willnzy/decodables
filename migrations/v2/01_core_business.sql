@@ -631,8 +631,8 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
     rating_count INTEGER DEFAULT 0,  -- P0-10: Repository 使用的字段
 
     -- 状态 (P0-10: 添加 status 字段供 Repository 使用)
-    -- 与代码 ListingStatus enum 保持一致: draft, pending_review, published, rejected, suspended, archived
-    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'published', 'rejected', 'suspended', 'archived')),
+    -- 与代码 ListingStatus enum 保持一致: draft, pending, published, rejected, suspended, archived
+    status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'published', 'rejected', 'suspended', 'archived')),
     is_public BOOLEAN DEFAULT FALSE,
     is_featured BOOLEAN DEFAULT FALSE,  -- 是否精选/推荐 (由管理员设置)
     allow_preview BOOLEAN DEFAULT TRUE,  -- 是否允许购买前预览 (卖家设置)

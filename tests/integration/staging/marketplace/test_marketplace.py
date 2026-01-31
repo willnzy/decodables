@@ -219,9 +219,9 @@ class TestMarketplaceMyListings(BaseAPITest):
 
     def test_filter_by_status(self, auth_client):
         """
-        业务规则: 可以按状态过滤 (draft/pending_review/published/rejected/suspended/archived)
+        业务规则: 可以按状态过滤 (draft/pending/published/rejected/suspended/archived)
         """
-        valid_statuses = ["draft", "pending_review", "published", "rejected", "suspended", "archived"]
+        valid_statuses = ["draft", "pending", "published", "rejected", "suspended", "archived"]
 
         for status in valid_statuses:
             response = auth_client.get(

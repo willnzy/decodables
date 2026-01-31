@@ -15,7 +15,7 @@ import uuid
 class ListingStatus(str, Enum):
     """Listing lifecycle status."""
     DRAFT = "draft"
-    PENDING_REVIEW = "pending_review"
+    PENDING = "pending"
     PUBLISHED = "published"
     REJECTED = "rejected"
     SUSPENDED = "suspended"

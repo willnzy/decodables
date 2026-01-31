@@ -279,11 +279,11 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             logger.error(f"Failed to get featured listings: {e}")
             return []
 
-    async def get_pending_review(self, limit: int = 50) -> List[Listing]:
+    async def get_pending(self, limit: int = 50) -> List[Listing]:
         """Get listings pending review."""
         try:
             result = await self.client.table("marketplace_listings").select("*").eq(
-                "status", ListingStatus.PENDING_REVIEW.value
+                "status", ListingStatus.PENDING.value
             ).order("created_at").limit(limit).execute()
 
             return [self._map_to_listing(row) for row in result.data]
@@ -713,14 +713,14 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         Map ListingStatus to database moderation_status.
 
         DB moderation_status: draft, pending, approved, rejected
-        Code ListingStatus: draft, pending_review, published, rejected, suspended
+        Code ListingStatus: draft, pending, published, rejected, suspended
 
         Note: ARCHIVED is kept for backward compatibility with existing records.
         New unpublish operations set status to DRAFT instead.
         """
         mapping = {
             ListingStatus.DRAFT: "draft",
-            ListingStatus.PENDING_REVIEW: "pending",
+            ListingStatus.PENDING: "pending",
             ListingStatus.PUBLISHED: "approved",
             ListingStatus.REJECTED: "rejected",
             ListingStatus.SUSPENDED: "rejected",  # Suspended maps to rejected

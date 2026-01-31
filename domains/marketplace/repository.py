@@ -187,7 +187,7 @@ class IListingRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_pending_review(self, limit: int = 50) -> List[Listing]:
+    async def get_pending(self, limit: int = 50) -> List[Listing]:
         """
         Get listings pending review.
 
