@@ -374,14 +374,18 @@ class TestUserCreditsAggregate:
         assert len(user_credits.pending_transactions) == 0
 
     def test_get_tier_monthly_allowance(self):
-        """Test getting monthly allowance by tier."""
+        """Test getting monthly allowance by tier.
+
+        WS-01 fix: Corrected values per business rules (t2=100, t3=200).
+        Note: These are emergency fallback values; production uses TierService.
+        """
         free_user = UserCredits.create(user_id="u1", tier="t1")
         starter_user = UserCredits.create(user_id="u2", tier="t2")
         pro_user = UserCredits.create(user_id="u3", tier="t3")
 
         assert free_user.get_tier_monthly_allowance() == 0
-        assert starter_user.get_tier_monthly_allowance() == 500
-        assert pro_user.get_tier_monthly_allowance() == 1000
+        assert starter_user.get_tier_monthly_allowance() == 100
+        assert pro_user.get_tier_monthly_allowance() == 200
 
 
 # ==========================================

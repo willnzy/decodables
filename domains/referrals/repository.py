@@ -48,6 +48,22 @@ class ReferralRepository:
             logger.error(f"Failed to create referral: {e}")
             return None
 
+    async def get_by_id(self, referral_id: str) -> Optional[ReferralEntity]:
+        """根据ID获取推荐记录"""
+        try:
+            result = await self.client.table("referrals") \
+                .select("*") \
+                .eq("id", referral_id) \
+                .execute()
+
+            if result.data:
+                return ReferralEntity(**result.data[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get referral by id: {e}")
+            return None
+
     async def get_by_code(self, referral_code: str) -> Optional[ReferralEntity]:
         """根据推荐码获取"""
         try:

@@ -129,21 +129,36 @@ class SupabaseSubscriptionRepository:
         monthly_credits: int
     ) -> bool:
         """
-        Update user's tier and monthly credits.
+        Update user's tier and monthly credits atomically.
+
+        WS-01 fix: Single DB update call replaces two separate calls,
+        ensuring tier and credits are updated atomically.
 
         Returns:
             True if successful
         """
         try:
-            # Update tier and subscription status
-            await self.users_repo.update_subscription_tier(
-                user_id,
-                tier,
-                subscription_status=subscription_status
-            )
+            update_data = {
+                "tier": tier,
+                "subscription_status": subscription_status,
+                "credits_monthly": monthly_credits,
+            }
 
-            # Update monthly credits
-            await self.users_repo.update_monthly_credits(user_id, monthly_credits)
+            # Handle free tier downgrade: reset cancel/schedule flags
+            if tier == "t1":
+                update_data["credits_monthly"] = 0
+                update_data["cancel_at_period_end"] = False
+                update_data["cancel_at"] = None
+                update_data["pending_tier_change"] = None
+
+            result = await self.db.table("profiles") \
+                .update(update_data) \
+                .eq("id", user_id) \
+                .execute()
+
+            if not result.data:
+                logger.warning(f"[SubscriptionRepo] No profile found for {user_id}")
+                return False
 
             return True
         except Exception as e:

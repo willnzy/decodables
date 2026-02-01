@@ -12,10 +12,12 @@ Changes:
 
 import logging
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 
 from infrastructure.task_queue import task_queue, progress_tracker
-from infrastructure.repositories.credit_repository import SupabaseCreditRepository
+
+if TYPE_CHECKING:
+    from domains.billing import BillingService
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +67,16 @@ CANCELLABLE_STATUSES = ("pending", "queued", "scheduled")
 class TasksService:
     """Service for user background tasks business logic."""
 
-    def __init__(self, repository, credit_repository: SupabaseCreditRepository):
+    def __init__(self, repository, billing_service: "BillingService"):
         """
-        Initialize with repository and credit repository.
+        Initialize with repository and billing service.
 
         Args:
             repository: User tasks repository (SupabaseUserTasksRepository)
-            credit_repository: Credit repository for refunds
+            billing_service: BillingService for credit refund operations
         """
         self.repository = repository
-        self.credit_repository = credit_repository
+        self._billing_service = billing_service
 
     # ==========================================
     # Validation
@@ -263,12 +265,15 @@ class TasksService:
             if credits_charged <= 0:
                 return 0
 
-            # Refund credits
-            await self.credit_repository.add_credits(
-                user_id,
-                credits_charged,
-                f"Cancelled task {task_id}",
-                "refund",
+            # WS-01 fix: Use BillingService for atomic refund (replaces legacy credit_repository.add_credits)
+            from domains.billing import TransactionType, CreditBucket
+            await self._billing_service.add_credits(
+                user_id=user_id,
+                amount=credits_charged,
+                bucket=CreditBucket.PERMANENT,
+                tx_type=TransactionType.REFUND,
+                description=f"Cancelled task {task_id}",
+                idempotency_key=f"task_refund_{task_id}_{user_id}",
             )
 
             return credits_charged

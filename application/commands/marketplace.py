@@ -16,7 +16,7 @@ from domains.marketplace import (
     ListingSource,
     PriceType,
 )
-from domains.billing import BillingService, TransactionType, CreditBucket
+from domains.billing import BillingService, TransactionType, CreditBucket, InsufficientCreditsException
 
 
 @dataclass
@@ -385,30 +385,28 @@ class PurchaseListingHandler:
                 )
 
             # Step 4: Handle credit-based purchase
+            # WS-01 fix: Atomic deduction eliminates TOCTOU race condition
+            # (removed separate check_can_afford → deduct_credits gap)
+            # The RPC function atomically checks balance and deducts in one transaction.
             if listing.requires_credits and listing.credit_price > 0:
                 credits_to_deduct = listing.credit_price
 
-                # Check if user can afford
-                can_afford = await self._billing_service.check_can_afford(
-                    command.buyer_id,
-                    credits_to_deduct
-                )
-                if not can_afford:
+                # Atomic deduct: RPC checks balance + deducts in single transaction
+                idempotency_key = f"purchase_{command.listing_id}_{command.buyer_id}"
+                try:
+                    await self._billing_service.deduct_credits(
+                        user_id=command.buyer_id,
+                        amount=credits_to_deduct,
+                        tx_type=TransactionType.PURCHASE,
+                        description=f"Purchase: {listing.metadata.title}",
+                        idempotency_key=idempotency_key,
+                    )
+                    credits_deducted = True
+                except InsufficientCreditsException:
                     return PurchaseListingResult(
                         success=False,
                         error="Insufficient credits",
                     )
-
-                # Deduct credits with idempotency key
-                idempotency_key = f"purchase_{command.listing_id}_{command.buyer_id}"
-                await self._billing_service.deduct_credits(
-                    user_id=command.buyer_id,
-                    amount=credits_to_deduct,
-                    tx_type=TransactionType.PURCHASE,
-                    description=f"Purchase: {listing.metadata.title}",
-                    idempotency_key=idempotency_key,
-                )
-                credits_deducted = True
 
             # Step 5: Record purchase atomically (M-P0-001 fix)
             # This handles race condition where concurrent requests both pass has_purchased()

@@ -382,8 +382,8 @@ class Container:
         if 'user_tasks' not in self._services:
             db = await get_async_db_client()
             tasks_repo = SupabaseUserTasksRepository(db)
-            credit_repo = await self.get_credit_repository()
-            self._services['user_tasks'] = TasksService(tasks_repo, credit_repo)
+            billing_service = await self.get_billing_service()
+            self._services['user_tasks'] = TasksService(tasks_repo, billing_service)
         return self._services['user_tasks']
 
     async def get_tools_service(self):
@@ -1002,7 +1002,8 @@ class Container:
                 raise RuntimeError("Database client not available")
 
             repository = ReferralRepository(db)
-            self._services['referral_service'] = ReferralService(repository)
+            billing_service = await self.get_billing_service()
+            self._services['referral_service'] = ReferralService(repository, billing_service)
         return self._services['referral_service']
 
     async def get_clerk_webhook_service(self):

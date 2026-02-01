@@ -334,10 +334,17 @@ class UserCredits:
         self.pending_transactions = []
 
     def get_tier_monthly_allowance(self) -> int:
-        """Get monthly credit allowance based on tier."""
+        """Get monthly credit allowance based on tier.
+
+        Note: These are emergency fallback values only.
+        Production code should use TierService.get_monthly_credits()
+        to fetch from system_configs.
+
+        Per business rules: t2=100, t3=200.
+        """
         allowances = {
             "t1": 0,
-            "t2": 500,
-            "t3": 1000,
+            "t2": 100,
+            "t3": 200,
         }
         return allowances.get(self.tier, 0)
