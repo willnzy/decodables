@@ -33,64 +33,117 @@ from apscheduler.triggers.cron import CronTrigger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# WS-19: Default timeout for async scheduler tasks (seconds)
+SCHEDULER_TASK_TIMEOUT = int(os.environ.get("SCHEDULER_TASK_TIMEOUT", "300"))
+
+
+def _run_async_with_timeout(coro_func, task_name: str, timeout: int = SCHEDULER_TASK_TIMEOUT):
+    """
+    WS-19: Execute an async coroutine with timeout protection and failure alerting.
+
+    Wraps asyncio.run() with asyncio.wait_for() to prevent tasks from hanging
+    indefinitely. On failure or timeout, logs structured alerts.
+
+    Args:
+        coro_func: Async function that returns a coroutine
+        task_name: Human-readable task name for logging
+        timeout: Max seconds before task is terminated
+    """
+    import asyncio
+
+    async def _with_timeout():
+        return await asyncio.wait_for(coro_func(), timeout=timeout)
+
+    try:
+        return asyncio.run(_with_timeout())
+    except asyncio.TimeoutError:
+        logger.critical(
+            f"[{datetime.now(timezone.utc).isoformat()}] ⏰ TIMEOUT: Task '{task_name}' "
+            f"exceeded {timeout}s limit and was terminated",
+            extra={"task": task_name, "error": "timeout", "timeout_seconds": timeout}
+        )
+        # Send Sentry alert for timeout
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(
+                f"Scheduler task timeout: {task_name} exceeded {timeout}s",
+                level="error",
+            )
+        except Exception:
+            pass
+        return None
+    except Exception as e:
+        logger.error(
+            f"[{datetime.now(timezone.utc).isoformat()}] ❌ Task '{task_name}' failed: {e}",
+            exc_info=True,
+            extra={"task": task_name, "error": str(e)}
+        )
+        # Send Sentry alert for failure
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
+        return None
+
 # Scheduler instance
 scheduler = BackgroundScheduler()
 
 def run_hourly_aggregation():
     """Run hourly aggregation tasks (both legacy and new ETL)"""
-    logger.info(f"[{datetime.now()}] 🕐 Starting hourly aggregation...")
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🕐 Starting hourly aggregation...")
     
     # Run new metrics ETL (v3.12)
     try:
         from application.services.metrics import run_hourly_etl
         run_hourly_etl()
-        logger.info(f"[{datetime.now()}] ✅ Metrics ETL (hourly) complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Metrics ETL (hourly) complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Metrics ETL failed: {e}")
 
     # Run legacy aggregation for backwards compatibility
     try:
         from application.services.aggregators import run_hourly_tasks
         run_hourly_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Legacy aggregation complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Legacy aggregation failed: {e}")
 
     # Run A/B experiment aggregation (v3.20)
     try:
         from application.services.experiments import run_hourly_experiment_tasks
         run_hourly_experiment_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (hourly) complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Experiment aggregation (hourly) complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Experiment aggregation failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Experiment aggregation failed: {e}")
 
 def run_daily_aggregation():
     """Run daily aggregation tasks (both legacy and new ETL)"""
-    logger.info(f"[{datetime.now()}] 📅 Starting daily aggregation...")
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 📅 Starting daily aggregation...")
     
     # Run new metrics ETL (v3.12) - industry-standard SaaS metrics
     try:
         from application.services.metrics import run_daily_etl
         run_daily_etl()
-        logger.info(f"[{datetime.now()}] ✅ Metrics ETL (daily) complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Metrics ETL (daily) complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Metrics ETL failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Metrics ETL failed: {e}")
 
     # Run legacy aggregation for backwards compatibility
     try:
         from application.services.aggregators import run_daily_tasks
         run_daily_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Legacy aggregation complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Legacy aggregation complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Legacy aggregation failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Legacy aggregation failed: {e}")
 
     # Run A/B experiment daily tasks (v3.20)
     try:
         from application.services.experiments import run_daily_experiment_tasks
         run_daily_experiment_tasks()
-        logger.info(f"[{datetime.now()}] ✅ Experiment aggregation (daily) complete")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Experiment aggregation (daily) complete")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Experiment daily tasks failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Experiment daily tasks failed: {e}")
 
 
 def run_daily_maintenance():
@@ -99,101 +152,74 @@ def run_daily_maintenance():
 
     IMPORTANT: Uses create_task_async_client() instead of get_async_db_client()
     to avoid "Event loop is closed" error. See docs/main/backend-architecture.md 1.3.1.3
-    """
-    logger.info(f"[{datetime.now()}] 🔧 Starting daily maintenance tasks...")
 
-    import asyncio
+    WS-19: Now uses _run_async_with_timeout for timeout protection.
+    """
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🔧 Starting daily maintenance tasks...")
 
     async def _async_daily_maintenance():
         """Async wrapper with fresh AsyncClient"""
         from core.database import create_task_async_client
         from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
 
-        # Create fresh AsyncClient for this task (NOT singleton!)
         db = await create_task_async_client()
-
         try:
-            result = await MaintenanceScheduler.run_daily_maintenance(db=db)
-            return result
+            return await MaintenanceScheduler.run_daily_maintenance(db=db)
         finally:
-            # Cleanup: close client after task
             if hasattr(db, 'aclose'):
                 await db.aclose()
-                logger.info("[DB] Task-specific async client closed")
 
-    try:
-        result = asyncio.run(_async_daily_maintenance())
+    result = _run_async_with_timeout(_async_daily_maintenance, "daily_maintenance")
+    if result:
         total_deleted = result.get('total_deleted', 0)
-        logger.info(f"[{datetime.now()}] ✅ Daily maintenance complete: {total_deleted} records deleted")
-    except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Daily maintenance failed: {e}", exc_info=True)
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Daily maintenance complete: {total_deleted} records deleted")
 
 
 def run_weekly_maintenance():
     """
     Run weekly database maintenance tasks (v3.30, v3.31 AsyncClient fix)
 
-    IMPORTANT: Uses create_task_async_client() instead of get_async_db_client()
-    to avoid "Event loop is closed" error. See docs/main/backend-architecture.md 1.3.1.3
+    WS-19: Now uses _run_async_with_timeout for timeout protection.
     """
-    logger.info(f"[{datetime.now()}] 🔧 Starting weekly maintenance tasks...")
-
-    import asyncio
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🔧 Starting weekly maintenance tasks...")
 
     async def _async_weekly_maintenance():
         """Async wrapper with fresh AsyncClient"""
         from core.database import create_task_async_client
         from infrastructure.tasks.maintenance_scheduler import MaintenanceScheduler
 
-        # Create fresh AsyncClient for this task (NOT singleton!)
         db = await create_task_async_client()
-
         try:
-            result = await MaintenanceScheduler.run_weekly_maintenance(db=db)
-            return result
+            return await MaintenanceScheduler.run_weekly_maintenance(db=db)
         finally:
-            # Cleanup: close client after task
             if hasattr(db, 'aclose'):
                 await db.aclose()
-                logger.info("[DB] Task-specific async client closed")
 
-    try:
-        result = asyncio.run(_async_weekly_maintenance())
+    result = _run_async_with_timeout(_async_weekly_maintenance, "weekly_maintenance")
+    if result:
         total_deleted = result.get('total_deleted', 0)
-        logger.info(f"[{datetime.now()}] ✅ Weekly maintenance complete: {total_deleted} records deleted")
-    except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Weekly maintenance failed: {e}", exc_info=True)
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Weekly maintenance complete: {total_deleted} records deleted")
 
 
 def run_storage_cleanup():
     """Run storage cleanup task (v3.18)"""
-    logger.info(f"[{datetime.now()}] 🧹 Starting storage cleanup...")
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🧹 Starting storage cleanup...")
 
     try:
         from infrastructure.tasks.storage_cleanup import run_storage_cleanup as do_cleanup
         result = do_cleanup()
-        logger.info(f"[{datetime.now()}] ✅ Storage cleanup complete: {result.get('files_deleted', 0)} files deleted, {result.get('space_freed_mb', 0)} MB freed")
+        logger.info(f"[{datetime.now(timezone.utc).isoformat()}] ✅ Storage cleanup complete: {result.get('files_deleted', 0)} files deleted, {result.get('space_freed_mb', 0)} MB freed")
     except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Storage cleanup failed: {e}")
+        logger.error(f"[{datetime.now(timezone.utc).isoformat()}] ❌ Storage cleanup failed: {e}")
 
 
 def run_webhook_retry():
     """
     Run webhook retry task (P3-022, v2.0 AsyncClient)
 
-    IMPORTANT: Uses create_task_async_client() instead of get_async_db_client()
-    to avoid "Event loop is closed" error.
-
-    Background:
-    - BackgroundScheduler runs this in a separate thread
-    - asyncio.run() creates a new event loop for each execution
-    - Singleton async clients (get_async_db_client) are bound to FastAPI's event loop
-    - Using singleton across event loops causes "Event loop is closed" error
-    - Solution: Create fresh client for each task execution
+    WS-19: Now uses _run_async_with_timeout for timeout protection.
     """
-    logger.info(f"[{datetime.now()}] 🔄 Starting webhook retry task...")
-
-    import asyncio
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🔄 Starting webhook retry task...")
 
     async def _async_webhook_retry():
         """Async wrapper for webhook retry with fresh AsyncClient"""
@@ -207,42 +233,29 @@ def run_webhook_retry():
         from domains.webhooks import ClerkWebhookService, StripeWebhookService
         from domains.webhooks.webhook_retry_service import WebhookRetryService
 
-        # Create fresh AsyncClient for this task (NOT singleton!)
-        # This avoids "Event loop is closed" error
         db = await create_task_async_client()
-
         try:
-            # Initialize repositories with AsyncClient
             webhook_repo = SupabaseWebhookRepository(db)
             user_repo = SupabaseUserRepository(db)
             credit_repo = SupabaseCreditRepository(db)
             payment_repo = SupabasePaymentRepository(db)
 
-            # Initialize services
             clerk_service = ClerkWebhookService(user_repo, credit_repo)
             stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
             retry_service = WebhookRetryService(webhook_repo, clerk_service, stripe_service)
 
-            # Run retry task
-            result = await retry_service.retry_all_failed_webhooks()
-            return result
+            return await retry_service.retry_all_failed_webhooks()
         finally:
-            # Cleanup: close client after task
             if hasattr(db, 'aclose'):
                 await db.aclose()
-                logger.info("[DB] Task-specific async client closed")
 
-    try:
-        # Run async function in new event loop
-        result = asyncio.run(_async_webhook_retry())
-
+    result = _run_async_with_timeout(_async_webhook_retry, "webhook_retry")
+    if result:
         total = result["total"]
         logger.info(
-            f"[{datetime.now()}] ✅ Webhook retry complete: "
+            f"[{datetime.now(timezone.utc).isoformat()}] ✅ Webhook retry complete: "
             f"{total['processed']} processed, {total['failed']} failed, {total['skipped']} skipped"
         )
-    except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Webhook retry failed: {e}", exc_info=True)
 
 def run_credit_reconciliation():
     """
@@ -257,9 +270,7 @@ def run_credit_reconciliation():
 
     Schedule: 6:00 AM UTC daily
     """
-    logger.info(f"[{datetime.now()}] 🔍 Starting credit reconciliation...")
-
-    import asyncio
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🔍 Starting credit reconciliation...")
 
     async def _async_credit_reconciliation():
         """Async wrapper with fresh AsyncClient"""
@@ -337,14 +348,15 @@ def run_credit_reconciliation():
                 await db.aclose()
                 logger.info("[DB] Reconciliation async client closed")
 
-    try:
-        result = asyncio.run(_async_credit_reconciliation())
+    # WS-19: Use timeout wrapper
+    result = _run_async_with_timeout(_async_credit_reconciliation, "credit_reconciliation")
+    if result:
         checked = result["checked"]
         anomalies = result["anomalies"]
 
         if anomalies:
             logger.warning(
-                f"[{datetime.now()}] ⚠️ Credit reconciliation found {len(anomalies)} anomalies "
+                f"[{datetime.now(timezone.utc).isoformat()}] ⚠️ Credit reconciliation found {len(anomalies)} anomalies "
                 f"out of {checked} active subscribers"
             )
             for a in anomalies:
@@ -366,11 +378,9 @@ def run_credit_reconciliation():
                 pass  # Sentry not configured is OK
         else:
             logger.info(
-                f"[{datetime.now()}] ✅ Credit reconciliation complete: "
+                f"[{datetime.now(timezone.utc).isoformat()}] ✅ Credit reconciliation complete: "
                 f"{checked} subscribers checked, no anomalies"
             )
-    except Exception as e:
-        logger.error(f"[{datetime.now()}] ❌ Credit reconciliation failed: {e}", exc_info=True)
 
 
 def init_scheduler():

@@ -338,6 +338,80 @@ class TaskQueueService:
             logger.error(f"[TaskQueue] ❌ Failed to enqueue export task: {e}")
             return None
 
+    def recover_interrupted_tasks(self) -> Dict[str, Any]:
+        """
+        WS-19: Recover tasks interrupted by service restart.
+
+        Scans Redis for task status entries that are still 'processing'
+        and marks them as 'failed' with a restart recovery reason.
+        Also checks RQ started job registries for orphaned jobs.
+
+        Returns:
+            Dict with recovery statistics
+        """
+        if not self._ensure_initialized():
+            return {"recovered": 0, "error": "service not available"}
+
+        recovered = 0
+        errors = 0
+
+        try:
+            # 1. Scan Redis for stuck 'processing' status entries
+            cursor = 0
+            while True:
+                cursor, keys = self._redis.scan(cursor, match="task:*:status", count=100)
+                for key in keys:
+                    try:
+                        key_str = key.decode('utf-8') if isinstance(key, bytes) else key
+                        status_data = self._redis.hgetall(key_str)
+                        if not status_data:
+                            continue
+
+                        status = status_data.get(b"status", b"").decode('utf-8')
+                        if status == "processing":
+                            # Mark as failed due to restart
+                            self._redis.hset(key_str, mapping={
+                                "status": "failed",
+                                "message": "Task interrupted by service restart",
+                            })
+                            recovered += 1
+                            task_id = key_str.replace("task:", "").replace(":status", "")
+                            logger.warning(f"[TaskQueue] Recovered interrupted task: {task_id}")
+                    except Exception as e:
+                        errors += 1
+                        logger.error(f"[TaskQueue] Error recovering task {key}: {e}")
+
+                if cursor == 0:
+                    break
+
+            # 2. Check RQ started job registries for orphaned jobs
+            for name, queue in self._queues.items():
+                try:
+                    started_registry = queue.started_job_registry
+                    orphaned_ids = started_registry.get_job_ids()
+                    for job_id in orphaned_ids:
+                        try:
+                            job = Job.fetch(job_id, connection=self._redis)
+                            if job.get_status() == 'started':
+                                job.set_status('failed')
+                                recovered += 1
+                                logger.warning(f"[TaskQueue] Marked orphaned RQ job as failed: {job_id}")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.error(f"[TaskQueue] Error scanning {name} queue: {e}")
+
+        except Exception as e:
+            logger.error(f"[TaskQueue] Recovery scan failed: {e}")
+            return {"recovered": recovered, "errors": errors, "error": str(e)}
+
+        if recovered > 0:
+            logger.info(f"[TaskQueue] ✅ Recovery complete: {recovered} tasks recovered, {errors} errors")
+        else:
+            logger.info("[TaskQueue] ✅ Recovery complete: no interrupted tasks found")
+
+        return {"recovered": recovered, "errors": errors}
+
     def get_queue_stats(self) -> Dict[str, Any]:
         """Get queue statistics for monitoring."""
         if not self._ensure_initialized():
