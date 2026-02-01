@@ -233,6 +233,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Failed to initialize async database client: {e}")
 
+    # WS-20: Validate Redis connection at startup
+    from core.cache.redis_provider import get_redis_client
+    try:
+        redis_client = get_redis_client()
+        if redis_client:
+            redis_client.ping()
+            logger.info("✅ Redis connection validated")
+        else:
+            logger.warning("⚠️ Redis not configured — cache/queue/rate-limiting disabled")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis connection failed: {e} — cache/queue/rate-limiting disabled")
+
     # Initialize scheduler
     init_scheduler()
 

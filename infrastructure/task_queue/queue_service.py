@@ -412,6 +412,64 @@ class TaskQueueService:
 
         return {"recovered": recovered, "errors": errors}
 
+    def move_to_dead_letter(self, max_failures: int = 3) -> Dict[str, Any]:
+        """
+        WS-20: Move permanently failed jobs to a dead letter queue.
+
+        Jobs that have exceeded max_failures retries are moved to a
+        dead-letter list in Redis for manual inspection. This prevents
+        permanently failed jobs from clogging the failed job registry.
+
+        Args:
+            max_failures: Maximum failures before moving to dead letter
+
+        Returns:
+            Dict with dead letter statistics
+        """
+        if not self._ensure_initialized():
+            return {"moved": 0, "error": "service not available"}
+
+        moved = 0
+        dead_letter_key = "dead_letter_queue"
+
+        for name, queue in self._queues.items():
+            try:
+                failed_registry = queue.failed_job_registry
+                failed_job_ids = failed_registry.get_job_ids()
+
+                for job_id in failed_job_ids:
+                    try:
+                        job = Job.fetch(job_id, connection=self._redis)
+                        # RQ tracks retries; if exceeded, move to dead letter
+                        if job.retries_left is not None and job.retries_left <= 0:
+                            # Store job metadata in dead letter list
+                            dead_entry = {
+                                "job_id": job_id,
+                                "queue": name,
+                                "func_name": job.func_name if hasattr(job, 'func_name') else "unknown",
+                                "created_at": job.created_at.isoformat() if job.created_at else None,
+                                "failed_at": datetime.now(timezone.utc).isoformat(),
+                                "exc_info": str(job.exc_info)[:500] if job.exc_info else None,
+                            }
+                            import json
+                            self._redis.lpush(dead_letter_key, json.dumps(dead_entry))
+                            # Remove from failed registry
+                            failed_registry.remove(job)
+                            moved += 1
+                            logger.warning(f"[TaskQueue] Moved job {job_id} to dead letter queue")
+                    except Exception as e:
+                        logger.error(f"[TaskQueue] Error processing failed job {job_id}: {e}")
+            except Exception as e:
+                logger.error(f"[TaskQueue] Error scanning {name} failed registry: {e}")
+
+        # Trim dead letter queue to last 1000 entries
+        self._redis.ltrim(dead_letter_key, 0, 999)
+
+        if moved > 0:
+            logger.info(f"[TaskQueue] Moved {moved} jobs to dead letter queue")
+
+        return {"moved": moved}
+
     def get_queue_stats(self) -> Dict[str, Any]:
         """Get queue statistics for monitoring."""
         if not self._ensure_initialized():
@@ -428,6 +486,13 @@ class TaskQueueService:
                 }
             except Exception as e:
                 stats["queues"][name] = {"error": str(e)}
+
+        # WS-20: Include dead letter queue stats
+        try:
+            dead_letter_count = self._redis.llen("dead_letter_queue")
+            stats["dead_letter_count"] = dead_letter_count
+        except Exception:
+            stats["dead_letter_count"] = 0
 
         return stats
 

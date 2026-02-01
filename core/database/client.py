@@ -49,6 +49,10 @@ _db_client: Optional[Any] = None  # Sync client
 _async_db_client: Optional[Any] = None  # Async client
 _config: Optional[DatabaseConfig] = None
 
+# WS-20: Track outstanding task-specific clients for leak detection
+_active_task_clients: int = 0
+_TASK_CLIENT_WARN_THRESHOLD = 10  # Warn if more than 10 outstanding clients
+
 
 def get_db_client(config: DatabaseConfig = None) -> Optional[Any]:
     """
@@ -210,10 +214,23 @@ async def create_task_async_client(config: DatabaseConfig = None) -> Any:
     if not cfg.is_valid:
         raise ValueError("Database not configured - missing URL or KEY")
 
+    global _active_task_clients
+
     try:
         from supabase import acreate_client
         client = await acreate_client(cfg.url, cfg.key)
-        logger.info("[DB] Task-specific async client created")
+        _active_task_clients += 1
+
+        # WS-20: Connection pool leak detection
+        if _active_task_clients > _TASK_CLIENT_WARN_THRESHOLD:
+            logger.warning(
+                f"[DB] ⚠️ Connection pool leak suspected: {_active_task_clients} "
+                f"active task clients (threshold: {_TASK_CLIENT_WARN_THRESHOLD}). "
+                f"Ensure clients are closed after use."
+            )
+        else:
+            logger.info(f"[DB] Task-specific async client created (active: {_active_task_clients})")
+
         return client
     except ImportError:
         logger.error("[DB] supabase package not installed or AsyncClient not available")
@@ -221,6 +238,17 @@ async def create_task_async_client(config: DatabaseConfig = None) -> Any:
     except Exception as e:
         logger.error(f"[DB] Failed to create task async client: {e}")
         raise
+
+
+def notify_task_client_closed():
+    """
+    WS-20: Track when a task-specific client is closed.
+
+    Call this after closing a task client to maintain accurate count.
+    """
+    global _active_task_clients
+    if _active_task_clients > 0:
+        _active_task_clients -= 1
 
 
 def get_db_info() -> dict:

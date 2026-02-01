@@ -146,8 +146,14 @@ class ConfigService:
         except Exception as e:
             logger.warning(f"[ConfigService] Error fetching config {config_key}: {e}")
 
-        # Return default
-        return DEFAULT_RATE_LIMITS.get(config_key)
+        # Return default — WS-20: warn on unknown config keys
+        default = DEFAULT_RATE_LIMITS.get(config_key)
+        if default is None:
+            logger.warning(
+                f"[ConfigService] Unknown config key requested: '{config_key}' "
+                f"(not in DB and no default defined)"
+            )
+        return default
 
     async def get_bool(
         self,
