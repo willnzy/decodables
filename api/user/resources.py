@@ -121,15 +121,16 @@ class ResourcesListResponse(BaseModel):
     """Resources list response."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
+    limit: int
     has_more: bool = False
 
 
 class PaginatedResourcesResponse(BaseModel):
-    """Paginated resources response (P2-002)."""
+    """Paginated resources response (P2-002). WS-16: page→offset."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
 
 
@@ -152,7 +153,7 @@ async def list_resources(
     category: Optional[str] = Query(None, description="Category filter", max_length=50),
     tier: Optional[str] = Query(None, description="Tier filter", max_length=20),
     search: Optional[str] = Query(None, description="Search in name/tags", max_length=MAX_SEARCH_LENGTH),
-    page: int = Query(1, ge=1, le=1000),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(50, ge=1, le=200),
     include_locked: bool = Query(True, description="Include locked resources"),
     user: dict = Depends(optional_user),
@@ -164,6 +165,7 @@ async def list_resources(
 
     v3.0.0: Now uses GetResourcesHandler (Container pattern).
     v2.1.0: Added rate limiting and parameter validation.
+    WS-16: Migrated page→offset for DDD consistency.
     """
     # v2.1.0: RES-MEDIUM-3 - Validate resource type if provided
     if type and type not in VALID_RESOURCE_TYPES:
@@ -183,7 +185,7 @@ async def list_resources(
         resource_type=type,
         category=category,
         allowed_tiers_filter=tier,
-        page=page,
+        offset=offset,
         limit=limit,
         include_locked=include_locked,
     )
@@ -193,8 +195,9 @@ async def list_resources(
     return ResourcesListResponse(
         items=result.items,
         total=result.total,
-        page=result.page,
-        has_more=result.total > page * limit,
+        offset=result.offset,
+        limit=result.limit,
+        has_more=result.total > offset + limit,
     )
 
 

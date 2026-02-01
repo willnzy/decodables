@@ -2,7 +2,9 @@
 Content Queries - Read-only content operations.
 
 @module application.queries.content
-@version 1.0.0
+@version 1.1.0
+
+WS-16: Migrated page→offset for DDD consistency
 """
 
 from dataclasses import dataclass
@@ -22,7 +24,7 @@ class GetResourcesQuery:
     resource_type: Optional[str] = None
     category: Optional[str] = None
     allowed_tiers_filter: Optional[str] = None
-    page: int = 1
+    offset: int = 0
     limit: int = 50
     include_locked: bool = True
 
@@ -32,7 +34,7 @@ class GetResourcesResult:
     """Result of resources query."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
 
 
@@ -44,8 +46,6 @@ class GetResourcesHandler:
 
     async def handle(self, query: GetResourcesQuery) -> GetResourcesResult:
         """Execute resources query."""
-        offset = (query.page - 1) * query.limit
-
         # Parse resource type
         resource_type = None
         if query.resource_type:
@@ -68,14 +68,14 @@ class GetResourcesHandler:
             category=category,
             allowed_tiers_filter=query.allowed_tiers_filter,
             limit=query.limit,
-            offset=offset,
+            offset=query.offset,
             include_locked=query.include_locked,
         )
 
         return GetResourcesResult(
             items=items,
             total=len(items),
-            page=query.page,
+            offset=query.offset,
             limit=query.limit,
         )
 
@@ -129,7 +129,7 @@ class GetStickersQuery:
     """Query to get stickers."""
     user_tier: str
     category: Optional[str] = None
-    page: int = 1
+    offset: int = 0
     limit: int = 100
 
 
@@ -138,7 +138,7 @@ class GetStickersResult:
     """Result of stickers query."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
 
 
@@ -150,8 +150,6 @@ class GetStickersHandler:
 
     async def handle(self, query: GetStickersQuery) -> GetStickersResult:
         """Execute stickers query."""
-        offset = (query.page - 1) * query.limit
-
         category = None
         if query.category:
             try:
@@ -163,13 +161,13 @@ class GetStickersHandler:
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
-            offset=offset,
+            offset=query.offset,
         )
 
         return GetStickersResult(
             items=result.get("items", []),
             total=result.get("total", 0),
-            page=query.page,
+            offset=query.offset,
             limit=query.limit,
         )
 
@@ -179,7 +177,7 @@ class GetBackgroundsQuery:
     """Query to get backgrounds."""
     user_tier: str
     category: Optional[str] = None
-    page: int = 1
+    offset: int = 0
     limit: int = 50
 
 
@@ -188,7 +186,7 @@ class GetBackgroundsResult:
     """Result of backgrounds query."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
 
 
@@ -200,8 +198,6 @@ class GetBackgroundsHandler:
 
     async def handle(self, query: GetBackgroundsQuery) -> GetBackgroundsResult:
         """Execute backgrounds query."""
-        offset = (query.page - 1) * query.limit
-
         category = None
         if query.category:
             try:
@@ -213,13 +209,13 @@ class GetBackgroundsHandler:
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
-            offset=offset,
+            offset=query.offset,
         )
 
         return GetBackgroundsResult(
             items=result.get("items", []),
             total=result.get("total", 0),
-            page=query.page,
+            offset=query.offset,
             limit=query.limit,
         )
 
@@ -229,7 +225,7 @@ class GetProjectTemplatesQuery:
     """Query to get project templates."""
     user_tier: str
     category: Optional[str] = None
-    page: int = 1
+    offset: int = 0
     limit: int = 20
 
 
@@ -238,7 +234,7 @@ class GetProjectTemplatesResult:
     """Result of project templates query."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
 
 
@@ -250,8 +246,6 @@ class GetProjectTemplatesHandler:
 
     async def handle(self, query: GetProjectTemplatesQuery) -> GetProjectTemplatesResult:
         """Execute project templates query."""
-        offset = (query.page - 1) * query.limit
-
         category = None
         if query.category:
             try:
@@ -263,13 +257,13 @@ class GetProjectTemplatesHandler:
             user_tier=query.user_tier,
             category=category,
             limit=query.limit,
-            offset=offset,
+            offset=query.offset,
         )
 
         return GetProjectTemplatesResult(
             items=result.get("items", []),
             total=result.get("total", 0),
-            page=query.page,
+            offset=query.offset,
             limit=query.limit,
         )
 

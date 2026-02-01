@@ -17,21 +17,21 @@ from domains.content.system_resources_service import SystemResourcesService
 
 @dataclass
 class ListSystemResourcesQuery:
-    """Query to list system resources with filters."""
+    """Query to list system resources with filters. WS-16: page→offset."""
     resource_type: Optional[str] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
     search: Optional[str] = None
-    page: int = 1
+    offset: int = 0
     limit: int = 50
 
 
 @dataclass
 class ListSystemResourcesResult:
-    """Result of list system resources query."""
+    """Result of list system resources query. WS-16: page→offset."""
     items: List[Dict[str, Any]]
     total: int
-    page: int
+    offset: int
     limit: int
     has_more: bool
 
@@ -43,24 +43,22 @@ class ListSystemResourcesHandler:
         self._service = service
 
     async def handle(self, query: ListSystemResourcesQuery) -> ListSystemResourcesResult:
-        """Execute list query."""
-        offset = (query.page - 1) * query.limit
-
+        """Execute list query. WS-16: Uses offset directly."""
         items, total = await self._service.list_resources(
             resource_type=query.resource_type,
             category=query.category,
             is_active=query.is_active,
             search=query.search,
             limit=query.limit,
-            offset=offset,
+            offset=query.offset,
         )
 
         return ListSystemResourcesResult(
             items=items,
             total=total,
-            page=query.page,
+            offset=query.offset,
             limit=query.limit,
-            has_more=total > offset + query.limit,
+            has_more=total > query.offset + query.limit,
         )
 
 

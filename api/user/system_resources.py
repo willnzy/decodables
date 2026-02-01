@@ -102,7 +102,7 @@ async def list_system_resources(
     category: Optional[str] = Query(None, max_length=50, description="Filter by category (e.g., 'animals', 'holidays')"),
     is_active: Optional[bool] = Query(None, description="Filter by active status (true/false/null for all)"),
     search: Optional[str] = Query(None, max_length=MAX_SEARCH_LENGTH, description="Search by name or description (max 200 chars)"),
-    page: int = Query(1, ge=1, le=1000, description="Page number (1-1000, default: 1)"),
+    offset: int = Query(0, ge=0, description="Pagination offset (default: 0)"),
     limit: int = Query(50, ge=1, le=200, description="Items per page (1-200, default: 50)"),
     admin: dict = Depends(require_admin)
 ):
@@ -204,7 +204,7 @@ async def list_system_resources(
         category=category,
         is_active=is_active,
         search=safe_search,
-        page=page,
+        offset=offset,
         limit=limit,
     )
 
@@ -213,7 +213,7 @@ async def list_system_resources(
     return {
         "items": result.items,
         "total": result.total,
-        "page": result.page,
+        "offset": result.offset,
         "limit": result.limit,
         "has_more": result.has_more,
     }
