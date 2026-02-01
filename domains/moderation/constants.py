@@ -12,7 +12,27 @@ VALID_MODERATION_STATUSES = {"pending", "approved", "rejected"}
 VALID_RESOURCE_TYPES = {"sticker", "clipart", "template", "font", "all"}
 
 # Report statuses for content reports
-VALID_REPORT_STATUSES = {"reviewed", "resolved", "dismissed"}
+# WS-14: Added "pending" as initial state
+REPORT_STATUS_PENDING = "pending"
+REPORT_STATUS_REVIEWED = "reviewed"
+REPORT_STATUS_RESOLVED = "resolved"
+REPORT_STATUS_DISMISSED = "dismissed"
+VALID_REPORT_STATUSES = {"pending", "reviewed", "resolved", "dismissed"}
+
+# WS-14: Report 状态转换矩阵
+VALID_REPORT_TRANSITIONS = {
+    "pending": {"reviewed", "resolved", "dismissed"},
+    "reviewed": {"resolved", "dismissed"},
+    "resolved": set(),    # 终态
+    "dismissed": set(),   # 终态
+}
+
+# WS-14: Listing moderation 状态转换矩阵
+VALID_LISTING_TRANSITIONS = {
+    "pending": {"approved", "rejected"},
+    "approved": {"rejected"},   # 可撤销审批
+    "rejected": {"pending"},    # 可重新提交
+}
 
 # Event types for logging
 EVENT_MODERATION_APPROVE = "admin_moderation_approve"

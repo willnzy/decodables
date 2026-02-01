@@ -60,6 +60,15 @@ class TaskCancellationFailedException(TaskException):
 # Task ID format validation (3-64 chars, alphanumeric/hyphen/underscore)
 TASK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,64}$")
 
+# WS-14: All valid task states (complete definition)
+VALID_TASK_STATUSES = (
+    "pending", "queued", "scheduled",
+    "processing", "completed", "failed", "cancelled"
+)
+
+# Terminal states (no further transitions allowed)
+TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+
 # Cancellable task statuses (including scheduled from RQ)
 CANCELLABLE_STATUSES = ("pending", "queued", "scheduled")
 
@@ -209,11 +218,15 @@ class TasksService:
         # Validate format
         self.validate_task_id(task_id)
 
-        # Check task status
+        # WS-14: Check task status from Redis first, fallback to DB
         status = progress_tracker.get_status(task_id)
 
         if not status:
-            raise TaskNotFoundException("Task not found")
+            # Fallback to DB if Redis doesn't have the status
+            db_data = await self.repository.get_task_from_database(task_id, user_id)
+            if not db_data:
+                raise TaskNotFoundException("Task not found")
+            status = db_data
 
         # Verify task is cancellable
         current_status = status.get("status")

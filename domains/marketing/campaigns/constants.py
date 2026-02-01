@@ -22,6 +22,15 @@ STATUS_PAUSED = "paused"
 STATUS_COMPLETED = "completed"
 STATUS_DELETED = "deleted"
 
+# WS-14: 状态转换矩阵 — 定义每个状态允许转换到哪些状态
+VALID_TRANSITIONS = {
+    STATUS_DRAFT: {STATUS_ACTIVE, STATUS_DELETED},
+    STATUS_ACTIVE: {STATUS_PAUSED, STATUS_COMPLETED, STATUS_DELETED},
+    STATUS_PAUSED: {STATUS_ACTIVE, STATUS_DELETED},
+    STATUS_COMPLETED: {STATUS_DELETED},  # 已完成只能删除
+    STATUS_DELETED: set(),  # 已删除不可转换
+}
+
 
 # ==========================================
 # Campaign 类型

@@ -45,6 +45,17 @@ VALID_REVIEW_STATUSES: List[str] = [
     REVIEW_STATUS_REJECTED,
 ]
 
+# WS-14: Review 状态转换矩阵
+# 定义每个 review_status 允许的 review actions
+REVIEWABLE_STATUSES = {REVIEW_STATUS_PENDING, REVIEW_STATUS_AUTO_APPROVED}
+# 可重新生成的状态 (已审批/已拒绝/待审也可以重新生成)
+REGENERATABLE_STATUSES = {
+    REVIEW_STATUS_PENDING,
+    REVIEW_STATUS_AUTO_APPROVED,
+    REVIEW_STATUS_REVIEWED,
+    REVIEW_STATUS_REJECTED,
+}
+
 # ==========================================
 # Theme Statuses
 # ==========================================

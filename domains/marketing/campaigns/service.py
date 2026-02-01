@@ -26,6 +26,7 @@ from domains.marketing.campaigns.constants import (
     STATUS_ACTIVE,
     STATUS_PAUSED,
     STATUS_DELETED,
+    VALID_TRANSITIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -320,8 +321,24 @@ async def activate_campaign(
     try:
         db_client = await get_async_db_client()
 
-        # 获取旧值 (for audit)
+        # 获取旧值 (for audit + state guard)
         old_campaign = await get_campaign(campaign_id)
+        if not old_campaign:
+            logger.warning(f"[Campaigns] Campaign {campaign_id} not found for activation")
+            return False
+
+        # WS-14: 状态机护栏 — 检查转换是否合法
+        current_status = old_campaign.get("status", STATUS_DRAFT)
+        allowed = VALID_TRANSITIONS.get(current_status, set())
+        if STATUS_ACTIVE not in allowed:
+            logger.warning(
+                f"[Campaigns] Invalid transition: {current_status} → active "
+                f"(campaign={campaign_id})"
+            )
+            raise ValueError(
+                f"Cannot activate campaign: current status '{current_status}' "
+                f"does not allow transition to 'active'"
+            )
 
         # 激活
         result = db_client.table("campaigns").update({
@@ -345,6 +362,8 @@ async def activate_campaign(
         logger.info(f"[Campaigns] Campaign {campaign_id} activated by {admin_id}")
         return True
 
+    except ValueError:
+        raise  # Re-raise state guard errors to API layer
     except Exception as e:
         logger.error(f"[Campaigns] Failed to activate campaign {campaign_id}: {e}")
         return False
@@ -372,8 +391,24 @@ async def pause_campaign(
     try:
         db_client = await get_async_db_client()
 
-        # 获取旧值 (for audit)
+        # 获取旧值 (for audit + state guard)
         old_campaign = await get_campaign(campaign_id)
+        if not old_campaign:
+            logger.warning(f"[Campaigns] Campaign {campaign_id} not found for pausing")
+            return False
+
+        # WS-14: 状态机护栏 — 只有 active 状态才能暂停
+        current_status = old_campaign.get("status", STATUS_DRAFT)
+        allowed = VALID_TRANSITIONS.get(current_status, set())
+        if STATUS_PAUSED not in allowed:
+            logger.warning(
+                f"[Campaigns] Invalid transition: {current_status} → paused "
+                f"(campaign={campaign_id})"
+            )
+            raise ValueError(
+                f"Cannot pause campaign: current status '{current_status}' "
+                f"does not allow transition to 'paused'"
+            )
 
         # 暂停
         result = db_client.table("campaigns").update({
@@ -397,6 +432,8 @@ async def pause_campaign(
         logger.info(f"[Campaigns] Campaign {campaign_id} paused by {admin_id}")
         return True
 
+    except ValueError:
+        raise  # Re-raise state guard errors to API layer
     except Exception as e:
         logger.error(f"[Campaigns] Failed to pause campaign {campaign_id}: {e}")
         return False

@@ -20,6 +20,7 @@ from domains.themes.constants import (
     REVIEW_ACTION_APPROVE,
     REVIEW_ACTION_REJECT,
     REVIEW_ACTION_SWITCH,
+    REVIEWABLE_STATUSES,
 )
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,14 @@ class ThemesService:
         theme = await self.repository.get_by_id(theme_id)
         if not theme:
             raise ValueError("Theme not found")
+
+        # WS-14: 状态机护栏 — 只有 pending/auto_approved 状态才能 review
+        current_review_status = theme.get("review_status", "pending")
+        if current_review_status not in REVIEWABLE_STATUSES:
+            raise ValueError(
+                f"Cannot review theme: current review_status '{current_review_status}' "
+                f"is not reviewable (must be pending or auto_approved)"
+            )
 
         now = datetime.now(timezone.utc).isoformat()
         update_data = {

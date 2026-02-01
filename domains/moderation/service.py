@@ -32,6 +32,7 @@ from domains.moderation.constants import (
     OP_LISTING_APPROVE,
     OP_LISTING_REJECT,
     OP_REPORT_RESPOND,
+    VALID_REPORT_TRANSITIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -380,6 +381,20 @@ async def respond_to_report(
     try:
         moderation_repo, admin_users_repo = await _get_repos()
 
+        # WS-14: 状态机护栏 — 检查当前报告状态是否允许转换
+        current_report = await moderation_repo.admin_get_report_detail(report_id)
+        if not current_report:
+            logger.warning(f"[Moderation] Report {report_id} not found")
+            return None
+
+        current_status = current_report.get("status", "pending")
+        allowed_transitions = VALID_REPORT_TRANSITIONS.get(current_status, set())
+        if new_status not in allowed_transitions:
+            raise ValueError(
+                f"Cannot transition report from '{current_status}' to '{new_status}'. "
+                f"Allowed transitions: {allowed_transitions or 'none (terminal state)'}"
+            )
+
         # Respond to report
         result = await moderation_repo.admin_respond_to_report(
             report_id=report_id,
@@ -389,7 +404,7 @@ async def respond_to_report(
         )
 
         if not result:
-            logger.warning(f"[Moderation] Report {report_id} not found")
+            logger.warning(f"[Moderation] Report {report_id} update failed")
             return None
 
         # Log admin operation (admin_operations table - for audit trail)
