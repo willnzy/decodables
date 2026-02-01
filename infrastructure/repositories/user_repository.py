@@ -25,6 +25,7 @@ from domains.identity.exceptions import (
     UserAlreadyExistsException,
 )
 from core.database import retry_on_network_error_async
+from core.validators import escape_like_wildcards
 from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -720,8 +721,10 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         v3.26 (REPO-HIGH-1): Added @retry_on_network_error decorator
         v3.26 (USER-MEDIUM-1): Added configurable limit parameter
         """
+        # WS-08: Escape LIKE wildcards in search query
+        safe_query = escape_like_wildcards(query.strip()) if query else ""
         result = await self.client.table("profiles").select("id, email, username, user_code, tier").or_(
-            f"email.ilike.%{query}%,username.ilike.%{query}%,user_code.ilike.%{query}%"
+            f"email.ilike.%{safe_query}%,username.ilike.%{safe_query}%,user_code.ilike.%{safe_query}%"
         ).limit(limit).execute()
         return result.data or []
 

@@ -41,6 +41,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field, field_validator
 
 # v3.28: Import Service layer instead of Repository
+from core.validators import validate_uuid
 from domains import moderation as moderation_service
 from domains.moderation.constants import (
     VALID_MODERATION_STATUSES,
@@ -124,7 +125,7 @@ async def adm_moderation_detail(
 ):
     """Retrieve moderation detail (PRD §16)."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
+        listing_id = validate_uuid(listing_id, "listing_id")  # WS-08
         item = await moderation_service.get_moderation_detail(listing_id)
         if not item:
             raise HTTPException(404, "Listing not found")
@@ -132,6 +133,8 @@ async def adm_moderation_detail(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin {admin.get('id')}] Get moderation detail failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to get moderation detail")
@@ -146,8 +149,7 @@ async def adm_moderation_approve(
 ):
     """Approve listing (PRD §16)."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
-        # Service layer handles Repository orchestration + logging
+        listing_id = validate_uuid(listing_id, "listing_id")  # WS-08
         result = await moderation_service.approve_listing(listing_id, admin["id"])
         if not result:
             raise HTTPException(404, "Listing not found")
@@ -156,6 +158,8 @@ async def adm_moderation_approve(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin {admin.get('id')}] Approve listing failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to approve listing")
@@ -171,7 +175,7 @@ async def adm_moderation_reject(
 ):
     """Reject listing (PRD §16)."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
+        listing_id = validate_uuid(listing_id, "listing_id")  # WS-08
         result = await moderation_service.reject_listing(listing_id, admin["id"], req.reason)
         if not result:
             raise HTTPException(404, "Listing not found")
@@ -180,8 +184,9 @@ async def adm_moderation_reject(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
-        # v3.25: Limited error message exposure
         logger.error(f"[Admin {admin.get('id')}] Reject listing failed: {type(e).__name__} - {e}")
         raise HTTPException(400, "Failed to reject listing")
 
@@ -195,7 +200,7 @@ async def adm_moderation_delete(
 ):
     """Soft-delete listing (PRD §16)."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
+        listing_id = validate_uuid(listing_id, "listing_id")  # WS-08
         result = await moderation_service.delete_listing(listing_id, admin["id"])
         if not result:
             raise HTTPException(404, "Listing not found")
@@ -204,6 +209,8 @@ async def adm_moderation_delete(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin {admin.get('id')}] Delete listing failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to delete listing")
@@ -218,7 +225,7 @@ async def adm_moderation_unpublish(
 ):
     """Force-unpublish a listing (PRD §16)."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
+        listing_id = validate_uuid(listing_id, "listing_id")  # WS-08
         result = await moderation_service.unpublish_listing(listing_id, admin["id"])
         if not result:
             raise HTTPException(404, "Listing not found")
@@ -227,6 +234,8 @@ async def adm_moderation_unpublish(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin {admin.get('id')}] Unpublish listing failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to unpublish listing")
@@ -298,7 +307,7 @@ async def adm_get_report_detail(
 ):
     """Get detailed information about a specific report."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
+        report_id = validate_uuid(report_id, "report_id")  # WS-08
         report = await moderation_service.get_report_detail(report_id)
         if not report:
             raise HTTPException(404, "Report not found")
@@ -306,6 +315,8 @@ async def adm_get_report_detail(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"[Admin {admin.get('id')}] Get report detail failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to get report detail")
@@ -321,8 +332,7 @@ async def adm_respond_to_report(
 ):
     """Respond to a content report."""
     try:
-        # v3.28: Call Service layer (DDD compliant)
-        # v3.28: MOD-MEDIUM-3 Fix - Unified parameter name (new_status)
+        report_id = validate_uuid(report_id, "report_id")  # WS-08
         result = await moderation_service.respond_to_report(
             report_id=report_id,
             admin_id=admin["id"],
@@ -337,7 +347,8 @@ async def adm_respond_to_report(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
-        # v3.25: Limited error message exposure
         logger.error(f"[Admin {admin.get('id')}] Respond to report failed: {type(e).__name__} - {e}")
         raise HTTPException(500, "Failed to respond to report")

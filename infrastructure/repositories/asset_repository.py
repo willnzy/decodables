@@ -17,6 +17,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
 from core.database import retry_on_network_error
+from core.validators import escape_like_wildcards
 from .base_repository import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -475,7 +476,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                         query = query.eq("folder_id", folder_id)
 
                 if search and search.strip():
-                    query = query.ilike("name", f"%{search.strip()}%")
+                    query = query.ilike("name", f"%{escape_like_wildcards(search.strip())}%")
 
                 result = await query.order("created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
                 items = result.data or []
@@ -492,7 +493,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                     else:
                         count_query = count_query.eq("folder_id", folder_id)
                 if search and search.strip():
-                    count_query = count_query.ilike("name", f"%{search.strip()}%")
+                    count_query = count_query.ilike("name", f"%{escape_like_wildcards(search.strip())}%")
                 count_result = await count_query.execute()
                 total = count_result.count or len(items)
         else:
@@ -518,7 +519,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
             # Apply search filter
             if search and search.strip():
-                query = query.ilike("name", f"%{search.strip()}%")
+                query = query.ilike("name", f"%{escape_like_wildcards(search.strip())}%")
 
             # Execute query
             result = await query.order("created_at", desc=True).order("id", desc=True).range(offset, offset + limit - 1).execute()
@@ -542,7 +543,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
                     count_query = count_query.eq("folder_id", folder_id)
 
             if search and search.strip():
-                count_query = count_query.ilike("name", f"%{search.strip()}%")
+                count_query = count_query.ilike("name", f"%{escape_like_wildcards(search.strip())}%")
 
             count_result = await count_query.execute()
             total = count_result.count or len(items)
@@ -675,7 +676,7 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             query = query.eq("folder_id", folder_id)
 
         if search and search.strip():
-            query = query.ilike("name", f"%{search.strip()}%")
+            query = query.ilike("name", f"%{escape_like_wildcards(search.strip())}%")
 
         result = await query.order("is_starred", desc=True).order(
             "created_at", desc=True

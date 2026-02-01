@@ -9,6 +9,7 @@ Core business logic for Tag domain.
 
 from typing import Optional, List, Dict, Any
 import logging
+import re
 
 from .entities import Tag, TagColor, TagGroupPreset, ProjectTag, UserAssetTag
 from .repository import ITagRepository, IProjectTagRepository, IAssetTagRepository
@@ -130,6 +131,14 @@ class TagService:
         if len(name) > 50:
             raise ValueError("Tag name cannot exceed 50 characters")
 
+        # WS-08: XSS prevention — reject HTML/script patterns
+        if re.search(r"<[^>]*script|javascript:|on\w+=", name, re.IGNORECASE):
+            raise ValueError("Tag name contains invalid characters")
+        # Strip any HTML tags
+        name = re.sub(r"<[^>]*>", "", name).strip()
+        if not name:
+            raise ValueError("Tag name cannot be empty after sanitization")
+
         # Check if name already exists
         existing = await self._repo.get_by_name(workspace_id, name)
         if existing:
@@ -190,6 +199,12 @@ class TagService:
                 raise ValueError("Tag name cannot be empty")
             if len(name) > 50:
                 raise ValueError("Tag name cannot exceed 50 characters")
+            # WS-08: XSS prevention
+            if re.search(r"<[^>]*script|javascript:|on\w+=", name, re.IGNORECASE):
+                raise ValueError("Tag name contains invalid characters")
+            name = re.sub(r"<[^>]*>", "", name).strip()
+            if not name:
+                raise ValueError("Tag name cannot be empty after sanitization")
 
             # Check for duplicate name (if changing)
             if name.lower() != tag.name.lower():

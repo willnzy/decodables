@@ -499,8 +499,8 @@ class CreateNotificationRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     type: str = Field("info", max_length=50)
     channel: str = Field("in_app", max_length=50)
-    target_users: Optional[List[str]] = None
-    target_tiers: Optional[List[str]] = None
+    target_users: Optional[List[str]] = Field(None, max_length=1000)  # WS-08: Limit list size
+    target_tiers: Optional[List[str]] = Field(None, max_length=10)
     scheduled_at: Optional[str] = None
 
     @field_validator("type")
@@ -524,8 +524,8 @@ class UpdateNotificationRequest(BaseModel):
     message: Optional[str] = Field(None, min_length=1, max_length=2000)
     type: Optional[str] = Field(None, max_length=50)
     channel: Optional[str] = Field(None, max_length=50)
-    target_users: Optional[List[str]] = None
-    target_tiers: Optional[List[str]] = None
+    target_users: Optional[List[str]] = Field(None, max_length=1000)  # WS-08: Limit list size
+    target_tiers: Optional[List[str]] = Field(None, max_length=10)
     scheduled_at: Optional[str] = None
 
     @field_validator("type")

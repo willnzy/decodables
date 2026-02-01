@@ -65,6 +65,8 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             '(': '\\(',
             ')': '\\)',
             '*': '\\*',
+            '%': '\\%',   # WS-08: ILIKE wildcard
+            '_': '\\_',   # WS-08: ILIKE single-char wildcard
         }
         result = query
         for char, escaped in special_chars.items():
