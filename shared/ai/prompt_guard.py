@@ -59,7 +59,7 @@ MAX_CONVERSATION_MESSAGES = 20
 # ==========================================
 
 def sanitize_user_input(
-    text: str,
+    text: Optional[str],
     max_length: int = MAX_USER_INPUT_LENGTH,
     context: str = "user_input",
 ) -> str:
@@ -154,7 +154,7 @@ def build_safe_messages(
 
 
 def validate_conversation_history(
-    history: List[Dict[str, Any]],
+    history: Optional[List[Dict[str, Any]]],
     max_messages: int = MAX_CONVERSATION_MESSAGES,
 ) -> List[Dict[str, str]]:
     """
@@ -183,6 +183,9 @@ def validate_conversation_history(
         >>> len(clean)
         2
     """
+    if not history:
+        return []
+
     safe_history: List[Dict[str, str]] = []
 
     # Take only the last N messages
