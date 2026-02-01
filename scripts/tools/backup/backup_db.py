@@ -75,9 +75,9 @@ def find_command(name: str, search_paths: list = None) -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except (OSError, subprocess.SubprocessError):
         pass
-    
+
     # 最后返回命令名称，让系统 PATH 处理
     return name
 

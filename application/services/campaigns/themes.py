@@ -46,8 +46,8 @@ def log_current_theme() -> Optional[Dict]:
                         },
                         'created_at': datetime.now(timezone.utc).isoformat()
                     }).execute()
-                except:
-                    pass  # Analytics logging is optional
+                except Exception:
+                    pass  # Analytics logging is optional, non-blocking
 
                 return theme
 

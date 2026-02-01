@@ -54,23 +54,23 @@ def generate_summary_report() -> Dict[str, Any]:
             'is_active', True
         ).eq('is_deleted', False).execute()
         report["themes"]["total"] = result.count or 0
-    except:
-        pass
-    
+    except Exception as e:
+        log(f"❌ Error counting themes: {e}", "ERROR")
+
     # Get current theme
     try:
         result = supabase.table('daily_themes').select('*').eq(
             'is_active', True
         ).eq('is_deleted', False).order('priority', desc=True).execute()
-        
+
         today = date.today()
         for theme in (result.data or []):
             date_rule = theme.get('date_rule')
             if date_rule and is_theme_active(date_rule, today):
                 report["themes"]["current"] = theme.get('name', theme.get('title', ''))
                 break
-    except:
-        pass
+    except Exception as e:
+        log(f"❌ Error getting current theme: {e}", "ERROR")
     
     # Get upcoming themes
     upcoming = get_upcoming_themes(7)

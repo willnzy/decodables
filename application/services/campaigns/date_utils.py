@@ -78,7 +78,7 @@ def is_theme_active(date_rule: dict, check_date: date) -> bool:
                 return check_date >= start_date or check_date <= end_date
             
             return start_date <= check_date <= end_date
-        except:
+        except (ValueError, TypeError, KeyError):
             return False
     
     elif rule_type == 'dynamic':
@@ -95,7 +95,7 @@ def is_theme_active(date_rule: dict, check_date: date) -> bool:
             end_date = base_date + timedelta(days=offset_end)
             
             return start_date <= check_date <= end_date
-        except:
+        except (ValueError, TypeError, KeyError):
             return False
     
     return False

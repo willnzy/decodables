@@ -255,7 +255,7 @@ class FeatureFlagService:
         """
         try:
             return self._get_provider().get_provider_name()
-        except:
+        except Exception:
             return "unknown"
 
 

@@ -116,9 +116,9 @@ async def chat_with_assistant(
     
     try:
         openai_client.beta.threads.delete(thread.id)
-    except:
-        pass
-    
+    except Exception:
+        pass  # Thread cleanup is best-effort
+
     return {
         "status": "ok",
         "message": assistant_message,

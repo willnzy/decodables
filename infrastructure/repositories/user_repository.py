@@ -702,8 +702,8 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             result = await self.client.table("profiles").select("timezone").eq("id", user_id).execute()
             if result.data:
                 return result.data[0].get("timezone") or "UTC"
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[UserRepo] Failed to get timezone for {user_id}: {e}")
         return "UTC"
 
     @retry_on_network_error_async()  # v3.26 (REPO-HIGH-1): Added retry decorator

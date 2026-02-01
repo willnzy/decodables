@@ -41,7 +41,7 @@ def aggregate_daily_revenue():
                 if len(parts) >= 2:
                     try:
                         amount = int(parts[1]) / 100
-                    except:
+                    except (ValueError, TypeError):
                         pass
             
             if "sub" in tx_type.lower():
