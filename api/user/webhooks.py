@@ -114,9 +114,20 @@ async def clerk_webhook(
         logger.error(f"[Clerk Webhook] Configuration error: {e}")
         raise HTTPException(500, str(e))
     except WebhookVerificationError:
-        # Invalid signature
-        logger.error("[Clerk Webhook] Signature verification failed")
+        # WS-03: Structured log with request context (no secrets)
+        client_ip = request.client.host if request.client else "unknown"
+        logger.error(
+            f"[Clerk Webhook] Signature verification failed: "
+            f"ip={client_ip}, user_agent={request.headers.get('user-agent', 'unknown')[:80]}"
+        )
         raise HTTPException(400, "Invalid signature")
+
+    # WS-03: Idempotency check for Clerk webhooks (matches Stripe pattern)
+    # Use svix message ID as the event_id for deduplication
+    event_id = headers.get("svix-id", "")
+    event_type = event.get("type", "unknown")
+    if event_id and await clerk_service.is_duplicate_event(event_id, event_type):
+        return {"status": "already_processed", "event_id": event_id}
 
     # v2.5.0: Handle event via Service
     result = await clerk_service.handle_event(event)
@@ -163,8 +174,12 @@ async def stripe_webhook(
     try:
         event = stripe_service.verify_signature(payload, stripe_signature)
     except Exception as e:
-        # Don't expose internal error details
-        logger.error(f"[Stripe Webhook] Signature verification failed: {e}")
+        # WS-03: Structured log with request context (no secrets)
+        client_ip = request.client.host if request.client else "unknown"
+        logger.error(
+            f"[Stripe Webhook] Signature verification failed: "
+            f"ip={client_ip}, error_type={type(e).__name__}"
+        )
         raise HTTPException(400, "Invalid signature")
 
     event_id = event.get("id")

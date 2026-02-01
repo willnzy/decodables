@@ -63,6 +63,48 @@ class ClerkWebhookService:
         self.tier_service = tier_service
         self.activity_log_repo = activity_log_repo
 
+    async def is_duplicate_event(self, event_id: str, event_type: str) -> bool:
+        """
+        Check if Clerk webhook event already processed (idempotency).
+
+        WS-03: Clerk webhooks lacked idempotency protection unlike Stripe.
+        Uses clerk_webhook_events table with ON CONFLICT for atomic check-and-insert.
+
+        Args:
+            event_id: Clerk event ID (from event["data"]["id"] or svix message ID)
+            event_type: Clerk event type (e.g., "user.created")
+
+        Returns:
+            True if event already processed, False otherwise
+        """
+        if not event_id:
+            return False
+
+        try:
+            # Atomic insert with ON CONFLICT — same pattern as Stripe's check_webhook_idempotency
+            result = await self.db_client.table("clerk_webhook_events").insert({
+                "event_id": event_id,
+                "event_type": event_type,
+                "processed": False,
+            }, on_conflict="event_id").execute()
+
+            # If insert succeeded (new row), not a duplicate
+            if result.data:
+                return False
+
+            # If no data returned (conflict), it's a duplicate
+            logger.info(f"[Clerk Webhook] Duplicate event ignored: {event_id} ({event_type})")
+            return True
+        except Exception as e:
+            # Check for duplicate key error (23505 = unique_violation)
+            error_str = str(e)
+            if "duplicate key" in error_str or "23505" in error_str:
+                logger.info(f"[Clerk Webhook] Duplicate event ignored: {event_id} ({event_type})")
+                return True
+            # Non-critical: log and allow processing (fail-open for Clerk events)
+            logger.warning(f"[Clerk Webhook] Idempotency check failed for {event_id}: {e}")
+            return False
+
     def verify_signature(self, payload: bytes, headers: Dict[str, str]) -> Dict[str, Any]:
         """
         Verify Clerk webhook signature using Svix.
