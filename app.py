@@ -65,23 +65,55 @@ if SENTRY_DSN:
 def _sanitize_sentry_event(event):
     """
     Sanitize Sentry event before sending.
-    Remove sensitive data like auth tokens, API keys, etc.
+
+    WS-07: Enhanced PII filtering for Sentry events.
+    Removes sensitive data from headers, query params, and request body.
     """
     if "request" in event:
-        if "headers" in event["request"]:
-            headers = event["request"]["headers"]
-            # Redact sensitive headers
-            sensitive_headers = ["authorization", "x-api-key", "cookie", "x-auth-token"]
+        req = event["request"]
+
+        # Redact sensitive headers
+        if "headers" in req:
+            headers = req["headers"]
+            sensitive_headers = {
+                "authorization", "x-api-key", "cookie",
+                "x-auth-token", "x-forwarded-for", "cf-connecting-ip",
+            }
             for key in list(headers.keys()):
                 if key.lower() in sensitive_headers:
                     headers[key] = "[REDACTED]"
-        
+
         # Redact sensitive query params
-        if "query_string" in event["request"]:
-            qs = event["request"]["query_string"]
-            if "token" in qs.lower() or "key" in qs.lower():
-                event["request"]["query_string"] = "[REDACTED]"
-    
+        if "query_string" in req:
+            qs = req["query_string"]
+            if isinstance(qs, str) and ("token" in qs.lower() or "key" in qs.lower()):
+                req["query_string"] = "[REDACTED]"
+
+        # WS-07: Redact sensitive fields in request body (data/json)
+        _BODY_SENSITIVE_KEYS = {
+            "password", "token", "secret", "api_key", "apikey",
+            "credit_card", "card_number", "cvv", "email", "phone",
+        }
+        for body_key in ("data", "json"):
+            body = req.get(body_key)
+            if isinstance(body, dict):
+                for field in list(body.keys()):
+                    if field.lower() in _BODY_SENSITIVE_KEYS:
+                        body[field] = "[REDACTED]"
+
+    # WS-07: Sanitize breadcrumbs — remove PII from message strings
+    if "breadcrumbs" in event:
+        for crumb in event.get("breadcrumbs", {}).get("values", []):
+            msg = crumb.get("message", "")
+            if isinstance(msg, str) and "@" in msg:
+                # Rough email masking in breadcrumbs
+                import re
+                crumb["message"] = re.sub(
+                    r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+                    "[EMAIL]",
+                    msg,
+                )
+
     return event
 
 # v3.12: Unified error handling

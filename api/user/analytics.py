@@ -128,7 +128,7 @@ class AnalyticsEventsResponse(BaseModel):
     status: str
     requested: int  # Number of events requested
     inserted: int  # Number of events successfully inserted
-    ip: str
+    # WS-07: Removed 'ip' field — client IP is PII, should not be in API response
     country: str
 
 
@@ -261,6 +261,6 @@ async def log_analytics_events(
         status="ok",
         requested=requested,
         inserted=total_inserted,
-        ip=client_ip,
+        # WS-07: IP removed from response (PII)
         country=location_info.get("country_code", "unknown"),
     )

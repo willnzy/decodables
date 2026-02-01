@@ -25,6 +25,7 @@ from domains.identity.aggregates.user_profile import UserProfile
 from domains.onboarding import OnboardingService
 from dependencies import get_current_user
 from container import get_container
+from core.logging.sanitizer import mask_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ async def complete_step(
     if not progress:
         raise HTTPException(404, f"Step not found: {request.step_key}")
 
-    logger.info(f"User {user.user_id[:8]}... completed step: {request.step_key}")
+    logger.info(f"User {mask_user_id(user.user_id)} completed step: {request.step_key}")
 
     return {
         "success": True,
@@ -150,7 +151,7 @@ async def skip_step(
     if not progress:
         raise HTTPException(404, f"Step not found: {request.step_key}")
 
-    logger.info(f"User {user.user_id[:8]}... skipped step: {request.step_key}")
+    logger.info(f"User {mask_user_id(user.user_id)} skipped step: {request.step_key}")
 
     return {
         "success": True,

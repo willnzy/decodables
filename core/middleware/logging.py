@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from .request_id import get_request_id, get_user_id
+from core.logging.sanitizer import SensitiveDataFilter
 
 
 class RequestContextFilter(logging.Filter):
@@ -78,6 +79,9 @@ def setup_logging(
 
     # Add context filter
     handler.addFilter(RequestContextFilter())
+
+    # WS-07: Add PII sanitization filter
+    handler.addFilter(SensitiveDataFilter())
 
     if json_format:
         handler.setFormatter(JSONFormatter())

@@ -13,6 +13,7 @@ from config import CLERK_PEM_PUBLIC_KEY, CLERK_FRONTEND_API, CLERK_ALLOWED_ORIGI
 from core.exceptions import UnauthorizedException, ForbiddenException
 from domains.identity.exceptions import UserNotFoundException
 from domains.shared import access_control
+from core.logging.sanitizer import mask_user_id, mask_email
 
 # Aliases for clarity in dependencies
 AdminRequiredException = ForbiddenException
@@ -171,11 +172,11 @@ async def get_current_user(authorization: str = Header(None)):
     logger = logging.getLogger(__name__)
     
     if not user_id.startswith("user_"):
-        logger.warning(
-            f"⚠️ Unexpected user_id format: {user_id}. "
+        logger.warning(  # WS-07: PII masked
+            f"Unexpected user_id format: {mask_user_id(user_id)}. "
             f"Expected Clerk format 'user_xxx'. This may indicate a configuration issue.",
             extra={
-                "user_id": user_id,
+                "user_id": mask_user_id(user_id),
                 "action": "unexpected_user_id_format",
                 "jwt_claims_keys": list(payload.keys()) if payload else []
             }
@@ -197,8 +198,8 @@ async def get_current_user(authorization: str = Header(None)):
         if profile is not None:
             # 重试成功，说明之前可能是连接问题
             logger.info(
-                f"ℹ️ User {user_id} found on retry (initial query may have had connection issue)",
-                extra={"user_id": user_id, "action": "found_on_retry"}
+                f"User {mask_user_id(user_id)} found on retry (initial query may have had connection issue)",
+                extra={"user_id": mask_user_id(user_id), "action": "found_on_retry"}
             )
 
     # JIT (Just-In-Time) user creation: if user doesn't exist, create immediately
@@ -215,9 +216,9 @@ async def get_current_user(authorization: str = Header(None)):
         jwt_username = payload.get("username")
         
         logger.warning(
-            f"⚠️ User {user_id} not found in database after retry, triggering JIT fallback.",
+            f"User {mask_user_id(user_id)} not found in database after retry, triggering JIT fallback.",
             extra={
-                "user_id": user_id,
+                "user_id": mask_user_id(user_id),
                 "action": "jit_fallback_triggered",
                 "jwt_has_email": bool(jwt_email),
                 "jwt_has_username": bool(jwt_username),
@@ -228,7 +229,7 @@ async def get_current_user(authorization: str = Header(None)):
         # ✅ 修复：如果 JWT 中缺少 email，记录更严重的警告
         if not jwt_email:
             logger.error(
-                f"🚨 JIT creating user {user_id} WITHOUT email! "
+                f"JIT creating user {mask_user_id(user_id)} WITHOUT email! "
                 f"Please configure Clerk sessionClaims to include 'email' field. "
                 f"Available JWT claims: {list(payload.keys()) if payload else []}"
             )
@@ -282,25 +283,23 @@ async def get_current_user(authorization: str = Header(None)):
         if was_created:
             # JIT successfully created user (webhook hadn't arrived)
             logger.info(
-                f"✅ JIT created user {user_id} (webhook fallback worked)",
+                f"JIT created user {mask_user_id(user_id)} (webhook fallback worked)",
                 extra={
-                    "user_id": user_id,
+                    "user_id": mask_user_id(user_id),
                     "source": "jit",
                     "action": "created",
-                    "email": email
                 }
             )
-            
+
             # Optional: Send alert to monitor webhook health
             # This helps track if webhooks are consistently delayed
             try:
                 # You can integrate with Sentry/PagerDuty/Slack here
                 logger.warning(
-                    f"[ALERT] JIT Fallback Triggered for user {user_id}",
+                    f"[ALERT] JIT Fallback Triggered for user {mask_user_id(user_id)}",
                     extra={
                         "severity": "warning",
-                        "user_id": user_id,
-                        "email": email
+                        "user_id": mask_user_id(user_id),
                     }
                 )
             except Exception:
@@ -309,9 +308,9 @@ async def get_current_user(authorization: str = Header(None)):
             # Webhook created user while we were preparing JIT create
             # This is the happy path - race condition handled gracefully
             logger.info(
-                f"ℹ️ User {user_id} was created by webhook during JIT attempt",
+                f"User {mask_user_id(user_id)} was created by webhook during JIT attempt",
                 extra={
-                    "user_id": user_id,
+                    "user_id": mask_user_id(user_id),
                     "action": "race_handled_gracefully"
                 }
             )
