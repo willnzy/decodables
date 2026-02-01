@@ -27,6 +27,10 @@ from starlette.concurrency import run_in_threadpool
 
 from infrastructure.repositories.support_repository import SupabaseSupportRepository
 from infrastructure.logging.activity_logger import log_activity_async
+from shared.ai.prompt_guard import (
+    sanitize_user_input,
+    validate_conversation_history,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -250,20 +254,26 @@ class SupportService:
             ... )
         """
         try:
+            # WS-23: Sanitize user message to prevent prompt injection
+            safe_message = sanitize_user_input(message, context="support_chat")
+
+            # WS-23: Sanitize conversation history (drop injected 'system' roles)
+            safe_history = validate_conversation_history(conversation_history, max_messages=10)
+
             # Use vision API if images provided
             if images:
                 result = await ai_chat_service.chat_with_vision(
-                    message,
+                    safe_message,
                     images,
-                    conversation_history,
+                    safe_history,
                 )
                 return result
 
             # Use Assistants API for text-only (with RAG)
             if openai_assistant_id:
                 result = await ai_chat_service.chat_with_assistant(
-                    message,
-                    conversation_history,
+                    safe_message,
+                    safe_history,
                 )
                 return result
 
@@ -271,11 +281,10 @@ class SupportService:
             messages = [
                 {"role": "system", "content": support_system_prompt}
             ]
-            for msg in conversation_history[-10:]:
-                if msg.get("role") in ["user", "assistant"]:
-                    messages.append({"role": msg["role"], "content": msg["content"]})
+            # WS-23: Use validated history (already sanitized above)
+            messages.extend(safe_history)
 
-            messages.append({"role": "user", "content": message})
+            messages.append({"role": "user", "content": safe_message})
 
             response = await run_in_threadpool(
                 openai_client.chat.completions.create,

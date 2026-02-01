@@ -19,6 +19,7 @@ from typing import Optional
 from openai import OpenAI
 
 from .unified_text_service import unified_text_service
+from .prompt_guard import sanitize_user_input, MAX_TOPIC_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +109,16 @@ def generate_story_json(
         - 自动追踪使用量
         - 失败时自动 fallback 到备用模型
     """
-    logger.info(f"Generating story about: {topic}")
+    # WS-23: Sanitize user-provided topic
+    safe_topic = sanitize_user_input(topic, max_length=MAX_TOPIC_LENGTH, context="story_topic")
+    logger.info(f"Generating story about: {safe_topic}")
 
     async def _generate_async():
         """异步生成故事"""
         response = await unified_text_service.chat(
             messages=[
                 {"role": "system", "content": STORY_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Topic: {topic}"}
+                {"role": "user", "content": f"Topic: {safe_topic}"}
             ],
             user_id=user_id,
             tier=tier,
@@ -186,13 +189,15 @@ async def generate_story_json_async(
     Returns:
         故事数据字典，失败返回 None
     """
-    logger.info(f"Generating story about: {topic}")
+    # WS-23: Sanitize user-provided topic
+    safe_topic = sanitize_user_input(topic, max_length=MAX_TOPIC_LENGTH, context="story_topic_async")
+    logger.info(f"Generating story about: {safe_topic}")
 
     try:
         response = await unified_text_service.chat(
             messages=[
                 {"role": "system", "content": STORY_SYSTEM_PROMPT},
-                {"role": "user", "content": f"Topic: {topic}"}
+                {"role": "user", "content": f"Topic: {safe_topic}"}
             ],
             user_id=user_id,
             tier=tier,

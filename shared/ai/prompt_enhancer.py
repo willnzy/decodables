@@ -21,6 +21,7 @@ from .prompt_templates import (
     FALLBACK_PROMPT_TEMPLATE,
     FALLBACK_ASSET_TEMPLATE,
 )
+from .prompt_guard import sanitize_user_input, MAX_TOPIC_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,12 @@ def enhance_prompt(
     tier: str = "t1"
 ) -> dict:
     """Enhance simple theme description into detailed prompt."""
-    user_input = f"""Theme: {theme}
-Character: {character or 'Not specified - use appropriate characters for the theme'}
+    # WS-23: Sanitize user-provided text inputs
+    safe_theme = sanitize_user_input(theme, max_length=MAX_TOPIC_LENGTH, context="enhance_theme")
+    safe_character = sanitize_user_input(character, max_length=MAX_TOPIC_LENGTH, context="enhance_character") if character else None
+
+    user_input = f"""Theme: {safe_theme}
+Character: {safe_character or 'Not specified - use appropriate characters for the theme'}
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Mode: {mode}"""
 
@@ -113,12 +118,17 @@ def enhance_asset_prompt(
     tier: str = "t1"
 ) -> dict:
     """Enhance 5W1H structured input into detailed prompt."""
+    # WS-23: Sanitize user-provided text inputs
+    safe_who = sanitize_user_input(who, max_length=MAX_TOPIC_LENGTH, context="asset_who")
+    safe_what = sanitize_user_input(what, max_length=MAX_TOPIC_LENGTH, context="asset_what") if what else None
+    safe_where = sanitize_user_input(where, max_length=MAX_TOPIC_LENGTH, context="asset_where") if where else None
+
     mood_list = moods or ['warm']
     mood_descriptions = [MOOD_DESCRIPTIONS.get(m, m) for m in mood_list if m]
-    
-    user_input = f"""Who: {who}
-What: {what or 'in a natural pose'}
-Where: {where or 'in a simple background'}
+
+    user_input = f"""Who: {safe_who}
+What: {safe_what or 'in a natural pose'}
+Where: {safe_where or 'in a simple background'}
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Moods: {', '.join(mood_list)} ({'; '.join(mood_descriptions[:3])})
 Mode: {mode}"""
@@ -184,8 +194,12 @@ async def enhance_prompt_async(
     tier: str = "t1"
 ) -> dict:
     """Async version of enhance_prompt."""
-    user_input = f"""Theme: {theme}
-Character: {character or 'Not specified'}
+    # WS-23: Sanitize user-provided text inputs
+    safe_theme = sanitize_user_input(theme, max_length=MAX_TOPIC_LENGTH, context="enhance_theme_async")
+    safe_character = sanitize_user_input(character, max_length=MAX_TOPIC_LENGTH, context="enhance_character_async") if character else None
+
+    user_input = f"""Theme: {safe_theme}
+Character: {safe_character or 'Not specified'}
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Mode: {mode}"""
 
@@ -240,12 +254,17 @@ async def enhance_asset_prompt_async(
     tier: str = "t1"
 ) -> dict:
     """Async version of enhance_asset_prompt."""
+    # WS-23: Sanitize user-provided text inputs
+    safe_who = sanitize_user_input(who, max_length=MAX_TOPIC_LENGTH, context="asset_who_async")
+    safe_what = sanitize_user_input(what, max_length=MAX_TOPIC_LENGTH, context="asset_what_async") if what else None
+    safe_where = sanitize_user_input(where, max_length=MAX_TOPIC_LENGTH, context="asset_where_async") if where else None
+
     mood_list = moods or ['warm']
     mood_descriptions = [MOOD_DESCRIPTIONS.get(m, m) for m in mood_list if m]
-    
-    user_input = f"""Who: {who}
-What: {what or 'in a natural pose'}
-Where: {where or 'in a simple background'}
+
+    user_input = f"""Who: {safe_who}
+What: {safe_what or 'in a natural pose'}
+Where: {safe_where or 'in a simple background'}
 Art Style: {style} ({STYLE_DESCRIPTIONS.get(style, 'colorful illustration')})
 Moods: {', '.join(mood_list)} ({'; '.join(mood_descriptions[:3])})
 Mode: {mode}"""
