@@ -2148,6 +2148,62 @@ COMMENT ON FUNCTION cleanup_old_activity_logs IS '清理旧的活动日志（保
 
 
 -- ============================================================================
+-- WS-25 (GROW-01): Purge expired soft-deleted records
+-- Permanently removes records where recovery_expires_at has passed.
+-- Covers: assets, projects, support_tickets, support_replies
+-- ============================================================================
+CREATE OR REPLACE FUNCTION cleanup_expired_soft_deletes()
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_assets INTEGER := 0;
+    v_projects INTEGER := 0;
+    v_tickets INTEGER := 0;
+    v_replies INTEGER := 0;
+BEGIN
+    -- 1. Purge expired soft-deleted assets
+    DELETE FROM assets
+    WHERE is_deleted = true
+      AND recovery_expires_at IS NOT NULL
+      AND recovery_expires_at < CURRENT_TIMESTAMP;
+    GET DIAGNOSTICS v_assets = ROW_COUNT;
+
+    -- 2. Purge expired soft-deleted projects
+    DELETE FROM projects
+    WHERE is_deleted = true
+      AND recovery_expires_at IS NOT NULL
+      AND recovery_expires_at < CURRENT_TIMESTAMP;
+    GET DIAGNOSTICS v_projects = ROW_COUNT;
+
+    -- 3. Purge expired soft-deleted support tickets
+    DELETE FROM support_tickets
+    WHERE is_deleted = true
+      AND recovery_expires_at IS NOT NULL
+      AND recovery_expires_at < CURRENT_TIMESTAMP;
+    GET DIAGNOSTICS v_tickets = ROW_COUNT;
+
+    -- 4. Purge expired soft-deleted support replies
+    DELETE FROM support_replies
+    WHERE is_deleted = true
+      AND recovery_expires_at IS NOT NULL
+      AND recovery_expires_at < CURRENT_TIMESTAMP;
+    GET DIAGNOSTICS v_replies = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'assets_purged', v_assets,
+        'projects_purged', v_projects,
+        'tickets_purged', v_tickets,
+        'replies_purged', v_replies,
+        'total_purged', v_assets + v_projects + v_tickets + v_replies
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION cleanup_expired_soft_deletes IS 'WS-25: Purge expired soft-deleted records across all tables with recovery_expires_at';
+
+
+-- ============================================================================
 -- WS3: check_webhook_idempotency — Webhook 事件幂等性检查
 -- 与已有 p_start_webhook_processing / p_complete_webhook_processing 配合使用
 -- 调用顺序: check_webhook_idempotency → p_start_webhook_processing → 业务逻辑 → p_complete_webhook_processing

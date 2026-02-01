@@ -68,11 +68,45 @@ CORS_ORIGINS: List[str] = [
     "https://decodables-production.up.railway.app" # Railway API (production)
 ]
 
-# WS-13 (SUP-7): Critical environment variables required at startup
+# WS-13 (SUP-7) + WS-25 (SECRET-01): Critical environment variables required at startup
+# These are validated at startup and will prevent the server from starting if missing.
 REQUIRED_ENV_VARS: List[str] = [
     "SUPABASE_URL",
     "SUPABASE_KEY",
 ]
+
+# WS-25: Secrets that should be validated at startup in production.
+# Missing any of these will log a warning (non-blocking) so the server can still start
+# for development, but all should be present in production.
+RECOMMENDED_ENV_VARS: List[str] = [
+    "CLERK_WEBHOOK_SECRET",
+    "CLERK_PEM_PUBLIC_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "RESEND_API_KEY",
+]
+
+
+def validate_secrets_at_startup() -> dict:
+    """
+    WS-25 (SECRET-01): Validate critical secrets at startup.
+
+    Returns:
+        Dict with validation results:
+        {
+            "required_ok": bool,
+            "missing_required": List[str],
+            "missing_recommended": List[str],
+        }
+    """
+    missing_required = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
+    missing_recommended = [var for var in RECOMMENDED_ENV_VARS if not os.environ.get(var)]
+
+    return {
+        "required_ok": len(missing_required) == 0,
+        "missing_required": missing_required,
+        "missing_recommended": missing_recommended,
+    }
 
 # Rate Limiting
 RATE_LIMIT_DEFAULT = "100/minute"

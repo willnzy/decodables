@@ -229,6 +229,58 @@ class MaintenanceScheduler:
     
     
     @staticmethod
+    async def cleanup_expired_soft_deletes(db: Optional[Any] = None) -> Dict[str, Any]:
+        """
+        WS-25 (GROW-01): Purge expired soft-deleted records.
+
+        Calls the cleanup_expired_soft_deletes() RPC which permanently removes
+        records where recovery_expires_at has passed (assets, projects, tickets, replies).
+
+        Args:
+            db: Optional database client (for BackgroundScheduler context)
+
+        Returns:
+            Cleanup result statistics
+        """
+        try:
+            if db is None:
+                from core.database import get_async_db_client
+                db = await get_async_db_client()
+
+            result = await db.rpc('cleanup_expired_soft_deletes').execute()
+
+            data = result.data if result.data else {}
+            total = data.get('total_purged', 0) if isinstance(data, dict) else 0
+
+            logger.info(
+                f"✅ Purged {total} expired soft-deleted records",
+                extra={
+                    "task": "cleanup_expired_soft_deletes",
+                    "details": data,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+
+            return {
+                "success": True,
+                "total_purged": total,
+                "details": data,
+            }
+
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to cleanup expired soft-deletes: {e}",
+                extra={
+                    "task": "cleanup_expired_soft_deletes",
+                    "error": str(e)
+                }
+            )
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    @staticmethod
     async def run_daily_maintenance(db: Optional[Any] = None) -> Dict[str, Any]:
         """
         运行每日维护任务
@@ -251,13 +303,17 @@ class MaintenanceScheduler:
         # 2. 清理错误日志（30 天）
         results['error_logs'] = await MaintenanceScheduler.cleanup_error_logs(30, db=db)
 
-        # 3. 获取统计信息
+        # 3. WS-25: Purge expired soft-deleted records
+        results['expired_soft_deletes'] = await MaintenanceScheduler.cleanup_expired_soft_deletes(db=db)
+
+        # 4. 获取统计信息
         results['stats'] = await MaintenanceScheduler.get_log_tables_stats(db=db)
-        
+
         # 计算总删除数
         total_deleted = (
             results['user_creation_logs'].get('deleted_count', 0) +
-            results['error_logs'].get('deleted_count', 0)
+            results['error_logs'].get('deleted_count', 0) +
+            results['expired_soft_deletes'].get('total_purged', 0)
         )
         
         logger.info(

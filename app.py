@@ -199,15 +199,28 @@ async def lifespan(app: FastAPI):
     # ===== STARTUP =====
     logger.info(f"📅 Instance {INSTANCE_ID} starting...")
 
-    # WS-13 (SUP-7): Fail-fast — verify critical environment variables
-    from config import REQUIRED_ENV_VARS
-    missing_vars = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
-    if missing_vars:
+    # WS-13 (SUP-7) + WS-25 (SECRET-01): Validate environment variables at startup
+    from config import validate_secrets_at_startup, IS_PRODUCTION
+    secrets_result = validate_secrets_at_startup()
+
+    if not secrets_result["required_ok"]:
         raise RuntimeError(
-            f"Missing critical environment variables: {', '.join(missing_vars)}. "
+            f"Missing critical environment variables: {', '.join(secrets_result['missing_required'])}. "
             f"Server cannot start without these."
         )
-    logger.info(f"✅ All {len(REQUIRED_ENV_VARS)} critical env vars present")
+    logger.info(f"✅ All critical env vars present")
+
+    # WS-25: Warn about missing recommended secrets (especially important in production)
+    if secrets_result["missing_recommended"]:
+        level = "critical" if IS_PRODUCTION else "warning"
+        msg = (
+            f"Missing recommended environment variables: {', '.join(secrets_result['missing_recommended'])}. "
+            f"Some features (auth/payments/email) may not work."
+        )
+        if IS_PRODUCTION:
+            logger.critical(f"🚨 PRODUCTION: {msg}")
+        else:
+            logger.warning(f"⚠️ {msg}")
 
     # v3.28: Initialize async database client
     from core.database import get_async_db_client
