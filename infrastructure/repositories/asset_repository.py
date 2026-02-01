@@ -687,6 +687,70 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
 
         return result.data or []
 
+    # WS-24: Cross-system reference checking for data integrity
+    @retry_on_network_error()
+    async def get_active_references(self, asset_id: str) -> Dict[str, Any]:
+        """
+        Check if an asset has active cross-system references.
+
+        Checks:
+        1. Active marketplace listings (resource_type='asset', resource_id=asset_id)
+        2. Featured in other listings (featured_asset_ids array contains asset_id)
+
+        FK CASCADE tables (user_asset_tags, user_recent_assets, user_favorite_assets)
+        are handled automatically by the database and don't need checking.
+
+        Args:
+            asset_id: Asset UUID to check
+
+        Returns:
+            Dict with reference details:
+            {
+                "has_references": bool,
+                "marketplace_listings": List[Dict],  # active listings for this asset
+                "featured_in_listings": int,  # count of listings featuring this asset
+            }
+        """
+        references: Dict[str, Any] = {
+            "has_references": False,
+            "marketplace_listings": [],
+            "featured_in_listings": 0,
+        }
+
+        try:
+            # 1. Check active marketplace listings where this asset is the listed item
+            listings_result = await self.client.table("marketplace_listings").select(
+                "id, title, moderation_status, seller_id"
+            ).eq("resource_id", asset_id).eq(
+                "resource_type", "asset"
+            ).eq("is_deleted", False).execute()
+
+            active_listings = listings_result.data or []
+            if active_listings:
+                references["marketplace_listings"] = active_listings
+                references["has_references"] = True
+
+            # 2. Check if asset is featured in other listings (featured_asset_ids array)
+            # Use cs (contains) operator for array column
+            featured_result = await self.client.table("marketplace_listings").select(
+                "id", count="exact"
+            ).contains("featured_asset_ids", [asset_id]).eq(
+                "is_deleted", False
+            ).execute()
+
+            featured_count = featured_result.count or 0
+            if featured_count > 0:
+                references["featured_in_listings"] = featured_count
+                references["has_references"] = True
+
+        except Exception as e:
+            logger.warning(f"[AssetRepo] Failed to check references for asset {asset_id}: {e}")
+            # On error, assume references exist to prevent accidental data loss
+            references["has_references"] = True
+            references["error"] = str(e)
+
+        return references
+
     @retry_on_network_error()
     async def get_starred(
         self,

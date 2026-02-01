@@ -619,7 +619,11 @@ class AssetsService:
         permanent: bool = False
     ) -> Dict[str, str]:
         """
-        Delete asset (soft or permanent).
+        Delete asset (soft or permanent) with cross-system reference protection.
+
+        WS-24: Before permanent delete, checks for active marketplace listings.
+        If the asset has active references, it falls back to soft-delete with
+        a 30-day recovery window to prevent orphaned references.
 
         Args:
             asset_id: Asset ID
@@ -627,14 +631,34 @@ class AssetsService:
             permanent: If True, permanently delete; otherwise soft delete
 
         Returns:
-            Dict with status, action, asset_id
+            Dict with status, action, asset_id, and optional warning
 
         Raises:
             AssetNotFoundException: If asset not found or not owned by user
         """
+        warning = None
+
         if permanent:
-            result = await self.repository.permanently_hide_asset(asset_id, user_id)
-            action = "permanently deleted"
+            # WS-24: Check cross-system references before permanent delete
+            refs = await self.repository.get_active_references(asset_id)
+            if refs["has_references"]:
+                # Downgrade to soft-delete to protect referencing systems
+                logger.warning(
+                    f"[AssetsService] Asset {asset_id} has active references "
+                    f"(listings={len(refs.get('marketplace_listings', []))}, "
+                    f"featured_in={refs.get('featured_in_listings', 0)}). "
+                    f"Downgrading to soft-delete with 30-day protection."
+                )
+                result = await self.repository.soft_delete_asset(asset_id, user_id)
+                action = "moved to trash (has active references)"
+                warning = (
+                    "Asset has active marketplace references. "
+                    "Moved to trash instead of permanent deletion. "
+                    "Remove marketplace listings first, then retry permanent delete."
+                )
+            else:
+                result = await self.repository.permanently_hide_asset(asset_id, user_id)
+                action = "permanently deleted"
         else:
             result = await self.repository.soft_delete_asset(asset_id, user_id)
             action = "moved to trash"
@@ -642,7 +666,10 @@ class AssetsService:
         if not result:
             raise AssetNotFoundException(asset_id=asset_id)
 
-        return {"status": "ok", "action": action, "asset_id": asset_id}
+        response: Dict[str, str] = {"status": "ok", "action": action, "asset_id": asset_id}
+        if warning:
+            response["warning"] = warning
+        return response
 
     async def increment_asset_usage(
         self,
