@@ -27,19 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 def _run_async(coro):
-    """Run async coroutine in sync context."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    
-    if loop and loop.is_running():
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, coro)
-            return future.result()
-    else:
-        return asyncio.run(coro)
+    """WS-13: Run async coroutine in sync context.
+
+    Uses asyncio.run() which creates a new event loop.
+    For async callers (FastAPI endpoints), use the _async versions directly.
+    """
+    return asyncio.run(coro)
 
 
 def enhance_prompt(

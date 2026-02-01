@@ -14,7 +14,19 @@ from typing import Optional, Dict
 from datetime import datetime, timezone
 
 from .core import supabase, logger
-from .crud import get_experiment
+
+
+def _get_experiment_sync(experiment_key: str) -> Optional[Dict]:
+    """WS-13: Sync helper to fetch experiment using sync supabase client."""
+    if not supabase:
+        return None
+    try:
+        result = supabase.table("experiments").select("*").eq(
+            "experiment_key", experiment_key
+        ).single().execute()
+        return result.data
+    except Exception:
+        return None
 
 
 def track_exposure(
@@ -38,7 +50,7 @@ def track_exposure(
     if not supabase:
         return False
 
-    experiment = get_experiment(experiment_key)
+    experiment = _get_experiment_sync(experiment_key)
     if not experiment:
         return False
 
@@ -90,7 +102,7 @@ def track_conversion(
     if not supabase:
         return False
 
-    experiment = get_experiment(experiment_key)
+    experiment = _get_experiment_sync(experiment_key)
     if not experiment:
         return False
 

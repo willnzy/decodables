@@ -10,12 +10,38 @@ Changes in v3.25:
 """
 
 import math
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime, timezone
 from collections import defaultdict
 
 from .core import supabase, logger
-from .crud import get_experiment, list_experiments
+
+
+def _get_experiment_sync(experiment_key: str) -> Optional[Dict]:
+    """WS-13: Sync helper to fetch experiment using sync supabase client."""
+    if not supabase:
+        return None
+    try:
+        result = supabase.table("experiments").select("*").eq(
+            "experiment_key", experiment_key
+        ).single().execute()
+        return result.data
+    except Exception:
+        return None
+
+
+def _list_experiments_sync(status: str = None, limit: int = 1000) -> Tuple[List[Dict], int]:
+    """WS-13: Sync helper to list experiments using sync supabase client."""
+    if not supabase:
+        return ([], 0)
+    try:
+        query = supabase.table("experiments").select("*", count="exact")
+        if status:
+            query = query.eq("status", status)
+        result = query.limit(limit).execute()
+        return (result.data or [], result.count or len(result.data or []))
+    except Exception:
+        return ([], 0)
 
 
 def aggregate_experiment_results(experiment_key: str = None) -> bool:
@@ -33,10 +59,11 @@ def aggregate_experiment_results(experiment_key: str = None) -> bool:
 
     try:
         if experiment_key:
-            experiments = [get_experiment(experiment_key)]
+            # WS-13: Use sync helper (analysis runs in sync context with sync supabase)
+            experiments = [_get_experiment_sync(experiment_key)]
         else:
-            # v3.31: EXP-HIGH-5 - Fixed tuple unpacking (list_experiments now returns tuple)
-            experiments, _ = list_experiments(status="running")
+            # WS-13: Use sync helper (analysis runs in sync context with sync supabase)
+            experiments, _ = _list_experiments_sync(status="running")
 
         for exp in experiments:
             if not exp:
@@ -216,7 +243,8 @@ def get_experiment_results(
     if not supabase:
         return None
 
-    experiment = get_experiment(experiment_key)
+    # WS-13: Use sync helper (analysis runs in sync context with sync supabase)
+    experiment = _get_experiment_sync(experiment_key)
     if not experiment:
         return None
 

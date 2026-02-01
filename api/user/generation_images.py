@@ -128,8 +128,8 @@ async def gen_images(
     # Get timezone
     tz = await get_request_timezone(request, user_id=user.user_id)
 
-    # Enhance prompts if needed
-    enhancement_data = enhance_prompts(
+    # WS-13: await async enhance_prompts (was sync, now native async)
+    enhancement_data = await enhance_prompts(
         prompts=req.prompts,
         theme=req.theme,
         character=req.character,
@@ -232,8 +232,8 @@ async def gen_images_async(
     generation_mode = validate_generation_mode(req.generation_mode)
     creativity_level = validate_creativity_level(req.creativity_level)
 
-    # Enhance prompts if needed
-    enhancement_data = enhance_prompts(
+    # WS-13: await async enhance_prompts (was sync, now native async)
+    enhancement_data = await enhance_prompts(
         prompts=req.prompts,
         theme=req.theme,
         character=req.character,

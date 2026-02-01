@@ -129,21 +129,9 @@ def generate_story_json(
         return response
     
     try:
-        # 在同步函数中执行异步代码
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        
-        if loop and loop.is_running():
-            # 如果已经在异步上下文中，创建新的任务
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, _generate_async())
-                response = future.result()
-        else:
-            # 否则直接运行
-            response = asyncio.run(_generate_async())
+        # WS-13: Use asyncio.run() for sync context.
+        # For async callers (FastAPI endpoints), use generate_story_json_async() directly.
+        response = asyncio.run(_generate_async())
         
         # 处理响应
         if not response.success:

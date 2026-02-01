@@ -13,7 +13,19 @@ from typing import Optional, Dict, List
 from datetime import datetime, timezone
 
 from .core import supabase, logger, calculate_variant
-from .crud import get_experiment
+
+
+def _get_experiment_sync(experiment_key: str) -> Optional[Dict]:
+    """WS-13: Sync helper to fetch experiment using sync supabase client."""
+    if not supabase:
+        return None
+    try:
+        result = supabase.table("experiments").select("*").eq(
+            "experiment_key", experiment_key
+        ).single().execute()
+        return result.data
+    except Exception:
+        return None
 
 
 def assign_variant(
@@ -35,7 +47,7 @@ def assign_variant(
     if not supabase:
         return None
     
-    experiment = get_experiment(experiment_key)
+    experiment = _get_experiment_sync(experiment_key)
     if not experiment:
         logger.warning(f"[Assignment] Experiment not found: {experiment_key}")
         return None

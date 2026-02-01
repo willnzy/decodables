@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Optional, List, Dict, Any
 
-from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt
+from shared.ai.prompt_enhancer import enhance_prompt_async, enhance_asset_prompt_async
 from domains.platform.config_service import ConfigService
 from infrastructure.repositories.config_repository import SupabaseConfigRepository
 from core.database import get_async_db_client
@@ -210,7 +210,7 @@ async def get_text_generation_cost() -> int:
     return EMERGENCY_FALLBACK_COST_TEXT
 
 
-def enhance_prompts(
+async def enhance_prompts(
     prompts: List[str],
     theme: Optional[str] = None,
     character: Optional[str] = None,
@@ -226,8 +226,10 @@ def enhance_prompts(
     enhance_enabled: bool = False
 ) -> Dict[str, Any]:
     """
+    WS-13: Converted to async, calls async AI services directly.
+
     Enhance prompts using AI enhancement.
-    
+
     Returns:
         Dict with:
         - prompts: List of (possibly enhanced) prompts
@@ -237,7 +239,7 @@ def enhance_prompts(
     # Try theme-based enhancement first
     if theme:
         try:
-            result = enhance_prompt(
+            result = await enhance_prompt_async(
                 theme=theme,
                 character=character,
                 style=style,
@@ -253,11 +255,11 @@ def enhance_prompts(
             }
         except Exception as e:
             logger.warning(f"Prompt enhancement failed: {e}")
-    
+
     # Try 5W1H enhancement
     if who and enhance_enabled:
         try:
-            result = enhance_asset_prompt(
+            result = await enhance_asset_prompt_async(
                 who=who,
                 what=what,
                 where=where,
@@ -275,7 +277,7 @@ def enhance_prompts(
             }
         except Exception as e:
             logger.warning(f"5W1H enhancement failed: {e}")
-    
+
     return {"prompts": prompts, "enhanced": False, "result": None}
 
 
