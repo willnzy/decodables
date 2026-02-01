@@ -11,6 +11,7 @@ All listing operations must go through this aggregate.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
+import re
 
 from ..value_objects import (
     ListingId,
@@ -22,6 +23,20 @@ from ..value_objects import (
     ListingMetadata,
     ListingStats,
 )
+
+
+def _sanitize_text(text: Optional[str]) -> Optional[str]:
+    """
+    WS-02: Strip HTML tags from user-provided text to prevent XSS.
+    Uses regex-based tag removal (no allowed tags for plain text fields).
+    """
+    if text is None:
+        return None
+    # Remove HTML tags
+    cleaned = re.sub(r'<[^>]+>', '', text)
+    # Collapse multiple whitespace
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
 
 
 @dataclass
@@ -89,12 +104,16 @@ class Listing:
         """
         listing_id = ListingId.generate()
 
+        # WS-02: Sanitize user-provided text fields
+        safe_title = _sanitize_text(title) or title
+        safe_description = _sanitize_text(description)
+
         return cls(
             listing_id=str(listing_id),
             seller_id=seller_id,
             resource_type=resource_type,
             category=category,
-            metadata=ListingMetadata(title=title, description=description),
+            metadata=ListingMetadata(title=safe_title, description=safe_description),
             source=source,
             price_type=price_type,
             credit_price=credit_price if price_type == PriceType.CREDITS else 0,
@@ -199,12 +218,13 @@ class Listing:
             raise ValueError("Cannot edit suspended listing. Please contact support.")
         # DRAFT is editable without re-moderation (is_editable = True)
 
+        # WS-02: Sanitize user-provided text fields
         if title is not None:
-            self.metadata.title = title
+            self.metadata.title = _sanitize_text(title) or title
         if description is not None:
-            self.metadata.description = description
+            self.metadata.description = _sanitize_text(description)
         if tags is not None:
-            self.metadata.tags = tags
+            self.metadata.tags = [_sanitize_text(t) or t for t in tags]
         if preview_url is not None:
             self.metadata.preview_url = preview_url
             # Also set thumbnail_url to the same value for marketplace display

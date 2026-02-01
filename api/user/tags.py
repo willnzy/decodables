@@ -94,14 +94,17 @@ async def verify_asset_ownership(asset_id: str, user_id: str) -> None:
 # ==========================================
 
 class CreateTagRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=50)
+    # WS-02: Tag name allows alphanumeric, CJK, spaces, hyphens, underscores, periods
+    # Blocks HTML/script injection characters: < > " ' / \ ; & etc.
+    name: str = Field(..., min_length=1, max_length=50, pattern=r"^[\w\s\-\.\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]+$")
     color: str = Field(default="gray", pattern=r"^(gray|red|orange|yellow|green|blue|purple|pink)$")
     group_name: Optional[str] = Field(default=None, max_length=50)
     icon: Optional[str] = Field(default=None, max_length=10)
 
 
 class UpdateTagRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    # WS-02: Same validation as CreateTagRequest
+    name: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=r"^[\w\s\-\.\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]+$")
     color: Optional[str] = Field(default=None, pattern=r"^(gray|red|orange|yellow|green|blue|purple|pink)$")
     group_name: Optional[str] = Field(default=None, max_length=50)
     icon: Optional[str] = Field(default=None, max_length=10)

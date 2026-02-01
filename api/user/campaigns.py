@@ -347,13 +347,35 @@ async def dismiss_notification(
 # - _check_usage_limit() → CampaignService._check_usage_limit()
 
 
+def _sanitize_cta_url(url: str) -> str:
+    """
+    WS-02: Validate cta_url scheme whitelist.
+    Only allows https://, http://, and relative paths.
+    Blocks javascript:, data:, vbscript:, etc.
+    """
+    trimmed = url.strip().lower()
+    # Allow relative URLs (start with /)
+    if trimmed.startswith("/"):
+        return url.strip()
+    # Allow https and http
+    if trimmed.startswith("https://") or trimmed.startswith("http://"):
+        return url.strip()
+    # Default fallback for unsafe URLs
+    logger.warning(f"[Campaigns] Blocked unsafe cta_url: {url[:80]}")
+    return "/pricing"
+
+
 def _build_notification_from_data(campaign: CampaignData, channel: str, can_claim: bool = True) -> NotificationData:
     """
     Build notification data structure for a channel from CampaignData.
 
     v2.2.0: New helper for CampaignData (replaces dict-based _build_notification)
+    WS-02: Added cta_url scheme validation
     """
     config = campaign.notification_config
+
+    # WS-02: Sanitize text fields and validate URL scheme
+    raw_cta_url = config.get("cta_url", "/pricing")
 
     return NotificationData(
         campaign_id=campaign.id,
@@ -362,7 +384,7 @@ def _build_notification_from_data(campaign: CampaignData, channel: str, can_clai
         title=config.get("title", campaign.name),
         message=config.get("message", campaign.description or ""),
         cta_text=config.get("cta_text", "Learn More"),
-        cta_url=config.get("cta_url", "/pricing"),
+        cta_url=_sanitize_cta_url(raw_cta_url),
         show_once=config.get("show_once", False),
         can_claim=can_claim,
     )
