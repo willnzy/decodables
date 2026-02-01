@@ -416,6 +416,31 @@ async def respond_to_report(
             reason=admin_response
         )
 
+        # WS-21: Notify reporter that their report has been addressed
+        reporter_id = result.get("reporter_id")
+        if reporter_id:
+            try:
+                from domains.platform.notifications.service import send_to_user
+                status_display = {
+                    "reviewed": "reviewed",
+                    "resolved": "resolved",
+                    "dismissed": "dismissed",
+                }.get(new_status, new_status)
+
+                await send_to_user(
+                    user_id=reporter_id,
+                    title="Your report has been processed",
+                    content=(
+                        f"Your content report has been {status_display} by our team."
+                        + (f" Response: {admin_response}" if admin_response else "")
+                    ),
+                    notification_type="moderation",
+                    admin_id=admin_id,
+                )
+            except Exception as e:
+                # Notification failure should not block the report response
+                logger.warning(f"[Moderation] Failed to notify reporter {reporter_id}: {e}")
+
         return result
 
     except Exception as e:

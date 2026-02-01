@@ -210,6 +210,23 @@ class SupportService:
             "email": user_email,
         })
 
+        # WS-21: Send in-app notification confirming ticket receipt
+        try:
+            from domains.platform.notifications.service import send_to_user
+            await send_to_user(
+                user_id=user_id,
+                title="Support ticket received",
+                content=(
+                    "We've received your support request and will get back to you shortly. "
+                    "You can track your ticket status in your account."
+                ),
+                notification_type="support",
+                admin_id="system",
+            )
+        except Exception as e:
+            # Notification failure should not block ticket creation
+            logger.warning(f"[Support] Failed to send ticket confirmation to {user_id}: {e}")
+
         return {"status": "ok"}
 
     async def process_ai_chat(
