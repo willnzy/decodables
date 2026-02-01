@@ -169,6 +169,10 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at
 CREATE INDEX IF NOT EXISTS idx_analytics_events_user_id
     ON analytics_events(user_id);
 
+-- WS-11: 索引优化 — event_type + created_at 复合索引 (按类型统计/筛选)
+CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created
+    ON analytics_events (event_type, created_at);
+
 
 -- ----------------------------------------------------------------------------
 -- 6. clerk_webhook_events
@@ -648,6 +652,15 @@ CREATE TRIGGER trg_notifications_sync_type
     BEFORE INSERT OR UPDATE ON notifications
     FOR EACH ROW
     EXECUTE FUNCTION sync_notification_type();
+
+-- WS-11: 索引优化 — 未读通知查询 (partial index, 只索引未读)
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
+    ON notifications (user_id)
+    WHERE is_read = false;
+
+-- WS-11: 索引优化 — 通知列表按时间倒序
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created
+    ON notifications (user_id, created_at DESC);
 
 
 -- ----------------------------------------------------------------------------
@@ -1267,6 +1280,10 @@ CREATE TABLE IF NOT EXISTS referrals (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(referrer_id, referee_id)
 );
+
+-- WS-11: 索引优化 — referral_code 唯一查找
+CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_code
+    ON referrals (referral_code);
 
 
 -- ----------------------------------------------------------------------------
