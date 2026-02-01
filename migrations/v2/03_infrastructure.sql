@@ -880,7 +880,8 @@ CREATE OR REPLACE FUNCTION process_credit_purchase(
     p_payment_amount INT,      -- 金额（美分）
     p_currency TEXT,
     p_session_id TEXT,
-    p_idempotency_key TEXT DEFAULT NULL
+    p_idempotency_key TEXT DEFAULT NULL,
+    p_payment_method TEXT DEFAULT 'stripe'  -- WS-12: Parameterize payment method
 )
 RETURNS TABLE (
     success BOOLEAN,
@@ -957,7 +958,7 @@ BEGIN
     ) VALUES (
         p_user_id,
         'credit_purchase',
-        'stripe',
+        p_payment_method,  -- WS-12: Use parameterized payment method
         p_payment_amount / 100.0,  -- 转换为美元
         p_credits_amount,
         UPPER(p_currency),

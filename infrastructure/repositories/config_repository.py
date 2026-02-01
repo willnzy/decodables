@@ -102,6 +102,23 @@ class SupabaseConfigRepository(IConfigRepository):
         return {row["key"]: row["value"] for row in (result.data or [])}
 
     @retry_on_network_error()
+    async def get_by_prefix(self, prefix: str) -> Dict[str, str]:
+        """
+        WS-12: Get all configs matching a key prefix in a single query.
+
+        Args:
+            prefix: Key prefix (e.g., "tier." fetches all tier.* configs)
+
+        Returns:
+            Dict mapping key to value
+        """
+        result = await self.client.table("system_configs").select("key, value").like(
+            "key", f"{prefix}%"
+        ).eq("is_active", True).execute()
+
+        return {row["key"]: row["value"] for row in (result.data or [])}
+
+    @retry_on_network_error()
     async def get_paginated(
         self,
         group: Optional[str] = None,

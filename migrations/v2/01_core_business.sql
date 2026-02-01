@@ -1869,6 +1869,7 @@ RETURNS TABLE(
 ) 
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = 'public'
 AS $$
 DECLARE
     v_existing_profile profiles%ROWTYPE;
@@ -3338,10 +3339,11 @@ BEGIN
       AND (p_workspace_id IS NULL OR workspace_id = p_workspace_id);
 
     -- Folder count (workspace-specific)
+    -- WS-12: folders table has no is_deleted column, removed invalid filter
     IF p_workspace_id IS NOT NULL THEN
         SELECT COUNT(*)::INTEGER INTO v_folder_count
         FROM folders
-        WHERE workspace_id = p_workspace_id AND is_deleted = false;
+        WHERE workspace_id = p_workspace_id;
     ELSE
         v_folder_count := 0;
     END IF;
@@ -3360,6 +3362,42 @@ $$ LANGUAGE plpgsql STABLE
 SET search_path = 'public';
 
 COMMENT ON FUNCTION get_dashboard_stats IS 'WS3: Dashboard 统计信息 (项目/素材/文件夹/收藏/状态)';
+
+
+-- WS-12: RPC — 用户增长统计 (替代 .limit(100000) + Python 聚合)
+CREATE OR REPLACE FUNCTION rpc_user_growth_stats(
+    p_start_date TIMESTAMPTZ,
+    p_end_date TIMESTAMPTZ
+)
+RETURNS TABLE(date TEXT, count BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        to_char(p.created_at, 'YYYY-MM-DD') AS date,
+        COUNT(*)::BIGINT AS count
+    FROM profiles p
+    WHERE p.created_at >= p_start_date
+      AND p.created_at <= p_end_date
+    GROUP BY to_char(p.created_at, 'YYYY-MM-DD')
+    ORDER BY date;
+END;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
+
+
+-- WS-12: RPC — Tier 分布统计 (替代 .limit(100000) + Python 聚合)
+CREATE OR REPLACE FUNCTION rpc_tier_distribution()
+RETURNS TABLE(tier TEXT, count BIGINT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        COALESCE(p.tier, 't1') AS tier,
+        COUNT(*)::BIGINT AS count
+    FROM profiles p
+    GROUP BY COALESCE(p.tier, 't1');
+END;
+$$ LANGUAGE plpgsql STABLE
+SET search_path = 'public';
 
 
 -- ============================================================================

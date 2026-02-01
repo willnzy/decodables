@@ -278,15 +278,22 @@ class SupabaseAdminStatsRepository:
         if not end_date:
             end_date = datetime.now(timezone.utc).isoformat()
 
-        # STAT-MEDIUM-6: Added limit to prevent OOM
-        result = await self.client.table("profiles").select("created_at").gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(100000).execute()
-
-        stats = {}
-        for row in (result.data or []):
-            date_str = row["created_at"][:10]
-            stats[date_str] = stats.get(date_str, 0) + 1
-
-        return [{"date": k, "count": v} for k, v in sorted(stats.items())]
+        # WS-12: Use RPC instead of .limit(100000) + Python aggregation
+        try:
+            result = await self.client.rpc(
+                "rpc_user_growth_stats",
+                {"p_start_date": start_date, "p_end_date": end_date}
+            ).execute()
+            return [{"date": row["date"], "count": row["count"]} for row in (result.data or [])]
+        except Exception as e:
+            logger.warning(f"[AdminRepo] rpc_user_growth_stats failed, falling back: {e}")
+            # Graceful fallback to client-side aggregation
+            result = await self.client.table("profiles").select("created_at").gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(100000).execute()
+            stats = {}
+            for row in (result.data or []):
+                date_str = row["created_at"][:10]
+                stats[date_str] = stats.get(date_str, 0) + 1
+            return [{"date": k, "count": v} for k, v in sorted(stats.items())]
 
     @retry_on_network_error()
     async def admin_get_tier_distribution(self) -> Dict[str, Any]:
@@ -297,21 +304,25 @@ class SupabaseAdminStatsRepository:
         STAT-MEDIUM-9: Added .limit(100000) for OOM protection.
         Performance: 3x faster (1 DB roundtrip instead of 3).
         """
-        result = await self.client.table("profiles").select("tier").limit(100000).execute()
-
-        distribution = {"t1": 0, "t2": 0, "t3": 0}
-        total_fetched = len(result.data or [])
-
-        for row in (result.data or []):
-            tier = row.get("tier", "t1")
-            if tier in distribution:
-                distribution[tier] += 1
-
-        # Add metadata about data completeness
-        distribution["_total_fetched"] = total_fetched
-        distribution["_is_truncated"] = total_fetched >= 100000
-
-        return distribution
+        # WS-12: Use RPC instead of .limit(100000) + Python aggregation
+        try:
+            result = await self.client.rpc("rpc_tier_distribution", {}).execute()
+            distribution = {"t1": 0, "t2": 0, "t3": 0}
+            for row in (result.data or []):
+                tier = row.get("tier", "t1")
+                if tier in distribution:
+                    distribution[tier] = row.get("count", 0)
+            return distribution
+        except Exception as e:
+            logger.warning(f"[AdminRepo] rpc_tier_distribution failed, falling back: {e}")
+            # Graceful fallback
+            result = await self.client.table("profiles").select("tier").limit(100000).execute()
+            distribution = {"t1": 0, "t2": 0, "t3": 0}
+            for row in (result.data or []):
+                tier = row.get("tier", "t1")
+                if tier in distribution:
+                    distribution[tier] += 1
+            return distribution
 
     @retry_on_network_error()
     async def admin_get_project_stats(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:

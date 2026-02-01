@@ -160,22 +160,32 @@ async def send_broadcast(
     users = users_result.data or []
     user_ids = [u["id"] for u in users]
 
-    # Create notifications for all users
-    notifications = []
-    for user_id in user_ids:
-        notification = await repo.create_notification(
-            user_id=user_id,
-            title=title,
-            message=content,
-            notification_type="system"
-        )
-        if notification:
-            notifications.append(notification)
+    # WS-12: Batch INSERT instead of N+1 loop
+    notification_count = 0
+    if user_ids:
+        batch_size = 500  # Process in chunks to avoid oversized requests
+        for i in range(0, len(user_ids), batch_size):
+            batch = user_ids[i:i + batch_size]
+            rows = [
+                {
+                    "user_id": uid,
+                    "title": title,
+                    "message": content,
+                    "notification_type": "system",
+                    "type": "system",
+                }
+                for uid in batch
+            ]
+            try:
+                result_batch = await db_client.table("notifications").insert(rows).execute()
+                notification_count += len(result_batch.data or [])
+            except Exception as e:
+                logger.error(f"[Notifications] Batch insert failed for chunk {i}: {e}")
 
     result = {
         "target_group": target_group,
         "user_count": len(user_ids),
-        "notification_count": len(notifications),
+        "notification_count": notification_count,
         "title": title
     }
 

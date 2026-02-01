@@ -172,24 +172,30 @@ async def get_all_tiers(
 
         logger.info(f"[Admin {admin.get('id')}] Queried all tier configurations")
 
+        # WS-12: Batch fetch all tier.* configs in 1 query (was ~20 queries)
+        all_tier_configs = await config_repo.get_by_prefix("tier.")
+
         tiers = []
         for tier_code in sorted(VALID_TIERS):
-            # Get display name
-            display_name = await tier_service.get_tier_display_name(tier_code)
+            # Get display name from batch-fetched configs
+            display_name = all_tier_configs.get(
+                f"tier.{tier_code}.display_name",
+                tier_code.upper()
+            )
 
             # Get tier config (monthly_credits, max_projects, features, etc.)
             tier_config = await tier_service.get_tier_config(tier_code)
 
-            # Get prices from config (with fallback to defaults)
+            # Get prices from batch-fetched configs (with fallback to defaults)
             price_keys = TIER_PRICE_KEYS.get(tier_code, {})
             try:
-                price_original_str = await config_repo.get_by_key(
+                price_original_str = all_tier_configs.get(
                     price_keys.get("original", f"tier.{tier_code}.price_original"),
-                    default_value=str(DEFAULT_PRICES.get(tier_code, {}).get("original", 0.0))
+                    str(DEFAULT_PRICES.get(tier_code, {}).get("original", 0.0))
                 )
-                price_current_str = await config_repo.get_by_key(
+                price_current_str = all_tier_configs.get(
                     price_keys.get("current", f"tier.{tier_code}.price_current"),
-                    default_value=str(DEFAULT_PRICES.get(tier_code, {}).get("current", 0.0))
+                    str(DEFAULT_PRICES.get(tier_code, {}).get("current", 0.0))
                 )
                 price_original = float(price_original_str)
                 price_current = float(price_current_str)
@@ -197,15 +203,12 @@ async def get_all_tiers(
                 price_original = DEFAULT_PRICES.get(tier_code, {}).get("original", 0.0)
                 price_current = DEFAULT_PRICES.get(tier_code, {}).get("current", 0.0)
 
-            # Get enabled status (default True for all except t4)
-            try:
-                enabled_str = await config_repo.get_by_key(
-                    f"tier.{tier_code}.enabled",
-                    default_value="true" if tier_code != "t4" else "false"
-                )
-                enabled = enabled_str.lower() in ("true", "1", "yes")
-            except Exception:
-                enabled = tier_code != "t4"
+            # Get enabled status from batch-fetched configs
+            enabled_str = all_tier_configs.get(
+                f"tier.{tier_code}.enabled",
+                "true" if tier_code != "t4" else "false"
+            )
+            enabled = enabled_str.lower() in ("true", "1", "yes")
 
             tiers.append(TierConfigResponse(
                 tier_code=tier_code,
