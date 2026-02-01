@@ -98,8 +98,8 @@ class TestEvaluationRequest(BaseModel):
 
 # ==================== 验证函数 ====================
 
-# v1.2: 有效的 Tier 代码
-VALID_TIERS = {"t1", "t2", "t3", "t4"}
+# WS-17: Use canonical VALID_TIERS from identity constants (was duplicated here)
+from domains.identity.constants import VALID_TIERS
 
 
 def validate_allowed_tiers(tiers: Optional[List[str]]) -> None:

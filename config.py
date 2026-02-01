@@ -107,7 +107,9 @@ SELLER_REVENUE_PERCENT = 90  # Seller gets 90%, platform gets 10%
 # This is kept for backward compatibility but should be migrated to system_configs
 TRIAL_DAYS = 30  # Default: Free users get 30-day trial with full access
 
-# Tiers (使用 t1/t2/t3 内部命名，display_name 从 database 读取)
+# WS-17: Tier constants — canonical source: domains/identity/constants.py
+# These are kept here for backward compatibility but should not be imported directly.
+# Use: from domains.identity.constants import VALID_TIERS, TIER_T1, TIER_T2, TIER_T3
 VALID_TIERS = ["t1", "t2", "t3"]
 MEMBER_TIERS = ["t2", "t3"]  # 付费会员
 

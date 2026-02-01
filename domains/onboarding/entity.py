@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+from domains.identity.constants import TIER_T1, TIER_T2, TIER_T3
+
 
 class OnboardingStepEntity(BaseModel):
     """
@@ -33,7 +35,8 @@ class OnboardingStepEntity(BaseModel):
     description: Optional[str] = None
     step_order: int
     is_required: bool = True
-    target_tiers: List[str] = Field(default_factory=lambda: ["t1", "t2", "t3"])
+    # WS-17: Use tier constants instead of hardcoded strings
+    target_tiers: List[str] = Field(default_factory=lambda: [TIER_T1, TIER_T2, TIER_T3])
     config: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     created_at: datetime

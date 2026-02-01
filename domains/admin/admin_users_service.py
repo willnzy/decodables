@@ -70,11 +70,8 @@ class AnalyticsRepositoryProtocol(Protocol):
     async def get_user_env_stats(self, user_id: str, limit: int = 100) -> Dict: ...
 
 
-# =============================================================================
-# Constants
-# =============================================================================
-
-VALID_TIERS = {"t1", "t2", "t3"}
+# WS-17: Use canonical VALID_TIERS from identity constants (was duplicated here)
+from domains.identity.constants import VALID_TIERS
 
 
 class AdminUsersService:
