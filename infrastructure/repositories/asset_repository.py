@@ -344,8 +344,11 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
         Returns:
             Restored asset dict
         """
+        # WS-10: Clear deletion fields on restore for clean state
         result = await self.client.table("assets").update({
-            "is_deleted": False
+            "is_deleted": False,
+            "deleted_at": None,
+            "recovery_expires_at": None,
         }).eq("id", asset_id).eq("user_id", user_id).eq("is_deleted", True).execute()
 
         return result.data[0] if result.data else None

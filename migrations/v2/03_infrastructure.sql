@@ -683,10 +683,12 @@ BEGIN
     END IF;
 
     -- 幂等性检查: 防止重复扣除
+    -- WS-10: Fixed suffix mismatch — check uses '_monthly' to match actual INSERT suffix
     IF p_idempotency_key IS NOT NULL THEN
         IF EXISTS (
             SELECT 1 FROM credit_transactions
-            WHERE idempotency_key = p_idempotency_key || '-deduct'
+            WHERE idempotency_key = p_idempotency_key || '_monthly'
+               OR idempotency_key = p_idempotency_key || '_permanent'
         ) THEN
             -- 返回已存在的交易结果
             SELECT credits_monthly, credits_permanent

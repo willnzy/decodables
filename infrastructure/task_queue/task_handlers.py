@@ -173,19 +173,35 @@ class ImageGenerationHandler:
         prompts: List[str],
         num_images: int
     ):
-        """Save generation records to database."""
+        """
+        Save generation records to database.
+
+        WS-10: Idempotent — checks batch_id+batch_index before inserting
+        to prevent duplicates on task retry.
+        """
         supabase = get_supabase()
         if not supabase:
             return
-        
+
         try:
+            # WS-10: Check if this batch was already saved (idempotency on retry)
+            existing = supabase.table("user_generations").select("batch_index").eq(
+                "batch_id", self.task_id
+            ).execute()
+            existing_indices = {r["batch_index"] for r in (existing.data or [])}
+
             for idx, url in enumerate(urls):
                 if not url:
                     continue
-                
+
+                # WS-10: Skip already-saved records (idempotent retry)
+                if idx in existing_indices:
+                    logger.info(f"[Task:{self.task_id}] Skipping duplicate record idx={idx}")
+                    continue
+
                 prompt_idx = idx // num_images if num_images > 1 else idx
                 prompt_used = prompts[prompt_idx] if prompt_idx < len(prompts) else prompts[0]
-                
+
                 # Save to assets table
                 supabase.table("assets").insert({
                     "user_id": self.user_id,
@@ -193,7 +209,7 @@ class ImageGenerationHandler:
                     "source": "ai_generated",
                     "description": prompt_used,
                 }).execute()
-                
+
                 # Save to user_generations table
                 supabase.table("user_generations").insert({
                     "user_id": self.user_id,
@@ -206,7 +222,7 @@ class ImageGenerationHandler:
                     "batch_index": idx,
                     "model_used": self.params.get("model", "flux-schnell"),
                 }).execute()
-                
+
         except Exception as e:
             logger.warning(f"[Task:{self.task_id}] Failed to save records: {e}")
     
