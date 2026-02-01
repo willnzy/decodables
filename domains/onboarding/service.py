@@ -83,12 +83,20 @@ class OnboardingService:
             logger.info(f"Step already started: {step_key}")
             return existing
 
-        # 创建进度记录
-        return await self.repository.create_progress(
-            user_id=user_id,
-            step_id=step.id,
-            status="pending"
-        )
+        # WS-04: Create with duplicate key handling.
+        # UNIQUE(user_id, step_id) prevents races if user double-clicks.
+        try:
+            return await self.repository.create_progress(
+                user_id=user_id,
+                step_id=step.id,
+                status="pending"
+            )
+        except Exception as e:
+            error_str = str(e).lower()
+            if "duplicate key" in error_str or "23505" in error_str:
+                logger.info(f"[Onboarding] Concurrent start handled: {step_key}")
+                return await self.repository.get_progress_by_step(user_id, step_key)
+            raise
 
     async def complete_step(
         self,
@@ -106,14 +114,20 @@ class OnboardingService:
         if not step:
             return None
 
-        # 获取或创建进度
+        # WS-04: Get or create progress with duplicate key handling
         progress = await self.repository.get_progress_by_step(user_id, step_key)
         if not progress:
-            progress = await self.repository.create_progress(
-                user_id=user_id,
-                step_id=step.id,
-                status="pending"
-            )
+            try:
+                progress = await self.repository.create_progress(
+                    user_id=user_id,
+                    step_id=step.id,
+                    status="pending"
+                )
+            except Exception as e:
+                if "duplicate key" in str(e).lower() or "23505" in str(e):
+                    progress = await self.repository.get_progress_by_step(user_id, step_key)
+                else:
+                    raise
 
         # 更新为完成
         return await self.repository.update_progress(
@@ -133,14 +147,20 @@ class OnboardingService:
         if not step:
             return None
 
-        # 获取或创建进度
+        # WS-04: Get or create progress with duplicate key handling
         progress = await self.repository.get_progress_by_step(user_id, step_key)
         if not progress:
-            progress = await self.repository.create_progress(
-                user_id=user_id,
-                step_id=step.id,
-                status="pending"
-            )
+            try:
+                progress = await self.repository.create_progress(
+                    user_id=user_id,
+                    step_id=step.id,
+                    status="pending"
+                )
+            except Exception as e:
+                if "duplicate key" in str(e).lower() or "23505" in str(e):
+                    progress = await self.repository.get_progress_by_step(user_id, step_key)
+                else:
+                    raise
 
         # 更新为跳过
         return await self.repository.update_progress(

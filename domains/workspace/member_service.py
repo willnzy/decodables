@@ -187,13 +187,32 @@ class MemberService:
             )
             raise ValueError("You are already a member of this workspace")
 
-        # Create member record
+        # WS-04: Create member record with race condition handling.
+        # UNIQUE(workspace_id, user_id) constraint prevents duplicates if two
+        # concurrent accept_invitation calls pass the "already a member" check.
         member = WorkspaceMember.create_member(
             workspace_id=invitation.workspace_id,
             user_id=user_id,
             invited_by=invitation.invited_by,
         )
-        created = await self._member_repo.create_member(member)
+        try:
+            created = await self._member_repo.create_member(member)
+        except Exception as e:
+            error_str = str(e).lower()
+            if "duplicate key" in error_str or "23505" in error_str:
+                # Concurrent accept won — this is fine, update invitation status
+                logger.info(
+                    f"[MemberService] Concurrent accept handled: "
+                    f"workspace={invitation.workspace_id}, user={user_id}"
+                )
+                await self._member_repo.update_invitation_status(
+                    invitation_id, "accepted", accepted_by=user_id
+                )
+                existing = await self._member_repo.get_member(invitation.workspace_id, user_id)
+                if existing:
+                    return existing
+                raise ValueError("You are already a member of this workspace")
+            raise
 
         # Update invitation status
         await self._member_repo.update_invitation_status(

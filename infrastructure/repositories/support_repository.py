@@ -91,26 +91,32 @@ class SupabaseSupportRepository:
         Returns:
             Created ticket data or None
         """
-        # Generate ticket_number since DB trigger may not exist
-        ticket_number = self._generate_ticket_number()
-
         # Use 'other' as default category (must match DB check_category constraint)
         # Valid: technical_issue, billing_question, feature_request, bug_report,
         #        account_issue, content_issue, payment_issue, other
         effective_category = category or "other"
 
-        result = await self.client.table("support_tickets").insert({
-            "user_id": user_id,
-            "ticket_number": ticket_number,
-            "subject": subject,
-            "description": message,  # Schema uses 'description' (NOT NULL)
-            "message": message,      # Also set 'message' for compatibility
-            "priority": priority,
-            "category": effective_category,
-            "status": "open",
-        }).execute()
+        # WS-04: Retry with new ticket_number on (rare) collision
+        for attempt in range(3):
+            ticket_number = self._generate_ticket_number()
+            try:
+                result = await self.client.table("support_tickets").insert({
+                    "user_id": user_id,
+                    "ticket_number": ticket_number,
+                    "subject": subject,
+                    "description": message,  # Schema uses 'description' (NOT NULL)
+                    "message": message,      # Also set 'message' for compatibility
+                    "priority": priority,
+                    "category": effective_category,
+                    "status": "open",
+                }).execute()
 
-        return result.data[0] if result.data else None
+                return result.data[0] if result.data else None
+            except Exception as e:
+                error_str = str(e).lower()
+                if ("duplicate key" in error_str or "23505" in error_str) and attempt < 2:
+                    continue  # Retry with a new ticket_number
+                raise
 
     @retry_on_network_error()
     async def get_user_tickets(

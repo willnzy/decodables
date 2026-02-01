@@ -189,6 +189,9 @@ class WorkspaceService:
             raise ValueError("Description cannot exceed 500 characters")
 
         # Check quota
+        # WS-04: TOCTOU note — Two concurrent create_workspace calls could both
+        # pass this check. The DB doesn't enforce a per-user workspace count limit,
+        # so we add a post-insert verification as a safety net.
         max_workspaces = await self._get_max_workspaces(user_tier)
         current_workspaces = await self._repo.get_by_owner(user_id)
         current_count = len(current_workspaces)
@@ -206,6 +209,21 @@ class WorkspaceService:
             description=description,
         )
         created = await self._repo.create(workspace)
+
+        # WS-04: Post-insert quota verification (defense against TOCTOU race)
+        # If a concurrent request also created a workspace, check the total now.
+        post_count = len(await self._repo.get_by_owner(user_id))
+        if post_count > max_workspaces:
+            # Over quota — rollback the workspace we just created
+            logger.warning(
+                f"[WorkspaceService] Quota exceeded after create (race detected): "
+                f"user={user_id}, count={post_count}/{max_workspaces}"
+            )
+            await self._repo.delete(created.id)
+            raise ValueError(
+                f"Workspace limit reached ({max_workspaces}/{max_workspaces}). "
+                f"Upgrade to Pro for up to {PRO_MAX_WORKSPACES} workspaces."
+            )
 
         logger.info(
             f"[WorkspaceService] Created team workspace: "

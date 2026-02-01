@@ -419,6 +419,8 @@ CREATE INDEX IF NOT EXISTS idx_daily_themes_regions ON daily_themes USING GIN (r
 CREATE INDEX IF NOT EXISTS idx_daily_themes_review_status ON daily_themes (review_status) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_daily_themes_date ON daily_themes (date) WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_daily_themes_ai_generated ON daily_themes (ai_generated) WHERE is_deleted = false AND ai_generated = true;
+-- WS-04: Partial unique index to prevent duplicate themes for the same date (non-deleted only)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_themes_unique_date ON daily_themes (date) WHERE is_deleted = false;
 
 
 -- ----------------------------------------------------------------------------
