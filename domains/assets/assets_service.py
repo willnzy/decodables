@@ -20,6 +20,7 @@ Purpose:
 
 import uuid
 import logging
+import re
 import ipaddress
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
@@ -38,13 +39,24 @@ from domains.assets.exceptions import (
     StorageNotConfiguredException,
     UploadFailedException,
 )
+from domains.assets.constants import (
+    ALLOWED_MIME_TYPES,
+    MAGIC_BYTES,
+    MAGIC_BYTES_READ_SIZE,
+    MAX_FILE_SIZE_BY_TIER,
+    DEFAULT_MAX_FILE_SIZE,
+    SVG_DANGEROUS_TAGS,
+    SVG_DANGEROUS_ATTRS_PREFIXES,
+    SVG_DANGEROUS_ATTRS,
+    MAX_REDIRECT_HOPS,
+    MAX_URL_LENGTH,
+)
 
 logger = logging.getLogger(__name__)
 
-# Constants
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
-MAX_URL_LENGTH = 2048
+# Constants (kept for backward compat, prefer constants.py)
+MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE
+ALLOWED_FILE_TYPES = list(ALLOWED_MIME_TYPES)
 BUCKET_NAME = "make-decodables-u"  # User content bucket (same as shared.ai.image_generator)
 
 
@@ -65,6 +77,110 @@ class AssetsService:
         """
         self.repository = repository
         self.storage = storage_client
+
+    # ==========================================
+    # Helper Methods - File Validation (WS-05)
+    # ==========================================
+
+    @staticmethod
+    def _validate_magic_bytes(content: bytes, claimed_mime: str) -> bool:
+        """
+        WS-05: Validate file content matches claimed MIME type using magic bytes.
+
+        Prevents attacks where a malicious file (e.g., PHP) is uploaded
+        with a spoofed content type (e.g., image/jpeg).
+
+        Args:
+            content: File content (at least first 16 bytes)
+            claimed_mime: MIME type claimed by the upload
+
+        Returns:
+            True if magic bytes match, False otherwise
+        """
+        # SVG is text-based, validate via content inspection instead
+        if claimed_mime == "image/svg+xml":
+            # Check for SVG content markers
+            try:
+                text_start = content[:1024].decode("utf-8", errors="ignore").lower().strip()
+                return "<svg" in text_start or "<?xml" in text_start
+            except Exception:
+                return False
+
+        signatures = MAGIC_BYTES.get(claimed_mime)
+        if not signatures:
+            # Unknown MIME type — allow (no magic bytes to check against)
+            return True
+
+        header = content[:MAGIC_BYTES_READ_SIZE]
+        for sig in signatures:
+            if header.startswith(sig):
+                # Extra check for WebP: bytes 8-12 must be "WEBP"
+                if claimed_mime == "image/webp":
+                    return len(content) >= 12 and content[8:12] == b"WEBP"
+                return True
+
+        return False
+
+    @staticmethod
+    def _sanitize_svg(content: bytes) -> bytes:
+        """
+        WS-05: Strip dangerous elements and attributes from SVG content.
+
+        Uses regex-based sanitization (no external dependency like defusedxml).
+        Removes: <script>, on* event handlers, javascript: URIs, foreignObject.
+
+        Args:
+            content: Raw SVG bytes
+
+        Returns:
+            Sanitized SVG bytes
+        """
+        try:
+            text = content.decode("utf-8", errors="replace")
+        except Exception:
+            return content
+
+        # Remove dangerous tags and their content
+        for tag in SVG_DANGEROUS_TAGS:
+            text = re.sub(
+                rf"<{tag}[\s>].*?</{tag}>",
+                "",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            # Also remove self-closing variants
+            text = re.sub(
+                rf"<{tag}\s[^>]*/?>",
+                "",
+                text,
+                flags=re.IGNORECASE,
+            )
+
+        # Remove on* event handler attributes (onclick, onload, onerror, etc.)
+        text = re.sub(
+            r'\s+on\w+\s*=\s*["\'][^"\']*["\']',
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Remove javascript: URIs in href/xlink:href attributes
+        text = re.sub(
+            r'((?:xlink:)?href)\s*=\s*["\']javascript:[^"\']*["\']',
+            r'\1=""',
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Remove data:text/html URIs (XSS vector)
+        text = re.sub(
+            r'((?:xlink:)?href)\s*=\s*["\']data:text/html[^"\']*["\']',
+            r'\1=""',
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        return text.encode("utf-8")
 
     # ==========================================
     # Helper Methods - SSRF Protection
@@ -205,8 +321,12 @@ class AssetsService:
             return {"valid": False, "error": "Invalid URL"}
 
         # Accessibility check (async to avoid blocking event loop)
+        # WS-05: Limit redirect hops to prevent SSRF via redirect chains
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http_client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0),
+                max_redirects=MAX_REDIRECT_HOPS,
+            ) as http_client:
                 response = await http_client.head(url, follow_redirects=True)
                 content_type = response.headers.get('content-type', '')
 
@@ -354,24 +474,37 @@ class AssetsService:
         if user_tier.lower() != "t3":
             raise ProTierRequiredException()
 
-        # 2. File type validation
-        if file.content_type not in ALLOWED_FILE_TYPES:
+        # 2. File type validation (MIME whitelist)
+        if file.content_type not in ALLOWED_MIME_TYPES:
             raise InvalidFileTypeException(content_type=file.content_type)
 
-        # 3. File size validation
+        # 3. File size validation (tier-based limits, WS-05)
+        max_size = MAX_FILE_SIZE_BY_TIER.get(user_tier.lower(), DEFAULT_MAX_FILE_SIZE)
         contents = await file.read()
-        if len(contents) > MAX_FILE_SIZE:
-            raise FileTooLargeException(max_size_mb=5)
+        if len(contents) > max_size:
+            raise FileTooLargeException(max_size_mb=max_size // (1024 * 1024))
 
-        # 4. Storage check
+        # 4. WS-05: Magic bytes validation (prevent MIME spoofing)
+        if not self._validate_magic_bytes(contents, file.content_type):
+            logger.warning(
+                f"[Assets] Magic bytes mismatch: {file.filename} "
+                f"claimed={file.content_type}"
+            )
+            raise InvalidFileTypeException(content_type=file.content_type)
+
+        # 5. WS-05: SVG sanitization (strip dangerous elements)
+        if file.content_type == "image/svg+xml":
+            contents = self._sanitize_svg(contents)
+
+        # 6. Storage check
         if not self.storage:
             raise StorageNotConfiguredException()
 
-        # 5. Generate unique filename
+        # 7. Generate unique filename
         ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
         filename = f"{user_id}/uploads/{uuid.uuid4()}.{ext}"
 
-        # 6. Upload to Storage (v2.0: AsyncClient storage methods are async)
+        # 8. Upload to Storage (v2.0: AsyncClient storage methods are async)
         try:
             bucket = self.storage.storage.from_(BUCKET_NAME)
             await bucket.upload(
@@ -385,7 +518,7 @@ class AssetsService:
             logger.error(f"Failed to upload file: {e}")
             raise UploadFailedException(reason=str(e))
 
-        # 7. Save to database (source='upload' per schema constraint)
+        # 9. Save to database (source='upload' per schema constraint)
         saved_asset = await self.repository.save_asset(
             user_id,
             url,
@@ -397,7 +530,7 @@ class AssetsService:
             folder_id=folder_id,
         )
 
-        # 8. Set tags if provided (v3.46)
+        # 10. Set tags if provided (v3.46)
         if tag_ids and saved_asset and saved_asset.get("id"):
             try:
                 from container import get_container
@@ -451,8 +584,12 @@ class AssetsService:
         self._validate_url_safe(url)
 
         # 2. Check URL accessibility (async to avoid blocking event loop)
+        # WS-05: Limit redirect hops to prevent SSRF via redirect chains
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http_client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0),
+                max_redirects=MAX_REDIRECT_HOPS,
+            ) as http_client:
                 response = await http_client.head(url, follow_redirects=True)
                 if response.status_code != 200:
                     raise UrlNotAccessibleException(status_code_http=response.status_code)
