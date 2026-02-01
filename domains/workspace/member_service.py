@@ -43,6 +43,25 @@ class MemberService:
 
     # ========== Members ==========
 
+    async def check_access(self, workspace_id: str, user_id: str) -> bool:
+        """
+        WS-06: Check if user has access to workspace (owner or active member).
+
+        Unlike _verify_membership, this returns bool instead of raising.
+
+        Args:
+            workspace_id: Workspace UUID
+            user_id: User to check access for
+
+        Returns:
+            True if user is owner or active member, False otherwise
+        """
+        try:
+            await self._verify_membership(workspace_id, user_id)
+            return True
+        except ValueError:
+            return False
+
     async def list_members(self, workspace_id: str, user_id: str) -> List[WorkspaceMember]:
         """
         List all active members of a workspace.

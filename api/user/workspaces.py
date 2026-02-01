@@ -201,8 +201,9 @@ async def get_workspace(
     if not workspace:
         raise HTTPException(404, "Workspace not found")
 
-    # Verify ownership
-    if workspace.owner_id != user.user_id:
+    # WS-06: Verify access — owner or active member can view workspace
+    member_service = await container.get_member_service()
+    if not await member_service.check_access(workspace_id, user.user_id):
         raise HTTPException(403, "Not authorized to access this workspace")
 
     return workspace.to_dict()

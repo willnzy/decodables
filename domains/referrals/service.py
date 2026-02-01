@@ -72,6 +72,13 @@ class ReferralService:
             reward_amount=reward_amount
         )
 
+    async def get_referral_by_id(
+        self,
+        referral_id: str
+    ) -> Optional[ReferralEntity]:
+        """WS-06: 根据 ID 获取推荐记录 (用于权限校验)"""
+        return await self.repository.get_by_id(referral_id)
+
     async def get_referral_by_code(
         self,
         referral_code: str

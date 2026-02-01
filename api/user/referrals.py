@@ -173,17 +173,33 @@ async def complete_referral(
     完成推荐
 
     当被推荐人满足完成条件时调用 (如完成首个项目)
+
+    WS-06: Authorization check — only the referee (被推荐人) can complete
+    a referral. This prevents any authenticated user from triggering
+    reward credits by guessing referral IDs.
     """
-    referral = await service.complete_referral(referral_id)
-
+    # WS-06: Verify the current user is the referee of this referral
+    referral = await service.get_referral_by_id(referral_id)
     if not referral:
-        raise HTTPException(404, f"Referral not found: {referral_id}")
+        raise HTTPException(404, "Referral not found")
 
-    logger.info(f"Referral {referral_id} completed")
+    if referral.referee_id != user.user_id:
+        logger.warning(
+            f"[Referrals] Unauthorized complete attempt: "
+            f"user={user.user_id[:8]}..., referral={referral_id}"
+        )
+        raise HTTPException(403, "Not authorized to complete this referral")
+
+    result = await service.complete_referral(referral_id)
+
+    if not result:
+        raise HTTPException(500, "Failed to complete referral")
+
+    logger.info(f"Referral {referral_id} completed by referee {user.user_id[:8]}...")
 
     return {
         "success": True,
-        "data": referral.dict(),
+        "data": result.dict(),
         "message": "Referral completed, reward will be granted"
     }
 
