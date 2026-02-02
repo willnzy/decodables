@@ -1762,7 +1762,7 @@ Navbar UserMenu（PC）更新：
 | UserMenu "Profile" | (移除) | 合并到 Account |
 
 openUserProfile() 替换：
-- 旧：router.push('/account')
+- 旧：router.push('/profile/settings')
 - 新：router.push('/account')
 ```
 
@@ -2017,7 +2017,7 @@ require_verified_email 依赖仍然保留：
 - 防止数据库直接操作创建的异常用户
 
 注册中途放弃的 pending 用户清理（确定方案）：
-- **主动覆盖（实时生效）**：`create_pending_auth_user()` RPC 的 `ON CONFLICT (email) DO UPDATE ... WHERE email_verified = false AND password_hash IS NULL` 确保重复注册同一邮箱时直接覆盖 pending 记录，不阻塞新用户
+- **主动覆盖（实时生效）**：`create_pending_auth_user()` RPC 使用 PL/pgSQL `SELECT ... FOR UPDATE` + `IF/ELSIF` 模式（详见 4.7 节），当 pending 用户（`email_verified=false AND password_hash IS NULL`）再次注册时直接覆盖 OTP 信息，不阻塞新用户
 - **定期清理（兜底）**：每天凌晨执行一次清理任务，删除 `auth_users` 中满足以下条件的记录：
   - `password_hash IS NULL`（未完成注册）
   - `email_verified = false`（未验证邮箱）
