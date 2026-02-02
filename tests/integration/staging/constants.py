@@ -21,8 +21,6 @@ STAGING_BASE_URL = os.getenv(
     "https://decodables-staging.up.railway.app"
 )
 
-CLERK_API_BASE = "https://api.clerk.com/v1"
-
 # API Version Prefix
 API_V2 = "/api/v2"
 API_V3 = "/api/v3"

@@ -4,12 +4,13 @@ Test User Configuration
 测试用户信息配置文件，方便管理和修改测试账号。
 
 注意:
-- Token 需要通过环境变量或 Clerk API 动态获取 (60秒过期)
+- Token 通过 test_jwt_generator (HS256) 自动生成
+- 也可通过环境变量直接设置
 - 这里只存储用户的静态信息
 - 敏感信息不要提交到代码仓库
 
 @module tests.integration.staging.test_users
-@version 1.0.0
+@version 2.0.0 (self-hosted auth, removed Clerk dependency)
 """
 
 
@@ -32,9 +33,6 @@ class TestUsers:
         "credits_permanent": 50,
         "timezone": "Asia/Shanghai",
         "language": "en",
-        # Clerk Session ID (用于通过 Clerk API 获取 token)
-        # 需要用户登录后从 Clerk Dashboard 或 API 获取
-        "clerk_session_id": None,  # 填入后可自动刷新 token
     }
 
     # ==========================================
@@ -47,7 +45,6 @@ class TestUsers:
         "email": None,
         "tier": "t1",  # Free tier
         "role": "user",
-        "clerk_session_id": None,
     }
 
     # ==========================================
@@ -59,7 +56,6 @@ class TestUsers:
         "tier": "t2",  # Starter tier
         "role": "user",
         "credits_monthly": 100,
-        "clerk_session_id": None,
     }
 
     PRO = {
@@ -68,7 +64,6 @@ class TestUsers:
         "tier": "t3",  # Pro tier
         "role": "user",
         "credits_monthly": 200,
-        "clerk_session_id": None,
     }
 
 
@@ -91,14 +86,8 @@ class TokenEnvVars:
     # Admin 用户 token
     ADMIN_TOKEN = "TEST_ADMIN_TOKEN"
 
-    # Clerk Secret Key (用于通过 API 获取 token)
-    CLERK_SECRET_KEY = "CLERK_SECRET_KEY"
-
-    # Session IDs for auto-refresh
-    ADMIN_SESSION_ID = "TEST_ADMIN_SESSION_ID"
-    USER_SESSION_ID = "TEST_USER_SESSION_ID"
-    STARTER_SESSION_ID = "TEST_STARTER_SESSION_ID"
-    PRO_SESSION_ID = "TEST_PRO_SESSION_ID"
+    # JWT Secret (for auto-generating test tokens)
+    JWT_SECRET = "AUTH_JWT_SECRET"
 
 
 # ==========================================
@@ -118,65 +107,26 @@ class TokenEnvVars:
 | TEST_ADMIN_TOKEN | Admin 用户 | - | 测试管理接口 |
 
 
-### 方式 1: 直接设置 Token (最简单)
+### 方式 1: 自动生成 (推荐)
 
-从浏览器登录后获取 token，设置环境变量：
+设置 AUTH_JWT_SECRET 匹配 staging 后端配置，token 会自动生成：
 
 ```bash
-# Free 用户 (t1) - 必需
+export AUTH_JWT_SECRET='your-staging-jwt-secret-at-least-43-chars'
+```
+
+### 方式 2: 直接设置 Token
+
+```bash
 export TEST_USER_TOKEN='eyJhbG...'
-
-# Starter 用户 (t2) - Tier 测试需要
 export TEST_STARTER_TOKEN='eyJhbG...'
-
-# Pro 用户 (t3) - Tier 测试需要
 export TEST_PRO_TOKEN='eyJhbG...'
-
-# Admin 用户 - Admin 测试需要
 export TEST_ADMIN_TOKEN='eyJhbG...'
 ```
 
-获取方式:
-1. 打开 https://decodables-staging.up.railway.app
-2. 登录对应账号 (Free/Starter/Pro/Admin)
-3. 打开 DevTools (F12) → Console
-4. 执行: await window.Clerk.session.getToken()
-5. 复制返回的 token
-
-注意: Token 60 秒后过期，需要重新获取
-
-
-### 方式 2: 通过 Clerk API 自动获取 (推荐)
-
-设置 Clerk Secret Key 和各用户的 Session ID：
-
-```bash
-# Clerk Secret Key (从 Clerk Dashboard 获取)
-export CLERK_SECRET_KEY='sk_test_...'
-
-# 各用户的 Session ID
-export TEST_USER_SESSION_ID='sess_...'      # Free 用户
-export TEST_STARTER_SESSION_ID='sess_...'   # Starter 用户
-export TEST_PRO_SESSION_ID='sess_...'       # Pro 用户
-export TEST_ADMIN_SESSION_ID='sess_...'     # Admin 用户
-```
-
-Session ID 获取方式:
-1. Clerk Dashboard → Users → 选择用户
-2. Sessions 标签 → 复制 Session ID
-
-或者通过 API:
-```bash
-curl -H "Authorization: Bearer sk_test_..." \\
-  https://api.clerk.com/v1/users/{user_id}/sessions
-```
-
-
-### 方式 3: 混合使用
-
-可以同时配置多种方式，代码会按优先级尝试：
-1. 直接 Token (TEST_USER_TOKEN 等)
-2. Clerk API 生成 (CLERK_SECRET_KEY + SESSION_ID)
+Token 优先级：
+1. 环境变量直接设置的 Token
+2. test_jwt_generator 自动生成 (HS256)
 
 
 ## 运行测试

@@ -7,11 +7,11 @@ Quick API Verification Script
 
 Usage:
     # 方法 1: 通过环境变量设置 token
-    export TEST_USER_TOKEN="your_clerk_jwt_token"
+    export TEST_USER_TOKEN="your_jwt_token"
     python quick_verify.py
 
     # 方法 2: 通过命令行参数
-    python quick_verify.py --token "your_clerk_jwt_token"
+    python quick_verify.py --token "your_jwt_token"
 
     # 方法 3: 测试所有接口
     python quick_verify.py --token "xxx" --all
@@ -306,7 +306,7 @@ def main():
     )
     parser.add_argument(
         "--token", "-t",
-        help="Clerk JWT token (or set TEST_USER_TOKEN env var)",
+        help="JWT token (or set TEST_USER_TOKEN env var)",
     )
     parser.add_argument(
         "--all", "-a",

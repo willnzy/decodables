@@ -4,13 +4,15 @@ Staging Environment Test Configuration
 Fixtures for testing against the actual staging API.
 Supports both regular user and admin user testing.
 
-Token 获取方式 (优先级):
-1. 环境变量: TEST_USER_TOKEN / TEST_ADMIN_TOKEN
-2. 自动生成: test_jwt_generator (需要 Railway 配置 TEST_JWT_PUBLIC_KEY)
-3. Clerk API: CLERK_SECRET_KEY + SESSION_ID (需要用户登录)
+Token generation: Self-hosted HS256 JWT via test_jwt_generator.
+No external auth provider required.
+
+Token priority:
+1. Environment variable: TEST_USER_TOKEN / TEST_ADMIN_TOKEN
+2. Auto-generate: test_jwt_generator (HS256, uses AUTH_JWT_SECRET)
 
 @module tests.integration.staging.conftest
-@version 3.0.0 (added auto token generation without Clerk login)
+@version 4.0.0 (self-hosted auth, removed Clerk dependency)
 """
 
 import os
@@ -49,36 +51,6 @@ def pytest_configure(config):
 
 STAGING_BASE_URL = "https://decodables-staging.up.railway.app"
 API_V2_PREFIX = "/api/v2"
-CLERK_API_BASE = "https://api.clerk.com/v1"
-
-
-def _get_token_from_clerk(session_id: str, clerk_secret: str) -> Optional[str]:
-    """
-    Get JWT token from Clerk API using session ID.
-
-    Args:
-        session_id: Clerk session ID (e.g., "sess_xxx")
-        clerk_secret: Clerk secret key (e.g., "sk_test_xxx")
-
-    Returns:
-        JWT token or None if failed
-    """
-    try:
-        response = httpx.post(
-            f"{CLERK_API_BASE}/sessions/{session_id}/tokens",
-            headers={
-                "Authorization": f"Bearer {clerk_secret}",
-                "Content-Type": "application/json",
-            },
-            json={},
-            timeout=10.0,
-        )
-        if response.status_code == 200:
-            return response.json().get("jwt")
-    except Exception as e:
-        import sys
-        print(f"Warning: Failed to get token from Clerk: {e}", file=sys.stderr)
-    return None
 
 
 def get_test_token() -> Optional[str]:
@@ -87,35 +59,21 @@ def get_test_token() -> Optional[str]:
 
     Priority:
     1. TEST_USER_TOKEN environment variable (if set)
-    2. Auto-generate using test_jwt_generator (no Clerk login needed!)
-    3. Clerk API (requires active session - fallback)
+    2. Auto-generate using test_jwt_generator (HS256)
 
-    For option 2, Railway Staging must have TEST_JWT_PUBLIC_KEY configured.
+    For option 2, AUTH_JWT_SECRET must match the deployed backend's secret.
     """
     # First check environment variable
     token = os.getenv(TokenEnvVars.USER_TOKEN)
     if token:
         return token
 
-    # Auto-generate using test_jwt_generator (preferred - no Clerk login needed)
-    # This works when Railway has TEST_JWT_PUBLIC_KEY configured
+    # Auto-generate HS256 token
     try:
         return generate_free_token()
     except Exception as e:
         import sys
-        print(f"Note: Using auto-generated test token (free tier)", file=sys.stderr)
-
-    # Fallback: Try Clerk API (requires user to have logged in)
-    try:
-        from .get_test_token import get_test_token as clerk_generate_token
-        token = clerk_generate_token()
-        if token:
-            return token
-    except ImportError:
-        pass
-    except Exception as e:
-        import sys
-        print(f"Warning: Clerk token generation failed: {e}", file=sys.stderr)
+        print(f"Warning: Token generation failed: {e}", file=sys.stderr)
 
     return None
 
@@ -126,32 +84,18 @@ def get_admin_token() -> Optional[str]:
 
     Priority:
     1. TEST_ADMIN_TOKEN environment variable
-    2. Auto-generate using test_jwt_generator (no Clerk login needed!)
-    3. Clerk API with TEST_ADMIN_SESSION_ID (fallback)
-
-    Returns:
-        Admin JWT token or None
+    2. Auto-generate using test_jwt_generator (HS256)
     """
     # First check environment variable
     token = os.getenv(TokenEnvVars.ADMIN_TOKEN)
     if token:
         return token
 
-    # Auto-generate using test_jwt_generator (preferred)
+    # Auto-generate
     try:
         return generate_admin_token()
     except Exception:
         pass
-
-    # Fallback: Try Clerk API
-    clerk_secret = os.getenv(TokenEnvVars.CLERK_SECRET_KEY)
-    session_id = os.getenv(TokenEnvVars.ADMIN_SESSION_ID)
-
-    if clerk_secret and session_id:
-        return _get_token_from_clerk(session_id, clerk_secret)
-
-    if clerk_secret and TestUsers.ADMIN.get("clerk_session_id"):
-        return _get_token_from_clerk(TestUsers.ADMIN["clerk_session_id"], clerk_secret)
 
     return None
 
@@ -177,16 +121,14 @@ def test_token() -> str:
     """
     Get test user token.
 
-    Uses module scope to refresh token for each test module,
-    avoiding token expiration issues (Clerk tokens expire in 60s).
-
+    Uses module scope to refresh token for each test module.
     Raises pytest.skip if token not configured.
     """
     token = get_test_token()
     if not token:
         pytest.skip(
             "TEST_USER_TOKEN not set and auto-generation failed. "
-            "Please ensure you have logged in to staging frontend.\n"
+            "Set AUTH_JWT_SECRET to match staging backend.\n"
             "Or set: export TEST_USER_TOKEN='eyJhbG...'"
         )
     return token
@@ -203,11 +145,7 @@ def auth_headers(test_token) -> dict:
 
 @pytest.fixture(scope="session")
 def sync_client() -> Generator[httpx.Client, None, None]:
-    """
-    Synchronous HTTP client for staging API.
-
-    Uses session scope for connection reuse.
-    """
+    """Synchronous HTTP client for staging API."""
     with httpx.Client(timeout=30.0) as client:
         yield client
 
@@ -218,7 +156,6 @@ def auth_client(test_token, staging_base_url) -> Generator[httpx.Client, None, N
     Authenticated synchronous HTTP client.
 
     Pre-configured with Authorization header and base URL.
-    Uses module scope to refresh token per module (Clerk tokens expire in 60s).
     """
     headers = {
         "Authorization": f"Bearer {test_token}",
@@ -234,11 +171,7 @@ def auth_client(test_token, staging_base_url) -> Generator[httpx.Client, None, N
 
 @pytest.fixture(scope="session")
 def anon_client(staging_base_url) -> Generator[httpx.Client, None, None]:
-    """
-    Anonymous (unauthenticated) HTTP client.
-
-    For testing endpoints without authentication.
-    """
+    """Anonymous (unauthenticated) HTTP client."""
     headers = {
         "Content-Type": "application/json",
     }
@@ -259,29 +192,21 @@ def admin_token() -> str:
     """
     Get admin user token.
 
-    Uses module scope to refresh token for each test module.
     Raises pytest.skip if admin token not configured.
-
-    Admin user: willnzy@gmail.com (user_38J7ztkfxMPma40Q5FQ2ryO80eg)
     """
     token = get_admin_token()
     if not token:
         pytest.skip(
             "Admin token not configured. Set one of:\n"
             "  - TEST_ADMIN_TOKEN environment variable\n"
-            "  - CLERK_SECRET_KEY + TEST_ADMIN_SESSION_ID"
+            "  - AUTH_JWT_SECRET matching staging backend"
         )
     return token
 
 
 @pytest.fixture(scope="module")
 def admin_client(admin_token, staging_base_url) -> Generator[httpx.Client, None, None]:
-    """
-    Authenticated admin HTTP client.
-
-    Pre-configured with admin Authorization header and base URL.
-    Uses module scope to refresh token per module.
-    """
+    """Authenticated admin HTTP client."""
     headers = {
         "Authorization": f"Bearer {admin_token}",
         "Content-Type": "application/json",
@@ -296,16 +221,12 @@ def admin_client(admin_token, staging_base_url) -> Generator[httpx.Client, None,
 
 @pytest.fixture(scope="module")
 def admin_user_info() -> dict:
-    """
-    Get admin user static information.
-
-    Returns configured admin user details from test_users.py.
-    """
+    """Get admin user static information."""
     return TestUsers.ADMIN.copy()
 
 
 # ==========================================
-# Tier-specific Fixtures (t2 Starter, t3 Pro)
+# Tier-specific Fixtures
 # ==========================================
 
 def get_starter_token() -> Optional[str]:
@@ -313,20 +234,10 @@ def get_starter_token() -> Optional[str]:
     token = os.getenv(TokenEnvVars.STARTER_TOKEN)
     if token:
         return token
-
-    # Auto-generate using test_jwt_generator (preferred)
     try:
         return generate_starter_token()
     except Exception:
         pass
-
-    # Fallback: Clerk API
-    clerk_secret = os.getenv(TokenEnvVars.CLERK_SECRET_KEY)
-    session_id = os.getenv(TokenEnvVars.STARTER_SESSION_ID)
-
-    if clerk_secret and session_id:
-        return _get_token_from_clerk(session_id, clerk_secret)
-
     return None
 
 
@@ -335,64 +246,40 @@ def get_pro_token() -> Optional[str]:
     token = os.getenv(TokenEnvVars.PRO_TOKEN)
     if token:
         return token
-
-    # Auto-generate using test_jwt_generator (preferred)
     try:
         return generate_pro_token()
     except Exception:
         pass
-
-    # Fallback: Clerk API
-    clerk_secret = os.getenv(TokenEnvVars.CLERK_SECRET_KEY)
-    session_id = os.getenv(TokenEnvVars.PRO_SESSION_ID)
-
-    if clerk_secret and session_id:
-        return _get_token_from_clerk(session_id, clerk_secret)
-
     return None
 
 
 @pytest.fixture(scope="module")
 def starter_token() -> str:
-    """
-    Get Starter (t2) user token.
-
-    Raises pytest.skip if not configured.
-    """
+    """Get Starter (t2) user token."""
     token = get_starter_token()
     if not token:
         pytest.skip(
             "Starter (t2) token not configured. Set:\n"
-            "  - TEST_STARTER_TOKEN environment variable\n"
-            "  - Or CLERK_SECRET_KEY + TEST_STARTER_SESSION_ID"
+            "  - TEST_STARTER_TOKEN environment variable"
         )
     return token
 
 
 @pytest.fixture(scope="module")
 def pro_token() -> str:
-    """
-    Get Pro (t3) user token.
-
-    Raises pytest.skip if not configured.
-    """
+    """Get Pro (t3) user token."""
     token = get_pro_token()
     if not token:
         pytest.skip(
             "Pro (t3) token not configured. Set:\n"
-            "  - TEST_PRO_TOKEN environment variable\n"
-            "  - Or CLERK_SECRET_KEY + TEST_PRO_SESSION_ID"
+            "  - TEST_PRO_TOKEN environment variable"
         )
     return token
 
 
 @pytest.fixture(scope="module")
 def starter_client(starter_token, staging_base_url) -> Generator[httpx.Client, None, None]:
-    """
-    Authenticated Starter (t2) tier HTTP client.
-
-    For testing features available to paid Starter users.
-    """
+    """Authenticated Starter (t2) tier HTTP client."""
     headers = {
         "Authorization": f"Bearer {starter_token}",
         "Content-Type": "application/json",
@@ -407,11 +294,7 @@ def starter_client(starter_token, staging_base_url) -> Generator[httpx.Client, N
 
 @pytest.fixture(scope="module")
 def pro_client(pro_token, staging_base_url) -> Generator[httpx.Client, None, None]:
-    """
-    Authenticated Pro (t3) tier HTTP client.
-
-    For testing features available to Pro users.
-    """
+    """Authenticated Pro (t3) tier HTTP client."""
     headers = {
         "Authorization": f"Bearer {pro_token}",
         "Content-Type": "application/json",
@@ -426,11 +309,7 @@ def pro_client(pro_token, staging_base_url) -> Generator[httpx.Client, None, Non
 
 @pytest.fixture
 async def async_client(staging_base_url) -> httpx.AsyncClient:
-    """
-    Asynchronous HTTP client for staging API.
-
-    For async test functions.
-    """
+    """Asynchronous HTTP client for staging API."""
     async with httpx.AsyncClient(
         base_url=staging_base_url,
         timeout=30.0,
@@ -440,10 +319,7 @@ async def async_client(staging_base_url) -> httpx.AsyncClient:
 
 @pytest.fixture(scope="module")
 async def async_auth_client(test_token, staging_base_url) -> httpx.AsyncClient:
-    """
-    Authenticated asynchronous HTTP client.
-    Uses module scope to refresh token per module.
-    """
+    """Authenticated asynchronous HTTP client."""
     headers = {
         "Authorization": f"Bearer {test_token}",
         "Content-Type": "application/json",

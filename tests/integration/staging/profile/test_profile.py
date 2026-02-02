@@ -56,9 +56,9 @@ class TestUserProfile(BaseAPITest):
 
     def test_user_id_format(self, auth_client):
         """
-        业务规则: user_id (用户ID) 格式为 user_xxx
+        业务规则: user_id (用户ID) 格式为 UUID
 
-        Clerk 生成的用户ID格式统一。
+        自托管认证系统生成 UUID 格式的用户ID。
         API 通过 UserProfileService 将数据库 "id" 映射为 "user_id"。
         """
         response = auth_client.get(self.ENDPOINT)
@@ -66,7 +66,11 @@ class TestUserProfile(BaseAPITest):
 
         user_id = data.get("user_id")
         assert user_id is not None, "缺少 user_id"
-        assert user_id.startswith("user_"), f"user_id 格式错误: {user_id}"
+        # UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        uuid_pattern = re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        )
+        assert uuid_pattern.match(user_id), f"user_id 格式错误 (应为 UUID): {user_id}"
 
     def test_user_code_format(self, auth_client):
         """

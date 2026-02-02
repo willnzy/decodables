@@ -7,11 +7,11 @@ Endpoints:
 - GET /api/v2/user/billing/can-afford
 - POST /api/v2/user/billing/credits/add
 
-@version 1.2.1
+@version 3.0.0
 
-Changes in v1.2.1:
-- Fixed user_id format in tests to use Clerk format (user_xxx) instead of UUID
-- Updated validation tests to match Clerk user ID format
+Changes in v3.0.0:
+- Updated user_id format to UUID (self-hosted auth migration)
+- Updated validation tests to match UUID user ID format
 
 Changes in v1.2.0:
 - Removed tests for /credits/deduct endpoint (removed in billing.py v1.2.0)
@@ -837,7 +837,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -877,7 +877,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Promotion reward",
@@ -890,12 +890,12 @@ class TestAddCredits:
         assert data["success"] is True
         assert data["amount_added"] == 100
         assert data["new_balance"] == 650
-        assert data["target_user_id"] == "user_2NNEqL2nrIRdJ194ndJqAHwEfxC"
+        assert data["target_user_id"] == "12345678-1234-1234-1234-123456789abc"
 
         # Verify handler was called with correct command (target user, not admin)
         mock_handler.handle.assert_called_once()
         call_args = mock_handler.handle.call_args[0][0]
-        assert call_args.user_id == "user_2NNEqL2nrIRdJ194ndJqAHwEfxC"  # Target user, not admin
+        assert call_args.user_id == "12345678-1234-1234-1234-123456789abc"  # Target user, not admin
         assert call_args.amount == 100
         # API converts credit_type to bucket enum
         from domains.billing.value_objects import CreditBucket
@@ -916,7 +916,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 100,
                 "credit_type": "invalid",
                 "reason": "Test",
@@ -960,7 +960,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 500,
                 "credit_type": "monthly",
                 "reason": "Subscription renewal",
@@ -995,7 +995,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 10001,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1020,7 +1020,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 100,
                 "credit_type": "permanent",
             },
@@ -1083,7 +1083,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_2NNEqL2nrIRdJ194ndJqAHwEfxC",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1098,20 +1098,20 @@ class TestAddCredits:
         """
         Test: Invalid user_id format (422 Validation Error)
 
-        v1.2.1: B-HIGH-1-FIX - Changed to Clerk user ID format validation
+        v3.0.0: user_id must be a valid UUID format
 
-        Given: Invalid user_id format (not Clerk format)
+        Given: Invalid user_id format (not UUID)
         When: POST with user_id="invalid_user"
         Then: Returns 422 Validation Error
 
         Business Logic Verified:
-        - user_id must be a valid Clerk format (user_xxx)
+        - user_id must be a valid UUID format
         """
         # Act
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "invalid_user_id_not_clerk_format",
+                "user_id": "invalid_user_id_not_uuid_format",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1125,9 +1125,9 @@ class TestAddCredits:
         """
         Test: user_id too short (422 Validation Error)
 
-        v1.2.1: B-HIGH-1-FIX - user_id must be Clerk format (25-35 characters)
+        v3.0.0: user_id must be exactly 36 characters (UUID format)
 
-        Given: user_id shorter than 25 characters
+        Given: user_id shorter than 36 characters
         When: POST with short user_id
         Then: Returns 422 Validation Error
         """
@@ -1135,7 +1135,7 @@ class TestAddCredits:
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "user_short",
+                "user_id": "short-id",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",
@@ -1145,21 +1145,21 @@ class TestAddCredits:
         # Assert
         assert response.status_code == 422
 
-    def test_add_credits_user_id_wrong_prefix(self, override_require_admin):
+    def test_add_credits_user_id_wrong_format(self, override_require_admin):
         """
-        Test: user_id with wrong prefix (422 Validation Error)
+        Test: user_id with wrong format (422 Validation Error)
 
-        v1.2.1: B-HIGH-1-FIX - user_id must start with 'user_'
+        v3.0.0: user_id must be valid UUID, not arbitrary string
 
-        Given: user_id with UUID format (wrong format for Clerk)
-        When: POST with UUID-style user_id
+        Given: user_id with correct length but not UUID format
+        When: POST with non-UUID string
         Then: Returns 422 Validation Error
         """
-        # Act - UUID format should be rejected (Clerk uses user_xxx format)
+        # Act - correct length but not valid UUID format
         response = client.post(
             "/api/v2/user/billing/credits/add",
             json={
-                "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "user_id": "not-a-valid-uuid-format-xxxxxxxxxx",
                 "amount": 100,
                 "credit_type": "permanent",
                 "reason": "Test",

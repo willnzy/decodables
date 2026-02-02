@@ -121,9 +121,8 @@ class AffordabilityResponse(BaseModel):
 
 class AddCreditsRequest(BaseModel):
     """Request to add credits (admin only)."""
-    # v1.2.1: B-HIGH-1-FIX - Changed to Clerk user ID format validation
-    # Clerk IDs are like "user_2NNEqL2nrIRdJ194ndJqAHwEfxC" (25-35 chars total)
-    user_id: str = Field(..., description="Target user ID to add credits to", min_length=25, max_length=35)
+    # v3.0.0: UUID user ID format (self-hosted auth)
+    user_id: str = Field(..., description="Target user ID (UUID format)", min_length=36, max_length=36)
     amount: int = Field(..., gt=0, le=10000)
     credit_type: str = Field(..., pattern="^(monthly|permanent)$")
     reason: str = Field(..., min_length=1, max_length=200)  # v1.2.0: B-LOW-1 - Increased max_length
