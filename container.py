@@ -303,7 +303,9 @@ class Container:
         """Get token service instance."""
         if 'token' not in self._services:
             import config
-            jwt_secret = getattr(config, 'AUTH_JWT_SECRET', None) or ''
+            jwt_secret = getattr(config, 'AUTH_JWT_SECRET', None)
+            if not jwt_secret:
+                raise RuntimeError("AUTH_JWT_SECRET not configured")
             jwt_secret_old = getattr(config, 'AUTH_JWT_SECRET_OLD', None)
             self._services['token'] = TokenService(
                 jwt_secret=jwt_secret,

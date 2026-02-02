@@ -61,7 +61,7 @@ async def get_current_user(authorization: str = Header(None)):
     except TokenExpiredException:
         raise UnauthorizedException(message="Token expired")
     except TokenInvalidException as e:
-        raise UnauthorizedException(message=f"Invalid token: {e.message}")
+        raise UnauthorizedException(message="Invalid token")
 
     user_id = str(payload.sub)  # UUID → string for profile lookup
 
@@ -251,9 +251,9 @@ async def get_current_user_with_workspace(
             member_service = await container.get_member_service()
             await member_service._verify_membership(requested_workspace_id, user.user_id)
             return UserWithWorkspace(user=user, workspace_id=requested_workspace_id)
-        except (ValueError, Exception):
+        except (ValueError, Exception) as e:
             # Invalid workspace or not a member — fall back to default
-            pass
+            logger.warning(f"Workspace validation failed: {type(e).__name__}")
 
     # Fallback: use default workspace (auto-created if needed)
     workspace = await workspace_service.get_or_create_default(user.user_id)

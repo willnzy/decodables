@@ -132,7 +132,7 @@ def dynamic_limit(config_key: str):
                     retry_after = _parse_retry_after(limit_string)
                     raise HTTPException(
                         status_code=429,
-                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})",
+                        detail="Rate limit exceeded. Please try again later.",
                         headers={"Retry-After": str(retry_after)},
                     )
                 raise
@@ -156,7 +156,7 @@ def dynamic_limit(config_key: str):
                     retry_after = _parse_retry_after(limit_string)
                     raise HTTPException(
                         status_code=429,
-                        detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})",
+                        detail="Rate limit exceeded. Please try again later.",
                         headers={"Retry-After": str(retry_after)},
                     )
                 raise

@@ -65,6 +65,15 @@ from domains.identity.repository import IUserRepository
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_email(email: str) -> str:
+    """Mask email for log output: u***@example.com"""
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    return f"{local[0]}***@{domain}" if local else f"***@{domain}"
+
+
 # Disposable email domain blacklist (common ones)
 DISPOSABLE_EMAIL_DOMAINS: frozenset = frozenset({
     "mailinator.com", "tempmail.com", "guerrillamail.com", "throwaway.email",
@@ -226,7 +235,7 @@ class AuthService:
                 purpose=OTP_PURPOSE_REGISTER,
             )
         except Exception:
-            logger.exception(f"Failed to send OTP email to {validated_email.value}")
+            logger.exception(f"Failed to send OTP email to {_mask_email(validated_email.value)}")
 
         return {
             "user_id": str(created_user.id),
@@ -659,7 +668,7 @@ class AuthService:
             )
         except Exception:
             logger.exception(
-                f"Failed to send {purpose} OTP to {auth_user.email}"
+                f"Failed to send {purpose} OTP to {_mask_email(auth_user.email)}"
             )
 
     async def verify_authenticated_otp(
@@ -745,7 +754,7 @@ class AuthService:
         }
 
         if auth_user is None or auth_user.is_pending:
-            logger.info(f"Password reset requested for unknown/pending email: {normalized_email}")
+            logger.info(f"Password reset requested for unknown/pending email: {_mask_email(normalized_email)}")
             return generic_response
 
         # Check cooldown
@@ -777,7 +786,7 @@ class AuthService:
                 purpose=OTP_PURPOSE_FORGOT_PASSWORD,
             )
         except Exception:
-            logger.exception(f"Failed to send password reset OTP to {auth_user.email}")
+            logger.exception(f"Failed to send password reset OTP to {_mask_email(auth_user.email)}")
 
         return generic_response
 
@@ -829,6 +838,9 @@ class AuthService:
             from .constants import OTP_MAX_ATTEMPTS
             remaining = OTP_MAX_ATTEMPTS - auth_user.otp_attempts
             raise OtpInvalidException(remaining_attempts=remaining)
+
+        # Clear OTP after successful verification (prevents reuse)
+        await self._auth_user_repo.clear_otp(auth_user.id)
 
         return {
             "user_id": str(auth_user.id),

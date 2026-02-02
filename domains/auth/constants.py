@@ -133,6 +133,7 @@ VALID_REVOKE_REASONS: frozenset = frozenset({
     REVOKE_REASON_SECURITY,
     REVOKE_REASON_ADMIN,
     REVOKE_REASON_ACCOUNT_DELETED,
+    REVOKE_REASON_SESSION_LIMIT,
 })
 
 # ---------------------------------------------------------------------------

@@ -89,15 +89,15 @@ class TokenService:
 
         if len(jwt_secret) < JWT_SECRET_MIN_LENGTH:
             raise ValueError(
-                f"AUTH_JWT_SECRET too short: {len(jwt_secret)} chars, "
-                f"minimum {JWT_SECRET_MIN_LENGTH} required "
+                f"AUTH_JWT_SECRET too short, "
+                f"minimum {JWT_SECRET_MIN_LENGTH} chars required "
                 f"(256-bit key as base64)"
             )
 
         if jwt_secret_old and len(jwt_secret_old) < JWT_SECRET_MIN_LENGTH:
             raise ValueError(
-                f"AUTH_JWT_SECRET_OLD too short: {len(jwt_secret_old)} chars, "
-                f"minimum {JWT_SECRET_MIN_LENGTH} required"
+                f"AUTH_JWT_SECRET_OLD too short, "
+                f"minimum {JWT_SECRET_MIN_LENGTH} chars required"
             )
 
     # -------------------------------------------------------------------

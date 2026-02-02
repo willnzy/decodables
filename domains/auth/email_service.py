@@ -14,8 +14,17 @@ import logging
 from typing import Optional
 
 import resend
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
+
+
+def _mask_email(email: str) -> str:
+    """Mask email for log output: u***@example.com"""
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    return f"{local[0]}***@{domain}" if local else f"***@{domain}"
 
 
 class EmailService:
@@ -114,11 +123,11 @@ class EmailService:
                 "subject": subject,
                 "html": html_body,
             }
-            resend.Emails.send(params)
-            logger.info(f"Email sent to {to_email}: {subject}")
+            await run_in_threadpool(resend.Emails.send, params)
+            logger.info(f"Email sent to {_mask_email(to_email)}: {subject}")
             return True
         except Exception:
-            logger.exception(f"Failed to send email to {to_email}: {subject}")
+            logger.exception(f"Failed to send email to {_mask_email(to_email)}: {subject}")
             return False
 
     # -------------------------------------------------------------------
