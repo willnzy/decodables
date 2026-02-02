@@ -217,7 +217,7 @@ class SupabaseUserTasksRepository:
             ).eq("id", task_id).eq("user_id", user_id).limit(1).execute()
 
             if result is not None and result.data:
-                return {"success": True, "task": result.data[0]}
+                return result.data[0]
 
             return None
 
