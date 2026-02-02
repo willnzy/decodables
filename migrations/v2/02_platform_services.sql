@@ -49,7 +49,7 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS activity_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     action TEXT NOT NULL,
     resource_type TEXT,
     resource_id TEXT,
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS analytics_aggregation (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS analytics_events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT REFERENCES profiles(id),
+    user_id UUID REFERENCES profiles(id),
     session_id TEXT,
     event_id TEXT,
     event_name TEXT NOT NULL,
@@ -175,19 +175,8 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created
 
 
 -- ----------------------------------------------------------------------------
--- 6. clerk_webhook_events
+-- 6. (已删除: clerk_webhook_events - 迁移到自建认证系统后不再需要)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS clerk_webhook_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    event_id TEXT UNIQUE NOT NULL,
-    event_type TEXT NOT NULL,
-    payload JSONB NOT NULL,
-    processed BOOLEAN DEFAULT FALSE,
-    processed_at TIMESTAMPTZ,
-    error_message TEXT,
-    retry_count INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
 
 
 -- ----------------------------------------------------------------------------
@@ -303,7 +292,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     usage_count INTEGER DEFAULT 0,
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'completed')),
     is_active BOOLEAN DEFAULT TRUE,
-    created_by TEXT REFERENCES profiles(id),
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
@@ -621,7 +610,7 @@ COMMENT ON TABLE hourly_metrics IS '小时级指标存储表，由 ETL 定时任
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     notification_type TEXT NOT NULL,  -- SQL 标准字段
     type TEXT,  -- P0-1: Repository 使用的别名字段
     title TEXT NOT NULL,
@@ -775,7 +764,7 @@ CREATE TABLE IF NOT EXISTS system_resource_audit_logs (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     event_type TEXT NOT NULL,
     event_data JSONB DEFAULT '{}',
     session_id TEXT,
@@ -813,13 +802,13 @@ CREATE INDEX IF NOT EXISTS idx_user_events_session ON user_events(session_id) WH
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS content_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reporter_id TEXT NOT NULL REFERENCES profiles(id),
+    reporter_id UUID NOT NULL REFERENCES profiles(id),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id),
     reason TEXT NOT NULL,
     description TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
     admin_response TEXT,
-    reviewed_by TEXT REFERENCES profiles(id),
+    reviewed_by UUID REFERENCES profiles(id),
     reviewed_at TIMESTAMPTZ,
     timezone TEXT DEFAULT 'UTC',
     created_at_local TIMESTAMP,
@@ -937,7 +926,7 @@ CREATE TABLE IF NOT EXISTS articles (
     published_at TIMESTAMPTZ,
 
     -- 元数据
-    author_id TEXT REFERENCES profiles(id),
+    author_id UUID REFERENCES profiles(id),
     sort_order INTEGER DEFAULT 0,
     view_count INTEGER DEFAULT 0,
 
@@ -1165,7 +1154,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_time ON flag_audit_logs(changed_at DESC);
 CREATE TABLE IF NOT EXISTS campaign_dismissals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     channel TEXT NOT NULL,
     dismissed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(campaign_id, user_id, channel)
@@ -1178,7 +1167,7 @@ CREATE TABLE IF NOT EXISTS campaign_dismissals (
 CREATE TABLE IF NOT EXISTS campaign_participations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     credits_received INTEGER,
     claimed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(campaign_id, user_id)
@@ -1191,7 +1180,7 @@ CREATE TABLE IF NOT EXISTS campaign_participations (
 CREATE TABLE IF NOT EXISTS experiment_assignments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     variant_key TEXT NOT NULL,
     assigned_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(experiment_id, user_id)
@@ -1204,7 +1193,7 @@ CREATE TABLE IF NOT EXISTS experiment_assignments (
 CREATE TABLE IF NOT EXISTS experiment_conversions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     variant_key TEXT NOT NULL,
     metric_key TEXT NOT NULL,
     value NUMERIC(10, 2) DEFAULT 1.0,
@@ -1219,7 +1208,7 @@ CREATE TABLE IF NOT EXISTS experiment_conversions (
 CREATE TABLE IF NOT EXISTS experiment_exposures (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     variant_key TEXT NOT NULL,
     context JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -1270,8 +1259,8 @@ CREATE INDEX IF NOT EXISTS idx_results_date ON experiment_results(date DESC);
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS referrals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    referrer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    referee_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    referrer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    referee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     referral_code TEXT NOT NULL,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired')),
     reward_given BOOLEAN DEFAULT FALSE,
@@ -1291,7 +1280,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_code
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_onboarding_progress (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     step_id UUID NOT NULL REFERENCES onboarding_steps(id) ON DELETE CASCADE,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'skipped')),
     completed_at TIMESTAMPTZ,

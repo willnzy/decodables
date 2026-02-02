@@ -80,8 +80,8 @@ SET search_path = 'public';
 -- 1. profiles (用户表 - 最基础的表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS profiles (
-    -- 主键 (Clerk ID，TEXT 类型!)
-    id TEXT PRIMARY KEY,
+    -- 主键 (UUID，自建认证系统)
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 基础信息
     email TEXT NOT NULL UNIQUE,
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     ext_json JSONB DEFAULT '{}'::jsonb,
 
     -- 创建来源追踪 (用于监控 Webhook vs JIT 创建)
-    created_by TEXT DEFAULT 'legacy' CHECK (created_by IN ('webhook', 'jit', 'legacy', 'manual')),
+    created_by TEXT DEFAULT 'register' CHECK (created_by IN ('register', 'admin', 'legacy', 'oauth')),
     
     -- 标准审计字段
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -179,6 +179,163 @@ CREATE TABLE IF NOT EXISTS profiles (
         (deleted_at IS NOT NULL AND recovery_expires_at > deleted_at)
     )
 );
+
+
+-- ============================================================================
+-- 1.5 Auth Tables (认证系统 - 自建 Email+Password)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1.5.1 auth_users (认证凭据，与 profiles 分离)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auth_users (
+    -- 主键 (与 profiles.id 共享同一 UUID)
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- 邮箱 (统一小写存储)
+    email TEXT NOT NULL UNIQUE,
+    CONSTRAINT check_email_lowercase CHECK (email = LOWER(email)),
+
+    -- 密码 (argon2id 哈希)
+    password_hash TEXT NOT NULL,
+
+    -- 邮箱验证
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    email_verified_at TIMESTAMPTZ,
+    email_verification_token TEXT,           -- SHA-256 哈希值，不存明文
+    email_verification_expires_at TIMESTAMPTZ,
+
+    -- 密码重置
+    password_reset_token TEXT,              -- SHA-256 哈希值，不存明文
+    password_reset_expires_at TIMESTAMPTZ,
+    password_changed_at TIMESTAMPTZ,
+
+    -- 登录安全
+    failed_login_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_login_attempts >= 0),
+    locked_until TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
+    last_login_ip INET,
+
+    -- 状态
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 部分索引：仅对有 token 的行建索引（大部分行 token 为 NULL）
+CREATE INDEX IF NOT EXISTS idx_auth_users_verification_token
+    ON auth_users(email_verification_token)
+    WHERE email_verification_token IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_auth_users_password_reset_token
+    ON auth_users(password_reset_token)
+    WHERE password_reset_token IS NOT NULL;
+
+-- 锁定用户索引（查询被锁定的账户）
+CREATE INDEX IF NOT EXISTS idx_auth_users_locked
+    ON auth_users(locked_until)
+    WHERE locked_until IS NOT NULL;
+
+-- RLS
+ALTER TABLE auth_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY service_role_full_access ON auth_users
+    FOR ALL TO service_role
+    USING (true) WITH CHECK (true);
+
+
+-- ----------------------------------------------------------------------------
+-- 1.5.2 auth_sessions (Refresh Token 存储 + 轮换检测)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- 用户关联
+    user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+
+    -- 轮换链标识（同一登录链共享 family_id）
+    family_id UUID NOT NULL,
+
+    -- Refresh Token（SHA-256 哈希，不存明文）
+    refresh_token_hash TEXT NOT NULL UNIQUE,
+
+    -- 设备信息
+    user_agent TEXT,
+    ip_address INET,
+    device_name TEXT,                       -- 从 user_agent 解析，用于展示
+
+    -- 作废状态
+    is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
+    revoked_at TIMESTAMPTZ,
+    revoke_reason TEXT CHECK (revoke_reason IS NULL OR revoke_reason IN (
+        'logout', 'rotation', 'security', 'admin', 'account_deleted'
+    )),
+
+    -- 生命周期
+    expires_at TIMESTAMPTZ NOT NULL,
+    last_used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 查询用户活跃会话
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active
+    ON auth_sessions(user_id, is_revoked, expires_at)
+    WHERE is_revoked = FALSE;
+
+-- 按 family_id 查询（重用检测时需要作废整个 family）
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_family
+    ON auth_sessions(family_id);
+
+-- 过期会话清理索引
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expired
+    ON auth_sessions(expires_at)
+    WHERE is_revoked = FALSE;
+
+-- RLS
+ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY service_role_full_access ON auth_sessions
+    FOR ALL TO service_role
+    USING (true) WITH CHECK (true);
+
+
+-- ----------------------------------------------------------------------------
+-- 1.5.3 auth_oauth_accounts (预留 OAuth 扩展)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auth_oauth_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+    -- 用户关联
+    user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+
+    -- OAuth 提供商
+    provider TEXT NOT NULL CHECK (provider IN ('google', 'github', 'apple')),
+    provider_user_id TEXT NOT NULL,
+    provider_email TEXT,
+
+    -- OAuth Token（加密存储）
+    access_token_encrypted TEXT,
+    refresh_token_encrypted TEXT,
+    token_expires_at TIMESTAMPTZ,
+
+    -- 额外数据
+    provider_data JSONB DEFAULT '{}'::jsonb,
+
+    -- 审计字段
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- 约束：每个第三方账号只能绑一个用户
+    CONSTRAINT uq_oauth_provider_user UNIQUE (provider, provider_user_id),
+    -- 约束：每个用户每个平台只能绑一个
+    CONSTRAINT uq_oauth_user_provider UNIQUE (user_id, provider)
+);
+
+-- RLS
+ALTER TABLE auth_oauth_accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY service_role_full_access ON auth_oauth_accounts
+    FOR ALL TO service_role
+    USING (true) WITH CHECK (true);
 
 
 -- ----------------------------------------------------------------------------
@@ -247,7 +404,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     description TEXT,
 
     -- 所有者 (Clerk user_id)
-    owner_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    owner_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 配置 (一期简化: 全部为 TRUE)
     is_default BOOLEAN DEFAULT TRUE,        -- 是否为用户的默认 workspace
@@ -294,7 +451,7 @@ CREATE TABLE IF NOT EXISTS folders (
     sort_order INTEGER DEFAULT 0,
 
     -- 创建者
-    created_by TEXT NOT NULL REFERENCES profiles(id),
+    created_by UUID NOT NULL REFERENCES profiles(id),
 
     -- 时间戳 (WS-1: 1C#29 NOT NULL DEFAULT)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -363,7 +520,7 @@ CREATE TABLE IF NOT EXISTS tags (
     sort_order INTEGER DEFAULT 0,
 
     -- 创建者
-    created_by TEXT NOT NULL REFERENCES profiles(id),
+    created_by UUID NOT NULL REFERENCES profiles(id),
 
     -- 状态
     is_active BOOLEAN DEFAULT TRUE,
@@ -432,7 +589,7 @@ CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 用户ID (P0-8: Repository 同时使用 user_id 和 owner_id)
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- v3.33: Workspace 关联 (可空，向后兼容现有项目)
     workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL,
@@ -474,7 +631,7 @@ CREATE TABLE IF NOT EXISTS projects (
     -- WS-1(1C#26): source_listing_id 引用 marketplace_listings(id)，表示项目来源 listing
     source_listing_id UUID,
     is_purchased BOOLEAN DEFAULT FALSE,
-    origin_owner_id TEXT REFERENCES profiles(id),
+    origin_owner_id UUID REFERENCES profiles(id),
     listing_status TEXT,  -- P0-8: Repository 使用的字段 (如 'published', 'draft')
 
     -- 永久删除标记 (P0-8: Repository 使用的字段)
@@ -583,7 +740,7 @@ CREATE INDEX IF NOT EXISTS idx_project_pages_project ON project_pages(project_id
 CREATE TABLE IF NOT EXISTS marketplace_listings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id TEXT UNIQUE NOT NULL DEFAULT gen_random_uuid()::text,  -- 业务 ID (Repository 使用)
-    seller_id TEXT REFERENCES profiles(id),
+    seller_id UUID REFERENCES profiles(id),
 
     -- 基本信息
     title TEXT NOT NULL,
@@ -639,7 +796,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
     moderation_status TEXT NOT NULL DEFAULT 'draft' CHECK (moderation_status IN ('draft', 'pending', 'approved', 'rejected')),
     moderation_note TEXT,
     rejection_reason TEXT,  -- P0-10: Repository 使用的字段 (拒绝原因)
-    moderated_by TEXT REFERENCES profiles(id),
+    moderated_by UUID REFERENCES profiles(id),
     moderated_at TIMESTAMPTZ,
     published_at TIMESTAMPTZ,  -- P0-10: Repository 使用的字段
 
@@ -686,7 +843,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id),
 
     -- v3.33: Workspace 关联 (可空，向后兼容现有素材)
@@ -710,7 +867,7 @@ CREATE TABLE IF NOT EXISTS assets (
     metadata JSONB DEFAULT '{}',
     source_listing_id UUID REFERENCES marketplace_listings(id),
     is_purchased BOOLEAN DEFAULT FALSE,
-    origin_owner_id TEXT REFERENCES profiles(id),
+    origin_owner_id UUID REFERENCES profiles(id),
     is_hidden_from_trash BOOLEAN DEFAULT FALSE,
     timezone TEXT DEFAULT 'UTC',
     created_at_local TIMESTAMP,
@@ -765,7 +922,7 @@ CREATE TABLE IF NOT EXISTS project_tags (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
 
-    added_by TEXT NOT NULL REFERENCES profiles(id),
+    added_by UUID NOT NULL REFERENCES profiles(id),
     added_at TIMESTAMPTZ DEFAULT NOW(),
 
     PRIMARY KEY (project_id, tag_id)
@@ -783,7 +940,7 @@ CREATE TABLE IF NOT EXISTS user_asset_tags (
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
 
-    added_by TEXT NOT NULL REFERENCES profiles(id),
+    added_by UUID NOT NULL REFERENCES profiles(id),
     added_at TIMESTAMPTZ DEFAULT NOW(),
 
     -- 来源标记 (区分手动添加 vs AI 推荐)
@@ -836,7 +993,7 @@ CREATE TABLE IF NOT EXISTS project_versions (
     canvas_data JSONB NOT NULL,
     thumbnail_url TEXT,
     change_description TEXT,
-    created_by TEXT NOT NULL REFERENCES profiles(id),
+    created_by UUID NOT NULL REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, version_number)
 );
@@ -848,7 +1005,7 @@ CREATE TABLE IF NOT EXISTS project_versions (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_asset_prompt_templates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
     who_type TEXT,
@@ -884,7 +1041,7 @@ CREATE TABLE IF NOT EXISTS user_asset_prompt_templates (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS credit_purchases (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     plan_type TEXT NOT NULL CHECK (plan_type IN ('credits_100', 'credits_500', 'credits_2000')),
     credits_amount INTEGER NOT NULL,
     price_usd DECIMAL(10,2) NOT NULL,
@@ -905,7 +1062,7 @@ CREATE TABLE IF NOT EXISTS credit_purchases (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS credit_transactions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 交易类型 (P0-6: 同时支持 transaction_type 和 tx_type)
     -- transaction_type: 规范字段名 (用于报表、管理、RPC 函数)
@@ -987,7 +1144,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_transactions_idempotency_key
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS generation_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     task_type TEXT NOT NULL,
     prompt TEXT,
@@ -1032,7 +1189,7 @@ CREATE INDEX IF NOT EXISTS idx_generation_tasks_pending ON generation_tasks(crea
 CREATE TABLE IF NOT EXISTS listing_usages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     usage_type TEXT NOT NULL,
     usage_count INTEGER DEFAULT 1,
@@ -1060,7 +1217,7 @@ CREATE INDEX IF NOT EXISTS idx_listing_usages_created_at ON listing_usages(creat
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_favorites (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT false,
@@ -1082,7 +1239,7 @@ CREATE TABLE IF NOT EXISTS marketplace_favorites (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_purchases (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
 
     price_paid INTEGER NOT NULL,
@@ -1116,11 +1273,11 @@ CREATE TABLE IF NOT EXISTS marketplace_purchases (
 CREATE TABLE IF NOT EXISTS marketplace_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
-    reporter_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    reporter_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     report_reason TEXT NOT NULL,
     description TEXT NOT NULL,
     status TEXT DEFAULT 'pending',
-    reviewed_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    reviewed_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     reviewed_at TIMESTAMPTZ,
     resolution TEXT,
     action_taken TEXT,
@@ -1159,7 +1316,7 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_reports_pending ON marketplace_report
 CREATE TABLE IF NOT EXISTS marketplace_reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
-    reviewer_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    reviewer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
     review_text TEXT,
     is_verified_purchase BOOLEAN DEFAULT FALSE,
@@ -1185,7 +1342,7 @@ CREATE TABLE IF NOT EXISTS marketplace_reviews (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_page_prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     layout TEXT DEFAULT 'image_top',
     story_theme TEXT,
@@ -1212,7 +1369,7 @@ CREATE INDEX IF NOT EXISTS idx_user_page_prompt_templates_name ON user_page_prom
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS subscription_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     tier TEXT NOT NULL CHECK (tier IN ('t1', 't2', 't3')),
     action TEXT NOT NULL CHECK (action IN ('upgrade', 'downgrade', 'cancel', 'renew')),
     stripe_subscription_id TEXT,
@@ -1237,7 +1394,7 @@ CREATE TABLE IF NOT EXISTS system_assets (
     asset_type VARCHAR(20) NOT NULL CHECK (asset_type IN ('text', 'image', 'shape', 'table', 'sticker', 'icon', 'frame')),
 
     source VARCHAR(20) NOT NULL DEFAULT 'system' CHECK (source IN ('system', 'user', 'ai', 'community')),
-    source_user_id TEXT REFERENCES profiles(id),
+    source_user_id UUID REFERENCES profiles(id),
 
     file_url TEXT,
     thumbnail_url TEXT,
@@ -1348,7 +1505,7 @@ CREATE TRIGGER update_system_resources_updated_at
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_discounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
 
     -- 有效期 (同时支持 valid_from/valid_until 和 expires_at 两种风格)
@@ -1376,7 +1533,7 @@ CREATE TABLE IF NOT EXISTS user_discounts (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_generations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     generation_type TEXT NOT NULL CHECK (generation_type IN ('image', 'text', 'story', 'design')),
     prompt TEXT,
     result_url TEXT,
@@ -1754,7 +1911,7 @@ SET search_path = 'public';
 CREATE TABLE IF NOT EXISTS user_creation_logs (
     id BIGSERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
-    source TEXT NOT NULL CHECK (source IN ('webhook', 'jit', 'manual')),
+    source TEXT NOT NULL CHECK (source IN ('register', 'admin', 'oauth', 'legacy')),
     action TEXT NOT NULL CHECK (action IN ('created', 'duplicate_attempt', 'error')),
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1766,8 +1923,8 @@ CREATE INDEX IF NOT EXISTS idx_user_creation_logs_created_at ON user_creation_lo
 CREATE INDEX IF NOT EXISTS idx_user_creation_logs_source ON user_creation_logs(source);
 CREATE INDEX IF NOT EXISTS idx_user_creation_logs_action ON user_creation_logs(action);
 
-COMMENT ON TABLE user_creation_logs IS '用户创建日志表，用于监控 Webhook vs JIT 创建健康度';
-COMMENT ON COLUMN user_creation_logs.source IS '创建源：webhook（Clerk webhook）、jit（API JIT 创建）、manual（手动）';
+COMMENT ON TABLE user_creation_logs IS '用户创建日志表，用于审计注册事件';
+COMMENT ON COLUMN user_creation_logs.source IS '创建源：register（用户注册）、admin（管理员创建）、oauth（第三方登录）、legacy（历史兼容）';
 COMMENT ON COLUMN user_creation_logs.action IS '操作类型：created（成功创建）、duplicate_attempt（重复尝试）、error（错误）';
 
 -- ----------------------------------------------------------------------------
@@ -1837,67 +1994,75 @@ CREATE INDEX IF NOT EXISTS idx_system_error_logs_created_at ON system_error_logs
 CREATE INDEX IF NOT EXISTS idx_system_error_logs_operation ON system_error_logs(operation);
 
 COMMENT ON TABLE system_error_logs IS '系统错误日志表（用于追踪 RPC 函数异常和数据库层错误）';
-COMMENT ON COLUMN system_error_logs.operation IS '操作名称（如 create_user_idempotent）';
+COMMENT ON COLUMN system_error_logs.operation IS '操作名称（如 create_auth_user_with_profile）';
 COMMENT ON COLUMN system_error_logs.error_message IS '错误信息（SQLERRM）';
 COMMENT ON COLUMN system_error_logs.details IS '详细信息（JSONB 格式，包含 user_id、参数等）';
 
 
 -- ============================================================================
--- RPC Functions - 幂等用户创建
+-- RPC Functions - 用户注册（自建认证系统）
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- create_user_idempotent - 幂等的用户创建函数（HOTFIX: 使用 UPSERT）
+-- create_auth_user_with_profile - 原子创建 auth_users + profiles
+-- 注册时在同一事务中创建认证凭据和业务 profile，共享同一 UUID
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION create_user_idempotent(
-    p_user_id TEXT,
+CREATE OR REPLACE FUNCTION create_auth_user_with_profile(
     p_email TEXT,
-    p_source TEXT,  -- 'webhook' or 'jit'
-    
-    -- Optional fields
-    p_username TEXT DEFAULT NULL,
-    p_first_name TEXT DEFAULT NULL,
-    p_last_name TEXT DEFAULT NULL,
-    p_avatar_url TEXT DEFAULT NULL,
+    p_password_hash TEXT,
     p_display_name TEXT DEFAULT NULL,
     p_signup_bonus INT DEFAULT 0  -- 注册奖励积分，由调用方从 system_configs/TierService 获取后传入
 )
 RETURNS TABLE(
-    user_profile JSONB,
-    was_created BOOLEAN,
-    created_by TEXT
-) 
+    auth_user JSONB,
+    profile JSONB,
+    was_created BOOLEAN
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = 'public'
 AS $$
 DECLARE
-    v_existing_profile profiles%ROWTYPE;
-    v_new_user_code TEXT;
-    v_was_created BOOLEAN;
+    v_user_id UUID;
+    v_user_code TEXT;
     v_display_name_final TEXT;
+    v_auth_user auth_users%ROWTYPE;
+    v_profile profiles%ROWTYPE;
 BEGIN
-    -- ✅ HOTFIX: 使用 UPSERT 模式（原子操作，无 race condition）
-    
-    -- Step 1: 准备数据
-    v_new_user_code := generate_user_code();
-    
+    -- Step 1: 生成共享 UUID 和 user_code
+    v_user_id := uuid_generate_v4();
+    v_user_code := generate_user_code();
+
     v_display_name_final := COALESCE(
         p_display_name,
-        p_username,
-        p_first_name,
         split_part(p_email, '@', 1)
     );
-    
-    -- Step 2: 原子插入（如果已存在则忽略）
+
+    -- Step 2: 创建 auth_users 记录（认证凭据）
+    INSERT INTO auth_users (
+        id,
+        email,
+        password_hash,
+        email_verified,
+        is_active,
+        created_at,
+        updated_at
+    ) VALUES (
+        v_user_id,
+        LOWER(TRIM(p_email)),
+        p_password_hash,
+        FALSE,
+        TRUE,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    )
+    RETURNING * INTO v_auth_user;
+
+    -- Step 3: 创建 profiles 记录（业务数据，共享同一 UUID）
     INSERT INTO profiles (
         id,
         email,
         user_code,
-        username,
-        first_name,
-        last_name,
-        avatar_url,
         display_name,
         tier,
         credits_permanent,
@@ -1905,94 +2070,51 @@ BEGIN
         created_at,
         updated_at
     ) VALUES (
-        p_user_id,
-        p_email,
-        v_new_user_code,
-        p_username,
-        p_first_name,
-        p_last_name,
-        p_avatar_url,
+        v_user_id,
+        LOWER(TRIM(p_email)),
+        v_user_code,
         v_display_name_final,
         't1',
-        p_signup_bonus,  -- 注册奖励（仅在创建时发放一次，默认100）
-        p_source,
+        p_signup_bonus,
+        'register',
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     )
-    ON CONFLICT (id) DO NOTHING  -- ✅ 如果已存在，不做任何操作
-    RETURNING * INTO v_existing_profile;
-    
-    -- Step 3: 判断是新创建还是已存在
-    IF v_existing_profile.id IS NOT NULL THEN
-        -- ✅ 新创建成功
-        v_was_created := TRUE;
-        
-        -- 记录创建事件
-        INSERT INTO user_creation_logs (
-            user_id,
-            source,
-            action,
-            metadata,
-            created_at
-        ) VALUES (
-            p_user_id,
-            p_source,
-            'created',
-            jsonb_build_object(
-                'email', p_email,
-                'username', p_username,
-                'has_avatar', (p_avatar_url IS NOT NULL)
-            ),
-            CURRENT_TIMESTAMP
-        );
-        
-        -- 返回新创建的用户
-        RETURN QUERY
-        SELECT 
-            row_to_json(v_existing_profile)::jsonb,
-            v_was_created,
-            p_source;
-        RETURN;
-    ELSE
-        -- ✅ 用户已存在（被其他进程创建）
-        v_was_created := FALSE;
-        
-        -- 读取现有用户
-        SELECT * INTO v_existing_profile
-        FROM profiles
-        WHERE id = p_user_id;
-        
-        -- 记录重复创建尝试
-        INSERT INTO user_creation_logs (
-            user_id,
-            source,
-            action,
-            metadata,
-            created_at
-        ) VALUES (
-            p_user_id,
-            p_source,
-            'duplicate_attempt',
-            jsonb_build_object(
-                'existing_created_by', v_existing_profile.created_by,
-                'existing_created_at', v_existing_profile.created_at,
-                'attempted_with_email', p_email
-            ),
-            CURRENT_TIMESTAMP
-        );
-        
-        -- 返回现有用户
-        RETURN QUERY
-        SELECT 
-            row_to_json(v_existing_profile)::jsonb,
-            v_was_created,
-            v_existing_profile.created_by;
-        RETURN;
-    END IF;
-    
+    RETURNING * INTO v_profile;
+
+    -- Step 4: 记录创建事件
+    INSERT INTO user_creation_logs (
+        user_id,
+        source,
+        action,
+        metadata,
+        created_at
+    ) VALUES (
+        v_user_id::TEXT,
+        'register',
+        'created',
+        jsonb_build_object(
+            'email', LOWER(TRIM(p_email)),
+            'display_name', v_display_name_final,
+            'signup_bonus', p_signup_bonus
+        ),
+        CURRENT_TIMESTAMP
+    );
+
+    -- Step 5: 返回结果
+    RETURN QUERY
+    SELECT
+        row_to_json(v_auth_user)::jsonb,
+        row_to_json(v_profile)::jsonb,
+        TRUE;
+
 EXCEPTION
+    WHEN unique_violation THEN
+        -- 邮箱已注册（auth_users.email UNIQUE 约束）
+        -- 调用方应捕获此异常并返回防枚举的统一响应
+        RAISE EXCEPTION 'email_already_registered' USING ERRCODE = '23505';
     WHEN OTHERS THEN
-        -- 记录错误（但不影响事务回滚）
+        -- 记录错误
         BEGIN
             INSERT INTO system_error_logs (
                 operation,
@@ -2000,107 +2122,73 @@ EXCEPTION
                 details,
                 created_at
             ) VALUES (
-                'create_user_idempotent',
+                'create_auth_user_with_profile',
                 SQLERRM,
                 jsonb_build_object(
-                    'user_id', p_user_id,
-                    'source', p_source,
                     'email', p_email
                 ),
                 CURRENT_TIMESTAMP
             );
         EXCEPTION
             WHEN OTHERS THEN
-                -- 即使记录错误失败也不影响主流程
                 NULL;
         END;
-        
-        -- 重新抛出原始异常
         RAISE;
 END;
 $$;
 
-COMMENT ON FUNCTION create_user_idempotent IS '幂等的用户创建函数，支持 Webhook 和 JIT 并发创建而无 race condition';
+COMMENT ON FUNCTION create_auth_user_with_profile IS '注册时原子创建 auth_users + profiles，共享同一 UUID。邮箱重复时抛出 unique_violation';
 
 
 -- ----------------------------------------------------------------------------
--- get_user_creation_stats - 获取用户创建统计
+-- get_user_creation_stats - 获取用户创建统计（适配自建认证系统）
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION get_user_creation_stats(p_days INTEGER DEFAULT 7)
 RETURNS TABLE(
     total_users BIGINT,
-    webhook_created BIGINT,
-    jit_created BIGINT,
-    webhook_success_rate NUMERIC,
-    jit_fallback_rate NUMERIC,
-    avg_creation_duration_ms NUMERIC,
+    register_created BIGINT,
+    admin_created BIGINT,
+    oauth_created BIGINT,
     duplicate_attempts BIGINT,
     errors BIGINT
-) 
+)
 LANGUAGE plpgsql
 AS $$
 BEGIN
     RETURN QUERY
     WITH recent_users AS (
-        SELECT 
+        SELECT
             id,
             created_by,
             created_at
         FROM profiles
         WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
     ),
-    creation_events AS (
-        -- ✅ HOTFIX: 使用 DISTINCT ON 避免重复计数
-        SELECT DISTINCT ON (user_id)
-            user_id,
-            source,
-            action,
-            created_at
-        FROM user_creation_logs
-        WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
-          AND action = 'created'
-        ORDER BY user_id, created_at ASC
-    ),
     stats AS (
         SELECT
             COUNT(DISTINCT ru.id) AS total_users,
-            COUNT(DISTINCT CASE WHEN ru.created_by = 'webhook' THEN ru.id END) AS webhook_created,
-            COUNT(DISTINCT CASE WHEN ru.created_by = 'jit' THEN ru.id END) AS jit_created,
+            COUNT(DISTINCT CASE WHEN ru.created_by = 'register' THEN ru.id END) AS register_created,
+            COUNT(DISTINCT CASE WHEN ru.created_by = 'admin' THEN ru.id END) AS admin_created,
+            COUNT(DISTINCT CASE WHEN ru.created_by = 'oauth' THEN ru.id END) AS oauth_created,
             (
-                SELECT COUNT(*) 
-                FROM user_creation_logs 
+                SELECT COUNT(*)
+                FROM user_creation_logs
                 WHERE action = 'duplicate_attempt'
                   AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
             ) AS duplicate_attempts,
             (
-                SELECT COUNT(*) 
-                FROM user_creation_logs 
+                SELECT COUNT(*)
+                FROM user_creation_logs
                 WHERE action = 'error'
                   AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
             ) AS errors
         FROM recent_users ru
-        LEFT JOIN creation_events ce ON ru.id = ce.user_id
     )
     SELECT
         s.total_users,
-        s.webhook_created,
-        s.jit_created,
-        -- ✅ HOTFIX: 使用 COALESCE 和 NULLIF 避免除以 0
-        ROUND(
-            COALESCE(
-                s.webhook_created::NUMERIC / NULLIF(s.total_users, 0) * 100,
-                0
-            ), 
-            2
-        ) AS webhook_success_rate,
-        ROUND(
-            COALESCE(
-                s.jit_created::NUMERIC / NULLIF(s.total_users, 0) * 100,
-                0
-            ), 
-            2
-        ) AS jit_fallback_rate,
-        0.0 AS avg_creation_duration_ms,
+        s.register_created,
+        s.admin_created,
+        s.oauth_created,
         s.duplicate_attempts,
         s.errors
     FROM stats s;
@@ -2287,13 +2375,13 @@ CREATE TABLE IF NOT EXISTS workspace_members (
 
     -- 关联
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 角色 (owner / member)
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
 
     -- 邀请来源
-    invited_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    invited_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
 
     -- 状态
     is_active BOOLEAN DEFAULT TRUE,
@@ -2331,7 +2419,7 @@ CREATE TABLE IF NOT EXISTS workspace_invitations (
 
     -- 邀请信息
     invited_email TEXT NOT NULL,
-    invited_by TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    invited_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 角色 (被邀请者将获得的角色)
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member')),
@@ -2343,7 +2431,7 @@ CREATE TABLE IF NOT EXISTS workspace_invitations (
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
 
     -- 接受者 (接受邀请后填入)
-    accepted_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    accepted_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     accepted_at TIMESTAMPTZ,
 
     -- 标准审计字段
@@ -3689,7 +3777,7 @@ COMMENT ON FUNCTION create_project_with_limit_check IS 'WS-2: 原子创建项目
 CREATE TABLE IF NOT EXISTS marketplace_listing_usage_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     usage_type TEXT NOT NULL DEFAULT 'view' CHECK (usage_type IN ('view', 'download', 'use')),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

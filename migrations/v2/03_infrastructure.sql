@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS admin_operations (
             -- Webhook 操作类型 (v3.31)
             'webhook_subscription_create', 'webhook_subscription_update', 'webhook_subscription_cancel',
             'webhook_invoice_paid', 'webhook_refund_process', 'webhook_credits_purchase',
-            'webhook_user_create', 'webhook_tier_update'
+            'auth_user_register', 'webhook_tier_update'
         )
     ),
     CONSTRAINT check_target_type CHECK (
@@ -97,7 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_operations_failed ON admin_operations(creat
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_call_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT REFERENCES profiles(id),
+    user_id UUID REFERENCES profiles(id),
 
     -- Provider & Model
     provider TEXT NOT NULL,
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS ai_call_logs (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS api_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT REFERENCES profiles(id),
+    user_id UUID REFERENCES profiles(id),
     endpoint TEXT NOT NULL,
     method TEXT NOT NULL,
     status_code INTEGER NOT NULL,
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS error_logs (
     context JSONB DEFAULT '{}',             -- 上下文信息
     client_timestamp TEXT,                  -- 前端时间戳
     -- 用户关联
-    user_id TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
     -- 后端错误字段 (保留兼容)
     error_message TEXT,                     -- 后端错误消息
     error_stack TEXT,                       -- 后端堆栈 (与 stack_trace 区分)
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS error_logs (
     -- 解决状态
     resolved BOOLEAN DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
-    resolved_by TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    resolved_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -230,7 +230,7 @@ CREATE INDEX IF NOT EXISTS idx_error_logs_unresolved ON error_logs(created_at DE
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS payment_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     payment_type TEXT NOT NULL,
     payment_method TEXT NOT NULL DEFAULT 'card',
     amount_usd NUMERIC(10, 2) NOT NULL,
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS pricing_history (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS support_tickets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     ticket_number TEXT NOT NULL UNIQUE,
     subject TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -437,7 +437,7 @@ CREATE TABLE IF NOT EXISTS support_tickets (
     category TEXT NOT NULL,
     priority TEXT DEFAULT 'medium',
     status TEXT DEFAULT 'open',
-    assigned_to TEXT REFERENCES profiles(id) ON DELETE SET NULL,
+    assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
     admin_note TEXT,  -- P0-11: Repository 使用的管理员备注字段
     attachments JSONB DEFAULT '[]',
     metadata JSONB DEFAULT '{}',
@@ -511,7 +511,7 @@ CREATE TABLE IF NOT EXISTS user_price_overrides (
 CREATE TABLE IF NOT EXISTS support_replies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     is_staff_reply BOOLEAN DEFAULT FALSE,
     is_admin_reply BOOLEAN DEFAULT FALSE,  -- P0-8: Repository 使用的字段
     message TEXT NOT NULL,
@@ -1635,28 +1635,7 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_pending
     ON stripe_webhook_events(processing_status, created_at)
     WHERE processing_status IN ('pending', 'failed');
 
--- clerk_webhook_events 同样处理
-ALTER TABLE clerk_webhook_events
-    ADD COLUMN IF NOT EXISTS processing_status TEXT DEFAULT 'pending',
-    ADD COLUMN IF NOT EXISTS last_error TEXT;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.check_constraints
-        WHERE constraint_name = 'clerk_webhook_events_processing_status_check'
-    ) THEN
-        ALTER TABLE clerk_webhook_events
-            ADD CONSTRAINT clerk_webhook_events_processing_status_check
-            CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed'));
-    END IF;
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_clerk_webhook_events_pending
-    ON clerk_webhook_events(processing_status, created_at)
-    WHERE processing_status IN ('pending', 'failed');
+-- (已删除: clerk_webhook_events - 迁移到自建认证系统后不再需要)
 
 
 CREATE OR REPLACE FUNCTION p_start_webhook_processing(
@@ -1776,7 +1755,7 @@ ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage_daily ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_aggregation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clerk_webhook_events ENABLE ROW LEVEL SECURITY;
+-- (已删除: clerk_webhook_events RLS)
 ALTER TABLE config_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_themes ENABLE ROW LEVEL SECURITY;
@@ -1871,7 +1850,7 @@ CREATE POLICY service_role_all ON aggregated_stats FOR ALL TO service_role USING
 CREATE POLICY service_role_all ON ai_usage_daily FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON analytics_aggregation FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON analytics_events FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY service_role_all ON clerk_webhook_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+-- (已删除: clerk_webhook_events RLS policy)
 CREATE POLICY service_role_all ON config_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON daily_themes FOR ALL TO service_role USING (true) WITH CHECK (true);
