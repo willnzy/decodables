@@ -21,6 +21,8 @@ from .constants import (
     ACCESS_TOKEN_ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ACCESS_TOKEN_TYPE,
+    JWT_AUDIENCE,
+    JWT_ISSUER,
     JWT_SECRET_MIN_LENGTH,
     OTP_LENGTH,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -128,6 +130,8 @@ class TokenService:
             "role": role,
             "tier": tier,
             "type": ACCESS_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": now,
             "exp": now + (self._access_token_expire_minutes * 60),
         }
@@ -195,6 +199,8 @@ class TokenService:
                 token,
                 secret,
                 algorithms=[ACCESS_TOKEN_ALGORITHM],
+                issuer=JWT_ISSUER,
+                audience=JWT_AUDIENCE,
                 options={"require": ["sub", "email", "role", "tier", "type", "exp", "iat"]},
             )
         except jwt.ExpiredSignatureError:
@@ -295,6 +301,8 @@ class TokenService:
         payload = {
             "sub": str(user_id),
             "purpose": purpose,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": now,
             "exp": now + (expire_minutes * 60),
         }
@@ -321,16 +329,13 @@ class TokenService:
             TokenExpiredException: If token has expired.
             TokenInvalidException: If token is invalid or purpose mismatch.
         """
-        try:
-            payload = jwt.decode(
-                token,
-                self._jwt_secret,
-                algorithms=[ACCESS_TOKEN_ALGORITHM],
-                options={"require": ["sub", "purpose", "exp", "iat"]},
-            )
-        except jwt.ExpiredSignatureError:
-            raise TokenExpiredException()
-        except (jwt.InvalidTokenError, jwt.DecodeError):
+        payload = self._decode_purpose_token(token, self._jwt_secret)
+
+        # Fallback to old secret during key rotation (H6)
+        if payload is None and self._jwt_secret_old:
+            payload = self._decode_purpose_token(token, self._jwt_secret_old)
+
+        if payload is None:
             raise TokenInvalidException(message="Invalid token")
 
         if payload.get("purpose") != expected_purpose:
@@ -340,6 +345,31 @@ class TokenService:
             return UUID(payload["sub"])
         except (KeyError, ValueError):
             raise TokenInvalidException(message="Malformed token payload")
+
+    def _decode_purpose_token(
+        self,
+        token: str,
+        secret: str,
+    ) -> Optional[dict]:
+        """
+        Attempt to decode a purpose token with the given secret.
+
+        Returns None if decoding fails (instead of raising),
+        to allow fallback to alternative secrets during key rotation.
+        """
+        try:
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=[ACCESS_TOKEN_ALGORITHM],
+                issuer=JWT_ISSUER,
+                audience=JWT_AUDIENCE,
+                options={"require": ["sub", "purpose", "exp", "iat"]},
+            )
+        except jwt.ExpiredSignatureError:
+            raise TokenExpiredException()
+        except (jwt.InvalidTokenError, jwt.DecodeError):
+            return None
 
     # -------------------------------------------------------------------
     # Secure Tokens (general purpose)

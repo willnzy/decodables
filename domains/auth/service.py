@@ -60,6 +60,9 @@ from .repository import IAuthUserRepository, ISessionRepository
 from .token_service import TokenService
 from .value_objects import DeviceInfo, Email
 
+# Import identity repository for role/tier lookup
+from domains.identity.repository import IUserRepository
+
 logger = logging.getLogger(__name__)
 
 # Disposable email domain blacklist (common ones)
@@ -96,12 +99,33 @@ class AuthService:
         password_service: PasswordService,
         token_service: TokenService,
         email_service: EmailService,
+        user_repository: Optional[IUserRepository] = None,
     ) -> None:
         self._auth_user_repo = auth_user_repository
         self._session_repo = session_repository
         self._password_svc = password_service
         self._token_svc = token_service
         self._email_svc = email_service
+        self._user_repo = user_repository
+
+    # ===================================================================
+    # Internal Helpers
+    # ===================================================================
+
+    async def _get_user_role_tier(self, user_id: UUID) -> tuple[str, str]:
+        """
+        Look up the real role and tier from the user profile.
+
+        Falls back to safe defaults ("user", "t1") if the profile
+        repository is not injected or the profile is not found.
+        """
+        if self._user_repo is not None:
+            profile = await self._user_repo.get_by_id(str(user_id))
+            if profile is not None:
+                role = profile.role.value if hasattr(profile.role, "value") else str(profile.role)
+                tier = profile.tier.value if hasattr(profile.tier, "value") else str(profile.tier)
+                return role, tier
+        return "user", "t1"
 
     # ===================================================================
     # Registration — Step 1: Send OTP
@@ -517,11 +541,12 @@ class AuthService:
             if auth_user is None:
                 raise TokenRevokedException()
 
+            role, tier = await self._get_user_role_tier(auth_user.id)
             access_token = self._token_svc.create_access_token(
                 user_id=auth_user.id,
                 email=auth_user.email,
-                role="user",  # TODO: get from profile
-                tier="t1",    # TODO: get from profile
+                role=role,
+                tier=tier,
             )
             return {
                 "access_token": access_token,
@@ -1098,12 +1123,13 @@ class AuthService:
         )
         await self._session_repo.create(session)
 
-        # Create access token
+        # Create access token with real role/tier from profile
+        role, tier = await self._get_user_role_tier(user.id)
         access_token = self._token_svc.create_access_token(
             user_id=user.id,
             email=user.email,
-            role="user",  # TODO: get from profile via join or lookup
-            tier="t1",    # TODO: get from profile via join or lookup
+            role=role,
+            tier=tier,
         )
 
         return {
@@ -1127,11 +1153,12 @@ class AuthService:
         if auth_user is None:
             raise TokenRevokedException()
 
+        role, tier = await self._get_user_role_tier(auth_user.id)
         access_token = self._token_svc.create_access_token(
             user_id=auth_user.id,
             email=auth_user.email,
-            role="user",  # TODO: get from profile
-            tier="t1",    # TODO: get from profile
+            role=role,
+            tier=tier,
         )
 
         return {

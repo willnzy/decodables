@@ -330,12 +330,14 @@ class Container:
             password_svc = await self.get_password_service()
             token_svc = await self.get_token_service()
             email_svc = await self.get_email_service()
+            user_repo = await self.get_user_repository()
             self._services['auth'] = AuthService(
                 auth_user_repository=auth_user_repo,
                 session_repository=session_repo,
                 password_service=password_svc,
                 token_service=token_svc,
                 email_service=email_svc,
+                user_repository=user_repo,
             )
         return self._services['auth']
 

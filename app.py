@@ -92,6 +92,9 @@ def _sanitize_sentry_event(event):
         _BODY_SENSITIVE_KEYS = {
             "password", "token", "secret", "api_key", "apikey",
             "credit_card", "card_number", "cvv", "email", "phone",
+            # Auth domain specific fields
+            "otp_code", "refresh_token", "current_password", "new_password",
+            "register_token", "otp_verified_token", "access_token",
         }
         for body_key in ("data", "json"):
             body = req.get(body_key)

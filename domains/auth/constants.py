@@ -23,6 +23,10 @@ ACCESS_TOKEN_REFRESH_WINDOW_SECONDS: int = 60
 # JWT minimum secret key length (256-bit = 32 bytes → base64 ≈ 43 chars)
 JWT_SECRET_MIN_LENGTH: int = 43
 
+# JWT issuer and audience claims (for token validation)
+JWT_ISSUER: str = "make-decodables"
+JWT_AUDIENCE: str = "make-decodables-api"
+
 # ---------------------------------------------------------------------------
 # Password Rules
 # ---------------------------------------------------------------------------

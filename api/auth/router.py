@@ -350,7 +350,9 @@ async def refresh_token(
 
 
 @router.post("/logout", response_model=SuccessResponse)
+@limiter.limit("30/minute")
 async def logout(
+    request: Request,
     body: LogoutRequest,
     auth_service: AuthService = Depends(get_auth_service),
 ) -> SuccessResponse:
@@ -537,7 +539,9 @@ async def change_password(
 
 
 @router.post("/logout-all", response_model=SuccessResponse)
+@limiter.limit("10/minute")
 async def logout_all(
+    request: Request,
     user_id: UUID = Depends(get_current_auth_user_id),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> SuccessResponse:
@@ -547,7 +551,9 @@ async def logout_all(
 
 
 @router.get("/sessions", response_model=SessionListResponse)
+@limiter.limit("30/minute")
 async def list_sessions(
+    request: Request,
     user_id: UUID = Depends(get_current_auth_user_id),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> SessionListResponse:
@@ -564,7 +570,9 @@ async def list_sessions(
     response_model=SuccessResponse,
     responses={404: {"model": ErrorResponse}},
 )
+@limiter.limit("20/minute")
 async def revoke_session(
+    request: Request,
     session_id: UUID,
     user_id: UUID = Depends(get_current_auth_user_id),
     auth_service: AuthService = Depends(get_auth_service),
