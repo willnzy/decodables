@@ -82,7 +82,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .maybe_single()
             .execute()
         )
-        if not result.data:
+        if result is None or not result.data:
             return None
         return self._map_to_entity(result.data)
 
@@ -96,7 +96,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .maybe_single()
             .execute()
         )
-        if not result.data:
+        if result is None or not result.data:
             return None
         return self._map_to_entity(result.data)
 
@@ -118,7 +118,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .maybe_single()
             .execute()
         )
-        if not result.data:
+        if result is None or not result.data:
             return None
         return result.data
 
@@ -150,7 +150,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
                 },
             ).execute()
 
-            if not result.data or len(result.data) == 0:
+            if result is None or not result.data or len(result.data) == 0:
                 raise RuntimeError("RPC create_pending_auth_user returned no data")
 
             row = result.data[0]
@@ -210,7 +210,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             },
         ).execute()
 
-        if not result.data or len(result.data) == 0:
+        if result is None or not result.data or len(result.data) == 0:
             raise RuntimeError("RPC create_auth_user_with_profile returned no data")
 
         row = result.data[0]
@@ -410,7 +410,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             },
         ).execute()
 
-        if not result.data or len(result.data) == 0:
+        if result is None or not result.data or len(result.data) == 0:
             raise RuntimeError("RPC restore_auth_user_with_profile returned no data")
 
         row = result.data[0]
