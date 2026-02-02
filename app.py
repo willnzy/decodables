@@ -14,7 +14,6 @@ from io import BytesIO
 import base64
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from svix.webhooks import Webhook, WebhookVerificationError
 
 # v3.22: Sentry Error Tracking (optional, enabled via SENTRY_DSN env var)
 # v3.25: Added Logs, Metrics, Profiling and AI Agents monitoring (SDK >= 2.44.0)

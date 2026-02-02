@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
     # 数据库字段 → 领域对象属性路径
-    'id': 'user_id',                          # TEXT (Clerk ID)
+    'id': 'user_id',                          # UUID (user ID)
     'email': 'email',                         # TEXT
     'username': 'username',                   # TEXT
     'display_name': 'display_name',           # TEXT
@@ -483,21 +483,6 @@ CAMPAIGNS_DB_TO_DOMAIN: Dict[str, str] = {
     'deleted_at': 'deleted_at',
     'recovery_expires_at': 'recovery_expires_at',
     'is_permanently_deleted': 'is_permanently_deleted',
-}
-
-# clerk_webhook_events 表
-CLERK_WEBHOOK_EVENTS_DB_TO_DOMAIN: Dict[str, str] = {
-    'id': 'id',
-    'event_id': 'event_id',
-    'event_type': 'event_type',
-    'payload': 'payload',
-    'processed': 'processed',
-    'processed_at': 'processed_at',
-    'error_message': 'error_message',
-    'retry_count': 'retry_count',
-    'created_at': 'created_at',
-    'processing_status': 'processing_status',
-    'last_error': 'last_error',
 }
 
 # config_audit_logs 表

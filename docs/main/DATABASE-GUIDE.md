@@ -938,7 +938,7 @@ from infrastructure.repositories.field_mappings import (
 | 原因 | 说明 |
 |------|------|
 | **架构匹配** | 前端不直接访问 Supabase，所有请求通过后端 API |
-| **认证分离** | 认证由 Clerk 处理，不是 Supabase Auth |
+| **认证分离** | 认证由 self-hosted auth 处理，不是 Supabase Auth |
 | **安全深度防御** | 即使 anon key 泄露，数据也受保护 |
 | **简化管理** | 权限逻辑集中在后端代码 |
 
@@ -1982,20 +1982,6 @@ p_retention_days INTEGER DEFAULT 90
 | `context` | JSONB | - |
 | `properties` | JSONB | - |
 | `timestamp` | TIMESTAMPTZ | - |
-| `created_at` | TIMESTAMPTZ | - |
-
-##### `clerk_webhook_events` (9 个字段)
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| `id` | UUID | - |
-| `event_id` | TEXT | - |
-| `event_type` | TEXT | - |
-| `payload` | JSONB | - |
-| `processed` | BOOLEAN | - |
-| `processed_at` | TIMESTAMPTZ | - |
-| `error_message` | TEXT | - |
-| `retry_count` | INTEGER | - |
 | `created_at` | TIMESTAMPTZ | - |
 
 ##### `config_audit_logs` (7 个字段)

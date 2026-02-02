@@ -14,7 +14,7 @@ This module contains all user-facing API endpoints organized by domain:
 - themes: Theme system
 - config: User configuration
 - support: Support and feedback
-- webhooks: External webhooks (Clerk, Stripe)
+- webhooks: External webhooks (Stripe)
 - payment: Payment processing
 
 All endpoints follow the pattern: /api/v2/user/{domain}/{endpoint}

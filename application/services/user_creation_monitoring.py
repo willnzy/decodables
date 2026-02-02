@@ -116,7 +116,7 @@ class UserCreationMonitoringService:
                 "message": f"Webhook success rate is critically low: {webhook_rate}%"
             })
             recommendations.append(
-                "Check Clerk webhook configuration and network connectivity"
+                "Check auth service configuration and network connectivity"
             )
         elif webhook_rate < 95:
             alerts.append({
@@ -127,7 +127,7 @@ class UserCreationMonitoringService:
                 "message": f"Webhook success rate is below target: {webhook_rate}%"
             })
             recommendations.append(
-                "Monitor Clerk webhook delivery delays"
+                "Monitor webhook delivery delays"
             )
         
         # 检查 JIT Fallback 率

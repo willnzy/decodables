@@ -272,7 +272,6 @@ POST /api/v2/user/tools/ocr            # 上传图片进行 OCR
 
 ```
 /api/v2/user/webhooks/stripe    # Stripe 支付回调
-/api/v2/user/webhooks/clerk     # Clerk 用户回调
 /api/webhooks/fal               # FAL AI 回调
 ```
 
@@ -302,10 +301,10 @@ POST /api/v2/user/tools/ocr            # 上传图片进行 OCR
 
 ### 2.2 认证方式
 
-所有用户端点需要 Clerk JWT Token:
+所有用户端点需要 JWT Access Token (HS256):
 
 ```http
-Authorization: Bearer <clerk_jwt_token>
+Authorization: Bearer <access_token>
 ```
 
 ### 2.3 通用响应格式
@@ -395,43 +394,21 @@ Authorization: Bearer <clerk_jwt_token>
 
 > ⚠️ **重要**: Webhooks 用于第三方平台回调，需在对应平台配置正确的 URL
 
-### 4.1 Clerk Webhook
+### 4.1 Auth API
 
-**URL**: `POST /api/v2/user/webhooks/clerk`
+用户注册和登录通过 self-hosted auth 系统处理:
 
-**配置位置**: Clerk Dashboard → Webhooks
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/auth/register` | POST | 用户注册 (email + password) |
+| `/auth/login` | POST | 用户登录，返回 Access Token + Refresh Token |
+| `/auth/refresh` | POST | 刷新 Access Token |
+| `/auth/logout` | POST | 登出，撤销 Refresh Token |
+| `/auth/verify-email` | POST | 邮箱验证 |
+| `/auth/forgot-password` | POST | 发送密码重置邮件 |
+| `/auth/reset-password` | POST | 重置密码 |
 
-**需要订阅的事件**:
-- `user.created` - 用户注册
-- `user.updated` - 用户信息更新
-- `session.created` - 用户登录
-- `session.ended` - 用户登出
-- `session.removed` - 会话移除
-- `session.revoked` - 会话撤销
-
-**请求头**:
-```http
-svix-id: <event_id>
-svix-timestamp: <timestamp>
-svix-signature: <signature>
-```
-
-**处理逻辑**:
-
-| 事件 | 处理动作 |
-|------|----------|
-| `user.created` | 创建用户档案、赠送 50 永久积分 |
-| `user.updated` | 更新头像/用户名/姓名 |
-| `session.created` | 记录登录活动 |
-| `session.*` (结束) | 记录登出活动 |
-
-**响应**:
-```json
-{
-  "status": "success",
-  "reason": "user_created"
-}
-```
+详见: `api/auth/router.py`
 
 ---
 
@@ -468,7 +445,7 @@ Stripe-Signature: <signature>
 checkout.session 需要携带的 metadata:
 ```json
 {
-  "user_id": "clerk_user_id",
+  "user_id": "uuid-user-id",
   "plan": "t2|t3|credits_100|credits_500|credits_2000"
 }
 ```
@@ -523,7 +500,7 @@ checkout.session 需要携带的 metadata:
 | **日志** | `/api/v2/user/logs` | 2 | 错误上报 |
 | **成员管理** | `/api/v2/user/workspaces/{id}/members` | 5 | 成员列表、邀请、角色、移除 (v3.44) |
 | **邀请管理** | `/api/v2/user/invitations` | 3 | 待处理邀请、接受、拒绝 (v3.44) |
-| **Webhooks** | `/api/v2/user/webhooks` | 2 | Clerk、Stripe |
+| **Webhooks** | `/api/v2/user/webhooks` | 1 | Stripe |
 
 **详细文档**: 完整的 171 个 User API 端点详细文档见 [docs/shared/user-api-review.md](../shared/user-api-review.md)
 
@@ -570,47 +547,32 @@ checkout.session 需要携带的 metadata:
 
 ## 附录 A: 认证系统
 
-### Clerk 用户 ID 格式
+### 用户 ID 格式
 
-Make Decodables 使用 Clerk 作为认证提供商。用户 ID 格式如下:
+Make Decodables 使用 self-hosted auth 系统。用户 ID 使用标准 UUID 格式:
 
-**格式**: `user_{base58_characters}`
+**格式**: UUID v4
 
-**示例**: `user_2NNEqL2nrIRdJ194ndJqAHwEfxC`
+**示例**: `12345678-1234-1234-1234-123456789abc`
 
 **特征**:
-- 前缀: 固定为 `user_`
-- 字符集: 大小写字母 + 数字 (Base58)
-- 长度: 总计 25-35 个字符 (前缀 5 个 + 标识符 20-30 个)
+- 格式: 标准 UUID v4
+- 长度: 36 个字符
+- 字符集: 小写十六进制 + 连字符
 
 **验证规则** (Regex):
 ```regex
-^user_[a-zA-Z0-9]{20,30}$
-```
-
-**⚠️ 重要提示**:
-- Clerk user ID **不是** UUID 格式
-- 不要尝试使用 UUID 验证规则验证 Clerk ID
-- API 调用时必须使用完整的 `user_` 前缀
-
-**错误示例**:
-```
-❌ 550e8400-e29b-41d4-a716-446655440000  (UUID 格式)
-❌ 2NNEqL2nrIRdJ194ndJqAHwEfxC          (缺少前缀)
-```
-
-**正确示例**:
-```
-✅ user_2NNEqL2nrIRdJ194ndJqAHwEfxC
+^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 ```
 
 ### 认证流程
 
-1. 用户在前端通过 Clerk 登录
-2. Clerk 返回 JWT token
-3. 前端在 API 请求中携带 token (Authorization header)
-4. 后端验证 token 并提取 user_id
-5. 使用 user_id 执行业务逻辑
+1. 用户在前端通过 `lib/auth` 登录 (email + password)
+2. BFF Proxy 转发请求到后端 `/auth/login`
+3. 后端返回 Access Token (HS256 JWT, 15min) + Refresh Token (httpOnly cookie, 7d)
+4. 前端在 API 请求中携带 Access Token (Authorization: Bearer header)
+5. 后端验证 token 并提取 user_id (UUID)
+6. 使用 user_id 执行业务逻辑
 
 ---
 
@@ -620,7 +582,7 @@ Make Decodables 使用 Clerk 作为认证提供商。用户 ID 格式如下:
 
 | 标识符 | 格式示例 | 用途 | 来源 |
 |--------|----------|------|------|
-| **user_id** | `user_2abc3def...` | 系统内部使用,数据库主键 | Clerk 自动生成 |
+| **user_id** | `12345678-1234-...` | 系统内部使用,数据库主键 | 注册时自动生成 (UUID) |
 | **user_code** | `26010914305278900123456789` | 用户反馈/管理员搜索 | 注册时生成 |
 
 **user_code 格式** (26位):
@@ -788,4 +750,4 @@ GET /api/v2/admin/users?search=26010914305278900123456789
 - v3.28: Feature Flags v1.1 树状结构支持 (Admin 15 个端点, User 4 个端点)
 - v3.27: 重构 API 文档结构,分离 User/Admin API 详细文档
 - v3.26: 新增完整的 Admin API 文档 (15个模块), 包含 DDD 架构说明和审计日志机制
-- v3.25: 补充 9 个缺失的 User API 端点章节, 添加 Clerk ID 格式说明*
+- v3.25: 补充 9 个缺失的 User API 端点章节, 添加用户 ID 格式说明

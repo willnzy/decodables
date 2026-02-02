@@ -58,7 +58,7 @@ async def log_activity_async(
 
 async def log_webhook_operation(
     operation_type: str,
-    source: str,  # "stripe" or "clerk"
+    source: str,  # "stripe" or "auth"
     target_user_id: Optional[str] = None,
     details: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
@@ -75,7 +75,7 @@ async def log_webhook_operation(
 
     Args:
         operation_type: Type of webhook operation (webhook_subscription_create, etc.)
-        source: Webhook source ("stripe" or "clerk")
+        source: Webhook source ("stripe" or "auth")
         target_user_id: Affected user ID
         details: Human-readable description
         metadata: Event data (subscription_id, amount, etc.)

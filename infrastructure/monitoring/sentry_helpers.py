@@ -104,7 +104,7 @@ class SentryMonitoring:
             extra_context={
                 "email": email,
                 "reason": reason,
-                "recommendation": "Check Clerk webhook configuration"
+                "recommendation": "Check auth service configuration"
             }
         )
     

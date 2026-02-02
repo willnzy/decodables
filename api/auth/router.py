@@ -100,7 +100,7 @@ async def get_current_auth_user_id(request: Request) -> UUID:
     Extract and verify user_id from self-hosted JWT access token.
 
     This is for auth-protected endpoints within the auth module.
-    Uses our own TokenService instead of Clerk.
+    Uses TokenService for JWT verification.
     """
     from domains.auth.token_service import TokenService
     from domains.auth.exceptions import TokenInvalidException

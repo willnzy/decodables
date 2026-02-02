@@ -430,7 +430,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             role = UserRole.USER
 
         return UserProfile(
-            user_id=row["id"],  # profiles.id is the Clerk user_id
+            user_id=row["id"],  # profiles.id is the user_id (UUID)
             email=row["email"],
             user_code=row.get("user_code"),
             username=row.get("username"),

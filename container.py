@@ -683,7 +683,7 @@ class Container:
             credit_repo = SupabaseCreditRepository(db)
             payment_repo = SupabasePaymentRepository(db)
 
-            # Webhook Services (Clerk removed — self-hosted auth)
+            # Webhook Services (Stripe only)
             stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
 
             self._services['webhook_retry'] = WebhookRetryService(
@@ -820,7 +820,7 @@ class Container:
 
         WHY separate from get_webhook_retry_service?
         - This is used for read-only queries (list failed webhooks)
-        - Avoids overhead of constructing full retry service with Clerk/Stripe
+        - Avoids overhead of constructing full retry service with Stripe
         """
         from infrastructure.repositories import SupabaseWebhookRepository
 
@@ -1076,7 +1076,7 @@ class Container:
             self._services['referral_service'] = ReferralService(repository, billing_service)
         return self._services['referral_service']
 
-    # REMOVED: get_clerk_webhook_service — Clerk auth replaced by self-hosted auth (Phase 2)
+    # NOTE: Clerk webhook service removed — self-hosted auth (Phase 2)
 
     async def get_stripe_webhook_service(self):
         """

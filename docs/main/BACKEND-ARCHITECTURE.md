@@ -634,7 +634,6 @@ decodables/
 │   ├── auth/                        # 认证抽象
 │   │   ├── __init__.py
 │   │   ├── interface.py             # IAuthProvider
-│   │   ├── clerk_provider.py        # Clerk 实现
 │   │   └── jwt_utils.py             # JWT 工具
 │   ├── cache/                       # 缓存抽象
 │   │   ├── __init__.py
@@ -842,7 +841,6 @@ decodables/
 │   │   ├── generation.py            # AI 生成 API
 │   │   ├── feature_flags.py         # Feature Flag API
 │   │   ├── webhooks/
-│   │   │   ├── clerk.py             # Clerk Webhook
 │   │   │   └── stripe.py            # Stripe Webhook
 │   │   └── admin/
 │   │       ├── users.py             # 管理后台 - 用户
@@ -1368,7 +1366,7 @@ class SupabaseUserRepository(IUserRepository):
 ├─────────────────────────────────────────┤
 │  Infrastructure 层 (infrastructure/*)   │  ← 技术实现
 │  实现 → Repository (Supabase)           │
-│  实现 → External Service (Stripe, Clerk)│
+│  实现 → External Service (Stripe)       │
 └─────────────────────────────────────────┘
 ```
 

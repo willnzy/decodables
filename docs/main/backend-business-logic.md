@@ -16,7 +16,7 @@
 | v3.5.0 | 2026-01-12 | 🔒 **数据库安全增强**：69 表启用 RLS、视图命名规范 `v_` 前缀、field_mappings 审计修复 | - |
 | v3.4.0 | 2026-01-11 | 📝 **新增文章管理系统**：Articles CMS (Manual/News/Changelog)、DDD 架构、Markdown 支持、发布/取消发布工作流 | - |
 | v3.3.0 | 2026-01-10 | 🗑️ **新增统一删除机制**：BaseRepository 三阶段删除 (软删除/永久标记/物理删除)、自动过滤、Repository 模式更新 | - |
-| v3.2.0 | 2026-01-09 | 📝 **新增认证系统章节**：Clerk 用户 ID 格式说明 (非 UUID！)、验证规则、认证流程 | - |
+| v3.2.0 | 2026-01-09 | 📝 **新增认证系统章节**：Self-hosted auth 用户 ID 格式 (UUID)、验证规则、认证流程 | - |
 | v3.1.0 | 2026-01-08 | 🧹 **全量清理**：schemas/→api/schemas/、scheduled_tasks/→application/services/、文档整理 | - |
 | v3.0.0 | 2026-01-07 | 🏗️ **重大架构升级**：DDD 三层架构迁移完成、旧代码清理、完整测试覆盖 | - |
 | v2.0.0 | 2026-01-06 | 🏗️ 重大更新：新增后台架构说明、代码规范、文件分类；版本号规范化为语义化版本 | - |
@@ -50,7 +50,7 @@
 2. [后台架构](#2-后台架构) ⭐ **v2.0 新增**
 3. [代码规范](#3-代码规范) ⭐ **v2.0 新增**
 4. [文件分类](#4-文件分类) ⭐ **v2.0 新增**
-4.5. [认证系统 (Clerk)](#45-认证系统-clerk) ⚠️ **必读**
+4.5. [认证系统 (Self-hosted Auth)](#45-认证系统-self-hosted-auth) ⚠️ **必读**
 
 ### 第二部分：业务逻辑
 5. [用户等级与订阅系统](#5-用户等级与订阅系统)
@@ -95,7 +95,7 @@
 |------|--------|
 | 前端 | Next.js 15 + React 19 + Tailwind CSS 4, Fabric.js 5.3 |
 | 状态管理 | Zustand 5 |
-| 认证 | Clerk |
+| 认证 | Self-hosted (HS256 JWT) |
 | UI组件 | Radix UI + Shadcn UI + Lucide Icons |
 | 后端 | Python FastAPI + Uvicorn |
 | 数据库 | Supabase (PostgreSQL) |
@@ -133,7 +133,7 @@
 │  │  ├─ service.py             │    │  └─ ...                      │
 │  │  ├─ repository.py (IF)     │    ├─ external_services/         │
 │  │  └─ exceptions.py           │    │  ├─ stripe_client.py        │
-│  ├─ identity/                 │    │  ├─ clerk_client.py          │
+│  ├─ identity/                 │    │  └─ ...                      │
 │  ├─ creation/                 │    │  └─ ...                      │
 │  ├─ marketplace/               │    └─ messaging/                 │
 │  └─ platform/                 │        └─ redis_queue.py          │
@@ -296,7 +296,7 @@ decodables/
 **快速判断规则**:
 - 如果文件名包含具体业务词汇 (user, project, credit, marketplace) → 🔶 业务层
 - 如果文件处理通用功能 (cache, log, db, auth) → 🔷 框架层
-- 如果文件是第三方集成 (stripe, clerk, openai) → 🔸 混合层
+- 如果文件是第三方集成 (stripe, openai) → 🔸 混合层
 
 ### 2.5 数据访问模式 (DDD Repository Pattern)
 
@@ -621,7 +621,7 @@ services/ai/
 | 生成 | `/api/generate` | `generation.py`, `pdf_export.py` |
 | 市场 | `/api/marketplace` | `marketplace.py`, `marketplace_search.py` |
 | 管理 | `/api/admin/*` | `admin_users.py`, `admin_credits.py`, ... |
-| 系统 | `/api/system` | `health.py`, `webhooks_clerk.py`, `webhooks_stripe.py` |
+| 系统 | `/api/system` | `health.py`, `webhooks_stripe.py` |
 
 **建议优化** (待实施):
 - 将 `admin_*.py` 移至 `routers/admin/` 子目录
@@ -878,7 +878,6 @@ MEMBER_TIERS = ["t2", "t3"]
 | `services/ai/unified_service.py` | 统一入口模式、Facade 设计 | Prompt 模板、业务参数 |
 | `services/ai/model_config.py` | 模型配置结构 | 具体模型选择、参数 |
 | `services/payment/stripe_service.py` | Stripe 集成骨架、Webhook 处理 | 产品定义、价格 ID |
-| `routers/webhooks_clerk.py` | Clerk Webhook 处理结构 | 用户同步逻辑 |
 | `routers/webhooks_stripe.py` | Stripe Webhook 处理结构 | 订阅/支付处理逻辑 |
 | `exceptions/ai.py` | AI 异常结构 | 错误码、消息 |
 | `scheduled_tasks/metrics_etl/` | ETL 框架结构 | 指标定义、聚合逻辑 |
@@ -965,50 +964,55 @@ PRODUCT_CONFIG = {
 
 ---
 
-## 4.5 认证系统 (Clerk)
+## 4.5 认证系统 (Self-hosted Auth)
 
 > ⚠️ **重要**: 本节包含关键的业务知识，请务必阅读！
 
-### 4.5.1 Clerk 用户 ID 格式
+### 4.5.1 用户 ID 格式
 
-**Clerk 的 user_id 不是 UUID 格式！** 这是一个常见的误解。
+**user_id 使用标准 UUID 格式。**
 
 | 格式类型 | 示例 | 用途 |
 |----------|------|------|
-| ❌ UUID | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` | 数据库主键 (campaign_id, project_id 等) |
-| ✅ Clerk ID | `user_2NNEqL2nrIRdJ194ndJqAHwEfxC` | 用户标识 (来自 Clerk JWT) |
+| ✅ UUID | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` | 用户标识、数据库主键 |
 
-**Clerk 用户 ID 特征**:
-- 前缀: `user_`
-- 后缀: 20-27 个 Base58 字符
-- 总长度: 25-35 个字符
-- 示例: `user_2NNEqL2nrIRdJ194ndJqAHwEfxC`
+**用户 ID 特征**:
+- 格式: 标准 UUID v4
+- 总长度: 36 个字符
+- 示例: `12345678-1234-1234-1234-123456789abc`
 
 ### 4.5.2 验证规则
 
 ```python
-# 正确的 Clerk 用户 ID 验证
-CLERK_USER_ID_PATTERN = re.compile(r"^user_[a-zA-Z0-9]{20,30}$")
-
-# 错误示例 - 不要用 UUID 验证用户 ID！
-# UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-...$")  # ❌ 错误
+# UUID 用户 ID 验证
+UUID_USER_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
 ```
 
 ### 4.5.3 认证流程
 
 ```
-前端 → Clerk SDK → JWT Token → 后端
-                                 ↓
-                         dependencies.py
-                                 ↓
-                    jwt.decode(token, CLERK_PUBLIC_KEY)
-                                 ↓
-                    user_id = payload["sub"]  # 格式: user_xxx
+前端 → lib/auth → BFF Proxy → 后端 /auth/login
+                                      ↓
+                              HS256 JWT (Access Token 15min)
+                              + Refresh Token (httpOnly cookie, 7d)
+                                      ↓
+                              API 请求: Bearer <access_token>
+                                      ↓
+                              dependencies.py → get_current_user()
+                                      ↓
+                              jwt.decode(token, AUTH_JWT_SECRET, algorithms=["HS256"])
+                                      ↓
+                              user_id = payload["sub"]  # UUID 格式
 ```
 
 **相关文件**:
+- `domains/auth/`: 认证领域 (注册/登录/Token/密码/会话)
+- `api/auth/router.py`: Auth API 端点
 - `dependencies.py`: `get_current_user()` 从 JWT 的 `sub` 字段获取用户 ID
-- `api/user/billing.py`: `CLERK_USER_ID_PATTERN` 用于验证管理员添加积分时的目标用户 ID
+- `api/user/billing.py`: `UUID_USER_ID_PATTERN` 用于验证管理员添加积分时的目标用户 ID
 
 ---
 
@@ -1899,7 +1903,7 @@ CREATE TABLE articles (
   cover_image VARCHAR(500),               -- 封面图 URL
   is_published BOOLEAN DEFAULT false,     -- 发布状态
   published_at TIMESTAMPTZ,               -- 发布时间
-  author_id VARCHAR(50),                  -- Clerk user_id
+  author_id UUID,                          -- user_id (UUID)
   sort_order INTEGER DEFAULT 0,           -- 排序权重
   view_count INTEGER DEFAULT 0,           -- 阅读量
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -2206,7 +2210,7 @@ sentry_sdk.init(
 | `FAL_KEY` | FAL AI API Key | `xxx` |
 | `STRIPE_SECRET_KEY` | Stripe 密钥 | `sk_live_xxx` |
 | `STRIPE_WEBHOOK_SECRET` | Stripe Webhook 签名密钥 | `whsec_xxx` |
-| `CLERK_WEBHOOK_SECRET` | Clerk Webhook 签名密钥 | `whsec_xxx` |
+| `AUTH_JWT_SECRET` | Auth JWT 签名密钥 (256-bit) | `<random-base64>` |
 
 **推荐配置**:
 

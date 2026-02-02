@@ -21,7 +21,7 @@ class CreateUserCommand:
     """
     Command to create a new user.
 
-    Triggered by Clerk webhook on user signup.
+    Triggered by auth registration on user signup.
     """
     user_id: str
     email: str

@@ -37,7 +37,7 @@ class IAuthProvider(ABC):
     Abstract interface for authentication providers.
 
     Implementations can support different auth methods:
-    - JWT-based (Clerk, Auth0, Firebase)
+    - JWT-based (self-hosted, Auth0, Firebase)
     - API Key
     - OAuth
     - Custom tokens

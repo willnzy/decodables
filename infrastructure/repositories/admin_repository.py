@@ -143,7 +143,7 @@ class SupabaseAdminUsersRepository:
             target_type: Resource type being operated on (project, config, feature_flag, etc.)
             target_id: Specific resource identifier (project_id, config_key, etc.)
             metadata: Additional context as JSONB (before/after values, batch info, etc.)
-            source: Where action originated from (api, webhook, stripe, clerk)
+            source: Where action originated from (api, webhook, stripe, auth)
             details: Human-readable description
             reason: Why the action was taken
 
@@ -193,7 +193,7 @@ class SupabaseAdminUsersRepository:
         - target_user_id: Affected user
         - target_type: Resource type (project, config, feature_flag, system_resource, etc.)
         - target_id: Specific resource ID
-        - source: Action source (api, webhook, stripe, clerk)
+        - source: Action source (api, webhook, stripe, auth)
         - start_date / end_date: Date range filtering
 
         Returns:

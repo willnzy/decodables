@@ -5,8 +5,7 @@ Billing API - Credit management endpoints using DDD handlers.
 @version 1.2.1
 
 Changes in v1.2.1:
-- B-HIGH-1-FIX: Fixed user_id validation - Clerk IDs are NOT UUID format
-  - Clerk user IDs are text format like "user_2abc..." (prefix + 24-27 chars)
+- v3.0.0: user_id validation updated to UUID format (self-hosted auth)
   - User ID format validation (UUID)
 
 Changes in v1.2.0:
