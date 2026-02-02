@@ -33,7 +33,7 @@ CREATE SCHEMA IF NOT EXISTS internal;
 -- ============================================================================
 -- 启用必要的 PostgreSQL 扩展
 -- ============================================================================
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";      -- UUID 生成函数
+-- uuid-ossp 扩展已移除: 全部改用 PostgreSQL 14+ 内置 gen_random_uuid() (无需扩展依赖)
 CREATE EXTENSION IF NOT EXISTS "ltree" SCHEMA extensions;  -- 层级树结构支持 (用于 asset_categories)
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";         -- WS-19: Trigram 索引支持 (模糊搜索优化)
 
@@ -81,7 +81,7 @@ SET search_path = 'public';
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS profiles (
     -- 主键 (UUID，自建认证系统)
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 基础信息
     email TEXT NOT NULL,  -- 唯一性由部分索引 idx_profiles_email_unique (WHERE is_deleted=false) 保证
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS auth_users (
     -- 主键 (与 profiles.id 共享同一 UUID)
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 邮箱 (统一小写存储)
     email TEXT NOT NULL UNIQUE,
@@ -251,7 +251,7 @@ CREATE POLICY service_role_full_access ON auth_users
 -- 1.5.2 auth_sessions (Refresh Token 存储 + 轮换检测)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS auth_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 用户关联
     user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
@@ -306,7 +306,7 @@ CREATE POLICY service_role_full_access ON auth_sessions
 -- 1.5.3 auth_oauth_accounts (预留 OAuth 扩展)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS auth_oauth_accounts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 用户关联
     user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
@@ -345,7 +345,7 @@ CREATE POLICY service_role_full_access ON auth_oauth_accounts
 -- 2. asset_categories (素材分类 - 自引用)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS asset_categories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 层级关系
     parent_id UUID REFERENCES asset_categories(id) ON DELETE SET NULL,
@@ -480,7 +480,7 @@ CREATE TRIGGER update_folders_updated_at
 -- 注意: 此表已废弃，新标签系统使用 tags 表 (用户级标签)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS legacy_system_tags (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(50) NOT NULL,
     slug VARCHAR(50) UNIQUE NOT NULL,
     name_i18n JSONB DEFAULT '{}'::JSONB,
@@ -589,7 +589,7 @@ CREATE TRIGGER update_tag_group_presets_updated_at
 -- 4. projects (项目表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS projects (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- 用户ID (P0-8: Repository 同时使用 user_id 和 owner_id)
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -717,7 +717,7 @@ CREATE TRIGGER update_projects_updated_at
 -- 4.1 project_pages (项目页面 - P0-9: Repository 使用但之前缺失的表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS project_pages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     page_id TEXT NOT NULL UNIQUE,  -- P0-9: Repository 使用的业务 ID
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 
@@ -741,7 +741,7 @@ CREATE INDEX IF NOT EXISTS idx_project_pages_project ON project_pages(project_id
 -- 5. marketplace_listings (市场列表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_listings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id TEXT UNIQUE NOT NULL DEFAULT gen_random_uuid()::text,  -- 业务 ID (Repository 使用)
     seller_id UUID REFERENCES profiles(id),
 
@@ -845,7 +845,7 @@ CREATE TABLE IF NOT EXISTS marketplace_listings (
 -- 6. assets (用户素材)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id),
 
@@ -960,7 +960,7 @@ CREATE INDEX IF NOT EXISTS idx_user_asset_tags_tag ON user_asset_tags(tag_id);
 -- 8. user_recent_assets (用户最近使用素材)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_recent_assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -975,7 +975,7 @@ CREATE INDEX IF NOT EXISTS idx_user_recent_asset ON user_recent_assets(asset_id)
 -- 9. user_favorite_assets (用户收藏素材)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_favorite_assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -990,7 +990,7 @@ CREATE INDEX IF NOT EXISTS idx_user_favorite_asset ON user_favorite_assets(asset
 -- 10. project_versions (项目版本)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS project_versions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
     canvas_data JSONB NOT NULL,
@@ -1007,7 +1007,7 @@ CREATE TABLE IF NOT EXISTS project_versions (
 -- User-created prompt templates for asset/image AI generation (5W1H)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_asset_prompt_templates (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
@@ -1043,7 +1043,7 @@ CREATE TABLE IF NOT EXISTS user_asset_prompt_templates (
 -- 12. credit_purchases (积分购买记录)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS credit_purchases (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     plan_type TEXT NOT NULL CHECK (plan_type IN ('credits_100', 'credits_500', 'credits_2000')),
     credits_amount INTEGER NOT NULL,
@@ -1064,7 +1064,7 @@ CREATE TABLE IF NOT EXISTS credit_purchases (
 -- 13. credit_transactions (积分交易流水)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS credit_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 交易类型 (P0-6: 同时支持 transaction_type 和 tx_type)
@@ -1220,7 +1220,7 @@ CREATE INDEX IF NOT EXISTS idx_listing_usages_created_at ON listing_usages(creat
 -- 16. marketplace_favorites (市场收藏)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_favorites (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -1242,7 +1242,7 @@ CREATE TABLE IF NOT EXISTS marketplace_favorites (
 -- 17. marketplace_purchases (市场购买记录)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_purchases (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
 
@@ -1318,7 +1318,7 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_reports_pending ON marketplace_report
 -- 19. marketplace_reviews (市场评价)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS marketplace_reviews (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     listing_id UUID NOT NULL REFERENCES marketplace_listings(id) ON DELETE CASCADE,
     reviewer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
@@ -1372,7 +1372,7 @@ CREATE INDEX IF NOT EXISTS idx_user_page_prompt_templates_name ON user_page_prom
 -- 21. subscription_history (订阅历史)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS subscription_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     tier TEXT NOT NULL CHECK (tier IN ('t1', 't2', 't3')),
     action TEXT NOT NULL CHECK (action IN ('upgrade', 'downgrade', 'cancel', 'renew')),
@@ -1388,7 +1388,7 @@ CREATE TABLE IF NOT EXISTS subscription_history (
 -- 22. system_assets (系统素材)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_assets (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id UUID NOT NULL REFERENCES asset_categories(id),
 
     name VARCHAR(200) NOT NULL,
@@ -1442,7 +1442,7 @@ CREATE TABLE IF NOT EXISTS system_assets (
 -- 23. system_resources (系统资源表)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_resources (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     resource_type TEXT NOT NULL CHECK (resource_type IN (
         'text', 'image', 'shape', 'table', 'sticker',
@@ -1508,7 +1508,7 @@ CREATE TRIGGER update_system_resources_updated_at
 -- 24. user_discounts (用户折扣)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_discounts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
 
@@ -1536,7 +1536,7 @@ CREATE TABLE IF NOT EXISTS user_discounts (
 -- 25. user_generations (用户生成记录)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_generations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     generation_type TEXT NOT NULL CHECK (generation_type IN ('image', 'text', 'story', 'design')),
     prompt TEXT,

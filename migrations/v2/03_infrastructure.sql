@@ -96,7 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_admin_operations_failed ON admin_operations(creat
 -- 2. ai_call_logs
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_call_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
 
     -- Provider & Model
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS ai_call_logs (
 -- 3. api_logs
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS api_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES profiles(id),
     endpoint TEXT NOT NULL,
     method TEXT NOT NULL,
@@ -353,7 +353,7 @@ CREATE TABLE IF NOT EXISTS pricing_plans (
 -- 7. scheduled_task_logs
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS scheduled_task_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_name TEXT NOT NULL,
     task_type TEXT NOT NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
