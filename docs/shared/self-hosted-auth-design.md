@@ -152,12 +152,14 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 |------|-----------|---------|
 | `components/common/Navbar.tsx` | `<SignedIn>`, `<SignedOut>`, `<SignInButton>`, `<UserButton>`, `<ClerkLoading>`, `<ClerkLoaded>` | → 条件渲染 + `<UserMenu>` 自定义组件 |
 | `components/common/BottomNavbar.tsx` | Clerk auth 状态 | → `useAuth()` from `@/lib/auth` |
-| `components/common/MobileMenu.tsx` | Clerk auth 状态 | → `useAuth()` from `@/lib/auth` |
+| `components/common/MobileMenu.tsx` | `useUser()`, `useClerk()` (signOut), `<SignedIn>`, `<SignedOut>`, `<SignInButton>` | → `useAuth()` + `useUser()` from `@/lib/auth` |
 | `components/common/FloatingCTA.tsx` | Clerk auth 状态 | → `useAuth()` from `@/lib/auth` |
 | `components/common/PlanButton.tsx` | Clerk auth 状态 | → `useAuth()` from `@/lib/auth` |
 | `app/dashboard/_components/DashboardAuthGate.tsx` | `<SignIn>` 内嵌登录 | → 跳转到 `/login` |
 | `app/create/page.tsx` | `<SignIn>` 内嵌登录 | → 跳转到 `/login` |
-| `app/profile/page.tsx` | `<SignIn>` 内嵌 + `openUserProfile()` | → 跳转到 `/login` + 自定义设置页 |
+| `app/profile/page.tsx` | `useUser()`, `useAuth()`, `useClerk()` (openUserProfile, signOut), `<SignIn>` | → `useAuth()` + `useUser()` from `@/lib/auth` + 自定义设置页 |
+| `app/transaction-history/page.tsx` | `useAuth()`, `<SignIn>` 内嵌登录 | → `useAuth()` from `@/lib/auth` + 跳转到 `/login` |
+| `app/_components/landing/pricing/SubscriptionPlans.tsx` | `useClerkWithTimeout()` (间接使用 `useAuth()`) | → `useAuth()` from `@/lib/auth`（删除 timeout 包装） |
 | `components/common/ClerkBillingPage.tsx` | Clerk 专用计费页 | → **删除或重写** |
 | `components/common/ClerkTransactionHistory.tsx` | Clerk 专用交易记录 | → **删除或重写** |
 
@@ -256,7 +258,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 
 | 文件 | 变更 |
 |------|------|
-| `requirements.txt` | 移除 `svix`，新增 `argon2-cffi`、`resend` |
+| `requirements.txt` | 移除 `svix`，新增 `argon2-cffi`（resend 已安装，保留） |
 
 #### E. 身份验证相关
 
@@ -301,7 +303,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 
 | 类别 | 文件数 |
 |------|--------|
-| 前端 - 需重写逻辑 | ~8 个 |
+| 前端 - 需重写逻辑 | ~10 个 |
 | 前端 - 需改 import | ~30 个 |
 | 前端 - 需删除 | ~3 个 |
 | 前端 - 测试更新 | ~4 个 |
@@ -311,7 +313,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 | 后端 - Schema 修改 | 3 个（涉及 56 个外键引用） |
 | 后端 - 测试更新 | ~6 个 |
 | 后端 - 文档更新 | ~5 个 |
-| **总计** | **~68 个文件** |
+| **总计** | **~70 个文件** |
 
 ### 数据库外键统计
 - `profiles.id` 当前为 TEXT 类型（存 Clerk 格式 `user_2abc...`）
@@ -764,16 +766,72 @@ decodables-fe/lib/auth/
 └── types.ts              # AuthState, AuthUser 等类型
 ```
 
-**关键设计**：新 `useAuth()` 暴露与 Clerk 相同的接口，最小化下游改动：
+**关键设计**：新 `useAuth()` 暴露与 Clerk 相同的接口，最小化下游改动。
+
+**useAuth() 完整 TypeScript 接口定义**：
+
+```typescript
+// lib/auth/types.ts
+
+interface UseAuthReturn {
+  // === 与 Clerk 相同的字段（下游代码零改动）===
+  isSignedIn: boolean           // 用户是否已登录
+  isLoaded: boolean             // Auth 是否初始化完成
+  userId: string | null         // UUID（Clerk 时为 "user_2abc..."）
+  getToken: () => Promise<string | null>  // 返回 Access Token
+  signOut: () => Promise<void>            // 登出
+
+  // === 新增字段 ===
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string, displayName?: string) => Promise<void>
+}
+
+// 审计结论：当前代码库中所有 getToken() 调用都不传参数（无 skipCache/template），
+// 所有 signOut() 调用也不传参数（无 redirectUrl/sessionId），
+// 因此简化签名完全兼容。
+```
+
+**useUser() 完整 TypeScript 接口定义**：
+
+```typescript
+// lib/auth/types.ts
+
+interface AuthUser {
+  id: string                    // UUID
+  email: string                 // 用户邮箱
+  displayName: string | null    // 显示名称
+  imageUrl: string | null       // 头像 URL（Gravatar 或上传）
+  tier: string                  // 't1' | 't2' | 't3'
+  role: string                  // 'user' | 'admin'
+  emailVerified: boolean        // 邮箱是否已验证
+}
+
+interface UseUserReturn {
+  user: AuthUser | null         // 用户信息（未登录为 null）
+  isLoaded: boolean             // 是否加载完成
+}
+```
+
+**useUser() 和 useClerk() 替换策略**：
+
+当前代码库中只有 2 个文件使用 `useUser()` 和 `useClerk()`（`MobileMenu.tsx` 和 `profile/page.tsx`），用法较简单：
 
 ```
-useAuth() 接口对比:
-├── isSignedIn    — 相同
-├── isLoaded      — 相同
-├── getToken()    — 相同签名，返回 Access Token string
-├── signOut()     — 相同签名
-├── userId        — 相同（现在是 UUID）
-└── 新增 signIn() / signUp()
+Clerk useUser() 当前用法 → 替换方案:
+├── user.primaryEmailAddress  → useUser().user.email（来自 /user/me 或 JWT payload）
+├── user.firstName            → useUser().user.displayName（来自 profiles 表）
+├── user.imageUrl             → useUser().user.imageUrl（Gravatar 或上传头像）
+├── user.publicMetadata.tier  → useUser().user.tier（来自 Zustand store，/user/me 更新）
+├── isSignedIn                → useAuth().isSignedIn（同之前）
+
+Clerk useClerk() 当前用法 → 替换方案:
+├── signOut()                 → useAuth().signOut()（合并到 useAuth）
+├── openUserProfile()         → router.push('/profile/settings')（自定义设置页替代 Clerk 弹窗）
+
+数据来源：
+- AuthProvider 初始化时调用 /user/me → 写入 Zustand store
+- useUser() 从 Zustand store 读取（不直接请求后端）
+- 这与当前 GlobalProviders.tsx 的模式一致（fetchUserData → set Zustand）
 ```
 
 **AuthProvider 初始化流程**（替代 Clerk Fallback 机制）：
@@ -816,13 +874,72 @@ Refresh Token ───→  │ httpOnly Cookie│  ← 由 Next.js API Route �
 为什么不直接用后端设 cookie？
 → 前端 (Vercel) 和后端 (Railway) 不同域，httpOnly cookie 的跨域设置复杂
 → Next.js API Route 代理是业界常用方案，cookie 设在前端域上
+
+Access Token 存储细节（Zustand）：
+- 存储位置：Zustand store（非 persist，纯内存）
+- 与现有 store 的关系：新建 lib/auth/authStore.ts（独立于 useUserStore）
+  → authStore: { accessToken, isSignedIn, isLoaded }（auth 状态）
+  → useUserStore: { tier, credits, role, ... }（业务数据，已有）
+- tokenManager.ts 内部使用 authStore 读写 token
+- useAuth() hook 从 authStore 读取状态
 ```
 
-**Next.js API Route 代理**：
+**Next.js API Route 代理（BFF）**：
 ```
 decodables-fe/app/api/auth/[...action]/route.ts
 → 代理所有 /auth/* 请求到后端
 → 管理 httpOnly cookie 的设置/清除
+
+实现逻辑伪代码：
+
+export async function POST(req: NextRequest, { params }: { params: { action: string[] } }) {
+  const action = params.action.join('/')  // e.g. "login", "refresh", "logout"
+  const body = await req.json().catch(() => ({}))
+
+  // 1. refresh/logout 需要从 cookie 中取 refresh_token 注入 body
+  if (action === 'refresh' || action === 'logout') {
+    const refreshToken = req.cookies.get('refresh_token')?.value
+    if (!refreshToken) return NextResponse.json({ error: 'no_session' }, { status: 401 })
+    body.refresh_token = refreshToken
+  }
+
+  // 2. 转发到后端
+  const backendRes = await fetch(`${BACKEND_URL}/auth/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await backendRes.json()
+
+  // 3. 处理响应
+  const res = NextResponse.json(
+    { access_token: data.access_token, user: data.user },
+    { status: backendRes.status }
+  )
+
+  // 4. 设置/清除 httpOnly cookie
+  if (data.refresh_token) {
+    // login/register/refresh(rotate=true) → 设置新 cookie
+    res.cookies.set('refresh_token', data.refresh_token, {
+      httpOnly: true, secure: true, sameSite: 'lax',
+      path: '/api/auth', maxAge: 7 * 24 * 60 * 60,
+    })
+  }
+  if (action === 'logout' || action === 'logout-all' || action === 'delete-account') {
+    // 登出/注销 → 清除 cookie
+    res.cookies.delete('refresh_token')
+  }
+
+  return res
+}
+
+路由映射（~80 行代码）：
+- POST /api/auth/login       → POST {BACKEND}/auth/login
+- POST /api/auth/register    → POST {BACKEND}/auth/register
+- POST /api/auth/refresh     → POST {BACKEND}/auth/refresh  (注入 cookie 中的 refresh_token)
+- POST /api/auth/logout      → POST {BACKEND}/auth/logout   (注入 cookie 中的 refresh_token)
+- POST /api/auth/logout-all  → POST {BACKEND}/auth/logout-all
+- POST /api/auth/*           → POST {BACKEND}/auth/*  (其余端点透传)
 ```
 
 **httpOnly Cookie 安全属性**：
@@ -978,12 +1095,54 @@ Fallback（BroadcastChannel 不可用时）:
 
 ```
 decodables-fe/app/(auth)/
-├── layout.tsx              # 居中卡片布局
+├── layout.tsx              # 居中卡片布局（品牌 Logo + 白色卡片 + 背景色）
 ├── login/page.tsx          # 登录表单
 ├── register/page.tsx       # 注册表单
 ├── forgot-password/page.tsx # 忘记密码
 ├── reset-password/page.tsx  # 重置密码（带 token）
 └── verify-email/page.tsx    # 邮箱验证（带 token）
+```
+
+**页面 UI 设计**：
+
+```
+(auth)/layout.tsx — 共享布局：
+- 居中卡片布局：max-w-md mx-auto，白色卡片 + 阴影
+- 顶部：品牌 Logo（链接到首页）
+- 底部：返回首页 / 帮助链接
+- 背景：与 Design System 一致的渐变背景
+
+login/page.tsx — 登录页：
+- 标题："Sign in to your account"
+- 字段：Email + Password
+- 按钮："Sign In"（loading 状态）
+- 链接："Forgot password?" → /forgot-password
+- 链接："Don't have an account? Sign up" → /register
+- 错误处理：401 → "Invalid email or password" / 403 → "Account locked, try again in X minutes"
+
+register/page.tsx — 注册页：
+- 标题："Create your account"
+- 字段：Email + Display Name（可选）+ Password + Confirm Password
+- 密码强度指示器（实时校验：≥8字符、大小写+数字）
+- 按钮："Create Account"（loading 状态）
+- 注册成功 → 跳转到 /verify-email?email=xxx 提示页
+- 链接："Already have an account? Sign in" → /login
+
+forgot-password/page.tsx — 忘记密码：
+- 标题："Reset your password"
+- 字段：Email
+- 按钮："Send Reset Link"
+- 提交后始终显示："If this email is registered, a reset link has been sent"（防枚举）
+
+reset-password/page.tsx — 重置密码（URL 带 token + email 参数）：
+- 标题："Set new password"
+- 字段：New Password + Confirm Password
+- 成功 → "Password reset successfully" + 自动跳转 /login
+
+verify-email/page.tsx — 邮箱验证（URL 带 token + email 参数）：
+- 页面加载时自动提交验证请求
+- 成功 → "Email verified!" + 自动跳转 /dashboard
+- 失败 → "Invalid or expired link" + "Resend verification email" 按钮
 ```
 
 **登录后重定向机制**：
@@ -1029,21 +1188,79 @@ import { useAuth } from "@/lib/auth";
 
 因为新 `useAuth()` 接口与 Clerk 的一致，绝大多数文件只需换 import，逻辑不变。
 
-**需要改逻辑的特殊文件**：
-1. `GlobalProviders.tsx` — 移除 Clerk fallback，改用自建 auth 初始化
-2. `Navbar.tsx` — 替换 Clerk UI 组件为自定义组件
-3. `DashboardAuthGate.tsx` — 替换 `<SignIn>` 为路由跳转
-4. `services/api.ts` — token refresh 回调改为调用自建 auth
+**需要改逻辑的特殊文件**（共 5 个，需逐一分析重构）：
+
+1. **`GlobalProviders.tsx`**（389 行，最复杂）：
+   - 移除：`useAuth()` / `useUser()` from `@clerk/nextjs`
+   - 移除：Clerk CDN 超时 fallback 逻辑（`useClerkWithTimeout`、`isEffectivelyLoaded`、`timedOut`）
+   - 移除：`clerkUser.publicMetadata.tier` 作为 fallback 数据源
+   - 保留：`fetchUserData()`（调用 /user/me 获取用户数据 → 写入 Zustand store）
+   - 保留：`BroadcastChannel` 跨标签同步逻辑（改为新消息格式）
+   - 重构后：GlobalProviders 不再负责 auth 初始化（由 AuthProvider 负责），只负责 Zustand store 同步
+   - 注意：这个文件可能在 Phase 5 完全重写为更简单的版本（~100 行），因为大部分逻辑转移到 AuthProvider
+
+2. **`Navbar.tsx`** — 替换 Clerk UI 组件为自定义组件（`<UserMenu>` 等）
+
+3. **`DashboardAuthGate.tsx`** — 替换 `<SignIn>` 为 `redirect('/login')`
+
+4. **`services/api.ts`**（751 行）：
+   - 移除：`getToken` 回调（当前从 Clerk `useAuth().getToken` 传入）
+   - 改为：从 `tokenManager.getValidToken()` 获取 token
+   - 保留：401 重试逻辑（改为调用 tokenManager.doRefresh()）
+   - 保留：`USE_PROXY` 模式兼容
+
+5. **`app/transaction-history/page.tsx`** — 替换 `useAuth()` import + `<SignIn>` 为跳转
 
 ### 6.6 Middleware 替换
 
 ```
-公开路由: /, /login, /register, /forgot-password, /reset-password,
-          /verify-email, /pricing, /marketplace, /articles, /manual, 等
-认证路由: /login, /register（已登录用户跳转到 /dashboard）
-保护路由: /dashboard, /create, /profile 等（未登录跳转到 /login）
+当前 middleware.ts 仅一行：export default clerkMiddleware()
+替换为自定义路由保护 middleware，~40 行代码。
 
 判断方式: 检查 refresh_token httpOnly cookie 是否存在
+（注意：middleware 无法验证 token 有效性，只检查是否存在。
+  真正的验证在后端 get_current_user()，middleware 只做粗粒度保护）
+
+路由分类：
+
+公开路由（PUBLIC_ROUTES）— 无需登录：
+  /, /pricing, /marketplace, /marketplace/*, /articles, /articles/*,
+  /manual, /manual/*, /contact-us, /api/*
+
+认证页路由（AUTH_ROUTES）— 已登录用户重定向到 /dashboard：
+  /login, /register, /forgot-password, /reset-password, /verify-email
+
+保护路由（其余所有）— 未登录重定向到 /login：
+  /dashboard, /dashboard/*, /create, /create/*, /profile, /profile/*,
+  /admin, /admin/*, /notifications, /transaction-history
+
+实现伪代码：
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+  const hasRefreshToken = req.cookies.has('refresh_token')
+
+  // 1. 公开路由 → 放行
+  if (isPublicRoute(pathname)) return NextResponse.next()
+
+  // 2. 认证页 + 已登录 → 跳转 dashboard
+  if (isAuthRoute(pathname) && hasRefreshToken) {
+    return NextResponse.redirect(new URL('/dashboard', req.url))
+  }
+
+  // 3. 保护路由 + 未登录 → 跳转 login（带 redirect）
+  if (!hasRefreshToken) {
+    const loginUrl = new URL('/login', req.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/((?!_next|static|favicon.ico|.*\\..*).*)'],
+}
 ```
 
 ### 6.7 Server Components / SSR Token 注入
