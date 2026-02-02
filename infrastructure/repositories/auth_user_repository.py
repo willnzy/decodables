@@ -396,6 +396,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
     @retry_on_network_error_async()
     async def restore_account(
         self,
+        profile_id: UUID,
         email: str,
         password_hash: str,
     ) -> AuthUser:
@@ -403,12 +404,13 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
         Restore a soft-deleted account via RPC restore_auth_user_with_profile().
 
         Reuses the old profile UUID, creates new auth_users record,
-        and restores the profile (is_deleted=false).
+        and restores the profile (is_deleted=false, recovery_expires_at=NULL).
         """
         normalized = email.strip().lower()
         result = await self._client.rpc(
             "restore_auth_user_with_profile",
             {
+                "p_old_profile_id": str(profile_id),
                 "p_email": normalized,
                 "p_password_hash": password_hash,
             },

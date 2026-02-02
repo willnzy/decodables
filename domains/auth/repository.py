@@ -251,6 +251,7 @@ class IAuthUserRepository(ABC):
     @abstractmethod
     async def restore_account(
         self,
+        profile_id: UUID,
         email: str,
         password_hash: str,
     ) -> AuthUser:
@@ -258,10 +259,13 @@ class IAuthUserRepository(ABC):
         Restore a soft-deleted account within the restore window.
 
         Uses RPC restore_auth_user_with_profile() to atomically:
+        - Clean up old auth_users record if exists
         - Create new auth_users record reusing the old profile UUID
         - Restore the soft-deleted profile (is_deleted=false)
+        - Clear recovery_expires_at
 
         Args:
+            profile_id: The soft-deleted profile's UUID.
             email: User's email address.
             password_hash: Argon2id hashed password.
 

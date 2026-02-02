@@ -2213,24 +2213,29 @@ CREATE OR REPLACE FUNCTION restore_auth_user_with_profile(
     p_old_profile_id UUID,       -- 待恢复的 profiles.id（软删除状态）
     p_email TEXT,
     p_password_hash TEXT,
-    p_display_name TEXT DEFAULT NULL
+    p_display_name TEXT DEFAULT NULL,
+    p_source TEXT DEFAULT 'register'  -- 创建来源 (register/oauth/admin)
 )
-RETURNS UUID
+RETURNS TABLE(
+    auth_user JSONB,             -- 返回完整的 auth_user 对象 (与 create_auth_user_with_profile 统一)
+    was_restored BOOLEAN
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = 'public'
 AS $$
 DECLARE
     v_profile RECORD;
+    v_auth_user auth_users%ROWTYPE;
     v_restored_name TEXT;
 BEGIN
-    -- 1. 查询可恢复的 profiles 记录（FOR UPDATE 防并发）
-    SELECT id, email, display_name, deleted_at, is_deleted
+    -- 1. 查询可恢复的 profiles 记录（使用 recovery_expires_at，与 Python 层一致）
+    SELECT id, email, display_name, deleted_at, is_deleted, recovery_expires_at
         INTO v_profile
         FROM profiles
        WHERE id = p_old_profile_id
          AND is_deleted = true
-         AND deleted_at > now() - INTERVAL '30 days'
+         AND recovery_expires_at > CURRENT_TIMESTAMP
          FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -2242,13 +2247,17 @@ BEGIN
         RAISE EXCEPTION 'RESTORE_EMAIL_MISMATCH: email does not match profile record';
     END IF;
 
-    -- 3. 创建新的 auth_users 记录（复用旧 UUID）
-    INSERT INTO auth_users (id, email, password_hash, email_verified, created_at, updated_at)
-    VALUES (p_old_profile_id, LOWER(TRIM(p_email)), p_password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+    -- 3. 清理可能残留的旧 auth_users 记录 (软删除只标记 profiles，auth_users 可能仍存在)
+    DELETE FROM auth_users WHERE id = p_old_profile_id;
 
-    -- 4. 恢复 profiles 记录
+    -- 4. 创建新的 auth_users 记录（复用旧 UUID）
+    INSERT INTO auth_users (id, email, password_hash, email_verified, email_verified_at, created_at, updated_at)
+    VALUES (p_old_profile_id, LOWER(TRIM(p_email)), p_password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    RETURNING * INTO v_auth_user;
+
+    -- 5. 恢复 profiles 记录
     v_restored_name := COALESCE(p_display_name, v_profile.display_name);
-    -- 如果 display_name 已被 30 天定时任务脱敏为 'Deleted User'，使用传入的新名称
+    -- ⚠️ SYNC_REQUIRED: 此值必须与账户删除脱敏逻辑中的占位符一致
     IF v_restored_name = 'Deleted User' THEN
         v_restored_name := COALESCE(p_display_name, 'User');
     END IF;
@@ -2256,15 +2265,16 @@ BEGIN
     UPDATE profiles SET
         is_deleted = false,
         deleted_at = NULL,
+        recovery_expires_at = NULL,      -- 清除恢复窗口
         display_name = v_restored_name,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = p_old_profile_id;
 
-    -- 5. 记录恢复事件
+    -- 6. 记录恢复事件
     INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
     VALUES (
         p_old_profile_id::TEXT,
-        'register',
+        p_source,
         'account_restored',
         jsonb_build_object(
             'restored_at', now(),
@@ -2273,7 +2283,11 @@ BEGIN
         CURRENT_TIMESTAMP
     );
 
-    RETURN p_old_profile_id;
+    -- 7. 返回结果 (与 create_auth_user_with_profile 风格统一)
+    RETURN QUERY
+    SELECT
+        row_to_json(v_auth_user)::jsonb,
+        TRUE;
 
 EXCEPTION
     WHEN OTHERS THEN
@@ -2293,7 +2307,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION restore_auth_user_with_profile IS
-    '账户恢复：复用旧 profiles UUID 创建 auth_users，恢复 profiles.is_deleted=false。'
+    '账户恢复：复用旧 profiles UUID 创建 auth_users，恢复 profiles.is_deleted=false，清除 recovery_expires_at。'
     '仅在 30 天恢复期内有效，邮箱必须匹配。';
 
 

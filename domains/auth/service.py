@@ -1075,10 +1075,11 @@ class AuthService:
         Restore a soft-deleted account.
 
         Flow:
-        1. Validate password strength
-        2. Hash password
-        3. Restore via RPC (reuse old profile UUID)
-        4. Create session + tokens
+        1. Query restorable profile (get profile_id)
+        2. Validate password strength
+        3. Hash password
+        4. Restore via RPC (reuse old profile UUID)
+        5. Create session + tokens
 
         Args:
             email: User's email.
@@ -1090,24 +1091,33 @@ class AuthService:
 
         Raises:
             WeakPasswordException: Password doesn't meet requirements.
+            RuntimeError: No restorable account found.
         """
-        # Validate password
+        # 1. Query restorable profile to get profile_id
+        restorable = await self._auth_user_repo.get_restorable_by_email(email)
+        if restorable is None:
+            raise RuntimeError("No restorable account found for this email")
+
+        profile_id = UUID(restorable["id"])
+
+        # 2. Validate password
         strength = self._password_svc.validate_strength(password)
         if not strength.is_valid:
             raise WeakPasswordException(errors=list(strength.errors))
 
-        # Hash password
+        # 3. Hash password
         password_hash = await run_in_threadpool(
             self._password_svc.hash_password, password
         )
 
-        # Restore via RPC
+        # 4. Restore via RPC (pass profile_id)
         restored_user = await self._auth_user_repo.restore_account(
+            profile_id=profile_id,
             email=email,
             password_hash=password_hash,
         )
 
-        # Create session + tokens
+        # 5. Create session + tokens
         return await self._create_session_and_tokens(
             user=restored_user,
             device_info=device_info,
