@@ -79,12 +79,12 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             self._client.table(self.TABLE)
             .select("*")
             .eq("id", str(user_id))
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if result is None or not result.data:
             return None
-        return self._map_to_entity(result.data)
+        return self._map_to_entity(result.data[0])
 
     @retry_on_network_error_async()
     async def get_by_email(self, email: str) -> Optional[AuthUser]:
@@ -93,12 +93,12 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             self._client.table(self.TABLE)
             .select("*")
             .eq("email", email.strip().lower())
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if result is None or not result.data:
             return None
-        return self._map_to_entity(result.data)
+        return self._map_to_entity(result.data[0])
 
     @retry_on_network_error_async()
     async def get_restorable_by_email(self, email: str) -> Optional[Dict[str, Any]]:
@@ -106,6 +106,8 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
         Check if a soft-deleted profile exists that can be restored.
 
         Queries profiles table for is_deleted=true and recovery_expires_at > now.
+        Uses limit(1) instead of maybe_single() to avoid supabase-py bug
+        where maybe_single() can return None or raise on 0-row results.
         """
         normalized = email.strip().lower()
         now = datetime.now(timezone.utc).isoformat()
@@ -115,12 +117,12 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .eq("email", normalized)
             .eq("is_deleted", True)
             .gt("recovery_expires_at", now)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
         if result is None or not result.data:
             return None
-        return result.data
+        return result.data[0]
 
     # -------------------------------------------------------------------
     # Command Methods — Registration (3-step OTP)
