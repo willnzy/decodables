@@ -42,6 +42,11 @@ CLERK_ALLOWED_ORIGINS = os.environ.get("CLERK_ALLOWED_ORIGINS", "")
 # Legacy: CLERK_FRONTEND_API (kept for backwards compatibility, prefer CLERK_ALLOWED_ORIGINS)
 CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API")
 
+# Self-Hosted Authentication (Phase 1)
+AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET")
+AUTH_JWT_SECRET_OLD = os.environ.get("AUTH_JWT_SECRET_OLD")  # Optional: for key rotation
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
 # Stripe
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")  # WS7b (#39)
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")

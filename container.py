@@ -54,6 +54,15 @@ from domains.platform import (
 )
 from domains.support import SupportService  # v3.0.0
 
+# Auth Domain (self-hosted auth)
+from domains.auth.repository import IAuthUserRepository, ISessionRepository
+from domains.auth.service import AuthService
+from domains.auth.password_service import PasswordService
+from domains.auth.token_service import TokenService
+from domains.auth.email_service import EmailService
+from infrastructure.repositories.auth_user_repository import SupabaseAuthUserRepository
+from infrastructure.repositories.session_repository import SupabaseSessionRepository
+
 # Application - Command Handlers
 from application.commands.billing import (
     DeductCreditsHandler,
@@ -192,6 +201,20 @@ class Container:
             self._repositories['experiment'] = SupabaseExperimentRepository(db)
         return self._repositories['experiment']
 
+    async def get_auth_user_repository(self) -> IAuthUserRepository:
+        """Get auth user repository instance (async)."""
+        if 'auth_user' not in self._repositories:
+            db = await get_async_db_client()
+            self._repositories['auth_user'] = SupabaseAuthUserRepository(db)
+        return self._repositories['auth_user']
+
+    async def get_session_repository(self) -> ISessionRepository:
+        """Get session repository instance (async)."""
+        if 'session' not in self._repositories:
+            db = await get_async_db_client()
+            self._repositories['session'] = SupabaseSessionRepository(db)
+        return self._repositories['session']
+
     # ========== Domain Services (v2.0 - Async Methods) ==========
 
     async def _get_or_create_tier_service(self):
@@ -267,6 +290,54 @@ class Container:
                 experiment_repository=experiment_repo,
             )
         return self._services['platform']
+
+    # ========== Auth Services (Self-Hosted Auth) ==========
+
+    async def get_password_service(self) -> PasswordService:
+        """Get password service instance."""
+        if 'password' not in self._services:
+            self._services['password'] = PasswordService()
+        return self._services['password']
+
+    async def get_token_service(self) -> TokenService:
+        """Get token service instance."""
+        if 'token' not in self._services:
+            import config
+            jwt_secret = getattr(config, 'AUTH_JWT_SECRET', None) or ''
+            jwt_secret_old = getattr(config, 'AUTH_JWT_SECRET_OLD', None)
+            self._services['token'] = TokenService(
+                jwt_secret=jwt_secret,
+                jwt_secret_old=jwt_secret_old,
+            )
+        return self._services['token']
+
+    async def get_email_service(self) -> EmailService:
+        """Get email service instance for auth."""
+        if 'auth_email' not in self._services:
+            import config
+            self._services['auth_email'] = EmailService(
+                resend_api_key=getattr(config, 'RESEND_API_KEY', '') or '',
+                from_email=getattr(config, 'SUPPORT_EMAIL_FROM', 'noreply@makedecodables.com'),
+                frontend_url=getattr(config, 'FRONTEND_URL', 'http://localhost:3000'),
+            )
+        return self._services['auth_email']
+
+    async def get_auth_service(self) -> AuthService:
+        """Get auth service instance (core auth orchestration)."""
+        if 'auth' not in self._services:
+            auth_user_repo = await self.get_auth_user_repository()
+            session_repo = await self.get_session_repository()
+            password_svc = await self.get_password_service()
+            token_svc = await self.get_token_service()
+            email_svc = await self.get_email_service()
+            self._services['auth'] = AuthService(
+                auth_user_repository=auth_user_repo,
+                session_repository=session_repo,
+                password_service=password_svc,
+                token_service=token_svc,
+                email_service=email_svc,
+            )
+        return self._services['auth']
 
     async def get_support_service(self) -> SupportService:
         """Get support service instance (v3.0.0, async)."""

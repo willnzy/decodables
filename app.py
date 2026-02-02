@@ -337,9 +337,11 @@ app.add_middleware(RequestIDMiddleware)
 
 from api.user import user_router
 from api.admin import admin_router
+from api.auth import auth_router  # Self-hosted auth (Phase 1)
 from api.health import router as health_router
 
 app.include_router(health_router)  # Health check (no prefix, Railway monitoring)
+app.include_router(auth_router, prefix="/api/v2")  # Auth endpoints: /api/v2/auth/*
 app.include_router(user_router)
 app.include_router(admin_router)
 
