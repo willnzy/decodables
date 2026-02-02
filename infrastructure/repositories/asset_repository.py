@@ -325,8 +325,9 @@ class SupabaseAssetRepository(BaseRepository[Dict[str, Any]]):
             "p_user_id": user_id,
         }).execute()
 
-        if result.data is not None and result.data != -1:
-            return result.data
+        # PostgREST scalar: RETURNS INTEGER → [-1] or [5], not bare int
+        if result.data and result.data[0] != -1:
+            return result.data[0]
         return None
 
     # Legacy method removed - use list_deleted_recoverable() from BaseRepository instead

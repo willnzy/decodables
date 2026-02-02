@@ -199,9 +199,13 @@ class SupabaseAnalyticsEventsRepository(IAnalyticsRepository):
             AnalyticsEvent if found, None otherwise
         """
         try:
+            # Sanitize event_id: strip PostgREST structural chars to prevent filter injection
+            safe_id = str(event_id)
+            for ch in (",", ".", "(", ")"):
+                safe_id = safe_id.replace(ch, "")
             result = await self.client.table("analytics_events")\
                 .select('*')\
-                .or_(f'id.eq.{event_id},event_id.eq.{event_id}')\
+                .or_(f'id.eq.{safe_id},event_id.eq.{safe_id}')\
                 .limit(1)\
                 .execute()
             

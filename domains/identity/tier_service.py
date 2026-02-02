@@ -642,7 +642,7 @@ class TierService:
             trial_days = DEFAULT_TRIAL_DURATION_DAYS
 
         trial_end = created_at + timedelta(days=trial_days)
-        now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.utcnow()
+        now = datetime.now(trial_end.tzinfo) if trial_end.tzinfo else datetime.now(timezone.utc)
         return now < trial_end
 
     # =========================================================================

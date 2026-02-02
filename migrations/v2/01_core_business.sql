@@ -1946,6 +1946,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email_unique
     ON profiles(email)
     WHERE is_deleted = false;
 
+-- GIN trigram index for admin fuzzy search on display_name and email
+CREATE INDEX IF NOT EXISTS idx_profiles_display_name_trgm
+    ON profiles USING gin (display_name gin_trgm_ops)
+    WHERE is_deleted = false AND display_name IS NOT NULL;
+
 
 -- ============================================================================
 -- Helper Sequences and Functions
@@ -3701,56 +3706,8 @@ COMMENT ON FUNCTION increment_asset_usage IS 'WS5: 原子递增素材使用次�
 -- WS-19: Atomic counter increments for projects
 -- ============================================================================
 
--- Atomically increment view_count on a project
-CREATE OR REPLACE FUNCTION increment_project_view_count(
-    p_project_id UUID
-)
-RETURNS INTEGER AS $$
-DECLARE
-    v_new_count INTEGER;
-BEGIN
-    UPDATE projects
-    SET view_count = view_count + 1
-    WHERE id = p_project_id AND is_deleted = false
-    RETURNING view_count INTO v_new_count;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Project not found: %', p_project_id;
-    END IF;
-
-    RETURN v_new_count;
-END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = 'public';
-
-COMMENT ON FUNCTION increment_project_view_count IS 'WS-19: 原子递增项目浏览次数';
-
--- Atomically increment like_count on a project
-CREATE OR REPLACE FUNCTION increment_project_like_count(
-    p_project_id UUID,
-    p_delta INTEGER DEFAULT 1  -- +1 for like, -1 for unlike
-)
-RETURNS INTEGER AS $$
-DECLARE
-    v_new_count INTEGER;
-BEGIN
-    UPDATE projects
-    SET like_count = GREATEST(0, like_count + p_delta)
-    WHERE id = p_project_id AND is_deleted = false
-    RETURNING like_count INTO v_new_count;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Project not found: %', p_project_id;
-    END IF;
-
-    RETURN v_new_count;
-END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = 'public';
-
-COMMENT ON FUNCTION increment_project_like_count IS 'WS-19: 原子递增/递减项目点赞数';
+-- (已删除: increment_project_view_count — 完全死代码，无 Python 调用)
+-- (已删除: increment_project_like_count — 完全死代码，无 Python 调用)
 
 
 -- ============================================================================

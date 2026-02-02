@@ -12,7 +12,7 @@ v3.31: 支持传入 db client 参数，解决 BackgroundScheduler 中
        "Event loop is closed" 问题。详见 docs/main/backend-architecture.md 1.3.1.3
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class MaintenanceScheduler:
                     "task": "cleanup_user_creation_logs",
                     "deleted_count": deleted_count,
                     "retention_days": retention_days,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
             
@@ -61,7 +61,7 @@ class MaintenanceScheduler:
                 "success": True,
                 "deleted_count": deleted_count,
                 "retention_days": retention_days,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -211,7 +211,7 @@ class MaintenanceScheduler:
             return {
                 "success": True,
                 "stats": stats,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -257,7 +257,7 @@ class MaintenanceScheduler:
                 extra={
                     "task": "cleanup_expired_soft_deletes",
                     "details": data,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             )
 
@@ -344,7 +344,7 @@ class MaintenanceScheduler:
             "success": True,
             "total_deleted": total_deleted,
             "details": results,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     
@@ -392,5 +392,5 @@ class MaintenanceScheduler:
             "success": True,
             "total_deleted": total_deleted,
             "details": results,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }

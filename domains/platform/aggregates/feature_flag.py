@@ -9,7 +9,7 @@ All feature flag operations must go through this aggregate.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ..value_objects import (
@@ -115,13 +115,13 @@ class FeatureFlag:
     def add_targeting_rule(self, rule: TargetingRule):
         """Add a targeting rule."""
         self.targeting_rules.append(rule)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def remove_targeting_rule(self, index: int):
         """Remove a targeting rule by index."""
         if 0 <= index < len(self.targeting_rules):
             self.targeting_rules.pop(index)
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
     def enable_for_users(self, user_ids: List[str]):
         """Enable flag for specific users."""
@@ -153,22 +153,22 @@ class FeatureFlag:
     def activate(self):
         """Activate the feature flag."""
         self.status = FlagStatus.ACTIVE
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def deprecate(self):
         """Mark flag as deprecated."""
         self.status = FlagStatus.DEPRECATED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def archive(self):
         """Archive the feature flag."""
         self.status = FlagStatus.ARCHIVED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_default(self, default_value: bool):
         """Update default value."""
         self.default_value = default_value
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""

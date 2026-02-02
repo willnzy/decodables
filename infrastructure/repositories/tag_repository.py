@@ -223,7 +223,8 @@ class SupabaseTagRepository(ITagRepository):
                 "p_tag_id": tag_id,
             }).execute()
 
-            return bool(result.data)
+            # PostgREST scalar: RETURNS BOOLEAN → [true/false], not bare bool
+            return bool(result.data[0]) if result.data else False
 
         except Exception as e:
             logger.error(f"[TagRepository] delete failed: {e}")

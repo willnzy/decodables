@@ -13,7 +13,7 @@ Implements IFeatureFlagRepository using Supabase PostgreSQL.
 """
 
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import json
 
@@ -100,7 +100,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
         """Update existing feature flag."""
         try:
             data = self._map_to_row(flag)
-            data["updated_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
             await self.client.table("feature_flags").update(data).eq(
                 "key", flag.key
@@ -193,9 +193,9 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
             tags=row.get("tags", []),
             created_by=row.get("created_by"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
         )
 
     def _map_to_row(self, flag: FeatureFlag) -> dict:

@@ -9,7 +9,7 @@ Supports draft → scheduled → sent workflow for notifications.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -124,7 +124,7 @@ class NotificationTemplate:
         """
         from uuid import uuid4
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         status = NotificationStatus.SCHEDULED if scheduled_at else NotificationStatus.DRAFT
 
         return cls(
@@ -170,8 +170,8 @@ class NotificationTemplate:
             scheduled_at=row.get("scheduled_at"),
             sent_at=row.get("sent_at"),
             created_by=row.get("created_by", ""),
-            created_at=row.get("created_at") or datetime.utcnow(),
-            updated_at=row.get("updated_at") or datetime.utcnow(),
+            created_at=row.get("created_at") or datetime.now(timezone.utc),
+            updated_at=row.get("updated_at") or datetime.now(timezone.utc),
             stats=NotificationStats.from_dict(stats_data),
         )
 
@@ -235,7 +235,7 @@ class NotificationTemplate:
             self.scheduled_at = scheduled_at
             self.status = NotificationStatus.SCHEDULED
 
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_as_sent(self, total_recipients: int, delivered: int = 0, failed: int = 0):
         """
@@ -247,19 +247,19 @@ class NotificationTemplate:
             failed: Number of failed deliveries
         """
         self.status = NotificationStatus.SENT
-        self.sent_at = datetime.utcnow()
+        self.sent_at = datetime.now(timezone.utc)
         self.stats = NotificationStats(
             total_recipients=total_recipients,
             delivered=delivered,
             read=0,
             failed=failed,
         )
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_as_failed(self, error_message: Optional[str] = None):
         """Mark notification as failed to send."""
         self.status = NotificationStatus.FAILED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""

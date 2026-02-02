@@ -9,7 +9,7 @@ All user profile operations must go through this aggregate.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from ..value_objects import UserTier, UserRole, OnboardingStep, UserPreferences
@@ -125,7 +125,7 @@ class UserProfile:
         self.tier = new_tier
         if stripe_customer_id:
             self.stripe_customer_id = stripe_customer_id
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def downgrade_tier(self, new_tier: UserTier):
         """
@@ -135,7 +135,7 @@ class UserProfile:
             new_tier: New subscription tier
         """
         self.tier = new_tier
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def advance_onboarding(self, to_step: OnboardingStep):
         """
@@ -152,12 +152,12 @@ class UserProfile:
                 raise ValueError(f"Cannot go backwards in onboarding from {self.onboarding_step} to {to_step}")
 
         self.onboarding_step = to_step
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def complete_onboarding(self):
         """Mark onboarding as complete."""
         self.onboarding_step = OnboardingStep.COMPLETED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_preferences(self, preferences: UserPreferences):
         """
@@ -167,7 +167,7 @@ class UserProfile:
             preferences: New preferences
         """
         self.preferences = preferences
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_profile(
         self,
@@ -197,7 +197,7 @@ class UserProfile:
             self.display_name = display_name
         if avatar_url is not None:
             self.avatar_url = avatar_url
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for API responses."""

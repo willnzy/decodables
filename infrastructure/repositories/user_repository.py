@@ -302,7 +302,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         """Update existing user profile."""
         try:
             data = self._map_to_row(user_profile)
-            data["updated_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
             result = await self.client.table("profiles").update(data).eq("user_id", user_profile.user_id).execute()
 
@@ -368,7 +368,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
         try:
             update_data = {
                 "tier": new_tier.value,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             if stripe_customer_id:
                 update_data["stripe_customer_id"] = stripe_customer_id
@@ -396,7 +396,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             # Update onboarding step
             await self.client.table("profiles").update({
                 "onboarding_step": step.value,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", user_id).execute()
 
             # Fetch updated data
@@ -445,9 +445,9 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             preferences=preferences,
             stripe_customer_id=row.get("stripe_customer_id"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
         )
 
     def _map_to_row(self, profile: UserProfile) -> dict:

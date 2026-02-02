@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     notification_config JSONB DEFAULT '{}',
     start_at TIMESTAMPTZ NOT NULL,
     end_at TIMESTAMPTZ NOT NULL,
-    timezone TEXT DEFAULT 'America/New_York',
+    timezone TEXT DEFAULT 'UTC',
     usage_limit INTEGER,
     usage_per_user INTEGER DEFAULT 1,
     usage_count INTEGER DEFAULT 0,

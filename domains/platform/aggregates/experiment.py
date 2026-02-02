@@ -9,7 +9,7 @@ All experiment operations must go through this aggregate.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from ..value_objects import (
@@ -88,7 +88,7 @@ class Experiment:
         if not self.is_running:
             return False
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if self.start_date and now < self.start_date:
             return False
         if self.end_date and now > self.end_date:
@@ -123,19 +123,19 @@ class Experiment:
             config=config or {},
         )
         self.variants.append(variant)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def remove_variant(self, variant_id: str):
         """Remove a variant by ID."""
         self.variants = [v for v in self.variants if v.variant_id != variant_id]
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_variant_weight(self, variant_id: str, weight: int):
         """Update variant weight."""
         for variant in self.variants:
             if variant.variant_id == variant_id:
                 variant.weight = weight
-                self.updated_at = datetime.utcnow()
+                self.updated_at = datetime.now(timezone.utc)
                 return
         raise ValueError(f"Variant not found: {variant_id}")
 
@@ -191,8 +191,8 @@ class Experiment:
             raise ValueError(f"Variant weights must sum to 100, got {self.total_weight}")
 
         self.status = ExperimentStatus.RUNNING
-        self.start_date = self.start_date or datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.start_date = self.start_date or datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def pause(self):
         """Pause the experiment."""
@@ -200,7 +200,7 @@ class Experiment:
             raise ValueError("Can only pause running experiments")
 
         self.status = ExperimentStatus.PAUSED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def resume(self):
         """Resume paused experiment."""
@@ -208,18 +208,18 @@ class Experiment:
             raise ValueError("Can only resume paused experiments")
 
         self.status = ExperimentStatus.RUNNING
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def complete(self):
         """Complete the experiment."""
         self.status = ExperimentStatus.COMPLETED
-        self.end_date = self.end_date or datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.end_date = self.end_date or datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def archive(self):
         """Archive the experiment."""
         self.status = ExperimentStatus.ARCHIVED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""

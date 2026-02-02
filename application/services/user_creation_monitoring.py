@@ -9,7 +9,7 @@ User Creation Monitoring Service
 """
 
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from core.database import get_async_db_client
@@ -76,7 +76,7 @@ class UserCreationMonitoringService:
                 "jit_fallback_rate": float(stats.get('jit_fallback_rate', 0)),
                 "duplicate_attempts": stats.get('duplicate_attempts', 0),
                 "errors": stats.get('errors', 0),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -182,7 +182,7 @@ class UserCreationMonitoringService:
             "stats": stats,
             "alerts": alerts,
             "recommendations": recommendations,
-            "evaluated_at": datetime.utcnow().isoformat()
+            "evaluated_at": datetime.now(timezone.utc).isoformat()
         }
     
     @staticmethod
@@ -384,5 +384,5 @@ class UserCreationMonitoringService:
             "jit_fallback_rate": 0.0,
             "duplicate_attempts": 0,
             "errors": 0,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }

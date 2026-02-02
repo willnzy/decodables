@@ -259,8 +259,8 @@ class SupabaseCategoryRepository(ICategoryRepository):
             }
         ).execute()
 
-        # RPC returns count of updated rows
-        return result.data if result.data else 0
+        # PostgREST scalar: RETURNS INTEGER → [5], not bare int
+        return result.data[0] if result.data else 0
 
     @retry_on_network_error()
     async def delete(self, category_id: str, cascade: bool = False) -> bool:

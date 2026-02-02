@@ -20,7 +20,7 @@ Changes in v2.0 (v3.28):
 """
 
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import json
 
@@ -113,7 +113,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
         """Update existing experiment."""
         try:
             data = self._map_to_row(experiment)
-            data["updated_at"] = datetime.utcnow().isoformat()
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
             await self.client.table("experiments").update(data).eq(
                 "experiment_id", experiment.experiment_id
@@ -194,7 +194,7 @@ class SupabaseExperimentRepository(IExperimentRepository):
                 "experiment_id": experiment_id,
                 "user_id": user_id,
                 "variant_id": variant_id,
-                "assigned_at": datetime.utcnow().isoformat(),
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
             }, on_conflict="experiment_id,user_id").execute()
 
             return True
@@ -270,9 +270,9 @@ class SupabaseExperimentRepository(IExperimentRepository):
                 if row.get("end_date") else None,
             created_by=row.get("created_by"),
             created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                if row.get("created_at") else datetime.utcnow(),
+                if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
-                if row.get("updated_at") else datetime.utcnow(),
+                if row.get("updated_at") else datetime.now(timezone.utc),
         )
 
     def _map_to_row(self, experiment: Experiment) -> dict:

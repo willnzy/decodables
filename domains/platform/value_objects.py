@@ -8,7 +8,7 @@ Platform Value Objects - Immutable domain primitives.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Dict, Any, List, Set
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import uuid
 
 
@@ -161,7 +161,7 @@ class TargetingRule:
             return hash_val < self.percentage
 
         if self.rule_type == TargetType.DATE_RANGE:
-            now = evaluation_time or datetime.utcnow()
+            now = evaluation_time or datetime.now(timezone.utc)
             if self.start_date and now < self.start_date:
                 return False
             if self.end_date and now > self.end_date:
