@@ -113,6 +113,20 @@ class OnboardingStep(str, Enum):
         return self.order > other.order
 
 
+class SubscriptionStatus(str, Enum):
+    """Subscription status values.
+
+    SYNC: Must match 01_core_business.sql profiles.subscription_status CHECK constraint:
+    CHECK (subscription_status IN ('active', 'canceled', 'past_due', 'incomplete', 'trialing', 'inactive'))
+    """
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    PAST_DUE = "past_due"
+    INCOMPLETE = "incomplete"
+    TRIALING = "trialing"
+    INACTIVE = "inactive"
+
+
 @dataclass(frozen=True)
 class UserId:
     """

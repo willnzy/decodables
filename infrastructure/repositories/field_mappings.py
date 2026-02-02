@@ -148,7 +148,7 @@ LISTINGS_DB_TO_DOMAIN: Dict[str, str] = {
     'category': 'category',                   # TEXT
     'source': 'source',                       # TEXT (system/user/ai/community)
     'license_type': 'license_type',           # TEXT (P0-10)
-    'price_credits': 'price_credits',         # INTEGER
+    'price_credits': 'price_credits',         # INTEGER — NOTE: DB uses 'price_credits', domain model uses 'credit_price'. Mapping done in _map_to_listing()
     'price_type': 'price_type',               # TEXT (P0-10: free/credits/subscription)
     'allowed_tiers': 'allowed_tiers',         # TEXT[]
     # 统计字段 (P0-10)

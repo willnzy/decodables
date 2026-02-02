@@ -2663,7 +2663,7 @@ DECLARE
     v_payment_id UUID;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+    IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
     END IF;
 
@@ -2797,7 +2797,7 @@ DECLARE
     v_payment_id UUID;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+    IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
     END IF;
 
@@ -2917,7 +2917,7 @@ DECLARE
     v_tx_type TEXT;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 THEN
+    IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
     END IF;
 

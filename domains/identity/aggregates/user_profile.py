@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..value_objects import UserTier, UserRole, OnboardingStep, UserPreferences
+from ..value_objects import UserTier, UserRole, OnboardingStep, SubscriptionStatus, UserPreferences
 
 
 @dataclass
@@ -42,7 +42,7 @@ class UserProfile:
     # Role and subscription
     role: UserRole = UserRole.USER  # user or admin
     tier: UserTier = UserTier.T1
-    subscription_status: Optional[str] = None  # active, canceled, past_due, incomplete, trialing
+    subscription_status: Optional[SubscriptionStatus] = None
     stripe_customer_id: Optional[str] = None
     
     # Onboarding and preferences

@@ -191,9 +191,9 @@ class ListingMetadata:
     title: str
     description: Optional[str] = None
     tags: List[str] = field(default_factory=list)
-    preview_url: str = ""
-    thumbnail_url: Optional[str] = None
-    file_url: str = ""
+    preview_url: Optional[str] = None   # SQL: TEXT (nullable)
+    thumbnail_url: Optional[str] = None  # SQL: TEXT (nullable)
+    file_url: Optional[str] = None       # SQL: TEXT (nullable)
     file_size: int = 0
     file_format: str = ""
     dimensions: Optional[str] = None  # e.g., "1080x1080"
@@ -221,9 +221,9 @@ class ListingMetadata:
             title=data.get("title", "Untitled"),
             description=data.get("description"),
             tags=data.get("tags", []),
-            preview_url=data.get("preview_url", ""),
+            preview_url=data.get("preview_url"),
             thumbnail_url=data.get("thumbnail_url"),
-            file_url=data.get("file_url", ""),
+            file_url=data.get("file_url"),
             file_size=data.get("file_size", 0),
             file_format=data.get("file_format", ""),
             dimensions=data.get("dimensions"),
@@ -240,6 +240,7 @@ class ListingStats:
     download_count: int = 0
     like_count: int = 0
     purchase_count: int = 0
+    usage_count: int = 0        # BIGINT in DB — total usage count
     rating_average: float = 0.0
     rating_count: int = 0
 
@@ -250,6 +251,7 @@ class ListingStats:
             download_count=self.download_count,
             like_count=self.like_count,
             purchase_count=self.purchase_count,
+            usage_count=self.usage_count,
             rating_average=self.rating_average,
             rating_count=self.rating_count,
         )
@@ -261,6 +263,7 @@ class ListingStats:
             download_count=self.download_count + 1,
             like_count=self.like_count,
             purchase_count=self.purchase_count,
+            usage_count=self.usage_count,
             rating_average=self.rating_average,
             rating_count=self.rating_count,
         )
@@ -272,6 +275,7 @@ class ListingStats:
             "download_count": self.download_count,
             "like_count": self.like_count,
             "purchase_count": self.purchase_count,
+            "usage_count": self.usage_count,
             "rating_average": self.rating_average,
             "rating_count": self.rating_count,
         }

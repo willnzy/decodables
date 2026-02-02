@@ -621,6 +621,7 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
             download_count=row.get("download_count", 0),
             like_count=row.get("like_count", 0),
             purchase_count=row.get("purchase_count", 0),
+            usage_count=row.get("usage_count", 0),
             rating_average=row.get("rating_average", 0.0),
             rating_count=row.get("rating_count", 0),
         )

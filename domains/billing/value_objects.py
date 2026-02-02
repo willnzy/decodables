@@ -17,7 +17,11 @@ class CreditBucket(str, Enum):
 
 
 class TransactionType(str, Enum):
-    """Credit transaction types (matches database CHECK constraint — 16 values)."""
+    """Credit transaction types (matches database CHECK constraint — 16 values).
+
+    SYNC: Must stay in sync with 01_core_business.sql credit_transactions.type CHECK constraint.
+    Any additions/removals here must be mirrored in the SQL CHECK constraint, and vice versa.
+    """
     # Additions (positive amount)
     SUBSCRIPTION_GRANT = "subscription_grant"  # Monthly subscription grant
     SUB_GRANT = "sub_grant"                    # Legacy alias for subscription_grant

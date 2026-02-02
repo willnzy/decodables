@@ -18,6 +18,7 @@ from .value_objects import (
     UserId,
     UserTier,
     OnboardingStep,
+    SubscriptionStatus,
     UserPreferences,
 )
 from .aggregates.user_profile import UserProfile

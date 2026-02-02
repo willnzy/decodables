@@ -662,7 +662,7 @@ DECLARE
     v_deduct_permanent INT;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+    IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
         RETURN;
     END IF;
@@ -792,7 +792,7 @@ DECLARE
     v_permanent INT;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+    IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
         RETURN;
     END IF;
@@ -897,7 +897,7 @@ DECLARE
     v_existing_payment UUID;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+    IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid user_id'::TEXT;
         RETURN;
     END IF;
@@ -1030,7 +1030,7 @@ DECLARE
     v_resource_id UUID;
 BEGIN
     -- 输入验证
-    IF p_user_id IS NULL OR length(p_user_id) = 0 OR length(p_user_id) > 100 THEN
+    IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 'Invalid user_id'::TEXT;
         RETURN;
     END IF;

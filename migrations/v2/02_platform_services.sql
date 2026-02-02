@@ -897,7 +897,7 @@ CREATE TABLE IF NOT EXISTS onboarding_steps (
     description TEXT,
     step_order INTEGER NOT NULL,
     is_required BOOLEAN DEFAULT TRUE,
-    target_tiers TEXT[] DEFAULT ARRAY['free', 'starter', 'pro'],
+    target_tiers TEXT[] DEFAULT ARRAY['t1', 't2', 't3'],
     config JSONB DEFAULT '{}',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

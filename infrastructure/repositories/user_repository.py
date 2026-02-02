@@ -19,7 +19,7 @@ import logging
 
 from domains.identity.repository import IUserRepository
 from domains.identity.aggregates.user_profile import UserProfile
-from domains.identity.value_objects import UserTier, OnboardingStep, UserPreferences
+from domains.identity.value_objects import UserTier, OnboardingStep, SubscriptionStatus, UserPreferences
 from domains.identity.exceptions import (
     UserNotFoundException,
     UserAlreadyExistsException,
@@ -440,7 +440,7 @@ class SupabaseUserRepository(BaseRepository[UserProfile], IUserRepository):
             avatar_url=row.get("avatar_url"),
             role=role,  # User role (user/admin)
             tier=UserTier(row.get("tier", "t1")),
-            subscription_status=row.get("subscription_status"),
+            subscription_status=SubscriptionStatus(row["subscription_status"]) if row.get("subscription_status") else None,
             onboarding_step=OnboardingStep(row.get("onboarding_step", "not_started")),
             preferences=preferences,
             stripe_customer_id=row.get("stripe_customer_id"),
