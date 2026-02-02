@@ -1903,20 +1903,20 @@ CREATE POLICY service_role_all ON support_replies FOR ALL TO service_role USING 
 -- - 这些策略作为额外防线：即使 anon/authenticated key 泄露，
 --   authenticated 用户也只能访问自己的数据
 -- - user_id 字段类型为 TEXT (Clerk ID 格式: user_xxx)
--- - auth.uid()::TEXT 匹配 Supabase Auth JWT 中的用户 ID
+-- - auth.uid() 匹配 Supabase Auth JWT 中的用户 ID
 -- ============================================================================
 
 -- Projects: 用户只能访问自己的项目
 CREATE POLICY auth_user_own_projects ON projects
     FOR ALL TO authenticated
-    USING (user_id = auth.uid()::TEXT)
-    WITH CHECK (user_id = auth.uid()::TEXT);
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
 
 -- Assets: 用户只能访问自己的素材
 CREATE POLICY auth_user_own_assets ON assets
     FOR ALL TO authenticated
-    USING (user_id = auth.uid()::TEXT)
-    WITH CHECK (user_id = auth.uid()::TEXT);
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
 
 -- Project Tags: 用户只能访问自己项目的标签 (通过 project 关联)
 CREATE POLICY auth_user_own_project_tags ON project_tags
@@ -1924,13 +1924,13 @@ CREATE POLICY auth_user_own_project_tags ON project_tags
     USING (
         EXISTS (
             SELECT 1 FROM projects p
-            WHERE p.id = project_id AND p.user_id = auth.uid()::TEXT
+            WHERE p.id = project_id AND p.user_id = auth.uid()
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM projects p
-            WHERE p.id = project_id AND p.user_id = auth.uid()::TEXT
+            WHERE p.id = project_id AND p.user_id = auth.uid()
         )
     );
 
@@ -1940,13 +1940,13 @@ CREATE POLICY auth_user_own_asset_tags ON user_asset_tags
     USING (
         EXISTS (
             SELECT 1 FROM assets a
-            WHERE a.id = asset_id AND a.user_id = auth.uid()::TEXT
+            WHERE a.id = asset_id AND a.user_id = auth.uid()
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM assets a
-            WHERE a.id = asset_id AND a.user_id = auth.uid()::TEXT
+            WHERE a.id = asset_id AND a.user_id = auth.uid()
         )
     );
 
@@ -1956,24 +1956,24 @@ CREATE POLICY auth_user_own_tags ON tags
     USING (
         EXISTS (
             SELECT 1 FROM workspaces w
-            WHERE w.id = workspace_id AND w.owner_id = auth.uid()::TEXT
+            WHERE w.id = workspace_id AND w.owner_id = auth.uid()
         )
         OR EXISTS (
             SELECT 1 FROM workspace_members wm
             WHERE wm.workspace_id = tags.workspace_id
-              AND wm.user_id = auth.uid()::TEXT
+              AND wm.user_id = auth.uid()
               AND wm.is_active = true
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM workspaces w
-            WHERE w.id = workspace_id AND w.owner_id = auth.uid()::TEXT
+            WHERE w.id = workspace_id AND w.owner_id = auth.uid()
         )
         OR EXISTS (
             SELECT 1 FROM workspace_members wm
             WHERE wm.workspace_id = tags.workspace_id
-              AND wm.user_id = auth.uid()::TEXT
+              AND wm.user_id = auth.uid()
               AND wm.is_active = true
         )
     );
@@ -1981,19 +1981,19 @@ CREATE POLICY auth_user_own_tags ON tags
 -- Profiles: 用户只能读取/更新自己的 profile
 CREATE POLICY auth_user_own_profile ON profiles
     FOR ALL TO authenticated
-    USING (id = auth.uid()::TEXT)
-    WITH CHECK (id = auth.uid()::TEXT);
+    USING (id = auth.uid())
+    WITH CHECK (id = auth.uid());
 
 -- Credit Transactions: 用户只能读取自己的积分流水
 CREATE POLICY auth_user_own_credit_transactions ON credit_transactions
     FOR SELECT TO authenticated
-    USING (user_id = auth.uid()::TEXT);
+    USING (user_id = auth.uid());
 
 -- Notifications: 用户只能读取自己的通知
 CREATE POLICY auth_user_own_notifications ON notifications
     FOR ALL TO authenticated
-    USING (user_id = auth.uid()::TEXT)
-    WITH CHECK (user_id = auth.uid()::TEXT);
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
 
 
 -- ============================================================================
