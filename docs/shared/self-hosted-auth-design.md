@@ -1602,6 +1602,8 @@ async def generate_image(user = Depends(require_verified_email)):
 
 ## 八、实施阶段划分
 
+### 总览
+
 | 阶段 | 内容 | 预估工作量 |
 |------|------|-----------|
 | **Phase 0** | 数据库 Schema：新增 3 张 auth 表，profiles.id 改 UUID，56 个外键同步，RPC 函数重写/更新（详见 4.5-4.8），CHECK 约束更新 | 1.5 天 |
@@ -1613,6 +1615,620 @@ async def generate_image(user = Depends(require_verified_email)):
 | **Phase 6** | 测试：后端单元测试 + 集成测试 + 前端测试 | 2 天 |
 | **Phase 7** | 清理：移除 @clerk/nextjs、svix 依赖，更新环境变量，构建验证 | 1 天 |
 | **总计** | | **~17.5 天** |
+
+### Phase 0: 数据库 Schema（1.5 天）
+
+```
+前置条件: 无
+Git 分支: feat/auth-phase0-schema
+仓库: decodables (后端)
+```
+
+**Step 0.1: 新增 auth 表到 `01_core_business.sql`**
+- 在文件末尾（RPC 函数之前）添加 3 张新表：
+  - `auth_users` 表定义 + 部分索引（详见 4.1）
+  - `auth_sessions` 表定义 + 索引（详见 4.2）
+  - `auth_oauth_accounts` 表定义 + 唯一约束（详见 4.3，预留）
+- 为 3 张表添加 RLS 策略（详见 4.9）
+- ✅ 验证：SQL 语法检查通过
+
+**Step 0.2: `profiles.id` TEXT → UUID（`01_core_business.sql`）**
+- 修改 `profiles` 表定义：`id TEXT PRIMARY KEY` → `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`
+- 逐一修改该文件内 **32 个外键列**的类型声明（TEXT → UUID）：
+  - `projects.owner_id`, `marketplace_listings.created_by`, `marketplace_categories.created_by`
+  - `assets.user_id`, `assets.origin_owner_id`, `asset_licenses.seller_id`
+  - `asset_moderation_queue.moderated_by`, `user_collections.user_id`
+  - `collection_assets.origin_owner_id`, `user_favorite_assets.added_by`
+  - `user_favorite_listings.added_by`, `comments.created_by`, `ratings.user_id`
+  - `purchases.user_id`, `user_downloads.user_id`, `user_asset_usage.user_id`
+  - `asset_views.user_id`, `listing_views.user_id`, `user_search_history.user_id`
+  - `content_reports.reporter_id`, `content_reports.reviewed_by`
+  - `asset_reviews.reviewer_id`, `subscription_history.user_id`
+  - `credits_ledger.user_id`, `credits_ledger.source_user_id`
+  - `workspaces.user_id`, `tags.user_id`
+  - `team_members.user_id`, `team_members.invited_by`
+  - `team_invitations.invited_by`, `team_invitations.accepted_by`
+  - `folders.user_id`
+- ✅ 验证：grep 确认该文件内所有 `REFERENCES profiles(id)` 的列都已改为 UUID 类型
+
+**Step 0.3: 同步 `02_platform_services.sql`**
+- 逐一修改 **16 个外键列**类型（TEXT → UUID）：
+  - `analytics_events.user_id`, `activity_logs.user_id`
+  - `feature_flags.created_by`, `user_feature_states.user_id`
+  - `notifications.user_id`, `user_feedback.reporter_id`, `user_feedback.reviewed_by`
+  - `changelog_entries.author_id`, `user_onboarding_progress.user_id`
+  - `user_daily_logins.user_id`, `theme_users.user_id`
+  - `daily_doodle_users.user_id`, `user_daily_doodle_submissions.user_id`
+  - `referrals.referrer_id`, `referrals.referee_id`, `coupon_redemptions.user_id`
+- 删除 `clerk_webhook_events` 表及其相关索引、CHECK 约束、RLS 策略
+- ✅ 验证：grep 确认 16 个外键全部完成 + clerk_webhook_events 已删除
+
+**Step 0.4: 同步 `03_infrastructure.sql`**
+- 逐一修改 **8 个外键列**类型（TEXT → UUID）：
+  - `audit_logs.user_id`, `admin_actions.user_id`
+  - `error_logs.user_id`, `error_logs.resolved_by`
+  - `ai_usage_logs.user_id`, `task_queue.user_id`, `task_queue.assigned_to`
+  - `notification_queue.user_id`
+- ✅ 验证：grep 确认 56 个外键全部完成（32 + 16 + 8）
+
+**Step 0.5: 更新 CHECK 约束**
+- `profiles.created_by`：`('webhook','jit','legacy','manual')` → `('register','admin','legacy','oauth')`
+- `admin_operations.operation_type`：`webhook_user_create` → `auth_user_register`
+- ✅ 验证：CHECK 约束值正确
+
+**Step 0.6: 重写 RPC 函数**
+- `create_user_idempotent()` → 重写为 `create_auth_user_with_profile()`（详见 4.7）
+  - 输入：p_email, p_password_hash, p_username, p_display_name, p_signup_bonus
+  - 同一事务内创建 auth_users + profiles（共享 UUID）
+- 更新 `get_user_creation_stats()`：适配新 source 枚举
+- 保留 `generate_user_code()`：注册时仍需生成 26 位 user_code
+- ✅ 验证：RPC 函数语法正确
+
+**Step 0.7: 验证 + 提交**
+- 在 Supabase SQL Editor 执行完整 3 个文件，确认无语法错误
+- 确认 `auth_users`、`auth_sessions`、`auth_oauth_accounts` 创建成功
+- 确认 `profiles.id` 为 UUID 类型
+- 确认 `clerk_webhook_events` 已删除
+- `git add + commit + push`
+
+---
+
+### Phase 1: 后端 Auth Domain（4 天）
+
+```
+前置条件: Phase 0 完成（auth 表已创建）
+Git 分支: feat/auth-phase1-backend-domain
+仓库: decodables (后端)
+```
+
+**Step 1.1: 创建 Domain 基础结构**
+- 新建 `domains/auth/__init__.py`
+- 新建 `domains/auth/constants.py`：Token 有效期、锁定阈值、密码规则等常量
+- 新建 `domains/auth/value_objects.py`：Password、Email、Token 值对象
+- ✅ 验证：`from domains.auth import constants` 不报错
+
+**Step 1.2: 创建聚合根和实体**
+- 新建 `domains/auth/aggregates/__init__.py`
+- 新建 `domains/auth/aggregates/auth_user.py`：AuthUser 聚合根（id, email, password_hash, email_verified 等）
+- 新建 `domains/auth/aggregates/session.py`：Session 实体（id, user_id, family_id, refresh_token_hash 等）
+- ✅ 验证：dataclass 实例化正确
+
+**Step 1.3: 定义 Repository 接口**
+- 新建 `domains/auth/repository.py`
+  - `IAuthUserRepository`：14 个方法签名（详见 5.1）
+  - `ISessionRepository`：9 个方法签名（详见 5.1）
+- ✅ 验证：ABC 类定义正确，类型注解完整
+
+**Step 1.4: 实现 PasswordService**
+- 新建 `domains/auth/password_service.py`
+  - argon2id 哈希：`hash_password()`, `verify_password()`
+  - 密码强度校验：`validate_strength()`（≥8字符、大小写+数字、不在常见密码列表）
+- ✅ 验证：`pytest tests/domains/auth/test_password_service.py` 通过
+
+**Step 1.5: 实现 TokenService**
+- 新建 `domains/auth/token_service.py`
+  - Access Token：HS256 签发 `create_access_token()`、验证 `verify_access_token()`
+  - Refresh Token：`create_refresh_token()`（UUID + SHA-256 哈希）
+  - 双密钥轮换：验证时先试 `AUTH_JWT_SECRET`，失败再试 `AUTH_JWT_SECRET_OLD`
+  - `validate_secrets_at_startup()`：密钥长度 ≥ 43 字符
+- ✅ 验证：`pytest tests/domains/auth/test_token_service.py` 通过（签发/验证/过期/轮换）
+
+**Step 1.6: 实现 EmailService**
+- 新建 `domains/auth/email_service.py`
+  - `send_verification_email()`：生成 token（secrets.token_urlsafe(32)）→ SHA-256 哈希存储 → 发邮件
+  - `send_password_reset_email()`：同上，有效期 1 小时
+  - 复用现有 Resend 配置（`RESEND_API_KEY`、`SUPPORT_EMAIL_FROM`）
+- ✅ 验证：mock Resend 的单元测试通过
+
+**Step 1.7: 实现 Repository（infrastructure 层）**
+- 新建 `infrastructure/auth/__init__.py`
+- 新建 `infrastructure/auth/auth_user_repository.py`：实现 `IAuthUserRepository`
+  - `create()` 调用 RPC `create_auth_user_with_profile()`
+  - 其余方法通过 Supabase client 操作 `auth_users` 表
+- 新建 `infrastructure/auth/session_repository.py`：实现 `ISessionRepository`
+  - 操作 `auth_sessions` 表
+  - `revoke_family()` 支持并发宽限期（2 秒）
+- ✅ 验证：集成测试通过（需 Supabase 连接）
+
+**Step 1.8: 实现 AuthService（核心编排）**
+- 新建 `domains/auth/service.py`
+  - `register()`：校验 → 哈希密码 → RPC 原子创建 → 发验证邮件 → 创建 session → 返回 tokens
+  - `login()`：限流 → 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens
+  - `refresh_token()`：查 session → 检查过期/作废 → 轮换/不轮换 → 重用检测 → 返回 tokens
+  - `logout()` / `logout_all()`：作废 session(s)
+  - `verify_email()`：SHA-256 校验 token → 标记 email_verified
+  - `request_password_reset()`：统一响应防枚举
+  - `reset_password()`：校验 token → 更新密码 → 作废所有 sessions
+  - `change_password()`：验证旧密码 → 更新 → 可选作废其他 sessions
+  - `get_sessions()` / `revoke_session()`：多设备管理
+  - `delete_account()`：验证密码 → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users
+- 并发会话限制：≥ 10 个活跃 session 时自动踢出最旧的
+- 一次性邮箱检测：维护黑名单列表
+- ✅ 验证：`pytest tests/domains/auth/test_auth_service.py` 通过
+
+**Step 1.9: 创建 API 路由**
+- 新建 `api/auth/__init__.py`
+- 新建 `api/auth/schemas.py`：Pydantic Request/Response 模型（详见 5.3）
+- 新建 `api/auth/router.py`：12 个端点（详见 5.3）
+  - 统一错误响应格式：`{ error, message?, details? }`
+  - 响应头：`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- 在 `main.py` 注册 auth router
+- ✅ 验证：FastAPI 启动无报错，`/docs` Swagger 文档显示所有端点
+
+**Step 1.10: 实现限流**
+- SlowAPI 配置（基于 config.py 现有 `RATE_LIMIT_*`）
+- 各端点限流规则（详见 5.3.1）：
+  - `/auth/login`：10/min/IP+email
+  - `/auth/register`：5/hour/IP
+  - `/auth/refresh`：30/min/token
+  - `/auth/forgot-password`：3/hour/email
+- ✅ 验证：测试限流触发返回 429
+
+**Step 1.11: 新增 `require_verified_email` 依赖**
+- 新建 FastAPI 依赖函数（详见 7.8）
+- 挂载到需要邮箱验证的端点：AI 生图、OCR、创建项目、购买等
+- ✅ 验证：未验证邮箱用户调用受限 API 返回 403
+
+**Step 1.12: 注册到 container.py**
+- 新增：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_email_service()`
+- 遵循现有 async factory 懒加载模式
+- ✅ 验证：依赖注入正确
+
+**Step 1.13: 完整验证 + 提交**
+- `pytest tests/domains/auth/` 全部通过
+- 手动测试：注册 → 登录 → 刷新 → 登出
+- `git add + commit + push`
+
+---
+
+### Phase 2: 后端集成（1 天）
+
+```
+前置条件: Phase 1 完成（auth API 可用）
+Git 分支: feat/auth-phase2-backend-integration
+仓库: decodables (后端)
+```
+
+**Step 2.1: 修改 `config.py`**
+- 移除：`CLERK_WEBHOOK_SECRET`, `CLERK_PEM_PUBLIC_KEY`, `CLERK_FRONTEND_API`, `CLERK_ALLOWED_ORIGINS`
+- 移除：`TEST_JWT_PUBLIC_KEY` 相关逻辑
+- 新增：`AUTH_JWT_SECRET`, `AUTH_ACCESS_TOKEN_EXPIRE_MINUTES`, `AUTH_REFRESH_TOKEN_EXPIRE_DAYS` 等
+- 新增：`validate_secrets_at_startup()`（密钥 ≥ 43 字符，否则启动失败）
+- 更新：`REQUIRED_ENV_VARS` 新增 `AUTH_JWT_SECRET`
+- 更新：`RECOMMENDED_ENV_VARS` 移除 Clerk 变量
+- ✅ 验证：启动时配置校验通过
+
+**Step 2.2: 修改 `dependencies.py`（核心改造）**
+- 替换 Clerk RS256 JWT 验证 → 自签 HS256 验证（调用 `TokenService.verify_access_token()`）
+- 移除 JIT 用户创建逻辑（~130 行：重试机制、Sentry 捕获、UserProfile.create_new 等）
+- 移除 `user_id.startswith("user_")` 格式校验
+- 移除 `_get_allowed_origins()` 函数和 `azp` 验证逻辑
+- 移除 `import asyncio` 和 `asyncio.sleep(0.1)` 重试逻辑
+- **保持 `get_current_user()` 签名不变**：`authorization: str = Header(None)` → 返回 `UserProfile`
+- `optional_user()` / `require_admin()` / `require_member()` / `require_pro()` 等：依赖 `get_current_user()`，自动适配
+- ✅ 验证：后端启动无报错，API 调用能正确验证自签 JWT
+
+**Step 2.3: 修改 `container.py`**
+- 移除：`get_clerk_webhook_service()`
+- 确认 Phase 1.12 的 auth 服务注册已完成
+- ✅ 验证：所有服务正确注入
+
+**Step 2.4: 删除 Clerk 模块**
+- 删除 `domains/webhooks/clerk_webhook_service.py` 整个文件
+- 修改 `api/user/webhooks.py`：移除 Clerk webhook 路由（保留 Stripe webhook）
+- ✅ 验证：`grep -r "clerk" --include="*.py"` 后端代码（除文档外）返回 0
+
+**Step 2.5: 更新 UserProfile 实体**
+- `domains/identity/aggregates/user_profile.py`：
+  - `user_id: str` 保持不变（Python 中 UUID 以 str 传递）
+  - 移除 Clerk 相关注释（"Clerk ID"、"from Clerk"、"Clerk username"）
+  - 评估是否移除 `username` / `first_name` / `last_name`（Clerk 字段），改为仅保留 `display_name`
+  - 更新 `create_new()` 工厂方法的参数和注释
+- ✅ 验证：现有测试通过
+
+**Step 2.6: 更新 `requirements.txt`**
+- 移除：`svix`
+- 新增：`argon2-cffi`（如未在 Phase 1 添加）
+- ✅ 验证：`pip install -r requirements.txt` 成功
+
+**Step 2.7: 更新环境变量**
+- `.env`（本地）：移除 4 个 `CLERK_*` 变量，新增 `AUTH_*` 变量
+- Railway（线上）：同步更新环境变量
+- ✅ 验证：后端正常启动，无 Clerk 相关告警
+
+**Step 2.8: 完整验证 + 提交**
+- 后端启动无报错
+- `get_current_user()` 正确验证自签 HS256 JWT
+- 现有 API（非 auth 相关）正常工作
+- `pytest` 全套通过
+- `git add + commit + push`
+
+---
+
+### Phase 3: 前端 Auth 抽象层（3 天）
+
+```
+前置条件: Phase 2 完成（后端 auth API 可用）
+Git 分支: feat/auth-phase3-frontend-auth-layer
+仓库: decodables-fe (前端)
+```
+
+**Step 3.1: 创建 auth 目录结构和类型定义**
+- 新建 `lib/auth/index.ts`：统一导出
+- 新建 `lib/auth/types.ts`：`UseAuthReturn`, `AuthUser`, `UseUserReturn` 接口定义（详见 6.1）
+- ✅ 验证：TypeScript 编译通过
+
+**Step 3.2: 实现 BFF 代理**
+- 新建 `app/api/auth/[...action]/route.ts`（~80 行，详见 6.2 伪代码）
+  - `POST` handler：转发所有 `/api/auth/*` 到后端 `/auth/*`
+  - refresh/logout 时从 cookie 注入 `refresh_token`
+  - 登录/注册/刷新成功时设置 `httpOnly cookie`
+  - 登出/注销时清除 cookie
+  - cookie 属性：`httpOnly: true, secure: true, sameSite: 'lax', path: '/api/auth'`
+- ✅ 验证：`curl -X POST localhost:3000/api/auth/login -d '{"email":"...","password":"..."}' -v` 返回 token + Set-Cookie
+
+**Step 3.3: 实现 authStore.ts（Zustand）**
+- 新建 `lib/auth/authStore.ts`
+  - 状态：`accessToken`, `isSignedIn`, `isLoaded`
+  - 独立于现有 `useUserStore`（业务数据）
+  - 非 persist（纯内存，刷新后通过 refresh 恢复）
+- ✅ 验证：store 状态正确读写
+
+**Step 3.4: 实现 tokenManager.ts**
+- 新建 `lib/auth/tokenManager.ts`
+  - `getValidToken()`：返回有效 Access Token，过期时自动 refresh
+  - `refreshPromise` 去重：多个请求同时触发 refresh 时只发一次
+  - 主动刷新：Access Token 到期前 60 秒自动触发
+  - 被动刷新：API 返回 401 时触发
+  - `SessionExpiredError` 处理链（详见 6.2.1）
+- ✅ 验证：单元测试通过
+
+**Step 3.5: 实现跨标签同步**
+- 在 `tokenManager.ts` 中集成 BroadcastChannel（详见 6.2.1）
+  - 消息类型：`token_refreshed` / `user_logged_out` / `user_logged_in`
+  - `CROSS_TAB_REFRESH_DELAY_MS = 300ms`：refresh 前等待广播，避免多标签竞态
+  - localStorage fallback：`typeof BroadcastChannel === 'undefined'` 时使用 storage 事件
+- ✅ 验证：打开两个标签页，一个登出后另一个同步跳转
+
+**Step 3.6: 实现 authApi.ts**
+- 新建 `lib/auth/authApi.ts`
+  - 封装所有 `/api/auth/*` 调用：`login()`, `register()`, `refresh()`, `logout()` 等
+  - 类型安全的请求/响应
+- ✅ 验证：TypeScript 类型检查通过
+
+**Step 3.7: 实现 AuthProvider.tsx**
+- 新建 `lib/auth/AuthProvider.tsx`
+  - 初始化流程（详见 6.1）：
+    1. 检查内存中 Access Token
+    2. 无 → 调用 `/api/auth/refresh`
+    3. 有 → 调用 `/user/me` 获取用户数据 → 写入 Zustand
+    4. `/user/me` 失败 → JWT payload 中的 tier/role 作为 fallback
+    5. 标记 `isLoaded = true`
+  - 替代 Clerk Fallback 机制（不再依赖 clerkUser.publicMetadata）
+- ✅ 验证：Provider 能正确初始化，`isLoaded` 状态正确
+
+**Step 3.8: 实现 useAuth.ts + useUser.ts**
+- 新建 `lib/auth/useAuth.ts`：接口与 Clerk `useAuth()` 一致（详见 6.1）
+- 新建 `lib/auth/useUser.ts`：接口与 Clerk `useUser()` 一致（详见 6.1）
+- ✅ 验证：hooks 返回正确数据
+
+**Step 3.9: 实现 server.ts（SSR Token 工具）**
+- 新建 `lib/auth/server.ts`
+  - `getServerAccessToken()`：从 cookie 获取 refresh_token → 调用后端 `/auth/refresh`（`rotate=false`）
+  - 用 React `cache()` 包装：同一 SSR 请求内只调用一次
+- ✅ 验证：Server Component 能获取 token
+
+**Step 3.10: 更新 `lib/auth/index.ts` 导出**
+- 统一导出所有 hooks、Provider、types、server 工具
+- ✅ 验证：`import { useAuth, useUser, AuthProvider } from '@/lib/auth'` 正确
+
+**Step 3.11: 完整验证 + 提交**
+- AuthProvider 能初始化
+- `useAuth()` 能获取 token
+- BFF 代理正常工作
+- `npm run build` 通过（此时 Clerk 引用未替换，两套并存）
+- `git add + commit + push`
+
+---
+
+### Phase 4: 前端认证页面（2 天）
+
+```
+前置条件: Phase 3 完成（Auth 抽象层可用）
+Git 分支: feat/auth-phase4-auth-pages
+仓库: decodables-fe (前端)
+```
+
+**Step 4.1: 创建 (auth) 路由组布局**
+- 新建 `app/(auth)/layout.tsx`
+  - 居中卡片布局：`max-w-md mx-auto`，白色卡片 + 阴影
+  - 顶部：品牌 Logo（链接到首页）
+  - 底部：返回首页 / 帮助链接
+  - 背景：与 Design System 一致
+- ✅ 验证：布局正确渲染
+
+**Step 4.2: 实现 `login/page.tsx`**
+- 新建 `app/(auth)/login/page.tsx`
+  - 字段：Email + Password
+  - 按钮："Sign In"（loading 状态）
+  - 链接："Forgot password?" → `/forgot-password`
+  - 链接："Don't have an account? Sign up" → `/register`
+  - 错误处理：401 → "Invalid email or password" / 403 → "Account locked, try again in X minutes"
+  - `redirect` 参数：从 `searchParams` 读取，安全校验（以 `/` 开头，不含 `//`）
+  - 登录成功 → 跳转 redirect 或默认 `/dashboard`
+- ✅ 验证：能登录 + 正确跳转
+
+**Step 4.3: 实现 `register/page.tsx`**
+- 新建 `app/(auth)/register/page.tsx`
+  - 字段：Email + Display Name（可选）+ Password + Confirm Password
+  - 密码强度指示器（实时校验）
+  - 按钮："Create Account"（loading 状态）
+  - 注册成功 → 跳转 `/verify-email?email=xxx`
+  - 链接："Already have an account? Sign in" → `/login`
+- ✅ 验证：能注册 + 跳转到验证页
+
+**Step 4.4: 实现 `verify-email/page.tsx`**
+- 新建 `app/(auth)/verify-email/page.tsx`
+  - URL 参数：`?token=xxx&email=xxx`
+  - 有 token：页面加载时自动提交验证请求
+  - 成功 → "Email verified!" + 自动跳转 `/dashboard`
+  - 失败 → "Invalid or expired link" + "Resend verification email" 按钮
+  - 无 token（仅 email）：显示"请查收验证邮件"提示 + "Resend" 按钮
+- ✅ 验证：验证链接能正常工作
+
+**Step 4.5: 实现 `forgot-password/page.tsx`**
+- 新建 `app/(auth)/forgot-password/page.tsx`
+  - 字段：Email
+  - 按钮："Send Reset Link"
+  - 提交后始终显示："If this email is registered, a reset link has been sent"（防枚举）
+- ✅ 验证：能触发密码重置邮件
+
+**Step 4.6: 实现 `reset-password/page.tsx`**
+- 新建 `app/(auth)/reset-password/page.tsx`
+  - URL 参数：`?token=xxx&email=xxx`
+  - 字段：New Password + Confirm Password
+  - 成功 → "Password reset successfully" + 自动跳转 `/login`
+  - 失败 → "Invalid or expired link"
+- ✅ 验证：完整密码重置流程
+
+**Step 4.7: 完整验证 + 提交**
+- 手动测试完整流程：注册 → 收验证邮件 → 点击验证 → 登录 → 登出
+- 手动测试密码重置：忘记密码 → 收重置邮件 → 重置 → 登录
+- `npm run build` 通过
+- `git add + commit + push`
+
+---
+
+### Phase 5: 前端迁移（3 天）
+
+```
+前置条件: Phase 4 完成（认证页面可用）
+Git 分支: feat/auth-phase5-frontend-migration
+仓库: decodables-fe (前端)
+```
+
+**Step 5.1: 替换 `layout.tsx`**
+- `<ClerkProvider>` → `<AuthProvider>`
+- 移除 `@clerk/nextjs` import
+- ✅ 验证：应用正常渲染
+
+**Step 5.2: 替换 `middleware.ts`**
+- `clerkMiddleware()` → 自定义路由保护（~40 行，详见 6.6）
+- 路由分类：
+  - PUBLIC_ROUTES：`/`, `/pricing`, `/marketplace/*`, `/articles/*`, `/api/*` 等
+  - AUTH_ROUTES：`/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`
+  - 其余为 PROTECTED（未登录 → `/login?redirect=`，已登录访问 AUTH → `/dashboard`）
+- ✅ 验证：路由保护正确
+
+**Step 5.3: 重写 `GlobalProviders.tsx`（最复杂）**
+- 移除：`useAuth()` / `useUser()` from `@clerk/nextjs`
+- 移除：Clerk CDN 超时 fallback（`useClerkWithTimeout`、`isEffectivelyLoaded`、`timedOut`）
+- 移除：`clerkUser.publicMetadata.tier` fallback
+- 保留：`fetchUserData()`（调用 `/user/me` → Zustand）
+- 保留：`BroadcastChannel` 跨标签同步（改为新消息格式）
+- 重构后从 ~389 行精简到 ~100 行（大部分逻辑已转移到 AuthProvider）
+- ✅ 验证：Provider 正常工作
+
+**Step 5.4: 重写 `Navbar.tsx`**
+- 替换 Clerk UI 组件：
+  - `<UserButton>` → `<UserMenu>`（自定义头像下拉）
+  - `<SignedIn>` / `<SignedOut>` → `{isSignedIn && ...}` 条件渲染
+  - `<SignInButton>` → `<Link href="/login">`
+  - `<ClerkLoading>` → `{!isLoaded && <Skeleton>}`
+  - `<ClerkLoaded>` → `{isLoaded && ...}`
+- 移除：`ClerkBillingPage`、`ClerkTransactionHistory` import
+- ✅ 验证：导航栏正常显示所有状态
+
+**Step 5.5: 重写 `services/api.ts`**
+- 移除：`getToken` 回调（当前从 Clerk `useAuth().getToken` 传入）
+- 改为：从 `tokenManager.getValidToken()` 获取 token
+- 401 重试：改为调用 `tokenManager.doRefresh()`
+- 保留：`USE_PROXY` 模式兼容
+- ✅ 验证：API 调用正常
+
+**Step 5.6: 迁移 ~30 个 import-only 文件（逐文件改 import 路径）**
+
+按类别分批，每批完成后运行 `npm run build` 验证：
+
+批次 a — hooks/（5 个）：
+- `hooks/useCredits.ts`
+- `app/create/_hooks/ai/useAIGeneration.ts`
+- `app/create/_hooks/ai/useAIPageGeneration.ts`
+- `app/create/_hooks/editor/useEditorExport.ts`
+- `app/marketplace/_hooks/usePurchase.ts`
+- 改动：`import { useAuth } from "@clerk/nextjs"` → `import { useAuth } from "@/lib/auth"`
+
+批次 b — pages/（8 个）：
+- `app/admin/page.tsx`, `app/marketplace/page.tsx`, `app/notifications/page.tsx`, `app/contact-us/page.tsx`
+- `app/_components/landing/CTAButton.tsx`, `LandingPageClient.tsx`, `pricing/CreditsTierCard.tsx`, `hero/PromptInput.tsx`
+
+批次 c — modals/（6 个）：
+- `components/OutOfCreditsModal.tsx`, `UpgradeModal.tsx`, `CreateProjectModal.tsx`
+- `app/dashboard/_components/modals/PublishAssetDialog.tsx`
+- `app/create/_components/scan/SmartScanDialog.tsx`
+- `components/common/FeedbackDialog.tsx`
+
+批次 d — common/（4 个）：
+- `components/common/BottomNavbar.tsx`, `FloatingCTA.tsx`, `PlanButton.tsx`
+- `components/common/support/ContactForm.tsx`, `AIChat.tsx`
+
+批次 e — 特殊文件（6 个，需要额外改逻辑）：
+- `components/common/MobileMenu.tsx`：`useUser()` + `useClerk()` → `useAuth()` + `useUser()` from `@/lib/auth`
+- `app/profile/page.tsx`：`useUser()` + `useAuth()` + `useClerk()` → 新 hooks + `router.push('/profile/settings')`
+- `app/transaction-history/page.tsx`：`useAuth()` + `<SignIn>` → `useAuth()` + 跳转 `/login`
+- `app/dashboard/_components/DashboardContent.tsx`：`useUser()` → `useUser()` from `@/lib/auth`
+- `app/dashboard/_components/DashboardAuthGate.tsx`：`<SignIn>` → `redirect('/login')`
+- `app/create/page.tsx`：`<SignIn>` → `redirect('/login')`
+- `app/_components/landing/pricing/SubscriptionPlans.tsx`：`useClerkWithTimeout` → `useAuth()` from `@/lib/auth`
+
+- ✅ 验证：每批完成后 `npm run build` 通过
+
+**Step 5.7: 删除 Clerk 专用文件**
+- 删除 `hooks/useClerkWithTimeout.ts`
+- 删除 `components/common/ClerkBillingPage.tsx`（如独立存在）
+- 删除 `components/common/ClerkTransactionHistory.tsx`（如独立存在）
+- ✅ 验证：无残留引用
+
+**Step 5.8: 更新环境变量**
+- `.env.local`：移除 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`、`CLERK_SECRET_KEY`
+- Vercel：同步更新
+- ✅ 验证：启动无 Clerk 相关警告
+
+**Step 5.9: 完整验证 + 提交**
+- `npm run build` 零错误
+- 手动测试全流程（注册 → 验证 → 登录 → 各页面 → 登出）
+- `git add + commit + push`
+
+---
+
+### Phase 6: 测试（2 天）
+
+```
+前置条件: Phase 5 完成（全部迁移完成）
+Git 分支: feat/auth-phase6-tests
+仓库: decodables + decodables-fe
+```
+
+**Step 6.1: 后端单元测试**
+- `tests/domains/auth/test_password_service.py`：hash/verify/strength 校验
+- `tests/domains/auth/test_token_service.py`：签发/验证/过期/轮换/密钥校验
+- `tests/domains/auth/test_auth_service.py`：注册/登录/刷新/登出/锁定/并发会话
+- `tests/domains/auth/test_email_service.py`：邮件发送（mock Resend）
+- ✅ 验证：`pytest tests/domains/auth/` 全部通过
+
+**Step 6.2: 后端集成测试**
+- `tests/integration/auth/test_auth_api.py`：注册 → 登录 → 刷新 → 登出 API 调用
+- `tests/integration/auth/test_email_verification.py`：验证邮件完整流程
+- `tests/integration/auth/test_password_reset.py`：密码重置完整流程
+- `tests/integration/auth/test_session_management.py`：多设备管理、踢出
+- JWT 测试策略：用 `AUTH_JWT_SECRET` 通过 `TokenService` 签发 test token
+- ✅ 验证：`pytest tests/integration/auth/` 全部通过
+
+**Step 6.3: 更新现有后端测试**
+- `tests/conftest.py`：Clerk test setup → 自建 auth setup
+- `tests/integration/staging/conftest.py`：Clerk test token → 自签 HS256 token
+- `tests/integration/staging/get_test_token.py`：Clerk token 生成 → 自签 token 生成
+- 删除 `tests/integration/staging/webhooks/test_webhooks.py`（Clerk webhook 测试）
+- 更新 `tests/api/user/test_webhooks.py`（移除 Clerk 部分）
+- ✅ 验证：`pytest` 全套通过
+
+**Step 6.4: 前端测试更新**
+- `jest.setup.js`：移除 `@clerk/nextjs` mock，添加 `@/lib/auth` mock
+- `__tests__/components/Navbar.test.jsx`：更新 auth mock
+- `__tests__/components/BottomNavbar.test.tsx`：更新 auth mock
+- `app/create/__tests__/hooks/useProjectTitle.test.ts`：更新 auth mock
+- ✅ 验证：`npm run test` 全部通过
+
+**Step 6.5: 完整验证 + 提交**
+- 后端 `pytest` 全部通过
+- 前端 `jest` 全部通过
+- `git add + commit + push`（两个仓库）
+
+---
+
+### Phase 7: 清理与最终验证（1 天）
+
+```
+前置条件: Phase 6 完成（测试全部通过）
+Git 分支: feat/auth-phase7-cleanup（或直接在 develop 上）
+仓库: decodables + decodables-fe
+```
+
+**Step 7.1: 移除前端 Clerk 依赖**
+- `package.json`：移除 `@clerk/nextjs`
+- 运行 `npm install`（更新 lock 文件）
+- ✅ 验证：`npm run build` 通过
+
+**Step 7.2: 移除后端 Clerk 依赖**
+- `requirements.txt`：确认 `svix` 已移除
+- ✅ 验证：`pip install -r requirements.txt` 无 Clerk 相关包
+
+**Step 7.3: 更新 Vercel 环境变量**
+- 移除所有 `CLERK_*` 变量
+- 新增 `AUTH_*` 变量（如未在之前 Phase 添加）
+- ✅ 验证：Vercel 部署成功
+
+**Step 7.4: 更新 Railway 环境变量**
+- 移除所有 `CLERK_*` 变量
+- 确认 `AUTH_*` 变量已配置
+- ✅ 验证：Railway 部署成功
+
+**Step 7.5: 更新文档**
+- 前端文档：
+  - `docs/main/frontend-development-guide.md`：更新 auth 相关章节
+  - `docs/main/integration-testing-guide.md`：更新测试 mock 说明
+- 后端文档：
+  - `docs/main/api-reference.md`：新增 auth API 文档
+  - `docs/main/backend-business-logic.md`：更新认证流程说明
+  - `docs/main/backend-architecture.md`：更新架构图
+  - `docs/main/database-guide.md`：新增 auth 表说明
+- 临时文档：
+  - `docs/tmp/20260131-account-system-audit-report.md`：标记为历史归档
+  - `docs/tmp/20260131-account-system-fix-plan.md`：标记为历史归档
+
+**Step 7.6: 零 Clerk 残留验证**
+- `grep -r "clerk" --include="*.ts" --include="*.tsx" --include="*.py"` → 0 结果（文档除外）
+- `grep -r "@clerk" --include="*.json"` → 0 结果
+- ✅ 验证：代码中无任何 Clerk 残留
+
+**Step 7.7: 端到端验证**
+- 执行 Section 十的完整 E2E 流程：
+  1. 注册新用户 → 收到 Resend 验证邮件
+  2. 点击验证链接 → 邮箱标记已验证
+  3. 登录 → 获取 Access Token + Refresh Token (httpOnly cookie)
+  4. 访问 /dashboard → 正常加载，API 调用带 Bearer token
+  5. 15 分钟后 → Access Token 过期 → 自动 refresh → 无感刷新
+  6. 访问 /create → 编辑器正常加载
+  7. 多标签页 → 一个标签登出 → 其他标签同步登出
+  8. 忘记密码 → 收到重置邮件 → 重置成功 → 所有设备登出
+  9. 查看设备管理 → 列出所有活跃 session → 踢出指定设备
+  10. `npm run build` → 零错误零警告
+- 后端 `pytest` 全部通过
+- ✅ 验证：所有检查通过
+
+**Step 7.8: 最终提交 + 合并**
+- `git add + commit + push`（两个仓库）
+- 合并各 Phase 分支到 `develop`
 
 ---
 
