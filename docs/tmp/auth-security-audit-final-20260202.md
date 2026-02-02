@@ -697,3 +697,871 @@ if (!ALLOWED_ACTIONS.has(action)) {
 > 总数从 38 → 42。
 >
 > **累计审计轮次**: 原始三轮 (v1/v2/v3) + 方法论交叉 + 全系统交叉 + 代码复验 = 6 轮验证。
+
+---
+
+## 附录: 详细修复方案
+
+> 每个 finding 的具体代码修复方案。Phase 1 已在正文中包含，此处补充 Phase 2 和 Phase 3。
+
+---
+
+### Phase 1 — 立即修复 (正文已含具体代码)
+
+- **C1**: 三处 `!=` → `hmac.compare_digest()` (见正文)
+- **C2**: `path: '/api/auth'` → `path: '/'` (见正文)
+- **H5**: `password: str` → `password: str = Field(..., min_length=1, max_length=128)` (见正文)
+- **M11**: `current_password: str` → `current_password: str = Field(..., min_length=1, max_length=128)` (见正文)
+
+---
+
+### Phase 2 — 详细修复方案
+
+#### #5 H1. X-Forwarded-For 可伪造
+
+**后端** `api/auth/router.py` — 替换 `_get_client_ip()`:
+
+```python
+# 修复前 (行 100-107)
+def _get_client_ip(request: Request) -> Optional[str]:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()  # 攻击者可控
+    if request.client:
+        return request.client.host
+    return None
+
+# 修复后 — 使用 Railway/Vercel 提供的真实 IP header
+def _get_client_ip(request: Request) -> Optional[str]:
+    """Get client IP from trusted proxy headers.
+
+    Priority:
+    1. CF-Connecting-IP (Cloudflare)
+    2. X-Real-IP (Railway/Nginx)
+    3. X-Forwarded-For last untrusted hop (Vercel: rightmost - trusted_proxy_count)
+    4. Direct connection IP
+    """
+    # Cloudflare (if using Cloudflare)
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    # Railway / Nginx
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    # X-Forwarded-For — 取最右侧(最靠近服务端的) hop
+    # 在 Railway 部署中只有 1 层 proxy，取 rightmost
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ips = [ip.strip() for ip in forwarded.split(",")]
+        # 最后一个是最近的 proxy 添加的,最可信
+        return ips[-1] if ips else None
+
+    if request.client:
+        return request.client.host
+    return None
+```
+
+**前端** `route.ts` — 不再转发 `x-forwarded-for`:
+
+```typescript
+// 修复前 (行 65-67)
+...(req.headers.get('x-forwarded-for')
+  ? { 'X-Forwarded-For': req.headers.get('x-forwarded-for')! }
+  : {}),
+
+// 修复后 — Vercel 自动添加真实客户端 IP，不需要手动转发
+// 删除上面 3 行。Vercel Edge 会自动设置 x-forwarded-for (rightmost = real IP)
+```
+
+---
+
+#### #6 H2. JWT role/tier 硬编码
+
+**文件**: `domains/auth/service.py`
+
+需要在所有签发 access token 的位置 (行 522-523, 1104-1105, 1132-1133) 查询用户实际 role/tier:
+
+```python
+# 修复前
+access_token = self._token_svc.create_access_token(
+    user_id=auth_user.id, email=auth_user.email,
+    role="user",   # TODO: get from profile
+    tier="t1",     # TODO: get from profile
+)
+
+# 修复后 — 需要注入 user profile repository 或 service
+async def _get_user_role_tier(self, user_id: UUID) -> tuple[str, str]:
+    """从 user profile 获取实际 role 和 tier。"""
+    profile = await self._user_repo.get_profile(user_id)
+    if profile:
+        return profile.role or "user", profile.tier or "t1"
+    return "user", "t1"
+
+# 调用处改为:
+role, tier = await self._get_user_role_tier(auth_user.id)
+access_token = self._token_svc.create_access_token(
+    user_id=auth_user.id, email=auth_user.email,
+    role=role,
+    tier=tier,
+)
+```
+
+> 注意: 需要在 `AuthService.__init__` 中注入 user profile 的 repository 依赖。
+
+---
+
+#### #7 H3. BFF 代理无 CSRF 保护
+
+**文件**: `decodables-fe/app/api/auth/[...action]/route.ts`
+
+```typescript
+// 在 POST handler 开头添加 Origin 校验 (行 32 之前)
+
+const ALLOWED_ORIGINS = new Set([
+  process.env.NEXT_PUBLIC_APP_URL,           // e.g., https://makedecodables.com
+  'http://localhost:3000',                     // 本地开发
+].filter(Boolean))
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ action: string[] }> }
+) {
+  // CSRF 防护: 校验 Origin header
+  const origin = req.headers.get('origin')
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+    return NextResponse.json(
+      { detail: 'Invalid origin' },
+      { status: 403 }
+    )
+  }
+
+  // ... 原有逻辑
+}
+```
+
+---
+
+#### #8 H4. Logout/sessions 端点缺少限流
+
+**文件**: `api/auth/router.py`
+
+```python
+# 修复: 给 4 个端点添加限流装饰器
+
+@router.post("/logout", response_model=SuccessResponse)
+@limiter.limit("30/minute")                                    # ← 新增
+async def logout(
+    request: Request,                                          # ← 新增参数
+    body: LogoutRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> SuccessResponse:
+    ...
+
+@router.post("/logout-all", response_model=SuccessResponse)
+@limiter.limit("10/minute")                                    # ← 新增
+async def logout_all(
+    request: Request,                                          # ← 新增参数
+    user_id: UUID = Depends(get_current_auth_user_id),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> SuccessResponse:
+    ...
+
+@router.get("/sessions", response_model=SessionListResponse)
+@limiter.limit("30/minute")                                    # ← 新增
+async def list_sessions(
+    request: Request,                                          # ← 新增参数
+    user_id: UUID = Depends(get_current_auth_user_id),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> SessionListResponse:
+    ...
+
+@router.delete("/sessions/{session_id}", ...)
+@limiter.limit("20/minute")                                    # ← 新增
+async def revoke_session(
+    request: Request,                                          # ← 新增参数
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_auth_user_id),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> SuccessResponse:
+    ...
+```
+
+---
+
+#### #9 H6. Purpose token 不支持双密钥轮换
+
+**文件**: `domains/auth/token_service.py` 行 305-342
+
+```python
+# 修复前 — verify_purpose_token 只用当前密钥
+def verify_purpose_token(self, token: str, expected_purpose: str) -> UUID:
+    try:
+        payload = jwt.decode(
+            token, self._jwt_secret,  # ← 只用当前密钥
+            algorithms=[ACCESS_TOKEN_ALGORITHM],
+            options={"require": ["sub", "purpose", "exp", "iat"]},
+        )
+    except jwt.ExpiredSignatureError:
+        raise TokenExpiredException()
+    except (jwt.InvalidTokenError, jwt.DecodeError):
+        raise TokenInvalidException(message="Invalid token")
+    ...
+
+# 修复后 — 复用 _decode_jwt 的双密钥 fallback 模式
+def verify_purpose_token(self, token: str, expected_purpose: str) -> UUID:
+    # 尝试当前密钥
+    payload = self._decode_purpose_jwt(token, self._jwt_secret)
+
+    # Fallback 到旧密钥 (轮换期间)
+    if payload is None and self._jwt_secret_old:
+        payload = self._decode_purpose_jwt(token, self._jwt_secret_old)
+
+    if payload is None:
+        raise TokenInvalidException(message="Invalid token")
+
+    if payload.get("purpose") != expected_purpose:
+        raise TokenInvalidException(message="Invalid token purpose")
+
+    try:
+        return UUID(payload["sub"])
+    except (KeyError, ValueError):
+        raise TokenInvalidException(message="Malformed token payload")
+
+def _decode_purpose_jwt(self, token: str, secret: str) -> Optional[dict]:
+    """Decode purpose JWT, return None on failure (for fallback)."""
+    try:
+        return jwt.decode(
+            token, secret,
+            algorithms=[ACCESS_TOKEN_ALGORITHM],
+            options={"require": ["sub", "purpose", "exp", "iat"]},
+        )
+    except jwt.ExpiredSignatureError:
+        raise TokenExpiredException()
+    except (jwt.InvalidTokenError, jwt.DecodeError):
+        return None
+```
+
+---
+
+#### #10 H7. localStorage fallback 持久存储 token
+
+**文件**: `decodables-fe/lib/auth/tokenManager.ts`
+
+```typescript
+// 修复方案 A (推荐): 广播信号而非 token
+private broadcast(message: AuthSyncMessage): void {
+  if (this.isBroadcastSupported && this.channel) {
+    this.channel.postMessage(message)
+  } else if (typeof window !== 'undefined') {
+    // Fallback: 只广播信号（不含 token），其他 tab 自行 refresh
+    const signal: AuthSyncMessage = {
+      type: message.type,
+      token: undefined,  // ← 不传 token
+      timestamp: Date.now(),
+    }
+    localStorage.setItem(AUTH_SYNC_STORAGE_KEY, JSON.stringify(signal))
+    // 写入后立即清除，只利用 storage event 触发
+    setTimeout(() => localStorage.removeItem(AUTH_SYNC_STORAGE_KEY), 100)
+  }
+}
+
+// 对应 handleSyncMessage 也需调整:
+case 'token_refreshed':
+  if (message.token) {
+    // BroadcastChannel 路径: 直接使用 token
+    useAuthStore.getState().setAccessToken(message.token)
+    this.scheduleProactiveRefresh(message.token)
+  } else {
+    // localStorage fallback 路径: 信号模式，自行 refresh
+    this.refreshToken()
+  }
+  break
+```
+
+---
+
+#### #11 H8. NEXT_PUBLIC_ 暴露后端 URL
+
+**文件**: `decodables-fe/app/api/auth/[...action]/route.ts` 行 16
+
+```typescript
+// 修复前
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+// 修复后 — 使用不带 NEXT_PUBLIC_ 前缀的环境变量
+const BACKEND_URL = process.env.API_BASE_URL || 'http://localhost:8000'
+```
+
+> 同时需要:
+> 1. 在 `.env.local` / Vercel 环境变量中添加 `API_BASE_URL`
+> 2. 检查 `lib/auth/server.ts` 等其他服务端文件的同类问题
+> 3. 前端客户端代码仍可使用 `NEXT_PUBLIC_API_BASE_URL` (如果有需要)
+
+---
+
+#### #12 T1. JWT 缺少 iss/aud 验证
+
+**文件**: `domains/auth/token_service.py`
+
+```python
+# 新增常量 (constants.py)
+JWT_ISSUER = "make-decodables"
+JWT_AUDIENCE = "make-decodables-api"
+
+# 修复 create_access_token (行 124-134)
+payload = {
+    "sub": str(user_id),
+    "email": email,
+    "role": role,
+    "tier": tier,
+    "type": ACCESS_TOKEN_TYPE,
+    "iss": JWT_ISSUER,     # ← 新增
+    "aud": JWT_AUDIENCE,   # ← 新增
+    "iat": now,
+    "exp": now + (self._access_token_expire_minutes * 60),
+}
+
+# 修复 _decode_jwt (行 193-199)
+return jwt.decode(
+    token, secret,
+    algorithms=[ACCESS_TOKEN_ALGORITHM],
+    issuer=JWT_ISSUER,     # ← 新增
+    audience=JWT_AUDIENCE,  # ← 新增
+    options={"require": ["sub", "email", "role", "tier", "type", "exp", "iat"]},
+)
+
+# 修复 create_purpose_token (行 294-300)
+payload = {
+    "sub": str(user_id),
+    "purpose": purpose,
+    "iss": JWT_ISSUER,     # ← 新增
+    "aud": JWT_AUDIENCE,   # ← 新增
+    "iat": now,
+    "exp": now + (expire_minutes * 60),
+}
+
+# 修复 verify_purpose_token / _decode_purpose_jwt
+jwt.decode(
+    token, secret,
+    algorithms=[ACCESS_TOKEN_ALGORITHM],
+    issuer=JWT_ISSUER,     # ← 新增
+    audience=JWT_AUDIENCE,  # ← 新增
+    options={"require": ["sub", "purpose", "exp", "iat"]},
+)
+```
+
+---
+
+#### #13 T2. Sentry 未脱敏 request body
+
+**文件**: `app.py` — `_sanitize_sentry_event()`
+
+**复验结果**: `app.py:91-101` 的 WS-07 补丁已添加 body 脱敏逻辑 (`_BODY_SENSITIVE_KEYS` 包含 `password`, `token`, `secret` 等)。
+
+**但仍需验证**:
+1. Sentry SDK 将 POST body 存储在 `event["request"]["data"]` 中 — 代码已检查 `"data"` ✓
+2. `_BODY_SENSITIVE_KEYS` 应额外包含 `otp_code`、`refresh_token`:
+
+```python
+# 修复: 补充敏感字段
+_BODY_SENSITIVE_KEYS = {
+    "password", "token", "secret", "api_key", "apikey",
+    "credit_card", "card_number", "cvv", "email", "phone",
+    "otp_code", "refresh_token", "register_token",         # ← 新增
+    "otp_verified_token", "current_password", "new_password",  # ← 新增
+}
+```
+
+---
+
+### Phase 3 — 详细修复方案
+
+#### #14 M1. BFF 添加 action 白名单
+
+**文件**: `decodables-fe/app/api/auth/[...action]/route.ts`
+
+```typescript
+// 在文件顶部添加
+const ALLOWED_ACTIONS = new Set([
+  'login',
+  'refresh',
+  'logout',
+  'logout-all',
+  'register/send-otp',
+  'register/verify-otp',
+  'register/complete',
+  'otp/send',
+  'otp/verify',
+  'forgot-password/reset',
+  'change-password',
+  'delete-account',
+])
+
+// 在 POST handler 中 (action 解析后)
+const action = actionParts.join('/')
+if (!ALLOWED_ACTIONS.has(action)) {
+  return NextResponse.json({ detail: 'Unknown action' }, { status: 404 })
+}
+```
+
+---
+
+#### #15 M2. verify_password_reset_otp 后 clear_otp
+
+**文件**: `domains/auth/service.py` 行 807-811
+
+```python
+# 修复前 — verify 成功后无 clear_otp
+return {
+    "user_id": str(auth_user.id),
+    "email": auth_user.email,
+    "otp_verified": True,
+}
+
+# 修复后 — 添加 clear_otp (对齐 verify_authenticated_otp 行 690 的做法)
+await self._auth_user_repo.clear_otp(auth_user.id)  # ← 新增
+return {
+    "user_id": str(auth_user.id),
+    "email": auth_user.email,
+    "otp_verified": True,
+}
+```
+
+---
+
+#### #16 M4. 429 响应移除限流配置
+
+**文件**: `infrastructure/rate_limiter.py` 行 135, 159
+
+```python
+# 修复前
+detail=f"Rate limit exceeded. Please try again later. (Limit: {limit_string})"
+
+# 修复后 — 移除暴露的限流配置
+detail="Rate limit exceeded. Please try again later."
+```
+
+---
+
+#### #17 M7. 日志 PII 脱敏
+
+**文件**: `domains/auth/service.py` 行 204, 636, 722, 754
+
+```python
+# 添加脱敏工具函数 (可放在 auth/utils.py 或 shared/utils.py)
+def mask_email(email: str) -> str:
+    """u***@example.com"""
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    return f"{local[0]}***@{domain}" if local else f"***@{domain}"
+
+# 修复前
+logger.info(f"OTP sent to {validated_email.value}")
+
+# 修复后
+logger.info(f"OTP sent to {mask_email(validated_email.value)}")
+```
+
+> 4 处 `logger.info(f"... {email} ...")` 均需替换。
+
+---
+
+#### #18 M10. 添加 CSP 头
+
+**文件**: `decodables-fe/next.config.ts` 或 `middleware.ts`
+
+```typescript
+// 方案 A: next.config.ts (推荐)
+const securityHeaders = [
+  {
+    key: 'Content-Security-Policy',
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self' https://api.stripe.com https://*.sentry.io",
+      "frame-src https://js.stripe.com",
+    ].join('; '),
+  },
+]
+
+// 在 next.config.ts 的 headers() 中添加
+async headers() {
+  return [{ source: '/(.*)', headers: securityHeaders }]
+}
+```
+
+> CSP 值需要根据实际使用的第三方服务调整 (Stripe, Sentry, Google Fonts, FAL.ai 等)。
+
+---
+
+#### #19 M13. email_service 异步改造
+
+**文件**: `domains/auth/email_service.py` 行 ~117
+
+```python
+# 修复前 — 同步调用阻塞事件循环
+resend.Emails.send(params)
+
+# 修复后
+from starlette.concurrency import run_in_threadpool
+
+async def _send_email(self, to_email: str, subject: str, html_body: str) -> bool:
+    try:
+        params: resend.Emails.SendParams = {
+            "from": f"{self._app_name} <{self._from_email}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+        }
+        await run_in_threadpool(resend.Emails.send, params)  # ← 异步
+        logger.info(f"Email sent to {mask_email(to_email)}: {subject}")
+        return True
+    except Exception:
+        logger.exception(f"Failed to send email to {mask_email(to_email)}: {subject}")
+        return False
+```
+
+---
+
+#### #20 T3. api_logs/error_logs 请求体脱敏
+
+**方案**: 在 API 日志中间件中过滤 auth 路径，或脱敏后再写入。
+
+```python
+# 方案 A (推荐): 排除 auth 端点的 body 记录
+# 在日志中间件中:
+SENSITIVE_PATH_PREFIXES = ("/api/v2/auth/",)
+
+async def log_request(request: Request, response: Response):
+    body = None
+    if not any(request.url.path.startswith(p) for p in SENSITIVE_PATH_PREFIXES):
+        body = await request.body()
+    # 写入 api_logs 时 body 为 None 则不记录
+
+# 方案 B: 按字段脱敏
+SENSITIVE_FIELDS = {"password", "otp_code", "refresh_token", "token",
+                    "current_password", "new_password", "register_token",
+                    "otp_verified_token"}
+
+def sanitize_body(body: dict) -> dict:
+    return {
+        k: "[REDACTED]" if k in SENSITIVE_FIELDS else v
+        for k, v in body.items()
+    }
+```
+
+---
+
+#### #21 S1. tokenManager 事件监听器清理
+
+**文件**: `decodables-fe/lib/auth/tokenManager.ts`
+
+```typescript
+// 在 TokenManager 类中添加:
+
+private storageHandler: ((e: StorageEvent) => void) | null = null
+
+private initCrossTabSync(): void {
+  this.isBroadcastSupported = typeof BroadcastChannel !== 'undefined'
+
+  if (this.isBroadcastSupported) {
+    this.channel = new BroadcastChannel(AUTH_CHANNEL_NAME)
+    this.channel.onmessage = (event: MessageEvent<AuthSyncMessage>) => {
+      this.handleSyncMessage(event.data)
+    }
+  } else {
+    // 保存引用以便 cleanup
+    this.storageHandler = (event: StorageEvent) => {
+      if (event.key === AUTH_SYNC_STORAGE_KEY && event.newValue) {
+        try {
+          const message = JSON.parse(event.newValue) as AuthSyncMessage
+          this.handleSyncMessage(message)
+        } catch { /* ignore */ }
+      }
+    }
+    window.addEventListener('storage', this.storageHandler)
+  }
+}
+
+// 新增 cleanup 方法
+cleanup(): void {
+  // 清理 BroadcastChannel
+  if (this.channel) {
+    this.channel.close()
+    this.channel = null
+  }
+  // 清理 storage 监听器
+  if (this.storageHandler) {
+    window.removeEventListener('storage', this.storageHandler)
+    this.storageHandler = null
+  }
+  // 取消 proactive refresh timer
+  this.cancelProactiveRefresh()
+}
+```
+
+> 在 `AuthProvider` 的 `useEffect` cleanup 中调用 `tokenManager.cleanup()`。
+
+---
+
+#### #22 L4. dependencies.py 错误信息脱敏
+
+**文件**: `dependencies.py` 行 64
+
+```python
+# 修复前
+raise UnauthorizedException(message=f"Invalid token: {e.message}")
+
+# 修复后
+raise UnauthorizedException(message="Invalid token")
+```
+
+---
+
+#### #23 T4. dependencies.py 异常静默吞没
+
+**文件**: `dependencies.py` 行 254-256
+
+```python
+# 修复前
+except (ValueError, Exception):
+    pass
+
+# 修复后
+except (ValueError, Exception) as e:
+    logger.warning(f"Workspace validation failed: {type(e).__name__}")
+```
+
+---
+
+#### #24 S2-S4. 前端资源清理
+
+**S2. useResendCountdown interval 泄漏**
+
+**文件**: `register/page.tsx`, `forgot-password/page.tsx`
+
+```typescript
+// 修复: 抽取为共享 hook + 添加 cleanup
+// 新文件: lib/auth/useResendCountdown.ts
+
+import { useRef, useState, useCallback, useEffect } from 'react'
+
+export function useResendCountdown(initialSeconds = 60) {
+  const [countdown, setCountdown] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const start = useCallback(() => {
+    setCountdown(initialSeconds)
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }, [initialSeconds])
+
+  // ← cleanup: 组件卸载时清理 interval
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [])
+
+  return { countdown, start, isActive: countdown > 0 }
+}
+```
+
+**S3. tokenManager 缺少 AbortController**
+
+**文件**: `decodables-fe/lib/auth/tokenManager.ts`
+
+```typescript
+// 在 TokenManager 类中添加:
+private abortController: AbortController | null = null
+
+private async doRefresh(): Promise<string> {
+  this.abortController = new AbortController()
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+    signal: this.abortController.signal,  // ← 新增
+  })
+  this.abortController = null
+  // ... 原有逻辑
+}
+
+// 在 cleanup() 中添加:
+cleanup(): void {
+  if (this.abortController) {
+    this.abortController.abort()
+    this.abortController = null
+  }
+  // ... 原有 channel/storage cleanup
+}
+```
+
+**S4. 登录/注册页面缺少 ErrorBoundary**
+
+**文件**: `decodables-fe/app/(auth)/layout.tsx`
+
+```tsx
+// 在 auth layout 中包裹 ErrorBoundary
+import { ErrorBoundary } from '@shared/components/ErrorBoundary'
+
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-lg font-semibold">出现了一些问题</h2>
+            <a href="/login" className="text-primary underline">返回登录</a>
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  )
+}
+```
+
+---
+
+#### #25 S5. Repository 层多记录检测
+
+**文件**: `infrastructure/repositories/auth_user_repository.py`
+
+```python
+# 在所有 .maybe_single() 查询结果处理中添加:
+
+# 修复前
+if not result.data:
+    return None
+return AuthUser.from_db(result.data[0])
+
+# 修复后
+if not result.data:
+    return None
+if len(result.data) > 1:
+    logger.error(f"Multiple records found for query, expected 0-1, got {len(result.data)}")
+    raise RuntimeError("Data integrity violation: multiple records for unique query")
+return AuthUser.from_db(result.data[0])
+```
+
+---
+
+#### #26 其余 LOW 问题修复
+
+**L1 (Access token 15 分钟)**: 信息性，无需修改。
+
+**L2 (emailVerified 硬编码)**:
+
+```typescript
+// 文件: decodables-fe/lib/auth/useUser.ts 行 43
+// 修复前
+emailVerified: true,
+// 修复后 — 从 /user/me 响应中取实际值
+emailVerified: profile?.email_verified ?? true,
+```
+
+**L3 (无结构化审计日志)**: 需要新建 `auth_audit_log` 表 + 审计日志 service，工作量较大，建议在 Phase 4 架构重构中实施。
+
+**L5 (JWT 密钥空字符串 fallback)**: 已有 `validate_secrets_at_startup()` 保护，生产环境不触发。低优先级，可选修复:
+
+```python
+# 文件: container.py 行 306
+# 修复前
+jwt_secret = getattr(config, 'AUTH_JWT_SECRET', None) or ''
+# 修复后
+jwt_secret = getattr(config, 'AUTH_JWT_SECRET', None)
+if not jwt_secret:
+    raise RuntimeError("AUTH_JWT_SECRET not configured")
+```
+
+**L6 (Session TOCTOU)**: 良性竞态，可接受。如需修复，使用数据库 advisory lock 或 unique constraint。
+
+**L7 (config.py 泄露密钥长度)**:
+
+```python
+# 文件: domains/auth/token_service.py 行 88-93
+# 修复前
+raise ValueError(f"AUTH_JWT_SECRET too short: {len(jwt_secret)} chars, ...")
+# 修复后
+raise ValueError(
+    f"AUTH_JWT_SECRET too short, minimum {JWT_SECRET_MIN_LENGTH} chars required (256-bit key as base64)"
+)
+# 同理行 96-98 的 AUTH_JWT_SECRET_OLD
+```
+
+**L8 (注册积分非幂等)**: 已有 `is_registered` 检查保护，风险极低。无需修复。
+
+**L9**: 已合并到 S2 (共享 hook)。
+
+**L10**: 低风险竞态，grace period 已缓解。可选方案: 在 `_pendingBroadcastResolver` resolve 后置 null:
+
+```typescript
+if (this._pendingBroadcastResolver) {
+  this._pendingBroadcastResolver(message.token)
+  this._pendingBroadcastResolver = null  // ← 防止重复 resolve
+}
+```
+
+**M3 (Refresh token SHA-256)**: 低优先级。256-bit token 暴力不可行。可选: 改用 bcrypt。
+
+**M5 (Session 刷新无 IP 绑定)**: 可选的纵深防御:
+
+```python
+# 在 refresh_token 时检查 IP 变化
+if session.ip_address and session.ip_address != current_ip:
+    logger.warning(f"IP changed during refresh: session={session.id}")
+    # 可选: 强制重新登录，或只记录告警
+```
+
+**M6 (注册邮箱枚举)**: 有意设计，注册流程固有需要。无需修改。
+
+**M8 (BFF 日志泄露)**:
+
+```typescript
+// 文件: route.ts 行 76
+// 修复前
+console.error(`[BFF Auth] Failed to reach backend: ${error}`)
+// 修复后
+console.error(`[BFF Auth] Failed to reach backend: ${error instanceof Error ? error.message : 'Unknown error'}`)
+```
+
+**M9 (邮箱正则不强制 TLD)**: 已被 API 层 `EmailStr` 缓解。可选纵深防御:
+
+```python
+# 文件: domains/auth/value_objects.py 行 30-34
+# 正则末尾添加 TLD 要求
+EMAIL_REGEX = re.compile(
+    r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    #                                      ^^^^^^^^^^^ 要求至少 2 字符 TLD
+)
+```
+
+**M12 (session_limit_exceeded 未加入常量)**:
+
+```python
+# 文件: domains/auth/constants.py 行 126-132
+VALID_REVOKE_REASONS: frozenset = frozenset({
+    REVOKE_REASON_LOGOUT,
+    REVOKE_REASON_ROTATION,
+    REVOKE_REASON_SECURITY,
+    REVOKE_REASON_ADMIN,
+    REVOKE_REASON_ACCOUNT_DELETED,
+    REVOKE_REASON_SESSION_LIMIT,    # ← 新增 (行 124 已定义常量)
+})
+```
