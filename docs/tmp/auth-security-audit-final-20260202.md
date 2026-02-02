@@ -12,7 +12,10 @@
 本报告经历三轮审计迭代:
 - **v1**: 初次全面扫描，发现 59 个问题
 - **v2**: 深度逐行审查，修正 C4 误判，精简为 50 个问题
-- **v3 (本版)**: 逐条对照代码验证，移除 5 个误报，下调 6 个严重等级，最终确认 **33 个真实问题**
+- **v3 (本版)**: 逐条对照代码验证，移除 5 个误报，下调 6 个严重等级，确认 **33 个真实问题**
+- **方法论交叉**: 对照 23 维度审计方法论，新增 5 个问题 (S1-S5)
+- **全系统交叉**: 对照 704-finding 全系统审计，新增 4 个问题 (T1-T4)
+- **最终确认**: **42 个真实问题**
 
 **已移除的误报**:
 
@@ -31,10 +34,12 @@
 | 严重等级 | 后端 | 前端 | 跨层 | 合计 |
 |---------|------|------|------|------|
 | **CRITICAL** | 1 | 1 | 0 | **2** |
-| **HIGH** | 4 | 3 | 1 | **8** |
-| **MEDIUM** | 10 | 3 | 0 | **13** |
-| **LOW** | 7 | 3 | 0 | **10** |
-| **合计** | 22 | 10 | 1 | **33** |
+| **HIGH** | 6 | 3 | 1 | **10** |
+| **MEDIUM** | 11 | 4 | 0 | **15** |
+| **LOW** | 9 | 6 | 0 | **15** |
+| **合计** | 27 | 14 | 1 | **42** |
+
+> 含原始 33 个 (v3) + 方法论交叉 5 个 (S1-S5) + 全系统交叉 4 个 (T1-T4)
 
 ---
 
@@ -297,7 +302,7 @@ if (!ALLOWED_ACTIONS.has(action)) {
 
 ### M9. 邮箱正则不强制 TLD [后端]
 
-- **文件**: `domains/auth/value_objects.py` 行 30-33
+- **文件**: `domains/auth/value_objects.py` 行 30-34
 - **验证状态**: ✅ 已确认，但已被 API 层缓解
 - **问题**: Domain 层的 Email 值对象正则不强制 TLD (`user@a` 可通过)
 - **缓解**: 所有 API 端点使用 Pydantic `EmailStr`（校验 TLD），数据到达 domain 层之前已被过滤
@@ -375,10 +380,10 @@ if (!ALLOWED_ACTIONS.has(action)) {
 - **问题**: Session 限制的 check-then-act 非原子操作，可能多 1-2 个 session
 - **评估**: 良性竞态，不构成安全问题
 
-### L7. config.py 日志泄露密钥长度 [后端]
+### L7. config.py 启动校验泄露密钥长度 [后端]
 
-- **文件**: `config.py` 行 96-98
-- **问题**: `f"AUTH_JWT_SECRET too short: {len(AUTH_JWT_SECRET)} chars"` 泄露实际长度
+- **文件**: `config.py` 行 97-98
+- **问题**: `raise ValueError(f"AUTH_JWT_SECRET too short: {len(AUTH_JWT_SECRET)} chars")` — ValueError 消息泄露实际密钥长度
 - **修复**: 改为 `"AUTH_JWT_SECRET too short, minimum 43 chars required"`
 
 ### L8. 注册赠送积分非幂等 [后端]
@@ -395,8 +400,8 @@ if (!ALLOWED_ACTIONS.has(action)) {
 
 ### L10. 跨 tab 刷新竞态条件 [前端]
 
-- **文件**: `decodables-fe/lib/auth/tokenManager.ts` 行 165-197
-- **问题**: `_pendingBroadcastResolver` 与 `refreshPromise` 生命周期不完全同步
+- **文件**: `decodables-fe/lib/auth/tokenManager.ts` 行 ~199
+- **问题**: `_pendingBroadcastResolver` (行 199) 与 `refreshPromise` 生命周期不完全同步
 - **缓解**: Grace period 可缓解多余 refresh 请求触发 reuse detection
 
 ---
@@ -430,16 +435,19 @@ if (!ALLOWED_ACTIONS.has(action)) {
 
 | # | ID | 问题 |
 |---|-----|------|
-| 12 | **M1** | BFF 添加 action 白名单 |
-| 13 | **M2** | verify_password_reset_otp 后 clear_otp |
-| 14 | **M4** | 429 响应移除限流配置 |
-| 15 | **M7** | 日志 PII 脱敏 |
-| 16 | **M10** | 添加 CSP 头 |
-| 17 | **M13** | email_service 异步改造 |
-| 18 | **S1** | tokenManager 事件监听器清理 |
-| 19 | **L4** | dependencies.py 错误信息脱敏 |
-| 20 | **S2-S5** | interval 泄漏 / AbortController / ErrorBoundary / 多记录检测 |
-| 21 | 其余 | 逐步修复 |
+| 14 | **M1** | BFF 添加 action 白名单 |
+| 15 | **M2** | verify_password_reset_otp 后 clear_otp |
+| 16 | **M4** | 429 响应移除限流配置 |
+| 17 | **M7** | 日志 PII 脱敏 |
+| 18 | **M10** | 添加 CSP 头 |
+| 19 | **M13** | email_service 异步改造 |
+| 20 | **T3** | api_logs/error_logs 请求体脱敏 |
+| 21 | **S1** | tokenManager 事件监听器清理 |
+| 22 | **L4** | dependencies.py 错误信息脱敏 |
+| 23 | **T4** | dependencies.py 异常静默吞没 |
+| 24 | **S2-S4** | interval 泄漏 / AbortController / ErrorBoundary |
+| 25 | **S5** | Repository 多记录检测 |
+| 26 | 其余 | 逐步修复 |
 
 ---
 
@@ -589,7 +597,7 @@ if (!ALLOWED_ACTIONS.has(action)) {
 | 方法论要求 | 报告状态 | 备注 |
 |-----------|---------|------|
 | 按维度分布统计 | ❌ 未包含 | 报告按严重等级分类，未按维度统计 |
-| 根因归纳 (RC) | ❌ 未包含 | 33 个问题未做 RC 归纳 |
+| 根因归纳 (RC) | ❌ 未包含 | 42 个问题未做 RC 归纳 |
 | TOP 20 排序 | ✅ 包含 | 优先修复计划已按 Phase 排序 |
 | 正面模式识别 | ✅ 包含 | 架构评估-优点部分 |
 
@@ -600,11 +608,11 @@ if (!ALLOWED_ACTIONS.has(action)) {
 | **CRITICAL** | 1 | 1 | 0 | **2** |
 | **HIGH** | 4 | 3 | 1 | **8** |
 | **MEDIUM** | 10 | 4 | 0 | **14** |
-| **LOW** | 7 | 5 | 0 | **12** |
-| **合计** | 22 | 13 | 1 | **36** |
+| **LOW** | 8 | 6 | 0 | **14** |
+| **合计** | 23 | 14 | 1 | **38** |
 
-> 方法论交叉审计新增 3 个问题: S1 (MEDIUM), S2-S4 (LOW×3), S5 (LOW)。
-> 总数从 33 → 36 (本轮新增均为前端资源清理和防御性编程类问题)。
+> 方法论交叉审计新增 5 个问题: S1 (MEDIUM 前端), S2-S4 (LOW×3 前端), S5 (LOW 后端)。
+> 总数从 33 → 38 (本轮新增以前端资源清理和防御性编程为主)。
 
 ---
 
@@ -682,10 +690,10 @@ if (!ALLOWED_ACTIONS.has(action)) {
 | **CRITICAL** | 1 | 1 | 0 | **2** |
 | **HIGH** | 6 | 3 | 1 | **10** |
 | **MEDIUM** | 11 | 4 | 0 | **15** |
-| **LOW** | 8 | 5 | 0 | **13** |
-| **合计** | 26 | 13 | 1 | **40** |
+| **LOW** | 9 | 6 | 0 | **15** |
+| **合计** | 27 | 14 | 1 | **42** |
 
-> 全系统审计交叉验证新增 4 个问题: T1 (HIGH), T2 (HIGH), T3 (MEDIUM), T4 (LOW)。
-> 总数从 36 → 40。
+> 全系统审计交叉验证新增 4 个问题: T1 (HIGH 后端), T2 (HIGH 后端), T3 (MEDIUM 后端), T4 (LOW 后端)。
+> 总数从 38 → 42。
 >
-> **累计审计轮次**: 原始三轮 (v1/v2/v3) + 方法论交叉 + 全系统交叉 = 5 轮验证。
+> **累计审计轮次**: 原始三轮 (v1/v2/v3) + 方法论交叉 + 全系统交叉 + 代码复验 = 6 轮验证。
