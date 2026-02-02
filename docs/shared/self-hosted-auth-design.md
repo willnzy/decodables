@@ -116,6 +116,15 @@ Python库: argon2-cffi
 - 在 Railway 实例上运行 argon2-cffi benchmark（argon2.PasswordHasher 自带 profile）
 - 目标: 单次 hash 耗时 0.5-1 秒（太快不够安全，太慢影响登录体验）
 - 当前默认参数适用于 2GB RAM，Railway 实例 RAM 不同需调整
+
+参数梯度表（根据 Railway 实例内存选择）:
+- ≥ 2GB RAM → memory=65536KB, iterations=3, parallelism=4（默认，最优安全性）
+- 1GB RAM   → memory=32768KB, iterations=4, parallelism=4（降内存，增迭代补偿）
+- 512MB RAM → memory=19456KB, iterations=4, parallelism=4（OWASP 低内存推荐配置）
+- 实现方式: constants.py 中定义 ARGON2_MEMORY_COST/ARGON2_TIME_COST/ARGON2_PARALLELISM
+  通过环境变量 AUTH_ARGON2_MEMORY_KB 覆盖，默认 65536
+- 启动时自动检测: 如果 hash 一次耗时 > 2 秒，输出警告日志建议降低 memory 参数
+- 启动时自动检测: 如果 hash 一次耗时 < 0.3 秒，输出警告日志建议提高 memory 参数
 ```
 
 #### 选择理由
@@ -363,6 +372,7 @@ auth_users
 - `password_hash` 可为 NULL：注册流程分为 OTP 验证 → 设密码两步，OTP 验证阶段 password_hash 尚未设置
 - CHECK 约束：`CHECK (email = LOWER(email))`（邮箱统一小写，详见 7.4）
 - **OTP 统一字段设计**：所有场景（注册、修改密码、删除账户、忘记密码）共用同一组 OTP 字段，通过 `otp_purpose` 区分用途
+- **单用户单活跃 OTP 约束**：由于所有场景共用同一组字段，同一用户同一时间只能有一个活跃 OTP。新发送 OTP 会覆盖旧的（otp_code_hash、otp_purpose、otp_expires_at 全部更新，otp_attempts 重置为 0）。这在实际场景中不构成问题：pending 用户（注册中）不会触发修改密码/删除账户 OTP；已注册用户同时发起修改密码和删除账户的概率极低，且后发的 OTP 覆盖前一个是合理行为
 - **OTP 安全存储**：`otp_code_hash` 存储的是 **SHA-256 哈希值**，不存明文。邮件发给用户的是 6 位数字明文，后端校验时 `SHA256(user_input) == db_hash`（与 refresh_token_hash 保持一致的安全策略）
 - **OTP 防暴力破解**：`otp_attempts` 记录当前 OTP 的尝试次数，达到 5 次后该 OTP 自动失效，需重新发送
 - 部分索引：`WHERE otp_code_hash IS NOT NULL`（只索引有 OTP 的行）
@@ -390,7 +400,11 @@ auth_sessions
 - Refresh Token 轮换：每次 refresh 时旧 token 作废、颁发新 token，共享 `family_id`
 - 重用检测：已作废的 token 再次被使用 → 该 family 全部 token 作废（可能被盗）
 - 支持多设备：用户可查看/踢出所有登录设备
-- **并发宽限期**：被作废的 token 如果在作废后 2 秒内再次被使用（`now() - revoked_at < 2s`），视为并发请求而非重用攻击，允许通过并颁发新 token（共享同一 `family_id`）。这与前端 `CROSS_TAB_REFRESH_DELAY_MS=300ms` 配合，解决多标签页同时 refresh 的竞态问题
+- **IP 地址获取**：Railway 部署在反向代理后面，需从 `X-Forwarded-For` header 获取真实客户端 IP。FastAPI 中通过 `request.headers.get("X-Forwarded-For", "").split(",")[0].strip()` 取第一个 IP（最接近客户端的）。如果 header 不存在，fallback 到 `request.client.host`。同样适用于 `auth_users.last_login_ip` 和限流 Key 中的 IP
+- **并发宽限期**：被作废的 token 如果在作废后 `REFRESH_REUSE_GRACE_PERIOD_S`（默认 1 秒）内再次被使用（`now() - revoked_at < grace_period`），视为并发请求而非重用攻击，允许通过并颁发新 token（共享同一 `family_id`）。这与前端 `CROSS_TAB_REFRESH_DELAY_MS=300ms` 配合，解决多标签页同时 refresh 的竞态问题
+  - 宽限期为**可配置常量**（`constants.py` 中 `REFRESH_REUSE_GRACE_PERIOD_S = 1`，可通过环境变量 `AUTH_REFRESH_GRACE_PERIOD_S` 覆盖）
+  - 选择 1 秒而非 2 秒的理由：BFF 代理 + 后端验证通常 < 200ms，1 秒已覆盖 5 倍延迟；2 秒窗口过长，在极端场景下（旧 token 被盗）给攻击者提供了不必要的利用空间
+  - 如果生产环境发现多标签竞态误判（1 秒内两个标签的 refresh 未完成），可调大到 1.5 秒，但不建议超过 2 秒
 
 ### 4.3 新增表：`auth_oauth_accounts`（预留 OAuth 扩展）
 
@@ -463,26 +477,64 @@ profiles.id: TEXT → UUID
 
 注意: 此函数在注册第三步（OTP 验证通过 + 设完密码后）调用。
 调用时 email 已经通过 OTP 验证，所以 email_verified=true。
+
+幂等性保护（防止 register_token 重复使用）:
+- RPC 内部在 INSERT auth_users 前检查: 如果该 user_id 的 auth_users 记录已存在
+  且 password_hash IS NOT NULL（即已完成注册），直接返回错误（不重复创建）
+- 此检查确保: 即使攻击者在 15 分钟有效期内重复调用 /auth/register/complete，
+  第二次调用会被 RPC 拒绝
+- SQL 实现: 在 INSERT 前加 IF EXISTS (SELECT 1 FROM auth_users WHERE id = p_user_id AND password_hash IS NOT NULL) THEN RAISE EXCEPTION 'already_registered';
 ```
 
 **新 RPC 函数 `create_pending_auth_user()` 职责**：
 ```
 输入: p_email, p_otp_code_hash, p_otp_expires_at
-操作:
-  1. 生成 UUID (uuid_generate_v4())
-  2. INSERT INTO auth_users (id, email, otp_code_hash, otp_purpose='register', otp_expires_at, password_hash=NULL, email_verified=false)
-     ON CONFLICT (email) DO UPDATE SET
-       otp_code_hash = EXCLUDED.otp_code_hash,
-       otp_purpose = EXCLUDED.otp_purpose,
-       otp_expires_at = EXCLUDED.otp_expires_at,
-       otp_attempts = 0,
-       updated_at = now()
-     WHERE auth_users.email_verified = false AND auth_users.password_hash IS NULL
-  3. 仅操作 auth_users，不创建 profiles（注册未完成）
-返回: auth_user.id（INSERT 时返回新 ID，UPDATE 时返回已有 ID，未命中 WHERE 时返回 NULL）
+操作（PL/pgSQL 函数，非裸 SQL）:
+  1. SELECT 查询 auth_users WHERE email = p_email
+  2. 如果不存在 → INSERT 新记录（生成 UUID，password_hash=NULL, email_verified=false）→ 返回新 ID
+  3. 如果存在且 email_verified = false AND password_hash IS NULL（pending 用户）
+     → UPDATE 覆盖 otp_code_hash, otp_purpose, otp_expires_at, otp_attempts=0 → 返回已有 ID
+  4. 如果存在且已完成注册（password_hash IS NOT NULL 或 email_verified = true）
+     → 不做任何操作 → 返回 NULL
+  5. 仅操作 auth_users，不创建 profiles（注册未完成）
+返回: auth_user.id（INSERT 时返回新 ID，UPDATE 时返回已有 ID，已注册时返回 NULL）
+
+⚠️ 为什么不用 ON CONFLICT DO UPDATE ... WHERE：
+PostgreSQL 的 ON CONFLICT DO UPDATE SET ... WHERE 当 WHERE 条件不满足时，
+既不执行 UPDATE 也不执行 INSERT，而是抛出 unique_violation 异常（非静默跳过）。
+ON CONFLICT DO NOTHING 虽然静默，但无法区分"INSERT 成功"和"冲突被忽略"。
+因此使用 PL/pgSQL 先 SELECT 判断再 INSERT/UPDATE，行为明确可控。
+
+SQL 伪代码:
+  CREATE OR REPLACE FUNCTION create_pending_auth_user(
+    p_email TEXT, p_otp_code_hash TEXT, p_otp_expires_at TIMESTAMPTZ
+  ) RETURNS UUID AS $$
+  DECLARE
+    v_user_id UUID;
+    v_existing RECORD;
+  BEGIN
+    SELECT id, email_verified, password_hash INTO v_existing
+    FROM auth_users WHERE email = LOWER(p_email) FOR UPDATE;
+
+    IF NOT FOUND THEN
+      v_user_id := uuid_generate_v4();
+      INSERT INTO auth_users (id, email, otp_code_hash, otp_purpose, otp_expires_at, password_hash, email_verified)
+      VALUES (v_user_id, LOWER(p_email), p_otp_code_hash, 'register', p_otp_expires_at, NULL, false);
+      RETURN v_user_id;
+    ELSIF v_existing.email_verified = false AND v_existing.password_hash IS NULL THEN
+      UPDATE auth_users SET
+        otp_code_hash = p_otp_code_hash, otp_purpose = 'register',
+        otp_expires_at = p_otp_expires_at, otp_attempts = 0, updated_at = now()
+      WHERE id = v_existing.id;
+      RETURN v_existing.id;
+    ELSE
+      RETURN NULL;  -- 已注册用户，不操作
+    END IF;
+  END;
+  $$ LANGUAGE plpgsql;
 
 注意: 注册第一步（发送 OTP）时调用。
-- ON CONFLICT + WHERE 确保：重复发送 OTP 只影响 pending 用户，已完成注册的用户不受影响
+- SELECT ... FOR UPDATE 防止并发竞态（两个请求同时注册同一邮箱）
 - 返回 NULL 表示该邮箱已注册完成 → 后端仍返回统一响应"验证码已发送"（防枚举），但不实际发送 OTP
 ```
 
@@ -535,15 +587,50 @@ auth_oauth_accounts:
 decodables/domains/auth/
 ├── __init__.py
 ├── aggregates/
-│   ├── auth_user.py          # AuthUser 聚合根
-│   └── session.py            # Session 实体
-├── value_objects.py          # Password, Email, Token 值对象
-├── repository.py             # IAuthUserRepository, ISessionRepository 接口（见下方方法签名）
-├── service.py                # AuthService 核心编排（注册/登录/刷新/登出）
-├── token_service.py          # JWT 签发/验证 (Access + Refresh)
-├── otp_service.py            # OTP 生成/验证/发送邮件 (通过 Resend)
-├── password_service.py       # 密码哈希 (argon2id) + 强度校验
-└── constants.py              # Token 有效期、锁定阈值等常量
+│   ├── auth_user.py              # AuthUser 聚合根
+│   └── session.py                # Session 实体
+├── value_objects.py              # Password, Email, Token 值对象
+├── repository.py                 # IAuthUserRepository, ISessionRepository 接口（见下方方法签名）
+├── registration_service.py       # 注册流程编排（send_otp → verify_otp → complete）
+├── session_service.py            # 会话管理（login → refresh → logout → device management）
+├── account_service.py            # 账户操作（change_password → forgot_password → delete_account）
+├── token_service.py              # JWT 签发/验证 (Access + Refresh)
+├── otp_service.py                # OTP 生成/验证/发送邮件 (通过 Resend)
+├── password_service.py           # 密码哈希 (argon2id) + 强度校验
+└── constants.py                  # Token 有效期、锁定阈值等常量
+```
+
+**Service 拆分说明**（原 `service.py` 拆分为 3 个 Service）：
+
+将原始的单一 `AuthService`（12 个核心方法，预估 500+ 行）拆分为 3 个职责清晰的 Service：
+
+| Service | 方法 | 预估行数 | 职责 |
+|---------|------|----------|------|
+| `RegistrationService` | `send_otp()`, `verify_otp()`, `complete()` | ~150 行 | 注册三步流程 + 一次性邮箱检测 |
+| `SessionService` | `login()`, `refresh_token()`, `logout()`, `logout_all()`, `get_sessions()`, `revoke_session()` | ~200 行 | 登录/登出/Token 刷新/多设备管理 |
+| `AccountService` | `send_otp()`, `verify_otp()`, `change_password()`, `forgot_password_reset()`, `delete_account()` | ~200 行 | 密码操作/账户注销（复用 OTPService） |
+
+**依赖关系**：
+```
+RegistrationService → OTPService + PasswordService + TokenService + IAuthUserRepository + ISessionRepository
+SessionService      → TokenService + PasswordService + IAuthUserRepository + ISessionRepository
+AccountService      → OTPService + PasswordService + TokenService + IAuthUserRepository + ISessionRepository
+```
+
+**API Router 调用方式**：
+```python
+# api/auth/router.py 直接调用对应 Service，无需薄编排层
+@router.post("/register/send-otp")
+async def register_send_otp(req, registration_service = Depends(get_registration_service)):
+    return await registration_service.send_otp(req.email)
+
+@router.post("/login")
+async def login(req, session_service = Depends(get_session_service)):
+    return await session_service.login(req.email, req.password)
+
+@router.post("/change-password")
+async def change_password(req, account_service = Depends(get_account_service)):
+    return await account_service.change_password(req.otp_verified_token, req.current_password, req.new_password)
 ```
 
 **Repository 接口方法签名**：
@@ -566,8 +653,8 @@ IAuthUserRepository:
 ISessionRepository:
 ├── create(session: Session) → Session
 ├── get_by_token_hash(token_hash: str) → Session | None
-├── get_active_by_user(user_id: UUID) → List[Session]
-├── count_active_by_user(user_id: UUID) → int
+├── get_active_by_user(user_id: UUID) → List[Session]     # "活跃"定义: is_revoked = false AND expires_at > now()
+├── count_active_by_user(user_id: UUID) → int              # 同上，用于并发会话限制检查
 ├── revoke(session_id: UUID, reason: str) → None
 ├── revoke_family(family_id: UUID, reason: str) → None
 ├── revoke_all_by_user(user_id: UUID, reason: str) → None
@@ -577,23 +664,31 @@ ISessionRepository:
 
 ### 5.2 核心服务职责
 
-**AuthService（核心编排）**：
+**RegistrationService（注册流程）**：
 | 方法 | 职责 |
 |------|------|
-| `register_send_otp()` | 校验邮箱 → 检查是否已注册 → 生成 6 位 OTP → 哈希存储 → 发 OTP 邮件（无论邮箱是否存在都返回成功，防枚举） |
-| `register_verify_otp()` | 校验 OTP（哈希比对 + 过期检查 + 尝试次数检查）→ 标记 email_verified → 返回临时注册 token（用于下一步设密码） |
-| `register_complete()` | 校验临时注册 token → 哈希密码 → **原子创建** auth_users + profiles（RPC `create_auth_user_with_profile()`）→ 创建 session → 返回 tokens |
-| `login()` | 限流检查 → 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens |
-| `refresh_token()` | 查 session → 检查过期/作废 → 轮换（废旧发新）→ 重用检测 → 返回新 tokens |
-| `logout()` | 作废当前 session |
-| `logout_all()` | 作废用户所有 sessions |
-| `send_otp()` | 通用 OTP 发送：校验用户存在 → 生成 6 位 OTP → 哈希存储 → 发邮件（用于修改密码/删除账户/忘记密码） |
-| `verify_otp()` | 通用 OTP 验证：哈希比对 + 过期 + 尝试次数 → 返回验证成功标记 |
-| `forgot_password_reset()` | 校验 OTP 已验证 → 更新密码 → 作废所有 sessions |
-| `change_password()` | 校验 OTP 已验证 → 验证旧密码 → 更新密码 → 可选作废其他 sessions |
-| `get_sessions()` | 列出用户所有活跃 sessions（多设备管理） |
-| `revoke_session()` | 踢出指定设备 |
-| `delete_account()` | 校验 OTP 已验证 → 取消 Stripe 订阅 → 作废 sessions → 软删除 profiles → 硬删除 auth_users → 异步匿名化内容（详见 7.3） |
+| `send_otp(email)` | 校验邮箱 → 一次性邮箱检测 → 检查是否已注册 → 生成 6 位 OTP → 哈希存储 → 异步发 OTP 邮件（无论邮箱是否存在都返回成功，防枚举） |
+| `verify_otp(email, otp_code)` | 校验 OTP（哈希比对 + 过期检查 + 尝试次数检查）→ 标记 email_verified → 返回临时注册 token（用于下一步设密码） |
+| `complete(register_token, password, display_name)` | 校验临时注册 token → 幂等性检查 → 哈希密码 → **原子创建** auth_users + profiles（RPC `create_auth_user_with_profile()`）→ 创建 session → 返回 tokens |
+
+**SessionService（会话管理）**：
+| 方法 | 职责 |
+|------|------|
+| `login(email, password)` | 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens |
+| `refresh_token(refresh_token, rotate)` | 查 session → 检查过期/作废 → 轮换（废旧发新）或仅验证（rotate=false）→ 重用检测（并发宽限期）→ 返回新 tokens |
+| `logout(refresh_token)` | 作废当前 session |
+| `logout_all(user_id)` | 作废用户所有 sessions |
+| `get_sessions(user_id)` | 列出用户所有活跃 sessions（多设备管理） |
+| `revoke_session(session_id)` | 踢出指定设备 |
+
+**AccountService（账户操作）**：
+| 方法 | 职责 |
+|------|------|
+| `send_otp(user_id_or_email, purpose)` | 通用 OTP 发送：校验用户存在 → 生成 6 位 OTP → 哈希存储 → 异步发邮件（用于修改密码/删除账户/忘记密码） |
+| `verify_otp(user_id_or_email, otp_code, purpose)` | 通用 OTP 验证：哈希比对 + 过期 + 尝试次数 → 返回 otp_verified_token（JWT） |
+| `forgot_password_reset(otp_verified_token, new_password)` | 校验 OTP 已验证 → 更新密码 → 作废所有 sessions |
+| `change_password(otp_verified_token, current_password, new_password)` | 校验 OTP 已验证 → 验证旧密码 → 更新密码 → 可选作废其他 sessions |
+| `delete_account(otp_verified_token)` | 校验 OTP 已验证 → 取消 Stripe 订阅 → 作废 sessions → 软删除 profiles → 硬删除 auth_users → 异步匿名化内容（详见 7.3） |
 
 **TokenService（JWT 管理）**：
 - Access Token: HS256 签名，15 分钟有效期
@@ -836,7 +931,7 @@ OTP 清理:
 - 新增 `validate_secrets_at_startup()` 强化校验：`AUTH_JWT_SECRET` 长度必须 ≥ 43 字符（256-bit = 32 bytes → base64 ≈ 43 chars），不满足则 raise 启动失败（防止开发者误设弱密钥如 "123456"）
 
 **`container.py`**：
-- 注册新服务：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()` 等
+- 注册新服务：`get_registration_service()`, `get_session_service()`, `get_account_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()` 等
 - 移除：`get_clerk_webhook_service()`
 - 遵循现有的 async factory 懒加载模式
 
@@ -1099,6 +1194,10 @@ async function handler(req: NextRequest, { params }: { params: { action: string[
   )
 
   // 4. 设置/清除 httpOnly cookie
+  // 注意: refresh 端点的 rotate 参数决定是否返回新 refresh_token:
+  // - BFF 代理调用(默认 rotate=true): 后端返回新 refresh_token → 更新 cookie
+  // - SSR 服务端调用(rotate=false): 后端不返回 refresh_token → 不更新 cookie
+  // 因此这里只需检查 data.refresh_token 是否存在即可正确处理两种场景
   if (data.refresh_token) {
     // login/register/refresh(rotate=true) → 设置新 cookie
     res.cookies.set('refresh_token', data.refresh_token, {
@@ -1114,8 +1213,17 @@ async function handler(req: NextRequest, { params }: { params: { action: string[
   return res
 }
 
-路由映射（~120 行代码）：
+路由映射（~80 行代码）：
 export { handler as POST, handler as GET, handler as DELETE }
+
+⚠️ BFF 代理维护策略:
+- 当前 14 个 auth 端点共用一个 catch-all handler，通过 action 字符串分支处理
+- 核心分支逻辑仅 3 类: (1) 需要注入 cookie 的: refresh/logout
+  (2) 需要设置 cookie 的: login/register/complete/refresh
+  (3) 需要清除 cookie 的: logout/logout-all/delete-account
+- 如果未来 auth 端点超过 20 个，或出现复杂的端点特有逻辑，考虑拆分为:
+  app/api/auth/login/route.ts, app/api/auth/register/[step]/route.ts 等独立文件
+- 当前阶段保持 catch-all 即可，逻辑足够简单（3 类分支 + 透传）
 
 POST:
 - /api/auth/login                → {BACKEND}/auth/login
@@ -1153,6 +1261,26 @@ BFF auth 代理与 USE_PROXY 是不同机制，互不冲突：
 - 其他 API  → 直连后端（带 Bearer Access Token，不走 BFF）
 
 Phase 5 迁移时需确认：USE_PROXY 模式下的 API 调用也正确携带 Bearer token
+
+USE_PROXY 模式迁移细节（Step 5.5 实施时处理）:
+
+1. 当前 USE_PROXY 行为:
+   - USE_PROXY=true 时，非 auth API 请求走 Next.js /api/proxy/* 转发到后端
+   - USE_PROXY=false 时，非 auth API 请求直连后端（带 Bearer token）
+   - 当前 token 来源: api.ts 中通过 getToken 回调从 Clerk useAuth().getToken 获取
+
+2. 迁移后行为:
+   - Auth 请求（/api/auth/*）: 始终走 BFF 代理，管理 httpOnly cookie（不受 USE_PROXY 影响）
+   - 非 auth 请求: token 来源改为 tokenManager.getValidToken()
+     - USE_PROXY=true:  请求 → Next.js proxy → 后端（proxy 需透传 Authorization header）
+     - USE_PROXY=false: 请求 → 直连后端（带 Bearer token）
+   - 关键修改点: api.ts 中初始化 ApiClient 时，不再传 getToken 回调，
+     改为在请求拦截器中调用 tokenManager.getValidToken() 注入 Bearer header
+
+3. 验证要点:
+   - USE_PROXY=true 时: 确认 Next.js proxy 中间层透传 Authorization header 到后端
+   - USE_PROXY=false 时: 确认 api.ts 请求拦截器正确注入 Bearer token
+   - 两种模式下 401 → refresh → 重试 的链路都正确
 ```
 
 ### 6.2.1 Token 生命周期管理（tokenManager.ts 核心逻辑）
@@ -1228,9 +1356,11 @@ class TokenManager {
 // 1. TokenManager.doRefresh() 抛出 SessionExpiredError
 // 2. api.ts 拦截器捕获 → 不再重试（区别于普通 401）
 // 3. 清除 Zustand auth 状态（accessToken = null, isSignedIn = false）
-// 4. 重置所有 loading/modal 状态（防止 token null 时 UI 卡死）
-// 5. router.push('/login?redirect=' + currentPath)
-// 6. BroadcastChannel 广播 user_logged_out → 其他标签同步登出
+// 4. 清除 useUserStore 业务数据（tier = null, credits = null, role = null 等）
+//    → 防止在 /login 页面或下一次登录时残留上一个用户的数据
+// 5. 重置所有 loading/modal 状态（防止 token null 时 UI 卡死）
+// 6. router.push('/login?redirect=' + currentPath)
+// 7. BroadcastChannel 广播 user_logged_out → 其他标签同步登出
 ```
 
 **跨标签 Token 同步（BroadcastChannel）**
@@ -1404,6 +1534,10 @@ UI 流程：
 5. Step 3: 显示 "Delete My Account" 最终确认按钮（红色）
    → 调用 POST /auth/delete-account（携带 otp_verified_token）
 6. 成功 → 清除登录状态 → 跳转首页 + "Account deleted" 提示
+7. 错误处理：
+   - 500 (Stripe 取消订阅失败) → "Account deletion failed. Please try again later or contact support."
+   - 400 (invalid_token/token_expired) → "Verification expired. Please restart the deletion process."
+   - 网络错误 → "Unable to connect. Please check your connection and try again."
 ```
 
 **设备管理 UI（在 /profile/settings 页面内）**：
@@ -1433,10 +1567,13 @@ components/common/UserMenu.tsx — 头像下拉菜单：
 
 触发器：
 - 用户头像（圆形，32px）+ 向下箭头
-- 头像来源：Gravatar（根据 email MD5 生成 URL）或默认头像（首字母）
-  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email)}?d=initials&name=${displayName}`
+- 头像来源：Gravatar（根据 email MD5 生成 URL）+ 本地 SVG 首字母默认头像
+  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?d=404&s=80`
+  - 使用 `?d=404` 而非 `?d=initials`：Gravatar 的 initials 服务不稳定，部分邮箱返回空白
+  - Fallback 策略：前端 `<img>` 的 `onError` 回调中切换为本地 SVG 首字母头像
+  - 本地首字母头像实现：`<div>` + CSS（背景色根据 displayName 首字母 hash 确定，文字居中显示首字母大写）
   - 未来扩展：用户上传自定义头像（存 Supabase Storage）
-  - MVP 阶段使用 Gravatar + 首字母默认头像即可
+  - MVP 阶段使用 Gravatar（d=404）+ 本地首字母 SVG 即可，不依赖 Gravatar 的 fallback 服务
 
 下拉菜单项：
 - 用户信息区（顶部）：
@@ -1566,6 +1703,9 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
+  // 排除: _next (框架资源), static (静态文件), favicon.ico, 所有含 . 的路径(静态文件如 .css/.js/.png)
+  // 注意: 含 . 的路径被排除意味着 /api/auth/register.json 等路径不会经过 middleware
+  // 这对当前项目无影响（API 路径不含扩展名），但新增路由时需注意此约束
   matcher: ['/((?!_next|static|favicon.ico|.*\\..*).*)'],
 }
 ```
@@ -1638,6 +1778,19 @@ Body: { refresh_token, rotate?: boolean }  // 默认 rotate=true
 1. Server Component 中获取的 token 不会存入客户端 Zustand（仅本次 SSR 使用）
 2. 客户端 hydration 后，AuthProvider 会独立获取 token（通过 /api/auth/refresh，rotate=true）
 3. 大多数页面用 Client Component 即可，SSR 仅用于 SEO 关键页面（如 /marketplace）
+
+⚠️ SSR 缓存策略（防止 refresh token 被高频验证）：
+- SSR 使用 rotate=false，不会轮换 refresh token，但每次 SSR 请求都会验证一次 refresh token
+- 如果爬虫或高流量场景频繁触发 SSR，同一个 refresh token 会被反复验证，
+  延长了 refresh token 被盗后的有效窗口（因为没有轮换，盗用者可以持续使用）
+- 缓解方案:
+  1. SSR 页面启用 Next.js ISR (Incremental Static Regeneration):
+     export const revalidate = 60  // 60 秒缓存，避免每个请求都触发 SSR
+  2. 需要实时数据的 SSR 页面: 使用 React.cache() 包装 getServerAccessToken()，
+     确保同一个 SSR 请求内只调用一次（已在 Step 3.9 实现）
+  3. 不需要认证的 SEO 页面（如 /marketplace 公开列表）: 直接 SSG 或 ISR，不调用 getServerAccessToken()
+  4. 需要认证的 SSR 页面（如 /dashboard SSR 预加载）: 评估是否真的需要 SSR，
+     大多数情况 CSR + loading skeleton 即可满足用户体验
 ```
 
 ---
@@ -1686,9 +1839,24 @@ require_verified_email 依赖仍然保留：
 - 保护 OAuth 注册场景（未来扩展，OAuth 用户可能需要额外验证邮箱）
 - 防止数据库直接操作创建的异常用户
 
-注册中途放弃的 pending 用户清理：
-- auth_users 中 password_hash IS NULL 且 created_at > 24小时 的记录
-- 可选：定期任务清理，或下次发送 OTP 时自动覆盖
+注册中途放弃的 pending 用户清理（确定方案）：
+- **主动覆盖（实时生效）**：`create_pending_auth_user()` RPC 的 `ON CONFLICT (email) DO UPDATE ... WHERE email_verified = false AND password_hash IS NULL` 确保重复注册同一邮箱时直接覆盖 pending 记录，不阻塞新用户
+- **定期清理（兜底）**：每天凌晨执行一次清理任务，删除 `auth_users` 中满足以下条件的记录：
+  - `password_hash IS NULL`（未完成注册）
+  - `email_verified = false`（未验证邮箱）
+  - `created_at < now() - interval '24 hours'`（超过 24 小时）
+- **实现方式**：Phase 1 中使用 pg_cron 或后端定时任务（FastAPI startup event + asyncio.create_task 定时循环）
+- **SQL 示例**：`DELETE FROM auth_users WHERE password_hash IS NULL AND email_verified = false AND created_at < now() - interval '24 hours'`
+- **不影响正常用户**：已完成注册的用户 `password_hash IS NOT NULL AND email_verified = true`，不会被清理
+- **日志记录**：清理时记录删除数量到 `system_error_logs`（operation='auth_pending_cleanup'），便于监控异常注册量
+
+过期 auth_sessions 清理（与 pending 用户清理放在同一个定时任务中）：
+- **清理条件**：`is_revoked = true AND revoked_at < now() - interval '30 days'`（已作废超过 30 天）
+  OR `expires_at < now() - interval '30 days'`（过期超过 30 天且未被主动作废）
+- **SQL 示例**：`DELETE FROM auth_sessions WHERE (is_revoked = true AND revoked_at < now() - interval '30 days') OR (expires_at < now() - interval '30 days')`
+- **理由**：已作废/过期的 session 记录无业务价值，持续累积会影响表大小和索引性能
+- **保留 30 天**：便于安全审计（如发现异常登录时回溯设备信息）
+- **日志记录**：清理时记录删除数量到 `system_error_logs`（operation='auth_session_cleanup'）
 ```
 
 ### 7.3 账户删除 / 注销
@@ -1745,6 +1913,10 @@ POST /auth/delete-account    需要 OTP 验证（otp_verified_token）   Access 
 
 **邮箱复用**：
 - 账户删除后，该邮箱可以重新注册（因为 auth_users 已硬删除）
+- **profiles 表唯一约束处理**：profiles.email 需使用**部分唯一索引**，排除软删除记录：
+  - `CREATE UNIQUE INDEX idx_profiles_email_unique ON profiles(email) WHERE is_deleted = false;`
+  - 确保同一邮箱在活跃用户中唯一，但允许软删除记录与新记录并存
+  - 30 天后定期清理彻底删除旧 profiles，唯一索引自然释放
 - 30 天恢复期内，注册第一步（`/auth/register/send-otp`）行为：
   1. 后端检测到 profiles 中存在同 email 的软删除记录（`is_deleted=true`，`deleted_at < 30天前`）
   2. 返回与正常注册**完全相同**的响应（"验证码已发送到您的邮箱"），防止邮箱枚举
@@ -1908,6 +2080,25 @@ async def generate_image(user = Depends(require_verified_email)):
 | **Phase 7** | 清理：移除 @clerk/nextjs、svix 依赖，更新环境变量，构建验证 | 1 天 |
 | **总计** | | **~17.5 天** |
 
+**Phase 并行优化说明**：
+- Phase 0（Schema SQL 编写）和 Phase 1 的 Step 1.1~1.6（Domain 基础结构、聚合根、Repository 接口、PasswordService、TokenService、OTPService）**可以并行推进**
+- 原因：Step 1.1~1.6 是纯 Python 代码定义，不依赖数据库实际执行，只依赖 Schema 设计（表结构、字段名）已确认
+- Step 1.7（Repository 实现）开始依赖数据库表实际存在，必须等 Phase 0 完成
+- 并行后预估总工期：**~15 天**（节省 ~2.5 天）
+
+```
+并行执行时间线:
+Day 1-1.5:  Phase 0 (Schema)          ←→ Phase 1 Step 1.1-1.6 (Domain 纯代码)
+Day 1.5:    Phase 0 完成，数据库表创建
+Day 2-4:    Phase 1 Step 1.7-1.13 (Repository 实现 + AuthService + API + 测试)
+Day 5:      Phase 2 (后端集成)
+Day 6-8:    Phase 3 (前端 Auth 抽象层)
+Day 9-10:   Phase 4 (前端认证页面)
+Day 11-13:  Phase 5 (前端迁移)
+Day 14:     Phase 6 (测试)
+Day 15:     Phase 7 (清理)
+```
+
 ### Phase 0: 数据库 Schema（1.5 天）
 
 ```
@@ -1941,7 +2132,11 @@ Git 分支: feat/auth-phase0-schema
   - `team_members.user_id`, `team_members.invited_by`
   - `team_invitations.invited_by`, `team_invitations.accepted_by`
   - `folders.user_id`
-- ✅ 验证：grep 确认该文件内所有 `REFERENCES profiles(id)` 的列都已改为 UUID 类型
+- ✅ 验证步骤（精确计数）：
+  1. `grep -c "REFERENCES profiles(id)" 01_core_business.sql` → 确认实际外键数量
+  2. `grep "REFERENCES profiles(id)" 01_core_business.sql` → 逐行核对列名与上述清单一致
+  3. 如果实际数量 ≠ 文档中的 32，更新文档数字和清单（总数 = file1 + file2 + file3）
+  4. 确认所有列类型已从 TEXT 改为 UUID
 
 **Step 0.3: 同步 `02_platform_services.sql`**
 - 逐一修改 **16 个外键列**类型（TEXT → UUID）：
@@ -1952,8 +2147,8 @@ Git 分支: feat/auth-phase0-schema
   - `user_daily_logins.user_id`, `theme_users.user_id`
   - `daily_doodle_users.user_id`, `user_daily_doodle_submissions.user_id`
   - `referrals.referrer_id`, `referrals.referee_id`, `coupon_redemptions.user_id`
-- 删除 `clerk_webhook_events` 表及其相关索引、CHECK 约束、RLS 策略
-- ✅ 验证：grep 确认 16 个外键全部完成 + clerk_webhook_events 已删除
+- 更新 `02_platform_services.sql` 头部注释中对 `clerk_webhook_events` 的引用（该表定义实际在 `03_infrastructure.sql` 中，此文件仅有注释引用）
+- ✅ 验证：grep 确认 16 个外键全部完成
 
 **Step 0.4: 同步 `03_infrastructure.sql`**
 - 逐一修改 **8 个外键列**类型（TEXT → UUID）：
@@ -1961,7 +2156,10 @@ Git 分支: feat/auth-phase0-schema
   - `error_logs.user_id`, `error_logs.resolved_by`
   - `ai_usage_logs.user_id`, `task_queue.user_id`, `task_queue.assigned_to`
   - `notification_queue.user_id`
-- ✅ 验证：grep 确认 56 个外键全部完成（32 + 16 + 8）
+- 删除 `clerk_webhook_events` 表及其相关索引、RLS 策略（该表定义在此文件中，已标记为删除注释，现在正式移除注释残留）
+- ✅ 验证：
+  1. grep 确认总外键数量正确（file1 + file2 + file3 = 实际总数，文档标注 56 需实施时精确核实）
+  2. grep 确认 `clerk_webhook_events` 在所有 SQL 文件中不再有表定义（仅允许注释说明"已删除"）
 
 **Step 0.5: 更新 CHECK 约束**
 - `profiles.created_by`：`('webhook','jit','legacy','manual')` → `('register','admin','legacy','oauth')`
@@ -2043,26 +2241,34 @@ Git 分支: feat/auth-phase1-backend-domain
   - 其余方法通过 Supabase client 操作 `auth_users` 表
 - 新建 `infrastructure/auth/session_repository.py`：实现 `ISessionRepository`
   - 操作 `auth_sessions` 表
-  - `revoke_family()` 支持并发宽限期（2 秒）
+  - `revoke_family()` 支持并发宽限期（`REFRESH_REUSE_GRACE_PERIOD_S`，默认 1 秒）
 - ✅ 验证：集成测试通过（需 Supabase 连接）
 
-**Step 1.8: 实现 AuthService（核心编排）**
-- 新建 `domains/auth/service.py`
-  - `register_send_otp()`：校验邮箱 → 一次性邮箱检测 → 创建/更新 pending auth_user → 发 OTP 邮件
-  - `register_verify_otp()`：校验 OTP → 标记 email_verified → 返回临时注册 token（JWT）
-  - `register_complete()`：校验注册 token → 哈希密码 → RPC 原子创建 auth_users + profiles → 创建 session → 返回 tokens
-  - `login()`：限流 → 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens
-  - `refresh_token()`：查 session → 检查过期/作废 → 轮换/不轮换 → 重用检测 → 返回 tokens
-  - `logout()` / `logout_all()`：作废 session(s)
-  - `send_otp()`：通用 OTP 发送（修改密码/删除账户/忘记密码）→ 统一响应防枚举
-  - `verify_otp()`：通用 OTP 验证 → 返回 otp_verified_token（JWT）
-  - `forgot_password_reset()`：校验 otp_verified_token → 更新密码 → 作废所有 sessions
-  - `change_password()`：校验 otp_verified_token → 验证旧密码 → 更新 → 可选作废其他 sessions
-  - `get_sessions()` / `revoke_session()`：多设备管理
-  - `delete_account()`：校验 otp_verified_token → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users
+**Step 1.8: 实现 RegistrationService**
+- 新建 `domains/auth/registration_service.py`（~150 行）
+  - `send_otp(email)`：校验邮箱 → 一次性邮箱检测 → 创建/更新 pending auth_user → 异步发 OTP 邮件 → 统一响应防枚举
+  - `verify_otp(email, otp_code)`：校验 OTP → 标记 email_verified → 返回临时注册 token（JWT）
+  - `complete(register_token, password, display_name)`：校验注册 token → 幂等性检查 → 哈希密码 → RPC 原子创建 auth_users + profiles → 创建 session → 返回 tokens
+- 一次性邮箱检测：维护黑名单列表（disposable-email-domains）
+- ✅ 验证：`pytest tests/domains/auth/test_registration_service.py` 通过
+
+**Step 1.8b: 实现 SessionService**
+- 新建 `domains/auth/session_service.py`（~200 行）
+  - `login(email, password)`：查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens
+  - `refresh_token(refresh_token, rotate)`：查 session → 检查过期/作废 → 轮换/不轮换 → 重用检测（并发宽限期 `REFRESH_REUSE_GRACE_PERIOD_S`）→ 返回 tokens
+  - `logout(refresh_token)` / `logout_all(user_id)`：作废 session(s)
+  - `get_sessions(user_id)` / `revoke_session(session_id)`：多设备管理
 - 并发会话限制：≥ 10 个活跃 session 时自动踢出最旧的
-- 一次性邮箱检测：维护黑名单列表
-- ✅ 验证：`pytest tests/domains/auth/test_auth_service.py` 通过
+- ✅ 验证：`pytest tests/domains/auth/test_session_service.py` 通过
+
+**Step 1.8c: 实现 AccountService**
+- 新建 `domains/auth/account_service.py`（~200 行）
+  - `send_otp(user_id_or_email, purpose)`：通用 OTP 发送（修改密码/删除账户/忘记密码）→ 统一响应防枚举
+  - `verify_otp(user_id_or_email, otp_code, purpose)`：通用 OTP 验证 → 返回 otp_verified_token（JWT）
+  - `forgot_password_reset(otp_verified_token, new_password)`：校验 token → 更新密码 → 作废所有 sessions
+  - `change_password(otp_verified_token, current_password, new_password)`：校验 token → 验证旧密码 → 更新 → 可选作废其他 sessions
+  - `delete_account(otp_verified_token)`：校验 token → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users → 异步匿名化内容
+- ✅ 验证：`pytest tests/domains/auth/test_account_service.py` 通过
 
 **Step 1.9: 创建 API 路由**
 - 新建 `api/auth/__init__.py`
@@ -2088,7 +2294,7 @@ Git 分支: feat/auth-phase1-backend-domain
 - ✅ 验证：未验证邮箱用户调用受限 API 返回 403
 
 **Step 1.12: 注册到 container.py**
-- 新增：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()`
+- 新增：`get_registration_service()`, `get_session_service()`, `get_account_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()`
 - 遵循现有 async factory 懒加载模式
 - ✅ 验证：依赖注入正确
 
@@ -2247,6 +2453,13 @@ Git 分支: feat/auth-phase3-frontend-auth-layer
 - `npm run build` 通过（此时 Clerk 引用未替换，两套并存）
 - `git add + commit + push`
 
+⚠️ **两套并存期间的注意事项**（Phase 3~4，Clerk 和自建 Auth 共存）：
+- AuthProvider **不挂载到 `layout.tsx`**：此阶段 `layout.tsx` 仍使用 `<ClerkProvider>`，AuthProvider 仅用于独立测试页面验证（如创建 `/test-auth/page.tsx` 临时页面）
+- 避免运行时冲突：两个 Provider 同时挂载可能导致 cookie 竞争（Clerk 有自己的 session cookie）、双重 auth 状态、SSR hydration 不匹配等问题
+- 测试 BFF 代理时使用 curl/Postman 直接调用 `/api/auth/*`，不依赖前端 Provider
+- Phase 5 Step 5.1 才正式将 `<ClerkProvider>` 替换为 `<AuthProvider>`，切换点明确且原子化
+- 临时测试页面 `/test-auth/page.tsx` 在 Phase 7 清理时删除
+
 ---
 
 ### Phase 4: 前端认证页面（2 天）
@@ -2311,7 +2524,7 @@ Git 分支: feat/auth-phase4-auth-pages
 - 新建 `components/common/UserMenu.tsx`
   - 头像（Gravatar + 首字母默认头像）+ 下拉菜单
   - 菜单项：用户信息区 / Settings / Transaction History / Sign Out
-  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email)}?d=initials`
+  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?d=404&s=80`（d=404 + 本地首字母 fallback）
 - ✅ 验证：下拉菜单正常显示
 
 **Step 4.7: 实现 Profile Settings 中的 Auth 功能**
@@ -2561,11 +2774,16 @@ CLERK_SECRET_KEY
 
 ### 新增
 ```
-AUTH_JWT_SECRET              # 256-bit 随机密钥（必须）
+AUTH_JWT_SECRET              # 256-bit 随机密钥（必须，≥43 字符 base64 编码）
+                             # 生成命令: python -c "import secrets,base64;print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+                             # 或: openssl rand -base64 32
 AUTH_ACCESS_TOKEN_EXPIRE_MIN  # Access Token 有效期，默认 15
 AUTH_REFRESH_TOKEN_EXPIRE_DAYS # Refresh Token 有效期，默认 7
 AUTH_LOCKOUT_ATTEMPTS         # 锁定前最大失败次数，默认 5
 AUTH_LOCKOUT_DURATION_MIN     # 锁定时长（分钟），默认 30
+AUTH_ARGON2_MEMORY_KB         # argon2id 内存参数（KB），默认 65536（可选，低内存实例调小）
+AUTH_REFRESH_GRACE_PERIOD_S   # Refresh Token 并发宽限期（秒），默认 1（可选）
+AUTH_JWT_SECRET_OLD           # 旧 JWT 密钥（仅密钥轮换期间配置，平时不设）（可选）
 RESEND_API_KEY               # Resend 邮件服务（已有，确认保留）
 RESEND_FROM_EMAIL            # 发件人地址（已有 SUPPORT_EMAIL_FROM，复用或新增专用变量）
 ```
