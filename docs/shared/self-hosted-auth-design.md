@@ -1,7 +1,7 @@
 # 自建认证系统 - 完整技术方案
 
 > **状态**: ✅ 技术方案已确认（不涉及代码实施）
-> **目标**: 完全移除 Clerk 依赖，自建 Email+Password 认证系统，架构预留 OAuth 扩展能力
+> **目标**: 完全移除 Clerk 依赖，自建 Email+Password+OTP 认证系统，架构预留 OAuth 扩展能力
 > **确认日期**: 2026-02-02
 
 ---
@@ -11,11 +11,13 @@
 | 决策项 | 选择 | 理由 | 状态 |
 |--------|------|------|------|
 | 登录方式 | 邮箱+密码（架构预留 OAuth） | 用户需求，先核心后扩展 | ✅ 已确认 |
+| 验证方式 | Email OTP 6位验证码 | 比 Magic Link 更适合移动端，无跨设备问题，用户熟悉度高（Canva 模式） | ✅ 已确认 |
+| OTP 适用场景 | 注册验证、修改密码、删除账户、忘记密码 | 关键操作需二次验证，登录只需密码 | ✅ 已确认 |
 | 用户 ID | UUID v4 | 业界标准，无第三方依赖 | ✅ 已确认 |
 | 邮件服务 | Resend | 现代 API，开发体验好 | ✅ 已确认 |
 | 数据迁移 | 全新开始 | 项目未上线，无真实用户 | ✅ 已确认 |
 | 表结构 | auth_users 与 profiles 分表 | 认证凭据与业务数据职责分离，符合 DDD | ✅ 已确认 |
-| 注册流程 | 必须先验证邮箱 | 防止垃圾注册，确保邮箱可达 | ✅ 已确认 |
+| 注册流程 | 邮箱 → OTP 验证 → 设密码 + 昵称 → 完成 | 先验证邮箱可达（OTP），再设密码，Canva 模式 | ✅ 已确认 |
 | Token 存储 | 方案 B：Next.js API Route 代理（BFF 模式） | 支持多环境（localhost/Preview/Staging/Production），无需配域名 | ✅ 已确认 |
 | JWT 算法 | HS256（对称密钥） | 单后端自签自验，性能好，配置简单 | ✅ 已确认 |
 | 密码哈希 | argon2id | OWASP 2024 首推，新项目最优方案 | ✅ 已确认 |
@@ -338,13 +340,13 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 auth_users
 ├── id                          UUID PK (DEFAULT uuid_generate_v4())
 ├── email                       TEXT UNIQUE NOT NULL
-├── password_hash               TEXT NOT NULL (argon2id)
+├── password_hash               TEXT (argon2id，注册完成后才有值，OTP 验证阶段为 NULL)
 ├── email_verified              BOOLEAN DEFAULT FALSE
 ├── email_verified_at           TIMESTAMPTZ
-├── email_verification_token    TEXT (部分索引)
-├── email_verification_expires_at TIMESTAMPTZ
-├── password_reset_token        TEXT (部分索引)
-├── password_reset_expires_at   TIMESTAMPTZ
+├── otp_code_hash               TEXT (SHA-256 哈希，不存明文)
+├── otp_purpose                 TEXT CHECK (otp_purpose IN ('register', 'change_password', 'delete_account', 'forgot_password'))
+├── otp_expires_at              TIMESTAMPTZ
+├── otp_attempts                INTEGER DEFAULT 0 (防暴力猜测，最多 5 次)
 ├── password_changed_at         TIMESTAMPTZ
 ├── failed_login_attempts       INTEGER DEFAULT 0
 ├── locked_until                TIMESTAMPTZ
@@ -356,11 +358,14 @@ auth_users
 ```
 
 **设计要点**：
-- `auth_users.id` 与 `profiles.id` 使用**同一个 UUID**（注册时同时创建）
-- 认证数据（密码、验证token）与业务数据（tier、credits）分离
-- 部分索引：仅对 `token IS NOT NULL` 的行建索引
+- `auth_users.id` 与 `profiles.id` 使用**同一个 UUID**（注册完成后同时创建 profiles）
+- 认证数据（密码、OTP）与业务数据（tier、credits）分离
+- `password_hash` 可为 NULL：注册流程分为 OTP 验证 → 设密码两步，OTP 验证阶段 password_hash 尚未设置
 - CHECK 约束：`CHECK (email = LOWER(email))`（邮箱统一小写，详见 7.4）
-- **验证 Token 安全存储**：`email_verification_token` 和 `password_reset_token` 存储的是 **SHA-256 哈希值**，不存明文。URL 发给用户的是明文 token，后端校验时 `SHA256(url_token) == db_stored_hash`（与 refresh_token_hash 保持一致的安全策略）
+- **OTP 统一字段设计**：所有场景（注册、修改密码、删除账户、忘记密码）共用同一组 OTP 字段，通过 `otp_purpose` 区分用途
+- **OTP 安全存储**：`otp_code_hash` 存储的是 **SHA-256 哈希值**，不存明文。邮件发给用户的是 6 位数字明文，后端校验时 `SHA256(user_input) == db_hash`（与 refresh_token_hash 保持一致的安全策略）
+- **OTP 防暴力破解**：`otp_attempts` 记录当前 OTP 的尝试次数，达到 5 次后该 OTP 自动失效，需重新发送
+- 部分索引：`WHERE otp_code_hash IS NOT NULL`（只索引有 OTP 的行）
 
 ### 4.2 新增表：`auth_sessions`（Refresh Token 存储 + 轮换检测）
 
@@ -448,13 +453,31 @@ profiles.id: TEXT → UUID
 
 **新 RPC 函数 `create_auth_user_with_profile()` 职责**：
 ```
-输入: p_email, p_password_hash, p_username, p_display_name, p_signup_bonus
+输入: p_email, p_password_hash, p_display_name, p_signup_bonus
 操作:
   1. 生成 UUID (uuid_generate_v4())
-  2. INSERT INTO auth_users (id, email, password_hash, ...)
+  2. INSERT INTO auth_users (id, email, password_hash, email_verified=true, ...)
   3. INSERT INTO profiles (id, email, user_code, credits_permanent, created_by='register', ...)
   4. 两个 INSERT 在同一事务中，保证原子性
 返回: auth_user + profile 完整数据
+
+注意: 此函数在注册第三步（OTP 验证通过 + 设完密码后）调用。
+调用时 email 已经通过 OTP 验证，所以 email_verified=true。
+```
+
+**新 RPC 函数 `create_pending_auth_user()` 职责**：
+```
+输入: p_email, p_otp_code_hash, p_otp_expires_at
+操作:
+  1. 生成 UUID (uuid_generate_v4())
+  2. INSERT INTO auth_users (id, email, otp_code_hash, otp_purpose='register', otp_expires_at, password_hash=NULL, email_verified=false)
+     ON CONFLICT (email) DO UPDATE SET otp_code_hash, otp_purpose, otp_expires_at, otp_attempts=0, updated_at=now()
+  3. 仅操作 auth_users，不创建 profiles（注册未完成）
+返回: auth_user.id
+
+注意: 注册第一步（发送 OTP）时调用。
+用 ON CONFLICT 确保重复发送 OTP 不会创建多条记录。
+仅对 email_verified=false 且 password_hash IS NULL 的记录执行 UPDATE（已完成注册的用户不受影响）。
 ```
 
 ### 4.8 处理相关表
@@ -512,7 +535,7 @@ decodables/domains/auth/
 ├── repository.py             # IAuthUserRepository, ISessionRepository 接口（见下方方法签名）
 ├── service.py                # AuthService 核心编排（注册/登录/刷新/登出）
 ├── token_service.py          # JWT 签发/验证 (Access + Refresh)
-├── email_service.py          # 邮箱验证/密码重置邮件 (通过 Resend)
+├── otp_service.py            # OTP 生成/验证/发送邮件 (通过 Resend)
 ├── password_service.py       # 密码哈希 (argon2id) + 强度校验
 └── constants.py              # Token 有效期、锁定阈值等常量
 ```
@@ -523,15 +546,15 @@ decodables/domains/auth/
 IAuthUserRepository:
 ├── get_by_id(user_id: UUID) → AuthUser | None
 ├── get_by_email(email: str) → AuthUser | None
-├── create(auth_user: AuthUser) → AuthUser           # 通过 RPC create_auth_user_with_profile()
+├── create_pending(email: str, otp_hash: str, expires_at: datetime) → UUID  # 注册第一步：创建待验证用户（RPC create_pending_auth_user）
+├── create_with_profile(auth_user: AuthUser) → AuthUser                      # 注册第三步：完善信息后原子创建（RPC create_auth_user_with_profile）
 ├── update_password(user_id: UUID, password_hash: str) → None
 ├── update_email_verified(user_id: UUID, verified: bool) → None
 ├── update_login_attempt(user_id: UUID, failed_attempts: int, locked_until: datetime | None) → None
-├── set_verification_token(user_id: UUID, token_hash: str, expires_at: datetime) → None
-├── set_password_reset_token(user_id: UUID, token_hash: str, expires_at: datetime) → None
-├── clear_verification_token(user_id: UUID) → None
-├── clear_password_reset_token(user_id: UUID) → None
-├── delete(user_id: UUID) → None                     # 硬删除 auth_users
+├── set_otp(user_id: UUID, otp_hash: str, purpose: str, expires_at: datetime) → None
+├── increment_otp_attempts(user_id: UUID) → int       # 返回当前尝试次数
+├── clear_otp(user_id: UUID) → None
+├── delete(user_id: UUID) → None                       # 硬删除 auth_users
 └── record_login(user_id: UUID, ip: str, timestamp: datetime) → None
 
 ISessionRepository:
@@ -551,18 +574,20 @@ ISessionRepository:
 **AuthService（核心编排）**：
 | 方法 | 职责 |
 |------|------|
-| `register()` | 校验 → 哈希密码 → **原子创建** auth_users + profiles（同一 UUID，通过 RPC `create_auth_user_with_profile()` 保证事务一致性）→ 发验证邮件 → 创建 session → 返回 tokens |
+| `register_send_otp()` | 校验邮箱 → 检查是否已注册 → 生成 6 位 OTP → 哈希存储 → 发 OTP 邮件（无论邮箱是否存在都返回成功，防枚举） |
+| `register_verify_otp()` | 校验 OTP（哈希比对 + 过期检查 + 尝试次数检查）→ 标记 email_verified → 返回临时注册 token（用于下一步设密码） |
+| `register_complete()` | 校验临时注册 token → 哈希密码 → **原子创建** auth_users + profiles（RPC `create_auth_user_with_profile()`）→ 创建 session → 返回 tokens |
 | `login()` | 限流检查 → 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens |
 | `refresh_token()` | 查 session → 检查过期/作废 → 轮换（废旧发新）→ 重用检测 → 返回新 tokens |
 | `logout()` | 作废当前 session |
 | `logout_all()` | 作废用户所有 sessions |
-| `verify_email()` | 校验 token → 标记 email_verified |
-| `request_password_reset()` | 生成 token → 发邮件（无论邮箱是否存在都返回成功，防枚举） |
-| `reset_password()` | 校验 token → 更新密码 → 作废所有 sessions |
-| `change_password()` | 验证旧密码 → 更新密码 → 可选作废其他 sessions |
+| `send_otp()` | 通用 OTP 发送：校验用户存在 → 生成 6 位 OTP → 哈希存储 → 发邮件（用于修改密码/删除账户/忘记密码） |
+| `verify_otp()` | 通用 OTP 验证：哈希比对 + 过期 + 尝试次数 → 返回验证成功标记 |
+| `forgot_password_reset()` | 校验 OTP 已验证 → 更新密码 → 作废所有 sessions |
+| `change_password()` | 校验 OTP 已验证 → 验证旧密码 → 更新密码 → 可选作废其他 sessions |
 | `get_sessions()` | 列出用户所有活跃 sessions（多设备管理） |
 | `revoke_session()` | 踢出指定设备 |
-| `delete_account()` | 验证密码 → 取消 Stripe 订阅 → 作废 sessions → 软删除 profiles → 硬删除 auth_users → 异步匿名化内容（详见 7.3） |
+| `delete_account()` | 校验 OTP 已验证 → 取消 Stripe 订阅 → 作废 sessions → 软删除 profiles → 硬删除 auth_users → 异步匿名化内容（详见 7.3） |
 
 **TokenService（JWT 管理）**：
 - Access Token: HS256 签名，15 分钟有效期
@@ -586,32 +611,49 @@ decodables/api/auth/
 
 | Method | Path | 说明 | 限流 | 需认证 |
 |--------|------|------|------|--------|
-| POST | `/auth/register` | 注册 | 5/hour/IP | 否 |
-| POST | `/auth/login` | 登录 | 10/min/IP | 否 |
+| POST | `/auth/register/send-otp` | 注册第一步：发送 OTP 到邮箱 | 5/hour/IP, 3/hour/email | 否 |
+| POST | `/auth/register/verify-otp` | 注册第二步：验证 OTP | 10/hour/IP | 否 |
+| POST | `/auth/register/complete` | 注册第三步：设密码+昵称，完成注册 | 5/hour/IP | 否（需临时注册 token） |
+| POST | `/auth/login` | 登录（邮箱+密码） | 10/min/IP | 否 |
 | POST | `/auth/refresh` | 刷新 Access Token | 30/min/token | Refresh Token |
 | POST | `/auth/logout` | 登出当前设备 | — | Refresh Token |
 | POST | `/auth/logout-all` | 登出所有设备 | — | Access Token |
-| POST | `/auth/verify-email` | 验证邮箱 | 10/hour/IP | 否 |
-| POST | `/auth/resend-verification` | 重发验证邮件 | 3/hour/email | 否（用 email 参数，非 Token） |
-| POST | `/auth/forgot-password` | 请求密码重置 | 3/hour/email | 否 |
-| POST | `/auth/reset-password` | 执行密码重置 | 5/hour/IP | 否 |
-| POST | `/auth/change-password` | 修改密码（已登录） | 5/hour/user | Access Token |
+| POST | `/auth/otp/send` | 通用 OTP 发送（修改密码/删除账户/忘记密码） | 3/hour/email | 忘记密码: 否; 其他: Access Token |
+| POST | `/auth/otp/verify` | 通用 OTP 验证 | 10/hour/IP | 同上 |
+| POST | `/auth/forgot-password/reset` | 忘记密码：OTP 验证后重置密码 | 5/hour/IP | 否（需 OTP 验证 token） |
+| POST | `/auth/change-password` | 修改密码（已登录，需先 OTP 验证） | 5/hour/user | Access Token + OTP 验证 token |
 | GET | `/auth/sessions` | 查看活跃设备 | — | Access Token |
 | DELETE | `/auth/sessions/{id}` | 踢出指定设备 | — | Access Token |
-| POST | `/auth/delete-account` | 注销账户（需密码确认） | 1/hour/user | Access Token |
+| POST | `/auth/delete-account` | 注销账户（需先 OTP 验证） | 1/hour/user | Access Token + OTP 验证 token |
 
 **核心端点 Request/Response Schema**：
 
 ```
-POST /auth/register
-  Request:  { email: string, password: string, display_name?: string }
+=== 注册流程（三步） ===
+
+POST /auth/register/send-otp
+  Request:  { email: string }
+  Response: { success: true, message: "验证码已发送到您的邮箱" }  // 无论邮箱是否已注册，统一响应防枚举
+  Errors:   429 (限流)
+
+POST /auth/register/verify-otp
+  Request:  { email: string, otp_code: string }
+  Response: { success: true, register_token: string }  // 临时注册 token（15分钟有效，JWT，用于下一步）
+  Errors:   400 { error: "invalid_otp" | "otp_expired" | "too_many_attempts" }
+
+POST /auth/register/complete
+  Request:  { register_token: string, password: string, display_name?: string }
   Response: { access_token: string, user: { id: UUID, email: string, display_name: string } }
-  Errors:   422 (验证失败) / 409 (邮箱已注册，但为防枚举返回与成功相同的 HTTP 200 + "请查收验证邮件")
+  Errors:   400 { error: "invalid_register_token" | "weak_password" } / 409 (邮箱已完成注册)
+
+=== 登录 ===
 
 POST /auth/login
   Request:  { email: string, password: string }
   Response: { access_token: string, user: { id: UUID, email: string, tier: string, role: string } }
   Errors:   401 { error: "invalid_credentials" } / 403 { error: "account_locked", retry_after: number }
+
+=== Token 管理 ===
 
 POST /auth/refresh
   Request:  { refresh_token: string, rotate?: boolean }  // rotate 默认 true
@@ -622,28 +664,32 @@ POST /auth/logout
   Request:  { refresh_token: string }
   Response: { success: true }
 
-POST /auth/verify-email
-  Request:  { token: string, email: string }
-  Response: { success: true, message: "邮箱验证成功" }
-  Errors:   400 { error: "invalid_token" | "token_expired" }
+=== 通用 OTP（修改密码/删除账户/忘记密码）===
 
-POST /auth/forgot-password
-  Request:  { email: string }
-  Response: { success: true, message: "如果该邮箱已注册，重置邮件已发送" }  // 统一响应，防枚举
+POST /auth/otp/send
+  Request:  { email: string, purpose: "change_password" | "delete_account" | "forgot_password" }
+  Response: { success: true, message: "验证码已发送到您的邮箱" }  // 统一响应，防枚举
+  Note:     purpose="forgot_password" 时不需要 Access Token；其他需要 Access Token
 
-POST /auth/reset-password
-  Request:  { token: string, email: string, new_password: string }
+POST /auth/otp/verify
+  Request:  { email: string, otp_code: string, purpose: string }
+  Response: { success: true, otp_verified_token: string }  // 临时验证 token（10分钟有效，JWT，用于后续操作）
+  Errors:   400 { error: "invalid_otp" | "otp_expired" | "too_many_attempts" }
+
+=== 密码操作 ===
+
+POST /auth/forgot-password/reset
+  Request:  { otp_verified_token: string, new_password: string }
   Response: { success: true }
   Errors:   400 { error: "invalid_token" | "token_expired" | "weak_password" }
-
-POST /auth/resend-verification
-  Request:  { email: string }
-  Response: { success: true, message: "如果该邮箱需要验证，邮件已发送" }  // 统一响应，防枚举
-  Note:     不需要 Access Token（用户可能验证链接过期后未登录，需要从 /verify-email 页面直接重发）
+  Note:     重置成功后所有 sessions 自动作废
 
 POST /auth/change-password
-  Request:  { current_password: string, new_password: string }
+  Request:  { otp_verified_token: string, current_password: string, new_password: string }
   Response: { success: true }
+  Errors:   400 { error: "invalid_token" | "wrong_password" | "weak_password" }
+
+=== 设备管理 ===
 
 GET /auth/sessions
   Response: { sessions: [{ id: UUID, device_name: string, ip_address: string, last_used_at: string, is_current: boolean }] }
@@ -652,8 +698,9 @@ DELETE /auth/sessions/{id}
   Response: { success: true }
 
 POST /auth/delete-account
-  Request:  { password: string }
+  Request:  { otp_verified_token: string }
   Response: { success: true }
+  Errors:   400 { error: "invalid_token" | "token_expired" }
 
 统一错误响应格式：
 { error: string, message?: string, details?: object }
@@ -673,10 +720,12 @@ POST /auth/delete-account
 - 未来如需多实例部署，可切换为 Redis 后端（仅改配置，不改代码）
 
 限流 Key 设计:
-- /auth/login:    IP + email（防止同 IP 不同账号暴力破解）
-- /auth/register: IP（防止同 IP 批量注册）
-- /auth/refresh:  Refresh Token hash（防止单 token 滥用）
-- /auth/forgot-password: email（防止对同一邮箱频繁发送重置邮件）
+- /auth/login:              IP + email（防止同 IP 不同账号暴力破解）
+- /auth/register/send-otp:  IP + email（防止同 IP 批量注册 + 同邮箱频繁发送）
+- /auth/register/verify-otp: IP（防止暴力猜测 OTP）
+- /auth/refresh:            Refresh Token hash（防止单 token 滥用）
+- /auth/otp/send:           email（防止对同一邮箱频繁发送 OTP）
+- /auth/otp/verify:         IP（防止暴力猜测 OTP）
 
 锁定机制 (auth_users.failed_login_attempts):
 - 每次密码错误: failed_login_attempts += 1
@@ -691,35 +740,45 @@ POST /auth/delete-account
 - X-RateLimit-Reset: 1706889600 (Unix timestamp)
 ```
 
-### 5.3.2 验证 Token 安全规范
+### 5.3.2 OTP 安全规范
 
 ```
-邮箱验证 Token (email_verification_token):
-├── 格式: 32 字节随机数 → base64url 编码（43 字符）
-├── 生成: secrets.token_urlsafe(32)
-├── 存储: SHA-256 哈希后存入数据库（不存明文，与 refresh_token_hash 策略一致）
-├── 有效期: 24 小时
-├── 一次性使用: 验证成功后立即设为 NULL
-├── 重发机制: 重发时生成新 token，旧 token hash 立即覆盖
-├── URL 格式: /verify-email?token=xxx&email=user@example.com
-└── 后端校验: SHA256(url_token) == db_hash AND 未过期 AND email 匹配
+OTP 验证码（统一规范，所有场景通用）:
+├── 格式: 6 位纯数字（000000-999999）
+├── 生成: secrets.randbelow(1000000)，用 zfill(6) 补齐前导零
+├── 存储: SHA-256 哈希后存入 auth_users.otp_code_hash（不存明文）
+├── 有效期: 10 分钟
+├── 一次性使用: 验证成功后立即清除（otp_code_hash=NULL, otp_purpose=NULL, otp_attempts=0）
+├── 重发机制: 重发时生成新 OTP，旧 OTP hash 立即覆盖，attempts 重置为 0
+├── 最大尝试次数: 5 次（otp_attempts >= 5 后该 OTP 自动失效，需重新发送）
+├── 邮件内容: "您的验证码是: 123456，10 分钟内有效。"
+└── 后端校验: SHA256(user_input) == db_hash AND 未过期 AND otp_attempts < 5 AND purpose 匹配
 
-密码重置 Token (password_reset_token):
-├── 格式: 同上，32 字节 base64url
-├── 存储: 同上，SHA-256 哈希后存入数据库
-├── 有效期: 1 小时（比邮箱验证更短，安全要求更高）
-├── 一次性使用: 重置成功后立即设为 NULL
-├── 重发机制: 重发时生成新 token，旧 token hash 立即覆盖
-├── URL 格式: /reset-password?token=xxx&email=user@example.com
-└── 后端校验: SHA256(url_token) == db_hash AND 未过期 AND email 匹配
+临时 Token（OTP 验证后颁发，用于后续操作）:
 
-安全理由: 如果数据库被攻破，明文 token 可直接用于验证任意邮箱/重置任意密码。
-哈希存储后攻击者无法从 hash 反推 token，需要拦截用户邮件才能获取明文。
+注册临时 Token (register_token):
+├── 格式: JWT (HS256)，payload: { sub: email, purpose: "register", exp: now()+15min }
+├── 有效期: 15 分钟（给用户足够时间填写密码和昵称）
+├── 一次性使用: 注册完成后该 email 的 auth_user 已有 password_hash，token 自然失效
+├── 用途: 注册第三步（/auth/register/complete）时携带，证明该 email 已通过 OTP 验证
+└── 不存储在数据库中，后端直接验证 JWT 签名和过期时间
 
-过期 Token 清理:
-├── 方式: 不主动清理，验证时检查 expires_at
-├── 可选: 定期任务清理 > 7 天的过期 token（减少数据库碎片）
-└── 部分索引: WHERE token IS NOT NULL（只索引有 token 的行）
+OTP 验证 Token (otp_verified_token):
+├── 格式: JWT (HS256)，payload: { sub: user_id, purpose: string, exp: now()+10min }
+├── 有效期: 10 分钟
+├── 用途: 修改密码、删除账户、忘记密码重置 的后续操作携带
+├── 后端校验: 验证 JWT 签名 + 过期 + purpose 匹配当前操作
+└── 不存储在数据库中，后端直接验证 JWT 签名和过期时间
+
+安全理由:
+- OTP 哈希存储: 数据库被攻破后无法反推 OTP 明文
+- 临时 Token 用 JWT: 无状态验证，无需额外数据库查询，且自带过期机制
+- 两步验证分离: OTP 验证和实际操作是分开的 API 调用，攻击者即使绕过前端也需要有效的临时 Token
+
+OTP 清理:
+├── 验证成功后立即清除 otp_code_hash/otp_purpose/otp_expires_at/otp_attempts
+├── 不需要定期清理任务（过期 OTP 在下次发送时会被覆盖）
+└── 部分索引: WHERE otp_code_hash IS NOT NULL
 ```
 
 ### 5.4 修改现有模块
@@ -745,7 +804,7 @@ POST /auth/delete-account
 - 新增 `validate_secrets_at_startup()` 强化校验：`AUTH_JWT_SECRET` 长度必须 ≥ 43 字符（256-bit = 32 bytes → base64 ≈ 43 chars），不满足则 raise 启动失败（防止开发者误设弱密钥如 "123456"）
 
 **`container.py`**：
-- 注册新服务：`get_auth_service()`, `get_token_service()`, `get_password_service()` 等
+- 注册新服务：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()` 等
 - 移除：`get_clerk_webhook_service()`
 - 遵循现有的 async factory 懒加载模式
 
@@ -773,8 +832,8 @@ POST /auth/delete-account
 发送测试清单（Phase 1 完成后验证）：
 - 发送到 Gmail → 检查是否进垃圾箱
 - 发送到 Outlook → 检查是否进垃圾箱
-- 检查移动端邮件显示效果
-- 检查验证链接在 staging/production 域名是否正确
+- 检查移动端邮件显示效果（OTP 数字清晰可辨）
+- 检查 OTP 邮件是否被手机系统自动识别（iOS/Android OTP 自动填充）
 ```
 
 ---
@@ -811,8 +870,14 @@ interface UseAuthReturn {
 
   // === 新增字段 ===
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, displayName?: string) => Promise<void>
+  // 注册不在 useAuth 中（多步流程由注册页面自行管理）
+
+  // === OTP 相关 ===
+  sendOtp: (email: string, purpose: OtpPurpose) => Promise<void>
+  verifyOtp: (email: string, otpCode: string, purpose: OtpPurpose) => Promise<string>  // 返回 otp_verified_token
 }
+
+type OtpPurpose = 'register' | 'change_password' | 'delete_account' | 'forgot_password'
 
 // 审计结论：当前代码库中所有 getToken() 调用都不传参数（无 skipCache/template），
 // 所有 signOut() 调用也不传参数（无 redirectUrl/sessionId），
@@ -961,13 +1026,17 @@ export async function POST(req: NextRequest, { params }: { params: { action: str
   return res
 }
 
-路由映射（~80 行代码）：
-- POST /api/auth/login       → POST {BACKEND}/auth/login
-- POST /api/auth/register    → POST {BACKEND}/auth/register
-- POST /api/auth/refresh     → POST {BACKEND}/auth/refresh  (注入 cookie 中的 refresh_token)
-- POST /api/auth/logout      → POST {BACKEND}/auth/logout   (注入 cookie 中的 refresh_token)
-- POST /api/auth/logout-all  → POST {BACKEND}/auth/logout-all
-- POST /api/auth/*           → POST {BACKEND}/auth/*  (其余端点透传)
+路由映射（~100 行代码）：
+- POST /api/auth/login                → POST {BACKEND}/auth/login
+- POST /api/auth/register/send-otp   → POST {BACKEND}/auth/register/send-otp
+- POST /api/auth/register/verify-otp → POST {BACKEND}/auth/register/verify-otp
+- POST /api/auth/register/complete   → POST {BACKEND}/auth/register/complete
+- POST /api/auth/refresh              → POST {BACKEND}/auth/refresh  (注入 cookie 中的 refresh_token)
+- POST /api/auth/logout               → POST {BACKEND}/auth/logout   (注入 cookie 中的 refresh_token)
+- POST /api/auth/logout-all           → POST {BACKEND}/auth/logout-all
+- POST /api/auth/otp/send            → POST {BACKEND}/auth/otp/send
+- POST /api/auth/otp/verify          → POST {BACKEND}/auth/otp/verify
+- POST /api/auth/*                    → POST {BACKEND}/auth/*  (其余端点透传)
 ```
 
 **httpOnly Cookie 安全属性**：
@@ -1124,11 +1193,9 @@ Fallback（BroadcastChannel 不可用时）:
 ```
 decodables-fe/app/(auth)/
 ├── layout.tsx              # 居中卡片布局（品牌 Logo + 白色卡片 + 背景色）
-├── login/page.tsx          # 登录表单
-├── register/page.tsx       # 注册表单
-├── forgot-password/page.tsx # 忘记密码
-├── reset-password/page.tsx  # 重置密码（带 token）
-└── verify-email/page.tsx    # 邮箱验证（带 token）
+├── login/page.tsx          # 登录表单（邮箱 + 密码）
+├── register/page.tsx       # 注册表单（多步：邮箱 → OTP → 密码+昵称）
+└── forgot-password/page.tsx # 忘记密码（多步：邮箱 → OTP → 新密码）
 ```
 
 **页面 UI 设计**：
@@ -1140,7 +1207,7 @@ decodables-fe/app/(auth)/
 - 底部：返回首页 / 帮助链接
 - 背景：与 Design System 一致的渐变背景
 
-login/page.tsx — 登录页：
+login/page.tsx — 登录页（单步）：
 - 标题："Sign in to your account"
 - 字段：Email + Password
 - 按钮："Sign In"（loading 状态）
@@ -1148,29 +1215,65 @@ login/page.tsx — 登录页：
 - 链接："Don't have an account? Sign up" → /register
 - 错误处理：401 → "Invalid email or password" / 403 → "Account locked, try again in X minutes"
 
-register/page.tsx — 注册页：
-- 标题："Create your account"
-- 字段：Email + Display Name（可选）+ Password + Confirm Password
-- 密码强度指示器（实时校验：≥8字符、大小写+数字）
-- 按钮："Create Account"（loading 状态）
-- 注册成功 → 跳转到 /verify-email?email=xxx 提示页
-- 链接："Already have an account? Sign in" → /login
+register/page.tsx — 注册页（三步流程，同一页面内切换）：
+  Step 1 — 输入邮箱：
+  - 标题："Create your account"
+  - 字段：Email
+  - 按钮："Send Verification Code"（loading 状态）
+  - 提交后调用 POST /auth/register/send-otp
+  - 链接："Already have an account? Sign in" → /login
 
-forgot-password/page.tsx — 忘记密码：
-- 标题："Reset your password"
-- 字段：Email
-- 按钮："Send Reset Link"
-- 提交后始终显示："If this email is registered, a reset link has been sent"（防枚举）
+  Step 2 — 输入 OTP：
+  - 标题："Enter verification code"
+  - 提示文字："We sent a 6-digit code to xxx@xxx.com"
+  - 字段：6 位 OTP 输入框（每位一个输入框，自动跳转，支持粘贴）
+  - 按钮："Verify"（loading 状态）
+  - 链接："Didn't receive the code? Resend"（60 秒倒计时后可重发）
+  - 链接："Use a different email" → 返回 Step 1
+  - 提交后调用 POST /auth/register/verify-otp → 获取 register_token
+  - 错误处理：400 → "Invalid code" / "Code expired, please resend"
 
-reset-password/page.tsx — 重置密码（URL 带 token + email 参数）：
-- 标题："Set new password"
-- 字段：New Password + Confirm Password
-- 成功 → "Password reset successfully" + 自动跳转 /login
+  Step 3 — 设置密码和昵称：
+  - 标题："Set up your account"
+  - 字段：Display Name（可选）+ Password + Confirm Password
+  - 密码强度指示器（实时校验：≥8字符、大小写+数字）
+  - 按钮："Create Account"（loading 状态）
+  - 提交后调用 POST /auth/register/complete（携带 register_token）
+  - 注册成功 → 自动登录 → 跳转 /dashboard
 
-verify-email/page.tsx — 邮箱验证（URL 带 token + email 参数）：
-- 页面加载时自动提交验证请求
-- 成功 → "Email verified!" + 自动跳转 /dashboard
-- 失败 → "Invalid or expired link" + "Resend verification email" 按钮
+forgot-password/page.tsx — 忘记密码（三步流程，同一页面内切换）：
+  Step 1 — 输入邮箱：
+  - 标题："Reset your password"
+  - 字段：Email
+  - 按钮："Send Verification Code"
+  - 提交后调用 POST /auth/otp/send { purpose: "forgot_password" }
+  - 提交后始终进入 Step 2（防枚举，即使邮箱不存在也不提示）
+
+  Step 2 — 输入 OTP：
+  - 标题："Enter verification code"
+  - 提示文字："If this email is registered, we sent a 6-digit code"
+  - 字段：6 位 OTP 输入框
+  - 链接："Resend code"（60 秒倒计时）
+  - 提交后调用 POST /auth/otp/verify { purpose: "forgot_password" } → 获取 otp_verified_token
+
+  Step 3 — 设置新密码：
+  - 标题："Set new password"
+  - 字段：New Password + Confirm Password
+  - 按钮："Reset Password"
+  - 提交后调用 POST /auth/forgot-password/reset（携带 otp_verified_token）
+  - 成功 → "Password reset successfully" + 自动跳转 /login
+```
+
+**OTP 输入组件（复用组件）**：
+```
+components/auth/OtpInput.tsx — 6 位 OTP 输入框：
+- 6 个独立 input 框，每个限制 1 位数字
+- 输入后自动聚焦下一个框
+- 支持粘贴完整 6 位验证码（自动分发到各框）
+- 支持退格删除（自动回到上一个框）
+- 支持 autocomplete="one-time-code"（iOS/Android 自动填充 OTP）
+- 失败时清空并聚焦第一个框
+- 可复用于注册和忘记密码页面
 ```
 
 **登录后重定向机制**：
@@ -1256,7 +1359,7 @@ import { useAuth } from "@/lib/auth";
   /manual, /manual/*, /contact-us, /api/*
 
 认证页路由（AUTH_ROUTES）— 已登录用户重定向到 /dashboard：
-  /login, /register, /forgot-password, /reset-password, /verify-email
+  /login, /register, /forgot-password
 
 保护路由（其余所有）— 未登录重定向到 /login：
   /dashboard, /dashboard/*, /create, /create/*, /profile, /profile/*,
@@ -1368,11 +1471,13 @@ Body: { refresh_token, rotate?: boolean }  // 默认 rotate=true
 | 安全措施 | 实现方式 |
 |---------|---------|
 | 密码存储 | argon2id（OWASP 推荐） |
+| OTP 安全 | 6 位数字 + SHA-256 哈希存储 + 10 分钟有效期 + 最多 5 次尝试 |
+| OTP 操作隔离 | OTP 验证后颁发临时 JWT Token，后续操作需携带该 Token（防 CSRF、防重放） |
 | XSS 防护 | Access Token 仅存内存，Refresh Token 为 httpOnly cookie |
 | CSRF 防护 | API 使用 Bearer Token 认证（非 cookie 认证），天然防 CSRF |
-| 暴力破解 | 5 次失败后锁定 30 分钟 + API 限流 |
+| 暴力破解 | 密码: 5 次失败锁定 30 分钟; OTP: 5 次失败自动失效 + API 限流 |
 | Token 泄露 | Refresh Token 轮换 + 重用检测（作废整个 family） |
-| 邮箱枚举 | 注册/密码重置对不存在的邮箱也返回成功 |
+| 邮箱枚举 | 注册/密码重置/OTP 发送对不存在的邮箱也返回成功 |
 | 时间安全 | argon2-cffi 内置时间安全比较 |
 | 跨标签同步 | BroadcastChannel 登出同步（现有逻辑保留） |
 | 会话管理 | 用户可查看/踢出所有设备 |
@@ -1391,29 +1496,23 @@ Access Token payload 包含 `{ sub, email, role, tier }`，但 tier 变更后已
 - 这与 Clerk 现有行为一致（Clerk token 的 metadata 也有同步延迟）
 ```
 
-### 7.2 邮箱未验证用户的功能限制
-
-注册后邮箱未验证的用户能做什么？
+### 7.2 邮箱验证时机
 
 ```
-✅ 可以做：
-- 登录（返回 token，email_verified=false 在 JWT payload 中标记）
-- 浏览 dashboard、查看项目列表
-- 浏览 marketplace
+OTP 模式下的邮箱验证：
+- 注册第二步就完成了邮箱验证（通过 OTP 证明邮箱可达）
+- 注册完成后 email_verified = true（注册流程保证）
+- 因此 email_verified=false 只存在于注册中途放弃的 pending 用户
+- 不存在"已注册但邮箱未验证"的用户（与旧方案不同）
 
-❌ 不可以做（后端校验 email_verified）：
-- 消耗积分的操作（AI 生图、OCR 识别等）
-- 创建项目
-- 购买积分 / 订阅升级
+require_verified_email 依赖仍然保留：
+- 作为防御层：理论上所有完成注册的用户 email_verified=true
+- 保护 OAuth 注册场景（未来扩展，OAuth 用户可能需要额外验证邮箱）
+- 防止数据库直接操作创建的异常用户
 
-前端体验：
-- 顶部显示 "请验证邮箱" 提示条（含重发验证邮件按钮）
-- 尝试受限操作时弹出 "请先验证邮箱" 提示
-
-理由：
-- 提供更好的 UX：不要求用户立即去收邮件
-- 防止垃圾注册：未验证用户无法消耗系统资源
-- 保护支付安全：未验证邮箱不能进行付费操作
+注册中途放弃的 pending 用户清理：
+- auth_users 中 password_hash IS NULL 且 created_at > 24小时 的记录
+- 可选：定期任务清理，或下次发送 OTP 时自动覆盖
 ```
 
 ### 7.3 账户删除 / 注销
@@ -1424,11 +1523,13 @@ Access Token payload 包含 `{ sub, email, role, tier }`，但 tier 变更后已
 ```
 前端：
 1. 用户在 /profile 点击 "删除账户"
-2. 弹出确认对话框：输入密码 + 勾选 "我理解此操作不可逆"
-3. 调用 POST /auth/delete-account { password }
+2. 弹出确认对话框：勾选 "我理解此操作不可逆" + 点击 "发送验证码"
+3. 调用 POST /auth/otp/send { purpose: "delete_account" } → 发送 OTP 到用户邮箱
+4. 用户输入 6 位 OTP → 调用 POST /auth/otp/verify { purpose: "delete_account" } → 获取 otp_verified_token
+5. 确认删除 → 调用 POST /auth/delete-account { otp_verified_token }
 
 后端 AuthService.delete_account():
-1. 验证密码正确
+1. 验证 otp_verified_token（JWT 签名 + purpose="delete_account" + 未过期）
 2. 取消 Stripe 订阅（如果有活跃订阅）
    → 失败则中止整个流程，返回 500（不能在订阅未取消时删除账户）
 3. 作废所有 auth_sessions（revoke_reason='account_deleted'）
@@ -1463,7 +1564,7 @@ Access Token payload 包含 `{ sub, email, role, tier }`，但 tier 变更后已
 
 **新增 API 端点**：
 ```
-POST /auth/delete-account    需要密码确认    Access Token
+POST /auth/delete-account    需要 OTP 验证（otp_verified_token）   Access Token
 ```
 
 **邮箱复用**：
@@ -1492,9 +1593,14 @@ POST /auth/delete-account    需要密码确认    Access Token
 - 业界标准做法（Auth.js、Supabase Auth、Firebase）都做小写化
 ```
 
-### 7.5 垃圾注册防护
+### 7.5 垃圾注册防护（OTP 增强）
 
 ```
+OTP 本身就是强力的垃圾注册防护：
+- 必须验证邮箱可达（OTP 发到真实邮箱）
+- 一次性邮箱虽然能收 OTP，但有黑名单检测
+- 每个邮箱每小时只能发 3 次 OTP
+
 多层防护（由轻到重）：
 
 Layer 1 — 邮箱格式校验（后端 Pydantic 验证）：
@@ -1569,6 +1675,10 @@ AUTH_JWT_SECRET_OLD    # 旧密钥（仅轮换期间配置，平时不设）
 ### 7.8 email_verified 校验点
 
 ```
+OTP 注册模式下：
+- 所有完成注册的用户 email_verified = true（注册流程保证）
+- require_verified_email 作为防御层保留，但正常流程不会触发
+
 后端校验位置（集中式，非分散到每个 API）：
 
 方案：新增 FastAPI 依赖 require_verified_email()
@@ -1733,10 +1843,14 @@ Git 分支: feat/auth-phase1-backend-domain
   - `validate_secrets_at_startup()`：密钥长度 ≥ 43 字符
 - ✅ 验证：`pytest tests/domains/auth/test_token_service.py` 通过（签发/验证/过期/轮换）
 
-**Step 1.6: 实现 EmailService**
-- 新建 `domains/auth/email_service.py`
-  - `send_verification_email()`：生成 token（secrets.token_urlsafe(32)）→ SHA-256 哈希存储 → 发邮件
-  - `send_password_reset_email()`：同上，有效期 1 小时
+**Step 1.6: 实现 OTPService**
+- 新建 `domains/auth/otp_service.py`
+  - `generate_otp()`：生成 6 位随机数字 → SHA-256 哈希
+  - `send_otp_email(email, otp_code, purpose)`：调用 Resend 发送 OTP 邮件
+  - `verify_otp(user_id, otp_code, expected_purpose)`：哈希比对 + 过期检查 + 尝试次数检查
+  - `create_register_token(email)`：生成临时注册 JWT（15分钟）
+  - `create_otp_verified_token(user_id, purpose)`：生成临时验证 JWT（10分钟）
+  - 邮件模板：清晰的 6 位验证码，支持 iOS/Android OTP 自动填充
   - 复用现有 Resend 配置（`RESEND_API_KEY`、`SUPPORT_EMAIL_FROM`）
 - ✅ 验证：mock Resend 的单元测试通过
 
@@ -1752,16 +1866,18 @@ Git 分支: feat/auth-phase1-backend-domain
 
 **Step 1.8: 实现 AuthService（核心编排）**
 - 新建 `domains/auth/service.py`
-  - `register()`：校验 → 哈希密码 → RPC 原子创建 → 发验证邮件 → 创建 session → 返回 tokens
+  - `register_send_otp()`：校验邮箱 → 一次性邮箱检测 → 创建/更新 pending auth_user → 发 OTP 邮件
+  - `register_verify_otp()`：校验 OTP → 标记 email_verified → 返回临时注册 token（JWT）
+  - `register_complete()`：校验注册 token → 哈希密码 → RPC 原子创建 auth_users + profiles → 创建 session → 返回 tokens
   - `login()`：限流 → 查用户 → 检查锁定 → 验证密码 → 记录登录 → 创建 session → 返回 tokens
   - `refresh_token()`：查 session → 检查过期/作废 → 轮换/不轮换 → 重用检测 → 返回 tokens
   - `logout()` / `logout_all()`：作废 session(s)
-  - `verify_email()`：SHA-256 校验 token → 标记 email_verified
-  - `request_password_reset()`：统一响应防枚举
-  - `reset_password()`：校验 token → 更新密码 → 作废所有 sessions
-  - `change_password()`：验证旧密码 → 更新 → 可选作废其他 sessions
+  - `send_otp()`：通用 OTP 发送（修改密码/删除账户/忘记密码）→ 统一响应防枚举
+  - `verify_otp()`：通用 OTP 验证 → 返回 otp_verified_token（JWT）
+  - `forgot_password_reset()`：校验 otp_verified_token → 更新密码 → 作废所有 sessions
+  - `change_password()`：校验 otp_verified_token → 验证旧密码 → 更新 → 可选作废其他 sessions
   - `get_sessions()` / `revoke_session()`：多设备管理
-  - `delete_account()`：验证密码 → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users
+  - `delete_account()`：校验 otp_verified_token → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users
 - 并发会话限制：≥ 10 个活跃 session 时自动踢出最旧的
 - 一次性邮箱检测：维护黑名单列表
 - ✅ 验证：`pytest tests/domains/auth/test_auth_service.py` 通过
@@ -1769,7 +1885,7 @@ Git 分支: feat/auth-phase1-backend-domain
 **Step 1.9: 创建 API 路由**
 - 新建 `api/auth/__init__.py`
 - 新建 `api/auth/schemas.py`：Pydantic Request/Response 模型（详见 5.3）
-- 新建 `api/auth/router.py`：12 个端点（详见 5.3）
+- 新建 `api/auth/router.py`：14 个端点（详见 5.3，含注册三步 + 通用 OTP 两个端点）
   - 统一错误响应格式：`{ error, message?, details? }`
   - 响应头：`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 - 在 `main.py` 注册 auth router
@@ -1790,13 +1906,13 @@ Git 分支: feat/auth-phase1-backend-domain
 - ✅ 验证：未验证邮箱用户调用受限 API 返回 403
 
 **Step 1.12: 注册到 container.py**
-- 新增：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_email_service()`
+- 新增：`get_auth_service()`, `get_token_service()`, `get_password_service()`, `get_otp_service()`
 - 遵循现有 async factory 懒加载模式
 - ✅ 验证：依赖注入正确
 
 **Step 1.13: 完整验证 + 提交**
 - `pytest tests/domains/auth/` 全部通过
-- 手动测试：注册 → 登录 → 刷新 → 登出
+- 手动测试：发送 OTP → 验证 OTP → 完成注册 → 登录 → 刷新 → 登出
 - `git add + commit + push`
 
 ---
@@ -1967,7 +2083,16 @@ Git 分支: feat/auth-phase4-auth-pages
   - 背景：与 Design System 一致
 - ✅ 验证：布局正确渲染
 
-**Step 4.2: 实现 `login/page.tsx`**
+**Step 4.2: 实现 OTP 输入组件**
+- 新建 `components/auth/OtpInput.tsx`
+  - 6 位 OTP 输入框（每位一个 input）
+  - 自动聚焦下一个框、退格回到上一个框
+  - 支持粘贴完整 6 位验证码
+  - 支持 `autocomplete="one-time-code"`（iOS/Android OTP 自动填充）
+  - 失败时清空并聚焦第一个框
+- ✅ 验证：OTP 输入交互正确
+
+**Step 4.3: 实现 `login/page.tsx`**
 - 新建 `app/(auth)/login/page.tsx`
   - 字段：Email + Password
   - 按钮："Sign In"（loading 状态）
@@ -1978,42 +2103,32 @@ Git 分支: feat/auth-phase4-auth-pages
   - 登录成功 → 跳转 redirect 或默认 `/dashboard`
 - ✅ 验证：能登录 + 正确跳转
 
-**Step 4.3: 实现 `register/page.tsx`**
+**Step 4.4: 实现 `register/page.tsx`（三步流程）**
 - 新建 `app/(auth)/register/page.tsx`
-  - 字段：Email + Display Name（可选）+ Password + Confirm Password
-  - 密码强度指示器（实时校验）
-  - 按钮："Create Account"（loading 状态）
-  - 注册成功 → 跳转 `/verify-email?email=xxx`
+  - Step 1: Email 输入 → 调用 `/auth/register/send-otp`
+  - Step 2: OTP 输入（使用 OtpInput 组件）→ 调用 `/auth/register/verify-otp` → 获取 register_token
+    - 60 秒倒计时重发功能
+    - "Use a different email" 返回 Step 1
+  - Step 3: Display Name + Password + Confirm Password → 调用 `/auth/register/complete`
+    - 密码强度指示器
+    - 注册成功 → 自动登录 → 跳转 `/dashboard`
   - 链接："Already have an account? Sign in" → `/login`
-- ✅ 验证：能注册 + 跳转到验证页
+- ✅ 验证：完整三步注册流程
 
-**Step 4.4: 实现 `verify-email/page.tsx`**
-- 新建 `app/(auth)/verify-email/page.tsx`
-  - URL 参数：`?token=xxx&email=xxx`
-  - 有 token：页面加载时自动提交验证请求
-  - 成功 → "Email verified!" + 自动跳转 `/dashboard`
-  - 失败 → "Invalid or expired link" + "Resend verification email" 按钮
-  - 无 token（仅 email）：显示"请查收验证邮件"提示 + "Resend" 按钮
-- ✅ 验证：验证链接能正常工作
-
-**Step 4.5: 实现 `forgot-password/page.tsx`**
+**Step 4.5: 实现 `forgot-password/page.tsx`（三步流程）**
 - 新建 `app/(auth)/forgot-password/page.tsx`
-  - 字段：Email
-  - 按钮："Send Reset Link"
-  - 提交后始终显示："If this email is registered, a reset link has been sent"（防枚举）
-- ✅ 验证：能触发密码重置邮件
-
-**Step 4.6: 实现 `reset-password/page.tsx`**
-- 新建 `app/(auth)/reset-password/page.tsx`
-  - URL 参数：`?token=xxx&email=xxx`
-  - 字段：New Password + Confirm Password
-  - 成功 → "Password reset successfully" + 自动跳转 `/login`
-  - 失败 → "Invalid or expired link"
+  - Step 1: Email 输入 → 调用 `/auth/otp/send { purpose: "forgot_password" }`
+    - 提交后始终进入 Step 2（防枚举）
+  - Step 2: OTP 输入 → 调用 `/auth/otp/verify { purpose: "forgot_password" }` → 获取 otp_verified_token
+    - 60 秒倒计时重发功能
+  - Step 3: New Password + Confirm Password → 调用 `/auth/forgot-password/reset`
+    - 成功 → "Password reset successfully" + 自动跳转 `/login`
 - ✅ 验证：完整密码重置流程
 
-**Step 4.7: 完整验证 + 提交**
-- 手动测试完整流程：注册 → 收验证邮件 → 点击验证 → 登录 → 登出
-- 手动测试密码重置：忘记密码 → 收重置邮件 → 重置 → 登录
+**Step 4.6: 完整验证 + 提交**
+- 手动测试完整流程：注册（邮箱 → OTP → 密码）→ 登录 → 登出
+- 手动测试密码重置：忘记密码（邮箱 → OTP → 新密码）→ 登录
+- OTP 自动填充测试（iOS/Android）
 - `npm run build` 通过
 - `git add + commit + push`
 
@@ -2116,7 +2231,7 @@ Git 分支: feat/auth-phase5-frontend-migration
 
 **Step 5.9: 完整验证 + 提交**
 - `npm run build` 零错误
-- 手动测试全流程（注册 → 验证 → 登录 → 各页面 → 登出）
+- 手动测试全流程（注册三步 → 自动登录 → 各页面 → 登出 → 忘记密码 OTP 流程）
 - `git add + commit + push`
 
 ---
@@ -2132,14 +2247,14 @@ Git 分支: feat/auth-phase6-tests
 **Step 6.1: 后端单元测试**
 - `tests/domains/auth/test_password_service.py`：hash/verify/strength 校验
 - `tests/domains/auth/test_token_service.py`：签发/验证/过期/轮换/密钥校验
-- `tests/domains/auth/test_auth_service.py`：注册/登录/刷新/登出/锁定/并发会话
-- `tests/domains/auth/test_email_service.py`：邮件发送（mock Resend）
+- `tests/domains/auth/test_otp_service.py`：OTP 生成/验证/过期/尝试次数限制/临时 Token 签发
+- `tests/domains/auth/test_auth_service.py`：三步注册/登录/刷新/登出/锁定/并发会话/修改密码/忘记密码/删除账户
 - ✅ 验证：`pytest tests/domains/auth/` 全部通过
 
 **Step 6.2: 后端集成测试**
-- `tests/integration/auth/test_auth_api.py`：注册 → 登录 → 刷新 → 登出 API 调用
-- `tests/integration/auth/test_email_verification.py`：验证邮件完整流程
-- `tests/integration/auth/test_password_reset.py`：密码重置完整流程
+- `tests/integration/auth/test_auth_api.py`：三步注册 → 登录 → 刷新 → 登出 API 调用
+- `tests/integration/auth/test_otp_flow.py`：OTP 发送 → 验证 → 操作 完整流程
+- `tests/integration/auth/test_password_reset.py`：忘记密码 OTP 流程
 - `tests/integration/auth/test_session_management.py`：多设备管理、踢出
 - JWT 测试策略：用 `AUTH_JWT_SECRET` 通过 `TokenService` 签发 test token
 - ✅ 验证：`pytest tests/integration/auth/` 全部通过
@@ -2213,16 +2328,17 @@ Git 分支: feat/auth-phase7-cleanup（或直接在 develop 上）
 
 **Step 7.7: 端到端验证**
 - 执行 Section 十的完整 E2E 流程：
-  1. 注册新用户 → 收到 Resend 验证邮件
-  2. 点击验证链接 → 邮箱标记已验证
-  3. 登录 → 获取 Access Token + Refresh Token (httpOnly cookie)
-  4. 访问 /dashboard → 正常加载，API 调用带 Bearer token
-  5. 15 分钟后 → Access Token 过期 → 自动 refresh → 无感刷新
-  6. 访问 /create → 编辑器正常加载
-  7. 多标签页 → 一个标签登出 → 其他标签同步登出
-  8. 忘记密码 → 收到重置邮件 → 重置成功 → 所有设备登出
-  9. 查看设备管理 → 列出所有活跃 session → 踢出指定设备
-  10. `npm run build` → 零错误零警告
+  1. 注册新用户 → 输入邮箱 → 收到 OTP 邮件
+  2. 输入 OTP → 验证通过 → 设密码+昵称 → 完成注册 → 自动登录
+  3. 访问 /dashboard → 正常加载，API 调用带 Bearer token
+  4. 15 分钟后 → Access Token 过期 → 自动 refresh → 无感刷新
+  5. 访问 /create → 编辑器正常加载
+  6. 多标签页 → 一个标签登出 → 其他标签同步登出
+  7. 忘记密码 → 输入邮箱 → 收到 OTP → 验证 → 设新密码 → 所有设备登出
+  8. 修改密码 → 发送 OTP → 验证 → 输入旧密码+新密码 → 成功
+  9. 删除账户 → 发送 OTP → 验证 → 确认删除 → 账户注销
+  10. 查看设备管理 → 列出所有活跃 session → 踢出指定设备
+  11. `npm run build` → 零错误零警告
 - 后端 `pytest` 全部通过
 - ✅ 验证：所有检查通过
 
@@ -2263,28 +2379,29 @@ RESEND_FROM_EMAIL            # 发件人地址（已有 SUPPORT_EMAIL_FROM，复
 
 | Phase | 验证方式 |
 |-------|---------|
-| Phase 0 (Schema) | 在 Supabase 执行 SQL，确认 3 张 auth 表创建成功，profiles.id 为 UUID |
-| Phase 1 (后端 Auth) | `pytest tests/domains/auth/` 全部通过，手动测试注册/登录/刷新 API |
+| Phase 0 (Schema) | 在 Supabase 执行 SQL，确认 3 张 auth 表创建成功（含 OTP 字段），profiles.id 为 UUID |
+| Phase 1 (后端 Auth) | `pytest tests/domains/auth/` 全部通过，手动测试 OTP 注册三步流程 + 登录/刷新 API |
 | Phase 2 (后端集成) | 后端启动无报错，`get_current_user()` 能正确验证自签 JWT |
 | Phase 3 (前端抽象层) | AuthProvider 能初始化，useAuth() 能获取 token，API 调用成功 |
-| Phase 4 (认证页面) | 手动测试：注册→收到验证邮件→登录→跳转 dashboard→登出→跳转 login |
+| Phase 4 (认证页面) | 手动测试：注册（邮箱→OTP→密码）→ 自动登录→dashboard→登出→ 忘记密码（邮箱→OTP→新密码） |
 | Phase 5 (前端迁移) | `npm run build` 零错误，所有页面功能正常 |
-| Phase 6 (测试) | `pytest` 后端全部通过，前端 jest 全部通过。测试 JWT 策略：移除 `TEST_JWT_PUBLIC_KEY` 机制，测试中直接用 `AUTH_JWT_SECRET` 通过 `TokenService` 签发 HS256 test token；或调用 `/auth/register` + `/auth/login` 获取真实 token |
+| Phase 6 (测试) | `pytest` 后端全部通过，前端 jest 全部通过。测试 JWT 策略：直接用 `AUTH_JWT_SECRET` 通过 `TokenService` 签发 HS256 test token |
 | Phase 7 (清理) | `grep -r "clerk" --include="*.ts" --include="*.tsx" --include="*.py"` 返回 0 结果（文档除外） |
 
 ### 端到端验证流程
 
 ```
-1. 注册新用户 → 收到 Resend 验证邮件
-2. 点击验证链接 → 邮箱标记已验证
-3. 登录 → 获取 Access Token + Refresh Token (httpOnly cookie)
-4. 访问 /dashboard → 正常加载，API 调用带 Bearer token
-5. 15 分钟后 → Access Token 过期 → 自动 refresh → 无感刷新
-6. 访问 /create → 编辑器正常加载
-7. 多标签页 → 一个标签登出 → 其他标签同步登出
-8. 忘记密码 → 收到重置邮件 → 重置成功 → 所有设备登出
-9. 查看设备管理 → 列出所有活跃 session → 踢出指定设备
-10. npm run build → 零错误零警告
+1. 注册新用户 → 输入邮箱 → 收到 OTP 邮件（6 位验证码）
+2. 输入 OTP → 验证通过 → 设密码+昵称 → 完成注册 → 自动登录
+3. 访问 /dashboard → 正常加载，API 调用带 Bearer token
+4. 15 分钟后 → Access Token 过期 → 自动 refresh → 无感刷新
+5. 访问 /create → 编辑器正常加载
+6. 多标签页 → 一个标签登出 → 其他标签同步登出
+7. 忘记密码 → 输入邮箱 → 收到 OTP → 验证 → 设新密码 → 所有设备登出
+8. 修改密码 → 发送 OTP → 验证 → 输入旧密码+新密码 → 成功
+9. 删除账户 → 发送 OTP → 验证 → 确认删除 → 账户注销
+10. 查看设备管理 → 列出所有活跃 session → 踢出指定设备
+11. npm run build → 零错误零警告
 ```
 
 ---
