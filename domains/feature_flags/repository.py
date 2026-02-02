@@ -12,6 +12,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
+from core.utils.validation import sanitize_postgrest_query
 from .entity import FeatureFlagEntity
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,11 @@ class FeatureFlagRepository:
                 query = query.contains("tags", tags)
 
             if search:
-                query = query.or_(f"key.ilike.%{search}%,name.ilike.%{search}%")
+                # Defense-in-depth: sanitize search for PostgREST .or_() context
+                safe_search = sanitize_postgrest_query(search)
+                for ch in (",", ".", "(", ")"):
+                    safe_search = safe_search.replace(ch, "")
+                query = query.or_(f"key.ilike.%{safe_search}%,name.ilike.%{safe_search}%")
 
             # 分页
             result = query.order("created_at", desc=True) \

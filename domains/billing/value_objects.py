@@ -17,20 +17,26 @@ class CreditBucket(str, Enum):
 
 
 class TransactionType(str, Enum):
-    """Credit transaction types (matches database CHECK constraint)."""
+    """Credit transaction types (matches database CHECK constraint — 16 values)."""
     # Additions (positive amount)
     SUBSCRIPTION_GRANT = "subscription_grant"  # Monthly subscription grant
+    SUB_GRANT = "sub_grant"                    # Legacy alias for subscription_grant
     PURCHASE = "purchase"                      # Credit top-up purchase
-    SIGNUP_BONUS = "signup_bonus"             # Welcome bonus (50 permanent)
-    REFERRAL_BONUS = "referral_bonus"         # Referral reward
-    CAMPAIGN_REWARD = "campaign_reward"       # Campaign/promotion reward
-    REFUND = "refund"                         # Payment refund
-    ADMIN_ADJUSTMENT = "admin_adjustment"     # Admin manual grant/adjustment
+    TOPUP_PURCHASE = "topup_purchase"          # Credit top-up via Stripe checkout
+    SIGNUP_BONUS = "signup_bonus"              # Welcome bonus (permanent)
+    REFERRAL_BONUS = "referral_bonus"          # Referral reward
+    CAMPAIGN_REWARD = "campaign_reward"        # Campaign/promotion reward
+    REFUND = "refund"                          # Payment refund
+    REFUND_REVERSAL = "refund_reversal"        # Refund reversal (clawback)
+    ADMIN_ADJUSTMENT = "admin_adjustment"      # Admin manual grant/adjustment
 
     # Deductions (negative amount)
-    AI_GENERATION = "ai_generation"           # AI image generation
-    SMART_SCAN = "smart_scan"                 # Smart scan / OCR
-    EXPIRATION = "expiration"                 # Credit expiration
+    AI_GENERATION = "ai_generation"            # AI image generation
+    SMART_SCAN = "smart_scan"                  # Smart scan / OCR
+    EXPIRATION = "expiration"                  # Credit expiration
+    MONTHLY_RESET = "monthly_reset"            # Monthly credits reset to new allocation
+    MONTHLY_CREDITS_CLEARED = "monthly_credits_cleared"  # Monthly credits zeroed on downgrade/cancel
+    MARKETPLACE_PURCHASE = "marketplace_purchase"  # Marketplace listing purchase
 
 
 @dataclass(frozen=True)

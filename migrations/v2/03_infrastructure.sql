@@ -1212,20 +1212,7 @@ $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
 
--- 函数 10
-CREATE OR REPLACE FUNCTION is_admin()
-RETURNS BOOLEAN AS $$
-BEGIN
-    -- Check if current user is admin
-    -- This reads from app.current_user_role set by your FastAPI backend
-    RETURN current_setting('app.current_user_role', true) = 'admin';
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN FALSE;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = 'public';
-
+-- (函数 10 is_admin() 已删除 — 依赖未设置的会话变量，永远返回 FALSE，无 RLS 引用)
 
 -- 函数 11
 CREATE OR REPLACE FUNCTION generate_ticket_number()
@@ -1649,7 +1636,13 @@ RETURNS TABLE(
 ) AS $$
 DECLARE
     v_status TEXT;
+    v_allowed_tables CONSTANT TEXT[] := ARRAY['stripe_webhook_events'];
 BEGIN
+    -- Table name whitelist validation (prevent SQL injection via dynamic table name)
+    IF p_table_name != ALL(v_allowed_tables) THEN
+        RAISE EXCEPTION 'Invalid table name: %. Allowed: %', p_table_name, v_allowed_tables;
+    END IF;
+
     EXECUTE format('SELECT processing_status FROM %I WHERE event_id = $1', p_table_name)
     INTO v_status
     USING p_event_id;
@@ -1679,7 +1672,14 @@ CREATE OR REPLACE FUNCTION p_complete_webhook_processing(
     p_error TEXT DEFAULT NULL
 )
 RETURNS BOOLEAN AS $$
+DECLARE
+    v_allowed_tables CONSTANT TEXT[] := ARRAY['stripe_webhook_events'];
 BEGIN
+    -- Table name whitelist validation (prevent SQL injection via dynamic table name)
+    IF p_table_name != ALL(v_allowed_tables) THEN
+        RAISE EXCEPTION 'Invalid table name: %. Allowed: %', p_table_name, v_allowed_tables;
+    END IF;
+
     EXECUTE format('
         UPDATE %I
         SET processing_status = $1,
@@ -2106,7 +2106,10 @@ COMMENT ON FUNCTION cleanup_old_error_logs IS '清理旧的错误日志（保留
 
 
 -- 清理活动日志函数
-CREATE OR REPLACE FUNCTION cleanup_old_activity_logs(p_retention_days INTEGER DEFAULT 180)
+CREATE OR REPLACE FUNCTION cleanup_old_activity_logs(
+    p_retention_days INTEGER DEFAULT 180,
+    p_preserve_actions TEXT[] DEFAULT ARRAY['user_signup', 'subscription_purchase']
+)
 RETURNS INTEGER
 LANGUAGE plpgsql
 AS $$
@@ -2115,10 +2118,10 @@ DECLARE
 BEGIN
     DELETE FROM activity_logs
     WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days
-      AND action NOT IN ('user_signup', 'subscription_purchase');  -- 保留关键事件
-    
+      AND action != ALL(p_preserve_actions);  -- Preserve critical events
+
     GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
-    
+
     RETURN v_deleted_count;
 END;
 $$;

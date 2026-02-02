@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from core.database import DatabaseClient
 from core.database.retry import retry_on_network_error
+from core.utils.validation import sanitize_postgrest_query
 
 
 class SupabaseSystemResourcesAdminRepository:
@@ -84,8 +85,12 @@ class SupabaseSystemResourcesAdminRepository:
         if is_active is not None:
             query = query.eq("is_active", is_active)
         if search:
-            # Search query is pre-sanitized by API layer
-            query = query.or_(f"name.ilike.%{search}%,description.ilike.%{search}%")
+            # Defense-in-depth: sanitize at repository layer even though API layer also sanitizes
+            safe_search = sanitize_postgrest_query(search)
+            # Strip PostgREST structural chars that could break .or_() filter syntax
+            for ch in (",", ".", "(", ")"):
+                safe_search = safe_search.replace(ch, "")
+            query = query.or_(f"name.ilike.%{safe_search}%,description.ilike.%{safe_search}%")
 
         query = query.order("sort_order", desc=False).order("created_at", desc=True)
         query = query.range(offset, offset + limit - 1)

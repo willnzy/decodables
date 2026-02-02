@@ -271,7 +271,8 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
     is_revoked BOOLEAN NOT NULL DEFAULT FALSE,
     revoked_at TIMESTAMPTZ,
     revoke_reason TEXT CHECK (revoke_reason IS NULL OR revoke_reason IN (
-        'logout', 'rotation', 'security', 'admin', 'account_deleted'
+        'logout', 'rotation', 'security', 'admin', 'account_deleted',
+        'session_limit_exceeded'
     )),
 
     -- 生命周期
@@ -1873,7 +1874,10 @@ SET search_path = 'public';
 
 
 -- Soft delete category descendants
-CREATE OR REPLACE FUNCTION soft_delete_category_descendants(parent_path_input LTREE)
+CREATE OR REPLACE FUNCTION soft_delete_category_descendants(
+    parent_path_input LTREE,
+    p_recovery_days INTEGER DEFAULT 30
+)
 RETURNS INTEGER AS $$
 DECLARE
     deleted_count INTEGER;
@@ -1881,7 +1885,7 @@ BEGIN
     UPDATE asset_categories
     SET
         deleted_at = CURRENT_TIMESTAMP,
-        recovery_expires_at = CURRENT_TIMESTAMP + INTERVAL '30 days',
+        recovery_expires_at = CURRENT_TIMESTAMP + (p_recovery_days || ' days')::INTERVAL,
         updated_at = CURRENT_TIMESTAMP
     WHERE path <@ parent_path_input AND path != parent_path_input AND deleted_at IS NULL;
 
@@ -2599,7 +2603,7 @@ CREATE TABLE IF NOT EXISTS workspace_invitations (
     -- 状态: pending / accepted / declined / expired
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired')),
 
-    -- 过期时间 (7 天)
+    -- 过期时间 (默认 7 天; 应用层创建时可覆盖此默认值，建议从 system_configs 读取)
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
 
     -- 接受者 (接受邀请后填入)
@@ -2658,6 +2662,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
     END IF;
 
+    -- Paid tiers only (t2=Starter, t3=Pro; see system_configs for display names)
     IF p_plan NOT IN ('t2', 't3') THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid plan: ' || COALESCE(p_plan, 'NULL'));
     END IF;
@@ -2695,7 +2700,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'User not found');
     END IF;
 
-    -- 状态前置检查: 若用户已是付费 tier (delayed event)，跳过
+    -- 状态前置检查: 若用户已是付费 tier (t2=Starter, t3=Pro; delayed event)，跳过
     IF v_current_tier IN ('t2', 't3') AND v_current_status = 'active' THEN
         RETURN jsonb_build_object(
             'success', true,
