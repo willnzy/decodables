@@ -63,8 +63,7 @@ def token_service_single_key() -> TokenService:
 def mock_email_service() -> EmailService:
     """Mock EmailService to avoid actual email sending."""
     service = MagicMock(spec=EmailService)
-    service.send_verification_email = AsyncMock(return_value=True)
-    service.send_password_reset_email = AsyncMock(return_value=True)
+    service.send_otp_email = AsyncMock(return_value=True)
     return service
 
 
@@ -76,18 +75,25 @@ def mock_email_service() -> EmailService:
 def mock_auth_user_repo():
     """Mock IAuthUserRepository."""
     repo = AsyncMock()
+    # Query methods
     repo.get_by_id = AsyncMock(return_value=None)
     repo.get_by_email = AsyncMock(return_value=None)
-    repo.create = AsyncMock()
+    repo.get_restorable_by_email = AsyncMock(return_value=None)
+    # Registration (3-step OTP)
+    repo.create_pending = AsyncMock()
+    repo.complete_registration = AsyncMock()
+    # OTP methods
+    repo.update_otp = AsyncMock()
+    repo.update_otp_attempts = AsyncMock()
+    repo.clear_otp = AsyncMock()
+    # Password & account
     repo.update_password = AsyncMock()
     repo.update_email_verified = AsyncMock()
     repo.update_login_attempt = AsyncMock()
-    repo.set_verification_token = AsyncMock()
-    repo.set_password_reset_token = AsyncMock()
-    repo.clear_verification_token = AsyncMock()
-    repo.clear_password_reset_token = AsyncMock()
     repo.record_login = AsyncMock()
     repo.delete = AsyncMock()
+    # Account restore
+    repo.restore_account = AsyncMock()
     return repo
 
 
@@ -132,6 +138,19 @@ def auth_service(
 # ---------------------------------------------------------------------------
 # Domain Entity Fixtures
 # ---------------------------------------------------------------------------
+
+@pytest.fixture
+def pending_auth_user(token_service) -> AuthUser:
+    """A pending AuthUser (registration step 1 — no password, has OTP)."""
+    otp_code, otp_hash = token_service.generate_otp()
+    return AuthUser.create_pending(
+        email=TEST_EMAIL,
+        otp_code_hash=otp_hash,
+        otp_purpose="register",
+        otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        user_id=TEST_USER_ID,
+    )
+
 
 @pytest.fixture
 def test_auth_user() -> AuthUser:

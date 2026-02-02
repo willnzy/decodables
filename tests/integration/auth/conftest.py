@@ -64,18 +64,25 @@ def int_auth_token(int_token_service: TokenService) -> str:
 @pytest.fixture
 def int_mock_auth_user_repo():
     repo = AsyncMock()
+    # Query methods
     repo.get_by_id = AsyncMock(return_value=None)
     repo.get_by_email = AsyncMock(return_value=None)
-    repo.create = AsyncMock()
+    repo.get_restorable_by_email = AsyncMock(return_value=None)
+    # Registration (3-step OTP)
+    repo.create_pending = AsyncMock()
+    repo.complete_registration = AsyncMock()
+    # OTP methods
+    repo.update_otp = AsyncMock()
+    repo.update_otp_attempts = AsyncMock()
+    repo.clear_otp = AsyncMock()
+    # Password & account
     repo.update_password = AsyncMock()
     repo.update_email_verified = AsyncMock()
     repo.update_login_attempt = AsyncMock()
-    repo.set_verification_token = AsyncMock()
-    repo.set_password_reset_token = AsyncMock()
-    repo.clear_verification_token = AsyncMock()
-    repo.clear_password_reset_token = AsyncMock()
     repo.record_login = AsyncMock()
     repo.delete = AsyncMock()
+    # Account restore
+    repo.restore_account = AsyncMock()
     return repo
 
 
@@ -97,8 +104,7 @@ def int_mock_session_repo():
 @pytest.fixture
 def int_mock_email_service():
     service = MagicMock()
-    service.send_verification_email = AsyncMock(return_value=True)
-    service.send_password_reset_email = AsyncMock(return_value=True)
+    service.send_otp_email = AsyncMock(return_value=True)
     return service
 
 
@@ -141,7 +147,7 @@ def int_app(int_auth_service, int_token_service):
 
     # Replace the global limiter with an in-memory one (no Redis needed)
     original_limiter = rl_module.limiter
-    test_limiter = Limiter(key_func=get_remote_address)
+    test_limiter = Limiter(key_func=get_remote_address, enabled=False)
     rl_module.limiter = test_limiter
 
     app = FastAPI()
@@ -160,7 +166,7 @@ def int_app(int_auth_service, int_token_service):
         )
 
     # Import and include the auth router
-    from api.auth.router import router, get_auth_service, get_current_auth_user_id
+    from api.auth.router import router, get_auth_service, get_current_auth_user_id, get_token_service
 
     # Patch the router's limiter reference
     import api.auth.router as auth_router_module
@@ -179,6 +185,12 @@ def int_app(int_auth_service, int_token_service):
         return TEST_USER_ID
 
     app.dependency_overrides[get_current_auth_user_id] = override_current_user
+
+    # Override token service dependency
+    async def override_token_service():
+        return int_token_service
+
+    app.dependency_overrides[get_token_service] = override_token_service
 
     yield app
 

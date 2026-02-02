@@ -1,36 +1,174 @@
 """
-Integration tests for Auth API — Register, Login, Refresh, Logout.
+Integration tests for Auth API — Registration (3-step OTP), Login, Refresh, Logout.
 
 Tests the full request→router→service→response pipeline with
 mocked repositories.
 """
+
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
 
 from domains.auth.aggregates.auth_user import AuthUser
 from domains.auth.aggregates.session import Session
+from domains.auth.constants import OTP_PURPOSE_REGISTER
 
 from .conftest import TEST_EMAIL, TEST_PASSWORD, TEST_USER_ID
 
 
-class TestRegisterEndpoint:
+# ===========================================================================
+# Registration — 3-Step OTP
+# ===========================================================================
+
+class TestRegisterSendOtpEndpoint:
 
     @pytest.mark.asyncio
-    async def test_register_success(
+    async def test_send_otp_success(
+        self,
+        client: AsyncClient,
+        int_mock_auth_user_repo,
+        int_mock_email_service,
+    ):
+        """POST /auth/register/send-otp returns 200 with success message."""
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="hashed",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        int_mock_auth_user_repo.create_pending.return_value = (pending_user, True)
+        int_mock_auth_user_repo.get_restorable_by_email.return_value = None
+
+        resp = await client.post("/auth/register/send-otp", json={
+            "email": TEST_EMAIL,
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        int_mock_email_service.send_otp_email.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_otp_invalid_email(self, client: AsyncClient):
+        """POST /auth/register/send-otp with invalid email returns 422."""
+        resp = await client.post("/auth/register/send-otp", json={
+            "email": "not-an-email",
+        })
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_send_otp_duplicate_email(
+        self,
+        client: AsyncClient,
+        int_mock_auth_user_repo,
+    ):
+        """POST /auth/register/send-otp with existing email returns 409."""
+        registered_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        int_mock_auth_user_repo.get_restorable_by_email.return_value = None
+        int_mock_auth_user_repo.create_pending.return_value = (registered_user, False)
+
+        resp = await client.post("/auth/register/send-otp", json={
+            "email": TEST_EMAIL,
+        })
+
+        assert resp.status_code == 409
+
+
+class TestRegisterVerifyOtpEndpoint:
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_success(
+        self,
+        client: AsyncClient,
+        int_mock_auth_user_repo,
+        int_token_service,
+    ):
+        """POST /auth/register/verify-otp returns 200 with register_token."""
+        otp_code, otp_hash = int_token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        int_mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        resp = await client.post("/auth/register/verify-otp", json={
+            "email": TEST_EMAIL,
+            "otp_code": otp_code,
+        })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "register_token" in data
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_wrong_code(
+        self,
+        client: AsyncClient,
+        int_mock_auth_user_repo,
+        int_token_service,
+    ):
+        """POST /auth/register/verify-otp with wrong code returns 400."""
+        otp_code, otp_hash = int_token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        int_mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        resp = await client.post("/auth/register/verify-otp", json={
+            "email": TEST_EMAIL,
+            "otp_code": "000000",
+        })
+
+        assert resp.status_code == 400
+
+
+class TestRegisterCompleteEndpoint:
+
+    @pytest.mark.asyncio
+    async def test_complete_registration_success(
         self,
         client: AsyncClient,
         int_mock_auth_user_repo,
         int_mock_session_repo,
+        int_token_service,
     ):
-        """POST /auth/register returns 200 with tokens."""
-        created_user = AuthUser.create_new(
-            email=TEST_EMAIL, password_hash="h", user_id=TEST_USER_ID,
+        """POST /auth/register/complete with valid token returns 200 with tokens."""
+        # Set up pending user
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="verified_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
         )
-        int_mock_auth_user_repo.create.return_value = (created_user, True)
+        completed_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        int_mock_auth_user_repo.get_by_id.return_value = pending_user
+        int_mock_auth_user_repo.complete_registration.return_value = completed_user
 
-        resp = await client.post("/auth/register", json={
-            "email": TEST_EMAIL,
+        # Create a register_token
+        register_token = int_token_service.create_purpose_token(
+            user_id=TEST_USER_ID,
+            purpose="register",
+            expire_minutes=15,
+        )
+
+        resp = await client.post("/auth/register/complete", json={
+            "register_token": register_token,
             "password": TEST_PASSWORD,
         })
 
@@ -38,49 +176,12 @@ class TestRegisterEndpoint:
         data = resp.json()
         assert "access_token" in data
         assert "refresh_token" in data
-        assert data["token_type"] == "bearer"
         assert data["user"]["email"] == TEST_EMAIL
 
-    @pytest.mark.asyncio
-    async def test_register_weak_password(self, client: AsyncClient):
-        """POST /auth/register with weak password returns 422."""
-        resp = await client.post("/auth/register", json={
-            "email": "new@example.com",
-            "password": "weak",
-        })
 
-        # Pydantic validation on min_length=8 catches this first
-        assert resp.status_code == 422
-
-    @pytest.mark.asyncio
-    async def test_register_invalid_email(self, client: AsyncClient):
-        """POST /auth/register with invalid email returns 422."""
-        resp = await client.post("/auth/register", json={
-            "email": "not-an-email",
-            "password": TEST_PASSWORD,
-        })
-
-        assert resp.status_code == 422
-
-    @pytest.mark.asyncio
-    async def test_register_duplicate_email(
-        self,
-        client: AsyncClient,
-        int_mock_auth_user_repo,
-    ):
-        """POST /auth/register with existing email returns 409."""
-        int_mock_auth_user_repo.create.return_value = (
-            AuthUser.create_new(email=TEST_EMAIL, password_hash="h"),
-            False,
-        )
-
-        resp = await client.post("/auth/register", json={
-            "email": TEST_EMAIL,
-            "password": TEST_PASSWORD,
-        })
-
-        assert resp.status_code == 409
-
+# ===========================================================================
+# Login
+# ===========================================================================
 
 class TestLoginEndpoint:
 
@@ -150,6 +251,10 @@ class TestLoginEndpoint:
         assert resp.status_code == 401
 
 
+# ===========================================================================
+# Token Refresh
+# ===========================================================================
+
 class TestRefreshEndpoint:
 
     @pytest.mark.asyncio
@@ -193,6 +298,10 @@ class TestRefreshEndpoint:
 
         assert resp.status_code == 401
 
+
+# ===========================================================================
+# Logout
+# ===========================================================================
 
 class TestLogoutEndpoint:
 

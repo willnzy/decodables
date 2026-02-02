@@ -2,13 +2,13 @@
 Tests for EmailService — Resend email delivery (mock Resend API).
 
 Covers:
-- Verification email sending
-- Password reset email sending
+- OTP email sending for all purposes (register, forgot_password, change_password, delete_account)
 - Email failure handling
-- URL construction
-- Template rendering
+- Template rendering and subject lines
+- Configuration (from_email, frontend_url)
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -32,114 +32,152 @@ def email_service() -> EmailService:
 
 
 # ---------------------------------------------------------------------------
-# Verification Email
+# OTP Email — Registration
 # ---------------------------------------------------------------------------
 
-class TestSendVerificationEmail:
+class TestSendOtpEmailRegister:
 
     @pytest.mark.asyncio
-    async def test_sends_verification_email(self, email_service: EmailService):
-        """Verification email is sent via Resend with correct parameters."""
+    async def test_sends_register_otp_email(self, email_service: EmailService):
+        """Registration OTP email is sent via Resend with correct parameters."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.return_value = {"id": "email_123"}
 
-            result = await email_service.send_verification_email(
+            result = await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="abc123token",
+                otp_code="123456",
+                purpose="register",
             )
 
             assert result is True
             mock_send.assert_called_once()
 
-            # Verify the call params
             call_params = mock_send.call_args[0][0]
             assert call_params["to"] == ["user@example.com"]
-            assert "Verify" in call_params["subject"]
-            assert "abc123token" in call_params["html"]
-            assert "verify-email" in call_params["html"]
+            assert "verification code" in call_params["subject"]
+            assert "123456" in call_params["html"]
 
     @pytest.mark.asyncio
-    async def test_verification_email_url_format(self, email_service: EmailService):
-        """Verification URL should include token and email."""
+    async def test_register_otp_email_contains_otp_code(self, email_service: EmailService):
+        """OTP code should appear in the email body."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.return_value = {"id": "email_123"}
 
-            await email_service.send_verification_email(
+            await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="mytoken",
+                otp_code="987654",
+                purpose="register",
             )
 
             html = mock_send.call_args[0][0]["html"]
-            assert "https://makedecodables.com/auth/verify-email" in html
-            assert "token=mytoken" in html
-            assert "email=user@example.com" in html
+            assert "987654" in html
+            assert "Welcome" in html
 
     @pytest.mark.asyncio
-    async def test_verification_email_failure_returns_false(self, email_service: EmailService):
+    async def test_register_otp_email_failure_returns_false(self, email_service: EmailService):
         """If Resend API fails, should return False."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.side_effect = Exception("API error")
 
-            result = await email_service.send_verification_email(
+            result = await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="token",
+                otp_code="123456",
+                purpose="register",
             )
 
             assert result is False
 
 
 # ---------------------------------------------------------------------------
-# Password Reset Email
+# OTP Email — Password Reset
 # ---------------------------------------------------------------------------
 
-class TestSendPasswordResetEmail:
+class TestSendOtpEmailPasswordReset:
 
     @pytest.mark.asyncio
-    async def test_sends_reset_email(self, email_service: EmailService):
-        """Password reset email is sent via Resend."""
+    async def test_sends_reset_otp_email(self, email_service: EmailService):
+        """Password reset OTP email is sent via Resend."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.return_value = {"id": "email_456"}
 
-            result = await email_service.send_password_reset_email(
+            result = await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="resettoken",
+                otp_code="654321",
+                purpose="forgot_password",
             )
 
             assert result is True
             mock_send.assert_called_once()
             call_params = mock_send.call_args[0][0]
-            assert "Reset" in call_params["subject"]
-            assert "resettoken" in call_params["html"]
-            assert "reset-password" in call_params["html"]
+            assert "reset" in call_params["subject"].lower()
+            assert "654321" in call_params["html"]
 
     @pytest.mark.asyncio
-    async def test_reset_email_url_format(self, email_service: EmailService):
-        """Reset URL should include token and email."""
+    async def test_reset_otp_email_body_content(self, email_service: EmailService):
+        """Reset email body mentions password reset."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.return_value = {"id": "email_456"}
 
-            await email_service.send_password_reset_email(
+            await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="rsttoken",
+                otp_code="111222",
+                purpose="forgot_password",
             )
 
             html = mock_send.call_args[0][0]["html"]
-            assert "https://makedecodables.com/auth/reset-password" in html
-            assert "token=rsttoken" in html
-            assert "email=user@example.com" in html
+            assert "111222" in html
+            assert "password" in html.lower()
 
     @pytest.mark.asyncio
-    async def test_reset_email_failure_returns_false(self, email_service: EmailService):
+    async def test_reset_otp_failure_returns_false(self, email_service: EmailService):
         """API failure returns False."""
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.side_effect = Exception("API error")
 
-            result = await email_service.send_password_reset_email(
+            result = await email_service.send_otp_email(
                 to_email="user@example.com",
-                token_plaintext="token",
+                otp_code="123456",
+                purpose="forgot_password",
             )
 
             assert result is False
+
+
+# ---------------------------------------------------------------------------
+# OTP Email — Other Purposes
+# ---------------------------------------------------------------------------
+
+class TestSendOtpEmailOtherPurposes:
+
+    @pytest.mark.asyncio
+    async def test_change_password_otp_subject(self, email_service: EmailService):
+        """Change password OTP has correct subject."""
+        with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
+            mock_send.return_value = {"id": "e"}
+
+            await email_service.send_otp_email(
+                to_email="user@example.com",
+                otp_code="333444",
+                purpose="change_password",
+            )
+
+            call_params = mock_send.call_args[0][0]
+            assert "change" in call_params["subject"].lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_account_otp_subject(self, email_service: EmailService):
+        """Delete account OTP has correct subject."""
+        with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
+            mock_send.return_value = {"id": "e"}
+
+            await email_service.send_otp_email(
+                to_email="user@example.com",
+                otp_code="555666",
+                purpose="delete_account",
+            )
+
+            call_params = mock_send.call_args[0][0]
+            assert "deletion" in call_params["subject"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +195,8 @@ class TestEmailServiceConfiguration:
         )
         assert service._frontend_url == "https://example.com"
 
-    def test_from_email_in_sender(self):
+    @pytest.mark.asyncio
+    async def test_from_email_in_sender(self):
         """from_email appears in the 'from' field."""
         service = EmailService(
             resend_api_key="key",
@@ -168,10 +207,7 @@ class TestEmailServiceConfiguration:
 
         with patch("domains.auth.email_service.resend.Emails.send") as mock_send:
             mock_send.return_value = {"id": "e"}
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                service.send_verification_email("x@x.com", "t")
-            )
+            await service.send_otp_email("x@x.com", "123456", "register")
             call_params = mock_send.call_args[0][0]
             assert "hello@test.com" in call_params["from"]
             assert "TestApp" in call_params["from"]

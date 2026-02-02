@@ -2,14 +2,15 @@
 Tests for AuthService — Core authentication orchestration.
 
 Covers:
-- Registration (success, duplicate email, disposable email, weak password)
+- Registration 3-step OTP (send OTP, verify OTP, complete registration)
 - Login (success, wrong credentials, lockout, disabled account)
 - Token refresh (rotation, reuse detection, grace period, expired)
 - Logout (single, all devices)
-- Email verification
-- Password reset and change
+- Password reset via OTP (send, verify, reset)
+- Password change
+- Authenticated OTP (change-password, delete-account)
 - Session management (list, revoke, limit enforcement)
-- Account deletion
+- Account deletion (after OTP verification, no password)
 """
 
 import hashlib
@@ -21,13 +22,25 @@ import pytest
 
 from domains.auth.aggregates.auth_user import AuthUser
 from domains.auth.aggregates.session import Session
+from domains.auth.constants import (
+    OTP_EXPIRE_MINUTES,
+    OTP_MAX_ATTEMPTS,
+    OTP_PURPOSE_CHANGE_PASSWORD,
+    OTP_PURPOSE_DELETE_ACCOUNT,
+    OTP_PURPOSE_FORGOT_PASSWORD,
+    OTP_PURPOSE_REGISTER,
+)
 from domains.auth.exceptions import (
     AccountDisabledException,
     AccountLockedException,
     DisposableEmailException,
     EmailAlreadyExistsException,
     InvalidCredentialsException,
-    InvalidVerificationTokenException,
+    OtpCooldownException,
+    OtpExpiredException,
+    OtpInvalidException,
+    OtpMaxAttemptsException,
+    SessionNotFoundException,
     TokenExpiredException,
     TokenReuseDetectedException,
     TokenRevokedException,
@@ -40,31 +53,280 @@ from .conftest import TEST_EMAIL, TEST_PASSWORD, TEST_USER_ID
 
 
 # ===========================================================================
-# Registration
+# Registration — 3-Step OTP
 # ===========================================================================
 
-class TestRegister:
+class TestSendRegistrationOtp:
+    """Step 1: Send OTP for registration."""
 
     @pytest.mark.asyncio
-    async def test_register_success(
+    async def test_send_otp_success_new_user(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        mock_email_service,
+        token_service,
+    ):
+        """First-time email creates pending user and sends OTP email."""
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="hashed_otp",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.create_pending.return_value = (pending_user, True)
+        mock_auth_user_repo.get_restorable_by_email.return_value = None
+
+        result = await auth_service.send_registration_otp(email=TEST_EMAIL)
+
+        assert result["email"] == TEST_EMAIL
+        assert "user_id" in result
+        assert result["has_restorable_account"] is False
+        mock_auth_user_repo.create_pending.assert_awaited_once()
+        mock_email_service.send_otp_email.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_otp_duplicate_registered_email_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Registered email raises EmailAlreadyExistsException."""
+        registered_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_restorable_by_email.return_value = None
+        mock_auth_user_repo.create_pending.return_value = (registered_user, False)
+
+        with pytest.raises(EmailAlreadyExistsException):
+            await auth_service.send_registration_otp(email=TEST_EMAIL)
+
+    @pytest.mark.asyncio
+    async def test_send_otp_disposable_email_raises(
+        self,
+        auth_service: AuthService,
+    ):
+        """Disposable email domain is rejected."""
+        with pytest.raises(DisposableEmailException):
+            await auth_service.send_registration_otp(email="test@mailinator.com")
+
+    @pytest.mark.asyncio
+    async def test_send_otp_invalid_email_raises(
+        self,
+        auth_service: AuthService,
+    ):
+        """Invalid email format raises ValueError."""
+        with pytest.raises(ValueError):
+            await auth_service.send_registration_otp(email="not-an-email")
+
+    @pytest.mark.asyncio
+    async def test_send_otp_resend_within_cooldown_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Resending OTP within cooldown window raises OtpCooldownException."""
+        # Pending user with valid OTP set recently (within cooldown)
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="existing_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=9, seconds=50),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_restorable_by_email.return_value = None
+        mock_auth_user_repo.create_pending.return_value = (pending_user, False)
+
+        with pytest.raises(OtpCooldownException):
+            await auth_service.send_registration_otp(email=TEST_EMAIL)
+
+    @pytest.mark.asyncio
+    async def test_send_otp_resend_after_cooldown_succeeds(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        mock_email_service,
+    ):
+        """Resending OTP after cooldown expires updates OTP and sends email."""
+        # Pending user with OTP set 2 minutes ago (past cooldown)
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="old_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=8),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_restorable_by_email.return_value = None
+        mock_auth_user_repo.create_pending.return_value = (pending_user, False)
+        mock_auth_user_repo.get_by_id.return_value = pending_user
+
+        result = await auth_service.send_registration_otp(email=TEST_EMAIL)
+
+        assert result["email"] == TEST_EMAIL
+        mock_auth_user_repo.update_otp.assert_awaited_once()
+        mock_email_service.send_otp_email.assert_awaited_once()
+
+
+class TestVerifyRegistrationOtp:
+    """Step 2: Verify the OTP code."""
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_success(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Correct OTP code returns user_id and otp_verified=True."""
+        otp_code, otp_hash = token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        result = await auth_service.verify_registration_otp(
+            email=TEST_EMAIL, otp_code=otp_code,
+        )
+
+        assert result["otp_verified"] is True
+        assert result["user_id"] == str(TEST_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_wrong_code_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Wrong OTP code raises OtpInvalidException and increments attempts."""
+        otp_code, otp_hash = token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_registration_otp(
+                email=TEST_EMAIL, otp_code="000000",
+            )
+
+        mock_auth_user_repo.update_otp_attempts.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_expired_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Expired OTP raises OtpExpiredException."""
+        otp_code, otp_hash = token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        with pytest.raises(OtpExpiredException):
+            await auth_service.verify_registration_otp(
+                email=TEST_EMAIL, otp_code=otp_code,
+            )
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_max_attempts_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Max attempts reached raises OtpMaxAttemptsException."""
+        otp_code, otp_hash = token_service.generate_otp()
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        pending_user.otp_attempts = OTP_MAX_ATTEMPTS  # Already at max
+        mock_auth_user_repo.get_by_email.return_value = pending_user
+
+        with pytest.raises(OtpMaxAttemptsException):
+            await auth_service.verify_registration_otp(
+                email=TEST_EMAIL, otp_code=otp_code,
+            )
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_unknown_email_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Unknown email raises OtpInvalidException."""
+        mock_auth_user_repo.get_by_email.return_value = None
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_registration_otp(
+                email="unknown@example.com", otp_code="123456",
+            )
+
+    @pytest.mark.asyncio
+    async def test_verify_otp_registered_user_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Already registered user raises OtpInvalidException."""
+        registered_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_email.return_value = registered_user
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_registration_otp(
+                email=TEST_EMAIL, otp_code="123456",
+            )
+
+
+class TestCompleteRegistration:
+    """Step 3: Set password and complete registration."""
+
+    @pytest.mark.asyncio
+    async def test_complete_registration_success(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
         mock_session_repo,
-        mock_email_service,
+        token_service,
     ):
-        """Successful registration returns tokens and user info."""
-        # Mock: create returns (user, True) meaning new user created
-        created_user = AuthUser.create_new(
+        """Valid completion returns tokens and user info."""
+        pending_user = AuthUser.create_pending(
             email=TEST_EMAIL,
-            password_hash="hashed",
+            otp_code_hash="verified_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
             user_id=TEST_USER_ID,
         )
-        mock_auth_user_repo.create.return_value = (created_user, True)
-        mock_session_repo.create.return_value = None
+        completed_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_id.return_value = pending_user
+        mock_auth_user_repo.complete_registration.return_value = completed_user
 
-        result = await auth_service.register(
-            email=TEST_EMAIL,
+        result = await auth_service.complete_registration(
+            user_id=str(TEST_USER_ID),
             password=TEST_PASSWORD,
         )
 
@@ -72,73 +334,92 @@ class TestRegister:
         assert "refresh_token" in result
         assert result["token_type"] == "bearer"
         assert result["user"]["email"] == TEST_EMAIL
-        mock_auth_user_repo.create.assert_awaited_once()
-        mock_email_service.send_verification_email.assert_awaited_once()
+        mock_auth_user_repo.complete_registration.assert_awaited_once()
+        mock_session_repo.create.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_register_duplicate_email_raises(
+    async def test_complete_registration_weak_password_raises(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
     ):
-        """Registering with existing email raises EmailAlreadyExistsException."""
-        mock_auth_user_repo.create.return_value = (
-            AuthUser.create_new(email=TEST_EMAIL, password_hash="h"),
-            False,  # Not created — email exists
+        """Weak password raises WeakPasswordException."""
+        pending_user = AuthUser.create_pending(
+            email=TEST_EMAIL,
+            otp_code_hash="verified_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
         )
+        mock_auth_user_repo.get_by_id.return_value = pending_user
 
-        with pytest.raises(EmailAlreadyExistsException):
-            await auth_service.register(
-                email=TEST_EMAIL,
-                password=TEST_PASSWORD,
-            )
-
-    @pytest.mark.asyncio
-    async def test_register_weak_password_raises(self, auth_service: AuthService):
-        """Weak password should raise before hitting repository."""
         with pytest.raises(WeakPasswordException):
-            await auth_service.register(
-                email="new@example.com",
-                password="weak",  # Too short, missing uppercase, etc.
+            await auth_service.complete_registration(
+                user_id=str(TEST_USER_ID),
+                password="weak",
             )
 
     @pytest.mark.asyncio
-    async def test_register_disposable_email_raises(self, auth_service: AuthService):
-        """Disposable email domain should be rejected."""
-        with pytest.raises(DisposableEmailException):
-            await auth_service.register(
-                email="test@mailinator.com",
+    async def test_complete_registration_already_registered_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Already registered user raises OtpInvalidException."""
+        registered_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_id.return_value = registered_user
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.complete_registration(
+                user_id=str(TEST_USER_ID),
                 password=TEST_PASSWORD,
             )
 
     @pytest.mark.asyncio
-    async def test_register_invalid_email_raises(self, auth_service: AuthService):
-        """Invalid email format should raise ValueError."""
-        with pytest.raises(ValueError):
-            await auth_service.register(
-                email="not-an-email",
+    async def test_complete_registration_unknown_user_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Non-existent user raises OtpInvalidException."""
+        mock_auth_user_repo.get_by_id.return_value = None
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.complete_registration(
+                user_id=str(TEST_USER_ID),
                 password=TEST_PASSWORD,
             )
 
     @pytest.mark.asyncio
-    async def test_register_with_device_info(
+    async def test_complete_registration_with_device_info(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
         mock_session_repo,
         test_device_info: DeviceInfo,
     ):
-        """Registration with device info passes it to session creation."""
-        created_user = AuthUser.create_new(
-            email=TEST_EMAIL, password_hash="h", user_id=TEST_USER_ID,
-        )
-        mock_auth_user_repo.create.return_value = (created_user, True)
-
-        result = await auth_service.register(
+        """Device info is passed through to session creation."""
+        pending_user = AuthUser.create_pending(
             email=TEST_EMAIL,
+            otp_code_hash="verified_hash",
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            user_id=TEST_USER_ID,
+        )
+        completed_user = AuthUser.create_registered(
+            email=TEST_EMAIL, password_hash="hashed", user_id=TEST_USER_ID,
+        )
+        mock_auth_user_repo.get_by_id.return_value = pending_user
+        mock_auth_user_repo.complete_registration.return_value = completed_user
+
+        result = await auth_service.complete_registration(
+            user_id=str(TEST_USER_ID),
             password=TEST_PASSWORD,
             device_info=test_device_info,
         )
+
         assert "access_token" in result
         mock_session_repo.create.assert_awaited_once()
 
@@ -251,6 +532,22 @@ class TestLogin:
             )
 
     @pytest.mark.asyncio
+    async def test_login_pending_user_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        pending_auth_user: AuthUser,
+    ):
+        """Pending user (no password set) cannot login."""
+        mock_auth_user_repo.get_by_email.return_value = pending_auth_user
+
+        with pytest.raises(InvalidCredentialsException):
+            await auth_service.login(
+                email=TEST_EMAIL,
+                password=TEST_PASSWORD,
+            )
+
+    @pytest.mark.asyncio
     async def test_login_enforces_session_limit(
         self,
         auth_service: AuthService,
@@ -290,7 +587,6 @@ class TestRefreshToken:
         test_auth_user: AuthUser,
     ):
         """Refresh with rotation revokes old session and creates new one."""
-        token_hash = test_session.refresh_token_hash
         mock_session_repo.get_by_token_hash.return_value = test_session
         mock_auth_user_repo.get_by_id.return_value = test_auth_user
 
@@ -425,142 +721,140 @@ class TestLogout:
 
 
 # ===========================================================================
-# Email Verification
+# Password Reset via OTP
 # ===========================================================================
 
-class TestVerifyEmail:
+class TestPasswordResetOtp:
 
     @pytest.mark.asyncio
-    async def test_verify_email_success(
+    async def test_send_reset_otp_for_existing_user(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
-        token_service,
-    ):
-        """Valid verification token marks email as verified."""
-        plaintext, token_hash = token_service.create_secure_token()
-        auth_user = AuthUser(
-            id=TEST_USER_ID,
-            email=TEST_EMAIL,
-            password_hash="hashed",
-            email_verified=False,
-            email_verification_token=token_hash,
-            email_verification_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
-        )
-        mock_auth_user_repo.get_by_email.return_value = auth_user
-
-        result = await auth_service.verify_email(token=plaintext, email=TEST_EMAIL)
-
-        assert result is True
-        mock_auth_user_repo.update_email_verified.assert_awaited_once_with(
-            user_id=TEST_USER_ID,
-            verified=True,
-        )
-
-    @pytest.mark.asyncio
-    async def test_verify_email_already_verified(
-        self,
-        auth_service: AuthService,
-        mock_auth_user_repo,
+        mock_email_service,
         verified_auth_user: AuthUser,
     ):
-        """Already verified email returns True without update."""
+        """Send OTP for existing user sends email and returns generic message."""
         mock_auth_user_repo.get_by_email.return_value = verified_auth_user
 
-        result = await auth_service.verify_email(token="any-token", email=TEST_EMAIL)
-        assert result is True
-        mock_auth_user_repo.update_email_verified.assert_not_awaited()
+        result = await auth_service.send_password_reset_otp(email=TEST_EMAIL)
+
+        assert "message" in result
+        mock_auth_user_repo.update_otp.assert_awaited_once()
+        mock_email_service.send_otp_email.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_verify_email_wrong_token_raises(
+    async def test_send_reset_otp_unknown_email_silent(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
+        mock_email_service,
     ):
-        """Wrong verification token raises InvalidVerificationTokenException."""
-        auth_user = AuthUser(
-            id=TEST_USER_ID,
-            email=TEST_EMAIL,
-            password_hash="hashed",
-            email_verified=False,
-            email_verification_token="stored_hash",
-            email_verification_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
-        )
-        mock_auth_user_repo.get_by_email.return_value = auth_user
+        """Unknown email returns generic message (no email sent, no error)."""
+        mock_auth_user_repo.get_by_email.return_value = None
 
-        with pytest.raises(InvalidVerificationTokenException):
-            await auth_service.verify_email(token="wrong-token", email=TEST_EMAIL)
+        result = await auth_service.send_password_reset_otp(
+            email="unknown@example.com",
+        )
+
+        assert "message" in result
+        mock_email_service.send_otp_email.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_verify_email_expired_token_raises(
+    async def test_send_reset_otp_pending_user_silent(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        mock_email_service,
+        pending_auth_user: AuthUser,
+    ):
+        """Pending user (not registered) returns generic message silently."""
+        mock_auth_user_repo.get_by_email.return_value = pending_auth_user
+
+        result = await auth_service.send_password_reset_otp(email=TEST_EMAIL)
+
+        assert "message" in result
+        mock_email_service.send_otp_email.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_verify_reset_otp_success(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
         token_service,
     ):
-        """Expired verification token raises."""
-        plaintext, token_hash = token_service.create_secure_token()
+        """Correct OTP verifies and returns user_id."""
+        otp_code, otp_hash = token_service.generate_otp()
         auth_user = AuthUser(
             id=TEST_USER_ID,
             email=TEST_EMAIL,
             password_hash="hashed",
-            email_verified=False,
-            email_verification_token=token_hash,
-            email_verification_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            email_verified=True,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_FORGOT_PASSWORD,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            otp_attempts=0,
         )
         mock_auth_user_repo.get_by_email.return_value = auth_user
 
-        with pytest.raises(InvalidVerificationTokenException):
-            await auth_service.verify_email(token=plaintext, email=TEST_EMAIL)
+        result = await auth_service.verify_password_reset_otp(
+            email=TEST_EMAIL, otp_code=otp_code,
+        )
+
+        assert result["otp_verified"] is True
+        assert result["user_id"] == str(TEST_USER_ID)
 
     @pytest.mark.asyncio
-    async def test_verify_email_unknown_email_raises(
+    async def test_verify_reset_otp_wrong_code_raises(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
+        token_service,
     ):
-        """Unknown email raises InvalidVerificationTokenException."""
-        mock_auth_user_repo.get_by_email.return_value = None
+        """Wrong OTP code raises OtpInvalidException."""
+        otp_code, otp_hash = token_service.generate_otp()
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_FORGOT_PASSWORD,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_email.return_value = auth_user
 
-        with pytest.raises(InvalidVerificationTokenException):
-            await auth_service.verify_email(token="any", email="unknown@example.com")
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_password_reset_otp(
+                email=TEST_EMAIL, otp_code="000000",
+            )
 
-
-# ===========================================================================
-# Password Reset
-# ===========================================================================
-
-class TestPasswordReset:
+        mock_auth_user_repo.update_otp_attempts.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_request_password_reset_sends_email(
+    async def test_verify_reset_otp_expired_raises(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
-        mock_email_service,
-        test_auth_user: AuthUser,
+        token_service,
     ):
-        """Request password reset for existing user sends email."""
-        mock_auth_user_repo.get_by_email.return_value = test_auth_user
+        """Expired OTP raises OtpExpiredException."""
+        otp_code, otp_hash = token_service.generate_otp()
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_FORGOT_PASSWORD,
+            otp_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_email.return_value = auth_user
 
-        await auth_service.request_password_reset(email=TEST_EMAIL)
-
-        mock_auth_user_repo.set_password_reset_token.assert_awaited_once()
-        mock_email_service.send_password_reset_email.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_request_password_reset_unknown_email_silent(
-        self,
-        auth_service: AuthService,
-        mock_auth_user_repo,
-        mock_email_service,
-    ):
-        """Unknown email should NOT raise (prevent email enumeration)."""
-        mock_auth_user_repo.get_by_email.return_value = None
-
-        await auth_service.request_password_reset(email="unknown@example.com")
-
-        mock_email_service.send_password_reset_email.assert_not_awaited()
+        with pytest.raises(OtpExpiredException):
+            await auth_service.verify_password_reset_otp(
+                email=TEST_EMAIL, otp_code=otp_code,
+            )
 
     @pytest.mark.asyncio
     async def test_reset_password_success(
@@ -568,59 +862,52 @@ class TestPasswordReset:
         auth_service: AuthService,
         mock_auth_user_repo,
         mock_session_repo,
-        token_service,
     ):
-        """Valid reset token updates password and revokes all sessions."""
-        plaintext, token_hash = token_service.create_secure_token()
+        """Valid reset updates password and revokes all sessions."""
         auth_user = AuthUser(
             id=TEST_USER_ID,
             email=TEST_EMAIL,
             password_hash="old_hash",
-            password_reset_token=token_hash,
-            password_reset_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
-        mock_auth_user_repo.get_by_email.return_value = auth_user
+        mock_auth_user_repo.get_by_id.return_value = auth_user
 
-        new_password = "NewStrong1Pass"
         await auth_service.reset_password(
-            token=plaintext,
-            email=TEST_EMAIL,
-            new_password=new_password,
+            user_id=str(TEST_USER_ID),
+            new_password="NewStrong1Pass",
         )
 
         mock_auth_user_repo.update_password.assert_awaited_once()
         mock_session_repo.revoke_all_by_user.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_reset_password_weak_new_password_raises(
-        self,
-        auth_service: AuthService,
-    ):
-        """Weak new password raises before token verification."""
-        with pytest.raises(WeakPasswordException):
-            await auth_service.reset_password(
-                token="any", email=TEST_EMAIL, new_password="weak",
-            )
-
-    @pytest.mark.asyncio
-    async def test_reset_password_invalid_token_raises(
+    async def test_reset_password_weak_raises(
         self,
         auth_service: AuthService,
         mock_auth_user_repo,
     ):
-        """Wrong reset token raises InvalidVerificationTokenException."""
+        """Weak new password raises before hitting repository."""
         auth_user = AuthUser(
-            id=TEST_USER_ID,
-            email=TEST_EMAIL,
-            password_hash="old",
-            password_reset_token="stored_hash",
-            password_reset_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            id=TEST_USER_ID, email=TEST_EMAIL, password_hash="old",
         )
-        mock_auth_user_repo.get_by_email.return_value = auth_user
+        mock_auth_user_repo.get_by_id.return_value = auth_user
 
-        with pytest.raises(InvalidVerificationTokenException):
+        with pytest.raises(WeakPasswordException):
             await auth_service.reset_password(
-                token="wrong-token", email=TEST_EMAIL, new_password="NewStrong1",
+                user_id=str(TEST_USER_ID), new_password="weak",
+            )
+
+    @pytest.mark.asyncio
+    async def test_reset_password_unknown_user_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """Non-existent user raises InvalidCredentialsException."""
+        mock_auth_user_repo.get_by_id.return_value = None
+
+        with pytest.raises(InvalidCredentialsException):
+            await auth_service.reset_password(
+                user_id=str(TEST_USER_ID), new_password="NewStrong1Pass",
             )
 
 
@@ -728,6 +1015,165 @@ class TestChangePassword:
 
 
 # ===========================================================================
+# Authenticated OTP (change-password / delete-account)
+# ===========================================================================
+
+class TestAuthenticatedOtp:
+
+    @pytest.mark.asyncio
+    async def test_send_change_password_otp(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        mock_email_service,
+        verified_auth_user: AuthUser,
+    ):
+        """Send change-password OTP stores OTP and sends email."""
+        mock_auth_user_repo.get_by_id.return_value = verified_auth_user
+
+        await auth_service.send_change_password_otp(user_id=TEST_USER_ID)
+
+        mock_auth_user_repo.update_otp.assert_awaited_once()
+        mock_email_service.send_otp_email.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_delete_account_otp(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        mock_email_service,
+        verified_auth_user: AuthUser,
+    ):
+        """Send delete-account OTP stores OTP and sends email."""
+        mock_auth_user_repo.get_by_id.return_value = verified_auth_user
+
+        await auth_service.send_delete_account_otp(user_id=TEST_USER_ID)
+
+        mock_auth_user_repo.update_otp.assert_awaited_once()
+        mock_email_service.send_otp_email.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_send_otp_pending_user_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        pending_auth_user: AuthUser,
+    ):
+        """Pending user cannot request authenticated OTP."""
+        mock_auth_user_repo.get_by_id.return_value = pending_auth_user
+
+        with pytest.raises(InvalidCredentialsException):
+            await auth_service.send_change_password_otp(user_id=TEST_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_send_otp_cooldown_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+    ):
+        """OTP sent within cooldown raises OtpCooldownException."""
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash="existing_hash",
+            otp_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+            # Set 10 seconds ago (within 60s cooldown)
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=9, seconds=50),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_id.return_value = auth_user
+
+        with pytest.raises(OtpCooldownException):
+            await auth_service.send_change_password_otp(user_id=TEST_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_verify_authenticated_otp_success(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Correct OTP verifies and clears OTP fields."""
+        otp_code, otp_hash = token_service.generate_otp()
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_id.return_value = auth_user
+
+        result = await auth_service.verify_authenticated_otp(
+            user_id=TEST_USER_ID,
+            otp_code=otp_code,
+            expected_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+        )
+
+        assert result["otp_verified"] is True
+        mock_auth_user_repo.clear_otp.assert_awaited_once_with(TEST_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_verify_authenticated_otp_wrong_purpose_raises(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Wrong OTP purpose raises OtpInvalidException."""
+        otp_code, otp_hash = token_service.generate_otp()
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_DELETE_ACCOUNT,  # Different purpose
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_id.return_value = auth_user
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_authenticated_otp(
+                user_id=TEST_USER_ID,
+                otp_code=otp_code,
+                expected_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+            )
+
+    @pytest.mark.asyncio
+    async def test_verify_authenticated_otp_wrong_code_increments(
+        self,
+        auth_service: AuthService,
+        mock_auth_user_repo,
+        token_service,
+    ):
+        """Wrong OTP code increments attempts and raises."""
+        otp_code, otp_hash = token_service.generate_otp()
+        auth_user = AuthUser(
+            id=TEST_USER_ID,
+            email=TEST_EMAIL,
+            password_hash="hashed",
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+            otp_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            otp_attempts=0,
+        )
+        mock_auth_user_repo.get_by_id.return_value = auth_user
+
+        with pytest.raises(OtpInvalidException):
+            await auth_service.verify_authenticated_otp(
+                user_id=TEST_USER_ID,
+                otp_code="000000",
+                expected_purpose=OTP_PURPOSE_CHANGE_PASSWORD,
+            )
+
+        mock_auth_user_repo.update_otp_attempts.assert_awaited_once()
+
+
+# ===========================================================================
 # Session Management
 # ===========================================================================
 
@@ -783,8 +1229,6 @@ class TestSessionManagement:
         mock_session_repo,
     ):
         """Revoking a non-existent session raises SessionNotFoundException."""
-        from domains.auth.exceptions import SessionNotFoundException
-
         mock_session_repo.get_active_by_user.return_value = []
 
         with pytest.raises(SessionNotFoundException):
@@ -806,44 +1250,17 @@ class TestDeleteAccount:
         auth_service: AuthService,
         mock_auth_user_repo,
         mock_session_repo,
-        password_service,
     ):
-        """Delete account verifies password then deletes."""
-        real_hash = password_service.hash_password(TEST_PASSWORD)
+        """Delete account (after OTP verification) revokes sessions and deletes."""
         auth_user = AuthUser(
-            id=TEST_USER_ID, email=TEST_EMAIL, password_hash=real_hash,
+            id=TEST_USER_ID, email=TEST_EMAIL, password_hash="hashed",
         )
         mock_auth_user_repo.get_by_id.return_value = auth_user
 
-        await auth_service.delete_account(
-            user_id=TEST_USER_ID,
-            password=TEST_PASSWORD,
-        )
+        await auth_service.delete_account(user_id=TEST_USER_ID)
 
         mock_session_repo.revoke_all_by_user.assert_awaited_once()
         mock_auth_user_repo.delete.assert_awaited_once_with(TEST_USER_ID)
-
-    @pytest.mark.asyncio
-    async def test_delete_account_wrong_password_raises(
-        self,
-        auth_service: AuthService,
-        mock_auth_user_repo,
-        password_service,
-    ):
-        """Wrong password prevents deletion."""
-        real_hash = password_service.hash_password(TEST_PASSWORD)
-        auth_user = AuthUser(
-            id=TEST_USER_ID, email=TEST_EMAIL, password_hash=real_hash,
-        )
-        mock_auth_user_repo.get_by_id.return_value = auth_user
-
-        with pytest.raises(InvalidCredentialsException):
-            await auth_service.delete_account(
-                user_id=TEST_USER_ID,
-                password="WrongPassword1",
-            )
-
-        mock_auth_user_repo.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_delete_account_unknown_user_raises(
@@ -855,7 +1272,4 @@ class TestDeleteAccount:
         mock_auth_user_repo.get_by_id.return_value = None
 
         with pytest.raises(InvalidCredentialsException):
-            await auth_service.delete_account(
-                user_id=TEST_USER_ID,
-                password=TEST_PASSWORD,
-            )
+            await auth_service.delete_account(user_id=TEST_USER_ID)

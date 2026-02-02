@@ -2,7 +2,7 @@
 Integration tests for session management endpoints.
 
 Tests GET /auth/sessions, DELETE /auth/sessions/{id},
-and DELETE /auth/account through the full API pipeline.
+and POST /auth/delete-account through the full API pipeline.
 """
 
 from uuid import uuid4
@@ -12,6 +12,7 @@ from httpx import AsyncClient
 
 from domains.auth.aggregates.auth_user import AuthUser
 from domains.auth.aggregates.session import Session
+from domains.auth.token_service import TokenService
 
 from .conftest import TEST_EMAIL, TEST_PASSWORD, TEST_USER_ID
 
@@ -97,43 +98,37 @@ class TestDeleteAccountEndpoint:
         self,
         auth_client: AsyncClient,
         int_mock_auth_user_repo,
-        int_password_service,
+        int_token_service: TokenService,
     ):
-        """DELETE /auth/account with correct password returns 200."""
-        real_hash = int_password_service.hash_password(TEST_PASSWORD)
+        """POST /auth/delete-account with valid otp_verified_token returns 200."""
         auth_user = AuthUser(
-            id=TEST_USER_ID, email=TEST_EMAIL, password_hash=real_hash,
+            id=TEST_USER_ID, email=TEST_EMAIL, password_hash="hashed",
         )
         int_mock_auth_user_repo.get_by_id.return_value = auth_user
 
-        resp = await auth_client.request(
-            "DELETE",
-            "/auth/account",
-            json={"password": TEST_PASSWORD},
+        otp_verified_token = int_token_service.create_purpose_token(
+            user_id=TEST_USER_ID,
+            purpose="otp_verified_delete_account",
+            expire_minutes=10,
         )
+
+        resp = await auth_client.post("/auth/delete-account", json={
+            "otp_verified_token": otp_verified_token,
+        })
 
         assert resp.status_code == 200
         int_mock_auth_user_repo.delete.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_delete_account_wrong_password(
+    async def test_delete_account_invalid_token(
         self,
         auth_client: AsyncClient,
         int_mock_auth_user_repo,
-        int_password_service,
     ):
-        """DELETE /auth/account with wrong password returns 401."""
-        real_hash = int_password_service.hash_password(TEST_PASSWORD)
-        auth_user = AuthUser(
-            id=TEST_USER_ID, email=TEST_EMAIL, password_hash=real_hash,
-        )
-        int_mock_auth_user_repo.get_by_id.return_value = auth_user
-
-        resp = await auth_client.request(
-            "DELETE",
-            "/auth/account",
-            json={"password": "WrongPassword1"},
-        )
+        """POST /auth/delete-account with invalid token returns 401."""
+        resp = await auth_client.post("/auth/delete-account", json={
+            "otp_verified_token": "invalid-token",
+        })
 
         assert resp.status_code == 401
         int_mock_auth_user_repo.delete.assert_not_awaited()
