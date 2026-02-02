@@ -2021,7 +2021,7 @@ CREATE OR REPLACE FUNCTION create_pending_auth_user(
     p_otp_purpose TEXT,
     p_otp_expires_at TIMESTAMPTZ
 )
-RETURNS UUID
+RETURNS TABLE(user_id UUID)    -- 改为 TABLE 使 PostgREST 返回 [{"user_id": "xxx"}] 格式
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = 'public'
@@ -2044,7 +2044,7 @@ BEGIN
             v_user_id, LOWER(TRIM(p_email)), p_otp_code_hash, p_otp_purpose, p_otp_expires_at,
             NULL, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         );
-        RETURN v_user_id;
+        RETURN QUERY SELECT v_user_id;
 
     ELSIF v_existing.email_verified = false AND v_existing.password_hash IS NULL THEN
         -- 场景 2: pending 用户（未完成注册）→ 覆盖 OTP 信息
@@ -2055,11 +2055,11 @@ BEGIN
             otp_attempts = 0,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = v_existing.id;
-        RETURN v_existing.id;
+        RETURN QUERY SELECT v_existing.id;
 
     ELSE
         -- 场景 3: 已注册用户 → 返回 NULL（调用方统一返回"已发送"防枚举）
-        RETURN NULL;
+        RETURN QUERY SELECT NULL::UUID;
     END IF;
 END;
 $$;
@@ -2080,7 +2080,8 @@ CREATE OR REPLACE FUNCTION create_auth_user_with_profile(
     p_email TEXT,
     p_password_hash TEXT,
     p_display_name TEXT DEFAULT NULL,
-    p_signup_bonus INT DEFAULT 0  -- 注册奖励积分，由调用方从 system_configs/TierService 获取后传入
+    p_signup_bonus INT DEFAULT 0, -- 注册奖励积分，由调用方从 system_configs/TierService 获取后传入
+    p_created_by TEXT DEFAULT 'register'  -- 创建来源 (register/oauth/admin)
 )
 RETURNS TABLE(
     auth_user JSONB,
@@ -2148,7 +2149,7 @@ BEGIN
         v_display_name_final,
         't1',
         p_signup_bonus,
-        'register',
+        p_created_by,
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
     )
@@ -2163,7 +2164,7 @@ BEGIN
         created_at
     ) VALUES (
         p_user_id::TEXT,
-        'register',
+        p_created_by,
         'created',
         jsonb_build_object(
             'email', LOWER(TRIM(p_email)),
@@ -2626,7 +2627,8 @@ CREATE OR REPLACE FUNCTION process_subscription_start(
     p_credits_amount INT,          -- 月度积分 (从 TierService 获取)
     p_payment_amount INT,          -- 支付金额 (美分)
     p_currency TEXT,
-    p_session_id TEXT              -- Stripe checkout session ID (幂等性 key)
+    p_session_id TEXT,             -- Stripe checkout session ID (幂等性 key)
+    p_payment_method TEXT DEFAULT 'card'  -- 支付方式 (从 Stripe 获取)
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -2704,7 +2706,7 @@ BEGIN
     ) VALUES (
         p_user_id,
         'sub_payment',
-        'card',
+        p_payment_method,
         p_payment_amount / 100.0,
         UPPER(p_currency),
         'succeeded',
@@ -2759,7 +2761,8 @@ CREATE OR REPLACE FUNCTION process_subscription_renewal(
     p_currency TEXT,
     p_invoice_id TEXT,             -- Stripe invoice ID
     p_monthly_credits INT,         -- 月度积分 (从 TierService 获取)
-    p_idempotency_key TEXT         -- 幂等性 key (通常 = 'renewal_' + invoice_id)
+    p_idempotency_key TEXT,        -- 幂等性 key (通常 = 'renewal_' + invoice_id)
+    p_payment_method TEXT DEFAULT 'card'  -- 支付方式 (从 Stripe 获取)
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -2819,7 +2822,7 @@ BEGIN
     ) VALUES (
         p_user_id,
         'sub_renewal',
-        'card',
+        p_payment_method,
         p_amount_usd / 100.0,
         UPPER(p_currency),
         'succeeded',
