@@ -12,16 +12,22 @@
 | 严重等级 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | 总计 |
 |---------|----|----|----|----|----|----|----|----|
 | **P0 Critical** | 4+5 | 0 | 0 | 0 | 0 | 0 | 0 | **9** |
-| **P1 High** | 0 | 1 | 0 | 3 | 0 | 0 | 5 | **9** |
+| **P1 High** | 0 | 2 | 0 | 3 | 0 | 0 | 5 | **10** |
 | **P2 Medium** | 3 | 4 | 1 | 4 | 0 | 0 | 7 | **19** |
-| **P3 Low** | 6 | 4 | 2 | 3 | 1 | 0 | 4 | **20** |
+| **P3 Low** | 6 | 3 | 2 | 3 | 1 | 0 | 4 | **19** |
 | **合计** | **18** | **9** | **3** | **10** | **1** | **0** | **16** | **57** |
 
-> **复核修正 (2026-02-02)**:
+> **第二轮复核修正 (2026-02-02)**:
 > - D1-4 #4 `soft_delete_category_descendants`: P2→P3 (返回值被忽略，非解析错误)
 > - D4 `system_resources_admin_repository.py:88`: P1→P2 (API 层已有 sanitize)
 > - D5 `projects.idempotency_key`: P1→移除 (已有复合唯一索引 `user_id + idempotency_key`)
 > - D2 TransactionType: Python 10 值 (非 11)，SQL 独有 6 值 (非 5，漏算 `refund_reversal`)
+>
+> **第三轮复核修正 (2026-02-02 — 解决方案验证)**:
+> - D2 `revoke_reason` CHECK: P3→**P1 升级** (Python 使用 `session_limit_exceeded` 但 DB CHECK 不含，写入会失败)
+> - C-5 #3 `update_webhook_result`: 表无 `result` 列，修正为使用现有列 `processed`+`error_message`
+> - C-1 restore: 补充说明当前 SQL 用 `deleted_at + 30 days` 而 Python 用 `recovery_expires_at`
+> - D4 Webhook 白名单: 移除已删除的 `clerk_webhook_events`，仅保留 `stripe_webhook_events`
 
 > **全维度审计已完成**，发现 **58 项独立问题**：
 > - **P0 Critical** (9 项): RPC 函数缺失/参数不匹配/返回值解析错误，运行时崩溃
@@ -51,7 +57,8 @@
 
 | 序号 | 来源 | 维度 | 修复内容 | 预估工时 |
 |------|------|------|---------|---------|
-| 10 | 003 | D2 | TransactionType 枚举同步 (SQL 16 值 vs Python 11 值) | 1h |
+| 10 | 003 | D2 | TransactionType 枚举同步 (SQL 16 值 vs Python 10 值) | 1h |
+| 10b | 003 | D2 | `revoke_reason` CHECK 约束添加 `session_limit_exceeded` | 0.1h |
 | 11 | 003 | D4 | 后端设置 `app.current_user_role` 会话变量 | 1h |
 | 12 | 003 | D4 | Webhook 处理函数添加表名白名单验证 | 0.5h |
 | 13 | 003 | D4 | `system_resources_admin_repository.py:88` Repository 层添加 sanitize (防御纵深，API 层已有) | 0.2h |
@@ -343,7 +350,7 @@ success = bool(result.data[0]) if result.data else False
 | device_name | TEXT | device_name: Optional[str] | ✅ |
 | is_revoked | BOOLEAN NOT NULL DEFAULT FALSE | is_revoked: bool = False | ✅ |
 | revoked_at | TIMESTAMPTZ | revoked_at: Optional[datetime] | ✅ |
-| revoke_reason | TEXT CHECK(IN (...)) | revoke_reason: Optional[str] | ⚠️ P3 — `session_limit_exceeded` 不在 CHECK 中 |
+| revoke_reason | TEXT CHECK(IN (...)) | revoke_reason: Optional[str] | ⚠️ **P1 升级** — `session_limit_exceeded` 不在 CHECK 中，写入会被 DB 拒绝 |
 | expires_at | TIMESTAMPTZ NOT NULL | expires_at: datetime | ✅ |
 | last_used_at | TIMESTAMPTZ | last_used_at: Optional[datetime] | ✅ |
 | created_at | TIMESTAMPTZ NOT NULL | created_at: datetime | ✅ |
@@ -413,9 +420,12 @@ Python 实体仍映射到已废弃的 `tx_type`，未迁移到 `transaction_type
 | **命名不一致** | 1 | P2 |
 | **datetime.utcnow 已废弃** | 2 | P2 |
 | **projects 无领域实体** | 1 | P2 |
-| **INET vs str / revoke_reason / tx_type** | 4 | P3 |
+| **INET vs str / tx_type deprecated** | 3 | P3 |
+| **revoke_reason CHECK 缺 `session_limit_exceeded`** | 1 | **P1 升级** (DB 拒绝写入) |
 
-**D2 维度总计**: **9 项发现** (0 P0 + 1 P1 + 4 P2 + 4 P3)
+**D2 维度总计**: **9 项发现** (0 P0 + 2 P1 + 4 P2 + 3 P3)
+
+> **复核修正**: `revoke_reason` 从 P3 升级为 P1 — Python 定义了 `session_limit_exceeded` 常量并在代码中使用，但 SQL CHECK 约束不包含此值，写入时会抛出 CHECK violation 错误。
 
 ---
 
@@ -515,7 +525,7 @@ ON profiles USING GIN (
 
 `p_start_webhook_processing` / `p_complete_webhook_processing` 接受 `p_table_name TEXT` 参数，无白名单验证。
 
-**修复**: 添加表名白名单 `IN ('stripe_webhook_events', 'clerk_webhook_events')`
+**修复**: 添加表名白名单 `IN ('stripe_webhook_events')` (注: `clerk_webhook_events` 已删除)
 
 #### PostgREST 搜索注入 — P1 x1 + P2 x2
 
@@ -769,6 +779,25 @@ AND action NOT IN ('user_signup', 'subscription_purchase');
 | 7 | **字段名修正** | D-3 #6 实际搜索字段是 `description` 不是 `type` | 修正代码片段 |
 | 8 | **统计修正** | Executive Summary 表更新: P1 11→9, P2 19→19, P3 19→20, 总计 58→57 | 修正统计表 |
 
+### 第三轮复核 (解决方案验证)
+
+> 复核日期: 2026-02-02 (逐条验证每个解决方案的正确性、完整性、无副作用)
+> 复核方法: 读取每个问题涉及的实际代码文件，验证修复方案是否可直接应用
+
+| # | 类型 | 发现 | 处理 |
+|---|------|------|------|
+| 1 | **升级 (P3→P1)** | `revoke_reason` CHECK 缺 `session_limit_exceeded`，Python 代码使用此值但 DB 会拒绝写入 | 升级为 P1，添加到优先队列 |
+| 2 | **方案修正** | C-5 #3 `update_webhook_result`: `stripe_webhook_events` 表无 `result` 列和 `updated_at` 列 | 修正为使用现有列 `processed`+`error_message` |
+| 3 | **方案补充** | C-1 restore: 当前 SQL 用 `deleted_at + 30 days` 而 Python `get_restorable_by_email()` 用 `recovery_expires_at` | 补充说明不一致性，修复方案已统一为 `recovery_expires_at` |
+| 4 | **方案修正** | D4 Webhook 白名单误含已删除的 `clerk_webhook_events` | 修正为仅含 `stripe_webhook_events` |
+| 5 | **验证通过** | C-1 restore: `get_restorable_by_email` 方法已存在 (auth_user_repository.py:104) | 修复方案可直接使用 |
+| 6 | **验证通过** | C-1 restore: `recovery_expires_at` 列已存在于 profiles 表 (01_core_business.sql:164) | 修复方案正确引用 |
+| 7 | **验证通过** | P0-3/P0-4 DEFAULT 参数: 不影响现有调用 | 向后兼容 ✅ |
+| 8 | **验证通过** | P0-5 RETURNS TABLE: PostgREST 返回格式将匹配 Python 解析 | 修复方案正确 ✅ |
+| 9 | **验证通过** | D1-1 #1 `create_user_idempotent`: `generation_tasks` 表存在 (01_core_business.sql:1147) | 参考签名可用 ✅ |
+| 10 | **验证通过** | P1 `is_admin()`: 无 RLS 策略引用此函数，可安全删除 | 删除方案安全 ✅ |
+| 11 | **统计修正** | P1 9→10, P3 20→19 (revoke_reason 升级) | 修正统计表 |
+
 ---
 
 ## 附录 C: P0 详细修复方案代码
@@ -826,13 +855,16 @@ DECLARE
     v_auth_user auth_users%ROWTYPE;
     v_restored_name TEXT;
 BEGIN
-    -- 1. 查询可恢复的 profiles 记录 (使用 recovery_expires_at 而非 deleted_at + 30 days)
+    -- 1. 查询可恢复的 profiles 记录
+    -- ✅ 改用 recovery_expires_at (profiles 表 line 164 已有此列)
+    -- ❌ 当前 SQL 用 deleted_at > now() - INTERVAL '30 days'，与 Python 的 get_restorable_by_email() 不一致
+    --    Python (auth_user_repository.py:119) 用 .gt("recovery_expires_at", now)
     SELECT id, email, display_name, deleted_at, is_deleted, recovery_expires_at
         INTO v_profile
         FROM profiles
        WHERE id = p_old_profile_id
          AND is_deleted = true
-         AND recovery_expires_at > CURRENT_TIMESTAMP  -- ✅ 统一使用 recovery_expires_at
+         AND recovery_expires_at > CURRENT_TIMESTAMP  -- ✅ 与 Python 层一致
          FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -1199,7 +1231,15 @@ $$;
 
 #### #3 `update_webhook_result` (Webhook 结果记录)
 
+> ⚠️ **注意**: `stripe_webhook_events` 表当前没有 `result` 列和 `updated_at` 列。
+> 需先 ALTER TABLE 添加列，或改用现有列存储结果。
+
 ```sql
+-- 方案 A (推荐): 添加列后创建函数
+-- 先在 02_platform_services.sql 的 stripe_webhook_events 表定义中添加:
+--   result JSONB,
+--   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+
 -- 建议放在 03_infrastructure.sql
 CREATE OR REPLACE FUNCTION update_webhook_result(
     p_event_id TEXT,
@@ -1211,11 +1251,18 @@ SET search_path = 'public'
 AS $$
 BEGIN
     UPDATE stripe_webhook_events
-    SET result = p_result,
-        updated_at = CURRENT_TIMESTAMP
+    SET processed = TRUE,
+        processed_at = CURRENT_TIMESTAMP,
+        error_message = CASE
+            WHEN (p_result->>'success')::boolean = false THEN p_result->>'error'
+            ELSE NULL
+        END
     WHERE event_id = p_event_id;
 END;
 $$;
+
+-- 方案 B (替代): 使用现有列 (不需要 ALTER TABLE)
+-- 将 result JSON 存入 error_message (不理想但可用)
 ```
 
 #### #4 `get_event_stats_by_type` 等 (事件统计)
@@ -1397,7 +1444,8 @@ END;
 **修复** (防御纵深):
 ```sql
 -- 在函数内添加表名白名单验证
-IF p_table_name NOT IN ('stripe_webhook_events', 'clerk_webhook_events') THEN
+-- 注意: clerk_webhook_events 已删除 (迁移到自建认证系统)，仅保留 stripe
+IF p_table_name NOT IN ('stripe_webhook_events') THEN
     RAISE EXCEPTION 'Invalid table name: %', p_table_name;
 END IF;
 ```
@@ -1634,7 +1682,7 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 | **UserTier** | `CHECK (tier IN ('t1', 't2', 't3', 't4'))` | `TIER_T1`, `TIER_T2`, `TIER_T3` | ✅ |
 | **UserRole** | `CHECK (role IN ('user', 'admin', 'staff'))` | `USER`, `ADMIN`, `STAFF` | ✅ |
 | **OnboardingStep** | `CHECK (onboarding_step IN (...))` | Python enum | ✅ |
-| **SessionRevokeReason** | `CHECK (revoke_reason IN (...))` | Python 代码值 | ⚠️ P3 — `session_limit_exceeded` 不在 CHECK 中 |
+| **SessionRevokeReason** | `CHECK (revoke_reason IN ('logout','rotation','security','admin','account_deleted'))` | Python 有 6 值 (含 `session_limit_exceeded`) | ⚠️ **P1 升级** — `session_limit_exceeded` 不在 CHECK 中，DB 写入会失败 |
 
 **TransactionType 差异详情**:
 
