@@ -15,6 +15,7 @@ Coordinates all authentication operations:
 
 from __future__ import annotations
 
+import hmac
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -256,7 +257,7 @@ class AuthService:
 
         # Verify OTP code
         input_hash = self._token_svc.hash_otp(otp_code)
-        if input_hash != auth_user.otp_code_hash:
+        if not hmac.compare_digest(input_hash, auth_user.otp_code_hash or ""):
             # Increment attempts
             auth_user.increment_otp_attempts()
             await self._auth_user_repo.update_otp_attempts(
@@ -672,7 +673,7 @@ class AuthService:
             raise OtpMaxAttemptsException()
 
         input_hash = self._token_svc.hash_otp(otp_code)
-        if input_hash != auth_user.otp_code_hash:
+        if not hmac.compare_digest(input_hash, auth_user.otp_code_hash or ""):
             auth_user.increment_otp_attempts()
             await self._auth_user_repo.update_otp_attempts(
                 user_id=auth_user.id,
@@ -790,7 +791,7 @@ class AuthService:
             raise OtpMaxAttemptsException()
 
         input_hash = self._token_svc.hash_otp(otp_code)
-        if input_hash != auth_user.otp_code_hash:
+        if not hmac.compare_digest(input_hash, auth_user.otp_code_hash or ""):
             auth_user.increment_otp_attempts()
             await self._auth_user_repo.update_otp_attempts(
                 user_id=auth_user.id,

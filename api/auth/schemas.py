@@ -51,7 +51,7 @@ class CompleteRegistrationRequest(BaseModel):
 class LoginRequest(BaseModel):
     """POST /auth/login"""
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 class RefreshTokenRequest(BaseModel):
@@ -114,7 +114,7 @@ class ForgotPasswordResetRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """POST /auth/change-password"""
     otp_verified_token: str
-    current_password: str
+    current_password: str = Field(..., min_length=1, max_length=128)
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
