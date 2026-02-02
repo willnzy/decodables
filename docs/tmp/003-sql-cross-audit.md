@@ -746,3 +746,894 @@ AND action NOT IN ('user_signup', 'subscription_purchase');
 | 4-7 | **验证通过** | P0-1~P0-4 分析准确 | — |
 | 8-9 | **验证通过** | P1/P2 分析正确，无重复/冲突 | — |
 | 10-12 | **无冲突/无重复** | 所有 58 项互不重复 | — |
+
+---
+
+## 附录 C: P0 详细修复方案代码
+
+> 本附录包含所有 P0 Critical 问题的完整修复代码，供实施时直接参考。
+
+---
+
+### C-1. P0-1: `restore_auth_user_with_profile` 完整重写
+
+#### 当前调用链
+
+```
+router.py line 252-262:
+  body.restore_account = true
+  email = await auth_service.get_pending_user_email(user_id)
+  result = await auth_service.restore_account(email=email, password=body.password)
+    ↓
+service.py line 1068-1108:
+  async def restore_account(self, email, password, device_info):
+    password_hash = hash(password)
+    restored_user = await self._auth_user_repo.restore_account(email, password_hash)
+      ↓
+auth_user_repository.py line 397-415:
+  async def restore_account(self, email, password_hash):
+    result = await self._client.rpc("restore_auth_user_with_profile", {
+        "p_email": normalized,
+        "p_password_hash": password_hash,
+        # ❌ 缺少 p_old_profile_id
+    }).execute()
+    row = result.data[0]
+    auth_user_data = row["auth_user"]  # ❌ DB 返回 UUID，不是 JSONB
+```
+
+#### 步骤 1: 修改 DB 函数 (`01_core_business.sql`)
+
+```sql
+CREATE OR REPLACE FUNCTION restore_auth_user_with_profile(
+    p_old_profile_id UUID,
+    p_email TEXT,
+    p_password_hash TEXT,
+    p_display_name TEXT DEFAULT NULL,
+    p_source TEXT DEFAULT 'register'     -- 新增: 创建来源
+)
+RETURNS TABLE(
+    auth_user JSONB,                      -- 改为 JSONB (与 create_auth_user_with_profile 统一)
+    was_restored BOOLEAN
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+    v_profile RECORD;
+    v_auth_user auth_users%ROWTYPE;
+    v_restored_name TEXT;
+BEGIN
+    -- 1. 查询可恢复的 profiles 记录 (使用 recovery_expires_at 而非 deleted_at + 30 days)
+    SELECT id, email, display_name, deleted_at, is_deleted, recovery_expires_at
+        INTO v_profile
+        FROM profiles
+       WHERE id = p_old_profile_id
+         AND is_deleted = true
+         AND recovery_expires_at > CURRENT_TIMESTAMP  -- ✅ 统一使用 recovery_expires_at
+         FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'RESTORE_NOT_FOUND: profile % not found or not restorable', p_old_profile_id;
+    END IF;
+
+    -- 2. 确认邮箱匹配
+    IF v_profile.email <> LOWER(TRIM(p_email)) THEN
+        RAISE EXCEPTION 'RESTORE_EMAIL_MISMATCH: email does not match profile record';
+    END IF;
+
+    -- 3. 创建新的 auth_users 记录（复用旧 UUID）
+    INSERT INTO auth_users (id, email, password_hash, email_verified, email_verified_at, created_at, updated_at)
+    VALUES (p_old_profile_id, LOWER(TRIM(p_email)), p_password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    RETURNING * INTO v_auth_user;
+
+    -- 4. 恢复 profiles 记录
+    v_restored_name := COALESCE(p_display_name, v_profile.display_name);
+    -- ⚠️ SYNC_REQUIRED: 此值必须与账户删除脱敏逻辑中的占位符一致
+    IF v_restored_name = 'Deleted User' THEN
+        v_restored_name := COALESCE(p_display_name, 'User');
+    END IF;
+
+    UPDATE profiles SET
+        is_deleted = false,
+        deleted_at = NULL,
+        recovery_expires_at = NULL,      -- ✅ 清除恢复窗口 (当前 DB 函数遗漏了此字段!)
+        display_name = v_restored_name,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_old_profile_id;
+
+    -- 5. 记录恢复事件 (source 改为参数)
+    INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
+    VALUES (
+        p_old_profile_id::TEXT,
+        p_source,                         -- ✅ 参数化
+        'account_restored',
+        jsonb_build_object(
+            'restored_at', now(),
+            'original_deleted_at', v_profile.deleted_at
+        ),
+        CURRENT_TIMESTAMP
+    );
+
+    -- 6. 返回结果 (与 create_auth_user_with_profile 风格统一)
+    RETURN QUERY
+    SELECT
+        row_to_json(v_auth_user)::jsonb,
+        TRUE;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        BEGIN
+            INSERT INTO system_error_logs (operation, error_message, details, created_at)
+            VALUES (
+                'restore_auth_user_with_profile',
+                SQLERRM,
+                jsonb_build_object('profile_id', p_old_profile_id, 'email', p_email),
+                CURRENT_TIMESTAMP
+            );
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
+        END;
+        RAISE;
+END;
+$$;
+```
+
+#### 步骤 2: 修改 Repository 接口 (`domains/auth/repository.py`)
+
+```python
+@abstractmethod
+async def restore_account(
+    self,
+    profile_id: UUID,       # 新增: 待恢复的 profile ID
+    email: str,
+    password_hash: str,
+) -> AuthUser:
+    """Restore a soft-deleted account via RPC."""
+```
+
+#### 步骤 3: 修改 Repository 实现 (`infrastructure/repositories/auth_user_repository.py`)
+
+```python
+@retry_on_network_error_async()
+async def restore_account(
+    self,
+    profile_id: UUID,       # 新增
+    email: str,
+    password_hash: str,
+) -> AuthUser:
+    """
+    Restore a soft-deleted account via RPC restore_auth_user_with_profile().
+    """
+    normalized = email.strip().lower()
+    result = await self._client.rpc(
+        "restore_auth_user_with_profile",
+        {
+            "p_old_profile_id": str(profile_id),  # 新增
+            "p_email": normalized,
+            "p_password_hash": password_hash,
+        },
+    ).execute()
+
+    if result is None or not result.data or len(result.data) == 0:
+        raise RuntimeError("RPC restore_auth_user_with_profile returned no data")
+
+    row = result.data[0]
+    auth_user_data = row["auth_user"]  # 现在 DB 也返回 JSONB 了
+
+    return AuthUser(
+        id=UUID(auth_user_data["id"]),
+        email=auth_user_data["email"],
+        password_hash=auth_user_data.get("password_hash"),
+        email_verified=auth_user_data.get("email_verified", True),
+        email_verified_at=_parse_datetime(auth_user_data.get("email_verified_at")),
+        is_active=auth_user_data.get("is_active", True),
+        created_at=_parse_datetime(auth_user_data.get("created_at"))
+        or datetime.now(timezone.utc),
+        updated_at=_parse_datetime(auth_user_data.get("updated_at"))
+        or datetime.now(timezone.utc),
+    )
+```
+
+#### 步骤 4: 修改 Service 层 (`domains/auth/service.py`)
+
+```python
+async def restore_account(
+    self,
+    email: str,
+    password: str,
+    device_info: Optional[DeviceInfo] = None,
+) -> Dict[str, Any]:
+    """Restore a soft-deleted account."""
+    # 1. 查询可恢复的 profile (获取 profile_id)
+    restorable = await self._auth_user_repo.get_restorable_by_email(email)
+    if restorable is None:
+        raise RestoreNotFoundError("No restorable account found for this email")
+
+    profile_id = UUID(restorable["id"])
+
+    # 2. Validate password
+    strength = self._password_svc.validate_strength(password)
+    if not strength.is_valid:
+        raise WeakPasswordException(errors=list(strength.errors))
+
+    # 3. Hash password
+    password_hash = await run_in_threadpool(
+        self._password_svc.hash_password, password
+    )
+
+    # 4. Restore via RPC (传入 profile_id)
+    restored_user = await self._auth_user_repo.restore_account(
+        profile_id=profile_id,    # 新增
+        email=email,
+        password_hash=password_hash,
+    )
+
+    # 5. Create session + tokens
+    return await self._create_session_and_tokens(
+        user=restored_user,
+        device_info=device_info,
+    )
+```
+
+> 注意: 需要确认 `RestoreNotFoundError` 是否已定义，或使用现有异常类。
+
+#### 步骤 5: 修改测试文件
+
+- `tests/domains/auth/conftest.py`: `repo.restore_account` mock 签名更新
+- `tests/integration/auth/conftest.py`: 同上
+
+#### 涉及文件汇总
+
+| 文件 | 修改类型 |
+|------|---------|
+| `migrations/v2/01_core_business.sql` | 重写 `restore_auth_user_with_profile` 函数 |
+| `domains/auth/repository.py` | 接口添加 `profile_id` 参数 |
+| `infrastructure/repositories/auth_user_repository.py` | 实现添加 `profile_id`，RPC 传参+返回值解析 |
+| `domains/auth/service.py` | `restore_account` 先查 `get_restorable_by_email` 获取 profile_id |
+| `tests/domains/auth/conftest.py` | mock 签名更新 |
+| `tests/integration/auth/conftest.py` | mock 签名更新 |
+
+---
+
+### C-2. P0-3: 订阅 RPC 添加 `p_payment_method` 参数
+
+#### `process_subscription_start` (`01_core_business.sql`)
+
+```sql
+CREATE OR REPLACE FUNCTION process_subscription_start(
+    p_user_id UUID,
+    p_plan TEXT,
+    p_stripe_customer_id TEXT,
+    p_credits_amount INT,
+    p_payment_amount INT,
+    p_currency TEXT,
+    p_session_id TEXT,
+    p_payment_method TEXT DEFAULT 'card'   -- 新增 (放最后，有默认值)
+)
+```
+
+函数体中将硬编码 `'card'` 替换为 `p_payment_method`。
+
+#### `process_subscription_renewal` (`01_core_business.sql`)
+
+```sql
+CREATE OR REPLACE FUNCTION process_subscription_renewal(
+    p_user_id UUID,
+    p_tier TEXT,
+    p_amount_usd INT,
+    p_currency TEXT,
+    p_invoice_id TEXT,
+    p_monthly_credits INT,
+    p_idempotency_key TEXT,
+    p_payment_method TEXT DEFAULT 'card'   -- 新增
+)
+```
+
+函数体中将硬编码 `'card'` 替换为 `p_payment_method`。
+
+**代码层**: 无需修改。新参数有 `DEFAULT 'card'`，现有调用兼容。
+
+---
+
+### C-3. P0-4: `create_auth_user_with_profile` 添加 `p_created_by`
+
+```sql
+CREATE OR REPLACE FUNCTION create_auth_user_with_profile(
+    p_user_id UUID,
+    p_email TEXT,
+    p_password_hash TEXT,
+    p_display_name TEXT DEFAULT NULL,
+    p_signup_bonus INT DEFAULT 0,
+    p_created_by TEXT DEFAULT 'register'   -- 新增
+)
+```
+
+函数体中:
+```sql
+-- profiles INSERT 的 created_by 字段:
+p_created_by,                  -- 替换 'register'
+
+-- user_creation_logs INSERT 的 source 字段:
+p_created_by,                  -- 替换 'register'
+```
+
+**代码层**: 无需修改。将来 OAuth 注册可传 `'oauth'`，Admin 创建可传 `'admin'`。
+
+---
+
+### C-4. P0-5: `create_pending_auth_user` 返回值修复
+
+#### 方案 B (推荐): 修改 DB 函数返回 TABLE
+
+```sql
+CREATE OR REPLACE FUNCTION create_pending_auth_user(...)
+RETURNS TABLE(user_id UUID)     -- 改为 TABLE (原为 RETURNS UUID)
+...
+    -- 场景 1: 新建用户
+    RETURN QUERY SELECT v_user_id;       -- 替换 RETURN v_user_id
+
+    -- 场景 2: 已存在待验证用户
+    RETURN QUERY SELECT v_existing.id;   -- 替换 RETURN v_existing.id
+
+    -- 场景 3: 已注册用户
+    RETURN QUERY SELECT NULL::UUID;      -- 替换 RETURN NULL
+```
+
+这样 PostgREST 返回格式变为 `[{"user_id": "xxx"}]`，代码的 `row.get("user_id")` 就能正确工作。
+
+#### 方案 A (备选): 修改代码适配标量返回
+
+```python
+# auth_user_repository.py line 155-170:
+if result is None or not result.data or len(result.data) == 0:
+    raise RuntimeError("RPC create_pending_auth_user returned no data")
+
+user_id_value = result.data[0]  # UUID 字符串或 None
+
+# RPC returns NULL when email already registered
+if user_id_value is None:
+    existing = await self.get_by_email(auth_user.email)
+    if existing:
+        return existing, False
+    raise RuntimeError("RPC returned null but no existing user found")
+
+# Success — create entity
+entity = AuthUser(
+    id=UUID(user_id_value) if isinstance(user_id_value, str) else user_id_value,
+    email=auth_user.email,
+    ...
+)
+return entity, True
+```
+
+---
+
+### C-5. D1-1 缺失函数补建参考签名
+
+#### #1 `create_user_idempotent` (用户注册核心)
+
+```sql
+-- 建议放在 01_core_business.sql
+CREATE OR REPLACE FUNCTION create_user_idempotent(
+    p_user_id UUID,
+    p_email TEXT,
+    p_source TEXT DEFAULT 'register',
+    p_username TEXT DEFAULT NULL,
+    p_first_name TEXT DEFAULT NULL,
+    p_last_name TEXT DEFAULT NULL,
+    p_avatar_url TEXT DEFAULT NULL,
+    p_display_name TEXT DEFAULT NULL,
+    p_signup_bonus INT DEFAULT 0
+)
+RETURNS TABLE(
+    user_profile JSONB,
+    was_created BOOLEAN,
+    created_by TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+-- 实现: 幂等创建用户 + profile
+-- 如果用户已存在，返回已有记录 + was_created=false
+-- 如果用户不存在，创建新记录 + was_created=true
+-- 需要参考 create_auth_user_with_profile 的实现模式
+BEGIN
+    -- TODO: 实现幂等逻辑
+    -- 1. 检查 profiles 表是否已存在 p_user_id
+    -- 2. 如果存在，返回已有记录
+    -- 3. 如果不存在，创建 profiles + 发放 signup_bonus
+    RAISE EXCEPTION 'TODO: implement create_user_idempotent';
+END;
+$$;
+```
+
+#### #2 `create_generation_task` (AI 生成任务)
+
+```sql
+-- 建议放在 02_platform_services.sql
+CREATE OR REPLACE FUNCTION create_generation_task(
+    p_task_id UUID,
+    p_user_id UUID,
+    p_task_type TEXT,
+    p_params JSONB DEFAULT '{}'::JSONB,
+    p_priority INT DEFAULT 0,
+    p_total_steps INT DEFAULT 1
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = 'public'
+AS $$
+BEGIN
+    INSERT INTO generation_tasks (id, user_id, task_type, params, priority, total_steps, status, created_at)
+    VALUES (p_task_id, p_user_id, p_task_type, p_params, p_priority, p_total_steps, 'pending', CURRENT_TIMESTAMP);
+END;
+$$;
+```
+
+#### #3 `update_webhook_result` (Webhook 结果记录)
+
+```sql
+-- 建议放在 03_infrastructure.sql
+CREATE OR REPLACE FUNCTION update_webhook_result(
+    p_event_id TEXT,
+    p_result JSONB
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = 'public'
+AS $$
+BEGIN
+    UPDATE stripe_webhook_events
+    SET result = p_result,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE event_id = p_event_id;
+END;
+$$;
+```
+
+#### #4 `get_event_stats_by_type` 等 (事件统计)
+
+```sql
+-- 建议放在 02_platform_services.sql
+-- 需要根据 events_repository.py 中的 function_map 确认所有需要的函数名
+-- 示例:
+CREATE OR REPLACE FUNCTION get_event_stats_by_type(
+    p_start_date TIMESTAMPTZ,
+    p_end_date TIMESTAMPTZ
+)
+RETURNS TABLE(
+    event_type TEXT,
+    count BIGINT
+)
+LANGUAGE plpgsql
+SET search_path = 'public'
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT ae.event_type, COUNT(*)::BIGINT
+    FROM analytics_events ae
+    WHERE ae.created_at BETWEEN p_start_date AND p_end_date
+    GROUP BY ae.event_type
+    ORDER BY count DESC;
+END;
+$$;
+```
+
+---
+
+## 附录 D: D4 安全审计详细分析
+
+> 本附录包含 D4 安全审计中每个问题的完整代码片段和修复方案。
+
+---
+
+### D-1. SECURITY DEFINER 函数详细审计
+
+#### 安全函数验证详情 (3 个)
+
+| # | 函数名 | SQL 位置 | search_path | 安全验证 |
+|---|--------|---------|------------|---------|
+| 1 | `create_pending_auth_user` | `01_core_business.sql:2026` | ✅ `'public'` | ✅ 参数化查询 + `FOR UPDATE` 防并发 |
+| 2 | `create_auth_user_with_profile` | `01_core_business.sql:2091` | ✅ `'public'` | ✅ 幂等性检查 (`password_hash IS NOT NULL`) |
+| 3 | `restore_auth_user_with_profile` | `01_core_business.sql:2219` | ✅ `'public'` | ✅ `FOR UPDATE` + 邮箱验证 + 30 天时间窗口检查 |
+
+**验证详情**:
+- ✅ 全部设置 `SET search_path = 'public'`，防止 search_path 注入攻击
+- ✅ 无动态 SQL (`EXECUTE`)，全部使用参数化操作
+- ✅ `create_pending_auth_user`: 使用 `SELECT ... FOR UPDATE` 防止并发竞态条件
+- ✅ `create_auth_user_with_profile`: 通过 `password_hash IS NOT NULL` 检查实现幂等性
+- ✅ `restore_auth_user_with_profile`: 三重验证 (`FOR UPDATE` + 邮箱匹配 + `deleted_at > NOW() - INTERVAL '30 days'`)
+- ✅ 异常处理: 错误时写入 `system_error_logs`，带 `EXCEPTION` 块保护
+
+#### 死代码 SECURITY DEFINER 详细风险 (P2)
+
+| # | 函数名 | SQL 位置 | search_path | 风险 |
+|---|--------|---------|------------|------|
+| 4 | `increment_project_view_count` | `01_core_business.sql:3701` | ✅ `'public'` | ⚠️ 无调用者身份验证，任何人可无限刷浏览量 |
+| 5 | `increment_project_like_count` | `01_core_business.sql:3727` | ✅ `'public'` | ⚠️ 无调用者身份验证，任何人可无限刷点赞量 |
+
+**风险分析**:
+- 已在 D1-2 中标记为死代码 (无 Python 调用方)
+- 但作为 SECURITY DEFINER 存在，任何知道 `project_id` 的人都可以通过 PostgREST 直接调用
+- 无身份验证、无频率限制
+
+**修复建议**:
+1. **最佳方案**: 删除这两个死代码函数
+2. **保留方案**: 移除 `SECURITY DEFINER` 属性
+3. **加固方案**: 添加身份验证 + 频率限制
+
+#### `is_admin()` 权限检查失效详细分析 (P1)
+
+```sql
+-- SQL 函数定义
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN (current_setting('app.current_user_role', true) = 'admin');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
+```
+
+**问题**: 在整个 Python 后端代码中**未找到**设置 `app.current_user_role` 会话变量的代码。`is_admin()` 永远返回 FALSE。
+
+**修复方案 A (推荐)**: 后端设置会话变量
+
+```python
+# 在 dependencies.py 或 supabase_client.py 中
+async def set_user_role_session(user_id: str):
+    role = await get_user_role(user_id)
+    await supabase.rpc("set_config", {
+        "setting_name": "app.current_user_role",
+        "new_value": role,
+        "is_local": True
+    })
+```
+
+**修复方案 B**: 删除 `is_admin()` 函数，使用 Python 层权限检查代替。
+
+---
+
+### D-2. RLS 策略详细验证
+
+#### 覆盖率统计
+
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| **总表数** | **78** | 3 个 SQL schema 文件中全部表 |
+| **启用 RLS 的表** | **78** | 100% 覆盖 ✅ |
+| **未启用 RLS 的表** | **0** | 无遗漏 ✅ |
+
+#### 详细策略验证 (按业务模块)
+
+| 模块 | 表 | 核心策略 | 验证结果 |
+|------|----|---------|---------|
+| **认证系统** | `auth_users`, `auth_sessions`, `auth_oauth_accounts` | `service_role_full_access` (所有操作) | ✅ 安全 — 认证数据仅后端可访问 |
+| **用户档案** | `profiles` | `service_role_all` + `auth_user_own_profile (id = auth.uid())` | ✅ 安全 — 用户可查看自己的档案 |
+| **项目管理** | `projects` | `service_role_all` + `auth_user_own_projects (user_id = auth.uid())` + 额外 owner 策略 | ✅ 安全（但有重复策略 P3） |
+| **素材管理** | `assets` | `service_role_all` + `auth_user_own_assets (user_id = auth.uid())` | ✅ 安全 |
+| **积分系统** | `credit_transactions` | `service_role_all` + `auth_user_own_credit_transactions (FOR SELECT only)` | ✅ 安全 — 用户只读 |
+| **订阅系统** | `stripe_subscriptions`, `subscription_history` | `service_role_all` only | ✅ 安全 — 仅后端可访问 |
+| **市场功能** | `marketplace_listings` | service_role 全量 + 公开读取 approved + 卖家管理自己的 | ✅ 安全 — 三层访问控制 |
+| **市场交易** | `marketplace_purchases` | `service_role_all` + `buyer_own_purchases` | ✅ 安全 |
+| **用户收藏** | `marketplace_favorites` | `service_role_all` + `user_own_favorites` | ✅ 安全 |
+| **举报系统** | `marketplace_reports` | `service_role_all` + `reporter_own_reports` | ✅ 安全（有注释矛盾 P3） |
+
+#### P3 问题详细分析
+
+**P3-1: 重复 RLS 策略**
+
+| 表 | 问题 | 文件位置 | 说明 |
+|----|----|---------|------|
+| `projects` | 两组策略定义相同功能 | `01_core_business.sql` (L3650) + `03_infrastructure.sql` (L1700) | `projects_owner_policy` + `projects_service_role_policy` 与 `auth_user_own_projects` + `service_role_all` 功能重复 |
+| `marketplace_listings` | 同上 | `01_core_business.sql` (L4200) + `03_infrastructure.sql` (L1750) | 详细策略 + `service_role_all` 重复 |
+
+**影响**: PostgreSQL 会 OR 合并多个策略，功能不受影响，但增加维护混乱。
+
+**修复**: 删除 `03_infrastructure.sql` 中的简化策略，保留 `01_core_business.sql` 中的详细策略。
+
+**P3-2: `marketplace_reports` 注释矛盾**
+
+```sql
+-- 03_infrastructure.sql L1740
+-- marketplace_reports 是视图 (VIEW)，不是表，不需要启用 RLS
+
+-- 但在 01_core_business.sql L4128
+ALTER TABLE marketplace_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY reporter_own_reports ON marketplace_reports ...
+```
+
+**修复**: 确认实际对象类型，如果是视图则删除 RLS 语句，如果是表则修正注释。
+
+---
+
+### D-3. SQL 注入详细审计
+
+#### Webhook 处理函数表名注入风险 (P1)
+
+```sql
+-- 问题代码示例
+CREATE OR REPLACE FUNCTION p_start_webhook_processing(
+    p_event_id TEXT,
+    p_table_name TEXT  -- 攻击面: 调用方传入任意表名
+)
+...
+BEGIN
+    EXECUTE format('UPDATE %I SET processing_status = ''processing'' WHERE event_id = $1', p_table_name)
+    USING p_event_id;
+END;
+```
+
+**风险**: 虽然 `%I` 防止语法注入，但可传入任意表名修改不该修改的表。
+
+**当前缓解措施**: 后端调用时表名硬编码为 `'stripe_webhook_events'`。
+
+**修复** (防御纵深):
+```sql
+-- 在函数内添加表名白名单验证
+IF p_table_name NOT IN ('stripe_webhook_events', 'clerk_webhook_events') THEN
+    RAISE EXCEPTION 'Invalid table name: %', p_table_name;
+END IF;
+```
+
+#### PostgREST 搜索注入详细分析
+
+**完整审计结果**:
+
+| # | 文件 | 行号 | 代码片段 | 风险级别 |
+|---|------|------|---------|---------|
+| 1 | `user_repository.py` | 727 | `.or_(f"email.ilike.%{safe_query}%,username.ilike.%{safe_query}%")` | ✅ 安全 — 使用 `escape_like_wildcards()` |
+| 2 | `project_repository.py` | 425, 534, 686 | `.ilike("title", f"%{safe_query}%")` | ✅ 安全 — 使用 `escape_like_wildcards()` |
+| 3 | `listing_repository.py` | 309 | `.or_(f"title.ilike.%{sanitized}%,...")` | ✅ 安全 — 使用 `_sanitize_postgrest_query()` |
+| 4 | `article_repository.py` | 317 | `.or_(f"title.ilike.{search_pattern}...")` | ✅ 安全 — 使用 `_escape_or_filter_query()` |
+| 5 | `asset_repository.py` | 482, 525 | `.ilike("name", f"%{escaped}%")` | ✅ 安全 — 使用 `escape_like_wildcards()` |
+| 6 | **`system_resources_admin_repository.py`** | **88** | `.or_(f"name.ilike.%{search}%,type.ilike.%{search}%")` | ⚠️ **P1** |
+| 7 | **`analytics_events_repository.py`** | **204** | `.or_(f'id.eq.{event_id},event_id.eq.{event_id}')` | ⚠️ **P2** |
+| 8 | **`feature_flags/repository.py`** | **102** | `.or_(f"key.ilike.%{search}%,name.ilike.%{search}%")` | ⚠️ **P1** |
+
+**#6 `system_resources_admin_repository.py:88` 详细修复** (P1):
+
+```python
+# 问题代码
+def search_resources(search: str):
+    # Search query is pre-sanitized by API layer  <- 注释声称已转义，但无保证
+    query = supabase.table("system_resources").select("*")
+    if search:
+        query = query.or_(f"name.ilike.%{search}%,type.ilike.%{search}%")
+
+# 修复
+from core.validators.input_validator import sanitize_postgrest_query
+safe_search = sanitize_postgrest_query(search)
+query = query.or_(f"name.ilike.%{safe_search}%,type.ilike.%{safe_search}%")
+```
+
+**#7 `analytics_events_repository.py:204` 详细修复** (P2):
+
+```python
+# 问题代码
+query = query.or_(f'id.eq.{event_id},event_id.eq.{event_id}')
+
+# 修复: 使用参数化方式
+query = query.filter("id", "eq", event_id).filter("event_id", "eq", event_id)
+```
+
+**#8 `feature_flags/repository.py:102` 详细修复** (P1):
+
+```python
+# 问题代码
+query = query.or_(f"key.ilike.%{search}%,name.ilike.%{search}%")
+
+# 修复
+from core.validators.input_validator import sanitize_postgrest_query
+safe_search = sanitize_postgrest_query(search)
+query = query.or_(f"key.ilike.%{safe_search}%,name.ilike.%{safe_search}%")
+```
+
+#### Sanitize 实现不一致详细对比
+
+| 函数名 | 位置 | 转义字符 | 适用场景 |
+|--------|------|---------|---------|
+| `escape_like_wildcards()` | `core/validators/input_validator.py` | `%`, `_`, `\\` | ILIKE 模式匹配 |
+| `_sanitize_postgrest_query()` | `listing_repository.py` | `,`, `.`, `(`, `)`, `*`, `%`, `_` | PostgREST filter 结构 + ILIKE |
+| `_escape_or_filter_query()` | `article_repository.py` | 先 strip `,`, `.`, `(`, `)`, 再调用 `sanitize_postgrest_query` | PostgREST `.or_()` 上下文 |
+
+**上下文安全区别**:
+
+```python
+# 场景 1: .ilike() 方法参数 — escape_like_wildcards() 足够
+query = query.ilike("title", f"%{escape_like_wildcards(search)}%")  # ✅ 安全
+
+# 场景 2: .or_() 字符串拼接 — 需要 sanitize_postgrest_query()
+query = query.or_(f"title.ilike.%{escape_like_wildcards(search)}%,...")  # ⚠️ 不够
+query = query.or_(f"title.ilike.%{sanitize_postgrest_query(search)}%,...")  # ✅ 安全
+```
+
+**统一修复方案**:
+1. 将 `listing_repository.py` 中的 `_sanitize_postgrest_query()` 提升为 `core/validators/input_validator.py` 全局函数
+2. 所有在 `.or_()` 中使用 f-string 的代码统一使用 `sanitize_postgrest_query()`
+3. `.ilike()` 方法参数可继续使用 `escape_like_wildcards()` (supabase-py 自动处理)
+
+---
+
+## 附录 E: D5/D6 详细验证过程
+
+> 本附录包含数据完整性和一致性模式的逐条验证结果。
+
+---
+
+### E-1. 外键 CASCADE 行为逐条验证
+
+| FK 关系 | CASCADE 行为 | Python 代码行为 | 一致性 |
+|---------|-------------|----------------|--------|
+| auth_sessions.user_id → auth_users(id) | ON DELETE CASCADE | ✅ `delete()` 方法删除 auth_users，sessions 自动级联删除 | ✅ |
+| projects.user_id → profiles(id) | ON DELETE CASCADE | ✅ 软删除 profiles (is_deleted=true) 不触发 CASCADE | ✅ |
+| assets.user_id → profiles(id) | ON DELETE CASCADE | ✅ 同上 | ✅ |
+| tags.workspace_id → workspaces(id) | ON DELETE CASCADE | ✅ 删除 workspace 级联删除 tags | ✅ |
+| folders.workspace_id → workspaces(id) | ON DELETE CASCADE | ✅ 删除 workspace 级联删除 folders | ✅ |
+| projects.folder_id → folders(id) | ON DELETE SET NULL | ✅ 删除文件夹不影响项目，folder_id 置为 NULL | ✅ |
+| projects.workspace_id → workspaces(id) | ON DELETE SET NULL | ✅ 向后兼容设计 | ✅ |
+
+---
+
+### E-2. 触发器逻辑逐条验证
+
+#### 已验证正确的触发器
+
+| 触发器 | 表 | 功能 | 正确性验证 |
+|--------|---|------|-----------|
+| `update_updated_at_column` | ~12 个表 | 自动更新 updated_at | ✅ 标准模式 |
+| `sync_credit_transaction_type` | credit_transactions | 双向同步 tx_type ↔ transaction_type | ✅ 双写逻辑正确 |
+| `sync_notification_type` | notifications | 同步通知类型 | ✅ |
+| `generate_ticket_number` | support_tickets | 自动生成工单号 | ✅ 使用序列生成 |
+| `set_deleted_at_on_soft_delete` | 多个表 | is_deleted=true 时自动设置 deleted_at | ✅ |
+
+#### updated_at 双重更新详细分析 (P3)
+
+**示例 1 — 无触发器的表 (正确)**:
+```python
+# auth_user_repository.py:update_otp()
+await supabase.table("auth_users").update({
+    "otp_code_hash": hash_value,
+    "otp_expires_at": expires_at,
+    "updated_at": datetime.now(timezone.utc).isoformat()  # 手动设置 (正确，auth_users 无触发器)
+}).eq("id", user_id).execute()
+```
+
+**示例 2 — 有触发器的表 (冗余)**:
+```python
+# workspaces_repository.py
+await supabase.table("workspaces").update({
+    "name": new_name,
+    "updated_at": datetime.now(timezone.utc).isoformat()  # 手动设置 (冗余，触发器会覆盖)
+}).eq("id", workspace_id).execute()
+# workspaces 表同时有 update_updated_at_column 触发器
+```
+
+**修复建议**: 删除有触发器的表的 Python 代码中冗余的 `updated_at` 手动设置。
+
+---
+
+### E-3. 幂等性 Key 覆盖完整验证
+
+| 操作 | 幂等性 Key 字段 | 唯一索引/约束 | 覆盖情况 |
+|------|---------------|-------------|---------|
+| **积分扣减** | `credit_transactions.idempotency_key` | `idx_credit_transactions_idempotency_key UNIQUE (WHERE idempotency_key IS NOT NULL)` | ✅ 完全覆盖 |
+| **积分充值** | `credit_purchases.idempotency_key` | `idempotency_key TEXT UNIQUE` | ✅ 完全覆盖 |
+| **Stripe Webhook 处理** | `stripe_webhook_events.event_id` | `stripe_webhook_events(event_id) UNIQUE` | ✅ 完全覆盖 |
+| **项目创建** | `projects.idempotency_key` | **无唯一索引** | ⚠️ **P1** |
+
+**projects.idempotency_key 详细分析**:
+
+```sql
+-- SQL 定义 (01_core_business.sql)
+CREATE TABLE projects (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    title TEXT NOT NULL,
+    idempotency_key TEXT,  -- 有字段但无 UNIQUE 约束
+    ...
+);
+
+-- 缺失的约束
+-- CREATE UNIQUE INDEX idx_projects_idempotency_key
+-- ON projects (idempotency_key)
+-- WHERE idempotency_key IS NOT NULL;
+```
+
+**Python 代码使用**:
+```python
+# project_repository.py:create_project()
+new_project = {
+    "id": project_id,
+    "user_id": user_id,
+    "title": title,
+    "idempotency_key": idempotency_key,  # 传入但无约束保护
+    ...
+}
+result = await supabase.table("projects").insert(new_project).execute()
+```
+
+**风险**: 用户快速双击"创建项目"→ 2 次 INSERT 携带相同 key → 数据库成功插入 2 条记录 → 重复项目。
+
+---
+
+### E-4. 分页模式验证
+
+所有 Repository 统一使用 `offset + limit`:
+
+```python
+# 标准分页模式 (所有 Repository 共用)
+def get_projects(user_id: str, offset: int, limit: int):
+    result = await supabase.table("projects") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .eq("is_deleted", False) \
+        .order("updated_at", desc=True) \
+        .range(offset, offset + limit - 1) \
+        .execute()
+```
+
+✅ 100% 一致，无 `page + limit` 旧模式。
+
+---
+
+### E-5. 软删除模式验证
+
+```python
+# 标准软删除过滤 (所有需要的查询都使用)
+query = supabase.table("projects") \
+    .select("*") \
+    .eq("user_id", user_id) \
+    .eq("is_deleted", False)  # 统一过滤
+
+# 软删除操作
+await supabase.table("projects").update({
+    "is_deleted": True,
+    "deleted_at": datetime.now(timezone.utc).isoformat()
+}).eq("id", project_id).execute()
+```
+
+✅ 100% 一致。
+
+---
+
+### E-6. 时间戳处理对比
+
+```python
+# ✅ 正确模式 (Repository 层 — 大部分代码使用)
+from datetime import datetime, timezone
+created_at = datetime.now(timezone.utc).isoformat()  # 带时区信息
+
+# ❌ 已废弃模式 (Entity 层 — UserProfile 使用)
+from datetime import datetime
+created_at = datetime.utcnow()  # Python 3.12+ 已废弃，无时区信息
+```
+
+```sql
+-- SQL 层统一模式
+created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+```
+
+---
+
+### E-7. Enum 枚举完整对比
+
+| 枚举类型 | SQL CHECK 约束 | Python Enum | 一致性 |
+|----------|--------------|------------|--------|
+| **TransactionType** | 16 值 | 11 值 | ⚠️ **P1** — 缺少 5 值 |
+| **UserTier** | `CHECK (tier IN ('t1', 't2', 't3', 't4'))` | `TIER_T1`, `TIER_T2`, `TIER_T3` | ✅ |
+| **UserRole** | `CHECK (role IN ('user', 'admin', 'staff'))` | `USER`, `ADMIN`, `STAFF` | ✅ |
+| **OnboardingStep** | `CHECK (onboarding_step IN (...))` | Python enum | ✅ |
+| **SessionRevokeReason** | `CHECK (revoke_reason IN (...))` | Python 代码值 | ⚠️ P3 — `session_limit_exceeded` 不在 CHECK 中 |
+
+**TransactionType 差异详情**:
+
+| SQL 独有值 | 可能对应 | 状态 |
+|-----------|---------|------|
+| `topup_purchase` | 旧版充值 (现用 `credit_purchase`) | 待确认是否废弃 |
+| `sub_grant` | 缩写 (现用 `subscription_grant`) | 待确认是否废弃 |
+| `monthly_reset` | 月度积分重置 (现用 `subscription_renewal`?) | 待确认 |
+| `marketplace_purchase` | 市场购买 | 功能未上线? |
+| `monthly_credits_cleared` | 月度积分清零 | 功能未上线? |
