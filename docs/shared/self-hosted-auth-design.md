@@ -426,7 +426,7 @@ UNIQUE (provider, provider_user_id)  -- 每个第三方账号只能绑一个用�
 UNIQUE (user_id, provider)           -- 每个用户每个平台只能绑一个
 ```
 
-### 4.4 修改：`profiles` 表主键类型变更
+### 4.4 修改：`profiles` 表变更
 
 ```
 profiles.id: TEXT → UUID
@@ -434,6 +434,13 @@ profiles.id: TEXT → UUID
 影响范围：56 个外键需要同步变更为 UUID 类型
 操作方式：直接修改 3 个主 schema 文件（项目未上线，无数据迁移）
 修改顺序：01_core_business.sql → 02_platform_services.sql → 03_infrastructure.sql（外键依赖顺序）
+
+新增字段：
+- email_hash    TEXT    (SHA-256 hash of email，账户删除时写入，用于去重分析和 GDPR 合规准备)
+
+新增部分唯一索引：
+- CREATE UNIQUE INDEX idx_profiles_email_unique ON profiles(email) WHERE is_deleted = false;
+  (活跃用户邮箱唯一，软删除记录不受约束，允许同一邮箱的多条历史记录并存)
 ```
 
 ### 4.5 修改：`profiles.created_by` CHECK 约束
@@ -536,6 +543,77 @@ SQL 伪代码:
 注意: 注册第一步（发送 OTP）时调用。
 - SELECT ... FOR UPDATE 防止并发竞态（两个请求同时注册同一邮箱）
 - 返回 NULL 表示该邮箱已注册完成 → 后端仍返回统一响应"验证码已发送"（防枚举），但不实际发送 OTP
+```
+
+#### RPC 2: `restore_auth_user_with_profile()`
+
+账户恢复专用 RPC——在 30 天恢复期内，用户选择"恢复账号"时调用。复用旧 profiles UUID 作为新 auth_users.id，并将 profiles 记录恢复为活跃状态。
+
+```sql
+CREATE OR REPLACE FUNCTION restore_auth_user_with_profile(
+  p_old_profile_id  UUID,       -- 待恢复的 profiles.id（软删除状态）
+  p_email           TEXT,
+  p_password_hash   TEXT,
+  p_display_name    TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_profile RECORD;
+  v_restored_name TEXT;
+BEGIN
+  -- 1. 查询可恢复的 profiles 记录（FOR UPDATE 防并发）
+  SELECT id, email, display_name, deleted_at, is_deleted
+    INTO v_profile
+    FROM profiles
+   WHERE id = p_old_profile_id
+     AND is_deleted = true
+     AND deleted_at > now() - INTERVAL '30 days'
+     FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'RESTORE_NOT_FOUND: profile % not found or not restorable', p_old_profile_id;
+  END IF;
+
+  -- 2. 确认邮箱匹配（防止篡改）
+  IF v_profile.email <> p_email THEN
+    RAISE EXCEPTION 'RESTORE_EMAIL_MISMATCH: email does not match profile record';
+  END IF;
+
+  -- 3. 创建新的 auth_users 记录（复用旧 UUID）
+  INSERT INTO auth_users (id, email, password_hash, email_verified)
+  VALUES (p_old_profile_id, p_email, p_password_hash, true);
+
+  -- 4. 恢复 profiles 记录
+  v_restored_name := COALESCE(p_display_name, v_profile.display_name);
+  -- 如果 display_name 已被 30 天定时任务脱敏为 'Deleted User'，使用传入的新名称
+  IF v_restored_name = 'Deleted User' THEN
+    v_restored_name := COALESCE(p_display_name, 'User');
+  END IF;
+
+  UPDATE profiles SET
+    is_deleted = false,
+    deleted_at = NULL,
+    display_name = v_restored_name,
+    updated_at = now()
+  WHERE id = p_old_profile_id;
+
+  -- 5. 记录恢复事件
+  INSERT INTO user_creation_logs (user_id, action, details)
+  VALUES (p_old_profile_id, 'account_restored', jsonb_build_object(
+    'restored_at', now(),
+    'original_deleted_at', v_profile.deleted_at
+  ));
+
+  RETURN p_old_profile_id;
+END;
+$$ LANGUAGE plpgsql;
+
+注意: 注册第三步（complete）且 restore_account=true 时调用。
+- 复用旧 profiles.id 作为 auth_users.id，保持所有关联数据（projects、assets 等）的 owner_id 不变
+- email_verified 直接设为 true（用户已通过 OTP 验证邮箱归属）
+- 如果 display_name 已被 30 天脱敏任务改为 'Deleted User'，优先使用用户新输入的名称
+- 恢复后 email_hash 字段保留（不清除），不影响业务逻辑
+- RAISE EXCEPTION 抛出的错误由后端 RegistrationService 捕获并转为 HTTP 错误响应
 ```
 
 ### 4.8 处理相关表
@@ -734,7 +812,11 @@ decodables/api/auth/
 
 POST /auth/register/send-otp
   Request:  { email: string }
-  Response: { success: true, message: "验证码已发送到您的邮箱" }  // 无论邮箱是否已注册，统一响应防枚举
+  Response: { success: true, message: "验证码已发送到您的邮箱", has_restorable_account?: boolean }
+            // 无论邮箱是否已注册，统一响应防枚举（始终返回 success: true）
+            // has_restorable_account: 仅当存在 30 天内的可恢复账户时为 true，否则为 false
+            // ⚠️ 已知取舍：此字段暴露邮箱是否有已删除账户（邮箱枚举风险），
+            //    已通过 IP 限流（5/hour/IP + 3/hour/email）缓解，详见 7.3 邮箱复用
   Errors:   429 (限流)
 
 POST /auth/register/verify-otp
@@ -746,7 +828,9 @@ POST /auth/register/complete
   Request:  { register_token: string, password: string, display_name?: string, restore_account?: boolean }
   Response: { access_token: string, refresh_token: string, user: { id: UUID, email: string, display_name: string } }
   Note:     refresh_token 由 BFF 代理截获设为 httpOnly cookie，不返回给前端 JS
-  Errors:   400 { error: "invalid_register_token" | "weak_password" } / 409 (邮箱已完成注册)
+            restore_account=true 时调用 restore_auth_user_with_profile() RPC（复用旧 UUID，恢复 profiles）
+            restore_account=false 或未传时调用 create_auth_user_with_profile() RPC（全新 UUID）
+  Errors:   400 { error: "invalid_register_token" | "weak_password" | "restore_not_found" | "restore_expired" } / 409 (邮箱已完成注册)
 
 === 登录 ===
 
@@ -1440,15 +1524,29 @@ login/page.tsx — 登录页（单步）：
 - 链接："Don't have an account? Sign up" → /register
 - 错误处理：401 → "Invalid email or password" / 403 → "Account locked, try again in X minutes"
 
-register/page.tsx — 注册页（三步流程，同一页面内切换）：
+register/page.tsx — 注册页（三步 + 可选恢复步骤，同一页面内切换）：
   Step 1 — 输入邮箱：
   - 标题："Create your account"
   - 字段：Email
   - 按钮："Send Verification Code"（loading 状态）
   - 提交后调用 POST /auth/register/send-otp
   - 链接："Already have an account? Sign in" → /login
+  - 如果响应 has_restorable_account=true → 进入 Step 1b（恢复选择）
+  - 如果 has_restorable_account=false → 直接进入 Step 2
 
-  Step 2 — 输入 OTP：
+  Step 1b — 账户恢复选择（仅当 has_restorable_account=true 时显示）：
+  - 标题："Welcome back!"
+  - 提示文字："We found a previously deleted account associated with this email."
+  - 单选选项：
+    ○ "Restore my previous account" — 恢复旧账户（保留历史数据）
+    ○ "Create a brand new account" — 全新开始（旧账户将无法再恢复）
+  - 字段：6 位 OTP 输入框（需验证邮箱归属后才能执行恢复/创建）
+  - 按钮："Continue"（loading 状态）
+  - 链接："Use a different email" → 返回 Step 1
+  - 提交后调用 POST /auth/register/verify-otp → 获取 register_token
+  - 前端保存用户选择（restore_account: boolean），传入 Step 3 的 complete 请求
+
+  Step 2 — 输入 OTP（非恢复流程走此步骤）：
   - 标题："Enter verification code"
   - 提示文字："We sent a 6-digit code to xxx@xxx.com"
   - 字段：6 位 OTP 输入框（每位一个输入框，自动跳转，支持粘贴）
@@ -1459,12 +1557,12 @@ register/page.tsx — 注册页（三步流程，同一页面内切换）：
   - 错误处理：400 → "Invalid code" / "Code expired, please resend"
 
   Step 3 — 设置密码和昵称：
-  - 标题："Set up your account"
+  - 标题："Set up your account"（恢复流程时为 "Restore your account"）
   - 字段：Display Name（可选）+ Password + Confirm Password
   - 密码强度指示器（实时校验：≥8字符、大小写+数字）
-  - 按钮："Create Account"（loading 状态）
-  - 提交后调用 POST /auth/register/complete（携带 register_token）
-  - 注册成功 → 自动登录 → 跳转 /dashboard
+  - 按钮："Create Account" / "Restore Account"（根据 restore_account 动态切换，loading 状态）
+  - 提交后调用 POST /auth/register/complete（携带 register_token + restore_account）
+  - 注册/恢复成功 → 自动登录 → 跳转 /dashboard
 
 forgot-password/page.tsx — 忘记密码（三步流程，同一页面内切换）：
   Step 1 — 输入邮箱：
@@ -2067,16 +2165,29 @@ require_verified_email 依赖仍然保留：
 - auth_users 记录（密码、验证 token 等凭据数据）
 - auth_sessions 所有会话（ON DELETE CASCADE）
 
-软删除 + 30 天恢复期：
-- profiles 记录（is_deleted=true，现有字段已支持）
-  30 天内可通过管理员操作恢复
-  30 天后彻底删除（定期清理任务）
+永久软删除（不清理）：
+- profiles 记录（is_deleted=true, deleted_at=now()）
+  永久保留，用于数据分析、用户行为洞察、用户召回等运营场景
+  30 天内可通过重新注册恢复（restore_account=true）
+  30 天后不可恢复，但记录永久保留在数据库中
+  ⚠️ 不设定期清理任务，profiles 软删除记录永不硬删除
+- 删除时立即生成 email_hash：profiles.email_hash = SHA-256(email)
+  用于 GDPR 合规准备（将来需要时可清除 email 原始值，仅保留 hash 用于去重分析）
+- 30 天后 PII 部分脱敏（定时任务）：
+  - profiles.display_name → 'Deleted User'（原始值不可恢复）
+  - profiles.email → 保留原始值（用于用户召回、管理员搜索）
+  - profiles.email_hash → 保留（删除时已生成）
+  - profiles.user_code → 保留（系统生成编号，非 PII）
+  - profiles.tier / credits_* / created_at / deleted_at → 保留（分析用）
+  - ⚠️ 如果将来需要 GDPR 全面合规，只需一条 SQL 将已脱敏记录的 email 置 NULL，
+    email_hash 仍可用于去重和行为分析
 
-保留但匿名化：
-- projects/assets：owner_id 设为特殊 "deleted_user" UUID
-  用户的创作内容不丢失（便于已购买者继续访问 marketplace 资产）
+保留不匿名化：
+- projects/assets：owner_id 保持原 UUID 关联
+  便于恢复账户时重建关联，也便于数据分析追溯用户创作历史
+  已购买者继续通过 marketplace_listings 访问资产（不受影响）
 - payment_records：保留交易记录（法律要求保留 7 年）
-  但脱敏用户信息（email → hash）
+  owner_id 保持关联，便于用户召回时展示历史交易
 
 立即清除：
 - Stripe: 调用 Stripe API 取消订阅、删除 customer（或标记不活跃）
@@ -2093,16 +2204,54 @@ POST /auth/delete-account    需要 OTP 验证（otp_verified_token）   Access 
 - **profiles 表唯一约束处理**：profiles.email 需使用**部分唯一索引**，排除软删除记录：
   - `CREATE UNIQUE INDEX idx_profiles_email_unique ON profiles(email) WHERE is_deleted = false;`
   - 确保同一邮箱在活跃用户中唯一，但允许软删除记录与新记录并存
-  - 30 天后定期清理彻底删除旧 profiles，唯一索引自然释放
-- 30 天恢复期内，注册第一步（`/auth/register/send-otp`）行为：
-  1. 后端检测到 profiles 中存在同 email 的软删除记录（`is_deleted=true`，`deleted_at < 30天前`）
-  2. 返回与正常注册**完全相同**的响应（"验证码已发送到您的邮箱"），防止邮箱枚举
-  3. 实际发送的邮件包含 OTP 验证码 + 额外提示："我们检测到您之前注册过账户。输入验证码后，您可以选择恢复之前的账户或创建新账户。"
-  4. OTP 验证通过后，注册第三步（`/auth/register/complete`）增加 `restore_account` 可选参数：
-     - `restore_account=true`：恢复 profiles 软删除记录（`is_deleted=false`），重新创建 auth_users，重置密码
-     - `restore_account=false`（默认）：正常创建全新的 auth_users + profiles（旧 profiles 保持软删除状态，30 天后彻底清理）
-  5. 攻击者无法通过 API 响应判断该邮箱是否曾注册过
-- 30 天后：profiles 定期清理任务彻底删除过期记录，正常注册流程
+  - profiles 软删除记录永久保留，不会被清理（用于数据分析和用户召回）
+  - 同一邮箱可能存在多条软删除 profiles 记录（用户多次注册→删除→再注册→再删除），这是正常的
+- **已知取舍 — 邮箱枚举风险**：
+  - send-otp 响应包含 `has_restorable_account` 字段，攻击者可通过批量调用探测哪些邮箱曾注册过
+  - 泄露的信息仅限"该邮箱曾注册且删除过"（非当前活跃账户），信息敏感度较低
+  - 有 IP 限流保护（5/hour/IP + 3/hour/email），批量探测成本高
+  - 权衡结论：接受此风险，换取更好的用户恢复体验（尽早告知用户有可恢复账户）
+
+- **30 天恢复期内**，注册第一步（`/auth/register/send-otp`）行为：
+  1. 后端检测 profiles 中是否存在同 email 的可恢复记录（`is_deleted=true AND deleted_at > now() - interval '30 days'`）
+     - 多条软删除记录时取最近的：`ORDER BY deleted_at DESC LIMIT 1`
+  2. 响应：`{ success: true, has_restorable_account: true/false }`
+     - 无论邮箱是否存在都发送 OTP（防部分枚举：不区分"邮箱不存在"和"邮箱存在但无可恢复账户"）
+     - `has_restorable_account=true` 仅当 30 天内有软删除 profiles 记录
+  3. 前端收到 `has_restorable_account=true` 后，在 OTP 输入步骤之前展示选择 UI：
+     ```
+     ┌────────────────────────────────────────┐
+     │ We found a previously deleted account  │
+     │ associated with this email.            │
+     │                                        │
+     │ ○ Restore my previous account          │
+     │   (recover credits, projects, etc.)    │
+     │ ○ Create a new account                 │
+     │                                        │
+     │ Enter the verification code sent to    │
+     │ your email to continue.                │
+     │                                        │
+     │ [OTP Input: _ _ _ _ _ _]               │
+     │                                        │
+     │ [Continue]                              │
+     └────────────────────────────────────────┘
+     ```
+  4. 用户选择后进入第二步 verify-otp（验证邮箱归属），通过后获取 register_token
+  5. 第三步 complete 携带 `restore_account` 参数：
+     - `restore_account=true`：调用 `restore_auth_user_with_profile()` RPC
+       → 复用旧 profiles 的 UUID 创建新 auth_users
+       → 恢复 profiles（`is_deleted=false, deleted_at=NULL`）
+       → projects/assets 的 owner_id 天然匹配（UUID 不变）
+       → 重置密码（用户在 complete 步骤设置新密码）
+       → 积分保留（credits_monthly 重置为 0，credits_permanent 保留原值）
+     - `restore_account=false`（默认）：调用 `create_auth_user_with_profile()` RPC
+       → 创建全新 auth_users + profiles（新 UUID）
+       → 旧 profiles 保持软删除状态永久保留
+
+- **30 天后**，同一邮箱重新注册时：
+  - send-otp 返回 `has_restorable_account=false`（旧 profiles 的 `deleted_at` 已超过 30 天）
+  - 正常创建全新 auth_users + profiles（新 UUID）
+  - 旧 profiles 永久保留在数据库中（`is_deleted=true`），仅供后台数据分析使用
 
 ### 7.4 邮箱规范化
 
@@ -2247,7 +2396,7 @@ async def generate_image(user = Depends(require_verified_email)):
 
 | 阶段 | 内容 | 预估工作量 |
 |------|------|-----------|
-| **Phase 0** | 数据库 Schema：新增 3 张 auth 表，profiles.id 改 UUID，56 个外键同步，RPC 函数重写/更新（详见 4.5-4.8），CHECK 约束更新 | 1.5 天 |
+| **Phase 0** | 数据库 Schema：新增 3 张 auth 表，profiles.id 改 UUID + email_hash 字段 + 部分唯一索引，56 个外键同步，RPC 函数重写/更新（含 restore RPC，详见 4.5-4.8），CHECK 约束更新 | 1.5 天 |
 | **Phase 1** | 后端 Auth Domain：service/token/password/repository/API 全套 | 4 天 |
 | **Phase 2** | 后端集成：修改 dependencies.py + config.py + container.py，删除 Clerk 模块 | 1 天 |
 | **Phase 3** | 前端 Auth 抽象层：AuthProvider + useAuth + tokenManager + API Route 代理 | 3 天 |
@@ -2292,8 +2441,11 @@ Git 分支: feat/auth-phase0-schema
 - 为 3 张表添加 RLS 策略（详见 4.9）
 - ✅ 验证：SQL 语法检查通过
 
-**Step 0.2: `profiles.id` TEXT → UUID（`01_core_business.sql`）**
+**Step 0.2: `profiles` 表改造（`01_core_business.sql`）**
 - 修改 `profiles` 表定义：`id TEXT PRIMARY KEY` → `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`
+- 新增字段：`email_hash TEXT`（SHA-256 hash，账户删除时写入，用于去重分析）
+- 新增部分唯一索引：`CREATE UNIQUE INDEX idx_profiles_email_unique ON profiles(email) WHERE is_deleted = false;`
+  （活跃用户邮箱唯一，软删除记录不受约束，详见 4.4）
 - 逐一修改该文件内 **32 个外键列**的类型声明（TEXT → UUID）：
   - `projects.owner_id`, `marketplace_listings.created_by`, `marketplace_categories.created_by`
   - `assets.user_id`, `assets.origin_owner_id`, `asset_licenses.seller_id`
@@ -2344,9 +2496,13 @@ Git 分支: feat/auth-phase0-schema
 - ✅ 验证：CHECK 约束值正确
 
 **Step 0.6: 重写 RPC 函数**
-- `create_user_idempotent()` → 重写为 `create_auth_user_with_profile()`（详见 4.7）
+- `create_user_idempotent()` → 重写为 `create_auth_user_with_profile()`（详见 4.7 RPC 1）
   - 输入：p_email, p_password_hash, p_display_name, p_signup_bonus
   - 同一事务内创建 auth_users + profiles（共享 UUID）
+- 新增 `restore_auth_user_with_profile()`（详见 4.7 RPC 2）
+  - 输入：p_old_profile_id, p_email, p_password_hash, p_display_name
+  - 复用旧 profiles UUID 创建 auth_users，恢复 profiles.is_deleted=false
+  - 用于 30 天恢复期内用户选择恢复账号
 - 更新 `get_user_creation_stats()`：适配新 source 枚举
 - 保留 `generate_user_code()`：注册时仍需生成 26 位 user_code
 - ✅ 验证：RPC 函数语法正确
@@ -2415,6 +2571,8 @@ Git 分支: feat/auth-phase1-backend-domain
 - 新建 `infrastructure/auth/__init__.py`
 - 新建 `infrastructure/auth/auth_user_repository.py`：实现 `IAuthUserRepository`
   - `create()` 调用 RPC `create_auth_user_with_profile()`
+  - `restore()` 调用 RPC `restore_auth_user_with_profile()`
+  - `find_restorable_by_email(email)` 查询可恢复的软删除 profiles 记录
   - 其余方法通过 Supabase client 操作 `auth_users` 表
 - 新建 `infrastructure/auth/session_repository.py`：实现 `ISessionRepository`
   - 操作 `auth_sessions` 表
@@ -2422,12 +2580,16 @@ Git 分支: feat/auth-phase1-backend-domain
 - ✅ 验证：集成测试通过（需 Supabase 连接）
 
 **Step 1.8: 实现 RegistrationService**
-- 新建 `domains/auth/registration_service.py`（~150 行）
-  - `send_otp(email)`：校验邮箱 → 一次性邮箱检测 → 创建/更新 pending auth_user → 异步发 OTP 邮件 → 统一响应防枚举
+- 新建 `domains/auth/registration_service.py`（~200 行）
+  - `send_otp(email)`：校验邮箱 → 一次性邮箱检测 → 检查可恢复账户（profiles WHERE email=? AND is_deleted=true AND deleted_at > now()-30d）→ 创建/更新 pending auth_user → 异步发 OTP 邮件 → 返回 `{ success, has_restorable_account }`
   - `verify_otp(email, otp_code)`：校验 OTP → 标记 email_verified → 返回临时注册 token（JWT）
-  - `complete(register_token, password, display_name)`：校验注册 token → 幂等性检查 → 哈希密码 → RPC 原子创建 auth_users + profiles → 创建 session → 返回 tokens
+  - `complete(register_token, password, display_name, restore_account)`：
+    - 校验注册 token → 幂等性检查 → 哈希密码
+    - `restore_account=true`：调用 `restore_auth_user_with_profile()` RPC 恢复旧账户
+    - `restore_account=false`：调用 `create_auth_user_with_profile()` RPC 创建新账户
+    - 创建 session → 返回 tokens
 - 一次性邮箱检测：维护黑名单列表（disposable-email-domains）
-- ✅ 验证：`pytest tests/domains/auth/test_registration_service.py` 通过
+- ✅ 验证：`pytest tests/domains/auth/test_registration_service.py` 通过（含恢复流程测试）
 
 **Step 1.8b: 实现 SessionService**
 - 新建 `domains/auth/session_service.py`（~200 行）
@@ -2444,7 +2606,7 @@ Git 分支: feat/auth-phase1-backend-domain
   - `verify_otp(user_id_or_email, otp_code, purpose)`：通用 OTP 验证 → 返回 otp_verified_token（JWT）
   - `forgot_password_reset(otp_verified_token, new_password)`：校验 token → 更新密码 → 作废所有 sessions
   - `change_password(otp_verified_token, current_password, new_password)`：校验 token → 验证旧密码 → 更新 → 可选作废其他 sessions
-  - `delete_account(otp_verified_token)`：校验 token → 取消 Stripe → 作废 sessions → 软删 profiles → 硬删 auth_users → 异步匿名化内容
+  - `delete_account(otp_verified_token)`：校验 token → 取消 Stripe → 作废 sessions → 写入 email_hash(SHA-256) → 软删 profiles(is_deleted=true) → 硬删 auth_users → 异步匿名化内容
 - ✅ 验证：`pytest tests/domains/auth/test_account_service.py` 通过
 
 **Step 1.9: 创建 API 路由**
@@ -2675,17 +2837,24 @@ Git 分支: feat/auth-phase4-auth-pages
   - 登录成功 → 跳转 redirect 或默认 `/dashboard`
 - ✅ 验证：能登录 + 正确跳转
 
-**Step 4.4: 实现 `register/page.tsx`（三步流程）**
+**Step 4.4: 实现 `register/page.tsx`（三步 + 可选恢复流程）**
 - 新建 `app/(auth)/register/page.tsx`
   - Step 1: Email 输入 → 调用 `/auth/register/send-otp`
+    - 响应 `has_restorable_account=true` → 进入 Step 1b
+    - 响应 `has_restorable_account=false` → 进入 Step 2
+  - Step 1b: 账户恢复选择（仅当 has_restorable_account=true）
+    - 单选："Restore my previous account" / "Create a brand new account"
+    - OTP 输入（复用 OtpInput）→ 调用 `/auth/register/verify-otp`
+    - 保存 `restore_account` 选择传入 Step 3
   - Step 2: OTP 输入（使用 OtpInput 组件）→ 调用 `/auth/register/verify-otp` → 获取 register_token
     - 60 秒倒计时重发功能
     - "Use a different email" 返回 Step 1
-  - Step 3: Display Name + Password + Confirm Password → 调用 `/auth/register/complete`
+  - Step 3: Display Name + Password + Confirm Password → 调用 `/auth/register/complete`（携带 restore_account）
     - 密码强度指示器
-    - 注册成功 → 自动登录 → 跳转 `/dashboard`
+    - 按钮文案动态切换："Create Account" / "Restore Account"
+    - 注册/恢复成功 → 自动登录 → 跳转 `/dashboard`
   - 链接："Already have an account? Sign in" → `/login`
-- ✅ 验证：完整三步注册流程
+- ✅ 验证：完整注册流程 + 恢复流程
 
 **Step 4.5: 实现 `forgot-password/page.tsx`（三步流程）**
 - 新建 `app/(auth)/forgot-password/page.tsx`
@@ -2986,7 +3155,7 @@ RESEND_FROM_EMAIL            # 发件人地址（已有 SUPPORT_EMAIL_FROM，复
 | Phase 1 (后端 Auth) | `pytest tests/domains/auth/` 全部通过，手动测试 OTP 注册三步流程 + 登录/刷新 API |
 | Phase 2 (后端集成) | 后端启动无报错，`get_current_user()` 能正确验证自签 JWT |
 | Phase 3 (前端抽象层) | AuthProvider 能初始化，useAuth() 能获取 token，API 调用成功 |
-| Phase 4 (认证页面) | 手动测试：注册（邮箱→OTP→密码）→ 自动登录→dashboard→登出→ 忘记密码（邮箱→OTP→新密码） |
+| Phase 4 (认证页面) | 手动测试：注册（邮箱→OTP→密码）→ 自动登录→dashboard→登出→ 忘记密码（邮箱→OTP→新密码）→ 删除账户→用同邮箱注册→选择恢复账户→验证数据恢复 |
 | Phase 5 (前端迁移) | `npm run build` 零错误，所有页面功能正常 |
 | Phase 6 (测试) | `pytest` 后端全部通过，前端 jest 全部通过。测试 JWT 策略：直接用 `AUTH_JWT_SECRET` 通过 `TokenService` 签发 HS256 test token |
 | Phase 7 (清理) | `grep -r "clerk" --include="*.ts" --include="*.tsx" --include="*.py"` 返回 0 结果（文档除外） |
