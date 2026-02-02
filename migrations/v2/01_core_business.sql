@@ -2173,7 +2173,7 @@ BEGIN
         metadata,
         created_at
     ) VALUES (
-        p_user_id::TEXT,
+        p_user_id,
         p_created_by,
         'created',
         jsonb_build_object(
@@ -2283,7 +2283,7 @@ BEGIN
     -- 6. 记录恢复事件
     INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
     VALUES (
-        p_old_profile_id::TEXT,
+        p_old_profile_id,
         p_source,
         'account_restored',
         jsonb_build_object(
