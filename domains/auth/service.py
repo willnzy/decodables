@@ -1,16 +1,23 @@
 """
 AuthService — Core authentication orchestration service.
 
-Coordinates all authentication operations: register, login, token refresh,
-logout, email verification, password reset, session management, and
-account deletion.
+Coordinates all authentication operations:
+- 3-step OTP registration (send OTP → verify OTP → set password)
+- Login with lockout protection
+- Token refresh with rotation and reuse detection
+- Logout (single / all devices)
+- Password reset via OTP
+- Password change
+- Multi-device session management
+- Account deletion (soft-delete with restore window)
+- Account restoration
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
@@ -18,9 +25,11 @@ from starlette.concurrency import run_in_threadpool
 from .aggregates.auth_user import AuthUser
 from .aggregates.session import Session
 from .constants import (
-    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS,
     MAX_ACTIVE_SESSIONS,
-    PASSWORD_RESET_TOKEN_EXPIRE_HOURS,
+    OTP_COOLDOWN_SECONDS,
+    OTP_EXPIRE_MINUTES,
+    OTP_PURPOSE_FORGOT_PASSWORD,
+    OTP_PURPOSE_REGISTER,
     REVOKE_REASON_LOGOUT,
     REVOKE_REASON_ROTATION,
     REVOKE_REASON_SECURITY,
@@ -30,11 +39,14 @@ from .email_service import EmailService
 from .exceptions import (
     AccountDisabledException,
     AccountLockedException,
+    AccountRestorableException,
     DisposableEmailException,
     EmailAlreadyExistsException,
-    EmailNotVerifiedException,
     InvalidCredentialsException,
-    InvalidVerificationTokenException,
+    OtpCooldownException,
+    OtpExpiredException,
+    OtpInvalidException,
+    OtpMaxAttemptsException,
     SessionNotFoundException,
     TokenExpiredException,
     TokenReuseDetectedException,
@@ -44,12 +56,11 @@ from .exceptions import (
 from .password_service import PasswordService
 from .repository import IAuthUserRepository, ISessionRepository
 from .token_service import TokenService
-from .value_objects import DeviceInfo, Email, PasswordStrength
+from .value_objects import DeviceInfo, Email
 
 logger = logging.getLogger(__name__)
 
 # Disposable email domain blacklist (common ones)
-# For production, consider using the `disposable-email-domains` package
 DISPOSABLE_EMAIL_DOMAINS: frozenset = frozenset({
     "mailinator.com", "tempmail.com", "guerrillamail.com", "throwaway.email",
     "yopmail.com", "sharklasers.com", "grr.la", "guerrillamailblock.com",
@@ -66,14 +77,14 @@ class AuthService:
     Core authentication orchestration service.
 
     Coordinates:
-    - User registration with atomic profile creation
+    - 3-step OTP registration (email → OTP → password)
     - Login with lockout protection
     - Token refresh with rotation and reuse detection
     - Logout (single / all devices)
-    - Email verification
-    - Password reset / change
+    - Password reset via OTP
+    - Password change
     - Multi-device session management
-    - Account deletion
+    - Account deletion + restoration
     """
 
     def __init__(
@@ -91,30 +102,204 @@ class AuthService:
         self._email_svc = email_service
 
     # ===================================================================
-    # Registration
+    # Registration — Step 1: Send OTP
     # ===================================================================
 
-    async def register(
+    async def send_registration_otp(
         self,
         email: str,
+    ) -> Dict[str, Any]:
+        """
+        Registration step 1: Validate email and send OTP code.
+
+        Flow:
+        1. Validate email format + disposable check
+        2. Check for restorable soft-deleted account
+        3. Generate OTP + create pending auth_user via RPC
+        4. Send OTP email
+
+        Args:
+            email: User's email address.
+
+        Returns:
+            Dict with user_id (for step 2) and has_restorable_account flag.
+
+        Raises:
+            DisposableEmailException: Disposable email detected.
+            EmailAlreadyExistsException: Email already registered.
+            AccountRestorableException: Soft-deleted account can be restored.
+            OtpCooldownException: OTP sent too recently.
+        """
+        # 1. Validate email
+        validated_email = Email(email)
+        self._check_disposable_email(validated_email.domain)
+
+        # 2. Check for restorable account
+        restorable = await self._auth_user_repo.get_restorable_by_email(
+            validated_email.value
+        )
+        if restorable:
+            raise AccountRestorableException(
+                restore_deadline=restorable.get("recovery_expires_at"),
+            )
+
+        # 3. Generate OTP
+        otp_code, otp_hash = self._token_svc.generate_otp()
+        otp_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=OTP_EXPIRE_MINUTES
+        )
+
+        # 4. Create pending user via RPC
+        pending_user = AuthUser.create_pending(
+            email=validated_email.value,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_REGISTER,
+            otp_expires_at=otp_expires_at,
+        )
+
+        created_user, was_created = await self._auth_user_repo.create_pending(
+            auth_user=pending_user,
+        )
+
+        if not was_created:
+            # Email already fully registered
+            if created_user.is_registered:
+                raise EmailAlreadyExistsException()
+
+            # Pending user exists — check cooldown then update OTP
+            if created_user.is_otp_valid:
+                # Check cooldown: if OTP was set recently, don't resend
+                if created_user.otp_expires_at:
+                    otp_set_at = created_user.otp_expires_at - timedelta(
+                        minutes=OTP_EXPIRE_MINUTES
+                    )
+                    elapsed = (datetime.now(timezone.utc) - otp_set_at).total_seconds()
+                    if elapsed < OTP_COOLDOWN_SECONDS:
+                        remaining = int(OTP_COOLDOWN_SECONDS - elapsed)
+                        raise OtpCooldownException(retry_after_seconds=remaining)
+
+            # Resend: generate new OTP and update
+            otp_code, otp_hash = self._token_svc.generate_otp()
+            otp_expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=OTP_EXPIRE_MINUTES
+            )
+            await self._auth_user_repo.update_otp(
+                user_id=created_user.id,
+                otp_code_hash=otp_hash,
+                otp_purpose=OTP_PURPOSE_REGISTER,
+                otp_expires_at=otp_expires_at,
+            )
+            created_user = await self._auth_user_repo.get_by_id(created_user.id)
+            if created_user is None:
+                raise RuntimeError("Pending user disappeared after OTP update")
+
+        # 5. Send OTP email (non-blocking, don't fail registration)
+        try:
+            await self._email_svc.send_otp_email(
+                to_email=validated_email.value,
+                otp_code=otp_code,
+                purpose=OTP_PURPOSE_REGISTER,
+            )
+        except Exception:
+            logger.exception(f"Failed to send OTP email to {validated_email.value}")
+
+        return {
+            "user_id": str(created_user.id),
+            "email": validated_email.value,
+            "otp_expires_in_seconds": OTP_EXPIRE_MINUTES * 60,
+        }
+
+    # ===================================================================
+    # Registration — Step 2: Verify OTP
+    # ===================================================================
+
+    async def verify_registration_otp(
+        self,
+        user_id: str,
+        otp_code: str,
+    ) -> Dict[str, Any]:
+        """
+        Registration step 2: Verify the OTP code.
+
+        Args:
+            user_id: User ID from step 1.
+            otp_code: 6-digit OTP code from email.
+
+        Returns:
+            Dict with user_id (for step 3) confirming OTP is valid.
+
+        Raises:
+            OtpExpiredException: OTP has expired.
+            OtpMaxAttemptsException: Too many failed attempts.
+            OtpInvalidException: Wrong OTP code.
+        """
+        uid = UUID(user_id)
+        auth_user = await self._auth_user_repo.get_by_id(uid)
+        if auth_user is None:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        # Must be pending user with register purpose
+        if auth_user.is_registered:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        if auth_user.otp_purpose != OTP_PURPOSE_REGISTER:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        # Check expiry
+        if not auth_user.is_otp_valid:
+            raise OtpExpiredException()
+
+        # Check max attempts
+        if auth_user.is_otp_max_attempts_reached:
+            raise OtpMaxAttemptsException()
+
+        # Verify OTP code
+        input_hash = self._token_svc.hash_otp(otp_code)
+        if input_hash != auth_user.otp_code_hash:
+            # Increment attempts
+            auth_user.increment_otp_attempts()
+            await self._auth_user_repo.update_otp_attempts(
+                user_id=uid,
+                otp_attempts=auth_user.otp_attempts,
+            )
+
+            if auth_user.is_otp_max_attempts_reached:
+                raise OtpMaxAttemptsException()
+
+            from .constants import OTP_MAX_ATTEMPTS
+            remaining = OTP_MAX_ATTEMPTS - auth_user.otp_attempts
+            raise OtpInvalidException(remaining_attempts=remaining)
+
+        # OTP verified — don't clear yet, step 3 will clear via RPC
+        return {
+            "user_id": str(uid),
+            "email": auth_user.email,
+            "otp_verified": True,
+        }
+
+    # ===================================================================
+    # Registration — Step 3: Complete Registration
+    # ===================================================================
+
+    async def complete_registration(
+        self,
+        user_id: str,
         password: str,
         display_name: Optional[str] = None,
         device_info: Optional[DeviceInfo] = None,
         signup_bonus: int = 0,
     ) -> Dict[str, Any]:
         """
-        Register a new user.
+        Registration step 3: Set password and create profile.
 
         Flow:
-        1. Validate email format + disposable check
-        2. Validate password strength
-        3. Hash password (argon2id)
-        4. Atomic create: auth_users + profiles (via RPC)
-        5. Send verification email
-        6. Create session + return tokens
+        1. Validate password strength
+        2. Hash password (argon2id)
+        3. Complete registration via RPC (set password + create profile)
+        4. Create session + return tokens
 
         Args:
-            email: User's email address.
+            user_id: User ID from step 2.
             password: Plaintext password.
             display_name: Optional display name.
             device_info: Client device information.
@@ -125,48 +310,36 @@ class AuthService:
 
         Raises:
             WeakPasswordException: Password doesn't meet requirements.
-            DisposableEmailException: Disposable email detected.
-            EmailAlreadyExistsException: Email already registered.
+            OtpInvalidException: User not in valid pending state.
         """
-        # 1. Validate email
-        validated_email = Email(email)
-        self._check_disposable_email(validated_email.domain)
+        uid = UUID(user_id)
 
-        # 2. Validate password strength
+        # Verify user is still in pending state with verified OTP
+        auth_user = await self._auth_user_repo.get_by_id(uid)
+        if auth_user is None or auth_user.is_registered:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        # 1. Validate password strength
         strength = self._password_svc.validate_strength(password)
         if not strength.is_valid:
             raise WeakPasswordException(errors=list(strength.errors))
 
-        # 3. Hash password (CPU-bound, run in threadpool)
+        # 2. Hash password (CPU-bound, run in threadpool)
         password_hash = await run_in_threadpool(
             self._password_svc.hash_password, password
         )
 
-        # 4. Atomic create via RPC
-        auth_user = AuthUser.create_new(
-            email=validated_email.value,
+        # 3. Complete registration via RPC
+        completed_user = await self._auth_user_repo.complete_registration(
+            user_id=uid,
             password_hash=password_hash,
-        )
-
-        created_user, was_created = await self._auth_user_repo.create(
-            auth_user=auth_user,
             display_name=display_name,
             signup_bonus=signup_bonus,
         )
 
-        if not was_created:
-            # Email already exists — per design, return generic success
-            # to prevent email enumeration. Send "already registered" hint
-            # to the existing email instead.
-            logger.info(f"Registration attempt for existing email: {validated_email.value}")
-            raise EmailAlreadyExistsException()
-
-        # 5. Send verification email (non-blocking, don't fail registration)
-        await self._send_verification_email(created_user)
-
-        # 6. Create session + tokens
+        # 4. Create session + tokens
         return await self._create_session_and_tokens(
-            user=created_user,
+            user=completed_user,
             device_info=device_info,
         )
 
@@ -207,6 +380,10 @@ class AuthService:
         normalized_email = email.strip().lower()
         auth_user = await self._auth_user_repo.get_by_email(normalized_email)
         if auth_user is None:
+            raise InvalidCredentialsException()
+
+        # Pending users cannot login
+        if auth_user.is_pending:
             raise InvalidCredentialsException()
 
         # 2. Check account state
@@ -384,161 +561,167 @@ class AuthService:
         )
 
     # ===================================================================
-    # Email Verification
+    # Password Reset via OTP
     # ===================================================================
 
-    async def verify_email(self, token: str, email: str) -> bool:
+    async def send_password_reset_otp(self, email: str) -> Dict[str, Any]:
         """
-        Verify user's email address.
+        Send OTP for password reset.
+
+        Always returns success-like response to prevent email enumeration.
 
         Args:
-            token: Plaintext verification token from email link.
-            email: Email address to verify.
+            email: Email address to send OTP to.
 
         Returns:
-            True if verification successful.
-
-        Raises:
-            InvalidVerificationTokenException: Invalid or expired token.
+            Dict with generic success message (doesn't reveal if email exists).
         """
         normalized_email = email.strip().lower()
         auth_user = await self._auth_user_repo.get_by_email(normalized_email)
 
-        if auth_user is None:
-            raise InvalidVerificationTokenException()
+        # Always return "success" to prevent enumeration
+        generic_response = {
+            "message": "If an account exists with this email, a verification code has been sent.",
+        }
 
-        if auth_user.email_verified:
-            return True  # Already verified
+        if auth_user is None or auth_user.is_pending:
+            logger.info(f"Password reset requested for unknown/pending email: {normalized_email}")
+            return generic_response
 
-        # Compare token hash
-        token_hash = self._token_svc.hash_token(token)
-        if auth_user.email_verification_token != token_hash:
-            raise InvalidVerificationTokenException()
+        # Check cooldown
+        if auth_user.is_otp_valid and auth_user.otp_expires_at:
+            otp_set_at = auth_user.otp_expires_at - timedelta(minutes=OTP_EXPIRE_MINUTES)
+            elapsed = (datetime.now(timezone.utc) - otp_set_at).total_seconds()
+            if elapsed < OTP_COOLDOWN_SECONDS:
+                # Don't reveal cooldown to prevent enumeration
+                return generic_response
 
-        if not auth_user.is_verification_token_valid:
-            raise InvalidVerificationTokenException(
-                message="Verification token has expired. Please request a new one."
-            )
-
-        # Mark verified
-        await self._auth_user_repo.update_email_verified(
-            user_id=auth_user.id,
-            verified=True,
+        # Generate and store OTP
+        otp_code, otp_hash = self._token_svc.generate_otp()
+        otp_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=OTP_EXPIRE_MINUTES
         )
 
-        return True
-
-    async def resend_verification_email(self, user_id: UUID) -> bool:
-        """
-        Resend email verification link.
-
-        Args:
-            user_id: User's UUID.
-
-        Returns:
-            True if email was sent.
-        """
-        auth_user = await self._auth_user_repo.get_by_id(user_id)
-        if auth_user is None or auth_user.email_verified:
-            return False
-
-        return await self._send_verification_email(auth_user)
-
-    # ===================================================================
-    # Password Reset
-    # ===================================================================
-
-    async def request_password_reset(self, email: str) -> None:
-        """
-        Request password reset email.
-
-        Always returns success to prevent email enumeration.
-
-        Args:
-            email: Email address to send reset link to.
-        """
-        normalized_email = email.strip().lower()
-        auth_user = await self._auth_user_repo.get_by_email(normalized_email)
-
-        if auth_user is None:
-            # Don't reveal whether email exists — return silently
-            logger.info(f"Password reset requested for unknown email: {normalized_email}")
-            return
-
-        # Generate reset token
-        plaintext, token_hash = self._token_svc.create_secure_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            hours=PASSWORD_RESET_TOKEN_EXPIRE_HOURS
-        )
-
-        # Store hash
-        await self._auth_user_repo.set_password_reset_token(
+        await self._auth_user_repo.update_otp(
             user_id=auth_user.id,
-            token_hash=token_hash,
-            expires_at=expires_at,
+            otp_code_hash=otp_hash,
+            otp_purpose=OTP_PURPOSE_FORGOT_PASSWORD,
+            otp_expires_at=otp_expires_at,
         )
 
         # Send email
-        await self._email_svc.send_password_reset_email(
-            to_email=auth_user.email,
-            token_plaintext=plaintext,
-        )
+        try:
+            await self._email_svc.send_otp_email(
+                to_email=auth_user.email,
+                otp_code=otp_code,
+                purpose=OTP_PURPOSE_FORGOT_PASSWORD,
+            )
+        except Exception:
+            logger.exception(f"Failed to send password reset OTP to {auth_user.email}")
+
+        return generic_response
+
+    async def verify_password_reset_otp(
+        self,
+        email: str,
+        otp_code: str,
+    ) -> Dict[str, Any]:
+        """
+        Verify OTP for password reset.
+
+        Args:
+            email: User's email.
+            otp_code: 6-digit OTP code.
+
+        Returns:
+            Dict with user_id for the reset step.
+
+        Raises:
+            OtpExpiredException: OTP has expired.
+            OtpMaxAttemptsException: Too many failed attempts.
+            OtpInvalidException: Wrong OTP code.
+        """
+        normalized = email.strip().lower()
+        auth_user = await self._auth_user_repo.get_by_email(normalized)
+        if auth_user is None:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        if auth_user.otp_purpose != OTP_PURPOSE_FORGOT_PASSWORD:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        if not auth_user.is_otp_valid:
+            raise OtpExpiredException()
+
+        if auth_user.is_otp_max_attempts_reached:
+            raise OtpMaxAttemptsException()
+
+        input_hash = self._token_svc.hash_otp(otp_code)
+        if input_hash != auth_user.otp_code_hash:
+            auth_user.increment_otp_attempts()
+            await self._auth_user_repo.update_otp_attempts(
+                user_id=auth_user.id,
+                otp_attempts=auth_user.otp_attempts,
+            )
+
+            if auth_user.is_otp_max_attempts_reached:
+                raise OtpMaxAttemptsException()
+
+            from .constants import OTP_MAX_ATTEMPTS
+            remaining = OTP_MAX_ATTEMPTS - auth_user.otp_attempts
+            raise OtpInvalidException(remaining_attempts=remaining)
+
+        return {
+            "user_id": str(auth_user.id),
+            "email": auth_user.email,
+            "otp_verified": True,
+        }
 
     async def reset_password(
         self,
-        token: str,
-        email: str,
+        user_id: str,
         new_password: str,
     ) -> None:
         """
-        Reset password using a reset token.
+        Reset password after OTP verification.
 
         Args:
-            token: Plaintext reset token from email link.
-            email: Email address.
+            user_id: User's UUID (from verify step).
             new_password: New plaintext password.
 
         Raises:
-            InvalidVerificationTokenException: Invalid or expired token.
             WeakPasswordException: New password doesn't meet requirements.
+            InvalidCredentialsException: User not found.
         """
+        uid = UUID(user_id)
+        auth_user = await self._auth_user_repo.get_by_id(uid)
+        if auth_user is None:
+            raise InvalidCredentialsException()
+
         # Validate password strength
         strength = self._password_svc.validate_strength(new_password)
         if not strength.is_valid:
             raise WeakPasswordException(errors=list(strength.errors))
-
-        normalized_email = email.strip().lower()
-        auth_user = await self._auth_user_repo.get_by_email(normalized_email)
-
-        if auth_user is None:
-            raise InvalidVerificationTokenException()
-
-        # Verify token
-        token_hash = self._token_svc.hash_token(token)
-        if auth_user.password_reset_token != token_hash:
-            raise InvalidVerificationTokenException()
-
-        if not auth_user.is_reset_token_valid:
-            raise InvalidVerificationTokenException(
-                message="Reset token has expired. Please request a new one."
-            )
 
         # Hash new password
         new_hash = await run_in_threadpool(
             self._password_svc.hash_password, new_password
         )
 
-        # Update password
+        # Update password (also clears OTP)
         await self._auth_user_repo.update_password(
-            user_id=auth_user.id,
+            user_id=uid,
             password_hash=new_hash,
         )
 
         # Revoke all sessions (security: force re-login)
         await self._session_repo.revoke_all_by_user(
-            user_id=auth_user.id,
+            user_id=uid,
             reason=REVOKE_REASON_SECURITY,
         )
+
+    # ===================================================================
+    # Password Change (authenticated)
+    # ===================================================================
 
     async def change_password(
         self,
@@ -561,7 +744,7 @@ class AuthService:
             WeakPasswordException: New password doesn't meet requirements.
         """
         auth_user = await self._auth_user_repo.get_by_id(user_id)
-        if auth_user is None:
+        if auth_user is None or auth_user.password_hash is None:
             raise InvalidCredentialsException()
 
         # Verify current password
@@ -649,15 +832,15 @@ class AuthService:
         password: str,
     ) -> None:
         """
-        Delete user account permanently.
+        Delete user account.
 
         Flow:
         1. Verify password
         2. Revoke all sessions
         3. Hard delete auth_users (cascades to sessions)
 
-        Note: Profile soft-delete and Stripe cancellation should be
-        handled by the application layer before calling this method.
+        Note: Profile soft-delete, email_hash, and Stripe cancellation
+        should be handled by the application layer before calling this.
 
         Args:
             user_id: User's UUID.
@@ -667,7 +850,7 @@ class AuthService:
             InvalidCredentialsException: Wrong password.
         """
         auth_user = await self._auth_user_repo.get_by_id(user_id)
-        if auth_user is None:
+        if auth_user is None or auth_user.password_hash is None:
             raise InvalidCredentialsException()
 
         # Verify password
@@ -691,6 +874,70 @@ class AuthService:
         await self._auth_user_repo.delete(user_id)
 
         logger.info(f"Account deleted for user {user_id}")
+
+    # ===================================================================
+    # Account Restoration
+    # ===================================================================
+
+    async def check_restorable_account(self, email: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if email has a restorable soft-deleted account.
+
+        Args:
+            email: Email to check.
+
+        Returns:
+            Dict with restore info if restorable, None otherwise.
+        """
+        return await self._auth_user_repo.get_restorable_by_email(email)
+
+    async def restore_account(
+        self,
+        email: str,
+        password: str,
+        device_info: Optional[DeviceInfo] = None,
+    ) -> Dict[str, Any]:
+        """
+        Restore a soft-deleted account.
+
+        Flow:
+        1. Validate password strength
+        2. Hash password
+        3. Restore via RPC (reuse old profile UUID)
+        4. Create session + tokens
+
+        Args:
+            email: User's email.
+            password: New password.
+            device_info: Client device info.
+
+        Returns:
+            Dict with access_token, refresh_token, user info.
+
+        Raises:
+            WeakPasswordException: Password doesn't meet requirements.
+        """
+        # Validate password
+        strength = self._password_svc.validate_strength(password)
+        if not strength.is_valid:
+            raise WeakPasswordException(errors=list(strength.errors))
+
+        # Hash password
+        password_hash = await run_in_threadpool(
+            self._password_svc.hash_password, password
+        )
+
+        # Restore via RPC
+        restored_user = await self._auth_user_repo.restore_account(
+            email=email,
+            password_hash=password_hash,
+        )
+
+        # Create session + tokens
+        return await self._create_session_and_tokens(
+            user=restored_user,
+            device_info=device_info,
+        )
 
     # ===================================================================
     # Internal Helpers
@@ -755,30 +1002,6 @@ class AuthService:
             "access_token": access_token,
             "token_type": "bearer",
         }
-
-    async def _send_verification_email(self, auth_user: AuthUser) -> bool:
-        """Generate verification token and send email."""
-        try:
-            plaintext, token_hash = self._token_svc.create_secure_token()
-            expires_at = datetime.now(timezone.utc) + timedelta(
-                hours=EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
-            )
-
-            await self._auth_user_repo.set_verification_token(
-                user_id=auth_user.id,
-                token_hash=token_hash,
-                expires_at=expires_at,
-            )
-
-            return await self._email_svc.send_verification_email(
-                to_email=auth_user.email,
-                token_plaintext=plaintext,
-            )
-        except Exception:
-            logger.exception(
-                f"Failed to send verification email to {auth_user.email}"
-            )
-            return False
 
     async def _enforce_session_limit(self, user_id: UUID) -> None:
         """Enforce maximum concurrent session limit."""

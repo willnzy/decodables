@@ -3,11 +3,13 @@ Auth Repository Interfaces.
 
 Defines the data access contracts (ports) for the auth domain.
 Infrastructure layer provides concrete implementations.
+
+Uses unified OTP model — no separate verification/reset token methods.
 """
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from .aggregates.auth_user import AuthUser
@@ -53,33 +55,116 @@ class IAuthUserRepository(ABC):
         """
         pass
 
+    @abstractmethod
+    async def get_restorable_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if a soft-deleted profile exists that can be restored.
+
+        Looks for profiles with is_deleted=true and recovery_expires_at > now.
+
+        Args:
+            email: User's email address.
+
+        Returns:
+            Dict with profile info (id, email, recovery_expires_at) or None.
+        """
+        pass
+
     # -------------------------------------------------------------------
-    # Command Methods
+    # Command Methods — Registration (3-step OTP)
     # -------------------------------------------------------------------
 
     @abstractmethod
-    async def create(
+    async def create_pending(
         self,
         auth_user: AuthUser,
-        display_name: Optional[str] = None,
-        signup_bonus: int = 0,
     ) -> Tuple[AuthUser, bool]:
         """
-        Create auth user and associated profile atomically.
+        Create a pending auth user (step 1 of registration).
 
-        Uses RPC create_auth_user_with_profile() to ensure auth_users
-        and profiles are created in the same transaction with a shared UUID.
+        Uses RPC create_pending_auth_user() to atomically create/update
+        a pending user with OTP fields.
 
         Args:
-            auth_user: AuthUser aggregate to create.
+            auth_user: Pending AuthUser aggregate (no password_hash).
+
+        Returns:
+            Tuple of (AuthUser, was_created).
+            was_created=False means email already registered (has password).
+        """
+        pass
+
+    @abstractmethod
+    async def complete_registration(
+        self,
+        user_id: UUID,
+        password_hash: str,
+        display_name: Optional[str] = None,
+        signup_bonus: int = 0,
+    ) -> AuthUser:
+        """
+        Complete registration (step 3 of registration).
+
+        Uses RPC create_auth_user_with_profile() to atomically set password,
+        mark email verified, and create the associated profile.
+
+        Args:
+            user_id: Pending user's UUID from step 1.
+            password_hash: Argon2id hashed password.
             display_name: Optional display name for the profile.
             signup_bonus: Signup bonus credits (default 0).
 
         Returns:
-            Tuple of (AuthUser, was_created).
-            was_created=False means email already exists.
+            Completed AuthUser.
         """
         pass
+
+    # -------------------------------------------------------------------
+    # Command Methods — OTP
+    # -------------------------------------------------------------------
+
+    @abstractmethod
+    async def update_otp(
+        self,
+        user_id: UUID,
+        otp_code_hash: str,
+        otp_purpose: str,
+        otp_expires_at: datetime,
+    ) -> None:
+        """
+        Update OTP fields for a user.
+
+        Args:
+            user_id: User's UUID.
+            otp_code_hash: SHA-256 hash of the OTP code.
+            otp_purpose: OTP purpose string.
+            otp_expires_at: OTP expiration time.
+        """
+        pass
+
+    @abstractmethod
+    async def update_otp_attempts(
+        self,
+        user_id: UUID,
+        otp_attempts: int,
+    ) -> None:
+        """
+        Update OTP attempt count.
+
+        Args:
+            user_id: User's UUID.
+            otp_attempts: New attempt count.
+        """
+        pass
+
+    @abstractmethod
+    async def clear_otp(self, user_id: UUID) -> None:
+        """Clear all OTP fields after successful verification."""
+        pass
+
+    # -------------------------------------------------------------------
+    # Command Methods — Password & Account
+    # -------------------------------------------------------------------
 
     @abstractmethod
     async def update_password(
@@ -129,50 +214,6 @@ class IAuthUserRepository(ABC):
         pass
 
     @abstractmethod
-    async def set_verification_token(
-        self,
-        user_id: UUID,
-        token_hash: str,
-        expires_at: datetime,
-    ) -> None:
-        """
-        Set email verification token.
-
-        Args:
-            user_id: User's UUID.
-            token_hash: SHA-256 hash of the verification token.
-            expires_at: Token expiration time.
-        """
-        pass
-
-    @abstractmethod
-    async def set_password_reset_token(
-        self,
-        user_id: UUID,
-        token_hash: str,
-        expires_at: datetime,
-    ) -> None:
-        """
-        Set password reset token.
-
-        Args:
-            user_id: User's UUID.
-            token_hash: SHA-256 hash of the reset token.
-            expires_at: Token expiration time.
-        """
-        pass
-
-    @abstractmethod
-    async def clear_verification_token(self, user_id: UUID) -> None:
-        """Clear email verification token after successful verification."""
-        pass
-
-    @abstractmethod
-    async def clear_password_reset_token(self, user_id: UUID) -> None:
-        """Clear password reset token after successful reset."""
-        pass
-
-    @abstractmethod
     async def record_login(
         self,
         user_id: UUID,
@@ -198,6 +239,32 @@ class IAuthUserRepository(ABC):
 
         Args:
             user_id: User's UUID.
+        """
+        pass
+
+    # -------------------------------------------------------------------
+    # Command Methods — Account Restore
+    # -------------------------------------------------------------------
+
+    @abstractmethod
+    async def restore_account(
+        self,
+        email: str,
+        password_hash: str,
+    ) -> AuthUser:
+        """
+        Restore a soft-deleted account within the restore window.
+
+        Uses RPC restore_auth_user_with_profile() to atomically:
+        - Create new auth_users record reusing the old profile UUID
+        - Restore the soft-deleted profile (is_deleted=false)
+
+        Args:
+            email: User's email address.
+            password_hash: Argon2id hashed password.
+
+        Returns:
+            Restored AuthUser.
         """
         pass
 

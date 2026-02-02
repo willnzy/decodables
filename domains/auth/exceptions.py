@@ -134,15 +134,77 @@ class TokenReuseDetectedException(AuthException):
 
 
 # ---------------------------------------------------------------------------
-# Verification Errors
+# OTP Errors
 # ---------------------------------------------------------------------------
 
-class InvalidVerificationTokenException(AuthException):
-    """Email verification or password reset token is invalid or expired."""
+class OtpExpiredException(AuthException):
+    """OTP code has expired."""
 
     status_code = 400
     default_code = ErrorCode.VALIDATION_ERROR
-    default_message = "Invalid or expired verification token"
+    default_message = "Verification code has expired. Please request a new one."
+
+
+class OtpInvalidException(AuthException):
+    """OTP code is invalid (wrong code)."""
+
+    status_code = 400
+    default_code = ErrorCode.VALIDATION_ERROR
+    default_message = "Invalid verification code"
+
+    def __init__(self, remaining_attempts: int = 0, **kwargs: Any) -> None:
+        super().__init__(
+            details={"remaining_attempts": remaining_attempts},
+            **kwargs,
+        )
+
+
+class OtpMaxAttemptsException(AuthException):
+    """Maximum OTP verification attempts exceeded."""
+
+    status_code = 429
+    default_code = ErrorCode.VALIDATION_ERROR
+    default_message = "Too many failed attempts. Please request a new code."
+
+
+class OtpCooldownException(AuthException):
+    """OTP send cooldown not yet elapsed."""
+
+    status_code = 429
+    default_code = ErrorCode.VALIDATION_ERROR
+    default_message = "Please wait before requesting a new code"
+
+    def __init__(self, retry_after_seconds: int = 0, **kwargs: Any) -> None:
+        super().__init__(
+            details={"retry_after": retry_after_seconds},
+            **kwargs,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Account Restore Errors
+# ---------------------------------------------------------------------------
+
+class AccountRestorableException(AuthException):
+    """
+    Account was soft-deleted but is within the restore window.
+
+    This is raised during registration to signal the frontend
+    should show a restore prompt instead of creating a new account.
+    """
+
+    status_code = 409
+    default_code = ErrorCode.RESOURCE_ALREADY_EXISTS
+    default_message = "A previously deleted account exists for this email and can be restored"
+
+    def __init__(self, restore_deadline: Optional[str] = None, **kwargs: Any) -> None:
+        super().__init__(
+            details={
+                "has_restorable_account": True,
+                "restore_deadline": restore_deadline,
+            },
+            **kwargs,
+        )
 
 
 # ---------------------------------------------------------------------------

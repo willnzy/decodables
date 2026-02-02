@@ -22,6 +22,7 @@ from .constants import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ACCESS_TOKEN_TYPE,
     JWT_SECRET_MIN_LENGTH,
+    OTP_LENGTH,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from .exceptions import TokenExpiredException, TokenInvalidException
@@ -233,18 +234,52 @@ class TokenService:
         return hashlib.sha256(plaintext.encode()).hexdigest()
 
     # -------------------------------------------------------------------
-    # Email Verification / Password Reset Tokens
+    # OTP (One-Time Password) Generation
+    # -------------------------------------------------------------------
+
+    @staticmethod
+    def generate_otp() -> tuple[str, str]:
+        """
+        Generate a numeric OTP code.
+
+        Returns:
+            Tuple of (plaintext_otp, sha256_hash).
+            - plaintext_otp: 6-digit code sent to user via email.
+            - sha256_hash: Stored in auth_users.otp_code_hash.
+        """
+        # Generate cryptographically secure random digits
+        otp_code = "".join(
+            str(secrets.randbelow(10)) for _ in range(OTP_LENGTH)
+        )
+        otp_hash = hashlib.sha256(otp_code.encode()).hexdigest()
+        return otp_code, otp_hash
+
+    @staticmethod
+    def hash_otp(otp_code: str) -> str:
+        """
+        Hash an OTP code for comparison against stored hash.
+
+        Args:
+            otp_code: Plaintext OTP code from user input.
+
+        Returns:
+            SHA-256 hex digest.
+        """
+        return hashlib.sha256(otp_code.strip().encode()).hexdigest()
+
+    # -------------------------------------------------------------------
+    # Secure Tokens (general purpose)
     # -------------------------------------------------------------------
 
     @staticmethod
     def create_secure_token() -> tuple[str, str]:
         """
-        Generate a secure token for email verification or password reset.
+        Generate a secure token (URL-safe, 256-bit entropy).
+
+        Used for general-purpose secure links.
 
         Returns:
             Tuple of (plaintext_token, sha256_hash).
-            - plaintext_token: Included in the email link.
-            - sha256_hash: Stored in auth_users table.
         """
         plaintext = secrets.token_urlsafe(32)  # 256-bit entropy
         token_hash = hashlib.sha256(plaintext.encode()).hexdigest()

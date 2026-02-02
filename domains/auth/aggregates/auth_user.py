@@ -4,6 +4,12 @@ AuthUser Aggregate Root.
 Encapsulates authentication credentials and account state.
 This is separate from UserProfile (identity domain) — AuthUser owns
 credentials, lockout state, and email verification status.
+
+Uses unified OTP (One-Time Password) model for:
+- Registration (3-step: email → OTP → password)
+- Password reset (forgot password)
+- Account deletion verification
+- Password change verification
 """
 
 from __future__ import annotations
@@ -16,6 +22,8 @@ from uuid import UUID, uuid4
 from ..constants import (
     MAX_FAILED_LOGIN_ATTEMPTS,
     LOCKOUT_DURATION_MINUTES,
+    OTP_MAX_ATTEMPTS,
+    VALID_OTP_PURPOSES,
 )
 
 
@@ -27,6 +35,7 @@ class AuthUser:
     Encapsulates:
     - Email + password hash (credentials)
     - Email verification state
+    - Unified OTP state (code hash, purpose, expiry, attempts)
     - Account lockout state (failed attempts + lock timer)
     - Login tracking (last login time/IP)
     - Account active/inactive state
@@ -34,17 +43,19 @@ class AuthUser:
 
     id: UUID
     email: str
-    password_hash: str
+    password_hash: Optional[str]  # None for pending users (step 1 of registration)
 
     # Email verification
     email_verified: bool = False
     email_verified_at: Optional[datetime] = None
-    email_verification_token: Optional[str] = None
-    email_verification_expires_at: Optional[datetime] = None
 
-    # Password reset
-    password_reset_token: Optional[str] = None
-    password_reset_expires_at: Optional[datetime] = None
+    # Unified OTP fields
+    otp_code_hash: Optional[str] = None
+    otp_purpose: Optional[str] = None
+    otp_expires_at: Optional[datetime] = None
+    otp_attempts: int = 0
+
+    # Password tracking
     password_changed_at: Optional[datetime] = None
 
     # Lockout state
@@ -67,14 +78,57 @@ class AuthUser:
     # -----------------------------------------------------------------------
 
     @classmethod
-    def create_new(
+    def create_pending(
+        cls,
+        email: str,
+        otp_code_hash: str,
+        otp_purpose: str,
+        otp_expires_at: datetime,
+        user_id: Optional[UUID] = None,
+    ) -> AuthUser:
+        """
+        Create a pending AuthUser for registration step 1 (send OTP).
+
+        Pending users have no password_hash yet. They must complete
+        OTP verification + password setup to become fully registered.
+
+        Args:
+            email: Normalized email address (lowercase).
+            otp_code_hash: SHA-256 hash of the OTP code.
+            otp_purpose: OTP purpose (e.g., "register").
+            otp_expires_at: OTP expiration time.
+            user_id: Optional pre-generated UUID.
+
+        Returns:
+            New pending AuthUser instance (password_hash=None).
+        """
+        now = datetime.now(timezone.utc)
+        return cls(
+            id=user_id or uuid4(),
+            email=email.strip().lower(),
+            password_hash=None,
+            email_verified=False,
+            otp_code_hash=otp_code_hash,
+            otp_purpose=otp_purpose,
+            otp_expires_at=otp_expires_at,
+            otp_attempts=0,
+            failed_login_attempts=0,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+
+    @classmethod
+    def create_registered(
         cls,
         email: str,
         password_hash: str,
         user_id: Optional[UUID] = None,
     ) -> AuthUser:
         """
-        Create a new AuthUser for registration.
+        Create a fully registered AuthUser (email verified, password set).
+
+        Used after completing the 3-step registration flow.
 
         Args:
             email: Normalized email address (lowercase).
@@ -82,19 +136,34 @@ class AuthUser:
             user_id: Optional pre-generated UUID (for shared ID with profiles).
 
         Returns:
-            New AuthUser instance.
+            New registered AuthUser instance.
         """
         now = datetime.now(timezone.utc)
         return cls(
             id=user_id or uuid4(),
             email=email.strip().lower(),
             password_hash=password_hash,
-            email_verified=False,
+            email_verified=True,
+            email_verified_at=now,
             failed_login_attempts=0,
             is_active=True,
             created_at=now,
             updated_at=now,
         )
+
+    # -----------------------------------------------------------------------
+    # Properties
+    # -----------------------------------------------------------------------
+
+    @property
+    def is_pending(self) -> bool:
+        """Check if user is in pending state (no password set yet)."""
+        return self.password_hash is None
+
+    @property
+    def is_registered(self) -> bool:
+        """Check if user has completed registration (password set)."""
+        return self.password_hash is not None
 
     # -----------------------------------------------------------------------
     # Lockout Logic
@@ -148,77 +217,67 @@ class AuthUser:
         self.updated_at = now
 
     # -----------------------------------------------------------------------
-    # Email Verification
+    # OTP (One-Time Password) Logic
     # -----------------------------------------------------------------------
 
-    def set_verification_token(
+    def set_otp(
         self,
-        token_hash: str,
+        otp_code_hash: str,
+        purpose: str,
         expires_at: datetime,
     ) -> None:
         """
-        Set email verification token (SHA-256 hash).
+        Set a new OTP code.
+
+        Replaces any existing OTP. Resets attempt counter.
 
         Args:
-            token_hash: SHA-256 hash of the verification token.
-            expires_at: Token expiration time.
+            otp_code_hash: SHA-256 hash of the OTP code.
+            purpose: OTP purpose (must be in VALID_OTP_PURPOSES).
+            expires_at: OTP expiration time.
+
+        Raises:
+            ValueError: If purpose is not valid.
         """
-        self.email_verification_token = token_hash
-        self.email_verification_expires_at = expires_at
+        if purpose not in VALID_OTP_PURPOSES:
+            raise ValueError(f"Invalid OTP purpose: {purpose}")
+
+        self.otp_code_hash = otp_code_hash
+        self.otp_purpose = purpose
+        self.otp_expires_at = expires_at
+        self.otp_attempts = 0
         self.updated_at = datetime.now(timezone.utc)
 
-    def verify_email(self) -> None:
-        """Mark email as verified and clear verification token."""
-        now = datetime.now(timezone.utc)
-        self.email_verified = True
-        self.email_verified_at = now
-        self.email_verification_token = None
-        self.email_verification_expires_at = None
-        self.updated_at = now
-
-    @property
-    def is_verification_token_valid(self) -> bool:
-        """Check if current verification token is still valid (not expired)."""
-        if self.email_verification_token is None:
-            return False
-        if self.email_verification_expires_at is None:
-            return False
-        return datetime.now(timezone.utc) < self.email_verification_expires_at
-
-    # -----------------------------------------------------------------------
-    # Password Reset
-    # -----------------------------------------------------------------------
-
-    def set_password_reset_token(
-        self,
-        token_hash: str,
-        expires_at: datetime,
-    ) -> None:
-        """
-        Set password reset token (SHA-256 hash).
-
-        Args:
-            token_hash: SHA-256 hash of the reset token.
-            expires_at: Token expiration time.
-        """
-        self.password_reset_token = token_hash
-        self.password_reset_expires_at = expires_at
-        self.updated_at = datetime.now(timezone.utc)
-
-    def clear_password_reset_token(self) -> None:
-        """Clear password reset token after successful reset."""
-        self.password_reset_token = None
-        self.password_reset_expires_at = None
+    def clear_otp(self) -> None:
+        """Clear OTP fields after successful verification or expiry."""
+        self.otp_code_hash = None
+        self.otp_purpose = None
+        self.otp_expires_at = None
+        self.otp_attempts = 0
         self.updated_at = datetime.now(timezone.utc)
 
     @property
-    def is_reset_token_valid(self) -> bool:
-        """Check if current password reset token is still valid."""
-        if self.password_reset_token is None:
+    def is_otp_valid(self) -> bool:
+        """Check if current OTP is still valid (exists and not expired)."""
+        if self.otp_code_hash is None:
             return False
-        if self.password_reset_expires_at is None:
+        if self.otp_expires_at is None:
             return False
-        return datetime.now(timezone.utc) < self.password_reset_expires_at
+        return datetime.now(timezone.utc) < self.otp_expires_at
+
+    @property
+    def is_otp_max_attempts_reached(self) -> bool:
+        """Check if OTP max attempts has been reached."""
+        return self.otp_attempts >= OTP_MAX_ATTEMPTS
+
+    def increment_otp_attempts(self) -> None:
+        """Increment OTP verification attempt counter."""
+        self.otp_attempts += 1
+        self.updated_at = datetime.now(timezone.utc)
+
+    # -----------------------------------------------------------------------
+    # Password Management
+    # -----------------------------------------------------------------------
 
     def update_password(self, new_password_hash: str) -> None:
         """
@@ -230,8 +289,25 @@ class AuthUser:
         now = datetime.now(timezone.utc)
         self.password_hash = new_password_hash
         self.password_changed_at = now
-        self.password_reset_token = None
-        self.password_reset_expires_at = None
+        self.updated_at = now
+
+    def complete_registration(self, password_hash: str) -> None:
+        """
+        Complete registration by setting password and marking email verified.
+
+        Called after successful OTP verification in step 3 of registration.
+
+        Args:
+            password_hash: Argon2id hashed password.
+        """
+        now = datetime.now(timezone.utc)
+        self.password_hash = password_hash
+        self.email_verified = True
+        self.email_verified_at = now
+        self.otp_code_hash = None
+        self.otp_purpose = None
+        self.otp_expires_at = None
+        self.otp_attempts = 0
         self.updated_at = now
 
     # -----------------------------------------------------------------------
@@ -262,6 +338,7 @@ class AuthUser:
                 self.email_verified_at.isoformat() if self.email_verified_at else None
             ),
             "is_active": self.is_active,
+            "is_pending": self.is_pending,
             "last_login_at": (
                 self.last_login_at.isoformat() if self.last_login_at else None
             ),

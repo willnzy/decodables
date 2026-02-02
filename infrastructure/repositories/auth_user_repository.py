@@ -3,6 +3,7 @@ AuthUser Repository — Supabase implementation.
 
 Implements IAuthUserRepository for the auth domain.
 Uses AsyncClient for all database operations.
+Uses unified OTP model with RPC functions for atomic operations.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
     Supabase implementation of IAuthUserRepository.
 
     Operates on the auth_users table. Uses RPC for atomic
-    creation with profiles table.
+    creation/restore with profiles table.
     """
 
     TABLE = "auth_users"
@@ -50,17 +51,13 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
         return AuthUser(
             id=UUID(row["id"]) if isinstance(row["id"], str) else row["id"],
             email=row["email"],
-            password_hash=row["password_hash"],
+            password_hash=row.get("password_hash"),  # None for pending users
             email_verified=row.get("email_verified", False),
             email_verified_at=_parse_datetime(row.get("email_verified_at")),
-            email_verification_token=row.get("email_verification_token"),
-            email_verification_expires_at=_parse_datetime(
-                row.get("email_verification_expires_at")
-            ),
-            password_reset_token=row.get("password_reset_token"),
-            password_reset_expires_at=_parse_datetime(
-                row.get("password_reset_expires_at")
-            ),
+            otp_code_hash=row.get("otp_code_hash"),
+            otp_purpose=row.get("otp_purpose"),
+            otp_expires_at=_parse_datetime(row.get("otp_expires_at")),
+            otp_attempts=row.get("otp_attempts", 0),
             password_changed_at=_parse_datetime(row.get("password_changed_at")),
             failed_login_attempts=row.get("failed_login_attempts", 0),
             locked_until=_parse_datetime(row.get("locked_until")),
@@ -103,64 +100,197 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             return None
         return self._map_to_entity(result.data)
 
+    @retry_on_network_error_async()
+    async def get_restorable_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if a soft-deleted profile exists that can be restored.
+
+        Queries profiles table for is_deleted=true and recovery_expires_at > now.
+        """
+        normalized = email.strip().lower()
+        now = datetime.now(timezone.utc).isoformat()
+        result = await (
+            self._client.table("profiles")
+            .select("id, email, recovery_expires_at")
+            .eq("email", normalized)
+            .eq("is_deleted", True)
+            .gt("recovery_expires_at", now)
+            .maybe_single()
+            .execute()
+        )
+        if not result.data:
+            return None
+        return result.data
+
     # -------------------------------------------------------------------
-    # Command Methods
+    # Command Methods — Registration (3-step OTP)
     # -------------------------------------------------------------------
 
     @retry_on_network_error_async()
-    async def create(
+    async def create_pending(
         self,
         auth_user: AuthUser,
-        display_name: Optional[str] = None,
-        signup_bonus: int = 0,
     ) -> Tuple[AuthUser, bool]:
         """
-        Create auth user + profile atomically via RPC.
+        Create a pending auth user via RPC create_pending_auth_user().
 
         Returns (AuthUser, was_created).
+        was_created=False means email already registered (has password).
         """
         try:
             result = await self._client.rpc(
-                "create_auth_user_with_profile",
+                "create_pending_auth_user",
                 {
                     "p_email": auth_user.email,
-                    "p_password_hash": auth_user.password_hash,
-                    "p_display_name": display_name,
-                    "p_signup_bonus": signup_bonus,
+                    "p_otp_code_hash": auth_user.otp_code_hash,
+                    "p_otp_purpose": auth_user.otp_purpose,
+                    "p_otp_expires_at": auth_user.otp_expires_at.isoformat()
+                    if auth_user.otp_expires_at
+                    else None,
                 },
             ).execute()
 
             if not result.data or len(result.data) == 0:
-                raise RuntimeError("RPC create_auth_user_with_profile returned no data")
+                raise RuntimeError("RPC create_pending_auth_user returned no data")
 
             row = result.data[0]
-            auth_user_data = row["auth_user"]
-            was_created = row["was_created"]
 
-            # Parse the JSONB result into an AuthUser
+            # RPC returns NULL for user_id when email already registered
+            if row.get("user_id") is None:
+                # Already registered user — return existing
+                existing = await self.get_by_email(auth_user.email)
+                if existing:
+                    return existing, False
+                raise RuntimeError("RPC returned null user_id but no existing user found")
+
+            # Success — create entity from RPC result
             entity = AuthUser(
-                id=UUID(auth_user_data["id"]),
-                email=auth_user_data["email"],
-                password_hash=auth_user_data["password_hash"],
-                email_verified=auth_user_data.get("email_verified", False),
-                is_active=auth_user_data.get("is_active", True),
-                created_at=_parse_datetime(auth_user_data.get("created_at"))
-                or datetime.now(timezone.utc),
-                updated_at=_parse_datetime(auth_user_data.get("updated_at"))
-                or datetime.now(timezone.utc),
+                id=UUID(row["user_id"]),
+                email=auth_user.email,
+                password_hash=None,
+                email_verified=False,
+                otp_code_hash=auth_user.otp_code_hash,
+                otp_purpose=auth_user.otp_purpose,
+                otp_expires_at=auth_user.otp_expires_at,
+                otp_attempts=0,
+                is_active=True,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             )
-
-            return entity, was_created
+            return entity, True
 
         except Exception as e:
             error_msg = str(e)
-            # Handle unique_violation for email (RPC should handle this,
-            # but add defensive fallback)
             if "unique_violation" in error_msg or "already exists" in error_msg.lower():
                 existing = await self.get_by_email(auth_user.email)
                 if existing:
                     return existing, False
             raise
+
+    @retry_on_network_error_async()
+    async def complete_registration(
+        self,
+        user_id: UUID,
+        password_hash: str,
+        display_name: Optional[str] = None,
+        signup_bonus: int = 0,
+    ) -> AuthUser:
+        """
+        Complete registration via RPC create_auth_user_with_profile().
+
+        Sets password, marks email verified, creates profile atomically.
+        """
+        result = await self._client.rpc(
+            "create_auth_user_with_profile",
+            {
+                "p_user_id": str(user_id),
+                "p_password_hash": password_hash,
+                "p_display_name": display_name,
+                "p_signup_bonus": signup_bonus,
+            },
+        ).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise RuntimeError("RPC create_auth_user_with_profile returned no data")
+
+        row = result.data[0]
+        auth_user_data = row["auth_user"]
+
+        return AuthUser(
+            id=UUID(auth_user_data["id"]),
+            email=auth_user_data["email"],
+            password_hash=auth_user_data.get("password_hash"),
+            email_verified=auth_user_data.get("email_verified", True),
+            email_verified_at=_parse_datetime(auth_user_data.get("email_verified_at")),
+            is_active=auth_user_data.get("is_active", True),
+            created_at=_parse_datetime(auth_user_data.get("created_at"))
+            or datetime.now(timezone.utc),
+            updated_at=_parse_datetime(auth_user_data.get("updated_at"))
+            or datetime.now(timezone.utc),
+        )
+
+    # -------------------------------------------------------------------
+    # Command Methods — OTP
+    # -------------------------------------------------------------------
+
+    @retry_on_network_error_async()
+    async def update_otp(
+        self,
+        user_id: UUID,
+        otp_code_hash: str,
+        otp_purpose: str,
+        otp_expires_at: datetime,
+    ) -> None:
+        """Update OTP fields for a user."""
+        await (
+            self._client.table(self.TABLE)
+            .update({
+                "otp_code_hash": otp_code_hash,
+                "otp_purpose": otp_purpose,
+                "otp_expires_at": otp_expires_at.isoformat(),
+                "otp_attempts": 0,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", str(user_id))
+            .execute()
+        )
+
+    @retry_on_network_error_async()
+    async def update_otp_attempts(
+        self,
+        user_id: UUID,
+        otp_attempts: int,
+    ) -> None:
+        """Update OTP attempt count."""
+        await (
+            self._client.table(self.TABLE)
+            .update({
+                "otp_attempts": otp_attempts,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", str(user_id))
+            .execute()
+        )
+
+    @retry_on_network_error_async()
+    async def clear_otp(self, user_id: UUID) -> None:
+        """Clear all OTP fields after successful verification."""
+        await (
+            self._client.table(self.TABLE)
+            .update({
+                "otp_code_hash": None,
+                "otp_purpose": None,
+                "otp_expires_at": None,
+                "otp_attempts": 0,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", str(user_id))
+            .execute()
+        )
+
+    # -------------------------------------------------------------------
+    # Command Methods — Password & Account
+    # -------------------------------------------------------------------
 
     @retry_on_network_error_async()
     async def update_password(
@@ -174,8 +304,10 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .update({
                 "password_hash": password_hash,
                 "password_changed_at": datetime.now(timezone.utc).isoformat(),
-                "password_reset_token": None,
-                "password_reset_expires_at": None,
+                "otp_code_hash": None,
+                "otp_purpose": None,
+                "otp_expires_at": None,
+                "otp_attempts": 0,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
             .eq("id", str(user_id))
@@ -195,8 +327,6 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
         }
         if verified:
             data["email_verified_at"] = datetime.now(timezone.utc).isoformat()
-            data["email_verification_token"] = None
-            data["email_verification_expires_at"] = None
 
         await (
             self._client.table(self.TABLE)
@@ -218,72 +348,6 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .update({
                 "failed_login_attempts": failed_attempts,
                 "locked_until": locked_until.isoformat() if locked_until else None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", str(user_id))
-            .execute()
-        )
-
-    @retry_on_network_error_async()
-    async def set_verification_token(
-        self,
-        user_id: UUID,
-        token_hash: str,
-        expires_at: datetime,
-    ) -> None:
-        """Set email verification token."""
-        await (
-            self._client.table(self.TABLE)
-            .update({
-                "email_verification_token": token_hash,
-                "email_verification_expires_at": expires_at.isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", str(user_id))
-            .execute()
-        )
-
-    @retry_on_network_error_async()
-    async def set_password_reset_token(
-        self,
-        user_id: UUID,
-        token_hash: str,
-        expires_at: datetime,
-    ) -> None:
-        """Set password reset token."""
-        await (
-            self._client.table(self.TABLE)
-            .update({
-                "password_reset_token": token_hash,
-                "password_reset_expires_at": expires_at.isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", str(user_id))
-            .execute()
-        )
-
-    @retry_on_network_error_async()
-    async def clear_verification_token(self, user_id: UUID) -> None:
-        """Clear email verification token."""
-        await (
-            self._client.table(self.TABLE)
-            .update({
-                "email_verification_token": None,
-                "email_verification_expires_at": None,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-            .eq("id", str(user_id))
-            .execute()
-        )
-
-    @retry_on_network_error_async()
-    async def clear_password_reset_token(self, user_id: UUID) -> None:
-        """Clear password reset token."""
-        await (
-            self._client.table(self.TABLE)
-            .update({
-                "password_reset_token": None,
-                "password_reset_expires_at": None,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
             .eq("id", str(user_id))
@@ -319,6 +383,50 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             .delete()
             .eq("id", str(user_id))
             .execute()
+        )
+
+    # -------------------------------------------------------------------
+    # Command Methods — Account Restore
+    # -------------------------------------------------------------------
+
+    @retry_on_network_error_async()
+    async def restore_account(
+        self,
+        email: str,
+        password_hash: str,
+    ) -> AuthUser:
+        """
+        Restore a soft-deleted account via RPC restore_auth_user_with_profile().
+
+        Reuses the old profile UUID, creates new auth_users record,
+        and restores the profile (is_deleted=false).
+        """
+        normalized = email.strip().lower()
+        result = await self._client.rpc(
+            "restore_auth_user_with_profile",
+            {
+                "p_email": normalized,
+                "p_password_hash": password_hash,
+            },
+        ).execute()
+
+        if not result.data or len(result.data) == 0:
+            raise RuntimeError("RPC restore_auth_user_with_profile returned no data")
+
+        row = result.data[0]
+        auth_user_data = row["auth_user"]
+
+        return AuthUser(
+            id=UUID(auth_user_data["id"]),
+            email=auth_user_data["email"],
+            password_hash=auth_user_data.get("password_hash"),
+            email_verified=auth_user_data.get("email_verified", True),
+            email_verified_at=_parse_datetime(auth_user_data.get("email_verified_at")),
+            is_active=auth_user_data.get("is_active", True),
+            created_at=_parse_datetime(auth_user_data.get("created_at"))
+            or datetime.now(timezone.utc),
+            updated_at=_parse_datetime(auth_user_data.get("updated_at"))
+            or datetime.now(timezone.utc),
         )
 
 

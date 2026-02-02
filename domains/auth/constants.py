@@ -67,14 +67,40 @@ MAX_ACTIVE_SESSIONS: int = 10
 TOKEN_ROTATION_GRACE_PERIOD_SECONDS: int = 2
 
 # ---------------------------------------------------------------------------
-# Email Verification
+# OTP (One-Time Password) Configuration
 # ---------------------------------------------------------------------------
 
-# Verification token expiry (24 hours)
-EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+# OTP code length (6-digit numeric)
+OTP_LENGTH: int = 6
 
-# Password reset token expiry (1 hour)
-PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = 1
+# OTP expiry in minutes
+OTP_EXPIRE_MINUTES: int = 10
+
+# Maximum OTP verification attempts before invalidation
+OTP_MAX_ATTEMPTS: int = 5
+
+# Cooldown between OTP sends (seconds) — prevents spam
+OTP_COOLDOWN_SECONDS: int = 60
+
+# Valid OTP purposes (must match CHECK constraint in auth_users table)
+OTP_PURPOSE_REGISTER: str = "register"
+OTP_PURPOSE_CHANGE_PASSWORD: str = "change_password"
+OTP_PURPOSE_DELETE_ACCOUNT: str = "delete_account"
+OTP_PURPOSE_FORGOT_PASSWORD: str = "forgot_password"
+
+VALID_OTP_PURPOSES: frozenset = frozenset({
+    OTP_PURPOSE_REGISTER,
+    OTP_PURPOSE_CHANGE_PASSWORD,
+    OTP_PURPOSE_DELETE_ACCOUNT,
+    OTP_PURPOSE_FORGOT_PASSWORD,
+})
+
+# ---------------------------------------------------------------------------
+# Account Restore (Soft-Delete Recovery)
+# ---------------------------------------------------------------------------
+
+# Days within which a soft-deleted account can be restored
+ACCOUNT_RESTORE_WINDOW_DAYS: int = 30
 
 # ---------------------------------------------------------------------------
 # Rate Limiting (requests per time window)
@@ -84,6 +110,7 @@ RATE_LIMIT_LOGIN: str = "10/minute"
 RATE_LIMIT_REGISTER: str = "5/hour"
 RATE_LIMIT_REFRESH: str = "30/minute"
 RATE_LIMIT_FORGOT_PASSWORD: str = "3/hour"
+RATE_LIMIT_SEND_OTP: str = "5/hour"
 
 # ---------------------------------------------------------------------------
 # Session Revocation Reasons
