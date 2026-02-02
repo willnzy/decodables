@@ -12,10 +12,16 @@
 | 严重等级 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | 总计 |
 |---------|----|----|----|----|----|----|----|----|
 | **P0 Critical** | 4+5 | 0 | 0 | 0 | 0 | 0 | 0 | **9** |
-| **P1 High** | 0 | 1 | 0 | 4 | 1 | 0 | 5 | **11** |
-| **P2 Medium** | 4 | 4 | 1 | 3 | 0 | 0 | 7 | **19** |
-| **P3 Low** | 5 | 4 | 2 | 3 | 1 | 0 | 4 | **19** |
-| **合计** | **18** | **9** | **3** | **10** | **2** | **0** | **16** | **58** |
+| **P1 High** | 0 | 1 | 0 | 3 | 0 | 0 | 5 | **9** |
+| **P2 Medium** | 3 | 4 | 1 | 4 | 0 | 0 | 7 | **19** |
+| **P3 Low** | 6 | 4 | 2 | 3 | 1 | 0 | 4 | **20** |
+| **合计** | **18** | **9** | **3** | **10** | **1** | **0** | **16** | **57** |
+
+> **复核修正 (2026-02-02)**:
+> - D1-4 #4 `soft_delete_category_descendants`: P2→P3 (返回值被忽略，非解析错误)
+> - D4 `system_resources_admin_repository.py:88`: P1→P2 (API 层已有 sanitize)
+> - D5 `projects.idempotency_key`: P1→移除 (已有复合唯一索引 `user_id + idempotency_key`)
+> - D2 TransactionType: Python 10 值 (非 11)，SQL 独有 6 值 (非 5，漏算 `refund_reversal`)
 
 > **全维度审计已完成**，发现 **58 项独立问题**：
 > - **P0 Critical** (9 项): RPC 函数缺失/参数不匹配/返回值解析错误，运行时崩溃
@@ -48,9 +54,9 @@
 | 10 | 003 | D2 | TransactionType 枚举同步 (SQL 16 值 vs Python 11 值) | 1h |
 | 11 | 003 | D4 | 后端设置 `app.current_user_role` 会话变量 | 1h |
 | 12 | 003 | D4 | Webhook 处理函数添加表名白名单验证 | 0.5h |
-| 13 | 003 | D4 | `system_resources_admin_repository.py:88` 添加 sanitize | 0.2h |
+| 13 | 003 | D4 | `system_resources_admin_repository.py:88` Repository 层添加 sanitize (防御纵深，API 层已有) | 0.2h |
 | 14 | 003 | D4 | `feature_flags/repository.py:102` 添加 sanitize | 0.2h |
-| 15 | 003 | D5 | `projects.idempotency_key` 添加 UNIQUE 部分索引 | 0.3h |
+| ~~15~~ | ~~003~~ | ~~D5~~ | ~~`projects.idempotency_key` 添加 UNIQUE 部分索引~~ | ~~已有复合唯一索引，无需修复~~ |
 | 16 | 002 | D7 | `soft_delete_category_descendants` 添加 `p_recovery_days` 参数 | 小 |
 | 17 | 002 | D7 | Tier 验证 `('t2', 't3')` 添加注释标记 | 极小 |
 | 18 | 002 | D7 | `'Deleted User'` 硬编码添加注释关联 | 极小 |
@@ -82,7 +88,7 @@
 | 003 | D5 | updated_at 双重更新 (冗余但无害) |
 | 002 | D7 | 合理默认值 (tier='t1', language='en', timezone='UTC', 已参数化值) |
 
-**总预估工时**: P0 ~8h + P1 ~5h + P2 ~11h + P3 ~2h = **~26 小时**
+**总预估工时**: P0 ~8h + P1 ~4h + P2 ~11h + P3 ~2h = **~25 小时**
 
 ---
 
@@ -246,7 +252,7 @@ DB 函数 `RETURNS UUID` (标量)，代码用 `row.get("user_id")` 按 dict 解�
 | 1 | `delete_tag_atomic` | `RETURNS BOOLEAN` | `bool(result.data)` | `bool([False])` = `True`，删除失败误判为成功 | **P2** |
 | 2 | `increment_asset_usage` | `RETURNS INTEGER` | `result.data != -1` | `[-1] != -1` 恒为 `True`，永远不走失败分支 | **P2** |
 | 3 | `update_category_descendants_path` | `RETURNS INTEGER` | `result.data if result.data else 0` | 返回 `[5]` 而非 `5` | **P2** |
-| 4 | `soft_delete_category_descendants` | `RETURNS INTEGER` | 同上 | 同 #3 | **P2** |
+| 4 | `soft_delete_category_descendants` | `RETURNS INTEGER` | `await .execute()` 未捕获返回值 | 返回值被完全忽略，无法得知操作影响行数 | **P3** (降级: 功能不受影响，仅缺少可观测性) |
 
 **统一修复模式**:
 ```python
@@ -262,15 +268,17 @@ success = bool(result.data[0]) if result.data else False
 
 ### D1-5. 死函数 (SQL 存在但无 Python 调用) — P3 x5
 
-| # | 函数名 | SQL 位置 | 分析 |
-|---|--------|---------|------|
-| 1 | `increment_project_view_count()` | `01_core_business.sql:3682` | 预留功能，无调用 |
-| 2 | `increment_project_like_count()` | `01_core_business.sql:3707` | 社交功能预留 |
-| 3 | `get_dashboard_projects()` | `01_core_business.sql:3233` | 被直接表查询替代 |
-| 4 | `get_dashboard_assets()` | `01_core_business.sql:3389` | 同上 |
-| 5 | `get_dashboard_stats()` | `01_core_business.sql:3539` | 注意: 与 `get_user_dashboard_stats()` 是不同函数 |
+| # | 函数名 | SQL 位置 | 分析 | 性质 |
+|---|--------|---------|------|------|
+| 1 | `increment_project_view_count()` | `01_core_business.sql:3682` | 无任何 Python 调用 | 完全死代码 |
+| 2 | `increment_project_like_count()` | `01_core_business.sql:3707` | 无任何 Python 调用 | 完全死代码 |
+| 3 | `get_dashboard_projects()` | `01_core_business.sql:3233` | Python `project_repository.py` 有同名方法但使用 `.table().select()` 直接查询而非 `.rpc()` | RPC 被直接查询替代 |
+| 4 | `get_dashboard_assets()` | `01_core_business.sql:3389` | Python `asset_repository.py` 有同名方法但使用 `.table().select()` 直接查询 | RPC 被直接查询替代 |
+| 5 | `get_dashboard_stats()` | `01_core_business.sql:3539` | 同上。注意: 与 `get_user_dashboard_stats()` 是不同函数 | RPC 被直接查询替代 |
 
-**建议**: 确认无前端直接调用后标记为 deprecated 或移除。
+**建议**:
+- #1, #2: 完全死代码且是 SECURITY DEFINER，**强烈建议删除** (见 D4-1)
+- #3~#5: Python 已用直接查询替代 RPC，RPC 函数冗余。确认无前端直接调用后可删除，或保留作为性能优化备用。
 
 ---
 
@@ -280,10 +288,11 @@ success = bool(result.data[0]) if result.data else False
 |------|------|---------|
 | 缺失 SQL 函数 (代码调用不存在的函数) | **4** | P0 Critical |
 | 参数/返回值严重不匹配 (来自 002) | **5** | P0 Critical |
-| 返回类型解析错误 (标量 vs 列表) | **4** | P2 Medium |
+| 返回类型解析错误 (标量 vs 列表) | **3** | P2 Medium |
+| 返回值未捕获 | **1** | P3 Low |
 | 死 SQL 函数 (无调用方) | **5** | P3 Low |
 
-**D1 维度总计**: **18 项发现** (9 P0 + 0 P1 + 4 P2 + 5 P3)
+**D1 维度总计**: **18 项发现** (9 P0 + 0 P1 + 3 P2 + 6 P3)
 
 ---
 
@@ -367,10 +376,10 @@ success = bool(result.data[0]) if result.data else False
 
 | 来源 | 枚举值数量 | 差异 |
 |------|-----------|------|
-| **Python enum** | **11 值** | 标准值 |
-| **SQL CHECK** | **16 值** | 额外 5 值: `topup_purchase`, `sub_grant`, `monthly_reset`, `marketplace_purchase`, `monthly_credits_cleared` |
+| **Python enum** | **10 值** | `subscription_grant`, `purchase`, `signup_bonus`, `referral_bonus`, `campaign_reward`, `refund`, `admin_adjustment`, `ai_generation`, `smart_scan`, `expiration` |
+| **SQL CHECK** | **16 值** | 额外 6 值: `topup_purchase`, `sub_grant`, `monthly_reset`, `marketplace_purchase`, `monthly_credits_cleared`, `refund_reversal` |
 
-**修复建议**: 调研 5 个额外值是否仍在使用，废弃则从 SQL 移除，在用则添加到 Python。
+**修复建议**: 调研 6 个额外值是否仍在使用，废弃则从 SQL 移除，在用则添加到 Python。
 
 #### tx_type deprecated 字段 — P3
 
@@ -508,11 +517,11 @@ ON profiles USING GIN (
 
 **修复**: 添加表名白名单 `IN ('stripe_webhook_events', 'clerk_webhook_events')`
 
-#### PostgREST 搜索注入 — P1 x2 + P2 x1
+#### PostgREST 搜索注入 — P1 x1 + P2 x2
 
 | # | 文件 | 风险 |
 |---|------|------|
-| 6 | `system_resources_admin_repository.py:88` | ⚠️ **P1** — 未 sanitize |
+| 6 | `system_resources_admin_repository.py:88` | ⚠️ **P2** — API 层已 sanitize，Repository 层缺防御纵深 |
 | 7 | `analytics_events_repository.py:204` | ⚠️ **P2** — 直接 f-string |
 | 8 | `feature_flags/repository.py:102` | ⚠️ **P1** — 未 sanitize |
 
@@ -526,7 +535,9 @@ ON profiles USING GIN (
 
 ### D4-4. 汇总统计
 
-**D4 维度总计**: **10 项发现** (0 P0 + 4 P1 + 3 P2 + 3 P3)
+**D4 维度总计**: **10 项发现** (0 P0 + 3 P1 + 4 P2 + 3 P3)
+
+> **复核修正**: `system_resources_admin_repository.py:88` 从 P1 降为 P2 (API 层已有 sanitize)。
 
 ---
 
@@ -553,20 +564,15 @@ ON profiles USING GIN (
 | 积分扣减 | `credit_transactions.idempotency_key` | UNIQUE 部分索引 | ✅ |
 | 积分充值 | `credit_purchases.idempotency_key` | UNIQUE | ✅ |
 | Stripe Webhook | `stripe_webhook_events.event_id` | UNIQUE | ✅ |
-| **项目创建** | `projects.idempotency_key` | **无唯一索引** | ⚠️ **P1** |
+| **项目创建** | `projects.idempotency_key` | ✅ 复合唯一索引 `(user_id, idempotency_key)` | ✅ (用户级幂等) |
 
-**P1 详细分析**: `projects.idempotency_key` 有字段但无 UNIQUE 约束，无法防止重复创建。
-
-**修复**:
-```sql
-CREATE UNIQUE INDEX idx_projects_idempotency_key
-ON projects (idempotency_key)
-WHERE idempotency_key IS NOT NULL;
-```
+**说明**: `projects` 已有复合唯一索引 `idx_projects_user_idempotency_key ON projects(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL AND is_deleted = false`。这是用户级幂等性保护 — 不同用户可以有相同的 key，同一用户不能重复。这是合理的设计。
 
 ### D5-4. 汇总统计
 
-**D5 维度总计**: **2 项发现** (0 P0 + 1 P1 + 0 P2 + 1 P3)
+**D5 维度总计**: **1 项发现** (0 P0 + 0 P1 + 0 P2 + 1 P3)
+
+> **复核修正**: `projects.idempotency_key` 已有复合唯一索引 `(user_id, idempotency_key)`，原 P1 误判已移除。
 
 ---
 
@@ -747,6 +753,22 @@ AND action NOT IN ('user_signup', 'subscription_purchase');
 | 8-9 | **验证通过** | P1/P2 分析正确，无重复/冲突 | — |
 | 10-12 | **无冲突/无重复** | 所有 58 项互不重复 | — |
 
+### 第二轮复核 (深度交叉验证)
+
+> 复核日期: 2026-02-02 (审计报告合并后)
+> 复核方法: 逐条对照实际代码文件验证审计声明的准确性
+
+| # | 类型 | 发现 | 处理 |
+|---|------|------|------|
+| 1 | **数据修正** | TransactionType: Python 实际 10 值 (非 11)，SQL 独有 6 值 (非 5，漏算 `refund_reversal`) | 修正 D2-4 + E-7 |
+| 2 | **误判修正** | `projects.idempotency_key` 已有复合唯一索引 `(user_id, idempotency_key)` | D5 P1→移除，修正 E-3 |
+| 3 | **降级修正** | `system_resources_admin_repository.py:88` API 层已有 `sanitize_search()` | D4 P1→P2，修正 D-3 |
+| 4 | **描述修正** | `soft_delete_category_descendants` 实际是返回值未捕获 (非标量解析错误) | D1-4 #4 P2→P3 |
+| 5 | **精确化** | D1-5 死函数: 区分 "完全死代码" (#1,#2) 和 "被直接查询替代的 RPC" (#3-#5) | 补充性质列 |
+| 6 | **方案补充** | C-1 restore 方案缺少旧 auth_users 记录清理步骤 | 新增步骤 3: DELETE 旧记录 |
+| 7 | **字段名修正** | D-3 #6 实际搜索字段是 `description` 不是 `type` | 修正代码片段 |
+| 8 | **统计修正** | Executive Summary 表更新: P1 11→9, P2 19→19, P3 19→20, 总计 58→57 | 修正统计表 |
+
 ---
 
 ## 附录 C: P0 详细修复方案代码
@@ -822,12 +844,15 @@ BEGIN
         RAISE EXCEPTION 'RESTORE_EMAIL_MISMATCH: email does not match profile record';
     END IF;
 
-    -- 3. 创建新的 auth_users 记录（复用旧 UUID）
+    -- 3. 清理可能残留的 auth_users 记录 (软删除只标记 profiles，auth_users 可能仍存在)
+    DELETE FROM auth_users WHERE id = p_old_profile_id;
+
+    -- 4. 创建新的 auth_users 记录（复用旧 UUID）
     INSERT INTO auth_users (id, email, password_hash, email_verified, email_verified_at, created_at, updated_at)
     VALUES (p_old_profile_id, LOWER(TRIM(p_email)), p_password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING * INTO v_auth_user;
 
-    -- 4. 恢复 profiles 记录
+    -- 5. 恢复 profiles 记录
     v_restored_name := COALESCE(p_display_name, v_profile.display_name);
     -- ⚠️ SYNC_REQUIRED: 此值必须与账户删除脱敏逻辑中的占位符一致
     IF v_restored_name = 'Deleted User' THEN
@@ -842,7 +867,7 @@ BEGIN
         updated_at = CURRENT_TIMESTAMP
     WHERE id = p_old_profile_id;
 
-    -- 5. 记录恢复事件 (source 改为参数)
+    -- 6. 记录恢复事件 (source 改为参数)
     INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
     VALUES (
         p_old_profile_id::TEXT,
@@ -855,7 +880,7 @@ BEGIN
         CURRENT_TIMESTAMP
     );
 
-    -- 6. 返回结果 (与 create_auth_user_with_profile 风格统一)
+    -- 7. 返回结果 (与 create_auth_user_with_profile 风格统一)
     RETURN QUERY
     SELECT
         row_to_json(v_auth_user)::jsonb,
@@ -1388,25 +1413,28 @@ END IF;
 | 3 | `listing_repository.py` | 309 | `.or_(f"title.ilike.%{sanitized}%,...")` | ✅ 安全 — 使用 `_sanitize_postgrest_query()` |
 | 4 | `article_repository.py` | 317 | `.or_(f"title.ilike.{search_pattern}...")` | ✅ 安全 — 使用 `_escape_or_filter_query()` |
 | 5 | `asset_repository.py` | 482, 525 | `.ilike("name", f"%{escaped}%")` | ✅ 安全 — 使用 `escape_like_wildcards()` |
-| 6 | **`system_resources_admin_repository.py`** | **88** | `.or_(f"name.ilike.%{search}%,type.ilike.%{search}%")` | ⚠️ **P1** |
+| 6 | **`system_resources_admin_repository.py`** | **88** | `.or_(f"name.ilike.%{search}%,description.ilike.%{search}%")` | ⚠️ **P2** (API 层已 sanitize，但 Repository 层缺防御纵深) |
 | 7 | **`analytics_events_repository.py`** | **204** | `.or_(f'id.eq.{event_id},event_id.eq.{event_id}')` | ⚠️ **P2** |
 | 8 | **`feature_flags/repository.py`** | **102** | `.or_(f"key.ilike.%{search}%,name.ilike.%{search}%")` | ⚠️ **P1** |
 
-**#6 `system_resources_admin_repository.py:88` 详细修复** (P1):
+**#6 `system_resources_admin_repository.py:88` 详细修复** (P2 — 降级，API 层已 sanitize):
 
 ```python
 # 问题代码
-def search_resources(search: str):
-    # Search query is pre-sanitized by API layer  <- 注释声称已转义，但无保证
+async def list_resources(search: str):
+    # Search query is pre-sanitized by API layer  <- 注释正确: api/user/system_resources.py:87 有 sanitize_search()
     query = supabase.table("system_resources").select("*")
     if search:
-        query = query.or_(f"name.ilike.%{search}%,type.ilike.%{search}%")
+        query = query.or_(f"name.ilike.%{search}%,description.ilike.%{search}%")
 
-# 修复
+# 当前缓解: API 层 sanitize_search() 已移除 %, _, \ 字符
+# 修复 (防御纵深): Repository 层也应自行 sanitize
 from core.validators.input_validator import sanitize_postgrest_query
 safe_search = sanitize_postgrest_query(search)
-query = query.or_(f"name.ilike.%{safe_search}%,type.ilike.%{safe_search}%")
+query = query.or_(f"name.ilike.%{safe_search}%,description.ilike.%{safe_search}%")
 ```
+
+> **复核修正**: 原报告标为 P1 且注释称"无保证"，实际 API 层 `api/user/system_resources.py:87-90` 定义了 `sanitize_search()` 并在 line 197 调用。攻击路径已被阻断。降级为 P2 (防御纵深建议)。
 
 **#7 `analytics_events_repository.py:204` 详细修复** (P2):
 
@@ -1521,40 +1549,20 @@ await supabase.table("workspaces").update({
 | **积分扣减** | `credit_transactions.idempotency_key` | `idx_credit_transactions_idempotency_key UNIQUE (WHERE idempotency_key IS NOT NULL)` | ✅ 完全覆盖 |
 | **积分充值** | `credit_purchases.idempotency_key` | `idempotency_key TEXT UNIQUE` | ✅ 完全覆盖 |
 | **Stripe Webhook 处理** | `stripe_webhook_events.event_id` | `stripe_webhook_events(event_id) UNIQUE` | ✅ 完全覆盖 |
-| **项目创建** | `projects.idempotency_key` | **无唯一索引** | ⚠️ **P1** |
+| **项目创建** | `projects.idempotency_key` | ✅ 复合唯一索引 `(user_id, idempotency_key)` | ✅ |
 
-**projects.idempotency_key 详细分析**:
+**projects.idempotency_key 分析** (复核修正):
 
 ```sql
 -- SQL 定义 (01_core_business.sql)
-CREATE TABLE projects (
-    id UUID PRIMARY KEY,
-    user_id UUID NOT NULL,
-    title TEXT NOT NULL,
-    idempotency_key TEXT,  -- 有字段但无 UNIQUE 约束
-    ...
-);
-
--- 缺失的约束
--- CREATE UNIQUE INDEX idx_projects_idempotency_key
--- ON projects (idempotency_key)
--- WHERE idempotency_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_idempotency_key
+ON projects(user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL AND is_deleted = false;
 ```
 
-**Python 代码使用**:
-```python
-# project_repository.py:create_project()
-new_project = {
-    "id": project_id,
-    "user_id": user_id,
-    "title": title,
-    "idempotency_key": idempotency_key,  # 传入但无约束保护
-    ...
-}
-result = await supabase.table("projects").insert(new_project).execute()
-```
+已有用户级复合唯一索引。同一用户的相同 `idempotency_key` 会被数据库拒绝 (UNIQUE violation)。不同用户可以有相同 key，这是合理的设计。
 
-**风险**: 用户快速双击"创建项目"→ 2 次 INSERT 携带相同 key → 数据库成功插入 2 条记录 → 重复项目。
+**原报告误判原因**: 搜索了 `idempotency_key` 的单列 UNIQUE 约束而非复合索引。
 
 ---
 
@@ -1622,7 +1630,7 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 | 枚举类型 | SQL CHECK 约束 | Python Enum | 一致性 |
 |----------|--------------|------------|--------|
-| **TransactionType** | 16 值 | 11 值 | ⚠️ **P1** — 缺少 5 值 |
+| **TransactionType** | 16 值 | 10 值 | ⚠️ **P1** — 缺少 6 值 |
 | **UserTier** | `CHECK (tier IN ('t1', 't2', 't3', 't4'))` | `TIER_T1`, `TIER_T2`, `TIER_T3` | ✅ |
 | **UserRole** | `CHECK (role IN ('user', 'admin', 'staff'))` | `USER`, `ADMIN`, `STAFF` | ✅ |
 | **OnboardingStep** | `CHECK (onboarding_step IN (...))` | Python enum | ✅ |
@@ -1632,8 +1640,9 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 | SQL 独有值 | 可能对应 | 状态 |
 |-----------|---------|------|
-| `topup_purchase` | 旧版充值 (现用 `credit_purchase`) | 待确认是否废弃 |
+| `topup_purchase` | 旧版充值 (现用 `purchase`) | 待确认是否废弃 |
 | `sub_grant` | 缩写 (现用 `subscription_grant`) | 待确认是否废弃 |
-| `monthly_reset` | 月度积分重置 (现用 `subscription_renewal`?) | 待确认 |
+| `monthly_reset` | 月度积分重置 (现用 `subscription_grant`?) | 待确认 |
 | `marketplace_purchase` | 市场购买 | 功能未上线? |
 | `monthly_credits_cleared` | 月度积分清零 | 功能未上线? |
+| `refund_reversal` | 退款撤回 | 功能未上线? |
