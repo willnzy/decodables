@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     -- 基础信息
-    email TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,  -- 唯一性由部分索引 idx_profiles_email_unique (WHERE is_deleted=false) 保证
     username TEXT,
     display_name TEXT,
     first_name TEXT,  -- P0-1: Repository 使用的字段
@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMPTZ,
+    email_hash TEXT,  -- SHA-256(email)，账户删除时写入，用于去重分析和 GDPR 合规准备
     recovery_expires_at TIMESTAMPTZ,
 
     -- 日期逻辑验证
@@ -196,18 +197,23 @@ CREATE TABLE IF NOT EXISTS auth_users (
     email TEXT NOT NULL UNIQUE,
     CONSTRAINT check_email_lowercase CHECK (email = LOWER(email)),
 
-    -- 密码 (argon2id 哈希)
-    password_hash TEXT NOT NULL,
+    -- 密码 (argon2id 哈希，注册 OTP 验证阶段为 NULL，完成注册后才有值)
+    password_hash TEXT,
 
     -- 邮箱验证
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     email_verified_at TIMESTAMPTZ,
-    email_verification_token TEXT,           -- SHA-256 哈希值，不存明文
-    email_verification_expires_at TIMESTAMPTZ,
 
-    -- 密码重置
-    password_reset_token TEXT,              -- SHA-256 哈希值，不存明文
-    password_reset_expires_at TIMESTAMPTZ,
+    -- OTP 统一字段（所有场景共用：注册/修改密码/删除账户/忘记密码）
+    -- 通过 otp_purpose 区分用途，同一用户同一时间只有一个活跃 OTP
+    otp_code_hash TEXT,                     -- SHA-256 哈希值，不存明文
+    otp_purpose TEXT CHECK (otp_purpose IS NULL OR otp_purpose IN (
+        'register', 'change_password', 'delete_account', 'forgot_password'
+    )),
+    otp_expires_at TIMESTAMPTZ,
+    otp_attempts INTEGER NOT NULL DEFAULT 0 CHECK (otp_attempts >= 0),  -- 最多 5 次尝试
+
+    -- 密码变更追踪
     password_changed_at TIMESTAMPTZ,
 
     -- 登录安全
@@ -224,14 +230,10 @@ CREATE TABLE IF NOT EXISTS auth_users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 部分索引：仅对有 token 的行建索引（大部分行 token 为 NULL）
-CREATE INDEX IF NOT EXISTS idx_auth_users_verification_token
-    ON auth_users(email_verification_token)
-    WHERE email_verification_token IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_auth_users_password_reset_token
-    ON auth_users(password_reset_token)
-    WHERE password_reset_token IS NOT NULL;
+-- 部分索引：仅对有 OTP 的行建索引（大部分行 OTP 为 NULL）
+CREATE INDEX IF NOT EXISTS idx_auth_users_otp
+    ON auth_users(otp_code_hash)
+    WHERE otp_code_hash IS NOT NULL;
 
 -- 锁定用户索引（查询被锁定的账户）
 CREATE INDEX IF NOT EXISTS idx_auth_users_locked
@@ -1933,6 +1935,12 @@ COMMENT ON COLUMN user_creation_logs.action IS '操作类型：created（成功�
 CREATE INDEX IF NOT EXISTS idx_profiles_created_by ON profiles(created_by);
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username) WHERE username IS NOT NULL;
 
+-- 部分唯一索引：活跃用户邮箱唯一，软删除记录不受约束
+-- 允许同一邮箱的多条历史记录并存（用户多次注册→删除→再注册）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email_unique
+    ON profiles(email)
+    WHERE is_deleted = false;
+
 
 -- ============================================================================
 -- Helper Sequences and Functions
@@ -2004,10 +2012,69 @@ COMMENT ON COLUMN system_error_logs.details IS '详细信息（JSONB 格式，�
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- create_auth_user_with_profile - 原子创建 auth_users + profiles
--- 注册时在同一事务中创建认证凭据和业务 profile，共享同一 UUID
+-- create_pending_auth_user - 注册第一步：创建/更新 pending 用户，发送 OTP
+-- 三种场景：不存在→INSERT；pending用户→UPDATE覆盖OTP；已注册→返回NULL
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION create_pending_auth_user(
+    p_email TEXT,
+    p_otp_code_hash TEXT,
+    p_otp_expires_at TIMESTAMPTZ
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+    v_user_id UUID;
+    v_existing RECORD;
+BEGIN
+    -- SELECT ... FOR UPDATE 防止并发竞态（两个请求同时注册同一邮箱）
+    SELECT id, email_verified, password_hash INTO v_existing
+    FROM auth_users WHERE email = LOWER(TRIM(p_email)) FOR UPDATE;
+
+    IF NOT FOUND THEN
+        -- 场景 1: 邮箱不存在 → 创建新的 pending 用户
+        v_user_id := uuid_generate_v4();
+        INSERT INTO auth_users (
+            id, email, otp_code_hash, otp_purpose, otp_expires_at,
+            password_hash, email_verified, created_at, updated_at
+        ) VALUES (
+            v_user_id, LOWER(TRIM(p_email)), p_otp_code_hash, 'register', p_otp_expires_at,
+            NULL, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        );
+        RETURN v_user_id;
+
+    ELSIF v_existing.email_verified = false AND v_existing.password_hash IS NULL THEN
+        -- 场景 2: pending 用户（未完成注册）→ 覆盖 OTP 信息
+        UPDATE auth_users SET
+            otp_code_hash = p_otp_code_hash,
+            otp_purpose = 'register',
+            otp_expires_at = p_otp_expires_at,
+            otp_attempts = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = v_existing.id;
+        RETURN v_existing.id;
+
+    ELSE
+        -- 场景 3: 已注册用户 → 返回 NULL（调用方统一返回"已发送"防枚举）
+        RETURN NULL;
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION create_pending_auth_user IS
+    '注册第一步：创建待验证用户或更新已有 pending 用户的 OTP。'
+    '已注册用户返回 NULL（不操作），调用方统一返回成功响应防枚举。';
+
+
+-- ----------------------------------------------------------------------------
+-- create_auth_user_with_profile - 注册第三步：完善 pending auth_users + 创建 profiles
+-- 调用时机：OTP 已验证，用户设完密码后调用
+-- 前置条件：create_pending_auth_user 已创建 pending auth_users 记录
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION create_auth_user_with_profile(
+    p_user_id UUID,              -- pending auth_users.id（由 create_pending_auth_user 返回）
     p_email TEXT,
     p_password_hash TEXT,
     p_display_name TEXT DEFAULT NULL,
@@ -2023,14 +2090,20 @@ SECURITY DEFINER
 SET search_path = 'public'
 AS $$
 DECLARE
-    v_user_id UUID;
     v_user_code TEXT;
     v_display_name_final TEXT;
     v_auth_user auth_users%ROWTYPE;
     v_profile profiles%ROWTYPE;
 BEGIN
-    -- Step 1: 生成共享 UUID 和 user_code
-    v_user_id := uuid_generate_v4();
+    -- Step 1: 幂等性检查 — 防止 register_token 重复使用
+    IF EXISTS (
+        SELECT 1 FROM auth_users
+        WHERE id = p_user_id AND password_hash IS NOT NULL
+    ) THEN
+        RAISE EXCEPTION 'already_registered: user % has already completed registration', p_user_id;
+    END IF;
+
+    -- Step 2: 生成 user_code
     v_user_code := generate_user_code();
 
     v_display_name_final := COALESCE(
@@ -2038,27 +2111,24 @@ BEGIN
         split_part(p_email, '@', 1)
     );
 
-    -- Step 2: 创建 auth_users 记录（认证凭据）
-    INSERT INTO auth_users (
-        id,
-        email,
-        password_hash,
-        email_verified,
-        is_active,
-        created_at,
-        updated_at
-    ) VALUES (
-        v_user_id,
-        LOWER(TRIM(p_email)),
-        p_password_hash,
-        FALSE,
-        TRUE,
-        CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP
-    )
+    -- Step 3: 完善 pending auth_users 记录（设置密码，标记邮箱已验证，清除 OTP）
+    UPDATE auth_users SET
+        password_hash = p_password_hash,
+        email_verified = TRUE,
+        email_verified_at = CURRENT_TIMESTAMP,
+        otp_code_hash = NULL,
+        otp_purpose = NULL,
+        otp_expires_at = NULL,
+        otp_attempts = 0,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_user_id
     RETURNING * INTO v_auth_user;
 
-    -- Step 3: 创建 profiles 记录（业务数据，共享同一 UUID）
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'pending_user_not_found: auth_users % does not exist', p_user_id;
+    END IF;
+
+    -- Step 4: 创建 profiles 记录（业务数据，共享同一 UUID）
     INSERT INTO profiles (
         id,
         email,
@@ -2070,7 +2140,7 @@ BEGIN
         created_at,
         updated_at
     ) VALUES (
-        v_user_id,
+        p_user_id,
         LOWER(TRIM(p_email)),
         v_user_code,
         v_display_name_final,
@@ -2082,7 +2152,7 @@ BEGIN
     )
     RETURNING * INTO v_profile;
 
-    -- Step 4: 记录创建事件
+    -- Step 5: 记录创建事件
     INSERT INTO user_creation_logs (
         user_id,
         source,
@@ -2090,7 +2160,7 @@ BEGIN
         metadata,
         created_at
     ) VALUES (
-        v_user_id::TEXT,
+        p_user_id::TEXT,
         'register',
         'created',
         jsonb_build_object(
@@ -2101,7 +2171,7 @@ BEGIN
         CURRENT_TIMESTAMP
     );
 
-    -- Step 5: 返回结果
+    -- Step 6: 返回结果
     RETURN QUERY
     SELECT
         row_to_json(v_auth_user)::jsonb,
@@ -2110,34 +2180,118 @@ BEGIN
 
 EXCEPTION
     WHEN unique_violation THEN
-        -- 邮箱已注册（auth_users.email UNIQUE 约束）
-        -- 调用方应捕获此异常并返回防枚举的统一响应
         RAISE EXCEPTION 'email_already_registered' USING ERRCODE = '23505';
     WHEN OTHERS THEN
-        -- 记录错误
         BEGIN
-            INSERT INTO system_error_logs (
-                operation,
-                error_message,
-                details,
-                created_at
-            ) VALUES (
+            INSERT INTO system_error_logs (operation, error_message, details, created_at)
+            VALUES (
                 'create_auth_user_with_profile',
                 SQLERRM,
-                jsonb_build_object(
-                    'email', p_email
-                ),
+                jsonb_build_object('user_id', p_user_id, 'email', p_email),
                 CURRENT_TIMESTAMP
             );
         EXCEPTION
-            WHEN OTHERS THEN
-                NULL;
+            WHEN OTHERS THEN NULL;
         END;
         RAISE;
 END;
 $$;
 
-COMMENT ON FUNCTION create_auth_user_with_profile IS '注册时原子创建 auth_users + profiles，共享同一 UUID。邮箱重复时抛出 unique_violation';
+COMMENT ON FUNCTION create_auth_user_with_profile IS
+    '注册第三步：完善 pending auth_users（设密码+邮箱已验证）+ 创建 profiles。'
+    'OTP 已验证后调用，email_verified 直接设为 TRUE。含幂等性检查防重复调用。';
+
+
+-- ----------------------------------------------------------------------------
+-- restore_auth_user_with_profile - 账户恢复：复用旧 UUID 恢复已删除账户
+-- 30 天恢复期内，用户选择"恢复账号"时调用
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION restore_auth_user_with_profile(
+    p_old_profile_id UUID,       -- 待恢复的 profiles.id（软删除状态）
+    p_email TEXT,
+    p_password_hash TEXT,
+    p_display_name TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+    v_profile RECORD;
+    v_restored_name TEXT;
+BEGIN
+    -- 1. 查询可恢复的 profiles 记录（FOR UPDATE 防并发）
+    SELECT id, email, display_name, deleted_at, is_deleted
+        INTO v_profile
+        FROM profiles
+       WHERE id = p_old_profile_id
+         AND is_deleted = true
+         AND deleted_at > now() - INTERVAL '30 days'
+         FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'RESTORE_NOT_FOUND: profile % not found or not restorable', p_old_profile_id;
+    END IF;
+
+    -- 2. 确认邮箱匹配（防止篡改）
+    IF v_profile.email <> LOWER(TRIM(p_email)) THEN
+        RAISE EXCEPTION 'RESTORE_EMAIL_MISMATCH: email does not match profile record';
+    END IF;
+
+    -- 3. 创建新的 auth_users 记录（复用旧 UUID）
+    INSERT INTO auth_users (id, email, password_hash, email_verified, created_at, updated_at)
+    VALUES (p_old_profile_id, LOWER(TRIM(p_email)), p_password_hash, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+    -- 4. 恢复 profiles 记录
+    v_restored_name := COALESCE(p_display_name, v_profile.display_name);
+    -- 如果 display_name 已被 30 天定时任务脱敏为 'Deleted User'，使用传入的新名称
+    IF v_restored_name = 'Deleted User' THEN
+        v_restored_name := COALESCE(p_display_name, 'User');
+    END IF;
+
+    UPDATE profiles SET
+        is_deleted = false,
+        deleted_at = NULL,
+        display_name = v_restored_name,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = p_old_profile_id;
+
+    -- 5. 记录恢复事件
+    INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
+    VALUES (
+        p_old_profile_id::TEXT,
+        'register',
+        'account_restored',
+        jsonb_build_object(
+            'restored_at', now(),
+            'original_deleted_at', v_profile.deleted_at
+        ),
+        CURRENT_TIMESTAMP
+    );
+
+    RETURN p_old_profile_id;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        BEGIN
+            INSERT INTO system_error_logs (operation, error_message, details, created_at)
+            VALUES (
+                'restore_auth_user_with_profile',
+                SQLERRM,
+                jsonb_build_object('profile_id', p_old_profile_id, 'email', p_email),
+                CURRENT_TIMESTAMP
+            );
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
+        END;
+        RAISE;
+END;
+$$;
+
+COMMENT ON FUNCTION restore_auth_user_with_profile IS
+    '账户恢复：复用旧 profiles UUID 创建 auth_users，恢复 profiles.is_deleted=false。'
+    '仅在 30 天恢复期内有效，邮箱必须匹配。';
 
 
 -- ----------------------------------------------------------------------------
