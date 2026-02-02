@@ -471,13 +471,19 @@ profiles.id: TEXT → UUID
 操作:
   1. 生成 UUID (uuid_generate_v4())
   2. INSERT INTO auth_users (id, email, otp_code_hash, otp_purpose='register', otp_expires_at, password_hash=NULL, email_verified=false)
-     ON CONFLICT (email) DO UPDATE SET otp_code_hash, otp_purpose, otp_expires_at, otp_attempts=0, updated_at=now()
+     ON CONFLICT (email) DO UPDATE SET
+       otp_code_hash = EXCLUDED.otp_code_hash,
+       otp_purpose = EXCLUDED.otp_purpose,
+       otp_expires_at = EXCLUDED.otp_expires_at,
+       otp_attempts = 0,
+       updated_at = now()
+     WHERE auth_users.email_verified = false AND auth_users.password_hash IS NULL
   3. 仅操作 auth_users，不创建 profiles（注册未完成）
-返回: auth_user.id
+返回: auth_user.id（INSERT 时返回新 ID，UPDATE 时返回已有 ID，未命中 WHERE 时返回 NULL）
 
 注意: 注册第一步（发送 OTP）时调用。
-用 ON CONFLICT 确保重复发送 OTP 不会创建多条记录。
-仅对 email_verified=false 且 password_hash IS NULL 的记录执行 UPDATE（已完成注册的用户不受影响）。
+- ON CONFLICT + WHERE 确保：重复发送 OTP 只影响 pending 用户，已完成注册的用户不受影响
+- 返回 NULL 表示该邮箱已注册完成 → 后端仍返回统一响应"验证码已发送"（防枚举），但不实际发送 OTP
 ```
 
 ### 4.8 处理相关表
@@ -499,7 +505,7 @@ auth_users:
 │   → USING (true) WITH CHECK (true)
 │   → TO service_role
 ├── 无 authenticated 用户策略（前端永远不直连此表，所有操作通过后端 API）
-└── 理由: 存储密码哈希和验证 token，安全等级最高
+└── 理由: 存储密码哈希和 OTP 哈希，安全等级最高
 
 auth_sessions:
 ├── ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
@@ -642,15 +648,17 @@ POST /auth/register/verify-otp
   Errors:   400 { error: "invalid_otp" | "otp_expired" | "too_many_attempts" }
 
 POST /auth/register/complete
-  Request:  { register_token: string, password: string, display_name?: string }
-  Response: { access_token: string, user: { id: UUID, email: string, display_name: string } }
+  Request:  { register_token: string, password: string, display_name?: string, restore_account?: boolean }
+  Response: { access_token: string, refresh_token: string, user: { id: UUID, email: string, display_name: string } }
+  Note:     refresh_token 由 BFF 代理截获设为 httpOnly cookie，不返回给前端 JS
   Errors:   400 { error: "invalid_register_token" | "weak_password" } / 409 (邮箱已完成注册)
 
 === 登录 ===
 
 POST /auth/login
   Request:  { email: string, password: string }
-  Response: { access_token: string, user: { id: UUID, email: string, tier: string, role: string } }
+  Response: { access_token: string, refresh_token: string, user: { id: UUID, email: string, tier: string, role: string } }
+  Note:     refresh_token 由 BFF 代理截获设为 httpOnly cookie，不返回给前端 JS
   Errors:   401 { error: "invalid_credentials" } / 403 { error: "account_locked", retry_after: number }
 
 === Token 管理 ===
@@ -667,13 +675,16 @@ POST /auth/logout
 === 通用 OTP（修改密码/删除账户/忘记密码）===
 
 POST /auth/otp/send
-  Request:  { email: string, purpose: "change_password" | "delete_account" | "forgot_password" }
+  Request:  { purpose: "change_password" | "delete_account" | "forgot_password", email?: string }
   Response: { success: true, message: "验证码已发送到您的邮箱" }  // 统一响应，防枚举
-  Note:     purpose="forgot_password" 时不需要 Access Token；其他需要 Access Token
+  Note:
+    - purpose="forgot_password" 时：不需要 Access Token，必须传 email（因为用户未登录）
+    - purpose="change_password" | "delete_account" 时：需要 Access Token，email 从 JWT 中提取（忽略请求体中的 email，防止向他人邮箱发 OTP）
 
 POST /auth/otp/verify
-  Request:  { email: string, otp_code: string, purpose: string }
+  Request:  { purpose: string, otp_code: string, email?: string }
   Response: { success: true, otp_verified_token: string }  // 临时验证 token（10分钟有效，JWT，用于后续操作）
+  Note:     email 参数规则同 /auth/otp/send（forgot_password 需传，其他从 JWT 提取）
   Errors:   400 { error: "invalid_otp" | "otp_expired" | "too_many_attempts" }
 
 === 密码操作 ===
@@ -727,6 +738,13 @@ POST /auth/delete-account
 - /auth/otp/send:           email（防止对同一邮箱频繁发送 OTP）
 - /auth/otp/verify:         IP（防止暴力猜测 OTP）
 
+OTP 重发冷却时间（后端校验，防绕过前端 60 秒倒计时）:
+- 每次发送 OTP 时记录 otp_expires_at（生成时间可从中推算）
+- 如果距离上次 OTP 发送 < 60 秒，返回 429 { error: "otp_cooldown", retry_after: seconds_remaining }
+- 实现方式: 在 OTPService.send_otp() 中检查 auth_users.otp_expires_at 是否在 (now() - 有效期 + 60秒) 之后
+  即: 如果 otp_expires_at > now() - 有效期 + 60s，说明距上次发送不到 60 秒
+- 这是在 SlowAPI 小时级限流（3/hour）之外的额外保护层
+
 锁定机制 (auth_users.failed_login_attempts):
 - 每次密码错误: failed_login_attempts += 1
 - 达到 5 次: locked_until = now() + 30min
@@ -757,10 +775,11 @@ OTP 验证码（统一规范，所有场景通用）:
 临时 Token（OTP 验证后颁发，用于后续操作）:
 
 注册临时 Token (register_token):
-├── 格式: JWT (HS256)，payload: { sub: email, purpose: "register", exp: now()+15min }
+├── 格式: JWT (HS256)，payload: { sub: email, user_id: UUID, purpose: "register", exp: now()+15min }
 ├── 有效期: 15 分钟（给用户足够时间填写密码和昵称）
 ├── 一次性使用: 注册完成后该 email 的 auth_user 已有 password_hash，token 自然失效
 ├── 用途: 注册第三步（/auth/register/complete）时携带，证明该 email 已通过 OTP 验证
+├── user_id: pending auth_user 的 UUID，complete 时验证 email + user_id 双重匹配
 └── 不存储在数据库中，后端直接验证 JWT 签名和过期时间
 
 OTP 验证 Token (otp_verified_token):
@@ -774,6 +793,19 @@ OTP 验证 Token (otp_verified_token):
 - OTP 哈希存储: 数据库被攻破后无法反推 OTP 明文
 - 临时 Token 用 JWT: 无状态验证，无需额外数据库查询，且自带过期机制
 - 两步验证分离: OTP 验证和实际操作是分开的 API 调用，攻击者即使绕过前端也需要有效的临时 Token
+- register_token 增强: payload 包含 auth_user_id（pending 用户 UUID），complete 时验证 email + id 双重匹配
+
+时序攻击防护（防止通过响应时间推断邮箱是否存在）:
+├── OTP 发送（register/send-otp, otp/send）统一异步处理：
+│   1. 后端收到请求后立即返回统一响应（不等待邮件发送完成）
+│   2. 邮件发送放入后台任务（或 asyncio.create_task）
+│   3. 如果邮箱不存在，仍然执行相同的数据库查询路径，只是不创建 OTP / 不发邮件
+│   4. 响应时间固定 ~50-100ms（仅数据库查询），不因是否发邮件而波动
+├── 或者：固定最小响应时间
+│   1. 记录请求开始时间
+│   2. 处理完成后，如果耗时 < 500ms，sleep 到 500ms
+│   3. 确保所有响应时间一致
+└── 推荐方案: 异步发送邮件（更自然，不人为延迟用户体验）
 
 OTP 清理:
 ├── 验证成功后立即清除 otp_code_hash/otp_purpose/otp_expires_at/otp_attempts
@@ -834,6 +866,57 @@ OTP 清理:
 - 发送到 Outlook → 检查是否进垃圾箱
 - 检查移动端邮件显示效果（OTP 数字清晰可辨）
 - 检查 OTP 邮件是否被手机系统自动识别（iOS/Android OTP 自动填充）
+```
+
+### 5.8 OTP 邮件模板设计
+
+```
+发件人: Make Decodables <noreply@makedecodables.com>
+（使用 RESEND_API_KEY + 已验证的 makedecodables.com 域名）
+
+4 种邮件模板（根据 otp_purpose 区分）:
+
+1. purpose = "register"
+   Subject: "Your verification code: 123456"
+   Body:
+   - Make Decodables Logo
+   - "Welcome! Please verify your email"
+   - OTP 大字体居中显示: "123456"（方便手机自动识别）
+   - "This code expires in 10 minutes."
+   - "If you didn't create an account, you can safely ignore this email."
+   - Footer: © Make Decodables
+
+2. purpose = "forgot_password"
+   Subject: "Password reset code: 123456"
+   Body:
+   - "We received a password reset request for your account."
+   - OTP: "123456"
+   - "This code expires in 10 minutes."
+   - "If you didn't request this, your account is safe. No action needed."
+
+3. purpose = "change_password"
+   Subject: "Password change verification: 123456"
+   Body:
+   - "You requested to change your password."
+   - OTP: "123456"
+   - "This code expires in 10 minutes."
+   - "If you didn't make this request, please secure your account immediately."
+
+4. purpose = "delete_account"
+   Subject: "Account deletion verification: 123456"
+   Body:
+   - "You requested to delete your account."
+   - OTP: "123456"
+   - "⚠️ This action is irreversible."
+   - "This code expires in 10 minutes."
+   - "If you didn't make this request, please secure your account immediately."
+
+HTML 模板规范:
+- 响应式设计（移动端优先）
+- OTP 数字使用等宽字体，字号 32px+，方便阅读和自动识别
+- 品牌色彩与 Design System 一致
+- 纯文本版本作为 fallback（Resend 支持 text + html 双版本）
+- 多语言: MVP 阶段仅英文，未来可通过用户 locale 设置扩展
 ```
 
 ---
@@ -985,7 +1068,7 @@ decodables-fe/app/api/auth/[...action]/route.ts
 
 实现逻辑伪代码：
 
-export async function POST(req: NextRequest, { params }: { params: { action: string[] } }) {
+async function handler(req: NextRequest, { params }: { params: { action: string[] } }) {
   const action = params.action.join('/')  // e.g. "login", "refresh", "logout"
   const body = await req.json().catch(() => ({}))
 
@@ -996,11 +1079,16 @@ export async function POST(req: NextRequest, { params }: { params: { action: str
     body.refresh_token = refreshToken
   }
 
-  // 2. 转发到后端
+  // 2. 透传 Access Token（已登录端点需要）
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const authHeader = req.headers.get('Authorization')
+  if (authHeader) headers['Authorization'] = authHeader
+
+  // 3. 转发到后端
   const backendRes = await fetch(`${BACKEND_URL}/auth/${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method: req.method,  // 支持 POST/GET/DELETE
+    headers,
+    body: ['GET', 'DELETE'].includes(req.method) ? undefined : JSON.stringify(body),
   })
   const data = await backendRes.json()
 
@@ -1026,17 +1114,24 @@ export async function POST(req: NextRequest, { params }: { params: { action: str
   return res
 }
 
-路由映射（~100 行代码）：
-- POST /api/auth/login                → POST {BACKEND}/auth/login
-- POST /api/auth/register/send-otp   → POST {BACKEND}/auth/register/send-otp
-- POST /api/auth/register/verify-otp → POST {BACKEND}/auth/register/verify-otp
-- POST /api/auth/register/complete   → POST {BACKEND}/auth/register/complete
-- POST /api/auth/refresh              → POST {BACKEND}/auth/refresh  (注入 cookie 中的 refresh_token)
-- POST /api/auth/logout               → POST {BACKEND}/auth/logout   (注入 cookie 中的 refresh_token)
-- POST /api/auth/logout-all           → POST {BACKEND}/auth/logout-all
-- POST /api/auth/otp/send            → POST {BACKEND}/auth/otp/send
-- POST /api/auth/otp/verify          → POST {BACKEND}/auth/otp/verify
-- POST /api/auth/*                    → POST {BACKEND}/auth/*  (其余端点透传)
+路由映射（~120 行代码）：
+export { handler as POST, handler as GET, handler as DELETE }
+
+POST:
+- /api/auth/login                → {BACKEND}/auth/login
+- /api/auth/register/send-otp   → {BACKEND}/auth/register/send-otp
+- /api/auth/register/verify-otp → {BACKEND}/auth/register/verify-otp
+- /api/auth/register/complete   → {BACKEND}/auth/register/complete
+- /api/auth/refresh              → {BACKEND}/auth/refresh  (注入 cookie 中的 refresh_token)
+- /api/auth/logout               → {BACKEND}/auth/logout   (注入 cookie 中的 refresh_token)
+- /api/auth/logout-all           → {BACKEND}/auth/logout-all (透传 Authorization header)
+- /api/auth/otp/send            → {BACKEND}/auth/otp/send  (透传 Authorization header)
+- /api/auth/otp/verify          → {BACKEND}/auth/otp/verify (透传 Authorization header)
+- /api/auth/*                    → {BACKEND}/auth/*  (其余端点透传)
+GET:
+- /api/auth/sessions             → {BACKEND}/auth/sessions  (透传 Authorization header)
+DELETE:
+- /api/auth/sessions/{id}        → {BACKEND}/auth/sessions/{id} (透传 Authorization header)
 ```
 
 **httpOnly Cookie 安全属性**：
@@ -1274,6 +1369,87 @@ components/auth/OtpInput.tsx — 6 位 OTP 输入框：
 - 支持 autocomplete="one-time-code"（iOS/Android 自动填充 OTP）
 - 失败时清空并聚焦第一个框
 - 可复用于注册和忘记密码页面
+```
+
+**修改密码 UI（在 /profile/settings 页面内）**：
+```
+入口：/profile/settings 页面 → "Change Password" 区域
+实现方式：内嵌在设置页面中（不是独立页面）
+
+UI 流程：
+1. 显示 "Change Password" 卡片，按钮 "Change Password"
+2. 点击后展开表单：
+   Step 1: 点击 "Send Verification Code" → 调用 POST /auth/otp/send { purpose: "change_password" }
+   Step 2: OTP 输入框（复用 OtpInput 组件）→ 调用 POST /auth/otp/verify → 获取 otp_verified_token
+   Step 3: 输入 Current Password + New Password + Confirm Password
+           → 调用 POST /auth/change-password（携带 otp_verified_token）
+3. 成功 → 显示 "Password changed successfully" + 折叠表单
+4. 取消 → 折叠表单
+```
+
+**删除账户 UI（在 /profile/settings 页面内）**：
+```
+入口：/profile/settings 页面 → "Danger Zone" 区域（红色边框卡片）
+实现方式：使用 ResponsiveModal（桌面 Dialog / 移动 Sheet）
+
+UI 流程：
+1. 点击 "Delete Account" 按钮（红色）→ 弹出确认对话框
+2. 对话框内容：
+   - 警告图标 + "This action cannot be undone"
+   - 说明文字：列出删除后果（项目、积分、订阅将被删除）
+   - 勾选框："I understand this action is irreversible"
+   - 勾选后激活 "Send Verification Code" 按钮
+3. Step 1: 点击 "Send Verification Code" → 发送 OTP
+4. Step 2: 对话框内输入 OTP（复用 OtpInput 组件）→ 验证 → 获取 otp_verified_token
+5. Step 3: 显示 "Delete My Account" 最终确认按钮（红色）
+   → 调用 POST /auth/delete-account（携带 otp_verified_token）
+6. 成功 → 清除登录状态 → 跳转首页 + "Account deleted" 提示
+```
+
+**设备管理 UI（在 /profile/settings 页面内）**：
+```
+入口：/profile/settings 页面 → "Active Sessions" 区域
+
+UI 设计：
+- 卡片列表，每个卡片显示一个活跃设备：
+  - 设备图标（桌面/手机/平板，根据 user_agent 判断）
+  - 设备名称（如 "Chrome on macOS"）
+  - IP 地址（部分遮蔽：192.168.*.*)
+  - 最后活跃时间（如 "2 minutes ago"）
+  - 当前设备标记：绿色 "Current" badge
+  - 非当前设备：显示 "Revoke" 按钮
+- 底部 "Sign out all other devices" 按钮
+- 踢出设备确认：简单的二次确认对话框
+
+API 调用：
+- 加载：GET /auth/sessions
+- 踢出设备：DELETE /auth/sessions/{id}
+- 全部登出：POST /auth/logout-all
+```
+
+**UserMenu 组件（替换 Clerk UserButton）**：
+```
+components/common/UserMenu.tsx — 头像下拉菜单：
+
+触发器：
+- 用户头像（圆形，32px）+ 向下箭头
+- 头像来源：Gravatar（根据 email MD5 生成 URL）或默认头像（首字母）
+  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email)}?d=initials&name=${displayName}`
+  - 未来扩展：用户上传自定义头像（存 Supabase Storage）
+  - MVP 阶段使用 Gravatar + 首字母默认头像即可
+
+下拉菜单项：
+- 用户信息区（顶部）：
+  - 显示名称 + email
+  - tier badge（颜色对应 tier）
+- 分隔线
+- "Settings" → /profile/settings
+- "Transaction History" → /transaction-history
+- 分隔线
+- "Sign Out" → signOut()
+
+移动端：
+- 不使用下拉菜单，直接集成到 MobileMenu/BottomNavbar 中
 ```
 
 **登录后重定向机制**：
@@ -1569,9 +1745,15 @@ POST /auth/delete-account    需要 OTP 验证（otp_verified_token）   Access 
 
 **邮箱复用**：
 - 账户删除后，该邮箱可以重新注册（因为 auth_users 已硬删除）
-- 30 天恢复期内，新注册返回与正常注册**完全相同**的响应（"请查收验证邮件"），防止邮箱枚举
-  → 实际发送的是"账户恢复"邮件（非验证邮件），让用户通过邮件中的链接选择恢复旧账户或注册新账户
-  → 攻击者无法通过 API 响应判断该邮箱是否曾注册过
+- 30 天恢复期内，注册第一步（`/auth/register/send-otp`）行为：
+  1. 后端检测到 profiles 中存在同 email 的软删除记录（`is_deleted=true`，`deleted_at < 30天前`）
+  2. 返回与正常注册**完全相同**的响应（"验证码已发送到您的邮箱"），防止邮箱枚举
+  3. 实际发送的邮件包含 OTP 验证码 + 额外提示："我们检测到您之前注册过账户。输入验证码后，您可以选择恢复之前的账户或创建新账户。"
+  4. OTP 验证通过后，注册第三步（`/auth/register/complete`）增加 `restore_account` 可选参数：
+     - `restore_account=true`：恢复 profiles 软删除记录（`is_deleted=false`），重新创建 auth_users，重置密码
+     - `restore_account=false`（默认）：正常创建全新的 auth_users + profiles（旧 profiles 保持软删除状态，30 天后彻底清理）
+  5. 攻击者无法通过 API 响应判断该邮箱是否曾注册过
+- 30 天后：profiles 定期清理任务彻底删除过期记录，正常注册流程
 
 ### 7.4 邮箱规范化
 
@@ -1720,7 +1902,7 @@ async def generate_image(user = Depends(require_verified_email)):
 | **Phase 1** | 后端 Auth Domain：service/token/password/repository/API 全套 | 4 天 |
 | **Phase 2** | 后端集成：修改 dependencies.py + config.py + container.py，删除 Clerk 模块 | 1 天 |
 | **Phase 3** | 前端 Auth 抽象层：AuthProvider + useAuth + tokenManager + API Route 代理 | 3 天 |
-| **Phase 4** | 前端认证页面：login/register/forgot-password/reset-password/verify-email | 2 天 |
+| **Phase 4** | 前端认证页面：login（单步）+ register（三步 OTP）+ forgot-password（三步 OTP）+ OtpInput 组件 | 2 天 |
 | **Phase 5** | 前端迁移：~30 个文件 import 替换 + 特殊文件逻辑调整 | 3 天 |
 | **Phase 6** | 测试：后端单元测试 + 集成测试 + 前端测试 | 2 天 |
 | **Phase 7** | 清理：移除 @clerk/nextjs、svix 依赖，更新环境变量，构建验证 | 1 天 |
@@ -1788,7 +1970,7 @@ Git 分支: feat/auth-phase0-schema
 
 **Step 0.6: 重写 RPC 函数**
 - `create_user_idempotent()` → 重写为 `create_auth_user_with_profile()`（详见 4.7）
-  - 输入：p_email, p_password_hash, p_username, p_display_name, p_signup_bonus
+  - 输入：p_email, p_password_hash, p_display_name, p_signup_bonus
   - 同一事务内创建 auth_users + profiles（共享 UUID）
 - 更新 `get_user_creation_stats()`：适配新 source 枚举
 - 保留 `generate_user_code()`：注册时仍需生成 26 位 user_code
@@ -2125,9 +2307,26 @@ Git 分支: feat/auth-phase4-auth-pages
     - 成功 → "Password reset successfully" + 自动跳转 `/login`
 - ✅ 验证：完整密码重置流程
 
-**Step 4.6: 完整验证 + 提交**
+**Step 4.6: 实现 UserMenu 组件（替换 Clerk UserButton）**
+- 新建 `components/common/UserMenu.tsx`
+  - 头像（Gravatar + 首字母默认头像）+ 下拉菜单
+  - 菜单项：用户信息区 / Settings / Transaction History / Sign Out
+  - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email)}?d=initials`
+- ✅ 验证：下拉菜单正常显示
+
+**Step 4.7: 实现 Profile Settings 中的 Auth 功能**
+- 在 `/profile/settings` 页面新增或修改以下区域：
+  - "Change Password" 卡片：三步 OTP 流程（复用 OtpInput）
+  - "Active Sessions" 卡片：设备列表 + 踢出 + 全部登出
+  - "Danger Zone" 卡片：删除账户（OTP 确认，使用 ResponsiveModal）
+- ✅ 验证：修改密码、设备管理、删除账户流程完整可用
+
+**Step 4.8: 完整验证 + 提交**
 - 手动测试完整流程：注册（邮箱 → OTP → 密码）→ 登录 → 登出
 - 手动测试密码重置：忘记密码（邮箱 → OTP → 新密码）→ 登录
+- 手动测试修改密码：OTP → 旧密码 + 新密码 → 成功
+- 手动测试删除账户：OTP → 确认 → 账户删除
+- 手动测试设备管理：查看设备列表 → 踢出设备
 - OTP 自动填充测试（iOS/Android）
 - `npm run build` 通过
 - `git add + commit + push`
@@ -2151,7 +2350,7 @@ Git 分支: feat/auth-phase5-frontend-migration
 - `clerkMiddleware()` → 自定义路由保护（~40 行，详见 6.6）
 - 路由分类：
   - PUBLIC_ROUTES：`/`, `/pricing`, `/marketplace/*`, `/articles/*`, `/api/*` 等
-  - AUTH_ROUTES：`/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`
+  - AUTH_ROUTES：`/login`, `/register`, `/forgot-password`
   - 其余为 PROTECTED（未登录 → `/login?redirect=`，已登录访问 AUTH → `/dashboard`）
 - ✅ 验证：路由保护正确
 
