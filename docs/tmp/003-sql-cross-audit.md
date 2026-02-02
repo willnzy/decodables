@@ -1,22 +1,27 @@
 # SQL Schema 全面审计报告 (最终版)
 
-> **审计日期**: 2026-02-02
-> **审计范围**: `decodables/migrations/v2/*.sql` (3 文件, 7,793 行) vs 后台 Python 代码
-> **审计维度**: 7 个 (RPC 交叉验证 / 表实体映射 / 索引覆盖 / 安全 / 数据完整性 / 一致性 / 硬编码)
-> **合并说明**: 本报告整合了 `002-sql-hardcoding-audit.md` (21 项) 和 `003-sql-cross-audit.md` (37 项) 的全部发现
+> **审计日期**: 2026-02-02 ~ 2026-02-03
+> **审计范围**: `decodables/migrations/v2/*.sql` (3 文件, 86 张表) vs 后台 Python 代码
+> **审计维度**: 8 个 (RPC 交叉验证 / 表实体映射 / 索引覆盖 / 安全 / 数据完整性 / 一致性 / 硬编码 / **字段类型审计**)
+> **合并说明**: 本报告整合了 002-sql-hardcoding-audit (21 项) + 003-sql-cross-audit (37 项) + **D8 字段类型审计 (13 项)** 的全部发现
 
 ---
 
 ## Executive Summary
 
-| 严重等级 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | 总计 |
-|---------|----|----|----|----|----|----|----|----|
-| **P0 Critical** | 4+5 | 0 | 0 | 0 | 0 | 0 | 0 | **9** |
-| **P1 High** | 0 | 2 | 0 | 3 | 0 | 0 | 5 | **10** |
-| **P2 Medium** | 3 | 4 | 1 | 4 | 0 | 0 | 7 | **19** |
-| **P3 Low** | 6 | 3 | 2 | 3 | 1 | 0 | 4 | **19** |
-| **合计** | **18** | **9** | **3** | **10** | **1** | **0** | **16** | **57** |
+| 严重等级 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | 总计 |
+|---------|----|----|----|----|----|----|----|----|------|
+| **P0 Critical** | 4+5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **9** |
+| **P1 High** | 0 | 2 | 0 | 3 | 0 | 0 | 5 | 1 | **11** |
+| **P2 Medium** | 3 | 4 | 1 | 4 | 0 | 0 | 7 | 6 | **25** |
+| **P3 Low** | 6 | 3 | 2 | 3 | 1 | 0 | 4 | 6 | **25** |
+| **合计** | **18** | **9** | **3** | **10** | **1** | **0** | **16** | **13** | **70** |
 
+> **第四轮扩展 (2026-02-03 — D8 字段类型审计)**:
+> - 新增 D8 维度: SQL Schema + Python 后端字段类型全面审计 (86 张表)
+> - 新增 13 项发现 (2 HIGH + 6 MEDIUM + 5 LOW)
+> - 新增已修复问题记录: `uuid_generate_v4()` 替换 + `::TEXT` 误转换修复
+>
 > **第二轮复核修正 (2026-02-02)**:
 > - D1-4 #4 `soft_delete_category_descendants`: P2→P3 (返回值被忽略，非解析错误)
 > - D4 `system_resources_admin_repository.py:88`: P1→P2 (API 层已有 sanitize)
@@ -29,11 +34,11 @@
 > - C-1 restore: 补充说明当前 SQL 用 `deleted_at + 30 days` 而 Python 用 `recovery_expires_at`
 > - D4 Webhook 白名单: 移除已删除的 `clerk_webhook_events`，仅保留 `stripe_webhook_events`
 
-> **全维度审计已完成**，发现 **57 项独立问题**：
-> - **P0 Critical** (9 项): RPC 函数缺失/参数不匹配/返回值解析错误，运行时崩溃
-> - **P1 High** (10 项): 枚举缺失、CHECK 约束不匹配、安全注入风险、权限检查失效、业务逻辑硬编码
-> - **P2 Medium** (19 项): 标量返回值解析、命名不一致、架构设计、描述文本硬编码
-> - **P3 Low** (19 项): 死代码、类型差异、索引优化、合理默认值
+> **全维度审计已完成**，发现 **70 项独立问题**：
+> - **P0 Critical** (9 项): RPC 函数缺失/参数不匹配/返回值解析错误，运行时崩溃 ✅ **全部已修复**
+> - **P1 High** (11 项): 枚举缺失、CHECK 约束不匹配、安全注入风险、权限检查失效、业务逻辑硬编码、字段数据丢失
+> - **P2 Medium** (25 项): 标量返回值解析、命名不一致、架构设计、描述文本硬编码、可空性不一致、枚举同步
+> - **P3 Low** (25 项): 死代码、类型差异、索引优化、合理默认值、UUID 验证冗余、精度近似
 
 ---
 
@@ -53,7 +58,7 @@
 | 8 | 002 | D1 | 2 个订阅 RPC 添加 `p_payment_method` 参数 | SQL | 小 |
 | 9 | 002 | D1 | `create_auth_user_with_profile` 添加 `p_created_by` 参数 | SQL | 小 |
 
-### 第二批: P1 High (10 项) — 建议修复
+### 第二批: P1 High (11 项) — 建议修复
 
 | 序号 | 来源 | 维度 | 修复内容 | 预估工时 |
 |------|------|------|---------|---------|
@@ -69,22 +74,29 @@
 | 18 | 002 | D7 | `'Deleted User'` 硬编码添加注释关联 | 极小 |
 | 19 | 002 | D7 | `cleanup_old_activity_logs` 添加 `p_preserve_actions` 参数 | 小 |
 | 20 | 002 | D7 | Workspace 邀请过期时间从配置读取 | 小 |
+| 21 | D8 | D8 | `usage_count` BIGINT 在 Python ListingStats 中缺失 | 0.2h |
 
-### 第三批: P2 Medium (19 项) — 可选优化
+### 第三批: P2 Medium (25 项) — 可选优化
 
 | 序号 | 来源 | 维度 | 修复内容 | 预估工时 |
 |------|------|------|---------|---------|
-| 21-24 | 003 | D1 | 修复 4 处 PostgREST 标量返回值解析 | 1h |
-| 25 | 003 | D2 | `profiles.id` vs `UserProfile.user_id` 命名不一致 | 2h |
-| 26-27 | 003 | D2 | `datetime.utcnow()` 改为 `datetime.now(timezone.utc)` | 0.5h |
-| 28 | 003 | D2 | `projects` 表创建领域实体 | 4h |
-| 29 | 003 | D3 | profiles 表 GIN trigram 索引 | 0.5h |
-| 30-31 | 003 | D4 | 死代码 SECURITY DEFINER 函数评估删除 | 0.5h |
-| 32 | 003 | D4 | `analytics_events_repository.py:204` 改用参数化查询 | 0.2h |
-| 33 | 003 | D4 | 统一 sanitize 实现 | 2h |
-| 34-40 | 002 | D7 | 交易描述硬编码 / 魔术数字 / 金额转换 / 工单格式 / 时区 / 统计列 / 幂等性前缀 | 记录在案 |
+| 23-26 | 003 | D1 | 修复 4 处 PostgREST 标量返回值解析 | 1h |
+| 27 | 003 | D2 | `profiles.id` vs `UserProfile.user_id` 命名不一致 | 2h |
+| 28-29 | 003 | D2 | `datetime.utcnow()` 改为 `datetime.now(timezone.utc)` | 0.5h |
+| 30 | 003 | D2 | `projects` 表创建领域实体 | 4h |
+| 31 | 003 | D3 | profiles 表 GIN trigram 索引 | 0.5h |
+| 32-33 | 003 | D4 | 死代码 SECURITY DEFINER 函数评估删除 | 0.5h |
+| 34 | 003 | D4 | `analytics_events_repository.py:204` 改用参数化查询 | 0.2h |
+| 35 | 003 | D4 | 统一 sanitize 实现 | 2h |
+| 36-42 | 002 | D7 | 交易描述硬编码 / 魔术数字 / 金额转换 / 工单格式 / 时区 / 统计列 / 幂等性前缀 | 记录在案 |
+| 43 | D8 | D8 | `price_credits` (SQL) vs `credit_price` (Python) 命名不一致 | 0.5h |
+| 44 | D8 | D8 | `thumbnail_url`/`preview_url` 可空性 SQL↔Python 不一致 | 0.5h |
+| 45 | D8 | D8 | `TransactionType` 枚举 SQL↔Python 无编译时同步保证 | 0.5h |
+| 46 | D8 | D8 | `PriceType` 枚举注释与实际值不匹配 | 0.1h |
+| 47 | D8 | D8 | `subscription_status` 无 Python 枚举 (裸 str) | 0.5h |
+| 48 | D8 | D8 | `onboarding_steps.target_tiers` 默认值使用旧命名 `['free','starter','pro']` → `['t1','t2','t3']` | 0.1h |
 
-### 第四批: P3 Low (19 项) — 记录在案
+### 第四批: P3 Low (25 项) — 记录在案
 
 | 来源 | 维度 | 说明 |
 |------|------|------|
@@ -94,8 +106,14 @@
 | 003 | D4 | 重复 RLS 策略 (2), VIEW/TABLE 注释矛盾, is_admin() RLS 引用风险 |
 | 003 | D5 | updated_at 双重更新 (冗余但无害) |
 | 002 | D7 | 合理默认值 (tier='t1', language='en', timezone='UTC', 已参数化值) |
+| D8 | D8 | `rating_average` float 近似可接受 (用户确认降级，评分场景不需精确) |
+| D8 | D8 | `file_size INTEGER` 够用 (用户确认目前 5MB 上限，无需 BIGINT) |
+| D8 | D8 | UUID vs str 类型转换风格不一致 (功能无影响) |
+| D8 | D8 | `ListingStatus` → `moderation_status` 映射信息丢失 (SUSPENDED→rejected) |
+| D8 | D8 | RPC 函数对 UUID 参数使用 `length()` 验证 (语义冗余，UUID 不可能为空字符串) |
+| D8 | D8 | `credits_monthly`/`credits_permanent` 默认值初始化风格不统一 |
 
-**总预估工时**: P0 ~8h + P1 ~4h + P2 ~11h + P3 ~2h = **~25 小时**
+**总预估工时**: P0 ~8h (✅已修复) + P1 ~5h + P2 ~13h + P3 ~2h = **~28 小时** (剩余 ~20h)
 
 ---
 
@@ -1694,3 +1712,226 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 | `marketplace_purchase` | 市场购买 | 功能未上线? |
 | `monthly_credits_cleared` | 月度积分清零 | 功能未上线? |
 | `refund_reversal` | 退款撤回 | 功能未上线? |
+
+---
+
+## D8: 字段类型审计 (SQL Schema + Python 后端)
+
+> **审计日期**: 2026-02-03
+> **审计方法**: 逐表审查 86 张表的字段类型定义，交叉验证 Python 领域模型/仓储层的类型映射，检查语法、语义、业务逻辑三个层面的类型正确性。
+
+---
+
+### D8-1. P1 High — 字段数据丢失 (1 项) + P3 降级 (1 项)
+
+#### H-1: `rating_average` 精度丢失 — SQL NUMERIC(3,2) vs Python float (**降级为 P3**)
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | `01_core_business.sql:790` — `rating_average NUMERIC(3,2)` |
+| **Python 模型** | `domains/marketplace/value_objects.py` — `rating_average: float = 0.0` |
+| **问题** | `NUMERIC(3,2)` 是精确十进制类型 (如 `4.15` 精确存储)，Python `float` 是 IEEE 754 浮点数 (如 `4.15` → `4.14999999...`)，存在精度丢失风险 |
+| **影响** | 评分显示可能出现 `4.14999` 而非 `4.15`；比较运算可能不精确 |
+| **修复** | Python 端改用 `Decimal` 类型: `rating_average: Decimal = Decimal("0.0")` |
+| **讨论** | 评分场景精度要求不高，`float` 近似或可接受，但 `Decimal` 更严谨 |
+| **结论** | ⚠️ **降级为 P3** — 用户确认: float 近似可接受，评分场景不需要精确到小数 |
+
+---
+
+#### H-2: `usage_count` BIGINT 在 Python ListingStats 中缺失
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | `01_core_business.sql:782` — `usage_count BIGINT DEFAULT 0` |
+| **Python 模型** | `ListingStats` value object 中无此字段 |
+| **问题** | BIGINT 数据从数据库读取后无法映射到领域模型，数据直接丢失 |
+| **影响** | 前端无法展示素材使用次数统计 |
+| **修复** | 在 `ListingStats` 中添加 `usage_count: int = 0` |
+
+---
+
+### D8-2. P2 Medium — 命名/枚举/可空性不一致 (6 项)
+
+#### M-1: `price_credits` (SQL) vs `credit_price` (Python) 命名不一致
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 列名** | `01_core_business.sql:777` — `price_credits INTEGER` |
+| **Python 属性名** | `credit_price` (仓储层通过 `credit_price=row.get("price_credits", 0)` 手动映射) |
+| **问题** | 列名与属性名不一致，仓储层需要额外映射，增加维护成本和出错概率 |
+| **建议** | 统一命名。推荐 `credit_price` (语义: "积分价格"，更直观) |
+| **结论** | ✅ **统一为 `credit_price`** — 用户确认: 倾向自然语义，`credit_price` 更直观。修复时需同步修改 SQL 列名 `price_credits` → `credit_price` |
+
+---
+
+#### M-2: `thumbnail_url` / `preview_url` 可空性不一致
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | 部分表 `thumbnail_url TEXT` (允许 NULL)，部分 `NOT NULL` |
+| **Python 模型** | `Optional[str]` 与 `str = ""` 混用 |
+| **问题** | NULL (无值) 与 "" (空字符串) 语义不同，Python 端处理逻辑需要同时检查两种情况 |
+| **建议** | 统一策略: URL 类字段统一用 `Optional[str]` + SQL 允许 NULL (无图片=NULL) |
+
+---
+
+#### M-3: `TransactionType` 枚举 SQL↔Python 无编译时同步保证
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL** | `CHECK (type IN ('subscription_credit', 'one_time_purchase', ...))` — 16 值 |
+| **Python** | `TransactionType` enum — 10 值 |
+| **问题** | 目前 D2 已记录此差异 (见 #10)。此处补充: 即使修复后，仍无机制保证未来新增枚举值时两端同步 |
+| **建议** | 在 Python 枚举类添加注释 `# SYNC: 必须与 01_core_business.sql credit_transactions.type CHECK 保持一致`；或添加启动时 schema 校验 |
+
+---
+
+#### M-4: `PriceType` 枚举注释与实际值不匹配
+
+| 对比项 | 值 |
+|--------|-----|
+| **位置** | `domains/marketplace/value_objects.py:134-137` |
+| **问题** | 枚举成员的注释/文档引用了旧版值，实际枚举值已更新 |
+| **修复** | 更新注释使其与当前枚举值一致 |
+
+---
+
+#### M-5: `subscription_status` 无 Python 枚举约束
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | `01_core_business.sql:118` — `CHECK (subscription_status IN ('active', 'canceled', 'past_due', 'incomplete', 'trialing', 'inactive'))` |
+| **Python 模型** | `domains/identity/aggregates/user_profile.py:45` — `subscription_status: Optional[str] = None` |
+| **问题** | Python 端用裸 `str`，无枚举约束。传入非法值 (如 `"cancelled"` 拼写错误) 只会在 DB 层报错 |
+| **修复** | 创建 `SubscriptionStatus` 枚举类，在模型中使用: `subscription_status: Optional[SubscriptionStatus] = None` |
+
+---
+
+#### M-6: `onboarding_steps.target_tiers` 默认值使用旧命名
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | `02_platform_services.sql:900` — `target_tiers TEXT[] DEFAULT ARRAY['free', 'starter', 'pro']` |
+| **项目规范** | CLAUDE.md 明确: Tier 系统代码为 `t1/t2/t3` (永不改变)，`Free/Starter/Pro` 是可配置的显示名称 |
+| **对比** | 同文件 `campaigns.target_tiers` (line 667) 注释正确写了 `t1/t2/t3`；`experiments.target_tiers` (line 864) 默认 `ARRAY[]::TEXT[]` 无此问题 |
+| **修复** | 改为 `DEFAULT ARRAY['t1', 't2', 't3']` |
+
+---
+
+### D8-3. P3 Low — 建议改进 (5 项)
+
+#### L-1: `file_size INTEGER` 可能溢出 (>2GB)
+
+| 对比项 | 值 |
+|--------|-----|
+| **SQL 定义** | `01_core_business.sql:762,1405,1463` — 3 个表: `marketplace_listings`, `system_assets`, `system_resources` |
+| **问题** | `INTEGER` 最大 2,147,483,647 bytes (约 2GB)。若需支持大文件上传可能溢出 |
+| **判断** | 素材平台主要处理图片/SVG/PDF/字体，通常 < 100MB，`INTEGER` 够用 |
+| **建议** | 若未来支持视频等大文件，需改为 `BIGINT` |
+| **结论** | ✅ **无需修改** — 用户确认: 目前上限 5MB，后续可能增加但不会超过 2GB，INTEGER 够用 |
+
+---
+
+#### L-2: UUID vs str 类型转换风格不一致
+
+| 问题 | Python 某些位置用 `str(uuid_value)` 显式转换，某些位置直接传 UUID 对象给 Supabase |
+|------|------|
+| **影响** | 功能无影响 (asyncpg/supabase-py 都支持两种方式) |
+| **建议** | 统一风格: 在仓储层统一用 `str()` 转换再传入 |
+
+---
+
+#### L-3: `ListingStatus` → `moderation_status` 映射信息丢失
+
+| 对比项 | 值 |
+|--------|-----|
+| **位置** | `listing_repository.py:713-731` — `_status_to_moderation()` |
+| **问题** | `SUSPENDED→rejected`, `ARCHIVED→draft` 的映射丢失了原始语义 (suspended ≠ rejected, archived ≠ draft) |
+| **建议** | 扩展 SQL 的 `moderation_status` CHECK 约束，添加 `suspended`/`archived` 作为合法值 |
+
+---
+
+#### L-4: RPC 函数对 UUID 参数使用 `length()` 验证
+
+| 对比项 | 值 |
+|--------|-----|
+| **位置** | `01_core_business.sql:2666,2800,2920`; `03_infrastructure.sql:665,795,900,1033` — 共 7 处 |
+| **代码模式** | `IF p_user_id IS NULL OR length(p_user_id) = 0 THEN` |
+| **问题** | `p_user_id` 声明为 `UUID` 类型。PostgreSQL 会隐式将 UUID 转为 TEXT 再调用 `length()`，而 UUID 永远不可能是空字符串 (长度恒为 36)，`length() = 0` 检查永远为 false |
+| **修复** | 对 UUID 参数简化为: `IF p_user_id IS NULL THEN`，去掉多余的 `length()` 检查 |
+| **备注** | `p_session_id TEXT`, `p_event_id TEXT` 等 TEXT 参数使用 `length()` 验证是合理的 |
+
+---
+
+#### L-5: `credits_monthly` / `credits_permanent` 默认值初始化
+
+| 问题 | SQL `DEFAULT 0` vs Python 模型默认值处理方式不统一 |
+|------|------|
+| **影响** | 极低，仅影响代码可读性 |
+| **建议** | Python 模型统一使用 `credits_monthly: int = 0` 显式默认值 |
+
+---
+
+### D8-4. 确认正常的设计 (无需修改)
+
+审查中确认以下非标准设计均有合理的技术原因:
+
+| 设计 | 说明 | 结论 |
+|------|------|------|
+| `credit_transactions.related_entity_id TEXT` | 多态关联字段，可关联多种实体类型 (listing/project 等) | ✅ TEXT 正确 |
+| `system_configs.key TEXT PRIMARY KEY` | KV 存储表，key 是语义化标识符 | ✅ TEXT PK 正确 |
+| `user_creation_logs` / `system_error_logs` 用 `BIGSERIAL` | 追加写入日志，顺序 ID 更优于 UUID (B-tree 性能) | ✅ BIGSERIAL 正确 |
+| `pricing_plans` / `pricing_history` 用 `SERIAL` | 小表，有 FK 级联关系 | ✅ SERIAL 正确 |
+| `flag_exposures.user_id TEXT` | 兼容 Clerk user_id (string) 和匿名用户 ID | ✅ TEXT 正确 |
+| `admin_operations.admin_id TEXT` | 兼容系统级操作标识 (非 UUID) | ✅ TEXT 正确 |
+| 86 张表中 74 张 (86%) 使用 UUID PK | 分布式友好的业务实体标识 | ✅ 主流方案正确 |
+
+---
+
+## 已修复问题记录
+
+> 以下问题在审计过程中已发现并修复。
+
+### 已修复 #1: `uuid_generate_v4()` → `gen_random_uuid()` 替换
+
+| 项目 | 值 |
+|------|-----|
+| **提交** | `b63d5010` + `1e8aea2d` |
+| **问题** | 多处 SQL 使用 `uuid_generate_v4()` (依赖 `uuid-ossp` 扩展)，Supabase 默认启用 `pgcrypto` 而非 `uuid-ossp` |
+| **修复** | 全部替换为 `gen_random_uuid()` (pgcrypto 内置，无需额外扩展) |
+| **涉及文件** | `01_core_business.sql`, `02_platform_services.sql`, `03_infrastructure.sql` |
+
+### 已修复 #2: RPC 函数中 UUID 列的 `::TEXT` 误转换
+
+| 项目 | 值 |
+|------|-----|
+| **提交** | `7441168c` |
+| **问题** | `create_auth_user_with_profile` 和 `restore_auth_user_with_profile` 中，向 `user_creation_logs` 插入数据时对 UUID 列使用了 `::TEXT` 强制转换 (`v_user_id::TEXT`, `v_profile_id::TEXT`)，而目标列 (`auth_user_id`, `profile_id`) 定义为 `UUID` 类型 |
+| **修复** | 移除不必要的 `::TEXT` 转换，直接传入 UUID 值 |
+| **涉及文件** | `01_core_business.sql` — 2 个 RPC 函数 |
+
+### 已修复 #3: P0 Critical 全部 9 项
+
+| 提交 | 说明 |
+|------|------|
+| `e913ccd5` | P0 #5/#8/#9 — RPC 参数/返回值不匹配修复 |
+| `41ca4cfd` | P0 #6/#7 — 重写 `restore_auth_user_with_profile` + 4 层同步 |
+| `16a64c35` | P0 #1-#4 — 创建 6 个缺失 RPC 函数 |
+
+### 已修复 #4: P1 High 批次
+
+| 提交 | 说明 |
+|------|------|
+| `66276638` | P1 枚举同步、CHECK 约束、sanitize、硬编码修复 |
+
+### 已修复 #5: P2 Medium 批次
+
+| 提交 | 说明 |
+|------|------|
+| `69642447` | P2 标量解析、utcnow、索引、死代码、sanitize 修复 |
+
+### 已修复 #6: P3 Low 清理
+
+| 提交 | 说明 |
+|------|------|
+| `637960b5` | P3 删除 5 个死 SQL 函数、修复重复 RLS、修复注释 |
