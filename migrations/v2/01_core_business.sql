@@ -2046,7 +2046,7 @@ BEGIN
 
     IF NOT FOUND THEN
         -- 场景 1: 邮箱不存在 → 创建新的 pending 用户
-        v_user_id := uuid_generate_v4();
+        v_user_id := gen_random_uuid();
         INSERT INTO auth_users (
             id, email, otp_code_hash, otp_purpose, otp_expires_at,
             password_hash, email_verified, created_at, updated_at
