@@ -719,6 +719,8 @@ IAuthUserRepository:
 ├── get_by_email(email: str) → AuthUser | None
 ├── create_pending(email: str, otp_hash: str, expires_at: datetime) → UUID  # 注册第一步：创建待验证用户（RPC create_pending_auth_user）
 ├── create_with_profile(auth_user: AuthUser) → AuthUser                      # 注册第三步：完善信息后原子创建（RPC create_auth_user_with_profile）
+├── restore_with_profile(profile_id: UUID, auth_user: AuthUser) → AuthUser   # 恢复账户：复用旧 UUID 创建 auth_users + 恢复 profiles（RPC restore_auth_user_with_profile）
+├── find_restorable_by_email(email: str) → UUID | None                       # 查找 30 天内可恢复的软删除 profiles（ORDER BY deleted_at DESC LIMIT 1）
 ├── update_password(user_id: UUID, password_hash: str) → None
 ├── update_email_verified(user_id: UUID, verified: bool) → None
 ├── update_login_attempt(user_id: UUID, failed_attempts: int, locked_until: datetime | None) → None
@@ -745,9 +747,9 @@ ISessionRepository:
 **RegistrationService（注册流程）**：
 | 方法 | 职责 |
 |------|------|
-| `send_otp(email)` | 校验邮箱 → 一次性邮箱检测 → 检查是否已注册 → 生成 6 位 OTP → 哈希存储 → 异步发 OTP 邮件（无论邮箱是否存在都返回成功，防枚举） |
+| `send_otp(email)` | 校验邮箱 → 一次性邮箱检测 → 检查是否已注册 → 检查可恢复账户（30 天内软删除 profiles）→ 生成 6 位 OTP → 哈希存储 → 异步发 OTP 邮件 → 返回 `{ success, has_restorable_account }`（无论邮箱是否存在都返回成功，防枚举） |
 | `verify_otp(email, otp_code)` | 校验 OTP（哈希比对 + 过期检查 + 尝试次数检查）→ 标记 email_verified → 返回临时注册 token（用于下一步设密码） |
-| `complete(register_token, password, display_name)` | 校验临时注册 token → 幂等性检查 → 哈希密码 → **原子创建** auth_users + profiles（RPC `create_auth_user_with_profile()`）→ 创建 session → 返回 tokens |
+| `complete(register_token, password, display_name, restore_account)` | 校验临时注册 token → 幂等性检查 → 哈希密码 → `restore_account=true` 时调用 `restore_auth_user_with_profile()` RPC 恢复旧账户；否则调用 `create_auth_user_with_profile()` RPC 创建新账户 → 创建 session → 返回 tokens |
 
 **SessionService（会话管理）**：
 | 方法 | 职责 |
