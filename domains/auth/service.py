@@ -367,6 +367,7 @@ class AuthService:
         # 3. Complete registration via RPC
         completed_user = await self._auth_user_repo.complete_registration(
             user_id=uid,
+            email=auth_user.email,
             password_hash=password_hash,
             display_name=display_name,
             signup_bonus=signup_bonus,

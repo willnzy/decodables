@@ -98,6 +98,7 @@ class IAuthUserRepository(ABC):
     async def complete_registration(
         self,
         user_id: UUID,
+        email: str,
         password_hash: str,
         display_name: Optional[str] = None,
         signup_bonus: int = 0,
@@ -110,6 +111,7 @@ class IAuthUserRepository(ABC):
 
         Args:
             user_id: Pending user's UUID from step 1.
+            email: User's email (used for profile creation and default display name).
             password_hash: Argon2id hashed password.
             display_name: Optional display name for the profile.
             signup_bonus: Signup bonus credits (default 0).

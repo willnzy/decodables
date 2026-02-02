@@ -2018,6 +2018,7 @@ COMMENT ON COLUMN system_error_logs.details IS '详细信息（JSONB 格式，�
 CREATE OR REPLACE FUNCTION create_pending_auth_user(
     p_email TEXT,
     p_otp_code_hash TEXT,
+    p_otp_purpose TEXT,
     p_otp_expires_at TIMESTAMPTZ
 )
 RETURNS UUID
@@ -2040,7 +2041,7 @@ BEGIN
             id, email, otp_code_hash, otp_purpose, otp_expires_at,
             password_hash, email_verified, created_at, updated_at
         ) VALUES (
-            v_user_id, LOWER(TRIM(p_email)), p_otp_code_hash, 'register', p_otp_expires_at,
+            v_user_id, LOWER(TRIM(p_email)), p_otp_code_hash, p_otp_purpose, p_otp_expires_at,
             NULL, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         );
         RETURN v_user_id;
@@ -2049,7 +2050,7 @@ BEGIN
         -- 场景 2: pending 用户（未完成注册）→ 覆盖 OTP 信息
         UPDATE auth_users SET
             otp_code_hash = p_otp_code_hash,
-            otp_purpose = 'register',
+            otp_purpose = p_otp_purpose,
             otp_expires_at = p_otp_expires_at,
             otp_attempts = 0,
             updated_at = CURRENT_TIMESTAMP
@@ -2064,7 +2065,8 @@ END;
 $$;
 
 COMMENT ON FUNCTION create_pending_auth_user IS
-    '注册第一步：创建待验证用户或更新已有 pending 用户的 OTP。'
+    '创建待验证用户或更新已有 pending 用户的 OTP。'
+    'p_otp_purpose 由调用方传入（如 register/forgot_password）。'
     '已注册用户返回 NULL（不操作），调用方统一返回成功响应防枚举。';
 
 

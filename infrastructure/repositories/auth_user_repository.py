@@ -193,6 +193,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
     async def complete_registration(
         self,
         user_id: UUID,
+        email: str,
         password_hash: str,
         display_name: Optional[str] = None,
         signup_bonus: int = 0,
@@ -206,6 +207,7 @@ class SupabaseAuthUserRepository(IAuthUserRepository):
             "create_auth_user_with_profile",
             {
                 "p_user_id": str(user_id),
+                "p_email": email,
                 "p_password_hash": password_hash,
                 "p_display_name": display_name,
                 "p_signup_bonus": signup_bonus,
