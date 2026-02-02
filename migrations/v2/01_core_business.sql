@@ -674,8 +674,8 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 CREATE POLICY projects_owner_policy ON projects
     FOR ALL
     TO authenticated
-    USING (user_id = auth.uid()::text)
-    WITH CHECK (user_id = auth.uid()::text);
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
 
 -- service_role 全量访问策略 (后端 API 使用 service_role key)
 CREATE POLICY projects_service_role_policy ON projects
@@ -3908,19 +3908,19 @@ CREATE POLICY marketplace_listings_select_public ON marketplace_listings
     TO authenticated
     USING (
         (is_public = true AND is_deleted = false AND moderation_status = 'approved')
-        OR seller_id = auth.uid()::text
+        OR seller_id = auth.uid()
     );
 
 CREATE POLICY marketplace_listings_insert_own ON marketplace_listings
     FOR INSERT
     TO authenticated
-    WITH CHECK (seller_id = auth.uid()::text);
+    WITH CHECK (seller_id = auth.uid());
 
 CREATE POLICY marketplace_listings_update_own ON marketplace_listings
     FOR UPDATE
     TO authenticated
-    USING (seller_id = auth.uid()::text)
-    WITH CHECK (seller_id = auth.uid()::text);
+    USING (seller_id = auth.uid())
+    WITH CHECK (seller_id = auth.uid());
 
 
 -- marketplace_purchases: users can only see own purchases
@@ -3935,12 +3935,12 @@ CREATE POLICY marketplace_purchases_service_role ON marketplace_purchases
 CREATE POLICY marketplace_purchases_select_own ON marketplace_purchases
     FOR SELECT
     TO authenticated
-    USING (user_id = auth.uid()::text);
+    USING (user_id = auth.uid());
 
 CREATE POLICY marketplace_purchases_insert_own ON marketplace_purchases
     FOR INSERT
     TO authenticated
-    WITH CHECK (user_id = auth.uid()::text);
+    WITH CHECK (user_id = auth.uid());
 
 
 -- marketplace_favorites: users can only manage own favorites
@@ -3955,17 +3955,17 @@ CREATE POLICY marketplace_favorites_service_role ON marketplace_favorites
 CREATE POLICY marketplace_favorites_select_own ON marketplace_favorites
     FOR SELECT
     TO authenticated
-    USING (user_id = auth.uid()::text);
+    USING (user_id = auth.uid());
 
 CREATE POLICY marketplace_favorites_insert_own ON marketplace_favorites
     FOR INSERT
     TO authenticated
-    WITH CHECK (user_id = auth.uid()::text);
+    WITH CHECK (user_id = auth.uid());
 
 CREATE POLICY marketplace_favorites_delete_own ON marketplace_favorites
     FOR DELETE
     TO authenticated
-    USING (user_id = auth.uid()::text);
+    USING (user_id = auth.uid());
 
 
 -- marketplace_reports: users can see own reports
@@ -3980,12 +3980,12 @@ CREATE POLICY marketplace_reports_service_role ON marketplace_reports
 CREATE POLICY marketplace_reports_select_own ON marketplace_reports
     FOR SELECT
     TO authenticated
-    USING (reporter_id = auth.uid()::text);
+    USING (reporter_id = auth.uid());
 
 CREATE POLICY marketplace_reports_insert_own ON marketplace_reports
     FOR INSERT
     TO authenticated
-    WITH CHECK (reporter_id = auth.uid()::text);
+    WITH CHECK (reporter_id = auth.uid());
 
 
 -- marketplace_reviews: public read, users manage own
@@ -4005,13 +4005,13 @@ CREATE POLICY marketplace_reviews_select_public ON marketplace_reviews
 CREATE POLICY marketplace_reviews_insert_own ON marketplace_reviews
     FOR INSERT
     TO authenticated
-    WITH CHECK (reviewer_id = auth.uid()::text);
+    WITH CHECK (reviewer_id = auth.uid());
 
 CREATE POLICY marketplace_reviews_update_own ON marketplace_reviews
     FOR UPDATE
     TO authenticated
-    USING (reviewer_id = auth.uid()::text)
-    WITH CHECK (reviewer_id = auth.uid()::text);
+    USING (reviewer_id = auth.uid())
+    WITH CHECK (reviewer_id = auth.uid());
 
 
 -- marketplace_listing_usage_log: users can see own usage
@@ -4026,12 +4026,12 @@ CREATE POLICY marketplace_usage_log_service_role ON marketplace_listing_usage_lo
 CREATE POLICY marketplace_usage_log_select_own ON marketplace_listing_usage_log
     FOR SELECT
     TO authenticated
-    USING (user_id = auth.uid()::text);
+    USING (user_id = auth.uid());
 
 CREATE POLICY marketplace_usage_log_insert_own ON marketplace_listing_usage_log
     FOR INSERT
     TO authenticated
-    WITH CHECK (user_id = auth.uid()::text);
+    WITH CHECK (user_id = auth.uid());
 
 
 -- ============================================================================
