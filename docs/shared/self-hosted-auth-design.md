@@ -106,9 +106,14 @@ Clerk 使用 RS256 是因为 Clerk 作为第三方签发 JWT，你的后端用�
 
 ```
 特点: 内存硬函数（Memory-Hard），GPU/ASIC 难以加速暴力破解
-参数: memory=65536KB, iterations=3, parallelism=4
+默认参数: memory=65536KB, iterations=3, parallelism=4
 输出: $argon2id$v=19$m=65536,t=3,p=4$salt$hash
 Python库: argon2-cffi
+
+参数调优（Phase 1 实施时执行）:
+- 在 Railway 实例上运行 argon2-cffi benchmark（argon2.PasswordHasher 自带 profile）
+- 目标: 单次 hash 耗时 0.5-1 秒（太快不够安全，太慢影响登录体验）
+- 当前默认参数适用于 2GB RAM，Railway 实例 RAM 不同需调整
 ```
 
 #### 选择理由
@@ -184,6 +189,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 
 | 文件 | Clerk 用法 |
 |------|-----------|
+| `app/dashboard/_components/DashboardContent.tsx` | `useUser()` 获取 clerkUser 对象 → 改为 `useUser()` from `@/lib/auth` |
 | `app/admin/page.tsx` | `useAuth()` 验证管理员 |
 | `app/marketplace/page.tsx` | `useAuth()` 用户状态 |
 | `app/notifications/page.tsx` | `useAuth()` 用户状态 |
@@ -379,6 +385,7 @@ auth_sessions
 - Refresh Token 轮换：每次 refresh 时旧 token 作废、颁发新 token，共享 `family_id`
 - 重用检测：已作废的 token 再次被使用 → 该 family 全部 token 作废（可能被盗）
 - 支持多设备：用户可查看/踢出所有登录设备
+- **并发宽限期**：被作废的 token 如果在作废后 2 秒内再次被使用（`now() - revoked_at < 2s`），视为并发请求而非重用攻击，允许通过并颁发新 token（共享同一 `family_id`）。这与前端 `CROSS_TAB_REFRESH_DELAY_MS=300ms` 配合，解决多标签页同时 refresh 的竞态问题
 
 ### 4.3 新增表：`auth_oauth_accounts`（预留 OAuth 扩展）
 
@@ -585,7 +592,7 @@ decodables/api/auth/
 | POST | `/auth/logout` | 登出当前设备 | — | Refresh Token |
 | POST | `/auth/logout-all` | 登出所有设备 | — | Access Token |
 | POST | `/auth/verify-email` | 验证邮箱 | 10/hour/IP | 否 |
-| POST | `/auth/resend-verification` | 重发验证邮件 | 3/hour/email | Access Token |
+| POST | `/auth/resend-verification` | 重发验证邮件 | 3/hour/email | 否（用 email 参数，非 Token） |
 | POST | `/auth/forgot-password` | 请求密码重置 | 3/hour/email | 否 |
 | POST | `/auth/reset-password` | 执行密码重置 | 5/hour/IP | 否 |
 | POST | `/auth/change-password` | 修改密码（已登录） | 5/hour/user | Access Token |
@@ -628,6 +635,11 @@ POST /auth/reset-password
   Request:  { token: string, email: string, new_password: string }
   Response: { success: true }
   Errors:   400 { error: "invalid_token" | "token_expired" | "weak_password" }
+
+POST /auth/resend-verification
+  Request:  { email: string }
+  Response: { success: true, message: "如果该邮箱需要验证，邮件已发送" }  // 统一响应，防枚举
+  Note:     不需要 Access Token（用户可能验证链接过期后未登录，需要从 /verify-email 页面直接重发）
 
 POST /auth/change-password
   Request:  { current_password: string, new_password: string }
@@ -748,6 +760,22 @@ POST /auth/delete-account
 - `argon2-cffi` — 密码哈希
 - `resend` — 邮件发送（**已安装**，复用现有配置：`RESEND_API_KEY`、`SUPPORT_EMAIL_FROM`）
 - 移除 `svix`
+
+### 5.7 邮件发送前置条件
+
+```
+域名配置（Phase 1 开始前必须完成）：
+- makedecodables.com 已配置 Resend 的 SPF 记录
+- makedecodables.com 已配置 Resend 的 DKIM 记录
+- 建议配置 DMARC 策略（v=DMARC1; p=none; 开始观察模式）
+- 在 Resend Dashboard 验证域名所有权
+
+发送测试清单（Phase 1 完成后验证）：
+- 发送到 Gmail → 检查是否进垃圾箱
+- 发送到 Outlook → 检查是否进垃圾箱
+- 检查移动端邮件显示效果
+- 检查验证链接在 staging/production 域名是否正确
+```
 
 ---
 
