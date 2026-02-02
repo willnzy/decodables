@@ -1737,7 +1737,7 @@ ALTER TABLE generation_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE listing_usages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE marketplace_purchases ENABLE ROW LEVEL SECURITY;
--- 注意: marketplace_reports 是视图 (VIEW)，不是表，不需要启用 RLS
+-- marketplace_reports: RLS 已在 01_core_business.sql 中启用和配置
 ALTER TABLE marketplace_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_page_prompt_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscription_history ENABLE ROW LEVEL SECURITY;
@@ -1815,9 +1815,9 @@ CREATE POLICY service_role_all ON folders FOR ALL TO service_role USING (true) W
 CREATE POLICY service_role_all ON legacy_system_tags FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON tags FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON tag_group_presets FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY service_role_all ON projects FOR ALL TO service_role USING (true) WITH CHECK (true);
+-- projects: RLS 策略已在 01_core_business.sql 中定义 (projects_owner_policy + projects_service_role_policy)
 CREATE POLICY service_role_all ON project_pages FOR ALL TO service_role USING (true) WITH CHECK (true);
-CREATE POLICY service_role_all ON marketplace_listings FOR ALL TO service_role USING (true) WITH CHECK (true);
+-- marketplace_listings: RLS 策略已在 01_core_business.sql 中定义 (marketplace_listings_service_role + 细粒度策略)
 CREATE POLICY service_role_all ON assets FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON legacy_asset_tag_relations FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON project_tags FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -1906,11 +1906,7 @@ CREATE POLICY service_role_all ON support_replies FOR ALL TO service_role USING 
 -- - auth.uid() 匹配 Supabase Auth JWT 中的用户 ID
 -- ============================================================================
 
--- Projects: 用户只能访问自己的项目
-CREATE POLICY auth_user_own_projects ON projects
-    FOR ALL TO authenticated
-    USING (user_id = auth.uid())
-    WITH CHECK (user_id = auth.uid());
+-- Projects: authenticated 策略已在 01_core_business.sql 中定义 (projects_owner_policy)
 
 -- Assets: 用户只能访问自己的素材
 CREATE POLICY auth_user_own_assets ON assets
