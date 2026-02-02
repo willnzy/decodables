@@ -1166,6 +1166,7 @@ CREATE TABLE IF NOT EXISTS generation_tasks (
     CONSTRAINT check_task_type CHECK (
         task_type IN (
             'text_to_image', 'image_to_image', 'text_generation',
+            'image_generation',
             'image_upscale', 'background_removal', 'style_transfer',
             'object_detection', 'smart_scan', 'export_pdf', 'export_zip'
         )
@@ -4061,6 +4062,172 @@ END;
 $$;
 
 COMMENT ON FUNCTION p_purchase_listing IS 'WS-M2: Atomic purchase with credit deduction in single transaction';
+
+
+-- ============================================================================
+-- Idempotent User Creation (Webhook / JIT dual-source)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION create_user_idempotent(
+    p_user_id TEXT,
+    p_email TEXT,
+    p_source TEXT DEFAULT 'register',
+    p_username TEXT DEFAULT NULL,
+    p_first_name TEXT DEFAULT NULL,
+    p_last_name TEXT DEFAULT NULL,
+    p_avatar_url TEXT DEFAULT NULL,
+    p_display_name TEXT DEFAULT NULL,
+    p_signup_bonus INTEGER DEFAULT 0
+)
+RETURNS TABLE(user_profile JSONB, was_created BOOLEAN, created_by TEXT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+    v_existing profiles%ROWTYPE;
+    v_new profiles%ROWTYPE;
+    v_user_code TEXT;
+    v_user_count BIGINT;
+    v_now TIMESTAMPTZ := CURRENT_TIMESTAMP;
+    v_random_suffix TEXT;
+BEGIN
+    -- Step 1: Check if user already exists (lock row to prevent race)
+    SELECT * INTO v_existing
+    FROM profiles
+    WHERE id = p_user_id::UUID
+    FOR UPDATE;
+
+    IF FOUND THEN
+        -- User already exists — log duplicate attempt and return existing
+        INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
+        VALUES (
+            p_user_id::UUID,
+            p_source,
+            'duplicate_attempt',
+            jsonb_build_object('attempted_source', p_source),
+            v_now
+        );
+
+        RETURN QUERY SELECT
+            to_jsonb(v_existing),
+            FALSE,
+            v_existing.created_by;
+        RETURN;
+    END IF;
+
+    -- Step 2: Generate user_code (26 digits: YYMMDDHHMMSS + mmmm + UUUUUUU + RRR)
+    SELECT COUNT(*) INTO v_user_count FROM profiles;
+    v_random_suffix := LPAD(FLOOR(RANDOM() * 1000)::TEXT, 3, '0');
+
+    v_user_code :=
+        TO_CHAR(v_now AT TIME ZONE 'UTC', 'YYMMDDHH24MISS') ||
+        LPAD(FLOOR(EXTRACT(MICROSECOND FROM v_now) / 100)::TEXT, 4, '0') ||
+        LPAD((v_user_count + 1)::TEXT, 7, '0') ||
+        v_random_suffix;
+
+    -- Collision check (extremely rare but safe)
+    WHILE EXISTS (SELECT 1 FROM profiles WHERE user_code = v_user_code) LOOP
+        v_random_suffix := LPAD(FLOOR(RANDOM() * 1000)::TEXT, 3, '0');
+        v_user_code :=
+            TO_CHAR(v_now AT TIME ZONE 'UTC', 'YYMMDDHH24MISS') ||
+            LPAD(FLOOR(EXTRACT(MICROSECOND FROM v_now) / 100)::TEXT, 4, '0') ||
+            LPAD((v_user_count + 1)::TEXT, 7, '0') ||
+            v_random_suffix;
+    END LOOP;
+
+    -- Step 3: Create new profile
+    INSERT INTO profiles (
+        id,
+        email,
+        user_code,
+        username,
+        first_name,
+        last_name,
+        avatar_url,
+        display_name,
+        credits_permanent,
+        created_by,
+        created_at,
+        updated_at
+    ) VALUES (
+        p_user_id::UUID,
+        LOWER(TRIM(p_email)),
+        v_user_code,
+        p_username,
+        p_first_name,
+        p_last_name,
+        p_avatar_url,
+        COALESCE(p_display_name, SPLIT_PART(p_email, '@', 1)),
+        p_signup_bonus,
+        p_source,
+        v_now,
+        v_now
+    )
+    RETURNING * INTO v_new;
+
+    -- Step 4: Log successful creation
+    INSERT INTO user_creation_logs (user_id, source, action, metadata, created_at)
+    VALUES (
+        p_user_id::UUID,
+        p_source,
+        'created',
+        jsonb_build_object(
+            'signup_bonus', p_signup_bonus,
+            'user_code', v_user_code
+        ),
+        v_now
+    );
+
+    RETURN QUERY SELECT
+        to_jsonb(v_new),
+        TRUE,
+        p_source;
+END;
+$$;
+
+COMMENT ON FUNCTION create_user_idempotent IS 'Idempotent user creation for Webhook/JIT dual-source pattern with atomic user_code generation';
+
+
+-- ============================================================================
+-- Generation Task Creation (best-effort, failure only logs warning)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION create_generation_task(
+    p_task_id UUID,
+    p_user_id UUID,
+    p_task_type TEXT DEFAULT 'image_generation',
+    p_params JSONB DEFAULT '{}'::jsonb,
+    p_priority INTEGER DEFAULT 0,
+    p_total_steps INTEGER DEFAULT 1
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    INSERT INTO generation_tasks (
+        id,
+        user_id,
+        task_type,
+        parameters,
+        status,
+        created_at,
+        updated_at
+    ) VALUES (
+        p_task_id,
+        p_user_id,
+        p_task_type,
+        p_params || jsonb_build_object('priority', p_priority, 'total_steps', p_total_steps),
+        'pending',
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION create_generation_task IS 'Create a generation task record; priority and total_steps stored in parameters JSONB';
 
 
 -- ============================================================================

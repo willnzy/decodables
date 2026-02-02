@@ -1321,6 +1321,138 @@ $$ LANGUAGE plpgsql STABLE;
 
 
 -- ============================================================================
+-- Analytics Event Statistics (4 group-by functions)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION get_event_stats_by_type(
+    p_start_date TEXT,
+    p_end_date TEXT DEFAULT NULL
+)
+RETURNS TABLE(event_type TEXT, count BIGINT)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ae.event_type::TEXT,
+        COUNT(*)::BIGINT
+    FROM analytics_events ae
+    WHERE ae.created_at >= p_start_date::TIMESTAMPTZ
+      AND (p_end_date IS NULL OR ae.created_at <= p_end_date::TIMESTAMPTZ)
+    GROUP BY ae.event_type
+    ORDER BY COUNT(*) DESC;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_event_stats_by_user(
+    p_start_date TEXT,
+    p_end_date TEXT DEFAULT NULL
+)
+RETURNS TABLE(user_id TEXT, count BIGINT)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        ae.user_id::TEXT,
+        COUNT(*)::BIGINT
+    FROM analytics_events ae
+    WHERE ae.created_at >= p_start_date::TIMESTAMPTZ
+      AND (p_end_date IS NULL OR ae.created_at <= p_end_date::TIMESTAMPTZ)
+      AND ae.user_id IS NOT NULL
+    GROUP BY ae.user_id
+    ORDER BY COUNT(*) DESC;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_event_stats_by_date(
+    p_start_date TEXT,
+    p_end_date TEXT DEFAULT NULL
+)
+RETURNS TABLE(date TEXT, count BIGINT)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        TO_CHAR(ae.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')::TEXT AS date,
+        COUNT(*)::BIGINT
+    FROM analytics_events ae
+    WHERE ae.created_at >= p_start_date::TIMESTAMPTZ
+      AND (p_end_date IS NULL OR ae.created_at <= p_end_date::TIMESTAMPTZ)
+    GROUP BY TO_CHAR(ae.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+    ORDER BY date;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_event_stats_by_hour(
+    p_start_date TEXT,
+    p_end_date TEXT DEFAULT NULL
+)
+RETURNS TABLE(hour TEXT, count BIGINT)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        TO_CHAR(ae.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24')::TEXT AS hour,
+        COUNT(*)::BIGINT
+    FROM analytics_events ae
+    WHERE ae.created_at >= p_start_date::TIMESTAMPTZ
+      AND (p_end_date IS NULL OR ae.created_at <= p_end_date::TIMESTAMPTZ)
+    GROUP BY TO_CHAR(ae.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24')
+    ORDER BY hour;
+END;
+$$;
+
+COMMENT ON FUNCTION get_event_stats_by_type IS 'Aggregate analytics events by event_type for Admin dashboard';
+COMMENT ON FUNCTION get_event_stats_by_user IS 'Aggregate analytics events by user_id for Admin dashboard';
+COMMENT ON FUNCTION get_event_stats_by_date IS 'Aggregate analytics events by date for Admin dashboard';
+COMMENT ON FUNCTION get_event_stats_by_hour IS 'Aggregate analytics events by hour for Admin dashboard';
+
+
+-- ============================================================================
+-- Stripe Webhook Result Update (best-effort)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION update_webhook_result(
+    p_event_id TEXT,
+    p_result JSONB
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+    UPDATE stripe_webhook_events
+    SET
+        processed = TRUE,
+        processed_at = CURRENT_TIMESTAMP,
+        error_message = CASE
+            WHEN p_result->>'status' != 'ok' THEN p_result->>'error'
+            ELSE NULL
+        END
+    WHERE event_id = p_event_id;
+END;
+$$;
+
+COMMENT ON FUNCTION update_webhook_result IS 'Update Stripe webhook processing result using existing processed/error_message columns';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;
