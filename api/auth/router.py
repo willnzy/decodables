@@ -98,10 +98,30 @@ def _get_device_info(request: Request) -> DeviceInfo:
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    """Get client IP, respecting X-Forwarded-For for proxied requests."""
+    """Get client IP from trusted proxy headers.
+
+    Priority:
+    1. CF-Connecting-IP (Cloudflare)
+    2. X-Real-IP (Railway/Nginx)
+    3. X-Forwarded-For rightmost hop (closest to server, most trusted)
+    4. Direct connection IP
+    """
+    # Cloudflare
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    # Railway / Nginx
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
+    # X-Forwarded-For — rightmost entry is added by the closest proxy
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        ips = [ip.strip() for ip in forwarded.split(",")]
+        return ips[-1] if ips else None
+
     if request.client:
         return request.client.host
     return None
