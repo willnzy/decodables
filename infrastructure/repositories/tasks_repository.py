@@ -214,10 +214,10 @@ class SupabaseUserTasksRepository:
         try:
             result = await self.supabase.table("generation_tasks").select(
                 "*"
-            ).eq("id", task_id).eq("user_id", user_id).maybe_single().execute()
+            ).eq("id", task_id).eq("user_id", user_id).limit(1).execute()
 
-            if result.data:
-                return {"success": True, "task": result.data}
+            if result is not None and result.data:
+                return {"success": True, "task": result.data[0]}
 
             return None
 

@@ -135,13 +135,13 @@ class SupabaseContentRepository(ISystemResourceRepository):
             .select("*") \
             .eq("id", resource_id) \
             .eq("is_active", True) \
-            .maybe_single() \
+            .limit(1) \
             .execute()
 
         if not result or not result.data:
             return None
 
-        return self._to_entity(result.data)
+        return self._to_entity(result.data[0])
 
     @retry_on_network_error()
     async def get_all(

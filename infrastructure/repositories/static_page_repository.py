@@ -36,13 +36,12 @@ class SupabaseStaticPageRepository(StaticPageRepository):
         try:
             result = await self._client.table('static_pages').select('*').eq(
                 'slug', slug
-            ).eq('is_published', True).maybe_single().execute()
+            ).eq('is_published', True).limit(1).execute()
 
-            # Handle case where result is None or has no data
             if result is None or not result.data:
                 return None
 
-            return self._to_static_page(result.data)
+            return self._to_static_page(result.data[0])
 
         except Exception as e:
             logger.error(f"[SupabaseStaticPageRepository] Error getting static page by slug: {e}")
@@ -103,13 +102,12 @@ class SupabaseStaticPageRepository(StaticPageRepository):
         try:
             result = await self._client.table('static_pages').select('*').eq(
                 'id', str(page_id)
-            ).maybe_single().execute()
+            ).limit(1).execute()
 
-            # Handle case where result is None or has no data
             if result is None or not result.data:
                 return None
 
-            return self._to_static_page(result.data)
+            return self._to_static_page(result.data[0])
 
         except Exception as e:
             logger.error(f"[SupabaseStaticPageRepository] Error getting static page by id: {e}")

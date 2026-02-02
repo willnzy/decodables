@@ -92,12 +92,12 @@ class SupabaseSessionRepository(ISessionRepository):
             self._client.table(self.TABLE)
             .select("*")
             .eq("refresh_token_hash", token_hash)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        if not result.data:
+        if result is None or not result.data:
             return None
-        return self._map_to_entity(result.data)
+        return self._map_to_entity(result.data[0])
 
     @retry_on_network_error_async()
     async def get_active_by_user(self, user_id: UUID) -> List[Session]:

@@ -63,11 +63,11 @@ async def verify_project_ownership(project_id: str, user_id: str) -> None:
     client = await get_async_db_client()
     result = await client.table("projects").select("user_id").eq(
         "id", project_id
-    ).maybe_single().execute()
+    ).limit(1).execute()
 
     if result is None or not result.data:
         raise HTTPException(404, "Project not found")
-    if result.data["user_id"] != user_id:
+    if result.data[0]["user_id"] != user_id:
         raise HTTPException(403, "Not authorized to access this project")
 
 
@@ -81,11 +81,11 @@ async def verify_asset_ownership(asset_id: str, user_id: str) -> None:
     client = await get_async_db_client()
     result = await client.table("assets").select("user_id").eq(
         "id", asset_id
-    ).maybe_single().execute()
+    ).limit(1).execute()
 
     if result is None or not result.data:
         raise HTTPException(404, "Asset not found")
-    if result.data["user_id"] != user_id:
+    if result.data[0]["user_id"] != user_id:
         raise HTTPException(403, "Not authorized to access this asset")
 
 

@@ -552,9 +552,9 @@ class SupabaseListingRepository(BaseRepository[Listing], IListingRepository):
         try:
             result = await self.client.table("marketplace_purchases").select(
                 "id"
-            ).eq("listing_id", listing_id).eq("user_id", user_id).maybe_single().execute()
+            ).eq("listing_id", listing_id).eq("user_id", user_id).limit(1).execute()
 
-            return result.data is not None
+            return bool(result is not None and result.data)
 
         except Exception as e:
             # Don't silently return False - this could lead to double-charging
