@@ -230,7 +230,7 @@ def run_webhook_retry():
             SupabaseCreditRepository,
             SupabasePaymentRepository,
         )
-        from domains.webhooks import ClerkWebhookService, StripeWebhookService
+        from domains.webhooks import StripeWebhookService
         from domains.webhooks.webhook_retry_service import WebhookRetryService
 
         db = await create_task_async_client()
@@ -240,9 +240,8 @@ def run_webhook_retry():
             credit_repo = SupabaseCreditRepository(db)
             payment_repo = SupabasePaymentRepository(db)
 
-            clerk_service = ClerkWebhookService(user_repo, credit_repo)
             stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
-            retry_service = WebhookRetryService(webhook_repo, clerk_service, stripe_service)
+            retry_service = WebhookRetryService(webhook_repo, stripe_service)
 
             return await retry_service.retry_all_failed_webhooks()
         finally:

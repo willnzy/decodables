@@ -7,7 +7,7 @@ Billing API - Credit management endpoints using DDD handlers.
 Changes in v1.2.1:
 - B-HIGH-1-FIX: Fixed user_id validation - Clerk IDs are NOT UUID format
   - Clerk user IDs are text format like "user_2abc..." (prefix + 24-27 chars)
-  - Changed from UUID regex to Clerk ID format validation
+  - User ID format validation (UUID)
 
 Changes in v1.2.0:
 - B-P0-3: Removed /credits/deduct public endpoint (security risk)
@@ -61,10 +61,10 @@ router = APIRouter(prefix="/billing", tags=["user-billing-v2"])
 # Constants
 # ==========================================
 
-# v1.2.1: B-HIGH-1-FIX - Clerk user ID validation pattern
-# Clerk user IDs are format: user_{base58_chars} where base58_chars is typically 24-27 chars
-# Example: user_2NNEqL2nrIRdJ194ndJqAHwEfxC
-CLERK_USER_ID_PATTERN = re.compile(r"^user_[a-zA-Z0-9]{20,30}$")
+# v3.0.0: UUID user ID validation pattern (self-hosted auth)
+UUID_USER_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
 
 # v1.2.0: B-MEDIUM-3 - Valid operation names for cost lookup
 VALID_OPERATIONS = {
@@ -131,9 +131,9 @@ class AddCreditsRequest(BaseModel):
     @field_validator("user_id")
     @classmethod
     def validate_user_id_format(cls, v: str) -> str:
-        """Validate user_id is a valid Clerk user ID format."""
-        if not CLERK_USER_ID_PATTERN.match(v):
-            raise ValueError("user_id must be a valid Clerk user ID format (e.g., user_2abc...)")
+        """Validate user_id is a valid UUID format."""
+        if not UUID_USER_ID_PATTERN.match(v):
+            raise ValueError("user_id must be a valid UUID format")
         return v
 
 

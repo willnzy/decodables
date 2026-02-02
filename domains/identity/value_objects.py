@@ -118,7 +118,7 @@ class UserId:
     """
     User identifier value object.
 
-    Wraps the Clerk user ID for type safety.
+    Wraps the user ID for type safety.
     """
     value: str
 

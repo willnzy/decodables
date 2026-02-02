@@ -56,7 +56,7 @@ class WebhookRetryResponse(BaseModel):
 class FailedWebhookEntry(BaseModel):
     """Single failed webhook entry."""
     id: str = Field(..., description="Webhook event UUID")
-    event_id: str = Field(..., description="External event ID (Stripe/Clerk)")
+    event_id: str = Field(..., description="External event ID (Stripe)")
     event_type: str = Field(..., description="Event type")
     retry_count: int = Field(..., description="Number of retry attempts")
     error_message: Optional[str] = Field(None, description="Last error message")
@@ -66,7 +66,6 @@ class FailedWebhookEntry(BaseModel):
 class FailedWebhooksResponse(BaseModel):
     """Response for failed webhooks list."""
     stripe_events: list[FailedWebhookEntry] = Field(..., description="Failed Stripe webhooks")
-    clerk_events: list[FailedWebhookEntry] = Field(..., description="Failed Clerk webhooks")
     total_count: int = Field(..., description="Total number of failed webhooks")
 
 
@@ -152,19 +151,13 @@ async def get_failed_webhooks(
 
     v1.1.0: Refactored to use Container-based DI.
 
-    Returns failed webhooks for both Stripe and Clerk that are still
-    eligible for retry (not exceeded max retries or age limit).
+    Returns failed Stripe webhooks that are still eligible for retry
+    (not exceeded max retries or age limit).
     """
     try:
         from config import WEBHOOK_MAX_RETRIES, WEBHOOK_MAX_RETRY_AGE_HOURS
 
         stripe_failed = await webhook_repo.get_failed_stripe_webhooks(
-            max_retry_count=WEBHOOK_MAX_RETRIES,
-            hours_since_created=WEBHOOK_MAX_RETRY_AGE_HOURS,
-            limit=limit,
-        )
-
-        clerk_failed = await webhook_repo.get_failed_clerk_webhooks(
             max_retry_count=WEBHOOK_MAX_RETRIES,
             hours_since_created=WEBHOOK_MAX_RETRY_AGE_HOURS,
             limit=limit,
@@ -183,27 +176,14 @@ async def get_failed_webhooks(
             for event in stripe_failed
         ]
 
-        clerk_entries = [
-            FailedWebhookEntry(
-                id=event["id"],
-                event_id=event["event_id"],
-                event_type=event["event_type"],
-                retry_count=event["retry_count"],
-                error_message=event.get("error_message"),
-                created_at=event["created_at"],
-            )
-            for event in clerk_failed
-        ]
-
         logger.info(
             f"[Admin {admin.get('id')}] Retrieved failed webhooks: "
-            f"{len(stripe_entries)} Stripe, {len(clerk_entries)} Clerk"
+            f"{len(stripe_entries)} Stripe"
         )
 
         return FailedWebhooksResponse(
             stripe_events=stripe_entries,
-            clerk_events=clerk_entries,
-            total_count=len(stripe_entries) + len(clerk_entries),
+            total_count=len(stripe_entries),
         )
 
     except Exception as e:

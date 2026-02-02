@@ -1,47 +1,23 @@
 """
-Webhooks API - Third-party webhook handlers (v2).
+Webhooks API - Third-party webhook handlers.
 
 @module api.user.webhooks
-@version 2.6.0 (Container DI Migration)
+@version 3.0.0 (Self-hosted auth migration)
 
-Changes in v2.6.0:
-- Container DI Migration
-  - Migrated to Container-based dependency injection
-  - Removed direct get_async_db_client() calls
-  - Removed direct infrastructure.repositories imports
-  - Architecture: API → Container → Service → Repository
-
-Changes in v2.5.0:
-- WEBHOOKS-CRITICAL-1: Added dependency injection for webhook services
-- Migrated all endpoints to use Service layer with DI
-- Architecture: API → Service (DI) → Repositories (100% DDD)
-- Moved all business logic to ClerkWebhookService and StripeWebhookService
-
-Changes in v2.4.0:
-- W-P0-1: Stripe signature header required (not optional)
-- W-P0-2: Subscription creation with atomic operations
-- W-P0-3: Credit purchase order fixed (payment record first)
-- W-HIGH-1: Signup bonus uses INSERT ON CONFLICT for atomicity
-- W-HIGH-2: Renewal with transaction consistency
-- W-HIGH-3: Proper status handling for subscription states
-- W-MEDIUM-*: Improved error handling and logging
-
-v2.3.0: Metadata validation, error logging, idempotency improvements
-v2.2.0: Support for credits_500, credits_2000, get_credits_amount()
-v2.1.0: Idempotency, customer_id validation, get_tier_from_price_id()
+Changes in v3.0.0:
+- Removed Clerk webhook endpoint (replaced by self-hosted auth)
+- Removed svix dependency
+- Only Stripe webhooks remain
 
 Endpoints:
-- POST /api/v2/user/webhooks/clerk - Clerk user events
 - POST /api/v2/user/webhooks/stripe - Stripe payment events
 """
 
 import logging
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 
-from svix.webhooks import WebhookVerificationError
-
 from container import get_container
-from domains.webhooks import ClerkWebhookService, StripeWebhookService
+from domains.webhooks import StripeWebhookService
 
 logger = logging.getLogger(__name__)
 
@@ -52,86 +28,12 @@ router = APIRouter(prefix="/webhooks", tags=["user-webhooks-v2"])
 # Dependency Injection
 # ==========================================
 
-async def get_clerk_webhook_service() -> ClerkWebhookService:
-    """
-    Dependency injection factory for ClerkWebhookService via Container.
-
-    WHY Container-based DI?
-    - Centralized service instantiation
-    - Testable (mock injection)
-    - Follows DIP (Dependency Inversion Principle)
-    """
-    container = get_container()
-    return await container.get_clerk_webhook_service()
-
-
 async def get_stripe_webhook_service() -> StripeWebhookService:
     """
     Dependency injection factory for StripeWebhookService via Container.
-
-    WHY Container-based DI?
-    - Centralized service instantiation
-    - Testable (mock injection)
-    - Follows DIP (Dependency Inversion Principle)
     """
     container = get_container()
     return await container.get_stripe_webhook_service()
-
-
-# ==========================================
-# Clerk Webhook
-# ==========================================
-
-@router.post("/clerk")
-async def clerk_webhook(
-    request: Request,
-    clerk_service: ClerkWebhookService = Depends(get_clerk_webhook_service),  # v2.5.0: DI
-):
-    """
-    Clerk webhook handler for user events.
-
-    Handles:
-    - user.created: Create new user profile
-    - user.updated: Sync profile changes
-    - session.created: Log login
-    - session.ended/removed/revoked: Log logout
-
-    **Update webhook URL in Clerk Dashboard:**
-    1. Go to https://dashboard.clerk.com
-    2. Select your application
-    3. Navigate to "Webhooks" in the sidebar
-    4. Update endpoint URL to: https://your-domain.com/api/v2/user/webhooks/clerk
-    5. Subscribe to events: user.created, user.updated, session.created, session.ended
-    """
-    # v2.5.0: Verify signature via Service
-    payload = await request.body()
-    headers = dict(request.headers)
-
-    try:
-        event = clerk_service.verify_signature(payload, headers)
-    except ValueError as e:
-        # Missing CLERK_WEBHOOK_SECRET
-        logger.error(f"[Clerk Webhook] Configuration error: {e}")
-        raise HTTPException(500, str(e))
-    except WebhookVerificationError:
-        # WS-03: Structured log with request context (no secrets)
-        client_ip = request.client.host if request.client else "unknown"
-        logger.error(
-            f"[Clerk Webhook] Signature verification failed: "
-            f"ip={client_ip}, user_agent={request.headers.get('user-agent', 'unknown')[:80]}"
-        )
-        raise HTTPException(400, "Invalid signature")
-
-    # WS-03: Idempotency check for Clerk webhooks (matches Stripe pattern)
-    # Use svix message ID as the event_id for deduplication
-    event_id = headers.get("svix-id", "")
-    event_type = event.get("type", "unknown")
-    if event_id and await clerk_service.is_duplicate_event(event_id, event_type):
-        return {"status": "already_processed", "event_id": event_id}
-
-    # v2.5.0: Handle event via Service
-    result = await clerk_service.handle_event(event)
-    return result
 
 
 # ==========================================

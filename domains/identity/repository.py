@@ -29,7 +29,7 @@ class IUserRepository(ABC):
         Get user profile by user ID.
 
         Args:
-            user_id: The user's unique identifier (Clerk ID)
+            user_id: The user's unique identifier (UUID string)
 
         Returns:
             UserProfile aggregate or None if not found

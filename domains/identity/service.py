@@ -78,10 +78,10 @@ class IdentityService:
         """
         Create a new user profile.
 
-        Called when user signs up via Clerk webhook.
+        Called when user registers via self-hosted auth.
 
         Args:
-            user_id: Clerk user ID
+            user_id: User ID (UUID string)
             email: User email
             display_name: Optional display name
 

@@ -659,11 +659,11 @@ class Container:
         Get webhook retry service instance (v3.29, async).
 
         WHY in Container?
-        - Centralizes complex service construction (requires 4 repositories + 2 services)
+        - Centralizes complex service construction (requires repositories + Stripe service)
         - Enables testing with mock services
         - Follows DIP - API layer doesn't know about concrete implementations
         """
-        from domains.webhooks import ClerkWebhookService, StripeWebhookService
+        from domains.webhooks import StripeWebhookService
         from domains.webhooks.webhook_retry_service import WebhookRetryService
         from infrastructure.repositories import (
             SupabaseWebhookRepository,
@@ -683,12 +683,11 @@ class Container:
             credit_repo = SupabaseCreditRepository(db)
             payment_repo = SupabasePaymentRepository(db)
 
-            # Webhook Services
-            clerk_service = ClerkWebhookService(user_repo, credit_repo)
+            # Webhook Services (Clerk removed — self-hosted auth)
             stripe_service = StripeWebhookService(user_repo, credit_repo, payment_repo)
 
             self._services['webhook_retry'] = WebhookRetryService(
-                webhook_repo, clerk_service, stripe_service
+                webhook_repo, stripe_service
             )
         return self._services['webhook_retry']
 
@@ -1077,34 +1076,7 @@ class Container:
             self._services['referral_service'] = ReferralService(repository, billing_service)
         return self._services['referral_service']
 
-    async def get_clerk_webhook_service(self):
-        """
-        Get Clerk webhook service instance (v1.2.0, async).
-
-        WHY in Container?
-        - Centralizes service construction with all dependencies
-        - ClerkWebhookService requires UserRepository and CreditRepository
-        - Used by webhooks API for Clerk events
-        """
-        from domains.webhooks import ClerkWebhookService
-        from infrastructure.repositories import SupabaseUserRepository, SupabaseCreditRepository
-
-        if 'clerk_webhook_service' not in self._services:
-            db = await get_async_db_client()
-            if db is None:
-                raise RuntimeError("Database client not available")
-
-            user_repo = SupabaseUserRepository(db)
-            credit_repo = SupabaseCreditRepository(db)
-            tier_service = await self._get_or_create_tier_service()
-            from infrastructure.repositories.activity_log_repository import ActivityLogRepository
-            activity_log_repo = ActivityLogRepository(db)
-            self._services['clerk_webhook_service'] = ClerkWebhookService(
-                user_repo, credit_repo,
-                tier_service=tier_service,
-                activity_log_repo=activity_log_repo,
-            )
-        return self._services['clerk_webhook_service']
+    # REMOVED: get_clerk_webhook_service — Clerk auth replaced by self-hosted auth (Phase 2)
 
     async def get_stripe_webhook_service(self):
         """
@@ -1160,7 +1132,7 @@ class Container:
 
         WHY in Container?
         - Centralizes service construction
-        - Used by Tag API and Clerk webhook for automatic workspace creation
+        - Used by Tag API and auth registration for automatic workspace creation
         - Phase 1: Only manages default personal workspaces
         """
         from domains.workspace import WorkspaceService

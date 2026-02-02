@@ -153,12 +153,6 @@ from shared.ai.prompt_enhancer import enhance_prompt, enhance_asset_prompt  # AI
 # Note: Analytics tracking moved to infrastructure/monitoring/analytics_tracker.py
 # Import only when needed to avoid circular dependencies
 
-# Environment variables
-CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
-# Security: Clerk public key (PEM) for token verification.
-# Production: fetch from Clerk Dashboard -> API Keys -> JWKS or set CLERK_PEM_PUBLIC_KEY.
-CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY") 
-
 # Import Redis-backed limiter from rate_limiter module
 from infrastructure.rate_limiter import limiter
 

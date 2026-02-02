@@ -10,7 +10,7 @@ This domain handles:
 @package domains.identity
 @version 1.0.0
 
-Note: Authentication itself is handled by Clerk (external service).
+Note: Authentication is handled by self-hosted auth (domains.auth module).
 This domain focuses on user data management within our system.
 """
 

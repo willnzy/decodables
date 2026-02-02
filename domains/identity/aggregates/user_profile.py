@@ -30,8 +30,8 @@ class UserProfile:
     email: str
     user_code: Optional[str] = None  # 26-digit unique user code
     
-    # Auth provider fields (from Clerk)
-    username: Optional[str] = None       # Clerk username
+    # Profile fields
+    username: Optional[str] = None       # Username
     first_name: Optional[str] = None     # User's first name
     last_name: Optional[str] = None      # User's last name
     
@@ -68,9 +68,9 @@ class UserProfile:
         Factory method to create a new user profile.
 
         Args:
-            user_id: Clerk user ID
+            user_id: User ID (UUID string)
             email: User email
-            username: Clerk username
+            username: Username
             first_name: User's first name
             last_name: User's last name
             avatar_url: Avatar URL

@@ -16,35 +16,13 @@ IS_PRODUCTION = ENV == "production"
 API_TITLE = "MagicZine AI API v3.2"
 API_VERSION = "3.2.0"
 
-# Clerk Authentication
-CLERK_WEBHOOK_SECRET = os.environ.get("CLERK_WEBHOOK_SECRET")
-CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY")
-# Test JWT Public Key (for integration testing without Clerk login)
-# When configured, backend accepts both Clerk-signed and test-signed JWTs
-# ⚠️ SECURITY: Only enabled in non-production environments!
-_test_jwt_key = os.environ.get("TEST_JWT_PUBLIC_KEY")
-TEST_JWT_PUBLIC_KEY = _test_jwt_key if not IS_PRODUCTION else None
-
-# Log warning if test key is configured in production (should never happen)
-if IS_PRODUCTION and _test_jwt_key:
-    import logging
-    logging.getLogger(__name__).critical(
-        "🚨 SECURITY ALERT: TEST_JWT_PUBLIC_KEY is configured in PRODUCTION! "
-        "This key will be IGNORED for security reasons. "
-        "Remove TEST_JWT_PUBLIC_KEY from production environment variables immediately!"
-    )
-# v3.27.1: Authorized Party (azp) verification
-# Clerk includes 'azp' in JWT by default (unlike 'aud')
-# This is the frontend origin that requested the token
-# Format: comma-separated list of allowed origins
-# Example: "https://makedecodables.com,https://www.makedecodables.com"
-CLERK_ALLOWED_ORIGINS = os.environ.get("CLERK_ALLOWED_ORIGINS", "")
-# Legacy: CLERK_FRONTEND_API (kept for backwards compatibility, prefer CLERK_ALLOWED_ORIGINS)
-CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API")
-
-# Self-Hosted Authentication (Phase 1)
+# Self-Hosted Authentication
 AUTH_JWT_SECRET = os.environ.get("AUTH_JWT_SECRET")
 AUTH_JWT_SECRET_OLD = os.environ.get("AUTH_JWT_SECRET_OLD")  # Optional: for key rotation
+AUTH_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("AUTH_ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+AUTH_REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("AUTH_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+AUTH_LOCKOUT_ATTEMPTS = int(os.environ.get("AUTH_LOCKOUT_ATTEMPTS", "5"))
+AUTH_LOCKOUT_DURATION_MIN = int(os.environ.get("AUTH_LOCKOUT_DURATION_MIN", "30"))
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 # Stripe
@@ -78,14 +56,13 @@ CORS_ORIGINS: List[str] = [
 REQUIRED_ENV_VARS: List[str] = [
     "SUPABASE_URL",
     "SUPABASE_KEY",
+    "AUTH_JWT_SECRET",
 ]
 
 # WS-25: Secrets that should be validated at startup in production.
 # Missing any of these will log a warning (non-blocking) so the server can still start
 # for development, but all should be present in production.
 RECOMMENDED_ENV_VARS: List[str] = [
-    "CLERK_WEBHOOK_SECRET",
-    "CLERK_PEM_PUBLIC_KEY",
     "STRIPE_SECRET_KEY",
     "STRIPE_WEBHOOK_SECRET",
     "RESEND_API_KEY",
@@ -94,7 +71,11 @@ RECOMMENDED_ENV_VARS: List[str] = [
 
 def validate_secrets_at_startup() -> dict:
     """
-    WS-25 (SECRET-01): Validate critical secrets at startup.
+    Validate critical secrets at startup.
+
+    Checks:
+    - Required env vars are present
+    - AUTH_JWT_SECRET is at least 43 chars (256-bit key as base64)
 
     Returns:
         Dict with validation results:
@@ -103,9 +84,19 @@ def validate_secrets_at_startup() -> dict:
             "missing_required": List[str],
             "missing_recommended": List[str],
         }
+
+    Raises:
+        ValueError: If AUTH_JWT_SECRET is too short (startup blocker).
     """
     missing_required = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
     missing_recommended = [var for var in RECOMMENDED_ENV_VARS if not os.environ.get(var)]
+
+    # Validate JWT secret length (256-bit minimum)
+    if AUTH_JWT_SECRET and len(AUTH_JWT_SECRET) < 43:
+        raise ValueError(
+            f"AUTH_JWT_SECRET too short: {len(AUTH_JWT_SECRET)} chars, "
+            f"minimum 43 required (256-bit key as base64)"
+        )
 
     return {
         "required_ok": len(missing_required) == 0,
