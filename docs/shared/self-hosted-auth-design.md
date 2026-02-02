@@ -351,6 +351,8 @@ auth_users
 - `auth_users.id` 与 `profiles.id` 使用**同一个 UUID**（注册时同时创建）
 - 认证数据（密码、验证token）与业务数据（tier、credits）分离
 - 部分索引：仅对 `token IS NOT NULL` 的行建索引
+- CHECK 约束：`CHECK (email = LOWER(email))`（邮箱统一小写，详见 7.4）
+- **验证 Token 安全存储**：`email_verification_token` 和 `password_reset_token` 存储的是 **SHA-256 哈希值**，不存明文。URL 发给用户的是明文 token，后端校验时 `SHA256(url_token) == db_stored_hash`（与 refresh_token_hash 保持一致的安全策略）
 
 ### 4.2 新增表：`auth_sessions`（Refresh Token 存储 + 轮换检测）
 
@@ -365,7 +367,7 @@ auth_sessions
 ├── device_name       TEXT (从 user_agent 解析，用于展示)
 ├── is_revoked        BOOLEAN DEFAULT FALSE
 ├── revoked_at        TIMESTAMPTZ
-├── revoke_reason     TEXT ('logout'/'rotation'/'security'/'admin')
+├── revoke_reason     TEXT CHECK (revoke_reason IN ('logout','rotation','security','admin','account_deleted'))
 ├── expires_at        TIMESTAMPTZ NOT NULL
 ├── last_used_at      TIMESTAMPTZ
 └── created_at        TIMESTAMPTZ
@@ -454,6 +456,37 @@ profiles.id: TEXT → UUID
 | `user_creation_logs` | 🔄 **保留并更新** | 更新 action 枚举值，继续用于审计注册事件 |
 | `system_error_logs` | 🔄 **保留** | 更新 operation 字段的注释引用 |
 
+### 4.9 RLS 策略（Row Level Security）
+
+所有 auth 表必须启用 RLS，防止 Supabase anon key 泄露时数据裸奔。
+
+```
+auth_users:
+├── ALTER TABLE auth_users ENABLE ROW LEVEL SECURITY;
+├── Policy: service_role_full_access
+│   → USING (true) WITH CHECK (true)
+│   → TO service_role
+├── 无 authenticated 用户策略（前端永远不直连此表，所有操作通过后端 API）
+└── 理由: 存储密码哈希和验证 token，安全等级最高
+
+auth_sessions:
+├── ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
+├── Policy: service_role_full_access
+│   → USING (true) WITH CHECK (true)
+│   → TO service_role
+├── 无 authenticated 用户策略（会话管理通过后端 API /auth/sessions）
+└── 理由: 存储 refresh_token_hash，不允许客户端直接查询
+
+auth_oauth_accounts:
+├── ALTER TABLE auth_oauth_accounts ENABLE ROW LEVEL SECURITY;
+├── Policy: service_role_full_access
+│   → USING (true) WITH CHECK (true)
+│   → TO service_role
+└── 理由: 存储加密的 OAuth token，不允许客户端直接查询
+```
+
+**重要**：后端通过 `SUPABASE_KEY`（service_role key）操作这些表，RLS 对 service_role 透明。
+
 ---
 
 ## 五、后端架构设计
@@ -467,12 +500,41 @@ decodables/domains/auth/
 │   ├── auth_user.py          # AuthUser 聚合根
 │   └── session.py            # Session 实体
 ├── value_objects.py          # Password, Email, Token 值对象
-├── repository.py             # IAuthUserRepository, ISessionRepository 接口
+├── repository.py             # IAuthUserRepository, ISessionRepository 接口（见下方方法签名）
 ├── service.py                # AuthService 核心编排（注册/登录/刷新/登出）
 ├── token_service.py          # JWT 签发/验证 (Access + Refresh)
 ├── email_service.py          # 邮箱验证/密码重置邮件 (通过 Resend)
 ├── password_service.py       # 密码哈希 (argon2id) + 强度校验
 └── constants.py              # Token 有效期、锁定阈值等常量
+```
+
+**Repository 接口方法签名**：
+
+```
+IAuthUserRepository:
+├── get_by_id(user_id: UUID) → AuthUser | None
+├── get_by_email(email: str) → AuthUser | None
+├── create(auth_user: AuthUser) → AuthUser           # 通过 RPC create_auth_user_with_profile()
+├── update_password(user_id: UUID, password_hash: str) → None
+├── update_email_verified(user_id: UUID, verified: bool) → None
+├── update_login_attempt(user_id: UUID, failed_attempts: int, locked_until: datetime | None) → None
+├── set_verification_token(user_id: UUID, token_hash: str, expires_at: datetime) → None
+├── set_password_reset_token(user_id: UUID, token_hash: str, expires_at: datetime) → None
+├── clear_verification_token(user_id: UUID) → None
+├── clear_password_reset_token(user_id: UUID) → None
+├── delete(user_id: UUID) → None                     # 硬删除 auth_users
+└── record_login(user_id: UUID, ip: str, timestamp: datetime) → None
+
+ISessionRepository:
+├── create(session: Session) → Session
+├── get_by_token_hash(token_hash: str) → Session | None
+├── get_active_by_user(user_id: UUID) → List[Session]
+├── count_active_by_user(user_id: UUID) → int
+├── revoke(session_id: UUID, reason: str) → None
+├── revoke_family(family_id: UUID, reason: str) → None
+├── revoke_all_by_user(user_id: UUID, reason: str) → None
+├── revoke_oldest_by_user(user_id: UUID, reason: str) → None  # 踢出最旧会话
+└── update_last_used(session_id: UUID) → None
 ```
 
 ### 5.2 核心服务职责
@@ -491,6 +553,7 @@ decodables/domains/auth/
 | `change_password()` | 验证旧密码 → 更新密码 → 可选作废其他 sessions |
 | `get_sessions()` | 列出用户所有活跃 sessions（多设备管理） |
 | `revoke_session()` | 踢出指定设备 |
+| `delete_account()` | 验证密码 → 取消 Stripe 订阅 → 作废 sessions → 软删除 profiles → 硬删除 auth_users → 异步匿名化内容（详见 7.3） |
 
 **TokenService（JWT 管理）**：
 - Access Token: HS256 签名，15 分钟有效期
@@ -528,6 +591,63 @@ decodables/api/auth/
 | DELETE | `/auth/sessions/{id}` | 踢出指定设备 | — | Access Token |
 | POST | `/auth/delete-account` | 注销账户（需密码确认） | 1/hour/user | Access Token |
 
+**核心端点 Request/Response Schema**：
+
+```
+POST /auth/register
+  Request:  { email: string, password: string, display_name?: string }
+  Response: { access_token: string, user: { id: UUID, email: string, display_name: string } }
+  Errors:   422 (验证失败) / 409 (邮箱已注册，但为防枚举返回与成功相同的 HTTP 200 + "请查收验证邮件")
+
+POST /auth/login
+  Request:  { email: string, password: string }
+  Response: { access_token: string, user: { id: UUID, email: string, tier: string, role: string } }
+  Errors:   401 { error: "invalid_credentials" } / 403 { error: "account_locked", retry_after: number }
+
+POST /auth/refresh
+  Request:  { refresh_token: string, rotate?: boolean }  // rotate 默认 true
+  Response: { access_token: string, refresh_token?: string }  // rotate=false 时不返回 refresh_token
+  Errors:   401 { error: "token_expired" | "token_revoked" | "reuse_detected" }
+
+POST /auth/logout
+  Request:  { refresh_token: string }
+  Response: { success: true }
+
+POST /auth/verify-email
+  Request:  { token: string, email: string }
+  Response: { success: true, message: "邮箱验证成功" }
+  Errors:   400 { error: "invalid_token" | "token_expired" }
+
+POST /auth/forgot-password
+  Request:  { email: string }
+  Response: { success: true, message: "如果该邮箱已注册，重置邮件已发送" }  // 统一响应，防枚举
+
+POST /auth/reset-password
+  Request:  { token: string, email: string, new_password: string }
+  Response: { success: true }
+  Errors:   400 { error: "invalid_token" | "token_expired" | "weak_password" }
+
+POST /auth/change-password
+  Request:  { current_password: string, new_password: string }
+  Response: { success: true }
+
+GET /auth/sessions
+  Response: { sessions: [{ id: UUID, device_name: string, ip_address: string, last_used_at: string, is_current: boolean }] }
+
+DELETE /auth/sessions/{id}
+  Response: { success: true }
+
+POST /auth/delete-account
+  Request:  { password: string }
+  Response: { success: true }
+
+统一错误响应格式：
+{ error: string, message?: string, details?: object }
+→ error: 机器可读的错误码（如 "invalid_credentials"）
+→ message: 人类可读的错误描述（可选，前端可 i18n 覆盖）
+→ details: 额外信息（可选，如 retry_after、validation_errors）
+```
+
 ### 5.3.1 限流实现方案
 
 ```
@@ -563,19 +683,24 @@ decodables/api/auth/
 邮箱验证 Token (email_verification_token):
 ├── 格式: 32 字节随机数 → base64url 编码（43 字符）
 ├── 生成: secrets.token_urlsafe(32)
+├── 存储: SHA-256 哈希后存入数据库（不存明文，与 refresh_token_hash 策略一致）
 ├── 有效期: 24 小时
 ├── 一次性使用: 验证成功后立即设为 NULL
-├── 重发机制: 重发时生成新 token，旧 token 立即作废
+├── 重发机制: 重发时生成新 token，旧 token hash 立即覆盖
 ├── URL 格式: /verify-email?token=xxx&email=user@example.com
-└── 后端校验: token 匹配 AND 未过期 AND email 匹配数据库记录
+└── 后端校验: SHA256(url_token) == db_hash AND 未过期 AND email 匹配
 
 密码重置 Token (password_reset_token):
 ├── 格式: 同上，32 字节 base64url
+├── 存储: 同上，SHA-256 哈希后存入数据库
 ├── 有效期: 1 小时（比邮箱验证更短，安全要求更高）
 ├── 一次性使用: 重置成功后立即设为 NULL
-├── 重发机制: 重发时生成新 token，旧 token 立即作废
+├── 重发机制: 重发时生成新 token，旧 token hash 立即覆盖
 ├── URL 格式: /reset-password?token=xxx&email=user@example.com
-└── 后端校验: token 匹配 AND 未过期 AND email 匹配
+└── 后端校验: SHA256(url_token) == db_hash AND 未过期 AND email 匹配
+
+安全理由: 如果数据库被攻破，明文 token 可直接用于验证任意邮箱/重置任意密码。
+哈希存储后攻击者无法从 hash 反推 token，需要拦截用户邮件才能获取明文。
 
 过期 Token 清理:
 ├── 方式: 不主动清理，验证时检查 expires_at
@@ -603,6 +728,7 @@ decodables/api/auth/
 - 新增：`AUTH_JWT_SECRET`, `AUTH_ACCESS_TOKEN_EXPIRE_MINUTES`, `AUTH_REFRESH_TOKEN_EXPIRE_DAYS` 等
 - 更新 `REQUIRED_ENV_VARS`：新增 `AUTH_JWT_SECRET`
 - 更新 `RECOMMENDED_ENV_VARS`：移除 `CLERK_WEBHOOK_SECRET`、`CLERK_PEM_PUBLIC_KEY`，保留 `STRIPE_*`、`RESEND_API_KEY`
+- 新增 `validate_secrets_at_startup()` 强化校验：`AUTH_JWT_SECRET` 长度必须 ≥ 43 字符（256-bit = 32 bytes → base64 ≈ 43 chars），不满足则 raise 启动失败（防止开发者误设弱密钥如 "123456"）
 
 **`container.py`**：
 - 注册新服务：`get_auth_service()`, `get_token_service()`, `get_password_service()` 等
@@ -788,6 +914,14 @@ class TokenManager {
     return access_token
   }
 }
+
+// SessionExpiredError 处理链:
+// 1. TokenManager.doRefresh() 抛出 SessionExpiredError
+// 2. api.ts 拦截器捕获 → 不再重试（区别于普通 401）
+// 3. 清除 Zustand auth 状态（accessToken = null, isSignedIn = false）
+// 4. 重置所有 loading/modal 状态（防止 token null 时 UI 卡死）
+// 5. router.push('/login?redirect=' + currentPath)
+// 6. BroadcastChannel 广播 user_logged_out → 其他标签同步登出
 ```
 
 **跨标签 Token 同步（BroadcastChannel）**
@@ -799,15 +933,28 @@ BroadcastChannel 消息类型:
 2. user_logged_out:  某标签登出 → 其他标签清除状态并跳转 /login
 3. user_logged_in:   某标签登录 → 其他标签（如停留在 /login 页）刷新状态
 
+⚠️ 只广播 access_token，绝不广播 refresh_token
+（refresh_token 仅存在于 httpOnly cookie 中，JS 不可读取也不应传播）
+
 跨标签 Refresh 竞态解决:
 - Tab A 和 Tab B 同时检测到 token 过期
 - Tab A 先发起 refresh → refreshPromise 不为 null
-- Tab A refresh 成功 → BroadcastChannel 广播新 token
-- Tab B 收到广播 → 直接使用新 token，不再发起 refresh
+- Tab A refresh 成功 → 广播新 access_token
+- Tab B 收到广播 → 直接使用新 token，取消自己的 refresh
 - 如果 Tab B 已经发起了 refresh（Tab A 广播前）：
   → 后端 Refresh Token 轮换：Tab A 的旧 refresh token 已作废
-  → Tab B 的 refresh 请求用的是同一个旧 token → 触发重用检测
-  → 解决方案：Tab B 先等 200ms 检查是否收到广播，再决定是否 refresh
+  → Tab B 的 refresh 用的是同一个 cookie → BFF 代理发的是同一个旧 token → 可能触发重用检测
+  → 解决方案：Tab B 发起 refresh 前先等 CROSS_TAB_REFRESH_DELAY_MS（默认 300ms），
+    期间监听广播。收到则取消 refresh，未收到则继续发起。
+  → 该延迟值可通过常量配置，选择 300ms 是因为 BFF 代理 + 后端验证通常 < 200ms
+
+Fallback（BroadcastChannel 不可用时）:
+- Safari < 15.4、所有 IE、部分 WebView 不支持 BroadcastChannel
+- Fallback: 使用 localStorage 'storage' 事件
+  → Tab A: localStorage.setItem('auth_sync', JSON.stringify({ type, token, timestamp }))
+  → Tab B: window.addEventListener('storage', handler) 监听变化
+- 检测: if (typeof BroadcastChannel !== 'undefined') 使用 BC，否则 fallback
+- storage 事件的限制：同一 tab 内不触发（只在其他 tab 触发），与 BC 行为一致
 ```
 
 **页面刷新（F5）处理**
@@ -939,13 +1086,34 @@ export default async function DashboardPage() {
 ```
 
 ```
+⚠️ SSR 与 Refresh Token 轮换的冲突及解决方案：
+
+问题：/auth/refresh 设计为轮换式（废旧发新）。SSR 调用 refresh 后：
+- 旧 refresh token 作废，颁发新 token
+- 但 SSR 无法将新 refresh token 写回客户端 httpOnly cookie
+- 客户端下次用旧 cookie 中的 token → 触发重用检测 → 用户被踢出
+
+✅ 确定方案：/auth/refresh 增加 rotate 参数
+
+POST /auth/refresh
+Body: { refresh_token, rotate?: boolean }  // 默认 rotate=true
+
+- 客户端 BFF 代理调用：rotate=true（默认值，正常轮换，BFF 更新 cookie）
+- SSR 服务端调用：rotate=false（不轮换，只返回新 access_token，旧 refresh_token 不作废）
+
+后端实现：
+- rotate=true：废旧 refresh token，颁发新 refresh token + access token
+- rotate=false：验证 refresh token 有效性，仅颁发新 access token，不修改 session
+
+安全性：rotate=false 不降低安全性，因为：
+1. SSR 在服务端执行，refresh_token 不暴露给客户端 JS
+2. 不触发轮换 = 不产生新 session，只验证现有 session 仍有效
+3. 等价于用 refresh_token 做一次"验证读取"操作
+
 注意事项：
 1. Server Component 中获取的 token 不会存入客户端 Zustand（仅本次 SSR 使用）
-2. 客户端 hydration 后，AuthProvider 会独立获取 token（通过 /api/auth/refresh）
-3. 这两份 token 是独立的，不会冲突（后端 Refresh Token 轮换在此场景下安全：
-   SSR 用的是读操作，不触发轮换；客户端 refresh 才触发轮换）
-4. 如果 SSR 也需要触发轮换，则需要 /auth/refresh 增加 rotate=false 参数选项
-5. 大多数页面用 Client Component 即可，SSR 仅用于 SEO 关键页面（如 /marketplace）
+2. 客户端 hydration 后，AuthProvider 会独立获取 token（通过 /api/auth/refresh，rotate=true）
+3. 大多数页面用 Client Component 即可，SSR 仅用于 SEO 关键页面（如 /marketplace）
 ```
 
 ---
@@ -1017,11 +1185,13 @@ Access Token payload 包含 `{ sub, email, role, tier }`，但 tier 变更后已
 后端 AuthService.delete_account():
 1. 验证密码正确
 2. 取消 Stripe 订阅（如果有活跃订阅）
-3. 软删除 profiles 记录（is_deleted=true, deleted_at=now()）
-4. 删除 auth_users 记录（CASCADE 自动删除 auth_sessions）
-5. 清除用户生成内容的个人信息（项目保留但 owner 匿名化）
-6. 作废所有 sessions
-7. 返回 200
+   → 失败则中止整个流程，返回 500（不能在订阅未取消时删除账户）
+3. 作废所有 auth_sessions（revoke_reason='account_deleted'）
+4. 软删除 profiles 记录（is_deleted=true, deleted_at=now()）
+5. 删除 auth_users 记录（CASCADE 自动清除 auth_sessions 残留）
+6. 返回 200
+7. 异步任务（不阻塞响应）：匿名化用户内容（projects owner_id → 'deleted_user' UUID）
+   → 通过后台任务队列处理，避免大量 UPDATE 导致请求超时
 ```
 
 **数据处理策略**：
@@ -1053,7 +1223,9 @@ POST /auth/delete-account    需要密码确认    Access Token
 
 **邮箱复用**：
 - 账户删除后，该邮箱可以重新注册（因为 auth_users 已硬删除）
-- 30 天恢复期内，新注册会提示 "此邮箱有待恢复的账户，是否恢复？"
+- 30 天恢复期内，新注册返回与正常注册**完全相同**的响应（"请查收验证邮件"），防止邮箱枚举
+  → 实际发送的是"账户恢复"邮件（非验证邮件），让用户通过邮件中的链接选择恢复旧账户或注册新账户
+  → 攻击者无法通过 API 响应判断该邮箱是否曾注册过
 
 ### 7.4 邮箱规范化
 
