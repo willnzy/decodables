@@ -1,13 +1,27 @@
 """
-Auth API Router — Public authentication endpoints.
+Auth API Router — Public and authenticated endpoints.
 
-All endpoints are public (no auth required) except:
-- POST /auth/change-password (requires auth)
-- POST /auth/logout-all (requires auth)
-- GET  /auth/sessions (requires auth)
-- DELETE /auth/sessions/{id} (requires auth)
-- DELETE /auth/account (requires auth)
-- POST /auth/resend-verification (requires auth)
+Registration (3-step OTP):
+  POST /auth/register/send-otp
+  POST /auth/register/verify-otp
+  POST /auth/register/complete
+
+Unified OTP (change-password / delete-account / forgot-password):
+  POST /auth/otp/send
+  POST /auth/otp/verify
+
+Password reset:
+  POST /auth/forgot-password/reset
+
+All other endpoints:
+  POST /auth/login
+  POST /auth/refresh
+  POST /auth/logout
+  POST /auth/logout-all           (auth required)
+  POST /auth/change-password      (auth required)
+  POST /auth/delete-account       (auth required)
+  GET  /auth/sessions             (auth required)
+  DELETE /auth/sessions/{id}      (auth required)
 """
 
 from __future__ import annotations
@@ -16,25 +30,17 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Request
 
 from container import get_container
-from domains.auth.exceptions import (
-    AccountDisabledException,
-    AccountLockedException,
-    DisposableEmailException,
-    EmailAlreadyExistsException,
-    EmailNotVerifiedException,
-    InvalidCredentialsException,
-    InvalidVerificationTokenException,
-    SessionNotFoundException,
-    TokenExpiredException,
-    TokenReuseDetectedException,
-    TokenRevokedException,
-    WeakPasswordException,
+from domains.auth.constants import (
+    OTP_PURPOSE_CHANGE_PASSWORD,
+    OTP_PURPOSE_DELETE_ACCOUNT,
+    OTP_PURPOSE_FORGOT_PASSWORD,
 )
+from domains.auth.exceptions import TokenInvalidException
 from domains.auth.service import AuthService
+from domains.auth.token_service import TokenService
 from domains.auth.value_objects import DeviceInfo
 from domains.identity.constants import SIGNUP_BONUS_CREDITS
 from infrastructure.rate_limiter import limiter
@@ -42,20 +48,24 @@ from infrastructure.rate_limiter import limiter
 from .schemas import (
     AuthTokenResponse,
     ChangePasswordRequest,
+    CompleteRegistrationRequest,
     DeleteAccountRequest,
     ErrorResponse,
-    ForgotPasswordRequest,
+    ForgotPasswordResetRequest,
     LoginRequest,
     LogoutRequest,
+    OtpSentResponse,
+    OtpVerifiedResponse,
     RefreshTokenRequest,
     RefreshTokenResponse,
-    RegisterRequest,
-    ResetPasswordRequest,
+    SendOtpRequest,
+    SendRegistrationOtpRequest,
     SessionInfo,
     SessionListResponse,
     SuccessResponse,
     UserInfo,
-    VerifyEmailRequest,
+    VerifyOtpRequest,
+    VerifyRegistrationOtpRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +81,12 @@ async def get_auth_service() -> AuthService:
     """Get AuthService from container."""
     container = get_container()
     return await container.get_auth_service()
+
+
+async def get_token_service() -> TokenService:
+    """Get TokenService from container."""
+    container = get_container()
+    return await container.get_token_service()
 
 
 def _get_device_info(request: Request) -> DeviceInfo:
@@ -102,9 +118,6 @@ async def get_current_auth_user_id(request: Request) -> UUID:
     This is for auth-protected endpoints within the auth module.
     Uses TokenService for JWT verification.
     """
-    from domains.auth.token_service import TokenService
-    from domains.auth.exceptions import TokenInvalidException
-
     authorization = request.headers.get("authorization")
     if not authorization or not authorization.startswith("Bearer "):
         raise TokenInvalidException(message="Missing authentication token")
@@ -118,43 +131,136 @@ async def get_current_auth_user_id(request: Request) -> UUID:
 
 
 # ===================================================================
-# Public Endpoints
+# Registration (3-step OTP)
 # ===================================================================
 
 @router.post(
-    "/register",
-    response_model=AuthTokenResponse,
-    responses={422: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    "/register/send-otp",
+    response_model=OtpSentResponse,
+    responses={
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+    },
 )
 @limiter.limit("5/hour")
-async def register(
+async def register_send_otp(
     request: Request,
-    body: RegisterRequest,
+    body: SendRegistrationOtpRequest,
     auth_service: AuthService = Depends(get_auth_service),
+) -> OtpSentResponse:
+    """
+    Registration step 1: Send OTP verification code to email.
+
+    Validates email, checks for restorable accounts, sends 6-digit OTP.
+    If a restorable soft-deleted account exists, returns has_restorable_account=true.
+    """
+    result = await auth_service.send_registration_otp(email=body.email)
+
+    return OtpSentResponse(
+        success=True,
+        message="Verification code sent",
+        has_restorable_account=result.get("has_restorable_account", False),
+    )
+
+
+@router.post(
+    "/register/verify-otp",
+    response_model=OtpVerifiedResponse,
+    responses={400: {"model": ErrorResponse}, 429: {"model": ErrorResponse}},
+)
+@limiter.limit("10/hour")
+async def register_verify_otp(
+    request: Request,
+    body: VerifyRegistrationOtpRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
+) -> OtpVerifiedResponse:
+    """
+    Registration step 2: Verify OTP code.
+
+    Returns a short-lived register_token (JWT, 15 min) for step 3.
+    """
+    result = await auth_service.verify_registration_otp(
+        email=body.email,
+        otp_code=body.otp_code,
+    )
+
+    # Wrap user_id in a short-lived JWT for secure handoff to step 3
+    register_token = token_service.create_purpose_token(
+        user_id=UUID(result["user_id"]),
+        purpose="register",
+        expire_minutes=15,
+    )
+
+    return OtpVerifiedResponse(
+        success=True,
+        register_token=register_token,
+    )
+
+
+@router.post(
+    "/register/complete",
+    response_model=AuthTokenResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+    },
+)
+@limiter.limit("5/hour")
+async def register_complete(
+    request: Request,
+    body: CompleteRegistrationRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
 ) -> AuthTokenResponse:
     """
-    Register a new user account.
+    Registration step 3: Set password and create profile.
 
-    Creates auth_users + profiles atomically, sends verification email,
-    returns access + refresh tokens.
+    Requires register_token from step 2.
+    With restore_account=true, restores a previously deleted account.
     """
+    # Verify the register_token JWT
+    user_id = token_service.verify_purpose_token(
+        token=body.register_token,
+        expected_purpose="register",
+    )
+
     device_info = _get_device_info(request)
 
-    result = await auth_service.register(
-        email=body.email,
-        password=body.password,
-        display_name=body.display_name,
-        device_info=device_info,
-        signup_bonus=SIGNUP_BONUS_CREDITS,
-    )
+    if body.restore_account:
+        # Restore flow: look up email from the pending user, then restore
+        email = await auth_service.get_pending_user_email(user_id)
+        if email is None:
+            raise TokenInvalidException(message="Invalid register token")
+
+        result = await auth_service.restore_account(
+            email=email,
+            password=body.password,
+            device_info=device_info,
+        )
+    else:
+        # Normal registration completion
+        result = await auth_service.complete_registration(
+            user_id=str(user_id),
+            password=body.password,
+            display_name=body.display_name,
+            device_info=device_info,
+            signup_bonus=SIGNUP_BONUS_CREDITS,
+        )
 
     return AuthTokenResponse(
         access_token=result["access_token"],
         refresh_token=result["refresh_token"],
-        token_type=result["token_type"],
+        token_type=result.get("token_type", "bearer"),
         user=UserInfo(**result["user"]),
     )
 
+
+# ===================================================================
+# Login & Token Management
+# ===================================================================
 
 @router.post(
     "/login",
@@ -186,7 +292,7 @@ async def login(
     return AuthTokenResponse(
         access_token=result["access_token"],
         refresh_token=result["refresh_token"],
-        token_type=result["token_type"],
+        token_type=result.get("token_type", "bearer"),
         user=UserInfo(**result["user"]),
     )
 
@@ -233,59 +339,138 @@ async def logout(
     return SuccessResponse(message="Logged out successfully")
 
 
-@router.post(
-    "/verify-email",
-    response_model=SuccessResponse,
-    responses={400: {"model": ErrorResponse}},
-)
-async def verify_email(
-    body: VerifyEmailRequest,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> SuccessResponse:
-    """Verify email address using the token from the verification link."""
-    await auth_service.verify_email(
-        token=body.token,
-        email=body.email,
-    )
-    return SuccessResponse(message="Email verified successfully")
-
+# ===================================================================
+# Unified OTP (change-password / delete-account / forgot-password)
+# ===================================================================
 
 @router.post(
-    "/forgot-password",
-    response_model=SuccessResponse,
+    "/otp/send",
+    response_model=OtpSentResponse,
+    responses={429: {"model": ErrorResponse}},
 )
 @limiter.limit("3/hour")
-async def forgot_password(
+async def otp_send(
     request: Request,
-    body: ForgotPasswordRequest,
+    body: SendOtpRequest,
     auth_service: AuthService = Depends(get_auth_service),
-) -> SuccessResponse:
+) -> OtpSentResponse:
     """
-    Request password reset email.
+    Send OTP for password change, account deletion, or password reset.
 
-    Always returns success (prevents email enumeration).
+    purpose="forgot_password": public, email required in body.
+    purpose="change_password"|"delete_account": auth required, email from JWT.
     """
-    await auth_service.request_password_reset(email=body.email)
-    return SuccessResponse(
-        message="If an account exists with this email, a reset link has been sent."
+    if body.purpose == OTP_PURPOSE_FORGOT_PASSWORD:
+        # Public: use email from request body
+        if not body.email:
+            raise TokenInvalidException(
+                message="Email is required for forgot_password"
+            )
+        result = await auth_service.send_password_reset_otp(email=body.email)
+        return OtpSentResponse(
+            success=True,
+            message=result.get(
+                "message",
+                "If an account exists with this email, a verification code has been sent.",
+            ),
+        )
+
+    # Authenticated purposes: extract user_id from JWT
+    auth_user_id = await get_current_auth_user_id(request)
+
+    if body.purpose == OTP_PURPOSE_CHANGE_PASSWORD:
+        await auth_service.send_change_password_otp(user_id=auth_user_id)
+    elif body.purpose == OTP_PURPOSE_DELETE_ACCOUNT:
+        await auth_service.send_delete_account_otp(user_id=auth_user_id)
+
+    return OtpSentResponse(
+        success=True,
+        message="Verification code sent",
     )
 
 
 @router.post(
-    "/reset-password",
+    "/otp/verify",
+    response_model=OtpVerifiedResponse,
+    responses={400: {"model": ErrorResponse}},
+)
+@limiter.limit("10/hour")
+async def otp_verify(
+    request: Request,
+    body: VerifyOtpRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
+) -> OtpVerifiedResponse:
+    """
+    Verify OTP code for change-password, delete-account, or forgot-password.
+
+    Returns an otp_verified_token (JWT, 10 min) for the subsequent action.
+    """
+    if body.purpose == OTP_PURPOSE_FORGOT_PASSWORD:
+        # Public: use email from body
+        if not body.email:
+            raise TokenInvalidException(
+                message="Email is required for forgot_password"
+            )
+        result = await auth_service.verify_password_reset_otp(
+            email=body.email,
+            otp_code=body.otp_code,
+        )
+        target_user_id = UUID(result["user_id"])
+    else:
+        # Authenticated: extract user_id from JWT
+        auth_user_id = await get_current_auth_user_id(request)
+        await auth_service.verify_authenticated_otp(
+            user_id=auth_user_id,
+            otp_code=body.otp_code,
+            expected_purpose=body.purpose,
+        )
+        target_user_id = auth_user_id
+
+    # Create short-lived purpose token
+    otp_verified_token = token_service.create_purpose_token(
+        user_id=target_user_id,
+        purpose=f"otp_verified_{body.purpose}",
+        expire_minutes=10,
+    )
+
+    return OtpVerifiedResponse(
+        success=True,
+        otp_verified_token=otp_verified_token,
+    )
+
+
+# ===================================================================
+# Password Reset (forgot-password)
+# ===================================================================
+
+@router.post(
+    "/forgot-password/reset",
     response_model=SuccessResponse,
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
-async def reset_password(
-    body: ResetPasswordRequest,
+@limiter.limit("5/hour")
+async def forgot_password_reset(
+    request: Request,
+    body: ForgotPasswordResetRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
 ) -> SuccessResponse:
-    """Reset password using the token from the reset email."""
+    """
+    Reset password using otp_verified_token from /auth/otp/verify.
+
+    Revokes all existing sessions after reset.
+    """
+    user_id = token_service.verify_purpose_token(
+        token=body.otp_verified_token,
+        expected_purpose="otp_verified_forgot_password",
+    )
+
     await auth_service.reset_password(
-        token=body.token,
-        email=body.email,
+        user_id=str(user_id),
         new_password=body.new_password,
     )
+
     return SuccessResponse(message="Password has been reset. Please sign in.")
 
 
@@ -296,19 +481,37 @@ async def reset_password(
 @router.post(
     "/change-password",
     response_model=SuccessResponse,
-    responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
+@limiter.limit("5/hour")
 async def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     user_id: UUID = Depends(get_current_auth_user_id),
     auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
 ) -> SuccessResponse:
-    """Change password (requires current password verification)."""
+    """
+    Change password (requires OTP verification + current password).
+
+    The otp_verified_token proves the user verified their email via OTP.
+    """
+    # Verify the OTP-verified token
+    token_user_id = token_service.verify_purpose_token(
+        token=body.otp_verified_token,
+        expected_purpose="otp_verified_change_password",
+    )
+
+    # Ensure token belongs to the authenticated user
+    if token_user_id != user_id:
+        raise TokenInvalidException(
+            message="Token does not match authenticated user"
+        )
+
     await auth_service.change_password(
         user_id=user_id,
         current_password=body.current_password,
         new_password=body.new_password,
-        revoke_other_sessions=body.revoke_other_sessions,
     )
     return SuccessResponse(message="Password changed successfully")
 
@@ -321,19 +524,6 @@ async def logout_all(
     """Logout from all devices."""
     await auth_service.logout_all(user_id=user_id)
     return SuccessResponse(message="Logged out from all devices")
-
-
-@router.post(
-    "/resend-verification",
-    response_model=SuccessResponse,
-)
-async def resend_verification(
-    user_id: UUID = Depends(get_current_auth_user_id),
-    auth_service: AuthService = Depends(get_auth_service),
-) -> SuccessResponse:
-    """Resend email verification link."""
-    await auth_service.resend_verification_email(user_id=user_id)
-    return SuccessResponse(message="Verification email sent")
 
 
 @router.get("/sessions", response_model=SessionListResponse)
@@ -367,23 +557,36 @@ async def revoke_session(
     return SuccessResponse(message="Session revoked")
 
 
-@router.delete(
-    "/account",
+@router.post(
+    "/delete-account",
     response_model=SuccessResponse,
-    responses={401: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
 )
+@limiter.limit("1/hour")
 async def delete_account(
+    request: Request,
     body: DeleteAccountRequest,
     user_id: UUID = Depends(get_current_auth_user_id),
     auth_service: AuthService = Depends(get_auth_service),
+    token_service: TokenService = Depends(get_token_service),
 ) -> SuccessResponse:
     """
-    Delete user account permanently.
+    Delete user account.
 
-    Requires password verification. This is irreversible.
+    Requires otp_verified_token from /auth/otp/verify with purpose=delete_account.
     """
-    await auth_service.delete_account(
-        user_id=user_id,
-        password=body.password,
+    # Verify the OTP-verified token
+    token_user_id = token_service.verify_purpose_token(
+        token=body.otp_verified_token,
+        expected_purpose="otp_verified_delete_account",
     )
+
+    # Ensure token belongs to the authenticated user
+    if token_user_id != user_id:
+        raise TokenInvalidException(
+            message="Token does not match authenticated user"
+        )
+
+    await auth_service.delete_account(user_id=user_id)
+
     return SuccessResponse(message="Account deleted")

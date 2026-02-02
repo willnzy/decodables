@@ -268,6 +268,80 @@ class TokenService:
         return hashlib.sha256(otp_code.strip().encode()).hexdigest()
 
     # -------------------------------------------------------------------
+    # Short-Lived Purpose Tokens (register, otp_verified)
+    # -------------------------------------------------------------------
+
+    def create_purpose_token(
+        self,
+        user_id: UUID,
+        purpose: str,
+        expire_minutes: int = 15,
+    ) -> str:
+        """
+        Create a short-lived JWT for multi-step flows.
+
+        Used to securely pass user identity between OTP verification
+        and the subsequent action (register/complete, reset-password, etc.).
+
+        Args:
+            user_id: User's UUID (becomes 'sub' claim).
+            purpose: Token purpose (e.g., 'register', 'otp_verified').
+            expire_minutes: Token lifetime in minutes (default 15).
+
+        Returns:
+            Encoded JWT string.
+        """
+        now = int(time.time())
+        payload = {
+            "sub": str(user_id),
+            "purpose": purpose,
+            "iat": now,
+            "exp": now + (expire_minutes * 60),
+        }
+        return jwt.encode(
+            payload, self._jwt_secret, algorithm=ACCESS_TOKEN_ALGORITHM
+        )
+
+    def verify_purpose_token(
+        self,
+        token: str,
+        expected_purpose: str,
+    ) -> UUID:
+        """
+        Verify and decode a short-lived purpose token.
+
+        Args:
+            token: Encoded JWT string.
+            expected_purpose: Required 'purpose' claim value.
+
+        Returns:
+            User UUID from the token's 'sub' claim.
+
+        Raises:
+            TokenExpiredException: If token has expired.
+            TokenInvalidException: If token is invalid or purpose mismatch.
+        """
+        try:
+            payload = jwt.decode(
+                token,
+                self._jwt_secret,
+                algorithms=[ACCESS_TOKEN_ALGORITHM],
+                options={"require": ["sub", "purpose", "exp", "iat"]},
+            )
+        except jwt.ExpiredSignatureError:
+            raise TokenExpiredException()
+        except (jwt.InvalidTokenError, jwt.DecodeError):
+            raise TokenInvalidException(message="Invalid token")
+
+        if payload.get("purpose") != expected_purpose:
+            raise TokenInvalidException(message="Invalid token purpose")
+
+        try:
+            return UUID(payload["sub"])
+        except (KeyError, ValueError):
+            raise TokenInvalidException(message="Malformed token payload")
+
+    # -------------------------------------------------------------------
     # Secure Tokens (general purpose)
     # -------------------------------------------------------------------
 

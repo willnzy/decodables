@@ -28,6 +28,8 @@ from .constants import (
     MAX_ACTIVE_SESSIONS,
     OTP_COOLDOWN_SECONDS,
     OTP_EXPIRE_MINUTES,
+    OTP_PURPOSE_CHANGE_PASSWORD,
+    OTP_PURPOSE_DELETE_ACCOUNT,
     OTP_PURPOSE_FORGOT_PASSWORD,
     OTP_PURPOSE_REGISTER,
     REVOKE_REASON_LOGOUT,
@@ -39,7 +41,6 @@ from .email_service import EmailService
 from .exceptions import (
     AccountDisabledException,
     AccountLockedException,
-    AccountRestorableException,
     DisposableEmailException,
     EmailAlreadyExistsException,
     InvalidCredentialsException,
@@ -135,13 +136,12 @@ class AuthService:
         self._check_disposable_email(validated_email.domain)
 
         # 2. Check for restorable account
+        has_restorable = False
         restorable = await self._auth_user_repo.get_restorable_by_email(
             validated_email.value
         )
         if restorable:
-            raise AccountRestorableException(
-                restore_deadline=restorable.get("recovery_expires_at"),
-            )
+            has_restorable = True
 
         # 3. Generate OTP
         otp_code, otp_hash = self._token_svc.generate_otp()
@@ -207,6 +207,7 @@ class AuthService:
             "user_id": str(created_user.id),
             "email": validated_email.value,
             "otp_expires_in_seconds": OTP_EXPIRE_MINUTES * 60,
+            "has_restorable_account": has_restorable,
         }
 
     # ===================================================================
@@ -215,14 +216,14 @@ class AuthService:
 
     async def verify_registration_otp(
         self,
-        user_id: str,
+        email: str,
         otp_code: str,
     ) -> Dict[str, Any]:
         """
         Registration step 2: Verify the OTP code.
 
         Args:
-            user_id: User ID from step 1.
+            email: User's email address (used to look up the pending user).
             otp_code: 6-digit OTP code from email.
 
         Returns:
@@ -233,8 +234,8 @@ class AuthService:
             OtpMaxAttemptsException: Too many failed attempts.
             OtpInvalidException: Wrong OTP code.
         """
-        uid = UUID(user_id)
-        auth_user = await self._auth_user_repo.get_by_id(uid)
+        normalized = email.strip().lower()
+        auth_user = await self._auth_user_repo.get_by_email(normalized)
         if auth_user is None:
             raise OtpInvalidException(remaining_attempts=0)
 
@@ -259,7 +260,7 @@ class AuthService:
             # Increment attempts
             auth_user.increment_otp_attempts()
             await self._auth_user_repo.update_otp_attempts(
-                user_id=uid,
+                user_id=auth_user.id,
                 otp_attempts=auth_user.otp_attempts,
             )
 
@@ -272,7 +273,7 @@ class AuthService:
 
         # OTP verified — don't clear yet, step 3 will clear via RPC
         return {
-            "user_id": str(uid),
+            "user_id": str(auth_user.id),
             "email": auth_user.email,
             "otp_verified": True,
         }
@@ -561,6 +562,139 @@ class AuthService:
         )
 
     # ===================================================================
+    # Authenticated OTP (change-password / delete-account)
+    # ===================================================================
+
+    async def send_change_password_otp(self, user_id: UUID) -> None:
+        """
+        Send OTP for password change verification.
+
+        Args:
+            user_id: Authenticated user's UUID.
+
+        Raises:
+            OtpCooldownException: OTP sent too recently.
+        """
+        await self._send_authenticated_otp(user_id, OTP_PURPOSE_CHANGE_PASSWORD)
+
+    async def send_delete_account_otp(self, user_id: UUID) -> None:
+        """
+        Send OTP for account deletion verification.
+
+        Args:
+            user_id: Authenticated user's UUID.
+
+        Raises:
+            OtpCooldownException: OTP sent too recently.
+        """
+        await self._send_authenticated_otp(user_id, OTP_PURPOSE_DELETE_ACCOUNT)
+
+    async def _send_authenticated_otp(
+        self, user_id: UUID, purpose: str
+    ) -> None:
+        """
+        Internal: Send OTP for an authenticated user.
+
+        Shared logic for change-password and delete-account OTP.
+        """
+        auth_user = await self._auth_user_repo.get_by_id(user_id)
+        if auth_user is None or auth_user.is_pending:
+            raise InvalidCredentialsException()
+
+        # Check cooldown
+        if auth_user.is_otp_valid and auth_user.otp_expires_at:
+            otp_set_at = auth_user.otp_expires_at - timedelta(
+                minutes=OTP_EXPIRE_MINUTES
+            )
+            elapsed = (datetime.now(timezone.utc) - otp_set_at).total_seconds()
+            if elapsed < OTP_COOLDOWN_SECONDS:
+                remaining = int(OTP_COOLDOWN_SECONDS - elapsed)
+                raise OtpCooldownException(retry_after_seconds=remaining)
+
+        # Generate and store OTP
+        otp_code, otp_hash = self._token_svc.generate_otp()
+        otp_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=OTP_EXPIRE_MINUTES
+        )
+
+        await self._auth_user_repo.update_otp(
+            user_id=auth_user.id,
+            otp_code_hash=otp_hash,
+            otp_purpose=purpose,
+            otp_expires_at=otp_expires_at,
+        )
+
+        # Send email
+        try:
+            await self._email_svc.send_otp_email(
+                to_email=auth_user.email,
+                otp_code=otp_code,
+                purpose=purpose,
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to send {purpose} OTP to {auth_user.email}"
+            )
+
+    async def verify_authenticated_otp(
+        self,
+        user_id: UUID,
+        otp_code: str,
+        expected_purpose: str,
+    ) -> Dict[str, Any]:
+        """
+        Verify OTP for an authenticated user (change-password / delete-account).
+
+        Args:
+            user_id: Authenticated user's UUID.
+            otp_code: 6-digit OTP code.
+            expected_purpose: Expected OTP purpose.
+
+        Returns:
+            Dict with user_id and otp_verified=True.
+
+        Raises:
+            OtpExpiredException: OTP has expired.
+            OtpMaxAttemptsException: Too many failed attempts.
+            OtpInvalidException: Wrong OTP code.
+        """
+        auth_user = await self._auth_user_repo.get_by_id(user_id)
+        if auth_user is None:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        if auth_user.otp_purpose != expected_purpose:
+            raise OtpInvalidException(remaining_attempts=0)
+
+        if not auth_user.is_otp_valid:
+            raise OtpExpiredException()
+
+        if auth_user.is_otp_max_attempts_reached:
+            raise OtpMaxAttemptsException()
+
+        input_hash = self._token_svc.hash_otp(otp_code)
+        if input_hash != auth_user.otp_code_hash:
+            auth_user.increment_otp_attempts()
+            await self._auth_user_repo.update_otp_attempts(
+                user_id=auth_user.id,
+                otp_attempts=auth_user.otp_attempts,
+            )
+
+            if auth_user.is_otp_max_attempts_reached:
+                raise OtpMaxAttemptsException()
+
+            from .constants import OTP_MAX_ATTEMPTS
+            remaining = OTP_MAX_ATTEMPTS - auth_user.otp_attempts
+            raise OtpInvalidException(remaining_attempts=remaining)
+
+        # Clear OTP after successful verification
+        await self._auth_user_repo.clear_otp(user_id)
+
+        return {
+            "user_id": str(user_id),
+            "otp_verified": True,
+        }
+
+    # ===================================================================
     # Password Reset via OTP
     # ===================================================================
 
@@ -829,40 +963,24 @@ class AuthService:
     async def delete_account(
         self,
         user_id: UUID,
-        password: str,
     ) -> None:
         """
-        Delete user account.
+        Delete user account (after OTP verification).
 
         Flow:
-        1. Verify password
-        2. Revoke all sessions
-        3. Hard delete auth_users (cascades to sessions)
+        1. Revoke all sessions
+        2. Hard delete auth_users (cascades to sessions)
 
-        Note: Profile soft-delete, email_hash, and Stripe cancellation
+        Note: OTP verification is handled by the router layer before calling this.
+        Profile soft-delete, email_hash, and Stripe cancellation
         should be handled by the application layer before calling this.
 
         Args:
             user_id: User's UUID.
-            password: Current password for verification.
-
-        Raises:
-            InvalidCredentialsException: Wrong password.
         """
         auth_user = await self._auth_user_repo.get_by_id(user_id)
-        if auth_user is None or auth_user.password_hash is None:
+        if auth_user is None:
             raise InvalidCredentialsException()
-
-        # Verify password
-        is_valid = await run_in_threadpool(
-            self._password_svc.verify_password,
-            password,
-            auth_user.password_hash,
-        )
-        if not is_valid:
-            raise InvalidCredentialsException(
-                message="Password verification failed"
-            )
 
         # Revoke all sessions
         await self._session_repo.revoke_all_by_user(
@@ -878,6 +996,23 @@ class AuthService:
     # ===================================================================
     # Account Restoration
     # ===================================================================
+
+    async def get_pending_user_email(self, user_id: UUID) -> Optional[str]:
+        """
+        Get the email of a pending (pre-registration) user.
+
+        Used by the router to look up email for the restore flow.
+
+        Args:
+            user_id: User's UUID from register_token.
+
+        Returns:
+            Email string if user is pending, None otherwise.
+        """
+        auth_user = await self._auth_user_repo.get_by_id(user_id)
+        if auth_user is None or auth_user.is_registered:
+            return None
+        return auth_user.email
 
     async def check_restorable_account(self, email: str) -> Optional[Dict[str, Any]]:
         """
