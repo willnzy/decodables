@@ -173,7 +173,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 | `components/common/PlanButton.tsx` | Clerk auth 状态 | → `useAuth()` from `@/lib/auth` |
 | `app/dashboard/_components/DashboardAuthGate.tsx` | `<SignIn>` 内嵌登录 | → 跳转到 `/login` |
 | `app/create/page.tsx` | `<SignIn>` 内嵌登录 | → 跳转到 `/login` |
-| `app/profile/page.tsx` | `useUser()`, `useAuth()`, `useClerk()` (openUserProfile, signOut), `<SignIn>` | → `useAuth()` + `useUser()` from `@/lib/auth` + 自定义设置页 |
+| `app/account/page.tsx` (原 `app/profile/page.tsx`) | `useUser()`, `useAuth()`, `useClerk()` (openUserProfile, signOut), `<SignIn>` | → `useAuth()` + `useUser()` from `@/lib/auth` + 统一 Account 页面 |
 | `app/transaction-history/page.tsx` | `useAuth()`, `<SignIn>` 内嵌登录 | → `useAuth()` from `@/lib/auth` + 跳转到 `/login` |
 | `app/_components/landing/pricing/SubscriptionPlans.tsx` | `useClerkWithTimeout()` (间接使用 `useAuth()`) | → `useAuth()` from `@/lib/auth`（删除 timeout 包装） |
 | `components/common/ClerkBillingPage.tsx` | Clerk 专用计费页 | → **删除或重写** |
@@ -1097,7 +1097,7 @@ Clerk useUser() 当前用法 → 替换方案:
 
 Clerk useClerk() 当前用法 → 替换方案:
 ├── signOut()                 → useAuth().signOut()（合并到 useAuth）
-├── openUserProfile()         → router.push('/profile/settings')（自定义设置页替代 Clerk 弹窗）
+├── openUserProfile()         → router.push('/account')（自定义设置页替代 Clerk 弹窗）
 
 数据来源：
 - AuthProvider 初始化时调用 /user/me → 写入 Zustand store
@@ -1501,10 +1501,10 @@ components/auth/OtpInput.tsx — 6 位 OTP 输入框：
 - 可复用于注册和忘记密码页面
 ```
 
-**修改密码 UI（在 /profile/settings 页面内）**：
+**修改密码 UI（在 /account 页面内）**：
 ```
-入口：/profile/settings 页面 → "Change Password" 区域
-实现方式：内嵌在设置页面中（不是独立页面）
+入口：/account 页面 → "Security" 区域 → "Change Password"
+实现方式：内嵌在 Account 页面中（不是独立页面）
 
 UI 流程：
 1. 显示 "Change Password" 卡片，按钮 "Change Password"
@@ -1517,9 +1517,9 @@ UI 流程：
 4. 取消 → 折叠表单
 ```
 
-**删除账户 UI（在 /profile/settings 页面内）**：
+**删除账户 UI（在 /account 页面内）**：
 ```
-入口：/profile/settings 页面 → "Danger Zone" 区域（红色边框卡片）
+入口：/account 页面 → "Danger Zone" 区域（红色边框卡片）
 实现方式：使用 ResponsiveModal（桌面 Dialog / 移动 Sheet）
 
 UI 流程：
@@ -1540,9 +1540,9 @@ UI 流程：
    - 网络错误 → "Unable to connect. Please check your connection and try again."
 ```
 
-**设备管理 UI（在 /profile/settings 页面内）**：
+**设备管理 UI（在 /account 页面内）**：
 ```
-入口：/profile/settings 页面 → "Active Sessions" 区域
+入口：/account 页面 → "Security" 区域 → "Active Sessions"
 
 UI 设计：
 - 卡片列表，每个卡片显示一个活跃设备：
@@ -1563,30 +1563,207 @@ API 调用：
 
 **UserMenu 组件（替换 Clerk UserButton）**：
 ```
-components/common/UserMenu.tsx — 头像下拉菜单：
+components/common/UserMenu.tsx — 头像下拉菜单（极简 4 项）：
+
+设计理念：
+- 参考 Canva/Notion 的极简风格
+- Dashboard/Marketplace 已在主导航中展示，不重复
+- 下拉菜单只放"非导航"的账户操作项
+- Profile/Settings 统一为 "Account" 一个入口
 
 触发器：
-- 用户头像（圆形，32px）+ 向下箭头
-- 头像来源：Gravatar（根据 email MD5 生成 URL）+ 本地 SVG 首字母默认头像
+- 用户头像（圆形，36px，9x9 Tailwind）
+- 头像来源：Gravatar（根据 email MD5 生成 URL）+ 本地首字母默认头像
   - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?d=404&s=80`
   - 使用 `?d=404` 而非 `?d=initials`：Gravatar 的 initials 服务不稳定，部分邮箱返回空白
-  - Fallback 策略：前端 `<img>` 的 `onError` 回调中切换为本地 SVG 首字母头像
-  - 本地首字母头像实现：`<div>` + CSS（背景色根据 displayName 首字母 hash 确定，文字居中显示首字母大写）
+  - Fallback 策略：前端 `<img>` 的 `onError` 回调中切换为本地首字母头像
+  - 本地首字母头像实现：`<div>` + CSS（bg-indigo-100 text-indigo-700，文字居中显示首字母大写）
   - 未来扩展：用户上传自定义头像（存 Supabase Storage）
-  - MVP 阶段使用 Gravatar（d=404）+ 本地首字母 SVG 即可，不依赖 Gravatar 的 fallback 服务
+  - MVP 阶段使用 Gravatar（d=404）+ 本地首字母即可
 
-下拉菜单项：
-- 用户信息区（顶部）：
-  - 显示名称 + email
-  - tier badge（颜色对应 tier）
-- 分隔线
-- "Settings" → /profile/settings
-- "Transaction History" → /transaction-history
-- 分隔线
-- "Sign Out" → signOut()
+下拉菜单项（共 4 项）：
+┌─────────────────────────────┐
+│ 👤 DisplayName              │  ← 用户信息区（顶部）
+│    user@email.com           │
+├─────────────────────────────┤
+│ 🔧 Account       → /account│  ← 统一的账户管理入口
+│ 📋 Transactions   → /txn   │
+│ 💳 Buy Credits    → /dash?c│
+├─────────────────────────────┤
+│ 🚪 Sign Out                │  ← 红色文字，独立区域
+└─────────────────────────────┘
+
+具体说明：
+1. 用户信息区（顶部，不可点击）：
+   - 显示名称 + email（truncate 处理长文本）
+   - 无 tier badge（简化信息密度）
+2. "Account" → /account
+   - 图标：User (lucide)
+   - 统一入口：包含 Profile 信息、安全设置、偏好等
+3. "Transactions" → /transaction-history
+   - 图标：History (lucide)
+4. "Buy Credits" → /dashboard?tab=credits
+   - 图标：CreditCard (lucide)
+5. 分隔线
+6. "Sign Out" → signOut()
+   - 图标：LogOut (lucide)
+   - 文字颜色：rose-600，hover: rose-50 背景
 
 移动端：
-- 不使用下拉菜单，直接集成到 MobileMenu/BottomNavbar 中
+- 不使用下拉菜单，UserMenu 只在 sm: 以上显示
+- 移动端通过 BottomNavbar "Account" tab 进入 /account 页面
+- MobileMenu 底部有 Sign Out 按钮
+```
+
+**Account 页面（统一的账户管理页面）**：
+
+```
+路由：/account
+命名决策：统一使用 "Account"（参考 Canva/Notion 模式）
+- 不再区分 "Profile" 和 "Settings"
+- PC 和 Mobile 共用同一路由 /account
+- BottomNavbar 的 "Profile" tab 改为 "Account"
+
+文件结构：
+decodables-fe/app/account/
+├── page.tsx                # Account 主页面（响应式，PC/Mobile 共用）
+└── _components/
+    ├── AccountSidebar.tsx   # PC 侧边栏导航（仅 lg: 以上显示）
+    ├── ProfileSection.tsx   # 个人信息区域
+    ├── SecuritySection.tsx  # 安全设置（修改密码 + 设备管理）
+    ├── CreditsSection.tsx   # 积分与订阅（复用 CreditsCard + SubscriptionCard）
+    └── DangerZoneSection.tsx # 危险区域（删除账户）
+
+组件复用：
+- CreditsCard → 从 components/profile/CreditsCard.tsx 复用
+- SubscriptionCard → 从 components/profile/SubscriptionCard.tsx 复用
+- UserIdCard → 从 components/profile/UserIdCard.tsx 复用
+- OtpInput → 从 components/auth/OtpInput.tsx 复用（修改密码 + 删除账户）
+```
+
+```
+PC 布局（lg: 以上，≥1024px）：
+
+┌─────────────────────────────────────────────────────┐
+│ Navbar                                              │
+├──────────────┬──────────────────────────────────────┤
+│  Sidebar     │  Content Area                        │
+│              │                                      │
+│  ◉ Profile   │  [根据 sidebar 选中项切换内容]         │
+│  ○ Security  │                                      │
+│  ○ Credits   │  Profile 区域（默认）：                │
+│  ○ Danger    │  - 头像 + 显示名称 + 邮箱             │
+│              │  - User ID（复用 UserIdCard）          │
+│              │  - 编辑 Display Name 表单              │
+│              │                                      │
+│              │  Security 区域：                      │
+│              │  - Change Password（OTP 三步流程）     │
+│              │  - Active Sessions（设备列表）         │
+│              │                                      │
+│              │  Credits & Subscription 区域：         │
+│              │  - CreditsCard（余额 + 购买）          │
+│              │  - SubscriptionCard（当前计划）         │
+│              │                                      │
+│              │  Danger Zone：                        │
+│              │  - Delete Account（OTP 确认）          │
+│              │                                      │
+├──────────────┴──────────────────────────────────────┤
+│ Footer (optional)                                   │
+└─────────────────────────────────────────────────────┘
+
+PC 实现细节：
+- 整体布局：max-w-4xl mx-auto，左侧 sidebar 200px + 右侧 content flex-1
+- Sidebar：sticky top-[calc(44px+64px+16px)]（Banner + Navbar 高度 + 间距）
+  - 导航项：Profile / Security / Credits & Subscription / Danger Zone
+  - 选中态：左侧 2px indigo border + bg-indigo-50 + text-indigo-600
+  - 非选中：text-slate-600 hover:bg-slate-50
+  - 使用 scrollIntoView + IntersectionObserver 实现 scroll spy
+  - 或使用 tab 切换模式（URL hash: /account#security）
+- Content：单页滚动模式（所有区域在同一页面上下排列）
+  - 每个区域用 <section id="profile|security|credits|danger"> 标记
+  - 区域间用 border-b border-slate-200 分隔
+```
+
+```
+Mobile 布局（< lg，即 < 1024px）：
+
+┌─────────────────────────┐
+│ Navbar                  │
+├─────────────────────────┤
+│                         │
+│  [头像]                  │
+│  DisplayName            │
+│  user@email.com         │
+│  [Tier Badge]           │
+│                         │
+│  ┌───────────────────┐  │
+│  │ User ID: 26...    │  │  ← UserIdCard
+│  └───────────────────┘  │
+│                         │
+│  ┌───────────────────┐  │
+│  │ Credits: 150      │  │  ← CreditsCard
+│  │ Monthly / Perm    │  │
+│  │ [Buy Credits]     │  │
+│  └───────────────────┘  │
+│                         │
+│  ┌───────────────────┐  │
+│  │ Starter Plan      │  │  ← SubscriptionCard
+│  │ [Manage/Upgrade]  │  │
+│  └───────────────────┘  │
+│                         │
+│  Quick Actions:         │
+│  ├─ Transaction History │  ← 打开 TransactionSheet
+│  ├─ Account Settings    │  ← 打开 SecuritySheet (含密码+设备)
+│  ├─ Notifications       │  ← 打开 NotificationsSheet
+│  ├─ Language & Theme    │  ← 打开 PreferencesSheet
+│  └─ Help & Support      │  ← 跳转 /manual
+│                         │
+│  [Sign Out]             │
+│                         │
+│  Version 1.0.0          │
+│                         │
+├─────────────────────────┤
+│ BottomNavbar            │
+│ Home|Dash|Create|Mkt|Acct│
+└─────────────────────────┘
+
+Mobile 实现细节：
+- 沿用当前 /profile 页面的 iOS Settings 风格布局
+- ProfileHeader → UserIdCard → CreditsCard → SubscriptionCard → QuickActionsList → SignOutButton
+- Quick Actions 使用 drill-down 模式（点击打开 Bottom Sheet）
+- "Account Settings" Quick Action 打开包含密码修改 + 设备管理的 Sheet
+- 不需要 sidebar（移动端空间有限，使用 sheet drill-down 更自然）
+```
+
+```
+BottomNavbar 更新：
+- 当前: { id: 'profile', label: 'Profile', href: '/profile', icon: User }
+- 改为: { id: 'account', label: 'Account', href: '/account', icon: User }
+
+MobileMenu 更新：
+- 底部用户区域保持不变（Credits + User Info + Sign Out）
+- 无需新增 Account 入口（BottomNavbar 已有）
+
+Navbar UserMenu（PC）更新：
+- 移除 Profile、Dashboard、Marketplace、Settings 4 个冗余项
+- 保留 Account（新）、Transactions、Buy Credits、Sign Out（共 4 项）
+- Copy User ID 功能移入 Account 页面的 UserIdCard
+```
+
+```
+路由迁移对照表：
+
+| 旧路由 | 新路由 | 说明 |
+|--------|--------|------|
+| /profile | /account | 统一命名 |
+| /profile/settings | /account | 设置功能内嵌在 Account 页面中 |
+| BottomNavbar "Profile" | BottomNavbar "Account" | tab 名称更新 |
+| UserMenu "Settings" | UserMenu "Account" | 菜单项更新 |
+| UserMenu "Profile" | (移除) | 合并到 Account |
+
+openUserProfile() 替换：
+- 旧：router.push('/account')
+- 新：router.push('/account')
 ```
 
 **登录后重定向机制**：
@@ -1608,7 +1785,7 @@ login/page.tsx 实现：
 | `<ClerkProvider>` | `<AuthProvider>` | `layout.tsx` |
 | `clerkMiddleware()` | 自定义 middleware | `middleware.ts` |
 | `<SignIn>` | `<LoginForm>` / 跳转到 `/login` | 3 个 AuthGate 位置 |
-| `<UserButton>` | `<UserMenu>` (自定义头像下拉：头像+用户名+tier badge) | Navbar |
+| `<UserButton>` | `<UserMenu>` (极简 4 项：Account/Transactions/Buy Credits/Sign Out) | Navbar |
 | `<SignedIn>` | `{isSignedIn && ...}` | Navbar |
 | `<SignedOut>` | `{!isSignedIn && ...}` | Navbar |
 | `<SignInButton>` | `<Link href="/login">` | Navbar |
@@ -1675,7 +1852,7 @@ import { useAuth } from "@/lib/auth";
   /login, /register, /forgot-password
 
 保护路由（其余所有）— 未登录重定向到 /login：
-  /dashboard, /dashboard/*, /create, /create/*, /profile, /profile/*,
+  /dashboard, /dashboard/*, /create, /create/*, /account, /account/*,
   /admin, /admin/*, /notifications, /transaction-history
 
 实现伪代码：
@@ -1866,7 +2043,7 @@ require_verified_email 依赖仍然保留：
 **注销流程**：
 ```
 前端：
-1. 用户在 /profile 点击 "删除账户"
+1. 用户在 /account 页面点击 "删除账户"
 2. 弹出确认对话框：勾选 "我理解此操作不可逆" + 点击 "发送验证码"
 3. 调用 POST /auth/otp/send { purpose: "delete_account" } → 发送 OTP 到用户邮箱
 4. 用户输入 6 位 OTP → 调用 POST /auth/otp/verify { purpose: "delete_account" } → 获取 otp_verified_token
@@ -2521,18 +2698,27 @@ Git 分支: feat/auth-phase4-auth-pages
 - ✅ 验证：完整密码重置流程
 
 **Step 4.6: 实现 UserMenu 组件（替换 Clerk UserButton）**
-- 新建 `components/common/UserMenu.tsx`
+- 新建 `components/common/UserMenu.tsx`（极简 4 项版本）
   - 头像（Gravatar + 首字母默认头像）+ 下拉菜单
-  - 菜单项：用户信息区 / Settings / Transaction History / Sign Out
+  - 菜单项：用户信息区 / Account / Transactions / Buy Credits / Sign Out
   - Gravatar URL: `https://www.gravatar.com/avatar/${md5(email.trim().toLowerCase())}?d=404&s=80`（d=404 + 本地首字母 fallback）
-- ✅ 验证：下拉菜单正常显示
+- ✅ 验证：下拉菜单正常显示，4 个菜单项可点击
 
-**Step 4.7: 实现 Profile Settings 中的 Auth 功能**
-- 在 `/profile/settings` 页面新增或修改以下区域：
-  - "Change Password" 卡片：三步 OTP 流程（复用 OtpInput）
-  - "Active Sessions" 卡片：设备列表 + 踢出 + 全部登出
-  - "Danger Zone" 卡片：删除账户（OTP 确认，使用 ResponsiveModal）
-- ✅ 验证：修改密码、设备管理、删除账户流程完整可用
+**Step 4.7: 实现 Account 页面（统一的账户管理页面）**
+- 新建 `app/account/page.tsx`（响应式，PC/Mobile 共用路由）
+- 新建 `app/account/_components/`：
+  - `AccountSidebar.tsx`：PC 侧边栏导航（Profile/Security/Credits/Danger Zone）
+  - `ProfileSection.tsx`：头像 + 显示名称 + 邮箱 + 编辑 Display Name
+  - `SecuritySection.tsx`：修改密码（OTP 三步，复用 OtpInput）+ 设备管理
+  - `CreditsSection.tsx`：复用 CreditsCard + SubscriptionCard
+  - `DangerZoneSection.tsx`：删除账户（OTP 确认，ResponsiveModal）
+- PC 布局（lg:）：左侧 sidebar 200px + 右侧 content（scroll spy 或 tab 切换）
+- Mobile 布局（< lg）：沿用当前 iOS Settings 风格（ProfileHeader → Cards → QuickActions → SignOut）
+  - 复用现有 components/profile/ 组件（ProfileHeader, UserIdCard, CreditsCard, SubscriptionCard, QuickActionsList, SignOutButton）
+  - Quick Actions 中 "Account Settings" 打开包含密码修改 + 设备管理的 Bottom Sheet
+- 更新 BottomNavbar：`{ id: 'account', label: 'Account', href: '/account', icon: User }`
+- 删除旧 `app/profile/` 目录（功能已迁移到 /account）
+- ✅ 验证：PC 和 Mobile 布局均正常，修改密码、设备管理、删除账户流程完整可用
 
 **Step 4.8: 完整验证 + 提交**
 - 手动测试完整流程：注册（邮箱 → OTP → 密码）→ 登录 → 登出
@@ -2621,7 +2807,7 @@ Git 分支: feat/auth-phase5-frontend-migration
 
 批次 e — 特殊文件（6 个，需要额外改逻辑）：
 - `components/common/MobileMenu.tsx`：`useUser()` + `useClerk()` → `useAuth()` + `useUser()` from `@/lib/auth`
-- `app/profile/page.tsx`：`useUser()` + `useAuth()` + `useClerk()` → 新 hooks + `router.push('/profile/settings')`
+- `app/account/page.tsx`（原 `app/profile/page.tsx`，重命名+重构）：`useUser()` + `useAuth()` + `useClerk()` → 新 hooks，移除 desktop redirect，新增 PC sidebar 布局
 - `app/transaction-history/page.tsx`：`useAuth()` + `<SignIn>` → `useAuth()` + 跳转 `/login`
 - `app/dashboard/_components/DashboardContent.tsx`：`useUser()` → `useUser()` from `@/lib/auth`
 - `app/dashboard/_components/DashboardAuthGate.tsx`：`<SignIn>` → `redirect('/login')`
