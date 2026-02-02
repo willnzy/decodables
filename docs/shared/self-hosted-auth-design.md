@@ -526,6 +526,62 @@ decodables/api/auth/
 | POST | `/auth/change-password` | 修改密码（已登录） | 5/hour/user | Access Token |
 | GET | `/auth/sessions` | 查看活跃设备 | — | Access Token |
 | DELETE | `/auth/sessions/{id}` | 踢出指定设备 | — | Access Token |
+| POST | `/auth/delete-account` | 注销账户（需密码确认） | 1/hour/user | Access Token |
+
+### 5.3.1 限流实现方案
+
+```
+实现选型: SlowAPI (基于 limits 库) + 内存后端
+
+理由:
+- 当前 Railway 部署为单实例，内存后端足够
+- SlowAPI 是 FastAPI 生态标准限流方案（已有 RATE_LIMIT_* 配置在 config.py）
+- 未来如需多实例部署，可切换为 Redis 后端（仅改配置，不改代码）
+
+限流 Key 设计:
+- /auth/login:    IP + email（防止同 IP 不同账号暴力破解）
+- /auth/register: IP（防止同 IP 批量注册）
+- /auth/refresh:  Refresh Token hash（防止单 token 滥用）
+- /auth/forgot-password: email（防止对同一邮箱频繁发送重置邮件）
+
+锁定机制 (auth_users.failed_login_attempts):
+- 每次密码错误: failed_login_attempts += 1
+- 达到 5 次: locked_until = now() + 30min
+- 成功登录: failed_login_attempts = 0, locked_until = NULL
+- 锁定期间的登录尝试: 不计数（防止攻击者通过锁定期间尝试来延长锁定）
+- 锁定状态下返回: 403 { error: "account_locked", retry_after: seconds_remaining }
+
+响应头 (便于前端展示):
+- X-RateLimit-Limit: 10
+- X-RateLimit-Remaining: 7
+- X-RateLimit-Reset: 1706889600 (Unix timestamp)
+```
+
+### 5.3.2 验证 Token 安全规范
+
+```
+邮箱验证 Token (email_verification_token):
+├── 格式: 32 字节随机数 → base64url 编码（43 字符）
+├── 生成: secrets.token_urlsafe(32)
+├── 有效期: 24 小时
+├── 一次性使用: 验证成功后立即设为 NULL
+├── 重发机制: 重发时生成新 token，旧 token 立即作废
+├── URL 格式: /verify-email?token=xxx&email=user@example.com
+└── 后端校验: token 匹配 AND 未过期 AND email 匹配数据库记录
+
+密码重置 Token (password_reset_token):
+├── 格式: 同上，32 字节 base64url
+├── 有效期: 1 小时（比邮箱验证更短，安全要求更高）
+├── 一次性使用: 重置成功后立即设为 NULL
+├── 重发机制: 重发时生成新 token，旧 token 立即作废
+├── URL 格式: /reset-password?token=xxx&email=user@example.com
+└── 后端校验: token 匹配 AND 未过期 AND email 匹配
+
+过期 Token 清理:
+├── 方式: 不主动清理，验证时检查 expires_at
+├── 可选: 定期任务清理 > 7 天的过期 token（减少数据库碎片）
+└── 部分索引: WHERE token IS NOT NULL（只索引有 token 的行）
+```
 
 ### 5.4 修改现有模块
 
@@ -664,6 +720,113 @@ BFF auth 代理与 USE_PROXY 是不同机制，互不冲突：
 Phase 5 迁移时需确认：USE_PROXY 模式下的 API 调用也正确携带 Bearer token
 ```
 
+### 6.2.1 Token 生命周期管理（tokenManager.ts 核心逻辑）
+
+**自动刷新策略：主动 + 被动双保险**
+
+```
+                        Access Token 15 分钟生命周期
+|━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|━━━━|
+0min                                           14min  15min
+                                                 ↑      ↑
+                                          主动刷新区  过期
+
+主动刷新（优先）：
+- tokenManager 在 Access Token 签发时启动定时器
+- 到期前 60 秒（第 14 分钟）自动触发 /api/auth/refresh
+- 用户无感知，API 调用不中断
+
+被动刷新（兜底）：
+- API 返回 401 → 触发 refresh → 重发原请求
+- 覆盖主动刷新失败、页面休眠恢复等边界场景
+```
+
+**API 请求队列（防止 refresh 期间请求失败）**
+
+```typescript
+// tokenManager.ts 核心逻辑伪代码
+
+class TokenManager {
+  private refreshPromise: Promise<string> | null = null
+  private accessToken: string | null = null
+
+  async getValidToken(): Promise<string> {
+    // 1. 已有正在进行的 refresh → 等待它完成（请求去重）
+    if (this.refreshPromise) {
+      return await this.refreshPromise
+    }
+
+    // 2. Token 即将过期（< 60s）或已过期 → 发起 refresh
+    if (this.isTokenExpiring()) {
+      this.refreshPromise = this.doRefresh()
+      try {
+        const newToken = await this.refreshPromise
+        return newToken
+      } finally {
+        this.refreshPromise = null
+      }
+    }
+
+    // 3. Token 有效 → 直接返回
+    return this.accessToken!
+  }
+
+  private isTokenExpiring(): boolean {
+    // 解码 JWT 检查 exp，剩余 < 60s 视为即将过期
+    const payload = decodeJwtPayload(this.accessToken)
+    return payload.exp * 1000 - Date.now() < 60_000
+  }
+
+  private async doRefresh(): Promise<string> {
+    const res = await fetch('/api/auth/refresh', { method: 'POST' })
+    // BFF 代理自动携带 httpOnly cookie
+    if (!res.ok) throw new SessionExpiredError()
+    const { access_token } = await res.json()
+    this.setToken(access_token)
+    // 通过 BroadcastChannel 通知其他标签页
+    this.channel.postMessage({ type: 'token_refreshed', token: access_token })
+    return access_token
+  }
+}
+```
+
+**跨标签 Token 同步（BroadcastChannel）**
+
+```
+BroadcastChannel 消息类型:
+
+1. token_refreshed:  某标签刷新了 token → 其他标签更新内存中的 token
+2. user_logged_out:  某标签登出 → 其他标签清除状态并跳转 /login
+3. user_logged_in:   某标签登录 → 其他标签（如停留在 /login 页）刷新状态
+
+跨标签 Refresh 竞态解决:
+- Tab A 和 Tab B 同时检测到 token 过期
+- Tab A 先发起 refresh → refreshPromise 不为 null
+- Tab A refresh 成功 → BroadcastChannel 广播新 token
+- Tab B 收到广播 → 直接使用新 token，不再发起 refresh
+- 如果 Tab B 已经发起了 refresh（Tab A 广播前）：
+  → 后端 Refresh Token 轮换：Tab A 的旧 refresh token 已作废
+  → Tab B 的 refresh 请求用的是同一个旧 token → 触发重用检测
+  → 解决方案：Tab B 先等 200ms 检查是否收到广播，再决定是否 refresh
+```
+
+**页面刷新（F5）处理**
+
+```
+用户按 F5：
+1. Zustand 内存清空（accessToken = null）
+2. httpOnly cookie 保留（refresh_token 不受影响）
+3. Next.js 重新渲染 → AuthProvider 挂载
+4. AuthProvider useEffect 检测到 accessToken 为 null
+5. 调用 /api/auth/refresh（cookie 自动携带）
+6. 获取新 accessToken → 存入 Zustand → isLoaded = true
+
+用户体验：
+- 整个过程 < 200ms（BFF 代理 + 后端验证）
+- isLoaded = false 期间显示 Skeleton 加载态
+- 不会出现"未登录"闪烁（Skeleton → 已登录状态）
+```
+
 ### 6.3 新增认证页面
 
 ```
@@ -736,6 +899,55 @@ import { useAuth } from "@/lib/auth";
 判断方式: 检查 refresh_token httpOnly cookie 是否存在
 ```
 
+### 6.7 Server Components / SSR Token 注入
+
+Next.js App Router 中 Server Components 是默认模式，但无法使用 useAuth() hook 或 Zustand。需要专门的服务端 Token 获取机制。
+
+```
+方案：lib/auth/server.ts — 服务端 Token 工具函数
+
+import { cookies } from 'next/headers'
+
+export async function getServerAccessToken(): Promise<string | null> {
+  const cookieStore = await cookies()
+  const refreshToken = cookieStore.get('refresh_token')?.value
+  if (!refreshToken) return null
+
+  // 直接调用后端 /auth/refresh（不走 BFF 代理，因为已在服务端）
+  const res = await fetch(`${BACKEND_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+  if (!res.ok) return null
+  const { access_token } = await res.json()
+  return access_token
+}
+
+使用场景:
+// app/dashboard/page.tsx (Server Component)
+export default async function DashboardPage() {
+  const token = await getServerAccessToken()
+  if (!token) redirect('/login')
+
+  const projects = await fetch(`${BACKEND_URL}/projects`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => r.json())
+
+  return <ProjectList projects={projects} />
+}
+```
+
+```
+注意事项：
+1. Server Component 中获取的 token 不会存入客户端 Zustand（仅本次 SSR 使用）
+2. 客户端 hydration 后，AuthProvider 会独立获取 token（通过 /api/auth/refresh）
+3. 这两份 token 是独立的，不会冲突（后端 Refresh Token 轮换在此场景下安全：
+   SSR 用的是读操作，不触发轮换；客户端 refresh 才触发轮换）
+4. 如果 SSR 也需要触发轮换，则需要 /auth/refresh 增加 rotate=false 参数选项
+5. 大多数页面用 Client Component 即可，SSR 仅用于 SEO 关键页面（如 /marketplace）
+```
+
 ---
 
 ## 七、安全设计
@@ -789,6 +1001,184 @@ Access Token payload 包含 `{ sub, email, role, tier }`，但 tier 变更后已
 - 提供更好的 UX：不要求用户立即去收邮件
 - 防止垃圾注册：未验证用户无法消耗系统资源
 - 保护支付安全：未验证邮箱不能进行付费操作
+```
+
+### 7.3 账户删除 / 注销
+
+用户可以主动注销账户，需要安全流程和数据处理策略。
+
+**注销流程**：
+```
+前端：
+1. 用户在 /profile 点击 "删除账户"
+2. 弹出确认对话框：输入密码 + 勾选 "我理解此操作不可逆"
+3. 调用 POST /auth/delete-account { password }
+
+后端 AuthService.delete_account():
+1. 验证密码正确
+2. 取消 Stripe 订阅（如果有活跃订阅）
+3. 软删除 profiles 记录（is_deleted=true, deleted_at=now()）
+4. 删除 auth_users 记录（CASCADE 自动删除 auth_sessions）
+5. 清除用户生成内容的个人信息（项目保留但 owner 匿名化）
+6. 作废所有 sessions
+7. 返回 200
+```
+
+**数据处理策略**：
+```
+立即删除（不可逆）：
+- auth_users 记录（密码、验证 token 等凭据数据）
+- auth_sessions 所有会话（ON DELETE CASCADE）
+
+软删除 + 30 天恢复期：
+- profiles 记录（is_deleted=true，现有字段已支持）
+  30 天内可通过管理员操作恢复
+  30 天后彻底删除（定期清理任务）
+
+保留但匿名化：
+- projects/assets：owner_id 设为特殊 "deleted_user" UUID
+  用户的创作内容不丢失（便于已购买者继续访问 marketplace 资产）
+- payment_records：保留交易记录（法律要求保留 7 年）
+  但脱敏用户信息（email → hash）
+
+立即清除：
+- Stripe: 调用 Stripe API 取消订阅、删除 customer（或标记不活跃）
+- Resend: 移除邮件列表（如有）
+```
+
+**新增 API 端点**：
+```
+POST /auth/delete-account    需要密码确认    Access Token
+```
+
+**邮箱复用**：
+- 账户删除后，该邮箱可以重新注册（因为 auth_users 已硬删除）
+- 30 天恢复期内，新注册会提示 "此邮箱有待恢复的账户，是否恢复？"
+
+### 7.4 邮箱规范化
+
+```
+问题：User@Example.com 和 user@example.com 是否视为同一用户？
+答案：是。必须统一处理。
+
+规则：
+1. 注册/登录时统一转为小写：email = email.strip().lower()
+2. 数据库层面：
+   - auth_users.email 存储小写
+   - 添加 CHECK 约束：CHECK (email = LOWER(email))
+   - 唯一索引已有：UNIQUE (email)
+3. 查询时统一：WHERE email = LOWER($1)
+
+注意：
+- RFC 5321 规定邮箱 local-part (@ 前面) 理论上区分大小写
+- 但实际上几乎所有邮箱服务商都不区分
+- 业界标准做法（Auth.js、Supabase Auth、Firebase）都做小写化
+```
+
+### 7.5 垃圾注册防护
+
+```
+多层防护（由轻到重）：
+
+Layer 1 — 邮箱格式校验（后端 Pydantic 验证）：
+- RFC 5322 格式校验
+- 拒绝明显无效格式
+
+Layer 2 — 一次性邮箱检测：
+- 维护黑名单列表（mailinator.com, tempmail.io, guerrillamail.com 等）
+- 开源库：disposable-email-domains（Python: disposable-email-domains）
+- 注册时检查 email 域名是否在黑名单中
+- 返回通用错误："注册失败，请使用有效邮箱"（不暴露具体原因，防枚举）
+
+Layer 3 — IP 限流（已有，5/hour/IP）
+
+Layer 4 — CAPTCHA（推荐 Phase 2 后添加，非 MVP 必需）：
+- 候选方案：Cloudflare Turnstile（免费、隐私友好）
+- 触发时机：同一 IP 注册 > 2 次/天时出现
+- 前端：<Turnstile> 组件在注册表单底部
+- 后端：验证 Turnstile token
+- 暂不实施，作为后续增强项
+```
+
+### 7.6 JWT 密钥轮换策略
+
+```
+场景：AUTH_JWT_SECRET 需要更换（泄露、定期轮换等）
+
+策略：双密钥过渡期（Graceful Rotation）
+
+1. 在环境变量新增 AUTH_JWT_SECRET_OLD（可选）
+2. TokenService 签发新 token 用 AUTH_JWT_SECRET（新密钥）
+3. TokenService 验证 token 时：
+   - 先用 AUTH_JWT_SECRET 验证
+   - 失败 → 用 AUTH_JWT_SECRET_OLD 验证（过渡期兼容）
+   - 两个都失败 → 401
+4. 过渡期 = 1 个 Access Token 生命周期（15 分钟）
+   15 分钟后所有旧 token 自然过期
+5. 确认无旧 token 后，移除 AUTH_JWT_SECRET_OLD
+
+操作步骤：
+1. 设置 AUTH_JWT_SECRET_OLD = 当前密钥
+2. 设置 AUTH_JWT_SECRET = 新密钥
+3. 重启服务
+4. 等待 15 分钟
+5. 移除 AUTH_JWT_SECRET_OLD
+6. 重启服务
+
+新增环境变量：
+AUTH_JWT_SECRET_OLD    # 旧密钥（仅轮换期间配置，平时不设）
+```
+
+### 7.7 并发会话限制
+
+```
+策略：每用户最多 10 个活跃会话
+
+理由：
+- 防止凭据泄露后无限制创建会话
+- 10 个足够覆盖正常使用（手机、平板、电脑、公司电脑等）
+- 超过上限时自动踢出最旧的会话
+
+实现：
+- AuthService.login() 创建新 session 前检查活跃 session 数
+- 如果 >= 10：自动 revoke 最旧的 session（last_used_at 最早的）
+- 不阻止登录，只清理最旧会话
+
+用户感知：
+- /auth/sessions 接口已有，用户可以管理设备
+- 被踢出的旧设备下次请求会 401 → 正常登出流程
+```
+
+### 7.8 email_verified 校验点
+
+```
+后端校验位置（集中式，非分散到每个 API）：
+
+方案：新增 FastAPI 依赖 require_verified_email()
+
+async def require_verified_email(user = Depends(get_current_user)):
+    if not user.email_verified:
+        raise EmailNotVerifiedException()
+    return user
+
+使用方式：
+@router.post("/ai/generate")
+async def generate_image(user = Depends(require_verified_email)):
+    ...  # 只有已验证邮箱的用户才能执行
+
+需要 require_verified_email 的 API：
+- POST /ai/generate（AI 生图）
+- POST /ai/generate-page（AI 生 Page）
+- POST /ocr/*（OCR 识别）
+- POST /projects（创建项目）
+- POST /billing/checkout（购买积分/订阅）
+- POST /marketplace/purchase（购买素材）
+
+不需要验证的 API（require_member 或 get_current_user 即可）：
+- GET /user/me（获取用户信息）
+- GET /projects（查看项目列表）
+- GET /marketplace/*（浏览市场）
+- PUT /user/preferences（更新偏好设置）
 ```
 
 ---
