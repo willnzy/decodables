@@ -2,26 +2,14 @@
 Tests for api/user/webhooks.py
 
 Endpoints:
-- POST /api/v2/user/webhooks/clerk
 - POST /api/v2/user/webhooks/stripe
 
 Created: 2026-01-08 (Stage 3: Week 1 Day 3)
 Updated: 2026-01-10 - v2.5.0 Service layer migration
+Updated: v3.0.0 - Removed Clerk webhook tests (self-hosted auth)
 
-IMPORTANT: Webhook endpoints are critical for payment and auth.
+IMPORTANT: Webhook endpoints are critical for payment.
 These tests focus on business logic validation.
-
-v2.5.0 Changes:
-- Migrated to Service layer with dependency injection
-- Updated all mocks to use app.dependency_overrides
-- Mock Services instead of Repositories
-
-v2.4.0 Changes Tested:
-- W-P0-1: Stripe signature header required (not optional)
-- W-P0-2/3: Transaction order (payment first, then credits)
-- W-HIGH-1: Atomic signup bonus
-- W-HIGH-2/3: Renewal transaction handling
-- W-MEDIUM-*: Error handling improvements
 """
 
 import pytest
@@ -30,7 +18,7 @@ from unittest.mock import MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 from app import app
-from api.user.webhooks import get_clerk_webhook_service, get_stripe_webhook_service
+from api.user.webhooks import get_stripe_webhook_service
 
 client = TestClient(app)
 
@@ -38,37 +26,6 @@ client = TestClient(app)
 # ==========================================
 # Fixtures
 # ==========================================
-
-@pytest.fixture
-def clerk_user_created_payload():
-    """Mock Clerk user.created event payload."""
-    return {
-        "type": "user.created",
-        "data": {
-            "id": "user_clerk_123",
-            "email_addresses": [{"email_address": "newuser@example.com"}],
-            "username": "newuser",
-            "image_url": "https://img.clerk.com/avatar.jpg",
-            "first_name": "John",
-            "last_name": "Doe",
-        }
-    }
-
-
-@pytest.fixture
-def clerk_user_updated_payload():
-    """Mock Clerk user.updated event payload."""
-    return {
-        "type": "user.updated",
-        "data": {
-            "id": "user_clerk_456",
-            "image_url": "https://img.clerk.com/new_avatar.jpg",
-            "username": "updateduser",
-            "first_name": "Jane",
-            "last_name": "Smith",
-        }
-    }
-
 
 @pytest.fixture
 def stripe_checkout_completed_payload():
@@ -110,226 +67,6 @@ def stripe_credits_purchase_payload():
             }
         }
     }
-
-
-# ==========================================
-# POST /api/v2/user/webhooks/clerk
-# ==========================================
-
-class TestClerkWebhook:
-    """Tests for POST /api/v2/user/webhooks/clerk endpoint."""
-
-    def test_clerk_webhook_missing_secret(self):
-        """
-        Test: Missing CLERK_WEBHOOK_SECRET (500)
-
-        Given: CLERK_WEBHOOK_SECRET not configured
-        When: POST to clerk webhook
-        Then: Returns 500 Internal Server Error
-
-        Business Logic Verified:
-        - Webhook rejects requests when secret not configured
-        - Returns appropriate 500 status
-        """
-        # Arrange: Mock service that raises ValueError for missing secret
-        mock_service = MagicMock()
-        mock_service.verify_signature.side_effect = ValueError("Missing CLERK_WEBHOOK_SECRET")
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json={"type": "user.created", "data": {}},
-        )
-
-        # Assert
-        assert response.status_code == 500
-
-        # Cleanup
-        app.dependency_overrides.clear()
-
-    def test_clerk_webhook_invalid_signature(self):
-        """
-        Test: Invalid signature (400)
-
-        Given: Request with invalid signature
-        When: Webhook verification fails
-        Then: Returns 400 Bad Request
-
-        Business Logic Verified:
-        - Webhook signature is verified using Svix Webhook library
-        - Invalid signatures are rejected with 400 status
-        """
-        # Arrange: Mock service that raises WebhookVerificationError
-        from svix.webhooks import WebhookVerificationError
-
-        mock_service = MagicMock()
-        mock_service.verify_signature.side_effect = WebhookVerificationError("Invalid signature")
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json={"type": "user.created", "data": {}},
-        )
-
-        # Assert
-        assert response.status_code == 400
-
-        # Cleanup
-        app.dependency_overrides.clear()
-
-    def test_clerk_user_created_success(self, clerk_user_created_payload):
-        """
-        Test: User created successfully with 50 signup bonus
-
-        Given: New user signup via Clerk
-        When: user.created event received
-        Then: Creates profile and grants 50 permanent signup credits
-
-        Business Logic Verified:
-        - Verifies user doesn't exist before creating
-        - Verifies email is unique
-        - Creates user profile with Clerk data
-        - v2.4.0: W-HIGH-1 fix - Uses atomic RPC for signup bonus
-        - Logs user_signup activity
-        """
-        # Arrange: Mock service
-        mock_service = MagicMock()
-        mock_service.verify_signature.return_value = clerk_user_created_payload
-        mock_service.handle_event = AsyncMock(return_value={"status": "processed"})
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json=clerk_user_created_payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "processed"
-
-        # Verify service was called
-        mock_service.verify_signature.assert_called_once()
-        mock_service.handle_event.assert_called_once()
-
-        # Cleanup
-        app.dependency_overrides.clear()
-
-    def test_clerk_user_created_jit_exists(self, clerk_user_created_payload):
-        """
-        Test: User already exists (JIT created)
-
-        Given: User was created via JIT (just-in-time) during API call
-        When: user.created webhook arrives later
-        Then: Updates missing info instead of creating
-
-        Business Logic Verified:
-        - Detects existing user profile
-        - Updates profile instead of creating duplicate
-        - Returns 'updated' status with 'jit_created' reason
-        """
-        # Arrange: Mock service returning 'updated' status
-        mock_service = MagicMock()
-        mock_service.verify_signature.return_value = clerk_user_created_payload
-        mock_service.handle_event = AsyncMock(return_value={
-            "status": "updated",
-            "reason": "jit_created"
-        })
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json=clerk_user_created_payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "updated"
-        assert data["reason"] == "jit_created"
-
-        # Cleanup
-        app.dependency_overrides.clear()
-
-    def test_clerk_user_created_email_exists(self, clerk_user_created_payload):
-        """
-        Test: Email already taken (skip creation)
-
-        Given: Another user with same email exists
-        When: user.created event received
-        Then: Skips creation to avoid duplicates
-
-        Business Logic Verified:
-        - Checks email uniqueness before creating user
-        - Prevents duplicate accounts with same email
-        - Returns 'skipped' status with 'email_exists' reason
-        """
-        # Arrange: Mock service returning 'skipped' status
-        mock_service = MagicMock()
-        mock_service.verify_signature.return_value = clerk_user_created_payload
-        mock_service.handle_event = AsyncMock(return_value={
-            "status": "skipped",
-            "reason": "email_exists"
-        })
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json=clerk_user_created_payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "skipped"
-        assert data["reason"] == "email_exists"
-
-        # Cleanup
-        app.dependency_overrides.clear()
-
-    def test_clerk_user_updated(self, clerk_user_updated_payload):
-        """
-        Test: User profile updated
-
-        Given: User updates avatar/username in Clerk
-        When: user.updated event received
-        Then: Syncs changes to Supabase
-
-        Business Logic Verified:
-        - Syncs profile updates from Clerk to Supabase
-        - Updates avatar_url, username, first_name, last_name
-        - Logs profile_updated activity
-        """
-        # Arrange: Mock service
-        mock_service = MagicMock()
-        mock_service.verify_signature.return_value = clerk_user_updated_payload
-        mock_service.handle_event = AsyncMock(return_value={"status": "processed"})
-
-        app.dependency_overrides[get_clerk_webhook_service] = lambda: mock_service
-
-        # Act
-        response = client.post(
-            "/api/v2/user/webhooks/clerk",
-            json=clerk_user_updated_payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "processed"
-
-        # Cleanup
-        app.dependency_overrides.clear()
 
 
 # ==========================================
@@ -648,41 +385,18 @@ class TestStripeWebhook:
 
 
 """
-Test Coverage Summary (v2.5.0)
-
-Clerk Webhook Tests (6 tests):
-✅ Missing secret configuration (500)
-✅ Invalid signature verification (400)
-✅ User created successfully with signup bonus
-✅ User created (JIT exists)
-✅ User created (email exists)
-✅ User profile updated
+Test Coverage Summary (v3.0.0)
 
 Stripe Webhook Tests (7 tests):
-✅ Missing Stripe-Signature header (422)
-✅ Invalid signature verification (400)
-✅ Checkout subscription success (starter plan)
-✅ Checkout credits purchase (100 credits)
-✅ Idempotency duplicate detection
-✅ Invoice payment renewal (subscription_cycle)
-✅ Subscription canceled
+- Missing Stripe-Signature header (422)
+- Invalid signature verification (400)
+- Checkout subscription success (starter plan)
+- Checkout credits purchase (100 credits)
+- Idempotency duplicate detection
+- Invoice payment renewal (subscription_cycle)
+- Subscription canceled
 
-Total: 13 tests
+Total: 7 tests
 
-Business Logic Tested:
-- ✅ [v2.4.0] Stripe signature header required (W-P0-1)
-- ✅ [v2.4.0] Transaction order - payment first (W-P0-2/3)
-- ✅ [v2.4.0] Atomic signup bonus (W-HIGH-1)
-- ✅ [v2.4.0] Renewal transaction handling (W-HIGH-2/3)
-- ✅ [v2.5.0] Service layer with dependency injection
-- ✅ Signature verification (Clerk + Stripe)
-- ✅ Idempotency protection
-- ✅ User profile management (JIT, email uniqueness)
-- ✅ Credits operations (purchase, refresh, signup bonus)
-- ✅ Subscription lifecycle (start, renewal, cancel)
-
-Not Tested (Requires Integration/E2E):
-- Actual Stripe/Clerk API interaction
-- Real database transaction consistency
-- PostgreSQL RPC functions (grant_signup_bonus_atomic, check_webhook_idempotency, etc.)
+v3.0.0: Removed Clerk webhook tests (self-hosted auth migration)
 """

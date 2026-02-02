@@ -99,7 +99,7 @@ class AuditLogEntry(BaseModel):
     details: Optional[str] = Field(None, description="Operation details")
     reason: Optional[str] = Field(None, description="Reason for operation")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional context (before/after values, etc.)")
-    source: Optional[str] = Field(None, description="Action source: api, webhook, stripe, clerk")
+    source: Optional[str] = Field(None, description="Action source: api, webhook, stripe, auth")
     created_at: str = Field(..., description="Operation timestamp (ISO format)")
 
 

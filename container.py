@@ -1076,8 +1076,6 @@ class Container:
             self._services['referral_service'] = ReferralService(repository, billing_service)
         return self._services['referral_service']
 
-    # NOTE: Clerk webhook service removed — self-hosted auth (Phase 2)
-
     async def get_stripe_webhook_service(self):
         """
         Get Stripe webhook service instance (v1.2.0, async).

@@ -102,7 +102,7 @@ async def get_user_creation_health(
                     }
                 ],
                 "recommendations": [
-                    "Monitor Clerk webhook delivery delays"
+                    "Monitor webhook delivery delays"
                 ],
                 "evaluated_at": "2026-01-13T10:30:00Z"
             }

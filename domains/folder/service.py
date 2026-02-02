@@ -52,7 +52,7 @@ class FolderService:
             workspace_id: UUID of the workspace
             folder_type: Type of folder (project or asset)
             name: Folder name (must be unique within workspace/type)
-            created_by: Clerk user_id of the creator
+            created_by: User ID of the creator
             color: Folder color (default: slate)
 
         Returns:

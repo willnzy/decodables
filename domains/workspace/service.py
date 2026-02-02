@@ -47,7 +47,7 @@ class WorkspaceService:
         has exactly one default workspace.
 
         Args:
-            user_id: Clerk user_id
+            user_id: User ID
 
         Returns:
             User's default Workspace (existing or newly created)
@@ -76,7 +76,7 @@ class WorkspaceService:
         Phase 1: Users have exactly one workspace.
 
         Args:
-            user_id: Clerk user_id
+            user_id: User ID
 
         Returns:
             Workspace UUID string
@@ -105,7 +105,7 @@ class WorkspaceService:
 
         Args:
             workspace_id: Workspace UUID
-            user_id: Clerk user_id
+            user_id: User ID
 
         Returns:
             True if user owns the workspace
@@ -123,7 +123,7 @@ class WorkspaceService:
         Called during user registration to ensure workspace exists.
 
         Args:
-            user_id: Clerk user_id
+            user_id: User ID
 
         Returns:
             Workspace UUID string
@@ -137,7 +137,7 @@ class WorkspaceService:
         List all workspaces owned by user.
 
         Args:
-            user_id: Clerk user_id
+            user_id: User ID
 
         Returns:
             List of Workspace entities (default first, then by created_at)
@@ -166,7 +166,7 @@ class WorkspaceService:
         - t3 (Pro): max 10 workspaces
 
         Args:
-            user_id: Clerk user_id
+            user_id: User ID
             name: Workspace name (1-100 chars)
             description: Optional description (max 500 chars)
             user_tier: User's subscription tier code
@@ -274,7 +274,7 @@ class WorkspaceService:
 
         Args:
             workspace_id: Workspace UUID
-            user_id: Clerk user_id (for ownership check)
+            user_id: User ID (for ownership check)
             name: New workspace name
             description: New workspace description
 
@@ -319,7 +319,7 @@ class WorkspaceService:
 
         Args:
             workspace_id: Workspace UUID
-            user_id: Clerk user_id (for ownership check)
+            user_id: User ID (for ownership check)
 
         Returns:
             True if deleted
@@ -359,7 +359,7 @@ class WorkspaceService:
 
         Args:
             workspace_id: Workspace UUID
-            user_id: Clerk user_id (for ownership check)
+            user_id: User ID (for ownership check)
 
         Returns:
             Dict with workspace_id, tag_count, project_count, asset_count

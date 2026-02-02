@@ -6,7 +6,7 @@ Coverage target: 85%+
 Business logic tested:
 - Retry eligibility check (retry_count, age)
 - Exponential backoff delay calculation
-- Retry orchestration (Stripe + Clerk)
+- Retry orchestration (Stripe only)
 - Error handling and statistics
 - Graceful degradation
 
@@ -30,21 +30,15 @@ class TestWebhookRetryService:
         return MagicMock()
 
     @pytest.fixture
-    def mock_clerk_service(self):
-        """Create mock Clerk webhook service"""
-        return MagicMock()
-
-    @pytest.fixture
     def mock_stripe_service(self):
         """Create mock Stripe webhook service"""
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_webhook_repo, mock_clerk_service, mock_stripe_service):
+    def service(self, mock_webhook_repo, mock_stripe_service):
         """Create retry service with mocked dependencies"""
         return WebhookRetryService(
             webhook_repo=mock_webhook_repo,
-            clerk_service=mock_clerk_service,
             stripe_service=mock_stripe_service
         )
 
@@ -237,72 +231,12 @@ class TestWebhookRetryService:
         assert result["skipped"] == 0
 
     # ==========================================
-    # Clerk Webhook Retry Tests
-    # ==========================================
-
-    @pytest.mark.asyncio
-    async def test_retry_clerk_webhooks_success(self, service, mock_webhook_repo, mock_clerk_service):
-        """retry_clerk_webhooks processes events successfully"""
-        # Mock failed event
-        failed_event = {
-            "event_id": "evt_clerk_1",
-            "event_type": "user.created",
-            "payload": {"data": "test"},
-            "retry_count": 0,
-            "created_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        }
-
-        mock_webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[failed_event])
-        mock_clerk_service.handle_event = AsyncMock(return_value=None)
-        mock_webhook_repo.update_clerk_webhook_status = AsyncMock(return_value=True)
-
-        # Execute
-        result = await service.retry_clerk_webhooks()
-
-        # Verify
-        assert result["processed"] == 1
-        assert result["failed"] == 0
-        assert result["skipped"] == 0
-        assert mock_clerk_service.handle_event.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_retry_clerk_webhooks_with_error(self, service, mock_webhook_repo, mock_clerk_service):
-        """retry_clerk_webhooks handles errors and increments retry count"""
-        # Mock failed event
-        failed_event = {
-            "event_id": "evt_clerk_error",
-            "event_type": "user.updated",
-            "payload": {},
-            "retry_count": 1,
-            "created_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        }
-
-        mock_webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[failed_event])
-        mock_clerk_service.handle_event = AsyncMock(
-            side_effect=Exception("User not found")
-        )
-        mock_webhook_repo.update_clerk_webhook_status = AsyncMock(return_value=True)
-
-        # Execute
-        result = await service.retry_clerk_webhooks()
-
-        # Verify
-        assert result["processed"] == 0
-        assert result["failed"] == 1
-        assert result["skipped"] == 0
-
-        # Verify retry count incremented
-        update_call = mock_webhook_repo.update_clerk_webhook_status.call_args
-        assert update_call[1]["increment_retry"] is True
-        assert update_call[1]["processed"] is False
-
-    # ==========================================
     # Unified Retry Tests
     # ==========================================
 
     @pytest.mark.asyncio
-    async def test_retry_all_failed_webhooks_combined(self, service, mock_webhook_repo, mock_stripe_service, mock_clerk_service):
-        """retry_all_failed_webhooks processes both Stripe and Clerk events"""
+    async def test_retry_all_failed_webhooks_combined(self, service, mock_webhook_repo, mock_stripe_service):
+        """retry_all_failed_webhooks processes Stripe events"""
         # Mock Stripe events
         mock_webhook_repo.get_failed_stripe_webhooks = AsyncMock(
             return_value=[
@@ -316,39 +250,23 @@ class TestWebhookRetryService:
             ]
         )
 
-        # Mock Clerk events
-        mock_webhook_repo.get_failed_clerk_webhooks = AsyncMock(
-            return_value=[
-                {
-                    "event_id": "evt_clerk_1",
-                    "event_type": "user.created",
-                    "payload": {},
-                    "retry_count": 1,
-                    "created_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-                }
-            ]
-        )
-
         # Mock successful processing
         mock_stripe_service.handle_event = AsyncMock(return_value=None)
-        mock_clerk_service.handle_event = AsyncMock(return_value=None)
         mock_webhook_repo.update_stripe_webhook_status = AsyncMock(return_value=True)
-        mock_webhook_repo.update_clerk_webhook_status = AsyncMock(return_value=True)
 
         # Execute
         result = await service.retry_all_failed_webhooks()
 
-        # Verify combined results
-        assert result["total"]["processed"] == 2  # 1 Stripe + 1 Clerk
+        # Verify results
+        assert result["total"]["processed"] == 1
         assert result["total"]["failed"] == 0
         assert result["total"]["skipped"] == 0
 
         assert result["stripe"]["processed"] == 1
-        assert result["clerk"]["processed"] == 1
 
     @pytest.mark.asyncio
-    async def test_retry_all_failed_webhooks_error_isolation(self, service, mock_webhook_repo, mock_stripe_service, mock_clerk_service):
-        """retry_all_failed_webhooks isolates Stripe and Clerk errors"""
+    async def test_retry_all_failed_webhooks_with_failures(self, service, mock_webhook_repo, mock_stripe_service):
+        """retry_all_failed_webhooks handles Stripe failures"""
         # Mock Stripe events
         mock_webhook_repo.get_failed_stripe_webhooks = AsyncMock(
             return_value=[
@@ -362,34 +280,17 @@ class TestWebhookRetryService:
             ]
         )
 
-        # Mock Clerk events
-        mock_webhook_repo.get_failed_clerk_webhooks = AsyncMock(
-            return_value=[
-                {
-                    "event_id": "evt_clerk_success",
-                    "event_type": "user.created",
-                    "payload": {},
-                    "retry_count": 0,
-                    "created_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-                }
-            ]
-        )
-
-        # Stripe fails, Clerk succeeds
+        # Stripe fails
         mock_stripe_service.handle_event = AsyncMock(side_effect=Exception("Stripe error"))
-        mock_clerk_service.handle_event = AsyncMock(return_value=None)
         mock_webhook_repo.update_stripe_webhook_status = AsyncMock(return_value=True)
-        mock_webhook_repo.update_clerk_webhook_status = AsyncMock(return_value=True)
 
         # Execute
         result = await service.retry_all_failed_webhooks()
 
-        # Verify Stripe failed but Clerk succeeded
+        # Verify Stripe failed
         assert result["stripe"]["processed"] == 0
         assert result["stripe"]["failed"] == 1
-        assert result["clerk"]["processed"] == 1
-        assert result["clerk"]["failed"] == 0
-        assert result["total"]["processed"] == 1
+        assert result["total"]["processed"] == 0
         assert result["total"]["failed"] == 1
 
     # ==========================================

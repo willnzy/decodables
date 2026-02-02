@@ -49,7 +49,6 @@ class WebhookRetryResponse(BaseModel):
     success: bool = Field(..., description="Whether retry task completed")
     message: str = Field(..., description="Human-readable message")
     stripe: WebhookRetryStats = Field(..., description="Stripe webhook stats")
-    clerk: WebhookRetryStats = Field(..., description="Clerk webhook stats")
     total: WebhookRetryStats = Field(..., description="Combined stats")
 
 
@@ -95,7 +94,7 @@ async def get_webhook_repository():
 
     WHY separate from get_webhook_retry_service?
     - This endpoint only needs read access (list failed webhooks)
-    - Avoids overhead of constructing full retry service with Clerk/Stripe services
+    - Avoids overhead of constructing full retry service with Stripe service
     """
     container = get_container()
     return await container.get_webhook_repository()
@@ -129,7 +128,6 @@ async def retry_failed_webhooks(
             success=True,
             message="Webhook retry task completed successfully",
             stripe=WebhookRetryStats(**stats["stripe"]),
-            clerk=WebhookRetryStats(**stats["clerk"]),
             total=WebhookRetryStats(**stats["total"]),
         )
 

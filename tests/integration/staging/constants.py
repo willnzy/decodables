@@ -194,7 +194,6 @@ class Endpoints:
         return f"{API_V2}/user/system-resources/{resource_id}/audit-log"
 
     # Webhooks
-    WEBHOOKS_CLERK = f"{API_V2}/user/webhooks/clerk"
     WEBHOOKS_STRIPE = f"{API_V2}/user/webhooks/stripe"
 
     # Generations History

@@ -38,7 +38,7 @@ class IWorkspaceRepository(ABC):
         Get user's default workspace.
 
         Args:
-            owner_id: Clerk user_id
+            owner_id: User ID
 
         Returns:
             Default Workspace entity or None if not found
@@ -54,7 +54,7 @@ class IWorkspaceRepository(ABC):
         Phase 2+: May return multiple workspaces.
 
         Args:
-            owner_id: Clerk user_id
+            owner_id: User ID
 
         Returns:
             List of Workspace entities

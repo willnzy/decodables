@@ -208,7 +208,7 @@ async def adm_send_notification(request: Request, req: AdminSendNotificationRequ
 
     Args:
         req: Notification payload
-            - user_id: Target user ID (Clerk format: user_2abc...)
+            - user_id: Target user ID (UUID format)
             - title: Notification title (1-200 chars)
             - content: Notification message (1-1000 chars)
             - notification_type: Type of notification (default: "system")

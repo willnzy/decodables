@@ -165,7 +165,7 @@ PUBLIC_APIS = [
     {"file": "config_api.py", "name": "Config", "base_path": "config", "endpoints": "GET /config"},
     {"file": "logs_api.py", "name": "Logs", "base_path": "logs", "endpoints": "POST /logs/error"},
     {"file": "experiments_api.py", "name": "Experiments", "base_path": "experiments", "endpoints": "POST /experiments/{key}/assign"},
-    {"file": "webhooks_api.py", "name": "Webhooks", "base_path": "webhooks", "endpoints": "POST /webhooks/clerk, POST /webhooks/stripe"},
+    {"file": "webhooks_api.py", "name": "Webhooks", "base_path": "webhooks", "endpoints": "POST /webhooks/stripe"},
 ]
 
 # Admin API 列表

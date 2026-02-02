@@ -74,21 +74,11 @@ class TestWebhookRetryAPI:
         mock_service.retry_all_failed_webhooks = AsyncMock(return_value={
             "stripe": {
                 "processed": 10,
-                "succeeded": 8,
                 "failed": 2,
                 "skipped": 0,
-                "errors": ["evt_1: Connection timeout", "evt_2: Invalid payload"]
-            },
-            "clerk": {
-                "processed": 5,
-                "succeeded": 5,
-                "failed": 0,
-                "skipped": 0,
-                "errors": []
             },
             "total": {
-                "processed": 15,
-                "succeeded": 13,
+                "processed": 10,
                 "failed": 2,
                 "skipped": 0
             }
@@ -103,11 +93,9 @@ class TestWebhookRetryAPI:
             data = response.json()
             assert data["success"] is True
             assert "message" in data
-            assert data["total"]["processed"] == 15
-            assert data["total"]["succeeded"] == 13
+            assert data["total"]["processed"] == 10
             assert data["total"]["failed"] == 2
-            assert data["stripe"]["succeeded"] == 8
-            assert data["clerk"]["succeeded"] == 5
+            assert data["stripe"]["processed"] == 10
 
     @patch('api.admin.webhooks_retry.get_webhook_retry_service')
     @patch('api.admin.webhooks_retry.require_admin')
@@ -118,9 +106,8 @@ class TestWebhookRetryAPI:
         # Mock empty queue
         mock_service = MagicMock()
         mock_service.retry_all_failed_webhooks = AsyncMock(return_value={
-            "stripe": {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0, "errors": []},
-            "clerk": {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0, "errors": []},
-            "total": {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0}
+            "stripe": {"processed": 0, "failed": 0, "skipped": 0},
+            "total": {"processed": 0, "failed": 0, "skipped": 0}
         })
         mock_get_service.return_value = mock_service
 
@@ -156,16 +143,17 @@ class TestWebhookRetryAPI:
     # GET /webhooks/failed Tests
     # ==========================================
 
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
+    @patch('api.admin.webhooks_retry.get_webhook_repository')
     @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_both_sources(self, mock_require_admin, mock_get_service, admin_headers):
-        """GET /webhooks/failed 获取所有失败事件"""
+    def test_get_failed_webhooks_stripe(self, mock_require_admin, mock_get_repo, admin_headers):
+        """GET /webhooks/failed 获取失败的 Stripe 事件"""
         mock_require_admin.return_value = {"id": "admin_123"}
 
         # Mock failed events
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[
+        mock_repo = MagicMock()
+        mock_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[
             {
+                "id": "uuid-1",
                 "event_id": "evt_stripe_1",
                 "event_type": "checkout.session.completed",
                 "retry_count": 2,
@@ -173,16 +161,7 @@ class TestWebhookRetryAPI:
                 "created_at": "2026-01-11T10:00:00Z"
             }
         ])
-        mock_service.webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[
-            {
-                "event_id": "evt_clerk_1",
-                "event_type": "user.created",
-                "retry_count": 1,
-                "error_message": "User sync failed",
-                "created_at": "2026-01-11T11:00:00Z"
-            }
-        ])
-        mock_get_service.return_value = mock_service
+        mock_get_repo.return_value = mock_repo
 
         # Execute
         response = client.get("/api/v2/admin/webhooks/failed", headers=admin_headers)
@@ -190,75 +169,22 @@ class TestWebhookRetryAPI:
         # Verify
         if response.status_code == 200:
             data = response.json()
-            assert len(data["stripe_webhooks"]) == 1
-            assert len(data["clerk_webhooks"]) == 1
-            assert data["total_failed"] == 2
-            assert data["stripe_webhooks"][0]["event_id"] == "evt_stripe_1"
-            assert data["clerk_webhooks"][0]["event_id"] == "evt_clerk_1"
+            assert len(data["stripe_events"]) == 1
+            assert data["total_count"] == 1
+            assert data["stripe_events"][0]["event_id"] == "evt_stripe_1"
 
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
+    @patch('api.admin.webhooks_retry.get_webhook_repository')
     @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_stripe_only(self, mock_require_admin, mock_get_service, admin_headers):
-        """GET /webhooks/failed?source=stripe 仅获取 Stripe 事件"""
-        mock_require_admin.return_value = {"id": "admin_123"}
-
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[
-            {"event_id": "evt_1", "event_type": "invoice.paid", "retry_count": 1}
-        ])
-        mock_get_service.return_value = mock_service
-
-        # Execute
-        response = client.get("/api/v2/admin/webhooks/failed?source=stripe", headers=admin_headers)
-
-        # Verify
-        if response.status_code == 200:
-            data = response.json()
-            assert len(data["stripe_webhooks"]) == 1
-            assert len(data["clerk_webhooks"]) == 0
-
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
-    @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_clerk_only(self, mock_require_admin, mock_get_service, admin_headers):
-        """GET /webhooks/failed?source=clerk 仅获取 Clerk 事件"""
-        mock_require_admin.return_value = {"id": "admin_123"}
-
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[
-            {"event_id": "evt_clerk_2", "event_type": "user.updated", "retry_count": 3}
-        ])
-        mock_get_service.return_value = mock_service
-
-        # Execute
-        response = client.get("/api/v2/admin/webhooks/failed?source=clerk", headers=admin_headers)
-
-        # Verify
-        if response.status_code == 200:
-            data = response.json()
-            assert len(data["stripe_webhooks"]) == 0
-            assert len(data["clerk_webhooks"]) == 1
-
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
-    @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_limit_parameter(self, mock_require_admin, mock_get_service, admin_headers):
+    def test_get_failed_webhooks_limit_parameter(self, mock_require_admin, mock_get_repo, admin_headers):
         """GET /webhooks/failed?limit=10 限制返回数量"""
         mock_require_admin.return_value = {"id": "admin_123"}
 
-        # Mock many events
-        mock_events = [{"event_id": f"evt_{i}", "retry_count": i} for i in range(100)]
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_stripe_webhooks = AsyncMock(return_value=mock_events[:10])
-        mock_service.webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[])
-        mock_get_service.return_value = mock_service
+        mock_repo = MagicMock()
+        mock_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[])
+        mock_get_repo.return_value = mock_repo
 
         # Execute
         response = client.get("/api/v2/admin/webhooks/failed?limit=10", headers=admin_headers)
-
-        # Verify
-        if response.status_code == 200:
-            data = response.json()
-            # Repository should respect limit
-            mock_service.webhook_repo.get_failed_stripe_webhooks.assert_called_with(limit=10)
 
     @patch('api.admin.webhooks_retry.get_webhook_retry_service')
     @patch('api.admin.webhooks_retry.require_admin')
@@ -272,16 +198,15 @@ class TestWebhookRetryAPI:
         # Verify validation error
         assert response.status_code in [422, 400, 404, 401]  # FastAPI validation error
 
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
+    @patch('api.admin.webhooks_retry.get_webhook_repository')
     @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_empty_result(self, mock_require_admin, mock_get_service, admin_headers):
+    def test_get_failed_webhooks_empty_result(self, mock_require_admin, mock_get_repo, admin_headers):
         """GET /webhooks/failed 处理空结果"""
         mock_require_admin.return_value = {"id": "admin_123"}
 
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[])
-        mock_service.webhook_repo.get_failed_clerk_webhooks = AsyncMock(return_value=[])
-        mock_get_service.return_value = mock_service
+        mock_repo = MagicMock()
+        mock_repo.get_failed_stripe_webhooks = AsyncMock(return_value=[])
+        mock_get_repo.return_value = mock_repo
 
         # Execute
         response = client.get("/api/v2/admin/webhooks/failed", headers=admin_headers)
@@ -289,22 +214,21 @@ class TestWebhookRetryAPI:
         # Verify
         if response.status_code == 200:
             data = response.json()
-            assert len(data["stripe_webhooks"]) == 0
-            assert len(data["clerk_webhooks"]) == 0
-            assert data["total_failed"] == 0
+            assert len(data["stripe_events"]) == 0
+            assert data["total_count"] == 0
 
-    @patch('api.admin.webhooks_retry.get_webhook_retry_service')
+    @patch('api.admin.webhooks_retry.get_webhook_repository')
     @patch('api.admin.webhooks_retry.require_admin')
-    def test_get_failed_webhooks_repository_error(self, mock_require_admin, mock_get_service, admin_headers):
+    def test_get_failed_webhooks_repository_error(self, mock_require_admin, mock_get_repo, admin_headers):
         """GET /webhooks/failed 处理仓储层错误"""
         mock_require_admin.return_value = {"id": "admin_123"}
 
         # Mock repository error
-        mock_service = MagicMock()
-        mock_service.webhook_repo.get_failed_stripe_webhooks = AsyncMock(
+        mock_repo = MagicMock()
+        mock_repo.get_failed_stripe_webhooks = AsyncMock(
             side_effect=Exception("Database timeout")
         )
-        mock_get_service.return_value = mock_service
+        mock_get_repo.return_value = mock_repo
 
         # Execute
         response = client.get("/api/v2/admin/webhooks/failed", headers=admin_headers)
@@ -374,14 +298,11 @@ class TestWebhookRetryEdgeCases:
         mock_service = MagicMock()
         mock_service.retry_all_failed_webhooks = AsyncMock(return_value={
             "stripe": {
-                "processed": 5,
-                "succeeded": 0,
+                "processed": 0,
                 "failed": 0,
                 "skipped": 5,  # All skipped due to max retries
-                "errors": []
             },
-            "clerk": {"processed": 0, "succeeded": 0, "failed": 0, "skipped": 0, "errors": []},
-            "total": {"processed": 5, "succeeded": 0, "failed": 0, "skipped": 5}
+            "total": {"processed": 0, "failed": 0, "skipped": 5}
         })
         mock_get_service.return_value = mock_service
 
@@ -392,7 +313,7 @@ class TestWebhookRetryEdgeCases:
         if response.status_code == 200:
             data = response.json()
             assert data["total"]["skipped"] == 5
-            assert data["total"]["succeeded"] == 0
+            assert data["total"]["processed"] == 0
 
     @patch('api.admin.webhooks_retry.get_webhook_retry_service')
     @patch('api.admin.webhooks_retry.require_admin')

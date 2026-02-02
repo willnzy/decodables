@@ -74,7 +74,7 @@ class Workspace:
         Factory method to create a default personal workspace.
 
         Args:
-            owner_id: Clerk user_id of the workspace owner
+            owner_id: User ID of the workspace owner
             name: Workspace name (default: "My Workspace")
 
         Returns:
@@ -96,7 +96,7 @@ class Workspace:
         Phase 2+: Pro users can create additional workspaces for collaboration.
 
         Args:
-            owner_id: Clerk user_id of the workspace owner
+            owner_id: User ID of the workspace owner
             name: Workspace name (required)
             description: Optional description
 

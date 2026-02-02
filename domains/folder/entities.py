@@ -160,7 +160,7 @@ class Folder:
             workspace_id: UUID of the workspace this folder belongs to
             folder_type: Type of folder (project or asset)
             name: Folder name
-            created_by: Clerk user_id of the creator
+            created_by: User ID of the creator
             color: Folder color (default: slate)
             sort_order: Sort order (default: 0)
 
