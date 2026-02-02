@@ -418,12 +418,16 @@ class TestUserCreditsAggregate:
         assert credits.permanent_credits == 300
 
     def test_tier_allowance_mapping(self):
-        """Test tier monthly allowance calculation"""
+        """Test tier monthly allowance calculation.
+
+        Per business rules: t1=0, t2=100, t3=200 (fallback values).
+        Production uses TierService for dynamic config.
+        """
         free_user = UserCredits.create("free", tier="t1")
         assert free_user.get_tier_monthly_allowance() == 0
 
         starter_user = UserCredits.create("starter", tier="t2")
-        assert starter_user.get_tier_monthly_allowance() == 500
+        assert starter_user.get_tier_monthly_allowance() == 100
 
         pro_user = UserCredits.create("pro", tier="t3")
-        assert pro_user.get_tier_monthly_allowance() == 1000
+        assert pro_user.get_tier_monthly_allowance() == 200

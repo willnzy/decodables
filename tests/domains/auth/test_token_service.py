@@ -22,6 +22,8 @@ from domains.auth.constants import (
     ACCESS_TOKEN_ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ACCESS_TOKEN_TYPE,
+    JWT_AUDIENCE,
+    JWT_ISSUER,
     JWT_SECRET_MIN_LENGTH,
 )
 from domains.auth.exceptions import TokenExpiredException, TokenInvalidException
@@ -52,12 +54,17 @@ class TestCreateAccessToken:
             tier="t3",
         )
         # Decode without verification to inspect claims
-        payload = jwt.decode(token, TEST_JWT_SECRET, algorithms=[ACCESS_TOKEN_ALGORITHM])
+        payload = jwt.decode(
+            token, TEST_JWT_SECRET, algorithms=[ACCESS_TOKEN_ALGORITHM],
+            audience=JWT_AUDIENCE, issuer=JWT_ISSUER,
+        )
         assert payload["sub"] == str(TEST_USER_ID)
         assert payload["email"] == TEST_EMAIL
         assert payload["role"] == "admin"
         assert payload["tier"] == "t3"
         assert payload["type"] == ACCESS_TOKEN_TYPE
+        assert payload["iss"] == JWT_ISSUER
+        assert payload["aud"] == JWT_AUDIENCE
         assert "iat" in payload
         assert "exp" in payload
 
@@ -68,7 +75,10 @@ class TestCreateAccessToken:
             role="user",
             tier="t1",
         )
-        payload = jwt.decode(token, TEST_JWT_SECRET, algorithms=[ACCESS_TOKEN_ALGORITHM])
+        payload = jwt.decode(
+            token, TEST_JWT_SECRET, algorithms=[ACCESS_TOKEN_ALGORITHM],
+            audience=JWT_AUDIENCE, issuer=JWT_ISSUER,
+        )
         expected_exp = payload["iat"] + (ACCESS_TOKEN_EXPIRE_MINUTES * 60)
         assert payload["exp"] == expected_exp
 
@@ -104,6 +114,8 @@ class TestVerifyAccessToken:
             "role": "user",
             "tier": "t1",
             "type": ACCESS_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()) - 120,
             "exp": int(time.time()) - 60,
         }
@@ -120,6 +132,8 @@ class TestVerifyAccessToken:
             "role": "user",
             "tier": "t1",
             "type": ACCESS_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
         }
@@ -143,6 +157,8 @@ class TestVerifyAccessToken:
             "role": "user",
             "tier": "t1",
             "type": "refresh",  # Wrong type
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
         }
@@ -154,6 +170,8 @@ class TestVerifyAccessToken:
         """Token missing required claims should raise."""
         payload = {
             "sub": str(TEST_USER_ID),
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
             # Missing: email, role, tier, type
@@ -178,6 +196,8 @@ class TestDualKeyRotation:
             "role": "user",
             "tier": "t1",
             "type": ACCESS_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
         }
@@ -223,6 +243,8 @@ class TestDualKeyRotation:
             "role": "user",
             "tier": "t1",
             "type": ACCESS_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
             "iat": int(time.time()),
             "exp": int(time.time()) + 900,
         }

@@ -50,6 +50,13 @@ def mock_db_client():
 
     client.table.return_value.select.return_value.execute = execute_mock
     client.table.return_value.select.return_value.eq.return_value.execute = execute_mock
+
+    # Mock notifications table insert chain (for send_broadcast batch INSERT)
+    insert_result = MagicMock()
+    insert_result.data = [{"id": "notif-1"}, {"id": "notif-2"}]
+    insert_execute_mock = AsyncMock(return_value=insert_result)
+    client.table.return_value.insert.return_value.execute = insert_execute_mock
+
     return client
 
 
@@ -63,10 +70,7 @@ class TestRepositoryDependencyInjection:
     @pytest.mark.asyncio
     async def test_send_broadcast_with_injected_repo(self, mock_notification_repo, mock_db_client):
         """send_broadcast accepts injected Repository."""
-        # Arrange
-        mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
-
-        # Fix: Patch service's get_async_db_client (for querying users)
+        # Fix: Patch service's get_async_db_client (for querying users + batch insert)
         with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
             mock_get_db.return_value = mock_db_client
 
@@ -84,7 +88,6 @@ class TestRepositoryDependencyInjection:
         assert result["target_group"] == "all"
         assert result["user_count"] == 2
         assert result["notification_count"] == 2
-        assert mock_notification_repo.create_notification.call_count == 2
 
     @pytest.mark.asyncio
     async def test_send_to_user_with_injected_repo(self, mock_notification_repo):
@@ -198,7 +201,10 @@ class TestAuditLogDecorator:
         execute_mock = AsyncMock(return_value=profiles_result)
         mock_db.table.return_value.select.return_value.execute = execute_mock
 
-        mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
+        # Mock batch insert chain
+        insert_result = MagicMock()
+        insert_result.data = [{"id": "notif-1"}]
+        mock_db.table.return_value.insert.return_value.execute = AsyncMock(return_value=insert_result)
 
         # Fix: Patch service's get_async_db_client (for querying users)
         with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
@@ -282,7 +288,10 @@ class TestAuditLogDecorator:
         execute_mock = AsyncMock(return_value=profiles_result)
         mock_db.table.return_value.select.return_value.execute = execute_mock
 
-        mock_notification_repo.create_notification.return_value = {"id": "notif-1"}
+        # Mock batch insert chain
+        insert_result = MagicMock()
+        insert_result.data = [{"id": "notif-1"}]
+        mock_db.table.return_value.insert.return_value.execute = AsyncMock(return_value=insert_result)
 
         # Fix: Patch service's get_async_db_client (for querying users)
         with patch("domains.platform.notifications.service.get_async_db_client", new_callable=AsyncMock) as mock_get_db:
