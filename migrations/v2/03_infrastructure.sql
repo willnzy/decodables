@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS admin_operations (
     operation_type TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT,
-    target_user_id TEXT,  -- 专门用于记录操作影响的用户ID（可为空）
+    target_user_id UUID,  -- 专门用于记录操作影响的用户ID（可为空）
     action_details JSONB DEFAULT '{}',
     -- P0-13, P0-14: Repository 使用的额外字段
     source TEXT,  -- 操作来源
@@ -326,8 +326,8 @@ CREATE TABLE IF NOT EXISTS pricing_plans (
     -- 审计字段
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    created_by VARCHAR(100),
-    updated_by VARCHAR(100),
+    created_by UUID,
+    updated_by UUID,
 
     -- 约束: 确保字段互斥性
     CONSTRAINT check_subscription_fields CHECK (
@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS system_configs (
     is_editable BOOLEAN DEFAULT TRUE,
 
     -- 审计字段
-    updated_by TEXT,
+    updated_by UUID,
 
     -- 扩展字段
     ext_json JSONB DEFAULT '{}'::jsonb,
@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS pricing_history (
     new_data JSONB,
 
     -- 审计信息
-    changed_by VARCHAR(100) NOT NULL,
+    changed_by UUID NOT NULL,
     changed_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
@@ -479,7 +479,7 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_i
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_price_overrides (
     id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     pricing_plan_id INT NOT NULL REFERENCES pricing_plans(id) ON DELETE CASCADE,
 
     -- 覆盖价格
@@ -491,7 +491,7 @@ CREATE TABLE IF NOT EXISTS user_price_overrides (
     valid_until TIMESTAMPTZ,
 
     -- 审计
-    created_by VARCHAR(100) NOT NULL,
+    created_by UUID NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
 
@@ -641,7 +641,7 @@ SET search_path = 'public';
 -- 函数 5
 -- P0-7: 修复返回字段名，Repository 期望 balance_monthly/balance_permanent
 CREATE OR REPLACE FUNCTION deduct_credits_atomic(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_amount INT,
     p_type TEXT,
     p_description TEXT DEFAULT NULL,
@@ -774,7 +774,7 @@ SET search_path = 'public';
 -- 函数 6
 -- P0-7: 修复返回字段名，Repository 期望 balance_monthly/balance_permanent
 CREATE OR REPLACE FUNCTION add_credits_atomic(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_amount INT,
     p_bucket TEXT,
     p_type TEXT,
@@ -875,7 +875,7 @@ SET search_path = 'public';
 -- 函数 6b: 原子积分购买处理 (v3.27 - Phase 5 Part C)
 -- 将支付记录 + 积分增加 + 交易记录合并为单一原子操作
 CREATE OR REPLACE FUNCTION process_credit_purchase(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_credits_amount INT,
     p_payment_amount INT,      -- 金额（美分）
     p_currency TEXT,
@@ -1012,7 +1012,7 @@ COMMENT ON FUNCTION process_credit_purchase IS 'v3.27: 原子性处理积分购�
 
 -- 函数 7
 CREATE OR REPLACE FUNCTION execute_marketplace_purchase(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_listing_id UUID,
     p_idempotency_key TEXT
 )
@@ -1384,7 +1384,7 @@ END $$;
 -- ----------------------------------------------------------------------------
 -- P2-1: RPC 聚合函数 (6个，减少 N+1 查询)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION p_get_user_dashboard_stats(p_user_id TEXT)
+CREATE OR REPLACE FUNCTION p_get_user_dashboard_stats(p_user_id UUID)
 RETURNS TABLE(
     project_count INTEGER,
     asset_count INTEGER,
@@ -1447,7 +1447,7 @@ SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_get_user_credit_summary(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_days INTEGER DEFAULT 30
 )
 RETURNS TABLE(
@@ -1473,7 +1473,7 @@ SET search_path = 'public';
 
 
 CREATE OR REPLACE FUNCTION p_calculate_user_activity_score(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_days INTEGER DEFAULT 7
 )
 RETURNS TABLE(
@@ -1574,7 +1574,7 @@ END $$;
 CREATE OR REPLACE FUNCTION p_update_project_with_version(
     p_project_id UUID,
     p_expected_version INTEGER,
-    p_user_id TEXT,
+    p_user_id UUID,
     p_title TEXT DEFAULT NULL
 )
 RETURNS TABLE(

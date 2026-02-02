@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS config_audit_logs (
     old_value TEXT,
     new_value TEXT,
     action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
-    changed_by TEXT,
+    changed_by UUID,
     changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS daily_themes (
     -- ========== Review Workflow (v2.1) ==========
     review_status TEXT DEFAULT 'pending',                  -- Review status
     -- Values: pending, auto_approved, reviewed, rejected
-    reviewed_by TEXT,                                      -- Reviewer user_id
+    reviewed_by UUID,                                      -- Reviewer user_id
     reviewed_at TIMESTAMPTZ,                               -- Review timestamp
     review_notes TEXT,                                     -- Review notes/comments
 
@@ -470,8 +470,8 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     -- 审计字段
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    created_by TEXT,
-    updated_by TEXT
+    created_by UUID,
+    updated_by UUID
 );
 
 -- 索引
@@ -667,7 +667,7 @@ CREATE TABLE IF NOT EXISTS admin_notification_templates (
     target_tiers TEXT[],                             -- 目标 Tier 列表 (t1/t2/t3)
     scheduled_at TIMESTAMPTZ,                        -- 定时发送时间
     sent_at TIMESTAMPTZ,                             -- 实际发送时间
-    created_by TEXT NOT NULL,                        -- Admin user_id
+    created_by UUID NOT NULL,                        -- Admin user_id
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     -- 发送统计
@@ -752,7 +752,7 @@ CREATE TABLE IF NOT EXISTS system_resource_audit_logs (
     action TEXT NOT NULL,
     old_data JSONB,
     new_data JSONB,
-    changed_by TEXT NOT NULL,
+    changed_by UUID NOT NULL,
     changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ip_address TEXT,
     user_agent TEXT
@@ -1081,7 +1081,7 @@ CREATE TABLE IF NOT EXISTS experiment_configs (
     winner_variant TEXT,
     conclusion TEXT,
     decision TEXT CHECK (decision IN ('ship_treatment', 'keep_control', 'inconclusive', NULL)),
-    decided_by TEXT,
+    decided_by UUID,
     decided_at TIMESTAMPTZ,
 
     -- 审计
@@ -1134,7 +1134,7 @@ CREATE TABLE IF NOT EXISTS flag_audit_logs (
     changes JSONB,
     previous_value JSONB,
 
-    changed_by TEXT NOT NULL,
+    changed_by UUID NOT NULL,
     reason TEXT,
 
     changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

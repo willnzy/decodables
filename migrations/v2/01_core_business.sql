@@ -958,7 +958,7 @@ CREATE INDEX IF NOT EXISTS idx_user_asset_tags_tag ON user_asset_tags(tag_id);
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_recent_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_recent_asset UNIQUE(user_id, asset_id)
@@ -973,7 +973,7 @@ CREATE INDEX IF NOT EXISTS idx_user_recent_asset ON user_recent_assets(asset_id)
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_favorite_assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_favorite_asset UNIQUE(user_id, asset_id)
@@ -1470,8 +1470,8 @@ CREATE TABLE IF NOT EXISTS system_resources (
 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    created_by TEXT,
-    updated_by TEXT,
+    created_by UUID,
+    updated_by UUID,
 
     deleted_at TIMESTAMPTZ,
     recovery_expires_at TIMESTAMPTZ,
@@ -1649,7 +1649,7 @@ CREATE OR REPLACE FUNCTION p_get_marketplace_listings(
 )
 RETURNS TABLE (
     listing_id UUID,
-    seller_id TEXT,
+    seller_id UUID,
     resource_type TEXT,
     category TEXT,
     source TEXT,
@@ -1910,7 +1910,7 @@ SET search_path = 'public';
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_creation_logs (
     id BIGSERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id UUID NOT NULL,
     source TEXT NOT NULL CHECK (source IN ('register', 'admin', 'oauth', 'legacy')),
     action TEXT NOT NULL CHECK (action IN ('created', 'duplicate_attempt', 'error')),
     metadata JSONB DEFAULT '{}'::jsonb,
@@ -2464,7 +2464,7 @@ CREATE TRIGGER update_workspace_invitations_updated_at
 -- 原子执行: profiles 更新 + payment_records 插入 + credit_transactions 插入
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION process_subscription_start(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_plan TEXT,                    -- 't2' or 't3'
     p_stripe_customer_id TEXT,
     p_credits_amount INT,          -- 月度积分 (从 TierService 获取)
@@ -2597,7 +2597,7 @@ COMMENT ON FUNCTION process_subscription_start IS 'WS3: 原子处理首次订阅
 -- 原子执行: payment_records 插入 + profiles 更新 + credit_transactions 插入
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION process_subscription_renewal(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_tier TEXT,                    -- 当前 tier ('t2' or 't3')
     p_amount_usd INT,              -- 支付金额 (美分)
     p_currency TEXT,
@@ -2717,11 +2717,11 @@ COMMENT ON FUNCTION process_subscription_renewal IS 'WS3: 原子处理订阅续�
 -- 解决 admin_repository.py 非原子 Read-Modify-Write 竞态
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION admin_adjust_credits_atomic(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_amount INT,                  -- 正数=增加, 负数=扣减
     p_bucket TEXT,                 -- 'monthly' or 'permanent'
     p_reason TEXT,
-    p_admin_id TEXT
+    p_admin_id UUID
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -2824,7 +2824,7 @@ COMMENT ON FUNCTION admin_adjust_credits_atomic IS 'WS3: 原子管理员积分�
 -- 保留 stripe_customer_id (便于用户未来复购)
 
 CREATE OR REPLACE FUNCTION process_subscription_termination(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_new_tier TEXT,
     p_reason TEXT,                    -- payment_type: 'sub_canceled', 'tier_downgrade', etc.
     p_subscription_status TEXT DEFAULT 'inactive',  -- 目标 subscription_status
@@ -2937,7 +2937,7 @@ COMMENT ON FUNCTION process_subscription_termination IS 'WS4: 原子处理订阅
 --   5. 更新原始交易记录的 refunded_amount / refunded_at
 
 CREATE OR REPLACE FUNCTION process_credit_refund(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_credits_to_deduct INTEGER,      -- 应扣回的积分数 (已按比例计算)
     p_payment_intent_id TEXT,          -- 原始 payment_intent ID
     p_refund_id TEXT,                  -- Stripe refund ID (幂等性 key)
@@ -3075,7 +3075,7 @@ COMMENT ON FUNCTION process_credit_refund IS 'WS5: 原子处理积分购买退�
 -- 替代 Repository 层多步查询: list + count + tag joins
 
 CREATE OR REPLACE FUNCTION get_dashboard_projects(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_workspace_id UUID DEFAULT NULL,
     p_view TEXT DEFAULT 'all',           -- 'all', 'starred', 'folder'
     p_folder_id UUID DEFAULT NULL,
@@ -3231,7 +3231,7 @@ COMMENT ON FUNCTION get_dashboard_projects IS 'WS3: 高性能 Dashboard 项目�
 -- 同 get_dashboard_projects 模式，适配 assets 表结构
 
 CREATE OR REPLACE FUNCTION get_dashboard_assets(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_workspace_id UUID DEFAULT NULL,
     p_view TEXT DEFAULT 'all',           -- 'all', 'starred', 'folder'
     p_folder_id UUID DEFAULT NULL,
@@ -3381,7 +3381,7 @@ COMMENT ON FUNCTION get_dashboard_assets IS 'WS3: 高性能 Dashboard 素材查�
 -- 扩展 p_get_user_dashboard_stats，添加 workspace 过滤 + folder 统计
 
 CREATE OR REPLACE FUNCTION get_dashboard_stats(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_workspace_id UUID DEFAULT NULL
 )
 RETURNS JSONB AS $$
@@ -3495,7 +3495,7 @@ SET search_path = 'public';
 -- Atomic increment of asset usage_count (prevents race conditions)
 CREATE OR REPLACE FUNCTION increment_asset_usage(
     p_asset_id UUID,
-    p_user_id TEXT
+    p_user_id UUID
 )
 RETURNS INTEGER AS $$
 DECLARE
@@ -3611,7 +3611,7 @@ COMMENT ON FUNCTION delete_tag_atomic IS 'WS5: 原子删除标签及其所有关
 CREATE OR REPLACE FUNCTION set_project_tags_atomic(
     p_project_id UUID,
     p_tag_ids UUID[],
-    p_user_id TEXT
+    p_user_id UUID
 )
 RETURNS INTEGER AS $$
 DECLARE
@@ -3646,7 +3646,7 @@ COMMENT ON FUNCTION set_project_tags_atomic IS 'WS5: 原子替换项目标签 (�
 CREATE OR REPLACE FUNCTION set_asset_tags_atomic(
     p_asset_id UUID,
     p_tag_ids UUID[],
-    p_user_id TEXT,
+    p_user_id UUID,
     p_source TEXT DEFAULT 'manual'
 )
 RETURNS INTEGER AS $$
@@ -3682,7 +3682,7 @@ COMMENT ON FUNCTION set_asset_tags_atomic IS 'WS5: 原子替换素材标签 (删
 -- create_project_with_limit_check: 在单事务内完成限额检查 + 项目创建
 -- 解决 TOCTOU 竞态: count 和 insert 在同一事务中使用 advisory lock 保证原子性
 CREATE OR REPLACE FUNCTION create_project_with_limit_check(
-    p_user_id TEXT,
+    p_user_id UUID,
     p_project_id UUID,
     p_title TEXT,
     p_canvas_size TEXT DEFAULT '1080x1080',
