@@ -39,7 +39,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'tier_t1_monthly',
     'subscription',
@@ -60,8 +60,7 @@ INSERT INTO pricing_plans (
     0,
     1,
     NOW(),
-    '{"badge": "FREE"}'::jsonb,
-    'system'
+    '{"badge": "FREE"}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     updated_at = NOW();
@@ -75,7 +74,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'tier_t2_monthly',
     'subscription',
@@ -96,8 +95,7 @@ INSERT INTO pricing_plans (
     1,
     1,
     NOW(),
-    '{"discount_percent": 34, "badge": null}'::jsonb,
-    'system'
+    '{"discount_percent": 34, "badge": null}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     original_price_cents = EXCLUDED.original_price_cents,
@@ -112,7 +110,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'tier_t3_monthly',
     'subscription',
@@ -133,8 +131,7 @@ INSERT INTO pricing_plans (
     2,
     1,
     NOW(),
-    '{"discount_percent": 34, "badge": "RECOMMENDED"}'::jsonb,
-    'system'
+    '{"discount_percent": 34, "badge": "RECOMMENDED"}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     original_price_cents = EXCLUDED.original_price_cents,
@@ -154,7 +151,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'credits_100',
     'credits',
@@ -173,8 +170,7 @@ INSERT INTO pricing_plans (
     10,
     1,
     NOW(),
-    '{"unit_price_cents": 2.99, "badge": null}'::jsonb,
-    'system'
+    '{"unit_price_cents": 2.99, "badge": null}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     updated_at = NOW();
@@ -188,7 +184,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'credits_500',
     'credits',
@@ -207,8 +203,7 @@ INSERT INTO pricing_plans (
     11,
     1,
     NOW(),
-    '{"discount_percent": 10, "unit_price_cents": 2.698, "badge": "POPULAR"}'::jsonb,
-    'system'
+    '{"discount_percent": 10, "unit_price_cents": 2.698, "badge": "POPULAR"}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     original_price_cents = EXCLUDED.original_price_cents,
@@ -223,7 +218,7 @@ INSERT INTO pricing_plans (
     stripe_product_id,
     is_active, is_visible, is_featured, sort_order,
     version, effective_from,
-    metadata, created_by
+    metadata
 ) VALUES (
     'credits_2000',
     'credits',
@@ -242,8 +237,7 @@ INSERT INTO pricing_plans (
     12,
     1,
     NOW(),
-    '{"discount_percent": 20, "unit_price_cents": 2.4, "badge": "BEST VALUE"}'::jsonb,
-    'system'
+    '{"discount_percent": 20, "unit_price_cents": 2.4, "badge": "BEST VALUE"}'::jsonb
 ) ON CONFLICT (plan_code) DO UPDATE SET
     price_cents = EXCLUDED.price_cents,
     original_price_cents = EXCLUDED.original_price_cents,
