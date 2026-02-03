@@ -2130,14 +2130,27 @@ function EditorPage({ projectId }: { projectId: string }) {
 
 #### 8.1.3 试用期状态 UI 提醒
 
-**试用期内提醒**:
+**试用期内提醒 (基于百分比)**:
 
-| 剩余天数 | 提醒方式 | 提醒频率 |
-|:-------:|---------|:-------:|
-| 7-4 天 | 顶部 Banner (可关闭) | 每天首次登录 |
-| 3-1 天 | 顶部 Banner (不可关闭) + 编辑器内提示 | 每次进入 |
-| 0 天 (当天) | Modal 弹窗 + Banner | 每次进入 |
-| 已过期 | 持续 Banner + 只读模式 | 持续显示 |
+> 使用百分比而非固定天数，以便 `trial.default_days` 配置变更时自动适配。
+
+| 剩余比例 | 提醒方式 | 提醒频率 | 示例 (7天) |
+|:-------:|---------|:-------:|:----------:|
+| > 50% | 顶部 Banner (可关闭) | 每天首次登录 | 7-4 天 |
+| 15% ~ 50% | 顶部 Banner (不可关闭) + 编辑器内提示 | 每次进入 | 3-1 天 |
+| 0% ~ 15% | Modal 弹窗 + Banner | 每次进入 | 当天 |
+| 已过期 | 持续 Banner + 只读模式 | 持续显示 | - |
+
+**配置 Key**:
+
+```sql
+-- system_configs 配置项 (可在 Admin 调整)
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('trial.default_days', '7', 'integer', 'trial', '默认试用天数'),
+('trial.warning_threshold', '0.5', 'float', 'trial', 'warning 样式阈值 (剩余比例 ≤ 50%)'),
+('trial.urgent_threshold', '0.15', 'float', 'trial', 'urgent 样式阈值 (剩余比例 ≤ 15%)'),
+('trial.show_modal_on_last_day', 'true', 'boolean', 'trial', '最后一天是否弹窗');
+```
 
 **UI 组件**:
 
@@ -2146,26 +2159,45 @@ function EditorPage({ projectId }: { projectId: string }) {
 
 interface TrialBannerProps {
   daysRemaining: number;
+  totalTrialDays: number;       // 从配置获取
+  warningThreshold?: number;    // 默认 0.5 (50%)
+  urgentThreshold?: number;     // 默认 0.15 (15%)
   onUpgrade: () => void;
   onDismiss?: () => void;
 }
 
-function TrialStatusBanner({ daysRemaining, onUpgrade, onDismiss }: TrialBannerProps) {
-  // 根据剩余天数显示不同样式
-  const variant = daysRemaining <= 1 ? 'urgent' : daysRemaining <= 3 ? 'warning' : 'info';
-  const canDismiss = daysRemaining > 3;
+function TrialStatusBanner({
+  daysRemaining,
+  totalTrialDays,
+  warningThreshold = 0.5,
+  urgentThreshold = 0.15,
+  onUpgrade,
+  onDismiss
+}: TrialBannerProps) {
+  const remainingRatio = daysRemaining / totalTrialDays;
+
+  // 基于百分比判断样式
+  const variant = useMemo(() => {
+    if (daysRemaining <= 0) return 'expired';
+    if (remainingRatio <= urgentThreshold) return 'urgent';
+    if (remainingRatio <= warningThreshold) return 'warning';
+    return 'info';
+  }, [daysRemaining, remainingRatio, warningThreshold, urgentThreshold]);
+
+  const canDismiss = remainingRatio > warningThreshold;
 
   const messages = {
     urgent: `试用期今天结束！升级后继续使用所有功能`,
     warning: `试用期还剩 ${daysRemaining} 天`,
     info: `试用期还剩 ${daysRemaining} 天，探索所有功能`,
+    expired: `试用期已结束，项目已变为只读模式`,
   };
 
   return (
     <Banner variant={variant} dismissible={canDismiss} onDismiss={onDismiss}>
       <span>{messages[variant]}</span>
       <Button size="sm" onClick={onUpgrade}>
-        {daysRemaining <= 1 ? '立即升级' : '查看套餐'}
+        {daysRemaining <= 0 ? '升级解锁' : daysRemaining <= 1 ? '立即升级' : '查看套餐'}
       </Button>
     </Banner>
   );
@@ -2202,12 +2234,17 @@ function TrialExpiredModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 #### 8.1.4 试用期配置 Key
 
 ```sql
--- system_configs 配置项
+-- system_configs 配置项 (使用百分比阈值，适应不同试用期长度)
 INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
 ('trial.default_days', '7', 'integer', 'trial', '默认试用天数'),
-('trial.warning_days', '3', 'integer', 'trial', '提前警告天数'),
-('trial.urgent_days', '1', 'integer', 'trial', '紧急提醒天数'),
+('trial.warning_threshold', '0.5', 'float', 'trial', 'warning 样式阈值 (剩余比例 ≤ 50%)'),
+('trial.urgent_threshold', '0.15', 'float', 'trial', 'urgent 样式阈值 (剩余比例 ≤ 15%)'),
 ('trial.show_modal_on_expire', 'true', 'boolean', 'trial', '过期当天是否弹窗');
+
+-- 阈值计算示例:
+-- 7 天试用期: warning = 剩余 ≤ 3.5 天, urgent = 剩余 ≤ 1 天
+-- 14 天试用期: warning = 剩余 ≤ 7 天, urgent = 剩余 ≤ 2 天
+-- 30 天试用期: warning = 剩余 ≤ 15 天, urgent = 剩余 ≤ 4.5 天
 ```
 
 ---

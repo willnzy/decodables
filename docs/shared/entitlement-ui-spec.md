@@ -607,14 +607,27 @@ T3 用户的 Projects 为 unlimited，显示方式：
 
 #### 11.1.1 TrialStatusBanner 组件
 
-**展示时机**:
+**展示时机 (基于百分比)**:
 
-| 剩余天数 | Banner 样式 | 可关闭 | 展示位置 |
-|:-------:|------------|:-----:|---------|
-| 7-4 天 | `info` (蓝色) | ✅ | 页面顶部，Dashboard/Editor |
-| 3-1 天 | `warning` (橙色) | ❌ | 页面顶部，Dashboard/Editor |
-| 0 天 (当天) | `urgent` (红色) | ❌ | 页面顶部 + Modal 弹窗 |
-| 已过期 | `expired` (灰色) | ❌ | 持续显示 |
+> 使用百分比而非固定天数，以便 `trial.default_days` 配置变更时自动适配。
+
+| 剩余比例 | Banner 样式 | 可关闭 | 展示位置 | 示例 (7天试用期) |
+|:-------:|------------|:-----:|---------|:---------------:|
+| > 50% | `info` (蓝色) | ✅ | 页面顶部，Dashboard/Editor | 7-4 天 |
+| 15% ~ 50% | `warning` (橙色) | ❌ | 页面顶部，Dashboard/Editor | 3-1 天 |
+| 0% ~ 15% | `urgent` (红色) | ❌ | 页面顶部 + Modal 弹窗 | 当天 |
+| 已过期 | `expired` (灰色) | ❌ | 持续显示 | - |
+
+**配置 Key**:
+
+```sql
+-- system_configs 配置项 (可在 Admin 调整)
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('trial.default_days', '7', 'integer', 'trial', '默认试用天数'),
+('trial.warning_threshold', '0.5', 'float', 'trial', 'warning 样式阈值 (剩余比例)'),
+('trial.urgent_threshold', '0.15', 'float', 'trial', 'urgent 样式阈值 (剩余比例)'),
+('trial.show_modal_on_last_day', 'true', 'boolean', 'trial', '最后一天是否弹窗');
+```
 
 **组件实现**:
 
@@ -623,19 +636,31 @@ T3 用户的 Projects 为 unlimited，显示方式：
 
 interface TrialStatusBannerProps {
   daysRemaining: number;
+  totalTrialDays: number;  // 从配置获取
+  warningThreshold?: number;  // 默认 0.5 (50%)
+  urgentThreshold?: number;   // 默认 0.15 (15%)
   onUpgrade: () => void;
   onDismiss?: () => void;
 }
 
-export function TrialStatusBanner({ daysRemaining, onUpgrade, onDismiss }: TrialStatusBannerProps) {
+export function TrialStatusBanner({
+  daysRemaining,
+  totalTrialDays,
+  warningThreshold = 0.5,
+  urgentThreshold = 0.15,
+  onUpgrade,
+  onDismiss
+}: TrialStatusBannerProps) {
+  const remainingRatio = daysRemaining / totalTrialDays;
+
   const variant = useMemo(() => {
     if (daysRemaining <= 0) return 'expired';
-    if (daysRemaining <= 1) return 'urgent';
-    if (daysRemaining <= 3) return 'warning';
+    if (remainingRatio <= urgentThreshold) return 'urgent';
+    if (remainingRatio <= warningThreshold) return 'warning';
     return 'info';
-  }, [daysRemaining]);
+  }, [daysRemaining, remainingRatio, warningThreshold, urgentThreshold]);
 
-  const canDismiss = daysRemaining > 3;
+  const canDismiss = remainingRatio > warningThreshold;
 
   const variantStyles = {
     info: 'bg-blue-50 border-blue-200 text-blue-800',
