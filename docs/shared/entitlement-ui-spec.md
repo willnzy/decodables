@@ -1,6 +1,6 @@
 # 用户权限 UI 交互规范
 
-> **版本**: v1.2
+> **版本**: v1.3
 > **日期**: 2026-02-04
 > **状态**: 设计完成
 > **适用范围**: 功能权限、配额限制的前端 UI 交互
@@ -173,8 +173,8 @@ const { isLocked, isTrial, checkAndTrigger, trialDaysRemaining } =
 | **AI 生成 Page** | `AIPageGenerator` | 按钮 + 🔒 | Trial 时显示 Badge; 锁定时弹 UpgradeModal |
 | **Smart Scan (OCR)** | `CustomAssets` | 按钮 + 🔒 | Tooltip: "Smart Scan requires Pro" → UpgradeModal |
 | **Upload Custom Asset** | `CustomAssets` | 上传按钮 + 🔒 | Tooltip: "Custom uploads require Pro" → UpgradeModal |
-| **PDF 打印** | `TopBarExport` | 菜单项可用 | t1 超出试用期后仍可用 |
-| **PDF 下载** | `TopBarExport` | 菜单项可用 | t1 超出试用期后仍可用 |
+| **PDF 打印** | `TopBarExport` | 游客: 🔒; 登录用户: 可用 | 游客需登录; t1 超出试用期后仍可用 |
+| **PDF 下载** | `TopBarExport` | 游客: 🔒; 登录用户: 可用 | 游客需登录; t1 超出试用期后仍可用 |
 | **ZIP Export** | `TopBarExport` | 菜单项 + 🔒 | Tooltip: "ZIP export requires Pro" → UpgradeModal |
 
 > **剪贴板粘贴控制细节**: Canvas 右键菜单中显示"复制/粘贴"选项，当权限不足时：
@@ -188,13 +188,17 @@ const { isLocked, isTrial, checkAndTrigger, trialDaysRemaining } =
 
 ```tsx
 <DropdownMenuContent>
-  {/* PDF 打印 - 所有人可用 */}
-  <DropdownMenuItem onClick={handlePrint}>
+  {/* PDF 打印 - 游客 NO，t1 trial YES，t1 过期后 YES，t2/t3 YES */}
+  <DropdownMenuItem
+    onClick={() => printAccess.checkAndTrigger(handlePrint)}
+    className={cn(printAccess.isLocked && "opacity-70")}
+  >
     <Printer className="w-4 h-4 mr-2" />
     Print PDF
+    {printAccess.isLocked && <Lock className="w-3.5 h-3.5 text-amber-500 ml-auto" />}
   </DropdownMenuItem>
 
-  {/* PDF 下载 - Trial 超出锁定 */}
+  {/* PDF 下载 - 游客 NO，t1 trial YES，t1 过期后 YES，t2/t3 YES */}
   <DropdownMenuItem
     onClick={() => pdfAccess.checkAndTrigger(handleDownloadPdf)}
     className={cn(pdfAccess.isLocked && "opacity-70")}
@@ -569,7 +573,7 @@ export function ProjectLimitWarning({ currentCount, maxProjects }: ProjectLimitW
 | Projects | 1 | 10 | unlimited (-1) | `system_configs.tier.{tier}.max_projects` |
 | Folders | 1 | 20 | 200 | `system_configs.tier.{tier}.max_folders` |
 | Workspaces | 1* | 1* | unlimited (-1) | *只能加入，不能创建 |
-| Custom Assets | 10 | 0 | 50 → unlimited | T2 为 0 是特殊设计 |
+| Custom Assets | 10 (试用期) / 0 (过期后) | 50/Account | unlimited (-1) | t1 试用期内可上传 10 个 |
 
 ### 10.5 配额恢复交互
 
@@ -602,6 +606,7 @@ T3 用户的 Projects 为 unlimited，显示方式：
 | v1.0 | 2026-02-03 | 初始版本 |
 | v1.1 | 2026-02-03 | 补充遗漏：useQuotaGuard 实现、QuotaBar 组件、ProjectLimitWarning、配额映射表 |
 | v1.2 | 2026-02-04 | 基于 CSV 表格校准：Editor 页面功能控制方式、第 7-9 行说明 |
+| v1.3 | 2026-02-04 | 全面审计修复：PDF 打印/下载注释错误修正；t2 maxCustomAssets 改为 50/Account |
 
 ---
 

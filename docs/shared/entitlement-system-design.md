@@ -1,7 +1,7 @@
 # 用户权限与功能控制系统设计
 
-> **版本**: v4.1
-> **日期**: 2026-02-03
+> **版本**: v4.2
+> **日期**: 2026-02-04
 > **状态**: 设计完成
 > **架构**: Entitlement Service + Feature Flag Service + Merge Layer
 
@@ -250,20 +250,20 @@ Level 4: Flag variant (A/B / 灰度)             → 附加 variant 信息  (最
 ```sql
 CREATE TABLE IF NOT EXISTS user_feature_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
-    feature_key TEXT NOT NULL,
-    access_level TEXT NOT NULL DEFAULT 'full' CHECK (access_level IN ('full', 'trial')),
-    reason TEXT,                          -- "KOL 合作" / "客服补偿"
-    granted_by TEXT,                      -- 授权人 (admin user_id)
-    starts_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMPTZ,               -- NULL = 永不过期
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,            -- 功能 Key, 如 'smart_scan', 'ai_features'
+    override_value TEXT NOT NULL,         -- 覆盖值: 'true' | 'false' | 'trial'
+    reason TEXT,                          -- 覆盖原因 (运营记录): "KOL 合作" / "客服补偿" / "AB 实验"
+    expires_at TIMESTAMPTZ,               -- 过期时间 (可选, NULL=永久)
+    created_by TEXT,                      -- 操作人 (Admin user_id)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, feature_key)
 );
 
-CREATE INDEX idx_ufo_user_active ON user_feature_overrides(user_id) WHERE is_active = TRUE;
+-- 索引
+CREATE INDEX idx_user_feature_overrides_user_id ON user_feature_overrides(user_id);
+CREATE INDEX idx_user_feature_overrides_expires ON user_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
 ```
 
 ---
@@ -612,9 +612,9 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 -- Tier 功能权限 (从设计文档入库)
 INSERT INTO system_configs (key, value, value_type, config_group, description, is_public, is_active) VALUES
 ('tier.t1.features', '{
-  "platform_assets": "trial",
-  "vector_tools": "trial",
-  "freehand_tools": "trial",
+  "platform_assets": true,
+  "vector_tools": true,
+  "freehand_tools": true,
   "clipboard_paste": "trial",
   "ai_features": "trial",
   "smart_scan": "trial",
@@ -780,8 +780,8 @@ INSERT INTO entitlement_configs (tier, feature_key, value_type, value, trial_val
 |---|------|:---:|------|
 | 1 | 浏览 Landing 页 | ✅ | 公开页面 |
 | 2 | 查看 Pricing 弹窗 | ✅ | 展示 Plan 对比，引导注册 |
-| 3 | 浏览 Manual 页 | ✅ | 公开文档 |
-| 4 | 浏览 Marketplace | ✅ | 公开商城 |
+| 3 | 浏览 Manual/News 页 | ✅ | 公开文档 |
+| 4 | 浏览 Marketplace | ❌ | 需要登录，点击跳转登录页 |
 | 5 | 创建项目 | ❌ | 点击跳转登录页 |
 | 6 | 进入 Dashboard | ❌ | 需要登录 |
 | 7 | 进入编辑器 | ❌ | 需要登录 |
@@ -822,6 +822,7 @@ const isTrialExpired = isFree && !isWithinTrialPeriod?.();
 |------|------|----------|
 | v4.0 | 2026-02-03 | 初始版本：从 002-entitlement 文档重组 |
 | v4.1 | 2026-02-03 | 补充遗漏：决策记录 (9项)、v2.2 审计、风险缓解 (9项)、system_configs SQL、身份层级 |
+| v4.2 | 2026-02-04 | 全面审计修复：t1 JSON 配置 (platform_assets/vector_tools/freehand_tools 改为 true)；游客 Marketplace 访问权限改为 ❌；统一 user_feature_overrides 表结构 (使用 override_value) |
 
 ---
 

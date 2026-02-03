@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.5
+> **版本**: v1.6
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -139,25 +139,30 @@
 
 > 统一 PRD 功能名 → 后端 FeatureKey → 前端 FEATURES 常量
 
-| # | PRD 功能名 | 后端 FeatureKey | 前端 FEATURES | 当前代码状态 |
-|---|-----------|----------------|--------------|-------------|
-| 7 | 使用平台素材 | `platform_assets` | `PLATFORM_ASSETS` | ❌ 需新增 |
-| 8 | 矢量图工具 | `vector_tools` | `VECTOR_TOOLS` | ❌ 需新增 |
-| 9 | 画笔工具 | `freehand_tools` | `FREEHAND_TOOLS` | ❌ 需新增 |
-| 10 | 剪贴板粘贴 | `clipboard_paste` | `CLIPBOARD_PASTE` | ⚠️ 后端有，前端无 |
-| 11 | AI 生成素材 | `ai_features` | `AI_FEATURES` | ✅ 有 |
-| 12 | AI 生成 Page | `ai_features` | `AI_FEATURES` | ✅ 复用 |
-| 13 | Smart Scan | `smart_scan` | `SMART_SCAN` | ✅ 有 |
-| 14 | PDF 打印 | `pdf_print` | `PDF_PRINT` | ✅ 有 |
-| 15 | PDF 下载 | `pdf_export` | `EXPORT_PDF` | ✅ 有 |
-| 16 | ZIP 导出 | `zip_export` | `EXPORT_ZIP` | ✅ 有 |
-| 17 | 发布付费 | `publish_paid` | `PUBLISH_PAID` | ❌ 需新增 |
-| 18 | 发布免费 | `publish_free` | `PUBLISH_FREE` | ❌ 需新增 |
-| 19 | 浏览商城 | `browse_marketplace` | `BROWSE_MARKETPLACE` | ⚠️ 后端有，前端无 |
-| 20 | 购买商城 | `purchase_marketplace` | `PURCHASE_MARKETPLACE` | ⚠️ 后端有，前端无 |
-| 21 | 30天恢复 | `recover_deleted` | `RECOVER_DELETED` | ❌ 需新增 |
-| 22 | 订阅 Plan | `can_subscribe` | `CAN_SUBSCRIBE` | ✅ 有 |
-| 23 | 购买 Credits | `can_purchase_credits` | `CAN_PURCHASE_CREDITS` | ✅ 有 |
+| # | PRD 功能名 | 后端 FeatureKey | 前端 FEATURES | 当前代码状态 | 说明 |
+|---|-----------|----------------|--------------|-------------|------|
+| 7 | 使用平台素材 | `platform_assets` | `PLATFORM_ASSETS` | ❌ 需新增 | |
+| 8 | 矢量图工具 | `vector_tools` | `VECTOR_TOOLS` | ❌ 需新增 | |
+| 9 | 画笔工具 | `freehand_tools` | `FREEHAND_TOOLS` | ❌ 需新增 | |
+| 10 | 剪贴板粘贴 | `clipboard_paste` | `CLIPBOARD_PASTE` | ⚠️ 后端有，前端无 | |
+| 11 | AI 生成素材 | `ai_features` | `AI_FEATURES` | ✅ 有 | 与 #12 共用 Key |
+| 12 | AI 生成 Page | `ai_features` | `AI_FEATURES` | ✅ 复用 | 与 #11 共用 Key |
+| 13 | Smart Scan | `smart_scan` | `SMART_SCAN` | ✅ 有 | |
+| 14 | PDF 打印 | `pdf_print` | `PDF_PRINT` | ✅ 有 | |
+| 15 | PDF 下载 | `pdf_export` | `PDF_EXPORT` | ✅ 有 | 统一命名为 pdf_export |
+| 16 | ZIP 导出 | `zip_export` | `ZIP_EXPORT` | ✅ 有 | 统一命名为 zip_export |
+| 17 | 发布付费 | `publish_paid` | `PUBLISH_PAID` | ❌ 需新增 | |
+| 18 | 发布免费 | `publish_free` | `PUBLISH_FREE` | ❌ 需新增 | |
+| 19 | 浏览商城 | `browse_marketplace` | `BROWSE_MARKETPLACE` | ⚠️ 后端有，前端无 | |
+| 20 | 购买商城 | `purchase_marketplace` | `PURCHASE_MARKETPLACE` | ⚠️ 后端有，前端无 | |
+| 21 | 30天恢复 | `recover_deleted` | `RECOVER_DELETED` | ❌ 需新增 | |
+| 22 | 订阅 Plan | `can_subscribe` | `CAN_SUBSCRIBE` | ✅ 有 | |
+| 23 | 购买 Credits | `can_purchase_credits` | `CAN_PURCHASE_CREDITS` | ✅ 有 | |
+
+> **Key 命名规范**:
+> - 后端 FeatureKey 与前端 FEATURES 使用相同命名 (snake_case)
+> - AI 功能 (#11, #12) 共用 `ai_features` Key，前端通过入口位置区分
+> - PDF/ZIP 导出统一使用 `pdf_export` / `zip_export` (不带 EXPORT_ 前缀)
 
 ---
 
@@ -355,6 +360,40 @@ CREATE INDEX idx_user_feature_overrides_user_id ON user_feature_overrides(user_i
 CREATE INDEX idx_user_feature_overrides_expires ON user_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
 ```
 
+#### 4.4.3 user_feature_override_logs 表 (审计日志)
+
+记录 user_feature_overrides 的所有变更：
+
+```sql
+-- 用户功能覆盖审计日志表
+CREATE TABLE user_feature_override_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  override_id UUID REFERENCES user_feature_overrides(id) ON DELETE SET NULL,
+  user_id TEXT NOT NULL,                 -- 被操作用户
+  feature_key TEXT NOT NULL,             -- 功能 Key
+  action TEXT NOT NULL,                  -- 操作类型: 'created' | 'updated' | 'deleted' | 'expired'
+  old_value TEXT,                        -- 变更前的值
+  new_value TEXT,                        -- 变更后的值
+  reason TEXT,                           -- 变更原因
+  changed_by TEXT NOT NULL,              -- 操作人 (Admin user_id 或 'system')
+  changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_ufo_logs_user_id ON user_feature_override_logs(user_id);
+CREATE INDEX idx_ufo_logs_changed_at ON user_feature_override_logs(changed_at DESC);
+CREATE INDEX idx_ufo_logs_feature_key ON user_feature_override_logs(feature_key);
+```
+
+**审计操作类型**:
+
+| action | 说明 | 触发场景 |
+|--------|------|---------|
+| `created` | 创建 Override | Admin 为用户开通功能 |
+| `updated` | 更新 Override | 修改 override_value 或 expires_at |
+| `deleted` | 删除 Override | Admin 手动删除或实验结束清理 |
+| `expired` | 自动过期 | 定时任务检测 expires_at 到期 |
+
 **使用示例**:
 
 ```sql
@@ -520,6 +559,22 @@ function checkPageAccess(pathname: string, userTier: string): 'allow' | 'login' 
 
   return 'allow';
 }
+
+/**
+ * Tier 比较函数
+ * @returns 负数=userTier低于minTier, 0=相等, 正数=userTier高于minTier
+ */
+function compareTier(userTier: string, minTier: string): number {
+  const TIER_ORDER: Record<string, number> = {
+    't1': 1,
+    't2': 2,
+    't3': 3,
+    't4': 4,
+  };
+  const userLevel = TIER_ORDER[userTier] ?? 0;
+  const minLevel = TIER_ORDER[minTier] ?? 0;
+  return userLevel - minLevel;
+}
 ```
 
 ---
@@ -617,6 +672,26 @@ export const TIER_FEATURES_FALLBACK: Record<string, Record<string, boolean | str
     can_subscribe: true,
     can_purchase_credits: true,
   },
+  t4: {
+    platform_assets: true,
+    vector_tools: true,
+    freehand_tools: true,
+    clipboard_paste: true,
+    ai_features: true,
+    smart_scan: true,
+    pdf_export: true,
+    pdf_print: true,
+    zip_export: true,
+    publish_paid: true,
+    publish_free: true,
+    browse_marketplace: true,
+    purchase_marketplace: true,
+    recover_deleted: true,
+    can_invite_members: true,
+    can_upload_custom_assets: true,
+    can_subscribe: true,
+    can_purchase_credits: true,
+  },
 };
 ```
 
@@ -671,6 +746,15 @@ export const EMERGENCY_TIER_CONFIGS: Record<string, {
     maxCustomAssets: -1,  // unlimited
     features: TIER_FEATURES_FALLBACK.t3,
   },
+  t4: {
+    displayName: 'Enterprise',
+    monthlyCredits: 500,
+    maxProjects: -1,  // unlimited
+    maxFolders: -1,   // unlimited
+    maxWorkspaces: -1,  // unlimited
+    maxCustomAssets: -1,  // unlimited
+    features: TIER_FEATURES_FALLBACK.t4,
+  },
 };
 ```
 
@@ -687,7 +771,7 @@ export const EMERGENCY_TIER_CONFIGS: Record<string, {
  * useFeatureFlag 的 key → 新 FeatureKey
  */
 export const LEGACY_KEY_MAP: Record<string, string> = {
-  // useTierFeature 的 FEATURES enum
+  // useTierFeature 的旧 FEATURES enum → 新 FeatureKey
   'PLATFORM_ASSETS': 'platform_assets',
   'VECTOR_TOOLS': 'vector_tools',
   'FREEHAND_TOOLS': 'freehand_tools',
@@ -695,16 +779,19 @@ export const LEGACY_KEY_MAP: Record<string, string> = {
   'ZIP_EXPORT': 'zip_export',
   'PROJECT_TEMPLATES': 'ai_features',
   'AI_FEATURES': 'ai_features',
-  'EXPORT_PDF': 'pdf_export',
-  'EXPORT_ZIP': 'zip_export',
+  'PDF_PRINT': 'pdf_print',
+  'PDF_EXPORT': 'pdf_export',       // 统一命名
+  'EXPORT_PDF': 'pdf_export',       // 旧命名兼容
+  'EXPORT_ZIP': 'zip_export',       // 旧命名兼容
   'PREMIUM_STICKERS': 'platform_assets',
 
-  // useFeatureFlag 的 key
+  // useFeatureFlag 的旧 key → 新 FeatureKey
   'ocr': 'smart_scan',
   'ai_generation': 'ai_features',
   'zip_export': 'zip_export',
   'smart_scan': 'smart_scan',
   'clipboard_paste': 'clipboard_paste',
+  'pdf_download': 'pdf_export',     // 旧命名兼容
 };
 
 /**
@@ -791,6 +878,30 @@ export function normalizeFeatureKey(key: string): string {
 }
 ```
 
+**t4 (Enterprise)**:
+```json
+{
+  "platform_assets": true,
+  "vector_tools": true,
+  "freehand_tools": true,
+  "clipboard_paste": true,
+  "ai_features": true,
+  "smart_scan": true,
+  "pdf_export": true,
+  "pdf_print": true,
+  "zip_export": true,
+  "publish_paid": true,
+  "publish_free": true,
+  "browse_marketplace": true,
+  "purchase_marketplace": true,
+  "recover_deleted": true,
+  "can_invite_members": true,
+  "can_upload_custom_assets": true,
+  "can_subscribe": true,
+  "can_purchase_credits": true
+}
+```
+
 ---
 
 ## 七、变更记录
@@ -803,6 +914,7 @@ export function normalizeFeatureKey(key: string): string {
 | 2026-02-04 | v1.3 | 新增用户级功能覆盖 (user_feature_overrides)：支持为特定用户开通/关闭功能，与 Tier 配置解耦 |
 | 2026-02-04 | v1.4 | 补充 AB 实验场景：跨 Tier 用户验证功能的实验组/对照组配置示例 |
 | 2026-02-04 | v1.5 | 新增权限优先级规则详解：参考 LaunchDarkly/Split.io/Unleash 业界最佳实践，含流程图和设计原则 |
+| 2026-02-04 | v1.6 | 全面审计修复：补充 t4 兜底配置 (EMERGENCY_TIER_CONFIGS/TIER_FEATURES_FALLBACK/JSON 配置)；补充 compareTier() 函数定义；补充 user_feature_override_logs 审计日志表；统一 Feature Key 命名 (LEGACY_KEY_MAP 更新) |
 
 ---
 
