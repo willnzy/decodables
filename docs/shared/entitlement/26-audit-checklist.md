@@ -85,7 +85,8 @@
 
 | 表名 | 检查重点 |
 |------|---------|
-| `profiles` | tier 字段 CHECK ('t1','t2','t3','t4'); credits_monthly/credits_permanent/credits_gift/credits_compensation 非负; trial 相关字段 |
+| `profiles` | tier 字段 CHECK ('t1','t2','t3','t4'); credits_total/credits_debt 非负; trial 相关字段 |
+| `credit_pools` | source_type CHECK (7种); balance 非负; user_id + expires_at 索引支持 FEFO |
 | `subscriptions` | status CHECK; billing_interval CHECK; pause 相关字段 |
 | `user_feature_overrides` | (user_id, feature_key) UNIQUE; override_value CHECK; expires_at 索引 |
 | `group_feature_overrides` | (group_id, feature_key) UNIQUE; override_value CHECK; expires_at 索引 |
@@ -175,7 +176,7 @@
 
 | # | 检查项 | 检查内容 | 通过标准 |
 |---|--------|---------|---------|
-| 3.2.6 | **扣费优先级** | 是否按 月度 → 永久 → 赠送 → 补偿 顺序扣费？ | 优先级正确 |
+| 3.2.6 | **扣费优先级** | 是否按 FEFO 策略扣费？(先过期先扣 + 来源优先级) | FEFO 正确 |
 | 3.2.7 | **余额检查** | 扣费前是否检查余额充足？ | 有余额校验 |
 | 3.2.8 | **原子扣费** | 扣费是否原子操作？ | RPC 保证原子 |
 | 3.2.9 | **退款回收** | 退款时是否正确回收积分？ | 区分已使用/未使用 |
@@ -294,7 +295,7 @@
 | 4.3.3 | **GracePeriodBanner** | 宽限期警告横幅 | 支付失败后显示; 剩余天数; 更新支付方式 CTA |
 | 4.3.4 | **LockedProjectCard** | 锁定项目卡片 | 超额资源显示 🔒; 只读提示; 升级 CTA |
 | 4.3.5 | **UpgradeModal** | 升级弹窗 | 点击锁定功能触发; 比较表; 价格显示 |
-| 4.3.6 | **CreditsDisplay** | 积分余额展示 | 实时更新; 4 种积分类型分开显示; 变动动画 |
+| 4.3.6 | **CreditsDisplay** | 积分余额展示 | 实时更新; 7 种来源类型汇总显示; 即将过期提醒; 变动动画 |
 | 4.3.7 | **PausedSubscriptionBanner** | 订阅暂停横幅 | 暂停期间显示; 剩余天数; 提前恢复 CTA |
 | 4.3.8 | **DowngradeConfirmModal** | 降级确认弹窗 | 显示受影响资源数量; 确认/取消操作 |
 
@@ -419,9 +420,21 @@
 ### 5.5 场景 S5: 积分使用规则
 
 ```
-积分类型: 月度积分 (monthly) / 永久积分 (permanent) / 赠送积分 (gift) / 补偿积分 (compensation)
-扣费顺序: 月度 → 永久 → 赠送 → 补偿
-退款回收: 补偿 → 赠送 → 永久 → 月度 (反向回收)
+积分来源类型 (7种):
+- subscription (订阅积分) - 当月月底过期
+- purchase (购买积分) - 永久
+- bonus_signup (注册赠送) - 永久
+- bonus_referral (邀请奖励) - 永久
+- bonus_campaign (营销活动) - 30-90天可配
+- compensation (客服补偿) - 永久
+- earning (销售收入) - 永久
+
+扣费策略: FEFO (First Expire, First Out)
+1. 先扣即将过期的积分 (expires_at 升序)
+2. 永久积分按来源优先级: subscription > bonus_signup > bonus_referral > bonus_campaign > earning > purchase > compensation
+
+退款回收: 反向顺序
+compensation → earning → purchase → bonus_campaign → bonus_referral → bonus_signup → subscription
 ```
 
 | # | 检查项 | DB | 后端 | 前端 |
@@ -785,7 +798,7 @@ Phase 5: 交叉验证
 
 ### 8.3 积分场景 Quick Check
 
-- [ ] 扣费优先级 (月度→永久→赠送→补偿) ✅
+- [ ] 扣费策略 FEFO (先过期先扣 + 来源优先级) ✅
 - [ ] 原子操作 (RPC) ✅
 - [ ] 余额不足拦截 ✅
 - [ ] 变动 toast ✅
