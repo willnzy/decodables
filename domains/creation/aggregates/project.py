@@ -44,6 +44,7 @@ class Project:
     - Sharing settings
 
     v1.1.0: Added idempotency_key for safe retry support.
+    v1.2.0: Added workspace_id for data isolation.
     """
     project_id: str
     owner_id: str
@@ -59,6 +60,8 @@ class Project:
     idempotency_key: Optional[str] = None
     # Flag for locked elements (marketplace assets)
     contains_locked_elements: bool = False
+    # v1.2.0: Workspace isolation
+    workspace_id: Optional[str] = None
     # v3.33 Phase 2.6: Folder organization and starring
     folder_id: Optional[str] = None
     is_starred: bool = False
@@ -72,7 +75,8 @@ class Project:
         owner_id: str,
         title: str,
         canvas_size: CanvasSize = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> "Project":
         """
         Factory method to create a new project.
@@ -82,6 +86,7 @@ class Project:
             title: Project title
             canvas_size: Canvas dimensions
             description: Optional description
+            workspace_id: Workspace ID for data isolation (v1.2.0)
 
         Returns:
             New Project instance with initial page
@@ -95,6 +100,7 @@ class Project:
             metadata=ProjectMetadata(title=title, description=description),
             canvas_size=size,
             status=ProjectStatus.DRAFT,
+            workspace_id=workspace_id,
         )
 
         # Add initial page
@@ -284,6 +290,8 @@ class Project:
             "collaborators": self.collaborators,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+            # v1.2.0: Workspace isolation
+            "workspace_id": self.workspace_id,
             # v3.33 Phase 2.6: Folder organization and starring
             "folder_id": self.folder_id,
             "is_starred": self.is_starred,

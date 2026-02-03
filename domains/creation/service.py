@@ -151,7 +151,8 @@ class CreationService:
         canvas_size: Optional[CanvasSize] = None,
         description: Optional[str] = None,
         user_tier: str = "t1",
-        idempotency_key: Optional[str] = None
+        idempotency_key: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> Project:
         """
         Create a new project with atomic limit check.
@@ -163,6 +164,7 @@ class CreationService:
         4. If exceeded, rollback (delete) and raise error
 
         v2.1.0: Added idempotency_key support for safe retries.
+        v2.2.0: Added workspace_id for data isolation.
 
         Args:
             owner_id: User ID of owner
@@ -171,6 +173,7 @@ class CreationService:
             description: Optional description
             user_tier: User's subscription tier
             idempotency_key: Client-generated unique key for idempotent creation
+            workspace_id: Workspace ID for data isolation
 
         Returns:
             Created Project
@@ -190,12 +193,13 @@ class CreationService:
             from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
             limit = EMERGENCY_TIER_CONFIGS.get(user_tier, {}).get("max_projects", 1)
 
-        # Create project entity
+        # Create project entity with workspace_id
         project = Project.create_new(
             owner_id=owner_id,
             title=title.strip(),
             canvas_size=canvas_size,
             description=description,
+            workspace_id=workspace_id,
         )
         # v2.1.0: Store idempotency_key for duplicate detection
         if idempotency_key:
@@ -304,7 +308,8 @@ class CreationService:
         self,
         project_id: str,
         user_id: str,
-        tier: str = "t1"
+        tier: str = "t1",
+        workspace_id: Optional[str] = None,
     ) -> Project:
         """
         Duplicate a project with atomic limit check.
@@ -313,6 +318,7 @@ class CreationService:
             project_id: Source project ID
             user_id: User requesting duplication
             tier: User's subscription tier for limit checking
+            workspace_id: Workspace ID for data isolation
 
         Returns:
             New duplicated Project
@@ -333,13 +339,14 @@ class CreationService:
             from domains.identity.tier_service import EMERGENCY_TIER_CONFIGS
             limit = EMERGENCY_TIER_CONFIGS.get(tier, {}).get("max_projects", 1)
 
-        # Create new project with copied data
+        # Create new project with copied data (inherit workspace_id from source if not specified)
         new_title = f"{source.metadata.title} (Copy)"
         new_project = Project.create_new(
             owner_id=user_id,
             title=new_title,
             canvas_size=source.canvas_size,
             description=source.metadata.description,
+            workspace_id=workspace_id or source.workspace_id,
         )
 
         # Copy canvas_data (editor stores page data in this JSON field)

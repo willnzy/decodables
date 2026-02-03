@@ -85,12 +85,15 @@ class ProjectCreateRequest(BaseModel):
     Request to create a project.
 
     v1.1.0: Added idempotency_key for safe retry support.
+    v1.2.0: Added workspace_id for data isolation.
     """
     title: Optional[str] = Field(None, max_length=200)  # P2-030: DoS protection
     canvas_data: Optional[Dict[str, Any]] = None  # JSON size limited at DB layer
     # v1.1.0: Idempotency key - client-generated UUID for safe retries
     # If provided, server returns existing project if already created with this key
     idempotency_key: Optional[str] = Field(None, max_length=64, pattern=r'^[a-zA-Z0-9\-_]+$')
+    # v1.2.0: Workspace ID for data isolation (optional, falls back to header/ctx)
+    workspace_id: Optional[str] = Field(None, max_length=36)
 
 
 class ProjectUpdateRequest(BaseModel):
@@ -524,12 +527,16 @@ async def create_project(
     # UserProfile.tier is UserTier enum, get string value
     tier = (ctx.user.tier.value if ctx.user.tier else "t1").lower()
 
+    # v1.2.0: workspace_id priority: request body > context (header)
+    workspace_id = req.workspace_id or ctx.workspace_id
+
     command = CreateProjectCommand(
         user_id=ctx.user_id,
         title=req.title or "Untitled",
         canvas_data=req.canvas_data,
         tier=tier,
         idempotency_key=req.idempotency_key,  # v1.1.0: Idempotency support
+        workspace_id=workspace_id,  # v1.2.0: Workspace isolation
     )
 
     result = await handler.handle(command)
@@ -807,10 +814,12 @@ async def duplicate_project(
 
     try:
         # Service returns Project directly, not a Result object
+        # v1.2.0: Pass workspace_id for data isolation
         project = await creation_service.duplicate_project(
             project_id=project_id,
             user_id=ctx.user_id,
             tier=tier,
+            workspace_id=ctx.workspace_id,
         )
 
         # P2-002: Return Pydantic model

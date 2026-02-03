@@ -40,6 +40,7 @@ class CreateProjectCommand:
     - canvas_data: Optional canvas JSON data
     - tier: User's subscription tier for limit checking
     - idempotency_key: Client-generated unique key for idempotent creation (v1.1.0)
+    - workspace_id: Workspace ID for data isolation (v1.2.0)
 
     Idempotency Pattern (Industry Best Practice):
     - Client generates a UUID and sends it with the request
@@ -54,6 +55,7 @@ class CreateProjectCommand:
     canvas_data: Optional[Dict[str, Any]] = None
     tier: str = "t1"
     idempotency_key: Optional[str] = None  # v1.1.0: Client-generated UUID for idempotent creation
+    workspace_id: Optional[str] = None  # v1.2.0: Workspace ID for data isolation
 
 
 @dataclass
@@ -126,6 +128,7 @@ class CreateProjectHandler:
                 canvas_size=canvas_size,
                 user_tier=command.tier,
                 idempotency_key=command.idempotency_key,
+                workspace_id=command.workspace_id,
             )
 
             # Step 4: Pre-commit serialization validation

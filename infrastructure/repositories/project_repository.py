@@ -594,6 +594,8 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
                 if row.get("created_at") else datetime.now(timezone.utc),
             updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00"))
                 if row.get("updated_at") else datetime.now(timezone.utc),
+            # v1.2.0: Workspace isolation
+            workspace_id=row.get("workspace_id"),
             # v3.33 Phase 2.6: Folder organization and starring
             folder_id=row.get("folder_id"),
             is_starred=row.get("is_starred", False),
@@ -643,6 +645,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         # v2.1.0: Add idempotency_key if present
         if hasattr(project, 'idempotency_key') and project.idempotency_key:
             row["idempotency_key"] = project.idempotency_key
+        # v1.2.0: Workspace isolation
+        if hasattr(project, 'workspace_id') and project.workspace_id:
+            row["workspace_id"] = project.workspace_id
         # v3.33 Phase 2.6: Folder organization and starring
         if hasattr(project, 'folder_id'):
             row["folder_id"] = project.folder_id
@@ -773,67 +778,9 @@ class SupabaseProjectRepository(BaseRepository[Project], IProjectRepository):
         # No access - return None (same response for not-found and access-denied)
         return None
 
-    @retry_on_network_error()
-    async def create_project(
-        self,
-        user_id: str,
-        title: Optional[str] = None,
-        canvas_data: Optional[dict] = None,
-        tz: str = "UTC"
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Create new project.
-
-        Args:
-            user_id: User ID
-            title: Project title
-            canvas_data: Canvas data dict
-            tz: Timezone
-
-        Returns:
-            Created project dict
-        """
-        result = await self.client.table("projects").insert({
-            "user_id": user_id,
-            "title": title or "Untitled Project",
-            "canvas_data": canvas_data or {},
-            "timezone": tz,
-        }).execute()
-
-        return result.data[0] if result.data else None
-
-    @retry_on_network_error()
-    async def duplicate_project(
-        self,
-        project_id: str,
-        user_id: str,
-        tz: str = "UTC"
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Duplicate a project.
-
-        Args:
-            project_id: Source project ID
-            user_id: User ID
-            tz: Timezone
-
-        Returns:
-            New project dict or None
-        """
-        original = await self.get_project_detail(project_id, user_id)
-        if not original:
-            return None
-
-        new_title = f"{original.get('title', 'Project')} (Copy)"
-
-        result = await self.client.table("projects").insert({
-            "user_id": user_id,
-            "title": new_title,
-            "canvas_data": original.get("canvas_data", {}),
-            "timezone": tz,
-        }).execute()
-
-        return result.data[0] if result.data else None
+    # NOTE: Legacy create_project() and duplicate_project() methods removed in v2.3.0
+    # Use CreationService.create_project() and duplicate_project() instead
+    # (which use create_with_limit_check for atomic operations)
 
     @retry_on_network_error()
     async def save_project(
