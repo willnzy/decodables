@@ -378,6 +378,27 @@ CREATE INDEX idx_audit_flag ON flag_audit_logs(flag_key);
 CREATE INDEX idx_audit_time ON flag_audit_logs(changed_at DESC);
 ```
 
+**审计类型 (action) 详细说明**:
+
+| action | 说明 | 记录内容 |
+|--------|------|---------|
+| `created` | 创建 Flag | 完整 flag 配置 |
+| `updated` | 更新配置 | changes: 变更字段, previous_value: 变更前值 |
+| `enabled` | 启用 Flag | enabled: false → true |
+| `disabled` | 禁用 Flag (kill switch) | enabled: true → false, reason: 禁用原因 |
+| `archived` | 归档 Flag | archived: false → true |
+| `unarchived` | 取消归档 | archived: true → false |
+| `rollout_changed` | 灰度百分比变更 | rollout_percentage: 旧值 → 新值 |
+| `variant_changed` | 变体配置变更 | variants: 变更详情 |
+| `rule_added` | 添加定向规则 | targeting_rules: 新增规则 |
+| `rule_removed` | 删除定向规则 | targeting_rules: 删除的规则 |
+| `whitelist_updated` | 白名单变更 | whitelist_user_ids: 变更详情 |
+| `blacklist_updated` | 黑名单变更 | blacklist_user_ids: 变更详情 |
+| `experiment_started` | 实验开始 | status: draft → running |
+| `experiment_paused` | 实验暂停 | status: running → paused |
+| `experiment_stopped` | 实验停止 | status: → stopped, decision |
+| `experiment_completed` | 实验完成 | status: → completed, winner_variant |
+
 ---
 
 ## 三、后端实现
@@ -1628,7 +1649,52 @@ export function FeatureFlagDebugger() {
 
 ---
 
-## 十、修订历史
+## 十、实施检查清单
+
+### 10.1 Phase 1: 基础设施
+
+| 任务 | 负责人 | 状态 | 验收标准 |
+|------|--------|------|----------|
+| 创建数据库表 | - | ⬜ | SQL 执行成功 |
+| 实现 types.py | - | ⬜ | 类型定义完整 |
+| 实现 hasher.py | - | ⬜ | 单元测试通过 |
+| 实现 evaluator.py | - | ⬜ | 单元测试通过 |
+| 实现 service.py | - | ⬜ | 单元测试通过 |
+| 实现 self_hosted.py | - | ⬜ | 集成测试通过 |
+| 实现 API 路由 | - | ⬜ | Swagger 可用 |
+| 前端 types.ts | - | ⬜ | 类型定义完整 |
+
+### 10.2 Phase 2: 前端集成
+
+| 任务 | 负责人 | 状态 | 验收标准 |
+|------|--------|------|----------|
+| 实现 FeatureFlagProvider | - | ⬜ | Context 可用 |
+| 实现 useFeatureFlag hook | - | ⬜ | 基本功能可用 |
+| 实现 useExperiment hook | - | ⬜ | 变体分配正确 |
+| 实现 FeatureFlag 组件 | - | ⬜ | 渲染逻辑正确 |
+| 实现 FeatureFlagDebugger | - | ⬜ | 开发环境可用 |
+
+### 10.3 Phase 3: 数据迁移
+
+| 任务 | 负责人 | 状态 | 验收标准 |
+|------|--------|------|----------|
+| 编写迁移脚本 | - | ⬜ | 脚本可执行 |
+| 迁移 experiments 数据 | - | ⬜ | 数据完整 |
+| 验证数据完整性 | - | ⬜ | 无数据丢失 |
+| 准备回滚脚本 | - | ⬜ | 可回滚 |
+
+### 10.4 Phase 4: 监控部署
+
+| 任务 | 负责人 | 状态 | 验收标准 |
+|------|--------|------|----------|
+| 配置监控指标 | - | ⬜ | Grafana 面板可用 |
+| 配置告警规则 | - | ⬜ | 告警可触发 |
+| 部署到 staging | - | ⬜ | 功能正常 |
+| 部署到 production | - | ⬜ | 功能正常 |
+
+---
+
+## 十一、修订历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|----------|
@@ -1637,6 +1703,7 @@ export function FeatureFlagDebugger() {
 | v1.2 | 2026-01-12 | 添加 Tier 分层：`allowed_tiers` 字段 |
 | v2.0 | 2026-02-03 | 文档重组：从 feature-flag-design.md 迁移，聚焦引擎实现 |
 | v2.1 | 2026-02-03 | 补充遗漏：回滚方案、监控指标、调试组件、operators (not_contains/starts_with/ends_with) |
+| v2.2 | 2026-02-03 | 补充遗漏：审计类型详细说明、实施检查清单 |
 
 ---
 

@@ -41,6 +41,68 @@
 | [feature-flag-engine.md](./feature-flag-engine.md) | Feature Flag 评估引擎 (数据库+代码实现) |
 | [entitlement-ui-spec.md](./entitlement-ui-spec.md) | 前端 UI 交互规范 |
 
+### 1.4 文档关系图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         权限与功能控制系统文档关系                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                    ┌───────────────────────────────────┐
+                    │   entitlement-system-design.md    │
+                    │          (系统架构总览)             │
+                    │                                   │
+                    │  • 系统职责划分                     │
+                    │  • 架构原则与决策记录                │
+                    │  • 后端服务设计                     │
+                    │  • 前端 Store 设计                  │
+                    │  • 数据库设计                       │
+                    │  • 风险缓解策略                     │
+                    └─────────────┬─────────────────────┘
+                                  │
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+          ▼                       ▼                       ▼
+┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐
+│ permission-matrix   │ │ feature-flag-engine │ │   entitlement-ui    │
+│    (权限矩阵)        │ │    (Flag 引擎)       │ │    (UI 交互规范)     │
+│                     │ │                     │ │                     │
+│ • 35 个功能权限      │ │ • 评估引擎算法       │ │ • 主动锁定模式       │
+│ • 4 个配额限制       │ │ • 9 步评估流程       │ │ • UI 状态映射        │
+│ • Tier JSON 配置    │ │ • 13 种运算符        │ │ • 10 个核心组件      │
+│ • 试用期规则         │ │ • A/B 实验统计       │ │ • 9 种 Hook 用法     │
+│                     │ │ • Admin 管理界面     │ │ • 配额交互规范       │
+│ 🎯 唯一数据源        │ │ 🎯 技术实现规范      │ │ 🎯 前端交互规范      │
+└─────────────────────┘ └─────────────────────┘ └─────────────────────┘
+          │                       │                       │
+          │                       │                       │
+          └───────────────────────┼───────────────────────┘
+                                  │
+                                  ▼
+                    ┌───────────────────────────────────┐
+                    │        system_configs 表           │
+                    │         (数据库配置中心)            │
+                    │                                   │
+                    │  tier.t1.features (JSON)          │
+                    │  tier.t2.features (JSON)          │
+                    │  tier.t3.features (JSON)          │
+                    │  trial.default_days = 7           │
+                    └───────────────────────────────────┘
+
+数据流:
+━━━━━━━
+1. permission-matrix.md 定义权限规则 → system_configs 表存储
+2. feature-flag-engine.md 定义评估逻辑 → EntitlementService/FeatureFlagService 实现
+3. entitlement-ui-spec.md 定义交互规范 → 前端组件实现
+
+文档使用场景:
+━━━━━━━━━━━━━
+• 产品定义新功能权限 → 先更新 permission-matrix.md
+• 开发实现权限控制 → 参考 entitlement-system-design.md + feature-flag-engine.md
+• 设计权限 UI 交互 → 参考 entitlement-ui-spec.md
+• 排查权限问题 → 从 permission-matrix.md 开始，逐层追溯
+```
+
 ---
 
 ## 二、架构设计
@@ -456,6 +518,20 @@ const getFeatureAccess = (key: FeatureKey): FeatureAccess => {
 - `useTierFeature` 添加 console.warn deprecated
 - 补全 API 层 tier 校验
 
+### Phase 1.5: 配额类前端交互 (可独立实施)
+
+> **说明**: Phase 1.5 可以独立于其他 Phase 实施，立即解决项目/文件夹限制交互问题
+
+| 步骤 | 文件 | 操作 |
+|------|------|------|
+| 1.5.1 | `hooks/useQuotaGuard.ts` | **新建**: 配额检查通用 hook |
+| 1.5.2 | `hooks/index.ts` | 导出 useQuotaGuard |
+| 1.5.3 | `app/dashboard/_components/DashboardContent.tsx` | 使用 useQuotaGuard，传递 isAtLimit 给 Header |
+| 1.5.4 | `app/dashboard/_components/DashboardHeader.tsx` | 添加 Lock 图标 + Tooltip (Desktop + Mobile) |
+| 1.5.5 | `components/CreateProjectModal.tsx` | API 错误 fallback 处理 |
+| 1.5.6 | `app/dashboard/_components/shared/QuotaBar.tsx` | **新建**: 侧边栏配额显示组件 |
+| 1.5.7 | `app/dashboard/_components/shared/ProjectLimitWarning.tsx` | **新建**: 配额警告条组件 |
+
 ---
 
 ## 七、决策记录
@@ -603,6 +679,47 @@ INSERT INTO system_configs (key, value, value_type, config_group, description, i
 2. system_configs 表 (数据库配置)
 3. EMERGENCY_TIER_CONFIGS (代码兜底，仅数据库不可用时)
 ```
+
+### 10.3 entitlement_configs 表设计 (可选方案)
+
+> 如果需要更细粒度的权限配置，可以使用独立的 entitlement_configs 表替代 system_configs JSON
+
+```sql
+CREATE TABLE entitlement_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tier TEXT NOT NULL,                    -- t1, t2, t3, t4
+    feature_key TEXT NOT NULL,             -- 如 max_projects, can_use_vector_tools
+    value_type TEXT NOT NULL,              -- boolean, integer, string
+    value JSONB NOT NULL,                  -- 实际值，支持复杂结构
+    trial_value JSONB,                     -- 试用期的值 (仅 t1 有意义)
+    description TEXT,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT,
+    UNIQUE(tier, feature_key)
+);
+
+-- 索引
+CREATE INDEX idx_ec_tier ON entitlement_configs(tier);
+CREATE INDEX idx_ec_feature ON entitlement_configs(feature_key);
+
+-- 示例数据
+INSERT INTO entitlement_configs (tier, feature_key, value_type, value, trial_value) VALUES
+('t1', 'max_projects', 'integer', '1', '1'),
+('t1', 'can_use_vector_tools', 'boolean', 'false', 'true'),  -- 试用期可用
+('t2', 'max_projects', 'integer', '10', NULL),
+('t3', 'max_projects', 'integer', '-1', NULL);  -- -1 表示 unlimited
+```
+
+**与 system_configs 的区别**:
+
+| 维度 | system_configs (当前方案) | entitlement_configs (可选方案) |
+|------|-------------------------|-------------------------------|
+| 结构 | JSON 存储整个 tier 配置 | 每个功能一条记录 |
+| 查询 | 一次获取整个 tier | 可按功能单独查询 |
+| 更新 | 需更新整个 JSON | 可单独更新一个功能 |
+| 适用 | 简单场景，配置较少 | 复杂场景，需要细粒度管理 |
+
+当前方案使用 system_configs JSON，如果将来需要更细粒度的管理，可以迁移到 entitlement_configs。
 
 ---
 
