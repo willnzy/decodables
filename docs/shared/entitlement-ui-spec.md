@@ -1,7 +1,7 @@
 # 用户权限 UI 交互规范
 
-> **版本**: v1.1
-> **日期**: 2026-02-03
+> **版本**: v1.2
+> **日期**: 2026-02-04
 > **状态**: 设计完成
 > **适用范围**: 功能权限、配额限制的前端 UI 交互
 
@@ -165,13 +165,24 @@ const { isLocked, isTrial, checkAndTrigger, trialDaysRemaining } =
 
 | 功能 | 组件位置 | 无权限时展示 | 交互行为 |
 |------|---------|-------------|---------|
+| **平台素材** | `AssetPanel` | - | 能进入编辑页面即可用 |
+| **矢量图工具** | `DrawingCanvas` | - | 能进入编辑页面即可用 |
+| **画笔工具** | `DrawingCanvas` | - | 能进入编辑页面即可用 |
+| **剪贴板粘贴** | Canvas 右键菜单 + 快捷键 | 菜单项可见但禁用 + 🔒 | 快捷键不生效；菜单 Tooltip → UpgradeModal |
 | **AI 生成素材** | `CustomAssets` | 按钮 + 🔒 | Trial 时显示 Badge; 锁定时弹 UpgradeModal |
+| **AI 生成 Page** | `AIPageGenerator` | 按钮 + 🔒 | Trial 时显示 Badge; 锁定时弹 UpgradeModal |
 | **Smart Scan (OCR)** | `CustomAssets` | 按钮 + 🔒 | Tooltip: "Smart Scan requires Pro" → UpgradeModal |
 | **Upload Custom Asset** | `CustomAssets` | 上传按钮 + 🔒 | Tooltip: "Custom uploads require Pro" → UpgradeModal |
+| **PDF 打印** | `TopBarExport` | 菜单项可用 | t1 超出试用期后仍可用 |
+| **PDF 下载** | `TopBarExport` | 菜单项可用 | t1 超出试用期后仍可用 |
 | **ZIP Export** | `TopBarExport` | 菜单项 + 🔒 | Tooltip: "ZIP export requires Pro" → UpgradeModal |
-| **矢量图工具** | `DrawingCanvas` | 工具图标 + 🔒 覆盖 | Tooltip: "Vector tools require Starter" → UpgradeModal |
-| **画笔工具** | `DrawingCanvas` | 工具图标 + 🔒 覆盖 | Tooltip: "Brush tools require Starter" → UpgradeModal |
-| **剪贴板粘贴** | 全局快捷键 | Toast 提示 | Toast: "Clipboard paste requires Pro" + Upgrade 按钮 |
+
+> **剪贴板粘贴控制细节**: Canvas 右键菜单中显示"复制/粘贴"选项，当权限不足时：
+> - 菜单项可见但 `disabled` + 🔒 图标
+> - Ctrl+V / Cmd+V 快捷键不生效
+> - 点击菜单项弹出 UpgradeModal
+
+> **第 7-9 行说明**: 平台素材、矢量图、画笔当前配置为所有用户可用，能进入编辑页面即可使用。
 
 ### 4.3 Export 菜单
 
@@ -590,6 +601,7 @@ T3 用户的 Projects 为 unlimited，显示方式：
 |------|------|----------|
 | v1.0 | 2026-02-03 | 初始版本 |
 | v1.1 | 2026-02-03 | 补充遗漏：useQuotaGuard 实现、QuotaBar 组件、ProjectLimitWarning、配额映射表 |
+| v1.2 | 2026-02-04 | 基于 CSV 表格校准：Editor 页面功能控制方式、第 7-9 行说明 |
 
 ---
 
