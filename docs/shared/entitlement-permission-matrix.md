@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.9
+> **版本**: v2.0
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -2709,7 +2709,2106 @@ async function handleUpgrade(userId: string, newTier: string) {
 
 ---
 
-## 九、变更记录
+## 九、业界最佳实践补充场景
+
+> 本章节补充业界 SaaS 产品常见但当前文档未完整覆盖的场景，参考 Stripe, Spotify, Netflix, Notion, Figma, Canva, Slack, Dropbox, Adobe 等产品的最佳实践。
+
+---
+
+### 9.1 订阅暂停 (Subscription Pause) 🔴 P0
+
+> 参考: Spotify, Netflix, Adobe Creative Cloud
+
+#### 9.1.1 功能说明
+
+允许用户临时暂停订阅，暂停期间不扣费，权限降为 t1。
+
+#### 9.1.2 暂停规则
+
+| 规则 | 值 | 说明 |
+|------|-----|------|
+| 最短暂停时长 | 1 个月 | 暂停至少 1 个完整计费周期 |
+| 最长暂停时长 | 3 个月 | 单次暂停最长 3 个月 |
+| 年度暂停次数 | 2 次 | 每个自然年最多暂停 2 次 |
+| 暂停间隔 | 3 个月 | 两次暂停之间至少间隔 3 个月 |
+| 年付用户 | 不支持 | 年付用户不支持暂停 (可申请退款) |
+
+#### 9.1.3 暂停期间处理
+
+| 项目 | 处理方式 |
+|------|---------|
+| **Tier 权限** | 降为 t1 (非试用期状态) |
+| **月度积分** | 不发放 |
+| **永久积分** | 保留，可继续使用 |
+| **项目数据** | 全部保留，超额部分只读 |
+| **商城商品** | 已发布的保持上架 |
+| **自动恢复** | 暂停结束自动恢复订阅 + 扣费 |
+
+#### 9.1.4 数据库设计
+
+```sql
+-- subscriptions 表新增字段
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS
+    pause_start_at TIMESTAMPTZ,          -- 暂停开始时间
+    pause_end_at TIMESTAMPTZ,            -- 暂停结束时间 (预设)
+    pause_reason TEXT,                   -- 暂停原因 (用户反馈)
+    pause_count_this_year INT DEFAULT 0; -- 今年已暂停次数
+
+-- 暂停历史记录表
+CREATE TABLE IF NOT EXISTS subscription_pause_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    subscription_id TEXT NOT NULL,
+    pause_start_at TIMESTAMPTZ NOT NULL,
+    pause_end_at TIMESTAMPTZ,            -- 实际结束时间
+    planned_end_at TIMESTAMPTZ NOT NULL, -- 计划结束时间
+    reason TEXT,
+    resumed_early BOOLEAN DEFAULT FALSE, -- 是否提前恢复
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_pause_history_user ON subscription_pause_history(user_id);
+```
+
+#### 9.1.5 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('pause.min_duration_months', '1', 'integer', 'subscription', '最短暂停月数'),
+('pause.max_duration_months', '3', 'integer', 'subscription', '最长暂停月数'),
+('pause.max_per_year', '2', 'integer', 'subscription', '每年最大暂停次数'),
+('pause.min_interval_months', '3', 'integer', 'subscription', '两次暂停最小间隔'),
+('pause.allow_annual', 'false', 'boolean', 'subscription', '年付是否允许暂停');
+```
+
+#### 9.1.6 服务实现
+
+```python
+# domains/subscription/services/pause_service.py
+
+class SubscriptionPauseService:
+    """订阅暂停服务"""
+
+    async def pause_subscription(
+        self,
+        user_id: str,
+        duration_months: int,
+        reason: str = None
+    ) -> Dict:
+        """暂停订阅"""
+
+        # 1. 检查是否允许暂停
+        validation = await self._validate_pause_eligibility(user_id, duration_months)
+        if not validation['eligible']:
+            raise PauseNotAllowedError(validation['reason'])
+
+        # 2. 获取当前订阅
+        subscription = await self._get_active_subscription(user_id)
+
+        # 3. 计算暂停时间
+        pause_start = self._calculate_pause_start(subscription)
+        pause_end = pause_start + timedelta(days=duration_months * 30)
+
+        # 4. 通知 Stripe 暂停 (使用 subscription_schedule)
+        await self._pause_stripe_subscription(subscription.stripe_subscription_id, pause_end)
+
+        # 5. 更新数据库
+        await db.execute("""
+            UPDATE subscriptions SET
+                status = 'paused',
+                pause_start_at = $1,
+                pause_end_at = $2,
+                pause_reason = $3,
+                pause_count_this_year = pause_count_this_year + 1
+            WHERE user_id = $4
+        """, pause_start, pause_end, reason, user_id)
+
+        # 6. 记录暂停历史
+        await db.execute("""
+            INSERT INTO subscription_pause_history
+            (user_id, subscription_id, pause_start_at, planned_end_at, reason)
+            VALUES ($1, $2, $3, $4, $5)
+        """, user_id, subscription.id, pause_start, pause_end, reason)
+
+        # 7. 触发降级处理 (临时降为 t1)
+        await self.downgrade_service.process_downgrade(
+            user_id,
+            old_tier=subscription.tier,
+            new_tier='t1',
+            reason='subscription_paused'
+        )
+
+        # 8. 发送确认邮件
+        await self._send_pause_confirmation_email(user_id, pause_start, pause_end)
+
+        return {
+            'status': 'paused',
+            'pause_start': pause_start,
+            'pause_end': pause_end,
+            'auto_resume': True
+        }
+
+    async def resume_subscription(self, user_id: str) -> Dict:
+        """提前恢复订阅"""
+
+        subscription = await self._get_paused_subscription(user_id)
+        if not subscription:
+            raise SubscriptionNotPausedError()
+
+        # 1. 恢复 Stripe 订阅
+        await self._resume_stripe_subscription(subscription.stripe_subscription_id)
+
+        # 2. 更新数据库
+        await db.execute("""
+            UPDATE subscriptions SET
+                status = 'active',
+                pause_start_at = NULL,
+                pause_end_at = NULL
+            WHERE user_id = $1
+        """, user_id)
+
+        # 3. 标记历史记录
+        await db.execute("""
+            UPDATE subscription_pause_history SET
+                pause_end_at = NOW(),
+                resumed_early = TRUE
+            WHERE user_id = $1 AND pause_end_at IS NULL
+        """, user_id)
+
+        # 4. 恢复 Tier 权限
+        await self.upgrade_service.process_upgrade(user_id, subscription.tier)
+
+        # 5. 发送恢复确认邮件
+        await self._send_resume_confirmation_email(user_id)
+
+        return {'status': 'active', 'tier': subscription.tier}
+
+    async def _validate_pause_eligibility(self, user_id: str, duration_months: int) -> Dict:
+        """验证是否有资格暂停"""
+
+        subscription = await self._get_active_subscription(user_id)
+
+        # 检查是否年付
+        if subscription.billing_interval == 'year':
+            allow_annual = await get_config('pause.allow_annual')
+            if not allow_annual:
+                return {'eligible': False, 'reason': '年付订阅不支持暂停，如需取消请联系客服'}
+
+        # 检查暂停次数
+        max_per_year = await get_config('pause.max_per_year') or 2
+        if subscription.pause_count_this_year >= max_per_year:
+            return {'eligible': False, 'reason': f'今年已暂停 {max_per_year} 次，无法再次暂停'}
+
+        # 检查暂停间隔
+        last_pause = await db.fetch_one("""
+            SELECT pause_end_at FROM subscription_pause_history
+            WHERE user_id = $1 ORDER BY pause_end_at DESC LIMIT 1
+        """, user_id)
+
+        if last_pause:
+            min_interval = await get_config('pause.min_interval_months') or 3
+            min_resume_date = last_pause['pause_end_at'] + timedelta(days=min_interval * 30)
+            if datetime.now() < min_resume_date:
+                return {'eligible': False, 'reason': f'距离上次暂停未满 {min_interval} 个月'}
+
+        # 检查时长
+        min_duration = await get_config('pause.min_duration_months') or 1
+        max_duration = await get_config('pause.max_duration_months') or 3
+
+        if duration_months < min_duration or duration_months > max_duration:
+            return {'eligible': False, 'reason': f'暂停时长需在 {min_duration}-{max_duration} 个月之间'}
+
+        return {'eligible': True, 'reason': None}
+```
+
+#### 9.1.7 UI 入口
+
+```typescript
+// 设置页 - 订阅管理
+// /settings/subscription
+
+interface PauseSubscriptionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentTier: string;
+  onPause: (months: number, reason?: string) => Promise<void>;
+}
+
+function PauseSubscriptionModal({ isOpen, onClose, currentTier, onPause }: PauseSubscriptionModalProps) {
+  const [months, setMonths] = useState(1);
+  const [reason, setReason] = useState('');
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalHeader>暂停订阅</ModalHeader>
+      <ModalBody>
+        <Alert variant="warning">
+          暂停期间，您的账户将降为免费版，部分功能将受限。
+          暂停结束后将自动恢复订阅并扣费。
+        </Alert>
+
+        <div className="mt-4">
+          <Label>暂停时长</Label>
+          <Select value={months} onChange={(v) => setMonths(Number(v))}>
+            <Option value={1}>1 个月</Option>
+            <Option value={2}>2 个月</Option>
+            <Option value={3}>3 个月</Option>
+          </Select>
+        </div>
+
+        <div className="mt-4">
+          <Label>暂停原因 (可选)</Label>
+          <Textarea
+            placeholder="告诉我们为什么暂停，帮助我们改进产品"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>取消</Button>
+        <Button variant="warning" onClick={() => onPause(months, reason)}>
+          确认暂停
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+```
+
+---
+
+### 9.2 年付/月付切换 (Billing Cycle Switch) 🔴 P0
+
+> 参考: 几乎所有 SaaS 产品
+
+#### 9.2.1 切换规则
+
+| 切换方向 | 生效时间 | 费用处理 |
+|---------|---------|---------|
+| **月付→年付** | 立即生效 | 按比例抵扣当月剩余天数 |
+| **年付→月付** | 当前周期结束后 | 不退款 (或可选按比例退款) |
+| **同周期不同 Tier** | 见 8.3.4 并发订阅 | - |
+
+#### 9.2.2 月付→年付计算示例
+
+```
+当前订阅: t2 月付 $6.9/月
+已使用: 15 天 (当月 30 天)
+剩余价值: $6.9 × (15/30) = $3.45
+
+目标订阅: t2 年付 $69/年 (相当于 $5.75/月)
+
+实际支付: $69 - $3.45 = $65.55
+```
+
+#### 9.2.3 年付→月付处理
+
+```
+当前订阅: t3 年付 $99/年
+已使用: 6 个月
+剩余月数: 6 个月
+剩余价值: $99 × (6/12) = $49.50
+
+选项 A (默认): 当前周期结束后切换为月付，不退款
+选项 B (可选): 立即切换，退还 $49.50 到账户余额
+```
+
+#### 9.2.4 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('billing.allow_annual_to_monthly_refund', 'false', 'boolean', 'billing', '年付转月付是否允许退款'),
+('billing.proration_behavior', 'create_prorations', 'string', 'billing', 'Stripe proration 策略'),
+('billing.switch_preview_enabled', 'true', 'boolean', 'billing', '是否显示切换预览');
+```
+
+#### 9.2.5 服务实现
+
+```python
+# domains/subscription/services/billing_cycle_service.py
+
+class BillingCycleService:
+    """计费周期切换服务"""
+
+    async def preview_switch(
+        self,
+        user_id: str,
+        target_interval: str,  # 'month' | 'year'
+        target_tier: str = None  # 可选同时切换 Tier
+    ) -> Dict:
+        """预览切换费用"""
+
+        subscription = await self._get_active_subscription(user_id)
+        target_tier = target_tier or subscription.tier
+
+        # 获取目标价格
+        target_price = await self._get_price(target_tier, target_interval)
+
+        # 计算剩余价值
+        remaining_value = self._calculate_remaining_value(subscription)
+
+        # 计算应付金额
+        if subscription.billing_interval == 'month' and target_interval == 'year':
+            # 月付→年付: 立即生效，抵扣剩余
+            amount_due = target_price['amount'] - remaining_value
+            effective_date = datetime.now()
+        elif subscription.billing_interval == 'year' and target_interval == 'month':
+            # 年付→月付: 周期结束后生效
+            amount_due = target_price['amount']  # 下个月开始收费
+            effective_date = subscription.current_period_end
+
+            # 可选退款
+            allow_refund = await get_config('billing.allow_annual_to_monthly_refund')
+            if allow_refund:
+                refund_amount = remaining_value
+            else:
+                refund_amount = 0
+        else:
+            # 同周期
+            amount_due = target_price['amount']
+            effective_date = subscription.current_period_end
+
+        return {
+            'current': {
+                'tier': subscription.tier,
+                'interval': subscription.billing_interval,
+                'price': subscription.price,
+                'remaining_days': self._calculate_remaining_days(subscription),
+                'remaining_value': remaining_value
+            },
+            'target': {
+                'tier': target_tier,
+                'interval': target_interval,
+                'price': target_price['amount']
+            },
+            'transition': {
+                'effective_date': effective_date,
+                'amount_due': max(0, amount_due),
+                'refund_amount': refund_amount if 'refund_amount' in locals() else 0,
+                'proration_applied': amount_due != target_price['amount']
+            }
+        }
+
+    async def execute_switch(
+        self,
+        user_id: str,
+        target_interval: str,
+        target_tier: str = None
+    ) -> Dict:
+        """执行切换"""
+
+        subscription = await self._get_active_subscription(user_id)
+        target_tier = target_tier or subscription.tier
+
+        # 获取 Stripe Price ID
+        price_id = await self._get_stripe_price_id(target_tier, target_interval)
+
+        if subscription.billing_interval == 'month' and target_interval == 'year':
+            # 月付→年付: 立即切换
+            await stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                items=[{'id': subscription.stripe_item_id, 'price': price_id}],
+                proration_behavior='create_prorations',
+                billing_cycle_anchor='now'
+            )
+
+            # 更新本地数据
+            await self._update_subscription(user_id, target_tier, target_interval)
+
+            return {'status': 'switched', 'effective': 'immediate'}
+
+        elif subscription.billing_interval == 'year' and target_interval == 'month':
+            # 年付→月付: 周期结束后切换
+            await stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                items=[{'id': subscription.stripe_item_id, 'price': price_id}],
+                proration_behavior='none',
+                billing_cycle_anchor='unchanged'
+            )
+
+            # 记录待切换
+            await db.execute("""
+                UPDATE subscriptions SET
+                    pending_interval_change = $1,
+                    pending_tier_change = $2
+                WHERE user_id = $3
+            """, target_interval, target_tier, user_id)
+
+            return {
+                'status': 'scheduled',
+                'effective': subscription.current_period_end.isoformat()
+            }
+
+    def _calculate_remaining_value(self, subscription) -> float:
+        """计算剩余价值"""
+        total_days = (subscription.current_period_end - subscription.current_period_start).days
+        used_days = (datetime.now() - subscription.current_period_start).days
+        remaining_days = total_days - used_days
+
+        daily_rate = subscription.price / total_days
+        return round(daily_rate * remaining_days, 2)
+```
+
+#### 9.2.6 UI 组件
+
+```typescript
+// components/billing/BillingCycleSwitchCard.tsx
+
+interface SwitchPreview {
+  current: { tier: string; interval: string; price: number; remaining_value: number };
+  target: { tier: string; interval: string; price: number };
+  transition: { effective_date: string; amount_due: number; proration_applied: boolean };
+}
+
+function BillingCycleSwitchCard() {
+  const { subscription } = useSubscription();
+  const [preview, setPreview] = useState<SwitchPreview | null>(null);
+  const [targetInterval, setTargetInterval] = useState<'month' | 'year'>('year');
+
+  const handlePreview = async () => {
+    const result = await api.post('/subscriptions/switch/preview', {
+      target_interval: targetInterval
+    });
+    setPreview(result.data);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <h3>切换计费周期</h3>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-4">
+          <Button
+            variant={targetInterval === 'month' ? 'default' : 'outline'}
+            onClick={() => setTargetInterval('month')}
+          >
+            月付
+          </Button>
+          <Button
+            variant={targetInterval === 'year' ? 'default' : 'outline'}
+            onClick={() => setTargetInterval('year')}
+          >
+            年付 (省 17%)
+          </Button>
+        </div>
+
+        {preview && (
+          <div className="mt-4 p-4 bg-slate-50 rounded">
+            <div className="flex justify-between">
+              <span>当前剩余价值</span>
+              <span className="text-green-600">-${preview.current.remaining_value}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>{preview.target.interval === 'year' ? '年付' : '月付'}价格</span>
+              <span>${preview.target.price}</span>
+            </div>
+            <Divider />
+            <div className="flex justify-between font-semibold">
+              <span>应付金额</span>
+              <span>${preview.transition.amount_due}</span>
+            </div>
+            <p className="text-sm text-slate-500 mt-2">
+              生效时间: {new Date(preview.transition.effective_date).toLocaleDateString()}
+            </p>
+          </div>
+        )}
+
+        <Button className="mt-4 w-full" onClick={handlePreview}>
+          {preview ? '确认切换' : '查看费用'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+---
+
+### 9.3 积分完整生命周期管理 🔴 P0
+
+> 补充积分过期、清零、退款扣回等细节规则
+
+#### 9.3.1 积分类型完整定义
+
+| 类型 | 来源 | 有效期 | 过期规则 | 退款处理 |
+|------|------|--------|---------|---------|
+| **月度积分** | 订阅发放 | 当月有效 | 每月 1 日清零 | 不扣回 |
+| **永久积分** | 充值购买 | 永久有效 | 12 个月不活跃则冻结 | 按比例扣回 |
+| **赠送积分** | 注册/活动 | 90 天 | 过期作废 | 不扣回 |
+| **补偿积分** | 客服发放 | 永久有效 | 不过期 | 不扣回 |
+
+#### 9.3.2 积分冻结规则
+
+```
+账户不活跃定义: 连续 12 个月无登录、无消费、无充值
+
+冻结处理:
+1. 冻结前 30 天发送预警邮件
+2. 冻结前 7 天发送最后提醒
+3. 冻结后积分状态变为 'frozen'
+4. 重新登录后自动解冻 (需验证身份)
+5. 冻结期间不参与扣费优先级
+```
+
+#### 9.3.3 退款积分扣回规则
+
+```
+场景: 用户购买 500 积分包 ($13.46)，使用了 200 积分后申请退款
+
+计算:
+- 购买积分: 500
+- 已使用: 200
+- 剩余: 300
+- 退款金额: $13.46 × (300/500) = $8.08
+
+处理:
+1. 退款 $8.08 到原支付方式
+2. 扣除 300 永久积分
+3. 如果当前永久积分 < 300，记录为负债
+4. 负债在下次充值时自动扣除
+
+负债上限:
+- 负债不能超过 500 积分
+- 超过需人工审核
+```
+
+#### 9.3.4 数据库设计
+
+```sql
+-- 积分表增强
+ALTER TABLE user_credits ADD COLUMN IF NOT EXISTS
+    gift_credits INT DEFAULT 0,           -- 赠送积分
+    gift_credits_expire_at TIMESTAMPTZ,   -- 赠送积分过期时间
+    compensation_credits INT DEFAULT 0,   -- 补偿积分
+    frozen_credits INT DEFAULT 0,         -- 冻结积分
+    credit_debt INT DEFAULT 0,            -- 积分负债
+    last_activity_at TIMESTAMPTZ;         -- 最后活跃时间
+
+-- 积分变动记录表增强
+ALTER TABLE credit_transactions ADD COLUMN IF NOT EXISTS
+    credit_type TEXT DEFAULT 'permanent', -- 'monthly' | 'permanent' | 'gift' | 'compensation'
+    expires_at TIMESTAMPTZ,               -- 过期时间 (赠送积分)
+    refund_related BOOLEAN DEFAULT FALSE; -- 是否退款相关
+
+-- 积分冻结历史
+CREATE TABLE IF NOT EXISTS credit_freeze_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    frozen_amount INT NOT NULL,
+    freeze_reason TEXT NOT NULL,         -- 'inactivity' | 'fraud_suspected' | 'admin'
+    frozen_at TIMESTAMPTZ DEFAULT NOW(),
+    unfrozen_at TIMESTAMPTZ,
+    unfrozen_by TEXT                     -- 'user_login' | 'admin' | 'auto'
+);
+```
+
+#### 9.3.5 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('credits.gift_expire_days', '90', 'integer', 'credits', '赠送积分有效期(天)'),
+('credits.inactive_freeze_months', '12', 'integer', 'credits', '不活跃冻结月数'),
+('credits.freeze_warning_days', '30', 'integer', 'credits', '冻结前预警天数'),
+('credits.max_debt', '500', 'integer', 'credits', '最大积分负债'),
+('credits.refund_deduct_ratio', '1.0', 'float', 'credits', '退款积分扣除比例');
+```
+
+#### 9.3.6 积分扣费优先级 (更新)
+
+```
+扣费顺序 (优先扣即将过期的):
+1. 赠送积分 (按过期时间排序，最早过期的先扣)
+2. 月度积分 (本月底过期)
+3. 永久积分 (不过期)
+4. 补偿积分 (不过期，保底)
+
+负债处理:
+- 如有负债，新充值的永久积分先抵扣负债
+- 负债不影响月度积分使用
+```
+
+#### 9.3.7 服务实现
+
+```python
+# domains/credits/services/credit_lifecycle_service.py
+
+class CreditLifecycleService:
+    """积分生命周期管理"""
+
+    async def deduct_credits(self, user_id: str, amount: int, reason: str) -> Dict:
+        """扣除积分 (按优先级)"""
+
+        credits = await self._get_user_credits(user_id)
+        remaining = amount
+        deductions = []
+
+        # 1. 优先扣赠送积分 (按过期时间)
+        if remaining > 0 and credits.gift_credits > 0:
+            deduct = min(remaining, credits.gift_credits)
+            remaining -= deduct
+            deductions.append({'type': 'gift', 'amount': deduct})
+
+        # 2. 扣月度积分
+        if remaining > 0 and credits.credits_monthly > 0:
+            deduct = min(remaining, credits.credits_monthly)
+            remaining -= deduct
+            deductions.append({'type': 'monthly', 'amount': deduct})
+
+        # 3. 扣永久积分
+        if remaining > 0 and credits.credits_permanent > 0:
+            deduct = min(remaining, credits.credits_permanent)
+            remaining -= deduct
+            deductions.append({'type': 'permanent', 'amount': deduct})
+
+        # 4. 扣补偿积分
+        if remaining > 0 and credits.compensation_credits > 0:
+            deduct = min(remaining, credits.compensation_credits)
+            remaining -= deduct
+            deductions.append({'type': 'compensation', 'amount': deduct})
+
+        if remaining > 0:
+            raise InsufficientCreditsError(f'积分不足，缺少 {remaining}')
+
+        # 执行扣除
+        await self._execute_deductions(user_id, deductions, reason)
+
+        return {'deducted': amount, 'breakdown': deductions}
+
+    async def handle_refund_credit_deduction(
+        self,
+        user_id: str,
+        purchase_id: str,
+        refund_amount: float,
+        original_amount: float,
+        original_credits: int
+    ) -> Dict:
+        """处理退款时的积分扣回"""
+
+        # 计算应扣积分
+        refund_ratio = refund_amount / original_amount
+        credits_to_deduct = int(original_credits * refund_ratio)
+
+        credits = await self._get_user_credits(user_id)
+
+        if credits.credits_permanent >= credits_to_deduct:
+            # 直接扣除
+            await db.execute("""
+                UPDATE user_credits SET
+                    credits_permanent = credits_permanent - $1
+                WHERE user_id = $2
+            """, credits_to_deduct, user_id)
+
+            debt_created = 0
+        else:
+            # 创建负债
+            available = credits.credits_permanent
+            debt_created = credits_to_deduct - available
+
+            # 检查负债上限
+            max_debt = await get_config('credits.max_debt') or 500
+            total_debt = credits.credit_debt + debt_created
+
+            if total_debt > max_debt:
+                raise DebtLimitExceededError(f'积分负债超过上限 {max_debt}')
+
+            await db.execute("""
+                UPDATE user_credits SET
+                    credits_permanent = 0,
+                    credit_debt = credit_debt + $1
+                WHERE user_id = $2
+            """, debt_created, user_id)
+
+        # 记录交易
+        await self._log_transaction(
+            user_id,
+            -credits_to_deduct,
+            'refund_deduction',
+            f'退款扣回，关联订单: {purchase_id}'
+        )
+
+        return {
+            'deducted': credits_to_deduct,
+            'debt_created': debt_created,
+            'current_debt': credits.credit_debt + debt_created
+        }
+
+    async def check_and_freeze_inactive(self):
+        """定时任务: 检查并冻结不活跃账户"""
+
+        inactive_months = await get_config('credits.inactive_freeze_months') or 12
+        cutoff_date = datetime.now() - timedelta(days=inactive_months * 30)
+
+        inactive_users = await db.fetch_all("""
+            SELECT user_id, credits_permanent, gift_credits, compensation_credits
+            FROM user_credits
+            WHERE last_activity_at < $1
+            AND (credits_permanent > 0 OR gift_credits > 0 OR compensation_credits > 0)
+            AND frozen_credits = 0
+        """, cutoff_date)
+
+        for user in inactive_users:
+            total_to_freeze = (
+                user['credits_permanent'] +
+                user['gift_credits'] +
+                user['compensation_credits']
+            )
+
+            await db.execute("""
+                UPDATE user_credits SET
+                    frozen_credits = $1,
+                    credits_permanent = 0,
+                    gift_credits = 0,
+                    compensation_credits = 0
+                WHERE user_id = $2
+            """, total_to_freeze, user['user_id'])
+
+            await db.execute("""
+                INSERT INTO credit_freeze_history (user_id, frozen_amount, freeze_reason)
+                VALUES ($1, $2, 'inactivity')
+            """, user['user_id'], total_to_freeze)
+
+            await self._send_freeze_notification(user['user_id'], total_to_freeze)
+
+    async def unfreeze_on_login(self, user_id: str):
+        """用户登录时解冻积分"""
+
+        credits = await self._get_user_credits(user_id)
+
+        if credits.frozen_credits > 0:
+            await db.execute("""
+                UPDATE user_credits SET
+                    credits_permanent = credits_permanent + frozen_credits,
+                    frozen_credits = 0,
+                    last_activity_at = NOW()
+                WHERE user_id = $1
+            """, user_id)
+
+            await db.execute("""
+                UPDATE credit_freeze_history SET
+                    unfrozen_at = NOW(),
+                    unfrozen_by = 'user_login'
+                WHERE user_id = $1 AND unfrozen_at IS NULL
+            """, user_id)
+```
+
+---
+
+### 9.4 订阅续期提醒 (Renewal Reminders) 🔴 P0
+
+> 参考: 所有 SaaS 产品
+
+#### 9.4.1 提醒规则
+
+| 时间点 | 渠道 | 内容 |
+|--------|------|------|
+| 续期前 7 天 | 邮件 | 温和提醒，显示续期日期和金额 |
+| 续期前 3 天 | 邮件 + 应用内 | 提醒检查支付方式 |
+| 续期前 1 天 | 邮件 + 应用内 + Push | 最后提醒 |
+| 续期当天 | 应用内 | 显示扣费成功/失败状态 |
+
+#### 9.4.2 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('renewal.reminder_days', '[7, 3, 1]', 'json', 'subscription', '续期提醒天数数组'),
+('renewal.email_enabled', 'true', 'boolean', 'subscription', '是否发送邮件提醒'),
+('renewal.push_enabled', 'true', 'boolean', 'subscription', '是否发送推送提醒'),
+('renewal.allow_user_disable', 'true', 'boolean', 'subscription', '用户是否可关闭提醒');
+```
+
+#### 9.4.3 数据库设计
+
+```sql
+-- 用户通知偏好
+CREATE TABLE IF NOT EXISTS user_notification_preferences (
+    user_id TEXT PRIMARY KEY REFERENCES profiles(user_id),
+    renewal_email BOOLEAN DEFAULT TRUE,
+    renewal_push BOOLEAN DEFAULT TRUE,
+    marketing_email BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 通知发送记录
+CREATE TABLE IF NOT EXISTS notification_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    notification_type TEXT NOT NULL,      -- 'renewal_reminder' | 'payment_failed' | 'trial_ending'
+    channel TEXT NOT NULL,                -- 'email' | 'push' | 'in_app'
+    template_id TEXT,
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    opened_at TIMESTAMPTZ,
+    clicked_at TIMESTAMPTZ,
+    metadata JSONB                        -- 额外数据
+);
+
+CREATE INDEX idx_notification_logs_user ON notification_logs(user_id);
+CREATE INDEX idx_notification_logs_type ON notification_logs(notification_type);
+```
+
+#### 9.4.4 服务实现
+
+```python
+# domains/notification/services/renewal_reminder_service.py
+
+class RenewalReminderService:
+    """续期提醒服务"""
+
+    async def send_renewal_reminders(self):
+        """定时任务: 发送续期提醒"""
+
+        reminder_days = await get_config('renewal.reminder_days') or [7, 3, 1]
+
+        for days in reminder_days:
+            target_date = datetime.now() + timedelta(days=days)
+
+            # 查找即将续期的订阅
+            subscriptions = await db.fetch_all("""
+                SELECT s.*, u.email, u.name, np.renewal_email, np.renewal_push
+                FROM subscriptions s
+                JOIN profiles u ON s.user_id = u.user_id
+                LEFT JOIN user_notification_preferences np ON s.user_id = np.user_id
+                WHERE DATE(s.current_period_end) = DATE($1)
+                AND s.status = 'active'
+                AND s.cancel_at_period_end = FALSE
+            """, target_date)
+
+            for sub in subscriptions:
+                # 检查是否已发送过
+                already_sent = await self._check_already_sent(sub['user_id'], days)
+                if already_sent:
+                    continue
+
+                # 发送邮件
+                if sub.get('renewal_email', True):
+                    await self._send_email_reminder(sub, days)
+
+                # 发送推送 (仅最后一天)
+                if days == 1 and sub.get('renewal_push', True):
+                    await self._send_push_reminder(sub)
+
+                # 创建应用内通知 (3 天和 1 天)
+                if days <= 3:
+                    await self._create_in_app_notification(sub, days)
+
+    async def _send_email_reminder(self, subscription: Dict, days_until: int):
+        """发送邮件提醒"""
+
+        template = {
+            7: 'renewal_reminder_7days',
+            3: 'renewal_reminder_3days',
+            1: 'renewal_reminder_1day'
+        }.get(days_until)
+
+        await email_service.send(
+            to=subscription['email'],
+            template=template,
+            data={
+                'user_name': subscription['name'],
+                'tier_name': TIER_DISPLAY_NAMES[subscription['tier']],
+                'renewal_date': subscription['current_period_end'].strftime('%Y年%m月%d日'),
+                'amount': subscription['price'],
+                'payment_method_last4': subscription.get('card_last4', '****'),
+                'manage_url': f"{BASE_URL}/settings/subscription"
+            }
+        )
+
+        # 记录
+        await self._log_notification(
+            subscription['user_id'],
+            'renewal_reminder',
+            'email',
+            template
+        )
+```
+
+#### 9.4.5 邮件模板示例
+
+```html
+<!-- 续期前 3 天邮件模板 -->
+<h2>您的订阅即将续期</h2>
+
+<p>亲爱的 {{user_name}}，</p>
+
+<p>您的 <strong>{{tier_name}}</strong> 订阅将于 <strong>{{renewal_date}}</strong> 自动续期。</p>
+
+<div class="info-box">
+  <p>续期金额: <strong>${{amount}}</strong></p>
+  <p>支付方式: 尾号 {{payment_method_last4}} 的信用卡</p>
+</div>
+
+<p>请确保您的支付方式有效，以避免服务中断。</p>
+
+<div class="cta">
+  <a href="{{manage_url}}">管理订阅</a>
+</div>
+
+<p class="footer">
+  如果您不希望续期，可以在续期日期前<a href="{{manage_url}}">取消订阅</a>。
+</p>
+```
+
+---
+
+### 9.5 发票与收据管理 (Invoice Management) 🔴 P0
+
+> 参考: 所有 SaaS 产品
+
+#### 9.5.1 功能清单
+
+| 功能 | 说明 |
+|------|------|
+| 账单历史 | 查看所有历史账单 |
+| 下载发票 | PDF 格式下载 |
+| 发票信息 | 设置公司名、税号、地址 |
+| 邮件发送 | 每次扣费后自动发送发票 |
+
+#### 9.5.2 数据库设计
+
+```sql
+-- 发票信息
+CREATE TABLE IF NOT EXISTS user_billing_info (
+    user_id TEXT PRIMARY KEY REFERENCES profiles(user_id),
+    company_name TEXT,                    -- 公司名称
+    tax_id TEXT,                          -- 税号
+    billing_email TEXT,                   -- 账单邮箱 (可与主邮箱不同)
+    address_line1 TEXT,
+    address_line2 TEXT,
+    city TEXT,
+    state TEXT,
+    postal_code TEXT,
+    country TEXT DEFAULT 'US',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 发票记录 (Stripe Invoice 同步)
+CREATE TABLE IF NOT EXISTS invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    stripe_invoice_id TEXT UNIQUE,
+    invoice_number TEXT,                  -- 发票号
+    amount_due INT,                       -- 应付金额 (分)
+    amount_paid INT,                      -- 实付金额 (分)
+    currency TEXT DEFAULT 'usd',
+    status TEXT,                          -- 'draft' | 'open' | 'paid' | 'void' | 'uncollectible'
+    invoice_pdf_url TEXT,                 -- Stripe 生成的 PDF URL
+    hosted_invoice_url TEXT,              -- Stripe 托管的发票页面
+    period_start TIMESTAMPTZ,
+    period_end TIMESTAMPTZ,
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_invoices_user ON invoices(user_id);
+CREATE INDEX idx_invoices_stripe ON invoices(stripe_invoice_id);
+```
+
+#### 9.5.3 API 设计
+
+```python
+# api/routers/billing.py
+
+@router.get("/invoices")
+async def list_invoices(
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(10, le=100),
+    offset: int = 0
+):
+    """获取账单历史"""
+    invoices = await invoice_service.list_user_invoices(
+        current_user.user_id, limit, offset
+    )
+    return {
+        "invoices": invoices,
+        "total": await invoice_service.count_user_invoices(current_user.user_id)
+    }
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def download_invoice_pdf(
+    invoice_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """下载发票 PDF"""
+    invoice = await invoice_service.get_invoice(invoice_id, current_user.user_id)
+    if not invoice:
+        raise HTTPException(404, "发票不存在")
+
+    # 重定向到 Stripe PDF
+    return RedirectResponse(invoice.invoice_pdf_url)
+
+@router.get("/billing-info")
+async def get_billing_info(current_user: User = Depends(get_current_user)):
+    """获取发票信息"""
+    return await billing_service.get_billing_info(current_user.user_id)
+
+@router.put("/billing-info")
+async def update_billing_info(
+    data: BillingInfoUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """更新发票信息"""
+    await billing_service.update_billing_info(current_user.user_id, data)
+
+    # 同步到 Stripe Customer
+    await stripe_service.update_customer_billing_info(
+        current_user.stripe_customer_id, data
+    )
+
+    return {"status": "updated"}
+```
+
+#### 9.5.4 UI 组件
+
+```typescript
+// pages/settings/billing/page.tsx
+
+function BillingPage() {
+  return (
+    <SettingsLayout>
+      <h1>账单管理</h1>
+
+      {/* 发票信息 */}
+      <Card className="mb-6">
+        <CardHeader>
+          <h2>发票信息</h2>
+          <p className="text-sm text-slate-500">此信息将显示在您的发票上</p>
+        </CardHeader>
+        <CardContent>
+          <BillingInfoForm />
+        </CardContent>
+      </Card>
+
+      {/* 账单历史 */}
+      <Card>
+        <CardHeader>
+          <h2>账单历史</h2>
+        </CardHeader>
+        <CardContent>
+          <InvoiceList />
+        </CardContent>
+      </Card>
+    </SettingsLayout>
+  );
+}
+
+function InvoiceList() {
+  const { data, isLoading } = useQuery(['invoices'], fetchInvoices);
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>日期</TableHead>
+          <TableHead>描述</TableHead>
+          <TableHead>金额</TableHead>
+          <TableHead>状态</TableHead>
+          <TableHead>操作</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data?.invoices.map((invoice) => (
+          <TableRow key={invoice.id}>
+            <TableCell>{formatDate(invoice.created_at)}</TableCell>
+            <TableCell>{invoice.description || `${TIER_NAMES[invoice.tier]} 订阅`}</TableCell>
+            <TableCell>${(invoice.amount_paid / 100).toFixed(2)}</TableCell>
+            <TableCell>
+              <Badge variant={invoice.status === 'paid' ? 'success' : 'warning'}>
+                {invoice.status === 'paid' ? '已支付' : '待支付'}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <Button size="sm" variant="ghost" asChild>
+                <a href={invoice.invoice_pdf_url} target="_blank">
+                  <Download className="w-4 h-4 mr-1" />
+                  下载
+                </a>
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+```
+
+---
+
+### 9.6 退款完整处理流程 🔴 P0
+
+> 补充退款后的完整处理，包括积分、商城、权限等
+
+#### 9.6.1 退款类型
+
+| 类型 | 触发方式 | 积分处理 | 权限处理 |
+|------|---------|---------|---------|
+| **全额退款** | 用户申请/客服操作 | 全部扣回 | 立即降级 |
+| **部分退款** | 客服操作 | 按比例扣回 | 不变 |
+| **积分包退款** | 用户申请 | 扣回剩余积分 | 不变 |
+| **争议退款** | 银行发起 | 全部扣回+标记 | 立即降级 |
+
+#### 9.6.2 退款冷却期
+
+```
+为防止滥用退款机制:
+- 同一订阅类型退款后 90 天内不能重新订阅
+- 积分包退款后 30 天内不能再次购买
+- 争议退款后账户被标记为 "高风险"，需人工审核后方可消费
+```
+
+#### 9.6.3 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('refund.subscription_cooldown_days', '90', 'integer', 'refund', '订阅退款后冷却期'),
+('refund.credits_cooldown_days', '30', 'integer', 'refund', '积分退款后冷却期'),
+('refund.auto_approve_threshold', '50', 'float', 'refund', '自动审批金额阈值 ($)'),
+('refund.dispute_auto_block', 'true', 'boolean', 'refund', '争议退款是否自动封禁');
+```
+
+#### 9.6.4 数据库设计
+
+```sql
+-- 退款记录表
+CREATE TABLE IF NOT EXISTS refund_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    stripe_refund_id TEXT UNIQUE,
+    stripe_charge_id TEXT,
+    refund_type TEXT NOT NULL,            -- 'subscription' | 'credits' | 'marketplace'
+    amount INT NOT NULL,                  -- 退款金额 (分)
+    reason TEXT,                          -- 退款原因
+    credits_deducted INT DEFAULT 0,       -- 扣回的积分
+    debt_created INT DEFAULT 0,           -- 产生的负债
+    status TEXT DEFAULT 'pending',        -- 'pending' | 'approved' | 'completed' | 'rejected'
+    processed_by TEXT,                    -- 处理人 (admin user_id)
+    processed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 用户风险标记
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS
+    risk_level TEXT DEFAULT 'normal',     -- 'normal' | 'elevated' | 'high'
+    risk_reason TEXT,
+    risk_updated_at TIMESTAMPTZ;
+
+-- 退款冷却记录
+CREATE TABLE IF NOT EXISTS refund_cooldowns (
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    product_type TEXT NOT NULL,           -- 'subscription_t2' | 'subscription_t3' | 'credits'
+    cooldown_until TIMESTAMPTZ NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, product_type)
+);
+```
+
+#### 9.6.5 服务实现
+
+```python
+# domains/refund/services/refund_service.py
+
+class RefundService:
+    """退款处理服务"""
+
+    async def process_subscription_refund(
+        self,
+        user_id: str,
+        subscription_id: str,
+        reason: str,
+        partial_amount: float = None  # None = 全额退款
+    ) -> Dict:
+        """处理订阅退款"""
+
+        subscription = await self._get_subscription(subscription_id, user_id)
+
+        # 1. 计算退款金额
+        if partial_amount:
+            refund_amount = partial_amount
+        else:
+            refund_amount = self._calculate_prorated_refund(subscription)
+
+        # 2. 执行 Stripe 退款
+        stripe_refund = await stripe.Refund.create(
+            charge=subscription.latest_charge_id,
+            amount=int(refund_amount * 100),
+            reason='requested_by_customer'
+        )
+
+        # 3. 计算积分扣回
+        credits_result = await self._handle_subscription_credits_deduction(
+            user_id, subscription, refund_amount
+        )
+
+        # 4. 降级处理
+        if not partial_amount:  # 全额退款才降级
+            await self.downgrade_service.process_downgrade(
+                user_id,
+                old_tier=subscription.tier,
+                new_tier='t1',
+                reason='refund'
+            )
+
+        # 5. 设置冷却期
+        cooldown_days = await get_config('refund.subscription_cooldown_days') or 90
+        await db.execute("""
+            INSERT INTO refund_cooldowns (user_id, product_type, cooldown_until, reason)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, product_type) DO UPDATE SET
+                cooldown_until = EXCLUDED.cooldown_until,
+                reason = EXCLUDED.reason
+        """, user_id, f'subscription_{subscription.tier}',
+            datetime.now() + timedelta(days=cooldown_days), 'refund')
+
+        # 6. 记录退款
+        await db.execute("""
+            INSERT INTO refund_records
+            (user_id, stripe_refund_id, stripe_charge_id, refund_type, amount, reason,
+             credits_deducted, debt_created, status, processed_at)
+            VALUES ($1, $2, $3, 'subscription', $4, $5, $6, $7, 'completed', NOW())
+        """, user_id, stripe_refund.id, subscription.latest_charge_id,
+            int(refund_amount * 100), reason,
+            credits_result['deducted'], credits_result['debt_created'])
+
+        # 7. 发送确认邮件
+        await self._send_refund_confirmation_email(user_id, refund_amount, reason)
+
+        return {
+            'refund_id': stripe_refund.id,
+            'amount': refund_amount,
+            'credits_deducted': credits_result['deducted'],
+            'debt_created': credits_result['debt_created'],
+            'cooldown_until': (datetime.now() + timedelta(days=cooldown_days)).isoformat()
+        }
+
+    async def handle_dispute(self, dispute_event: Dict):
+        """处理争议退款 (Stripe Webhook)"""
+
+        user_id = await self._get_user_from_charge(dispute_event['charge'])
+
+        # 1. 标记高风险
+        await db.execute("""
+            UPDATE profiles SET
+                risk_level = 'high',
+                risk_reason = 'dispute_chargeback',
+                risk_updated_at = NOW()
+            WHERE user_id = $1
+        """, user_id)
+
+        # 2. 扣回积分 (全部)
+        await self.credit_service.handle_refund_credit_deduction(
+            user_id,
+            purchase_id=dispute_event['charge'],
+            refund_amount=dispute_event['amount'] / 100,
+            original_amount=dispute_event['amount'] / 100,
+            original_credits=await self._get_credits_for_charge(dispute_event['charge'])
+        )
+
+        # 3. 立即降级
+        subscription = await self._get_user_subscription(user_id)
+        if subscription and subscription.tier != 't1':
+            await self.downgrade_service.process_downgrade(
+                user_id,
+                old_tier=subscription.tier,
+                new_tier='t1',
+                reason='dispute_chargeback'
+            )
+
+        # 4. 通知管理员
+        await self._notify_admin_dispute(user_id, dispute_event)
+
+    async def check_purchase_eligibility(self, user_id: str, product_type: str) -> Dict:
+        """检查是否可以购买 (冷却期检查)"""
+
+        cooldown = await db.fetch_one("""
+            SELECT cooldown_until, reason FROM refund_cooldowns
+            WHERE user_id = $1 AND product_type = $2 AND cooldown_until > NOW()
+        """, user_id, product_type)
+
+        if cooldown:
+            return {
+                'eligible': False,
+                'reason': f'由于之前的退款，该产品在 {cooldown["cooldown_until"].strftime("%Y-%m-%d")} 之前无法购买',
+                'cooldown_until': cooldown['cooldown_until']
+            }
+
+        # 检查风险等级
+        profile = await db.fetch_one("""
+            SELECT risk_level FROM profiles WHERE user_id = $1
+        """, user_id)
+
+        if profile['risk_level'] == 'high':
+            return {
+                'eligible': False,
+                'reason': '您的账户需要人工审核，请联系客服',
+                'contact_support': True
+            }
+
+        return {'eligible': True}
+```
+
+---
+
+### 9.7 限时优惠与倒计时 🟡 P1
+
+> 参考: 电商、SaaS 促销活动
+
+#### 9.7.1 优惠类型
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| **首购优惠** | 新用户首次购买折扣 | 首月 5 折 |
+| **节日促销** | 特定时间段折扣 | 黑五 7 折 |
+| **限时闪购** | 短时间高折扣 | 24 小时 6 折 |
+| **续费优惠** | 老用户续费折扣 | 年付续费 8 折 |
+
+#### 9.7.2 数据库设计
+
+```sql
+-- 优惠活动表
+CREATE TABLE IF NOT EXISTS promotions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE,                     -- 优惠码 (可选)
+    name TEXT NOT NULL,
+    description TEXT,
+    discount_type TEXT NOT NULL,          -- 'percentage' | 'fixed_amount'
+    discount_value DECIMAL(10,2) NOT NULL,-- 折扣值 (百分比或金额)
+    applies_to TEXT[] DEFAULT '{}',       -- 适用产品: ['t2', 't3', 'credits_500']
+    min_purchase DECIMAL(10,2),           -- 最低消费
+    max_discount DECIMAL(10,2),           -- 最高折扣金额
+    usage_limit INT,                      -- 总使用次数限制
+    usage_count INT DEFAULT 0,            -- 已使用次数
+    per_user_limit INT DEFAULT 1,         -- 每用户限制
+    user_eligibility TEXT DEFAULT 'all',  -- 'all' | 'new' | 'returning' | 'specific_group'
+    eligible_groups TEXT[],               -- 特定用户组
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 优惠使用记录
+CREATE TABLE IF NOT EXISTS promotion_usages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    promotion_id UUID REFERENCES promotions(id),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    order_id TEXT,
+    discount_applied DECIMAL(10,2),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_promotions_active ON promotions(is_active, start_at, end_at);
+CREATE INDEX idx_promotion_usages_user ON promotion_usages(user_id);
+```
+
+#### 9.7.3 服务实现
+
+```python
+# domains/promotion/services/promotion_service.py
+
+class PromotionService:
+    """促销活动服务"""
+
+    async def get_applicable_promotions(
+        self,
+        user_id: str,
+        product_type: str
+    ) -> List[Dict]:
+        """获取用户可用的优惠"""
+
+        now = datetime.now()
+        user = await self._get_user(user_id)
+
+        # 查询有效活动
+        promotions = await db.fetch_all("""
+            SELECT * FROM promotions
+            WHERE is_active = TRUE
+            AND start_at <= $1 AND end_at > $1
+            AND (usage_limit IS NULL OR usage_count < usage_limit)
+            AND $2 = ANY(applies_to)
+        """, now, product_type)
+
+        applicable = []
+        for promo in promotions:
+            # 检查用户资格
+            if not await self._check_user_eligibility(user_id, user, promo):
+                continue
+
+            # 检查使用次数
+            usage_count = await db.fetch_val("""
+                SELECT COUNT(*) FROM promotion_usages
+                WHERE promotion_id = $1 AND user_id = $2
+            """, promo['id'], user_id)
+
+            if usage_count >= promo['per_user_limit']:
+                continue
+
+            applicable.append({
+                'id': promo['id'],
+                'code': promo['code'],
+                'name': promo['name'],
+                'description': promo['description'],
+                'discount_type': promo['discount_type'],
+                'discount_value': promo['discount_value'],
+                'end_at': promo['end_at'],
+                'remaining_time': (promo['end_at'] - now).total_seconds()
+            })
+
+        return applicable
+
+    async def apply_promotion(
+        self,
+        user_id: str,
+        promotion_id: str,
+        original_amount: float
+    ) -> Dict:
+        """应用优惠"""
+
+        promo = await self._get_promotion(promotion_id)
+
+        # 验证
+        if not await self._validate_promotion(user_id, promo, original_amount):
+            raise PromotionNotApplicableError()
+
+        # 计算折扣
+        if promo['discount_type'] == 'percentage':
+            discount = original_amount * (promo['discount_value'] / 100)
+        else:
+            discount = promo['discount_value']
+
+        # 应用最高折扣限制
+        if promo['max_discount'] and discount > promo['max_discount']:
+            discount = promo['max_discount']
+
+        final_amount = original_amount - discount
+
+        return {
+            'original_amount': original_amount,
+            'discount': discount,
+            'final_amount': max(0, final_amount),
+            'promotion_id': promotion_id,
+            'promotion_name': promo['name']
+        }
+```
+
+#### 9.7.4 前端倒计时组件
+
+```typescript
+// components/promotion/PromotionCountdown.tsx
+
+interface PromotionCountdownProps {
+  endAt: string;
+  promotionName: string;
+  discountText: string;
+}
+
+function PromotionCountdown({ endAt, promotionName, discountText }: PromotionCountdownProps) {
+  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft(endAt));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const left = calculateTimeLeft(endAt);
+      setTimeLeft(left);
+
+      if (left.total <= 0) {
+        clearInterval(timer);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [endAt]);
+
+  if (timeLeft.total <= 0) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-4 py-2">
+      <div className="flex items-center justify-between max-w-4xl mx-auto">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5" />
+          <span className="font-semibold">{promotionName}</span>
+          <span>{discountText}</span>
+        </div>
+
+        <div className="flex items-center gap-1 font-mono">
+          <span className="bg-white/20 px-2 py-1 rounded">{timeLeft.days}天</span>
+          <span>:</span>
+          <span className="bg-white/20 px-2 py-1 rounded">{timeLeft.hours}时</span>
+          <span>:</span>
+          <span className="bg-white/20 px-2 py-1 rounded">{timeLeft.minutes}分</span>
+          <span>:</span>
+          <span className="bg-white/20 px-2 py-1 rounded">{timeLeft.seconds}秒</span>
+        </div>
+
+        <Button size="sm" variant="secondary">
+          立即抢购
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function calculateTimeLeft(endAt: string) {
+  const end = new Date(endAt).getTime();
+  const now = Date.now();
+  const diff = end - now;
+
+  if (diff <= 0) {
+    return { total: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
+  }
+
+  return {
+    total: diff,
+    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+    minutes: Math.floor((diff / (1000 * 60)) % 60),
+    seconds: Math.floor((diff / 1000) % 60)
+  };
+}
+```
+
+---
+
+### 9.8 邀请奖励完整规则 🟡 P1
+
+> 参考: Dropbox, Notion, Canva
+
+#### 9.8.1 奖励规则
+
+| 角色 | 奖励条件 | 奖励内容 | 上限 |
+|------|---------|---------|------|
+| **邀请人** | 被邀请人付费成功 | 1 个月订阅延长 或 50 积分 | 12 个月 或 600 积分 |
+| **被邀请人** | 首次付费 | 首月 8 折 | 1 次 |
+
+#### 9.8.2 防作弊规则
+
+```
+1. 同一 IP 24 小时内最多邀请 3 人
+2. 同一设备指纹最多关联 5 个被邀请账号
+3. 被邀请人必须使用不同邮箱域名
+4. 被邀请人首次付费后 7 天内取消/退款，奖励收回
+5. 邀请人账户异常 (高风险/封禁) 时奖励冻结
+```
+
+#### 9.8.3 数据库设计
+
+```sql
+-- 邀请记录表
+CREATE TABLE IF NOT EXISTS referrals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    referrer_id TEXT NOT NULL REFERENCES profiles(user_id),  -- 邀请人
+    referee_id TEXT REFERENCES profiles(user_id),            -- 被邀请人
+    referral_code TEXT NOT NULL,                             -- 邀请码
+    referee_email TEXT,                                      -- 被邀请人邮箱
+    status TEXT DEFAULT 'pending',    -- 'pending' | 'registered' | 'converted' | 'rewarded' | 'revoked'
+    referrer_ip TEXT,
+    referrer_fingerprint TEXT,
+    referee_ip TEXT,
+    referee_fingerprint TEXT,
+    converted_at TIMESTAMPTZ,         -- 被邀请人付费时间
+    rewarded_at TIMESTAMPTZ,          -- 奖励发放时间
+    reward_type TEXT,                 -- 'subscription_extension' | 'credits'
+    reward_value TEXT,                -- '1_month' 或 '50'
+    revoked_at TIMESTAMPTZ,           -- 奖励撤销时间
+    revoke_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 邀请人奖励汇总
+CREATE TABLE IF NOT EXISTS referral_rewards_summary (
+    user_id TEXT PRIMARY KEY REFERENCES profiles(user_id),
+    total_referrals INT DEFAULT 0,            -- 总邀请数
+    successful_referrals INT DEFAULT 0,       -- 成功转化数
+    subscription_months_earned INT DEFAULT 0, -- 获得的订阅月数
+    credits_earned INT DEFAULT 0,             -- 获得的积分
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_referrals_referrer ON referrals(referrer_id);
+CREATE INDEX idx_referrals_code ON referrals(referral_code);
+```
+
+#### 9.8.4 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('referral.reward_type', 'subscription_extension', 'string', 'referral', '奖励类型'),
+('referral.reward_value', '1', 'integer', 'referral', '奖励值 (月数或积分)'),
+('referral.max_rewards', '12', 'integer', 'referral', '最大奖励数量'),
+('referral.referee_discount', '0.2', 'float', 'referral', '被邀请人首购折扣'),
+('referral.conversion_window_days', '7', 'integer', 'referral', '转化窗口期'),
+('referral.revoke_window_days', '7', 'integer', 'referral', '取消/退款撤销奖励窗口');
+```
+
+#### 9.8.5 服务实现
+
+```python
+# domains/referral/services/referral_service.py
+
+class ReferralService:
+    """邀请奖励服务"""
+
+    async def generate_referral_code(self, user_id: str) -> str:
+        """生成邀请码"""
+
+        # 检查是否已有邀请码
+        existing = await db.fetch_val("""
+            SELECT referral_code FROM profiles WHERE user_id = $1
+        """, user_id)
+
+        if existing:
+            return existing
+
+        # 生成唯一码
+        code = self._generate_unique_code(user_id)
+
+        await db.execute("""
+            UPDATE profiles SET referral_code = $1 WHERE user_id = $2
+        """, code, user_id)
+
+        return code
+
+    async def track_referral_click(
+        self,
+        referral_code: str,
+        referee_email: str,
+        ip: str,
+        fingerprint: str
+    ) -> Dict:
+        """记录邀请点击"""
+
+        referrer = await self._get_referrer_by_code(referral_code)
+        if not referrer:
+            raise InvalidReferralCodeError()
+
+        # 防作弊检查
+        fraud_check = await self._check_fraud(referrer['user_id'], ip, fingerprint)
+        if not fraud_check['passed']:
+            return {'status': 'blocked', 'reason': fraud_check['reason']}
+
+        # 创建邀请记录
+        await db.execute("""
+            INSERT INTO referrals
+            (referrer_id, referral_code, referee_email, referrer_ip, referrer_fingerprint)
+            VALUES ($1, $2, $3, $4, $5)
+        """, referrer['user_id'], referral_code, referee_email, ip, fingerprint)
+
+        return {'status': 'tracked', 'referrer_name': referrer['name']}
+
+    async def process_conversion(self, referee_id: str, payment_id: str):
+        """处理转化 (被邀请人付费)"""
+
+        # 查找邀请记录
+        referral = await db.fetch_one("""
+            SELECT * FROM referrals
+            WHERE referee_id = $1 AND status = 'registered'
+        """, referee_id)
+
+        if not referral:
+            return  # 非邀请用户
+
+        # 检查转化窗口
+        window_days = await get_config('referral.conversion_window_days') or 7
+        if (datetime.now() - referral['created_at']).days > window_days:
+            return  # 超出窗口
+
+        # 检查邀请人奖励上限
+        summary = await self._get_rewards_summary(referral['referrer_id'])
+        max_rewards = await get_config('referral.max_rewards') or 12
+
+        if summary['subscription_months_earned'] >= max_rewards:
+            await db.execute("""
+                UPDATE referrals SET status = 'converted', converted_at = NOW()
+                WHERE id = $1
+            """, referral['id'])
+            return  # 已达上限，只记录转化不发奖励
+
+        # 发放奖励
+        reward_type = await get_config('referral.reward_type')
+        reward_value = await get_config('referral.reward_value')
+
+        if reward_type == 'subscription_extension':
+            await self._extend_subscription(referral['referrer_id'], int(reward_value))
+        else:
+            await self._add_credits(referral['referrer_id'], int(reward_value))
+
+        # 更新记录
+        await db.execute("""
+            UPDATE referrals SET
+                status = 'rewarded',
+                converted_at = NOW(),
+                rewarded_at = NOW(),
+                reward_type = $1,
+                reward_value = $2
+            WHERE id = $3
+        """, reward_type, str(reward_value), referral['id'])
+
+        # 更新汇总
+        await self._update_rewards_summary(referral['referrer_id'], reward_type, reward_value)
+
+        # 通知邀请人
+        await self._notify_referrer_reward(referral['referrer_id'])
+
+    async def revoke_reward_on_refund(self, referee_id: str):
+        """退款时撤销奖励"""
+
+        revoke_window = await get_config('referral.revoke_window_days') or 7
+
+        referral = await db.fetch_one("""
+            SELECT * FROM referrals
+            WHERE referee_id = $1
+            AND status = 'rewarded'
+            AND rewarded_at > NOW() - INTERVAL '%s days'
+        """ % revoke_window, referee_id)
+
+        if not referral:
+            return
+
+        # 撤销奖励
+        if referral['reward_type'] == 'subscription_extension':
+            await self._shorten_subscription(referral['referrer_id'], int(referral['reward_value']))
+        else:
+            await self._deduct_credits(referral['referrer_id'], int(referral['reward_value']))
+
+        await db.execute("""
+            UPDATE referrals SET
+                status = 'revoked',
+                revoked_at = NOW(),
+                revoke_reason = 'referee_refund'
+            WHERE id = $1
+        """, referral['id'])
+
+    async def _check_fraud(self, referrer_id: str, ip: str, fingerprint: str) -> Dict:
+        """防作弊检查"""
+
+        # 1. 同 IP 24 小时限制
+        ip_count = await db.fetch_val("""
+            SELECT COUNT(*) FROM referrals
+            WHERE referrer_id = $1 AND referrer_ip = $2
+            AND created_at > NOW() - INTERVAL '24 hours'
+        """, referrer_id, ip)
+
+        if ip_count >= 3:
+            return {'passed': False, 'reason': '同一网络邀请过多'}
+
+        # 2. 同设备指纹限制
+        fp_count = await db.fetch_val("""
+            SELECT COUNT(*) FROM referrals
+            WHERE referrer_fingerprint = $1
+        """, fingerprint)
+
+        if fp_count >= 5:
+            return {'passed': False, 'reason': '设备关联账号过多'}
+
+        return {'passed': True}
+```
+
+---
+
+### 9.9 学生/教育优惠 🟡 P1
+
+> 参考: Notion, Canva, Adobe, Figma
+
+#### 9.9.1 验证方式
+
+| 方式 | 说明 | 验证周期 |
+|------|------|---------|
+| **edu 邮箱** | 使用 .edu 或学校邮箱注册 | 每年重新验证 |
+| **第三方验证** | SheerID / UNiDAYS | 实时验证 |
+| **手动审核** | 上传学生证照片 | 人工审核 (1-3 天) |
+
+#### 9.9.2 优惠内容
+
+```
+教育优惠:
+- Pro Plan (t3) 5 折: $4.95/月
+- 验证有效期: 1 年
+- 每年需重新验证
+- 毕业后自动转为普通价格
+```
+
+#### 9.9.3 数据库设计
+
+```sql
+-- 教育验证记录
+CREATE TABLE IF NOT EXISTS education_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    verification_method TEXT NOT NULL,    -- 'edu_email' | 'sheerid' | 'manual'
+    institution_name TEXT,                -- 学校名称
+    institution_type TEXT,                -- 'university' | 'high_school' | 'k12'
+    edu_email TEXT,
+    verification_status TEXT DEFAULT 'pending', -- 'pending' | 'verified' | 'rejected' | 'expired'
+    verified_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,               -- 验证过期时间
+    rejection_reason TEXT,
+    document_url TEXT,                    -- 上传的学生证 (manual 方式)
+    sheerid_verification_id TEXT,         -- SheerID 验证 ID
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_edu_verification_user ON education_verifications(user_id);
+CREATE INDEX idx_edu_verification_status ON education_verifications(verification_status);
+```
+
+#### 9.9.4 配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('education.discount_percentage', '50', 'integer', 'education', '教育优惠折扣'),
+('education.verification_validity_days', '365', 'integer', 'education', '验证有效期(天)'),
+('education.allowed_domains', '["edu", "ac.uk", "edu.cn", "edu.au"]', 'json', 'education', '允许的教育邮箱域名'),
+('education.sheerid_enabled', 'true', 'boolean', 'education', '是否启用 SheerID');
+```
+
+---
+
+### 9.10 免费额度/体验次数 🟡 P1
+
+> 参考: ChatGPT, Midjourney, DALL-E
+
+#### 9.10.1 额度规则
+
+| 用户类型 | 日限额 | 月限额 | 限制维度 |
+|---------|:-----:|:-----:|---------|
+| **游客** | 3 次 AI 调用 | - | IP + 指纹 |
+| **t1 (试用期外)** | 5 次 AI 调用 | 50 次 | 账户 |
+| **t1 (试用期内)** | 不限 | 不限 | - |
+| **t2/t3** | 不限 | 不限 | - |
+
+#### 9.10.2 数据库设计
+
+```sql
+-- 免费额度使用记录
+CREATE TABLE IF NOT EXISTS free_usage_tracking (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identifier TEXT NOT NULL,             -- user_id 或 ip:fingerprint
+    identifier_type TEXT NOT NULL,        -- 'user' | 'anonymous'
+    feature_key TEXT NOT NULL,            -- 'ai_generate' | 'smart_scan'
+    used_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata JSONB                        -- 额外信息
+);
+
+-- 按天/月聚合索引
+CREATE INDEX idx_free_usage_daily ON free_usage_tracking(identifier, feature_key, DATE(used_at));
+```
+
+#### 9.10.3 服务实现
+
+```python
+# domains/ratelimit/services/free_usage_service.py
+
+class FreeUsageService:
+    """免费额度服务"""
+
+    async def check_and_consume(
+        self,
+        identifier: str,
+        identifier_type: str,  # 'user' | 'anonymous'
+        feature_key: str
+    ) -> Dict:
+        """检查并消耗免费额度"""
+
+        limits = await self._get_limits(identifier_type, feature_key)
+
+        # 获取今日使用量
+        today_usage = await db.fetch_val("""
+            SELECT COUNT(*) FROM free_usage_tracking
+            WHERE identifier = $1 AND feature_key = $2
+            AND DATE(used_at) = CURRENT_DATE
+        """, identifier, feature_key)
+
+        if today_usage >= limits['daily']:
+            return {
+                'allowed': False,
+                'reason': 'daily_limit_exceeded',
+                'reset_at': self._get_next_day_start()
+            }
+
+        # 获取本月使用量 (仅用户)
+        if identifier_type == 'user' and limits.get('monthly'):
+            month_usage = await db.fetch_val("""
+                SELECT COUNT(*) FROM free_usage_tracking
+                WHERE identifier = $1 AND feature_key = $2
+                AND DATE_TRUNC('month', used_at) = DATE_TRUNC('month', CURRENT_DATE)
+            """, identifier, feature_key)
+
+            if month_usage >= limits['monthly']:
+                return {
+                    'allowed': False,
+                    'reason': 'monthly_limit_exceeded',
+                    'reset_at': self._get_next_month_start()
+                }
+
+        # 记录使用
+        await db.execute("""
+            INSERT INTO free_usage_tracking (identifier, identifier_type, feature_key)
+            VALUES ($1, $2, $3)
+        """, identifier, identifier_type, feature_key)
+
+        return {
+            'allowed': True,
+            'remaining_today': limits['daily'] - today_usage - 1
+        }
+```
+
+---
+
+### 9.11 Feature Sunset (功能下线) 🟡 P1
+
+> 参考: 产品演进过程中的功能迁移
+
+#### 9.11.1 下线流程
+
+```
+1. 公告期 (T-30): 发布下线公告，应用内 Banner
+2. 提醒期 (T-14): 邮件通知，编辑器内提示
+3. 最后提醒 (T-7): 强提醒，阻断式 Modal
+4. 下线日 (T-0): 功能禁用，返回迁移引导
+5. 清理期 (T+30): 清理旧数据 (可选)
+```
+
+#### 9.11.2 数据库设计
+
+```sql
+-- 功能生命周期表
+CREATE TABLE IF NOT EXISTS feature_lifecycle (
+    feature_key TEXT PRIMARY KEY,
+    status TEXT DEFAULT 'active',         -- 'active' | 'deprecated' | 'sunset' | 'removed'
+    deprecated_at TIMESTAMPTZ,
+    sunset_at TIMESTAMPTZ,                -- 计划下线日期
+    removed_at TIMESTAMPTZ,
+    replacement_feature TEXT,             -- 替代功能 Key
+    migration_guide_url TEXT,             -- 迁移指南链接
+    announcement_content TEXT,            -- 公告内容
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
+### 9.12 权限继承冲突处理 🟡 P1
+
+> 用户同时属于多个组时的冲突解决
+
+#### 9.12.1 冲突场景
+
+```
+场景: 用户 A 同时属于:
+- user_group: 'beta_testers' (smart_scan = true)
+- user_group: 'limited_access' (smart_scan = false)
+
+冲突: smart_scan 应该是 true 还是 false?
+```
+
+#### 9.12.2 解决策略
+
+| 策略 | 说明 | 适用场景 |
+|------|------|---------|
+| **Permissive (宽松)** | 多组冲突时取最高权限 | 默认策略 |
+| **Restrictive (严格)** | 多组冲突时取最低权限 | 安全敏感功能 |
+| **Priority (优先级)** | 按组优先级决定 | 复杂场景 |
+| **Explicit (显式)** | 必须显式解决冲突 | 审计要求高 |
+
+#### 9.12.3 实现
+
+```python
+# 在 feature-flag-engine 中添加冲突解决
+
+class ConflictResolutionStrategy(Enum):
+    PERMISSIVE = 'permissive'      # 取最高权限
+    RESTRICTIVE = 'restrictive'    # 取最低权限
+    PRIORITY = 'priority'          # 按优先级
+    EXPLICIT = 'explicit'          # 显式解决
+
+async def resolve_group_override_conflict(
+    user_id: str,
+    feature_key: str,
+    group_overrides: List[Dict]
+) -> Optional[str]:
+    """解决多组冲突"""
+
+    if len(group_overrides) <= 1:
+        return group_overrides[0]['value'] if group_overrides else None
+
+    # 获取策略 (可按 feature_key 配置)
+    strategy = await get_feature_conflict_strategy(feature_key)
+
+    if strategy == ConflictResolutionStrategy.PERMISSIVE:
+        # 取最高权限: true > trial > false
+        priority = {'true': 3, 'trial': 2, 'false': 1}
+        return max(group_overrides, key=lambda x: priority.get(x['value'], 0))['value']
+
+    elif strategy == ConflictResolutionStrategy.RESTRICTIVE:
+        # 取最低权限
+        priority = {'true': 1, 'trial': 2, 'false': 3}
+        return max(group_overrides, key=lambda x: priority.get(x['value'], 0))['value']
+
+    elif strategy == ConflictResolutionStrategy.PRIORITY:
+        # 按组优先级
+        return max(group_overrides, key=lambda x: x['group_priority'])['value']
+
+    else:  # EXPLICIT
+        # 记录冲突，需人工解决
+        await log_conflict(user_id, feature_key, group_overrides)
+        return None  # 返回 None 表示使用默认值
+```
+
+---
+
+### 9.13 低优先级场景索引 🟢 P2
+
+以下场景当前暂不详细实现，仅记录以备后续需要:
+
+| 场景 | 说明 | 实现复杂度 |
+|------|------|:---------:|
+| **地区定价差异** | 不同国家不同价格 (PPP) | 高 |
+| **货币切换** | 支持多币种支付和显示 | 中 |
+| **Seat-based 定价** | 按团队成员数计费 | 高 |
+| **Usage-based 计费** | 按 API 调用量计费 | 高 |
+| **锁定期/合约期** | 企业年度合同 | 中 |
+| **跨平台订阅同步** | iOS/Android IAP 同步 | 高 |
+| **非营利组织优惠** | 公益组织免费/折扣 | 低 |
+
+---
+
+### 9.14 场景覆盖总结
+
+#### 更新后覆盖情况
+
+| 优先级 | 场景数 | 覆盖数 | 覆盖率 |
+|:------:|:-----:|:-----:|:------:|
+| P0 (高) | 6 | 6 | 100% |
+| P1 (中) | 6 | 6 | 100% |
+| P2 (低) | 7 | 0* | - |
+
+*P2 场景仅做索引记录，待业务需要时详细设计
+
+#### 完整场景清单
+
+| # | 场景 | 优先级 | 章节 |
+|---|------|:------:|:----:|
+| 1 | 订阅暂停 | P0 | 9.1 |
+| 2 | 年付/月付切换 | P0 | 9.2 |
+| 3 | 积分完整生命周期 | P0 | 9.3 |
+| 4 | 订阅续期提醒 | P0 | 9.4 |
+| 5 | 发票与收据管理 | P0 | 9.5 |
+| 6 | 退款完整处理 | P0 | 9.6 |
+| 7 | 限时优惠与倒计时 | P1 | 9.7 |
+| 8 | 邀请奖励完整规则 | P1 | 9.8 |
+| 9 | 学生/教育优惠 | P1 | 9.9 |
+| 10 | 免费额度/体验次数 | P1 | 9.10 |
+| 11 | Feature Sunset | P1 | 9.11 |
+| 12 | 权限继承冲突 | P1 | 9.12 |
+| 13-19 | P2 场景 (7个) | P2 | 9.13 |
+
+---
+
+## 十、变更记录
 
 | 日期 | 版本 | 变更内容 |
 |------|------|---------|
@@ -2723,6 +4822,7 @@ async function handleUpgrade(userId: string, newTier: string) {
 | 2026-02-04 | v1.7 | 新增"后续扩展场景 (业界预判)"：灰度+Tier 组合、多租户权限、权限继承链、动态定价实验、权限批量管理、配置版本控制，含实施优先级建议 |
 | 2026-02-04 | v1.8 | **扩展场景完整实现方案**：(1) 灰度+Tier 完整优先级规则 + 评估引擎；(2) 权限继承链 TIER_INHERITANCE + 增量配置；(3) 用户组批量授权 3 表 + Service；(4) 配置版本控制快照 + 回滚；(5) Workspace 级权限 + Team Plan 支持；含完整流程图和实施计划 |
 | 2026-02-04 | v1.9 | **权限边界场景处理**：(1) t1 试用期过期完整处理 (项目只读/禁止新建复制/允许删除/状态提醒)；(2) Tier 降级 Graceful Degradation (数据保留/宽限期/超额锁定/成员保留/商城商品保留)；(3) 其他业界场景 (升级/支付失败重试/账户删除/并发订阅/促销码) |
+| 2026-02-04 | v2.0 | **业界最佳实践全面补充 (第九章)**：P0 高优先级 6 个场景 (订阅暂停/年月付切换/积分生命周期/续期提醒/发票管理/退款处理)；P1 中优先级 6 个场景 (限时优惠/邀请奖励/教育优惠/免费额度/Feature Sunset/权限冲突)；P2 低优先级 7 个场景索引。参考 Stripe/Spotify/Netflix/Notion/Figma/Canva/Dropbox 等业界实践 |
 
 ---
 
